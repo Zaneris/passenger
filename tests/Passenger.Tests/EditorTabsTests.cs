@@ -1,9 +1,13 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Editors;
 using Passenger.Text;
+using Ellipse = Avalonia.Controls.Shapes.Ellipse;
 
 namespace Passenger.Tests;
 
@@ -31,6 +35,60 @@ public sealed class EditorTabsTests : IDisposable
     {
         TestFolders.Delete(folder);
         TestFolders.Delete(settings);
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void The_active_tabs_close_button_stays_visible_beside_its_unsaved_dot_and_a_pinned_tabs_pin(bool light)
+    {
+        MainWindow window = Keeping("One.cs", "Two.cs");
+        window.RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark;
+        window.Autosaves = false;
+        EditorGroup group = window.EditorArea.ActiveGroup;
+        window.MouseMove(new Point(600, 300));
+        Ui.Settle();
+        Assert.Equal(1, CloseButton("Two.cs").Opacity);
+        Assert.Equal(0, CloseButton("One.cs").Opacity);
+
+        window.OpenFile("One.cs");
+        window.KeyTextInput("// unsaved\n");
+        Ui.Settle();
+        Ellipse dot = Tab(group, "One.cs").GetVisualDescendants().OfType<Ellipse>().Single(e => e.Classes.Contains("modified"));
+        Button close = CloseButton("One.cs");
+        Assert.True(dot.IsEffectivelyVisible && dot.Opacity == 1, "The active file lost its unsaved indication to its close button");
+        Assert.Equal(1, close.Opacity);
+        Assert.True(dot.TranslatePoint(new Point(dot.Bounds.Width, 0), close)!.Value.X <= 0, "The unsaved dot overlaps the close button");
+
+        Ui.ChooseFromMenu(Tab(group, "One.cs"), "Pin Tab");
+        window.MouseMove(new Point(600, 300));
+        Ui.Settle();
+        Assert.True(PinShown(group, "One.cs"));
+        Assert.Equal(1, CloseButton("One.cs").Opacity);
+
+        // An inactive tab's close button appears under the pointer and closes that file without selecting it.
+        close = CloseButton("Two.cs");
+        Point at = close.TranslatePoint(new Point(close.Bounds.Width / 2, close.Bounds.Height / 2), window)!.Value;
+        window.MouseMove(at);
+        Ui.Settle();
+        Assert.Equal(1, close.Opacity);
+        window.MouseDown(at, Avalonia.Input.MouseButton.Left);
+        window.MouseUp(at, Avalonia.Input.MouseButton.Left);
+        Ui.Settle();
+        Assert.Equal(["One.cs"], Names(group));
+        Assert.Equal("One.cs", window.EditorArea.Active?.Name);
+
+        // The active close control works without first pointing at its tab.
+        window.MouseMove(new Point(600, 300));
+        close = CloseButton("One.cs");
+        at = close.TranslatePoint(new Point(close.Bounds.Width / 2, close.Bounds.Height / 2), window)!.Value;
+        window.MouseDown(at, Avalonia.Input.MouseButton.Left);
+        window.MouseUp(at, Avalonia.Input.MouseButton.Left);
+        Ui.Settle();
+        Assert.Empty(group.Tabs);
+        window.Close();
+
+        Button CloseButton(string name) => Tab(group, name).GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains("tabClose"));
     }
 
     [AvaloniaFact]
