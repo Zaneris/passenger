@@ -57,6 +57,7 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
                 <local:RepeatedView />
                 <local:RepeatedView />
                 <local:RetryControl Value="1" />
+                <local:ThrowingControl Fragile="Safe" />
             </StackPanel>
         </Window>
         """;
@@ -75,6 +76,7 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
             {
                 State state = (State)DataContext!;
                 state.Count++;
+                ThrowingControl.ReadThrows = true;
                 Console.WriteLine($"Name={state.Name}; Count={state.Count}");
             }
         }
@@ -90,6 +92,17 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
         {
             public static readonly StyledProperty<RetryValue?> ValueProperty = AvaloniaProperty.Register<RetryControl, RetryValue?>(nameof(Value));
             public RetryValue? Value { get => GetValue(ValueProperty); set => SetValue(ValueProperty, value); }
+        }
+        public class ThrowingControl : Control
+        {
+            public static bool ReadThrows;
+            private string fragile = "Safe";
+            public static readonly DirectProperty<ThrowingControl, string> FragileProperty = AvaloniaProperty.RegisterDirect<ThrowingControl, string>(nameof(Fragile), item => item.Fragile, (item, value) => item.Fragile = value);
+            public string Fragile
+            {
+                get => ReadThrows ? throw new InvalidOperationException("Fragile getter refused this read") : fragile;
+                set => SetAndRaise(FragileProperty, ref fragile, value);
+            }
         }
         [TypeConverter(typeof(RetryValueConverter))]
         public class RetryValue { public int Value { get; set; } }
@@ -265,6 +278,29 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
         Ui.WaitFor(() => Output(window).Contains("Slow conversion", StringComparison.Ordinal), "the application converter to prove preflight actually ran");
         Assert.Contains(Read(app), e => e.Text == "Before");
         Assert.DoesNotContain(Read(app), e => e.Text == "Late update");
+        End(window);
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_throwing_direct_property_getter_reports_its_own_source_before_any_property_is_mutated(bool earlierChange)
+    {
+        MainWindow window = Debugged();
+        LiveApp app = window.LiveApp!;
+        Ui.Await(app.InputAsync(new InputAction(InputKinds.Click) { Element = Read(app).Single(e => e.Name == "Increment").Id }), "the app to enable its throwing getter");
+        Assert.Null(window.OpenFile(Path.Combine(folder, "MainWindow.axaml")));
+        if (earlierChange)
+        {
+            Typing.Replace(window, "Text=\"Before\"", "Text=\"Must not apply\"");
+        }
+        Typing.Replace(window, "Fragile=\"Safe\"", "Fragile=\"Changed\"");
+        HotReloadOutcome refused = Apply(window);
+        Assert.True(refused.Result == HotReloadResult.Errors, refused.Said);
+        Assert.Contains(refused.Problems, p => p.Path == Path.Combine(folder, "MainWindow.axaml") && p.Message.Contains("Fragile", StringComparison.Ordinal)
+            && p.Message.Contains("previous value", StringComparison.Ordinal) && p.Position.Line == Array.FindIndex(View.Split('\n'), line => line.Contains("ThrowingControl", StringComparison.Ordinal)));
+        Assert.Contains(Read(app), e => e.Text == "Before");
+        Assert.DoesNotContain(Read(app), e => e.Text == "Must not apply");
         End(window);
     }
 

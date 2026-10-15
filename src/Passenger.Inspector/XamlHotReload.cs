@@ -13,7 +13,7 @@ namespace Passenger.Inspector;
 internal sealed class XamlHotReload
 {
     private sealed record Source(string Original, string Current);
-    private sealed record Change(AvaloniaObject Instance, AvaloniaProperty Property, object? Value, XamlSourceUpdate Source, XamlPropertyUpdate Edit);
+    private sealed record Change(AvaloniaObject Instance, AvaloniaProperty Property, object? Value, object? Before, XamlSourceUpdate Source, XamlPropertyUpdate Edit);
     private readonly Dictionary<string, Source> sources = new(StringComparer.Ordinal);
 
     public XamlUpdateResult Apply(XamlUpdate request)
@@ -62,7 +62,17 @@ internal sealed class XamlHotReload
                         {
                             throw new FormatException($"'{edit.Value}' is not valid for {edit.Property}");
                         }
-                        changes.Add(new Change(instance, property, value, source, edit));
+                        object? before;
+                        try
+                        {
+                            before = instance.GetValue(property);
+                        }
+                        catch (Exception error)
+                        {
+                            problems.Add(Problem(source, edit, $"{edit.Property}: the app refused to read the previous value: {error.Message}", false));
+                            continue;
+                        }
+                        changes.Add(new Change(instance, property, value, before, source, edit));
                     }
                     catch (Exception error) when (error is FormatException or NotSupportedException or ArgumentException or OverflowException)
                     {
@@ -85,30 +95,32 @@ internal sealed class XamlHotReload
         {
             return new XamlUpdateResult(true, changes.Count, []);
         }
-        List<(Change Change, object? Before)> applied = [];
+        List<Change> applied = [];
+        Change? attempted = null;
         try
         {
             foreach (Change change in changes)
             {
-                applied.Add((change, change.Instance.GetValue(change.Property)));
+                attempted = change;
+                applied.Add(change);
                 change.Instance.SetCurrentValue(change.Property, change.Value);
             }
         }
         catch (Exception error)
         {
-            foreach ((Change change, object? before) in applied.AsEnumerable().Reverse())
+            foreach (Change change in applied.AsEnumerable().Reverse())
             {
                 try
                 {
-                    change.Instance.SetCurrentValue(change.Property, before);
+                    change.Instance.SetCurrentValue(change.Property, change.Before);
                 }
                 catch
                 {
                     // A throwing application setter may have side effects: the result requires a restart either way.
                 }
             }
-            Change failed = applied[^1].Change;
-            return new XamlUpdateResult(false, 0, [Problem(failed.Source, failed.Edit, $"The app refused the property update: {error.Message}. Restart to restore a known state", true)]);
+            return new XamlUpdateResult(false, 0, [Problem(attempted!.Source, attempted.Edit,
+                $"The app refused the {attempted.Edit.Property} update: {error.Message}. Restart to restore a known state", true)]);
         }
         foreach (XamlSourceUpdate source in request.Files)
         {
