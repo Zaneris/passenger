@@ -36,14 +36,11 @@ jobs:
   # #36: each processor's disk image, made with no Developer ID here (the app signed ad hoc, nothing notarized), which
   # tools/package-mac.sh mounts read-only and checks before it is done: the app's signature, its version and the volume's,
   # Roslyn's server and the debugger's adapter in it, and every Mach-O file built for the image's processor. The x64
-  # image is cross-published on the arm64 runner. A release (release.yml) makes the same images, with the Developer ID
-  # when the repository's secrets hold one.
+  # image is cross-published on the arm64 runner. Both are made sequentially in one job, leaving four of GitHub's five
+  # macOS slots for test shards. Each image is attempted even if the other fails. A release (release.yml) makes the same
+  # images, with the Developer ID when the repository's secrets hold one.
   package:
-    name: Disk image (${{ matrix.rid }})
-    strategy:
-      fail-fast: false
-      matrix:
-        rid: [osx-arm64, osx-x64]
+    name: Disk images (macOS)
     runs-on: macos-latest
     timeout-minutes: 40
     steps:
@@ -64,19 +61,34 @@ jobs:
           key: nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('global.json', '**/Directory.Packages.props', '**/Directory.Build.props', '**/*.csproj', '**/packages.lock.json') }}
           restore-keys: nuget-${{ runner.os }}-${{ runner.arch }}-
 
-      - name: Make and check the disk image
+      - name: Make and check the arm64 disk image
+        id: arm_image
+        continue-on-error: true
+        run: tools/package-mac.sh osx-arm64
+
+      - name: Make and check the x64 disk image from an empty package cache
+        id: x64_image
+        if: ${{ !cancelled() }}
+        continue-on-error: true
         run: |
-          if [ '${{ matrix.rid }}' = osx-x64 ]; then
-            export NUGET_PACKAGES="$RUNNER_TEMP/passenger-cross-publish"
-            [ ! -d "$NUGET_PACKAGES" ] || { echo '::error::The cross-publish package cache must start empty'; exit 1; }
+          export NUGET_PACKAGES="$RUNNER_TEMP/passenger-cross-publish"
+          [ ! -d "$NUGET_PACKAGES" ] || { echo '::error::The cross-publish package cache must start empty'; exit 1; }
+          tools/package-mac.sh osx-x64
+          host=$(dotnet msbuild src/Passenger.Lsp/Passenger.Lsp.csproj -nologo -getProperty:RoslynServerRid)
+          if [ "$host" != osx-x64 ] && [ -d "$NUGET_PACKAGES/roslyn-language-server.$host" ]; then
+            echo "::error::Cross-publishing downloaded the host's Roslyn server ($host) instead of using only the target's"
+            exit 1
           fi
-          tools/package-mac.sh ${{ matrix.rid }}
-          if [ '${{ matrix.rid }}' = osx-x64 ]; then
-            host=$(dotnet msbuild src/Passenger.Lsp/Passenger.Lsp.csproj -nologo -getProperty:RoslynServerRid)
-            if [ "$host" != osx-x64 ] && [ -d "$NUGET_PACKAGES/roslyn-language-server.$host" ]; then
-              echo "::error::Cross-publishing downloaded the host's Roslyn server ($host) instead of using only the target's"
-              exit 1
-            fi
+
+      - name: Both disk images passed their checks
+        if: ${{ !cancelled() }}
+        env:
+          ARM_OUTCOME: ${{ steps.arm_image.outcome }}
+          X64_OUTCOME: ${{ steps.x64_image.outcome }}
+        run: |
+          if [ "$ARM_OUTCOME" != success ] || [ "$X64_OUTCOME" != success ]; then
+            echo "::error::Disk image checks: arm64=$ARM_OUTCOME, x64=$X64_OUTCOME"
+            exit 1
           fi
 
   # #34: the Windows installer as `just package-win` builds it, installed silently as a person's would be (per user, no

@@ -31,15 +31,14 @@ jobs:
       fail-fast: false
       matrix:
         system: [macOS, Windows, Linux]
-        # A system's number of shards is its `shards` below, and these numbers up to it (a system with fewer excludes
-        # its others). Three macOS shards take about 18 minutes of tests each and, beside CI's two disk images,
-        # fit GitHub's five macOS runner slots without queuing a test shard. Windows and Linux keep four shards.
+        # Four macOS test shards plus CI's one sequential disk-image job fit GitHub's five macOS runner slots. The
+        # measured collection work needs about 15 minutes per shard; Windows and Linux also keep four shards.
         shard: [1, 2, 3, 4]
         include:
           - system: macOS
             name: macOS (arm64)
             os: macos-latest
-            shards: 3
+            shards: 4
           - system: Windows
             name: Windows (x64)
             os: windows-latest
@@ -48,9 +47,6 @@ jobs:
             name: Linux (x64)
             os: ubuntu-24.04
             shards: 4
-        exclude:
-          - system: macOS
-            shard: 4
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     defaults:

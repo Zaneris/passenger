@@ -111,9 +111,10 @@ fi
 rm -rf "$work" "$image"
 mkdir -p "$work"
 
+# Each RID owns even its portable build outputs, so the next image cannot reuse the other RID's intermediates.
 # Only the packages the lock files pin, as CI restores; and no MSBuild node is left running once it is done.
 dotnet publish "$root/src/Passenger.App" -c Release -r "$rid" --self-contained -p:PublishReadyToRun=true -p:Version="$version" \
-    -p:RestoreLockedMode=true -nodeReuse:false -o "$publish" -nologo -v quiet
+    -p:RestoreLockedMode=true -p:ArtifactsPath="$work/build" -nodeReuse:false -o "$publish" -nologo -v quiet
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp -R "$publish/." "$app/Contents/MacOS/"
 cp "$root/src/Passenger.App/Assets/Passenger.icns" "$app/Contents/Resources/Passenger.icns"
