@@ -69,18 +69,26 @@ public sealed class NuGetView : DockPanel
         this.projects = projects;
         this.root = root;
         search = new TextBox { Classes = { "search" }, PlaceholderText = "Search packages", Width = 260, Margin = new Thickness(8, 0) };
-        chooser = new ComboBox { Classes = { "compact" }, MinWidth = 130, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
+        chooser = new ComboBox { Classes = { "compact" }, Width = 180, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
         ToolTip.SetTip(chooser, "The feeds searched");
         chooser.SelectionChanged += (_, _) =>
         {
+            ToolTip.SetTip(chooser, chooser.SelectedItem ?? "The feeds searched");
             if (!choosing)
             {
                 _ = RefreshAsync();
             }
         };
         prerelease = new CheckBox { Content = "Prerelease", VerticalAlignment = VerticalAlignment.Center };
-        status = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0), TextTrimming = TextTrimming.CharacterEllipsis };
+        status = new TextBlock { Name = "NuGetPackageStatus", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0), TextTrimming = TextTrimming.CharacterEllipsis };
         status.Bind(TextBlock.ForegroundProperty, status.GetResourceObservable("Passenger.TextMuted"));
+        status.PropertyChanged += (_, change) =>
+        {
+            if (change.Property == TextBlock.TextProperty)
+            {
+                ToolTip.SetTip(status, status.Text);
+            }
+        };
         Button refresh = new() { Classes = { "tool" }, Content = new PathIcon(), Margin = new Thickness(6, 0, 0, 0) };
         ((PathIcon)refresh.Content).Bind(PathIcon.DataProperty, refresh.GetResourceObservable("Icon.Rerun"));
         ToolTip.SetTip(refresh, "Refresh");
@@ -91,9 +99,14 @@ public sealed class NuGetView : DockPanel
         Border top = new()
         {
             [DockProperty] = Dock.Top,
-            Height = 36,
             BorderThickness = new Thickness(0, 0, 0, 1),
-            Child = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Children = { search, chooser, prerelease, refresh, status } },
+            Child = new WrapPanel { Name = "NuGetPackageTools", Margin = new Thickness(0, 4), Children = { search, chooser, prerelease, refresh, status } },
+        };
+        top.SizeChanged += (_, change) =>
+        {
+            search.Width = Math.Min(260, Math.Max(0, change.NewSize.Width - search.Margin.Left - search.Margin.Right));
+            chooser.Width = Math.Min(180, Math.Max(0, change.NewSize.Width - chooser.Margin.Left - chooser.Margin.Right));
+            status.MaxWidth = Math.Max(0, change.NewSize.Width - status.Margin.Left - status.Margin.Right);
         };
         top.Bind(Border.BorderBrushProperty, top.GetResourceObservable("Passenger.Divider"));
 
@@ -279,7 +292,7 @@ public sealed class NuGetView : DockPanel
         try
         {
             IReadOnlyList<PackageRow> found;
-            ToolTip.SetTip(status, null);
+            ToolTip.SetTip(status, status.Text);
             if (Query.Trim().Length == 0)
             {
                 found = [.. installed.OrderBy(p => p.Key, StringComparer.OrdinalIgnoreCase)
