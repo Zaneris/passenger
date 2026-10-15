@@ -190,6 +190,9 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
     public void Wpf_run_under_watch_preserves_the_managed_agent_inspects_xaml_and_reconnects_after_a_rebuild()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "WPF runs on Windows alone");
+        // A project that switched UI frameworks can leave the former framework's output beside its target assembly.
+        string stale = Directory.CreateDirectory(Path.Combine(folder, "bin", "Debug", AvaloniaApp.Metadata("TargetFramework") + "-windows")).FullName;
+        File.WriteAllText(Path.Combine(stale, "Avalonia.Base.dll"), "stale former build output");
         MainWindow window = new() { Width = 1400, Height = 900 };
         window.Show();
         window.OpenFolder(folder);
@@ -208,6 +211,7 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
                 throw new TimeoutException($"{error.Message}\n{RunOutput(window)}", error);
             }
             LiveApp app = window.Session.RunApp!;
+            Assert.Equal(LiveAppKind.Wpf, app.Kind);
             int? first = app.ProcessId;
             long button = Read(app).Single(e => e.Name == "Increment").Id;
             Assert.Null(window.OpenFile(Path.Combine(folder, "MainWindow.xaml.cs")));

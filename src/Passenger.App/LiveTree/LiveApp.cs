@@ -201,11 +201,11 @@ public sealed class LiveApp : IDisposable
             return null;
         }
         LiveAppKind kind;
-        if ((expected == LiveAppKind.Avalonia || File.Exists(Path.Combine(Path.GetDirectoryName(built)!, "Avalonia.Base.dll"))) && File.Exists(InspectorPath))
+        if ((expected == LiveAppKind.Avalonia || expected is null && File.Exists(Path.Combine(Path.GetDirectoryName(built)!, "Avalonia.Base.dll"))) && File.Exists(InspectorPath))
         {
             kind = LiveAppKind.Avalonia;
         }
-        else if (wpf && OperatingSystem.IsWindows() && File.Exists(WpfInspectorPath) && (expected == LiveAppKind.Wpf || IsWpf(built)))
+        else if (wpf && OperatingSystem.IsWindows() && File.Exists(WpfInspectorPath) && (expected == LiveAppKind.Wpf || expected is null && IsWpf(built)))
         {
             kind = LiveAppKind.Wpf;
         }
