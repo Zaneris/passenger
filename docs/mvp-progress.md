@@ -8,7 +8,7 @@ whole milestone, platform suite or release has passed. No issue was closed, rele
 
 | Issue | Local result | What remains |
 | --- | --- | --- |
-| [#219 Slow Windows debugger startup](https://github.com/Zaneris/passenger/issues/219) | Fixed the reproduced false five-second timeout for a live runtime. Startup cancellation reaches the engine before disconnect waits for its lock; logs separate native callback entry, continuation handling and launch resume. Commit `93737dc`; 17 launch/attach/startup tests passed. Restoring the old timeout makes the delayed-start regression fail. | The original CI incident's late-versus-lost callback cause needs a trace from the new diagnostics under the failing runner conditions. |
+| [#219 Slow Windows debugger startup](https://github.com/Zaneris/passenger/issues/219) | `93737dc` fixes the reproduced false five-second timeout for a live runtime and startup cancellation. Integration then exposed a cancellation-response/shutdown ordering race, fixed in `04b7d865`: the configuration lock covers writing success/error responses before disconnect can close the transport, preserving success-only continuation behavior. Both deterministic old-order controls fail; the fixed RC1 run passed 34 focused tests plus 10/10 repetitions of the original cancellation case. | The original CI incident's late-versus-lost callback cause still needs a trace under the failing runner conditions. Final combined validation is recorded below. |
 | [#218 WPF generated-file contention](https://github.com/Zaneris/passenger/issues/218) | Investigated, no speculative source fix. The WPF `WindowsOnlyProjectsTests` regression passed on Windows x64 with RC1. | Design-time WPF compilation can perform real `MarkupCompile` writes to the same `*.g.cs` files. `FileTextLoader` read sharing was ruled out; the actual competing holder and a deterministic failing overlap were not captured. Needs that evidence before choosing cross-process coordination. |
 | [#217 MAUI template inventory](https://github.com/Zaneris/passenger/issues/217) | Fixed in `d94d4af`. The three template-family tests passed with MAUI absent. Installing a temporary MAUI-tagged template into the test's own hive made the exact inventory regression exercise its positive branch and pass; the template was then removed. | The current GitHub Windows runner's actual inventory was not observed locally. |
 | [#216 Dialog answer order](https://github.com/Zaneris/passenger/issues/216) | Shared footer ordering now puts competing answers before Cancel on Windows/Linux and the default last on macOS. Thirteen focused Windows tests passed; dark/light scale-2 screenshots were reviewed. | Execute on macOS/Linux; the local Windows pass does not establish their native behavior. |
@@ -140,8 +140,21 @@ the repository's namespace style to apply to third-party `Krafs.Publicizer` gene
 outside the repository resolved it without suppressing source checks. Sandbox registry/network/MSYS-object restrictions
 needed scoped elevated execution. Existing debuggee unused-local warnings are fixtures, not new production warnings.
 
-Integration status at this report commit: merged source `a4e5057` built with zero warnings/errors. An independent
-reviewer is incrementally building and running the combined focused suite on final source `155a6dd`, including the
-Welcome wrapping follow-up; its result is pending. Full three-system CI,
+The initial combined run on source `155a6dd` ran 54 tests: 52 passed, one failed and one macOS-only test skipped on
+Windows. That run caught the real #219 response/shutdown ordering race: disconnect succeeded, but a pending
+configuration cancellation could be lost as `the connection closed`. The subsequent product fix `04b7d865` keeps the
+configuration lock through both success/error response writes and full-path cleanup, with the existing success-only
+continuation semantics preserved. Deterministic stalled-write tests fail under the old ordering and pass when fixed;
+34 focused tests and 10/10 repetitions of the original cancellation case passed under direct RC1.
+
+Final integrated source `e7370c87ef622f99294b5ed0acfaf9903c92b84f` passed the direct-RC1 locked restore and full solution
+build. The build had zero errors and seven expected CS0219 warnings in unchanged intentional debugger fixtures, with
+no product/test-source warnings. The post-fix combined run completed in 63 seconds: **56 total, 55 passed, one
+macOS-only test skipped on Windows, zero failures**.
+
+The local integration evidence is under `artifacts/milestone-1/integration/`: `post-fix-restore.log`,
+`post-fix-build.log`, `post-fix-tests.log` and `results/post-fix-integration.trx`.
+
+Full three-system CI,
 native platform acceptance, release dry run, final MCP pass, site refresh and the owner's release/tag decision remain
 separate checkpoints.
