@@ -116,6 +116,14 @@ public sealed class VcsTests : IDisposable
         Ui.Landed(() => submitted.IsCompleted && window.Vcs.Branch == "feature/sale", "the new branch checked out");
         Assert.False(window.IsPopupOpen);
 
+        window.FindControl<Button>("BranchButton")!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Ui.Landed(() => window.OpenContextMenu is not null, "the branches menu");
+        MenuTests.CurrentValue(window.OpenContextMenu!.Items.OfType<MenuItem>().Where(i => i.ToggleType == MenuItemToggleType.Radio), "feature/sale")
+            .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(MenuItem.ClickEvent));
+        window.OpenContextMenu.Close();
+        Ui.Settle();
+        Assert.Equal("feature/sale", window.Vcs.Branch);
+
         // A commit on the branch, then main again: the editor shows main's text without being asked.
         File.WriteAllText(Path.Combine(folder, "Shop.cs"), Original.Replace("count++", "count += 2", StringComparison.Ordinal));
         Git("commit", "-q", "-am", "Twice");

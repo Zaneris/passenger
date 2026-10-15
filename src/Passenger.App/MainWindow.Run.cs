@@ -132,12 +132,11 @@ public partial class MainWindow
         {
             string name = each.Name;
             string? why = WhyNotHere(each);
-            MenuItem item = new() { Header = why is null ? name : Greyed(name, why) };
+            MenuItem item = MenuChoice(why is null ? name : Greyed(name, why), each == Configuration, () => SelectConfiguration(name));
             if (why is not null)
             {
                 ToolTip.SetTip(item, $"{name} cannot run here: {why}");
             }
-            item.Click += (_, _) => SelectConfiguration(name);
             menu.Items.Add(item);
         }
         if (menu.Items.Count == 0)

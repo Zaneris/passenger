@@ -238,13 +238,29 @@ public partial class MainWindow
 
     private static MenuItem FlyoutListed(ListedItem listed)
     {
+        if (listed.Checked is { } chosen)
+        {
+            return MenuChoice(listed.Title, chosen, listed.Run);
+        }
         MenuItem item = new()
         {
             Header = listed.Title,
-            ToggleType = listed.Checked is null ? MenuItemToggleType.None : MenuItemToggleType.Radio,
-            IsChecked = listed.Checked == true,
         };
         item.Click += (_, _) => listed.Run();
+        return item;
+    }
+
+    /// <summary>A menu's current value is checked and selectable; choosing it again leaves the value alone.</summary>
+    private static MenuItem MenuChoice(object header, bool chosen, Action run)
+    {
+        MenuItem item = new() { Header = header, ToggleType = MenuItemToggleType.Radio, IsChecked = chosen };
+        item.Click += (_, _) =>
+        {
+            if (!chosen)
+            {
+                run();
+            }
+        };
         return item;
     }
 

@@ -23,7 +23,8 @@ public partial class MainWindow
             LineSeparator separator = LineSeparators.All[i];
             actions.Add(new IdeAction(LineSeparatorAction(separator), separator.Title(), "Line Separators", context => ConvertLineSeparators(context.File!, separator))
             {
-                WhyNot = context => Unchangeable(context) ?? (context.File!.Separator == separator ? $"{context.File.Name}'s line separator is {separator} already" : null),
+                WhyNot = Unchangeable,
+                IsChecked = context => context.File?.Separator == separator,
                 Menus = [new MenuPlace("File/Line Separators", 0, i)],
             });
         }
@@ -55,7 +56,7 @@ public partial class MainWindow
     /// <summary>The status bar's line separator and encoding widgets for the file shown: Rider's names, and tips that say
     /// what the file's .editorconfig asks.</summary>
 
-    /// <summary>Rider's line separator popup: the Line Separators menu, the file's own disabled.</summary>
+    /// <summary>The Line Separators menu over the status widget, with the file's current separator checked.</summary>
     private void OnLineSeparatorClicked(object? sender, RoutedEventArgs e)
     {
         ActionContext context = actions!.Context();
@@ -65,8 +66,8 @@ public partial class MainWindow
 
     private void OnEncodingClicked(object? sender, RoutedEventArgs e) => Request(A.FileEncoding);
 
-    /// <summary>Rider's encoding popup over the status bar's widget: the encodings it lists first, then More, the file's own
-    /// disabled. Choosing one asks, when it changes anything, whether to reload the file in it or convert the file to it.</summary>
+    /// <summary>The encoding popup over the status widget, the current encoding checked. Choosing another asks, when it
+    /// changes anything, whether to reload the file in it or convert the file to it.</summary>
     private void ShowEncodingMenu()
     {
         if (Editors.Active is not { } document)
@@ -77,8 +78,9 @@ public partial class MainWindow
         MenuItem Item(FileEncoding encoding)
         {
             // Doubled, Shift_JIS's underscore is shown rather than taken for an access key.
-            MenuItem item = new() { Header = encoding.Name.Replace("_", "__", StringComparison.Ordinal), IsEnabled = encoding.Name != current };
-            item.Click += (_, _) => _ = ChooseEncodingAsync(document, encoding);
+            MenuItem item = MenuChoice(encoding.Name.Replace("_", "__", StringComparison.Ordinal), encoding.Name == current,
+                () => _ = ChooseEncodingAsync(document, encoding));
+            item.IsEnabled = !document.IsReadOnly;
             return item;
         }
         MenuItem more = new() { Header = "More" };
@@ -160,6 +162,10 @@ public partial class MainWindow
     private void ConvertLineSeparators(OpenDocument document, LineSeparator to)
     {
         LineSeparator from = document.Separator;
+        if (from == to)
+        {
+            return;
+        }
         if (document.IsModified && !Editors.Save(document))
         {
             return;
