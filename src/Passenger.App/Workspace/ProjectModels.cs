@@ -233,7 +233,10 @@ public sealed class ProjectModels
         long began = Stopwatch.GetTimestamp();
         try
         {
-            List<string> stale = await Task.Run(() => projects.Where(p => !before.TryGetValue(p, out EvaluatedProject? e) || !Holds(e)).ToList());
+            List<(string Path, string Reason)> refreshed = await Task.Run(() => projects
+                .Select(path => (Path: path, Reason: before.TryGetValue(path, out EvaluatedProject? evaluated) ? RefreshReason(evaluated) : "not evaluated before"))
+                .Where(project => project.Reason is not null).Select(project => (project.Path, project.Reason!)).ToList());
+            List<string> stale = [.. refreshed.Select(project => project.Path)];
             ProjectHost host = await Task.Run(() => ProjectHosts.ForAsync(following));
             if (mine != generation)
             {
@@ -242,6 +245,7 @@ public sealed class ProjectModels
             if (sdk is null || !PathNames.Same(sdk, host.Sdk))
             {
                 // Evaluated with another SDK's MSBuild (the folder's global.json changed since): none of it stands.
+                IdeErrors.Write($"Project evaluation SDK of {following} changed from {sdk ?? "none"} to {host.Sdk}");
                 stale = projects;
                 sdk = host.Sdk;
             }
@@ -249,6 +253,10 @@ public sealed class ProjectModels
             if (stale.Count == 0)
             {
                 return;
+            }
+            if (refreshed.Count > 0)
+            {
+                IdeErrors.Write($"Project evaluation refresh of {following} ({refreshed.Count}): {string.Join(" | ", refreshed.Take(8).Select(project => $"{project.Path}: {project.Reason}"))}{(refreshed.Count > 8 ? " | ..." : string.Empty)}");
             }
             EvaluateDone done = await host.EvaluateAsync(stale, properties, evaluated =>
             {
@@ -331,7 +339,14 @@ public sealed class ProjectModels
         kept.Set(new ProjectModelCache { Sdk = sdk, Projects = complete });
     }
 
-    /// <summary>Whether an evaluation stands: complete, and everything it read as it was then.</summary>
-    private static bool Holds(EvaluatedProject evaluated) =>
-        evaluated.Complete && evaluated.Inputs.All(Stamps.Holds) && evaluated.Folders.All(Stamps.Holds);
+    /// <summary>Why an evaluation must be refreshed, including the first input that changed; null while it stands.</summary>
+    private static string? RefreshReason(EvaluatedProject evaluated)
+    {
+        if (!evaluated.Complete)
+        {
+            return "evaluation incomplete";
+        }
+        Stamp? changed = evaluated.Inputs.Concat(evaluated.Folders).FirstOrDefault(stamp => !Stamps.Holds(stamp));
+        return changed is null ? null : $"{(changed.Folder ? "folder names" : "file")} changed: {changed.Path}";
+    }
 }
