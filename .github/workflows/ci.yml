@@ -65,7 +65,19 @@ jobs:
           restore-keys: nuget-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Make and check the disk image
-        run: tools/package-mac.sh ${{ matrix.rid }}
+        run: |
+          if [ '${{ matrix.rid }}' = osx-x64 ]; then
+            export NUGET_PACKAGES="$RUNNER_TEMP/passenger-cross-publish"
+            [ ! -d "$NUGET_PACKAGES" ] || { echo '::error::The cross-publish package cache must start empty'; exit 1; }
+          fi
+          tools/package-mac.sh ${{ matrix.rid }}
+          if [ '${{ matrix.rid }}' = osx-x64 ]; then
+            host=$(dotnet msbuild src/Passenger.Lsp/Passenger.Lsp.csproj -nologo -getProperty:RoslynServerRid)
+            if [ "$host" != osx-x64 ] && [ -d "$NUGET_PACKAGES/roslyn-language-server.$host" ]; then
+              echo "::error::Cross-publishing downloaded the host's Roslyn server ($host) instead of using only the target's"
+              exit 1
+            fi
+          fi
 
   # #34: the Windows installer as `just package-win` builds it, installed silently as a person's would be (per user, no
   # administrator), an agent debugging a project through the Passenger it installed (so its Roslyn server and debugger
