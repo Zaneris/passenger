@@ -159,37 +159,49 @@ first fails, retaining the x64 cold-cache/host-package guard. Four test jobs plu
 five-slot limit. Its earlier 923-test listing projected 16.4 minutes per macOS shard; the later 934-test listing
 projected 16.7. These are source-specific estimates, not observed below-25-minute acceptance.
 
-The next allocation uses five Windows shards and four each on Linux/macOS, keeping the 20-minute shard budget.
-All eleven result artifacts from [native CI `cc7456a`](https://github.com/tebeco/passenger/actions/runs/38815446318)
-contain exactly one result for each of that source's 909 tests, in 125 classes per system. `TestTimes.json` takes
-the measured seconds of its classes with no failed results: 125 on Windows, 121 on Linux and 119 on macOS. Failed
-classes retain their prior observations from [native CI `33ddf0d`](https://github.com/tebeco/passenger/actions/runs/38807870015),
-rather than letting the since-fixed EnC failures' waits drive the deal. This does not declare either run green.
+The completed [CI4 run at `f4d89b9`](https://github.com/tebeco/passenger/actions/runs/38821710686) contains exactly one
+result for each of its **943 tests in 129 classes per system** across all 13 shards. Windows reports 934 passed,
+nine not executed and no test failures; Linux reports 902 passed, 40 not executed and one failure; macOS reports
+911 passed, 30 not executed and two failures. Windows shard 3 took 20.18 minutes of tests and macOS shard 2 took
+21.55, exceeding the unchanged 20-minute budget. The complete run took 25m55s, so the below-25-minute acceptance
+remains open. Both disk images passed in the single sequential image job; all packaging jobs succeeded.
 
-| System | Shards | Projected test minutes from the exact `8f5534f` listing (943 tests, 129 classes) |
+`TestTimes.json` now takes the measured CI4 seconds of classes with no failed result: **129 Windows, 128 Linux,
+127 macOS**. This includes the 31-case XamlHotReloadTests cost that the earlier weights understated: 436.1 seconds
+on Windows, 343.7 on Linux and 341.6 on macOS. With the actual CI4 class assignments held fixed, the measured
+collection model accounts for all but 7–32 seconds of each shard's VSTest elapsed time. Build, discovery, queue
+and packaging costs are separate. No failed run is declared green by updating its successful classes.
+
+The failed classes retain the following prior inputs; their failing elapsed times are recorded, not used as healthy
+measurements. These explicit limits remain until the next native run:
+
+| Class/system | Weight used | Observed CI4 coverage and elapsed |
 | --- | --- | --- |
-| macOS | 4 | 17.20, 17.19, 17.20, 17.19 |
-| Windows | 5 | 16.75, 16.76, 16.77, 16.75, 16.77 |
-| Linux | 4 | 15.73, 15.72, 15.73, 15.72 |
+| HotReloadTests, macOS | 100.0 seconds from the eight-case `33ddf0d` observation | 12 cases, 11 passed and one failed, 175.3 seconds; the retained weight understates added coverage |
+| TerminalLifecycleTests, Linux | Existing default budget, 60 seconds; no earlier measured class | Two cases, one passed and one failed, 10.4 seconds |
+| TerminalLifecycleTests, macOS | Existing default budget, 60 seconds; no earlier measured class | Two cases, one passed and one failed, 11.1 seconds |
 
-The four-shard Windows model would take about 20.95 minutes before overhead, hence the fifth shard. These projections
-exclude build, discovery, runner and queue overhead. The four classes absent from CI3 use the existing 60-second
-default budget: TerminalLifecycleTests, ToolHeaderTests, ToolLayoutTests and ToolTabTests. Timings also predate
-additional cases in existing classes: notably XamlHotReloadTests grew from 17 in CI3 to 31 at `8f5534f`. No measured
-cost for those new cases is claimed. The retained failed-class observations are:
+| System | Shards | Projected test minutes from exact `152062a` discovery (948 tests, 129 classes) |
+| --- | --- | --- |
+| macOS | 4 | 16.77, 16.75, 16.75, 16.75 |
+| Windows | 5 | 15.82, 15.82, 15.82, 15.82, 15.82 |
+| Linux | 4 | 16.30, 16.31, 16.31, 16.30 |
 
-| Class | CI1 / CI3 / `8f5534f` test counts | Retained macOS seconds | Retained Linux seconds |
-| --- | --- | --- | --- |
-| DebuggerTests | 36 / 36 / 36 | 297.9 | 297.6 |
-| HotReloadEditsTests | 15 / 15 / 15 | 140.0 | 130.9 |
-| HotReloadTests | 8 / 8 / 12 | 100.0 | 75.9 |
-| SelfDebuggingTests | 1 / 1 / 1 | 89.4 | refreshed from CI3 |
-| WpfXamlTests | 8 / 8 / 8 | 41.9 | refreshed from CI3 |
-| XamlHotReloadTests | 11 / 17 / 31 | 121.6 | 124.1 |
+The matrix remains five Windows shards and four each on Linux/macOS, with the same budgets. The projections
+exclude runner/build overhead and unmeasured new coverage: ProfilerTests has seven cases at `152062a` versus
+four in CI4, and ToolHeaderTests has six versus four. Further WPF coverage being developed after this checkpoint
+also requires native measurement. The earlier CI3-weight table for exact `8f5534f` discovery (943 tests) projected
+17.19–17.20 minutes on macOS, 16.75–16.77 on Windows and 15.72–15.73 on Linux; those estimates predated the
+additional XAML cases' measured costs and used Python 3.11 float summation.
 
-Retaining the whole failed class understates its added coverage; the XAML and Hot Reload rows make that limit
-explicit. Generated filters were checked through actual discovery against the exact `8f5534f` binaries, with every
-test in exactly one shard per system. The next native run must establish the actual durations and whole-CI target.
+`7a03b7d` makes allocation comparisons use decimal seconds, preserving the reported float totals. Python's
+[3.12 float-summation change](https://docs.python.org/3.12/library/functions.html#sum) made equal decimal finish
+times break differently: the same frozen 943-test input and timing-file hash produced Linux counts
+217/291/216/219 on actual Python 3.11.9 and 256/266/203/218 on actual Python 3.12.14, matching the CI discrepancy.
+The corrected CLI passes four boundary regressions on both versions; all 13 generated filters and projected
+outputs are byte-identical across them. Actual selected-test discovery checks the refreshed `152062a` filters:
+all 948 tests appear exactly once per system across its five/four/four shards. Each later merged suite still needs
+those coverage checks, followed by native timing and whole-CI acceptance.
 
 The manual-only `.github/workflows/arm-validation.yml` prepares native Windows ARM64 and Ubuntu ARM64 acceptance on
 GitHub's [documented hosted runners](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
@@ -206,8 +218,9 @@ through MCP against the test host. Results, engine logs and timing tables stay u
 artifacts, with no ordinary shard metadata or x64 timing update. Cached ARM64 dbgshim images and Linux's ARM64 PTY
 library are present; data breakpoints remain an explicit Windows x64 runtime capability. Local x64 validation checks
 the workflow/PowerShell syntax, all eight required smoke prefixes (nine discovered tests), PE positive/x64-negative
-controls, native-host rejection on x64 and the real MCP architecture assertion (one pass). Native ARM execution and
-interactive desktop acceptance remain unverified until the manual jobs run; these preparation checks do not establish them.
+controls, native-host rejection on x64 and the real MCP architecture assertion (one pass). These preparation checks
+are separate from the later observed native ARM results above. Smoke/package runs leave the full Windows ARM64
+suite and interactive desktop acceptance for their own verification.
 
 The following is the historical `8048b8e` estimate, before the collection-aware timing refresh; it is retained as the
 evidence for choosing three macOS shards, not a current runtime estimate:
