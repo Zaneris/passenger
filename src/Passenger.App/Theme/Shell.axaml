@@ -723,6 +723,12 @@
     </Style>
 
     <!-- A bottom tool window's tab: plain text, the open one on a raised band. -->
+    <Style Selector="ScrollViewer.toolTabs">
+        <Setter Property="Height" Value="32" />
+        <Setter Property="Margin" Value="8,0" />
+        <Setter Property="HorizontalScrollBarVisibility" Value="Auto" />
+        <Setter Property="VerticalScrollBarVisibility" Value="Disabled" />
+    </Style>
     <Style Selector="ToggleButton.panelTab">
         <Setter Property="Height" Value="24" />
         <Setter Property="Padding" Value="10,0" />
