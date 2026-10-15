@@ -108,7 +108,7 @@ public sealed class HotReloadTests : IClassFixture<RestoredFolders>, IDisposable
     [AvaloniaFact]
     public void A_ready_update_that_excludes_a_missing_dependency_baseline_is_discarded_then_both_edits_can_be_retried()
     {
-        string library = Directory.CreateDirectory(Path.Combine(folder, "Library")).FullName;
+        string library = PathNames.Canonical(Directory.CreateDirectory(Path.Combine(folder, "Library")).FullName);
         string words = Path.Combine(library, "Words.cs");
         File.WriteAllText(words, "public static class Words\n{\n    public static string Greeting() => \"Hello\";\n}\n");
         File.WriteAllText(GreeterPath, Greeter.Replace("Hello {i}", "{Words.Greeting()} {i}", StringComparison.Ordinal));
@@ -136,7 +136,10 @@ public sealed class HotReloadTests : IClassFixture<RestoredFolders>, IDisposable
             window.OpenFile(GreeterPath);
             Replace(window, "static class Greeter", "// Main edit pending.\nstatic class Greeter");
             Replace(window, "Console.WriteLine($\"{Words.Greeting()} {i}\");", "Console.WriteLine($\"{Words.Greeting()} {i}\"); Console.WriteLine(\"main edited\");");
-            window.OpenFile(words);
+            // OpenFile accepts the temp directory's alias (/var on macOS) and owns its canonical (/private/var)
+            // document. Line mappings and the acknowledged Files use that same canonical document identity.
+            Assert.Null(window.OpenFile(Path.Combine(folder, "Library", "Words.cs")));
+            Assert.Equal(words, window.EditorArea.Active!.Path);
             Replace(window, "public static class Words", "// Library edit pending.\npublic static class Words");
             Replace(window, "Hello", "Howdy");
 
