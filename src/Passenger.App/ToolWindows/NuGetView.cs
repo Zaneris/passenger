@@ -69,7 +69,14 @@ public sealed class NuGetView : DockPanel
         this.projects = projects;
         this.root = root;
         search = new TextBox { Classes = { "search" }, PlaceholderText = "Search packages", Width = 260, Margin = new Thickness(8, 0) };
-        chooser = new ComboBox { Classes = { "compact" }, Width = 180, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
+        chooser = new ComboBox
+        {
+            Classes = { "compact" }, Width = 180, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0),
+            SelectionBoxItemTemplate = new FuncDataTemplate<string>((name, _) => new TextBlock
+            {
+                Text = name, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center,
+            }),
+        };
         ToolTip.SetTip(chooser, "The feeds searched");
         chooser.SelectionChanged += (_, _) =>
         {
