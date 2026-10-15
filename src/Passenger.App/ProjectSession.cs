@@ -65,6 +65,7 @@ public sealed class ProjectSession : IAsyncDisposable
         Configurations = new RunConfigurations(folder);
         Builder = new ProcessRunner(setup.Views.Build);
         Runner = new ProcessRunner(setup.Views.Run, takesInput: true);
+        RunXaml = new RunXamlHotReload(setup.Editors);
         Tests = new TestController(setup.Views.TestTree, setup.BuildForTests, () => Projects, line => setup.Views.Build.Append($"{line}\n"));
         Debug = new DebugController(setup.Editors, setup.Views.Debug)
         {
@@ -222,6 +223,9 @@ public sealed class ProjectSession : IAsyncDisposable
     /// Tree follows the debugger's); null after any other program. Under Hot Reload it follows dotnet watch's replacement
     /// processes. It ends with its run, and with the folder.</summary>
     public LiveApp? RunApp { get; private set; }
+
+    /// <summary>Saved XAML edits of the watched run, applied by its UI inspector alongside watch's managed updates.</summary>
+    public RunXamlHotReload RunXaml { get; }
 
     /// <summary>A plan as Run launches it: an Avalonia or WPF app carries the inspector, as Debug's does; dotnet watch
     /// receives the hook only for its target process.</summary>
@@ -453,6 +457,7 @@ public sealed class ProjectSession : IAsyncDisposable
         Xaml.Attach(document);
         MSBuild.Attach(document);
         Debug.Attach(document);
+        RunXaml.Attach(document);
         Vcs.Attach(document);
     }
 
@@ -464,6 +469,7 @@ public sealed class ProjectSession : IAsyncDisposable
         Xaml.Detach(document);
         MSBuild.Detach(document);
         Debug.Detach(document);
+        RunXaml.Detach(document);
         Vcs.Detach(document);
     }
 
@@ -704,6 +710,7 @@ public sealed class ProjectSession : IAsyncDisposable
         Builder.Dispose();
         Runner.Dispose();
         Debug.Dispose();
+        RunXaml.Dispose();
         Vcs.Dispose();
     }
 

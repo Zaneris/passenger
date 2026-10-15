@@ -1,4 +1,6 @@
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Debugging;
 using Passenger.App.LiveTree;
@@ -120,6 +122,268 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
         }
         """;
 
+    private void FutureViews(bool foreignOverride = false, bool customProvider = false)
+    {
+        string main = View.Replace("Height=\"460\"", "Height=\"1000\"", StringComparison.Ordinal)
+            .Replace("<Button x:Name=\"Increment\"", "<Button x:Name=\"CreateView\" Content=\"Create view\" Click=\"Created\" /><Button x:Name=\"Increment\"", StringComparison.Ordinal);
+        File.WriteAllText(Path.Combine(folder, "MainWindow.axaml"), main);
+        string setup = foreignOverride
+            ? " typeof(RepeatedView).GetField(\"!XamlIlPopulateOverride\", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!.SetValue(null, (Action<object>)(_ => { }));"
+            : string.Empty;
+        File.WriteAllText(Path.Combine(folder, "MainWindow.axaml.cs"), Code
+            .Replace("DataContext = new State();", "DataContext = new State();" + setup, StringComparison.Ordinal)
+            .Replace("private void Clicked", "private void Created(object? sender, RoutedEventArgs e) { ((StackPanel)Content!).Children.Add(new RepeatedView()); ((StackPanel)Content!).Children.Add(new UnopenedView()); }\n    private void Clicked", StringComparison.Ordinal));
+        File.WriteAllText(Path.Combine(folder, "RepeatedView.axaml"), """
+            <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                         xmlns:local="using:LiveTreeApp" x:Class="LiveTreeApp.RepeatedView" x:DataType="local:State">
+                <StackPanel>
+                    <TextBlock x:Name="NewLiteral" Text="Created before" Width="200" />
+                    <TextBlock x:Name="ConstructorValue" Text="XAML before" />
+                    <TextBox x:Name="NewEntry" Text="{Binding Name, Mode=TwoWay}" />
+                    <TextBlock x:Name="NewBound" Text="{Binding Name}" />
+                    <Button x:Name="NewIncrement" Content="New count" Click="Clicked" />
+                    <local:ThrowingControl Fragile="Safe" />
+                </StackPanel>
+            </UserControl>
+            """);
+        string populate = customProvider ? "Avalonia.Markup.Xaml.AvaloniaXamlLoader.Load(new Services(), this);" : "InitializeComponent();";
+        File.WriteAllText(Path.Combine(folder, "RepeatedView.axaml.cs"), $$"""
+            using Avalonia.Controls;
+            using Avalonia.Interactivity;
+            namespace LiveTreeApp;
+            public partial class RepeatedView : UserControl
+            {
+                public RepeatedView()
+                {
+                    {{populate}}
+                    Console.WriteLine($"Constructor saw {this.FindControl<TextBlock>("NewLiteral")!.Text}; {this.FindControl<TextBlock>("ConstructorValue")!.Text}");
+                    this.FindControl<TextBlock>("ConstructorValue")!.Text = "Constructor wins";
+                    DataContext = new State();
+                }
+                private void Clicked(object? sender, RoutedEventArgs e)
+                {
+                    State state = (State)DataContext!;
+                    state.Count++;
+                    Console.WriteLine($"New view Name={state.Name}; Count={state.Count}");
+                }
+            }
+            public sealed class Services : IServiceProvider { public object? GetService(Type type) => null; }
+            """);
+    }
+
+    [AvaloniaTheory]
+    [InlineData("Light", false)]
+    [InlineData("Dark", false)]
+    [InlineData("Light", true)]
+    [InlineData("Dark", true)]
+    public void Newly_created_views_use_composed_xaml_edits_before_constructor_assignments_and_keep_compiled_bindings_and_handlers(string theme, bool watched)
+    {
+        FutureViews();
+        string appXaml = Path.Combine(folder, "App.axaml");
+        File.WriteAllText(appXaml, File.ReadAllText(appXaml).Replace("RequestedThemeVariant=\"Light\"", $"RequestedThemeVariant=\"{theme}\"", StringComparison.Ordinal));
+        MainWindow window = FutureStarted(watched);
+        try
+        {
+            LiveApp app = watched ? window.Session.RunApp! : window.LiveApp!;
+            int? process = app.ProcessId;
+            List<Element> before = Read(app);
+            Element originalEntry = before.First(e => e.Name == "NewEntry");
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Type) { Element = originalEntry.Id, Text = "Existing user state", Replace = true }), "the existing view's state to change");
+            Assert.Null(window.OpenFile(Path.Combine(folder, "RepeatedView.axaml")));
+            Typing.Replace(window, "Created before", "Created first");
+            Assert.Equal(HotReloadResult.Applied, FutureApplied(window, watched).Result);
+            Typing.Replace(window, "Created first", "Created latest");
+            Typing.Replace(window, "XAML before", "XAML latest");
+            Typing.Replace(window, "Width=\"200\"", "Width=\"260\"");
+            Assert.Equal(HotReloadResult.Applied, FutureApplied(window, watched).Result);
+            Capture(app, "future-" + (watched ? "run-" : "debug-") + theme + "-before");
+            HashSet<long> old = [.. before.Select(e => e.Id)];
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Click) { Element = before.Single(e => e.Name == "CreateView").Id }), "a new compiled view to be constructed");
+            Ui.WaitFor(() => FutureOutput(window, watched).Contains("Constructor saw Created latest; XAML latest", StringComparison.Ordinal), "the constructor to observe composed edits before its own assignments");
+            Assert.Equal(process, app.ProcessId);
+            List<Element> after = Read(app);
+            Element made = after.Single(e => e.Type == "RepeatedView" && !old.Contains(e.Id));
+            List<Element> children = [.. Flatten(made)];
+            Assert.Equal("Created latest", children.Single(e => e.Name == "NewLiteral").Text);
+            ElementDetails details = Ui.Await(app.DetailsAsync(children.Single(e => e.Name == "NewLiteral").Id), "the new view's composed width to be read");
+            Assert.Equal("260", details.Properties.Single(p => p.Name == "Width").Value);
+            Assert.Equal("Constructor wins", children.Single(e => e.Name == "ConstructorValue").Text);
+            Assert.Equal("Existing user state", after.Single(e => e.Id == originalEntry.Id).Text);
+            Assert.Contains(after, e => e.Type == "TextBlock" && e.Text == "Repeated before");
+            Element entry = children.Single(e => e.Name == "NewEntry");
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Type) { Element = entry.Id, Text = "New user state", Replace = true }), "the new compiled binding to accept user text");
+            Assert.Equal("New user state", Read(app).Single(e => e.Id == children.Single(c => c.Name == "NewBound").Id).Text);
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Click) { Element = children.Single(e => e.Name == "NewIncrement").Id }), "the new compiled event handler to run");
+            Ui.WaitFor(() => FutureOutput(window, watched).Contains("New view Name=New user state; Count=1", StringComparison.Ordinal), "the new namescope, viewmodel and event connection to work");
+            Capture(app, "future-" + (watched ? "run-" : "debug-") + theme + "-after");
+        }
+        finally
+        {
+            FutureEnded(window, watched);
+        }
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_later_population_failure_reports_its_source_without_rewriting_the_completed_apply_or_losing_pending_edits(bool watched)
+    {
+        FutureViews();
+        MainWindow window = FutureStarted(watched);
+        try
+        {
+            LiveApp app = watched ? window.Session.RunApp! : window.LiveApp!;
+            string path = Path.Combine(folder, "RepeatedView.axaml");
+            Assert.Null(window.OpenFile(path));
+            Typing.Replace(window, "Fragile=\"Safe\"", "Fragile=\"Accepted\"");
+            HotReloadOutcome applied = FutureApplied(window, watched);
+            Assert.Equal(HotReloadResult.Applied, applied.Result);
+            Typing.Replace(window, "Created before", "Pending text");
+            XamlUpdateResult? observed = null;
+            app.XamlFailed += (_, result) => observed = result;
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Click) { Element = Read(app).Single(e => e.Name == "Increment").Id }), "the app to make subsequent property getters refuse");
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Click) { Element = Read(app).Single(e => e.Name == "CreateView").Id }), "the app to construct another view");
+            Ui.WaitFor(() => observed is not null, "the later population failure to arrive as an event");
+            Assert.Same(applied, watched ? window.Session.RunXaml.LastApplied : window.Debugger.LastApplied);
+            Assert.True(watched ? window.Session.RunXaml.Changed : window.Debugger.HotReload!.Changed);
+            Assert.Contains(observed!.Problems, p => p.File == path && p.Line == 9 && p.RestartRequired && p.Message.Contains("Fragile", StringComparison.Ordinal));
+            Assert.Contains("newly created view", FutureOutput(window, watched), StringComparison.Ordinal);
+            Assert.Contains(window.BottomPanel.Problems.HotReloadProblems!, p => p.Path == path && p.Message.Contains("newly created", StringComparison.Ordinal));
+            Assert.Contains("newly created view", window.Status!, StringComparison.Ordinal);
+            window.SetRenderScaling(2);
+            Ui.Settle();
+            UiAudit.Capture(window, "future-failure-" + (watched ? "run" : "debug"));
+            if (!watched)
+            {
+                HotReloadOutcome next = Ui.Await(window.Debugger.ApplyChangesAsync(), "the inconsistent debug source to require restart");
+                Assert.Equal(HotReloadResult.RestartNeeded, next.Result);
+                Assert.True(window.Debugger.HotReload!.Changed);
+            }
+        }
+        finally
+        {
+            FutureEnded(window, watched);
+        }
+    }
+
+    private MainWindow FutureStarted(bool watched)
+    {
+        if (!watched)
+        {
+            return Debugged();
+        }
+        MainWindow window = new() { Width = 1400, Height = 900 };
+        window.Show();
+        window.OpenFolder(folder);
+        Ui.Settle();
+        window.ApplySettings(window.Settings with { HotReload = true });
+        Assert.Null(Ui.Await(window.RunAsync(), "the app to start under dotnet watch", TimeSpan.FromMinutes(3)));
+        Ui.WaitFor(() => window.Session.RunApp?.State == LiveAppState.Connected, "the watched app's inspector", TimeSpan.FromMinutes(2));
+        Ui.WaitFor(() => RunOutput(window).Contains("Waiting for changes", StringComparison.Ordinal), "watch's file watchers to be established");
+        return window;
+    }
+
+    [AvaloniaFact]
+    public void A_setter_created_view_which_refuses_population_makes_the_active_batch_require_restart()
+    {
+        FutureViews();
+        string view = Path.Combine(folder, "MainWindow.axaml");
+        File.WriteAllText(view, File.ReadAllText(view).Replace("<Button x:Name=\"CreateView\"", "<local:SpawningControl Trigger=\"1\" /><Button x:Name=\"CreateView\"", StringComparison.Ordinal));
+        string code = Path.Combine(folder, "MainWindow.axaml.cs");
+        File.WriteAllText(code, File.ReadAllText(code).Replace("DataContext = new State();", "DataContext = new State(); SpawningControl.Spawn = () => ((StackPanel)Content!).Children.Add(new RepeatedView());", StringComparison.Ordinal) + """
+
+            public class SpawningControl : Control
+            {
+                public static Action? Spawn;
+                private int trigger;
+                public static readonly DirectProperty<SpawningControl, int> TriggerProperty = AvaloniaProperty.RegisterDirect<SpawningControl, int>(nameof(Trigger), item => item.Trigger, (item, value) => item.Trigger = value);
+                public int Trigger
+                {
+                    get => trigger;
+                    set
+                    {
+                        SetAndRaise(TriggerProperty, ref trigger, value);
+                        if (value == 2) { ThrowingControl.ReadThrows = true; Spawn?.Invoke(); }
+                    }
+                }
+            }
+            """);
+        MainWindow window = Debugged();
+        try
+        {
+            LiveApp app = window.LiveApp!;
+            Assert.Null(window.OpenFile(Path.Combine(folder, "RepeatedView.axaml")));
+            Typing.Replace(window, "Fragile=\"Safe\"", "Fragile=\"Accepted\"");
+            Assert.Equal(HotReloadResult.Applied, Apply(window).Result);
+            Typing.Replace(window, "Fragile=\"Accepted\"", "Fragile=\"Batch\"");
+            Assert.Null(window.OpenFile(view));
+            Typing.Replace(window, "Text=\"Before\"", "Text=\"Must roll back\"");
+            Typing.Replace(window, "Trigger=\"1\"", "Trigger=\"2\"");
+            int events = 0;
+            app.XamlFailed += (_, _) => events++;
+            HotReloadOutcome result = Ui.Await(window.Debugger.ApplyChangesAsync(), "the setter-created view's refusal to be part of the active batch");
+            Assert.Equal(HotReloadResult.RestartNeeded, result.Result);
+            Assert.Contains(result.Problems, p => p.Message.Contains("newly created", StringComparison.Ordinal));
+            Assert.True(window.Debugger.HotReload!.Changed);
+            Assert.Equal(0, events);
+            Assert.Equal(3, Read(app).Count(e => e.Type == "RepeatedView"));
+            Assert.Contains(Read(app), e => e.Text == "Before");
+            Assert.DoesNotContain(Read(app), e => e.Text == "Must roll back");
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    private static HotReloadOutcome FutureApplied(MainWindow window, bool watched)
+    {
+        if (!watched)
+        {
+            return Apply(window);
+        }
+        HotReloadOutcome? before = window.Session.RunXaml.LastApplied;
+        Ui.Run(window, AppActions.Save);
+        Ui.WaitFor(() => window.Session.RunXaml.LastApplied is { } current && !ReferenceEquals(before, current), "the next saved XAML edit to apply");
+        return window.Session.RunXaml.LastApplied!;
+    }
+
+    private static string FutureOutput(MainWindow window, bool watched) => watched ? RunOutput(window) : Output(window);
+
+    private static void FutureEnded(MainWindow window, bool watched)
+    {
+        if (!watched)
+        {
+            End(window);
+            return;
+        }
+        Ui.Run(window, AppActions.Stop);
+        Ui.WaitFor(() => !window.IsRunning && window.Session.RunApp?.State == LiveAppState.Ended, "the watched app to stop");
+        window.Close();
+    }
+
+    [AvaloniaTheory]
+    [InlineData(true, false, "already overridden")]
+    [InlineData(false, true, "custom service provider")]
+    public void A_foreign_population_override_or_custom_service_provider_is_refused_before_changing_existing_views(bool foreign, bool provider, string reason)
+    {
+        FutureViews(foreign, provider);
+        MainWindow window = Debugged();
+        try
+        {
+            Assert.Null(window.OpenFile(Path.Combine(folder, "RepeatedView.axaml")));
+            Typing.Replace(window, "Created before", "Must not apply");
+            HotReloadOutcome outcome = Ui.Await(window.Debugger.ApplyChangesAsync(), "an unsafe population override to be refused");
+            Assert.Equal(HotReloadResult.RestartNeeded, outcome.Result);
+            Assert.Contains(outcome.Problems, p => p.Message.Contains(reason, StringComparison.Ordinal));
+            Assert.Contains(Read(window.LiveApp!), e => e.Text == "Created before");
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
     [AvaloniaTheory]
     [InlineData("Light")]
     [InlineData("Dark")]
@@ -218,6 +482,7 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
         Assert.Null(window.OpenFile(Path.Combine(folder, "MainWindow.axaml")));
         Typing.Replace(window, "Value=\"1\"", "Value=\"2\"");
         HotReloadOutcome failed = Apply(window);
+        TestContext.Current.TestOutputHelper?.WriteLine($"Mixed update: {failed.Result}; {failed.Said}; files={string.Join(',', failed.Files)}\n{Output(window)}");
         Assert.True(failed.Result == HotReloadResult.Errors, failed.Said);
         Assert.True(window.Debugger.HotReload!.Changed);
         Assert.Contains(Path.Combine(folder, "MainWindow.axaml.cs"), failed.Files);
@@ -335,13 +600,21 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
         Ui.WaitFor(() => window.Debugger.LastApplied is { Result: HotReloadResult.Applied } applied && applied.Files.Any(p => p.EndsWith("MainWindow.axaml", StringComparison.Ordinal)),
             "the deferred XAML to apply on continue");
         Assert.Equal("After stepping", Read(app).Single(e => e.Id == caption).Text);
+        TestContext.Current.TestOutputHelper?.WriteLine($"After stepping: {window.Debugger.LastApplied}\n{Output(window)}");
         Ui.WaitFor(() => Output(window).Contains("Updated Name=Original state; Count=1", StringComparison.Ordinal), "C# to have applied before the steps executed it");
         End(window);
     }
 
-    [AvaloniaFact]
-    public void Run_under_dotnet_watch_keeps_the_inspector_and_managed_hot_reload_then_reconnects_after_restart()
+    [AvaloniaTheory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
+    public void Run_under_dotnet_watch_keeps_the_inspector_and_managed_hot_reload_then_reconnects_after_restart(string theme)
     {
+        if (theme == "Dark")
+        {
+            string appXaml = Path.Combine(folder, "App.axaml");
+            File.WriteAllText(appXaml, File.ReadAllText(appXaml).Replace("RequestedThemeVariant=\"Light\"", "RequestedThemeVariant=\"Dark\"", StringComparison.Ordinal));
+        }
         MainWindow window = new() { Width = 1400, Height = 900 };
         window.Show();
         window.OpenFolder(folder);
@@ -362,10 +635,25 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
             Ui.Await(app.InputAsync(new InputAction(InputKinds.Click) { Element = button }), "the watched app to run its new C#");
             Ui.WaitFor(() => RunOutput(window).Contains("Watched Name=Original state; Count=1", StringComparison.Ordinal), "the watched app's updated event handler");
             Assert.Equal(firstProcess, app.ProcessId);
-            XamlUpdateResult xaml = Ui.Await(app.ApplyXamlAsync(new XamlUpdate([new XamlSourceUpdate(Path.Combine(folder, "MainWindow.axaml"), View,
-                View.Replace("Text=\"Before\"", "Text=\"Watched XAML\"", StringComparison.Ordinal))])), "the watched app's XAML property to update");
-            Assert.True(xaml.Applied, string.Join("; ", xaml.Problems.Select(p => p.Message)));
+            long caption = Read(app).Single(e => e.Text == "Before").Id;
+            Capture(app, "watch-" + theme + "-before");
+            Assert.Null(window.OpenFile(Path.Combine(folder, "MainWindow.axaml")));
+            Typing.Replace(window, "Text=\"Before\"", "Text=\"Watched XAML\"");
+            Ui.Run(window, AppActions.Save);
+            Ui.WaitFor(() => window.Session.RunXaml.LastApplied?.Result == HotReloadResult.Applied, "a saved XAML edit to update the watched UI without rebuilding");
             Assert.Contains(Read(app), e => e.Text == "Watched XAML");
+            Assert.Equal(firstProcess, app.ProcessId);
+            Assert.Equal(caption, Read(app).Single(e => e.Text == "Watched XAML").Id);
+            Assert.Contains(Read(app), e => e.Name == "Entry" && e.Text == "Original state");
+            HotReloadOutcome saved = window.Session.RunXaml.LastApplied!;
+            Typing.Replace(window, "Text=\"Watched XAML\"", "Text=\"Applied XAML\"");
+            Ui.Run(window, AppActions.ApplyHotReloadChanges);
+            Ui.WaitFor(() => window.Session.RunXaml.LastApplied is { Result: HotReloadResult.Applied } next && next != saved, "Apply Changes to apply XAML in the watched app");
+            Assert.Equal("Applied XAML", Read(app).Single(e => e.Id == caption).Text);
+            Assert.Equal(firstProcess, app.ProcessId);
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Click) { Element = button }), "the retained handler after watched XAML updates");
+            Ui.WaitFor(() => RunOutput(window).Contains("Watched Name=Original state; Count=2", StringComparison.Ordinal), "the original state and handler after both XAML updates");
+            Capture(app, "watch-" + theme + "-after");
             // A project-input change makes watch rebuild/restart, rather than a C# delta. The listener belongs to the run.
             string project = Path.Combine(folder, "LiveTreeApp.csproj");
             Assert.Null(window.OpenFile(project));
@@ -374,12 +662,155 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
             Ui.WaitFor(() => app.State == LiveAppState.Connected && app.ProcessId != firstProcess, "the replacement target to reconnect to the same run inspector", TimeSpan.FromMinutes(2));
             Assert.Same(app, window.Session.RunApp);
             Assert.Contains(Read(app), e => e.Name == "Entry" && e.Text == "Original state");
-            Assert.Contains(Read(app), e => e.Text == "Before");
+            Assert.Contains(Read(app), e => e.Text == "Applied XAML");
+            HotReloadOutcome beforeReconnectEdit = window.Session.RunXaml.LastApplied!;
+            Assert.Null(window.OpenFile(Path.Combine(folder, "MainWindow.axaml")));
+            Typing.Replace(window, "Applied XAML", "After reconnect");
+            Ui.Run(window, AppActions.Save);
+            Ui.WaitFor(() => window.Session.RunXaml.LastApplied is { Result: HotReloadResult.Applied } applied && applied != beforeReconnectEdit,
+                "XAML edits to use the replacement process's compiled source anchors");
+            Assert.Contains(Read(app), e => e.Text == "After reconnect");
         }
         finally
         {
             Ui.Run(window, AppActions.Stop);
             Ui.WaitFor(() => !window.IsRunning && window.Session.RunApp?.State == LiveAppState.Ended, "watch and its inspector listener to end");
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_watched_xaml_failure_stays_pending_for_retry_and_a_structural_edit_can_be_declined_then_restarted()
+    {
+        MainWindow window = new() { Width = 1400, Height = 900 };
+        window.SetRenderScaling(2);
+        window.Show();
+        window.OpenFolder(folder);
+        Ui.Settle();
+        window.ApplySettings(window.Settings with { HotReload = true, RestartOnRudeEdit = false });
+        try
+        {
+            Assert.Null(Ui.Await(window.RunAsync(), "the watched XAML app to start", TimeSpan.FromMinutes(3)));
+            Ui.WaitFor(() => window.Session.RunApp?.State == LiveAppState.Connected && RunOutput(window).Contains("Waiting for changes", StringComparison.Ordinal), "the watched app and its file watchers");
+            LiveApp app = window.Session.RunApp!;
+            int? first = app.ProcessId;
+            long caption = Read(app).Single(e => e.Text == "Before").Id;
+            Assert.Null(window.OpenFile(Path.Combine(folder, "MainWindow.axaml")));
+            Typing.Replace(window, "Text=\"Before\"", "Text=\"After retry\"");
+            Typing.Replace(window, "Width=\"640\"", "Width=\"invalid\"");
+            Ui.Run(window, AppActions.Save);
+            Ui.WaitFor(() => window.Session.RunXaml.LastApplied?.Result == HotReloadResult.Errors, "the invalid saved XAML to be diagnosed");
+            Assert.Contains(window.Session.RunXaml.LastApplied!.Problems, p => p.Path == Path.Combine(folder, "MainWindow.axaml") && p.Position.Line == 4 && p.Message.Contains("Width", StringComparison.Ordinal));
+            Assert.True(window.Session.RunXaml.Changed);
+            Assert.Equal("Before", Read(app).Single(e => e.Id == caption).Text);
+            Assert.Equal(first, app.ProcessId);
+            UiAudit.Capture(window, "watched-xaml-conversion-error");
+            Typing.Replace(window, "Width=\"invalid\"", "Width=\"680\"");
+            Ui.Run(window, AppActions.ApplyHotReloadChanges);
+            Ui.WaitFor(() => window.Session.RunXaml.LastApplied?.Result == HotReloadResult.Applied, "the corrected XAML batch to apply on retry");
+            Assert.False(window.Session.RunXaml.Changed);
+            Assert.Equal("After retry", Read(app).Single(e => e.Id == caption).Text);
+            Assert.Equal(first, app.ProcessId);
+            UiAudit.Capture(window, "watched-xaml-retry-applied");
+            Typing.Replace(window, "<TextBlock Text=\"After retry\" />", "<TextBlock Text=\"After retry\" /><TextBlock Text=\"Added control\" />");
+            Ui.Run(window, AppActions.ApplyHotReloadChanges);
+            Ui.WaitFor(() => window.OwnedWindows.OfType<ChoiceDialog>().Any(), "the structural XAML edit to offer a restart");
+            Assert.Equal(HotReloadResult.RestartNeeded, window.Session.RunXaml.LastApplied!.Result);
+            Assert.Contains(window.Session.RunXaml.LastApplied.Problems, p => p.Path == Path.Combine(folder, "MainWindow.axaml") && p.Message.Contains("elements", StringComparison.Ordinal));
+            ChoiceDialog asked = window.OwnedWindows.OfType<ChoiceDialog>().Single();
+            asked.SetRenderScaling(2);
+            Ui.Settle();
+            UiAudit.Capture(asked, "watched-xaml-restart-choice");
+            Avalonia.Controls.Button no = asked.GetVisualDescendants().OfType<Avalonia.Controls.Button>().Single(b => (string?)b.Content == "No");
+            no.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
+            Ui.Settle();
+            Assert.True(window.Session.RunXaml.Changed);
+            Assert.Equal(first, app.ProcessId);
+            Assert.DoesNotContain(Read(app), e => e.Text == "Added control");
+            window.ApplySettings(window.Settings with { RestartOnRudeEdit = true });
+            Ui.Run(window, AppActions.ApplyHotReloadChanges);
+            Ui.WaitFor(() => window.Session.RunApp is { State: LiveAppState.Connected } replacement && replacement != app,
+                "the restart to build and run the structural XAML edit", TimeSpan.FromMinutes(2));
+            Assert.NotEqual(first, window.Session.RunApp!.ProcessId);
+            Assert.Equal(LiveAppState.Ended, app.State);
+            Assert.Contains(Read(window.Session.RunApp), e => e.Text == "Added control");
+            Assert.False(window.Session.RunXaml.Changed);
+            Assert.Contains(window.BottomPanel.Problems.HotReloadProblems!, p => p.Message.Contains("elements", StringComparison.Ordinal));
+        }
+        finally
+        {
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => !window.IsRunning && window.Session.RunApp?.State == LiveAppState.Ended, "the watched app to end");
+            window.Close();
+        }
+    }
+
+    [AvaloniaTheory]
+    [InlineData("later save")]
+    [InlineData("saved revert")]
+    [InlineData("unsaved revert")]
+    public void A_save_during_a_real_xaml_update_applies_the_latest_saved_text_and_keeps_newer_unsaved_edits(string kind)
+    {
+        MainWindow window = new() { Width = 1400, Height = 900 };
+        window.Show();
+        window.OpenFolder(folder);
+        Ui.Settle();
+        window.ApplySettings(window.Settings with { HotReload = true });
+        try
+        {
+            Assert.Null(Ui.Await(window.RunAsync(), "the watched app to start", TimeSpan.FromMinutes(3)));
+            Ui.WaitFor(() => window.Session.RunApp?.State == LiveAppState.Connected && RunOutput(window).Contains("Waiting for changes", StringComparison.Ordinal), "the watched app and its file watchers");
+            LiveApp app = window.Session.RunApp!;
+            int? process = app.ProcessId;
+            long caption = Read(app).Single(e => e.Text == "Before").Id;
+            Assert.Null(window.OpenFile(Path.Combine(folder, "MainWindow.axaml")));
+            Typing.Replace(window, "Text=\"Before\"", "Text=\"First saved\"");
+            Typing.Replace(window, "Value=\"1\"", "Value=\"3\"");
+            Assert.True(window.Perform(AppActions.Save));
+            // Pump the real window without waiting for all background work: the deliberately slow converter holds the
+            // inspector's UI-thread reply while the person edits and saves in Passenger's separate UI process.
+            DateTime until = DateTime.UtcNow.AddSeconds(10);
+            while (!RunOutput(window).Contains("Slow conversion", StringComparison.Ordinal) && DateTime.UtcNow < until)
+            {
+                Screenshot.Pump(TimeSpan.FromMilliseconds(20));
+            }
+            Assert.Contains("Slow conversion", RunOutput(window), StringComparison.Ordinal);
+            Assert.Null(window.Session.RunXaml.LastApplied);
+            string expectedLive = kind == "saved revert" ? "Before" : kind == "unsaved revert" ? "First saved" : "Second saved";
+            string expectedEditor = kind == "unsaved revert" ? "Before" : "Newer unsaved";
+            ReplaceDuringApply("First saved", kind == "later save" ? "Second saved" : "Before");
+            if (kind != "later save")
+            {
+                ReplaceDuringApply("Value=\"3\"", "Value=\"1\"");
+            }
+            if (kind != "unsaved revert")
+            {
+                Assert.True(window.Perform(AppActions.Save));
+                ReplaceDuringApply(expectedLive, expectedEditor);
+            }
+            Ui.WaitFor(() => window.Session.RunXaml.LastApplied is { Result: HotReloadResult.Applied }
+                && Read(app).Any(e => e.Id == caption && e.Text == expectedLive), "the latest saved update to follow the held first reply");
+            Assert.Equal(process, app.ProcessId);
+            Assert.True(window.Session.RunXaml.Changed);
+            Assert.Contains("Text=\"" + expectedEditor + "\"", window.EditorArea.Active!.Text.Snapshot.ToString(), StringComparison.Ordinal);
+            Assert.Contains("Text=\"" + expectedLive + "\"", File.ReadAllText(Path.Combine(folder, "MainWindow.axaml")), StringComparison.Ordinal);
+            Ui.Run(window, AppActions.ApplyHotReloadChanges);
+            Ui.WaitFor(() => !window.Session.RunXaml.Changed && Read(app).Any(e => e.Id == caption && e.Text == expectedEditor), "the later manual Apply to save and apply the remaining edit");
+
+            void ReplaceDuringApply(string before, string after)
+            {
+                Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
+                int at = editor.Document.Snapshot.ToString().IndexOf(before, StringComparison.Ordinal);
+                Assert.True(at >= 0);
+                editor.Focus();
+                editor.Select(new TextRange(at, before.Length));
+                window.KeyTextInput(after);
+            }
+        }
+        finally
+        {
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => !window.IsRunning && window.Session.RunApp?.State == LiveAppState.Ended, "the watched app to end");
             window.Close();
         }
     }

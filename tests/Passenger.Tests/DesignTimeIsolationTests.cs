@@ -15,11 +15,12 @@ public sealed class DesignTimeIsolationTests(ITestOutputHelper output)
     [AvaloniaFact]
     public void Custom_intermediates_and_nested_MSBuild_references_keep_their_own_outputs_and_cached_generated_documents()
     {
-        string root = TestFolders.Create("isolated-builds-");
+        string root = TestFolders.Create("isolated builds-");
         string settings = TestFolders.Create("isolated-settings-");
         string library = Path.Combine(root, "Markup");
         string app = Path.Combine(root, "Consumer");
         string solution = Path.Combine(root, "Probe.slnx");
+        string framework = AvaloniaApp.Metadata("TargetFramework");
         TestFolders.Prepare(() =>
         {
             WpfApp.Create(library, "Markup");
@@ -41,10 +42,10 @@ public sealed class DesignTimeIsolationTests(ITestOutputHelper output)
             File.WriteAllText(Path.Combine(root, "Directory.Build.targets"), Paths);
             File.WriteAllText(Path.Combine(library, "Greeter.cs"), "namespace Markup; public static class Greeter { public static string Hello() => \"Hello\"; }");
             File.WriteAllText(Path.Combine(library, "MainWindow.xaml.cs"), "namespace Markup; public partial class MainWindow : System.Windows.Window { public MainWindow() { InitializeComponent(); } }");
-            File.WriteAllText(Path.Combine(app, "Consumer.csproj"), """
+            File.WriteAllText(Path.Combine(app, "Consumer.csproj"), $$"""
                 <Project Sdk="Microsoft.NET.Sdk">
-                  <PropertyGroup><TargetFrameworks>net10.0;net11.0-windows</TargetFrameworks></PropertyGroup>
-                  <ItemGroup Condition="'$(Configuration)' == 'Debug' And '$(TargetFramework)' == 'net11.0-windows'">
+                  <PropertyGroup><TargetFrameworks>{{framework}};{{framework}}-windows</TargetFrameworks></PropertyGroup>
+                  <ItemGroup Condition="'$(Configuration)' == 'Debug' And '$(TargetFramework)' == '{{framework}}-windows'">
                     <ProjectReference Include="../Markup/Markup.csproj" GlobalPropertiesToRemove="ProbeIgnored" />
                   </ItemGroup>
                 </Project>
@@ -52,7 +53,7 @@ public sealed class DesignTimeIsolationTests(ITestOutputHelper output)
             File.WriteAllText(Path.Combine(app, "Consumer.cs"), """
                 public class Consumer
                 {
-                #if NET11_0_OR_GREATER
+                #if WINDOWS
                     public string Greeting => Markup.Greeter.Hello();
                 #endif
                 }
@@ -78,9 +79,8 @@ public sealed class DesignTimeIsolationTests(ITestOutputHelper output)
             Ui.WaitFor(() => !first.IsBuilding, "the custom-output WPF project to build");
             output.WriteLine(first.BottomPanel.Build.Document.Snapshot.ToString());
             Assert.Contains("Build succeeded", first.BottomPanel.Build.Document.Snapshot.ToString(), StringComparison.Ordinal);
-            string framework = AvaloniaApp.Metadata("TargetFramework") + "-windows";
-            string[] normal = File.ReadAllLines(Path.Combine(library, "paths-build-" + framework + ".txt"));
-            string[] design = File.ReadAllLines(Path.Combine(library, "paths-true-" + framework + ".txt"));
+            string[] normal = File.ReadAllLines(Path.Combine(library, "paths-build-" + framework + "-windows.txt"));
+            string[] design = File.ReadAllLines(Path.Combine(library, "paths-true-" + framework + "-windows.txt"));
             output.WriteLine("Normal paths: " + string.Join(" | ", normal));
             output.WriteLine("Design-time paths: " + string.Join(" | ", design));
             Assert.NotEqual(normal[0], design[0]);
@@ -101,6 +101,16 @@ public sealed class DesignTimeIsolationTests(ITestOutputHelper output)
                 using JsonDocument infos = JsonDocument.Parse(reader.ReadToEnd());
                 foreach (JsonElement info in infos.RootElement.EnumerateArray())
                 {
+                    string assembly = info.GetProperty("intermediateOutputFilePath").GetString()!;
+                    Assert.DoesNotContain(Path.Combine(settings, "project-intermediates"), assembly, StringComparison.OrdinalIgnoreCase);
+                    string commandOutput = Assert.Single(info.GetProperty("commandLineArgs").EnumerateArray(),
+                        argument => argument.GetString()!.StartsWith("/out:", StringComparison.OrdinalIgnoreCase)).GetString()!;
+                    Assert.Equal(assembly, commandOutput[5..].Trim('"'));
+                    if (Path.GetFileName(info.GetProperty("filePath").GetString()) == "Markup.csproj")
+                    {
+                        Assert.Equal(Path.Combine(normal[0], Path.GetFileName(normal[3])), assembly);
+                        Assert.True(File.Exists(assembly), $"Roslyn's Edit and Continue baseline assembly does not exist: {assembly}");
+                    }
                     foreach (JsonElement document in info.GetProperty("documents").EnumerateArray())
                     {
                         string path = document.GetProperty("filePath").GetString()!;

@@ -246,7 +246,7 @@ public sealed class HotReload
         ? outcome with { Said = $"{managed.Said}; {outcome.Said}", Files = managed.Files, Modules = managed.Modules, Methods = managed.Methods }
         : outcome;
 
-    private static HotReloadOutcome XamlFailure(XamlUpdateResult result)
+    internal static HotReloadOutcome XamlFailure(XamlUpdateResult result)
     {
         List<Problem> problems = [.. result.Problems.Select(p => new Problem(ProblemSeverity.Error, p.Message, "XAMLHR", p.File,
             new TextPosition(Math.Max(0, p.Line - 1), Math.Max(0, p.Column - 1)), null))];

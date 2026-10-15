@@ -185,6 +185,9 @@ public sealed class LiveApp : IDisposable
     /// it was last told), from before its UI is up until it ends.</summary>
     public event EventHandler<BindingFailedEventArgs>? BindingFailed;
 
+    /// <summary>A newly constructed view could not use a previously accepted XAML edit.</summary>
+    public event EventHandler<XamlUpdateResult>? XamlFailed;
+
     /// <summary>Each binding that failed in the app, once, with how many times it has, in the order they first failed.</summary>
     public IReadOnlyList<BindingFailure> Bindings => [.. bindings.Values];
 
@@ -522,6 +525,9 @@ public sealed class LiveApp : IDisposable
                 break;
             case Wire.ValuesChanged:
                 ValuesChanged?.Invoke(this, EventArgs.Empty);
+                break;
+            case Wire.XamlFailed when reply.Updated is { Applied: false } failed:
+                XamlFailed?.Invoke(this, failed);
                 break;
             case Wire.Picked:
                 Picked?.Invoke(this, reply.Element);

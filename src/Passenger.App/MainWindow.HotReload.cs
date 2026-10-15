@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using Passenger.App.Debugging;
+using Passenger.App.LiveTree;
+using Passenger.App.Run;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
 
@@ -12,6 +14,7 @@ public partial class MainWindow
 {
     /// <summary>The debugging session the person said Never to restarting for, which is not asked again.</summary>
     private DebugSession? neverRestart;
+    private LiveApp? neverRestartRun;
 
     /// <summary>How long the last restart for an edit Hot Reload could not apply took, from the program stopped to the new
     /// one launched: said with it, and read by tests.</summary>
@@ -57,6 +60,8 @@ public partial class MainWindow
     /// says of them (in the Run window) is said in the status bar.</summary>
     private async Task SaveForWatchAsync()
     {
+        ProjectSession next = session;
+        bool managed = Editors.Documents.Any(d => d.IsModified && !RunXamlHotReload.IsXaml(d.Path));
         TaskCompletionSource<string> said = new(TaskCreationOptions.RunContinuationsAsynchronously);
         EventHandler<string> heard = (_, text) =>
         {
@@ -73,10 +78,22 @@ public partial class MainWindow
         try
         {
             Editors.SaveAll();
-            status.Text = "Hot Reload: saved for dotnet watch to apply";
-            if (await Task.WhenAny(said.Task, Task.Delay(TimeSpan.FromSeconds(30))) == said.Task)
+            HotReloadOutcome? xaml = next.RunXaml.Changed ? await next.RunXaml.ApplyAndRestartAsync() : null;
+            if (session != next)
             {
-                status.Text = said.Task.Result;
+                return;
+            }
+            if (managed)
+            {
+                status.Text = xaml is null ? "Hot Reload: saved for dotnet watch to apply" : $"{xaml.Said}; saved managed files for dotnet watch";
+                if (await Task.WhenAny(said.Task, Task.Delay(TimeSpan.FromSeconds(30))) == said.Task && session == next)
+                {
+                    status.Text = xaml is null ? said.Task.Result : $"{said.Task.Result}; {xaml.Said}";
+                }
+            }
+            else if (xaml is null)
+            {
+                status.Text = "Hot Reload: no unsaved changes to apply";
             }
         }
         finally
@@ -114,6 +131,68 @@ public partial class MainWindow
             }
         };
         debugger.RestartFor = outcome => session == next ? RestartForEditAsync(next, outcome) : Task.FromResult(false);
+        next.RunXaml.Applied += (_, outcome) =>
+        {
+            if (session == next)
+            {
+                Bottom.Problems.ShowHotReload(outcome.Said, outcome.Problems);
+                Bottom.Run.Append($"Hot Reload: {outcome.Said}\n");
+                status.Text = outcome.Said;
+                if (outcome.Problems.Any(p => p.Severity == ProblemSeverity.Error))
+                {
+                    Dock.Show("problems");
+                }
+            }
+        };
+        next.RunXaml.RestartFor = outcome => session == next ? RestartRunForEditAsync(next, outcome) : Task.FromResult(false);
+    }
+
+    private async Task<bool> RestartRunForEditAsync(ProjectSession next, HotReloadOutcome outcome)
+    {
+        if (next.RunApp is not { State: not LiveAppState.Ended } watched || !buildRun.WatchesHotReload)
+        {
+            return false;
+        }
+        if (!settings.RestartOnRudeEdit)
+        {
+            if (neverRestartRun == watched)
+            {
+                return false;
+            }
+            string? answer = await new ChoiceDialog("Hot Reload", $"{outcome.Said}\n\n{RestartQuestion}", RestartAnswers).ShowDialog<string?>(this);
+            switch (answer)
+            {
+                case "Always":
+                    ApplySettings(settings with { RestartOnRudeEdit = true });
+                    break;
+                case "Yes":
+                    break;
+                case "Never":
+                    neverRestartRun = watched;
+                    return false;
+                default:
+                    return false;
+            }
+            if (session != next || next.RunApp != watched)
+            {
+                return false;
+            }
+        }
+        status.Text = "Restarting application to apply XAML changes ...";
+        string? refused = await buildRun.RestartRunAsync();
+        if (session != next)
+        {
+            return false;
+        }
+        if (refused is not null)
+        {
+            status.Text = $"Could not restart to apply XAML changes: {refused}";
+            return false;
+        }
+        Bottom.Problems.ShowHotReload(outcome.Said, outcome.Problems);
+        Bottom.Run.Append($"Hot Reload: restarted watch to build the XAML changes: {outcome.Said}\n");
+        status.Text = "Hot Reload: restarting the application to build the XAML changes";
+        return true;
     }
 
     /// <summary>Restarts the program Debug launched so the edits Hot Reload could not apply run: stopped, built and launched
