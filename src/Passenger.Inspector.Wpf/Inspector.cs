@@ -27,6 +27,7 @@ internal sealed class Inspector
     private readonly Picker picker;
     private readonly Driver driver;
     private readonly PropertyBreaks breaks = new();
+    private readonly XamlHotReload xaml;
     private bool told;
     private bool stopped;
 
@@ -38,6 +39,7 @@ internal sealed class Inspector
         this.connection = connection;
         picker = new Picker(this, connection);
         driver = new Driver(this);
+        xaml = new XamlHotReload(this);
         bool first = current is null;
         current = this;
         if (first)
@@ -67,6 +69,7 @@ internal sealed class Inspector
                 Wire.Watch => Done(request, () => Watch(request)),
                 Wire.Values => new Reply { Id = request.Id, Error = "Binding values after a XAML file's lines are read from an Avalonia app's .axaml; a WPF app's are not" },
                 Wire.Overlays => new Reply { Id = request.Id, Error = "Renderer debug overlays are Avalonia's: a WPF app has none" },
+                Wire.ApplyXaml => new Reply { Id = request.Id, Updated = xaml.Apply(request.Update ?? throw new Refusal("No XAML changes were given")) },
                 _ => new Reply { Id = request.Id, Error = $"The inspector does not know '{request.Method}'" },
             };
         }

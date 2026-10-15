@@ -27,6 +27,7 @@ internal sealed class Inspector
     private readonly Driver driver;
     private readonly PropertyBreaks breaks = new();
     private readonly ValueWatch values;
+    private readonly XamlHotReload xaml = new();
     private bool told;
 
     /// <summary>Whether Passenger has asked for the tree since it was last told of a change, so it is told only once.</summary>
@@ -74,6 +75,7 @@ internal sealed class Inspector
                 Wire.Watch => Done(request, () => Watch(request)),
                 Wire.Values => new Reply { Id = request.Id, Values = Values(request) },
                 Wire.Overlays => new Reply { Id = request.Id, Windows = SetOverlays(request) },
+                Wire.ApplyXaml => new Reply { Id = request.Id, Updated = xaml.Apply(request.Update ?? throw new Refusal("No XAML edits were given")) },
                 _ => new Reply { Id = request.Id, Error = $"The inspector does not know '{request.Method}'" },
             };
         }
