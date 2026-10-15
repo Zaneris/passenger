@@ -1,8 +1,8 @@
 using System.Collections.ObjectModel;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
-using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.Terminal;
@@ -57,7 +57,13 @@ public sealed class TerminalPanel : DockPanel
             ItemsPanel = new FuncTemplate<Panel?>(() => new StackPanel { Orientation = Orientation.Horizontal }),
             ItemTemplate = new FuncDataTemplate<TerminalTab>((tab, _) => tab is null ? new TextBlock() : Tab(tab), supportsRecycling: false),
         };
-        Border bar = new() { [DockProperty] = Dock.Top, Height = 30, BorderThickness = new Thickness(0, 0, 0, 1), Child = strip };
+        Border bar = new()
+        {
+            [DockProperty] = Dock.Top,
+            Height = 32,
+            BorderThickness = new Thickness(0, 0, 0, 1),
+            Child = new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden, Content = strip, Margin = new Thickness(8, 0) },
+        };
         bar.Bind(Border.BorderBrushProperty, bar.GetResourceObservable("Passenger.Divider"));
         Children.Add(bar);
         Children.Add(view);
@@ -196,7 +202,10 @@ public sealed class TerminalPanel : DockPanel
         {
             each.IsActive = each == tab;
         }
-        view.Session = tab.Session;
+        if (view.Session != tab.Session)
+        {
+            view.Session = tab.Session;
+        }
         FocusView();
     }
 
@@ -222,11 +231,15 @@ public sealed class TerminalPanel : DockPanel
         {
             Show(tabs[Math.Min(index, tabs.Count - 1)]);
         }
+        else
+        {
+            FocusView();
+        }
     }
 
     private Control Tab(TerminalTab tab)
     {
-        TextBlock name = new() { Text = tab.Name, VerticalAlignment = VerticalAlignment.Center, FontSize = 12 };
+        TextBlock name = new() { Text = tab.Name, VerticalAlignment = VerticalAlignment.Center };
         name.Classes.Set("muted", tab.HasEnded);
         PathIcon closeGlyph = new() { Classes = { "small" } };
         closeGlyph.Bind(PathIcon.DataProperty, closeGlyph.GetResourceObservable("Icon.Close"));
@@ -245,31 +258,30 @@ public sealed class TerminalPanel : DockPanel
             Close(tab);
             e.Handled = true;
         };
-        Border border = new()
+        ToggleButton button = new()
         {
-            Classes = { "tab" },
-            Child = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { name, close } },
+            Classes = { "panelTab" },
+            IsChecked = tab.IsActive,
+            VerticalAlignment = VerticalAlignment.Center,
+            Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { name, close } },
         };
-        border.Classes.Set("active", tab.IsActive);
         tab.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(TerminalTab.IsActive))
             {
-                border.Classes.Set("active", tab.IsActive);
+                button.IsChecked = tab.IsActive;
             }
             else if (e.PropertyName == nameof(TerminalTab.HasEnded))
             {
                 name.Classes.Set("muted", tab.HasEnded);
             }
         };
-        border.PointerPressed += (_, e) =>
+        button.Click += (_, _) =>
         {
-            if (e.GetCurrentPoint(border).Properties.IsLeftButtonPressed)
-            {
-                Show(tab);
-                e.Handled = true;
-            }
+            Show(tab);
+            // Clicking an already selected tab keeps it selected, as the other tool-window tabs do.
+            button.IsChecked = true;
         };
-        return border;
+        return button;
     }
 }
