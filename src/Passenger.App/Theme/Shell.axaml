@@ -42,6 +42,13 @@
         <Setter Property="Margin" Value="4,0" />
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.ControlRadius}" />
     </Style>
+    <!-- A long option wraps within its page so its label stays readable. -->
+    <Style Selector="CheckBox /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="RadioButton /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
 
     <!-- A dialog's buttons at its foot (DialogFooter), each as wide as the others at the least. -->
     <Style Selector="StackPanel.footer">
