@@ -3,8 +3,10 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.CSharp;
 using Passenger.App.Settings;
 
 namespace Passenger.Tests;
@@ -42,6 +44,94 @@ public sealed class SettingsTests : IDisposable
         Ui.Settle();
         Assert.Equal([SettingsDialog.KeymapPage], dialog.Pages);
         Assert.Equal(["Split Right"], dialog.Shown);
+        dialog.Close();
+        window.Close();
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Every_settings_page_keeps_its_controls_inside_the_frame_at_normal_and_minimum_widths(bool light)
+    {
+        MainWindow window = Open();
+        SettingsDialog dialog = window.ShowSettings();
+        dialog.RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark;
+        dialog.SetRenderScaling(2);
+        Ui.Settle();
+        string[] pages = [.. dialog.Pages];
+        List<string> overflow = [];
+        ScrollViewer viewport = dialog.GetVisualDescendants().OfType<ScrollViewer>().Single(s => s.Name == "SettingsPageScroll");
+        foreach (double width in new double[] { 980, 640, 683, 980 })
+        {
+            dialog.Width = width;
+            foreach (string page in pages)
+            {
+                dialog.Page = page;
+                viewport.Offset = default;
+                Ui.Settle();
+                string surface = $"settings-{string.Concat(page.Select(c => char.IsAsciiLetterOrDigit(c) ? c : '-'))}-{width:0}-{(light ? "light" : "dark")}";
+                overflow.AddRange(UiAudit.HorizontalOverflow(dialog, surface, viewport));
+                if (width != 683)
+                {
+                    UiAudit.Capture(dialog, surface);
+                    if (viewport.Extent.Height > viewport.Viewport.Height + 1)
+                    {
+                        viewport.Offset = new Vector(0, viewport.Extent.Height - viewport.Viewport.Height);
+                        Ui.Settle();
+                        UiAudit.Capture(dialog, surface + "-end");
+                    }
+                }
+            }
+        }
+        dialog.Close();
+        window.Close();
+        Assert.True(overflow.Count == 0, string.Join(Environment.NewLine, overflow.Distinct()));
+    }
+
+    [AvaloniaFact]
+    public void Resizing_settings_keeps_typed_values_the_chosen_template_and_the_field_with_the_keys()
+    {
+        MainWindow window = Open();
+        SettingsDialog dialog = window.ShowSettings();
+        dialog.Page = SettingsDialog.NodePage;
+        Ui.Settle();
+        TextBox node = Editor<TextBox>(dialog, "Node interpreter");
+        node.Text = "C:/my tools/node.exe";
+        node.Focus();
+        node.SelectionStart = 3;
+        node.SelectionEnd = 11;
+        foreach (double width in new double[] { 640, 683, 980 })
+        {
+            dialog.Width = width;
+            Ui.Settle();
+            Assert.Equal(SettingsDialog.NodePage, dialog.Page);
+            Assert.Equal("C:/my tools/node.exe", dialog.Working.NodeInterpreter);
+            Assert.True(node.IsFocused, "The responsive layout stole focus from the edited field");
+            Assert.Equal((3, 11), (node.SelectionStart, node.SelectionEnd));
+        }
+        dialog.Page = SettingsDialog.LiveTemplatesPage;
+        Ui.Settle();
+        Assert.True(dialog.Templates.Choose("cw"));
+        Ui.Settle();
+        LiveTemplate chosen = Assert.IsType<LiveTemplate>(dialog.Templates.Chosen);
+        string? text = dialog.Templates.TextBox.Text;
+        foreach (double width in new double[] { 640, 683, 980 })
+        {
+            dialog.Width = width;
+            Ui.Settle();
+            Assert.Equal(chosen.Key, dialog.Templates.Chosen?.Key);
+            Assert.True(chosen.SameAs(dialog.Templates.Chosen!));
+            Assert.Equal(text, dialog.Templates.TextBox.Text);
+        }
+        dialog.Page = SettingsDialog.EditorPage;
+        Ui.Settle();
+        Control number = Editor<NumericUpDown>(dialog, "Font size");
+        Control check = Editor<CheckBox>(dialog, "Enable ligatures");
+        Assert.Equal(number.TranslatePoint(default, dialog)!.Value.X, check.TranslatePoint(default, dialog)!.Value.X);
+        dialog.Page = SettingsDialog.NodePage;
+        Ui.Settle();
+        TextBlock note = dialog.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text?.StartsWith("The Node.js", StringComparison.Ordinal) == true);
+        Assert.Equal(node.TranslatePoint(default, dialog)!.Value.X, note.TranslatePoint(default, dialog)!.Value.X);
         dialog.Close();
         window.Close();
     }

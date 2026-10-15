@@ -29,7 +29,6 @@ public sealed class PostfixTemplatesPane : DockPanel
     {
         turned = new(current.PostfixTemplates);
         this.change = change;
-        Height = 520;
         EnableBox = new CheckBox { Content = "Enable postfix completion", IsChecked = current.PostfixCompletion };
         AutopopupBox = new CheckBox { Content = "Show postfix templates in completion autopopup", IsChecked = current.PostfixInCompletion, IsEnabled = current.PostfixCompletion };
         EnableBox.IsCheckedChanged += (_, _) =>
@@ -45,20 +44,17 @@ public sealed class PostfixTemplatesPane : DockPanel
         tree.ItemsSource = (PostfixTemplate?[])[null, .. PostfixTemplates.All];
         tree.SelectionChanged += (_, _) => Describe();
 
-        Border framed = new() { Classes = { "framed" }, Child = tree, Width = 300 };
+        Border framed = new() { Classes = { "framed" }, Child = tree };
         about = new StackPanel
         {
             Spacing = 6,
-            Margin = new Thickness(16, 0, 0, 0),
             Children = { new TextBlock { Text = "Description:" }, description, new TextBlock { Text = "Before:", Margin = new Thickness(0, 8, 0, 0) }, before,
                 new TextBlock { Text = "After:", Margin = new Thickness(0, 8, 0, 0) }, after },
         };
         StackPanel options = new() { Spacing = 6, Margin = new Thickness(0, 0, 0, 10), Children = { EnableBox, AutopopupBox } };
         SetDock(options, Dock.Top);
-        SetDock(framed, Dock.Left);
         Children.Add(options);
-        Children.Add(framed);
-        Children.Add(about);
+        Children.Add(new SettingsColumns(framed, about, 300, 240, 440));
         tree.SelectedIndex = 1;
     }
 

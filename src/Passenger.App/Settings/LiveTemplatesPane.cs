@@ -46,7 +46,6 @@ public sealed class LiveTemplatesPane : DockPanel
     {
         this.templates = [.. templates];
         this.changed = changed;
-        Height = 560;
         NewButton = Tool("Icon.Add", "New Template");
         CloneButton = Tool("Icon.Copy", "Clone And Edit Template");
         DeleteButton = Tool("Icon.Minimize", "Delete Template");
@@ -98,13 +97,13 @@ public sealed class LiveTemplatesPane : DockPanel
                 Row("Description:", DescriptionBox),
                 Row("Options:", ReformatBox),
                 Row("Availability:", new DockPanel { Children = { Docked(AvailabilityButton, Dock.Right), AvailabilityText } }),
-                Row("Use in:", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 14, Children = { GenerationButton, SurroundButton, BothButton } }),
+                Row("Use in:", new WrapPanel { ItemSpacing = 14, LineSpacing = 4, Children = { GenerationButton, SurroundButton, BothButton } }),
                 Row("Mnemonic:", new StackPanel { Orientation = Orientation.Horizontal, Children = { MnemonicBox, mnemonicSaid } }),
                 Row(string.Empty, new DockPanel { Children = { Docked(EditVariablesButton, Dock.Left), variablesSaid } }),
             },
         };
         variablesSaid.Margin = new Thickness(10, 0, 0, 0);
-        DockPanel editor = new() { Margin = new Thickness(16, 0, 0, 0) };
+        DockPanel editor = new();
         SetDock(rows, Dock.Top);
         editor.Children.Add(rows);
         editor.Children.Add(TextBox);
@@ -112,13 +111,11 @@ public sealed class LiveTemplatesPane : DockPanel
 
         StackPanel tools = new() { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(0, 0, 0, 4), Children = { NewButton, CloneButton, DeleteButton, RestoreButton } };
         Border framed = new() { Classes = { "framed" }, Child = list };
-        DockPanel left = new() { Width = 260 };
+        DockPanel left = new();
         SetDock(tools, Dock.Top);
         left.Children.Add(tools);
         left.Children.Add(framed);
-        SetDock(left, Dock.Left);
-        Children.Add(left);
-        Children.Add(new Panel { Children = { form, nothing } });
+        Children.Add(new SettingsColumns(left, new Panel { Children = { form, nothing } }, 260, 180, 560));
         List();
         list.SelectedIndex = 0;
         ShowChosen();
