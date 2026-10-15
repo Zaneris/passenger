@@ -15,7 +15,7 @@ public sealed class DesignTimeIsolationTests(ITestOutputHelper output)
     [AvaloniaFact]
     public void Custom_intermediates_and_nested_MSBuild_references_keep_their_own_outputs_and_cached_generated_documents()
     {
-        string root = TestFolders.Create("isolated-builds-");
+        string root = TestFolders.Create("isolated builds-");
         string settings = TestFolders.Create("isolated-settings-");
         string library = Path.Combine(root, "Markup");
         string app = Path.Combine(root, "Consumer");
@@ -101,6 +101,16 @@ public sealed class DesignTimeIsolationTests(ITestOutputHelper output)
                 using JsonDocument infos = JsonDocument.Parse(reader.ReadToEnd());
                 foreach (JsonElement info in infos.RootElement.EnumerateArray())
                 {
+                    string assembly = info.GetProperty("intermediateOutputFilePath").GetString()!;
+                    Assert.DoesNotContain(Path.Combine(settings, "project-intermediates"), assembly, StringComparison.OrdinalIgnoreCase);
+                    string commandOutput = Assert.Single(info.GetProperty("commandLineArgs").EnumerateArray(),
+                        argument => argument.GetString()!.StartsWith("/out:", StringComparison.OrdinalIgnoreCase)).GetString()!;
+                    Assert.Equal(assembly, commandOutput[5..].Trim('"'));
+                    if (Path.GetFileName(info.GetProperty("filePath").GetString()) == "Markup.csproj")
+                    {
+                        Assert.Equal(Path.Combine(normal[0], Path.GetFileName(normal[3])), assembly);
+                        Assert.True(File.Exists(assembly), $"Roslyn's Edit and Continue baseline assembly does not exist: {assembly}");
+                    }
                     foreach (JsonElement document in info.GetProperty("documents").EnumerateArray())
                     {
                         string path = document.GetProperty("filePath").GetString()!;
