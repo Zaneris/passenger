@@ -101,16 +101,32 @@ ancestor viewport up to its tool are asserted. Tool Layout/Problems/Local Histor
 RC1 build has zero warnings/errors. Twenty-four representative whole frames were inspected: all ten migrated
 hints in both themes, with normal and narrow widths represented. This does not claim all 80 frames were viewed.
 
+`7b28e51` fits the Profiler's tabs/actions/status at 640/683/1200. Its real profiled program exercises all eight tabs
+with wheel/click and Tab/Shift-Tab/Space, checking one selected page, focus and action bounds through resize.
+The combined Tool Header/Profiler/Tool Layout run passes 8/8 in 43s, zero skips; build 0 warnings/errors.
+`profiler-header-final/` contains 54 profiler frames (alongside 80 hint frames). Eight final running/Snapshots frames
+at normal/narrow widths were inspected in both themes, plus 14 earlier same-source page frames. Populated-page
+inspection found stale empty-Memory guidance after completion and inaccessible long method/type rows; these are
+continuing source work, not a whole-profiler pass.
+
+`2952092` wraps NuGet's existing search/feed/options/refresh/status controls. A real local package is searched before
+an absent query checks long status text; values, caret and focus survive resize. New cases pass 2/2, and the
+combined Package Sources/new run passes seven with one expected Windows credential-provider skip in 15s. Build
+0 warnings/errors. All 14 `nuget-header-status/` scale-2 frames were inspected at 1200/683/640 and in a 200px side
+pane, both themes. The body toolbar fits there; the shared header's Sources tab and abrupt long feed-label clipping
+remain visible, actionable follow-ups.
+
 | Tool surfaces | Current captured/tested state | Continuing source or capture work |
 | --- | --- | --- |
-| Hierarchy, Git, Unit Tests, Profiler | Empty guidance fits its own 640px-window pane; both themes inspected. | Populated hierarchy/history/tests/profile views. Profiler tab strip still clips Snapshots at 640/683; responsive header fix is next. |
+| Hierarchy, Git, Unit Tests | Empty guidance fits its own 640px-window pane; both themes inspected. | Populated hierarchy/history/test views and responsive controls. |
+| Profiler | Responsive header, actual running program and all eight snapshot pages at 640/683/1200, both themes; pointer/keyboard tab access and resize state checked. | Empty Memory guidance, long populated rows and further Memory/Frames state inventory. |
 | Find, Structure, Bookmarks, Local History, Problems, Debug | Shared empty hint geometry at normal/narrow widths; both themes inspected across representative frames. Existing Problems/Local History workflows also pass. | Populated tool rows, long tab names, narrow action bars, keyboard focus and selection through resize. |
 | Terminal | Final real-shell normal/narrow frames both themes inspected; lifecycle and command input exercise real Windows processes. | Unix execution of the new cases, long/many-session tab overflow and complete focus inventory. |
 | Explorer, Run, Build, Commit, Live Visual Tree | Captured at 1200/683 both themes in the 17-tool sweep. Earlier focused docking, console/editor scrollbar and empty-editor evidence remains. | Complete populated-state visual/input inventory; capture existence alone is not a pass. |
-| NuGet | Packages empty-folder view captured at 1200/683 both themes. | Package-count toolbar text clips at narrow width; responsive field/status layout is active software work. Sources/populated package/error/detail states remain. |
-| Profiler Memory/Frames subviews | Existing functional tests; not inspected by this empty-tool capture sweep. | Actual snapshots, subtab overflow, empty/busy/result states, toolbars and viewport checks. |
+| NuGet | Real local-feed search/refresh toolbar at 1200/683/640 and 200px side pane; both themes inspected, full count/trimmed status and saved input state checked. | Shared header's Sources tab and long feed-label clipping; Sources/populated package/error/detail states remain. |
+| Profiler Memory/Frames subviews | Empty subviews captured during the actual sampling-snapshot sweep; stale Memory guidance identified. | Actual heap/frame snapshots, subtab overflow, empty/busy/result states, toolbars and viewport checks. |
 
-Profiler/NuGet headers, popup/focus rules and populated forms remain the next source checkpoints. The capture
+Shared tool-header/session overflow, popup/focus rules and populated forms remain the next source checkpoints. The capture
 inventory is updated as those checks run; it is not a stopping condition.
 
 ## Reference and execution limits
