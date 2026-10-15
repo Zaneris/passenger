@@ -339,12 +339,34 @@ public sealed class BuildRunController
     /// after its build, its output and input in the Run window, or in a tab of the Terminal window when the configuration
     /// uses the terminal. Null once it runs (<see cref="RunEnd"/> is its end), else why it could not, which the status bar
     /// says too.</summary>
-    public async Task<string?> RunAsync(string? arguments = null)
+    public Task<string?> RunAsync(string? arguments = null) => session.Configurations.Chosen is { } chosen
+        ? RunAsync(chosen, arguments) : Task.FromResult<string?>(Said("Nothing to run: no executable project"));
+
+    private (RunConfiguration Configuration, string? Arguments)? watched;
+
+    /// <summary>Restarts the watched configuration, preserving its arguments, so XAML edits requiring a build take effect.</summary>
+    public async Task<string?> RestartRunAsync()
     {
-        if (session.Configurations.Chosen is not { } chosen)
+        if (!WatchesHotReload || watched is not var (configuration, arguments))
         {
-            return Said("Nothing to run: no executable project");
+            return "No watched program is running to restart";
         }
+        Task<int> ended = RunEnd;
+        session.Runner.Stop();
+        session.InTerminal?.Stop();
+        try
+        {
+            await ended.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        catch (TimeoutException)
+        {
+            return "The watched program did not finish stopping; retry once it has ended";
+        }
+        return session.IsEnded ? Left : await RunAsync(configuration, arguments);
+    }
+
+    private async Task<string?> RunAsync(RunConfiguration chosen, string? arguments)
+    {
         if (IsRunning || launching)
         {
             return Said("Already running");
@@ -358,6 +380,7 @@ public sealed class BuildRunController
             // dotnet watch builds the project itself, and runs it again after an edit it cannot apply.
             bool hotReload = parts.Settings().HotReload && chosen.Program.Length == 0;
             watching = hotReload;
+            watched = hotReload ? (chosen, arguments) : null;
             (LaunchPlan? plan, string? problem) = await PrepareAsync(chosen, arguments, build: !hotReload);
             if (plan is null)
             {
@@ -373,6 +396,8 @@ public sealed class BuildRunController
             // An Avalonia or WPF app is launched with the inspector in it, which tells of its failed bindings while it runs.
             LaunchPlan launched = session.InspectedRun(plan, hotReload);
             LiveApp? inspected = session.RunApp;
+            await session.RunXaml.StartAsync(hotReload ? inspected : null,
+                session.Projects.SelectMany(p => p.Evaluated?.Items.Select(i => i.Path) ?? []).Concat(parts.Editors.Documents.Select(d => d.Path)));
             ShowBindings();
             Dictionary<string, string> variables = hotReload
                 ? new Dictionary<string, string>(launched.Environment) { ["DOTNET_WATCH_SUPPRESS_EMOJIS"] = "1", ["DOTNET_WATCH_RESTART_ON_RUDE_EDIT"] = "true" }
