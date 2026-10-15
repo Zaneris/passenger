@@ -111,7 +111,7 @@ public sealed partial class CodeEditor
 
     /// <summary>The width a row's text may take: the view's, less room for the caret and the wrap's sign at a row's end.</summary>
     private double WrapWidth => Bounds.Width <= 0 ? 0
-        : Math.Max(metrics.CharWidth, Bounds.Width - GutterWidth - TextPadLeft - vertical.DesiredSize.Width - (2 * metrics.CharWidth));
+        : Math.Max(metrics.CharWidth, Bounds.Width - GutterWidth - TextPadLeft - ScrollRailWidth - (2 * metrics.CharWidth));
 
     /// <summary>How many rows the text shows.</summary>
     private int RowCount => Rows.Count;

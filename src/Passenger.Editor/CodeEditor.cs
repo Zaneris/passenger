@@ -30,7 +30,7 @@ public sealed partial class CodeEditor : Control
     private const double GutterPadRight = 22;
     private const double TextPadLeft = 6;
 
-    private readonly ScrollBar vertical = new() { Orientation = Orientation.Vertical, AllowAutoHide = false };
+    private readonly ScrollBar vertical = new() { Orientation = Orientation.Vertical, AllowAutoHide = true };
     private readonly ScrollBar horizontal = new() { Orientation = Orientation.Horizontal, AllowAutoHide = true };
     private readonly DispatcherTimer blink;
     private TextDocument document = new();
@@ -448,6 +448,10 @@ public sealed partial class CodeEditor : Control
 
     private Size Viewport => new(Math.Max(0, Bounds.Width - GutterWidth), Bounds.Height);
 
+    // The theme's overlay target is stable while its thumb comes and goes. Wrapping, caret reveal and fold previews
+    // keep clear of the diagnostic rail without making text geometry depend on whether scrolling is needed.
+    private double ScrollRailWidth => ShowScrollBars || showErrorStripe ? vertical.MinWidth : 0;
+
     /// <summary>Puts the primary caret at a line and column (from zero) and scrolls it into the middle
     /// of the view, as opening a file at a position does.</summary>
     public void GoTo(TextPosition position)
@@ -580,7 +584,8 @@ public sealed partial class CodeEditor : Control
 
     protected override Size ArrangeOverride(Size finalSize)
     {
-        double barWidth = vertical.DesiredSize.Width;
+        // The diagnostic stripe keeps its rail even when a short file needs no scrolling thumb.
+        double barWidth = ScrollRailWidth;
         double barHeight = horizontal.DesiredSize.Height;
         Rect bar = new(finalSize.Width - barWidth, 0, barWidth, Math.Max(0, finalSize.Height - barHeight));
         vertical.Arrange(bar);
@@ -700,9 +705,9 @@ public sealed partial class CodeEditor : Control
         {
             x = Math.Max(0, caretX - room);
         }
-        else if (caretX + room > x + viewport.Width - TextPadLeft - vertical.DesiredSize.Width)
+        else if (caretX + room > x + viewport.Width - TextPadLeft - ScrollRailWidth)
         {
-            x = caretX + room - (viewport.Width - TextPadLeft - vertical.DesiredSize.Width);
+            x = caretX + room - (viewport.Width - TextPadLeft - ScrollRailWidth);
         }
         widestLine = Math.Max(widestLine, caretX);
         ScrollTo(new Vector(x, y));
@@ -780,9 +785,7 @@ public sealed partial class CodeEditor : Control
         vertical.LargeChange = viewport.Height;
         vertical.SmallChange = metrics.LineHeight;
         vertical.Value = scroll.Y;
-        // The error stripe is its track, so it stays when there is nothing to scroll; soft wrap keeps it so the width the
-        // text wraps at never depends on how many rows the wraps make.
-        vertical.IsVisible = ShowScrollBars && (showErrorStripe || softWrap || RowCount * metrics.LineHeight > viewport.Height);
+        vertical.IsVisible = ShowScrollBars && RowCount * metrics.LineHeight > viewport.Height;
         double maxX = MaxScrollX;
         horizontal.Maximum = maxX;
         horizontal.ViewportSize = viewport.Width;
