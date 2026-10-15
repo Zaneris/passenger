@@ -377,11 +377,26 @@ public sealed class BuildRunController
             Dictionary<string, string> variables = hotReload
                 ? new Dictionary<string, string>(launched.Environment) { ["DOTNET_WATCH_SUPPRESS_EMOJIS"] = "1", ["DOTNET_WATCH_RESTART_ON_RUDE_EDIT"] = "true" }
                 : new Dictionary<string, string>(launched.Environment);
+            string? watchHooks = null;
+            if (hotReload && inspected is not null)
+            {
+                try
+                {
+                    watchHooks = await WatchHooksAsync(launched);
+                }
+                catch (Exception error) when (error is ProjectHostFailed or IOException or UnauthorizedAccessException or LaunchException)
+                {
+                    inspected.Dispose();
+                    return Said($"Could not start Hot Reload with the XAML inspector: {error.Message}");
+                }
+                // watch and dotnet run are .NET programs too. Only the target gets the inspector, alongside watch's agent.
+                variables[Wire.StartupHooks] = string.Empty;
+            }
             if (plan.Console == ConsoleKind.Terminal)
             {
                 // The terminal's text is the program's own: its failed bindings are in Problems alone.
                 WatchBindings(inspected, null);
-                string? refused = await RunInTerminalAsync(chosen.Name, hotReload ? DotnetStart(Watch(plan), plan.WorkingDirectory) : ChildProcesses.Command(plan.Program, plan.Arguments, plan.WorkingDirectory), variables, running);
+                string? refused = await RunInTerminalAsync(chosen.Name, hotReload ? DotnetStart(Watch(plan, watchHooks), plan.WorkingDirectory) : ChildProcesses.Command(plan.Program, plan.Arguments, plan.WorkingDirectory), variables, running);
                 if (refused is null && session.InTerminal is { } inTerminal)
                 {
                     parts.OpenBrowser(plan, inTerminal.Ended);
@@ -395,7 +410,7 @@ public sealed class BuildRunController
             parts.Say(running);
             WatchBindings(inspected, parts.Views.Run);
             string? notStarted = Started(hotReload
-                ? session.Runner.StartDotnet(Watch(plan), plan.WorkingDirectory, variables)
+                ? session.Runner.StartDotnet(Watch(plan, watchHooks), plan.WorkingDirectory, variables)
                 : session.Runner.Start(plan.Program, plan.Arguments, plan.WorkingDirectory, variables));
             if (notStarted is null)
             {
@@ -465,17 +480,44 @@ public sealed class BuildRunController
     /// <summary>dotnet watch's command line for a plan, as Rider's Hot Reload runs it: the project for its framework, no
     /// launch profile (the plan has its values already), the program's own arguments after <c>--</c>. It runs the program in
     /// its own working folder, which is the plan's.</summary>
-    private static List<string> Watch(LaunchPlan plan)
+    private static List<string> Watch(LaunchPlan plan, string? hooks)
     {
         List<string> watch = ["watch", "--non-interactive", "run", "--project", plan.Project!, "--no-launch-profile"];
         if (plan.Framework is { } framework)
         {
             watch.AddRange(["--framework", framework]);
         }
+        if (hooks is not null)
+        {
+            watch.AddRange(["--environment", $"{Wire.StartupHooks}={hooks}"]);
+        }
         watch.Add("--");
         watch.AddRange(plan.Built is { } assembly && plan.Arguments.Count > 0 && plan.Arguments[0] == assembly ? plan.Arguments.Skip(1) : plan.Arguments);
         return watch;
     }
+
+    /// <summary>dotnet watch supplies its agent through run's -e option, replacing an inherited startup-hook list.
+    /// Its target-only override must retain that agent as well as Passenger's inspector and the user's hooks.</summary>
+    private async Task<string> WatchHooksAsync(LaunchPlan plan)
+    {
+        ProjectHost host = await ProjectHosts.ForAsync(Path.GetDirectoryName(plan.Project)!);
+        string tools = Path.Combine(host.Sdk, "DotnetTools", "dotnet-watch");
+        string framework = plan.Framework ?? session.Projects.FirstOrDefault(p => PathNames.Same(p.Path, plan.Project!))?.TargetFrameworks.FirstOrDefault() ?? "net8.0";
+        int target = FrameworkMajor(framework);
+        string? agent = Directory.Exists(tools) ? Directory.EnumerateFiles(tools, "Microsoft.Extensions.DotNetDeltaApplier.dll", SearchOption.AllDirectories)
+            .Where(p => FrameworkMajor(Path.GetFileName(Path.GetDirectoryName(p))) <= target)
+            .OrderByDescending(p => FrameworkMajor(Path.GetFileName(Path.GetDirectoryName(p)))).FirstOrDefault() : null;
+        if (agent is null)
+        {
+            throw new LaunchException($"SDK {host.Version} has no compatible dotnet watch startup agent for {framework}");
+        }
+        string hooks = plan.Environment[Wire.StartupHooks];
+        return string.Join(Path.PathSeparator, new[] { agent }.Concat(hooks.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+            .Distinct(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal));
+    }
+
+    private static int FrameworkMajor(string? framework) => framework is not null && framework.StartsWith("net", StringComparison.OrdinalIgnoreCase)
+        && int.TryParse(framework[3..].Split('.', '-')[0], out int major) ? major : 0;
 
     /// <summary>A run that could not start leaves the Run window idle, Stop as the debugger has it, and says why.</summary>
     private string? Started(string? problem)
@@ -581,6 +623,17 @@ public sealed class BuildRunController
         {
             return;
         }
+        app.StateChanged += (_, _) =>
+        {
+            if (!session.IsEnded && app.State == LiveAppState.Waiting)
+            {
+                foreach ((LiveApp App, int Id) key in placed.Keys.Where(k => k.App == app).ToList())
+                {
+                    placed.Remove(key);
+                }
+                ShowBindings();
+            }
+        };
         app.BindingFailed += (_, failed) =>
         {
             if (session.IsEnded)

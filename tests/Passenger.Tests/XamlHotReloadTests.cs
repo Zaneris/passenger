@@ -339,6 +339,51 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
         End(window);
     }
 
+    [AvaloniaFact]
+    public void Run_under_dotnet_watch_keeps_the_inspector_and_managed_hot_reload_then_reconnects_after_restart()
+    {
+        MainWindow window = new() { Width = 1400, Height = 900 };
+        window.Show();
+        window.OpenFolder(folder);
+        Ui.Settle();
+        window.ApplySettings(window.Settings with { HotReload = true });
+        try
+        {
+            Assert.Null(Ui.Await(window.RunAsync(), "the app to start under dotnet watch", TimeSpan.FromMinutes(3)));
+            Ui.WaitFor(() => window.Session.RunApp?.State == LiveAppState.Connected, "the watched target's inspector to connect", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => RunOutput(window).Contains("Waiting for changes", StringComparison.Ordinal), "watch to finish establishing its file watchers");
+            LiveApp app = window.Session.RunApp!;
+            int? firstProcess = app.ProcessId;
+            long button = Read(app).Single(e => e.Name == "Increment").Id;
+            Assert.Null(window.OpenFile(Path.Combine(folder, "MainWindow.axaml.cs")));
+            Typing.Replace(window, "Name={state.Name};", "Watched Name={state.Name};");
+            Ui.Run(window, AppActions.Save);
+            Ui.WaitFor(() => RunOutput(window).Contains("changes applied", StringComparison.OrdinalIgnoreCase), "watch's own managed Hot Reload agent to accept the edit", TimeSpan.FromMinutes(2));
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Click) { Element = button }), "the watched app to run its new C#");
+            Ui.WaitFor(() => RunOutput(window).Contains("Watched Name=Original state; Count=1", StringComparison.Ordinal), "the watched app's updated event handler");
+            Assert.Equal(firstProcess, app.ProcessId);
+            XamlUpdateResult xaml = Ui.Await(app.ApplyXamlAsync(new XamlUpdate([new XamlSourceUpdate(Path.Combine(folder, "MainWindow.axaml"), View,
+                View.Replace("Text=\"Before\"", "Text=\"Watched XAML\"", StringComparison.Ordinal))])), "the watched app's XAML property to update");
+            Assert.True(xaml.Applied, string.Join("; ", xaml.Problems.Select(p => p.Message)));
+            Assert.Contains(Read(app), e => e.Text == "Watched XAML");
+            // A project-input change makes watch rebuild/restart, rather than a C# delta. The listener belongs to the run.
+            string project = Path.Combine(folder, "LiveTreeApp.csproj");
+            Assert.Null(window.OpenFile(project));
+            Typing.Replace(window, "<Nullable>enable</Nullable>", "<Nullable>enable</Nullable><DefineConstants>WATCH_RESTART</DefineConstants>");
+            Ui.Run(window, AppActions.Save);
+            Ui.WaitFor(() => app.State == LiveAppState.Connected && app.ProcessId != firstProcess, "the replacement target to reconnect to the same run inspector", TimeSpan.FromMinutes(2));
+            Assert.Same(app, window.Session.RunApp);
+            Assert.Contains(Read(app), e => e.Name == "Entry" && e.Text == "Original state");
+            Assert.Contains(Read(app), e => e.Text == "Before");
+        }
+        finally
+        {
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => !window.IsRunning && window.Session.RunApp?.State == LiveAppState.Ended, "watch and its inspector listener to end");
+            window.Close();
+        }
+    }
+
     private MainWindow Debugged()
     {
         MainWindow window = new() { Width = 1400, Height = 900 };
@@ -368,6 +413,8 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
     private static IEnumerable<Element> Flatten(Element element) => new[] { element }.Concat(element.Children.SelectMany(Flatten));
 
     private static string Output(MainWindow window) => window.BottomPanel.Debug.Console.Editor.Document.Snapshot.ToString();
+
+    private static string RunOutput(MainWindow window) => window.BottomPanel.Run.Document.Snapshot.ToString();
 
     private static void Capture(LiveApp app, string name)
     {

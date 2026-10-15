@@ -219,19 +219,36 @@ public sealed class ProjectSession : IAsyncDisposable
     }
 
     /// <summary>The Avalonia or WPF app Run started last, inspected for its failed bindings and agents' tools (the Live Visual
-    /// Tree follows the debugger's); null after any other program, or one Hot Reload runs. It ends with its run, and with the
-    /// folder.</summary>
+    /// Tree follows the debugger's); null after any other program. Under Hot Reload it follows dotnet watch's replacement
+    /// processes. It ends with its run, and with the folder.</summary>
     public LiveApp? RunApp { get; private set; }
 
-    /// <summary>A plan as Run launches it: an Avalonia or WPF app's carries the inspector, as Debug's does, unless Hot Reload
-    /// runs it, whose dotnet watch is a .NET program of its own that would load the inspector first.</summary>
+    /// <summary>A plan as Run launches it: an Avalonia or WPF app carries the inspector, as Debug's does; dotnet watch
+    /// receives the hook only for its target process.</summary>
     public LaunchPlan InspectedRun(LaunchPlan plan, bool hotReload)
     {
         UiThread.Check();
         RunApp?.Dispose();
-        RunApp = hotReload ? null : LiveTree.LiveApp.For(plan, Overlays);
+        RunApp = LiveTree.LiveApp.For(plan, Overlays, reconnect: hotReload, expected: hotReload ? FrameworkOf(plan.Project, []) : null);
         InspectedChanged?.Invoke(this, EventArgs.Empty);
         return RunApp?.Plan ?? plan;
+    }
+
+    private LiveAppKind? FrameworkOf(string? path, HashSet<string> seen)
+    {
+        if (path is null || !seen.Add(path) || Projects.FirstOrDefault(p => PathNames.Same(p.Path, path)) is not { } project)
+        {
+            return null;
+        }
+        if (project.Packages.Any(p => p.Name.Equals("Avalonia", StringComparison.OrdinalIgnoreCase) || p.Name.Equals("Avalonia.Desktop", StringComparison.OrdinalIgnoreCase)))
+        {
+            return LiveAppKind.Avalonia;
+        }
+        if (project.Evaluated?.Dependencies.Any(f => f.FrameworkReferences.Contains("Microsoft.WindowsDesktop.App.WPF", StringComparer.OrdinalIgnoreCase)) == true)
+        {
+            return LiveAppKind.Wpf;
+        }
+        return project.ProjectReferences.Select(p => FrameworkOf(p, seen)).FirstOrDefault(k => k is not null);
     }
 
     /// <summary>The Avalonia app Profile started last, which records its frames for the profiler while it is profiled and
