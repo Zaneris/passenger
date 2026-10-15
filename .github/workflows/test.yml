@@ -146,6 +146,7 @@ jobs:
           [ "$RUNNER_OS" != Windows ] || python=python
           mkdir -p TestResults/shards
           dotnet test tests/Passenger.Tests --no-build --list-tests > TestResults/suite.txt
+          "$python" -I tools/test-shards-tests.py TestResults/suite.txt
           "$python" -I tools/test-shards.py split TestResults/suite.txt --system "$SYSTEM" --of "$SHARDS" --out TestResults/shards
           for number in $(seq 1 "$SHARDS"); do
             dotnet test tests/Passenger.Tests --no-build --list-tests --settings "TestResults/shards/shard-$number.runsettings" \
