@@ -485,7 +485,7 @@ public sealed class EditorGroup : DockPanel
                 Orientation = Orientation.Horizontal,
                 Spacing = 6,
                 VerticalAlignment = VerticalAlignment.Center,
-                Children = { icon, name, pin, new Panel { Width = 16, Height = 16, Children = { modified, close } } },
+                Children = { icon, name, modified, pin, close },
             },
         };
         void Paint()
