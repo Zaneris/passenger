@@ -378,15 +378,24 @@ public sealed class ProblemsView : DockPanel
         {
             return new TextBlock();
         }
-        StackPanel panel = new() { Orientation = Orientation.Horizontal, Height = 24, Margin = new Thickness(8 + (row.Depth * 16), 0, 8, 0) };
+        Thickness margin = new(8 + (row.Depth * 16), 0, 8, 0);
         TextBlock detail = new() { Text = row.Detail, FontSize = 12, Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         detail.Bind(TextBlock.ForegroundProperty, detail.GetResourceObservable("Passenger.TextMuted"));
         if (row.Problem is not { } problem)
         {
-            panel.Children.Add(new TextBlock { Text = row.Label, FontWeight = row.Depth == 0 ? FontWeight.SemiBold : FontWeight.Normal, VerticalAlignment = VerticalAlignment.Center });
-            panel.Children.Add(detail);
-            return panel;
+            TextBlock title = new()
+            {
+                Text = row.Label, FontWeight = row.Depth == 0 ? FontWeight.SemiBold : FontWeight.Normal,
+                VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
+            };
+            ToolTip.SetTip(title, row.Label);
+            Grid group = new() { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Height = 24, Margin = margin };
+            Grid.SetColumn(detail, 1);
+            group.Children.Add(title);
+            group.Children.Add(detail);
+            return group;
         }
+        StackPanel panel = new() { Orientation = Orientation.Horizontal, Height = 24, Margin = margin };
         PathIcon icon = new() { Margin = new Thickness(0, 0, 8, 0) };
         icon.Bind(PathIcon.DataProperty, icon.GetResourceObservable(problem.Severity == ProblemSeverity.Error ? "Icon.Error" : "Icon.Problems"));
         icon.Bind(PathIcon.ForegroundProperty, icon.GetResourceObservable(problem.Severity == ProblemSeverity.Error ? "Passenger.Editor.Error" : "Passenger.Editor.Warning"));

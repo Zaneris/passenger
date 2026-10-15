@@ -205,6 +205,10 @@ public sealed class ToolHeaderTests : IDisposable
                 }
                 CheckStatus();
                 Assert.Equal(feed, ToolTip.GetTip(chooser));
+                TextBlock selected = Assert.Single(chooser.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == feed);
+                Assert.Equal(Avalonia.Media.TextTrimming.CharacterEllipsis, selected.TextTrimming);
+                Assert.True(Inside(selected, chooser), "The selected feed label escapes its actual chooser");
+                Assert.True(selected.TextLayout.Width <= selected.Bounds.Width + 1, "The long feed label clips instead of ellipsizing");
             }
 
             void CheckStatus()

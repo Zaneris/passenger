@@ -1,3 +1,5 @@
+using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
@@ -269,8 +271,22 @@ public sealed class HotReloadTests : IClassFixture<RestoredFolders>, IDisposable
             Assert.Equal(4, window.Debugger.BuiltLine(GreeterPath, 5));
             Assert.Same(first, window.Debugger.Session);
             window.ShowToolWindow("problems");
-            Ui.Settle();
-            UiAudit.Capture(window, "hot-reload-missing-baseline-" + (light ? "light" : "dark"));
+            foreach (double width in new double[] { 1200, 683, 640, 1200 })
+            {
+                window.Width = width;
+                Ui.Settle();
+                TextBlock summary = Assert.Single(window.BottomPanel.Problems.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == refused.Said);
+                ListBox list = Assert.Single(window.BottomPanel.Problems.GetVisualDescendants().OfType<ListBox>());
+                Assert.Equal(refused.Said, ToolTip.GetTip(summary));
+                Assert.True(summary.TextLayout.Width <= summary.Bounds.Width + 1, "The Hot Reload summary must ellipsize within its row");
+                foreach (Control viewport in summary.GetVisualAncestors().OfType<Control>().Where(control => control == list || control.ClipToBounds))
+                {
+                    Point at = summary.TranslatePoint(default, viewport)!.Value;
+                    Assert.True(at.X >= -1 && at.X + summary.Bounds.Width <= viewport.Bounds.Width + 1,
+                        $"The Hot Reload summary escapes its {viewport.GetType().Name} viewport at window width {width}");
+                }
+                UiAudit.Capture(window, $"hot-reload-missing-baseline-{width:0}-" + (light ? "light" : "dark"));
+            }
 
             // Roslyn acknowledged its no-effect snapshot internally. Restoring the exact DLL must not let a second
             // Apply silently consume the pending text; a new build/session is needed to recover safely.
