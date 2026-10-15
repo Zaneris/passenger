@@ -150,7 +150,10 @@ public sealed class ProjectWindowsTests : IDisposable
         Assert.Null(window.Open(beta));
         OpenProjectDialog asked = Asked(window);
         Assert.Equal($"Where would you like to open the solution '{Path.GetFileName(beta)}'?", asked.Question);
-        Assert.Equal(["Cancel", OpenProjectDialog.ThisWindow, OpenProjectDialog.NewWindow], Buttons(asked).Select(b => (string?)b.Content));
+        Assert.Equal(OperatingSystem.IsMacOS()
+            ? ["Cancel", OpenProjectDialog.ThisWindow, OpenProjectDialog.NewWindow]
+            : [OpenProjectDialog.NewWindow, OpenProjectDialog.ThisWindow, "Cancel"], Buttons(asked).Select(b => (string?)b.Content));
+        DialogButtonsTests.Check(asked);
         Assert.Equal(OpenProjectDialog.NewWindow, (string?)Assert.Single(Buttons(asked), b => b.IsDefault).Content);
         Press(asked, "Cancel");
         Assert.True(window.Folder == PathNames.Canonical(alpha) && PassengerApp.Windows.Count == 1, "Cancel opened the folder anyway");
