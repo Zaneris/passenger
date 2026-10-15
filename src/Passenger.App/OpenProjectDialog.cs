@@ -32,7 +32,7 @@ public sealed class OpenProjectDialog : Window
         here.Click += (_, _) => Choose(OpenTarget.ThisWindow);
         apart.Click += (_, _) => Choose(OpenTarget.NewWindow);
 
-        StackPanel choices = new() { Classes = { "footer" }, Children = { cancel, here, apart } };
+        StackPanel choices = DialogFooter.OfChoices(apart, cancel, here);
         Content = new StackPanel
         {
             Margin = new Thickness(20),
