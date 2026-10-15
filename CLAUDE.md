@@ -648,8 +648,8 @@ window or takes the focus; it shows everything but the system's own window chrom
 - `site/`: passenger-ide.net, plain HTML and CSS, deployed to Cloudflare Pages by `.github/workflows/site.yml` on a push that
   touches it. Its downloads are the latest GitHub release's assets, by fixed names (#56); its share card,
   `images/social.png`, is drawn from `tools/social-card.html` (the command is in its first comment).
-- `.github/workflows`: `test.yml` is every test on macOS, Windows and Linux, each system's suite in four shards run at
-  once (jobs named as "macOS (arm64), shard 1 of 4"), then a summary job per system named as the system ("macOS
+- `.github/workflows`: `test.yml` is every test on macOS, Windows and Linux, in three macOS shards and four Windows and
+  Linux shards run at once (jobs named as "macOS (arm64), shard 1 of 3"), then a summary job per system named as the system ("macOS
   (arm64)", the check that stands for it). It is called by `ci.yml` (each push and pull request, with the packages'
   and notices' jobs) and by `release.yml`, which a pushed `vX.Y.Z` tag runs: the tests, then both disk images and both
   Windows installers at the tag's version, `SHA256SUMS` and Velopack's feeds, published as the release under the fixed
