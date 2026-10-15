@@ -79,6 +79,7 @@ public partial class ManagedDebugger
     /// statement.</summary>
     private async Task TakeWatchedReturn(ICorDebugThread thread, WatchedCall call)
     {
+        _logger?.Invoke($"Return-value watch after IL_{call.CallOffset:X4} hit on thread {thread.Id}, expected thread {_returnWatch?.ThreadId}, evaluating={EvalStatus.ThreadId}, async={_asyncStepper?.State}");
         if (_returnWatch is not { } watch || thread.Id != watch.ThreadId || EnumerateFramesForThread(thread).FirstOrDefault() is not ICorDebugILFrame frame
             || RangeOf(frame) != watch.Frame || Read(frame, call.CallOffset) is not { } value)
         {

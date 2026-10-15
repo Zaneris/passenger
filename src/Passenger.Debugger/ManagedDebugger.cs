@@ -214,6 +214,17 @@ public partial class ManagedDebugger
 
     private void QueueEvent(object? sender, CorDebugManagedCallbackEventArgs e)
     {
+        if (e is StepCompleteCorDebugManagedCallbackEventArgs step)
+        {
+            try
+            {
+                _logger?.Invoke($"StepComplete queued: reason={step.Reason}");
+            }
+            catch
+            {
+                // Diagnostics on the runtime's callback thread must never prevent event delivery.
+            }
+        }
         if (e is ExitProcessCorDebugManagedCallbackEventArgs)
         {
             _exited.Set();
@@ -525,6 +536,7 @@ public partial class ManagedDebugger
 
     private void ReportStop(int threadId, string reason, string? filePath = null, int line = 0, int column = 0, IReadOnlyList<int>? hitBreakpointIds = null, string? text = null)
     {
+        _logger?.Invoke($"Stop shown on thread {threadId}: {reason} at {filePath}:{line}:{column}");
         // A step's calls' values are shown at its own stop; one that stops anywhere else stops showing them.
         EndReturnWatch();
         EndSmartStep();

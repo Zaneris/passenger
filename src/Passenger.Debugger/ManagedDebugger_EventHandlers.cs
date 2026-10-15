@@ -444,6 +444,7 @@ public partial class ManagedDebugger
     private async Task HandleStepComplete(object? sender, StepCompleteCorDebugManagedCallbackEventArgs stepCompleteEventArgs)
     {
         ICorDebugThread corThread = stepCompleteEventArgs.Thread;
+        _logger?.Invoke($"StepComplete handled on thread {corThread.Id}: reason={stepCompleteEventArgs.Reason}, current={stepCompleteEventArgs.Stepper == _stepper}, evaluating={EvalStatus.ThreadId}, stopShown={_stopShown}, async={_asyncStepper?.State}");
         ICorDebugILFrame ilFrame = (ICorDebugILFrame)corThread.ActiveFrame;
         // An async step's breakpoint at an await, which the step ran to, was not hit: the async step is over.
         _asyncStepper?.ClearActiveAsyncStep();
