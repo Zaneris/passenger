@@ -14,7 +14,7 @@ namespace Passenger.Tests;
 /// Test's xUnit, NUnit and MSTest, Web's ASP.NET Core and Blazor apps), each a Type with its own options, a value set on
 /// one kept by another that has it; the search finds a family by any of its Types; and a template installed or
 /// uninstalled while the dialog is open fills in its family, the family and Type chosen kept.</summary>
-public sealed class TemplateFamiliesTests : IDisposable
+public sealed class TemplateFamiliesTests(ITestOutputHelper output) : IDisposable
 {
     private const string TestRunner = "Test runner";
     private const string Platform = "Microsoft.Testing.Platform";
@@ -33,14 +33,19 @@ public sealed class TemplateFamiliesTests : IDisposable
     {
         using IDisposable theme = TestsTheme();
         MainWindow window = Started();
+        Ui.WaitFor(() => ProjectTemplates.Ready(Environment.CurrentDirectory) is not null, "New Solution's startup template preload", TimeSpan.FromMinutes(3));
 
         // The templates were read as the window started: the dialog lists them as it opens, before any read of its own.
         Assert.True(window.Perform(AppActions.NewSolution));
         NewProjectDialog dialog = Assert.Single(window.OwnedWindows.OfType<NewProjectDialog>());
         string[] atOnce = [.. dialog.Families.Select(f => f.Name)];
-        string[] riders = OperatingSystem.IsWindows()
-            ? ["Console", "Class Library", "Desktop", "Web", "Services", "AI Extensions", "Unit Test", "Aspire", "Azure Functions", "Avalonia"]
-            : ["Console", "Class Library", "Web", "Services", "AI Extensions", "Unit Test", "Aspire", "Azure Functions", "Avalonia"];
+        // MAUI is workload-dependent: ask the SDK in the run's hive independently of Passenger's catalogue.
+        string listed = DotnetNew(["list", "--type", "project", "--columns", "tags"]);
+        output.WriteLine($"dotnet new list in {ProjectTemplates.Hive ?? "the run's template home"}:\n{listed}");
+        bool maui = listed.Split('\n').Any(line => line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+            .LastOrDefault()?.Split('/').Contains("MAUI", StringComparer.OrdinalIgnoreCase) == true);
+        string[] riders = ["Console", "Class Library", .. OperatingSystem.IsWindows() ? ["Desktop"] : Array.Empty<string>(),
+            "Web", "Services", "AI Extensions", "Unit Test", .. maui ? ["MAUI"] : Array.Empty<string>(), "Aspire", "Azure Functions", "Avalonia"];
         Assert.Equal(riders, atOnce);
         Assert.True(dialog.Chosen is { Name: "Console App" } && dialog.Family?.Name == "Console", $"The dialog opened on {dialog.Family?.Name}, {dialog.Chosen?.Name}");
         Assert.Empty(dialog.TypeNames);
@@ -228,10 +233,11 @@ public sealed class TemplateFamiliesTests : IDisposable
     }
 
     /// <summary>dotnet new with these arguments in the run's own template home, as a terminal runs it.</summary>
-    private void DotnetNew(string[] arguments)
+    private string DotnetNew(string[] arguments)
     {
         ChildResult ran = Task.Run(() => ChildProcesses.RunAsync(ProjectTemplates.NewCommand(arguments, place), limit: TimeSpan.FromMinutes(2))).GetAwaiter().GetResult();
         Assert.True(ran.Succeeded, $"dotnet new {string.Join(' ', arguments)} failed:\n{ran.Output}{ran.Error}");
+        return ran.Output;
     }
 
     /// <summary>A search put in the search box, as typing it there would.</summary>
