@@ -122,6 +122,7 @@ internal static class DesignTimeBuilds
             HashSet<string> assets = new(PathComparer);
             foreach (Project project in each)
             {
+                string? intermediateAssembly = project.GetItems("IntermediateAssembly").FirstOrDefault()?.EvaluatedInclude;
                 Dictionary<string, string> isolated = new(project.GlobalProperties, StringComparer.OrdinalIgnoreCase);
                 string identity = JsonSerializer.Serialize(new
                 {
@@ -169,7 +170,7 @@ internal static class DesignTimeBuilds
                 Dictionary<string, string> local = LocalPaths.Where(isolated.ContainsKey).ToDictionary(property => property, property => isolated[property], StringComparer.OrdinalIgnoreCase);
                 (ProjectInstance instance, IReadOnlyList<BuildDiagnostic> logged) = await BuildAsync(design, diagnostics, local).ConfigureAwait(false);
                 said.AddRange(logged.Where(d => !said.Contains(d)));
-                RoslynProjectFileInfo info = Read(language, path, instance, globs);
+                RoslynProjectFileInfo info = Read(language, path, instance, globs, intermediateAssembly);
                 if (info.CommandLineArgs.Length == 0 && !logged.Any(d => d.Error))
                 {
                     return new BuiltProject(path, "[]", [file], $"{Path.GetFileName(path)}{(info.TargetFramework is { } framework ? $" ({framework})" : string.Empty)}: its design-time build gave no compiler command line");
@@ -288,12 +289,19 @@ internal static class DesignTimeBuilds
     }
 
     /// <summary>A built project as Roslyn's build host reads one (its ProjectInstanceReader).</summary>
-    private static RoslynProjectFileInfo Read(string language, string path, ProjectInstance instance, FileGlobs[] globs)
+    private static RoslynProjectFileInfo Read(string language, string path, ProjectInstance instance, FileGlobs[] globs, string? intermediateAssembly)
     {
         string directory = Path.GetDirectoryName(path)! + Path.DirectorySeparatorChar;
         string? Absolute(string? value) => string.IsNullOrWhiteSpace(value) ? null : Path.GetFullPath(Path.Combine(directory, value));
         string? Property(string name) => instance.GetProperty(name)?.EvaluatedValue is { Length: > 0 } value ? value : null;
+        string? assembly = Absolute(intermediateAssembly);
         string[] arguments = [.. instance.GetItems(language == "C#" ? "CscCommandLineArgs" : "VbcCommandLineArgs").Select(i => i.EvaluatedInclude)];
+        // Roslyn's options processor takes its baseline assembly from /out, overriding the supplied output metadata.
+        if (assembly is not null)
+        {
+            arguments = [.. arguments.Select(argument => argument.StartsWith("/out:", StringComparison.OrdinalIgnoreCase)
+                || argument.StartsWith("-out:", StringComparison.OrdinalIgnoreCase) ? argument[..5] + "\"" + assembly + "\"" : argument)];
+        }
         return new RoslynProjectFileInfo
         {
             Language = language,
@@ -301,7 +309,8 @@ internal static class DesignTimeBuilds
             OutputFilePath = Absolute(Property("TargetPath")),
             OutputRefFilePath = Absolute(Property("TargetRefPath")),
             GeneratedFilesOutputDirectory = Absolute(Property("CompilerGeneratedFilesOutputPath")),
-            IntermediateOutputFilePath = Absolute(instance.GetItems("IntermediateAssembly").FirstOrDefault()?.EvaluatedInclude),
+            // Roslyn's Edit and Continue reads the real build's assembly here; this design-time build emits none.
+            IntermediateOutputFilePath = assembly,
             DefaultNamespace = Property("RootNamespace") ?? string.Empty,
             TargetFramework = Property("TargetFramework"),
             TargetFrameworkIdentifier = Property("TargetFrameworkIdentifier"),

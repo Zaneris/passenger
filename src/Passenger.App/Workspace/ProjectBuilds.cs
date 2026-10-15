@@ -331,7 +331,10 @@ public sealed record ProjectBuildCache : IStateDocument<ProjectBuildCache>
 
     public Dictionary<string, KeptBuild> Projects { get; init; } = [];
 
-    public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, ForgetWindowsTargeting, ForgetSharedIntermediates];
+    public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, ForgetWindowsTargeting, ForgetSharedIntermediates, ForgetIsolatedAssemblyIdentity];
+
+    /// <summary>Roslyn's compilation output must name the real assembly, not the non-emitting design-time build's.</summary>
+    private static void ForgetIsolatedAssemblyIdentity(JsonObject document) => document.Remove("projects");
 
     /// <summary>Generated documents from earlier builds shared obj with ordinary builds; rebuild them in the IDE's directory.</summary>
     private static void ForgetSharedIntermediates(JsonObject document) => document.Remove("projects");
