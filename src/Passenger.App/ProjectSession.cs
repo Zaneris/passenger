@@ -84,7 +84,7 @@ public sealed class ProjectSession : IAsyncDisposable
         Vcs.Activity = name => LocalHistory?.During(name);
         Models.Changed += (_, changed) => OnEvaluated(changed);
         MSBuild = new MSBuild.MSBuildService(() => Folder, () => Workspace);
-        DesignTimeBuilds = new ProjectBuilds(LoadOrderAsync, () => Workspace is { } open ? ProjectModels.Properties(open) : new Dictionary<string, string>());
+        DesignTimeBuilds = new ProjectBuilds(LoadOrderAsync, () => Workspace is { } open ? ProjectModels.Properties(open) : new Dictionary<string, string>(), setup.StateFolder);
     }
 
     /// <summary>A window's session with no folder open: files may still be open, alone.</summary>

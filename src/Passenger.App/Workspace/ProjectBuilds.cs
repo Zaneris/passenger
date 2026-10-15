@@ -23,6 +23,7 @@ public sealed class ProjectBuilds
     private readonly List<string> queued = [];
     private readonly Func<Task<(IReadOnlyList<string> First, IReadOnlyList<string> All)>> projects;
     private readonly Func<IReadOnlyDictionary<string, string>> solution;
+    private readonly string intermediateRoot;
     private StateDocument<ProjectBuildCache>? kept;
     private string? folder;
     private string? sdk;
@@ -42,10 +43,11 @@ public sealed class ProjectBuilds
     /// <param name="projects">The open workspace's projects to load, those of the file shown (and those it references)
     /// apart, asked on the UI thread as the server is ready for them.</param>
     /// <param name="solution">The global properties the open solution gives its projects, as a build of it would.</param>
-    public ProjectBuilds(Func<Task<(IReadOnlyList<string> First, IReadOnlyList<string> All)>> projects, Func<IReadOnlyDictionary<string, string>> solution)
+    public ProjectBuilds(Func<Task<(IReadOnlyList<string> First, IReadOnlyList<string> All)>> projects, Func<IReadOnlyDictionary<string, string>> solution, string stateFolder)
     {
         this.projects = projects;
         this.solution = solution;
+        intermediateRoot = Path.Combine(stateFolder, "project-intermediates", "obj");
         Feed = new Crossing(this);
     }
 
@@ -228,6 +230,7 @@ public sealed class ProjectBuilds
         {
             // What Roslyn's server gives its own build host, so Razor's generated C# is in the builds as it would be there.
             ["RazorDesignTimeTargets"] = Path.Combine(AppContext.BaseDirectory, "roslyn", "Targets", "Microsoft.NET.Sdk.Razor.DesignTime.targets"),
+            ["PassengerDesignTimeRoot"] = intermediateRoot,
         };
         // Not background work: nothing drawn waits on it but the language server's load, which a screenshot does not wait
         // for either, and a large solution's round takes minutes.
@@ -328,7 +331,10 @@ public sealed record ProjectBuildCache : IStateDocument<ProjectBuildCache>
 
     public Dictionary<string, KeptBuild> Projects { get; init; } = [];
 
-    public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, ForgetWindowsTargeting];
+    public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, ForgetWindowsTargeting, ForgetSharedIntermediates];
+
+    /// <summary>Generated documents from earlier builds shared obj with ordinary builds; rebuild them in the IDE's directory.</summary>
+    private static void ForgetSharedIntermediates(JsonObject document) => document.Remove("projects");
 
     /// <summary>The builds that failed off Windows for want of EnableWindowsTargeting (NETSDK1100), kept before the host
     /// gave it, are built again.</summary>
