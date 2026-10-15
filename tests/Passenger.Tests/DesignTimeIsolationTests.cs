@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Explorer;
@@ -13,10 +14,73 @@ namespace Passenger.Tests;
 public sealed class DesignTimeIsolationTests(ITestOutputHelper output)
 {
     [AvaloniaFact]
+    public void A_symlinked_state_folder_keeps_generated_WPF_fields_navigating_to_their_XAML_after_reopening()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Skip("This exercises Unix temporary-directory symlinks without requiring Windows symlink privileges");
+            return;
+        }
+        string root = TestFolders.Create("isolated-symlink-");
+        string folder = Path.Combine(root, "project");
+        string actual = Path.Combine(root, "nested", "deeper", "settings");
+        string linked = Path.Combine(root, "state-link");
+        Directory.CreateDirectory(actual);
+        Directory.CreateSymbolicLink(linked, actual);
+        TestFolders.Prepare(() =>
+        {
+            WpfApp.Create(folder, "Markup");
+            AvaloniaApp.UseFeed(folder);
+            File.WriteAllText(Path.Combine(folder, "MainWindow.xaml"), """
+                <Window x:Class="Markup.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    <Button x:Name="Go" Content="Start" />
+                </Window>
+                """);
+            File.WriteAllText(Path.Combine(folder, "MainWindow.xaml.cs"), """
+                namespace Markup;
+                public partial class MainWindow : System.Windows.Window
+                {
+                    public MainWindow() { InitializeComponent(); }
+                    public void Rename() { Go.Content = "Changed"; }
+                }
+                """);
+            Restore.Run(Path.Combine(folder, "Markup.csproj"));
+        }, root);
+        for (int reopening = 0; reopening < 2; reopening++)
+        {
+            MainWindow window = new() { Width = 1200, Height = 800, StateFolder = linked };
+            try
+            {
+                window.SetRenderScaling(2);
+                window.Show();
+                window.KeepLayout();
+                window.OpenFolder(folder);
+                window.OpenFile(Path.Combine(folder, "MainWindow.xaml.cs"));
+                Ui.WaitFor(() => window.CSharpService?.IsReady == true, "the WPF generated field to load", TimeSpan.FromMinutes(2));
+                Ui.Settle();
+                Passenger.Text.TextSnapshot text = window.EditorArea.Active!.Text.Snapshot;
+                window.EditorArea.CodeEditor.GoTo(text.GetPosition(text.ToString().IndexOf("Go.Content", StringComparison.Ordinal) + 1));
+                Ui.Run(window, AppActions.GoToDeclaration);
+                Ui.Settle();
+                string expected = PathNames.Canonical(Path.Combine(folder, "MainWindow.xaml"));
+                output.WriteLine($"State alias: {linked}; real state: {actual}; opened: {window.EditorArea.Active?.Path}");
+                Assert.Equal(expected, window.EditorArea.Active?.Path);
+                Assert.Contains("<Button x:Name=\"|Go\"", XamlTests.CaretLine(window.EditorArea.CodeEditor), StringComparison.Ordinal);
+                UiAudit.Capture(window, $"wpf-symlink-declaration-{reopening}");
+            }
+            finally
+            {
+                window.Close();
+                Ui.Settle();
+            }
+        }
+    }
+
+    [AvaloniaFact]
     public void Custom_intermediates_and_nested_MSBuild_references_keep_their_own_outputs_and_cached_generated_documents()
     {
         string root = TestFolders.Create("isolated builds-");
-        string settings = TestFolders.Create("isolated-settings-");
+        string settings = PathNames.Canonical(TestFolders.Create("isolated-settings-"));
         string library = Path.Combine(root, "Markup");
         string app = Path.Combine(root, "Consumer");
         string solution = Path.Combine(root, "Probe.slnx");

@@ -47,7 +47,7 @@ public sealed class ProjectBuilds
     {
         this.projects = projects;
         this.solution = solution;
-        intermediateRoot = Path.Combine(stateFolder, "project-intermediates", "obj");
+        intermediateRoot = PathNames.Canonical(Path.Combine(stateFolder, "project-intermediates", "obj"));
         Feed = new Crossing(this);
     }
 
@@ -331,7 +331,9 @@ public sealed record ProjectBuildCache : IStateDocument<ProjectBuildCache>
 
     public Dictionary<string, KeptBuild> Projects { get; init; } = [];
 
-    public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, ForgetWindowsTargeting, ForgetSharedIntermediates, ForgetIsolatedAssemblyIdentity];
+    public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, ForgetWindowsTargeting, ForgetSharedIntermediates, ForgetIsolatedAssemblyIdentity, ForgetAliasedGeneratedPaths];
+
+    private static void ForgetAliasedGeneratedPaths(JsonObject document) => document.Remove("projects");
 
     /// <summary>Roslyn's compilation output must name the real assembly, not the non-emitting design-time build's.</summary>
     private static void ForgetIsolatedAssemblyIdentity(JsonObject document) => document.Remove("projects");
