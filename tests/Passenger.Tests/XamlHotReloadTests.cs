@@ -1,4 +1,6 @@
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Debugging;
 using Passenger.App.LiveTree;
@@ -218,6 +220,7 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
         Assert.Null(window.OpenFile(Path.Combine(folder, "MainWindow.axaml")));
         Typing.Replace(window, "Value=\"1\"", "Value=\"2\"");
         HotReloadOutcome failed = Apply(window);
+        TestContext.Current.TestOutputHelper?.WriteLine($"Mixed update: {failed.Result}; {failed.Said}; files={string.Join(',', failed.Files)}\n{Output(window)}");
         Assert.True(failed.Result == HotReloadResult.Errors, failed.Said);
         Assert.True(window.Debugger.HotReload!.Changed);
         Assert.Contains(Path.Combine(folder, "MainWindow.axaml.cs"), failed.Files);
@@ -335,13 +338,21 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
         Ui.WaitFor(() => window.Debugger.LastApplied is { Result: HotReloadResult.Applied } applied && applied.Files.Any(p => p.EndsWith("MainWindow.axaml", StringComparison.Ordinal)),
             "the deferred XAML to apply on continue");
         Assert.Equal("After stepping", Read(app).Single(e => e.Id == caption).Text);
+        TestContext.Current.TestOutputHelper?.WriteLine($"After stepping: {window.Debugger.LastApplied}\n{Output(window)}");
         Ui.WaitFor(() => Output(window).Contains("Updated Name=Original state; Count=1", StringComparison.Ordinal), "C# to have applied before the steps executed it");
         End(window);
     }
 
-    [AvaloniaFact]
-    public void Run_under_dotnet_watch_keeps_the_inspector_and_managed_hot_reload_then_reconnects_after_restart()
+    [AvaloniaTheory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
+    public void Run_under_dotnet_watch_keeps_the_inspector_and_managed_hot_reload_then_reconnects_after_restart(string theme)
     {
+        if (theme == "Dark")
+        {
+            string appXaml = Path.Combine(folder, "App.axaml");
+            File.WriteAllText(appXaml, File.ReadAllText(appXaml).Replace("RequestedThemeVariant=\"Light\"", "RequestedThemeVariant=\"Dark\"", StringComparison.Ordinal));
+        }
         MainWindow window = new() { Width = 1400, Height = 900 };
         window.Show();
         window.OpenFolder(folder);
@@ -362,10 +373,25 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
             Ui.Await(app.InputAsync(new InputAction(InputKinds.Click) { Element = button }), "the watched app to run its new C#");
             Ui.WaitFor(() => RunOutput(window).Contains("Watched Name=Original state; Count=1", StringComparison.Ordinal), "the watched app's updated event handler");
             Assert.Equal(firstProcess, app.ProcessId);
-            XamlUpdateResult xaml = Ui.Await(app.ApplyXamlAsync(new XamlUpdate([new XamlSourceUpdate(Path.Combine(folder, "MainWindow.axaml"), View,
-                View.Replace("Text=\"Before\"", "Text=\"Watched XAML\"", StringComparison.Ordinal))])), "the watched app's XAML property to update");
-            Assert.True(xaml.Applied, string.Join("; ", xaml.Problems.Select(p => p.Message)));
+            long caption = Read(app).Single(e => e.Text == "Before").Id;
+            Capture(app, "watch-" + theme + "-before");
+            Assert.Null(window.OpenFile(Path.Combine(folder, "MainWindow.axaml")));
+            Typing.Replace(window, "Text=\"Before\"", "Text=\"Watched XAML\"");
+            Ui.Run(window, AppActions.Save);
+            Ui.WaitFor(() => window.Session.RunXaml.LastApplied?.Result == HotReloadResult.Applied, "a saved XAML edit to update the watched UI without rebuilding");
             Assert.Contains(Read(app), e => e.Text == "Watched XAML");
+            Assert.Equal(firstProcess, app.ProcessId);
+            Assert.Equal(caption, Read(app).Single(e => e.Text == "Watched XAML").Id);
+            Assert.Contains(Read(app), e => e.Name == "Entry" && e.Text == "Original state");
+            HotReloadOutcome saved = window.Session.RunXaml.LastApplied!;
+            Typing.Replace(window, "Text=\"Watched XAML\"", "Text=\"Applied XAML\"");
+            Ui.Run(window, AppActions.ApplyHotReloadChanges);
+            Ui.WaitFor(() => window.Session.RunXaml.LastApplied is { Result: HotReloadResult.Applied } next && next != saved, "Apply Changes to apply XAML in the watched app");
+            Assert.Equal("Applied XAML", Read(app).Single(e => e.Id == caption).Text);
+            Assert.Equal(firstProcess, app.ProcessId);
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Click) { Element = button }), "the retained handler after watched XAML updates");
+            Ui.WaitFor(() => RunOutput(window).Contains("Watched Name=Original state; Count=2", StringComparison.Ordinal), "the original state and handler after both XAML updates");
+            Capture(app, "watch-" + theme + "-after");
             // A project-input change makes watch rebuild/restart, rather than a C# delta. The listener belongs to the run.
             string project = Path.Combine(folder, "LiveTreeApp.csproj");
             Assert.Null(window.OpenFile(project));
@@ -374,12 +400,155 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
             Ui.WaitFor(() => app.State == LiveAppState.Connected && app.ProcessId != firstProcess, "the replacement target to reconnect to the same run inspector", TimeSpan.FromMinutes(2));
             Assert.Same(app, window.Session.RunApp);
             Assert.Contains(Read(app), e => e.Name == "Entry" && e.Text == "Original state");
-            Assert.Contains(Read(app), e => e.Text == "Before");
+            Assert.Contains(Read(app), e => e.Text == "Applied XAML");
+            HotReloadOutcome beforeReconnectEdit = window.Session.RunXaml.LastApplied!;
+            Assert.Null(window.OpenFile(Path.Combine(folder, "MainWindow.axaml")));
+            Typing.Replace(window, "Applied XAML", "After reconnect");
+            Ui.Run(window, AppActions.Save);
+            Ui.WaitFor(() => window.Session.RunXaml.LastApplied is { Result: HotReloadResult.Applied } applied && applied != beforeReconnectEdit,
+                "XAML edits to use the replacement process's compiled source anchors");
+            Assert.Contains(Read(app), e => e.Text == "After reconnect");
         }
         finally
         {
             Ui.Run(window, AppActions.Stop);
             Ui.WaitFor(() => !window.IsRunning && window.Session.RunApp?.State == LiveAppState.Ended, "watch and its inspector listener to end");
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_watched_xaml_failure_stays_pending_for_retry_and_a_structural_edit_can_be_declined_then_restarted()
+    {
+        MainWindow window = new() { Width = 1400, Height = 900 };
+        window.SetRenderScaling(2);
+        window.Show();
+        window.OpenFolder(folder);
+        Ui.Settle();
+        window.ApplySettings(window.Settings with { HotReload = true, RestartOnRudeEdit = false });
+        try
+        {
+            Assert.Null(Ui.Await(window.RunAsync(), "the watched XAML app to start", TimeSpan.FromMinutes(3)));
+            Ui.WaitFor(() => window.Session.RunApp?.State == LiveAppState.Connected && RunOutput(window).Contains("Waiting for changes", StringComparison.Ordinal), "the watched app and its file watchers");
+            LiveApp app = window.Session.RunApp!;
+            int? first = app.ProcessId;
+            long caption = Read(app).Single(e => e.Text == "Before").Id;
+            Assert.Null(window.OpenFile(Path.Combine(folder, "MainWindow.axaml")));
+            Typing.Replace(window, "Text=\"Before\"", "Text=\"After retry\"");
+            Typing.Replace(window, "Width=\"640\"", "Width=\"invalid\"");
+            Ui.Run(window, AppActions.Save);
+            Ui.WaitFor(() => window.Session.RunXaml.LastApplied?.Result == HotReloadResult.Errors, "the invalid saved XAML to be diagnosed");
+            Assert.Contains(window.Session.RunXaml.LastApplied!.Problems, p => p.Path == Path.Combine(folder, "MainWindow.axaml") && p.Position.Line == 4 && p.Message.Contains("Width", StringComparison.Ordinal));
+            Assert.True(window.Session.RunXaml.Changed);
+            Assert.Equal("Before", Read(app).Single(e => e.Id == caption).Text);
+            Assert.Equal(first, app.ProcessId);
+            UiAudit.Capture(window, "watched-xaml-conversion-error");
+            Typing.Replace(window, "Width=\"invalid\"", "Width=\"680\"");
+            Ui.Run(window, AppActions.ApplyHotReloadChanges);
+            Ui.WaitFor(() => window.Session.RunXaml.LastApplied?.Result == HotReloadResult.Applied, "the corrected XAML batch to apply on retry");
+            Assert.False(window.Session.RunXaml.Changed);
+            Assert.Equal("After retry", Read(app).Single(e => e.Id == caption).Text);
+            Assert.Equal(first, app.ProcessId);
+            UiAudit.Capture(window, "watched-xaml-retry-applied");
+            Typing.Replace(window, "<TextBlock Text=\"After retry\" />", "<TextBlock Text=\"After retry\" /><TextBlock Text=\"Added control\" />");
+            Ui.Run(window, AppActions.ApplyHotReloadChanges);
+            Ui.WaitFor(() => window.OwnedWindows.OfType<ChoiceDialog>().Any(), "the structural XAML edit to offer a restart");
+            Assert.Equal(HotReloadResult.RestartNeeded, window.Session.RunXaml.LastApplied!.Result);
+            Assert.Contains(window.Session.RunXaml.LastApplied.Problems, p => p.Path == Path.Combine(folder, "MainWindow.axaml") && p.Message.Contains("elements", StringComparison.Ordinal));
+            ChoiceDialog asked = window.OwnedWindows.OfType<ChoiceDialog>().Single();
+            asked.SetRenderScaling(2);
+            Ui.Settle();
+            UiAudit.Capture(asked, "watched-xaml-restart-choice");
+            Avalonia.Controls.Button no = asked.GetVisualDescendants().OfType<Avalonia.Controls.Button>().Single(b => (string?)b.Content == "No");
+            no.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
+            Ui.Settle();
+            Assert.True(window.Session.RunXaml.Changed);
+            Assert.Equal(first, app.ProcessId);
+            Assert.DoesNotContain(Read(app), e => e.Text == "Added control");
+            window.ApplySettings(window.Settings with { RestartOnRudeEdit = true });
+            Ui.Run(window, AppActions.ApplyHotReloadChanges);
+            Ui.WaitFor(() => window.Session.RunApp is { State: LiveAppState.Connected } replacement && replacement != app,
+                "the restart to build and run the structural XAML edit", TimeSpan.FromMinutes(2));
+            Assert.NotEqual(first, window.Session.RunApp!.ProcessId);
+            Assert.Equal(LiveAppState.Ended, app.State);
+            Assert.Contains(Read(window.Session.RunApp), e => e.Text == "Added control");
+            Assert.False(window.Session.RunXaml.Changed);
+            Assert.Contains(window.BottomPanel.Problems.HotReloadProblems!, p => p.Message.Contains("elements", StringComparison.Ordinal));
+        }
+        finally
+        {
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => !window.IsRunning && window.Session.RunApp?.State == LiveAppState.Ended, "the watched app to end");
+            window.Close();
+        }
+    }
+
+    [AvaloniaTheory]
+    [InlineData("later save")]
+    [InlineData("saved revert")]
+    [InlineData("unsaved revert")]
+    public void A_save_during_a_real_xaml_update_applies_the_latest_saved_text_and_keeps_newer_unsaved_edits(string kind)
+    {
+        MainWindow window = new() { Width = 1400, Height = 900 };
+        window.Show();
+        window.OpenFolder(folder);
+        Ui.Settle();
+        window.ApplySettings(window.Settings with { HotReload = true });
+        try
+        {
+            Assert.Null(Ui.Await(window.RunAsync(), "the watched app to start", TimeSpan.FromMinutes(3)));
+            Ui.WaitFor(() => window.Session.RunApp?.State == LiveAppState.Connected && RunOutput(window).Contains("Waiting for changes", StringComparison.Ordinal), "the watched app and its file watchers");
+            LiveApp app = window.Session.RunApp!;
+            int? process = app.ProcessId;
+            long caption = Read(app).Single(e => e.Text == "Before").Id;
+            Assert.Null(window.OpenFile(Path.Combine(folder, "MainWindow.axaml")));
+            Typing.Replace(window, "Text=\"Before\"", "Text=\"First saved\"");
+            Typing.Replace(window, "Value=\"1\"", "Value=\"3\"");
+            Assert.True(window.Perform(AppActions.Save));
+            // Pump the real window without waiting for all background work: the deliberately slow converter holds the
+            // inspector's UI-thread reply while the person edits and saves in Passenger's separate UI process.
+            DateTime until = DateTime.UtcNow.AddSeconds(10);
+            while (!RunOutput(window).Contains("Slow conversion", StringComparison.Ordinal) && DateTime.UtcNow < until)
+            {
+                Screenshot.Pump(TimeSpan.FromMilliseconds(20));
+            }
+            Assert.Contains("Slow conversion", RunOutput(window), StringComparison.Ordinal);
+            Assert.Null(window.Session.RunXaml.LastApplied);
+            string expectedLive = kind == "saved revert" ? "Before" : kind == "unsaved revert" ? "First saved" : "Second saved";
+            string expectedEditor = kind == "unsaved revert" ? "Before" : "Newer unsaved";
+            ReplaceDuringApply("First saved", kind == "later save" ? "Second saved" : "Before");
+            if (kind != "later save")
+            {
+                ReplaceDuringApply("Value=\"3\"", "Value=\"1\"");
+            }
+            if (kind != "unsaved revert")
+            {
+                Assert.True(window.Perform(AppActions.Save));
+                ReplaceDuringApply(expectedLive, expectedEditor);
+            }
+            Ui.WaitFor(() => window.Session.RunXaml.LastApplied is { Result: HotReloadResult.Applied }
+                && Read(app).Any(e => e.Id == caption && e.Text == expectedLive), "the latest saved update to follow the held first reply");
+            Assert.Equal(process, app.ProcessId);
+            Assert.True(window.Session.RunXaml.Changed);
+            Assert.Contains("Text=\"" + expectedEditor + "\"", window.EditorArea.Active!.Text.Snapshot.ToString(), StringComparison.Ordinal);
+            Assert.Contains("Text=\"" + expectedLive + "\"", File.ReadAllText(Path.Combine(folder, "MainWindow.axaml")), StringComparison.Ordinal);
+            Ui.Run(window, AppActions.ApplyHotReloadChanges);
+            Ui.WaitFor(() => !window.Session.RunXaml.Changed && Read(app).Any(e => e.Id == caption && e.Text == expectedEditor), "the later manual Apply to save and apply the remaining edit");
+
+            void ReplaceDuringApply(string before, string after)
+            {
+                Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
+                int at = editor.Document.Snapshot.ToString().IndexOf(before, StringComparison.Ordinal);
+                Assert.True(at >= 0);
+                editor.Focus();
+                editor.Select(new TextRange(at, before.Length));
+                window.KeyTextInput(after);
+            }
+        }
+        finally
+        {
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => !window.IsRunning && window.Session.RunApp?.State == LiveAppState.Ended, "the watched app to end");
             window.Close();
         }
     }

@@ -186,10 +186,16 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
         End(window);
     }
 
-    [AvaloniaFact]
-    public void Wpf_run_under_watch_preserves_the_managed_agent_inspects_xaml_and_reconnects_after_a_rebuild()
+    [AvaloniaTheory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
+    public void Wpf_run_under_watch_preserves_the_managed_agent_inspects_xaml_and_reconnects_after_a_rebuild(string theme)
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "WPF runs on Windows alone");
+        if (theme == "Dark")
+        {
+            File.WriteAllText(Path.Combine(folder, "MainWindow.xaml"), View.Replace("Background=\"WhiteSmoke\" Foreground=\"Black\"", "Background=\"#222222\" Foreground=\"White\"", StringComparison.Ordinal));
+        }
         // A project that switched UI frameworks can leave the former framework's output beside its target assembly.
         string stale = Directory.CreateDirectory(Path.Combine(folder, "bin", "Debug", AvaloniaApp.Metadata("TargetFramework") + "-windows")).FullName;
         File.WriteAllText(Path.Combine(stale, "Avalonia.Base.dll"), "stale former build output");
@@ -221,16 +227,36 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
             Ui.Await(app.InputAsync(new InputAction(InputKinds.Click) { Element = button }), "the watched WPF app's updated handler");
             Ui.WaitFor(() => RunOutput(window).Contains("Watched Name=Original state; Count=1; Named=True", StringComparison.Ordinal), "the WPF C# update to run without restart");
             Assert.Equal(first, app.ProcessId);
-            XamlUpdateResult applied = Ui.Await(app.ApplyXamlAsync(new XamlUpdate([new XamlSourceUpdate(Path.Combine(folder, "MainWindow.xaml"), View,
-                View.Replace("Text=\"Before\"", "Text=\"Watched XAML\"", StringComparison.Ordinal))])), "the watched WPF app's XAML property update");
-            Assert.True(applied.Applied, string.Join("; ", applied.Problems.Select(p => p.Message)));
-            Assert.Contains(Read(app), e => e.Text == "Watched XAML");
+            long caption = Read(app).Single(e => e.Text == "Before").Id;
+            Capture(app, "watch-" + theme + "-before");
+            Assert.Null(window.OpenFile(Path.Combine(folder, "MainWindow.xaml")));
+            Typing.Replace(window, "Text=\"Before\"", "Text=\"Watched XAML\"");
+            Ui.Run(window, AppActions.Save);
+            Ui.WaitFor(() => window.Session.RunXaml.LastApplied?.Result == HotReloadResult.Applied, "the saved WPF XAML edit to apply without rebuilding");
+            Assert.Equal("Watched XAML", Read(app).Single(e => e.Id == caption).Text);
+            Assert.Equal(first, app.ProcessId);
+            HotReloadOutcome saved = window.Session.RunXaml.LastApplied!;
+            Typing.Replace(window, "Text=\"Watched XAML\"", "Text=\"Applied XAML\"");
+            Ui.Run(window, AppActions.ApplyHotReloadChanges);
+            Ui.WaitFor(() => window.Session.RunXaml.LastApplied is { Result: HotReloadResult.Applied } next && next != saved, "Apply Changes to update the watched WPF controls");
+            Assert.Equal("Applied XAML", Read(app).Single(e => e.Id == caption).Text);
+            Assert.Equal(first, app.ProcessId);
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Click) { Element = button }), "the retained WPF handler after XAML updates");
+            Ui.WaitFor(() => RunOutput(window).Contains("Watched Name=Original state; Count=2; Named=True", StringComparison.Ordinal), "the original WPF namescope, state and handler");
+            Capture(app, "watch-" + theme + "-after");
             Assert.Null(window.OpenFile(Path.Combine(folder, "WpfTreeApp.csproj")));
             Typing.Replace(window, "<Nullable>enable</Nullable>", "<Nullable>enable</Nullable><DefineConstants>WATCH_RESTART</DefineConstants>");
             Ui.Run(window, AppActions.Save);
             Ui.WaitFor(() => app.State == LiveAppState.Connected && app.ProcessId != first, "the replacement WPF target's inspector", TimeSpan.FromMinutes(2));
             Assert.Same(app, window.Session.RunApp);
-            Assert.Contains(Read(app), e => e.Text == "Before");
+            Assert.Contains(Read(app), e => e.Text == "Applied XAML");
+            HotReloadOutcome beforeReconnectEdit = window.Session.RunXaml.LastApplied!;
+            Assert.Null(window.OpenFile(Path.Combine(folder, "MainWindow.xaml")));
+            Typing.Replace(window, "Applied XAML", "After reconnect");
+            Ui.Run(window, AppActions.Save);
+            Ui.WaitFor(() => window.Session.RunXaml.LastApplied is { Result: HotReloadResult.Applied } applied && applied != beforeReconnectEdit,
+                "WPF XAML edits to use the replacement process's source anchors");
+            Assert.Contains(Read(app), e => e.Text == "After reconnect");
         }
         finally
         {
