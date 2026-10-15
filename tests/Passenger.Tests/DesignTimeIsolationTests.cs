@@ -14,6 +14,57 @@ namespace Passenger.Tests;
 public sealed class DesignTimeIsolationTests(ITestOutputHelper output)
 {
     [AvaloniaFact]
+    public void A_default_SDK_project_keeps_its_real_built_assembly_as_the_cached_Edit_and_Continue_baseline()
+    {
+        string folder = TestFolders.Create("default intermediates-");
+        string settings = TestFolders.Create("default-intermediates-state-");
+        string framework = AvaloniaApp.Metadata("TargetFramework");
+        TestFolders.Prepare(() =>
+        {
+            File.WriteAllText(Path.Combine(folder, "Plain.csproj"), $$"""
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>{{framework}}</TargetFramework></PropertyGroup>
+                </Project>
+                """);
+            File.WriteAllText(Path.Combine(folder, "Program.cs"), "System.Console.WriteLine(\"baseline\");");
+            AvaloniaApp.UseFeed(folder);
+            Restore.Run(Path.Combine(folder, "Plain.csproj"));
+        }, folder);
+        MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings };
+        try
+        {
+            window.Show();
+            window.KeepLayout();
+            window.OpenFolder(folder);
+            window.OpenFile(Path.Combine(folder, "Program.cs"));
+            Ui.WaitFor(() => window.CSharpService?.IsReady == true, "the default SDK project to load", TimeSpan.FromMinutes(2));
+            Ui.Run(window, AppActions.Build);
+            Ui.WaitFor(() => !window.IsBuilding, "the default SDK project to build");
+            Assert.Contains("Build succeeded", window.BottomPanel.Build.Document.Snapshot.ToString(), StringComparison.Ordinal);
+            window.Close();
+            Ui.Settle();
+            string cache = Directory.EnumerateFiles(settings, "projectBuilds.json", SearchOption.AllDirectories).Single();
+            using JsonDocument kept = JsonDocument.Parse(File.ReadAllText(cache));
+            JsonProperty project = Assert.Single(kept.RootElement.GetProperty("projects").EnumerateObject());
+            using BrotliStream compressed = new(new MemoryStream(Convert.FromBase64String(project.Value.GetProperty("builds").GetString()!)), CompressionMode.Decompress);
+            using StreamReader reader = new(compressed, Encoding.UTF8);
+            using JsonDocument infos = JsonDocument.Parse(reader.ReadToEnd());
+            JsonElement info = Assert.Single(infos.RootElement.EnumerateArray());
+            string assembly = info.GetProperty("intermediateOutputFilePath").GetString()!;
+            output.WriteLine($"Roslyn's baseline assembly: {assembly}");
+            Assert.Equal(PathNames.Canonical(Path.Combine(folder, "obj", "Debug", framework, "Plain.dll")), assembly);
+            Assert.True(File.Exists(assembly), $"Roslyn's baseline assembly does not exist: {assembly}");
+            string commandOutput = Assert.Single(info.GetProperty("commandLineArgs").EnumerateArray(),
+                argument => argument.GetString()!.StartsWith("/out:", StringComparison.OrdinalIgnoreCase)).GetString()!;
+            Assert.Equal(assembly, commandOutput[5..].Trim('"'));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
     public void A_symlinked_state_folder_keeps_generated_WPF_fields_navigating_to_their_XAML_after_reopening()
     {
         if (OperatingSystem.IsWindows())
