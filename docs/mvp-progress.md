@@ -191,6 +191,24 @@ Retaining the whole failed class understates its added coverage; the XAML and Ho
 explicit. Generated filters were checked through actual discovery against the exact `8f5534f` binaries, with every
 test in exactly one shard per system. The next native run must establish the actual durations and whole-CI target.
 
+The manual-only `.github/workflows/arm-validation.yml` prepares native Windows ARM64 and Ubuntu ARM64 acceptance on
+GitHub's [documented hosted runners](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
+Its default smoke selection drives existing build/run, design-time baseline, launch/step, CPU profiling, managed Hot
+Reload, real terminal lifecycle and MCP debugger tests. Every requested case prefix must still appear in discovery.
+The optional full selection runs the existing whole suite unchanged, with a finite 90-minute test step/120-minute
+job and the existing ten-minute blame timeout; it changes no regular CI budget. Both modes attempt native packaging,
+per-user installation, a scale-two off-screen frame and debugging through the installed copy, then check uninstallation
+keeps the person's state. Smoke failure does not suppress independent package/install checks.
+
+ARM preflight records the actual OS/process and .NET host architectures, validates Windows apphost/native-library PE
+headers or Linux packaging's existing exhaustive ELF check, and evaluates the paused debuggee's process architecture
+through MCP against the test host. Results, engine logs and timing tables stay under `ArmResults/<rid>` in ARM-named
+artifacts, with no ordinary shard metadata or x64 timing update. Cached ARM64 dbgshim images and Linux's ARM64 PTY
+library are present; data breakpoints remain an explicit Windows x64 runtime capability. Local x64 validation checks
+the workflow/PowerShell syntax, all eight required smoke prefixes (nine discovered tests), PE positive/x64-negative
+controls, native-host rejection on x64 and the real MCP architecture assertion (one pass). Native ARM execution and
+interactive desktop acceptance remain unverified until the manual jobs run; these preparation checks do not establish them.
+
 The following is the historical `8048b8e` estimate, before the collection-aware timing refresh; it is retained as the
 evidence for choosing three macOS shards, not a current runtime estimate:
 

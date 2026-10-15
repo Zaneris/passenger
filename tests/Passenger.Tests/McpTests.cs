@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -95,6 +97,9 @@ public sealed partial class McpTests : IClassFixture<RestoredFolders>, IClassFix
         Assert.Equal("1", Local(stop, "i"));
         Assert.Equal("0", Local(stop, "total"));
         Assert.Equal("42", (await Call(client, "debug_evaluate", new() { ["expression"] = "Helper.Twice(i) + 40" })).GetProperty("value").GetString());
+        string architecture = (await Call(client, "debug_evaluate", new() { ["expression"] = "(int)System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture" })).GetProperty("value").GetString()!;
+        Assert.Equal(((int)RuntimeInformation.ProcessArchitecture).ToString(CultureInfo.InvariantCulture), architecture);
+        TestContext.Current.TestOutputHelper?.WriteLine($"Native architecture: test host {RuntimeInformation.ProcessArchitecture}, debuggee {(Architecture)int.Parse(architecture, CultureInfo.InvariantCulture)}");
 
         stop = await Call(client, "debug_continue");
         Assert.Equal("2", Local(stop, "i"));

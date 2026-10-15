@@ -1,0 +1,295 @@
+# Native ARM acceptance is manual and independent of the x64/arm64-macOS timed shard matrix and releases.
+name: ARM validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: Smoke first; full runs the existing whole suite without changing its tests
+        type: choice
+        options: [smoke, full]
+        default: smoke
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  AVALONIA_TELEMETRY_OPTOUT: 1
+
+jobs:
+  native:
+    name: ${{ matrix.rid }} (${{ inputs.scope }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-11-arm
+            rid: win-arm64
+            python: python
+          - os: ubuntu-24.04-arm
+            rid: linux-arm64
+            python: python3
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: ${{ inputs.scope == 'full' && 120 || 45 }}
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      RID: ${{ matrix.rid }}
+      SCOPE: ${{ inputs.scope }}
+      PYTHON: ${{ matrix.python }}
+      ARM_RESULTS: ArmResults/${{ matrix.rid }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+          dotnet-version: 10.0.x
+
+      - name: Record and require native ARM64
+        run: |
+          New-Item -ItemType Directory -Force $env:ARM_RESULTS | Out-Null
+          '<RunSettings><RunConfiguration><TargetPlatform>ARM64</TargetPlatform></RunConfiguration></RunSettings>' |
+            Set-Content "$env:ARM_RESULTS/native.runsettings"
+          $runtime = [Runtime.InteropServices.RuntimeInformation]
+          $info = dotnet --info
+          $info | Tee-Object "$env:ARM_RESULTS/dotnet-info.txt"
+          if ($LASTEXITCODE -ne 0) { throw 'dotnet --info failed' }
+          if ($runtime::OSArchitecture -ne 'Arm64' -or $runtime::ProcessArchitecture -ne 'Arm64') {
+            throw "Expected a native ARM64 host; OS=$($runtime::OSArchitecture), process=$($runtime::ProcessArchitecture)"
+          }
+          if (($info -join "`n") -notmatch '(?m)^\s*Architecture:\s+arm64\s*$' -or
+              ($info -join "`n") -notmatch "(?m)^\s*RID:\s+$env:RID\s*$") {
+            throw "dotnet is not the native $env:RID host"
+          }
+          [ordered]@{ commit=(git rev-parse HEAD); rid=$env:RID; scope=$env:SCOPE;
+            osArchitecture="$($runtime::OSArchitecture)"; processArchitecture="$($runtime::ProcessArchitecture)";
+            runnerOS=$env:RUNNER_OS; runnerArch=$env:RUNNER_ARCH } |
+            ConvertTo-Json | Set-Content "$env:ARM_RESULTS/platform.json"
+
+      - name: Linux desktop libraries and install checks
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends file git libx11-6 libice6 libsm6 libfontconfig1 \
+            desktop-file-utils shared-mime-info
+
+      - name: Restore locked packages
+        run: |
+          dotnet restore --locked-mode
+          exit $LASTEXITCODE
+
+      - name: Build
+        id: build
+        run: |
+          dotnet build --no-restore
+          exit $LASTEXITCODE
+
+      - name: Native tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: ${{ inputs.scope == 'full' && 90 || 15 }}
+        env:
+          PASSENGER_ENGINE_LOG: ${{ github.workspace }}/ArmResults/${{ matrix.rid }}/engine-tests.log
+        run: |
+          $arguments = @()
+          if ($env:SCOPE -eq 'smoke') {
+            $cases = @(
+              'BuildRunTests.Running_the_project_shows_its_output_in_the_run_window',
+              'DesignTimeIsolationTests.A_default_SDK_project_keeps_its_real_built_assembly_as_the_cached_Edit_and_Continue_baseline',
+              'Debugging.LaunchTests.StopAtEntry_StopsInMainWithEntryReason',
+              'Debugging.StepTests.SharpDbgCli_StepRequests_Returns_StoppedEventsAtCorrectLocation',
+              'ProfilerTests.Profile_builds_and_runs_the_configuration_and_its_end_shows_the_snapshot',
+              'HotReloadTests.An_edit_made_while_paused_is_applied_and_the_program_goes_on_running_it',
+              'TerminalLifecycleTests.',
+              'McpTests.An_agent_with_a_windowless_Passenger_finds_code_reads_its_warnings_and_debugs_it'
+            )
+            $arguments = @('--filter', (($cases | ForEach-Object { "FullyQualifiedName~Passenger.Tests.$_" }) -join '|'))
+          }
+          dotnet test tests/Passenger.Tests --no-build @arguments --settings "$env:ARM_RESULTS/native.runsettings" --list-tests |
+            Set-Content "$env:ARM_RESULTS/selected.txt"
+          if ($LASTEXITCODE -ne 0) { throw 'Native test discovery failed' }
+          if ($env:SCOPE -eq 'smoke') {
+            $selected = Get-Content "$env:ARM_RESULTS/selected.txt"
+            foreach ($case in $cases) {
+              if (-not ($selected | Where-Object { $_.StartsWith("    Passenger.Tests.$case", [StringComparison]::Ordinal) })) {
+                throw "The smoke suite no longer discovers $case; update its required coverage"
+              }
+            }
+          }
+          dotnet test tests/Passenger.Tests --no-build @arguments --settings "$env:ARM_RESULTS/native.runsettings" `
+            --results-directory "$env:ARM_RESULTS/tests" --logger trx --logger 'console;verbosity=normal' `
+            --blame-hang-timeout 10m --blame-hang-dump-type none 2>&1 | Tee-Object "$env:ARM_RESULTS/tests.log"
+          $tested = $LASTEXITCODE
+          $results = @(Get-ChildItem "$env:ARM_RESULTS/tests" -Filter *.trx | ForEach-Object {
+            ([xml](Get-Content -Raw $_.FullName)).TestRun.Results.UnitTestResult
+          })
+          if ($results.Count -eq 0) { throw 'Native test run reported no results' }
+          @('The following Tests are available:') + @($results | ForEach-Object { "    $($_.testName)" }) |
+            Set-Content "$env:ARM_RESULTS/reported.txt"
+          & $env:PYTHON -I tools/test-shards.py check "$env:ARM_RESULTS/selected.txt" "$env:ARM_RESULTS/reported.txt"
+          $coverage = $LASTEXITCODE
+          & $env:PYTHON -I tools/test-times.py "$env:ARM_RESULTS/tests" --label "$env:RID $env:SCOPE (unsharded native ARM)"
+          if ($tested -ne 0) { exit $tested }
+          exit $coverage
+
+      - name: Build the native installer or archive
+        id: package
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        shell: bash
+        run: |
+          case "$RID" in
+            win-arm64) tools/package-win.sh "$RID" ;;
+            linux-arm64) tools/package-linux.sh "$RID" ;;
+          esac
+
+      - name: Verify shipped native ARM64 images
+        id: native-images
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        run: |
+          $app = "artifacts/package/$env:RID/publish"
+          if ($IsWindows) {
+            tools/check-arm64-pe.ps1 -Paths @("$app/Passenger.exe", "$app/debugger/dbgshim.dll", "$app/libSkiaSharp.dll", "$app/libHarfBuzzSharp.dll") |
+              Tee-Object "$env:ARM_RESULTS/native-images.txt"
+          } else {
+            # package-linux.sh has checked every shipped ELF image, not just the apphost.
+            Get-Content "artifacts/package/$env:RID/elf" | Tee-Object "$env:ARM_RESULTS/native-images.txt"
+          }
+
+      - name: Install Windows for one person
+        id: windows-install
+        if: ${{ !cancelled() && runner.os == 'Windows' && steps.native-images.outcome == 'success' }}
+        run: |
+          $state = Join-Path $env:LOCALAPPDATA Passenger
+          New-Item -ItemType Directory -Force $state | Out-Null
+          Set-Content (Join-Path $state kept-by-uninstall.txt) 'a person''s state'
+          $setup = Start-Process -FilePath artifacts/package/Passenger-windows-arm64.exe -ArgumentList '--silent' -WindowStyle Hidden -Wait -PassThru
+          if ($setup.ExitCode -ne 0) { throw "Setup exited $($setup.ExitCode)" }
+          $root = Join-Path $env:LOCALAPPDATA PassengerIDE
+          $exe = Join-Path $root current/Passenger.exe
+          foreach ($path in $exe, (Join-Path $root Update.exe), (Join-Path $root current/roslyn),
+              (Join-Path $root current/roslyn-extension), (Join-Path $root current/debugger),
+              (Join-Path ([Environment]::GetFolderPath('Programs')) Passenger.lnk)) {
+            if (-not (Test-Path -LiteralPath $path)) { throw "The install has no $path" }
+          }
+          $entry = Get-ItemProperty HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\PassengerIDE
+          if ($entry.DisplayName -ne 'Passenger') { throw 'The install is not listed as Passenger' }
+          foreach ($extension in '.sln', '.slnx', '.csproj') {
+            if ((Get-Item "HKCU:\Software\Classes\Passenger$extension\shell\open\command").GetValue('') -ne "`"$exe`" `"%1`"") {
+              throw "$extension does not open with the installed Passenger"
+            }
+            if ((Get-Item "HKCU:\Software\Classes\$extension\OpenWithProgids").GetValueNames() -notcontains "Passenger$extension") {
+              throw "$extension does not offer Passenger among the programs that open it"
+            }
+          }
+          tools/check-arm64-pe.ps1 -Paths $exe
+          "PASSENGER_EXECUTABLE=$exe" >> $env:GITHUB_ENV
+
+      - name: Install Linux for one person
+        id: linux-install
+        if: ${{ !cancelled() && runner.os == 'Linux' && steps.native-images.outcome == 'success' }}
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.local/share/Passenger" "$RUNNER_TEMP/arm-download"
+          echo "a person's state" > "$HOME/.local/share/Passenger/kept-by-uninstall.txt"
+          tar -C "$RUNNER_TEMP/arm-download" -xzf artifacts/package/Passenger-linux-arm64.tar.gz
+          "$RUNNER_TEMP/arm-download/passenger/install.sh"
+          opt=$HOME/.local/opt/passenger
+          for path in "$opt/passenger" "$opt/app/Passenger" "$opt/app/roslyn" "$opt/app/roslyn-extension" "$opt/app/debugger" \
+            "$HOME/.local/share/icons/hicolor/256x256/apps/io.github.zaneris.passenger.png" \
+            "$HOME/.local/share/icons/hicolor/scalable/apps/io.github.zaneris.passenger.svg"; do
+            [ -e "$path" ] || { echo "::error::The install has no $path"; exit 1; }
+          done
+          [ "$(readlink -f "$HOME/.local/bin/passenger")" = "$opt/passenger" ]
+          desktop-file-validate "$HOME/.local/share/applications/io.github.zaneris.passenger.desktop"
+          grep -qx "Exec=\"$opt/passenger\" %f" "$HOME/.local/share/applications/io.github.zaneris.passenger.desktop"
+          for type in sln slnx csproj; do
+            grep -qx "[0-9]*:application/x-ms-$type:\*\.$type" "$HOME/.local/share/mime/globs2"
+            grep -q "^application/x-ms-$type=.*io\.github\.zaneris\.passenger\.desktop" "$HOME/.local/share/applications/mimeinfo.cache"
+          done
+          echo "PASSENGER_EXECUTABLE=$HOME/.local/bin/passenger" >> "$GITHUB_ENV"
+
+      - name: Draw the installed native Passenger off-screen
+        if: ${{ !cancelled() && (steps.windows-install.outcome == 'success' || steps.linux-install.outcome == 'success') }}
+        run: |
+          $env:PASSENGER_SETTINGS = Join-Path $env:RUNNER_TEMP "arm-screenshot-$env:RID"
+          $picture = Join-Path (Get-Location) "$env:ARM_RESULTS/installed.png"
+          if ($IsWindows) {
+            $capture = Start-Process -FilePath $env:PASSENGER_EXECUTABLE -ArgumentList '--screenshot', "`"$picture`"", '--size', '1000x700', '--scale', '2' -WindowStyle Hidden -Wait -PassThru
+            if ($capture.ExitCode -ne 0) { throw "Installed screenshot exited $($capture.ExitCode)" }
+          } else {
+            & $env:PASSENGER_EXECUTABLE --screenshot $picture --size 1000x700 --scale 2
+            if ($LASTEXITCODE -ne 0) { throw 'Installed screenshot failed' }
+          }
+          if (-not (Test-Path $picture) -or (Get-Item $picture).Length -eq 0) { throw 'The installed app drew no frame' }
+
+      - name: An agent debugs through the native installed Passenger
+        if: ${{ !cancelled() && (steps.windows-install.outcome == 'success' || steps.linux-install.outcome == 'success') }}
+        timeout-minutes: 10
+        env:
+          PASSENGER_ENGINE_LOG: ${{ github.workspace }}/ArmResults/${{ matrix.rid }}/engine-installed.log
+        run: |
+          dotnet test tests/Passenger.Tests --no-build --settings "$env:ARM_RESULTS/native.runsettings" `
+            --filter 'FullyQualifiedName~McpTests.An_agent_with_a_windowless_Passenger_finds_code_reads_its_warnings_and_debugs_it' `
+            --results-directory "$env:ARM_RESULTS/installed" --logger trx --logger 'console;verbosity=normal' `
+            --blame-hang-timeout 10m --blame-hang-dump-type none
+          exit $LASTEXITCODE
+
+      - name: Uninstall Windows and keep the person's state
+        if: ${{ !cancelled() && runner.os == 'Windows' && steps.native-images.outcome == 'success' }}
+        run: |
+          $root = Join-Path $env:LOCALAPPDATA PassengerIDE
+          $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\PassengerIDE'
+          if (-not (Test-Path (Join-Path $root Update.exe))) { throw 'No installed uninstaller was available' }
+          if ((Get-ItemProperty $key).QuietUninstallString -ne "`"$root\Update.exe`" --uninstall --silent") {
+            throw 'Settings > Apps does not use the installed silent uninstaller'
+          }
+          $uninstall = Start-Process (Join-Path $root Update.exe) -ArgumentList '--uninstall', '--silent' -WindowStyle Hidden -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw "Uninstall exited $($uninstall.ExitCode)" }
+          for ($i = 0; $i -lt 60 -and (Test-Path $root); $i++) { Start-Sleep -Seconds 1 }
+          foreach ($path in $root, $key, (Join-Path ([Environment]::GetFolderPath('Programs')) Passenger.lnk)) {
+            if (Test-Path $path) { throw "The uninstall left $path" }
+          }
+          foreach ($extension in '.sln', '.slnx', '.csproj') {
+            if (Test-Path "HKCU:\Software\Classes\Passenger$extension") { throw "The uninstall left $extension registration" }
+            $openWith = Get-Item "HKCU:\Software\Classes\$extension\OpenWithProgids" -ErrorAction SilentlyContinue
+            if ($openWith -and $openWith.GetValueNames() -contains "Passenger$extension") { throw "The uninstall left the $extension Open With entry" }
+            $type = Get-Item "HKCU:\Software\Classes\$extension" -ErrorAction SilentlyContinue
+            if ($type -and $type.GetValue('') -eq "Passenger$extension") { throw "The uninstall left Passenger as the $extension default" }
+          }
+          if (-not (Test-Path (Join-Path $env:LOCALAPPDATA Passenger/kept-by-uninstall.txt))) { throw 'Uninstall removed the person''s state' }
+
+      - name: Uninstall Linux and keep the person's state
+        if: ${{ !cancelled() && runner.os == 'Linux' && steps.native-images.outcome == 'success' }}
+        shell: bash
+        run: |
+          "$HOME/.local/opt/passenger/install.sh" --uninstall
+          for path in "$HOME/.local/opt/passenger" "$HOME/.local/bin/passenger" \
+            "$HOME/.local/share/applications/io.github.zaneris.passenger.desktop" \
+            "$HOME/.local/share/icons/hicolor/256x256/apps/io.github.zaneris.passenger.png" \
+            "$HOME/.local/share/icons/hicolor/scalable/apps/io.github.zaneris.passenger.svg" \
+            "$HOME/.local/share/mime/packages/io.github.zaneris.passenger.xml"; do
+            [ ! -e "$path" ] && [ ! -L "$path" ] || { echo "::error::The uninstall left $path"; exit 1; }
+          done
+          [ -f "$HOME/.local/share/Passenger/kept-by-uninstall.txt" ]
+
+      # No shard.json: ARM observations must never be consumed as the ordinary Windows/Linux x64 timing weights.
+      - name: Upload native ARM evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: arm-validation-${{ matrix.rid }}-${{ inputs.scope }}
+          path: |
+            ArmResults/
+            artifacts/package/Passenger-windows-arm64.exe
+            artifacts/package/Passenger-linux-arm64.tar.gz
+            artifacts/package/linux-arm64/check/passenger/*.png
+            artifacts/package/linux-arm64/welcome.png
+          compression-level: 0
+          retention-days: 7
