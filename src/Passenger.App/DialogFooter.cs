@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Layout;
 
 namespace Passenger.App;
 
@@ -14,6 +15,18 @@ public static class DialogFooter
     /// together before Cancel on Windows and Linux, and after Cancel with the default last on macOS.</summary>
     public static StackPanel OfChoices(Button chosen, Button cancel, params Button[] choices)
         => Arrange([chosen, .. choices], cancel, []);
+
+    /// <summary>A footer's option at its left, on the same row as its buttons, as Rider puts Don't ask again.</summary>
+    public static Grid WithLeading(Control option, StackPanel buttons)
+    {
+        Grid row = new() { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 16 };
+        option.HorizontalAlignment = HorizontalAlignment.Left;
+        option.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(buttons, 1);
+        row.Children.Add(option);
+        row.Children.Add(buttons);
+        return row;
+    }
 
     private static StackPanel Arrange(Button[] choices, Button? cancel, Button[] more)
     {
