@@ -130,9 +130,9 @@ public sealed class RunConfigurationsDialog : Window
         };
         Border editorPane = new()
         {
+            Classes = { "dialogPage" },
             Child = new ScrollViewer { Content = new Panel { Margin = new Thickness(20, 16, 20, 16), Children = { form, nothing } } },
         };
-        editorPane.Bind(Border.BackgroundProperty, editorPane.GetResourceObservable("Passenger.Editor.Background"));
 
         DockPanel bottomBar = new();
         StackPanel buttons = DialogFooter.Of(OkButton, cancel, applyButton);
