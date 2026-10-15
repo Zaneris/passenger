@@ -40,8 +40,7 @@ public sealed class BookmarksView : DockPanel
                 e.Handled = true;
             }
         };
-        placeholder = new TextBlock { Text = "Toggle Bookmark marks the caret's line", HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-        placeholder.Bind(TextBlock.ForegroundProperty, placeholder.GetResourceObservable("Passenger.TextMuted"));
+        placeholder = new TextBlock { Classes = { "emptyHint" }, Text = "Toggle Bookmark marks the caret's line" };
         Children.Add(new Panel { Children = { list, placeholder } });
         store.Changed += OnChanged;
         ListMenus.Attach(list, () => list.SelectedItem is not Bookmark chosen ? [] :

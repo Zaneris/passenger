@@ -72,8 +72,7 @@ public sealed class HierarchyView : DockPanel
         };
         list.DoubleTapped += (_, _) => Go();
         list.KeyDown += OnKey;
-        placeholder = new TextBlock { Text = "Call Hierarchy and Type Hierarchy show the symbol at the caret here", HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-        placeholder.Bind(TextBlock.ForegroundProperty, placeholder.GetResourceObservable("Passenger.TextMuted"));
+        placeholder = new TextBlock { Classes = { "emptyHint" }, Text = "Call Hierarchy and Type Hierarchy show the symbol at the caret here" };
         Children.Add(new Panel { Children = { list, placeholder } });
         first.IsVisible = second.IsVisible = false;
     }

@@ -107,6 +107,15 @@
         <Setter Property="TextWrapping" Value="Wrap" />
         <Setter Property="TextAlignment" Value="Center" />
     </Style>
+    <Style Selector="TextBlock.emptyHint">
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Margin" Value="12" />
+        <Setter Property="MaxWidth" Value="560" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="TextAlignment" Value="Center" />
+        <Setter Property="Foreground" Value="{DynamicResource Passenger.TextMuted}" />
+    </Style>
 
     <!-- A new dialog inherits the chrome; page wrappers share it instead of introducing an editor-coloured island. -->
     <Style Selector="Window">

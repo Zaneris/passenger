@@ -188,10 +188,8 @@ public sealed class ProfilerView : DockPanel
         placeholder = new TextBlock
         {
             Text = "Profile runs the chosen configuration under the profiler; Get Snapshot shows where its time went",
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
+            Classes = { "emptyHint" },
         };
-        placeholder.Bind(TextBlock.ForegroundProperty, placeholder.GetResourceObservable("Passenger.TextMuted"));
 
         status = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0) };
         stop = new Button { Content = "Get Snapshot", Classes = { "primary" }, IsVisible = false };

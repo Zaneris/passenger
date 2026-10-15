@@ -21,10 +21,8 @@ public sealed class LocalHistoryView : DockPanel
         empty = new TextBlock
         {
             Text = "Show History on a file or folder lists its versions here",
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
+            Classes = { "emptyHint" },
         };
-        empty.Bind(TextBlock.ForegroundProperty, empty.GetResourceObservable("Passenger.TextMuted"));
         body.Content = empty;
         Children.Add(body);
     }

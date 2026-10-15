@@ -113,9 +113,7 @@ public sealed class DebugView : DockPanel
         placeholder = new TextBlock
         {
             Text = "Not debugging. Debug starts with Alt+F5.",
-            Classes = { "muted" },
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
+            Classes = { "emptyHint" },
         };
         debugger = new Panel { Children = { split, placeholder } };
 

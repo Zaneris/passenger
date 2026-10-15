@@ -112,8 +112,7 @@ public sealed class GitLogView : DockPanel
             Padding = new Thickness(10, 8),
             FontSize = 12,
         };
-        placeholder = new TextBlock { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-        placeholder.Bind(TextBlock.ForegroundProperty, placeholder.GetResourceObservable("Passenger.TextMuted"));
+        placeholder = new TextBlock { Classes = { "emptyHint" } };
 
         filter = new TextBox { Classes = { "search" }, PlaceholderText = "Text or hash", Width = 240, Margin = new Thickness(8, 0) };
         filter.TextChanged += (_, _) => Filter();
