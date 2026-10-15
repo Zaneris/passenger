@@ -331,7 +331,9 @@ public sealed record ProjectBuildCache : IStateDocument<ProjectBuildCache>
 
     public Dictionary<string, KeptBuild> Projects { get; init; } = [];
 
-    public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, ForgetWindowsTargeting, ForgetSharedIntermediates, ForgetIsolatedAssemblyIdentity, ForgetAliasedGeneratedPaths];
+    public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, ForgetWindowsTargeting, ForgetSharedIntermediates, ForgetIsolatedAssemblyIdentity, ForgetAliasedGeneratedPaths, ForgetUnnormalizedAssemblyPaths];
+
+    private static void ForgetUnnormalizedAssemblyPaths(JsonObject document) => document.Remove("projects");
 
     private static void ForgetAliasedGeneratedPaths(JsonObject document) => document.Remove("projects");
 

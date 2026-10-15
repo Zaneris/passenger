@@ -122,7 +122,7 @@ internal static class DesignTimeBuilds
             HashSet<string> assets = new(PathComparer);
             foreach (Project project in each)
             {
-                string? intermediateAssembly = project.GetItems("IntermediateAssembly").FirstOrDefault()?.EvaluatedInclude;
+                string? intermediateAssembly = project.GetItems("IntermediateAssembly").FirstOrDefault()?.GetMetadataValue("FullPath");
                 Dictionary<string, string> isolated = new(project.GlobalProperties, StringComparer.OrdinalIgnoreCase);
                 string identity = JsonSerializer.Serialize(new
                 {
