@@ -323,7 +323,7 @@ public sealed class HotReload
             case "blocked":
                 bool compiles = !emitted.Problems.Any(p => p.Error && !p.RestartRequired);
                 return new HotReloadOutcome(compiles ? HotReloadResult.RestartNeeded : HotReloadResult.Errors,
-                    compiles ? $"Restart is needed to apply the changes: {Describe(problems.Where(p => p.Severity == ProblemSeverity.Error))}"
+                    compiles ? $"Restart is needed to apply the changes: {Describe(problems)}"
                         : $"Unable to apply changes due to compilation errors: {Describe(problems.Where(p => p.Severity == ProblemSeverity.Error))}")
                 {
                     Problems = problems,
