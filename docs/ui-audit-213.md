@@ -56,7 +56,7 @@ all text lengths, all pages, a populated form, keyboard focus or accessibility b
 | ExtractResourceDialog, ExtractStyleDialog | Not in this capture sweep | Add existing XAML refactoring flows to the shared rules/capture inventory. |
 | ChangesWindow, DiffWindow | Not in this capture sweep | Open actual revision/diff workflows at default/minimum widths. Diff is intentionally a full code surface. |
 | FrameViewer | Not in this capture sweep | Open a real captured test frame; inspect zoom controls, navigation and narrow layout. Its canvas intentionally uses editor background. |
-| FloatWindow / editor window | Prior docking/editor tests, not this sweep | Explicit floating/windowed tool and detached-editor inventory remains. |
+| FloatWindow / editor window | `16e843e`: five real tool consumers in 240px floating windows and docked 200px/bottom panes, both themes | Owner theme changes, close/unsubscribe/reopen and tab focus/state through reparenting checked; genuinely Light final floating frames inspected for all five. Detached-editor/windowed and full body inventory remains. |
 
 ## Popup/menu inventory
 
@@ -113,17 +113,48 @@ continuing source work, not a whole-profiler pass.
 an absent query checks long status text; values, caret and focus survive resize. New cases pass 2/2, and the
 combined Package Sources/new run passes seven with one expected Windows credential-provider skip in 15s. Build
 0 warnings/errors. All 14 `nuget-header-status/` scale-2 frames were inspected at 1200/683/640 and in a 200px side
-pane, both themes. The body toolbar fits there; the shared header's Sources tab and abrupt long feed-label clipping
-remain visible, actionable follow-ups.
+pane, both themes. The body toolbar fits there; the shared header's Sources tab was subsequently repaired by
+`16e843e`, and `1339d80` ellipsizes the selected feed with its existing complete tooltip.
+
+`16e843e` checks all five header-tool consumers (NuGet, Local History, Git, Terminal, Explorer) through repeated
+640/683/1200 resizing, 200px side placement, bottom placement and 240px floating windows. Fixed Options/Hide actions
+remain usable while tabs move to a second scrolling row. Real wheel/pointer/keyboard selection, active/inactive
+tab close, selected identity and focus through moving/floating are checked. The rounded keyboard ring cannot
+intercept the actual scrollbar thumb; pointer hit testing and dragging are asserted. Floating tools follow the
+owner's actual light/dark theme and remove the subscription when closed. The 72-case regression run passes 71,
+with one expected Windows credential-provider skip, zero failures in 2m39s; build 0 warnings/errors.
+`shared-header-final/` contains 32 scale-2 header frames; twelve were inspected, including all five Light floating
+tools, both focus rings and representative bottom/side frames. Sources/History/Git body overflow is separate.
+
+`fc974f5` follows a native Linux reproduction of the CI missing-shell diagnostic failure, retaining a failed tab
+without allocating a PTY for a missing explicit executable path. Clean exact committed Linux x64 source passes
+all 23 actual terminal lifecycle/input/tab cases in 46s. Windows reports 23 passes in 23s, including 13 old Unix-only
+bodies that return early there. All six two-theme Windows/Linux missing-path frames were inspected; native evidence
+is shipping `artifacts/2026-10-16/terminal-native/`, separate from the Windows `terminal-path-final/` capture folder.
+The valid relative script in a spaced folder still receives real keys and exits 2 once. macOS/ARM reruns remain.
+
+`4fff99c` follows the profiler findings with real completed CPU data and a real held-40-object heap snapshot.
+The shell worktree's `artifacts/profiler-populated/captures-final/` covers readable empty-Memory guidance and long
+Call Tree/Hot Spots/allocation/type rows at 1200/640 in both themes (683 also captured). Numeric alignment,
+virtualization, selected visibility on resize and reading offset after manual scrolling are checked. Profiler,
+Memory Snapshots and Tool Header cases pass 14/14 in 1m24s, zero skips; build 0 warnings/errors. Profiler busy/diff/frame
+states remain unexamined here.
+
+`1339d80` fits Problems' actual missing-baseline Hot Reload summary/group labels with ellipsis and full-value
+tooltips. The existing real debug/restart flow checks actual text and clipping ancestors across 1200/683/640/1200;
+the real local-feed test checks the selected feed. Four cases pass in 24s, and existing Problems/Package Sources
+pass seven with one expected Windows credential-provider skip in 22s. Build 0 errors/seven known fixture warnings.
+Eight `long-labels/` normal/narrow two-theme frames were inspected. Ordinary problem message/detail row clipping
+remains a concrete follow-up, separately from the repaired bold summary.
 
 | Tool surfaces | Current captured/tested state | Continuing source or capture work |
 | --- | --- | --- |
 | Hierarchy, Git, Unit Tests | Empty guidance fits its own 640px-window pane; both themes inspected. | Populated hierarchy/history/test views and responsive controls. |
-| Profiler | Responsive header, actual running program and all eight snapshot pages at 640/683/1200, both themes; pointer/keyboard tab access and resize state checked. | Empty Memory guidance, long populated rows and further Memory/Frames state inventory. |
+| Profiler | Responsive header plus actual CPU/heap data, long rows and empty-Memory guidance (`4fff99c`), normal/narrow both themes; pointer/keyboard tab access, resize and reading position checked. | Remaining busy/diff/frame states and further Memory/Frames inventory. |
 | Find, Structure, Bookmarks, Local History, Problems, Debug | Shared empty hint geometry at normal/narrow widths; both themes inspected across representative frames. Existing Problems/Local History workflows also pass. | Populated tool rows, long tab names, narrow action bars, keyboard focus and selection through resize. |
-| Terminal | Final real-shell normal/narrow frames both themes inspected; lifecycle and command input exercise real Windows processes. | Unix execution of the new cases, long/many-session tab overflow and complete focus inventory. |
+| Terminal | Real-shell normal/narrow frames both themes inspected; `fc974f5` executes all 23 terminal cases on native Linux x64, with actual PID/exit/teardown and both-theme missing-path diagnostics. Windows actual process/input evidence remains. | macOS/ARM reruns, long/many-session tab overflow and complete focus inventory. |
 | Explorer, Run, Build, Commit, Live Visual Tree | Captured at 1200/683 both themes in the 17-tool sweep. Earlier focused docking, console/editor scrollbar and empty-editor evidence remains. | Complete populated-state visual/input inventory; capture existence alone is not a pass. |
-| NuGet | Real local-feed search/refresh toolbar at 1200/683/640 and 200px side pane; both themes inspected, full count/trimmed status and saved input state checked. | Shared header's Sources tab and long feed-label clipping; Sources/populated package/error/detail states remain. |
+| NuGet | Real local-feed toolbar at 1200/683/640 and 200px side pane, both themes; shared header/tab focus and selected-feed ellipsis/full tooltip are checked (`16e843e`, `1339d80`). | Sources body/property labels, populated package/error/detail states remain. |
 | Profiler Memory/Frames subviews | Empty subviews captured during the actual sampling-snapshot sweep; stale Memory guidance identified. | Actual heap/frame snapshots, subtab overflow, empty/busy/result states, toolbars and viewport checks. |
 
 Shared tool-header/session overflow, popup/focus rules and populated forms remain the next source checkpoints. The capture
