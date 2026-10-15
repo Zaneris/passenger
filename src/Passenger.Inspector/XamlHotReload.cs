@@ -1,6 +1,9 @@
 using System.ComponentModel;
 using System.Globalization;
+using System.Reflection;
 using Avalonia;
+using Avalonia.Data;
+using Avalonia.Diagnostics;
 using Avalonia.LogicalTree;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -13,7 +16,7 @@ namespace Passenger.Inspector;
 internal sealed class XamlHotReload(Action<XamlUpdateResult> failed)
 {
     private sealed record Source(string Original, string Current);
-    private sealed record Change(AvaloniaObject Instance, AvaloniaProperty Property, object? Value, object? Before, XamlSourceUpdate Source, XamlPropertyUpdate Edit);
+    private sealed record Change(AvaloniaObject Instance, AvaloniaProperty Property, object? Value, object? Before, bool HadLocal, XamlSourceUpdate Source, XamlPropertyUpdate Edit);
     private readonly Dictionary<string, Source> sources = new(StringComparer.Ordinal);
     private readonly Dictionary<Type, XamlPopulation> populations = [];
     private readonly Dictionary<string, IReadOnlyList<XamlUpdateProblem>> failures = new(StringComparer.Ordinal);
@@ -251,6 +254,30 @@ internal sealed class XamlHotReload(Action<XamlUpdateResult> failed)
                 }
                 try
                 {
+                    bool local = false;
+                    if (edit.Added)
+                    {
+                        // GetBindingExpressionBase omits Avalonia's IObservable local bindings. Those observers live in
+                        // the value store's local table too; an unknown runtime table shape is refused, never guessed.
+                        bool? bound = HasLocalBinding(instance, property);
+                        if (bound is null)
+                        {
+                            problems.Add(Problem(source, edit, $"Adding {edit.Property} cannot verify the app's runtime binding state with this Avalonia version; restart to load the edit", true));
+                            continue;
+                        }
+                        if (property.IsDirect || bound != false || BindingOperations.GetBindingExpressionBase(instance, property) is not null || instance.IsAnimating(property))
+                        {
+                            problems.Add(Problem(source, edit, $"Adding {edit.Property} cannot replace an existing binding, animation or direct-property value safely; restart to load the edit", true));
+                            continue;
+                        }
+                        AvaloniaPropertyValue diagnostic = instance.GetDiagnostic(property);
+                        if (diagnostic.IsOverriddenCurrentValue)
+                        {
+                            problems.Add(Problem(source, edit, $"Adding {edit.Property} would replace a current value set by the app; restart to load the edit", true));
+                            continue;
+                        }
+                        local = diagnostic.Priority == BindingPriority.LocalValue;
+                    }
                     object? value = Convert(edit.Value, property.PropertyType);
                     if (!property.IsValidValue(value))
                     {
@@ -266,7 +293,7 @@ internal sealed class XamlHotReload(Action<XamlUpdateResult> failed)
                         problems.Add(Problem(source, edit, $"{edit.Property}: the app refused to read the previous value: {error.Message}", false));
                         continue;
                     }
-                    changes.Add(new Change(instance, property, value, before, source, edit));
+                    changes.Add(new Change(instance, property, value, before, local, source, edit));
                 }
                 catch (Exception error) when (error is FormatException or NotSupportedException or ArgumentException or OverflowException)
                 {
@@ -286,7 +313,14 @@ internal sealed class XamlHotReload(Action<XamlUpdateResult> failed)
             {
                 attempted = change;
                 applied.Add(change);
-                change.Instance.SetCurrentValue(change.Property, change.Value);
+                if (change.Edit.Added)
+                {
+                    change.Instance.SetValue(change.Property, change.Value);
+                }
+                else
+                {
+                    change.Instance.SetCurrentValue(change.Property, change.Value);
+                }
             }
         }
         catch (Exception error)
@@ -304,12 +338,50 @@ internal sealed class XamlHotReload(Action<XamlUpdateResult> failed)
         {
             try
             {
-                change.Instance.SetCurrentValue(change.Property, change.Before);
+                if (!change.Edit.Added)
+                {
+                    change.Instance.SetCurrentValue(change.Property, change.Before);
+                }
+                else if (change.HadLocal)
+                {
+                    change.Instance.SetValue(change.Property, change.Before);
+                }
+                else
+                {
+                    change.Instance.ClearValue(change.Property);
+                }
             }
             catch
             {
                 // An application setter may have side effects: a failed rollback still requires a restart.
             }
+        }
+    }
+
+    private static bool? HasLocalBinding(AvaloniaObject instance, AvaloniaProperty property)
+    {
+        const BindingFlags fields = BindingFlags.Instance | BindingFlags.NonPublic;
+        try
+        {
+            if (typeof(AvaloniaObject).GetField("_values", fields)?.GetValue(instance) is not { } store
+                || store.GetType().FullName != "Avalonia.PropertyStore.ValueStore"
+                || store.GetType().GetField("_localValueBindings", fields) is not { } local
+                || local.FieldType != typeof(Dictionary<int, IDisposable>)
+                || typeof(AvaloniaProperty).GetProperty("Id", fields | BindingFlags.Public) is not { PropertyType: var idType } id
+                || idType != typeof(int) || id.GetValue(property) is not int number)
+            {
+                return null;
+            }
+            return local.GetValue(store) switch
+            {
+                null => false,
+                Dictionary<int, IDisposable> bindings => bindings.ContainsKey(number),
+                _ => null,
+            };
+        }
+        catch (Exception)
+        {
+            return null;
         }
     }
 

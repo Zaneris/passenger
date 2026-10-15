@@ -5,7 +5,7 @@ namespace Passenger.Inspector;
 
 /// <summary>A source edit expressed against the original build's element positions, which the live controls keep after
 /// later edits move their source lines. Shape and markup changes are refused before any property is changed.</summary>
-internal sealed record XamlPropertyUpdate(int Line, int Column, string? Class, bool Root, string Type, string Property, string Value, int EditedLine, int EditedColumn);
+internal sealed record XamlPropertyUpdate(int Line, int Column, string? Class, bool Root, string Type, string Property, string Value, int EditedLine, int EditedColumn, bool Added);
 
 internal sealed record XamlUpdatePlan(IReadOnlyList<XamlPropertyUpdate> Properties, IReadOnlyList<XamlUpdateProblem> Problems)
 {
@@ -28,10 +28,13 @@ internal sealed record XamlUpdatePlan(IReadOnlyList<XamlPropertyUpdate> Properti
             {
                 XElement old = previous[i];
                 XElement next = current[i];
-                if (old.Name != next.Name || anchors[i].Name != old.Name || Depth(old) != Depth(next)
-                    || !old.Attributes().Select(a => a.Name).ToHashSet().SetEquals(next.Attributes().Select(a => a.Name)))
+                if (old.Name != next.Name || anchors[i].Name != old.Name || Depth(old) != Depth(next))
                 {
-                    return Refused(source, next, "Changing XAML structure or adding/removing attributes needs a restart", true);
+                    return Refused(source, next, "Changing XAML structure needs a restart", true);
+                }
+                if (old.Attributes().Any(a => next.Attribute(a.Name) is null))
+                {
+                    return Refused(source, next, "Removing XAML attributes needs a restart to restore their original value sources", true);
                 }
                 if (!old.Nodes().OfType<XText>().Select(t => t.Value.Trim()).Where(t => t.Length > 0)
                     .SequenceEqual(next.Nodes().OfType<XText>().Select(t => t.Value.Trim()).Where(t => t.Length > 0)))
@@ -40,18 +43,19 @@ internal sealed record XamlUpdatePlan(IReadOnlyList<XamlPropertyUpdate> Properti
                 }
                 foreach (XAttribute attribute in next.Attributes())
                 {
-                    XAttribute was = old.Attribute(attribute.Name)!;
-                    if (was.Value == attribute.Value)
+                    XAttribute? was = old.Attribute(attribute.Name);
+                    if (was?.Value == attribute.Value)
                     {
                         continue;
                     }
                     if (attribute.IsNamespaceDeclaration || attribute.Name.Namespace != XNamespace.None
+                        || attribute.Name.LocalName is "Name" or "Uid" || was is null && attribute.Name.LocalName == "DataContext"
                         || old.AncestorsAndSelf().Any(e => e.Name.LocalName.Contains('.') || e.Name.LocalName.EndsWith("Template", StringComparison.Ordinal)
                             || e.Name.LocalName is "Style" or "Setter" or "ResourceDictionary"))
                     {
                         return Refused(source, attribute, "Changing XAML directives, resources, styles or templates needs a restart", true);
                     }
-                    if (Markup(was.Value) || Markup(attribute.Value))
+                    if (was is not null && Markup(was.Value) || Markup(attribute.Value))
                     {
                         return Refused(source, attribute, "Changing a XAML binding or markup extension needs a restart", true);
                     }
@@ -60,7 +64,7 @@ internal sealed record XamlUpdatePlan(IReadOnlyList<XamlPropertyUpdate> Properti
                     string? rootClass = built.Attribute(XName.Get("Class", "http://schemas.microsoft.com/winfx/2006/xaml"))?.Value;
                     changes.Add(new XamlPropertyUpdate(anchor.LineNumber, anchor.LinePosition, rootClass, i == 0, next.Name.LocalName,
                         attribute.Name.LocalName, attribute.Value.StartsWith("{}", StringComparison.Ordinal) ? attribute.Value[2..] : attribute.Value,
-                        edited.LineNumber, edited.LinePosition));
+                        edited.LineNumber, edited.LinePosition, anchors[i].Attribute(attribute.Name) is null));
                 }
             }
             return new XamlUpdatePlan(changes, []);
