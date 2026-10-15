@@ -3,6 +3,8 @@ using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
+using Avalonia.Media;
+using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Debugging;
@@ -31,9 +33,13 @@ public sealed class DialogButtonsTests : IDisposable
         TestFolders.Delete(other);
     }
 
-    [AvaloniaFact]
-    public void Every_dialog_has_its_buttons_words_centred_and_its_text_buttons_alike_with_the_default_where_Rider_puts_it()
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Every_dialog_has_its_buttons_words_centred_and_its_text_buttons_alike_with_the_default_where_Rider_puts_it(bool light)
     {
+        ThemeVariant? before = Application.Current!.RequestedThemeVariant;
+        Application.Current.RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark;
         MainWindow window = new() { Width = 1200, Height = 800 };
         window.Show();
         window.OpenFolder(folder);
@@ -79,6 +85,7 @@ public sealed class DialogButtonsTests : IDisposable
         finally
         {
             window.Close();
+            Application.Current.RequestedThemeVariant = before;
         }
     }
 
@@ -113,6 +120,16 @@ public sealed class DialogButtonsTests : IDisposable
             Assert.True(Math.Abs(button.Bounds.Height - first.Bounds.Height) < 0.5 && button.CornerRadius == first.CornerRadius,
                 $"In {title}, {Name(first)} is {first.Bounds.Height:0.#} px tall with corners of {first.CornerRadius.TopLeft} while {Name(button)} "
                 + $"is {button.Bounds.Height:0.#} px with corners of {button.CornerRadius.TopLeft}: alike buttons beside each other differ");
+        }
+        foreach (Button button in text.Where(b => b.IsEffectivelyEnabled && !b.Classes.Contains("primary") && !b.IsPointerOver))
+        {
+            if (dialog.ActualThemeVariant == ThemeVariant.Light)
+            {
+                ContentPresenter presenter = button.GetVisualDescendants().OfType<ContentPresenter>().First(p => p.Name == "PART_ContentPresenter");
+                Assert.True(presenter.Background is ISolidColorBrush painted && painted.Color == Colors.White
+                    && presenter.BorderBrush is not null && presenter.BorderThickness == new Thickness(1),
+                    $"{Name(button)} in {title} must be white with a border in the light theme, rather than Fluent's grey fill");
+            }
         }
 
         if (shown.FirstOrDefault(b => b.IsDefault) is { } chosen && shown.FirstOrDefault(b => b.IsCancel && !b.IsDefault) is { } cancel)
