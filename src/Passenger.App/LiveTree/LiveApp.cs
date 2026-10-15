@@ -314,6 +314,14 @@ public sealed class LiveApp : IDisposable
     public async Task<XamlValues> ValuesAsync(XamlRead read) =>
         (await AskAsync(new Request(0, Wire.Values) { Xaml = read })).Values ?? throw new LiveAppException($"{Name} read no bindings");
 
+    /// <summary>Validates or applies XAML edits on the running app's UI thread, preserving the existing controls.</summary>
+    public async Task<XamlUpdateResult> ApplyXamlAsync(XamlUpdate update)
+    {
+        long expires = DateTimeOffset.UtcNow.Add(AnswerLimit - TimeSpan.FromSeconds(1)).ToUnixTimeMilliseconds();
+        return (await AskAsync(new Request(0, Wire.ApplyXaml) { Update = update with { ExpiresUtc = Math.Min(update.ExpiresUtc ?? long.MaxValue, expires) } }))
+            .Updated ?? throw new LiveAppException($"{Name} returned no XAML update result");
+    }
+
     /// <summary>Input to the app, as a person gives it, answered once it has been handled and laid out.</summary>
     public async Task<InputDone> InputAsync(InputAction input) =>
         (await AskAsync(new Request(0, Wire.Input) { Input = input })).Done ?? throw new LiveAppException($"{Name} did not say what the input did");

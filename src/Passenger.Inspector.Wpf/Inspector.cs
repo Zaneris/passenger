@@ -67,6 +67,8 @@ internal sealed class Inspector
                 Wire.Watch => Done(request, () => Watch(request)),
                 Wire.Values => new Reply { Id = request.Id, Error = "Binding values after a XAML file's lines are read from an Avalonia app's .axaml; a WPF app's are not" },
                 Wire.Overlays => new Reply { Id = request.Id, Error = "Renderer debug overlays are Avalonia's: a WPF app has none" },
+                Wire.ApplyXaml => new Reply { Id = request.Id, Updated = new XamlUpdateResult(false, 0,
+                    [.. (request.Update?.Files ?? []).Select(f => new XamlUpdateProblem(f.File, 1, 1, "WPF XAML updates need a restart in this version", true))]) },
                 _ => new Reply { Id = request.Id, Error = $"The inspector does not know '{request.Method}'" },
             };
         }

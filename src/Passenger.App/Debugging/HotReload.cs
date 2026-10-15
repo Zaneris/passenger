@@ -1,8 +1,10 @@
 using System.Diagnostics;
 using Passenger.App.Run;
+using Passenger.App.LiveTree;
 using Passenger.Core;
 using Passenger.Dap;
 using Passenger.Lsp;
+using Passenger.Inspector;
 using Passenger.Roslyn.Extension;
 using Passenger.Text;
 
@@ -54,6 +56,11 @@ public sealed class HotReload
 {
     private readonly DebugSession debug;
     private readonly Func<RoslynSession?> server;
+    private readonly Func<LiveApp?> inspector;
+    private readonly Dictionary<string, XamlSourceUpdate> xaml = new(StringComparer.Ordinal);
+    private long managedEdits;
+    private long managedApplied;
+    private bool ManagedChanged => managedEdits != managedApplied;
     private int? id;
     private Task<string?>? starting;
     private RoslynSession? startedOn;
@@ -67,25 +74,38 @@ public sealed class HotReload
 
     /// <summary>Hot Reload for a session just launched. Roslyn's session begins at the first edit (most sessions have none,
     /// and its start reads every document), given each edited file's text from before its edits, the build's.</summary>
-    public HotReload(DebugSession debug, Func<RoslynSession?> server)
+    public HotReload(DebugSession debug, Func<RoslynSession?> server, Func<LiveApp?> inspector)
     {
         this.debug = debug;
         this.server = server;
+        this.inspector = inspector;
     }
 
     /// <summary>Whether the files have been edited since the launch or the last update applied.</summary>
     public bool Changed { get; set; }
+
+    /// <summary>XAML left to apply once the app's UI thread can serve the inspector.</summary>
+    internal bool HasXamlChanges => xaml.Count > 0;
 
     /// <summary>A C# file edited while the program runs: its text before its first edit is kept, and Roslyn's session begins.</summary>
     public void Edited(string path, TextSnapshot before)
     {
         UiThread.Check();
         Changed = true;
+        managedEdits++;
         if (!originals.ContainsKey(path))
         {
             originals[path] = before.ToString();
         }
         starting ??= StartAsync();
+    }
+
+    /// <summary>Tracks XAML text against the last applied source; its original element positions belong to the inspector.</summary>
+    public void EditedXaml(string path, TextSnapshot before, TextSnapshot after)
+    {
+        UiThread.Check();
+        Changed = true;
+        xaml[path] = new XamlSourceUpdate(path, xaml.GetValueOrDefault(path)?.Before ?? before.ToString(), after.ToString());
     }
 
     /// <summary>Why Apply Changes cannot run now, or null when it can.</summary>
@@ -127,7 +147,115 @@ public sealed class HotReload
     /// <summary>Applies the edits made since the launch or the last update: Roslyn emits them against the program's code and
     /// the debugger applies them; an edit the runtime cannot take, or code that does not compile, stops it, and nothing is
     /// applied. On an update applied, the session's built lines are the files' lines now.</summary>
-    public async Task<HotReloadOutcome> ApplyAsync()
+    public Task<HotReloadOutcome> ApplyAsync() => ApplyAsync(beforeResume: false);
+
+    /// <summary>C# must take effect before the next statement runs; XAML waits until the UI thread can run again.</summary>
+    internal Task<HotReloadOutcome> ApplyBeforeResumeAsync() => ApplyAsync(beforeResume: true);
+
+    private async Task<HotReloadOutcome> ApplyAsync(bool beforeResume)
+    {
+        try
+        {
+            return beforeResume ? ManagedChanged ? await ApplyManagedTrackedAsync()
+                : new HotReloadOutcome(HotReloadResult.NothingToApply, "XAML changes will apply after the app's UI thread resumes")
+                : await ApplyCurrentAsync();
+        }
+        finally
+        {
+            Changed = xaml.Count > 0 || ManagedChanged;
+        }
+    }
+
+    private async Task<HotReloadOutcome> ApplyManagedTrackedAsync()
+    {
+        long version = managedEdits;
+        HotReloadOutcome outcome = await ApplyManagedAsync();
+        if (outcome.Result is HotReloadResult.Applied or HotReloadResult.NothingToApply)
+        {
+            managedApplied = version;
+        }
+        return outcome;
+    }
+
+    private async Task<HotReloadOutcome> ApplyCurrentAsync()
+    {
+        UiThread.Check();
+        if (xaml.Count == 0)
+        {
+            return await ApplyManagedTrackedAsync();
+        }
+        if (debug.State == DebugState.Paused)
+        {
+            return new HotReloadOutcome(HotReloadResult.Failed, "XAML changes need the app's UI thread: resume the program, then Apply Changes");
+        }
+        if (inspector() is not { } app)
+        {
+            return new HotReloadOutcome(HotReloadResult.RestartNeeded, "These XAML changes need a running Avalonia or WPF inspector; restart to load them");
+        }
+        XamlSourceUpdate[] pending = [.. xaml.Values];
+        HotReloadOutcome managed = new(HotReloadResult.NothingToApply, "No managed code changes to apply");
+        try
+        {
+            XamlUpdateResult prepared = await app.ApplyXamlAsync(new XamlUpdate(pending, ValidateOnly: true));
+            if (!prepared.Applied)
+            {
+                return XamlFailure(prepared);
+            }
+            if (ManagedChanged)
+            {
+                managed = await ApplyManagedTrackedAsync();
+            }
+            if (managed.Result is not (HotReloadResult.Applied or HotReloadResult.NothingToApply))
+            {
+                return managed;
+            }
+            XamlUpdateResult applied = await app.ApplyXamlAsync(new XamlUpdate(pending));
+            if (!applied.Applied)
+            {
+                HotReloadOutcome failed = XamlFailure(applied);
+                return IncludeAppliedManaged(failed, managed);
+            }
+            foreach (XamlSourceUpdate source in pending)
+            {
+                if (xaml.GetValueOrDefault(source.File) == source)
+                {
+                    xaml.Remove(source.File);
+                }
+                else if (xaml.GetValueOrDefault(source.File) is { } edited)
+                {
+                    xaml[source.File] = edited with { Before = source.After };
+                }
+            }
+            return new HotReloadOutcome(applied.Changes > 0 || managed.Result == HotReloadResult.Applied ? HotReloadResult.Applied : HotReloadResult.NothingToApply,
+                $"XAML changes applied to {applied.Changes} live {(applied.Changes == 1 ? "property" : "properties")}: {string.Join(", ", pending.Select(p => Path.GetFileName(p.File)))}"
+                    + (managed.Result == HotReloadResult.Applied ? $"; {managed.Said}" : ""))
+            {
+                Files = [.. managed.Files.Concat(pending.Select(p => p.File)).Distinct(StringComparer.Ordinal)],
+                Problems = managed.Problems,
+                Modules = managed.Modules,
+                Methods = managed.Methods,
+            };
+        }
+        catch (LiveAppException error)
+        {
+            return IncludeAppliedManaged(new HotReloadOutcome(HotReloadResult.Failed, $"The app did not confirm the XAML changes: {error.Message}"), managed);
+        }
+    }
+
+    private static HotReloadOutcome IncludeAppliedManaged(HotReloadOutcome outcome, HotReloadOutcome managed) => managed.Result == HotReloadResult.Applied
+        ? outcome with { Said = $"{managed.Said}; {outcome.Said}", Files = managed.Files, Modules = managed.Modules, Methods = managed.Methods }
+        : outcome;
+
+    private static HotReloadOutcome XamlFailure(XamlUpdateResult result)
+    {
+        List<Problem> problems = [.. result.Problems.Select(p => new Problem(ProblemSeverity.Error, p.Message, "XAMLHR", p.File,
+            new TextPosition(Math.Max(0, p.Line - 1), Math.Max(0, p.Column - 1)), null))];
+        bool restart = result.Problems.Any(p => p.RestartRequired);
+        return new HotReloadOutcome(restart ? HotReloadResult.RestartNeeded : HotReloadResult.Errors,
+            $"{(restart ? "Restart is needed to apply XAML changes" : "Unable to apply XAML changes")}: {Describe(problems)}") { Problems = problems };
+    }
+
+    private async Task<HotReloadOutcome> ApplyManagedAsync()
     {
         UiThread.Check();
         Stopwatch took = Stopwatch.StartNew();
@@ -186,7 +314,6 @@ public sealed class HotReload
         switch (emitted.Status)
         {
             case "none":
-                Changed = false;
                 return new HotReloadOutcome(HotReloadResult.NothingToApply, "No managed code changes to apply.")
                 {
                     Problems = problems,
@@ -223,7 +350,6 @@ public sealed class HotReload
             return new HotReloadOutcome(HotReloadResult.Failed, stopped) { Problems = problems, Took = took.Elapsed };
         }
         await TellAsync(roslyn, HotReloadHandlers.Commit, session);
-        Changed = false;
         int methods = emitted.Updates.Sum(u => u.UpdatedMethods.Count);
         List<string> files = [.. emitted.ChangedDocuments];
         string named = files.Count == 0 ? string.Empty : $": {string.Join(", ", files.Select(Path.GetFileName))}";
