@@ -7,6 +7,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Styling;
+using Avalonia.Threading;
 using Passenger.Editor;
 using Passenger.Profiler;
 
@@ -52,12 +53,12 @@ public sealed class MemoryView : DockPanel
     private readonly ListBox paths;
     private readonly ListBox keyPaths;
     private readonly ToggleButton[] setTabs;
-    private readonly DockPanel typePage;
-    private readonly DockPanel deltaPage;
+    private readonly ScrollViewer typePage;
+    private readonly ScrollViewer deltaPage;
     private readonly DockPanel setPage;
-    private readonly DockPanel objectsPage;
-    private readonly DockPanel pathsPage;
-    private readonly DockPanel keyPathsPage;
+    private readonly ScrollViewer objectsPage;
+    private readonly ScrollViewer pathsPage;
+    private readonly ScrollViewer keyPathsPage;
     private readonly List<Page> trail = [];
     private int loading;
     private int typeSort;
@@ -531,14 +532,34 @@ public sealed class MemoryView : DockPanel
         {
             Setters = { new Setter(ContentControl.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch) },
         });
+        list.SizeChanged += (_, change) =>
+        {
+            if (change.NewSize.Height > 0 && change.NewSize.Height < change.PreviousSize.Height && list.SelectedItem is { } selected
+                && list.ContainerFromItem(selected) is { } row && row.TranslatePoint(default, list) is { } at
+                && at.Y >= 0 && at.Y + row.Bounds.Height <= change.PreviousSize.Height)
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (list.SelectedItem == selected)
+                    {
+                        list.ScrollIntoView(selected);
+                    }
+                }, DispatcherPriority.Loaded);
+            }
+        };
         return list;
     }
 
-    private static DockPanel Framed(Control header, ListBox list)
+    private static ScrollViewer Framed(Control header, ListBox list)
     {
         Border band = new() { [DockProperty] = Dock.Top, BorderThickness = new Thickness(0, 0, 0, 1), Child = header, Padding = new Thickness(0, 0, 0, 3) };
         band.Bind(Border.BorderBrushProperty, band.GetResourceObservable("Passenger.Divider"));
-        return new DockPanel { Children = { band, list } };
+        return new ScrollViewer
+        {
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Content = new DockPanel { Children = { band, list } },
+        };
     }
 
     private Control PathStep(RetentionRow row)
@@ -635,7 +656,12 @@ public sealed class MemoryView : DockPanel
     /// <summary>A list's columns: the first takes what the others leave.</summary>
     private sealed class Table(params (string Title, double Width)[] columns)
     {
-        private ColumnDefinitions Definitions() => new(string.Join(",", columns.Select(c => c.Width == 0 ? "*" : $"{c.Width}")));
+        private ColumnDefinitions Definitions()
+        {
+            ColumnDefinitions definitions = new(string.Join(",", columns.Select(c => c.Width == 0 ? "*" : $"{c.Width}")));
+            definitions[0].MinWidth = 240;
+            return definitions;
+        }
 
         public Control Header(Action<int>? sort)
         {

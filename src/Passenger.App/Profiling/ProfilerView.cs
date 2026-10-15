@@ -57,6 +57,7 @@ public enum ProfilerPage
 /// open folder's earlier runs, as Rider's Recent Snapshots does.</summary>
 public sealed class ProfilerView : DockPanel
 {
+    private const string InitialHint = "Profile runs the chosen configuration under the profiler; Get Snapshot shows where its time went";
     private readonly ObservableCollection<TreeRow> rows = [];
     private readonly ListBox tree;
     private readonly ListBox spots;
@@ -89,11 +90,13 @@ public sealed class ProfilerView : DockPanel
     private string snapshotName = string.Empty;
     private Func<TimeSpan>? elapsed;
     private string running = string.Empty;
+    private string? stoppedReason;
 
     public ProfilerView()
     {
         tree = new ListBox
         {
+            Name = "ProfilerCallTree",
             Classes = { "tree" },
             ItemsSource = rows,
             ItemTemplate = new FuncDataTemplate<TreeRow>((row, _) => row is null ? new TextBlock() : Row(row), supportsRecycling: false),
@@ -108,6 +111,7 @@ public sealed class ProfilerView : DockPanel
         tree.KeyDown += OnTreeKey;
         spots = new ListBox
         {
+            Name = "ProfilerHotSpots",
             Classes = { "tree" },
             ItemTemplate = new FuncDataTemplate<HotSpot>((spot, _) => spot is null ? new TextBlock() : Spot(spot), supportsRecycling: false),
         };
@@ -120,12 +124,14 @@ public sealed class ProfilerView : DockPanel
         };
         types = new ListBox
         {
+            Name = "ProfilerAllocatedTypes",
             Classes = { "tree" },
             ItemTemplate = new FuncDataTemplate<AllocatedType>((type, _) => type is null ? new TextBlock() : Allocated(type), supportsRecycling: false),
         };
         types.SelectionChanged += (_, _) => ShowBackTraces();
         backTraces = new ListBox
         {
+            Name = "ProfilerAllocationBackTraces",
             Classes = { "tree" },
             ItemsSource = traces,
             ItemTemplate = new FuncDataTemplate<TreeRow>((row, _) => row is null ? new TextBlock() : Row(row), supportsRecycling: false),
@@ -164,6 +170,10 @@ public sealed class ProfilerView : DockPanel
             ItemTemplate = new FuncDataTemplate<SnapshotFile>((file, _) => file is null ? new TextBlock() : KeptRow(file), supportsRecycling: false),
         };
         kept.DoubleTapped += (_, _) => OpenKept();
+        foreach (ListBox list in new[] { tree, spots, types, backTraces, collections, kept })
+        {
+            ScrollViewer.SetHorizontalScrollBarVisibility(list, ScrollBarVisibility.Auto);
+        }
         kept.KeyDown += (_, e) =>
         {
             if (e.Key == Key.Enter)
@@ -189,7 +199,7 @@ public sealed class ProfilerView : DockPanel
         keptPage.Children.Add(kept);
         placeholder = new TextBlock
         {
-            Text = "Profile runs the chosen configuration under the profiler; Get Snapshot shows where its time went",
+            Text = InitialHint,
             Classes = { "emptyHint" },
         };
 
@@ -351,17 +361,14 @@ public sealed class ProfilerView : DockPanel
     public void Running(string name, Func<TimeSpan> clock, bool attached = false)
     {
         running = name;
+        stoppedReason = null;
         elapsed = clock;
         stop.IsVisible = true;
         kill.IsVisible = !attached;
         heap.IsVisible = true;
         runTools.IsVisible = true;
-        placeholder.Text = $"Profiling {name}. Get Snapshot when it has done what is to be measured.";
         ticking.Start();
-        if (Snapshot is null)
-        {
-            ShowPage(ProfilerPage.CallTree);
-        }
+        ShowPage(Snapshot is null ? ProfilerPage.CallTree : CurrentPage());
     }
 
     /// <summary>The run is over, or never began; when it found nothing to show, says why, in the window's middle while
@@ -369,6 +376,7 @@ public sealed class ProfilerView : DockPanel
     public void Stopped(string? why = null)
     {
         ticking.Stop();
+        stoppedReason = why;
         stop.IsVisible = false;
         kill.IsVisible = false;
         heap.IsVisible = false;
@@ -376,16 +384,14 @@ public sealed class ProfilerView : DockPanel
         if (why is not null)
         {
             status.Text = why;
-            if (Snapshot is null)
-            {
-                placeholder.Text = why;
-                ShowPage(ProfilerPage.CallTree);
-            }
         }
+        ShowPage(why is not null && Snapshot is null ? ProfilerPage.CallTree : CurrentPage());
     }
 
     /// <summary>What the window's middle says while it has nothing on the page shown.</summary>
     public string Placeholder => placeholder.IsVisible ? placeholder.Text ?? string.Empty : string.Empty;
+
+    private ProfilerPage CurrentPage() => (ProfilerPage)Math.Max(0, Array.FindIndex(pages, page => page.IsChecked == true));
 
     public void Show(Snapshot snapshot, string name)
     {
@@ -634,8 +640,12 @@ public sealed class ProfilerView : DockPanel
             pages[i].IsChecked = i == (int)page;
         }
         placeholder.IsVisible = !shown;
+        placeholder.Text = page == ProfilerPage.Memory
+            ? ticking.IsEnabled ? "Get Memory Snapshot captures the running program's heap while profiling continues."
+                : "No memory snapshot was taken. Profile a configuration and choose Get Memory Snapshot while it runs."
+            : stoppedReason ?? (ticking.IsEnabled ? $"Profiling {running}. Get Snapshot when it has done what is to be measured." : InitialHint);
         // The run's timeline goes with its views, not with the list of runs; the Frames page has its frames' own.
-        timelineBand.IsVisible = timeline.Snapshot is not null && page is not (ProfilerPage.Snapshots or ProfilerPage.Frames);
+        timelineBand.IsVisible = timeline.Snapshot is not null && page is not (ProfilerPage.Snapshots or ProfilerPage.Frames or ProfilerPage.Memory);
         RevealPage();
     }
 
