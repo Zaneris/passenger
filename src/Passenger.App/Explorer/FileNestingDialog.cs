@@ -73,8 +73,7 @@ public sealed class FileNestingDialog : Window
         DockPanel.SetDock(bottom, Dock.Bottom);
         root.Children.Add(bottom);
         root.Children.Add(body);
-        Border page = new() { Child = root };
-        page.Bind(Border.BackgroundProperty, page.GetResourceObservable("Passenger.Editor.Background"));
+        Border page = new() { Classes = { "dialogPage" }, Child = root };
         Content = page;
     }
 

@@ -36,10 +36,10 @@ public sealed partial class EditorArea : UserControl
         Commands = new CommandHistory(this);
         activeGroup = NewGroup();
         activeGroup.IsCurrent = true;
-        emptyTitle = new TextBlock { Text = "Passenger", FontSize = 28, FontWeight = FontWeight.SemiBold, HorizontalAlignment = HorizontalAlignment.Center };
+        emptyTitle = new TextBlock { Text = "Passenger", FontSize = 28, FontWeight = FontWeight.SemiBold };
         emptyTitle.Bind(TextBlock.ForegroundProperty, emptyTitle.GetResourceObservable("Passenger.Text"));
-        emptyHint = new TextBlock { Classes = { "muted" }, Text = "Open a solution, project or folder to start.", HorizontalAlignment = HorizontalAlignment.Center };
-        folderHint = new StackPanel { Spacing = 10, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Children = { emptyTitle, emptyHint } };
+        emptyHint = new TextBlock { Classes = { "muted" }, Text = "Open a solution, project or folder to start." };
+        folderHint = new StackPanel { Classes = { "emptyState" }, Spacing = 10, Children = { emptyTitle, emptyHint } };
         emptyState.Content = folderHint;
         main = NewFrame(new EditorFrame.Leaf(activeGroup), activeGroup, emptyState);
         Content = main.Surface;

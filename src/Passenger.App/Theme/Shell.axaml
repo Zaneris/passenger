@@ -77,6 +77,11 @@
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.ControlRadius}" />
     </Style>
+    <Style Selector="Button:disabled /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource Passenger.DisabledBackground}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Passenger.DisabledBorder}" />
+        <Setter Property="Foreground" Value="{DynamicResource Passenger.DisabledText}" />
+    </Style>
     <!-- A menu's chosen item on a rounded band inset from the menu's rounded frame, as Rider's are, where Fluent's runs
          square to the frame's edges. -->
     <Style Selector="MenuItem">
@@ -89,6 +94,26 @@
     </Style>
     <Style Selector="RadioButton /template/ ContentPresenter#PART_ContentPresenter">
         <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <!-- Empty panes keep their title and next step readable inside the space left by tool windows. -->
+    <Style Selector="StackPanel.emptyState">
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Margin" Value="24,0" />
+    </Style>
+    <Style Selector="StackPanel.emptyState > TextBlock">
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="TextAlignment" Value="Center" />
+    </Style>
+
+    <!-- A new dialog inherits the chrome; page wrappers share it instead of introducing an editor-coloured island. -->
+    <Style Selector="Window">
+        <Setter Property="Background" Value="{DynamicResource Passenger.Chrome}" />
+    </Style>
+    <Style Selector="Border.dialogPage">
+        <Setter Property="Background" Value="{DynamicResource Passenger.Chrome}" />
     </Style>
 
     <!-- A dialog's buttons at its foot (DialogFooter), each as wide as the others at the least. -->
@@ -726,6 +751,13 @@
     <Style Selector="Button.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
         <Setter Property="Background" Value="{DynamicResource Passenger.Accent}" />
         <Setter Property="Foreground" Value="{DynamicResource Passenger.AccentText}" />
+    </Style>
+    <!-- Disabled actions have Rider's quiet outline and muted words. This follows the primary states so a default
+         that becomes unavailable under the pointer cannot retain its accent or look like the enabled Cancel. -->
+    <Style Selector="Button.primary:disabled /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource Passenger.DisabledBackground}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Passenger.DisabledBorder}" />
+        <Setter Property="Foreground" Value="{DynamicResource Passenger.DisabledText}" />
     </Style>
 
     <!-- The status bar's path: a part is a quiet button, underlined under the pointer. -->

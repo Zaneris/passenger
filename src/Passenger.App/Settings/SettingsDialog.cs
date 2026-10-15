@@ -118,8 +118,7 @@ public sealed partial class SettingsDialog : Window
         right.Children.Add(heading);
         right.Children.Add(pageTop);
         right.Children.Add(new ScrollViewer { Name = "SettingsPageScroll", Content = body });
-        Border editorPane = new() { Child = right };
-        editorPane.Bind(Border.BackgroundProperty, editorPane.GetResourceObservable("Passenger.Editor.Background"));
+        Border editorPane = new() { Classes = { "dialogPage" }, Child = right };
 
         DockPanel root = new();
         DockPanel.SetDock(bottom, Dock.Bottom);

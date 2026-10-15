@@ -20,6 +20,7 @@ public sealed class DesignTimeIsolationTests(ITestOutputHelper output)
         string library = Path.Combine(root, "Markup");
         string app = Path.Combine(root, "Consumer");
         string solution = Path.Combine(root, "Probe.slnx");
+        string framework = AvaloniaApp.Metadata("TargetFramework");
         TestFolders.Prepare(() =>
         {
             WpfApp.Create(library, "Markup");
@@ -41,10 +42,10 @@ public sealed class DesignTimeIsolationTests(ITestOutputHelper output)
             File.WriteAllText(Path.Combine(root, "Directory.Build.targets"), Paths);
             File.WriteAllText(Path.Combine(library, "Greeter.cs"), "namespace Markup; public static class Greeter { public static string Hello() => \"Hello\"; }");
             File.WriteAllText(Path.Combine(library, "MainWindow.xaml.cs"), "namespace Markup; public partial class MainWindow : System.Windows.Window { public MainWindow() { InitializeComponent(); } }");
-            File.WriteAllText(Path.Combine(app, "Consumer.csproj"), """
+            File.WriteAllText(Path.Combine(app, "Consumer.csproj"), $$"""
                 <Project Sdk="Microsoft.NET.Sdk">
-                  <PropertyGroup><TargetFrameworks>net10.0;net11.0-windows</TargetFrameworks></PropertyGroup>
-                  <ItemGroup Condition="'$(Configuration)' == 'Debug' And '$(TargetFramework)' == 'net11.0-windows'">
+                  <PropertyGroup><TargetFrameworks>{{framework}};{{framework}}-windows</TargetFrameworks></PropertyGroup>
+                  <ItemGroup Condition="'$(Configuration)' == 'Debug' And '$(TargetFramework)' == '{{framework}}-windows'">
                     <ProjectReference Include="../Markup/Markup.csproj" GlobalPropertiesToRemove="ProbeIgnored" />
                   </ItemGroup>
                 </Project>
@@ -52,7 +53,7 @@ public sealed class DesignTimeIsolationTests(ITestOutputHelper output)
             File.WriteAllText(Path.Combine(app, "Consumer.cs"), """
                 public class Consumer
                 {
-                #if NET11_0_OR_GREATER
+                #if WINDOWS
                     public string Greeting => Markup.Greeter.Hello();
                 #endif
                 }
@@ -78,9 +79,8 @@ public sealed class DesignTimeIsolationTests(ITestOutputHelper output)
             Ui.WaitFor(() => !first.IsBuilding, "the custom-output WPF project to build");
             output.WriteLine(first.BottomPanel.Build.Document.Snapshot.ToString());
             Assert.Contains("Build succeeded", first.BottomPanel.Build.Document.Snapshot.ToString(), StringComparison.Ordinal);
-            string framework = AvaloniaApp.Metadata("TargetFramework") + "-windows";
-            string[] normal = File.ReadAllLines(Path.Combine(library, "paths-build-" + framework + ".txt"));
-            string[] design = File.ReadAllLines(Path.Combine(library, "paths-true-" + framework + ".txt"));
+            string[] normal = File.ReadAllLines(Path.Combine(library, "paths-build-" + framework + "-windows.txt"));
+            string[] design = File.ReadAllLines(Path.Combine(library, "paths-true-" + framework + "-windows.txt"));
             output.WriteLine("Normal paths: " + string.Join(" | ", normal));
             output.WriteLine("Design-time paths: " + string.Join(" | ", design));
             Assert.NotEqual(normal[0], design[0]);
