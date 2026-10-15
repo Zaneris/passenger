@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Settings;
@@ -281,6 +282,57 @@ public sealed class TitleBarTests : IDisposable
         finally
         {
             window.Close();
+        }
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void The_empty_editor_keeps_a_long_folder_name_and_its_next_step_readable_beside_the_tool_windows(bool light)
+    {
+        const string name = "A_long_folder_name_with_no_open_file_should_stay_readable_at_half_width";
+        string projectFolder = Path.Combine(folder, name);
+        Directory.CreateDirectory(projectFolder);
+        File.WriteAllText(Path.Combine(projectFolder, "One.cs"), "class One { }\n");
+        MainWindow window = new() { Width = 1200, Height = 800, RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark };
+        window.SetRenderScaling(2);
+        window.Show();
+        try
+        {
+            window.OpenFolder(projectFolder);
+            window.ShowToolWindow("build");
+            foreach (double width in new double[] { 1200, 640, 683, 1200 })
+            {
+                window.Width = width;
+                Ui.Settle();
+                Check();
+                UiAudit.Capture(window, $"empty-editor-{width:0}-{(light ? "light" : "dark")}");
+            }
+            window.OpenFile("One.cs");
+            Ui.Settle();
+            Assert.True(window.EditorArea.Close(window.EditorArea.Active!));
+            window.Width = 640;
+            Ui.Settle();
+            Check();
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        void Check()
+        {
+            TextBlock title = Assert.Single(window.EditorArea.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == name && text.IsEffectivelyVisible);
+            TextBlock hint = Assert.Single(window.EditorArea.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Open a file from the Explorer." && text.IsEffectivelyVisible);
+            foreach (TextBlock text in new[] { title, hint })
+            {
+                Rect bounds = new(text.TranslatePoint(default, window.EditorArea)!.Value, text.Bounds.Size);
+                Assert.True(bounds.X >= 0 && bounds.Right <= window.EditorArea.Bounds.Width + 1
+                    && bounds.Y >= 0 && bounds.Bottom <= window.EditorArea.Bounds.Height + 1,
+                    $"Empty editor's '{text.Text}' extends outside the {window.Bounds.Width}px window's editor: {bounds}");
+                Assert.True(text.TextLayout.Width <= text.Bounds.Width + 1 && text.TextLayout.Height <= text.Bounds.Height + 1,
+                    $"Empty editor's '{text.Text}' is clipped at {window.Bounds.Width}px: {text.TextLayout.Width}x{text.TextLayout.Height} in {text.Bounds.Size}");
+            }
         }
     }
 

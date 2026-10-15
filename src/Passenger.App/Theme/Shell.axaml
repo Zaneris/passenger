@@ -91,6 +91,18 @@
         <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
 
+    <!-- Empty panes keep their title and next step readable inside the space left by tool windows. -->
+    <Style Selector="StackPanel.emptyState">
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Margin" Value="24,0" />
+    </Style>
+    <Style Selector="StackPanel.emptyState > TextBlock">
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="TextAlignment" Value="Center" />
+    </Style>
+
     <!-- A dialog's buttons at its foot (DialogFooter), each as wide as the others at the least. -->
     <Style Selector="StackPanel.footer">
         <Setter Property="Orientation" Value="Horizontal" />
