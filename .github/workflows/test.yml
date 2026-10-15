@@ -32,8 +32,13 @@ jobs:
       matrix:
         system: [macOS, Windows, Linux]
         # Four macOS test shards plus CI's one sequential disk-image job fit GitHub's five macOS runner slots. The
-        # measured collection work needs about 15 minutes per shard; Windows and Linux also keep four shards.
-        shard: [1, 2, 3, 4]
+        # refreshed successful CI class times need five Windows shards to keep the unchanged 20-minute budget.
+        shard: [1, 2, 3, 4, 5]
+        exclude:
+          - system: macOS
+            shard: 5
+          - system: Linux
+            shard: 5
         include:
           - system: macOS
             name: macOS (arm64)
@@ -42,7 +47,7 @@ jobs:
           - system: Windows
             name: Windows (x64)
             os: windows-latest
-            shards: 4
+            shards: 5
           - system: Linux
             name: Linux (x64)
             os: ubuntu-24.04
