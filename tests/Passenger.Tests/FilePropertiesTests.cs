@@ -24,9 +24,9 @@ public sealed class FilePropertiesTests : IDisposable
         string path = Write("One.cs", "class One\n{\n}\n");
         MainWindow window = Open("One.cs");
 
-        // The status bar's widget offers the others, its own disabled, as Rider's popup does.
+        // Current values are checked, including in the native menu, and selecting one again leaves edits unsaved.
         Click(window, "LineSeparatorButton");
-        Assert.Equal(["CRLF - Windows (\\r\\n)", "LF - Unix and macOS (\\n) (disabled)", "CR - Classic Mac OS (\\r)"], Items(window.OpenContextMenu!));
+        MenuTests.CurrentValue(window.OpenContextMenu!.Items.OfType<MenuItem>(), "LF - Unix and macOS (\\n)");
         Choose(window, "CRLF - Windows (\\r\\n)");
         Assert.Equal("class One\r\n{\r\n}\r\n", File.ReadAllText(path));
         Assert.Equal("CRLF", Shown(window, "LineEndingText"));
@@ -42,7 +42,9 @@ public sealed class FilePropertiesTests : IDisposable
         // File, Line Separators makes it LF again.
         NativeMenu separators = Ui.Submenu(Ui.Submenu(window.MenuBar, "File"), "Line Separators");
         Assert.Equal(["CRLF - Windows (\\r\\n)", "LF - Unix and macOS (\\n)", "CR - Classic Mac OS (\\r)"], separators.Items.OfType<NativeMenuItem>().Select(i => i.Header));
-        Assert.False(separators.Items.OfType<NativeMenuItem>().First().IsEnabled, "File, Line Separators offers CRLF to a file that has it already");
+        NativeMenuItem current = Assert.Single(separators.Items.OfType<NativeMenuItem>(), i => i.IsChecked);
+        Assert.Equal("CRLF - Windows (\\r\\n)", current.Header);
+        Assert.True(current.IsEnabled, "File, Line Separators greys the current value instead of checking it");
         separators.Items.OfType<NativeMenuItem>().Single(i => i.Header == "LF - Unix and macOS (\\n)").Command!.Execute(null);
         Ui.Settle();
         Assert.Equal("class One\n\n{\n}\n", File.ReadAllText(path));
@@ -104,7 +106,7 @@ public sealed class FilePropertiesTests : IDisposable
 
         Click(window, "EncodingButton");
         Assert.Contains("windows-1252", Items(window.OpenContextMenu!));
-        Assert.Contains("ISO-8859-1 (disabled)", Items(window.OpenContextMenu!));
+        MenuTests.CurrentValue(window.OpenContextMenu!.Items.OfType<MenuItem>().Where(i => i.Header as string != "More"), "ISO-8859-1");
         Choose(window, "windows-1252");
         Answer(window, "Menu.txt: Reload or Convert to windows-1252", "Reload");
         Assert.Equal("Œuvre: “café” for 5 €\n", Text(window));
@@ -222,6 +224,28 @@ public sealed class FilePropertiesTests : IDisposable
         window.KeyTextInput("public ");
         Ui.Press(window, Ui.Shortcut(AppActions.Save));
         Assert.Equal("public class One\r\n{\r\n}\r\n", File.ReadAllText(path));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Choosing_the_current_separator_or_encoding_keeps_unsaved_edits_and_creates_no_undo_step()
+    {
+        string path = Write("One.cs", "class One { }\n");
+        MainWindow window = Open("One.cs");
+        window.EditorArea.CodeEditor.Selections = Passenger.Text.SelectionSet.Single(0);
+        window.KeyTextInput("public ");
+        Click(window, "LineSeparatorButton");
+        Choose(window, "LF - Unix and macOS (\\n)");
+        Click(window, "EncodingButton");
+        MenuTests.CurrentValue(window.OpenContextMenu!.Items.OfType<MenuItem>().Where(i => i.Header as string != "More"), "UTF-8");
+        Choose(window, "UTF-8");
+        Assert.True(window.EditorArea.Active!.IsModified);
+        Assert.Equal("class One { }\n", File.ReadAllText(path));
+        Assert.Empty(window.OwnedWindows);
+        window.EditorArea.CodeEditor.Focus();
+        Ui.Run(window, EditorActions.Undo);
+        Assert.Equal("class One { }\n", Text(window));
+        Assert.False(window.EditorArea.Active.IsModified);
         window.Close();
     }
 

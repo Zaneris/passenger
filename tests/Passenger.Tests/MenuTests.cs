@@ -143,18 +143,31 @@ public sealed class MenuTests : IDisposable
 
         // The run configurations' menu: Down from nothing chosen goes to the first, Up to the last, and Enter chooses.
         ClickOpen(window, "RunConfigButton");
+        CurrentValue(window.OpenContextMenu!.Items.OfType<MenuItem>().Where(i => i.Header as string != "Edit Configurations..."), "First");
         Ui.Press(window, "DOWN");
         Ui.Press(window, "DOWN");
         Ui.Press(window, "ENTER");
         Assert.False(MenuOpen(window), "Enter on a run configuration left its menu open");
         Assert.Equal("Second", window.Configuration?.Name);
         ClickOpen(window, "RunConfigButton");
+        CurrentValue(window.OpenContextMenu!.Items.OfType<MenuItem>().Where(i => i.Header as string != "Edit Configurations..."), "Second");
         Ui.Press(window, "UP");
         Ui.Press(window, "UP");
         Ui.Press(window, "UP");
         Ui.Press(window, "ENTER");
         Assert.Equal("First", window.Configuration?.Name);
         window.Close();
+    }
+
+    /// <summary>Every menu offering values checks exactly its current value and leaves that value selectable.</summary>
+    public static MenuItem CurrentValue(IEnumerable<MenuItem> choices, string title)
+    {
+        MenuItem[] values = [.. choices];
+        MenuItem current = Assert.Single(values, i => i.IsChecked);
+        Assert.Equal(title, current.Header);
+        Assert.All(values, item => Assert.NotEqual(MenuItemToggleType.None, item.ToggleType));
+        Assert.True(current.IsEnabled, $"The current value {title} is greyed instead of checked");
+        return current;
     }
 
     /// <summary>A toolbar widget clicked, as a person's pointer clicks it, and its menu waited for.</summary>
