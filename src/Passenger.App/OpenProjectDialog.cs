@@ -18,7 +18,7 @@ public sealed class OpenProjectDialog : Window
     public OpenProjectDialog(string name)
     {
         Title = "Open Solution";
-        Width = 440;
+        Width = 560;
         SizeToContent = SizeToContent.Height;
         CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
@@ -41,8 +41,7 @@ public sealed class OpenProjectDialog : Window
             {
                 new TextBlock { Text = Title, FontWeight = FontWeight.SemiBold },
                 new TextBlock { Text = Question, TextWrapping = TextWrapping.Wrap },
-                remember,
-                choices,
+                DialogFooter.WithLeading(remember, choices),
             },
         };
     }

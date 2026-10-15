@@ -122,6 +122,16 @@ public sealed class DialogButtonsTests : IDisposable
             Assert.True(OperatingSystem.IsMacOS() ? chosenAt > cancelAt : chosenAt < cancelAt,
                 $"In {title}, {Name(chosen)} stands {(chosenAt > cancelAt ? "right" : "left")} of {Name(cancel)}, where Rider puts the default "
                 + (OperatingSystem.IsMacOS() ? "rightmost, after Cancel" : "first, before Cancel"));
+
+            if (dialog.GetVisualDescendants().OfType<CheckBox>().FirstOrDefault(c => c.IsEffectivelyVisible && c.Content is "Don't ask again") is { } remember)
+            {
+                Point option = remember.TranslatePoint(default, dialog)!.Value;
+                Point button = chosen.TranslatePoint(default, dialog)!.Value;
+                double firstButton = shown.Min(b => b.TranslatePoint(default, dialog)!.Value.X);
+                Assert.True(option.X + remember.Bounds.Width + 8 <= firstButton
+                    && Math.Abs(option.Y + remember.Bounds.Height / 2 - button.Y - chosen.Bounds.Height / 2) <= 1,
+                    $"In {title}, Don't ask again must sit at the footer's left, on the same row as the buttons");
+            }
         }
         return dialog;
     }
