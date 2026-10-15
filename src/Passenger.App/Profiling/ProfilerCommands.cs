@@ -253,6 +253,11 @@ public sealed class ProfilerCommands
         }
         if (current.Runner.IsRunning && (current.RunApp?.ProcessId ?? current.Runner.ProcessId) is int running)
         {
+            if (current.RunApp is { State: not LiveAppState.Connected })
+            {
+                // Under watch the runner is the watcher, never the target. Wait for that target's inspector after restart.
+                return null;
+            }
             string name = current.RunApp?.Name ?? current.Configurations.Chosen?.Name ?? "the program";
             return (running, name, FileName(current.RunApp?.Plan?.Built is { } built ? Path.GetFileNameWithoutExtension(built) : name));
         }

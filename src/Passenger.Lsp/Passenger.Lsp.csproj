@@ -7,6 +7,10 @@
   <!-- Microsoft's server (MIT, built in the Roslyn repo), one package per platform, copied beside the app under roslyn/;
        RoslynServer.targets finds it. -->
   <Import Project="RoslynServer.targets" />
+  <PropertyGroup>
+    <!-- Keep the publish's server identity when the extension's portable build drops RuntimeIdentifier. -->
+    <RoslynExtensionProperties Condition="'$(RuntimeIdentifier)' != ''">RoslynServerFor=$(RoslynServerFor)</RoslynExtensionProperties>
+  </PropertyGroup>
   <!-- The servers for JavaScript, TypeScript, HTML, CSS and JSON, npm packages carried under web/; WebServers.targets puts
        them in place with tools/Passenger.NodePackages, built first and run, never linked. -->
   <Import Project="WebServers.targets" />
@@ -23,7 +27,7 @@
     <!-- Built first and carried under roslyn-extension/, never linked: the server loads it (RoslynExtension.cs). It is
          built once for every platform, as the server's own assemblies it is compiled against are the same on each. -->
     <ProjectReference Include="../Passenger.Roslyn.Extension/Passenger.Roslyn.Extension.csproj" ReferenceOutputAssembly="false" Private="false"
-                      GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishReadyToRun" />
+                      GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishReadyToRun" AdditionalProperties="$(RoslynExtensionProperties)" />
     <!-- The extension's messages, one definition for both ends. -->
     <Compile Include="../Passenger.Roslyn.Extension/Messages.cs" Link="RefactoringMessages.cs" />
     <Compile Include="../Passenger.Roslyn.Extension/ProjectMessages.cs" Link="ProjectMessages.cs" />
@@ -68,7 +72,7 @@
        Roslyn's assemblies must come from the server's. -->
   <Target Name="IncludeRoslynExtension" BeforeTargets="AssignTargetPaths">
     <MSBuild Projects="../Passenger.Roslyn.Extension/Passenger.Roslyn.Extension.csproj" Targets="GetTargetPath"
-             RemoveProperties="RuntimeIdentifier;SelfContained;PublishReadyToRun" BuildInParallel="$(BuildInParallel)">
+             RemoveProperties="RuntimeIdentifier;SelfContained;PublishReadyToRun" Properties="$(RoslynExtensionProperties)" BuildInParallel="$(BuildInParallel)">
       <Output TaskParameter="TargetOutputs" ItemName="RoslynExtensionAssembly" />
     </MSBuild>
     <ItemGroup>

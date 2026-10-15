@@ -5,7 +5,7 @@
        alpine.3.22-x64), for which there is no package. Passenger.Lsp carries the server; Passenger.Roslyn.Extension is
        compiled against the assemblies it carries, so both find it here. -->
   <PropertyGroup>
-    <RoslynServerFor>$(RuntimeIdentifier)</RoslynServerFor>
+    <RoslynServerFor Condition="'$(RoslynServerFor)' == ''">$(RuntimeIdentifier)</RoslynServerFor>
     <RoslynServerFor Condition="'$(RoslynServerFor)' == ''">$([System.Runtime.InteropServices.RuntimeInformation]::RuntimeIdentifier)</RoslynServerFor>
     <RoslynServerArchitecture>$([System.Text.RegularExpressions.Regex]::Replace($(RoslynServerFor), '^.*-', ''))</RoslynServerArchitecture>
     <RoslynServerRid Condition="$(RoslynServerFor.StartsWith('win'))">win-$(RoslynServerArchitecture)</RoslynServerRid>
