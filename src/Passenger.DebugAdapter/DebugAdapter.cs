@@ -85,7 +85,7 @@ public sealed class DebugAdapter
         connection.Handle<InitializeArguments, DapCapabilities>("initialize", Initialize, then: () => connection.SendEvent("initialized"));
         connection.Handle<LaunchArguments>("launch", Launch);
         connection.Handle<AttachArguments>("attach", Attach);
-        connection.Handle<DapEmpty>("configurationDone", ConfigurationDone, then: LetEventsGo);
+        connection.Handle<DapEmpty>("configurationDone", ConfigurationDone, finished: LetEventsGo);
         connection.Handle<SetBreakpointsArguments, SetBreakpointsResponse>("setBreakpoints", SetBreakpoints);
         connection.Handle<SetFunctionBreakpointsArguments, SetBreakpointsResponse>("setFunctionBreakpoints", SetFunctionBreakpoints);
         connection.Handle<SetExceptionBreakpointsArguments, SetExceptionBreakpointsResponse>("setExceptionBreakpoints", SetExceptionBreakpoints);
@@ -397,15 +397,14 @@ public sealed class DebugAdapter
             await debugger.DrainRuntimeEventQueue();
             await debugger.ConfigurationDone().ConfigureAwait(false);
         }
-        catch
+        finally
         {
-            held.Dispose();
-            throw;
-        }
-        Interlocked.Exchange(ref configuring, held);
-        if (Volatile.Read(ref aborted))
-        {
-            LetEventsGo();
+            // A failed configuration answers before a waiting disconnect can take the lock and end the adapter too.
+            Interlocked.Exchange(ref configuring, held);
+            if (Volatile.Read(ref aborted))
+            {
+                LetEventsGo();
+            }
         }
     }
 

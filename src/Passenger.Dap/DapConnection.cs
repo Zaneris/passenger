@@ -24,6 +24,7 @@ public sealed class DapConnection : IAsyncDisposable
     private readonly ConcurrentDictionary<int, (string Command, TaskCompletionSource<JsonElement> Answer)> pending = new();
     private readonly Dictionary<string, Func<JsonElement, Task<object?>>> handlers = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Action> afterResponse = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Action> requestFinished = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Action<JsonElement>> eventHandlers = new(StringComparer.Ordinal);
     private readonly Channel<JsonElement> inbox = Channel.CreateUnbounded<JsonElement>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
     private readonly CancellationTokenSource stopping = new();
@@ -72,23 +73,23 @@ public sealed class DapConnection : IAsyncDisposable
     }
 
     /// <summary>Answers a request. A handler that throws answers with the exception's message as the
-    /// error; <paramref name="then"/> runs once the answer is written (the initialized event must
-    /// follow the initialize response).</summary>
-    public void Handle<TArguments, TResponse>(string command, Func<TArguments, Task<TResponse>> handler, Action? then = null)
+    /// error; <paramref name="then"/> follows a successful answer (initialize's event follows its response).
+    /// <paramref name="finished"/> follows either answer, or a failed write, to release the handler's hold.</summary>
+    public void Handle<TArguments, TResponse>(string command, Func<TArguments, Task<TResponse>> handler, Action? then = null, Action? finished = null)
     {
         handlers[command] = async arguments => await handler(Read<TArguments>(arguments)).ConfigureAwait(false);
-        Then(command, then);
+        Then(command, then, finished);
     }
 
     /// <summary>A request answered with no body.</summary>
-    public void Handle<TArguments>(string command, Func<TArguments, Task> handler, Action? then = null)
+    public void Handle<TArguments>(string command, Func<TArguments, Task> handler, Action? then = null, Action? finished = null)
     {
         handlers[command] = async arguments =>
         {
             await handler(Read<TArguments>(arguments)).ConfigureAwait(false);
             return null;
         };
-        Then(command, then);
+        Then(command, then, finished);
     }
 
     public void OnEvent<TBody>(string name, Action<TBody> handler) => eventHandlers[name] = body => handler(Read<TBody>(body));
@@ -184,7 +185,7 @@ public sealed class DapConnection : IAsyncDisposable
         return element.Deserialize<T>(Options) ?? throw new JsonException($"Expected {typeof(T).Name}, not null");
     }
 
-    private void Then(string command, Action? then)
+    private void Then(string command, Action? then, Action? finished)
     {
         if (then is null)
         {
@@ -193,6 +194,14 @@ public sealed class DapConnection : IAsyncDisposable
         else
         {
             afterResponse[command] = then;
+        }
+        if (finished is null)
+        {
+            requestFinished.Remove(command);
+        }
+        else
+        {
+            requestFinished[command] = finished;
         }
     }
 
@@ -348,44 +357,60 @@ public sealed class DapConnection : IAsyncDisposable
     {
         int seq = request.GetProperty("seq").GetInt32();
         string command = Text(request, "command") ?? string.Empty;
-        JsonObject response = new()
-        {
-            ["seq"] = 0,
-            ["type"] = "response",
-            ["request_seq"] = seq,
-            ["command"] = command,
-        };
         try
         {
-            if (!handlers.TryGetValue(command, out Func<JsonElement, Task<object?>>? handler))
+            JsonObject response = new()
             {
-                throw new DapException(command, $"Request '{command}' is not supported.");
-            }
-            object? body = await handler(request.TryGetProperty("arguments", out JsonElement arguments) ? arguments : default).ConfigureAwait(false);
-            response["success"] = true;
-            if (body is not null)
+                ["seq"] = 0,
+                ["type"] = "response",
+                ["request_seq"] = seq,
+                ["command"] = command,
+            };
+            try
             {
-                response["body"] = JsonSerializer.SerializeToNode(body, body.GetType(), Options);
+                if (!handlers.TryGetValue(command, out Func<JsonElement, Task<object?>>? handler))
+                {
+                    throw new DapException(command, $"Request '{command}' is not supported.");
+                }
+                object? body = await handler(request.TryGetProperty("arguments", out JsonElement arguments) ? arguments : default).ConfigureAwait(false);
+                response["success"] = true;
+                if (body is not null)
+                {
+                    response["body"] = JsonSerializer.SerializeToNode(body, body.GetType(), Options);
+                }
+            }
+            catch (Exception error)
+            {
+                response["success"] = false;
+                response["message"] = error is DapException dap ? dap.Reason : error.Message;
+                try
+                {
+                    log?.Invoke($"DAP {command} failed: {error}");
+                }
+                catch
+                {
+                    // A failed diagnostic write must not discard the request's error response.
+                }
+            }
+            response["seq"] = Interlocked.Increment(ref sequence);
+            try
+            {
+                Write(response);
+                if ((bool)response["success"]! && afterResponse.TryGetValue(command, out Action? then))
+                {
+                    then();
+                }
+            }
+            catch (Exception error) when (error is IOException or ObjectDisposedException)
+            {
             }
         }
-        catch (Exception error)
+        finally
         {
-            log?.Invoke($"DAP {command} failed: {error}");
-            response["success"] = false;
-            response["message"] = error is DapException dap ? dap.Reason : error.Message;
-        }
-        response["seq"] = Interlocked.Increment(ref sequence);
-        try
-        {
-            Write(response);
-        }
-        catch (Exception error) when (error is IOException or ObjectDisposedException)
-        {
-            return;
-        }
-        if ((bool)response["success"]! && afterResponse.TryGetValue(command, out Action? then))
-        {
-            then();
+            if (requestFinished.TryGetValue(command, out Action? finished))
+            {
+                finished();
+            }
         }
     }
 
