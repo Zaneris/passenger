@@ -7,6 +7,7 @@ using Avalonia.Input;
 using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.Docking;
 using Passenger.App.Run;
 using Passenger.Core;
 
@@ -113,6 +114,119 @@ public sealed class ToolHeaderTests : IDisposable
             File.WriteAllText(Path.Combine(folder, "finish"), string.Empty);
             window.Close();
         }
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NuGet_search_feed_options_and_count_fit_without_resetting_typed_values_on_resize(bool light)
+    {
+        Directory.CreateDirectory(Path.Combine(folder, "feed"));
+        File.WriteAllBytes(Path.Combine(folder, "feed", "Passenger.Sample.1.0.0.nupkg"), StandInFeed.Package("Passenger.Sample", "1.0.0"));
+        string feed = "A local package feed with a deliberately long readable name";
+        File.WriteAllText(Path.Combine(folder, "nuget.config"), $"<configuration><packageSources><clear/><add key=\"{feed}\" value=\"feed\"/></packageSources></configuration>");
+        MainWindow window = new() { Width = 1200, Height = 800, RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark };
+        window.SetRenderScaling(2);
+        window.Show();
+        window.OpenFolder(folder);
+        window.ShowToolWindow("nuget");
+        try
+        {
+            Ui.Settle();
+            Ui.WaitFor(() => window.NuGet.FeedChoices.Contains(feed), "the folder's real package feed");
+            Control bar = Assert.Single(window.NuGet.GetVisualDescendants().OfType<Control>(), control => control.Name == "NuGetPackageTools");
+            TextBox query = Assert.Single(bar.GetVisualDescendants().OfType<TextBox>(), text => text.PlaceholderText == "Search packages");
+            ComboBox chooser = Assert.Single(bar.GetVisualDescendants().OfType<ComboBox>());
+            CheckBox prerelease = Assert.Single(bar.GetVisualDescendants().OfType<CheckBox>());
+            Button refresh = Assert.Single(bar.GetVisualDescendants().OfType<Button>(), button => Equals(ToolTip.GetTip(button), "Refresh"));
+            TextBlock count = Assert.Single(bar.GetVisualDescendants().OfType<TextBlock>(), text => text.Name == "NuGetPackageStatus");
+            Assert.StartsWith("0 packages", window.NuGet.Status, StringComparison.Ordinal);
+            foreach (double width in new double[] { 1200, 683, 640 })
+            {
+                window.Width = width;
+                Ui.Settle();
+                CheckStatus();
+                UiAudit.Capture(window, $"nuget-count-{width:0}-{(light ? "light" : "dark")}");
+            }
+            Click(window, chooser);
+            Ui.Press(window, "end");
+            Ui.Press(window, "enter");
+            Assert.Equal(feed, window.NuGet.ChosenFeed);
+            Click(window, query);
+            window.KeyTextInput("Passenger");
+            Ui.Settle();
+            Click(window, prerelease);
+            Ui.WaitFor(() => window.NuGet.Rows.Count == 1, "the real folder's package search result");
+            Click(window, query);
+            Ui.Press(window, "end");
+            window.KeyTextInput(".Missing");
+            Ui.Settle();
+            Ui.WaitFor(() => window.NuGet.Rows.Count == 0 && window.NuGet.Status.StartsWith("Nothing found", StringComparison.Ordinal), "the absent package's status");
+            Click(window, query);
+            query.CaretIndex = 4;
+            object? focus = window.FocusManager?.GetFocusedElement();
+            foreach (double width in new double[] { 1200, 683, 640, 1200 })
+            {
+                window.Width = width;
+                Ui.Settle();
+                CheckNuGet();
+                Assert.Same(focus, window.FocusManager?.GetFocusedElement());
+                Assert.Equal(4, query.CaretIndex);
+                UiAudit.Capture(window, $"nuget-packages-{width:0}-{(light ? "light" : "dark")}");
+            }
+            DockLayout layout = window.DockHost.Capture();
+            window.DockHost.Apply(layout with
+            {
+                LeftWidth = 200,
+                Windows = layout.Windows.ToDictionary(pair => pair.Key, pair => pair.Key == "nuget"
+                    ? pair.Value with { Anchor = ToolAnchor.LeftTop, Shown = true }
+                    : pair.Value.Anchor == ToolAnchor.LeftTop ? pair.Value with { Shown = false } : pair.Value),
+            });
+            Ui.Settle();
+            Assert.InRange(window.NuGet.Bounds.Width, 190, 210);
+            CheckNuGet();
+            UiAudit.Capture(window, $"nuget-packages-side-200-{(light ? "light" : "dark")}");
+            Click(window, refresh);
+            Ui.WaitFor(() => window.NuGet.Rows.Count == 0 && window.NuGet.Status.StartsWith("Nothing found", StringComparison.Ordinal), "the refreshed folder search");
+            CheckNuGet();
+
+            void CheckNuGet()
+            {
+                Assert.Equal("Passenger.Missing", query.Text);
+                Assert.Equal(feed, window.NuGet.ChosenFeed);
+                Assert.True(prerelease.IsChecked == true);
+                List<Rect> taken = [];
+                foreach (Control action in new Control[] { query, chooser, prerelease, refresh })
+                {
+                    Assert.True(action.IsEffectivelyVisible && Inside(action, bar), $"{action.GetType().Name} escapes the {bar.Bounds.Width}px NuGet toolbar");
+                    Rect bounds = new(action.TranslatePoint(default, bar)!.Value, action.Bounds.Size);
+                    Assert.DoesNotContain(taken, prior => prior.Intersects(bounds));
+                    taken.Add(bounds);
+                }
+                CheckStatus();
+                Assert.Equal(feed, ToolTip.GetTip(chooser));
+            }
+
+            void CheckStatus()
+            {
+                Assert.True(Inside(count, bar));
+                Assert.True(count.TextLayout.Width <= count.Bounds.Width + 1, $"The package count clips in the {bar.Bounds.Width}px toolbar");
+                Assert.Equal(window.NuGet.Status, ToolTip.GetTip(count));
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    private static void Click(Window window, Control control)
+    {
+        Point hit = control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), window)!.Value;
+        window.MouseMove(hit);
+        window.MouseDown(hit, MouseButton.Left);
+        window.MouseUp(hit, MouseButton.Left);
+        Ui.Settle();
     }
 
     private static bool Inside(Control child, Control parent) => child.TranslatePoint(default, parent) is { } at
