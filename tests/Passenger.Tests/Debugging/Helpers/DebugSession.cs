@@ -87,6 +87,24 @@ public sealed class DebugSession : IDisposable
 
     public DapConnection Connection { get; }
 
+    /// <summary>The engine's log read with sharing, while the adapter is still writing it.</summary>
+    public string EngineLog
+    {
+        get
+        {
+            try
+            {
+                using FileStream file = new(engineLog, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                using StreamReader reader = new(file);
+                return reader.ReadToEnd();
+            }
+            catch (IOException)
+            {
+                return string.Empty;
+            }
+        }
+    }
+
     /// <summary>The adapter with DebuggableConsoleApp started for it to attach to; suspended, the
     /// program waits at startup until the attach lets it go, in configurationDone.</summary>
     public static DebugSession ForAttach(ITestOutputHelper output, bool startSuspended, out Process debuggee, string? symbolCache = null)

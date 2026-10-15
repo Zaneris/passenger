@@ -54,6 +54,7 @@ public sealed class DebugAdapter
     {
         // The client that went may have gone before configurationDone's answer could be written.
         Volatile.Write(ref aborted, true);
+        debugger.CancelStartup();
         LetEventsGo();
         try
         {
@@ -233,8 +234,16 @@ public sealed class DebugAdapter
         });
         connection.Handle<ThreadArguments>("stepOut", arguments => Locked(() => debugger.Step(arguments.ThreadId, StepType.StepOut)));
         connection.Handle<ThreadArguments>("pause", _ => Locked(() => debugger.Pause()));
-        connection.Handle<DisconnectArguments>("disconnect", arguments => Locked(() => debugger.Disconnect(arguments.TerminateDebuggee ?? false)), then: RequestShutdown);
-        connection.Handle<TerminateArguments>("terminate", _ => Locked(() => debugger.Terminate()));
+        connection.Handle<DisconnectArguments>("disconnect", arguments =>
+        {
+            debugger.CancelStartup();
+            return Locked(() => debugger.Disconnect(arguments.TerminateDebuggee ?? false));
+        }, then: RequestShutdown);
+        connection.Handle<TerminateArguments>("terminate", _ =>
+        {
+            debugger.CancelStartup();
+            return Locked(() => debugger.Terminate());
+        });
         connection.Handle<ThreadArguments, ExceptionInfoResponse>("exceptionInfo", ExceptionInfo);
         // Not under the engine's lock: a program waiting for input may be running, and the write is all.
         connection.Handle<InputArguments>("input", arguments =>

@@ -183,6 +183,11 @@ public partial class ManagedDebugger
     /// <summary>Cancelled as the session ends, which gives up a decompile under way.</summary>
     private readonly CancellationTokenSource _ending = new();
 
+    /// <summary>Cancelled without the engine's lock: a startup waiting on the runtime holds that lock itself.</summary>
+    private readonly CancellationTokenSource _starting = new();
+
+    public void CancelStartup() => _starting.Cancel();
+
     /// <summary>How often the program has been let go, so an event put off for a decompile is dropped when it was let go
     /// meanwhile (<see cref="AfterDecompiling"/>).</summary>
     private int _continued;
@@ -418,7 +423,7 @@ public partial class ManagedDebugger
     /// one held at its start once the debugger is registered for its runtime and has let it go (<paramref name="resume"/>),
     /// so a client that lets it go itself once answered finds the debugger there, and none of its events is handled before
     /// the process is the engine's. A failure answers the request with its reason.</summary>
-    private async Task PerformAttach(int processId, Func<Process, Task, Task> resume)
+    private async Task PerformAttach(int processId, Func<Process, Task, CancellationToken, Task> resume)
     {
         _logger?.Invoke($"Attaching to process: {processId}");
         Process process;
@@ -433,7 +438,7 @@ public partial class ManagedDebugger
         try
         {
             _exited.Reset();
-            (_corDebug, _process) = await ClrDebugExtensions.Automatic(processId, answered => resume(process, answered), TakeHold, _logger);
+            (_corDebug, _process) = await ClrDebugExtensions.Automatic(processId, answered => resume(process, answered, _starting.Token), TakeHold, _logger, _starting.Token);
         }
         catch (Exception error)
         {
