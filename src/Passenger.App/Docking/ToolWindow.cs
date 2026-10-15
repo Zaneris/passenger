@@ -93,7 +93,8 @@ public sealed class ToolWindow(string id, string title, string icon, Control con
     /// <summary>Its place among its anchor's buttons, from the top or the left.</summary>
     public int Order { get; internal set; }
 
-    /// <summary>Open in its place: what its stripe button shows as pressed.</summary>
+    /// <summary>Open in the remembered layout; <see cref="DockHost.IsShown"/> also accounts for a narrow window's
+    /// temporary collapse, which its stripe button shows as unpressed until brought forward.</summary>
     public bool IsShown
     {
         get => isShown;

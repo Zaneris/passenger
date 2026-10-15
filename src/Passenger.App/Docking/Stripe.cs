@@ -126,7 +126,7 @@ internal sealed class Stripe : Border
         {
             shortcuts[window] = window.Action is { } action ? keymap.ShortcutsFor(action).FirstOrDefault()?.Display() : null;
         }
-        button.IsChecked = window.IsShown;
+        button.IsChecked = host.IsShown(window.Id);
         string? keys = shortcuts[window];
         ToolTip.SetTip(button, keys is null ? window.Title : $"{window.Title} ({keys})");
         return button;
@@ -150,7 +150,7 @@ internal sealed class Stripe : Border
         button.Click += (_, _) =>
         {
             host.Toggle(window.Id);
-            button.IsChecked = window.IsShown;
+            button.IsChecked = host.IsShown(window.Id);
         };
         return button;
     }

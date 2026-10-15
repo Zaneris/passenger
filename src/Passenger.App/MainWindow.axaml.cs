@@ -486,6 +486,17 @@ public partial class MainWindow : Window
     /// <summary>The tool windows, each in the place IntelliJ gives it at first.</summary>
     private void AddToolWindows()
     {
+        Dock.FocusCenterRequested += (_, _) =>
+        {
+            if (Editors.Active is not null)
+            {
+                FocusEditor();
+            }
+            else
+            {
+                welcome.FocusSearch();
+            }
+        };
         Dock.Add(new Docking.ToolWindow("explorer", "Explorer", "Icon.Explorer", Explorer, Docking.ToolAnchor.LeftTop)
         {
             Action = AppActions.FocusExplorer,
