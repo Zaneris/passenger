@@ -2,7 +2,8 @@
 
 Evidence date: 2026-10-16 (Indian/Mauritius). This inventory tracks the
 [owner's shared UI requirements](https://github.com/Zaneris/passenger/issues/213#issuecomment-6176439816).
-It is a work queue, not a whole-UI pass. Source checkpoint `5ce60d7` is the shared Chrome/disabled-action change;
+It is a work queue, not a whole-UI pass. Source checkpoints `5ce60d7`, `6ef4205` and `0c4e149` cover shared
+Chrome/disabled actions, Terminal tool tabs/lifecycle and wrapping tool hints respectively;
 earlier source checkpoints and full test commands are in [MVP progress](mvp-progress.md).
 
 ## Evidence and rules
@@ -84,10 +85,33 @@ Find, Hierarchy, Local History, NuGet, Terminal, Commit, Git and Performance Pro
 All need an explicit default/narrow/two-theme state entry as the sweep proceeds; existing functional tests do not
 substitute for that inventory.
 
-Current focused evidence covers effective side collapse/restoration (Explorer/Live Visual Tree), editor/output/list
-scrollbars, Build beside an empty editor, and Terminal scrollback/alternate behavior. Terminal still builds
-editor-style `Border.tab` controls while Debug/Find/Git/NuGet/Problems/Profiler/Memory use `ToggleButton.panelTab`.
-Unifying the tool-tab presentation is the next source checkpoint, followed by popup/focus rules and populated forms.
+`6ef4205` changes Terminal's old editor-style tabs to the existing shared `ToggleButton.panelTab` style. Actual Windows cmd
+flows check selected-state stability, active/inactive close bubbling, tab order, focus/keys and kept reading position.
+The final Windows combined run reports 25 passes in 25s; 13 older Unix-only bodies return early, so 12 cases execute
+here. Real Run-in-Terminal closure, Stop/Dispose/CloseAll, natural exit code 3 and an inherited-output child flood
+also check actual PIDs, completion and exactly one exit event. Old immediate disposal fails the immediate-shutdown
+regression with a missing event. Native waiting/disposal happens off the UI thread while the reader drains closing
+output. The final `tool-tabs-real-output/` folder has 68 scale-2 frames: all 17 registered tools at 1200/683 in both
+themes. Four final Terminal frames were inspected; earlier exploratory `tool-tabs-fixed/` frames helped identify
+responsive faults but used injected terminal history and are not the final terminal visual evidence.
+
+`0c4e149` adds one shared wrapping style for ten empty tool hints. `tool-hints-verified/` has 80 frames from
+1200→683→640→1200 in both themes, with requested side-pane widths of 200px. The actual hint TextLayout and each
+ancestor viewport up to its tool are asserted. Tool Layout/Problems/Local History classes pass 12/12 in 31s;
+RC1 build has zero warnings/errors. Twenty-four representative whole frames were inspected: all ten migrated
+hints in both themes, with normal and narrow widths represented. This does not claim all 80 frames were viewed.
+
+| Tool surfaces | Current captured/tested state | Continuing source or capture work |
+| --- | --- | --- |
+| Hierarchy, Git, Unit Tests, Profiler | Empty guidance fits its own 640px-window pane; both themes inspected. | Populated hierarchy/history/tests/profile views. Profiler tab strip still clips Snapshots at 640/683; responsive header fix is next. |
+| Find, Structure, Bookmarks, Local History, Problems, Debug | Shared empty hint geometry at normal/narrow widths; both themes inspected across representative frames. Existing Problems/Local History workflows also pass. | Populated tool rows, long tab names, narrow action bars, keyboard focus and selection through resize. |
+| Terminal | Final real-shell normal/narrow frames both themes inspected; lifecycle and command input exercise real Windows processes. | Unix execution of the new cases, long/many-session tab overflow and complete focus inventory. |
+| Explorer, Run, Build, Commit, Live Visual Tree | Captured at 1200/683 both themes in the 17-tool sweep. Earlier focused docking, console/editor scrollbar and empty-editor evidence remains. | Complete populated-state visual/input inventory; capture existence alone is not a pass. |
+| NuGet | Packages empty-folder view captured at 1200/683 both themes. | Package-count toolbar text clips at narrow width; responsive field/status layout is active software work. Sources/populated package/error/detail states remain. |
+| Profiler Memory/Frames subviews | Existing functional tests; not inspected by this empty-tool capture sweep. | Actual snapshots, subtab overflow, empty/busy/result states, toolbars and viewport checks. |
+
+Profiler/NuGet headers, popup/focus rules and populated forms remain the next source checkpoints. The capture
+inventory is updated as those checks run; it is not a stopping condition.
 
 ## Reference and execution limits
 
