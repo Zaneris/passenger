@@ -69,8 +69,7 @@ public sealed class TemplateVariablesDialog : Window
         DockPanel.SetDock(bottom, Dock.Bottom);
         root.Children.Add(bottom);
         root.Children.Add(body);
-        Border page = new() { Child = root };
-        page.Bind(Border.BackgroundProperty, page.GetResourceObservable("Passenger.Editor.Background"));
+        Border page = new() { Classes = { "dialogPage" }, Child = root };
         Content = page;
         List();
         names.SelectedIndex = 0;
@@ -197,8 +196,7 @@ public sealed class ChooseMacroDialog : Window
         DockPanel.SetDock(bottom, Dock.Bottom);
         root.Children.Add(bottom);
         root.Children.Add(new Border { Classes = { "framed" }, Margin = new Thickness(12), Child = list });
-        Border page = new() { Child = root };
-        page.Bind(Border.BackgroundProperty, page.GetResourceObservable("Passenger.Editor.Background"));
+        Border page = new() { Classes = { "dialogPage" }, Child = root };
         Content = page;
     }
 

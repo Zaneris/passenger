@@ -2,7 +2,9 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.VisualTree;
@@ -21,6 +23,7 @@ namespace Passenger.Tests;
 /// which the tests that open the other dialogs (a refactoring's, Conflicts, a feed's) hold their dialogs to as well.</summary>
 public sealed class DialogButtonsTests : IDisposable
 {
+    private static int captureNumber;
     /// <summary>The buttons that read as text, whose words stand at their left as a line of text's do.</summary>
     private static readonly string[] ReadAsText = ["link", "crumb", "statusItem"];
 
@@ -58,12 +61,35 @@ public sealed class DialogButtonsTests : IDisposable
             Ui.WaitFor(() => settings.OwnedWindows.OfType<KeyboardShortcutDialog>().Any(w => w.IsVisible), "the Keyboard Shortcut dialog");
             Check(settings.OwnedWindows.OfType<KeyboardShortcutDialog>().Single(w => w.IsVisible)).Close();
             Ui.Settle();
+            settings.Page = SettingsDialog.LiveTemplatesPage;
+            Ui.Settle();
+            Assert.True(settings.Templates.Choose("cw"));
+            Button availability = settings.Templates.AvailabilityButton;
+            Point availabilityAt = availability.TranslatePoint(new Point(availability.Bounds.Width / 2, availability.Bounds.Height / 2), settings)!.Value;
+            settings.MouseDown(availabilityAt, MouseButton.Left);
+            settings.MouseUp(availabilityAt, MouseButton.Left);
+            Ui.WaitFor(() => settings.OwnedWindows.OfType<AvailabilityDialog>().Any(w => w.IsVisible), "the Availability configuration dialog");
+            Closed(settings.OwnedWindows.OfType<AvailabilityDialog>().Single(w => w.IsVisible));
             Check(settings).Close();
             Ui.Settle();
 
             window.Perform(AppActions.NewSolution);
             NewProjectDialog solution = Opened<NewProjectDialog>(window);
             Ui.WaitFor(() => solution.TemplatesRead.IsCompleted, "dotnet new's templates to be read", TimeSpan.FromMinutes(3));
+            Check(solution);
+            solution.SearchBox.Focus();
+            Ui.Press(solution, OperatingSystem.IsMacOS() ? "meta A" : "control A");
+            solution.KeyTextInput("No_template_can_match_this_audit_search");
+            Ui.Settle();
+            Assert.False(solution.CreateButton.IsEnabled);
+            Ui.Press(solution, "ENTER");
+            Assert.True(solution.IsVisible && !solution.IsCreating, "A disabled default must not start creation on Enter");
+            Point disabledAt = solution.CreateButton.TranslatePoint(new Point(10, 10), solution)!.Value;
+            solution.MouseMove(disabledAt);
+            Check(solution);
+            solution.Query = string.Empty;
+            Ui.Settle();
+            Assert.True(solution.CreateButton.IsEnabled, "Clearing the search must make the chosen installed template available again");
             Closed(solution);
 
             window.Perform(AppActions.EditConfigurations);
@@ -94,8 +120,33 @@ public sealed class DialogButtonsTests : IDisposable
     /// and Cancel, when it has both, stand where Rider's do. Returns the dialog.</summary>
     public static T Check<T>(T dialog) where T : Window
     {
+        if (Environment.GetEnvironmentVariable("PASSENGER_UI_AUDIT") is { Length: > 0 })
+        {
+            dialog.SetRenderScaling(2);
+            ThemeVariant? requested = dialog.RequestedThemeVariant;
+            try
+            {
+                foreach (ThemeVariant theme in new[] { ThemeVariant.Dark, ThemeVariant.Light })
+                {
+                    dialog.RequestedThemeVariant = theme;
+                    CheckCurrent(dialog);
+                }
+            }
+            finally
+            {
+                dialog.RequestedThemeVariant = requested;
+                Ui.Settle();
+            }
+            return dialog;
+        }
+        return CheckCurrent(dialog);
+    }
+
+    private static T CheckCurrent<T>(T dialog) where T : Window
+    {
         Ui.Settle();
         string title = dialog.Title ?? dialog.GetType().Name;
+        CheckPage(dialog);
         Button[] shown = [.. dialog.GetVisualDescendants().OfType<Button>()
             .Where(b => b is not ToggleButton and not RepeatButton && b.IsEffectivelyVisible && b.Bounds.Width > 0 && b.Bounds.Height > 0)];
         foreach (Button button in shown.Where(b => !b.Classes.Any(ReadAsText.Contains)))
@@ -131,6 +182,21 @@ public sealed class DialogButtonsTests : IDisposable
                     $"{Name(button)} in {title} must be white with a border in the light theme, rather than Fluent's grey fill");
             }
         }
+        foreach (Button button in shown.Where(b => !b.IsEffectivelyEnabled && b.Classes.Contains("primary")))
+        {
+            ContentPresenter presenter = button.GetVisualDescendants().OfType<ContentPresenter>().First(p => p.Name == "PART_ContentPresenter");
+            Assert.Equal(Colour(dialog, "Passenger.DisabledText"), Solid(presenter.Foreground));
+            Assert.Equal(Colour(dialog, "Passenger.DisabledBackground"), Solid(presenter.Background));
+            Assert.Equal(Colour(dialog, "Passenger.DisabledBorder"), Solid(presenter.BorderBrush));
+            Assert.NotEqual(Colour(dialog, "Passenger.Text"), Solid(presenter.Foreground));
+            Assert.Equal(new Thickness(1), presenter.BorderThickness);
+        }
+        foreach (Button button in shown.Where(b => !b.IsEffectivelyEnabled && b.Classes.Contains("tool")))
+        {
+            ContentPresenter presenter = button.GetVisualDescendants().OfType<ContentPresenter>().First(p => p.Name == "PART_ContentPresenter");
+            Assert.Equal(0, Solid(presenter.Background).A);
+            Assert.Equal(default, presenter.BorderThickness);
+        }
 
         if (shown.FirstOrDefault(b => b.IsDefault) is { } chosen && shown.FirstOrDefault(b => b.IsCancel && !b.IsDefault) is { } cancel)
         {
@@ -150,8 +216,39 @@ public sealed class DialogButtonsTests : IDisposable
                     $"In {title}, Don't ask again must sit at the footer's left, on the same row as the buttons");
             }
         }
+        UiAudit.Capture(dialog, $"dialog-{dialog.GetType().Name}-{dialog.ActualThemeVariant}-{dialog.Bounds.Width:0}-{Interlocked.Increment(ref captureNumber):D3}");
         return dialog;
     }
+
+    private static void CheckPage(Window dialog)
+    {
+        // Diff and merge windows are full code surfaces, rather than form pages over the chrome.
+        if (dialog is DiffWindow or MergeWindow)
+        {
+            return;
+        }
+        Color chrome = Colour(dialog, "Passenger.Chrome");
+        Color editor = Colour(dialog, "Passenger.Editor.Background");
+        Assert.Equal(chrome, Solid(dialog.Background));
+        foreach (Border border in dialog.GetVisualDescendants().OfType<Border>().Where(b => b.TemplatedParent is null && b.IsEffectivelyVisible))
+        {
+            if (border.Classes.Contains("dialogPage"))
+            {
+                Assert.Equal(chrome, Solid(border.Background));
+            }
+            // Framed data, code previews and arguments may use the editor's ground; an unframed page may not.
+            if (border.Background is ISolidColorBrush brush && brush.Color == editor && border.BorderThickness == default)
+            {
+                Assert.Fail($"{dialog.Title} has an unframed editor-coloured page instead of the shared chrome");
+            }
+        }
+    }
+
+    private static Color Colour(Window window, string key) =>
+        window.TryFindResource(key, window.ActualThemeVariant, out object? found) && found is ISolidColorBrush brush
+            ? brush.Color : throw new InvalidOperationException($"No solid theme token {key}");
+
+    private static Color Solid(IBrush? brush) => Assert.IsAssignableFrom<ISolidColorBrush>(brush).Color;
 
     private static string Name(Button button) => button.Content is string words ? $"'{words}'" : ToolTip.GetTip(button) is string tip ? $"'{tip}'" : "a button";
 
@@ -165,6 +262,12 @@ public sealed class DialogButtonsTests : IDisposable
     private static void Closed(Window dialog)
     {
         Check(dialog);
+        if (dialog.CanResize && dialog.MinWidth > 0 && dialog.MinWidth < dialog.Bounds.Width)
+        {
+            dialog.Width = dialog.MinWidth;
+            Ui.Settle();
+            Check(dialog);
+        }
         dialog.Close();
         Ui.Settle();
     }
