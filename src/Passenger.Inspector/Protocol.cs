@@ -22,7 +22,7 @@ namespace Passenger.Inspector;
 public static class Wire
 {
     /// <summary>Bumped by a change either end must know of: a hello of another version is refused, saying so.</summary>
-    public const int Version = 6;
+    public const int Version = 7;
 
     /// <summary>The app's environment: the socket's path, where it connects.</summary>
     public const string SocketVariable = "PASSENGER_INSPECTOR";
@@ -78,6 +78,10 @@ public static class Wire
     public const string Picked = "picked";
     public const string PickEnded = "pickEnded";
     public const string BindingFailed = "bindingFailed";
+
+    /// <summary>A later instance could not use an accepted XAML update. The completed Apply result is unchanged; the
+    /// reported source now needs a restart, and Updated explains where population failed.</summary>
+    public const string XamlFailed = "xamlFailed";
 
     /// <summary>A property whose binding the last values read showed has changed since: what was read is out of date.</summary>
     public const string ValuesChanged = "valuesChanged";

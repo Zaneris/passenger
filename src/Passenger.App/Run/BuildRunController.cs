@@ -668,6 +668,18 @@ public sealed class BuildRunController
             console?.Append(BindingErrors.Line(Placed(app, failed.Failure), session.Folder), error: true);
             ShowBindings();
         };
+        app.XamlFailed += (_, failure) =>
+        {
+            if (session.IsEnded || app != session.LiveApp && app != session.RunApp)
+            {
+                return;
+            }
+            HotReloadOutcome observed = HotReload.XamlFailure(failure) with { Said = "A newly created view needs a restart to load accepted XAML changes" };
+            console?.Append($"Hot Reload: {observed.Said}\n", error: true);
+            parts.Views.Problems.ShowHotReload(observed.Said, observed.Problems);
+            parts.Dock.Show("problems");
+            parts.Say(observed.Said);
+        };
     }
 
     /// <summary>The failed bindings of the apps Run and Debug launched last, in Problems' Bindings.</summary>
