@@ -14,13 +14,13 @@ No issue was closed, release published or tag pushed.
 | [#218 WPF generated-file contention](https://github.com/Zaneris/passenger/issues/218) | Reproduced the exact MC1000 overlap and identified `Passenger.Host` as the generated-file holder. Selected fix `2991601` persists separate design-time intermediate directories per project/SDK/evaluated properties and owns them across processes, preserving normal Build/Run/watch outputs. Final fixtures passed 9/9; broader checks passed 21 with one expected platform skip. Reverting the four product files makes the exact final fixture fail MC1000 in 7.5 seconds. | Native platform/full-suite acceptance remains. Target-time or local `IntermediateOutputPath` overrides are explicitly unsupported with actionable reasons and recovery. Cache pruning is not implemented. The earlier graph-coordinator experiment was superseded, not shipped. |
 | [#217 MAUI template inventory](https://github.com/Zaneris/passenger/issues/217) | Fixed in `d94d4af`. The three template-family tests passed with MAUI absent. Installing a temporary MAUI-tagged template into the test's own hive made the exact inventory regression exercise its positive branch and pass; the template was then removed. | The current GitHub Windows runner's actual inventory was not observed locally. |
 | [#216 Dialog answer order](https://github.com/Zaneris/passenger/issues/216) | Shared footer ordering now puts competing answers before Cancel on Windows/Linux and the default last on macOS. Thirteen focused Windows tests passed; dark/light scale-2 screenshots were reviewed. | Execute on macOS/Linux; the local Windows pass does not establish their native behavior. |
-| [#215 Cross-platform locked restore](https://github.com/Zaneris/passenger/issues/215) | Fixed in `7ca9d31`: WPF inspector inherits the shared six-RID list, and its lock file records all six. Forced locked restores passed for every RID. Full self-contained ReadyToRun App restore graphs passed for `osx-arm64`, `osx-x64` and `linux-x64` under RC1. | The actual macOS disk-image/Linux packaging jobs and final release dry run still need to pass on their platform runners. |
+| [#215 Cross-platform locked restore](https://github.com/Zaneris/passenger/issues/215) | `7ca9d31` fixes the WPF inspector's shared six-RID list/lock entries; six forced locked restores and full self-contained ReadyToRun App restore graphs for `osx-arm64`, `osx-x64` and `linux-x64` passed under RC1. Native CI at pushed `33ddf0d` now reproduces a separate macOS x64 cross-publish failure: the portable Roslyn extension requests the host `osx-arm64` server package after restore fetched only target `osx-x64`. | The Roslyn server target/host propagation fix is active, followed by native packaging and the final release dry run. Passing restore alone did not validate this publish path. |
 | [#214 Await-step/return-watch race](https://github.com/Zaneris/passenger/issues/214) | Diagnostics added in `3a1ef55`; no race fix claimed. The original await scenario passed 100/100 launches; a return-value boundary probe also passed. Final step/async-step/synthetic-value regressions passed 14/14. | A complete failing engine trace or deterministic other-frame return-watch/completion interleaving is still missing. The 100 clean runs did not exercise that interleaving. |
 | [#213 Whole-UI check](https://github.com/Zaneris/passenger/issues/213) | Ongoing. The first pass fixed footers, plain buttons, minimum width/toolbar and Welcome. Resumed commits fix simultaneous side-pane collapse/restoration (`7602f8a`), checked current menu values (`c0a648b`), active modified/pinned tab close buttons (`c7a8794`), all 20 Settings pages at narrow widths (`626f3fe`), and shared arrowless overlay scrollbars with stable wrapping/diagnostic rails (`bce47d4`). Tested/captured scope is recorded below. | Continue the complete window/dialog/popup/menu/tool-window inventory and shared rules: one tool-tab style, popup scale/shadows, centered rounded focus, disabled default buttons and Chrome page backgrounds. Terminal scrollback still lacks a scrollbar. Native Rider behavior was not observed; bundled defaults were inspected. These are active implementation/audit tasks, not external blockers. |
 | [#211 Final MCP pass](https://github.com/Zaneris/passenger/issues/211) | Audited the existing 65 tools and tests; concrete gaps listed below. | Remaining implementation and per-feature SDK-client tests. The owner requires this final pass after other MVP work; no completed final pass is claimed. |
 | [#208 Editor/server line-break drift](https://github.com/Zaneris/passenger/issues/208) | Existing `LspDocument.Unsplit` fix confirmed; two line-break regressions passed. No further change needed from the local evidence. | Full Windows/Linux/macOS CI runs must establish that the intermittent full-run drift is gone. |
 | [#206 CI shards](https://github.com/Zaneris/passenger/issues/206) | `8048b8e` uses three macOS test shards beside two disk-image jobs, fitting the known five-runner limit. Windows/Linux retain four. Static matrix expansion yields 11 test jobs; all 98 measured classes per system are dealt exactly once. Existing real-suite discovery/result coverage checks still use each system's shard count. | Observe a successful CI run below 25 minutes; class-time estimates are not observed job/wall times. |
-| [#57 Linux packaging/install](https://github.com/Zaneris/passenger/issues/57) | Existing package script, launcher, user/system install/uninstall, Linux instructions, CI smoke jobs and both release architectures were inspected. Shell syntax checks passed. #215 removes the known locked-restore blocker. | Build/check both tarballs and run the Ubuntu desktop build/run/debug/profile/terminal acceptance checks and complete Linux CI suite. This Windows host cannot establish those results. |
+| [#57 Linux packaging/install](https://github.com/Zaneris/passenger/issues/57) | Existing package script, launcher, user/system install/uninstall, Linux instructions, CI smoke jobs and both release architectures were inspected. Shell syntax checks passed. Existing Ubuntu WSL and Docker environments were found; Linux x64 packaging is now running. | Finish local Linux packaging/install checks, build/check both architectures and execute Ubuntu desktop build/run/debug/profile/terminal acceptance plus complete Linux CI. WSL/container evidence must be distinguished from native desktop acceptance. |
 | [#56 Release workflow](https://github.com/Zaneris/passenger/issues/56) | Existing workflow covers tests, six RIDs, fixed asset names, version/feed checks, signing hooks, checksums, tag notes and a non-publishing dry run. Packaging/release shell syntax checks passed. | The owner's required order is other MVP work and green three-system CI, then #211, then #55, then the final dry run, then an owner-chosen tag. The final dry run and tag were not performed out of sequence. Native signing/notarization was not exercised. |
 | [#55 Website/README refresh](https://github.com/Zaneris/passenger/issues/55) | Deferred as the owner explicitly requires this last, after the feature/MCP passes. Existing site, README and comments were inspected. | Commit a repeatable sample and screenshot command; retake all required views in both themes; revise the whole site/README/share card against the finished feature set. The `www` redirect needs the owner's Cloudflare dashboard because the deploy token cannot write redirect rules. |
 | [#33 Hot Reload](https://github.com/Zaneris/passenger/issues/33) | Managed-code tests passed 8/8 and edit tests 15/15. Avalonia literal XAML edits (`77f0a72`, getter validation `e1d3855`) update existing instances; exact RC1 framework tests passed 11/11. WPF literal edits (`ffe2706`) passed 4/4. Identity, state/bindings/namescopes/handlers, duplicate instances, invalid conversions/retry, getter failures, expiry and paused Continue/immediate-step behavior are covered. | Structural or attribute-set changes, bindings/markup/resources/styles/templates, future instances' compiled initialization and unresolved Avalonia `avares` identities remain software work. Run/watch inspector injection/reconnect is being implemented separately and is not claimed merged here. macOS/Linux execution is unverified; WPF was tested only on Windows x64. |
@@ -43,14 +43,22 @@ All counts are attributed to the source tested, rather than added together as on
 | WPF XAML `ffe2706` | `WpfXamlHotReloadTests` passed 4/4 on exact RC1; debugger worktree `tests/Passenger.Tests/TestResults/wpf-xaml-first.trx`. Both-framework scale-2 before/after captures are under `artifacts/bin/Passenger.Tests/debug/{xaml-hot-reload,wpf-xaml-hot-reload}/`. |
 | WPF design-time isolation `2991601` | Final nine-case fixture passed; broader 21 passed with one expected platform skip. `artifacts/wt-shell-isolated/tests/Passenger.Tests/TestResults/{isolation-final-fixtures,isolation-checkpoint}.trx`. Imported/global paths, selected references, generated navigation, cache reopen and Build/Run/watch overlap are checked. Shell worktree `artifacts/isolation-probe/tests/Passenger.Tests/TestResults/final-fixture-negative.trx` retains MC1000 with the four product files reverted; holder PID 12024 is `Passenger.Host`. |
 
-The shell agent's separate exploratory full Windows run used the superseded graph-coordinator snapshot `d2f5633`:
-642 passed, one About/version-stamp assertion failed and eight skipped. Its binaries had been built with stamp
+The shell agent's ongoing exploratory full Windows run uses the superseded graph-coordinator snapshot `d2f5633`:
+the latest snapshot is 816 passed, one retained About/version-stamp assertion failure and nine skipped, not a final
+run result. Its binaries had been built with stamp
 `3b41974` before that commit. This is not a green full suite for current main. A separate WPF native-picker probe
 remains timing-sensitive; no picker fix is claimed.
 
 Root's combined solution build at `33ddf0d` passed with zero errors and seven unchanged intentional fixture warnings,
 in `artifacts/milestone-1/integration/resumed-build.log`. Later source checkpoints require their own combined checks;
 focused counts above do not establish full Windows/macOS/Linux acceptance.
+
+The [native CI run at pushed `33ddf0d`](https://github.com/tebeco/passenger/actions/runs/38807870015) is active;
+local newer code is separate. Its [macOS x64 packaging job](https://github.com/tebeco/passenger/actions/runs/38807870015/job/116673341029)
+exposed the Roslyn server host/target package failure recorded in #215 above. SDK pin `a99e88b`, merged after that
+pushed checkpoint, changes `global.json` to disable roll-forward: ordinary `dotnet` now selects RC1. Its focused
+About/Windows-only-project checks passed three with one expected skip. Earlier direct-RC1 commands and temporary
+worktree-only pin evidence below remain historical; they are not still required by current main.
 
 ### Current shared-UI audit coverage
 
@@ -169,9 +177,10 @@ and input/screenshots/failed bindings for Avalonia/WPF apps. Existing coverage a
 
 ## Reproducing focused verification
 
-The shipping restore/UI checks used the installed .NET `11.0.100-rc.1.26425.128`, selected by a scratch `global.json`
-with `rollForward: disable`. Other agents' debugger audits used RC2 selected by the repository's `latestFeature`
-setting. There was no SDK pin change or unrelated package-lock churn in the committed work.
+The first-pass shipping restore/UI checks used the installed .NET `11.0.100-rc.1.26425.128`, selected by a scratch
+`global.json` with `rollForward: disable`. Some first-pass debugger audits used RC2 selected by the then-current
+`latestFeature` setting. The resumed SDK pin `a99e88b` now selects locked RC1 for ordinary `dotnet`; the explicit
+invocation below remains reproducible. No unrelated package-lock changes were needed for those shipping checks.
 
 For each of `osx-arm64`, `osx-x64`, `linux-x64`, the successful full App restore used the publishing graph's properties:
 
@@ -184,8 +193,8 @@ The inspector-only forced check covered all six RIDs using the same `RuntimeIden
 pack downloads suppressed because the inspector is framework-dependent. Its offline-only run disabled NuGet audit;
 the full App restore above used approved NuGet access without that suppression.
 
-On this Windows host, this exact invocation selects RC1 directly even though the repository's normal roll-forward
-otherwise selects RC2 (`--version` was checked to return `11.0.100-rc.1.26425.128`). It reproduces the focused build/tests:
+On this Windows host, this exact invocation selects RC1 directly (`--version` was checked to return
+`11.0.100-rc.1.26425.128`). It also reproduced the historical checks when repository roll-forward selected RC2:
 
 ```powershell
 $dotnetExe = 'C:\Program Files\dotnet\dotnet.exe'
