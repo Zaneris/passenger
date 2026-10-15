@@ -154,10 +154,42 @@ the suite's assembly/Debugger/Alone collections when estimating each shard's fin
 explicitly. Summary coverage still reads each system's count from shard metadata. New classes use their configured
 budget until native timings are collected.
 
-Current `fd80a32` changes macOS to four test jobs and one image job that checks both disk images sequentially, even
-if the first fails, retaining the x64 cold-cache/host-package guard. The actual 923-test listing estimates about
-16.4 minutes per macOS test shard from measured class weights. Four test jobs plus one package job fit the known
-five-slot limit. This later source layout has not yet established observed below-25-minute CI acceptance.
+`fd80a32` changes macOS to four test jobs and one image job that checks both disk images sequentially, even if the
+first fails, retaining the x64 cold-cache/host-package guard. Four test jobs plus one package job fit the known
+five-slot limit. Its earlier 923-test listing projected 16.4 minutes per macOS shard; the later 934-test listing
+projected 16.7. These are source-specific estimates, not observed below-25-minute acceptance.
+
+The next allocation uses five Windows shards and four each on Linux/macOS, keeping the 20-minute shard budget.
+All eleven result artifacts from [native CI `cc7456a`](https://github.com/tebeco/passenger/actions/runs/38815446318)
+contain exactly one result for each of that source's 909 tests, in 125 classes per system. `TestTimes.json` takes
+the measured seconds of its classes with no failed results: 125 on Windows, 121 on Linux and 119 on macOS. Failed
+classes retain their prior observations from [native CI `33ddf0d`](https://github.com/tebeco/passenger/actions/runs/38807870015),
+rather than letting the since-fixed EnC failures' waits drive the deal. This does not declare either run green.
+
+| System | Shards | Projected test minutes from the exact `8f5534f` listing (943 tests, 129 classes) |
+| --- | --- | --- |
+| macOS | 4 | 17.20, 17.19, 17.20, 17.19 |
+| Windows | 5 | 16.75, 16.76, 16.77, 16.75, 16.77 |
+| Linux | 4 | 15.73, 15.72, 15.73, 15.72 |
+
+The four-shard Windows model would take about 20.95 minutes before overhead, hence the fifth shard. These projections
+exclude build, discovery, runner and queue overhead. The four classes absent from CI3 use the existing 60-second
+default budget: TerminalLifecycleTests, ToolHeaderTests, ToolLayoutTests and ToolTabTests. Timings also predate
+additional cases in existing classes: notably XamlHotReloadTests grew from 17 in CI3 to 31 at `8f5534f`. No measured
+cost for those new cases is claimed. The retained failed-class observations are:
+
+| Class | CI1 / CI3 / `8f5534f` test counts | Retained macOS seconds | Retained Linux seconds |
+| --- | --- | --- | --- |
+| DebuggerTests | 36 / 36 / 36 | 297.9 | 297.6 |
+| HotReloadEditsTests | 15 / 15 / 15 | 140.0 | 130.9 |
+| HotReloadTests | 8 / 8 / 12 | 100.0 | 75.9 |
+| SelfDebuggingTests | 1 / 1 / 1 | 89.4 | refreshed from CI3 |
+| WpfXamlTests | 8 / 8 / 8 | 41.9 | refreshed from CI3 |
+| XamlHotReloadTests | 11 / 17 / 31 | 121.6 | 124.1 |
+
+Retaining the whole failed class understates its added coverage; the XAML and Hot Reload rows make that limit
+explicit. Generated filters were checked through actual discovery against the exact `8f5534f` binaries, with every
+test in exactly one shard per system. The next native run must establish the actual durations and whole-CI target.
 
 The following is the historical `8048b8e` estimate, before the collection-aware timing refresh; it is retained as the
 evidence for choosing three macOS shards, not a current runtime estimate:
