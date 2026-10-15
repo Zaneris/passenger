@@ -89,7 +89,7 @@ public sealed class ProblemsView : DockPanel
             ItemsSource = rows,
             ItemTemplate = new FuncDataTemplate<ProblemRow>((row, _) => Row(row), supportsRecycling: false),
         };
-        empty = new TextBlock { Classes = { "muted" }, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        empty = new TextBlock { Classes = { "emptyHint" } };
         Children.Add(new Panel { Children = { empty, list } });
         list.DoubleTapped += (_, _) => Choose();
         list.AddHandler(KeyDownEvent, (_, e) =>
