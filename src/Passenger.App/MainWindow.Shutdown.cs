@@ -1,3 +1,5 @@
+using Avalonia.Controls;
+
 namespace Passenger.App;
 
 /// <summary>What the window started ends with it: programs and builds at once, the debugger, the test runner and the
@@ -65,6 +67,7 @@ public partial class MainWindow
         }
         EndSession();
         ProjectName.Text = "No solution";
+        ToolTip.SetTip(ProjectButton, "Open a solution, project or folder");
         ProjectBadge.IsVisible = false;
         Editors.ShowWelcome(welcome);
         welcome.Say(null);
