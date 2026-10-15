@@ -186,6 +186,56 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
         End(window);
     }
 
+    [AvaloniaFact]
+    public void Wpf_run_under_watch_preserves_the_managed_agent_inspects_xaml_and_reconnects_after_a_rebuild()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "WPF runs on Windows alone");
+        MainWindow window = new() { Width = 1400, Height = 900 };
+        window.Show();
+        window.OpenFolder(folder);
+        Ui.Settle();
+        window.ApplySettings(window.Settings with { HotReload = true });
+        try
+        {
+            Assert.Null(Ui.Await(window.RunAsync(), "the WPF app to start under watch", TimeSpan.FromMinutes(3)));
+            try
+            {
+                Ui.WaitFor(() => window.Session.RunApp?.State == LiveAppState.Connected && RunOutput(window).Contains("Waiting for changes", StringComparison.Ordinal),
+                    "the watched WPF target's inspector and file watchers", TimeSpan.FromMinutes(2));
+            }
+            catch (TimeoutException error)
+            {
+                throw new TimeoutException($"{error.Message}\n{RunOutput(window)}", error);
+            }
+            LiveApp app = window.Session.RunApp!;
+            int? first = app.ProcessId;
+            long button = Read(app).Single(e => e.Name == "Increment").Id;
+            Assert.Null(window.OpenFile(Path.Combine(folder, "MainWindow.xaml.cs")));
+            Typing.Replace(window, "Name={state.Name};", "Watched Name={state.Name};");
+            Ui.Run(window, AppActions.Save);
+            Ui.WaitFor(() => RunOutput(window).Contains("changes applied", StringComparison.OrdinalIgnoreCase), "watch's C# update in WPF", TimeSpan.FromMinutes(2));
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Click) { Element = button }), "the watched WPF app's updated handler");
+            Ui.WaitFor(() => RunOutput(window).Contains("Watched Name=Original state; Count=1; Named=True", StringComparison.Ordinal), "the WPF C# update to run without restart");
+            Assert.Equal(first, app.ProcessId);
+            XamlUpdateResult applied = Ui.Await(app.ApplyXamlAsync(new XamlUpdate([new XamlSourceUpdate(Path.Combine(folder, "MainWindow.xaml"), View,
+                View.Replace("Text=\"Before\"", "Text=\"Watched XAML\"", StringComparison.Ordinal))])), "the watched WPF app's XAML property update");
+            Assert.True(applied.Applied, string.Join("; ", applied.Problems.Select(p => p.Message)));
+            Assert.Contains(Read(app), e => e.Text == "Watched XAML");
+            Assert.Null(window.OpenFile(Path.Combine(folder, "WpfTreeApp.csproj")));
+            Typing.Replace(window, "<Nullable>enable</Nullable>", "<Nullable>enable</Nullable><DefineConstants>WATCH_RESTART</DefineConstants>");
+            Ui.Run(window, AppActions.Save);
+            Ui.WaitFor(() => app.State == LiveAppState.Connected && app.ProcessId != first, "the replacement WPF target's inspector", TimeSpan.FromMinutes(2));
+            Assert.Same(app, window.Session.RunApp);
+            Assert.Contains(Read(app), e => e.Text == "Before");
+        }
+        finally
+        {
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => !window.IsRunning && window.Session.RunApp?.State == LiveAppState.Ended, "watch and its WPF inspector to end");
+            window.Close();
+        }
+    }
+
     private MainWindow Debugged()
     {
         MainWindow window = new() { Width = 1400, Height = 900 };
@@ -211,6 +261,8 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
     private static IEnumerable<Element> Flatten(Element element) => new[] { element }.Concat(element.Children.SelectMany(Flatten));
 
     private static string Output(MainWindow window) => window.BottomPanel.Debug.Console.Editor.Document.Snapshot.ToString();
+
+    private static string RunOutput(MainWindow window) => window.BottomPanel.Run.Document.Snapshot.ToString();
 
     private static void Capture(LiveApp app, string name)
     {

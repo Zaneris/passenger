@@ -266,7 +266,7 @@ public sealed partial class PassengerTools
         {
             null => Running(),
             "run" => Session.RunApp ?? throw new InvalidOperationException(Builds.IsRunning
-                ? $"What Run started is not {Inspectable}, or Hot Reload runs it"
+                ? $"What Run started is not {Inspectable}"
                 : "Run has started no Avalonia or WPF app; run starts one"),
             "debug" => Session.LiveApp ?? throw new InvalidOperationException(Session.Debug.IsDebugging
                 ? $"What is being debugged is not {Inspectable}"
@@ -316,7 +316,7 @@ public sealed partial class PassengerTools
         }
         if (Builds.IsRunning || Session.Debug.IsDebugging)
         {
-            return $"What is running is not {Inspectable}, or Hot Reload runs it";
+            return $"What is running is not {Inspectable}";
         }
         return apps.FirstOrDefault() is { } ended
             ? Ended(ended)
