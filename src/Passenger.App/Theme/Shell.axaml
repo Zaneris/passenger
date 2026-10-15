@@ -730,6 +730,14 @@
         <Setter Property="VerticalScrollBarVisibility" Value="Disabled" />
     </Style>
     <Style Selector="ToggleButton.panelTab">
+        <!-- A keyboard focus ring is decoration: it must not cover an overlay scrollbar's pointer target. -->
+        <Setter Property="FocusAdorner">
+            <FocusAdornerTemplate>
+                <Border IsHitTestVisible="False" BorderThickness="1"
+                        BorderBrush="{DynamicResource Passenger.Accent}"
+                        CornerRadius="{DynamicResource Passenger.ToolRadius}" />
+            </FocusAdornerTemplate>
+        </Setter>
         <Setter Property="Height" Value="24" />
         <Setter Property="Padding" Value="10,0" />
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.ToolRadius}" />

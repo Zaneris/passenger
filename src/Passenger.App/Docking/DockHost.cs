@@ -1,5 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
 
 namespace Passenger.App.Docking;
 
@@ -227,6 +229,7 @@ public sealed class DockHost : Grid
         {
             return;
         }
+        Control? focused = Focused(window);
         bool shown = window.IsShown;
         if (shown)
         {
@@ -241,6 +244,7 @@ public sealed class DockHost : Grid
         {
             LayoutChanged?.Invoke(this, EventArgs.Empty);
         }
+        RestoreFocus(window, focused);
     }
 
     /// <summary>Gives a docked window all of the frame it can have, or gives it back its size (Ctrl+Shift+', a
@@ -379,6 +383,7 @@ public sealed class DockHost : Grid
     /// <summary>Moves a window to another place (at an index among its buttons there), shown if it was.</summary>
     public void Move(ToolWindow window, ToolAnchor anchor, int? index = null)
     {
+        Control? focused = Focused(window);
         bool shown = window.IsShown;
         Remember();
         List<ToolWindow> there = [.. windows.Where(w => w.Anchor == anchor && w != window).OrderBy(w => w.Order)];
@@ -399,6 +404,34 @@ public sealed class DockHost : Grid
             Layout();
             LayoutChanged?.Invoke(this, EventArgs.Empty);
         }
+        RestoreFocus(window, focused);
+    }
+
+    private static Control? Focused(ToolWindow window)
+    {
+        if (TopLevel.GetTopLevel(window.Content)?.FocusManager?.GetFocusedElement() is Control focused
+            && (focused == window.Content || focused.GetVisualAncestors().Contains(window.Content)
+                || focused == window.HeaderTools || window.HeaderTools is { } tools && focused.GetVisualAncestors().Contains(tools)))
+        {
+            return focused;
+        }
+        return null;
+    }
+
+    private void RestoreFocus(ToolWindow window, Control? focused)
+    {
+        if (focused is null || IsShown(window.Id) && focused.IsEffectivelyVisible && focused.Focus())
+        {
+            return;
+        }
+        // A newly attached pane may not accept focus until arranged. Never replace keys someone has since moved.
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (IsShown(window.Id) && focused.IsEffectivelyVisible && TopLevel.GetTopLevel(focused)?.FocusManager?.GetFocusedElement() is null)
+            {
+                focused.Focus();
+            }
+        }, DispatcherPriority.Loaded);
     }
 
     /// <summary>The layout as it stands, to keep: while a window is maximised, with the sizes it gives back.</summary>

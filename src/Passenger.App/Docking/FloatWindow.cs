@@ -19,6 +19,9 @@ internal sealed class FloatWindow : Window
     /// size), or that is new and opens <paramref name="size"/> large over <paramref name="ide"/>.</summary>
     public FloatWindow(Visual ide, PixelRect? kept, Size size)
     {
+        IDisposable? ownerTheme = TopLevel.GetTopLevel(ide) is { } owner
+            ? this.Bind(RequestedThemeVariantProperty, owner.GetObservable(ActualThemeVariantProperty))
+            : null;
         this.Bind(BackgroundProperty, this.GetResourceObservable("Passenger.Chrome"));
         if (kept is { } was && OnScreen(was) is { } at)
         {
@@ -43,6 +46,7 @@ internal sealed class FloatWindow : Window
         };
         Closed += (_, _) =>
         {
+            ownerTheme?.Dispose();
             if (!closingQuietly)
             {
                 Dismissed?.Invoke(this, EventArgs.Empty);

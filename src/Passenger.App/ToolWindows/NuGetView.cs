@@ -151,10 +151,15 @@ public sealed class NuGetView : DockPanel
         Sources = new NuGetSourcesView(this);
         Children.Add(body);
         ShowPackages();
+        bool firstShow = true;
         AttachedToVisualTree += (_, _) =>
         {
             _ = Shown();
-            Dispatcher.UIThread.Post(() => search.Focus(), DispatcherPriority.Loaded);
+            if (firstShow)
+            {
+                firstShow = false;
+                Dispatcher.UIThread.Post(() => search.Focus(), DispatcherPriority.Loaded);
+            }
         };
     }
 
@@ -494,14 +499,20 @@ public sealed class NuGetView : DockPanel
     private void Show(Control content)
     {
         body.Content = content;
-        tabs.Children.Clear();
-        tabs.Children.Add(Tab("Packages", packages));
-        tabs.Children.Add(Tab("Sources", Sources));
+        if (tabs.Children.Count == 0)
+        {
+            tabs.Children.Add(Tab("Packages", packages));
+            tabs.Children.Add(Tab("Sources", Sources));
+        }
+        foreach (ToggleButton tab in tabs.Children.OfType<ToggleButton>())
+        {
+            tab.IsChecked = tab.Tag == content;
+        }
     }
 
     private ToggleButton Tab(string title, Control content)
     {
-        ToggleButton tab = new() { Classes = { "panelTab" }, IsChecked = body.Content == content, Content = title };
+        ToggleButton tab = new() { Classes = { "panelTab" }, IsChecked = body.Content == content, Content = title, Tag = content };
         tab.Click += (_, _) =>
         {
             if (content == Sources)
