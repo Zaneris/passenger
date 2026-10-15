@@ -102,6 +102,36 @@ class ShardCliTests(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertIn("DebugSession.Collection changed", result.stderr)
 
+    def test_decimal_finish_ties_use_the_same_filters_and_exact_coverage(self):
+        cases = [
+            ({"PackageSourcesTests": 0.1, "NewSolutionTests": 0.1, "Debugging.StepTests": 0.1,
+              "Debugging.LaunchTests": 0.2, "CodeAssistTests": 0.4, "McpTests": 0.4},
+             [{"CodeAssistTests", "Debugging.LaunchTests", "PackageSourcesTests"},
+              {"McpTests", "Debugging.StepTests", "NewSolutionTests"}]),
+            ({"PackageSourcesTests": 0.1, "NewSolutionTests": 0.1, "Debugging.StepTests": 0.1,
+              "Debugging.LaunchTests": 0.3, "CodeAssistTests": 0.1, "McpTests": 0.1},
+             [{"Debugging.LaunchTests", "NewSolutionTests"},
+              {"CodeAssistTests", "Debugging.StepTests", "McpTests", "PackageSourcesTests"}]),
+        ]
+        for number, (seconds, expected) in enumerate(cases):
+            with self.subTest(seconds=seconds):
+                self.write("times.json", json.dumps({"macOS": seconds}))
+                out = os.path.join(self.root, f"decimal-{number}")
+                result = self.split(out)
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertEqual(2, result.stdout.count("about 0.0 minutes"))
+                listed = []
+                for shard, hand in enumerate(expected, 1):
+                    with open(os.path.join(out, f"shard-{shard}.runsettings"), encoding="utf-8") as file:
+                        selected = set(re.findall(r"FullyQualifiedName~Passenger\.Tests\.([\w.]+)\.", file.read()))
+                    self.assertEqual(hand, selected)
+                    tests = [line for line in self.tests if any(line.startswith("    Passenger.Tests." + name + ".") for name in selected)]
+                    listed.append(self.write(f"decimal-{number}-{shard}.txt", "The following Tests are available:\n" + "\n".join(tests) + "\n"))
+                checked = self.cli("check", self.suite, *listed)
+                self.assertEqual(0, checked.returncode, checked.stdout + checked.stderr)
+                self.write("times.json", json.dumps({"macOS": dict(reversed(list(seconds.items())))}))
+                self.assertEqual(result.stdout, self.split(out).stdout)
+
     def test_indented_collection_definition_is_not_silently_ignored(self):
         self.write("Extra.cs", 'namespace Passenger.Tests;\n    [CollectionDefinition("Other")]\npublic sealed class Extra {}\n', self.source)
         result = self.split(os.path.join(self.root, "extra-definition"))
