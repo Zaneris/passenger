@@ -81,6 +81,8 @@ public sealed class ProfilerView : DockPanel
     private readonly Button stop;
     private readonly Button kill;
     private readonly ToggleButton[] pages;
+    private readonly ScrollViewer pageStrip;
+    private readonly WrapPanel runTools;
     private readonly DispatcherTimer ticking;
     private readonly Timeline timeline;
     private readonly Border timelineBand;
@@ -191,7 +193,15 @@ public sealed class ProfilerView : DockPanel
             Classes = { "emptyHint" },
         };
 
-        status = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0) };
+        status = new TextBlock { Margin = new Thickness(12, 4), TextTrimming = TextTrimming.CharacterEllipsis, IsVisible = false };
+        status.PropertyChanged += (_, change) =>
+        {
+            if (change.Property == TextBlock.TextProperty)
+            {
+                status.IsVisible = !string.IsNullOrEmpty(status.Text);
+                ToolTip.SetTip(status, status.Text);
+            }
+        };
         stop = new Button { Content = "Get Snapshot", Classes = { "primary" }, IsVisible = false };
         stop.Click += (_, _) => StopRequested?.Invoke(this, EventArgs.Empty);
         kill = new Button { Content = "Kill", IsVisible = false };
@@ -199,7 +209,7 @@ public sealed class ProfilerView : DockPanel
         pages = [PageButton("Call Tree"), PageButton("Hot Spots"), PageButton("Flame Graph"), PageButton("Frames"), PageButton("Allocations"), PageButton("GC"),
             PageButton("Memory"), PageButton("Snapshots")];
         pages[(int)ProfilerPage.Frames].Name = "ProfilerFrames";
-        StackPanel left = new() { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(6, 0), VerticalAlignment = VerticalAlignment.Center };
+        StackPanel left = new() { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
         foreach (ToggleButton page in pages)
         {
             left.Children.Add(page);
@@ -210,14 +220,19 @@ public sealed class ProfilerView : DockPanel
         open.Click += (_, _) => OpenSnapshotRequested?.Invoke(this, EventArgs.Empty);
         heap = new Button { Content = "Get Memory Snapshot", IsVisible = false };
         heap.Click += (_, _) => MemoryRequested?.Invoke(this, EventArgs.Empty);
-        StackPanel right = new() { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(6, 0), VerticalAlignment = VerticalAlignment.Center, Children = { heap, stop, kill, open } };
-        DockPanel bar = new();
-        DockPanel.SetDock(left, Dock.Left);
-        DockPanel.SetDock(right, Dock.Right);
-        bar.Children.Add(left);
-        bar.Children.Add(right);
-        bar.Children.Add(status);
-        Border top = new() { [DockProperty] = Dock.Top, Height = 34, BorderThickness = new Thickness(0, 0, 0, 1), Child = bar };
+        runTools = new WrapPanel { Name = "ProfilerRunTools", Margin = new Thickness(8, 4, 2, 0), IsVisible = false, Children = { heap, stop, kill } };
+        foreach (Button tool in runTools.Children.OfType<Button>())
+        {
+            tool.Margin = new Thickness(0, 0, 6, 4);
+        }
+        pageStrip = new ScrollViewer { Name = "ProfilerPageStrip", Classes = { "toolTabs" }, Content = left };
+        pageStrip.SizeChanged += (_, _) => RevealPage();
+        open[DockProperty] = Dock.Right;
+        open.VerticalAlignment = VerticalAlignment.Center;
+        open.Margin = new Thickness(0, 0, 8, 0);
+        DockPanel tabsBar = new() { Name = "ProfilerTabsBar", Children = { open, pageStrip } };
+        StackPanel bar = new() { Children = { tabsBar, runTools, status } };
+        Border top = new() { [DockProperty] = Dock.Top, BorderThickness = new Thickness(0, 0, 0, 1), Child = bar };
         top.Bind(Border.BorderBrushProperty, top.GetResourceObservable("Passenger.Divider"));
         Children.Add(top);
         timeline = new Timeline();
@@ -340,6 +355,7 @@ public sealed class ProfilerView : DockPanel
         stop.IsVisible = true;
         kill.IsVisible = !attached;
         heap.IsVisible = true;
+        runTools.IsVisible = true;
         placeholder.Text = $"Profiling {name}. Get Snapshot when it has done what is to be measured.";
         ticking.Start();
         if (Snapshot is null)
@@ -356,6 +372,7 @@ public sealed class ProfilerView : DockPanel
         stop.IsVisible = false;
         kill.IsVisible = false;
         heap.IsVisible = false;
+        runTools.IsVisible = false;
         if (why is not null)
         {
             status.Text = why;
@@ -619,7 +636,10 @@ public sealed class ProfilerView : DockPanel
         placeholder.IsVisible = !shown;
         // The run's timeline goes with its views, not with the list of runs; the Frames page has its frames' own.
         timelineBand.IsVisible = timeline.Snapshot is not null && page is not (ProfilerPage.Snapshots or ProfilerPage.Frames);
+        RevealPage();
     }
+
+    private void RevealPage() => Dispatcher.UIThread.Post(() => pages.FirstOrDefault(page => page.IsChecked == true)?.BringIntoView(), DispatcherPriority.Loaded);
 
     private string Share(int samples) => Snapshot is { Samples: > 0 } shot ? $"{100.0 * samples / shot.Samples,5:0.0}%" : "";
 
