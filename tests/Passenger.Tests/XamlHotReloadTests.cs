@@ -194,7 +194,7 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
             Assert.Equal(HotReloadResult.Applied, FutureApplied(window, watched).Result);
             Typing.Replace(window, "Created first", "Created latest");
             Typing.Replace(window, "XAML before", "XAML latest");
-            Typing.Replace(window, "Width=\"200\"", "Width=\"260\"");
+            Typing.Replace(window, "Width=\"200\"", "Width=\"260\" MaxHeight=\"55\"");
             Assert.Equal(HotReloadResult.Applied, FutureApplied(window, watched).Result);
             Capture(app, "future-" + (watched ? "run-" : "debug-") + theme + "-before");
             HashSet<long> old = [.. before.Select(e => e.Id)];
@@ -207,6 +207,8 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
             Assert.Equal("Created latest", children.Single(e => e.Name == "NewLiteral").Text);
             ElementDetails details = Ui.Await(app.DetailsAsync(children.Single(e => e.Name == "NewLiteral").Id), "the new view's composed width to be read");
             Assert.Equal("260", details.Properties.Single(p => p.Name == "Width").Value);
+            Assert.Equal("55", details.Properties.Single(p => p.Name == "MaxHeight").Value);
+            Assert.Equal(ValueSources.Local, details.Properties.Single(p => p.Name == "MaxHeight").Source);
             Assert.Equal("Constructor wins", children.Single(e => e.Name == "ConstructorValue").Text);
             Assert.Equal("Existing user state", after.Single(e => e.Id == originalEntry.Id).Text);
             Assert.Contains(after, e => e.Type == "TextBlock" && e.Text == "Repeated before");
@@ -281,6 +283,116 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
         Ui.WaitFor(() => window.Session.RunApp?.State == LiveAppState.Connected, "the watched app's inspector", TimeSpan.FromMinutes(2));
         Ui.WaitFor(() => RunOutput(window).Contains("Waiting for changes", StringComparison.Ordinal), "watch's file watchers to be established");
         return window;
+    }
+
+    private void AttributeView(bool throwing = false)
+    {
+        File.WriteAllText(Path.Combine(folder, "MainWindow.axaml"), View.Replace("<StackPanel Margin", "<Window.Styles><Style Selector=\"TextBlock.caption\"><Setter Property=\"Width\" Value=\"180\" /></Style></Window.Styles><StackPanel Margin", StringComparison.Ordinal)
+            .Replace("Text=\"Before\"", "Text=\"Before\" Classes=\"caption\"", StringComparison.Ordinal));
+        if (throwing)
+        {
+            File.WriteAllText(Path.Combine(folder, "MainWindow.axaml.cs"), Code.Replace("set => SetAndRaise(FragileProperty, ref fragile, value);",
+                "set { SetAndRaise(FragileProperty, ref fragile, value); if (value == \"Refuse\") { throw new InvalidOperationException(\"Setter refused\"); } }", StringComparison.Ordinal));
+        }
+    }
+
+    [AvaloniaTheory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
+    public void A_literal_attribute_can_be_added_and_edited_again_as_a_local_value_without_replacing_user_state(string theme)
+    {
+        AttributeView();
+        string appXaml = Path.Combine(folder, "App.axaml");
+        File.WriteAllText(appXaml, File.ReadAllText(appXaml).Replace("RequestedThemeVariant=\"Light\"", $"RequestedThemeVariant=\"{theme}\"", StringComparison.Ordinal));
+        MainWindow window = Debugged();
+        try
+        {
+            LiveApp app = window.LiveApp!;
+            Element caption = Read(app).Single(e => e.Text == "Before");
+            Assert.Equal(ValueSources.Style, Ui.Await(app.DetailsAsync(caption.Id), "the original style value").Properties.Single(p => p.Name == "Width").Source);
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Type) { Element = Read(app).Single(e => e.Name == "Entry").Id, Text = "Kept input", Replace = true }), "the existing input");
+            Capture(app, "attribute-" + theme + "-before");
+            Assert.Null(window.OpenFile(Path.Combine(folder, "MainWindow.axaml")));
+            Typing.Replace(window, "Text=\"Before\" Classes", "Text=\"Before\" Width=\"260\" Classes");
+            Assert.Equal(HotReloadResult.Applied, Apply(window).Result);
+            Typing.Replace(window, "Width=\"260\"", "Width=\"300\"");
+            Assert.Equal(HotReloadResult.Applied, Apply(window).Result);
+            PropertyValue width = Ui.Await(app.DetailsAsync(caption.Id), "the added attribute's current source").Properties.Single(p => p.Name == "Width");
+            Assert.Equal("300", width.Value);
+            Assert.Equal(ValueSources.Local, width.Source);
+            Assert.Equal("Kept input", Read(app).Single(e => e.Name == "Bound").Text);
+            Capture(app, "attribute-" + theme + "-after");
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    [AvaloniaFact]
+    public void An_added_attribute_in_a_failed_batch_restores_the_style_source_instead_of_leaving_a_local_value()
+    {
+        AttributeView(throwing: true);
+        MainWindow window = Debugged();
+        try
+        {
+            LiveApp app = window.LiveApp!;
+            long caption = Read(app).Single(e => e.Text == "Before").Id;
+            Assert.Null(window.OpenFile(Path.Combine(folder, "MainWindow.axaml")));
+            Typing.Replace(window, "Text=\"Before\" Classes", "Text=\"Before\" Width=\"260\" Classes");
+            Typing.Replace(window, "Fragile=\"Safe\"", "Fragile=\"Refuse\"");
+            HotReloadOutcome refused = Ui.Await(window.Debugger.ApplyChangesAsync(), "the app setter to refuse the batch");
+            Assert.Equal(HotReloadResult.RestartNeeded, refused.Result);
+            PropertyValue width = Ui.Await(app.DetailsAsync(caption), "the rolled back attribute's value source").Properties.Single(p => p.Name == "Width");
+            Assert.Equal("180", width.Value);
+            Assert.Equal(ValueSources.Style, width.Source);
+            Assert.True(window.Debugger.HotReload!.Changed);
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Adding_an_attribute_over_a_constructor_binding_requires_restart_without_changing_the_binding_or_the_batch(bool observable)
+    {
+        File.WriteAllText(Path.Combine(folder, "MainWindow.axaml"), View.Replace("x:Name=\"Bound\" Text=\"{Binding Name}\"", "x:Name=\"Bound\"", StringComparison.Ordinal));
+        string binding = observable ? "new StateNames((State)DataContext!)" : "new Avalonia.Data.Binding(\"Name\")";
+        File.WriteAllText(Path.Combine(folder, "MainWindow.axaml.cs"), Code.Replace("DataContext = new State();", $"DataContext = new State(); this.FindControl<TextBlock>(\"Bound\")!.Bind(TextBlock.TextProperty, {binding});", StringComparison.Ordinal) + """
+
+            public sealed class StateNames(State state) : IObservable<string?>
+            {
+                public IDisposable Subscribe(IObserver<string?> observer)
+                {
+                    PropertyChangedEventHandler changed = (_, _) => observer.OnNext(state.Name);
+                    state.PropertyChanged += changed;
+                    observer.OnNext(state.Name);
+                    return new Unsubscribe(() => state.PropertyChanged -= changed);
+                }
+                private sealed class Unsubscribe(Action action) : IDisposable { public void Dispose() => action(); }
+            }
+            """);
+        MainWindow window = Debugged();
+        try
+        {
+            LiveApp app = window.LiveApp!;
+            Assert.Null(window.OpenFile(Path.Combine(folder, "MainWindow.axaml")));
+            Typing.Replace(window, "x:Name=\"Bound\"", "x:Name=\"Bound\" Text=\"Must not replace\"");
+            Typing.Replace(window, "Text=\"Before\"", "Text=\"Must not apply\"");
+            HotReloadOutcome result = Ui.Await(window.Debugger.ApplyChangesAsync(), "the runtime constructor binding to be preserved");
+            Assert.Equal(HotReloadResult.RestartNeeded, result.Result);
+            Assert.Contains(result.Problems, p => p.Message.Contains("binding", StringComparison.Ordinal));
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Type) { Element = Read(app).Single(e => e.Name == "Entry").Id, Text = "Binding survived", Replace = true }), "the retained binding's source to change");
+            Assert.Equal("Binding survived", Read(app).Single(e => e.Name == "Bound").Text);
+            Assert.Contains(Read(app), e => e.Text == "Before");
+        }
+        finally
+        {
+            End(window);
+        }
     }
 
     [AvaloniaFact]

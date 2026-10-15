@@ -92,6 +92,114 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
         }
         """;
 
+    private void AttributeView(bool throwing = false)
+    {
+        string view = View.Replace("<StackPanel Margin", "<Window.Resources><Style x:Key=\"Caption\" TargetType=\"{x:Type TextBlock}\"><Setter Property=\"Width\" Value=\"180\" /></Style></Window.Resources><StackPanel Margin", StringComparison.Ordinal)
+            .Replace("Text=\"Before\"", "Text=\"Before\" Style=\"{StaticResource Caption}\"", StringComparison.Ordinal);
+        if (throwing)
+        {
+            view = view.Replace("<local:RepeatedView />", "<local:RepeatedView /><local:ThrowingControl Fragile=\"Safe\" />", StringComparison.Ordinal);
+            File.WriteAllText(Path.Combine(folder, "MainWindow.xaml.cs"), Code + """
+
+                public class ThrowingControl : System.Windows.Controls.Control
+                {
+                    public static readonly DependencyProperty FragileProperty = DependencyProperty.Register(nameof(Fragile), typeof(string), typeof(ThrowingControl), new PropertyMetadata("Safe", (_, changed) => { if ((string)changed.NewValue == "Refuse") { throw new InvalidOperationException("Setter refused"); } }));
+                    public string Fragile { get => (string)GetValue(FragileProperty); set => SetValue(FragileProperty, value); }
+                }
+                """);
+        }
+        File.WriteAllText(Path.Combine(folder, "MainWindow.xaml"), view);
+    }
+
+    [AvaloniaTheory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
+    public void A_literal_attribute_can_be_added_and_edited_again_as_a_local_value_without_replacing_wpf_state(string theme)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "WPF runs on Windows alone");
+        AttributeView();
+        if (theme == "Dark")
+        {
+            string path = Path.Combine(folder, "MainWindow.xaml");
+            File.WriteAllText(path, File.ReadAllText(path).Replace("Background=\"WhiteSmoke\" Foreground=\"Black\"", "Background=\"#222222\" Foreground=\"White\"", StringComparison.Ordinal));
+        }
+        MainWindow window = Debugged();
+        try
+        {
+            LiveApp app = window.LiveApp!;
+            Element caption = Read(app).Single(e => e.Text == "Before");
+            Assert.Equal(ValueSources.Style, Ui.Await(app.DetailsAsync(caption.Id), "the original WPF style").Properties.Single(p => p.Name == "Width").Source);
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Type) { Element = Read(app).Single(e => e.Name == "Entry").Id, Text = "Kept input", Replace = true }), "the WPF input");
+            Capture(app, "attribute-" + theme + "-before");
+            Assert.Null(window.OpenFile(Path.Combine(folder, "MainWindow.xaml")));
+            Typing.Replace(window, "Text=\"Before\" Style", "Text=\"Before\" Width=\"260\" Style");
+            Assert.Equal(HotReloadResult.Applied, Apply(window).Result);
+            Typing.Replace(window, "Width=\"260\"", "Width=\"300\"");
+            Assert.Equal(HotReloadResult.Applied, Apply(window).Result);
+            PropertyValue width = Ui.Await(app.DetailsAsync(caption.Id), "the new WPF attribute's local value").Properties.Single(p => p.Name == "Width");
+            Assert.Equal("300", width.Value);
+            Assert.Equal(ValueSources.Local, width.Source);
+            Assert.Equal("Kept input", Read(app).Single(e => e.Name == "Bound").Text);
+            Capture(app, "attribute-" + theme + "-after");
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    [AvaloniaFact]
+    public void An_added_wpf_attribute_in_a_failed_batch_restores_the_style_source_instead_of_leaving_a_local_value()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "WPF runs on Windows alone");
+        AttributeView(throwing: true);
+        MainWindow window = Debugged();
+        try
+        {
+            LiveApp app = window.LiveApp!;
+            long caption = Read(app).Single(e => e.Text == "Before").Id;
+            Assert.Null(window.OpenFile(Path.Combine(folder, "MainWindow.xaml")));
+            Typing.Replace(window, "Text=\"Before\" Style", "Text=\"Before\" Width=\"260\" Style");
+            Typing.Replace(window, "Fragile=\"Safe\"", "Fragile=\"Refuse\"");
+            HotReloadOutcome refused = Ui.Await(window.Debugger.ApplyChangesAsync(), "the WPF setter to refuse the batch");
+            Assert.Equal(HotReloadResult.RestartNeeded, refused.Result);
+            PropertyValue width = Ui.Await(app.DetailsAsync(caption), "the rolled back WPF attribute's value source").Properties.Single(p => p.Name == "Width");
+            Assert.Equal("180", width.Value);
+            Assert.Equal(ValueSources.Style, width.Source);
+            Assert.True(window.Debugger.HotReload!.Changed);
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    [AvaloniaFact]
+    public void Adding_a_wpf_attribute_over_a_constructor_binding_requires_restart_without_replacing_the_binding()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "WPF runs on Windows alone");
+        File.WriteAllText(Path.Combine(folder, "MainWindow.xaml"), View.Replace("x:Name=\"Bound\" Text=\"{Binding Name}\"", "x:Name=\"Bound\"", StringComparison.Ordinal));
+        File.WriteAllText(Path.Combine(folder, "MainWindow.xaml.cs"), Code.Replace("DataContext = new State();", "DataContext = new State(); System.Windows.Data.BindingOperations.SetBinding(Bound, System.Windows.Controls.TextBlock.TextProperty, new System.Windows.Data.Binding(\"Name\"));", StringComparison.Ordinal));
+        MainWindow window = Debugged();
+        try
+        {
+            LiveApp app = window.LiveApp!;
+            Assert.Null(window.OpenFile(Path.Combine(folder, "MainWindow.xaml")));
+            Typing.Replace(window, "x:Name=\"Bound\"", "x:Name=\"Bound\" Text=\"Must not replace\"");
+            Typing.Replace(window, "Text=\"Before\"", "Text=\"Must not apply\"");
+            HotReloadOutcome result = Ui.Await(window.Debugger.ApplyChangesAsync(), "the WPF constructor binding to be preserved");
+            Assert.Equal(HotReloadResult.RestartNeeded, result.Result);
+            Assert.Contains(result.Problems, p => p.Message.Contains("binding", StringComparison.Ordinal));
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Type) { Element = Read(app).Single(e => e.Name == "Entry").Id, Text = "Binding survived", Replace = true }), "the WPF binding source to change");
+            Assert.Equal("Binding survived", Read(app).Single(e => e.Name == "Bound").Text);
+            Assert.Contains(Read(app), e => e.Text == "Before");
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
     [AvaloniaTheory]
     [InlineData("Light")]
     [InlineData("Dark")]
@@ -230,10 +338,13 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
             long caption = Read(app).Single(e => e.Text == "Before").Id;
             Capture(app, "watch-" + theme + "-before");
             Assert.Null(window.OpenFile(Path.Combine(folder, "MainWindow.xaml")));
-            Typing.Replace(window, "Text=\"Before\"", "Text=\"Watched XAML\"");
+            Typing.Replace(window, "Text=\"Before\"", "Text=\"Watched XAML\" Width=\"260\"");
             Ui.Run(window, AppActions.Save);
             Ui.WaitFor(() => window.Session.RunXaml.LastApplied?.Result == HotReloadResult.Applied, "the saved WPF XAML edit to apply without rebuilding");
             Assert.Equal("Watched XAML", Read(app).Single(e => e.Id == caption).Text);
+            PropertyValue savedWidth = Ui.Await(app.DetailsAsync(caption), "the saved WPF attribute's local source").Properties.Single(p => p.Name == "Width");
+            Assert.Equal("260", savedWidth.Value);
+            Assert.Equal(ValueSources.Local, savedWidth.Source);
             Assert.Equal(first, app.ProcessId);
             HotReloadOutcome saved = window.Session.RunXaml.LastApplied!;
             Typing.Replace(window, "Text=\"Watched XAML\"", "Text=\"Applied XAML\"");
