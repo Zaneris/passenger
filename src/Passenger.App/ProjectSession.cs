@@ -71,6 +71,7 @@ public sealed class ProjectSession : IAsyncDisposable
             RunInTerminal = setup.RunForDebugger,
             Folder = folder,
             Server = () => CSharp?.Session,
+            Inspector = () => LiveApp,
             HotReloadOn = () => setup.Settings().HotReloadWhileDebugging,
             HotReloadOnSave = () => setup.Settings().HotReloadOnSave,
         };
