@@ -251,13 +251,25 @@ public sealed class TitleBarTests : IDisposable
     }
 
     [AvaloniaFact]
-    public void At_the_smallest_width_the_welcome_screens_project_widget_still_opens_solutions()
+    public void At_the_smallest_width_the_welcome_screens_words_and_buttons_fit_and_its_project_widget_still_opens_solutions()
     {
         MainWindow window = new() { Width = 640, Height = 768 };
         window.Show();
         try
         {
             Ui.Settle();
+            Control welcome = window.GetVisualDescendants().OfType<Passenger.App.Welcome.WelcomeView>().Single();
+            foreach (TextBlock text in welcome.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible))
+            {
+                Assert.True(text.TextLayout.Width <= text.Bounds.Width + 1 && text.TextLayout.Height <= text.Bounds.Height + 1,
+                    $"Welcome's '{text.Text}' is clipped at the {window.Bounds.Width}px minimum: {text.TextLayout.Width}x{text.TextLayout.Height} in {text.Bounds.Size}");
+            }
+            foreach (Button button in welcome.GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible))
+            {
+                Rect bounds = new(button.TranslatePoint(default, welcome)!.Value, button.Bounds.Size);
+                Assert.True(bounds.X >= 0 && bounds.Right <= welcome.Bounds.Width && bounds.Y >= 0 && bounds.Bottom <= welcome.Bounds.Height,
+                    $"Welcome's '{button.Content}' is cut off at the {window.Bounds.Width}px minimum: {bounds}");
+            }
             Button project = Find<Button>(window, "ProjectButton");
             Assert.True(project.IsEffectivelyVisible && project.Bounds.Width >= 20,
                 "Without a solution's name or badge the compact project widget must still have a visible click target");

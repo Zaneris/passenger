@@ -27,7 +27,7 @@ public sealed class WelcomeView : UserControl
     public WelcomeView()
     {
         this.Bind(BackgroundProperty, this.GetResourceObservable("Passenger.Editor.Background"));
-        TextBlock title = new() { Text = "Welcome to Passenger", FontSize = 22, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 0, 0, 4) };
+        TextBlock title = new() { Text = "Welcome to Passenger", FontSize = 22, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 4) };
         title.Bind(TextBlock.ForegroundProperty, title.GetResourceObservable("Passenger.Text"));
         TextBlock subtitle = new()
         {
