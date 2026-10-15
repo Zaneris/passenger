@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -42,8 +43,7 @@ public sealed class TemplateFamiliesTests(ITestOutputHelper output) : IDisposabl
         // MAUI is workload-dependent: ask the SDK in the run's hive independently of Passenger's catalogue.
         string listed = DotnetNew(["list", "--type", "project", "--columns", "tags"]);
         output.WriteLine($"dotnet new list in {ProjectTemplates.Hive ?? "the run's template home"}:\n{listed}");
-        bool maui = listed.Split('\n').Any(line => line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
-            .LastOrDefault()?.Split('/').Contains("MAUI", StringComparer.OrdinalIgnoreCase) == true);
+        bool maui = OffersTag(listed, "MAUI");
         string[] riders = ["Console", "Class Library", .. OperatingSystem.IsWindows() ? ["Desktop"] : Array.Empty<string>(),
             "Web", "Services", "AI Extensions", "Unit Test", .. maui ? ["MAUI"] : Array.Empty<string>(), "Aspire", "Azure Functions", "Avalonia"];
         Assert.Equal(riders, atOnce);
@@ -64,7 +64,8 @@ public sealed class TemplateFamiliesTests(ITestOutputHelper output) : IDisposabl
         Assert.Contains("Blazor Web App", Family(dialog, "Web").Types.Select(t => t.TypeName));
         Assert.Equal(["Class Library", "Blazor Web Worker"], Family(dialog, "Class Library").Types.Take(2).Select(t => t.TypeName));
         Assert.Equal(["Worker Service"], Family(dialog, "Services").Types.Select(t => t.Name));
-        Assert.True(Family(dialog, "Aspire").NotInstalled, "Aspire's family is not marked not installed though dotnet new has none of it");
+        bool aspire = OffersTag(listed, "Aspire") || OffersTag(listed, ".NET Aspire");
+        Assert.Equal(!aspire, Family(dialog, "Aspire").NotInstalled);
         Assert.Equal(["App", "MVVM App", "Cross Platform Application"], Family(dialog, "Avalonia").Types.Select(t => t.TypeName));
 
         // The search finds a family by a Type's name, opened on that Type; each family found opens on the one it names.
@@ -209,20 +210,71 @@ public sealed class TemplateFamiliesTests(ITestOutputHelper output) : IDisposabl
         window.Close();
     }
 
-    /// <summary>A test project template of the tests' own, in the test's folder: Probe Test Project (probetest), classified
-    /// as a test.</summary>
-    private string WriteProbeTemplate()
+    [AvaloniaFact]
+    public void MAUI_is_found_in_the_SDKs_Tags_column_even_when_its_classifications_hold_spaces()
     {
-        string folder = Directory.CreateDirectory(Path.Combine(place, "ProbeTemplate", ".template.config")).Parent!.FullName;
-        File.WriteAllText(Path.Combine(folder, ".template.config", "template.json"), """
+        using IDisposable theme = TestsTheme();
+        WriteProbeTemplate(["MAUI", "Mac Catalyst", "Blazor Hybrid", "Web API"]);
+        WriteProbeTemplate(["MAUI", "Aspire", "Cloud", "Web", "Web API", "API", "Service"], "probemauiaspire");
+        DotnetNew(["install", place]);
+        MainWindow? window = null;
+        try
+        {
+            string listed = DotnetNew(["list", "--type", "project", "--columns", "tags"]);
+            output.WriteLine(listed);
+            Assert.True(OffersTag(listed, "MAUI"), "The installed MAUI template was absent from the SDK inventory");
+            Assert.True(OffersTag(listed, "Aspire"), "The installed MAUI/Aspire template was absent from the SDK inventory");
+            string console = DotnetNew(["list", "console", "--type", "project", "--columns", "tags"]);
+            Assert.False(OffersTag(console, "MAUI"));
+            Assert.False(OffersTag(console, "Aspire"));
+
+            window = Started();
+            Assert.True(window.Perform(AppActions.NewSolution));
+            NewProjectDialog dialog = Opened(window);
+            Ui.WaitFor(() => dialog.Templates.Any(t => t.ShortName == "probetest"), "the installed MAUI template in New Solution");
+            Assert.Equal("MAUI", dialog.Templates.Single(t => t.ShortName == "probetest").Family);
+            Assert.Equal("Aspire", dialog.Templates.Single(t => t.ShortName == "probemauiaspire").Family);
+            Assert.False(Family(dialog, "Aspire").NotInstalled);
+            dialog.Cancel();
+        }
+        finally
+        {
+            DotnetNew(["uninstall", place]);
+            if (window is not null)
+            {
+                Ui.WaitFor(() => ProjectTemplates.Ready(Environment.CurrentDirectory) is { } catalog
+                    && catalog.Templates.All(t => t.ShortName is not ("probetest" or "probemauiaspire")),
+                    "the SDK catalogue after the MAUI probes were uninstalled", TimeSpan.FromSeconds(60));
+                window.Close();
+            }
+        }
+    }
+
+    /// <summary>The SDK's explicit Tags column, whose slash-separated classifications can hold spaces.</summary>
+    private static bool OffersTag(string listed, string tag)
+    {
+        string[] lines = listed.Split('\n');
+        string header = Assert.Single(lines, line => line.StartsWith("Template Name", StringComparison.Ordinal));
+        int column = header.LastIndexOf("Tags", StringComparison.Ordinal);
+        Assert.True(column >= 0, $"The SDK inventory has no Tags column:\n{listed}");
+        return lines.Any(line => line.Length > column
+            && line[column..].Trim().Split('/').Contains(tag, StringComparer.OrdinalIgnoreCase));
+    }
+
+    /// <summary>A project template of the tests' own, classified as a test unless other tags are given.</summary>
+    private string WriteProbeTemplate(string[]? classifications = null, string shortName = "probetest")
+    {
+        string folder = Directory.CreateDirectory(Path.Combine(place, shortName, ".template.config")).Parent!.FullName;
+        string tags = JsonSerializer.Serialize(classifications ?? ["Test", "Probe"]);
+        File.WriteAllText(Path.Combine(folder, ".template.config", "template.json"), $$"""
             {
               "$schema": "http://json.schemastore.org/template",
               "author": "Passenger's tests",
-              "classifications": [ "Test", "Probe" ],
-              "identity": "Passenger.Tests.ProbeTest.CSharp",
-              "groupIdentity": "Passenger.Tests.ProbeTest",
+              "classifications": {{tags}},
+              "identity": "Passenger.Tests.{{shortName}}.CSharp",
+              "groupIdentity": "Passenger.Tests.{{shortName}}",
               "name": "Probe Test Project",
-              "shortName": "probetest",
+              "shortName": "{{shortName}}",
               "sourceName": "ProbeTest",
               "preferNameDirectory": true,
               "tags": { "language": "C#", "type": "project" }
