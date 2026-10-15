@@ -94,6 +94,14 @@ public sealed class TerminalSession : IAsyncDisposable
     private async Task SpawnAsync(string folder, string? shell, IReadOnlyList<string>? arguments, IReadOnlyDictionary<string, string>? variables)
     {
         (string app, string[] args) = shell is null ? DefaultShell() : (shell, [.. arguments ?? []]);
+        string directory = Directory.Exists(folder) ? folder : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        // Porta's Unix fork reports success even if execvp fails in its child, which then exits silently with errno.
+        // An explicit missing path is a start failure, not a shell that ran and closed its tab. Leave PATH lookup and
+        // actual program exit codes to execvp; a program is allowed to return the same number as an errno.
+        if (!OperatingSystem.IsWindows() && app.Contains('/') && !File.Exists(Path.GetFullPath(app, Path.GetFullPath(directory))))
+        {
+            throw new FileNotFoundException($"The terminal program '{app}' does not exist", app);
+        }
         Dictionary<string, string> environment = new(variables ?? new Dictionary<string, string>())
         {
             ["TERM"] = "xterm-256color",
@@ -110,7 +118,7 @@ public sealed class TerminalSession : IAsyncDisposable
             Name = "Passenger",
             Cols = Screen.Columns,
             Rows = Screen.Rows,
-            Cwd = Directory.Exists(folder) ? folder : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            Cwd = directory,
             App = app,
             CommandLine = args,
             Environment = environment,
