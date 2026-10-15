@@ -27,11 +27,16 @@ public sealed class TerminalSession : IAsyncDisposable
     private readonly SemaphoreSlim room = new(0);
     private readonly BlockingCollection<byte[]> outgoing = new(new ConcurrentQueue<byte[]>());
     private IPtyConnection? pty;
+    private int? processId;
     private byte[]? feeding;
     private int fed;
     private int held;
     private int posted;
     private volatile bool closed;
+    private bool ended;
+    private readonly TaskCompletionSource disposed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private bool startAttempted;
 
     /// <summary>When output was last read (a <see cref="Stopwatch"/> timestamp), and whether reading has ended: what tells
     /// that the shell's last output is in once it has exited.</summary>
@@ -55,19 +60,38 @@ public sealed class TerminalSession : IAsyncDisposable
     /// <summary>Raised on the window's thread when output has been taken onto the screen.</summary>
     public event EventHandler? Output;
 
-    /// <summary>Raised on the window's thread when the shell has ended and its last output is on the screen, with its exit
-    /// code: Porta.Pty's, which is 0 for one a signal ended on macOS and Linux.</summary>
+    /// <summary>Raised once on the window's thread when the shell has ended and its last output is on the screen (or
+    /// discarded after close), with its exit code: Porta.Pty's, which is 0 for one a signal ended on macOS and Linux.</summary>
     public event EventHandler<int>? Exited;
 
     public bool IsRunning { get; private set; }
 
     /// <summary>The shell's process id, once it runs.</summary>
-    public int? ProcessId => pty?.Pid;
+    public int? ProcessId => processId;
 
     /// <summary>Starts the shell in a folder. <paramref name="shell"/> names one other than the user's own, or a program
     /// to run in the terminal in place of a shell; <paramref name="variables"/> are set over the IDE's environment, an
     /// empty value taking one away.</summary>
     public async Task StartAsync(string folder, string? shell = null, IReadOnlyList<string>? arguments = null, IReadOnlyDictionary<string, string>? variables = null)
+    {
+        ObjectDisposedException.ThrowIf(closed, this);
+        if (startAttempted)
+        {
+            throw new InvalidOperationException("This terminal session has already started");
+        }
+        startAttempted = true;
+        try
+        {
+            await SpawnAsync(folder, shell, arguments, variables);
+        }
+        finally
+        {
+            // A close racing startup owns the eventual connection too, including preparation or spawn failure.
+            started.TrySetResult();
+        }
+    }
+
+    private async Task SpawnAsync(string folder, string? shell, IReadOnlyList<string>? arguments, IReadOnlyDictionary<string, string>? variables)
     {
         (string app, string[] args) = shell is null ? DefaultShell() : (shell, [.. arguments ?? []]);
         Dictionary<string, string> environment = new(variables ?? new Dictionary<string, string>())
@@ -92,6 +116,7 @@ public sealed class TerminalSession : IAsyncDisposable
             Environment = environment,
         };
         pty = await PtyProvider.SpawnAsync(options, CancellationToken.None);
+        processId = pty.Pid;
         IsRunning = true;
         pty.ProcessExited += (_, e) => Dispatcher.UIThread.Post(() => AfterLastOutput(e.ExitCode));
         Stream reader = pty.ReaderStream;
@@ -187,18 +212,66 @@ public sealed class TerminalSession : IAsyncDisposable
         }
     }
 
+    /// <summary>Ends the process and drains its closing output while native teardown runs away from the window's thread.
+    /// Completes once its actual exit has been published and its pseudo-terminal released; repeated closes share it.</summary>
     public ValueTask DisposeAsync()
     {
+        if (closed)
+        {
+            return new ValueTask(disposed.Task);
+        }
         closed = true;
         outgoing.CompleteAdding();
         room.Release();
-        if (IsRunning)
+        _ = CloseAsync();
+        return new ValueTask(disposed.Task);
+    }
+
+    private async Task CloseAsync()
+    {
+        try
         {
-            Kill();
+            if (startAttempted)
+            {
+                await started.Task;
+            }
+            if (pty is { } connection)
+            {
+                if (IsRunning)
+                {
+                    Kill();
+                }
+                // Disposing Porta's connection can suppress ProcessExited. Keep its process handle until the real
+                // exit is available, without blocking the window's thread, and retain its code across native teardown.
+                try
+                {
+                    int exitCode = await Task.Run(() =>
+                    {
+                        try
+                        {
+                            connection.WaitForExit(-1);
+                            return connection.ExitCode;
+                        }
+                        finally
+                        {
+                            // Windows' ClosePseudoConsole may wait for inherited output handles. The reader keeps
+                            // draining while this runs; neither that wait nor the process wait holds the UI thread.
+                            connection.Dispose();
+                        }
+                    });
+                    await Dispatcher.UIThread.InvokeAsync(() => AfterLastOutput(exitCode));
+                }
+                finally
+                {
+                    pty = null;
+                }
+            }
+            disposed.TrySetResult();
         }
-        pty?.Dispose();
-        pty = null;
-        return ValueTask.CompletedTask;
+        catch (Exception failed)
+        {
+            disposed.TrySetException(failed);
+        }
     }
 
     /// <summary>The user's shell as a login shell, as Rider starts it: $SHELL (zsh where unset on macOS, bash on
@@ -230,6 +303,10 @@ public sealed class TerminalSession : IAsyncDisposable
     /// nothing more has come for a moment, two seconds at the most.</summary>
     private void AfterLastOutput(int exitCode)
     {
+        if (ended)
+        {
+            return;
+        }
         long exited = Stopwatch.GetTimestamp();
         if (Done())
         {
@@ -252,6 +329,11 @@ public sealed class TerminalSession : IAsyncDisposable
 
         void End()
         {
+            if (ended)
+            {
+                return;
+            }
+            ended = true;
             TakeAll();
             IsRunning = false;
             Exited?.Invoke(this, exitCode);
@@ -295,12 +377,18 @@ public sealed class TerminalSession : IAsyncDisposable
         byte[] buffer = new byte[64 * 1024];
         try
         {
-            while (!closed)
+            while (true)
             {
                 int read = reader.Read(buffer);
                 if (read <= 0)
                 {
                     break;
+                }
+                if (closed)
+                {
+                    // A closing pseudo-console can still produce output until its clients detach. Discard it, but
+                    // continue draining so native disposal cannot deadlock waiting for a full output pipe.
+                    continue;
                 }
                 Interlocked.Exchange(ref lastRead, Stopwatch.GetTimestamp());
                 arrived.Enqueue(buffer[..read]);
