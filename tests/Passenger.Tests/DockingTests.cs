@@ -264,6 +264,87 @@ public sealed class DockingTests
     }
 
     [AvaloniaFact]
+    public void Half_a_laptop_screen_collapses_the_other_side_without_losing_its_windows_sizes_or_editor_selection()
+    {
+        string folder = TestFolders.Create("narrow-dock-");
+        File.WriteAllText(Path.Combine(folder, "One.cs"), "class One { }\n");
+        MainWindow window = Open();
+        try
+        {
+            window.OpenFolder(folder);
+            window.OpenFile("One.cs");
+            DockHost dock = window.DockHost;
+            dock.Show("hierarchy");
+            Ui.Settle();
+            DockLayout before = dock.Capture();
+            object selected = window.EditorArea.Active!;
+            window.ExplorerView.FocusRows();
+            Assert.True(window.ExplorerView.IsKeyboardFocusWithin);
+            foreach (double width in new double[] { 683, 640 })
+            {
+                window.Width = width;
+                Ui.Settle();
+                Assert.True(dock.Center!.Bounds.Width >= 320, $"At {width}px the two side panes crowded the editor down to {dock.Center.Bounds.Width}px");
+                Assert.True(dock.IsShown("hierarchy") && !dock.IsShown("explorer"), "The most recently opened side must stay visible while the other collapses");
+                Assert.True(Button(window, "hierarchy").IsChecked == true && Button(window, "explorer").IsChecked == false,
+                    "The stripes must distinguish the visible side from the temporarily collapsed one");
+                Assert.Equal(0, dock.ColumnDefinitions[1].ActualWidth);
+                Assert.Same(selected, window.EditorArea.Active);
+                Assert.Equal(before, dock.Capture() with { Windows = before.Windows });
+                Assert.Equal(before.Windows, dock.Capture().Windows);
+                if (width == 683)
+                {
+                    Assert.True(window.EditorArea.CodeEditor.IsFocused, "Collapsing the focused Explorer must give the visible editor the keys");
+                }
+
+                // The collapsed stripe reveals its remembered window rather than toggling the saved choice off.
+                Click(window, Button(window, "explorer"));
+                Assert.True(dock.IsShown("explorer") && !dock.IsShown("hierarchy"));
+                Assert.True(dock["hierarchy"]!.IsShown, "Revealing the other side must not close the remembered hierarchy window");
+                Assert.True(dock.Center.Bounds.Width >= 320);
+                Click(window, Button(window, "hierarchy"));
+                Assert.True(dock.IsShown("hierarchy") && !dock.IsShown("explorer"));
+            }
+
+            window.Width = 1200;
+            window.EditorArea.CodeEditor.Focus();
+            Ui.Settle();
+            Assert.True(dock.IsShown("explorer") && dock.IsShown("hierarchy"), "Both side panes must return when there is room again");
+            Assert.Equal(before.LeftWidth, dock.ColumnDefinitions[1].ActualWidth);
+            Assert.Equal(before.RightWidth, dock.ColumnDefinitions[5].ActualWidth);
+            Assert.Equal(before.Windows, dock.Capture().Windows);
+            Assert.Same(selected, window.EditorArea.Active);
+            Assert.True(window.EditorArea.CodeEditor.IsFocused, "Restoring a collapsed pane on resize must not take the editor's keys");
+
+            window.Width = 640;
+            Ui.Settle();
+            dock.Hide("explorer");
+            window.Width = 1200;
+            Ui.Settle();
+            Assert.False(dock.IsShown("explorer"), "Explicitly closing a collapsed pane must remove its restore intent");
+            dock.Show("explorer");
+            window.Width = 640;
+            Ui.Settle();
+            dock.Hide("explorer");
+            Ui.Settle();
+            Assert.True(dock.IsShown("hierarchy"), "Closing the visible left pane must reveal the remembered right pane");
+            dock.Show("explorer");
+            dock.Show("hierarchy");
+            dock.Hide("hierarchy");
+            Ui.Settle();
+            Assert.True(dock.IsShown("explorer"), "Explicitly hiding the visible side must reveal the other remembered side");
+            window.Width = 1200;
+            Ui.Settle();
+            Assert.False(dock.IsShown("hierarchy"), "A side explicitly closed at narrow width must not reopen on resize");
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(folder);
+        }
+    }
+
+    [AvaloniaFact]
     public void The_frames_dividers_take_the_pointer_on_either_side_of_their_line_and_a_closed_areas_divider_takes_none()
     {
         MainWindow window = Open();

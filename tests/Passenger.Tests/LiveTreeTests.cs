@@ -97,6 +97,17 @@ public sealed class LiveTreeTests : IClassFixture<RestoredFolders>, IDisposable
         Assert.Equal(xaml, window.EditorArea.Active?.Path);
         Assert.Equal(Line("MainWindow.axaml", "Selector=\"Button.danger\"") - 1, window.EditorArea.CodeEditor.CaretPosition.Line);
 
+        long? selected = tree.Details?.Id;
+        window.Width = 683;
+        window.DockHost.Show("explorer");
+        Ui.Settle();
+        Assert.False(tree.IsEffectivelyVisible, "The Live Visual Tree must give the editor room when the other side is brought forward at half width");
+        Assert.True(window.DockHost["liveTree"]!.IsShown, "The temporarily collapsed Live Visual Tree must remain in the remembered layout");
+        window.Width = 1400;
+        Ui.Settle();
+        Assert.True(tree.IsEffectivelyVisible, "The Live Visual Tree must return when the window widens");
+        Assert.Equal(selected, tree.Details?.Id);
+
         // Paused, the app answers nothing: the tree stays as it last ran and says so, until the app runs again.
         Ui.Run(window, AppActions.Pause);
         Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused, "the app to pause");

@@ -15,6 +15,9 @@ public sealed class DockHost : Grid
     /// a larger screen, say) or dragged, unless a window is maximised.</summary>
     private const double EditorShare = 0.25;
 
+    private const double SmallestEditorWidth = 320;
+    private const double SmallestSideWidth = 200;
+
     private readonly List<ToolWindow> windows = [];
     private readonly Dictionary<ToolAnchor, ToolPane> panes = [];
     private readonly Stripe leftStripe;
@@ -29,6 +32,9 @@ public sealed class DockHost : Grid
     private double leftWidth = DefaultLeft;
     private double rightWidth = DefaultRight;
     private double bottomHeight = DefaultBottom;
+    private bool leftCollapsed;
+    private bool rightCollapsed;
+    private bool preferRight;
 
     /// <summary>The areas' sizes in the layout the IDE starts with.</summary>
     private const double DefaultLeft = 280;
@@ -119,6 +125,12 @@ public sealed class DockHost : Grid
     /// <summary>A window was moved, shown, hidden or resized: the layout to keep has changed.</summary>
     public event EventHandler? LayoutChanged;
 
+    /// <summary>A side's presentation changed without changing the remembered layout (a narrow window's collapse).</summary>
+    public event EventHandler? PresentationChanged;
+
+    /// <summary>The pane with the keys is being collapsed: its host moves them to the visible editor or Welcome page.</summary>
+    public event EventHandler? FocusCenterRequested;
+
     public ToolWindow? this[string id] => windows.FirstOrDefault(w => w.Id == id);
 
     /// <summary>The window's actions, which each tool window's show action joins as it is added, and whose keymap gives
@@ -171,6 +183,10 @@ public sealed class DockHost : Grid
         }
         window.IsShown = true;
         Active = window;
+        if (window.Mode == ToolMode.Docked && ToolWindow.IsSide(window.Anchor))
+        {
+            preferRight = window.Anchor is ToolAnchor.RightTop or ToolAnchor.RightBottom;
+        }
         if (window.Mode != ToolMode.Docked)
         {
             Float(window);
@@ -330,7 +346,7 @@ public sealed class DockHost : Grid
 
     public void Toggle(string id)
     {
-        if (this[id] is { IsShown: true })
+        if (IsShown(id))
         {
             Hide(id);
         }
@@ -351,7 +367,14 @@ public sealed class DockHost : Grid
         return true;
     }
 
-    public bool IsShown(string id) => this[id]?.IsShown == true;
+    /// <summary>Visible now: a side temporarily collapsed to make room for the editor remains open in Capture, and
+    /// clicking its stripe brings it forward rather than closing the remembered window.</summary>
+    public bool IsShown(string id) => this[id] is { IsShown: true } window && (window.Mode != ToolMode.Docked || window.Anchor switch
+    {
+        ToolAnchor.LeftTop or ToolAnchor.LeftBottom => !leftCollapsed,
+        ToolAnchor.RightTop or ToolAnchor.RightBottom => !rightCollapsed,
+        _ => true,
+    });
 
     /// <summary>Moves a window to another place (at an index among its buttons there), shown if it was.</summary>
     public void Move(ToolWindow window, ToolAnchor anchor, int? index = null)
@@ -432,6 +455,7 @@ public sealed class DockHost : Grid
         rightWidth = Positive(layout.RightWidth, rightWidth);
         bottomHeight = Positive(layout.BottomHeight, bottomHeight);
         Active = windows.FirstOrDefault(w => w.IsShown);
+        preferRight = Active?.Anchor is ToolAnchor.RightTop or ToolAnchor.RightBottom;
         Layout();
         // A floating window kept open opens again once the IDE's own window is there to float over.
         foreach (ToolWindow floating in windows.Where(w => w.IsShown && w.Mode != ToolMode.Docked))
@@ -466,8 +490,6 @@ public sealed class DockHost : Grid
         Split(leftArea, panes[ToolAnchor.LeftTop], panes[ToolAnchor.LeftBottom], rows: true);
         Split(rightArea, panes[ToolAnchor.RightTop], panes[ToolAnchor.RightBottom], rows: true);
         Split(bottomArea, panes[ToolAnchor.BottomLeft], panes[ToolAnchor.BottomRight], rows: false);
-        leftStripe.Fill(windows);
-        rightStripe.Fill(windows);
         Fit();
     }
 
@@ -480,8 +502,8 @@ public sealed class DockHost : Grid
     }
 
     /// <summary>Gives the open areas their sizes, fitted to the frame as it is: on one smaller than they were kept on (a
-    /// laptop's, after a monitor's), the sides shrink alike, and the bottom, until the editor keeps its share, where a
-    /// splitter stops too. Maximised, a window may take all of the frame but its edge.</summary>
+    /// laptop's, after a monitor's), the sides shrink until they would crowd out the editor, then the less recently
+    /// opened side collapses. Their requested sizes and open windows stay intact for a wider window.</summary>
     private void Fit()
     {
         bool leftOpen = panes[ToolAnchor.LeftTop].Window is not null || panes[ToolAnchor.LeftBottom].Window is not null;
@@ -491,13 +513,29 @@ public sealed class DockHost : Grid
         // Before the first layout there is no frame: the sizes are fitted once there is.
         double across = Math.Max(0, Bounds.Width - (2 * StripeWidth) - 2);
         double down = Math.Max(0, Bounds.Height - 1);
+        double editor = maximized is null ? Math.Min(across, Math.Max(SmallestEditorWidth, across * share)) : 0;
+        bool crowded = maximized is null && across > 0 && leftOpen && rightOpen && across < editor + (2 * SmallestSideWidth);
+        bool wasLeft = leftCollapsed;
+        bool wasRight = rightCollapsed;
+        leftCollapsed = crowded && preferRight;
+        rightCollapsed = crowded && !preferRight;
+        bool focusHidden = leftCollapsed && leftArea.IsKeyboardFocusWithin || rightCollapsed && rightArea.IsKeyboardFocusWithin;
+        leftOpen &= !leftCollapsed;
+        rightOpen &= !rightCollapsed;
+        leftArea.IsVisible = leftOpen;
+        rightArea.IsVisible = rightOpen;
         double left = leftOpen ? leftWidth : 0;
         double right = rightOpen ? rightWidth : 0;
         double bottom = bottomOpen ? bottomHeight : 0;
-        if (across > 0 && left + right > across * (1 - share))
+        if (across > 0 && left + right > across - editor)
         {
-            double scale = across * (1 - share) / (left + right);
+            double scale = (across - editor) / (left + right);
             (left, right) = (left * scale, right * scale);
+            if (leftOpen && rightOpen && maximized is null)
+            {
+                left = Math.Clamp(left, SmallestSideWidth, across - editor - SmallestSideWidth);
+                right = across - editor - left;
+            }
         }
         if (down > 0)
         {
@@ -505,7 +543,7 @@ public sealed class DockHost : Grid
         }
         ColumnDefinitions[1].Width = new GridLength(left);
         ColumnDefinitions[2].Width = new GridLength(leftOpen ? 1 : 0);
-        ColumnDefinitions[3].MinWidth = across * share;
+        ColumnDefinitions[3].MinWidth = editor;
         ColumnDefinitions[4].Width = new GridLength(rightOpen ? 1 : 0);
         ColumnDefinitions[5].Width = new GridLength(right);
         RowDefinitions[0].MinHeight = down * share;
@@ -516,6 +554,16 @@ public sealed class DockHost : Grid
         rightDivider.IsVisible = rightOpen;
         bottomDivider.IsVisible = bottomOpen;
         given = (left, right, bottom);
+        leftStripe.Fill(windows);
+        rightStripe.Fill(windows);
+        if (focusHidden)
+        {
+            FocusCenterRequested?.Invoke(this, EventArgs.Empty);
+        }
+        if (wasLeft != leftCollapsed || wasRight != rightCollapsed)
+        {
+            PresentationChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     /// <summary>A side's two halves: both shown share it, as the person last split it while both were; one shown fills
