@@ -64,7 +64,10 @@ public class RuntimeStartupTests(ITestOutputHelper output)
     [InlineData(true)]
     public async Task A_failed_startup_answers_configuration_before_disconnect_can_answer_and_end_the_adapter(bool logFails)
     {
-        string pipe = $"passenger-dap-{Guid.NewGuid():N}";
+        string name = $"passenger-dap-{Guid.NewGuid():N}";
+        // Unix named pipes accept an absolute socket path. macOS's per-user temp path plus CoreFxPipe_ and this name
+        // exceeds its 104-byte socket limit; use the short shared temp root, as Passenger's profiler does, keeping the GUID.
+        string pipe = OperatingSystem.IsWindows() ? name : Path.Combine(Directory.Exists("/tmp") ? "/tmp" : Path.GetTempPath(), name);
         using NamedPipeServerStream adapterStream = new(pipe, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
         using NamedPipeClientStream clientStream = new(".", pipe, PipeDirection.InOut, PipeOptions.Asynchronous);
         Task accepting = adapterStream.WaitForConnectionAsync(TestContext.Current.CancellationToken);
