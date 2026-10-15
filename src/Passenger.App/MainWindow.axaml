@@ -64,14 +64,16 @@
                                            Foreground="{DynamicResource Passenger.AccentText}"
                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
                             </Border>
-                            <TextBlock Name="ProjectName" Text="No solution" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            <TextBlock Name="ProjectName" Text="No solution" FontWeight="SemiBold" VerticalAlignment="Center"
+                                       MaxWidth="180" TextTrimming="CharacterEllipsis" />
                             <PathIcon Classes="chevron" Data="{StaticResource Icon.ChevronDown}" />
                         </StackPanel>
                     </Button>
                     <Button Name="BranchButton" Classes="widget" ToolTip.Tip="Version control" Click="OnBranchClicked">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <PathIcon Data="{StaticResource Icon.Branch}" />
-                            <TextBlock Name="BranchName" Text="Version control" VerticalAlignment="Center" />
+                            <TextBlock Name="BranchName" Text="Version control" VerticalAlignment="Center"
+                                       MaxWidth="180" TextTrimming="CharacterEllipsis" />
                             <PathIcon Classes="chevron" Data="{StaticResource Icon.ChevronDown}" />
                         </StackPanel>
                     </Button>
@@ -84,7 +86,8 @@
                     </Button>
                     <Button Name="RunConfigButton" Classes="widget" ToolTip.Tip="Run configuration" Click="OnRunConfigClicked">
                         <StackPanel Orientation="Horizontal" Spacing="6">
-                            <TextBlock Name="RunConfigName" Text="No configurations" VerticalAlignment="Center" />
+                            <TextBlock Name="RunConfigName" Text="No configurations" VerticalAlignment="Center"
+                                       MaxWidth="180" TextTrimming="CharacterEllipsis" />
                             <PathIcon Classes="chevron" Data="{StaticResource Icon.ChevronDown}" />
                         </StackPanel>
                     </Button>

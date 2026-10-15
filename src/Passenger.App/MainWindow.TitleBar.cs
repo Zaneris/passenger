@@ -36,6 +36,7 @@ public partial class MainWindow
     private void AddTitleBar()
     {
         WindowDecorationsTheme = (ControlTheme)Resources["TitleBarDecorations"]!;
+        Toolbar.SizeChanged += (_, _) => FitToolbar();
         MergeTitleBar(TitleBars.Merged(settings));
     }
 
@@ -75,6 +76,21 @@ public partial class MainWindow
         AutomationProperties.SetName(MaximizeButton, maximized ? "Restore" : "Maximize");
         bool framed = TitleBarMerged && TitleBars.Offered && !maximized && !fullScreen;
         Root.Margin = new Thickness(framed ? LinuxEdge : 0);
+    }
+
+    /// <summary>Half a laptop screen keeps Run, Debug, Stop and the window's buttons reachable: names shorten and the
+    /// Build and Profile icons give their space back (their menu actions stay available).</summary>
+    private void FitToolbar()
+    {
+        bool compact = Toolbar.Bounds.Width is > 0 and < 900;
+        // Space for every icon, including Stop and Apply Changes, the window's buttons and a place to drag the bar.
+        double nameWidth = Math.Clamp((Toolbar.Bounds.Width - 760) / 3, 40, 180);
+        ProjectName.IsVisible = !compact;
+        BranchName.IsVisible = !compact;
+        BuildButton.IsVisible = !compact;
+        ProfileButton.IsVisible = !compact;
+        ProjectName.MaxWidth = BranchName.MaxWidth = nameWidth;
+        RunConfigName.MaxWidth = compact ? 80 : nameWidth;
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
