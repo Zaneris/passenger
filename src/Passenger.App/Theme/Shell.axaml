@@ -26,6 +26,10 @@
          makes each), Rider's height and side padding, the shared radius. One that reads as text (crumb, link,
          statusItem) says otherwise in its own style, as the small square ones (tool, tabClose) say their size. -->
     <Style Selector="Button">
+        <Setter Property="Background" Value="{DynamicResource Passenger.Button}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Passenger.FieldBorder}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Foreground" Value="{DynamicResource Passenger.Text}" />
         <Setter Property="MinHeight" Value="{DynamicResource Passenger.ControlHeight}" />
         <Setter Property="Padding" Value="14,0" />
         <Setter Property="HorizontalContentAlignment" Value="Center" />
@@ -664,6 +668,7 @@
          it. -->
     <Style Selector="Button.primary">
         <Setter Property="Background" Value="{DynamicResource Passenger.Accent}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Passenger.Accent}" />
         <Setter Property="Foreground" Value="{DynamicResource Passenger.AccentText}" />
     </Style>
     <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
