@@ -12,7 +12,7 @@ internal sealed class XamlHotReload(Inspector inspector)
     private readonly Dispatcher dispatcher = Dispatcher.CurrentDispatcher;
 
     private sealed record Source(string Original, string Current);
-    private sealed record Change(DependencyObject Instance, DependencyProperty Property, object? Value, object? Before, XamlSourceUpdate Source, XamlPropertyUpdate Edit);
+    private sealed record Change(DependencyObject Instance, DependencyProperty Property, object? Value, object? Before, object LocalBefore, XamlSourceUpdate Source, XamlPropertyUpdate Edit);
     private readonly Dictionary<string, Source> sources = new(StringComparer.Ordinal);
 
     public XamlUpdateResult Apply(XamlUpdate request)
@@ -56,6 +56,17 @@ internal sealed class XamlHotReload(Inspector inspector)
                     }
                     try
                     {
+                        object local = DependencyProperty.UnsetValue;
+                        if (edit.Added)
+                        {
+                            ValueSource valueSource = DependencyPropertyHelper.GetValueSource(instance, property);
+                            if (valueSource.IsExpression || valueSource.IsAnimated || valueSource.IsCurrent)
+                            {
+                                problems.Add(Problem(source, edit, $"Adding {edit.Property} would replace a binding, animation, resource or current value set by the app; restart to load the edit", true));
+                                continue;
+                            }
+                            local = instance.ReadLocalValue(property);
+                        }
                         object? value = Convert(edit.Value, property.PropertyType);
                         if (!property.IsValidValue(value))
                         {
@@ -71,7 +82,7 @@ internal sealed class XamlHotReload(Inspector inspector)
                             problems.Add(Problem(source, edit, $"{edit.Property}: the app refused to read the previous value: {error.Message}", false));
                             continue;
                         }
-                        changes.Add(new Change(instance, property, value, before, source, edit));
+                        changes.Add(new Change(instance, property, value, before, local, source, edit));
                     }
                     catch (Exception error) when (error is FormatException or NotSupportedException or ArgumentException or OverflowException)
                     {
@@ -102,7 +113,14 @@ internal sealed class XamlHotReload(Inspector inspector)
             {
                 attempted = change;
                 applied.Add(change);
-                change.Instance.SetCurrentValue(change.Property, change.Value);
+                if (change.Edit.Added)
+                {
+                    change.Instance.SetValue(change.Property, change.Value);
+                }
+                else
+                {
+                    change.Instance.SetCurrentValue(change.Property, change.Value);
+                }
             }
         }
         catch (Exception error)
@@ -111,7 +129,18 @@ internal sealed class XamlHotReload(Inspector inspector)
             {
                 try
                 {
-                    change.Instance.SetCurrentValue(change.Property, change.Before);
+                    if (!change.Edit.Added)
+                    {
+                        change.Instance.SetCurrentValue(change.Property, change.Before);
+                    }
+                    else if (change.LocalBefore == DependencyProperty.UnsetValue)
+                    {
+                        change.Instance.ClearValue(change.Property);
+                    }
+                    else
+                    {
+                        change.Instance.SetValue(change.Property, change.LocalBefore);
+                    }
                 }
                 catch
                 {
