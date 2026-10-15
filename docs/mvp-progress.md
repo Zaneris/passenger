@@ -23,7 +23,7 @@ No issue was closed, release published or tag pushed.
 | [#57 Linux packaging/install](https://github.com/Zaneris/passenger/issues/57) | Existing scripts, launcher, install/uninstall, instructions, smoke jobs and release architectures were inspected. Native CI's Linux archive job passed at `04e303f`, and the earlier complete Linux test suite was green at `33ddf0d`. Existing Ubuntu WSL/Docker environments also support local checks. | Finish local install checks, validate both architectures and Ubuntu desktop build/run/debug/profile/terminal acceptance. Archive construction and WSL/container results must be distinguished from native desktop acceptance. |
 | [#56 Release workflow](https://github.com/Zaneris/passenger/issues/56) | Existing workflow covers tests, six RIDs, fixed asset names, version/feed checks, signing hooks, checksums, tag notes and a non-publishing dry run. Packaging/release shell syntax checks passed. | The owner's required order is other MVP work and green three-system CI, then #211, then #55, then the final dry run, then an owner-chosen tag. The final dry run and tag were not performed out of sequence. Native signing/notarization was not exercised. |
 | [#55 Website/README refresh](https://github.com/Zaneris/passenger/issues/55) | Deferred as the owner explicitly requires this last, after the feature/MCP passes. Existing site, README and comments were inspected. | Commit a repeatable sample and screenshot command; retake all required views in both themes; revise the whole site/README/share card against the finished feature set. The `www` redirect needs the owner's Cloudflare dashboard because the deploy token cannot write redirect rules. |
-| [#33 Hot Reload](https://github.com/Zaneris/passenger/issues/33) | Managed-code tests passed 8/8 and edit tests 15/15. Avalonia literal edits (`77f0a72`, getter follow-up `e1d3855`) passed 11/11; WPF literal edits (`ffe2706`) passed 4/4. Run/watch inspector injection/reconnection (`0078c8f`, evaluated-framework follow-up `0c82e14`) is now merged. | Saved-editor-XAML tracking and broader structural/binding/resource/template support remain active software work. A potential PassengerEnC identity regression under design-time isolation is being diagnosed; no whole-feature clean result is claimed. macOS/Linux execution is unverified; WPF evidence is Windows x64. |
+| [#33 Hot Reload](https://github.com/Zaneris/passenger/issues/33) | Managed-code tests passed 8/8 and edit tests 15/15. Avalonia literal edits (`77f0a72`, getter follow-up `e1d3855`) passed 11/11 locally; native macOS/Linux CI at `33ddf0d` also passed that checkpoint's XAML tests. WPF literal edits (`ffe2706`) passed 4/4 on Windows x64. Run/watch inspector injection/reconnection (`0078c8f`, evaluated-framework follow-up `0c82e14`) is now merged. | Saved-editor-XAML tracking and broader structural/binding/resource/template support remain active software work. The selected design-time isolation's PassengerEnC identity regression has a fix under validation; no whole-feature clean result is claimed. Native evidence for the literal checkpoint does not cover later run/watch or host changes. |
 | [#19 Data breakpoints](https://github.com/Zaneris/passenger/issues/19) | Existing Windows x64 implementation and Variables/Breakpoints UI verified by all four data-breakpoint tests, none skipped. | Current engine/runtime availability is explicitly Windows x64. macOS/ARM support was neither implemented nor verified in this pass. |
 | [#1 Windows verification](https://github.com/Zaneris/passenger/issues/1) | Existing CET teardown protection runs a paused thread off exception/single-step dispatch before detach; its attach/detach regression passed. The combined data-breakpoint/Hot Reload/CET audit passed 28/28 on Windows x64. | Full Windows x64/ARM64 suite and native interactive build/run/debug/profile acceptance are not established by these focused headless tests. No Windows ARM64 hardware was available. |
 
@@ -46,19 +46,21 @@ All counts are attributed to the source tested, rather than added together as on
 | WPF XAML `ffe2706` | `WpfXamlHotReloadTests` passed 4/4 on exact RC1; debugger worktree `tests/Passenger.Tests/TestResults/wpf-xaml-first.trx`. Both-framework scale-2 before/after captures are under `artifacts/bin/Passenger.Tests/debug/{xaml-hot-reload,wpf-xaml-hot-reload}/`. |
 | WPF design-time isolation `2991601` | Final nine-case fixture passed; broader 21 passed with one expected platform skip. `artifacts/wt-shell-isolated/tests/Passenger.Tests/TestResults/{isolation-final-fixtures,isolation-checkpoint}.trx`. Imported/global paths, selected references, generated navigation, cache reopen and Build/Run/watch overlap are checked. Shell worktree `artifacts/isolation-probe/tests/Passenger.Tests/TestResults/final-fixture-negative.trx` retains MC1000 with the four product files reverted; holder PID 12024 is `Passenger.Host`. |
 
-The shell agent's ongoing exploratory full Windows run uses the superseded graph-coordinator snapshot `d2f5633`:
-the later snapshot is 849 passed, two failures and nine skipped, not a final
-run result. Its binaries had been built with stamp
-`3b41974` before that commit. The second failure is an MCP deliberate-design-time-sleep case on the superseded coordinator,
-awaiting a selected-isolation rerun. This is not a green full suite for current main. A separate WPF native-picker probe
+The shell agent's completed exploratory full Windows run used the superseded graph-coordinator snapshot `d2f5633`:
+868 total, 857 passed, two failed, nine skipped in 59.99 minutes. Its About assertion used binaries stamped
+`3b41974` before the `d2` commit. The other failure was an MCP deliberate-design-time-sleep load/run timeout on that
+obsolete coordinator. On selected-isolation source `bbd39c1`, the exact MCP case passed in 27 seconds and both About
+checks passed. These reruns do not turn the historical full run into a green full suite for current main. A separate WPF native-picker probe
 remains timing-sensitive; no picker fix is claimed.
 
 Root's combined solution build at `33ddf0d` passed with zero errors and seven unchanged intentional fixture warnings,
 in `artifacts/milestone-1/integration/resumed-build.log`. Later source checkpoints require their own combined checks;
 focused counts above do not establish full Windows/macOS/Linux acceptance.
 
-The [native CI run at pushed `33ddf0d`](https://github.com/tebeco/passenger/actions/runs/38807870015) completed a green Linux
-test suite, while Windows shards exposed the #217 template parser and #218 overlap. Its
+The [native CI run at pushed `33ddf0d`](https://github.com/tebeco/passenger/actions/runs/38807870015) completed all four Linux
+test shards green. Windows exposed the #217 parser and #218 overlap. The only macOS test failures were the two new
+RuntimeStartup protocol fixtures' overlong Unix pipe paths; another macOS shard failed only its runtime budget.
+Avalonia literal-XAML tests at this checkpoint therefore have native macOS/Linux evidence. The run's
 [macOS x64 packaging job](https://github.com/tebeco/passenger/actions/runs/38807870015/job/116673341029)
 exposed the Roslyn server host/target failure. The [packaging rerun at `04e303f`](https://github.com/tebeco/passenger/actions/runs/38810456744)
 passed every packaging job: macOS x64 cold-cache, macOS arm64, Linux archive, Windows installer and package checks.
