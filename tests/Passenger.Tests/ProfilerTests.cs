@@ -69,6 +69,7 @@ public sealed class ProfilerTests : IDisposable
         window.OpenFolder(project);
         window.OpenFile(Path.Combine(project, "Program.cs"));
         Ui.Settle();
+        project = window.Folder!;
         window.SetConfigurations([new RunConfiguration { Name = "Long-name sampling", Project = Path.Combine(project, "LongRows.csproj"), WorkingDirectory = project }], "Long-name sampling");
         Assert.Equal(project, window.Configuration?.WorkingDirectory);
         try
