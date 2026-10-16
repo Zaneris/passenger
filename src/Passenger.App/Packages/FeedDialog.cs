@@ -71,7 +71,7 @@ public sealed class FeedDialog : Window
             Spacing = 14,
             Children =
             {
-                new TextBlock { Text = Title, FontWeight = FontWeight.SemiBold },
+                new TextBlock { Text = Title, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap },
                 fields,
                 saved,
                 problem,
