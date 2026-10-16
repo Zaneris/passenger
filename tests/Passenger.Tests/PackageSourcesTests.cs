@@ -1,10 +1,15 @@
+using System.Xml.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Interactivity;
+using Avalonia.Media;
+using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.Docking;
 using Passenger.App.Packages;
 using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
@@ -77,12 +82,32 @@ public sealed class PackageSourcesTests : IDisposable
             """.ReplaceLineEndings("\n");
     }
 
-    [AvaloniaFact]
-    public void The_sources_tab_and_the_chooser_list_the_folder_feed_and_the_private_feed_of_the_folders_nuget_config()
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void The_sources_tab_and_the_chooser_list_the_folder_feed_and_the_private_feed_of_the_folders_nuget_config(bool light)
     {
+        const string name = "A shared development package feed whose complete readable name must remain available";
+        string local = Path.Combine(folder, "package sources for development teams", "a local directory whose complete location must remain readable");
+        Directory.CreateDirectory(local);
+        foreach (string package in Directory.GetFiles(Path.Combine(folder, "feed")))
+        {
+            File.Copy(package, Path.Combine(local, Path.GetFileName(package)));
+        }
+        string packages = Path.Combine(folder, "global package caches", "a development package cache whose full location must remain readable");
+        string repository = Path.Combine(folder, "repository packages", "a legacy package location whose full path must remain readable");
+        XDocument contents = XDocument.Load(config);
+        XElement source = contents.Root!.Element("packageSources")!.Elements("add").First();
+        source.SetAttributeValue("key", name);
+        source.SetAttributeValue("value", local);
+        contents.Root.Element("config")!.Elements("add").Single().SetAttributeValue("value", packages);
+        contents.Root.Element("config")!.Add(new XElement("add", new XAttribute("key", "repositoryPath"), new XAttribute("value", repository)));
+        contents.Save(config);
         MainWindow window = Open();
+        window.RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark;
+        window.SetRenderScaling(2);
         NuGetView nuget = window.NuGet;
-        Assert.True(nuget.FeedChoices.SequenceEqual([FeedSet.All, "local", "private"]),
+        Assert.True(nuget.FeedChoices.SequenceEqual([FeedSet.All, name, "private"]),
             $"The chooser beside the search offers [{string.Join(", ", nuget.FeedChoices)}], not All Feeds and the folder's two feeds");
 
         ShowSources(nuget);
@@ -90,9 +115,95 @@ public sealed class PackageSourcesTests : IDisposable
         Assert.True(Core.PathNames.Same(solution.Path, Core.PathNames.Canonical(config)) && solution.Place == ConfigPlace.Solution,
             $"The Sources tab's first file is {solution.Path} ({solution.Place}), not the folder's own nuget.config");
         Assert.True(nuget.Sources.Chosen == solution, $"The Sources tab shows the feeds of {nuget.Sources.Chosen?.Path}, not the folder's own file");
-        Assert.True(FeedRows(nuget).SequenceEqual(["local", "private"]), $"The folder's file shows the feeds [{string.Join(", ", FeedRows(nuget))}]");
-        Assert.True(Toggle(nuget, "local").IsChecked == true && Toggle(nuget, "private").IsChecked == true, "A feed the file enables is shown disabled");
-        Assert.True(Locks(nuget, "private") == 1 && Locks(nuget, "local") == 0, "Only the private feed holds credentials in the file, but its row does not say so");
+        Assert.True(FeedRows(nuget).SequenceEqual([name, "private"]), $"The folder's file shows the feeds [{string.Join(", ", FeedRows(nuget))}]");
+        Assert.True(Toggle(nuget, name).IsChecked == true && Toggle(nuget, "private").IsChecked == true, "A feed the file enables is shown disabled");
+        Assert.True(Locks(nuget, "private") == 1 && Locks(nuget, name) == 0, "Only the private feed holds credentials in the file, but its row does not say so");
+
+        ScrollViewer reader = Assert.Single(Descendants<ScrollViewer>(nuget.Sources), scroll => scroll.Content is StackPanel);
+        Button edit = FeedRow(nuget, name).Children.OfType<Button>().Single(button => ToolTip.GetTip(button) as string == "Edit");
+        Assert.True(edit.Focus());
+        Ui.Settle();
+        reader.Offset = default;
+        List<string> problems = [];
+        foreach (double width in new double[] { 1200, 683, 640 })
+        {
+            window.Width = width;
+            Ui.Settle();
+            Assert.Same(solution, nuget.Sources.Chosen);
+            Assert.True(Toggle(nuget, name).IsChecked == true);
+            Assert.Same(edit, window.FocusManager?.GetFocusedElement());
+            Assert.Contains(Descendants<TextBlock>(nuget.Sources), text => text.Text == solution.Path);
+            UiAudit.Capture(window, $"nuget-sources-{width:0}-{(light ? "light" : "dark")}");
+            problems.AddRange(UiAudit.HorizontalOverflow(window, "NuGet Sources", nuget.Sources));
+            foreach (TextBlock text in Descendants<TextBlock>(nuget.Sources).Where(text => text.Text is { } value && (value == name || value == local || value == packages || value == repository)))
+            {
+                if (text.TextTrimming != TextTrimming.None)
+                {
+                    problems.Add($"NuGet Sources truncates '{text.Text}' at {width}px");
+                }
+            }
+            Point over = reader.TranslatePoint(new Point(reader.Bounds.Width / 2, reader.Bounds.Height / 2), window)!.Value;
+            window.MouseMove(over);
+            for (int attempt = 0; attempt < 20 && reader.Offset.X < reader.Extent.Width - reader.Viewport.Width - 1; attempt++)
+            {
+                window.MouseWheel(over, new Vector(-30, 0));
+                Ui.Settle();
+            }
+            Assert.InRange(reader.Offset.X, reader.Extent.Width - reader.Viewport.Width - 1, reader.Extent.Width - reader.Viewport.Width + 1);
+            double at = edit.TranslatePoint(default, reader)!.Value.X;
+            Assert.True(at >= 0 && at + edit.Bounds.Width <= reader.Bounds.Width, "The feed's Edit action cannot be reached inside the Sources reading viewport");
+            UiAudit.Capture(window, $"nuget-sources-actions-{width:0}-{(light ? "light" : "dark")}");
+            window.MouseWheel(over, new Vector(0, -30));
+            Ui.Settle();
+            Assert.True(reader.Offset.Y > 0, "The Sources properties and Summary have no vertical reading access");
+            UiAudit.Capture(window, $"nuget-sources-properties-{width:0}-{(light ? "light" : "dark")}");
+            reader.Offset = default;
+        }
+        Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
+        DockLayout layout = window.DockHost.Capture();
+        window.DockHost.Apply(layout with
+        {
+            LeftWidth = 200,
+            Windows = layout.Windows.ToDictionary(pair => pair.Key, pair => pair.Key == "nuget"
+                ? pair.Value with { Anchor = ToolAnchor.LeftTop, Shown = true }
+                : pair.Value.Anchor == ToolAnchor.LeftTop ? pair.Value with { Shown = false } : pair.Value),
+        });
+        Ui.Settle();
+        UiAudit.Capture(window, $"nuget-sources-side-200-{(light ? "light" : "dark")}");
+        Assert.InRange(nuget.Bounds.Width, 190, 210);
+        Assert.True(reader.Viewport.Width >= 40, $"The file list leaves only {reader.Viewport.Width}px for the Sources form's reading viewport");
+        Point side = reader.TranslatePoint(new Point(reader.Bounds.Width / 2, reader.Bounds.Height / 2), window)!.Value;
+        window.MouseMove(side);
+        for (int attempt = 0; attempt < 20 && reader.Offset.X < reader.Extent.Width - reader.Viewport.Width - 1; attempt++)
+        {
+            window.MouseWheel(side, new Vector(-30, 0));
+            Ui.Settle();
+        }
+        UiAudit.Capture(window, $"nuget-sources-side-actions-200-{(light ? "light" : "dark")}");
+        double actionX = edit.TranslatePoint(default, reader)!.Value.X;
+        Assert.True(actionX >= 0 && actionX + edit.Bounds.Width <= reader.Bounds.Width, "The feed's Edit action cannot be reached inside the 200px Sources pane");
+        ListBox fileList = Assert.Single(Descendants<ListBox>(nuget.Sources));
+        Assert.True(fileList.ContainerFromIndex(0)!.Focus());
+        Ui.Press(window, "down");
+        Ui.Settle();
+        Assert.NotSame(solution, nuget.Sources.Chosen);
+        Assert.Contains(Descendants<TextBlock>(nuget.Sources), text => text.Text == nuget.Sources.Chosen!.Path);
+        Ui.Press(window, "up");
+        Ui.Settle();
+        Assert.Same(solution, nuget.Sources.Chosen);
+        Assert.Contains(Descendants<TextBlock>(nuget.Sources), text => text.Text == solution.Path);
+        Button privateEdit = FeedRow(nuget, "private").Children.OfType<Button>().Single(button => ToolTip.GetTip(button) as string == "Edit");
+        Assert.True(privateEdit.Focus());
+        Ui.Press(window, "enter");
+        Ui.Settle();
+        FeedDialog dialog = Assert.Single(window.OwnedWindows.OfType<FeedDialog>());
+        Assert.Equal("private", dialog.FeedName);
+        Assert.Equal(feed.Index.AbsoluteUri, dialog.Url);
+        Ui.Press(dialog, "escape");
+        Ui.Settle();
+        Assert.Empty(window.OwnedWindows);
+        Assert.Same(solution, nuget.Sources.Chosen);
+        Assert.True(Toggle(nuget, "private").IsChecked == true);
 
         // The person's own nuget.config is never one of a test's: the run's NuGet home stands in for theirs.
         if (!OperatingSystem.IsWindows())
