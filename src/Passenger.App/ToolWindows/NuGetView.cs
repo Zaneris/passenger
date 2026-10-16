@@ -55,6 +55,7 @@ public sealed class NuGetView : DockPanel
     private PackageSourceSet sources = PackageSourceSet.None;
     private Dictionary<string, IPackageFeed> feeds = new(StringComparer.OrdinalIgnoreCase);
     private IPackageFeed? given;
+    private (string Package, string Root, string Feed, IPackageFeed[] Inputs, string Version)? versionChoice;
     private Task? reading;
 
     /// <summary>The audit's known vulnerabilities, read once the sources are and a listed package is installed.</summary>
@@ -120,6 +121,7 @@ public sealed class NuGetView : DockPanel
         list = new ListBox
         {
             Classes = { "tree" },
+            [ScrollViewer.HorizontalScrollBarVisibilityProperty] = ScrollBarVisibility.Auto,
             ItemTemplate = new FuncDataTemplate<PackageRow>((row, _) => row is null ? new TextBlock() : Row(row), supportsRecycling: false),
         };
         list.SelectionChanged += (_, _) => _ = ShowAsync();
@@ -145,7 +147,9 @@ public sealed class NuGetView : DockPanel
         };
         DockPanel right = new();
         right.Children.Add(log);
-        right.Children.Add(new ScrollViewer { Content = details });
+        ScrollViewer reader = new() { Content = details, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto };
+        reader.SizeChanged += (_, e) => details.Width = Math.Max(600, e.NewSize.Width - details.Margin.Left - details.Margin.Right);
+        right.Children.Add(reader);
         Grid split = new() { ColumnDefinitions = new ColumnDefinitions("2*,1,3*") };
         HairlineDivider divider = new(GridResizeDirection.Columns) { [Grid.ColumnProperty] = 1 };
         Grid.SetColumn(right, 2);
@@ -600,11 +604,18 @@ public sealed class NuGetView : DockPanel
         {
             return;
         }
+        IPackageFeed feed = Feed;
+        IPackageFeed[] inputs = feed is FeedSet set ? [.. set.Feeds] : [feed];
+        if (versionChoice is { } previous && (!previous.Package.Equals(row.Id, StringComparison.OrdinalIgnoreCase)
+            || previous.Root != (root() ?? string.Empty) || previous.Feed != feed.Name || !previous.Inputs.SequenceEqual(inputs, ReferenceEqualityComparer.Instance)))
+        {
+            versionChoice = null;
+        }
         IReadOnlyList<string> found;
         using IDisposable held = BackgroundWork.Scope();
         try
         {
-            found = await Feed.VersionsAsync(row.Id, prerelease.IsChecked == true, cancel.Token);
+            found = await feed.VersionsAsync(row.Id, prerelease.IsChecked == true, cancel.Token);
         }
         catch (OperationCanceledException) when (cancel.IsCancellationRequested)
         {
@@ -619,35 +630,46 @@ public sealed class NuGetView : DockPanel
             return;
         }
         versions = found;
+        if (versionChoice is { } unavailable && !versions.Contains(unavailable.Version, StringComparer.OrdinalIgnoreCase))
+        {
+            versionChoice = null;
+        }
         VulnerabilityData known = Known;
         string? vulnerable = row.Installed.Values.OfType<string>().Where(v => known.Of(row.Id, v).Count > 0).OrderByDescending(v => v, VersionOrder.Instance).FirstOrDefault();
         string? fix = vulnerable is null ? null : known.FixedVersion(row.Id, vulnerable, versions);
-        ChosenVersion = fix ?? versions.FirstOrDefault() ?? row.Version;
-        ComboBox picker = new() { Name = "Versions", ItemsSource = versions, SelectedItem = ChosenVersion, MinWidth = 140 };
+        ChosenVersion = versionChoice is { } choice && versions.Contains(choice.Version, StringComparer.OrdinalIgnoreCase)
+            ? choice.Version : fix ?? versions.FirstOrDefault() ?? row.Version;
+        ComboBox picker = new()
+        {
+            Name = "Versions", ItemsSource = versions, SelectedItem = ChosenVersion, MinWidth = 140, MaxWidth = 220,
+            ItemTemplate = new FuncDataTemplate<string>((value, _) => new TextBlock { Text = value, TextWrapping = TextWrapping.Wrap }),
+        };
         picker.SelectionChanged += (_, _) =>
         {
             ChosenVersion = picker.SelectedItem as string;
+            versionChoice = ChosenVersion is { } picked ? (row.Id, root() ?? string.Empty, feed.Name, inputs, picked) : null;
             ShowProjects(row);
         };
-        details.Children.Add(new StackPanel
+        details.Children.Add(new Grid
         {
-            Orientation = Orientation.Horizontal,
-            Spacing = 12,
-            Children = { new TextBlock { Text = row.Id, FontSize = 16, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center }, picker },
+            ColumnDefinitions = new ColumnDefinitions("*,Auto"),
+            ColumnSpacing = 12,
+            Children = { new TextBlock { Text = row.Id, FontSize = 16, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center }, picker },
         });
+        Grid.SetColumn(picker, 1);
         if (row.Description.Length > 0)
         {
             details.Children.Add(new TextBlock { Text = row.Description, TextWrapping = TextWrapping.Wrap });
         }
         if (row.Authors.Length > 0 || row.Downloads > 0)
         {
-            TextBlock by = new() { Text = row.Downloads > 0 ? $"{row.Authors}, {row.Downloads:N0} downloads" : row.Authors, FontSize = 12 };
+            TextBlock by = new() { Text = row.Downloads > 0 ? $"{row.Authors}, {row.Downloads:N0} downloads" : row.Authors, FontSize = 12, TextWrapping = TextWrapping.Wrap };
             by.Bind(TextBlock.ForegroundProperty, by.GetResourceObservable("Passenger.TextMuted"));
             details.Children.Add(by);
         }
         if (row.Feeds.Count > 0)
         {
-            TextBlock from = new() { Text = $"In {string.Join(", ", row.Feeds)}", FontSize = 12 };
+            TextBlock from = new() { Text = $"In {string.Join(", ", row.Feeds)}", FontSize = 12, TextWrapping = TextWrapping.Wrap };
             from.Bind(TextBlock.ForegroundProperty, from.GetResourceObservable("Passenger.TextMuted"));
             details.Children.Add(from);
         }
@@ -712,7 +734,7 @@ public sealed class NuGetView : DockPanel
         {
             bool has = row.Installed.TryGetValue(project.Path, out string? at);
             IReadOnlyList<Advisory> affecting = at is null ? [] : Known.Of(row.Id, at);
-            TextBlock version = new() { Text = has ? at ?? "installed" : string.Empty, Width = 110, VerticalAlignment = VerticalAlignment.Center };
+            TextBlock version = new() { Text = has ? at ?? "installed" : string.Empty, Width = 110, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
             version.Bind(TextBlock.ForegroundProperty, version.GetResourceObservable(affecting.Count > 0 ? "Passenger.Editor.Warning" : "Passenger.TextMuted"));
             // A slot of its own, so the buttons stand in one column whichever lines have the mark.
             Panel mark = new() { Width = 14, VerticalAlignment = VerticalAlignment.Center };
@@ -724,7 +746,7 @@ public sealed class NuGetView : DockPanel
             {
                 Orientation = Orientation.Horizontal,
                 Spacing = 8,
-                Children = { new TextBlock { Text = project.Name, Width = 220, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis }, version, mark },
+                Children = { new TextBlock { Text = project.Name, Width = 220, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap }, version, mark },
             };
             if (!has)
             {
@@ -744,7 +766,7 @@ public sealed class NuGetView : DockPanel
 
     private Button Action(string label, Func<Task<bool>> run)
     {
-        Button button = new() { Content = label, IsEnabled = !busy };
+        Button button = new() { Content = label, IsEnabled = !busy, VerticalAlignment = VerticalAlignment.Center };
         button.Click += (_, _) => _ = run();
         return button;
     }
