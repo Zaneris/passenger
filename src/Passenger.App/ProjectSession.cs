@@ -58,6 +58,7 @@ public sealed class ProjectSession : IAsyncDisposable
     private int reads;
 
     private Task? ending;
+    private readonly CancellationTokenSource closing = new();
     private readonly WpfPopulationBuild wpfPopulation;
 
     private ProjectSession(SessionSetup setup, string? folder)
@@ -479,7 +480,10 @@ public sealed class ProjectSession : IAsyncDisposable
     }
 
     /// <summary>Whether the session has been left, or its window closed.</summary>
-    public bool IsEnded => ending is not null;
+    public bool IsEnded => closing.IsCancellationRequested || ending is not null;
+
+    /// <summary>Work awaiting a launch stops as soon as this folder is left, before its runners are disposed.</summary>
+    internal CancellationToken Closing => closing.Token;
 
     /// <summary>The folder's documents from now on: what the store kept of the folder's own (its breakpoints, bookmarks,
     /// configurations, Find in Files' scope, unloaded projects, folds and recent files) taken first, so restoring them writes
@@ -745,6 +749,7 @@ public sealed class ProjectSession : IAsyncDisposable
     /// test run), and what is asked to end: the test runner and the language server, with the parts given.</summary>
     private List<(string What, Task Ending)> End(List<(string What, Task Ending)> parts)
     {
+        closing.Cancel();
         State = null;
         Models.Close();
         DesignTimeBuilds.Close();

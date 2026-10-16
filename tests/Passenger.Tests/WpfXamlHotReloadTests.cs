@@ -1,3 +1,7 @@
+using System.Collections.Concurrent;
+using System.IO.Pipes;
+using System.Text;
+using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
@@ -288,6 +292,141 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
             Ui.Run(window, AppActions.Stop);
             window.Close();
             throw new InvalidOperationException($"WPF launch failed: {error.Message}\nBuild:\n{build}\nRun:\n{run}", error);
+        }
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void Stopping_or_closing_during_wpf_run_preparation_never_launches_afterward(bool watched, bool close)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "WPF runs on Windows alone");
+        FutureViews("Light");
+        MainWindow window = FutureStarted(false, "net11.0-windows");
+        string project = Path.Combine(folder, "WpfTreeApp.csproj");
+        string original = File.ReadAllText(project);
+        string pipe = "passenger-wpf-prepare-" + Guid.NewGuid().ToString("N");
+        using NamedPipeServerStream server = new(pipe, PipeDirection.Out, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+        ConcurrentQueue<ChildStart> starts = new();
+        void Started(object? sender, ChildStart child) => starts.Enqueue(child);
+        Task<string?>? launching = null;
+        ProjectSession session = window.Session;
+        try
+        {
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => !window.Debugger.IsDebugging, "the initial WPF debug run to end");
+            RunConfiguration chosen = window.Session.Configurations.Chosen! with { BuildBeforeLaunch = false };
+            window.Session.Configurations.Set([chosen], chosen.Name, window.Session.Projects);
+            window.ApplySettings(window.Settings with { HotReload = watched });
+            window.SetRenderScaling(2);
+            // Only preparation's untouched watch-context evaluation reads this pipe. The project was already built;
+            // its ordinary evaluation and launch-plan query do not set DotNetWatchBuild.
+            File.WriteAllText(project, original.Replace("</Project>", $"<PropertyGroup Condition=\"'$(DotNetWatchBuild)' == 'true'\"><HeldPopulationRead>$([System.IO.File]::ReadAllText('\\\\.\\pipe\\{pipe}'))</HeldPopulationRead></PropertyGroup></Project>", StringComparison.Ordinal));
+            Task connected = server.WaitForConnectionAsync();
+            ChildProcesses.Started += Started;
+            launching = window.RunAsync();
+            Ui.PumpUntil(() => connected.IsCompleted || launching.IsCompleted, "the shared WPF preparation to read its held import", TimeSpan.FromSeconds(30));
+            Assert.True(connected.IsCompletedSuccessfully && !launching.IsCompleted, $"Run did not wait for preparation: {launching.Status}");
+            Ui.PumpUntil(() => starts.Any(child => child.Command.Contains("-getProperty:TargetPath", StringComparison.Ordinal) && Processes.Gone(child.ProcessId)),
+                "Run's launch-plan query to finish before canceling its preparation", TimeSpan.FromSeconds(30));
+            Screenshot.Pump(TimeSpan.FromMilliseconds(100));
+            Assert.False(launching.IsCompleted, "Run did not stay behind the held shared preparation");
+            Assert.True(window.FindControl<Button>("StopButton")!.IsEffectivelyVisible, "The toolbar hides Stop while Run prepares its program");
+            UiAudit.Capture(window, "wpf-run-preparing-" + (watched ? "watch" : "normal") + (close ? "-close" : "-stop"));
+            bool stopped = close ? window.CloseSolution() is null : window.Perform(AppActions.Stop);
+            Ui.PumpUntil(() => launching.IsCompleted, "Run cancellation without releasing shared preparation", TimeSpan.FromSeconds(5));
+            // Release the actual Host evaluation even on the negative control, so the assertion observes any late
+            // process launch instead of stranding a shared project host behind a failed test.
+            File.WriteAllText(project, original);
+            server.Write(Encoding.UTF8.GetBytes("Released by the test"));
+            server.Dispose();
+            Ui.PumpUntil(() => launching.IsCompleted, "the canceled WPF Run to answer", TimeSpan.FromSeconds(30));
+            string? result = launching.GetAwaiter().GetResult();
+            Assert.DoesNotContain(starts, child => child.Command.Contains("WpfTreeApp.dll", StringComparison.Ordinal)
+                || child.Command.Contains("watch", StringComparison.Ordinal) && child.Command.Contains(project, StringComparison.OrdinalIgnoreCase));
+            Assert.True(stopped, "Stop was unavailable while Run was preparing");
+            Assert.NotNull(result);
+            Assert.Contains(close ? "closed" : "cancel", result, StringComparison.OrdinalIgnoreCase);
+            Assert.False(window.IsRunning, "The canceled Run still owns a process");
+            Assert.True(session.RunApp is null or { State: LiveAppState.Ended }, "The canceled Run left an inspector waiting for a target");
+            ChildProcesses.Started -= Started;
+            if (!close)
+            {
+                Assert.Null(Ui.Await(window.RunAsync(), "a fresh Run after cancellation", TimeSpan.FromMinutes(2)));
+                Ui.WaitFor(() => window.Session.RunApp?.State == LiveAppState.Connected, "the fresh run's WPF inspector", TimeSpan.FromMinutes(2));
+                Assert.True(window.IsRunning, "Stopping preparation permanently disabled later Run");
+                Assert.True(window.Perform(AppActions.Stop));
+                Ui.PumpUntil(() => window.RunEnd.IsCompleted, "the fresh WPF run to stop", TimeSpan.FromSeconds(15));
+            }
+        }
+        finally
+        {
+            ChildProcesses.Started -= Started;
+            File.WriteAllText(project, original);
+            server.Dispose();
+            if (launching is { IsCompleted: false })
+            {
+                Ui.PumpUntil(() => launching.IsCompleted, "held preparation cleanup", TimeSpan.FromSeconds(30));
+            }
+            if (session.Runner.IsRunning)
+            {
+                int? process = session.Runner.ProcessId;
+                session.Runner.Stop();
+                if (process is { } id)
+                {
+                    Ui.PumpUntil(() => Processes.Gone(id), "the lifecycle fixture's program to end", TimeSpan.FromSeconds(10));
+                }
+            }
+            window.Perform(AppActions.Stop);
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void Canceling_a_run_after_its_inspector_is_created_keeps_open_xaml_followed_on_the_next_watched_run()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "WPF runs on Windows alone");
+        FutureViews("Light");
+        MainWindow window = FutureStarted(false, "net11.0-windows");
+        ProjectSession session = window.Session;
+        bool stopped = false;
+        void Cancel(object? sender, EventArgs args)
+        {
+            if (session.RunApp is not null)
+            {
+                stopped = window.Perform(AppActions.Stop);
+            }
+        }
+        try
+        {
+            Assert.Null(window.OpenFile(Path.Combine(folder, "RepeatedView.xaml")));
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => !window.Debugger.IsDebugging, "the initial debug run to end");
+            window.ApplySettings(window.Settings with { HotReload = true });
+            session.InspectedChanged += Cancel;
+            string? canceled = Ui.Await(window.RunAsync(), "Stop after Run creates its waiting inspector", TimeSpan.FromMinutes(2));
+            session.InspectedChanged -= Cancel;
+            Assert.True(stopped, "Stop was not available when the new inspector was created");
+            Assert.Contains("cancel", canceled ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(LiveAppState.Ended, session.RunApp!.State);
+            Assert.Null(Ui.Await(window.RunAsync(), "the fresh watched run", TimeSpan.FromMinutes(2)));
+            Ui.WaitFor(() => session.RunApp?.State == LiveAppState.Connected && RunOutput(window).Contains("Waiting for changes", StringComparison.Ordinal),
+                "the fresh target and its file watchers", TimeSpan.FromMinutes(2));
+            LiveApp app = session.RunApp!;
+            int? process = app.ProcessId;
+            Typing.Replace(window, "Created before", "Saved after canceled launch");
+            Ui.Run(window, AppActions.Save);
+            Ui.WaitFor(() => session.RunXaml.LastApplied is not null, "the already-open XAML edit to apply on save", TimeSpan.FromSeconds(15));
+            Assert.Equal(HotReloadResult.Applied, session.RunXaml.LastApplied!.Result);
+            Assert.Equal(process, app.ProcessId);
+            Assert.Contains(Read(app), e => e.Text == "Saved after canceled launch");
+        }
+        finally
+        {
+            session.InspectedChanged -= Cancel;
+            FutureEnded(window, watched: true);
         }
     }
 
