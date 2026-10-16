@@ -296,6 +296,79 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
     }
 
     [AvaloniaTheory]
+    [InlineData("Debug", "net10.0-windows", "Light")]
+    [InlineData("Release", "net11.0-windows", "Dark")]
+    public void Optimized_wpf_views_keep_compiled_population_and_constructor_order_with_latest_xaml(string configuration, string framework, string theme)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "WPF runs on Windows alone");
+        FutureViews(theme);
+        string project = Path.Combine(folder, "WpfTreeApp.csproj");
+        if (configuration == "Debug")
+        {
+            // Keep one optimized fixture on the checkout's compiler as well as the normally selected SDK. Their
+            // null-conditional helper IL differs (stacked callback versus a local with a direct null return).
+            File.Copy(Path.Combine(Debuggees.Root, "global.json"), Path.Combine(folder, "global.json"));
+            Restore.Run(project);
+        }
+        File.WriteAllText(project, File.ReadAllText(project).Replace("<UseWPF>true</UseWPF>",
+            $"<UseWPF>true</UseWPF><Configuration>{configuration}</Configuration><Optimize>true</Optimize><XamlDebuggingInformation>true</XamlDebuggingInformation>", StringComparison.Ordinal));
+        string code = Path.Combine(folder, "RepeatedView.xaml.cs");
+        File.WriteAllText(code, File.ReadAllText(code).Replace("InitializeComponent();", """
+            InitializeComponent();
+            System.Diagnostics.DebuggableAttribute debug = (System.Diagnostics.DebuggableAttribute)typeof(RepeatedView).Assembly.GetCustomAttributes(typeof(System.Diagnostics.DebuggableAttribute), false)[0];
+            Console.WriteLine("Optimized=" + !debug.IsJITOptimizerDisabled);
+            #if DEBUG
+            Console.WriteLine("Configuration=Debug");
+            #else
+            Console.WriteLine("Configuration=Release");
+            #endif
+            """, StringComparison.Ordinal));
+        MainWindow window = FutureStarted(watched: true, framework);
+        try
+        {
+            LiveApp app = window.Session.RunApp!;
+            Assert.Contains(Path.Combine("bin", configuration, framework), app.Plan!.Built!, StringComparison.Ordinal);
+            Assert.Contains("Configuration=" + configuration, RunOutput(window), StringComparison.Ordinal);
+            Assert.Contains("Optimized=True", RunOutput(window), StringComparison.Ordinal);
+            int? process = app.ProcessId;
+            List<Element> before = Read(app);
+            HashSet<long> old = [.. before.Select(e => e.Id)];
+            Element oldEntry = before.Single(e => e.Name == "NewEntry");
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Type) { Element = oldEntry.Id, Text = "Kept optimized state", Replace = true }), "the existing optimized view's state");
+            Assert.Null(window.OpenFile(Path.Combine(folder, "RepeatedView.xaml")));
+            Typing.Replace(window, "Created before", "Optimized first");
+            HotReloadOutcome first = FutureApplied(window, watched: true);
+            Assert.True(first.Result == HotReloadResult.Applied, first.Said + "\n" + string.Join('\n', first.Problems.Select(p => p.Message)) + "\n" + RunOutput(window));
+            Typing.Replace(window, "Optimized first", "Optimized latest");
+            Typing.Replace(window, "XAML before", "Optimized constructor input");
+            Typing.Replace(window, "Width=\"200\"", "Width=\"260\" MaxHeight=\"55\"");
+            HotReloadOutcome latest = FutureApplied(window, watched: true);
+            Assert.True(latest.Result == HotReloadResult.Applied, latest.Said);
+            Capture(app, "optimized-" + configuration + "-" + theme + "-before");
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Click) { Element = before.Single(e => e.Name == "CreateView").Id }), "a new optimized WPF view to load its compiled BAML");
+            Ui.WaitFor(() => RunOutput(window).Contains("Constructor saw Optimized latest; Optimized constructor input", StringComparison.Ordinal), "the optimized constructor to see the accepted literals before its assignments");
+            Assert.Equal(process, app.ProcessId);
+            List<Element> after = Read(app);
+            Element made = after.Single(e => e.Type == "RepeatedView" && !old.Contains(e.Id));
+            List<Element> children = [.. Flatten(made)];
+            Assert.Equal("Optimized latest", children.Single(e => e.Name == "NewLiteral").Text);
+            Assert.Equal("Constructor wins", children.Single(e => e.Name == "ConstructorValue").Text);
+            Assert.Equal("Kept optimized state", after.Single(e => e.Id == oldEntry.Id).Text);
+            ElementDetails details = Ui.Await(app.DetailsAsync(children.Single(e => e.Name == "NewLiteral").Id), "the optimized new view's literal addition");
+            Assert.Equal("55", details.Properties.Single(p => p.Name == "MaxHeight").Value);
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Type) { Element = children.Single(e => e.Name == "NewEntry").Id, Text = "New optimized state", Replace = true }), "the compiled optimized binding");
+            Assert.Equal("New optimized state", Read(app).Single(e => e.Id == children.Single(e => e.Name == "NewBound").Id).Text);
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Click) { Element = children.Single(e => e.Name == "NewIncrement").Id }), "the optimized code-behind event");
+            Ui.WaitFor(() => RunOutput(window).Contains("New view Name=New optimized state; Count=1; Named=True", StringComparison.Ordinal), "the optimized namescope and event handler");
+            Capture(app, "optimized-" + configuration + "-" + theme + "-after");
+        }
+        finally
+        {
+            FutureEnded(window, watched: true);
+        }
+    }
+
+    [AvaloniaTheory]
     [InlineData(false, false)]
     [InlineData(true, false)]
     [InlineData(false, true)]
