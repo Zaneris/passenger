@@ -32,6 +32,10 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
 
     public static bool IsProject(string path) => Path.GetExtension(path).Equals(".csproj", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>MarkupCompile creates this SDK-owned project beside the real one while generating WPF's assembly. It
+    /// is never a discovered workspace project, even while it exists or a failed build leaves it behind.</summary>
+    internal static bool IsTemporaryProject(string path) => Path.GetFileName(path).EndsWith("_wpftmp.csproj", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>Reads a folder, with the solution or project it was opened by, which stays its workspace while it is there.
     /// A folder without either is walked for its projects, which is a worker's job, never the window's thread's.</summary>
     public static WorkspaceModel Read(string folder, string? named = null) =>
@@ -84,7 +88,7 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
             DirectoryInfo at = folders.Dequeue();
             try
             {
-                found.AddRange(at.EnumerateFiles("*.csproj").Select(f => f.FullName).Order(StringComparer.Ordinal));
+                found.AddRange(at.EnumerateFiles("*.csproj").Select(f => f.FullName).Where(path => !IsTemporaryProject(path)).Order(StringComparer.Ordinal));
                 foreach (DirectoryInfo child in at.EnumerateDirectories().OrderBy(d => d.Name, StringComparer.Ordinal))
                 {
                     // Hidden folders are version control's, IDEs' and tools' own (a worktree's copy of the projects).

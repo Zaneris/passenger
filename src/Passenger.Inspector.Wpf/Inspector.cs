@@ -39,7 +39,7 @@ internal sealed class Inspector
         this.connection = connection;
         picker = new Picker(this, connection);
         driver = new Driver(this);
-        xaml = new XamlHotReload(this);
+        xaml = new XamlHotReload(this, failure => connection.Send(new Reply { Event = Wire.XamlFailed, Updated = failure }));
         bool first = current is null;
         current = this;
         if (first)
@@ -96,6 +96,7 @@ internal sealed class Inspector
     public void Stop()
     {
         stopped = true;
+        xaml.Stop();
         breaks.Stop();
         picker.Choose(false);
         picker.Outline(null);

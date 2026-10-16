@@ -43,6 +43,9 @@ public static class HostMethods
     /// MSBuild files (its properties with where each was set, its items, targets and imports, its evaluation's errors and
     /// warnings), the open files' unsaved text taken in place of what is on disk; cached while what it read holds.</summary>
     public const string Inspect = "inspect";
+
+    /// <summary>Checks the original graph/framework imports before Passenger composes its WPF population build hook.</summary>
+    public const string WpfBuild = "wpfBuild";
 }
 
 public static class HostJson
@@ -65,6 +68,12 @@ public sealed record SdkAnswer(string? Sdk, string? Problem);
 public sealed record EvaluateParams(IReadOnlyList<string> Projects, IReadOnlyDictionary<string, string> Properties);
 
 public sealed record EvaluateDone(int Evaluated, double Seconds);
+
+public sealed record WpfBuildParams(IReadOnlyList<string> Projects, IReadOnlyDictionary<string, string> Properties,
+    IReadOnlyDictionary<string, string>? DesignTimeProperties = null);
+
+/// <summary>A uniform existing CustomBefore import, or why the graph cannot safely compose the population hook.</summary>
+public sealed record WpfBuildPrepared(string? Before, string? Problem, IReadOnlyList<Stamp> Inputs, bool Wpf = false);
 
 /// <summary>One project as MSBuild evaluates it, every target framework of it: what the Solution view shows and what
 /// knows when it changed. A project that does not evaluate has its <see cref="Problem"/> and nothing else.</summary>
@@ -138,7 +147,7 @@ public sealed record BuildDiagnostic(bool Error, string Message, string Project)
 
 /// <summary>A file's last write (UTC ticks) and length, 0 and -1 for one not there; for a folder, the hash of its names and
 /// how many (<see cref="Stamps.Folder"/>).</summary>
-public sealed record Stamp(string Path, long Ticks, long Length, bool Folder = false);
+public sealed record Stamp(string Path, long Ticks, long Length, bool Folder = false, string? Pattern = null);
 
 /// <summary>A project to evaluate for code help, with the global properties (the solution's) and the text of the open
 /// MSBuild files that differ from what is on disk, by path, which its evaluation reads instead.</summary>

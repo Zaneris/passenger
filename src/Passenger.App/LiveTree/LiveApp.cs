@@ -99,6 +99,9 @@ public sealed class LiveApp : IDisposable
     /// <summary>The framework the app is built on, which its inspector serves.</summary>
     public LiveAppKind Kind { get; }
 
+    /// <summary>A launched WPF app's immutable shared-build inputs must still match before its next XAML batch.</summary>
+    internal Func<Task<string?>>? XamlPreparation { get; set; }
+
     /// <summary>The framework and its version as the window says it, once the app has said hello: "Avalonia 12.1.4",
     /// "WPF 10.0.1"; the framework alone before.</summary>
     public string Framework => Kind == LiveAppKind.Wpf
@@ -322,6 +325,10 @@ public sealed class LiveApp : IDisposable
     /// <summary>Validates or applies XAML edits on the running app's UI thread, preserving the existing controls.</summary>
     public async Task<XamlUpdateResult> ApplyXamlAsync(XamlUpdate update)
     {
+        if (XamlPreparation is { } check && await check() is { } problem)
+        {
+            return new XamlUpdateResult(false, 0, [.. update.Files.Select(source => new XamlUpdateProblem(source.File, 1, 1, problem, true))]);
+        }
         long expires = DateTimeOffset.UtcNow.Add(AnswerLimit - TimeSpan.FromSeconds(1)).ToUnixTimeMilliseconds();
         return (await AskAsync(new Request(0, Wire.ApplyXaml) { Update = update with { ExpiresUtc = Math.Min(update.ExpiresUtc ?? long.MaxValue, expires) } }))
             .Updated ?? throw new LiveAppException($"{Name} returned no XAML update result");

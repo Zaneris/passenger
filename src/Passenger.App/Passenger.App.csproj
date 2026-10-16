@@ -17,6 +17,7 @@
     <!-- MSBuild's own schemas (dotnet/msbuild, MIT), which the .NET SDK does not carry: the elements, properties, items,
          metadata and tasks the code help in project files offers and describes (MSBuild/MSBuildSchema.cs). -->
     <EmbeddedResource Include="MSBuild/Schemas/*.xsd" LogicalName="MSBuild/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Run/WpfPopulation.targets;Run/WpfPopulation.g.cs.txt" LogicalName="WpfPopulation/%(Filename)%(Extension)" WithCulture="false" />
     <!-- Passenger's own Prettier runner, run on the machine's Node.js with the project's own prettier (Web/Prettier.cs),
          carried beside the web language servers. -->
     <None Include="Web/prettier.cjs" Link="web/passenger/prettier.cjs" CopyToOutputDirectory="PreserveNewest" />

@@ -433,7 +433,13 @@ public sealed partial class CodeAssist
         }
         string path = DocumentUris.ToPath(place.Uri);
         string stem = Path.GetFileNameWithoutExtension(xamlPath);
-        return Path.GetFileName(path) is { } name && (name.Equals(stem + ".g.cs", StringComparison.OrdinalIgnoreCase) || name.Equals(stem + ".g.i.cs", StringComparison.OrdinalIgnoreCase))
+        string name = Path.GetFileName(path);
+        const string populationCopy = "Passenger.XamlPopulation.";
+        if (name.StartsWith(populationCopy, StringComparison.Ordinal))
+        {
+            name = name[populationCopy.Length..];
+        }
+        return (name.Equals(stem + ".g.cs", StringComparison.OrdinalIgnoreCase) || name.Equals(stem + ".g.i.cs", StringComparison.OrdinalIgnoreCase))
             && path.Replace('\\', '/').Contains("/obj/", StringComparison.OrdinalIgnoreCase);
     }
 

@@ -8,6 +8,7 @@ using Passenger.Editor;
 using Passenger.Host;
 using Passenger.Lsp;
 using Passenger.Roslyn.Extension;
+using Passenger.App.Run;
 
 namespace Passenger.App.Workspace;
 
@@ -24,6 +25,7 @@ public sealed class ProjectBuilds
     private readonly Func<Task<(IReadOnlyList<string> First, IReadOnlyList<string> All)>> projects;
     private readonly Func<IReadOnlyDictionary<string, string>> solution;
     private readonly string intermediateRoot;
+    private readonly Func<Task<WpfPopulationBuild.Plan>> wpfPopulation;
     private StateDocument<ProjectBuildCache>? kept;
     private string? folder;
     private string? sdk;
@@ -43,10 +45,12 @@ public sealed class ProjectBuilds
     /// <param name="projects">The open workspace's projects to load, those of the file shown (and those it references)
     /// apart, asked on the UI thread as the server is ready for them.</param>
     /// <param name="solution">The global properties the open solution gives its projects, as a build of it would.</param>
-    public ProjectBuilds(Func<Task<(IReadOnlyList<string> First, IReadOnlyList<string> All)>> projects, Func<IReadOnlyDictionary<string, string>> solution, string stateFolder)
+    public ProjectBuilds(Func<Task<(IReadOnlyList<string> First, IReadOnlyList<string> All)>> projects, Func<IReadOnlyDictionary<string, string>> solution, string stateFolder,
+        Func<Task<WpfPopulationBuild.Plan>> wpfPopulation)
     {
         this.projects = projects;
         this.solution = solution;
+        this.wpfPopulation = wpfPopulation;
         intermediateRoot = PathNames.Canonical(Path.Combine(stateFolder, "project-intermediates", "obj"));
         Feed = new Crossing(this);
     }
@@ -231,16 +235,18 @@ public sealed class ProjectBuilds
         building = true;
         List<string> round = [.. queued];
         queued.Clear();
-        Dictionary<string, string> properties = new(solution(), StringComparer.OrdinalIgnoreCase)
-        {
-            // What Roslyn's server gives its own build host, so Razor's generated C# is in the builds as it would be there.
-            ["RazorDesignTimeTargets"] = Path.Combine(AppContext.BaseDirectory, "roslyn", "Targets", "Microsoft.NET.Sdk.Razor.DesignTime.targets"),
-            ["PassengerDesignTimeRoot"] = intermediateRoot,
-        };
+        Dictionary<string, string> properties = BuildProperties();
         // Not background work: nothing drawn waits on it but the language server's load, which a screenshot does not wait
         // for either, and a large solution's round takes minutes.
         _ = RoundAsync(generation, folder, round, properties, ending.Token);
     }
+
+    /// <summary>The exact globals the host receives, before the prepared population import is added.</summary>
+    internal Dictionary<string, string> BuildProperties() => new(solution(), StringComparer.OrdinalIgnoreCase)
+    {
+        ["RazorDesignTimeTargets"] = Path.Combine(AppContext.BaseDirectory, "roslyn", "Targets", "Microsoft.NET.Sdk.Razor.DesignTime.targets"),
+        ["PassengerDesignTimeRoot"] = intermediateRoot,
+    };
 
     /// <summary>The solution the projects are built under now, by the path its global properties give.</summary>
     private string? Under() => solution().GetValueOrDefault("SolutionPath");
@@ -250,6 +256,15 @@ public sealed class ProjectBuilds
         long began = Stopwatch.GetTimestamp();
         try
         {
+            WpfPopulationBuild.Plan population = await wpfPopulation();
+            if (mine != generation)
+            {
+                return;
+            }
+            if (population.Import is { } import)
+            {
+                properties["CustomBeforeMicrosoftCommonTargets"] = import;
+            }
             ProjectHost host = await Task.Run(() => ProjectHosts.ForAsync(following));
             BuildDone done = await host.BuildAsync(round, properties, built => UiThread.Post(() => Land(mine, built)), cancel);
             if (mine == generation)
@@ -336,7 +351,9 @@ public sealed record ProjectBuildCache : IStateDocument<ProjectBuildCache>
 
     public Dictionary<string, KeptBuild> Projects { get; init; } = [];
 
-    public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, ForgetWindowsTargeting, ForgetSharedIntermediates, ForgetIsolatedAssemblyIdentity, ForgetAliasedGeneratedPaths, ForgetUnnormalizedAssemblyPaths];
+    public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, ForgetWindowsTargeting, ForgetSharedIntermediates, ForgetIsolatedAssemblyIdentity, ForgetAliasedGeneratedPaths, ForgetUnnormalizedAssemblyPaths, ForgetUninstrumentedWpfPopulation];
+
+    private static void ForgetUninstrumentedWpfPopulation(JsonObject document) => document.Remove("projects");
 
     private static void ForgetUnnormalizedAssemblyPaths(JsonObject document) => document.Remove("projects");
 

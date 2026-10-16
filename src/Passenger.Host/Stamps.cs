@@ -19,15 +19,18 @@ public static class Stamps
     }
 
     /// <summary>A folder's names as a hash, with how many there are; a folder not there has none.</summary>
-    public static Stamp Folder(string path)
+    public static Stamp Folder(string path) => Folder(path, null);
+
+    /// <summary>Only names matching an import wildcard, leaving unrelated compiler output churn out of its identity.</summary>
+    public static Stamp Folder(string path, string? pattern)
     {
         List<string> names = [];
         try
         {
-            foreach (FileSystemInfo entry in new DirectoryInfo(path).EnumerateFileSystemInfos())
+            foreach (FileSystemInfo entry in new DirectoryInfo(path).EnumerateFileSystemInfos(pattern ?? "*"))
             {
                 bool folder = entry is DirectoryInfo;
-                if (Counts(entry.Name, folder))
+                if (pattern is not null || Counts(entry.Name, folder))
                 {
                     names.Add(folder ? entry.Name + "/" : entry.Name);
                 }
@@ -35,7 +38,7 @@ public static class Stamps
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            return new Stamp(path, 0, -1, Folder: true);
+            return new Stamp(path, 0, -1, Folder: true, Pattern: pattern);
         }
         names.Sort(StringComparer.Ordinal);
         // FNV-1a, the same in every process, over each name and a separator.
@@ -48,9 +51,9 @@ public static class Stamps
             }
             hash = (hash ^ '\n') * 1099511628211;
         }
-        return new Stamp(path, unchecked((long)hash), names.Count, Folder: true);
+        return new Stamp(path, unchecked((long)hash), names.Count, Folder: true, Pattern: pattern);
     }
 
     /// <summary>Whether what was stamped is as it was.</summary>
-    public static bool Holds(Stamp stamp) => (stamp.Folder ? Folder(stamp.Path) : File(stamp.Path)) == stamp;
+    public static bool Holds(Stamp stamp) => (stamp.Folder ? Folder(stamp.Path, stamp.Pattern) : File(stamp.Path)) == stamp;
 }

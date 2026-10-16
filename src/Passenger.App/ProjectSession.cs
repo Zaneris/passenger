@@ -12,6 +12,7 @@ using Passenger.App.Vcs;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Host;
 using Passenger.Inspector;
 using Passenger.Profiler;
 
@@ -57,10 +58,13 @@ public sealed class ProjectSession : IAsyncDisposable
     private int reads;
 
     private Task? ending;
+    private readonly CancellationTokenSource closing = new();
+    private readonly WpfPopulationBuild wpfPopulation;
 
     private ProjectSession(SessionSetup setup, string? folder)
     {
         this.setup = setup;
+        wpfPopulation = new WpfPopulationBuild(setup.StateFolder);
         Folder = folder;
         Configurations = new RunConfigurations(folder);
         Builder = new ProcessRunner(setup.Views.Build);
@@ -85,7 +89,8 @@ public sealed class ProjectSession : IAsyncDisposable
         Vcs.Activity = name => LocalHistory?.During(name);
         Models.Changed += (_, changed) => OnEvaluated(changed);
         MSBuild = new MSBuild.MSBuildService(() => Folder, () => Workspace);
-        DesignTimeBuilds = new ProjectBuilds(LoadOrderAsync, () => Workspace is { } open ? ProjectModels.Properties(open) : new Dictionary<string, string>(), setup.StateFolder);
+        DesignTimeBuilds = new ProjectBuilds(LoadOrderAsync, () => Workspace is { } open ? ProjectModels.Properties(open) : new Dictionary<string, string>(), setup.StateFolder,
+            PrepareWpfPopulationAsync);
     }
 
     /// <summary>A window's session with no folder open: files may still be open, alone.</summary>
@@ -213,7 +218,8 @@ public sealed class ProjectSession : IAsyncDisposable
     {
         UiThread.Check();
         LiveApp?.Dispose();
-        LiveApp = LiveTree.LiveApp.For(plan, Overlays);
+        LiveApp = LiveTree.LiveApp.For(PopulationPlan(plan), Overlays);
+        FollowPopulation(LiveApp);
         LiveAppChanged?.Invoke(this, EventArgs.Empty);
         InspectedChanged?.Invoke(this, EventArgs.Empty);
         return LiveApp?.Plan ?? plan;
@@ -233,9 +239,53 @@ public sealed class ProjectSession : IAsyncDisposable
     {
         UiThread.Check();
         RunApp?.Dispose();
-        RunApp = LiveTree.LiveApp.For(plan, Overlays, reconnect: hotReload, expected: hotReload ? FrameworkOf(plan.Project, []) : null);
+        RunApp = LiveTree.LiveApp.For(PopulationPlan(plan), Overlays, reconnect: hotReload, expected: hotReload ? FrameworkOf(plan.Project, []) : null);
+        FollowPopulation(RunApp, hotReload);
         InspectedChanged?.Invoke(this, EventArgs.Empty);
         return RunApp?.Plan ?? plan;
+    }
+
+    private LaunchPlan PopulationPlan(LaunchPlan plan) => wpfPopulation.Current?.Problem is { } problem
+        ? plan with { Environment = new Dictionary<string, string>(plan.Environment) { [Wire.WpfPopulationProblemVariable] = problem } }
+        : plan;
+
+    private void FollowPopulation(LiveApp? app, bool reconnect = false)
+    {
+        if (app is not { Kind: LiveAppKind.Wpf } || wpfPopulation.Current is not { } built)
+        {
+            return;
+        }
+        int? builtProcess = app.ProcessId;
+        app.StateChanged += (_, _) =>
+        {
+            if (builtProcess is null && app.State == LiveAppState.Connected)
+            {
+                builtProcess = app.ProcessId;
+            }
+        };
+        app.XamlPreparation = async () =>
+        {
+            if (built.Problem is { } reason)
+            {
+                return reason;
+            }
+            if (await Task.Run(() => built.Inputs.All(Stamps.Holds)))
+            {
+                return null;
+            }
+            if (reconnect && app.ProcessId != builtProcess)
+            {
+                int? rebuiltProcess = app.ProcessId;
+                WpfPopulationBuild.Plan rebuilt = await PrepareWpfPopulationAsync();
+                if (app.State == LiveAppState.Connected && app.ProcessId == rebuiltProcess && rebuilt.Problem is null && rebuilt.Import == built.Import)
+                {
+                    built = rebuilt;
+                    builtProcess = rebuiltProcess;
+                    return null;
+                }
+            }
+            return "The WPF project or its build imports changed after this app was built; restart to establish its population hook and source baseline";
+        };
     }
 
     private LiveAppKind? FrameworkOf(string? path, HashSet<string> seen)
@@ -314,6 +364,24 @@ public sealed class ProjectSession : IAsyncDisposable
 
     /// <summary>The folder's projects as the project host builds them at design time, which the language server loads.</summary>
     public ProjectBuilds DesignTimeBuilds { get; }
+
+    /// <summary>The same prepared population import for the whole open graph, whichever participant builds it.</summary>
+    internal Task<WpfPopulationBuild.Plan> PrepareWpfPopulationAsync()
+    {
+        UiThread.Check();
+        if (!OperatingSystem.IsWindows() || Folder is null || Workspace is null || Projects.Count == 0)
+        {
+            return Task.FromResult(new WpfPopulationBuild.Plan(null, null, []));
+        }
+        HashSet<string> known = new(Projects.Select(p => p.Path), StringComparer.FromComparison(PathNames.Comparison));
+        if (Projects.All(p => p.Evaluated is { Complete: true, Problem: null } && p.ProjectReferences.All(known.Contains))
+            && !Projects.Any(p => p.Evaluated!.Dependencies.Any(d => d.FrameworkReferences.Any(r => r is "Microsoft.WindowsDesktop.App" or "Microsoft.WindowsDesktop.App.WPF"))))
+        {
+            return Task.FromResult(new WpfPopulationBuild.Plan(null, null, []));
+        }
+        return wpfPopulation.PrepareAsync(Folder, [.. Projects.Where(p => p.Exists).Select(p => p.Path).Distinct(StringComparer.Ordinal)],
+            ProjectModels.Properties(Workspace), DesignTimeBuilds.BuildProperties());
+    }
 
     /// <summary>The projects the language server loads, those it loads first (<see cref="ActiveProjectsAsync"/>) apart.</summary>
     private async Task<(IReadOnlyList<string> First, IReadOnlyList<string> All)> LoadOrderAsync()
@@ -412,7 +480,10 @@ public sealed class ProjectSession : IAsyncDisposable
     }
 
     /// <summary>Whether the session has been left, or its window closed.</summary>
-    public bool IsEnded => ending is not null;
+    public bool IsEnded => closing.IsCancellationRequested || ending is not null;
+
+    /// <summary>Work awaiting a launch stops as soon as this folder is left, before its runners are disposed.</summary>
+    internal CancellationToken Closing => closing.Token;
 
     /// <summary>The folder's documents from now on: what the store kept of the folder's own (its breakpoints, bookmarks,
     /// configurations, Find in Files' scope, unloaded projects, folds and recent files) taken first, so restoring them writes
@@ -678,6 +749,7 @@ public sealed class ProjectSession : IAsyncDisposable
     /// test run), and what is asked to end: the test runner and the language server, with the parts given.</summary>
     private List<(string What, Task Ending)> End(List<(string What, Task Ending)> parts)
     {
+        closing.Cancel();
         State = null;
         Models.Close();
         DesignTimeBuilds.Close();

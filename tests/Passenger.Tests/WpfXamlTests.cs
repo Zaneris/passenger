@@ -292,6 +292,7 @@ public sealed class WpfXamlTests : IClassFixture<WpfXamlTests.Gallery>
     public void An_elements_x_name_renames_with_its_code_behinds_uses_and_go_to_declaration_from_the_code_lands_on_it()
     {
         MainWindow window = app.Open(app.PathOf("MainWindow.xaml.cs"));
+        window.SetRenderScaling(2);
         CodeEditor code = window.EditorArea.CodeEditor;
         // The field MarkupCompile makes for the button leads to its name in the XAML.
         PlaceAfter(code, "        G");
@@ -307,6 +308,7 @@ public sealed class WpfXamlTests : IClassFixture<WpfXamlTests.Gallery>
         IReadOnlyList<string> found = [.. window.Find.Rows.Where(r => r.Usage is not null).Select(r => r.Label)];
         Assert.Contains(found, f => f.Contains("Go.Content = \"Start\";", StringComparison.Ordinal));
         Assert.Contains(found, f => f.Contains("ElementName=Go", StringComparison.Ordinal));
+        UiAudit.Capture(window, "wpf-population-generated-field-usages");
 
         Ui.Run(window, AppActions.Rename);
         Ui.WaitFor(() => window.Assist.Renaming == "Go", "the rename box on the button's name");

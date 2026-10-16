@@ -20,7 +20,7 @@ namespace Passenger.Host;
 internal static class DesignTimeBuilds
 {
     /// <summary>Roslyn's build host's: a design-time build that runs the compiler's task for its command line, alone.</summary>
-    private static readonly Dictionary<string, string> Defaults = new(StringComparer.OrdinalIgnoreCase)
+    internal static readonly IReadOnlyDictionary<string, string> Defaults = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
         ["DesignTimeBuild"] = "true",
         ["NonExistentFile"] = "__NonExistentSubDir__\\__NonExistentFile__",
