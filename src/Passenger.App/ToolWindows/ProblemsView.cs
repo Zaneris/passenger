@@ -6,6 +6,7 @@ using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Passenger.App.LiveTree;
 using Passenger.App.Run;
 
@@ -62,6 +63,7 @@ public sealed class ProblemsView : DockPanel
     private readonly ListBox list;
     private readonly TextBlock empty;
     private readonly Dictionary<ProblemsTab, ToggleButton> tabs = [];
+    private readonly ScrollViewer tabStrip;
     private IReadOnlyList<Problem> file = [];
     private IReadOnlyList<Problem>? solution;
     private IReadOnlyList<Problem> toolset = [];
@@ -72,15 +74,30 @@ public sealed class ProblemsView : DockPanel
 
     public ProblemsView()
     {
-        StackPanel strip = new() { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(8, 0), VerticalAlignment = VerticalAlignment.Center };
+        StackPanel strip = new() { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
         foreach (ProblemsTab tab in Enum.GetValues<ProblemsTab>())
         {
             ToggleButton button = new() { Classes = { "panelTab" } };
+            button.ContentTemplate = new FuncDataTemplate<string>((title, _) => new TextBlock { Text = title, TextTrimming = TextTrimming.CharacterEllipsis });
             button.Click += (_, _) => Shown = tab;
+            button.GotFocus += (_, _) => RevealTab();
             tabs[tab] = button;
             strip.Children.Add(button);
         }
-        Border bar = new() { [DockProperty] = Dock.Top, Height = 32, BorderThickness = new Thickness(0, 0, 0, 1), Child = strip };
+        tabStrip = new ScrollViewer { Name = "ProblemsCategoryStrip", Classes = { "toolTabs" }, Content = strip };
+        tabStrip.PropertyChanged += (_, change) =>
+        {
+            if (change.Property == ScrollViewer.ViewportProperty)
+            {
+                foreach (ToggleButton button in tabs.Values)
+                {
+                    button.MaxWidth = Math.Max(0, tabStrip.Viewport.Width);
+                }
+                RevealTab();
+            }
+        };
+        strip.SizeChanged += (_, _) => RevealTab();
+        Border bar = new() { [DockProperty] = Dock.Top, Height = 32, BorderThickness = new Thickness(0, 0, 0, 1), Child = tabStrip };
         bar.Bind(Border.BorderBrushProperty, bar.GetResourceObservable("Passenger.Divider"));
         Children.Add(bar);
         list = new ListBox
@@ -284,10 +301,15 @@ public sealed class ProblemsView : DockPanel
         foreach ((ProblemsTab tab, ToggleButton button) in tabs)
         {
             button.IsChecked = tab == Shown;
+            ToolTip.SetTip(button, button.Content);
         }
+        RevealTab();
 
         static string Titled(string title, int count) => count == 0 ? title : $"{title}  {count}";
     }
+
+    private void RevealTab() => Dispatcher.UIThread.Post(() => (tabs.Values.FirstOrDefault(button => button.IsVisible && button.IsKeyboardFocusWithin)
+        ?? tabs.Values.FirstOrDefault(button => button.IsVisible && button.IsChecked == true))?.BringIntoView(), DispatcherPriority.Loaded);
 
     private void Refresh()
     {
