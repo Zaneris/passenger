@@ -5,6 +5,8 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Passenger.Terminal;
 
 namespace Passenger.App.ToolWindows;
@@ -44,6 +46,7 @@ public sealed class TerminalPanel : DockPanel
 {
     private readonly ObservableCollection<TerminalTab> tabs = [];
     private readonly TerminalView view = new();
+    private readonly ScrollViewer sessionStrip;
     private readonly Func<string> folder;
     private int opened;
 
@@ -57,12 +60,24 @@ public sealed class TerminalPanel : DockPanel
             ItemsPanel = new FuncTemplate<Panel?>(() => new StackPanel { Orientation = Orientation.Horizontal }),
             ItemTemplate = new FuncDataTemplate<TerminalTab>((tab, _) => tab is null ? new TextBlock() : Tab(tab), supportsRecycling: false),
         };
+        sessionStrip = new ScrollViewer { Name = "TerminalSessionStrip", Classes = { "toolTabs" }, Content = strip };
+        sessionStrip.PropertyChanged += (_, change) =>
+        {
+            if (change.Property == ScrollViewer.ViewportProperty)
+            {
+                foreach (ToggleButton tab in sessionStrip.GetVisualDescendants().OfType<ToggleButton>())
+                {
+                    tab.MaxWidth = Math.Max(0, sessionStrip.Viewport.Width);
+                }
+                RevealSession();
+            }
+        };
         Border bar = new()
         {
             [DockProperty] = Dock.Top,
             Height = 32,
             BorderThickness = new Thickness(0, 0, 0, 1),
-            Child = new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden, Content = strip, Margin = new Thickness(8, 0) },
+            Child = sessionStrip,
         };
         bar.Bind(Border.BorderBrushProperty, bar.GetResourceObservable("Passenger.Divider"));
         Children.Add(bar);
@@ -207,7 +222,15 @@ public sealed class TerminalPanel : DockPanel
             view.Session = tab.Session;
         }
         FocusView();
+        RevealSession();
     }
+
+    private void RevealSession() => Dispatcher.UIThread.Post(() =>
+    {
+        ToggleButton[] buttons = [.. sessionStrip.GetVisualDescendants().OfType<ToggleButton>()];
+        // Browsing another tab with the keyboard must not hide its focused action or switch the running session.
+        (buttons.FirstOrDefault(button => button.IsKeyboardFocusWithin) ?? buttons.FirstOrDefault(button => button.IsChecked == true))?.BringIntoView();
+    }, DispatcherPriority.Loaded);
 
     /// <summary>The keys to the shell, once the view is laid out (a control not yet arranged cannot take the focus).</summary>
     public void FocusView() => Avalonia.Threading.Dispatcher.UIThread.Post(() => view.Focus(), Avalonia.Threading.DispatcherPriority.Loaded);
@@ -239,7 +262,7 @@ public sealed class TerminalPanel : DockPanel
 
     private Control Tab(TerminalTab tab)
     {
-        TextBlock name = new() { Text = tab.Name, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock name = new() { Text = tab.Name, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         name.Classes.Set("muted", tab.HasEnded);
         PathIcon closeGlyph = new() { Classes = { "small" } };
         closeGlyph.Bind(PathIcon.DataProperty, closeGlyph.GetResourceObservable("Icon.Close"));
@@ -262,10 +285,13 @@ public sealed class TerminalPanel : DockPanel
         {
             Classes = { "panelTab" },
             IsChecked = tab.IsActive,
+            MaxWidth = sessionStrip.Viewport.Width > 0 ? sessionStrip.Viewport.Width : double.PositiveInfinity,
             VerticalAlignment = VerticalAlignment.Center,
-            Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { name, close } },
+            Content = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 6, Children = { name, close } },
         };
-        tab.PropertyChanged += (_, e) =>
+        Grid.SetColumn(close, 1);
+        ToolTip.SetTip(button, tab.Name);
+        void Changed(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
             if (e.PropertyName == nameof(TerminalTab.IsActive))
             {
@@ -275,7 +301,14 @@ public sealed class TerminalPanel : DockPanel
             {
                 name.Classes.Set("muted", tab.HasEnded);
             }
+        }
+        button.AttachedToVisualTree += (_, _) =>
+        {
+            tab.PropertyChanged += Changed;
+            button.IsChecked = tab.IsActive;
+            name.Classes.Set("muted", tab.HasEnded);
         };
+        button.DetachedFromVisualTree += (_, _) => tab.PropertyChanged -= Changed;
         button.Click += (_, _) =>
         {
             Show(tab);
