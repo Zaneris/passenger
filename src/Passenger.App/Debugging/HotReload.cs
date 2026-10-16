@@ -27,6 +27,9 @@ public enum HotReloadResult
 
     /// <summary>Hot Reload could not run or the runtime refused the update; the reason says which.</summary>
     Failed,
+
+    /// <summary>No live properties changed; verified XAML edits are registered for future view constructions.</summary>
+    RegisteredForFutureViews,
 }
 
 /// <summary>What an Apply Changes came to, in words for the status bar and the Debug console, with the edits that could not
@@ -36,7 +39,7 @@ public sealed record HotReloadOutcome(HotReloadResult Result, string Said)
 {
     public IReadOnlyList<Problem> Problems { get; init; } = [];
 
-    /// <summary>The files whose edits the program now runs (or, with nothing to apply, whose edits needed nothing).</summary>
+    /// <summary>The files whose edits run now, are registered for future views, or needed no runtime change.</summary>
     public IReadOnlyList<string> Files { get; init; } = [];
 
     /// <summary>The modules updated, by name.</summary>
@@ -44,6 +47,12 @@ public sealed record HotReloadOutcome(HotReloadResult Result, string Said)
 
     /// <summary>How many methods the update replaced or added.</summary>
     public int Methods { get; init; }
+
+    /// <summary>XAML view types without matching live roots registered for the edit, separate from live property updates.</summary>
+    public int FutureViewRegistrations { get; init; }
+
+    /// <summary>Live XAML property values changed during this apply, separate from future-view registrations.</summary>
+    public int LiveXamlProperties { get; init; }
 
     public TimeSpan Took { get; init; }
 }
@@ -226,14 +235,17 @@ public sealed class HotReload
                     xaml[source.File] = edited with { Before = source.After };
                 }
             }
-            return new HotReloadOutcome(applied.Changes > 0 || managed.Result == HotReloadResult.Applied ? HotReloadResult.Applied : HotReloadResult.NothingToApply,
-                $"XAML changes applied to {applied.Changes} live {(applied.Changes == 1 ? "property" : "properties")}: {string.Join(", ", pending.Select(p => Path.GetFileName(p.File)))}"
+            return new HotReloadOutcome(applied.Changes > 0 || managed.Result == HotReloadResult.Applied ? HotReloadResult.Applied
+                    : applied.FutureViewRegistrations > 0 ? HotReloadResult.RegisteredForFutureViews : HotReloadResult.NothingToApply,
+                DescribeXaml(applied, pending)
                     + (managed.Result == HotReloadResult.Applied ? $"; {managed.Said}" : ""))
             {
                 Files = [.. managed.Files.Concat(pending.Select(p => p.File)).Distinct(StringComparer.Ordinal)],
                 Problems = managed.Problems,
                 Modules = managed.Modules,
                 Methods = managed.Methods,
+                FutureViewRegistrations = applied.FutureViewRegistrations,
+                LiveXamlProperties = applied.Changes,
             };
         }
         catch (LiveAppException error)
@@ -241,6 +253,11 @@ public sealed class HotReload
             return IncludeAppliedManaged(new HotReloadOutcome(HotReloadResult.Failed, $"The app did not confirm the XAML changes: {error.Message}"), managed);
         }
     }
+
+    internal static string DescribeXaml(XamlUpdateResult result, IEnumerable<XamlSourceUpdate> files) =>
+        (result.Changes > 0 || result.FutureViewRegistrations == 0 ? $"XAML changes applied to {result.Changes} live {(result.Changes == 1 ? "property" : "properties")}" : "XAML changes registered")
+        + (result.FutureViewRegistrations > 0 ? $"{(result.Changes > 0 ? "; registered" : "")} for {result.FutureViewRegistrations} future view {(result.FutureViewRegistrations == 1 ? "type" : "types")}" : "")
+        + $": {string.Join(", ", files.Select(p => Path.GetFileName(p.File)))}";
 
     private static HotReloadOutcome IncludeAppliedManaged(HotReloadOutcome outcome, HotReloadOutcome managed) => managed.Result == HotReloadResult.Applied
         ? outcome with { Said = $"{managed.Said}; {outcome.Said}", Files = managed.Files, Modules = managed.Modules, Methods = managed.Methods }

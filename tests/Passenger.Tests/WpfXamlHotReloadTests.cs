@@ -1,5 +1,8 @@
 using System.Collections.Concurrent;
 using System.IO.Pipes;
+using System.Net.Sockets;
+using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
 using System.Text;
 using Avalonia;
 using Avalonia.Controls;
@@ -257,6 +260,333 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
         {
             FutureEnded(window, watched);
         }
+    }
+
+    private string UncreatedView(string theme)
+    {
+        FutureViews(theme);
+        string main = Path.Combine(folder, "MainWindow.xaml");
+        File.WriteAllText(main, File.ReadAllText(main).Replace("<local:RepeatedView />", "", StringComparison.Ordinal));
+        string marker = Path.Combine(Directory.CreateDirectory(Path.Combine(AppContext.BaseDirectory, "wpf-xaml-hot-reload")).FullName,
+            "view-initialized-" + Guid.NewGuid().ToString("N") + ".txt");
+        string code = Path.Combine(folder, "RepeatedView.xaml.cs");
+        File.WriteAllText(code, File.ReadAllText(code).Replace("public RepeatedView()", $"static RepeatedView() => System.IO.File.WriteAllText({System.Text.Json.JsonSerializer.Serialize(marker)}, \"Initialized\");\n    public RepeatedView()", StringComparison.Ordinal));
+        return marker;
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false, "Light")]
+    [InlineData(true, "Dark")]
+    public void An_unconstructed_wpf_view_registers_verified_edits_without_initializing_it_and_uses_latest_values_on_its_first_construction(bool watched, string theme)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "WPF runs on Windows alone");
+        string marker = UncreatedView(theme);
+        string file = Path.Combine(folder, "RepeatedView.xaml");
+        MainWindow window = FutureStarted(watched, "net11.0-windows");
+        try
+        {
+            LiveApp app = watched ? window.Session.RunApp! : window.LiveApp!;
+            int? process = app.ProcessId;
+            List<Element> before = Read(app);
+            Assert.DoesNotContain(before, e => e.Type == "RepeatedView");
+            Assert.False(File.Exists(marker));
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Type) { Element = before.Single(e => e.Name == "Entry").Id, Text = "Kept unconstructed-view state", Replace = true }), "the main state before any child exists");
+            before = Read(app);
+            Assert.Null(window.OpenFile(file));
+            Typing.Replace(window, "Width=\"200\"", "Width=\"invalid\"");
+            Typing.Replace(window, "Created before", "Registered first");
+            HotReloadOutcome invalid = FutureApplied(window, watched);
+            Assert.Equal(HotReloadResult.Errors, invalid.Result);
+            Assert.Contains(invalid.Problems, p => p.Path == file && p.Message.Contains("Width", StringComparison.Ordinal));
+            Assert.False(File.Exists(marker));
+            Typing.Replace(window, "Width=\"invalid\"", "Width=\"260\" MaxHeight=\"55\"");
+            HotReloadOutcome first = FutureApplied(window, watched);
+            Assert.True(first.Result == HotReloadResult.RegisteredForFutureViews, first.Said);
+            Assert.Equal(1, first.FutureViewRegistrations);
+            Assert.Equal(0, first.LiveXamlProperties);
+            Assert.Contains("registered", first.Said, StringComparison.Ordinal);
+            Assert.DoesNotContain("live", first.Said, StringComparison.Ordinal);
+            Assert.Equal([file], first.Files);
+            Assert.False(File.Exists(marker));
+            Assert.Equal(before.Select(e => e.Id), Read(app).Select(e => e.Id));
+            Typing.Replace(window, "Registered first", "Registered latest");
+            Typing.Replace(window, "XAML before", "Latest before constructor");
+            Typing.Replace(window, "Width=\"260\"", "Width=\"280\"");
+            HotReloadOutcome latest = FutureApplied(window, watched);
+            Assert.Equal(HotReloadResult.RegisteredForFutureViews, latest.Result);
+            Assert.Equal(1, latest.FutureViewRegistrations);
+            Assert.Equal(0, latest.LiveXamlProperties);
+            Assert.False(watched ? window.Session.RunXaml.Changed : window.Debugger.HotReload!.Changed);
+            Assert.False(File.Exists(marker));
+            Assert.DoesNotContain(Read(app), e => e.Type == "RepeatedView");
+            window.ApplySettings(window.Settings with { Theme = theme == "Light" ? ThemeChoice.Light : ThemeChoice.Dark });
+            window.SetRenderScaling(2);
+            Ui.Settle();
+            UiAudit.Capture(window, "wpf-unconstructed-registered-" + (watched ? "run-" : "debug-") + theme);
+            Capture(app, "unconstructed-" + (watched ? "run-" : "debug-") + theme + "-before");
+            Typing.Replace(window, "Width=\"280\"", "Width=\"invalid again\"");
+            Typing.Replace(window, "Registered latest", "Refused future text");
+            HotReloadOutcome refused = FutureApplied(window, watched);
+            Assert.Equal(HotReloadResult.Errors, refused.Result);
+            Assert.True(watched ? window.Session.RunXaml.Changed : window.Debugger.HotReload!.Changed);
+            Assert.False(File.Exists(marker));
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Click) { Element = before.Single(e => e.Name == "CreateView").Id }), "the first WPF view to be created through its compiled loader");
+            Ui.WaitFor(() => FutureOutput(window, watched).Contains("Constructor saw Registered latest; Latest before constructor", StringComparison.Ordinal), "the first constructor to observe the registered edit before its own assignments");
+            Assert.True(File.Exists(marker));
+            List<Element> after = Read(app);
+            List<Element> children = [.. Flatten(after.Single(e => e.Type == "RepeatedView"))];
+            Assert.Equal("Registered latest", children.Single(e => e.Name == "NewLiteral").Text);
+            Assert.Equal("Constructor wins", children.Single(e => e.Name == "ConstructorValue").Text);
+            ElementDetails details = Ui.Await(app.DetailsAsync(children.Single(e => e.Name == "NewLiteral").Id), "the first view's registered property values");
+            Assert.Equal("280", details.Properties.Single(p => p.Name == "Width").Value);
+            Assert.Equal("55", details.Properties.Single(p => p.Name == "MaxHeight").Value);
+            Assert.Equal(ValueSources.Local, details.Properties.Single(p => p.Name == "MaxHeight").Source);
+            Assert.Equal("Kept unconstructed-view state", after.Single(e => e.Name == "Entry").Text);
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Type) { Element = children.Single(e => e.Name == "NewEntry").Id, Text = "First view state", Replace = true }), "the first compiled view's binding");
+            Assert.Equal("First view state", Read(app).Single(e => e.Id == children.Single(e => e.Name == "NewBound").Id).Text);
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Click) { Element = children.Single(e => e.Name == "NewIncrement").Id }), "the first view's compiled namescope and event handler");
+            Ui.WaitFor(() => FutureOutput(window, watched).Contains("New view Name=First view state; Count=1; Named=True", StringComparison.Ordinal), "the first view's code-behind and state");
+            Assert.Same(refused, watched ? window.Session.RunXaml.LastApplied : window.Debugger.LastApplied);
+            Typing.Replace(window, "Width=\"invalid again\"", "Width=\"280\"");
+            Typing.Replace(window, "Refused future text", "Now live");
+            HotReloadOutcome live = FutureApplied(window, watched);
+            Assert.Equal(HotReloadResult.Applied, live.Result);
+            Assert.Equal(0, live.FutureViewRegistrations);
+            Assert.True(live.LiveXamlProperties > 0);
+            Assert.Equal("Now live", Read(app).Single(e => e.Name == "NewLiteral").Text);
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Click) { Element = before.Single(e => e.Name == "CreateView").Id }), "a second view to receive the same latest accepted source");
+            Ui.WaitFor(() => FutureOutput(window, watched).Contains("Constructor saw Now live; Latest before constructor", StringComparison.Ordinal), "later views after future-only registration becomes live");
+            Assert.Equal(2, Read(app).Count(e => e.Type == "RepeatedView"));
+            Assert.Equal(process, app.ProcessId);
+            Capture(app, "unconstructed-" + (watched ? "run-" : "debug-") + theme + "-after");
+        }
+        catch (Exception error)
+        {
+            throw new InvalidOperationException($"Unconstructed WPF boundary failed: {error.Message}\n{FutureOutput(window, watched)}", error);
+        }
+        finally
+        {
+            FutureEnded(window, watched);
+        }
+    }
+
+    [AvaloniaTheory]
+    [InlineData("stale")]
+    [InlineData("symbols")]
+    [InlineData("custom")]
+    [InlineData("module")]
+    [InlineData("ambiguous")]
+    public void Unconstructed_wpf_sources_with_unverified_baselines_or_custom_properties_require_restart_without_running_user_initializers(string kind)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "WPF runs on Windows alone");
+        string marker = UncreatedView("Light");
+        string file = Path.Combine(folder, "RepeatedView.xaml");
+        if (kind == "symbols")
+        {
+            string project = Path.Combine(folder, "WpfTreeApp.csproj");
+            File.WriteAllText(project, File.ReadAllText(project).Replace("<UseWPF>true</UseWPF>", "<UseWPF>true</UseWPF><DebugType>none</DebugType>", StringComparison.Ordinal));
+        }
+        else if (kind == "custom")
+        {
+            File.WriteAllText(file, File.ReadAllText(file).Replace("x:Class=\"WpfTreeApp.RepeatedView\"", "xmlns:local=\"clr-namespace:WpfTreeApp\" x:Class=\"WpfTreeApp.RepeatedView\"", StringComparison.Ordinal)
+                .Replace("<TextBlock x:Name=\"NewLiteral\"", "<local:CustomText x:Name=\"NewLiteral\"", StringComparison.Ordinal));
+            File.AppendAllText(Path.Combine(folder, "RepeatedView.xaml.cs"), "\npublic class CustomText : TextBlock { }\n");
+        }
+        else if (kind == "ambiguous")
+        {
+            string duplicate = Directory.CreateDirectory(Path.Combine(folder, "Duplicate")).FullName;
+            File.WriteAllText(Path.Combine(duplicate, "Duplicate.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFrameworks>net10.0-windows;net11.0-windows</TargetFrameworks><UseWPF>true</UseWPF><CustomBeforeMicrosoftCommonTargets>$(MSBuildThisFileDirectory)../UserBefore.targets</CustomBeforeMicrosoftCommonTargets><CustomAfterMicrosoftCommonTargets>$(MSBuildThisFileDirectory)../UserAfter.targets</CustomAfterMicrosoftCommonTargets></PropertyGroup></Project>");
+            File.WriteAllText(Path.Combine(duplicate, "View.cs"), "namespace WpfTreeApp { public class RepeatedView : System.Windows.Controls.UserControl { } } namespace Duplicate { public static class Anchor { public static void Load() { } } }");
+            string project = Path.Combine(folder, "WpfTreeApp.csproj");
+            File.WriteAllText(project, File.ReadAllText(project).Replace("</Project>", "<PropertyGroup><NoWarn>$(NoWarn);CS0436</NoWarn></PropertyGroup><ItemGroup><Compile Remove=\"Duplicate/**/*.cs\" /><ProjectReference Include=\"Duplicate/Duplicate.csproj\" /></ItemGroup></Project>", StringComparison.Ordinal));
+            string main = Path.Combine(folder, "MainWindow.xaml.cs");
+            File.WriteAllText(main, File.ReadAllText(main).Replace("InitializeComponent();", "InitializeComponent(); Duplicate.Anchor.Load();", StringComparison.Ordinal));
+            Restore.Run(project);
+        }
+        MainWindow window = FutureStarted(false, "net11.0-windows");
+        string? heldModule = null;
+        string module = Path.Combine(folder, "bin", "Debug", "net11.0-windows", "WpfTreeApp.dll");
+        try
+        {
+            LiveApp app = window.LiveApp!;
+            List<Element> before = Read(app);
+            if (kind == "stale")
+            {
+                File.WriteAllText(file, File.ReadAllText(file).Replace("Created before", "Not the compiled text", StringComparison.Ordinal));
+            }
+            else if (kind == "module")
+            {
+                byte[] bytes = File.ReadAllBytes(module);
+                using (PEReader pe = new(new MemoryStream(bytes, writable: false)))
+                {
+                    MetadataReader metadata = pe.GetMetadataReader();
+                    byte[] original = metadata.GetGuid(metadata.GetModuleDefinition().Mvid).ToByteArray();
+                    int at = bytes.AsSpan().IndexOf(original);
+                    Assert.True(at >= 0);
+                    Assert.Equal(-1, bytes.AsSpan(at + original.Length).IndexOf(original));
+                    Guid.NewGuid().TryWriteBytes(bytes.AsSpan(at, original.Length));
+                }
+                heldModule = module + ".held";
+                File.Move(module, heldModule);
+                File.WriteAllBytes(module, bytes);
+            }
+            Assert.Null(window.OpenFile(file));
+            Typing.Replace(window, kind == "stale" ? "Not the compiled text" : "Created before", "Must not register");
+            HotReloadOutcome refused = FutureApplied(window, false);
+            Assert.Equal(HotReloadResult.RestartNeeded, refused.Result);
+            string reason = kind switch
+            {
+                "stale" => "compiled checksum",
+                "symbols" => "portable symbols",
+                "module" => "assembly on disk",
+                "ambiguous" => "single loaded WPF view type",
+                _ => "built-in WPF",
+            };
+            Assert.Contains(refused.Problems, p => p.Path == file && p.Message.Contains(reason, StringComparison.Ordinal));
+            Assert.True(window.Debugger.HotReload!.Changed);
+            Assert.False(File.Exists(marker));
+            Assert.Equal(before.Select(e => e.Id), Read(app).Select(e => e.Id));
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Click) { Element = before.Single(e => e.Name == "CreateView").Id }), "the refused view to keep its normal compiled construction");
+            Ui.WaitFor(() => Output(window).Contains("Constructor saw Created before; XAML before", StringComparison.Ordinal), "the ordinary first view after refused registration");
+            Assert.True(File.Exists(marker));
+            Assert.Equal("Created before", Read(app).Single(e => e.Name == "NewLiteral").Text);
+        }
+        finally
+        {
+            if (heldModule is not null)
+            {
+                File.Delete(module);
+                File.Move(heldModule, module);
+            }
+            FutureEnded(window, false);
+        }
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_first_wpf_population_failure_keeps_its_completed_registration_and_pending_text(bool watched)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "WPF runs on Windows alone");
+        string marker = UncreatedView("Dark");
+        string file = Path.Combine(folder, "RepeatedView.xaml");
+        File.WriteAllText(file, File.ReadAllText(file).Replace("x:Class=\"WpfTreeApp.RepeatedView\"", "x:Class=\"WpfTreeApp.RepeatedView\" Width=\"200\"", StringComparison.Ordinal));
+        string code = Path.Combine(folder, "RepeatedView.xaml.cs");
+        File.WriteAllText(code, File.ReadAllText(code).Replace("static RepeatedView() =>", "static RepeatedView() { WidthProperty.OverrideMetadata(typeof(RepeatedView), new FrameworkPropertyMetadata(0d, (_, changed) => { if ((double)changed.NewValue == 260d) { throw new InvalidOperationException(\"First population refused\"); } }));", StringComparison.Ordinal)
+            .Replace("\"Initialized\");", "\"Initialized\"); }", StringComparison.Ordinal));
+        MainWindow window = FutureStarted(watched, "net11.0-windows");
+        try
+        {
+            LiveApp app = watched ? window.Session.RunApp! : window.LiveApp!;
+            Assert.Null(window.OpenFile(file));
+            Typing.Replace(window, "Width=\"200\"", "Width=\"260\"");
+            HotReloadOutcome registered = FutureApplied(window, watched);
+            Assert.True(registered.Result == HotReloadResult.RegisteredForFutureViews, registered.Said);
+            Assert.Equal(1, registered.FutureViewRegistrations);
+            Assert.False(File.Exists(marker));
+            Typing.Replace(window, "Created before", "Pending first-view text");
+            XamlUpdateResult? observed = null;
+            app.XamlFailed += (_, result) => observed = result;
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Click) { Element = Read(app).Single(e => e.Name == "CreateView").Id }), "the first population with runtime property metadata to refuse its registered value");
+            Ui.WaitFor(() => observed is not null, "the first population's separate failure event");
+            Assert.True(File.Exists(marker));
+            Assert.Same(registered, watched ? window.Session.RunXaml.LastApplied : window.Debugger.LastApplied);
+            Assert.True(watched ? window.Session.RunXaml.Changed : window.Debugger.HotReload!.Changed);
+            Assert.Contains(observed!.Problems, p => p.File == file && p.RestartRequired && p.Message.Contains("First population refused", StringComparison.Ordinal));
+            Assert.Contains(window.BottomPanel.Problems.HotReloadProblems!, p => p.Path == file && p.Message.Contains("newly created", StringComparison.Ordinal));
+            Assert.Contains("newly created view", window.Status!, StringComparison.Ordinal);
+            Assert.Contains("Pending first-view text", window.EditorArea.Active!.Text.Snapshot.ToString(), StringComparison.Ordinal);
+            Assert.Equal("Created before", Read(app).Single(e => e.Name == "NewLiteral").Text);
+            Assert.Equal("200", Ui.Await(app.DetailsAsync(Read(app).Single(e => e.Type == "RepeatedView").Id), "the refused first view's compiled width").Properties.Single(p => p.Name == "Width").Value);
+            window.SetRenderScaling(2);
+            Ui.Settle();
+            UiAudit.Capture(window, "wpf-unconstructed-failure-" + (watched ? "run" : "debug"));
+        }
+        finally
+        {
+            FutureEnded(window, watched);
+        }
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Future_wpf_registrations_and_live_edits_refuse_together_then_report_their_separate_counts_on_retry(bool watched)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "WPF runs on Windows alone");
+        string marker = UncreatedView("Light");
+        string file = Path.Combine(folder, "RepeatedView.xaml");
+        string main = Path.Combine(folder, "MainWindow.xaml");
+        File.WriteAllText(main, File.ReadAllText(main).Replace("<StackPanel x:Name=\"NewViews\" />", "<Button x:Name=\"RemoveViews\" Content=\"Remove views\" Click=\"RemoveViewsClicked\" /><StackPanel x:Name=\"NewViews\" />", StringComparison.Ordinal));
+        string code = Path.Combine(folder, "MainWindow.xaml.cs");
+        File.WriteAllText(code, File.ReadAllText(code).Replace("private void Clicked", "private void RemoveViewsClicked(object sender, RoutedEventArgs e) => NewViews.Children.Clear();\n    private void Clicked", StringComparison.Ordinal));
+        MainWindow window = FutureStarted(watched, "net11.0-windows");
+        try
+        {
+            LiveApp app = watched ? window.Session.RunApp! : window.LiveApp!;
+            int? process = app.ProcessId;
+            Assert.Null(window.OpenFile(file));
+            Typing.Replace(window, "Created before", "Registered with live edit");
+            Assert.Null(window.OpenFile(Path.Combine(folder, "MainWindow.xaml")));
+            Typing.Replace(window, "Text=\"Before\"", "Text=\"Live batch\"");
+            Typing.Replace(window, "Width=\"640\"", "Width=\"invalid\"");
+            HotReloadOutcome invalid = FutureApplied(window, watched, all: true);
+            Assert.Equal(HotReloadResult.Errors, invalid.Result);
+            Assert.Empty(invalid.Files);
+            Assert.Equal(0, invalid.FutureViewRegistrations);
+            Assert.Equal(0, invalid.LiveXamlProperties);
+            Assert.Contains(Read(app), e => e.Text == "Before");
+            Assert.True(watched ? window.Session.RunXaml.Changed : window.Debugger.HotReload!.Changed);
+            Assert.False(File.Exists(marker));
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Click) { Element = Read(app).Single(e => e.Name == "CreateView").Id }), "a real view to prove the refused batch installed no future edit");
+            Ui.WaitFor(() => FutureOutput(window, watched).Contains("Constructor saw Created before; XAML before", StringComparison.Ordinal), "the refused batch to keep normal compiled population");
+            Assert.Equal("Created before", Read(app).Single(e => e.Name == "NewLiteral").Text);
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Click) { Element = Read(app).Single(e => e.Name == "RemoveViews").Id }), "the probe view to leave the live tree before retry");
+            Assert.DoesNotContain(Read(app), e => e.Type == "RepeatedView");
+            Typing.Replace(window, "Width=\"invalid\"", "Width=\"660\"");
+            HotReloadOutcome applied = FutureApplied(window, watched, all: true);
+            Assert.True(applied.Result == HotReloadResult.Applied, applied.Said);
+            Assert.Equal(1, applied.FutureViewRegistrations);
+            Assert.Equal(2, applied.LiveXamlProperties);
+            Assert.Contains("2 live properties; registered for 1 future view type", applied.Said, StringComparison.Ordinal);
+            Assert.Equal(2, applied.Files.Count);
+            Assert.False(watched ? window.Session.RunXaml.Changed : window.Debugger.HotReload!.Changed);
+            Assert.True(File.Exists(marker));
+            Assert.Contains(Read(app), e => e.Text == "Live batch");
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Click) { Element = Read(app).Single(e => e.Name == "CreateView").Id }), "the future half of the accepted mixed batch to run");
+            Ui.WaitFor(() => FutureOutput(window, watched).Contains("Constructor saw Registered with live edit; XAML before", StringComparison.Ordinal), "the mixed batch's actual first view");
+            Assert.Equal(process, app.ProcessId);
+        }
+        finally
+        {
+            FutureEnded(window, watched);
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_previous_inspector_protocol_cannot_acknowledge_future_view_registrations()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "WPF runs on Windows alone");
+        // This protocol-only peer has no window to claim the test's dispatcher.
+        UiThread.Own();
+        LaunchPlan plan = new LaunchPlan { Name = "Older WPF inspector", Program = "dotnet", WorkingDirectory = folder, Built = Path.Combine(folder, "WpfTreeApp.dll") };
+        using LiveApp app = LiveApp.For(plan, expected: LiveAppKind.Wpf)!;
+        using Socket socket = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+        Task connecting = socket.ConnectAsync(new UnixDomainSocketEndPoint(app.SocketPath), CancellationToken.None).AsTask();
+        Ui.WaitFor(() => connecting.IsCompleted, "the older protocol peer to connect over the real inspector socket");
+        connecting.GetAwaiter().GetResult();
+        using NetworkStream stream = new(socket, ownsSocket: false);
+        using StreamWriter writer = new(stream, new UTF8Encoding(false)) { AutoFlush = true };
+        Reply hello = new Reply { Event = Wire.Hello, Hello = new Hello(Wire.Version - 1, Environment.ProcessId, null, null) { Framework = "WPF" } };
+        Task writing = writer.WriteLineAsync(System.Text.Json.JsonSerializer.Serialize(hello, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)));
+        Ui.WaitFor(() => writing.IsCompleted, "the previous-version hello");
+        writing.GetAwaiter().GetResult();
+        Ui.WaitFor(() => app.State == LiveAppState.Refused, "the older inspector to be refused before any registration request");
+        Assert.Contains($"version {Wire.Version - 1}", app.Problem!, StringComparison.Ordinal);
+        Assert.Contains($"not {Wire.Version}", app.Problem!, StringComparison.Ordinal);
+        LiveAppException refused = Assert.Throws<LiveAppException>(() => Ui.Await(app.ApplyXamlAsync(new XamlUpdate([])), "a refused older inspector's registration request"));
+        Assert.Equal(app.Problem, refused.Message);
+        Assert.Equal(0, socket.Available);
     }
 
     private MainWindow FutureStarted(bool watched, string framework)
@@ -1238,14 +1568,14 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
         }
     }
 
-    private static HotReloadOutcome FutureApplied(MainWindow window, bool watched)
+    private static HotReloadOutcome FutureApplied(MainWindow window, bool watched, bool all = false)
     {
         if (!watched)
         {
             return Ui.Await(window.Debugger.ApplyChangesAsync(), "the WPF XAML edit to apply");
         }
         HotReloadOutcome? before = window.Session.RunXaml.LastApplied;
-        Ui.Run(window, AppActions.Save);
+        Ui.Run(window, all ? AppActions.ApplyHotReloadChanges : AppActions.Save);
         Ui.WaitFor(() => window.Session.RunXaml.LastApplied is { } next && !ReferenceEquals(next, before), "the saved WPF edit to apply");
         return window.Session.RunXaml.LastApplied!;
     }
@@ -1466,7 +1796,7 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
     }
 
     [AvaloniaFact]
-    public void Wpf_wrong_source_unused_view_and_unsupported_structure_refuse_without_mutating_any_live_instance()
+    public void Wpf_wrong_source_and_unsupported_structure_refuse_while_a_verified_unused_view_registers_without_mutating_live_instances()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "WPF runs on Windows alone");
         MainWindow window = Debugged();
@@ -1479,8 +1809,11 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
         Assert.Null(window.OpenFile(Path.Combine(folder, "UnopenedView.xaml")));
         Typing.Replace(window, "Repeated before", "No instance");
         HotReloadOutcome absent = Ui.Await(window.Debugger.ApplyChangesAsync(), "the unused WPF source to be classified");
-        Assert.Equal(HotReloadResult.RestartNeeded, absent.Result);
-        Assert.Contains(absent.Problems, p => p.Path == Path.Combine(folder, "UnopenedView.xaml") && p.Message.Contains("live instance", StringComparison.Ordinal));
+        Assert.Equal(HotReloadResult.RegisteredForFutureViews, absent.Result);
+        Assert.Equal(1, absent.FutureViewRegistrations);
+        Assert.Equal(0, absent.LiveXamlProperties);
+        Assert.Contains(Path.Combine(folder, "UnopenedView.xaml"), absent.Files);
+        Assert.DoesNotContain(Read(app), e => e.Text == "No instance");
         Assert.Null(window.OpenFile(Path.Combine(folder, "MainWindow.xaml")));
         Typing.Replace(window, "<TextBlock Text=\"Before\" />", "<TextBlock Text=\"Must not apply\" /><TextBlock Text=\"Added\" />");
         HotReloadOutcome structure = Ui.Await(window.Debugger.ApplyChangesAsync(), "the structural WPF edit to be classified");

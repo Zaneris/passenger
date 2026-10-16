@@ -22,7 +22,7 @@ namespace Passenger.Inspector;
 public static class Wire
 {
     /// <summary>Bumped by a change either end must know of: a hello of another version is refused, saying so.</summary>
-    public const int Version = 9;
+    public const int Version = 10;
 
     /// <summary>The app's environment: the socket's path, where it connects.</summary>
     public const string SocketVariable = "PASSENGER_INSPECTOR";
@@ -126,7 +126,7 @@ public sealed record Request(int Id, string Method, long? Element = null, bool? 
     /// none to take them away; answered with the windows.</summary>
     public IReadOnlyList<string>? Overlays { get; init; }
 
-    /// <summary>With ApplyXaml: source edits validated together, then applied to the existing live instances.</summary>
+    /// <summary>With ApplyXaml: source edits validated together, then applied to live instances or registered for verified future views.</summary>
     public XamlUpdate? Update { get; init; }
 }
 
@@ -141,8 +141,13 @@ public sealed record XamlSourceUpdate(string File, string Before, string After);
 
 public sealed record XamlUpdateProblem(string File, int Line, int Column, string Message, bool RestartRequired);
 
-/// <summary>All edits applied, or none when validation failed. Changes counts the live property values updated.</summary>
-public sealed record XamlUpdateResult(bool Applied, int Changes, IReadOnlyList<XamlUpdateProblem> Problems);
+/// <summary>All edits applied or registered, or none when validation failed. Changes counts live property updates.</summary>
+public sealed record XamlUpdateResult(bool Applied, int Changes, IReadOnlyList<XamlUpdateProblem> Problems)
+{
+    /// <summary>View types without matching live roots registered for future constructions, not a count of future instances.
+    /// Registration changes no live property and can report a later population failure through XamlFailed.</summary>
+    public int FutureViewRegistrations { get; init; }
+}
 
 /// <summary>A XAML file's bindings to read with their values: the file as the IDE has it, its elements by where the app's build
 /// recorded each, and the element chosen in the Live Visual Tree, which tells apart the instances of an element made more than

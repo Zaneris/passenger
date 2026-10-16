@@ -5,7 +5,7 @@ using System.Windows.Threading;
 
 namespace Passenger.Inspector.Wpf;
 
-/// <summary>Changes literal XAML properties in place on every matching live instance. Existing objects, namescopes,
+/// <summary>Changes literal XAML properties on matching live instances or registers them for verified future views. Objects, namescopes,
 /// bindings and values of untouched properties are retained; an unsupported edit changes none of the batch.</summary>
 internal sealed class XamlHotReload
 {
@@ -38,6 +38,7 @@ internal sealed class XamlHotReload
         List<Change> changes = [];
         List<XamlUpdateProblem> problems = [];
         Dictionary<Type, string> prepared = [];
+        int futureRegistrations = 0;
         foreach (XamlSourceUpdate source in request.Files)
         {
             if (failures.TryGetValue(source.File, out IReadOnlyList<XamlUpdateProblem>? previousFailure))
@@ -57,16 +58,32 @@ internal sealed class XamlHotReload
             {
                 continue;
             }
-            PrepareChanges(source, plan, all, changes, problems);
             if (plan.Properties.FirstOrDefault() is { } first)
             {
                 if (first.Class is not { } root)
                 {
+                    PrepareChanges(source, plan, all, changes, problems);
                     problems.Add(Problem(source, first, "XAML without an x:Class cannot preserve updates for newly created views; restart to load the edit", true));
                 }
                 else
                 {
-                    foreach (Type type in Roots(all, source.File, root).Select(a => a.GetType()).Distinct())
+                    List<DependencyObject> roots = Roots(all, source.File, root);
+                    List<Type> types;
+                    if (roots.Count == 0 && !all.Any(a => a.GetType().FullName == root))
+                    {
+                        Type? uncreated = UncreatedXaml.Prepare(source, known.Original, plan, problems);
+                        types = uncreated is null ? [] : [uncreated];
+                        if (uncreated is not null)
+                        {
+                            futureRegistrations++;
+                        }
+                    }
+                    else
+                    {
+                        PrepareChanges(source, plan, all, changes, problems);
+                        types = [.. roots.Select(a => a.GetType()).Distinct()];
+                    }
+                    foreach (Type type in types)
                     {
                         try
                         {
@@ -106,7 +123,7 @@ internal sealed class XamlHotReload
         }
         if (request.ValidateOnly)
         {
-            return new XamlUpdateResult(true, changes.Count, []);
+            return new XamlUpdateResult(true, changes.Count, []) { FutureViewRegistrations = futureRegistrations };
         }
         Dictionary<string, Source?> previous = request.Files.Select(f => f.File).Distinct(StringComparer.Ordinal)
             .ToDictionary(f => f, f => sources.GetValueOrDefault(f), StringComparer.Ordinal);
@@ -152,7 +169,7 @@ internal sealed class XamlHotReload
             populations.Remove(added);
             return refused;
         }
-        return new XamlUpdateResult(true, changes.Count, []);
+        return new XamlUpdateResult(true, changes.Count, []) { FutureViewRegistrations = futureRegistrations };
     }
 
     public void Stop()
@@ -330,7 +347,7 @@ internal sealed class XamlHotReload
             "The XAML update expired before it could be applied; no XAML properties were changed", false))])
         : null;
 
-    private static object? Convert(string text, Type type)
+    internal static object? Convert(string text, Type type)
     {
         type = Nullable.GetUnderlyingType(type) ?? type;
         if (type == typeof(string) || type == typeof(object))
