@@ -84,10 +84,28 @@ public sealed class MemoryView : DockPanel
         Children.Add(left);
 
         crumbs = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, VerticalAlignment = VerticalAlignment.Center };
-        actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center, [DockProperty] = Dock.Right };
-        DockPanel head = new() { Margin = new Thickness(12, 4, 8, 0), Height = 30 };
-        head.Children.Add(actions);
-        head.Children.Add(crumbs);
+        actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
+        ScrollViewer actionStrip = new() { Classes = { "toolTabs" }, Content = actions, VerticalAlignment = VerticalAlignment.Center };
+        ScrollViewer crumbStrip = new() { Classes = { "toolTabs" }, Content = crumbs, VerticalAlignment = VerticalAlignment.Center };
+        Grid head = new() { Margin = new Thickness(12, 4, 8, 0), ColumnDefinitions = new ColumnDefinitions("*,Auto"), RowDefinitions = new RowDefinitions("Auto,Auto") };
+        head.Children.Add(crumbStrip);
+        head.Children.Add(actionStrip);
+        Grid.SetColumn(actionStrip, 1);
+        head.SizeChanged += (_, _) => ArrangeHeader();
+        actions.SizeChanged += (_, _) => ArrangeHeader();
+        crumbs.SizeChanged += (_, _) => ArrangeHeader();
+
+        void ArrangeHeader()
+        {
+            actions.Measure(Avalonia.Size.Infinity);
+            crumbs.Measure(Avalonia.Size.Infinity);
+            bool under = actions.DesiredSize.Width + 12 + Math.Min(crumbs.DesiredSize.Width, 240) > head.Bounds.Width;
+            Grid.SetRow(actionStrip, under ? 1 : 0);
+            Grid.SetColumn(actionStrip, under ? 0 : 1);
+            Grid.SetColumnSpan(actionStrip, under ? 2 : 1);
+            Grid.SetColumnSpan(crumbStrip, under ? 2 : 1);
+            actionStrip.Margin = under ? new Thickness(0, 4, 0, 0) : new Thickness(12, 0, 0, 0);
+        }
         summary = Muted(string.Empty);
         summary.Margin = new Thickness(12, 0, 12, 6);
         summary.TextWrapping = TextWrapping.Wrap;
@@ -121,12 +139,14 @@ public sealed class MemoryView : DockPanel
         keyPathsPage = Framed(keyTable.Header(null), keyPaths);
 
         setTabs = [Tab("Objects", 0), Tab("Shortest Paths to Roots", 1), Tab("Key Retention Paths", 2)];
-        StackPanel tabs = new() { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(8, 0, 8, 4), [DockProperty] = Dock.Top };
+        StackPanel tabs = new() { Orientation = Orientation.Horizontal, Spacing = 2 };
         foreach (ToggleButton tab in setTabs)
         {
             tabs.Children.Add(tab);
         }
-        setPage = new DockPanel { Children = { tabs, new Panel { Children = { objectsPage, pathsPage, keyPathsPage } } } };
+        ScrollViewer tabStrip = new() { Classes = { "toolTabs" }, Content = tabs, Margin = new Thickness(8, 0, 8, 4), [DockProperty] = Dock.Top };
+        tabStrip.SizeChanged += (_, _) => RevealTab();
+        setPage = new DockPanel { Children = { tabStrip, new Panel { Children = { objectsPage, pathsPage, keyPathsPage } } } };
 
         waiting = Muted(string.Empty);
         waiting.HorizontalAlignment = HorizontalAlignment.Center;
@@ -380,7 +400,10 @@ public sealed class MemoryView : DockPanel
         {
             trail[^1] = page with { Tab = tab };
         }
+        RevealTab();
     }
+
+    private void RevealTab() => Dispatcher.UIThread.Post(() => setTabs.FirstOrDefault(tab => tab.IsChecked == true)?.BringIntoView(), DispatcherPriority.Loaded);
 
     /// <summary>The paths' steps, the set's most retaining path open down to its root, as dotMemory opens it.</summary>
     private void ShowPaths(RetentionNode top)
