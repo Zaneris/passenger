@@ -13,11 +13,16 @@
             <ListBox Name="Results" Classes="tree" MaxHeight="384" Margin="0,0,0,8" DoubleTapped="OnResultDoubleTapped">
                 <ListBox.ItemTemplate>
                     <DataTemplate x:DataType="nav:FileHit">
-                        <StackPanel Orientation="Horizontal" Spacing="8" Height="24">
+                        <Grid ColumnSpacing="8" Height="24" ToolTip.Tip="{Binding FullPath}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="2*" />
+                                <ColumnDefinition Width="{Binding FolderWidth}" />
+                            </Grid.ColumnDefinitions>
                             <PathIcon Data="{Binding Icon}" Foreground="{Binding IconBrush}" VerticalAlignment="Center" />
-                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
-                            <TextBlock Text="{Binding Folder}" Classes="muted" VerticalAlignment="Center" />
-                        </StackPanel>
+                            <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="2" Text="{Binding Folder}" TextTrimming="CharacterEllipsis" Classes="muted" VerticalAlignment="Center" />
+                        </Grid>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>

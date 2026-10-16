@@ -33,6 +33,10 @@ public sealed class PopupHost
 
     /// <summary>The layer a popup shows on now, or last did; the main window's before any has.</summary>
     private (Panel Layer, ContentControl Host)? shown;
+    private Control? fitted;
+    private double requestedMaxWidth;
+    private Point? position;
+    private Thickness shadow;
 
     /// <param name="overlay">The main window's layer over everything, and the host in it a popup goes in.</param>
     /// <param name="breakpoints">The open folder's breakpoints, which a breakpoint's popup dismissed keeps its edits in.</param>
@@ -43,6 +47,7 @@ public sealed class PopupHost
         this.editors = editors;
         this.breakpoints = breakpoints;
         overlay.PointerPressed += OnLayerPressed;
+        overlay.SizeChanged += OnLayerSizeChanged;
     }
 
     private (Panel Layer, ContentControl Host) Layers => shown ??= (overlay, overlayHost);
@@ -57,6 +62,7 @@ public sealed class PopupHost
     /// <see cref="PointIn"/>), kept inside it. Another open on another window's layer goes.</summary>
     public void Show(Control popup, Point? at = null)
     {
+        RestoreWidth();
         (Panel layer, ContentControl host) = InFront();
         if (Layers.Layer != layer)
         {
@@ -64,27 +70,53 @@ public sealed class PopupHost
             Layers.Host.Content = null;
         }
         shown = (layer, host);
-        Thickness shadow = MakeRoom(popup, host);
-        if (at is { } point)
+        shadow = MakeRoom(popup, host);
+        fitted = popup;
+        requestedMaxWidth = popup.MaxWidth;
+        position = at;
+        Place(layer, host, popup);
+        host.Content = popup;
+        layer.IsVisible = true;
+    }
+
+    /// <summary>The popup's width leaves room for its shadow within the current window, including after resize. Its
+    /// requested width remains its own, so widening restores it without recreating its query, selection or focus.</summary>
+    private void Place(Panel layer, ContentControl host, Control popup)
+    {
+        Size room = layer.Bounds.Size is { Width: > 0 } laid ? laid : (layer.Parent as Visual)?.Bounds.Size ?? default;
+        double outside = popup is TemplatedControl ? 0 : shadow.Left + shadow.Right;
+        popup.MaxWidth = room.Width > 0 ? Math.Min(requestedMaxWidth, Math.Max(0, room.Width - 16 - outside)) : requestedMaxWidth;
+        if (position is { } point)
         {
             popup.Measure(Size.Infinity);
-            // The frame's own size: a popup that holds its frame has the room inside it, the host has it round any other.
-            Thickness inside = popup is TemplatedControl ? shadow : default;
-            double width = (popup.Width is double w && !double.IsNaN(w) ? w : popup.DesiredSize.Width) - inside.Left - inside.Right;
-            double height = popup.DesiredSize.Height - inside.Top - inside.Bottom;
-            // A layer never shown yet was never laid out: it covers what holds it.
-            Size room = layer.Bounds.Size is { Width: > 0 } laid ? laid : (layer.Parent as Visual)?.Bounds.Size ?? default;
+            double width = popup.DesiredSize.Width + outside;
+            double height = popup.DesiredSize.Height + (popup is TemplatedControl ? 0 : shadow.Top + shadow.Bottom);
             host.HorizontalAlignment = HorizontalAlignment.Left;
-            host.Margin = new Thickness(Math.Clamp(point.X, 8, Math.Max(8, room.Width - width - 8)) - shadow.Left,
-                Math.Clamp(point.Y, 8, Math.Max(8, room.Height - height - 8)) - shadow.Top, 0, 0);
+            host.Margin = new Thickness(Math.Clamp(point.X - shadow.Left, 8, Math.Max(8, room.Width - width - 8)),
+                Math.Clamp(point.Y - shadow.Top, 8, Math.Max(8, room.Height - height - 8)), 0, 0);
         }
         else
         {
             host.HorizontalAlignment = HorizontalAlignment.Center;
             host.Margin = new Thickness(0, (layer == overlay ? WindowPopupTop : EditorWindowPopupTop) - shadow.Top, 0, 0);
         }
-        host.Content = popup;
-        layer.IsVisible = true;
+    }
+
+    private void OnLayerSizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        if (fitted is { } popup && sender == Layers.Layer)
+        {
+            Place(Layers.Layer, Layers.Host, popup);
+        }
+    }
+
+    private void RestoreWidth()
+    {
+        if (fitted is { } popup)
+        {
+            popup.MaxWidth = requestedMaxWidth;
+            fitted = null;
+        }
     }
 
     /// <summary>Room round a popup's frame for its shadow (Shell.axaml's Border.popup), taken from the place the popup
@@ -115,6 +147,7 @@ public sealed class PopupHost
     /// <summary>Closes the popup; the editor shown has the keys again.</summary>
     public void Close()
     {
+        RestoreWidth();
         Layers.Layer.IsVisible = false;
         Layers.Host.Content = null;
         if (editors.Active is not null)
@@ -148,13 +181,16 @@ public sealed class PopupHost
         ContentControl host = new() { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top };
         Panel layer = new() { IsVisible = false, Background = Brushes.Transparent, Children = { host } };
         layer.PointerPressed += OnLayerPressed;
+        layer.SizeChanged += OnLayerSizeChanged;
         editorWindow.Layers.Children.Add(layer);
         windowLayers[window] = (layer, host);
         window.Closed += (_, _) =>
         {
+            layer.SizeChanged -= OnLayerSizeChanged;
             windowLayers.Remove(window);
             if (shown?.Layer == layer)
             {
+                RestoreWidth();
                 shown = null;
             }
         };
