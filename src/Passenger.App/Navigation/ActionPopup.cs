@@ -133,6 +133,7 @@ public sealed class ActionPopup : UserControl
         Grid row = new()
         {
             Height = 26,
+            Background = Brushes.Transparent,
             Margin = new Thickness(4, 0),
             ColumnSpacing = 10,
             ColumnDefinitions = new ColumnDefinitions("3*,*,2*"),

@@ -204,11 +204,7 @@ public sealed class ActionsTests : IDisposable
             Assert.Contains(chosen.Title, tip, StringComparison.Ordinal);
             Assert.Contains(chosen.Group, tip, StringComparison.Ordinal);
             Assert.Contains(window.Actions.Shortcut(chosen.Id)!, tip, StringComparison.Ordinal);
-            Point reading = details.TranslatePoint(new Point(details.Bounds.Width / 2, details.Bounds.Height / 2), owner)!.Value;
-            owner.MouseMove(reading);
-            Screenshot.Pump(TimeSpan.FromMilliseconds(800));
-            Ui.Settle();
-            Assert.True(ToolTip.GetIsOpen(details));
+            Hover(details);
             UiAudit.Capture(owner, $"find-action-details-tooltip-320-{(light ? "light" : "dark")}");
 
             Ui.Press(owner, OperatingSystem.IsMacOS() ? "meta A" : "control A");
@@ -236,14 +232,25 @@ public sealed class ActionsTests : IDisposable
             UiAudit.Capture(owner, $"find-action-disabled-320-{(light ? "light" : "dark")}");
             Control disabledDetails = Assert.Single(disabledRow.GetVisualDescendants().OfType<Control>(), control => ToolTip.GetTip(control) is string);
             Assert.Contains(why, Assert.IsType<string>(ToolTip.GetTip(disabledDetails)), StringComparison.Ordinal);
-            owner.MouseMove(disabledDetails.TranslatePoint(new Point(disabledDetails.Bounds.Width / 2, disabledDetails.Bounds.Height / 2), owner)!.Value);
-            Screenshot.Pump(TimeSpan.FromMilliseconds(800));
-            Ui.Settle();
-            Assert.True(ToolTip.GetIsOpen(disabledDetails));
+            Hover(disabledDetails);
             UiAudit.Capture(owner, $"find-action-disabled-tooltip-320-{(light ? "light" : "dark")}");
             PointerChoose(AppActions.Debug);
             Assert.False(window.IsPopupOpen);
             Assert.Equal(why, window.Status);
+
+            void Hover(Control control)
+            {
+                owner.MouseMove(new Point(2, owner.Bounds.Height - 2));
+                Ui.Settle();
+                Point at = control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), owner)!.Value;
+                owner.MouseMove(at);
+                string hit = string.Join(" > ", (owner.InputHitTest(at) as Visual)?.GetVisualAncestors().OfType<Control>()
+                    .Select(parent => $"{parent.GetType().Name}#{parent.Name}") ?? []);
+                Assert.True(control.IsPointerOver, $"The actual pointer missed the tooltip row at {at}; hit {hit}");
+                Screenshot.Pump(TimeSpan.FromMilliseconds(800));
+                Ui.Settle();
+                Assert.True(ToolTip.GetIsOpen(control), $"Hovering the actual tooltip row did not open its details; configured delay {ToolTip.GetShowDelay(control)}ms, hit {hit}");
+            }
 
             void PointerChoose(string id)
             {
