@@ -1,6 +1,7 @@
 using System.Xml;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -45,7 +46,9 @@ public sealed class NuGetSourcesView : Grid
         DockPanel.SetDock(problem, Dock.Bottom);
         problem.Margin = new Thickness(14, 0, 14, 8);
         right.Children.Add(problem);
-        right.Children.Add(new ScrollViewer { Content = details });
+        ScrollViewer reader = new() { Content = details, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto };
+        reader.SizeChanged += (_, e) => details.Width = Math.Max(480, e.NewSize.Width - details.Margin.Left - details.Margin.Right);
+        right.Children.Add(reader);
         HairlineDivider divider = new(GridResizeDirection.Columns) { [ColumnProperty] = 1 };
         SetColumn(right, 2);
         Children.Add(files);
@@ -118,6 +121,7 @@ public sealed class NuGetSourcesView : Grid
 
     private void DrawFile(ConfigFile file)
     {
+        details.Children.Add(Muted(file.Path));
         Button add = Tool("Icon.Add", "Add Feed", () => _ = AddAsync(file));
         add.IsEnabled = !file.ReadOnly && file.Problem is null;
         add.Name = "AddFeed";
@@ -159,10 +163,10 @@ public sealed class NuGetSourcesView : Grid
         CheckBox toggle = new() { IsChecked = enabled, IsEnabled = !file.ReadOnly, VerticalAlignment = VerticalAlignment.Center, MinWidth = 0, Margin = new Thickness(0, 0, 4, 0) };
         ToolTip.SetTip(toggle, "Enabled");
         toggle.IsCheckedChanged += (_, _) => _ = SetEnabledAsync(file, feed.Name, toggle.IsChecked == true);
-        TextBlock name = new() { Text = feed.Name, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        TextBlock url = new() { Classes = { "muted" }, Text = feed.Value, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(10, 0) };
+        TextBlock name = new() { Text = feed.Name, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
+        TextBlock url = new() { Classes = { "muted" }, Text = feed.Value, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(10, 0) };
         ToolTip.SetTip(url, feed.Value);
-        Grid row = new() { ColumnDefinitions = new ColumnDefinitions("Auto,150,*,Auto,Auto,Auto"), Height = 28, Tag = feed.Name };
+        Grid row = new() { ColumnDefinitions = new ColumnDefinitions("Auto,150,*,Auto,Auto,Auto"), MinHeight = 28, Tag = feed.Name };
         Add(row, toggle, 0);
         Add(row, name, 1);
         Add(row, url, 2);
@@ -190,8 +194,8 @@ public sealed class NuGetSourcesView : Grid
     {
         string from = feed.DefinedIn is { } file ? RecentRow.Home(file) : "the environment";
         Grid line = new() { ColumnDefinitions = new ColumnDefinitions("170,*,Auto"), Opacity = feed.Enabled ? 1 : 0.55 };
-        Add(line, new TextBlock { Text = feed.Name, TextTrimming = TextTrimming.CharacterEllipsis }, 0);
-        Add(line, new TextBlock { Classes = { "muted" }, Text = feed.Source, TextTrimming = TextTrimming.PathSegmentEllipsis }, 1);
+        Add(line, new TextBlock { Text = feed.Name, TextWrapping = TextWrapping.Wrap }, 0);
+        Add(line, new TextBlock { Classes = { "muted" }, Text = feed.Source, TextWrapping = TextWrapping.Wrap }, 1);
         Add(line, new TextBlock { Classes = { "muted" }, Text = feed.Enabled ? string.Empty : "disabled", Margin = new Thickness(10, 0, 0, 0) }, 2);
         ToolTip.SetTip(line, $"{(feed.Enabled ? "Enabled" : "Disabled")}, from {from}{(feed.Credentials is { } held ? $", with {held}" : string.Empty)}");
         return line;
@@ -317,7 +321,7 @@ public sealed class NuGetSourcesView : Grid
     {
         Grid row = new() { ColumnDefinitions = new ColumnDefinitions("170,*") };
         Add(row, new TextBlock { Text = name }, 0);
-        Add(row, value is null ? Muted("not set") : new TextBlock { Text = value, TextTrimming = TextTrimming.CharacterEllipsis }, 1);
+        Add(row, value is null ? Muted("not set") : new TextBlock { Text = value, TextWrapping = TextWrapping.Wrap }, 1);
         return row;
     }
 }
