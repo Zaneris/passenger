@@ -131,7 +131,8 @@ without allocating a PTY for a missing explicit executable path. Clean exact com
 all 23 actual terminal lifecycle/input/tab cases in 46s. Windows reports 23 passes in 23s, including 13 old Unix-only
 bodies that return early there. All six two-theme Windows/Linux missing-path frames were inspected; native evidence
 is shipping `artifacts/2026-10-16/terminal-native/`, separate from the Windows `terminal-path-final/` capture folder.
-The valid relative script in a spaced folder still receives real keys and exits 2 once. macOS/ARM reruns remain.
+The valid relative script in a spaced folder still receives real keys and exits 2 once. Later complete `c9509e4`
+and Linux ARM `47f7a57` runs clear that missing-path case; newer terminal-overflow coverage is separate.
 
 `4fff99c` follows the profiler findings with real completed CPU data and a real held-40-object heap snapshot.
 The shell worktree's `artifacts/profiler-populated/captures-final/` covers readable empty-Memory guidance and long
@@ -202,8 +203,22 @@ remain visible through resize without switching the selected page. The real miss
 also checks its dynamically shown last category at side200. Final ten cases pass in one minute, zero skips;
 build 0 warnings/errors. The old source fails both corrected long-file geometry cases in eight seconds and both
 actual Hot Reload side-category checks. `problem-tabs-frozen/` holds eighty scale-2 frames; ten were personally
-inspected across normal/narrow/focus/Hot Reload states in both themes. These expose separate long editor-tab
-close clipping and status-bar overlap at 640/683; those remain source work, not external blockers.
+inspected across normal/narrow/focus/Hot Reload states in both themes. These exposed separate long editor-tab
+close clipping and status-bar overlap at 640/683, repaired by the following scoped checkpoints.
+
+`b3b3458` caps editor-tab filenames to the actual group viewport while keeping modified/pin/close actions usable.
+Real long modified/pinned files, split/unsplit groups and inactive close focus survive 1200/900/683/640 resize
+without losing editor text, caret or selection. Existing Editor Tabs/Active Editor checks pass 17/17 in 16s;
+the final keyboard refinement passes both affected cases in 5s, zero skips. Old source fails both geometry checks
+even at 1200px. Eight of 26 final scale-2 `editor-long-tab-frozen/` frames were inspected in both themes.
+
+`82c4ba7` gives status breadcrumbs a bounded scrolling viewport and full-path tooltips, reserving message and
+storage-action space. First/reopened plain root files with no outline stay readable, including the initially
+hidden viewport. Actual pointer/wheel/Tab input reaches folder/file crumbs without switching the editor; the
+640px separator menu changes saved LF to CRLF. Combined File Properties/outline/Problems/long-editor checks pass
+16/16 in 55s, zero skips; build 0 warnings/errors. Old source fails both real separator clicks because the path
+intercepts them. Nine final `status-path-frozen/` full frames were inspected in both themes, including actual
+compiler-error status. Optional status widgets and remaining popup states are not covered by that count.
 
 Later Profiler checkpoints add real populated subviews, with both-theme normal/narrow captures inspected by the
 shell agent. `412d956` covers actual 40→47 held-object comparison/object/root-path navigation, keyboard actions,
@@ -248,13 +263,14 @@ detach failure. Newer source still requires native CI; see the timing and case-g
 | --- | --- | --- |
 | Hierarchy, Git, Unit Tests | Empty guidance fits its own 640px-window pane; both themes inspected. | Populated hierarchy/history/test views and responsive controls. |
 | Profiler | Responsive header plus actual CPU/heap data, long rows and guidance; Memory navigation/comparison and populated Frames now have actual Windows/Linux input/capture checks. macOS pre-capture Header/Profiler rerun passes four cases. | Remaining unexamined snapshot/error/busy interactions and full state inventory; no blanket Profiler/Rider pass or original intermittent header cause claimed. |
-| Find, Structure, Bookmarks, Local History, Problems, Debug | Shared empty hints fit normal/narrow viewports. Problems adds actual compiler/solution/Hot Reload rows and reachable categories in side200/bottom panes, both themes. | Other populated tool rows, long tab names, narrow action bars, keyboard focus and selection through resize. Long editor tabs/status crumbs remain separate observed faults. |
-| Terminal | Real-shell normal/narrow frames both themes inspected; `fc974f5` executes 23 actual terminal cases on Linux x64. `6d1752c` adds many-session/long-name overflow and keyboard-focus resizing on Windows, with actual command routing and run exit. | Native overflow execution, macOS/ARM reruns and complete remaining focus inventory. |
+| Find, Structure, Bookmarks, Local History, Problems, Debug | Shared empty hints fit normal/narrow viewports. Problems adds actual compiler/solution/Hot Reload rows and reachable categories in side200/bottom panes, both themes. | Other populated tool rows, narrow action bars, keyboard focus and selection through resize. |
+| Terminal | Real-shell normal/narrow frames both themes inspected; `fc974f5` executes 23 actual terminal cases on Linux x64, with later macOS/Linux ARM missing-path acceptance. `6d1752c` adds many-session/long-name overflow and keyboard-focus resizing on Windows, with actual command routing and run exit. | Native execution of the newer overflow coverage and complete remaining focus inventory. |
 | Explorer, Run, Build, Commit, Live Visual Tree | Captured at 1200/683 both themes in the 17-tool sweep. Earlier focused docking, console/editor scrollbar and empty-editor evidence remains. | Complete populated-state visual/input inventory; capture existence alone is not a pass. |
 | NuGet | Real local-feed toolbar/header/feed ellipsis plus populated Sources form/configuration paths fit at 1200/683/640 and side200, with actual Windows/Linux input and both-theme captures. | Remaining populated package/error/detail states and unexamined source errors/credentials. |
 | Profiler Memory/Frames subviews | Actual held-object comparison/object/root-path flows, million-object metadata and long Frames metrics/scrolling/source navigation have scoped Windows/Linux tests and both-theme captures. | Remaining error/cancellation/busy transitions and unexamined snapshot states; scoped evidence is listed above. |
 
-Long editor tabs/status-bar overflow, populated History/Git forms and remaining popup/focus rules are next checkpoints. The capture
+Long editor tabs and status paths now have scoped fixes above. Populated History/Git forms, optional status widgets
+and remaining popup/focus rules continue; the current native macOS Self Debugging failure takes priority. The capture
 inventory is updated as those checks run; it is not a stopping condition.
 
 ## Reference and execution limits
