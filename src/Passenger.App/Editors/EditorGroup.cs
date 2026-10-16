@@ -7,6 +7,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Passenger.App.Workspace;
 using Passenger.Editor;
@@ -46,6 +47,7 @@ public sealed class EditorGroup : DockPanel
     private readonly ObservableCollection<EditorTab> tabs = [];
     private readonly Dictionary<OpenDocument, (SelectionSet Selections, Vector Scroll)> views = [];
     private readonly Border tabBar;
+    private readonly ScrollViewer tabStrip;
     private readonly Grid body;
     private HairlineDivider? divider;
     private Control? side;
@@ -72,12 +74,30 @@ public sealed class EditorGroup : DockPanel
             ItemsPanel = new FuncTemplate<Panel?>(() => new StackPanel { Orientation = Orientation.Horizontal }),
             ItemTemplate = new FuncDataTemplate<EditorTab>((tab, _) => Tab(tab), supportsRecycling: false),
         };
+        tabStrip = new ScrollViewer
+        {
+            HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Hidden,
+            VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
+            Content = strip,
+        };
+        tabStrip.PropertyChanged += (_, change) =>
+        {
+            if (change.Property == ScrollViewer.ViewportProperty)
+            {
+                foreach (Border tab in tabStrip.GetVisualDescendants().OfType<Border>().Where(border => border.Classes.Contains("tab")))
+                {
+                    tab.MaxWidth = Math.Max(0, tabStrip.Viewport.Width);
+                }
+                RevealTab();
+            }
+        };
+        strip.SizeChanged += (_, _) => RevealTab();
         tabBar = new Border
         {
             [DockProperty] = Dock.Top,
             Height = 36,
             BorderThickness = new Thickness(0, 0, 0, 1),
-            Child = new ScrollViewer { HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Hidden, VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled, Content = strip },
+            Child = tabStrip,
         };
         tabBar.Bind(Border.BackgroundProperty, tabBar.GetResourceObservable("Passenger.Chrome"));
         tabBar.Bind(Border.BorderBrushProperty, tabBar.GetResourceObservable("Passenger.Divider"));
@@ -456,7 +476,7 @@ public sealed class EditorGroup : DockPanel
         }
         OpenDocument document = tab.Document;
         PathIcon icon = new();
-        TextBlock name = new() { Classes = { "tabName" }, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock name = new() { Classes = { "tabName" }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, [Grid.ColumnProperty] = 1 };
         Ellipse modified = new() { Classes = { "modified" }, Width = 7, Height = 7 };
         PathIcon closeGlyph = new() { Classes = { "small" } };
         closeGlyph.Bind(PathIcon.DataProperty, closeGlyph.GetResourceObservable("Icon.Close"));
@@ -480,12 +500,18 @@ public sealed class EditorGroup : DockPanel
         Border border = new()
         {
             Classes = { "tab" },
-            Child = new StackPanel
+            MaxWidth = tabStrip.Viewport.Width > 0 ? tabStrip.Viewport.Width : double.PositiveInfinity,
+            Child = new Grid
             {
-                Orientation = Orientation.Horizontal,
-                Spacing = 6,
+                ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"),
+                ColumnSpacing = 6,
                 VerticalAlignment = VerticalAlignment.Center,
-                Children = { icon, name, modified, pin, close },
+                Children =
+                {
+                    icon,
+                    name,
+                    new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, [Grid.ColumnProperty] = 2, Children = { modified, pin, close } },
+                },
             },
         };
         void Paint()
@@ -498,12 +524,14 @@ public sealed class EditorGroup : DockPanel
             border.Classes.Set("active", tab.IsActive);
             border.Classes.Set("elsewhere", !IsCurrent);
             pin.IsVisible = tab.IsPinned;
+            RevealTab();
         }
         void OnCurrentChanged(object? sender, EventArgs e) => border.Classes.Set("elsewhere", !IsCurrent);
         void OnTabChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
             border.Classes.Set("active", tab.IsActive);
             pin.IsVisible = tab.IsPinned;
+            RevealTab();
         }
         void OnFileChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
@@ -530,6 +558,7 @@ public sealed class EditorGroup : DockPanel
             tab.PropertyChanged -= OnTabChanged;
             document.PropertyChanged -= OnFileChanged;
         };
+        border.GotFocus += (_, _) => RevealTab();
         Paint();
         // Rider's tab menu, which the window fills with its tab actions, run on this tab, as it opens.
         ContextMenu menu = new();
@@ -556,6 +585,13 @@ public sealed class EditorGroup : DockPanel
         border.PointerReleased += (_, e) => area.TabDragOf(this)?.End(e);
         return border;
     }
+
+    private void RevealTab() => Dispatcher.UIThread.Post(() =>
+    {
+        Border[] shown = [.. tabStrip.GetVisualDescendants().OfType<Border>().Where(border => border.Classes.Contains("tab"))];
+        // An inactive file's focused close/pin action stays visible without changing the file the editor shows.
+        (shown.FirstOrDefault(border => border.IsKeyboardFocusWithin) ?? shown.FirstOrDefault(border => border.Classes.Contains("active")))?.BringIntoView();
+    }, DispatcherPriority.Loaded);
 
     /// <summary>What the editor's context switcher shows for a file in several of the server's projects: the target
     /// framework alone (Roslyn names a multi-targeted project's "Lib (net10.0)") when they are one project's, else the
