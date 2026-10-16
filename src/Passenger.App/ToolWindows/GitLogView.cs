@@ -158,9 +158,10 @@ public sealed class GitLogView : DockPanel
         Grid split = new() { ColumnDefinitions = new ColumnDefinitions("3*,1,2*"), MinWidth = 600 };
         HairlineDivider divider = new(GridResizeDirection.Columns) { [Grid.ColumnProperty] = 1 };
         Grid.SetColumn(right, 2);
-        split.Children.Add(new Panel { Children = { list, placeholder } });
+        split.Children.Add(list);
         split.Children.Add(divider);
         split.Children.Add(right);
+        Control body = split;
         if (scope is null && range is null)
         {
             Branches = new BranchesPanel(vcs);
@@ -172,14 +173,10 @@ public sealed class GitLogView : DockPanel
             withBranches.Children.Add(Branches);
             withBranches.Children.Add(beside);
             withBranches.Children.Add(split);
-            Children.Add(top);
-            Children.Add(Across(withBranches));
+            body = withBranches;
         }
-        else
-        {
-            Children.Add(top);
-            Children.Add(Across(split));
-        }
+        Children.Add(top);
+        Children.Add(new Panel { Children = { Across(body), placeholder } });
 
         onHistoryChanged = (_, _) =>
         {
