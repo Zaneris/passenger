@@ -20,6 +20,28 @@ retain strict auditing; this independent restore blocker is not the cause of tho
 Roslyn 5.11.0's separately downloaded payload still contains MessagePack 2.5.302 and remains an upstream/provenance
 follow-up; do not claim the whole bundled payload remediated by the project graph repair.
 
+The independent restore repair is merged and pushed in `0d0b436`. Original test-failure repairs remain separately
+identified: Git `655a092` reads revision blobs with an explicit trailing `--`, avoiding Windows' attempt to stat an
+overlong `hash:path`; Action test `0f341c7` uses the text box's configured Select All gesture rather than inferring it
+from macOS. Its wrong-gesture probe leaves the original query selected nowhere and appends the new text, explaining
+the empty action rows. Configured-Meta and final restored local controls each pass both themes; the broader Action
+batch passes 20/20. Source-specific Action evidence is in the shipping worktree's `artifacts/ci-action-query/`.
+The frozen Git VCS/History batch passes 44/44; both-theme real UI controls fail with the old command. Its source
+hashes, command/UI probes, results and inspected captures are under the shell worktree's `artifacts/ci-git-diff/`.
+Git is merged and pushed in `ced3c63`; root's integration build has zero errors/seven existing fixture warnings
+(27.85s), and the original History/new VCS cases pass 4/4 in 14s under the normal audited package graph.
+Actions is merged and separately pushed in `2ea6f8c`; root's fresh build has zero errors/seven existing fixture
+warnings (29.17s), and all 20 Action/Navigation/Shortcut/Editor Window integration cases pass in 36s, with no skips.
+The repaired-source [CI `38940010842`](https://github.com/tebeco/passenger/actions/runs/38940010842) now completes at
+`2ea6f8c` in 27m12s. All 14 raw TRXs and actual filtered discoveries cover exactly 1,036 cases per OS: Windows
+1,027 passed/nine skipped/zero failed, Linux 944 passed/92 skipped/zero failed, macOS 954 passed/81 skipped/one failed.
+Original Git/Action failures and new VCS regressions pass natively, and all packaging jobs pass. The remaining red
+jobs are Mac shard 1/3/4 test-budget overruns (21.0188/20.8369/20.7928 minutes) and the Mac shard 3 MCP key-latency
+check (547ms versus its unchanged 250ms bound, all 10,002 usages found). The delay's cause remains unproven.
+An initial 2m12s–2m27s Mac runner queue contributes to wall time but not those TRX overruns; the 25-minute whole-CI
+goal and full native acceptance remain unmet. Preserve the final run's raw results, failed logs and exact analysis
+under the main checkout's `artifacts/resume-ci-2026-10-16/evidence/final-38940010842/` before further repair work.
+
 ## Reviewed source and verification
 
 Before the final shutdown push, the confirmed remote checkpoint is `e43dd47`, containing the healthy native timing
