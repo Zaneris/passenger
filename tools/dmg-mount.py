@@ -90,12 +90,12 @@ def detach(record):
     for attempt in range(6):
         images = read_info(record)
         found = matching(images, path)
-        if device is not None and any(device in devices(image) and image not in found for image in images):
-            raise RuntimeError(f"refusing to detach {device}: it belongs to another image; expected {path}")
         if not found:
             record.unlink()
             print(f"package-mac: confirmed detached {path} ({device or 'no device was attached'})", flush=True)
             return
+        if device is not None and any(device in devices(image) and image not in found for image in images):
+            raise RuntimeError(f"refusing to detach {device}: it belongs to another image; expected {path}")
         if len(found) != 1:
             raise RuntimeError(f"refusing to detach multiple attachments of {path}: {found}")
         current = disk(found[0])
@@ -108,7 +108,7 @@ def detach(record):
         run("hdiutil", "detach", device, *(["-force"] if attempt >= 3 else []))
         time.sleep(attempt + 1)
     images = read_info(record)
-    if matching(images, path) or any(device in devices(image) for image in images):
+    if matching(images, path):
         for args in [("diskutil", "info", device), ("lsof", "+D", owned["mount"])]:
             try:
                 result = run(*args, timeout=10)
