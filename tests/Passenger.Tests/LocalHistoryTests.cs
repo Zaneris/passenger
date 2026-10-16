@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Passenger.App;
@@ -128,8 +129,23 @@ public sealed class LocalHistoryTests : IDisposable
                     Ui.Settle();
                     Assert.Equal(chosen, history.Selected?.Set);
                     UiAudit.Capture(window, $"local-history-{kind}-{width:0}-{(light ? "light" : "dark")}");
+                    DiffView diff = history.Diff!;
+                    problems.AddRange(UiAudit.HorizontalOverflow(window, $"Local History {kind} diff {width}px", diff));
+                    ReadCaption(diff.GetVisualDescendants().OfType<TextBlock>().Single(text => text.FontWeight == FontWeight.SemiBold), "filename");
+                    ReadCaption(diff.GetVisualDescendants().OfType<TextBlock>().Single(text => text.Text?.StartsWith(label, StringComparison.Ordinal) == true), "version");
+                    if (width == 200)
+                    {
+                        Reveal(diff.SettingsButton);
+                        Ui.ChooseFromMenu(diff.SettingsButton, "Lines");
+                        Assert.Equal(DiffHighlighting.Lines, diff.Highlighting);
+                        UiAudit.Capture(window, $"local-history-{kind}-diff-settings-200-{(light ? "light" : "dark")}");
+                        Ui.ChooseFromMenu(diff.SettingsButton, "Words");
+                        Assert.Equal(DiffHighlighting.Words, diff.Highlighting);
+                    }
                     problems.AddRange(UiAudit.HorizontalOverflow(window, $"Local History toolbar {width}px", history.Children[0]));
                     ListBox activities = history.GetVisualDescendants().OfType<ListBox>().Single(list => ReferenceEquals(list.ItemsSource, history.Rows));
+                    Reveal(activities);
+                    Ui.Settle();
                     ScrollViewer activityReader = activities.GetVisualDescendants().OfType<ScrollViewer>().First();
                     if (reading)
                     {
@@ -149,6 +165,8 @@ public sealed class LocalHistoryTests : IDisposable
                     if (history.IsFolder)
                     {
                         ListBox files = history.GetVisualDescendants().OfType<ListBox>().Single(list => ReferenceEquals(list.ItemsSource, history.Files));
+                        Reveal(files);
+                        Ui.Settle();
                         problems.AddRange(UiAudit.HorizontalOverflow(window, $"Local History folder files {width}px", files));
                         ReadAcross(files, "files");
                     }
@@ -157,6 +175,8 @@ public sealed class LocalHistoryTests : IDisposable
                     {
                         Reveal(list);
                         ScrollViewer reader = list.GetVisualDescendants().OfType<ScrollViewer>().First();
+                        reader.Offset = new Vector(0, reader.Offset.Y);
+                        Ui.Settle();
                         Point over = list.TranslatePoint(new Point(Math.Min(40, list.Bounds.Width / 2), Math.Min(30, list.Bounds.Height / 2)), window)!.Value;
                         window.MouseWheel(over, new Vector(-30, 0));
                         Ui.Settle();
@@ -167,12 +187,36 @@ public sealed class LocalHistoryTests : IDisposable
                         UiAudit.Capture(window, $"local-history-{kind}-{part}-{width:0}-{(light ? "light" : "dark")}");
                         reader.Offset = default;
                     }
+
+                    void ReadCaption(TextBlock caption, string part)
+                    {
+                        ScrollViewer? reader = caption.GetVisualAncestors().TakeWhile(parent => parent != diff).OfType<ScrollViewer>().FirstOrDefault();
+                        if (reader is null)
+                        {
+                            return;
+                        }
+                        Reveal(reader);
+                        reader.Offset = default;
+                        Ui.Settle();
+                        if (reader.Extent.Width > reader.Viewport.Width + 1)
+                        {
+                            Point at = reader.TranslatePoint(new Point(Math.Min(40, reader.Bounds.Width / 2), reader.Bounds.Height / 2), window)!.Value;
+                            window.MouseWheel(at, new Vector(-30, 0));
+                            Ui.Settle();
+                            Assert.True(reader.Offset.X > 0, $"The diff {part} does not scroll to its complete text");
+                        }
+                        Assert.True(caption.TextLayout.Width <= caption.Bounds.Width + 1, $"The diff {part} still clips its text inside the horizontal reader");
+                        Reveal(reader, rightEdge: true);
+                        UiAudit.Capture(window, $"local-history-{kind}-diff-{part}-{width:0}-{(light ? "light" : "dark")}");
+                        reader.Offset = default;
+                    }
                 }
                 return layout;
             }
 
-            void Reveal(Control target)
+            void Reveal(Control target, bool rightEdge = false)
             {
+                Point anchor = rightEdge ? new Point(target.Bounds.Width - 1, 0) : default;
                 foreach (ScrollViewer reader in target.GetVisualAncestors().OfType<ScrollViewer>())
                 {
                     if (reader.HorizontalScrollBarVisibility == Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled)
@@ -182,8 +226,8 @@ public sealed class LocalHistoryTests : IDisposable
                     Point over = reader.TranslatePoint(new Point(Math.Min(40, reader.Bounds.Width / 2), Math.Min(18, reader.Bounds.Height / 2)), window)!.Value;
                     for (int attempt = 0; attempt < 20; attempt++)
                     {
-                        Point at = target.TranslatePoint(default, reader)!.Value;
-                        double visible = Math.Min(reader.Viewport.Width, target.Bounds.Width);
+                        Point at = target.TranslatePoint(anchor, reader)!.Value;
+                        double visible = rightEdge ? 1 : Math.Min(reader.Viewport.Width, target.Bounds.Width);
                         double amount = at.X < 0 ? -at.X : at.X + visible > reader.Viewport.Width ? reader.Viewport.Width - at.X - visible : 0;
                         if (Math.Abs(amount) < 1)
                         {
@@ -192,8 +236,8 @@ public sealed class LocalHistoryTests : IDisposable
                         window.MouseWheel(over, new Vector(Math.Clamp(amount / 50, -5, 5), 0));
                         Ui.Settle();
                     }
-                    Point final = target.TranslatePoint(default, reader)!.Value;
-                    Assert.True(final.X >= -1 && final.X + Math.Min(reader.Viewport.Width, target.Bounds.Width) <= reader.Viewport.Width + 1,
+                    Point final = target.TranslatePoint(anchor, reader)!.Value;
+                    Assert.True(final.X >= -1 && final.X + (rightEdge ? 1 : Math.Min(reader.Viewport.Width, target.Bounds.Width)) <= reader.Viewport.Width + 1,
                         "Horizontal input could not reveal the Local History control");
                 }
             }
