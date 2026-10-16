@@ -281,7 +281,7 @@ with macOS pending.
 | Profiler Memory/Frames subviews | Actual held-object comparison/object/root-path flows, million-object metadata and long Frames metrics/scrolling/source navigation have scoped Windows/Linux tests and both-theme captures. | Remaining error/cancellation/busy transitions and unexamined snapshot states; scoped evidence is listed above. |
 
 Long editor tabs and status paths now have scoped fixes above. `9c805c4` adds real populated Git long-path/message,
-branch/file keyboard and resize checks on Windows/Linux; Local History, Commit and unexamined Git states continue.
+branch/file keyboard and resize checks on Windows/Linux. `d229d3a` adds real Local History file/folder Revert, Undo/Save, long-label and side200 toolbar reading with ten Windows and two native Linux cases passing. DiffView, Commit and unexamined Git states continue.
 Optional status widgets and remaining popup/focus rules continue; the Profiler test repair still requires native
 acceptance while bounded IDE popup shadow/long-result work resumes. The capture
 inventory is updated as those checks run; it is not a stopping condition.
