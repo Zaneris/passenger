@@ -54,7 +54,7 @@ public sealed class FramesView : DockPanel
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
             VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
         };
-        StackPanel legend = new() { Orientation = Orientation.Horizontal, Spacing = 14, Margin = new Thickness(12, 2, 12, 0) };
+        WrapPanel legend = new() { ItemSpacing = 14, LineSpacing = 4, Margin = new Thickness(12, 2, 12, 0) };
         foreach ((string label, string brush) in new[] { ("Measure", "Passenger.Graph.0"), ("Arrange", "Passenger.Graph.1"), ("Render", "Passenger.Graph.2"), ("Other UI work", "Passenger.TextMuted"), ("Compositor", "Passenger.Graph.3") })
         {
             Border swatch = new() { Width = 9, Height = 9, VerticalAlignment = VerticalAlignment.Center, Opacity = brush == "Passenger.TextMuted" ? 0.35 : 1 };
@@ -68,10 +68,17 @@ public sealed class FramesView : DockPanel
         {
             [DockProperty] = Dock.Top,
             BorderThickness = new Thickness(0, 0, 0, 1),
-            Child = new StackPanel { Children = { legend, strip, summary } },
+            Child = new ScrollViewer
+            {
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = new StackPanel { Children = { legend, strip, summary } },
+            },
             Padding = new Thickness(0, 4, 0, 0),
         };
         band.Bind(Border.BorderBrushProperty, band.GetResourceObservable("Passenger.Divider"));
+        // A wrapped summary scrolls before it takes the table's header and two rows away.
+        SizeChanged += (_, change) => band.MaxHeight = Math.Max(0, change.NewSize.Height - 88);
 
         (string Title, double Width)[] columns = [("Control", 0), ("Own time", NumberWidth), ("Measures", NumberWidth), ("Measure time", NumberWidth),
             ("Arranges", NumberWidth), ("Arrange time", NumberWidth + 16)];
@@ -91,7 +98,13 @@ public sealed class FramesView : DockPanel
         });
         table.DoubleTapped += (_, _) => Open();
         table.KeyDown += OnKey;
-        shown = new DockPanel { Children = { band, heading, table } };
+        ScrollViewer columnsView = new()
+        {
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Content = new DockPanel { Children = { heading, table } },
+        };
+        shown = new DockPanel { Children = { band, columnsView } };
         placeholder = Muted("No Avalonia frames in this run. Passenger records an Avalonia app's frames, layout and rendering when it profiles one it launched (Profile) or one Run or Debug started (Attach Profiler).");
         placeholder.HorizontalAlignment = HorizontalAlignment.Center;
         placeholder.VerticalAlignment = VerticalAlignment.Center;
@@ -268,6 +281,7 @@ public sealed class FramesView : DockPanel
     private static Grid Row((string Title, double Width)[] columns, Control[] cells)
     {
         Grid row = new() { ColumnDefinitions = new ColumnDefinitions(string.Join(",", columns.Select(c => c.Width == 0 ? "*" : $"{c.Width}"))), MinHeight = 22 };
+        row.ColumnDefinitions[0].MinWidth = 240;
         for (int i = 0; i < cells.Length; i++)
         {
             Grid.SetColumn(cells[i], i);
