@@ -85,11 +85,15 @@ public sealed class ToolHeaderTests : IDisposable
                 {
                     window.Width = width;
                     Ui.Settle();
-                    Assert.True(page.IsChecked == true && Inside(page, strip), $"'{page.Content}' lost selection or escaped its strip at {width}px");
+                    UiAudit.Capture(window, $"profiler-page-{page.Content}-{width:0}-{(light ? "light" : "dark")}");
+                    Assert.True(page.IsChecked == true, $"'{page.Content}' lost selection at {width}px");
+                    Assert.True(Inside(page, strip), $"'{page.Content}' escapes its strip at {width}px: tab bounds={page.Bounds}, "
+                        + $"position={page.TranslatePoint(default, strip)}, strip={strip.Bounds}, viewport={strip.Viewport}, "
+                        + $"extent={strip.Extent}, offset={strip.Offset}, content={((Control)strip.Content!).Bounds}, "
+                        + $"profiler={window.ProfilerView.Bounds}, window={window.Bounds}");
                     Assert.Same(page, Assert.Single(pages, button => button.IsChecked == true));
                     Assert.Same(focus, window.FocusManager?.GetFocusedElement());
                     CheckActions(tabsBar);
-                    UiAudit.Capture(window, $"profiler-page-{page.Content}-{width:0}-{(light ? "light" : "dark")}");
                 }
             }
             window.Width = 640;
