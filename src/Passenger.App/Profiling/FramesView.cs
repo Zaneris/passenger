@@ -110,6 +110,7 @@ public sealed class FramesView : DockPanel
         placeholder.VerticalAlignment = VerticalAlignment.Center;
         placeholder.TextWrapping = TextWrapping.Wrap;
         placeholder.MaxWidth = 560;
+        placeholder.Margin = new Thickness(12);
         placeholder.TextAlignment = TextAlignment.Center;
         Children.Add(new Panel { Children = { shown, placeholder } });
         Show([], 0);
