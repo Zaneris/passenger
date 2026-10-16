@@ -203,9 +203,12 @@ public static class Agent
             bool input = request.Method == Wire.Input;
             if (input)
             {
-                if (!await SettleInputAsync(dispatcher, inspector, request.Input))
+                Settling settled = await SettleInputAsync(dispatcher, inspector, request.Input);
+                if (settled != Settling.Done)
                 {
-                    throw new Refusal("The popup is still moving: wait for its opening animation to finish before acting");
+                    throw new Refusal(settled == Settling.Moving
+                        ? "The popup is still moving: wait for its opening animation to finish before acting"
+                        : "The app's UI is busy: input was not sent; wait for it to finish its current work before acting");
                 }
             }
             reply = await dispatcher.InvokeAsync(() => inspector.Handle(request));
@@ -224,32 +227,36 @@ public static class Agent
         connection.Send(reply);
     }
 
-    private static async Task<bool> SettleInputAsync(Dispatcher dispatcher, Inspector inspector, InputAction? action)
+    private enum Settling { Done, Moving, Busy }
+
+    private static async Task<Settling> SettleInputAsync(Dispatcher dispatcher, Inspector inspector, InputAction? action)
     {
         Stopwatch took = Stopwatch.StartNew();
+        bool moving = false;
         while (took.Elapsed < Busy)
         {
             TimeSpan remaining = Busy - took.Elapsed;
             if (remaining <= TimeSpan.Zero)
             {
-                return false;
+                return moving ? Settling.Moving : Settling.Busy;
             }
             DispatcherOperation<bool> queued = dispatcher.InvokeAsync(() => inspector.SettleInput(action), DispatcherPriority.Background);
             try
             {
                 if (await queued.Task.WaitAsync(remaining))
                 {
-                    return true;
+                    return Settling.Done;
                 }
+                moving = true;
             }
             catch (TimeoutException)
             {
                 queued.Abort();
-                return false;
+                return Settling.Busy;
             }
             // Poll the observed transform while allowing WPF's animation/render work to advance on its own dispatcher.
             await Task.Delay(TimeSpan.FromMilliseconds(16));
         }
-        return false;
+        return moving ? Settling.Moving : Settling.Busy;
     }
 }
