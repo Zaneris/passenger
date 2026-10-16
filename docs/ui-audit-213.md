@@ -42,7 +42,7 @@ all text lengths, all pages, a populated form, keyboard focus or accessibility b
 | ConfirmDialog | 420, real refactoring/keymap questions | Captured; visual and long-text/footer review pending. |
 | ConflictsDialog | 760, real Git conflict | Captured; narrow and visual review pending. |
 | ExtractInterfaceDialog | 560, checked members | Inspected both themes; minimum width and long names remain. |
-| FeedDialog | 520, new source form | Inspected both themes; narrow and keyboard checkbox focus remain. |
+| FeedDialog | 520, new source form; `3fee501` adds long-heading wrap with real edit/cancel input | Inspected both themes; complete narrow/checkbox-state inventory remains. |
 | FileNestingDialog | 720, enabled/disabled rules | Enabled frame inspected both themes; minimum width and scroll ends remain. |
 | KeyboardShortcutDialog | 460, empty/assigned/conflicting strokes | Empty disabled-OK frame inspected both themes; other states/long action names remain. |
 | MembersMoveDialog | 560, pull-up/push-down | Disabled Next inspected both themes; long names and minimum width remain. |
@@ -259,6 +259,11 @@ production header fix or explaining the original intermittent failure. Root evid
 results exactly once per OS and zero failed tests, with a budget-only macOS shard failure and separate ARM image
 detach failure. Newer source still requires native CI; see the timing and case-growth evidence in MVP progress.
 
+Complete native `7241544` run `38839133992` later reproduces the Dark Profiler Snapshots-at-683 failure with the
+pre-capture assertion order. Its fractional transformed tab geometry is under investigation; the earlier passing
+focused run does not resolve that recurrence, and no product clipping cause, tolerance change or fixed header is
+claimed. The current Self Debugging deadline/restore repair has scoped Windows/Linux evidence, with macOS pending.
+
 | Tool surfaces | Current captured/tested state | Continuing source or capture work |
 | --- | --- | --- |
 | Hierarchy, Git, Unit Tests | Empty guidance fits its own 640px-window pane; both themes inspected. | Populated hierarchy/history/test views and responsive controls. |
@@ -266,11 +271,13 @@ detach failure. Newer source still requires native CI; see the timing and case-g
 | Find, Structure, Bookmarks, Local History, Problems, Debug | Shared empty hints fit normal/narrow viewports. Problems adds actual compiler/solution/Hot Reload rows and reachable categories in side200/bottom panes, both themes. | Other populated tool rows, narrow action bars, keyboard focus and selection through resize. |
 | Terminal | Real-shell normal/narrow frames both themes inspected; `fc974f5` executes 23 actual terminal cases on Linux x64, with later macOS/Linux ARM missing-path acceptance. `6d1752c` adds many-session/long-name overflow and keyboard-focus resizing on Windows, with actual command routing and run exit. | Native execution of the newer overflow coverage and complete remaining focus inventory. |
 | Explorer, Run, Build, Commit, Live Visual Tree | Captured at 1200/683 both themes in the 17-tool sweep. Earlier focused docking, console/editor scrollbar and empty-editor evidence remains. | Complete populated-state visual/input inventory; capture existence alone is not a pass. |
-| NuGet | Real local-feed toolbar/header/feed ellipsis plus populated Sources form/configuration paths fit at 1200/683/640 and side200, with actual Windows/Linux input and both-theme captures. | Remaining populated package/error/detail states and unexamined source errors/credentials. |
+| NuGet | Real local-feed toolbar/header/feed ellipsis, populated Sources configuration paths and `d702d41` package metadata/install/update/remove fit at 1200/683/640 and side200 with actual Windows/Linux input and both-theme captures. Explicit version choices survive only same-identity refresh while offered; automatic feed defaults remain live. | Remaining error/detail/source-credential states. Native package tests report an ancillary missing WindowsDesktop reference pack; no clean code-help claim. |
 | Profiler Memory/Frames subviews | Actual held-object comparison/object/root-path flows, million-object metadata and long Frames metrics/scrolling/source navigation have scoped Windows/Linux tests and both-theme captures. | Remaining error/cancellation/busy transitions and unexamined snapshot states; scoped evidence is listed above. |
 
-Long editor tabs and status paths now have scoped fixes above. Populated History/Git forms, optional status widgets
-and remaining popup/focus rules continue; the current native macOS Self Debugging failure takes priority. The capture
+Long editor tabs and status paths now have scoped fixes above. `9c805c4` adds real populated Git long-path/message,
+branch/file keyboard and resize checks on Windows/Linux; Local History, Commit and unexamined Git states continue.
+Optional status widgets and remaining popup/focus rules continue; the recurring native macOS Profiler header
+geometry failure takes priority after the timing checkpoint. The capture
 inventory is updated as those checks run; it is not a stopping condition.
 
 ## Reference and execution limits

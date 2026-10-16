@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Threading;
@@ -202,14 +203,20 @@ public static class Agent
             bool input = request.Method == Wire.Input;
             if (input)
             {
-                // What changed since is laid out first (a popup just opened), as a person sees it before acting.
-                await dispatcher.InvokeAsync(inspector.Settle, DispatcherPriority.Loaded);
+                Settling settled = await SettleInputAsync(dispatcher, inspector, request.Input);
+                if (settled != Settling.Done)
+                {
+                    throw new Refusal(settled == Settling.Moving
+                        ? "The popup is still moving: wait for its opening animation to finish before acting"
+                        : "The app's UI is busy: input was not sent; wait for it to finish its current work before acting");
+                }
             }
             reply = await dispatcher.InvokeAsync(() => inspector.Handle(request));
             if (input)
             {
-                // Once what it set going ran (an automation click comes at Input priority) and is laid out, within a moment.
-                await Task.WhenAny(dispatcher.InvokeAsync(inspector.Settle, DispatcherPriority.Background).Task, Task.Delay(Busy));
+                // An automation click runs at Input priority; its popup's layout and opening translation settle afterward.
+                // A never-ending animation still answers the click that opened it within Busy; no input is replayed.
+                await SettleInputAsync(dispatcher, inspector, null);
             }
         }
         catch (Exception error)
@@ -218,5 +225,38 @@ public static class Agent
         }
         Trace($"{request.Method} {request.Id}: {reply.Error ?? (reply.Windows is { } windows ? $"{windows.Count} window(s)" : reply.Tree is { } tree ? $"{tree.Roots.Count} root(s)" : "answered")}");
         connection.Send(reply);
+    }
+
+    private enum Settling { Done, Moving, Busy }
+
+    private static async Task<Settling> SettleInputAsync(Dispatcher dispatcher, Inspector inspector, InputAction? action)
+    {
+        Stopwatch took = Stopwatch.StartNew();
+        bool moving = false;
+        while (took.Elapsed < Busy)
+        {
+            TimeSpan remaining = Busy - took.Elapsed;
+            if (remaining <= TimeSpan.Zero)
+            {
+                return moving ? Settling.Moving : Settling.Busy;
+            }
+            DispatcherOperation<bool> queued = dispatcher.InvokeAsync(() => inspector.SettleInput(action), DispatcherPriority.Background);
+            try
+            {
+                if (await queued.Task.WaitAsync(remaining))
+                {
+                    return Settling.Done;
+                }
+                moving = true;
+            }
+            catch (TimeoutException)
+            {
+                queued.Abort();
+                return Settling.Busy;
+            }
+            // Poll the observed transform while allowing WPF's animation/render work to advance on its own dispatcher.
+            await Task.Delay(TimeSpan.FromMilliseconds(16));
+        }
+        return moving ? Settling.Moving : Settling.Busy;
     }
 }

@@ -24,7 +24,14 @@ public sealed class SelfDebuggingTests : IDisposable
         File.WriteAllText(Path.Combine(folder, "Sum.csproj"),
             "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <OutputType>Exe</OutputType>\n    <TargetFramework>net10.0</TargetFramework>\n  </PropertyGroup>\n</Project>\n");
         File.WriteAllText(Path.Combine(folder, "Program.cs"), "System.Console.WriteLine(1 + 2);\n");
-        TestFolders.Prepare(() => Restore.Run(folder), folder, state);
+        TestFolders.Prepare(() =>
+        {
+            Restore.Run(folder);
+            // CI restored the repository before the test run established its isolated NuGet home. Its first restore
+            // here changes generated imports and assets (even for the same package cache), so prepare them before
+            // opening the models, as for the inner project. The IDE still builds and launches itself below.
+            Restore.Run(Path.Combine(Debugging.Helpers.Debuggees.Root, "src", "Passenger.App", "Passenger.App.csproj"));
+        }, folder, state);
     }
 
     public void Dispose()
@@ -56,11 +63,19 @@ public sealed class SelfDebuggingTests : IDisposable
         Ui.Run(window, AppActions.ToggleBreakpoint);
 
         string picture = Path.Combine(folder, "inner.png");
+        Dictionary<string, byte[]> restoreInputs = Directory.EnumerateFiles(Path.Combine(repository, "artifacts", "obj"), "*", SearchOption.AllDirectories)
+            .Where(path => Path.GetFileName(path) is "project.assets.json" || path.EndsWith(".nuget.g.props", StringComparison.Ordinal) || path.EndsWith(".nuget.g.targets", StringComparison.Ordinal))
+            .ToDictionary(path => path, File.ReadAllBytes, StringComparer.Ordinal);
+        Assert.NotEmpty(restoreInputs);
         LoadingState("Before Debug");
         Task<string?> launched = window.DebugAsync($"\"{folder}\" --screenshot \"{picture}\" --key F10 --key F10 --wait 600000");
         try
         {
-            Assert.Null(Ui.Await(launched, "Passenger to build and start under its debugger", TimeSpan.FromMinutes(5)));
+            // The whole repository's build can outlast a small project's settle. Pump this operation to its existing
+            // deadline first; settling inside Await would replace that deadline with Settle's unrelated 90 seconds.
+            Ui.PumpUntil(() => launched.IsCompleted, "Passenger to build and start under its debugger", TimeSpan.FromMinutes(5));
+            Assert.Null(launched.GetAwaiter().GetResult());
+            Ui.Settle();
         }
         catch (TimeoutException)
         {
@@ -70,6 +85,11 @@ public sealed class SelfDebuggingTests : IDisposable
             throw;
         }
         LoadingState("Debug launched");
+        foreach ((string path, byte[] before) in restoreInputs)
+        {
+            Assert.True(before.AsSpan().SequenceEqual(File.ReadAllBytes(path)),
+                $"Debug's build changed a restore input prepared before the repository opened: {path}");
+        }
         DebugSession session = window.Debugger.Session!;
         Ui.WaitFor(() => session.State == DebugState.Paused || !window.Debugger.IsDebugging, "the inner Passenger to stop at the breakpoint in its key's action", TimeSpan.FromMinutes(3));
         Assert.True(session.State == DebugState.Paused, $"The inner Passenger ended without stopping: {window.Status}\n{Console(window)}");
