@@ -171,6 +171,21 @@ Actual Shift-Tab/Tab/Enter closes only that background shell, preserves the sele
 Tool Tab/Editor Tabs pass 10/10 in 36s, zero skips; build 0 warnings/errors. All four final 640/1200 scale-2 frames in
 `close-action-final/` were inspected in both themes. Root's merged final two Terminal cases also pass in 23s.
 
+`ab704c8` replaces the square two-tone default adorner with a rounded accent outline that cannot intercept input.
+Checkbox focus follows its actual glyph instead of surrounding the label, following the installed Rider focused
+checkbox icon reference. Real Tab/Space and pointer input check checked/unchecked states, disabled focus removal,
+the primary button's visible ring and the unclipped left outline's actual painted pixel. A real Settings option
+wraps at its default font size at 640px; glyph alignment and keyboard focus survive 640/980/683/640 resizing and
+the change between inline/separate labels. Dialog Buttons/Settings/Tool Tab/Tool Header pass 21/21 in 1m39s, zero
+skips; build 0 warnings/errors. All fourteen final `checkbox-focus-verified/` scale-2 frames were inspected in both
+themes. Existing tab-specific adorners retain their overrides. The 21-case binary predates only the separate
+`4ec6143` Profiler diagnostic test refinement; exact native pre-capture header validation remains separate.
+Test-only `d09935c` then verifies the focused primary label's rendered ink: both themes retain 663 measured
+foreground pixels before/after keyboard focus, while a deliberately opaque adornment control hides all of them.
+Restoring the original outline restores the ink; no actual label-loss product fault or background fix is claimed.
+The final two real dialog cases pass in 1s, zero skips, with build 0 warnings/errors. Both final primary-focus frames
+in `checkbox-focus-original-paint/` were inspected; this does not replace the fourteen original focus-state frames.
+
 `6b91997` constrains actual Problems messages, advisory links and location/code labels to the available row.
 Full messages/locations remain on hover, and Copy Message retains the untrimmed text. The old layout reproduces
 an out-of-list location even at 1200px. Actual missing-baseline Hot Reload and local-feed vulnerability flows now
@@ -183,6 +198,13 @@ The complete native CI run at `47f7a57` retains 948 results per OS with no missi
 Linux pass; macOS fails two Profiler fixture cases and both Profiler header cases. The latter fail the combined
 Snapshots selection/visibility check on the 683px resize; `77d9f2d` separates selection from exact viewport/offset geometry in a focused native
 rerun. Earlier local/Linux header passes are historical evidence, not proof that this macOS regression is fixed.
+The focused native macOS run `38829620638` at `cee6db2` passes all four actual Header/Profiler fixture cases,
+zero skips, in about 1m15s. All six normal/narrow Snapshots frames and both 640px running frames were inspected
+in both themes. The canonical fixture failure is cleared, but no header source fix is claimed. Because audit
+capture triggers rendering before the assertions in `77d9f2d`, `4ec6143` now records the exact selection,
+visibility, checked pages, focus and geometry before capture; its native rerun remains required. The currently
+active complete `c9509e4` run uses the earlier assertion order. Evidence is root
+`artifacts/milestone-1/integration/focused-38829620638/macOS/`.
 
 | Tool surfaces | Current captured/tested state | Continuing source or capture work |
 | --- | --- | --- |
