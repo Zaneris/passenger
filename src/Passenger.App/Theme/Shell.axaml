@@ -29,6 +29,28 @@
         <x:Double x:Key="MenuFlyoutSubItemPopupHorizontalOffset">0</x:Double>
     </Styles.Resources>
 
+    <!-- Keyboard focus is a rounded accent outline, with no input surface over the control it marks. -->
+    <Style Selector="AdornerLayer">
+        <Setter Property="DefaultFocusAdorner">
+            <FocusAdornerTemplate>
+                <Border Name="ControlFocusRing" IsHitTestVisible="False" AdornerLayer.IsClipEnabled="False" Margin="-3" BorderThickness="1"
+                        BorderBrush="{DynamicResource Passenger.Accent}" CornerRadius="{DynamicResource Passenger.ToolRadius}" />
+            </FocusAdornerTemplate>
+        </Setter>
+    </Style>
+    <Style Selector="CheckBox">
+        <Setter Property="FocusAdorner">
+            <FocusAdornerTemplate>
+                <!-- Fluent's glyph occupies the first 20px of its control-height row, even when the label wraps. -->
+                <Grid Width="20" Height="{DynamicResource Passenger.ControlHeight}" HorizontalAlignment="Left"
+                      VerticalAlignment="Top" IsHitTestVisible="False" AdornerLayer.IsClipEnabled="False">
+                    <Border Name="CheckboxFocusRing" IsHitTestVisible="False" Margin="-3,1,-3,1" BorderThickness="1"
+                            BorderBrush="{DynamicResource Passenger.Accent}" CornerRadius="{DynamicResource Passenger.ToolRadius}" />
+                </Grid>
+            </FocusAdornerTemplate>
+        </Setter>
+    </Style>
+
     <!-- All scrollable surfaces use the same overlay rail. Fluent supplies wheel, track and drag behavior; only its
          arrows and opaque track go, so a bar never takes width away from the content or looks like a separate panel. -->
     <Style Selector="ScrollViewer">
@@ -542,6 +564,12 @@
         <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style Selector="Button.tabClose">
+        <Setter Property="FocusAdorner">
+            <FocusAdornerTemplate>
+                <Border Name="TabCloseFocusRing" IsHitTestVisible="False" BorderThickness="1"
+                        BorderBrush="{DynamicResource Passenger.Accent}" CornerRadius="3" />
+            </FocusAdornerTemplate>
+        </Setter>
         <Setter Property="Width" Value="16" />
         <Setter Property="Height" Value="16" />
         <Setter Property="MinHeight" Value="0" />
@@ -564,6 +592,10 @@
         <Setter Property="Opacity" Value="1" />
     </Style>
     <Style Selector="ToggleButton.panelTab:checked Button.tabClose">
+        <Setter Property="Opacity" Value="1" />
+    </Style>
+    <!-- A close action keeps its glyph while it owns the keys, including on an inactive, unhovered tab. -->
+    <Style Selector="Button.tabClose:focus">
         <Setter Property="Opacity" Value="1" />
     </Style>
     <Style Selector="Button.tabClose:pointerover /template/ ContentPresenter#PART_ContentPresenter">
@@ -723,7 +755,21 @@
     </Style>
 
     <!-- A bottom tool window's tab: plain text, the open one on a raised band. -->
+    <Style Selector="ScrollViewer.toolTabs">
+        <Setter Property="Height" Value="32" />
+        <Setter Property="Margin" Value="8,0" />
+        <Setter Property="HorizontalScrollBarVisibility" Value="Auto" />
+        <Setter Property="VerticalScrollBarVisibility" Value="Disabled" />
+    </Style>
     <Style Selector="ToggleButton.panelTab">
+        <!-- A keyboard focus ring is decoration: it must not cover an overlay scrollbar's pointer target. -->
+        <Setter Property="FocusAdorner">
+            <FocusAdornerTemplate>
+                <Border IsHitTestVisible="False" BorderThickness="1"
+                        BorderBrush="{DynamicResource Passenger.Accent}"
+                        CornerRadius="{DynamicResource Passenger.ToolRadius}" />
+            </FocusAdornerTemplate>
+        </Setter>
         <Setter Property="Height" Value="24" />
         <Setter Property="Padding" Value="10,0" />
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.ToolRadius}" />

@@ -7,6 +7,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Styling;
+using Avalonia.Threading;
 using Passenger.Editor;
 using Passenger.Profiler;
 
@@ -52,12 +53,12 @@ public sealed class MemoryView : DockPanel
     private readonly ListBox paths;
     private readonly ListBox keyPaths;
     private readonly ToggleButton[] setTabs;
-    private readonly DockPanel typePage;
-    private readonly DockPanel deltaPage;
+    private readonly ScrollViewer typePage;
+    private readonly ScrollViewer deltaPage;
     private readonly DockPanel setPage;
-    private readonly DockPanel objectsPage;
-    private readonly DockPanel pathsPage;
-    private readonly DockPanel keyPathsPage;
+    private readonly ScrollViewer objectsPage;
+    private readonly ScrollViewer pathsPage;
+    private readonly ScrollViewer keyPathsPage;
     private readonly List<Page> trail = [];
     private int loading;
     private int typeSort;
@@ -83,10 +84,28 @@ public sealed class MemoryView : DockPanel
         Children.Add(left);
 
         crumbs = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, VerticalAlignment = VerticalAlignment.Center };
-        actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center, [DockProperty] = Dock.Right };
-        DockPanel head = new() { Margin = new Thickness(12, 4, 8, 0), Height = 30 };
-        head.Children.Add(actions);
-        head.Children.Add(crumbs);
+        actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
+        ScrollViewer actionStrip = new() { Classes = { "toolTabs" }, Content = actions, VerticalAlignment = VerticalAlignment.Center };
+        ScrollViewer crumbStrip = new() { Classes = { "toolTabs" }, Content = crumbs, VerticalAlignment = VerticalAlignment.Center };
+        Grid head = new() { Margin = new Thickness(12, 4, 8, 0), ColumnDefinitions = new ColumnDefinitions("*,Auto"), RowDefinitions = new RowDefinitions("Auto,Auto") };
+        head.Children.Add(crumbStrip);
+        head.Children.Add(actionStrip);
+        Grid.SetColumn(actionStrip, 1);
+        head.SizeChanged += (_, _) => ArrangeHeader();
+        actions.SizeChanged += (_, _) => ArrangeHeader();
+        crumbs.SizeChanged += (_, _) => ArrangeHeader();
+
+        void ArrangeHeader()
+        {
+            actions.Measure(Avalonia.Size.Infinity);
+            crumbs.Measure(Avalonia.Size.Infinity);
+            bool under = actions.DesiredSize.Width + 12 + Math.Min(crumbs.DesiredSize.Width, 240) > head.Bounds.Width;
+            Grid.SetRow(actionStrip, under ? 1 : 0);
+            Grid.SetColumn(actionStrip, under ? 0 : 1);
+            Grid.SetColumnSpan(actionStrip, under ? 2 : 1);
+            Grid.SetColumnSpan(crumbStrip, under ? 2 : 1);
+            actionStrip.Margin = under ? new Thickness(0, 4, 0, 0) : new Thickness(12, 0, 0, 0);
+        }
         summary = Muted(string.Empty);
         summary.Margin = new Thickness(12, 0, 12, 6);
         summary.TextWrapping = TextWrapping.Wrap;
@@ -120,12 +139,14 @@ public sealed class MemoryView : DockPanel
         keyPathsPage = Framed(keyTable.Header(null), keyPaths);
 
         setTabs = [Tab("Objects", 0), Tab("Shortest Paths to Roots", 1), Tab("Key Retention Paths", 2)];
-        StackPanel tabs = new() { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(8, 0, 8, 4), [DockProperty] = Dock.Top };
+        StackPanel tabs = new() { Orientation = Orientation.Horizontal, Spacing = 2 };
         foreach (ToggleButton tab in setTabs)
         {
             tabs.Children.Add(tab);
         }
-        setPage = new DockPanel { Children = { tabs, new Panel { Children = { objectsPage, pathsPage, keyPathsPage } } } };
+        ScrollViewer tabStrip = new() { Classes = { "toolTabs" }, Content = tabs, Margin = new Thickness(8, 0, 8, 4), [DockProperty] = Dock.Top };
+        tabStrip.SizeChanged += (_, _) => RevealTab();
+        setPage = new DockPanel { Children = { tabStrip, new Panel { Children = { objectsPage, pathsPage, keyPathsPage } } } };
 
         waiting = Muted(string.Empty);
         waiting.HorizontalAlignment = HorizontalAlignment.Center;
@@ -379,7 +400,10 @@ public sealed class MemoryView : DockPanel
         {
             trail[^1] = page with { Tab = tab };
         }
+        RevealTab();
     }
+
+    private void RevealTab() => Dispatcher.UIThread.Post(() => setTabs.FirstOrDefault(tab => tab.IsChecked == true)?.BringIntoView(), DispatcherPriority.Loaded);
 
     /// <summary>The paths' steps, the set's most retaining path open down to its root, as dotMemory opens it.</summary>
     private void ShowPaths(RetentionNode top)
@@ -531,14 +555,34 @@ public sealed class MemoryView : DockPanel
         {
             Setters = { new Setter(ContentControl.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch) },
         });
+        list.SizeChanged += (_, change) =>
+        {
+            if (change.NewSize.Height > 0 && change.NewSize.Height < change.PreviousSize.Height && list.SelectedItem is { } selected
+                && list.ContainerFromItem(selected) is { } row && row.TranslatePoint(default, list) is { } at
+                && at.Y >= 0 && at.Y + row.Bounds.Height <= change.PreviousSize.Height)
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (list.SelectedItem == selected)
+                    {
+                        list.ScrollIntoView(selected);
+                    }
+                }, DispatcherPriority.Loaded);
+            }
+        };
         return list;
     }
 
-    private static DockPanel Framed(Control header, ListBox list)
+    private static ScrollViewer Framed(Control header, ListBox list)
     {
         Border band = new() { [DockProperty] = Dock.Top, BorderThickness = new Thickness(0, 0, 0, 1), Child = header, Padding = new Thickness(0, 0, 0, 3) };
         band.Bind(Border.BorderBrushProperty, band.GetResourceObservable("Passenger.Divider"));
-        return new DockPanel { Children = { band, list } };
+        return new ScrollViewer
+        {
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Content = new DockPanel { Children = { band, list } },
+        };
     }
 
     private Control PathStep(RetentionRow row)
@@ -571,15 +615,20 @@ public sealed class MemoryView : DockPanel
         return new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(row.Depth * 14, 0, 0, 0), Children = { toggle, text } };
     }
 
-    private static Control SnapshotRow(MemorySnapshot snapshot) => new StackPanel
+    private static Control SnapshotRow(MemorySnapshot snapshot)
     {
-        Margin = new Thickness(2, 4),
-        Children =
+        TextBlock details = Muted($"{snapshot.Taken:HH:mm:ss} · {snapshot.Objects:N0} objects · {Size(snapshot.Bytes)}");
+        details.TextWrapping = TextWrapping.Wrap;
+        return new StackPanel
         {
-            new TextBlock { Text = snapshot.Name, FontWeight = FontWeight.SemiBold },
-            Muted($"{snapshot.Taken:HH:mm:ss} · {snapshot.Objects:N0} objects · {Size(snapshot.Bytes)}"),
-        },
-    };
+            Margin = new Thickness(2, 4),
+            Children =
+            {
+                new TextBlock { Text = snapshot.Name, FontWeight = FontWeight.SemiBold },
+                details,
+            },
+        };
+    }
 
     /// <summary>A name, cut short with an ellipsis where its column ends, and whole in its tooltip.</summary>
     private static TextBlock Cell(string text)
@@ -635,7 +684,12 @@ public sealed class MemoryView : DockPanel
     /// <summary>A list's columns: the first takes what the others leave.</summary>
     private sealed class Table(params (string Title, double Width)[] columns)
     {
-        private ColumnDefinitions Definitions() => new(string.Join(",", columns.Select(c => c.Width == 0 ? "*" : $"{c.Width}")));
+        private ColumnDefinitions Definitions()
+        {
+            ColumnDefinitions definitions = new(string.Join(",", columns.Select(c => c.Width == 0 ? "*" : $"{c.Width}")));
+            definitions[0].MinWidth = 240;
+            return definitions;
+        }
 
         public Control Header(Action<int>? sort)
         {

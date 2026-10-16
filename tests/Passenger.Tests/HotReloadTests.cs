@@ -1,8 +1,12 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Debugging;
+using Passenger.App.Docking;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
@@ -272,8 +276,52 @@ public sealed class HotReloadTests : IClassFixture<RestoredFolders>, IDisposable
             Assert.Equal(4, window.Debugger.BuiltLine(GreeterPath, 5));
             Assert.Same(first, window.Debugger.Session);
             window.ShowToolWindow("problems");
+            foreach (double width in new double[] { 1200, 683, 640, 1200 })
+            {
+                window.Width = width;
+                Ui.Settle();
+                TextBlock summary = Assert.Single(window.BottomPanel.Problems.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == refused.Said);
+                ListBox list = Assert.Single(window.BottomPanel.Problems.GetVisualDescendants().OfType<ListBox>());
+                Assert.Equal(refused.Said, ToolTip.GetTip(summary));
+                Assert.True(summary.TextLayout.Width <= summary.Bounds.Width + 1, "The Hot Reload summary must ellipsize within its row");
+                foreach (Control viewport in summary.GetVisualAncestors().OfType<Control>().Where(control => control == list || control.ClipToBounds))
+                {
+                    Point at = summary.TranslatePoint(default, viewport)!.Value;
+                    Assert.True(at.X >= -1 && at.X + summary.Bounds.Width <= viewport.Bounds.Width + 1,
+                        $"The Hot Reload summary escapes its {viewport.GetType().Name} viewport at window width {width}");
+                }
+                UiAudit.Capture(window, $"hot-reload-missing-baseline-{width:0}-" + (light ? "light" : "dark"));
+                foreach (Passenger.App.Run.Problem problem in refused.Problems)
+                {
+                    ListBoxItem item = Assert.Single(list.GetVisualDescendants().OfType<ListBoxItem>(), control => control.DataContext is Passenger.App.ToolWindows.ProblemRow row && row.Problem == problem);
+                    TextBlock message = Assert.Single(item.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == problem.Message);
+                    foreach (TextBlock label in item.GetVisualDescendants().OfType<TextBlock>().Where(text => !string.IsNullOrEmpty(text.Text)))
+                    {
+                        Point at = label.TranslatePoint(default, list)!.Value;
+                        Assert.True(at.X >= 0 && at.X + label.Bounds.Width <= list.Bounds.Width,
+                            $"The actual Hot Reload problem label '{label.Text}' escapes its list at window width {width}: {at} + {label.Bounds.Width} in {list.Bounds.Width}");
+                        Assert.True(label.TextLayout.Width <= label.Bounds.Width + 1, "A Hot Reload problem label must ellipsize within its row");
+                    }
+                    Assert.Equal(problem.Message, ToolTip.GetTip(message));
+                }
+            }
+
+            DockLayout bottom = window.DockHost.Capture();
+            window.DockHost.Apply(bottom with
+            {
+                LeftWidth = 200,
+                Windows = bottom.Windows.ToDictionary(pair => pair.Key, pair => pair.Key == "problems"
+                    ? pair.Value with { Anchor = ToolAnchor.LeftTop, Shown = true }
+                    : pair.Value.Anchor == ToolAnchor.LeftTop ? pair.Value with { Shown = false } : pair.Value),
+            });
             Ui.Settle();
-            UiAudit.Capture(window, "hot-reload-missing-baseline-" + (light ? "light" : "dark"));
+            ToggleButton hot = Assert.Single(window.BottomPanel.Problems.GetVisualDescendants().OfType<ToggleButton>(), button => button.IsChecked == true);
+            Point hotAt = hot.TranslatePoint(default, window.BottomPanel.Problems)!.Value;
+            Assert.True(hotAt.X >= 0 && hotAt.X + hot.Bounds.Width <= window.BottomPanel.Problems.Bounds.Width,
+                "The dynamically shown Hot Reload category must remain visible when its populated Problems pane moves to a narrow side dock");
+            UiAudit.Capture(window, $"hot-reload-missing-baseline-side-200-{(light ? "light" : "dark")}");
+            window.DockHost.Apply(bottom);
+            Ui.Settle();
 
             // Roslyn acknowledged its no-effect snapshot internally. Restoring the exact DLL must not let a second
             // Apply silently consume the pending text; a new build/session is needed to recover safely.

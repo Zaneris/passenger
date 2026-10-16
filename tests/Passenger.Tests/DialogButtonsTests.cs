@@ -39,6 +39,163 @@ public sealed class DialogButtonsTests : IDisposable
     [AvaloniaTheory]
     [InlineData(false)]
     [InlineData(true)]
+    public void Keyboard_focus_surrounds_the_actual_checkbox_with_a_centered_rounded_non_intercepting_ring(bool light)
+    {
+        MainWindow window = new() { Width = 683, Height = 800, RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark };
+        window.Show();
+        window.OpenFolder(folder);
+        try
+        {
+            window.Open(other);
+            OpenProjectDialog dialog = Opened<OpenProjectDialog>(window);
+            dialog.RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark;
+            dialog.SetRenderScaling(2);
+            CheckBox option = Assert.Single(dialog.GetVisualDescendants().OfType<CheckBox>(), check => Equals(check.Content, "Don't ask again"));
+            for (int attempt = 0; attempt < 20 && !option.IsFocused; attempt++)
+            {
+                Ui.Press(dialog, "tab");
+            }
+            Assert.True(option.IsFocused, "The footer checkbox must be reachable with the actual Tab key");
+            UiAudit.Capture(dialog, $"checkbox-focus-{(light ? "light" : "dark")}");
+            Border ring = CheckGlyphRing(dialog, option);
+            bool before = option.IsChecked == true;
+            Button primary = Assert.Single(dialog.GetVisualDescendants().OfType<Button>(), button => button.IsDefault);
+            int beforeInk = ButtonInk(dialog, primary);
+            Assert.True(beforeInk > 20, "The primary action must paint its label before keyboard focus moves to it");
+            Ui.Press(dialog, "space");
+            Assert.Equal(!before, option.IsChecked);
+            Assert.True(option.IsFocused);
+            UiAudit.Capture(dialog, $"checkbox-focus-checked-{(light ? "light" : "dark")}");
+            Point at = option.TranslatePoint(new Point(10, option.Bounds.Height / 2), dialog)!.Value;
+            Control hit = Assert.IsAssignableFrom<Control>(dialog.InputHitTest(at));
+            Assert.True(hit == option || hit.GetVisualAncestors().Contains(option), "The focus ring must leave the real checkbox under its pointer target");
+            dialog.MouseDown(at, MouseButton.Left);
+            dialog.MouseUp(at, MouseButton.Left);
+            Ui.Settle();
+            Assert.Equal(before, option.IsChecked);
+            for (int attempt = 0; attempt < 10 && !primary.IsFocused; attempt++)
+            {
+                Ui.Press(dialog, "tab");
+            }
+            Assert.DoesNotContain(ring, dialog.GetVisualDescendants());
+            Button next = Assert.IsAssignableFrom<Button>(dialog.FocusManager!.GetFocusedElement());
+            Assert.Same(primary, next);
+            Border buttonRing = Assert.Single(dialog.GetVisualDescendants().OfType<Border>(), border => border.Name == "ControlFocusRing");
+            Assert.True(buttonRing.CornerRadius.TopLeft > next.CornerRadius.TopLeft);
+            Assert.Equal(new Size(next.Bounds.Width + 6, next.Bounds.Height + 6), buttonRing.Bounds.Size);
+            Assert.Equal(new Point(-3, -3), buttonRing.TranslatePoint(default, next));
+            Assert.False(buttonRing.IsHitTestVisible);
+            Assert.Equal(Colour(dialog, "Passenger.Accent"), Ui.Pixel(dialog, buttonRing.TranslatePoint(new Point(0.5, buttonRing.Bounds.Height / 2), dialog)!.Value));
+            Assert.True(buttonRing.Background is null || Solid(buttonRing.Background).A == 0, "A decorative focus outline must leave the action's label visible");
+            int focusedInk = ButtonInk(dialog, primary);
+            Assert.True(focusedInk >= beforeInk * 0.8, $"Keyboard focus must retain the primary label's actual painted ink: {beforeInk} before, {focusedInk} focused");
+            UiAudit.Capture(dialog, $"button-focus-{(light ? "light" : "dark")}");
+            // An opaque decorative fill would cover this very label: prove the rendered check detects that failure.
+            IBrush? clear = buttonRing.Background;
+            int coveredInk;
+            try
+            {
+                buttonRing.Background = primary.Background;
+                Ui.Settle();
+                coveredInk = ButtonInk(dialog, primary);
+                Assert.True(coveredInk < beforeInk * 0.2, "The rendered label check must detect an opaque adorner covering it");
+            }
+            finally
+            {
+                buttonRing.Background = clear;
+                Ui.Settle();
+            }
+            Assert.True(ButtonInk(dialog, primary) >= beforeInk * 0.8);
+            TestContext.Current.TestOutputHelper?.WriteLine($"Primary label ink: before={beforeInk}, focused={focusedInk}, opaque-adornment control={coveredInk}");
+            for (int attempt = 0; attempt < 20 && !option.IsFocused; attempt++)
+            {
+                Ui.Press(dialog, "tab");
+            }
+            Assert.True(option.IsFocused);
+            option.IsEnabled = false;
+            Ui.Settle();
+            Assert.False(option.IsFocused);
+            Assert.DoesNotContain(dialog.GetVisualDescendants().OfType<Border>(), border => border.Name == "CheckboxFocusRing");
+            UiAudit.Capture(dialog, $"checkbox-disabled-{(light ? "light" : "dark")}");
+            dialog.Close();
+            Ui.Settle();
+
+            SettingsDialog settings = window.ShowSettings();
+            settings.RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark;
+            settings.SetRenderScaling(2);
+            settings.Query = "wrapped fragments";
+            settings.Width = 640;
+            Ui.Settle();
+            CheckBox wrapped = Assert.Single(settings.GetVisualDescendants().OfType<CheckBox>(), check => check.IsEffectivelyVisible);
+            Assert.True(wrapped.Bounds.Height > 28, "The real Settings label must wrap at its default font size for this focus alignment check");
+            for (int attempt = 0; attempt < 20 && !wrapped.IsFocused; attempt++)
+            {
+                Ui.Press(settings, "tab");
+            }
+            Assert.True(wrapped.IsFocused);
+            foreach (double width in new double[] { 640, 980, 683, 640 })
+            {
+                settings.Width = width;
+                Ui.Settle();
+                Assert.True(wrapped.IsFocused, "The same Settings checkbox must retain its keys through wrapping and column changes");
+                CheckGlyphRing(settings, wrapped);
+                UiAudit.Capture(settings, $"checkbox-wrapped-{width:0}-{(light ? "light" : "dark")}");
+            }
+            settings.Close();
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    private static Border CheckGlyphRing(Window dialog, CheckBox option)
+    {
+        Border ring = Assert.Single(dialog.GetVisualDescendants().OfType<Border>(), border => border.Name == "CheckboxFocusRing");
+        Border glyph = Assert.Single(option.GetVisualDescendants().OfType<Border>(), border => border.Name == "NormalRectangle");
+        Assert.True(ring.CornerRadius.TopLeft > glyph.CornerRadius.TopLeft);
+        Assert.Equal(new Size(glyph.Bounds.Width + 6, glyph.Bounds.Height + 6), ring.Bounds.Size);
+        Assert.Equal(new Point(-3, -3), ring.TranslatePoint(default, glyph));
+        Assert.Equal(Colour(dialog, "Passenger.Accent"), Solid(ring.BorderBrush));
+        Assert.Equal(Colour(dialog, "Passenger.Accent"), Ui.Pixel(dialog, ring.TranslatePoint(new Point(0.5, ring.Bounds.Height / 2), dialog)!.Value));
+        Assert.False(ring.IsHitTestVisible, "A focus ring must not intercept checkbox clicks");
+        return ring;
+    }
+
+    private static int ButtonInk(Window window, Button button)
+    {
+        TextBlock label = Assert.Single(button.GetVisualDescendants().OfType<TextBlock>(), text => Equals(text.Text, button.Content));
+        Color ink = Solid(label.Foreground);
+        using Avalonia.Media.Imaging.WriteableBitmap frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("The dialog has no rendered frame");
+        PixelPoint at = PixelPoint.FromPoint(label.TranslatePoint(default, window)!.Value, window.RenderScaling);
+        int width = (int)Math.Ceiling(label.Bounds.Width * window.RenderScaling);
+        int height = (int)Math.Ceiling(label.Bounds.Height * window.RenderScaling);
+        byte[] pixels = new byte[width * height * 4];
+        System.Runtime.InteropServices.GCHandle pinned = System.Runtime.InteropServices.GCHandle.Alloc(pixels, System.Runtime.InteropServices.GCHandleType.Pinned);
+        try
+        {
+            frame.CopyPixels(new PixelRect(at.X, at.Y, width, height), pinned.AddrOfPinnedObject(), pixels.Length, width * 4);
+        }
+        finally
+        {
+            pinned.Free();
+        }
+        int red = frame.Format == Avalonia.Platform.PixelFormat.Rgba8888 ? 0 : 2;
+        int blue = red == 0 ? 2 : 0;
+        int count = 0;
+        for (int offset = 0; offset < pixels.Length; offset += 4)
+        {
+            if (Math.Abs(pixels[offset + red] - ink.R) + Math.Abs(pixels[offset + 1] - ink.G) + Math.Abs(pixels[offset + blue] - ink.B) <= 15)
+            {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void Every_dialog_has_its_buttons_words_centred_and_its_text_buttons_alike_with_the_default_where_Rider_puts_it(bool light)
     {
         ThemeVariant? before = Application.Current!.RequestedThemeVariant;

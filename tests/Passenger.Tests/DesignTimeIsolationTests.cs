@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using Avalonia.Headless;
@@ -136,18 +137,19 @@ public sealed class DesignTimeIsolationTests(ITestOutputHelper output)
         string app = Path.Combine(root, "Consumer");
         string solution = Path.Combine(root, "Probe.slnx");
         string framework = AvaloniaApp.Metadata("TargetFramework");
+        string platform = RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant();
         TestFolders.Prepare(() =>
         {
             WpfApp.Create(library, "Markup");
             File.Delete(Path.Combine(library, "Directory.Build.props"));
             Directory.CreateDirectory(app);
             AvaloniaApp.UseFeed(root);
-            File.WriteAllText(Path.Combine(root, "Directory.Build.props"), """
+            File.WriteAllText(Path.Combine(root, "Directory.Build.props"), $$"""
                 <Project>
                   <PropertyGroup>
                     <EnableWindowsTargeting>true</EnableWindowsTargeting>
                     <Configuration>Debug</Configuration>
-                    <Platform>x64</Platform>
+                    <Platform>{{platform}}</Platform>
                     <BaseIntermediateOutputPath>obj/custom/</BaseIntermediateOutputPath>
                     <OutputPath>bin/custom/</OutputPath>
                     <ProbeFlavor>CustomGenerator</ProbeFlavor>
@@ -198,6 +200,7 @@ public sealed class DesignTimeIsolationTests(ITestOutputHelper output)
             string[] design = File.ReadAllLines(Path.Combine(library, "paths-true-" + framework + "-windows.txt"));
             output.WriteLine("Normal paths: " + string.Join(" | ", normal));
             output.WriteLine("Design-time paths: " + string.Join(" | ", design));
+            Assert.Equal(platform, normal[6], ignoreCase: true);
             Assert.NotEqual(normal[0], design[0]);
             Assert.Equal(normal[1..], design[1..]);
             Assert.Equal(normal[1..], File.ReadAllLines(Path.Combine(library, "nested-paths.txt"))[1..]);

@@ -56,8 +56,20 @@ public sealed class SelfDebuggingTests : IDisposable
         Ui.Run(window, AppActions.ToggleBreakpoint);
 
         string picture = Path.Combine(folder, "inner.png");
+        LoadingState("Before Debug");
         Task<string?> launched = window.DebugAsync($"\"{folder}\" --screenshot \"{picture}\" --key F10 --key F10 --wait 600000");
-        Assert.Null(Ui.Await(launched, "Passenger to build and start under its debugger", TimeSpan.FromMinutes(5)));
+        try
+        {
+            Assert.Null(Ui.Await(launched, "Passenger to build and start under its debugger", TimeSpan.FromMinutes(5)));
+        }
+        catch (TimeoutException)
+        {
+            LoadingState("Debug timeout");
+            TestContext.Current.TestOutputHelper?.WriteLine("Build tail:\n" + string.Join('\n', window.BottomPanel.Build.Document.Snapshot.ToString().Split('\n').TakeLast(60)));
+            TestContext.Current.TestOutputHelper?.WriteLine("Recent IDE log:\n" + string.Join('\n', Ui.IdeLog().Split('\n').TakeLast(160)));
+            throw;
+        }
+        LoadingState("Debug launched");
         DebugSession session = window.Debugger.Session!;
         Ui.WaitFor(() => session.State == DebugState.Paused || !window.Debugger.IsDebugging, "the inner Passenger to stop at the breakpoint in its key's action", TimeSpan.FromMinutes(3));
         Assert.True(session.State == DebugState.Paused, $"The inner Passenger ended without stopping: {window.Status}\n{Console(window)}");
@@ -106,6 +118,11 @@ public sealed class SelfDebuggingTests : IDisposable
             Assert.True(Processes.Gone(child), $"Stop left what the inner Passenger started running: {Processes.Describe(child)}");
         }
         window.Close();
+
+        void LoadingState(string phase) => TestContext.Current.TestOutputHelper?.WriteLine(
+            $"{phase} at {DateTime.UtcNow:O}: pending={BackgroundWork.Pending}, modelsIdle={window.Session.Models.Idle.IsCompleted}, "
+            + $"evaluations={window.Session.Models.Evaluations}, designBuilds={window.Session.DesignTimeBuilds.Builds}, "
+            + $"languageServer={window.CSharpService?.State}, building={window.IsBuilding}, status={window.Status}");
     }
 
     private static string? Value(MainWindow window, string name) =>

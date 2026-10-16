@@ -1,7 +1,11 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
+using Avalonia.Input;
+using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Packages;
@@ -60,11 +64,15 @@ public sealed class ProjectLoadTests : IDisposable
         TestFolders.Delete(folder);
     }
 
-    [AvaloniaFact]
-    public void A_package_with_a_known_vulnerability_is_a_warning_in_the_status_bar_and_problems_with_its_advisory_and_nuget_offers_its_fix()
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_package_with_a_known_vulnerability_is_a_warning_in_the_status_bar_and_problems_with_its_advisory_and_nuget_offers_its_fix(bool light)
     {
         Restore.Run(project);
         MainWindow window = Open();
+        window.RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark;
+        window.SetRenderScaling(2);
         Ui.WaitFor(() => window.Status?.Contains(Warned, StringComparison.Ordinal) == true,
             $"the status bar to name the vulnerable package and its severity (it says \"{window.Status}\")");
         Assert.Equal($"Warning while loading {Path.Combine("Web", "Web.csproj")}: {Warned}", window.Status);
@@ -81,8 +89,35 @@ public sealed class ProjectLoadTests : IDisposable
         Assert.Equal(["Web", Warned], problems.Rows.Select(r => r.Label));
         Button link = Links(problems).SingleOrDefault(b => (string?)b.Content == Advisory)
             ?? throw new Xunit.Sdk.XunitException("The warning's row in Problems shows no link to the advisory");
-        link.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        ListBox list = Descendants<ListBox>(problems).Single();
+        ProblemRow row = Assert.Single(problems.Rows, item => item.Problem == warning);
+        foreach (double width in new double[] { 1200, 683, 640, 1200, 640 })
+        {
+            window.Width = width;
+            Ui.Settle();
+            ListBoxItem item = Assert.Single(Descendants<ListBoxItem>(list), item => item.DataContext == row);
+            foreach (TextBlock label in Descendants<TextBlock>(item).Where(text => !string.IsNullOrEmpty(text.Text)))
+            {
+                Point labelAt = label.TranslatePoint(default, list)!.Value;
+                Assert.True(labelAt.X >= 0 && labelAt.X + label.Bounds.Width <= list.Bounds.Width,
+                    $"The vulnerability label '{label.Text}' escapes its actual list at {width}px");
+                Assert.True(label.TextLayout.Width <= label.Bounds.Width + 1, "A vulnerability's message, link and location must ellipsize inside their row");
+            }
+            Assert.Contains(Warned, item.GetVisualDescendants().OfType<Control>().Select(ToolTip.GetTip).OfType<string>());
+            UiAudit.Capture(window, $"problem-advisory-{width:0}-{(light ? "light" : "dark")}");
+        }
+        list.SelectedItem = row;
+        Ui.ChooseFromMenu(list, "Copy Message");
+        Ui.WaitFor(() => Ui.Clipboard(window) == Warned, "the complete untrimmed vulnerability message on the clipboard");
+        Point at = link.TranslatePoint(new Point(link.Bounds.Width / 2, link.Bounds.Height / 2), window)!.Value;
+        window.MouseMove(at);
+        Assert.True(link.IsPointerOver, "The advisory link must remain an actual pointer target in the 640px window");
+        window.MouseDown(at, MouseButton.Left);
+        window.MouseUp(at, MouseButton.Left);
+        Ui.Settle();
         Assert.True(window.Browsed.Contains(new Uri(Advisory)), $"Clicking the advisory's link opened [{string.Join(", ", window.Browsed)}]");
+        window.Width = 1200;
+        Ui.Settle();
 
         // The NuGet window marks the package, says what Rider says of it, and offers the version that fixes it.
         NuGetView nuget = window.NuGet;

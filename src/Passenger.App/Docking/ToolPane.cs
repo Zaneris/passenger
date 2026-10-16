@@ -1,7 +1,10 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 
 namespace Passenger.App.Docking;
@@ -11,9 +14,12 @@ namespace Passenger.App.Docking;
 internal sealed class ToolPane : DockPanel
 {
     private readonly DockHost host;
-    private readonly TextBlock title = new() { FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
+    private readonly TextBlock title = new() { FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly ContentControl body = new();
-    private readonly ContentControl tools = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
+    private readonly ContentControl tools = new() { VerticalAlignment = VerticalAlignment.Center };
+    private readonly ScrollViewer toolStrip;
+    private readonly Grid heading;
+    private readonly StackPanel actions;
     private readonly Border header;
 
     public ToolPane(DockHost host)
@@ -37,23 +43,38 @@ internal sealed class ToolPane : DockPanel
                 host.Hide(window.Id);
             }
         };
+        actions = new StackPanel
+        {
+            [Grid.ColumnProperty] = 2,
+            Orientation = Orientation.Horizontal,
+            Spacing = 2,
+            Margin = new Thickness(0, 0, 6, 0),
+            Children = { options, hide },
+        };
+        toolStrip = new ScrollViewer { Name = "ToolHeaderStrip", Classes = { "toolTabs" }, Content = tools, [Grid.ColumnProperty] = 1 };
+        toolStrip.SizeChanged += (_, _) => RevealTool();
+        toolStrip.AddHandler(Button.ClickEvent, (_, _) => RevealTool(), RoutingStrategies.Bubble, handledEventsToo: true);
+        heading = new Grid
+        {
+            Name = "ToolHeader",
+            ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"),
+            RowDefinitions = new RowDefinitions("32,0"),
+            Children = { title, toolStrip, actions },
+        };
+        heading.SizeChanged += (_, _) => FitHeader();
+        tools.SizeChanged += (_, _) => FitHeader();
+        title.SizeChanged += (_, _) => FitHeader();
+        actions.SizeChanged += (_, _) => FitHeader();
         header = new Border
         {
             [DockProperty] = Dock.Top,
-            Height = 32,
             Background = Brushes.Transparent,
-            Child = new DockPanel
-            {
-                Children =
-                {
-                    new StackPanel { [DockProperty] = Dock.Right, Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(0, 0, 6, 0), Children = { options, hide } },
-                    new StackPanel { Orientation = Orientation.Horizontal, Children = { title, tools } },
-                },
-            },
+            Child = heading,
         };
         header.PointerPressed += (_, e) =>
         {
-            if (Window is not { } window || (e.Source is Visual source && source.FindAncestorOfType<Button>(includeSelf: true) is not null))
+            if (Window is not { } window || (e.Source is Visual source && (source.FindAncestorOfType<Button>(includeSelf: true) is not null
+                || source.FindAncestorOfType<ScrollBar>(includeSelf: true) is not null)))
             {
                 return;
             }
@@ -107,6 +128,7 @@ internal sealed class ToolPane : DockPanel
             }
             body.Content = window.Content;
             title.Text = window.Title;
+            ToolTip.SetTip(title, window.Title);
             if (window.HeaderTools?.Parent is ContentControl holder)
             {
                 holder.Content = null;
@@ -114,6 +136,7 @@ internal sealed class ToolPane : DockPanel
             tools.Content = window.HeaderTools;
         }
         IsVisible = window is not null;
+        FitHeader();
     }
 
     private void OnWindowChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -121,8 +144,28 @@ internal sealed class ToolPane : DockPanel
         if (e.PropertyName == nameof(ToolWindow.Title) && Window is { } window)
         {
             title.Text = window.Title;
+            ToolTip.SetTip(title, window.Title);
         }
     }
+
+    private void FitHeader()
+    {
+        if (heading.Bounds.Width <= 0)
+        {
+            return;
+        }
+        title.MaxWidth = Math.Max(0, heading.Bounds.Width - actions.DesiredSize.Width - title.Margin.Left);
+        bool hasTools = tools.Content is not null;
+        bool stacked = hasTools && title.DesiredSize.Width + tools.DesiredSize.Width + 16 + actions.DesiredSize.Width > heading.Bounds.Width;
+        toolStrip.IsVisible = hasTools;
+        heading.RowDefinitions[1].Height = stacked ? new GridLength(32) : new GridLength(0);
+        Grid.SetRow(toolStrip, stacked ? 1 : 0);
+        Grid.SetColumn(toolStrip, stacked ? 0 : 1);
+        Grid.SetColumnSpan(toolStrip, stacked ? 3 : 1);
+    }
+
+    private void RevealTool() => Dispatcher.UIThread.Post(() => tools.GetVisualDescendants().OfType<ToggleButton>()
+        .FirstOrDefault(button => button.IsChecked == true)?.BringIntoView(), DispatcherPriority.Loaded);
 
     private MenuFlyout OptionsMenu()
     {

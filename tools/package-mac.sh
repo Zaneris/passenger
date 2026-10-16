@@ -61,31 +61,14 @@ fi
 build=$(git -C "$root" rev-list --count HEAD)
 
 # The image is mounted under the work folder while it is made and checked, and never left mounted, a failure included.
-mounted=
+record="$work/mount.json"
 attach() {
-    mkdir -p "$mount"
-    hdiutil attach "$@" -nobrowse -noautoopen -mountpoint "$mount" -quiet
-    mounted=1
+    attached_image=$1
+    shift
+    python3 -I "$root/tools/dmg-mount.py" attach "$record" "$attached_image" "$mount" "$@"
 }
 detach() {
-    # Spotlight or XProtect can hold a volume just made for a moment; the last tries force it, the very last saying why
-    # and what holds it (-quiet closes stderr, which left a failure here with no word on CI).
-    for try in 1 2 3 4 5; do
-        force=
-        if [ "$try" -gt 3 ]; then
-            force=-force
-        fi
-        if hdiutil detach "$mount" $force -quiet; then
-            mounted=
-            return
-        fi
-        sleep "$try"
-    done
-    if ! hdiutil detach "$mount" -force; then
-        lsof +D "$mount" >&2 || true
-        fail "the image mounted at $mount could not be detached"
-    fi
-    mounted=
+    python3 -I "$root/tools/dmg-mount.py" detach "$record"
 }
 # hdiutil create and convert now and then fail on a CI runner ("Resource busy", the system's scanners on what was just
 # written), and -quiet closes stderr: tried three times, a moment apart, the last one saying why. OUT is removed first.
@@ -103,13 +86,14 @@ retry_hdiutil() {
     rm -f "$out"
     hdiutil "$@" || fail "hdiutil $1 failed three times"
 }
-trap '[ -z "$mounted" ] || hdiutil detach "$mount" -force -quiet' EXIT
-trap 'exit 1' HUP INT TERM
-if [ -d "$mount" ]; then
-    hdiutil detach "$mount" -force -quiet 2>/dev/null || true
+if [ -f "$record" ]; then
+    detach
 fi
+python3 -I "$root/tools/dmg-mount.py" clear "$work" "$image"
 rm -rf "$work" "$image"
 mkdir -p "$work"
+trap 'status=$?; trap - EXIT; if [ -f "$record" ]; then detach || status=1; fi; exit "$status"' EXIT
+trap 'exit 1' HUP INT TERM
 
 # Each RID owns even its portable build outputs, so the next image cannot reuse the other RID's intermediates.
 # Only the packages the lock files pin, as CI restores; and no MSBuild node is left running once it is done.

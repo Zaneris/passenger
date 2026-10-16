@@ -60,6 +60,10 @@ public sealed class CSharpService : IAsyncDisposable
     public void Reload(IReadOnlyList<string> projects)
     {
         UiThread.Check();
+        if (session is { Fed: true } && projects.Count > 0)
+        {
+            IdeErrors.Write($"C# reload requested for {projects.Count} projects: {string.Join(", ", projects.Take(8))}{(projects.Count > 8 ? ", ..." : string.Empty)}");
+        }
         session?.Reload(projects);
     }
 

@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -27,7 +28,34 @@ public partial class MainWindow
 
     private void AddBreadcrumbs()
     {
-        BreadcrumbHost.Children.Add(breadcrumbs);
+        BreadcrumbHost.Content = breadcrumbs;
+        StatusContent.SizeChanged += (_, _) => FitBreadcrumbs();
+        StatusWidgets.SizeChanged += (_, _) => FitBreadcrumbs();
+        StatusText.PropertyChanged += (_, change) =>
+        {
+            if (change.Property == TextBlock.TextProperty)
+            {
+                FitBreadcrumbs();
+            }
+        };
+        StatusIcon.PropertyChanged += (_, change) =>
+        {
+            if (change.Property == IsVisibleProperty)
+            {
+                FitBreadcrumbs();
+            }
+        };
+        BreadcrumbHost.PropertyChanged += (_, change) =>
+        {
+            if (change.Property == ScrollViewer.ViewportProperty)
+            {
+                foreach (Button crumb in breadcrumbs.Children.OfType<Button>())
+                {
+                    crumb.MaxWidth = Math.Max(0, BreadcrumbHost.Viewport.Width);
+                }
+                RevealCrumb();
+            }
+        };
         outlineAgain = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
         outlineAgain.Tick += (_, _) =>
         {
@@ -123,6 +151,7 @@ public partial class MainWindow
             return;
         }
         shownCrumbs = wanted;
+        BreadcrumbHost.IsVisible = wanted.Count > 0;
         breadcrumbs.Children.Clear();
         for (int i = 0; i < wanted.Count; i++)
         {
@@ -132,7 +161,16 @@ public partial class MainWindow
                 TextBlock between = new() { Text = "›", Classes = { "status" }, Margin = new Avalonia.Thickness(4, 0), VerticalAlignment = VerticalAlignment.Center };
                 breadcrumbs.Children.Add(between);
             }
-            Button crumb = new() { Content = part.Text, Classes = { "crumb" }, Opacity = part.Muted ? 0.75 : 1 };
+            Button crumb = new()
+            {
+                Content = part.Text,
+                ContentTemplate = new FuncDataTemplate<string>((text, _) => new TextBlock { Text = text, TextTrimming = TextTrimming.CharacterEllipsis }),
+                Classes = { "crumb" },
+                Opacity = part.Muted ? 0.75 : 1,
+                MaxWidth = BreadcrumbHost.Viewport.Width > 0 ? BreadcrumbHost.Viewport.Width : double.PositiveInfinity,
+            };
+            ToolTip.SetTip(crumb, part.Target is null ? part.Path : $"{part.Text}\n{part.Path}");
+            crumb.GotFocus += (_, _) => RevealCrumb();
             crumb.Click += (_, _) =>
             {
                 if (part.Target is { } target)
@@ -146,7 +184,22 @@ public partial class MainWindow
             };
             breadcrumbs.Children.Add(crumb);
         }
+        FitBreadcrumbs();
+        RevealCrumb();
     }
+
+    private void FitBreadcrumbs()
+    {
+        double available = Math.Max(0, StatusContent.Bounds.Width - StatusWidgets.Bounds.Width - (StatusIcon.IsVisible ? 20 : 0));
+        // An operation's result shares the remaining space with the path; its full words stay on hover.
+        BreadcrumbHost.MaxWidth = Math.Max(0, available * (string.IsNullOrEmpty(StatusText.Text) ? 1 : 0.4) - BreadcrumbHost.Margin.Right);
+    }
+
+    private void RevealCrumb() => Dispatcher.UIThread.Post(() =>
+    {
+        Button[] parts = [.. breadcrumbs.Children.OfType<Button>()];
+        (parts.FirstOrDefault(crumb => crumb.IsKeyboardFocusWithin) ?? parts.LastOrDefault())?.BringIntoView();
+    }, DispatcherPriority.Loaded);
 
     /// <summary>A part of the path: a folder (muted) or the file, which a click shows in the Explorer, or what the caret is
     /// in, which it goes to.</summary>

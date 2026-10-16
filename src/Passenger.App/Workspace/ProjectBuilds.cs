@@ -195,9 +195,14 @@ public sealed class ProjectBuilds
     private async Task<ProjectInfoResult> InfoAsync(string path)
     {
         await TakeCacheAsync();
-        if (!waiting.ContainsKey(path) && known.TryGetValue(path, out KeptBuild? held) && await Task.Run(() => held.Inputs.All(Stamps.Holds)))
+        if (!waiting.ContainsKey(path) && known.TryGetValue(path, out KeptBuild? held))
         {
-            return new ProjectInfoResult(held.Read(), null, Said(held.Diagnostics));
+            Stamp? changed = await Task.Run(() => held.Inputs.FirstOrDefault(stamp => !Stamps.Holds(stamp)));
+            if (changed is null)
+            {
+                return new ProjectInfoResult(held.Read(), null, Said(held.Diagnostics));
+            }
+            IdeErrors.Write($"Design-time project refresh of {path}: {(changed.Folder ? "folder names" : "file")} changed: {changed.Path}");
         }
         BuiltProject built = await Built(path);
         return built.Problem is { } problem ? new ProjectInfoResult(null, problem) : new ProjectInfoResult(built.Infos, null, Said(built.Diagnostics));

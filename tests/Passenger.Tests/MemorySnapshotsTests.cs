@@ -1,8 +1,11 @@
 using System.Diagnostics;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Interactivity;
+using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Profiling;
@@ -240,8 +243,10 @@ public sealed class MemorySnapshotsTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_heap_of_a_million_objects_is_read_compared_and_opened_while_the_window_goes_on_answering()
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_heap_of_a_million_objects_is_read_compared_and_opened_while_the_window_goes_on_answering(bool light)
     {
         MainWindow window = Profiled("Million", """
             using System.Runtime.CompilerServices;
@@ -267,6 +272,8 @@ public sealed class MemorySnapshotsTests : IDisposable
             }
             sealed class Node(int number) { public int Number { get; } = number; }
             """);
+        window.RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark;
+        window.SetRenderScaling(2);
         MemoryView memory = window.ProfilerView.MemoryPage;
         TimeSpan stall = TimeSpan.Zero;
         Stopwatch clock = Stopwatch.StartNew();
@@ -280,30 +287,68 @@ public sealed class MemorySnapshotsTests : IDisposable
         TimeSpan secondTook = clock.Elapsed;
         Assert.True(second.Objects > 1_200_000, $"{second.Objects} objects in the second snapshot");
 
+        window.Width = 640;
+        Ui.Settle();
         clock.Restart();
+        bool comparingShown = false;
         Task comparing = memory.CompareWithAsync(first);
-        Responsive(() => memory.Comparison is not null, "the comparison", s => stall = s > stall ? s : stall);
+        Responsive(() => memory.Comparison is not null, "the comparison", s => stall = s > stall ? s : stall,
+            () => Busy("comparing", "Comparing snapshots…", ref comparingShown));
         TimeSpan compared = clock.Elapsed;
         TypeDelta nodes = memory.DeltaRows[0];
         Assert.Equal(("Node", 200_000, 200_000, 1_000_000), (nodes.Name, nodes.ObjectsDelta, nodes.NewObjects, nodes.SurvivedObjects));
+        Audit("million-comparison", memory.DeltaList);
 
         clock.Restart();
+        bool pathsShown = false;
         memory.Choose(nodes);
-        Click(memory, "Open New Objects");
-        Responsive(() => memory.Set is not null, "the new nodes and their paths", s => stall = s > stall ? s : stall);
+        Button open = Assert.Single(memory.GetVisualDescendants().OfType<Button>(), button => Equals(button.Content, "Open New Objects"));
+        open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Responsive(() => memory.Set is not null, "the new nodes and their paths", s => stall = s > stall ? s : stall,
+            () => Busy("paths", "Building the shortest paths to roots…", ref pathsShown));
         TimeSpan opened = clock.Elapsed;
         Assert.Equal(200_000, memory.ObjectRows.Count);
         Assert.Equal("Static reference: Heap.Nodes", memory.PathRows[^1].Node.Text);
         Assert.True(comparing.IsCompletedSuccessfully);
+        Audit("million-objects", memory.ObjectList);
 
         TestContext.Current.TestOutputHelper?.WriteLine(
             $"Snapshot #1, {first.Objects:N0} objects: {firstTook.TotalSeconds:0.0} s ({first.Phases}); "
             + $"snapshot #2, {second.Objects:N0} objects: {secondTook.TotalSeconds:0.0} s ({second.Phases}); "
             + $"compared in {compared.TotalMilliseconds:N0} ms; 200,000 new nodes and their paths opened in {opened.TotalMilliseconds:N0} ms; "
-            + $"the UI thread held at most {stall.TotalMilliseconds:N0} ms at a time");
+            + $"the UI thread held at most {stall.TotalMilliseconds:N0} ms at a time; comparison busy frame observed={comparingShown}, paths busy frame observed={pathsShown}");
         Assert.True(stall < TimeSpan.FromMilliseconds(500), $"The window stopped answering for {stall.TotalMilliseconds:N0} ms while a million objects were read and opened");
         window.Profiling.Kill();
         window.Close();
+
+        void Busy(string phase, string message, ref bool observed)
+        {
+            if (!observed && memory.Waiting == message)
+            {
+                UiAudit.Capture(window, $"profiler-memory-phase-{phase}-640-{(light ? "light" : "dark")}");
+                Assert.Empty(UiAudit.HorizontalOverflow(window, $"Memory {phase}", memory));
+                observed = memory.Waiting == message;
+            }
+        }
+
+        void Audit(string page, ListBox list)
+        {
+            List<string> problems = [];
+            object? selected = list.SelectedItem;
+            foreach (double width in new double[] { 1200, 683, 640 })
+            {
+                window.Width = width;
+                Ui.Settle();
+                Assert.Equal(selected, list.SelectedItem);
+                UiAudit.Capture(window, $"profiler-memory-{page}-{width:0}-{(light ? "light" : "dark")}");
+                problems.AddRange(UiAudit.HorizontalOverflow(window, page, memory));
+                if (list.Bounds.Height < 22)
+                {
+                    problems.Add($"Memory {page}: its summary consumed the table's vertical reading viewport at {width}px");
+                }
+            }
+            Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
+        }
     }
 
     /// <summary>A console project, built and started under the profiler from the window, run until it says it is ready.</summary>
@@ -340,7 +385,7 @@ public sealed class MemorySnapshotsTests : IDisposable
 
     /// <summary>Waits for something while background work goes on, the window's own work given its turns as a person's
     /// clicks would be: how long each turn took past what it was given is how long the window did not answer.</summary>
-    private static void Responsive(Func<bool> done, string what, Action<TimeSpan> stalled)
+    private static void Responsive(Func<bool> done, string what, Action<TimeSpan> stalled, Action? during = null)
     {
         DateTime until = DateTime.UtcNow + TimeSpan.FromMinutes(2);
         TimeSpan turn = TimeSpan.FromMilliseconds(20);
@@ -354,6 +399,7 @@ public sealed class MemorySnapshotsTests : IDisposable
             each.Restart();
             Screenshot.Pump(turn);
             stalled(each.Elapsed - turn);
+            during?.Invoke();
         }
     }
 

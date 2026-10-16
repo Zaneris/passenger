@@ -21,6 +21,7 @@ import shutil
 import subprocess
 import sys
 from collections import Counter
+from decimal import Decimal
 from xml.sax.saxutils import escape
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -162,6 +163,8 @@ def duration(seconds, groups):
 
 def deal(weights, count, groups):
     """The longest classes first, each where its collection adds the least to the projected finish time."""
+    # Compare decimal seconds exactly: Python 3.12 changed float summation and therefore near-equal shard ties.
+    weights = {name: Decimal(str(seconds)) for name, seconds in weights.items()}
     hands = [[] for _ in range(count)]
     seconds = [{} for _ in range(count)]
     for name in sorted(weights, key=lambda c: (-weights[c], c)):
@@ -169,7 +172,7 @@ def deal(weights, count, groups):
                                                    sum(seconds[i].values()), i))
         hands[lightest].append(name)
         seconds[lightest][name] = weights[name]
-    return hands, [duration(hand, groups) for hand in seconds]
+    return hands, [float(duration(hand, groups)) for hand in seconds]
 
 
 def run_settings(classes):

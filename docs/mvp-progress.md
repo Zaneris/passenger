@@ -11,21 +11,21 @@ No issue was closed, release published or tag pushed.
 | Issue | Local result | What remains |
 | --- | --- | --- |
 | [#219 Slow Windows debugger startup](https://github.com/Zaneris/passenger/issues/219) | `93737dc` fixes the reproduced false five-second timeout for a live runtime and startup cancellation. Integration then exposed a cancellation-response/shutdown ordering race, fixed in `04b7d865`: the configuration lock covers writing success/error responses before disconnect can close the transport, preserving success-only continuation behavior. Both deterministic old-order controls fail; the fixed RC1 run passed 34 focused tests plus 10/10 repetitions of the original cancellation case. | The original CI incident's late-versus-lost callback cause still needs a trace under the failing runner conditions. Final combined validation is recorded below. |
-| [#218 WPF generated-file contention](https://github.com/Zaneris/passenger/issues/218) | Reproduced the exact MC1000 overlap and identified `Passenger.Host` as the generated-file holder. Selected fix `2991601` persists separate design-time intermediate directories per project/SDK/evaluated properties and owns them across processes, preserving normal Build/Run/watch outputs. Final fixtures passed 9/9; broader checks passed 21 with one expected platform skip. Reverting the four product files makes the final fixture fail MC1000 in 7.5 seconds. Follow-up `3c4a034` repairs Roslyn's reported assembly identity and compiler `/out:` baseline without moving actual generated sources out of isolation; all nine isolation cases and both mixed managed/XAML cases pass. | Native platform/full-suite acceptance remains; CI3 Linux managed EnC acceptance failed and awaits diagnosis/repair. Target-time or local `IntermediateOutputPath` overrides are explicitly unsupported with actionable reasons and recovery. Cache pruning is not implemented. The earlier graph-coordinator experiment was superseded, not shipped. |
+| [#218 WPF generated-file contention](https://github.com/Zaneris/passenger/issues/218) | Reproduced the exact MC1000 overlap and identified `Passenger.Host` as the generated-file holder. Selected fix `2991601` persists separate design-time intermediate directories per project/SDK/evaluated properties and owns them across processes, preserving normal Build/Run/watch outputs. Final fixtures passed 9/9; broader checks passed 21 with one expected platform skip. Reverting the four product files makes the final fixture fail MC1000 in 7.5 seconds. Follow-up `3c4a034` repairs Roslyn's reported assembly identity and compiler `/out:` baseline without moving actual generated sources out of isolation; all nine isolation cases and both mixed managed/XAML cases pass. | Native platform/full-suite acceptance remains; CI3 Unix EnC failures are followed by baseline-path repair `cdb4592` and native Linux checks below, with a new complete CI run required. Target-time or local `IntermediateOutputPath` overrides are explicitly unsupported with actionable reasons and recovery. Cache pruning is not implemented. The earlier graph-coordinator experiment was superseded, not shipped. |
 | [#217 MAUI template inventory](https://github.com/Zaneris/passenger/issues/217) | `d94d4af` passed the original three family tests with MAUI absent and a temporary MAUI-tagged template positive-branch check. Native Windows CI then exposed truncated SDK tag-column parsing in the test expectation; `8116317` reads complete tag columns. The revised four-case class passed locally, and Windows shard 2 in native CI3 at cc7456a passed the corrected inventory assertion. | Native Windows runner acceptance is now observed for that checkpoint; the complete cross-platform CI result remains separate. |
-| [#216 Dialog answer order](https://github.com/Zaneris/passenger/issues/216) | Shared footer ordering now puts competing answers before Cancel on Windows/Linux and the default last on macOS. Thirteen focused Windows tests passed; dark/light scale-2 screenshots were reviewed. | Execute on macOS/Linux; the local Windows pass does not establish their native behavior. |
+| [#216 Dialog answer order](https://github.com/Zaneris/passenger/issues/216) | Shared footer ordering puts competing answers before Cancel on Windows/Linux and the default last on macOS. Thirteen focused Windows tests and reviewed dark/light scale-2 captures are followed by native CI3 at `cc7456a`: both `DialogButtonsTests` theme cases and the real Open Solution/Don't ask again boundary pass on all three systems. | The focused implementation now has native Windows/macOS/Linux test evidence. Remaining whole-UI states and native Rider comparison belong to #213. |
 | [#215 Cross-platform locked restore](https://github.com/Zaneris/passenger/issues/215) | `7ca9d31` fixes the WPF inspector's shared six-RID list/lock entries; six forced locked restores and full self-contained ReadyToRun App restore graphs passed under RC1. Native CI exposed a separate Roslyn extension host/target cross-publish failure; `bbd39c1`, merged in `04e303f`, fixes the portable extension identity. The subsequent native CI packaging jobs all passed, including cold-cache macOS x64. | Final release dry run and native install/use acceptance remain separate from successful restore/publish/package construction. |
 | [#214 Await-step/return-watch race](https://github.com/Zaneris/passenger/issues/214) | Diagnostics added in `3a1ef55`; no race fix claimed. The original await scenario passed 100/100 launches; a return-value boundary probe also passed. Final step/async-step/synthetic-value regressions passed 14/14. | A complete failing engine trace or deterministic other-frame return-watch/completion interleaving is still missing. The 100 clean runs did not exercise that interleaving. |
-| [#213 Whole-UI check](https://github.com/Zaneris/passenger/issues/213) | Ongoing. Resumed work covers responsive docking/current menus/active tab close, all 20 Settings pages, shared editor/output/list scrollbars, terminal scrollback/alternate screen, readable empty-editor headings, Chrome pages/disabled actions, shared Terminal tool tabs with actual process teardown (`6ef4205`), and ten wrapping tool hints (`0c4e149`). See the precise evidence below and [surface inventory](ui-audit-213.md). | Continue unexamined dialog/menu/popup/populated-tool states, responsive Profiler tabs/NuGet toolbar, popup scale/shadows and centered rounded focus. The dialog audit captures 22 types and the tool sweep captures all 17 registered surfaces in both themes; these counts are not whole-UI visual passes. Native Rider behavior was not observed; bundled defaults were inspected. Unfinished source work is not an external blocker. |
+| [#213 Whole-UI check](https://github.com/Zaneris/passenger/issues/213) | Ongoing. Responsive docking, menus, Settings, shared scrollbars/buttons/focus, Terminal process/tabs, tool headers, populated Profiler Memory/Frames, NuGet Sources and Problems strips have scoped evidence below. `b3b3458` and `82c4ba7` repair the reproduced long editor-tab and status-bar action clipping with actual pointer/keyboard checks at 640/683. Exact native pre-capture macOS Header/Profiler checks pass four actual cases without a claimed header source fix. See the [surface inventory](ui-audit-213.md). | Continue unexamined dialogs/menus/popups/populated tools, History/Git bodies, popup scale/shadows and radio/menu/focus states. Captured counts are not whole-UI visual passes. Native Rider behavior was not observed; bundled defaults provide the actual local reference. Unfinished implementation is not an external blocker. |
 | [#211 Final MCP pass](https://github.com/Zaneris/passenger/issues/211) | Audited the existing 65 tools and tests; concrete gaps listed below. | Remaining implementation and per-feature SDK-client tests. The owner requires this final pass after other MVP work; no completed final pass is claimed. |
-| [#208 Editor/server line-break drift](https://github.com/Zaneris/passenger/issues/208) | Existing `LspDocument.Unsplit` fix confirmed; two line-break regressions passed. No further change needed from the local evidence. | Full Windows/Linux/macOS CI runs must establish that the intermittent full-run drift is gone. |
-| [#206 CI shards](https://github.com/Zaneris/passenger/issues/206) | `8048b8e` uses three macOS test shards beside two disk-image jobs, fitting the known five-runner limit; Windows/Linux retain four. Later `0ac31f0` refreshes native CI timings and deals by collection finish time, retaining real-suite exactly-once discovery/result checks. | Observe a successful CI run below 25 minutes; estimates are not observed job/wall times. New classes use budget fallback until measured. |
-| [#57 Linux packaging/install](https://github.com/Zaneris/passenger/issues/57) | Native CI packaging passed at `04e303f`; earlier cross-published x64/ARM64 archives passed architecture checks and actual Linux install/update/uninstall/settings-retention checks. Source `cc7456a` then published with a real checksum-verified RC1 SDK in Ubuntu 24.04 x64 WSL and passed build, Roslyn, run, breakpoint/evaluate, CPU profile and native PTY workflows through MCP. | ARM64 execution and an interactive Ubuntu desktop pass remain distinct from x64 WSL/headless and container results. The release dry run remains sequenced after the feature/MCP/site work. |
+| [#208 Editor/server line-break drift](https://github.com/Zaneris/passenger/issues/208) | Existing `LspDocument.Unsplit` fix confirmed; both exact line-break regressions passed locally and in the complete native Windows/Linux/macOS CI3 run at `cc7456a`. | No further source change is indicated by these results. Overall CI failures are separate from this issue's passing regressions. |
+| [#206 CI shards](https://github.com/Zaneris/passenger/issues/206) | `0ac31f0` models collection finish time; `fd80a32` fits four macOS test shards beside one sequential two-image job into five runner slots. Windows uses five shards, Linux/macOS four. Timings use all 129 healthy classes/system from complete `c9509e4` CI, with unchanged budgets. All 13 actual VSTest filters cover the 985 tests at pushed `74f481b` exactly once. | Observe successful CI below 25 minutes with every shard below its 20-minute budget. Historical `c9509e4` has zero failed tests but a 20.4766-minute shard and ARM detach failure. Current `74f481b` run `38835542810` is still running; its macOS image job and Self Debugging case already fail. Newer class growth is unmeasured by the stored totals. |
+| [#57 Linux packaging/install](https://github.com/Zaneris/passenger/issues/57) | Native CI packaging passed at `04e303f`; x64/ARM64 archives passed architecture and actual install/update/uninstall/settings-retention checks. Native RC1 Ubuntu x64 publish `cc7456a` passed build, Roslyn, run, breakpoint/evaluate, CPU profile and PTY via MCP. Completed native Linux ARM run `38827279628` at `47f7a57` passes the full 948-case suite (908 passed/40 skipped), package/install/installed frame/MCP/uninstall; the host and debuggee are both ARM64. | Later-source native acceptance and an interactive Ubuntu desktop pass remain. The release dry run remains sequenced after the feature/MCP/site work. |
 | [#56 Release workflow](https://github.com/Zaneris/passenger/issues/56) | Existing workflow covers tests, six RIDs, fixed asset names, version/feed checks, signing hooks, checksums, tag notes and a non-publishing dry run. Packaging/release shell syntax checks passed. | The owner's required order is other MVP work and green three-system CI, then #211, then #55, then the final dry run, then an owner-chosen tag. The final dry run and tag were not performed out of sequence. Native signing/notarization was not exercised. |
 | [#55 Website/README refresh](https://github.com/Zaneris/passenger/issues/55) | Deferred as the owner explicitly requires this last, after the feature/MCP passes. Existing site, README and comments were inspected. | Commit a repeatable sample and screenshot command; retake all required views in both themes; revise the whole site/README/share card against the finished feature set. The `www` redirect needs the owner's Cloudflare dashboard because the deploy token cannot write redirect rules. |
-| [#33 Hot Reload](https://github.com/Zaneris/passenger/issues/33) | Managed-code tests passed 8/8 and edit tests 15/15. Earlier Avalonia literals passed 11/11 locally and native macOS/Linux CI at `33ddf0d`; WPF literals passed 4/4 on Windows x64. Saved-editor XAML tracking for run/watch is merged at `cc7456a`, after Host baseline repair `3c4a034`. Avalonia future-view initialization `b6aad68` and inspector protocol-v7 runtime failure events are also merged; the expanded actual XAML/WPF cases passed 32/32 on Windows x64. | CI3 Linux shard 3 at cc7456a has 23 managed EnC failures reporting `No managed code changes`; Linux investigation/repair remains active despite the Windows baseline fix. Broader structural/attribute-set/binding/markup/resource/style/template support remains software work. Future-view initialization covers accepted Avalonia edits, not arbitrary reconstruction. Native evidence for the earlier literal checkpoint does not cover later run/watch, future-view or Host changes. |
+| [#33 Hot Reload](https://github.com/Zaneris/passenger/issues/33) | Managed/early literal, run/watch, future-view Avalonia and Host-baseline checkpoints remain attributed below. Complete native `c9509e4` has no failed tests on any system. Later WPF `2ba93fb`/`4ded215`/`c33673c` adds future-view updates, cache/import repair and late-Run cancellation using wire version 9. `8800b89` additionally supports two exact optimized helper IL shapes; its eight-case Windows run passes. | New WPF/UI coverage is not part of the older 951-case native run. Current whole-system acceptance and broader structural/binding/markup/resource/style/template support remain. Unsupported graphs and other IL shapes require a truthful restart; the optimized checkpoint is not blanket Release support. Earlier native literals do not establish later full XAML feature support. |
 | [#19 Data breakpoints](https://github.com/Zaneris/passenger/issues/19) | Existing Windows x64 implementation and Variables/Breakpoints UI verified by all four data-breakpoint tests, none skipped. | Current engine/runtime availability is explicitly Windows x64. macOS/ARM support was neither implemented nor verified in this pass. |
-| [#1 Windows verification](https://github.com/Zaneris/passenger/issues/1) | Existing CET teardown protection runs a paused thread off exception/single-step dispatch before detach; its attach/detach regression passed. The combined data-breakpoint/Hot Reload/CET audit passed 28/28 on Windows x64. | Full Windows x64/ARM64 suite and native interactive build/run/debug/profile acceptance are not established by these focused headless tests. No Windows ARM64 hardware was available. |
+| [#1 Windows verification](https://github.com/Zaneris/passenger/issues/1) | CET/data-breakpoint/Hot Reload focused checks passed as recorded below. Complete native Windows x64 CI at `c9509e4` reports 942 passed/nine skipped, exactly once. Completed Windows ARM run `38827279628` at older `47f7a57` reports 932 passed/12 skipped/four failed; package/install/installed ARM64 debugging/draw/uninstall pass independently. | Repair and rerun the four ARM failures listed below. Newer WPF/UI source still needs its full native suite; native interactive build/run/debug/profile acceptance remains distinct from headless and installed-copy checks. |
 
 ## Resumed implementation evidence: 2026-10-16
 
@@ -44,11 +44,45 @@ All counts are attributed to the source tested, rather than added together as on
 | `5ce60d7`, dialog shared rules | Exact RC1 build 0 warnings/errors; ten boundary classes passed 48, one expected Windows credential-provider skip, zero failures in 2m29s. Actual painted Chrome/disabled-primary/transparent disabled-tool rules apply through every existing `DialogButtonsTests.Check` caller. Optional audit restores each requested theme after checking/capturing both. 124 scale-2 frames cover 22 dialog types; 30 representative frames, including every migrated page wrapper in both themes, were inspected. Full inventory continues. |
 | `6ef4205`, Terminal tool tabs/lifecycle | Exact RC1 build 0 warnings/errors; four terminal/tab classes report 25 passes in 25 seconds (12 actual Windows cases; 13 older Unix-only bodies return early). Actual cmd history/input checks active/inactive close, selected state, focus, tab order and kept reading position. Real run configurations check natural code 3, Stop/disposal/CloseAll, an inherited-output child flood and exactly one actual exit. Immediate shell shutdown/failure paths go through MainWindow. Old immediate disposal fails the shutdown regression in 931ms with a missing exit notification. All 17 tool surfaces have 1200/683 two-theme captures; four final Terminal frames inspected. Root's merged `1e19199` solution build has 0 errors/7 intentional fixture warnings, and three existing debugger-terminal/MCP integration cases pass in 28 seconds. |
 | `0c4e149`, wrapping tool hints | Shared hint style fits Hierarchy, Git, Unit Tests, Profiler, Find, Structure, Bookmarks, Local History, Problems and Debug. Exact RC1 build 0 warnings/errors; Tool Layout/Problems/Local History 12/12 pass in 31 seconds. Actual TextLayout plus every ancestor viewport is checked at 1200→683→640→1200 with requested 200px side panes. 80 scale-2 frames captured; 24 representative normal/narrow whole frames inspected across all ten hints and both themes. Profiler-tab and NuGet-toolbar clipping remain separate active source fixes. |
+| `7b28e51`, responsive profiler header | Shared scrollable tab strip reserves Open Snapshot; runtime actions wrap in their own row and status has a full-value tooltip. A real profiled program drives all eight pages by wheel/click and Tab/Shift-Tab/Space. Exactly one selected page, focus and fitted actions survive 640/683/1200 resizing. Tool Header/Profiler/Tool Layout pass 8/8, zero skips, in 43s; RC1 build 0 warnings/errors. Eight final normal/narrow running/Snapshots frames inspected in both themes, plus 14 earlier same-source page frames. Empty Memory guidance and long populated rows remain actionable follow-ups. |
+| `2952092`, responsive NuGet tools | Actual local nupkg search, feed choice, prerelease and refresh keep query/caret/focus/selection through 640/683/1200 resize and 200px side placement. All toolbar actions fit without overlap; status text fits or trims with complete tooltip. New both-theme cases pass 2/2; combined Package Sources/new cases pass seven with one expected Windows credential-provider skip in 15s. RC1 build 0 warnings/errors; all 14 scale-2 frames inspected. Shared narrow tool-header tab overflow and abrupt long feed-label clipping remain separate fixes. |
+| `16e843e`, shared tool headers/focus | All five header-tool consumers fit 200px side panes and bottom/floating placement, retaining fixed Options/Hide actions and a separate scrollable tab row when needed. Real pointer/wheel/keyboard selection, active/inactive close, thumb hit/drag without pane drag, repeated 640/683/1200 resizing, dynamic titles and focus through reparenting are checked. Tab controls retain identity; the rounded keyboard ring cannot intercept the scrollbar. Floating tools follow live owner theme changes and unsubscribe on close/reopen. Exact RC1 build 0 warnings/errors; 72 total cases, 71 pass/one expected Windows credential-provider skip, zero failures in 2m39s. Thirty-two final scale-2 header frames captured; twelve inspected, including all five genuinely Light floating panes, both focus rings and representative bottom/side frames. Populated Sources/History/Git body clipping remains separate source work. |
+| `fc974f5`, Unix terminal missing executable | Native WSL reproduced the CI missing-shell failure: Porta reported PID 775/running, then child exit 2 and a blank closed tab. Missing explicit Unix paths are now rejected before PTY allocation, with relative paths resolved against the actual working folder. Both failures retain their diagnostic tab without PID/connection; a real relative script in a spaced folder takes keyboard input and exits 2 normally. Windows final run reports 23 passes in 23s (13 older Unix-only bodies return early); clean exact committed Linux x64 source passes all 23 actual terminal lifecycle/input/tab cases in 46s, zero skips/failures. Six Windows/Linux scale-2 missing-path frames inspected in both themes. This is not an exec-handshake, PATH lookup, interpreter/permission or time-of-check race fix. Later native macOS/Linux x64 and Linux ARM results below clear this missing-path case. |
+| `4fff99c`, populated profiler rows | Actual CPU completion explains that no heap snapshot was taken; long Call Tree/Hot Spots/allocation rows and a real held-40-object heap snapshot retain accessible names, aligned numbers, virtualization and selected rows through resize. User scrolling away preserves reading offset. Profiler/Memory Snapshots/Tool Header pass 14/14 in 1m24s, zero skips; build 0 warnings/errors. Normal 1200/narrow 640 scale-2 frames inspected in both themes, with 683 also captured. Evidence is shell `tests/Passenger.Tests/TestResults/profiler-and-memory-final.trx`, `artifacts/arm-validation/{profiler-final-build,profiler-and-memory-final}.log` and `artifacts/profiler-populated/captures-final/`. Busy, diff and frame states remain separate. |
+| `152062a`, native Linux profiler follow-up | Clean exact committed source rebuilt with native Ubuntu x64 RC1. Profiler seven, Memory Snapshots three and Tool Header six cases pass 16/16, zero skips, in 2m55s; selected-row visibility and scroll-away resize assertions execute there. Evidence is shell `artifacts/profiler-populated/native-profiler.log`, `native-linux/profiler-memory-linux.trx` and `native-linux/captures/`. This does not establish remaining busy/diff/frame states. |
+| `1339d80`, long selected feed and Problems summary | Real local-feed selection and missing-baseline debugging check ellipsis, full-value tooltips, actual text layout and clipping ancestors at 1200/683/640, with a 200px NuGet side pane. Four both-theme cases pass in 24s; existing Problems/Package Sources pass seven with one expected Windows credential-provider skip in 22s. Build 0 errors/seven known fixture warnings. Eight final normal/narrow scale-2 frames inspected in `long-labels/`; ordinary Problems message/detail clipping is repaired separately by the later `6b91997` checkpoint below. |
+| `6d1752c`, Terminal session overflow/focus | A real long-named terminal run and seven actual shells keep tabs/close actions reachable at 1200/683/640 and in a 200px side pane. Names ellipsize beside close actions with full-name tooltips; wheel/pointer/Tab/Space selection routes commands to the selected shell and closing the background run ends its actual process. Resize reveals the selected session, or an inactive tab while it has keyboard focus, without changing selection. Prior selected-only reveal fails the focused-tab viewport assertion in both themes. Final product passes eight Tool Tab/Lifecycle/shared-header cases in 1m16s, zero skips; the final test-only real-Tab-key focus refinement passes both affected cases in 24s. Builds 0 warnings/errors. Eight geometry frames, four focused-resize frames and the two final visible-keyboard-ring frames inspected separately. Native Unix execution of this overflow addition remains pending. |
+| `6d93582`, focused inactive close action | Actual Tab reaches an inactive close child whose old style has opacity zero. The shared focus rule paints its glyph and a rounded non-hit-testing accent ring. Shift-Tab/Tab/Enter closes only that background shell, checking saved PID and retained run selection. Tool Tab/Editor Tabs pass 10/10 in 36s, zero skips; build 0 warnings/errors. All four final 640/1200 two-theme `close-action-final/` frames inspected; root's merged final two Terminal cases also pass in 23s. |
+| `ab704c8`, shared keyboard focus | Default outlines use the shared rounded accent treatment; checkbox focus surrounds the actual glyph, following bundled Rider icons. Real Tab/Space/pointer input, checked/unchecked states, disabled focus removal, actual unclipped left-outline paint and a primary button's visible focus are checked. A real Settings label wraps at default font size at 640px and retains glyph alignment/focus through 640/980/683/640 resize. Dialog Buttons/Settings/Tool Tab/Tool Header pass 21/21 in 1m39s, zero skips; build 0 warnings/errors. All fourteen final `checkbox-focus-verified/` scale-2 frames inspected. Existing explicit tab overrides remain. That run predates only `4ec6143`'s separate Profiler test diagnostic refinement; native header acceptance is qualified below. |
+| `6b91997`, populated Problems rows | Actual missing-baseline and local-feed vulnerability flows constrain message, link and location labels to the row, retain full tooltips/clipboard values and click the advisory at 640px. Old source reproduces a location beyond the list even at 1200px. Hot Reload/Project Load/Problems pass 8/8 in 40s, zero skips; build 0 warnings/errors. Twelve final `problem-rows-final/` scale-2 frames; all eight normal/narrow whole frames inspected in both themes. The later category-strip checkpoint is attributed separately below. |
+| `892e0ef`, Problems category overflow | A real long-named erroneous file, solution analysis and failed compiler build exercise five categories with actual wheel/pointer/Tab/Space input, side200 and bottom640/683/1200. Full-name tooltips and ellipsis retain access; focused inactive categories stay visible through resize without switching the shown page. The actual missing-baseline Hot Reload last category also fits side200. Final Problems/Hot Reload/Project Load pass 10/10 in one minute, zero skips; build 0 warnings/errors. Old source fails both long-file geometry cases in eight seconds and both real Hot Reload side-category checks. Eighty scale-2 frames in `problem-tabs-frozen/`; ten representative frames inspected, including both-theme normal/narrow/focus/Hot Reload states. Long editor-tab/status overflow discovered there remains a separate source checkpoint. |
+| `b3b3458`, long editor tabs | Finite filename ellipsis leaves modified/pin/close actions inside each real editor group, including split groups. Pointer/wheel/Tab/Shift-Tab reach inactive close actions without changing selection; focus, editor text and caret survive 1200/900/683/640 resize. Existing Editor Tabs/Active Editor run passes 17/17 in 16s; final test-only keyboard refinement passes both affected cases in 5s, zero skips. Builds 0 warnings/errors. Old source fails both geometry cases even at 1200px. Eight of 26 final scale-2 `editor-long-tab-frozen/` frames inspected in both themes, including single/split groups and inactive focus. |
+| `82c4ba7`, bounded status paths | Scrollable breadcrumbs with full-path tooltips reserve readable message and storage-action space; focused crumbs reveal without changing editor selection. A plain root file remains readable on first open/reopen with no outline. Actual wheel/pointer/Tab input reaches folder/file crumbs; the real 640px line-separator menu converts saved LF to CRLF. Final File Properties/outline/Problems/long-editor checks pass 16/16 in 55s, zero skips; build 0 warnings/errors. Old source fails both actual separator clicks at 640px because the path intercepts them. Nine final full frames inspected in both themes, including actual compiler-error status. Evidence: shipping `artifacts/2026-10-16/{build,tests}-213-status-path-frozen.log` and `status-path-frozen/` captures. Optional status-widget combinations remain separate inventory work. |
+| `412d956`, Profiler Memory navigation | Actual 40→47 held objects exercise comparison/object/root-path navigation, keyboard action access, breadcrumb wheel/back navigation and finite viewports. Windows Profiler/Memory/Tool Header pass 16/16 in 2m12s; native Ubuntu heap cases pass 2/2 in 27s, zero skips. Shell `artifacts/profiler-memory-navigation/{tests-final.log,native-navigation.log,final/,native/captures/}` retains both-theme normal/narrow frames inspected by the shell agent and old two-case negative controls. |
+| `7e1fb80`, populated Profiler Frames | A real long-named slow control exercises aligned metrics, horizontal/vertical wheel input, focus/selection and source jump/reopen. Windows Frames/Profiler/Memory pass 14/14 in 1m47s; native cases pass 2/2 in 39s, zero skips. Both-theme captures and old two-case negative controls are retained under shell `artifacts/profiler-frames/{test-final.log,native-frames.log,final/,native/captures/}`. |
+| `10d729e`, large heap metadata | Full timestamp/count/size wrap for actual 200,000 new/one-million surviving-object comparison and object rows at 1200/683/640. Windows Profiler/Memory pass 11/11 in 1m17s; native million-object cases pass 2/2 in 23s, zero skips. Durable geometry does not assume a busy phase lasts through capture; native Light comparison completed during that optional observation. Shell `artifacts/profiler-million/{tests-final.log,native-million.log,final/,native/captures/}` includes inspected both-theme frames and old two-case negatives. |
+| `fe54628`, no-frame guidance | Existing two-theme completed CPU-profile cases pass 2/2 in 18s after the old margin clips guidance at 640px in both cases. Shell inspected the padded 1200/683/640 frames under `artifacts/profiler-empty-frames/{tests-before.log,tests-after.log,before/,after/}`. No new native repeat is claimed for this one-line change. |
+| `af1720b`, populated NuGet Sources | Names, full configuration paths, source properties and summaries wrap inside the real Sources form while Edit/Delete and enable checks stay reachable. Actual file/config keyboard selection, two-axis wheel input and Edit/cancel run at 1200/683/640 and side200 in both themes. Windows class passes six with one existing credential-provider skip in 17s; native class passes 7/7 in 81s, then exact final two side-pane cases pass in 11s. Builds 0 warnings/errors; old two-case truncation control fails. Shell `artifacts/nuget-sources/{tests-final.log,build-final.log,native-class.log,native-side-final.log,final/,native/captures/}` retains inspected frames and TRX files. |
 | Avalonia XAML `77f0a72` + `e1d3855` | `XamlHotReloadTests` passed 11/11 on exact RC1; debugger worktree `tests/Passenger.Tests/TestResults/xaml-reload-getters.trx`. |
 | WPF XAML `ffe2706` | `WpfXamlHotReloadTests` passed 4/4 on exact RC1; debugger worktree `tests/Passenger.Tests/TestResults/wpf-xaml-first.trx`. Both-framework scale-2 before/after captures are under `artifacts/bin/Passenger.Tests/debug/{xaml-hot-reload,wpf-xaml-hot-reload}/`. |
 | WPF design-time isolation `2991601` | Final nine-case fixture passed; broader 21 passed with one expected platform skip. `artifacts/wt-shell-isolated/tests/Passenger.Tests/TestResults/{isolation-final-fixtures,isolation-checkpoint}.trx`. Imported/global paths, selected references, generated navigation, cache reopen and Build/Run/watch overlap are checked. Shell worktree `artifacts/isolation-probe/tests/Passenger.Tests/TestResults/final-fixture-negative.trx` retains MC1000 with the four product files reverted; holder PID 12024 is `Passenger.Host`. |
 | Host baseline identity `3c4a034` / XAML `cc7456a`, `b6aad68` | Host's design-time paths stay isolated while reported assembly metadata and `/out:` point Roslyn at the real baseline. Nine isolation plus two previously failing mixed managed/XAML cases pass. Saved-editor run/watch tracking and accepted Avalonia edits in newly created views are merged. The expanded XAML/WPF run passes 32 actual cases; inspector protocol v7 reports runtime application failures. These source checkpoints supersede the earlier Host-identity investigation without implying all XAML editing is supported. |
-| Later XAML `feb9254` (2026-10-16) | Literal attribute additions with binding-safe rollback and inspector wire version 8 are merged. The expanded actual Windows XAML/WPF cases pass 41/41, with an observable-guard negative control. This is a later checkpoint than the 32-case row above; the native Linux generic EnC failures at `cc7456a` remain under investigation. |
+| Later XAML `feb9254` (2026-10-16) | Literal attribute additions with binding-safe rollback and inspector wire version 8 are merged. The expanded actual Windows XAML/WPF cases pass 41/41, with an observable-guard negative control. This is a later checkpoint than the 32-case row above; its historical native Linux generic EnC failures at `cc7456a` are addressed by the subsequent baseline repair below. |
+| Unix EnC baseline `cdb4592` (2026-10-16) | MSBuild full assembly paths replace Windows-only path interpretation for the reported Roslyn baseline. Native Ubuntu exact-source `fullpath-native26.trx` passes 24, with two mixed cases failing before their bodies because of a harness path; corrected `fullpath-native-mixed2.trx` passes both. The actual Linux MCP probe applies a C# edit in 323ms and observes result 3; the old `cc7456a` control reports no managed changes and result 2. Evidence: debugger `artifacts/linux-enc/` TRX files and shell `artifacts/cross-publish-cold/linux-enc-fixed-probe{.log,/summary.json}`. Later complete `c9509e4` has no failed tests on any system; newer WPF additions remain separate coverage. |
+
+Later WPF future-view source `2ba93fb`/`4ded215`/`c33673c` is merged. `2ba93fb` passes whole-WPF 28/28 in 3m55s;
+its broader 99-case run has 97 passes, one generated-usages failure and one intentional Windows symlink skip,
+so is not green. `4ded215` repairs that assertion and two proven cache edges, passing 15/15 in 2m9s. `c33673c`
+repairs four proven late launches after Stop/Close plus a handler-loss negative: 42/42 pass in 5m15s before final
+generation-reset cleanup, then final nine cases pass in 1m33s (five cancellation and four managed/future cases).
+Debugger `artifacts/test-results/wpf-{future-final-class,future-final-controls,future-repair,run-lifecycle-controls,run-lifecycle-final}.trx`
+and matching logs retain attribution. Fixture-selected SDK 11 RC2 executes both net10/net11 projects; repo app/test
+builds remain pinned RC1. Wire 9 rejects unsupported graphs/IL shapes with restart reasons. Later `8800b89`
+recognizes two exact optimized helper shapes (null-conditional callback and local-callback null branch) while
+retaining closed-helper validation. Eight actual Windows cases pass in 1m17s, zero skips, in debugger
+`artifacts/test-results/wpf-optimized-verified.trx`; `wpf-optimized-final-manifest.json` records source hashes.
+This is narrow optimized support, not acceptance of every Release IL shape. Later merged acceptance is separate
+from these source-attributed focused runs.
 
 The shell agent's completed exploratory full Windows run used the superseded graph-coordinator snapshot `d2f5633`:
 868 total, 857 passed, two failed, nine skipped in 59.99 minutes. Its About assertion used binaries stamped
@@ -75,11 +109,45 @@ pushed checkpoint, changes `global.json` to disable roll-forward: ordinary `dotn
 About/Windows-only-project checks passed three with one expected skip. Earlier direct-RC1 commands and temporary
 worktree-only pin evidence below remain historical; they are not still required by current main.
 
-The later [CI run at pushed `cc7456a`](https://github.com/tebeco/passenger/actions/runs/38815446318) uses the original
-allocation; collection-aware `0ac31f0` landed afterward. Its Linux shard 3 failed with **23 managed Edit-and-Continue failures** reporting
-`No managed code changes`; investigation is active on the actual Linux runtime. The Windows baseline repair does
-not establish Linux Host/Hot Reload acceptance. At the last recorded check, Windows shards 1/2/4, Linux shards 2/4
-and all five packaging jobs passed; remaining jobs were still active. This partial result is not a green full CI run.
+The completed [CI3 run at pushed `cc7456a`](https://github.com/tebeco/passenger/actions/runs/38815446318) uses the original
+allocation; collection-aware `0ac31f0` landed afterward. Coverage checked all **909 results per system**, without
+missing/duplicate errors. Windows reports 901 passed, eight not executed and no test failures; shard 3 failed only
+its 23.7-minute budget. Linux reports 847 passed, 26 failed and 36 not executed; macOS reports 856 passed, 28 failed
+and 25 not executed. Both Unix systems failed 23 managed EnC, two mixed and one remap case; macOS also failed the
+known WPF navigation and Self Debugging cases. All five packaging jobs passed. These are historical failures before
+the later Unix baseline repair, not a green current suite. Root retained all 11 result artifacts under
+`artifacts/milestone-1/integration/ci-38815446318-results/`. Both exact #208 line-break regressions passed on all three
+systems in that full run; `ci-38815446318-line-break-evidence.json` records all six results.
+
+The later [complete native run at `47f7a57`](https://github.com/tebeco/passenger/actions/runs/38826362406) completes in
+23m56s with **948 results per OS**, no missing/duplicate tests and no runtime-budget failure. Windows reports
+939 passed/nine skipped, Linux 908 passed/40 skipped, and macOS 914 passed/four failed/30 skipped. Only the two
+Profiler fixture cases and two Profiler header cases fail; Windows/Linux and their coverage gates pass. This
+clears the previous Unix missing-shell diagnostic and canonical partial-EnC fixture failures at this checkpoint,
+but does not establish successful three-OS CI acceptance. Root retained all result artifacts under
+`artifacts/milestone-1/integration/ci-38826362406-results/`. Canonical fixture repair `ea9ef61` and header diagnostics
+`77d9f2d` are merged into `cee6db2` with a focused native workflow. A redundant full run
+at `73c4c2d` was cancelled; the separately dispatched full ARM result at `47f7a57` is recorded below.
+
+The [focused macOS rerun at `cee6db2`](https://github.com/tebeco/passenger/actions/runs/38829620638) passes all four
+actual cases, zero skips, in about 1m15s. This clears the canonical Profiler fixture failure; the header failure
+does not reproduce, and no Profiler header source fix is claimed. Eight native scale-2 frames were inspected:
+Snapshots at 640/683/1200 in both themes and both 640px running frames. However, `77d9f2d` captures before asserting,
+and `CaptureRenderedFrame` triggers a renderer tick. Follow-up `4ec6143` snapshots selection, visibility, focus,
+checked pages and exact geometry immediately after settling, then captures and asserts the pre-capture values.
+The completed `c9509e4` CI uses the earlier assertion order and cannot alone settle that header regression. Root evidence is
+`artifacts/milestone-1/integration/focused-38829620638/macOS/{focused.trx,tests.log,captures/}`.
+
+The later [pre-capture native run at `fdb008b`](https://github.com/tebeco/passenger/actions/runs/38831479112)
+passes all four selected/reported cases on macOS ARM64, zero skips, in 81s. Selection and geometry are measured
+before capture, excluding the earlier capture-order concern for this passing checkpoint. Snapshots 683 Dark/1200
+Light and running 640 Light/1200 Dark final scale-2 frames were personally inspected; their headers/actions fit.
+No production header fix or explanation of the original intermittent failure is claimed. Evidence is root
+`artifacts/milestone-1/integration/focused-38831479112/macOS/{focused.trx,tests.log,captures/}`.
+Complete `c9509e4` CI has 951 passing/skipped results exactly once per system and no failed tests, but still fails
+the macOS shard budget and ARM image detach. Its exact counts and refreshed timing limitations are in the CI
+scheduling section. Later WPF/UI additions still require a complete native run.
+
 The current Windows terminal integration evidence is root
 `artifacts/milestone-1/integration/terminal-debug-mcp.log` and
 `terminal-debug-mcp-results/terminal-debug-mcp.trx`: three existing actual debugger/MCP terminal cases pass after
@@ -98,8 +166,38 @@ search/diagnostics, Run, a breakpoint and `Helper.Twice(21)` evaluation returnin
 PTY shell. Evidence under `artifacts/wt-shell-isolated/artifacts/cross-publish-cold/` includes
 `linux-current-publish.log`, `linux-current-probe.log`, `linux-current-probe/{summary.json,mcp-events.jsonl}`,
 `wsl-package-{x64,arm64}.log`, `wsl-install-user.log` and `docker-install-system.log`.
-This establishes native Linux x64 binaries and headless/project workflows in WSL; it does not establish ARM64
-execution or interactive desktop behavior.
+This establishes native Linux x64 binaries and headless/project workflows in WSL. Later ARM execution is recorded
+separately below; interactive desktop acceptance is not inferred from these headless checks.
+
+Native CI4 `38821710686` exposed the same missing-shell diagnostic failure on macOS shard 3 and Linux x64 shard 1;
+Linux ARM smoke `38822928529` also failed only that case (eight passed, one failed). The native Linux ARM package,
+install, scale-two installed frame, installed MCP case and uninstall checks passed independently. Retained root logs
+are `ci-38821710686-{macos-3,linux-1}.log` and `arm-38822928529-linux.log` under
+`artifacts/milestone-1/integration/`. The `fc974f5` repair has later native macOS/Linux x64 evidence in complete
+`c9509e4` and native Linux ARM evidence in the completed run below.
+
+[Native ARM full run `38827279628`](https://github.com/tebeco/passenger/actions/runs/38827279628) at older
+`47f7a57` reports exactly **948 selected/results per OS**, with matching unique name sets and no duplicates.
+Linux succeeds with **908 passed/40 skipped**. Windows has **932 passed/12 skipped/four failed**: moved-intermediate
+design-time JSON-RPC connection loss, custom-intermediate restore requesting a hardcoded win-x64 host pack, a native
+WPF picker timeout, and the MCP WPF Blue ComboBoxItem outside its view. These require their own repairs/reruns;
+they are not current-source acceptance. Both systems independently pass native package/install/installed screenshot/
+installed MCP/uninstall checks. The installed MCP test passes once per OS and proves both host and debuggee are ARM64.
+Root inspected both installed Welcome frames and retained raw results under
+`artifacts/milestone-1/integration/arm-38827279628-{win,linux}/ArmResults/<rid>/`.
+
+The earlier allegation that Windows/Linux ARM Welcome buttons painted differently was a visual-review error,
+including the initial root observation. Pixel comparison of the original frames found identical button fill
+RGB 57/59/64, borders 78/81/87 and focus 61/123/245: 1,064 button border/padding pixels and 7,700 focus-border pixels
+have zero differences. The exact native `4a2804d` Linux package under emulation also reproduces its original PNG
+byte-for-byte. Shell `artifacts/welcome-arm/paint-pixels.json` retains the evidence; no product fault or fix is claimed.
+
+The final header run is `tests-213-shared-header-final.log` with
+`test-results-213-shared-header-final/ahert_CORSAIR13900_2026-10-16_03_32_07_net11.0.trx` in shipping
+`artifacts/2026-10-16/`. Terminal evidence there includes `terminal-native-before.log`,
+`terminal-native-probe.log`/`terminal-native/missing-shell-probe.trx`, `tests-terminal-path-final.log` and
+`terminal-native-exact.log`/`terminal-native/terminal-path-exact.trx`. The last native run rebuilt clean exact source
+`fc974f5c8aab8648c06391033672b590c542279f`; earlier native patch runs are explicitly separate.
 
 ### Current shared-UI audit coverage
 
@@ -107,14 +205,14 @@ execution or interactive desktop behavior.
 | --- | --- |
 | Centered content, shared radius/height and footer order | Shared tokens/base styles and `DialogButtonsTests.Check`; opened-dialog coverage exists, complete surface inventory continues. |
 | Checked current menu values | Branch/configuration/encoding/separator helper and boundary tests/captures, `c0a648b`. |
-| One tool-window tab style | Terminal now shares `ToggleButton.panelTab`; actual shell selection/close/focus and painted geometry are checked in `6ef4205`. Responsive Profiler tab overflow and complete populated-state inventory continue. |
+| One tool-window tab style | Terminal shares `ToggleButton.panelTab` (`6ef4205`); Profiler tabs scroll with real pointer/keyboard checks (`7b28e51`). Shared headers preserve tab identity/selection, keyboard focus, thumb hit testing and narrow/floating actions (`16e843e`). Terminal (`6d1752c`) and Problems (`892e0ef`) use scrolling strips with long-name ellipsis and focused inactive tabs visible through resize; remaining populated bodies continue. |
 | Thin overlay scrollbars without arrows | Shared editor/output/list `bce47d4` and real terminal scrollback/alternate behavior `2a4df3b`; remaining individual surface review continues. |
 | Light plain buttons white with a border | Shared token and both-theme rendered pixel checks, `30d3965`. |
-| Popup/menu shadows; rounded centered focus, including checkboxes | Shared-style and complete capture checks remain. |
+| Popup/menu shadows; rounded centered focus, including checkboxes | Rounded tool-tab focus does not cover scrollbar pointer targets (`16e843e`). Shared default and checkbox-glyph focus (`ab704c8`) checks actual keyboard/pointer input, painted outlines and default-font multi-line Settings labels; remaining popup/radio/menu states continue. |
 | Popup width/title/row scale and one dropdown width per column | Settings dropdown width/column alignment are centralized; remaining popup/dropdown inventory continues. |
 | Disabled default button distinct from Cancel | Shared Rider-default tokens/base and primary styles; painted-state assertions plus real disabled Enter/hover and re-enable workflow, `5ce60d7`. |
 | Every dialog page uses Chrome | Base Window and shared dialogPage style migrate all 7 explicit form-page wrappers found; 22-type boundary sweep checks actual paint. Full-code diff/merge surfaces have documented exceptions. Remaining surface inventory continues. |
-| Footer-left Don't ask again | Shared leading-footer helper and Open Solution dark/light captures, `331540a`; complete dialog inventory continues. |
+| Footer-left Don't ask again | Shared leading-footer helper and Open Solution dark/light captures, `331540a`; real Open Solution boundary and both footer-order themes also pass on all three native CI3 systems. Complete dialog inventory continues. |
 | Active editor tab close button | Modified/unmodified/pinned/hover behavior and captures, `c7a8794`. |
 | Half-screen layout and preserved user layout | Toolbar/Welcome, simultaneous-side collapse and all Settings pages at 640/683 are covered by the targeted tests above; remaining tool-window/dialog states continue. |
 
@@ -124,7 +222,7 @@ native Rider interactions. Native comparison remains a limitation while local so
 
 The resumed shipping captures live under `artifacts/ui-audit-213/2026-10-16/`: `dock-live-tree-*`, `menu-*`,
 `active-modified-tab-*`, `settings-before/`, `settings-final/`, `scrollbars-verified/`, `terminal-scrollbar-verified/`,
-`empty-editor/`, `dialogs-verified/`, `tool-tabs-real-output/` and `tool-hints-verified/`. The [surface inventory](ui-audit-213.md) identifies captured versus unexamined states. The earlier exploratory
+`empty-editor/`, `dialogs-verified/`, `tool-tabs-real-output/`, `tool-hints-verified/`, `profiler-header-final/` and `nuget-header-status/`. The [surface inventory](ui-audit-213.md) identifies captured versus unexamined states. The earlier exploratory
 scrollbar folders retain the too-thin Fluent transform reproduction. Settings final filenames identify every page,
 640/980 width, theme and scrolled end; no full-dialog or full-tool-window visual pass is inferred from those files.
 Build/test logs and TRX are in the shipping worktree's `artifacts/2026-10-16/`, including
@@ -146,6 +244,143 @@ before running, and checks exactly one result per test after running. `0ac31f0` 
 the suite's assembly/Debugger/Alone collections when estimating each shard's finish time; unknown conventions fail
 explicitly. Summary coverage still reads each system's count from shard metadata. New classes use their configured
 budget until native timings are collected.
+
+`fd80a32` changes macOS to four test jobs and one image job that checks both disk images sequentially, even if the
+first fails, retaining the x64 cold-cache/host-package guard. Four test jobs plus one package job fit the known
+five-slot limit. Its earlier 923-test listing projected 16.4 minutes per macOS shard; the later 934-test listing
+projected 16.7. These are source-specific estimates, not observed below-25-minute acceptance.
+
+The later [complete native run at `c9509e4`](https://github.com/tebeco/passenger/actions/runs/38830612857) takes
+**24m47s**, with exactly one result for each of **951 tests in 129 classes per system**. Windows reports
+942 passed/nine skipped, Linux 911 passed/40 skipped, and macOS 922 passed/29 skipped. No test fails. macOS shard 3
+takes **20.4766 minutes**, exceeding the unchanged 20-minute budget; its failed job correctly keeps the macOS
+coverage gate red. The ARM disk image separately fails detach; the x64 image passes. Updating test weights does
+not relabel either failure as success.
+
+`TestTimes.json` is refreshed from this run alone: **all 129 classes on each system**, including healthy results
+from the budget-failed macOS job. No failed-class time or fabricated measurement is included. Under the old actual
+assignment, the collection model predicts macOS shard 3 at 20.1423 minutes versus 20.4766 observed. Redealing the
+stored, rounded native weights gives the following projections; build, discovery, queue and packaging overhead
+remain excluded:
+
+| System | Shards | Projected test minutes from `c9509e4` weights |
+| --- | --- | --- |
+| macOS | 4 | 18.03, 18.02, 18.02, 18.02 |
+| Windows | 5 | 15.36, 15.35, 15.34, 15.36, 15.35 |
+| Linux | 4 | 15.81, 15.82, 15.83, 15.83 |
+
+Exact merged source `b3cf086` (main `a6e364e` plus Problems `892e0ef`) builds with zero errors and seven unchanged
+intentional fixture warnings, then discovers **983 tests in the same 129 classes**. All 13 actual VSTest filtered
+listings pass exactly-once coverage: Windows 162/187/189/201/244, Linux 256/196/260/271 and macOS 236/200/259/288.
+Repeated allocation writes byte-identical filters, and all four shard CLI boundary regressions pass. The historical
+result coverage command still passes Windows/Linux at 951 tests and refuses macOS solely for shard 3's failed job.
+
+The 32 additional cases are **unmeasured native coverage**, even though their existing classes already have weights.
+The allocator does not scale class totals by test count. Its identical class membership therefore yields the same
+projection for the newer suite; this is not measured current-source acceptance:
+
+| Class | Cases at `c9509e4` | Cases at `b3cf086` |
+| --- | ---: | ---: |
+| AvaloniaFramesTests | 3 | 4 |
+| DialogButtonsTests | 2 | 4 |
+| MemorySnapshotsTests | 3 | 4 |
+| PackageSourcesTests | 6 | 7 |
+| ProblemsTests | 2 | 4 |
+| WpfXamlHotReloadTests | 10 | 35 |
+
+The five/four/four matrix, four-plus-one macOS slot limit, 20-minute test budget and 45-minute job timeout are
+unchanged. Root retains the native artifacts under
+`artifacts/milestone-1/integration/ci-38830612857-results/`. Shipping evidence is
+`artifacts/2026-10-16/{build-ci-c950-refresh.log,ci-c950-current-suite.txt,ci-c950-validation.log,ci-c950-analysis.json}`;
+the per-system `ci-c950-*-{split,check,observed-cover}.log` files retain projections and real filter checks.
+Reproduce the timing refresh with
+`python -I tools/test-shards.py update artifacts/milestone-1/integration/ci-38830612857-results`, then build/list the
+current suite and run `split`, actual `dotnet test --list-tests --settings` for every emitted file, and `check`.
+The shipping artifact `artifacts/2026-10-16/validate-ci-c950.ps1` retains the exact commands used. A new complete
+native run must validate the refreshed deal and later case growth without changing acceptance budgets.
+
+Exact pushed source `74f481b` adds the two optimized WPF cases, discovering **985 tests in 129 classes**. Read-only
+discovery of its built DLL and all 13 actual VSTest filtered listings again pass exactly-once coverage: Windows
+162/187/189/203/244, Linux 258/196/260/271 and macOS 236/200/259/290. Shipping retains
+`artifacts/2026-10-16/ci-74f481b-{suite.txt,validation.log}` and `validate-ci-74f481b.ps1` with exact commands.
+Its 34 added cases versus the measured 951 are still unmeasured by existing class totals; later editor/status
+additions are outside this discovery snapshot.
+
+[Full native CI `38835542810`](https://github.com/tebeco/passenger/actions/runs/38835542810) at `74f481b` is still
+running at this update. macOS shard 1 finishes in 18.1609 minutes with 235 passed/one failed: Self Debugging throws
+`Background work never finished` during `Ui.Await`/`Ui.Settle`, while its server log repeatedly reloads repository
+projects. This is not a budget failure, and no cause or timeout increase is claimed. The macOS image job also
+fails its final gate with `ARM_OUTCOME=failure`, despite the continue-on-error ARM step's API conclusion saying
+success. Nine mount controls and the x64 image pass; ARM detach is followed by `cannot find IO media` and a guard
+reporting `/dev/disk7 belongs to another image`. Root retains `ci-38835542810-macos-{1,images}.log` and
+`ci-38835542810-disk-images/` under `artifacts/milestone-1/integration/`. Neither this partial result nor passing
+package controls establish green CI or #206 acceptance.
+
+Earlier timing checkpoints follow for provenance; their weights and coverage limits are superseded by the
+healthy `c9509e4` measurements above.
+
+The completed [CI4 run at `f4d89b9`](https://github.com/tebeco/passenger/actions/runs/38821710686) contains exactly one
+result for each of its **943 tests in 129 classes per system** across all 13 shards. Windows reports 934 passed,
+nine not executed and no test failures; Linux reports 902 passed, 40 not executed and one failure; macOS reports
+911 passed, 30 not executed and two failures. Windows shard 3 took 20.18 minutes of tests and macOS shard 2 took
+21.55, exceeding the unchanged 20-minute budget. The complete run took 25m55s, so the below-25-minute acceptance
+remains open. Both disk images passed in the single sequential image job; all packaging jobs succeeded.
+
+The preceding timing checkpoint took the measured CI4 seconds of classes with no failed result: **129 Windows, 128 Linux,
+127 macOS**. This includes the 31-case XamlHotReloadTests cost that the earlier weights understated: 436.1 seconds
+on Windows, 343.7 on Linux and 341.6 on macOS. With the actual CI4 class assignments held fixed, the measured
+collection model accounts for all but 7–32 seconds of each shard's VSTest elapsed time. Build, discovery, queue
+and packaging costs are separate. No failed run is declared green by updating its successful classes.
+
+The failed classes retained the following prior inputs; their failing elapsed times were recorded, not used as healthy
+measurements. These were the retained inputs before the healthy `c9509e4` refresh:
+
+| Class/system | Weight used | Observed CI4 coverage and elapsed |
+| --- | --- | --- |
+| HotReloadTests, macOS | 100.0 seconds from the eight-case `33ddf0d` observation | 12 cases, 11 passed and one failed, 175.3 seconds; the retained weight understates added coverage |
+| TerminalLifecycleTests, Linux | Existing default budget, 60 seconds; no earlier measured class | Two cases, one passed and one failed, 10.4 seconds |
+| TerminalLifecycleTests, macOS | Existing default budget, 60 seconds; no earlier measured class | Two cases, one passed and one failed, 11.1 seconds |
+
+| System | Shards | Projected test minutes from exact `152062a` discovery (948 tests, 129 classes) |
+| --- | --- | --- |
+| macOS | 4 | 16.77, 16.75, 16.75, 16.75 |
+| Windows | 5 | 15.82, 15.82, 15.82, 15.82, 15.82 |
+| Linux | 4 | 16.30, 16.31, 16.31, 16.30 |
+
+The matrix remains five Windows shards and four each on Linux/macOS, with the same budgets. The projections
+exclude runner/build overhead and unmeasured new coverage: ProfilerTests has seven cases at `152062a` versus
+four in CI4, and ToolHeaderTests has six versus four. Further WPF coverage being developed after this checkpoint
+also requires native measurement. The earlier CI3-weight table for exact `8f5534f` discovery (943 tests) projected
+17.19–17.20 minutes on macOS, 16.75–16.77 on Windows and 15.72–15.73 on Linux; those estimates predated the
+additional XAML cases' measured costs and used Python 3.11 float summation.
+
+`7a03b7d` makes allocation comparisons use decimal seconds, preserving the reported float totals. Python's
+[3.12 float-summation change](https://docs.python.org/3.12/library/functions.html#sum) made equal decimal finish
+times break differently: the same frozen 943-test input and timing-file hash produced Linux counts
+217/291/216/219 on actual Python 3.11.9 and 256/266/203/218 on actual Python 3.12.14, matching the CI discrepancy.
+The corrected CLI passes four boundary regressions on both versions; all 13 generated filters and projected
+outputs are byte-identical across them. Actual selected-test discovery checks the refreshed `152062a` filters:
+all 948 tests appear exactly once per system across its five/four/four shards. Each later merged suite still needs
+those coverage checks, followed by native timing and whole-CI acceptance.
+
+The manual-only `.github/workflows/arm-validation.yml` prepares native Windows ARM64 and Ubuntu ARM64 acceptance on
+GitHub's [documented hosted runners](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
+Its default smoke selection drives existing build/run, design-time baseline, launch/step, CPU profiling, managed Hot
+Reload, real terminal lifecycle and MCP debugger tests. Every requested case prefix must still appear in discovery.
+The optional full selection runs the existing whole suite unchanged, with a finite 90-minute test step/120-minute
+job and the existing ten-minute blame timeout; it changes no regular CI budget. Both modes attempt native packaging,
+per-user installation, a scale-two off-screen frame and debugging through the installed copy, then check uninstallation
+keeps the person's state. Smoke failure does not suppress independent package/install checks.
+
+ARM preflight records the actual OS/process and .NET host architectures, validates Windows apphost/native-library PE
+headers or Linux packaging's existing exhaustive ELF check, and evaluates the paused debuggee's process architecture
+through MCP against the test host. Results, engine logs and timing tables stay under `ArmResults/<rid>` in ARM-named
+artifacts, with no ordinary shard metadata or x64 timing update. Cached ARM64 dbgshim images and Linux's ARM64 PTY
+library are present; data breakpoints remain an explicit Windows x64 runtime capability. Local x64 validation checks
+the workflow/PowerShell syntax, all eight required smoke prefixes (nine discovered tests), PE positive/x64-negative
+controls, native-host rejection on x64 and the real MCP architecture assertion (one pass). These preparation checks
+are separate from the later observed native ARM results above. Smoke/package runs leave the full Windows ARM64
+suite and interactive desktop acceptance for their own verification.
 
 The following is the historical `8048b8e` estimate, before the collection-aware timing refresh; it is retained as the
 evidence for choosing three macOS shards, not a current runtime estimate:

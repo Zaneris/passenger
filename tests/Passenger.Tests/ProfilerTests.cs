@@ -1,5 +1,14 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
+using Avalonia.Styling;
+using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.Profiling;
+using Passenger.App.Run;
 using Passenger.Profiler;
 
 namespace Passenger.Tests;
@@ -14,6 +23,158 @@ public sealed class ProfilerTests : IDisposable
     private readonly string folder = TestFolders.Create("profile-");
 
     public void Dispose() => TestFolders.Delete(folder);
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_completed_profile_explains_missing_memory_and_keeps_long_rows_reachable_through_scrolling_and_resize(bool light)
+    {
+        const string space = "Example.Production.Analytics.Sampling.With.Deliberately.Long.Names.For.Readable.Profiler.Results";
+        const string typeName = "ATypeAllocatedByTheSampleWhoseCompleteNameMustRemainAccessibleAtNarrowWidths";
+        const string methodName = "KeepCalculatingAResultWhileSamplingSoTheWholeMethodNameIsReachableFromTheProfiler";
+        string project = Project("LongRows", """
+            using System.Diagnostics;
+            using System.Runtime.CompilerServices;
+            using LongNamespace;
+            Console.WriteLine($"ready {Work.LongMethod(TimeSpan.FromSeconds(1))}");
+            while (!File.Exists("finish")) { Thread.Sleep(10); }
+            namespace LongNamespace
+            {
+                sealed class PayloadType(long value)
+                {
+                    public long A = value, B = value, C = value, D = value;
+                }
+                static class Work
+                {
+                    private static readonly List<PayloadType> Kept = [];
+                    [MethodImpl(MethodImplOptions.NoInlining)]
+                    public static double LongMethod(TimeSpan time)
+                    {
+                        for (int i = 0; i < 100_000; i++) { Kept.Add(new PayloadType(i)); }
+                        Stopwatch clock = Stopwatch.StartNew();
+                        double total = 0;
+                        while (clock.Elapsed < time)
+                        {
+                            for (int i = 1; i < 10000; i++) { total += Math.Sqrt(i); }
+                        }
+                        return total;
+                    }
+                }
+            }
+            """.Replace("LongNamespace", space, StringComparison.Ordinal).Replace("PayloadType", typeName, StringComparison.Ordinal)
+                .Replace("LongMethod", methodName, StringComparison.Ordinal));
+        MainWindow window = new() { Width = 1200, Height = 900, RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark };
+        window.SetRenderScaling(2);
+        window.Show();
+        window.OpenFolder(project);
+        window.OpenFile(Path.Combine(project, "Program.cs"));
+        Ui.Settle();
+        project = window.Folder!;
+        window.SetConfigurations([new RunConfiguration { Name = "Long-name sampling", Project = Path.Combine(project, "LongRows.csproj"), WorkingDirectory = project }], "Long-name sampling");
+        Assert.Equal(project, window.Configuration?.WorkingDirectory);
+        try
+        {
+            Assert.Null(Ui.Await(window.ProfileAsync(), "the real long-name program to start", TimeSpan.FromMinutes(3)));
+            Ui.WaitFor(() => window.BottomPanel.Run.Document.Snapshot.ToString().Contains("ready ", StringComparison.Ordinal), "the sampled workload to finish");
+            File.WriteAllText(Path.Combine(project, "finish"), string.Empty);
+            Ui.WaitFor(() => window.ProfilerView.Snapshot is not null, "the completed sampling snapshot", TimeSpan.FromMinutes(2));
+            Ui.Settle();
+            ProfilerView view = window.ProfilerView;
+            Page("Memory");
+            foreach (double width in new double[] { 1200, 683, 640 })
+            {
+                window.Width = width;
+                Ui.Settle();
+                Assert.Equal("No memory snapshot was taken. Profile a configuration and choose Get Memory Snapshot while it runs.", view.Placeholder);
+                Assert.False(view.Timeline.IsEffectivelyVisible, "The sampling timeline should not describe an absent heap snapshot");
+                UiAudit.Capture(window, $"profiler-memory-not-taken-{width:0}-{(light ? "light" : "dark")}");
+            }
+            window.Width = 1200;
+            Page("Frames");
+            List<string> frameProblems = [];
+            foreach (double width in new double[] { 1200, 683, 640 })
+            {
+                window.Width = width;
+                Ui.Settle();
+                TextBlock guidance = Assert.Single(view.FramesPage.GetVisualDescendants().OfType<TextBlock>(), text => text.Text?.StartsWith("No Avalonia frames in this run.", StringComparison.Ordinal) == true);
+                Point at = guidance.TranslatePoint(default, view.FramesPage)!.Value;
+                UiAudit.Capture(window, $"profiler-no-frames-{width:0}-{(light ? "light" : "dark")}");
+                frameProblems.AddRange(UiAudit.HorizontalOverflow(window, "No frames", view.FramesPage));
+                if (at.X < 11.5 || at.X + guidance.Bounds.Width > view.FramesPage.Bounds.Width - 11.5)
+                {
+                    frameProblems.Add($"The no-frames guidance touches the pane edge at {width}px");
+                }
+            }
+            Assert.True(frameProblems.Count == 0, string.Join(Environment.NewLine, frameProblems));
+            foreach ((string page, string listName) in new[] { ("Call Tree", "ProfilerCallTree"), ("Hot Spots", "ProfilerHotSpots"), ("Allocations", "ProfilerAllocatedTypes") })
+            {
+                window.Width = 1200;
+                Page(page);
+                ListBox list = Assert.Single(view.GetVisualDescendants().OfType<ListBox>(), box => box.Name == listName);
+                object item = Assert.Single(list.Items.Cast<object>(), value => value switch
+                {
+                    TreeRow row => row.Node.Name.Contains(methodName, StringComparison.Ordinal),
+                    HotSpot spot => spot.Name.Contains(methodName, StringComparison.Ordinal),
+                    AllocatedType type => type.Name == space + "." + typeName,
+                    _ => false,
+                });
+                list.ScrollIntoView(list.Items[0]!);
+                Ui.Settle();
+                Assert.True(list.ContainerFromIndex(0)?.Focus() == true, $"The first {page} row could not take the keys");
+                Ui.Press(window, "home");
+                for (int position = 0; position < list.Items.IndexOf(item); position++)
+                {
+                    Ui.Press(window, "down");
+                }
+                Assert.Same(item, list.SelectedItem);
+                Control row = list.ContainerFromItem(item)!;
+                Assert.True(row.Focus());
+                object? focus = window.FocusManager?.GetFocusedElement();
+                ScrollViewer scroll = Assert.Single(list.GetVisualDescendants().OfType<ScrollViewer>());
+                foreach (double width in new double[] { 1200, 683, 640, 1200 })
+                {
+                    window.Width = width;
+                    Ui.Settle();
+                    Assert.Same(item, list.SelectedItem);
+                    Assert.Same(focus, window.FocusManager?.GetFocusedElement());
+                    Assert.True(scroll.Extent.Width > scroll.Viewport.Width + 40, $"The complete {page} row was clipped instead of measured for horizontal scrolling");
+                    Point over = list.TranslatePoint(new Point(list.Bounds.Width / 2, list.Bounds.Height / 2), window)!.Value;
+                    for (int attempt = 0; attempt < 20 && scroll.Offset.X < scroll.Extent.Width - scroll.Viewport.Width - 1; attempt++)
+                    {
+                        window.MouseMove(over);
+                        window.MouseWheel(over, new Vector(-30, 0));
+                        Ui.Settle();
+                    }
+                    Assert.True(scroll.Offset.X > 0, $"The {page} row cannot be read by scrolling horizontally");
+                    Assert.InRange(scroll.Offset.X, scroll.Extent.Width - scroll.Viewport.Width - 1, scroll.Extent.Width - scroll.Viewport.Width + 1);
+                    UiAudit.Capture(window, $"profiler-long-{page}-{width:0}-{(light ? "light" : "dark")}");
+                }
+                int index = list.SelectedIndex;
+                Ui.Press(window, index == 0 ? "down" : "up");
+                Assert.NotSame(item, list.SelectedItem);
+                Ui.Press(window, index == 0 ? "up" : "down");
+                Assert.Same(item, list.SelectedItem);
+            }
+        }
+        finally
+        {
+            File.WriteAllText(Path.Combine(project, "finish"), string.Empty);
+            window.Close();
+        }
+
+        void Page(string name)
+        {
+            ToggleButton button = Assert.Single(window.ProfilerView.GetVisualDescendants().OfType<ToggleButton>(), button => Equals(button.Content, name));
+            button.BringIntoView();
+            Ui.Settle();
+            Point point = button.TranslatePoint(new Point(button.Bounds.Width / 2, button.Bounds.Height / 2), window)!.Value;
+            window.MouseMove(point);
+            window.MouseDown(point, MouseButton.Left);
+            window.MouseUp(point, MouseButton.Left);
+            Ui.Settle();
+            Assert.True(button.IsChecked == true);
+        }
+    }
 
     [AvaloniaFact]
     public void Profile_builds_and_runs_the_configuration_and_its_end_shows_the_snapshot()
@@ -183,11 +344,28 @@ public sealed class ProfilerTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_memory_snapshot_of_a_program_being_profiled_counts_its_heap_by_type_and_it_runs_on()
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_memory_snapshot_of_a_program_being_profiled_counts_its_heap_by_type_and_it_runs_on(bool light)
     {
-        string project = Project("Spinner", "Console.WriteLine(\"waiting\");\nConsole.WriteLine($\"read {Console.ReadLine()}\");\n");
-        MainWindow window = new() { Width = 1200, Height = 800 };
+        const string longType = "ACompanyWithSeveralProducts.Analytics.HeapSnapshots.ATypeWhoseLongNameMustStayReachableBesideAllTheMemoryMetricColumns";
+        string project = Project("Spinner", """
+            Holder.Held = Enumerable.Range(0, 40).Select(_ => new LongType()).ToArray();
+            Console.WriteLine($"waiting with {Holder.Held.Length} held objects");
+            while (Console.ReadLine() is not null)
+            {
+                Holder.Held = [.. Holder.Held, .. Enumerable.Range(0, 7).Select(_ => new LongType())];
+                Console.WriteLine($"grown with {Holder.Held.Length} held objects");
+            }
+            static class Holder { public static LongType[] Held = []; }
+            namespace ACompanyWithSeveralProducts.Analytics.HeapSnapshots
+            {
+                sealed class ATypeWhoseLongNameMustStayReachableBesideAllTheMemoryMetricColumns { }
+            }
+            """.Replace("LongType", longType, StringComparison.Ordinal));
+        MainWindow window = new() { Width = 1200, Height = 800, RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark };
+        window.SetRenderScaling(2);
         window.Show();
         window.OpenFolder(project);
         Ui.Settle();
@@ -195,7 +373,7 @@ public sealed class ProfilerTests : IDisposable
         Ui.WaitFor(() => started.IsCompleted, "the build and the start", TimeSpan.FromMinutes(3));
         Assert.Null(started.Result);
         Passenger.App.Profiling.ProfilerView view = window.ProfilerView;
-        Ui.PumpUntil(() => window.BottomPanel.Run.Document.Snapshot.ToString().Contains("waiting", StringComparison.Ordinal), "the program to wait on its input");
+        Ui.PumpUntil(() => window.BottomPanel.Run.Document.Snapshot.ToString().Contains("waiting with 40 held objects", StringComparison.Ordinal), "the program to hold its objects and wait on its input");
 
         // Get Memory Snapshot while it waits: the heap by type on the Memory page, the program still there.
         Avalonia.Controls.Button take = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(view).OfType<Avalonia.Controls.Button>()
@@ -209,8 +387,172 @@ public sealed class ProfilerTests : IDisposable
         Assert.True(strings.Count > 10, $"{strings.Count} strings");
         Assert.Equal(view.Memory.Bytes, view.HeapTypes.Sum(t => t.Bytes));
         Assert.True(window.Profiling is { HasExited: false }, "The program being profiled ended with its memory snapshot");
+        HeapType allocated = Assert.Single(view.HeapTypes, type => type.Name == longType);
+        Assert.Equal(40, allocated.Count);
+        ListBox typeList = view.MemoryPage.TypeList;
+        typeList.ScrollIntoView(allocated);
+        Ui.Settle();
+        Control row = typeList.ContainerFromItem(allocated)!;
+        Assert.True(row.Focus());
+        typeList.SelectedItem = allocated;
+        object? focus = window.FocusManager?.GetFocusedElement();
+        ScrollViewer scroll = Assert.Single(typeList.GetVisualAncestors().OfType<ScrollViewer>(), viewer => viewer.HorizontalScrollBarVisibility == ScrollBarVisibility.Auto);
+        foreach (double width in new double[] { 1200, 683, 640, 1200 })
+        {
+            double horizontal = scroll.Offset.X;
+            window.Width = width;
+            Ui.Settle();
+            Assert.Same(allocated, typeList.SelectedItem);
+            Assert.Same(focus, window.FocusManager?.GetFocusedElement());
+            Assert.InRange(Math.Abs(scroll.Offset.X - Math.Min(horizontal, scroll.Extent.Width - scroll.Viewport.Width)), 0, 1);
+            Point rowAt = row.TranslatePoint(default, typeList)!.Value;
+            Assert.True(rowAt.Y >= -1 && rowAt.Y + row.Bounds.Height <= typeList.Bounds.Height + 1, "Resize hid the selected type outside the vertical reading viewport");
+            TextBlock name = Assert.Single(row.GetVisualDescendants().OfType<TextBlock>(), block => block.Text == longType);
+            Assert.True(name.Bounds.Width >= 240, $"The type name collapsed to {name.Bounds.Width}px beside its numeric columns");
+            Assert.Equal(longType, ToolTip.GetTip(name));
+            Assert.True(scroll.Extent.Width > scroll.Viewport.Width, "The memory table has no horizontal access to the full type and all metrics");
+            Point over = scroll.TranslatePoint(new Point(scroll.Bounds.Width / 2, scroll.Bounds.Height / 2), window)!.Value;
+            window.MouseWheel(over, new Vector(-30, 0));
+            Ui.Settle();
+            Assert.True(scroll.Offset.X > 0, "The memory table did not scroll horizontally");
+            Grid header = Assert.Single(scroll.GetVisualDescendants().OfType<Grid>(), grid => grid.ColumnDefinitions.Count == 4 && grid.Children.OfType<Button>().Count() == 4);
+            Grid cells = Assert.Single(row.GetVisualDescendants().OfType<Grid>());
+            foreach (int column in Enumerable.Range(1, 3))
+            {
+                Control label = Assert.Single(header.Children, child => Grid.GetColumn(child) == column);
+                Control value = Assert.Single(cells.Children, child => Grid.GetColumn(child) == column);
+                Assert.InRange(Math.Abs(label.TranslatePoint(new Point(label.Bounds.Width, 0), scroll)!.Value.X
+                    - value.TranslatePoint(new Point(value.Bounds.Width, 0), scroll)!.Value.X), 0, 1);
+            }
+            Assert.True(typeList.Bounds.Height < view.Bounds.Height, "The table lost its finite vertical viewport");
+            Assert.True(typeList.GetVisualDescendants().OfType<ListBoxItem>().Count() < typeList.Items.Count, "The memory table materialized every type instead of its visible rows");
+            UiAudit.Capture(window, $"profiler-heap-types-{width:0}-{(light ? "light" : "dark")}");
+        }
+        window.Width = 640;
+        Ui.Settle();
+        Point tableAt = scroll.TranslatePoint(new Point(scroll.Bounds.Width / 2, scroll.Bounds.Height / 2), window)!.Value;
+        window.MouseWheel(tableAt, new Vector(1000, 0));
+        Ui.Settle();
+        Assert.Equal(0, scroll.Offset.X);
+        UiAudit.Capture(window, $"profiler-heap-types-name-640-{(light ? "light" : "dark")}");
+
+        window.Width = 1200;
+        Ui.Settle();
+        ScrollViewer vertical = Assert.Single(typeList.GetVisualDescendants().OfType<ScrollViewer>());
+        Point rowsAt = typeList.TranslatePoint(new Point(typeList.Bounds.Width / 2, typeList.Bounds.Height / 2), window)!.Value;
+        window.MouseWheel(rowsAt, new Vector(0, -1000));
+        Ui.Settle();
+        Assert.True(vertical.Offset.Y > 0);
+        Assert.True(typeList.ContainerFromItem(allocated) is not { } selected
+            || selected.TranslatePoint(default, typeList) is not { } selectedAt || selectedAt.Y + selected.Bounds.Height <= 0
+            || selectedAt.Y >= typeList.Bounds.Height, "The scroll-away fixture still shows its selected type");
+        double reading = vertical.Offset.Y;
+        window.Width = 640;
+        Ui.Settle();
+        Assert.Same(allocated, typeList.SelectedItem);
+        Assert.InRange(Math.Abs(reading - vertical.Offset.Y), 0, 1);
+
+        window.Width = 1200;
+        Ui.Settle();
+        MemoryView memory = view.MemoryPage;
+        MemorySnapshot first = view.Memory;
+        window.Profiling!.Input!.WriteLine("grow");
+        window.Profiling.Input.Flush();
+        Ui.WaitFor(() => window.BottomPanel.Run.Document.Snapshot.ToString().Contains("grown with 47 held objects", StringComparison.Ordinal), "the real program to grow its retained objects");
+        take.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Ui.WaitFor(() => memory.Snapshots.Count == 2, "the second memory snapshot", TimeSpan.FromMinutes(2));
+        MemorySnapshot second = memory.Snapshots[1];
+        Assert.Equal(47, Assert.Single(second.Types, type => type.Name == longType).Count);
+        MemoryButton("Compare with…").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        MenuItem older = Assert.Single(memory.CompareMenu!.Items.OfType<MenuItem>());
+        older.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(MenuItem.ClickEvent));
+        memory.CompareMenu.Hide();
+        Ui.WaitFor(() => memory.Comparison is not null, "the real snapshots to compare");
+        SnapshotComparison comparison = Assert.IsType<SnapshotComparison>(memory.Comparison);
+        Assert.Same(first, comparison.Older);
+        Assert.Same(second, comparison.Newer);
+        List<string> overflow = [];
+        TypeDelta delta = Assert.Single(memory.DeltaRows, type => type.Name == longType);
+        memory.Choose(delta);
+        Audit("comparison");
+        Assert.True(MemoryButton("Open New Objects").Focus());
+        Ui.Press(window, "enter");
+        Ui.WaitFor(() => memory.Set is not null, "the new objects and their real paths to roots");
+        Assert.True(Assert.IsType<ObjectSet>(memory.Set).Count >= 7);
+        foreach (string page in new[] { "Objects", "Shortest Paths to Roots", "Key Retention Paths" })
+        {
+            ToggleButton tab = Assert.Single(memory.GetVisualDescendants().OfType<ToggleButton>(), button => Equals(button.Content, page));
+            tab.BringIntoView();
+            Ui.Settle();
+            Assert.True(tab.Focus());
+            Ui.Press(window, "space");
+            Assert.True(tab.IsChecked == true);
+            Audit(page);
+        }
+        Button back = MemoryButton($"Comparison of {first.Name} to {second.Name}");
+        back.BringIntoView();
+        Ui.Settle();
+        Assert.True(back.Focus());
+        Ui.Press(window, "enter");
+        Assert.Same(comparison, memory.Comparison);
+        Audit("comparison");
+        Assert.Empty(overflow);
         window.Profiling.Kill();
         window.Close();
+
+        Button MemoryButton(string content) => Assert.Single(memory.GetVisualDescendants().OfType<Button>(), button => button.IsEffectivelyVisible && Equals(button.Content, content));
+
+        void Audit(string page)
+        {
+            ListBox visible = Assert.Single(memory.GetVisualDescendants().OfType<ListBox>(), list => list.IsEffectivelyVisible
+                && list.Items.Count > 0 && list.Items[0] is not MemorySnapshot);
+            object? selected = visible.SelectedItem;
+            foreach (double width in new double[] { 1200, 683, 640 })
+            {
+                window.Width = width;
+                Ui.Settle();
+                Assert.Equal(selected, visible.SelectedItem);
+                if (page == "comparison")
+                {
+                    Button firstAction = MemoryButton("Open New Objects");
+                    firstAction.BringIntoView();
+                    Ui.Settle();
+                    Assert.True(firstAction.Focus());
+                    Ui.Press(window, "tab");
+                    Ui.Press(window, "tab");
+                    Button last = MemoryButton("Open Survived Objects");
+                    Assert.Same(last, window.FocusManager?.GetFocusedElement());
+                    Ui.Settle();
+                    ScrollViewer tools = last.GetVisualAncestors().OfType<ScrollViewer>().First();
+                    Point at = last.TranslatePoint(default, tools)!.Value;
+                    Assert.True(at.X >= -1 && at.X + last.Bounds.Width <= tools.Bounds.Width + 1, "A comparison action could not be brought into its horizontal viewport by the keyboard");
+                }
+                else
+                {
+                    ToggleButton chosen = Assert.Single(memory.GetVisualDescendants().OfType<ToggleButton>(), button => button.IsChecked == true);
+                    Assert.Same(chosen, window.FocusManager?.GetFocusedElement());
+                    ScrollViewer strip = chosen.GetVisualAncestors().OfType<ScrollViewer>().First();
+                    Point at = chosen.TranslatePoint(default, strip)!.Value;
+                    Assert.True(at.X >= -1 && at.X + chosen.Bounds.Width <= strip.Bounds.Width + 1, "Resize hid the chosen object-set tab");
+                    TextBlock current = Assert.Single(memory.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == memory.Trail.Split(" › ", StringSplitOptions.None)[^1]);
+                    ScrollViewer crumb = current.GetVisualAncestors().OfType<ScrollViewer>().First();
+                    Assert.True(crumb.Extent.Width > crumb.Viewport.Width, "The complete object-set trail needs a horizontal reading viewport");
+                    Point over = crumb.TranslatePoint(new Point(crumb.Bounds.Width / 2, crumb.Bounds.Height / 2), window)!.Value;
+                    window.MouseMove(over);
+                    for (int attempt = 0; attempt < 20 && crumb.Offset.X < crumb.Extent.Width - crumb.Viewport.Width - 1; attempt++)
+                    {
+                        window.MouseWheel(over, new Vector(-30, 0));
+                        Ui.Settle();
+                    }
+                    Assert.InRange(crumb.Offset.X, crumb.Extent.Width - crumb.Viewport.Width - 1, crumb.Extent.Width - crumb.Viewport.Width + 1);
+                }
+                UiAudit.Capture(window, $"profiler-heap-{page}-{width:0}-{(light ? "light" : "dark")}");
+                overflow.AddRange(UiAudit.HorizontalOverflow(window, page, memory));
+                Assert.True(visible.Bounds.Height >= 22, $"The {page} header consumed the table's vertical reading viewport");
+            }
+            window.Width = 1200;
+            Ui.Settle();
+        }
     }
 
     [AvaloniaFact]

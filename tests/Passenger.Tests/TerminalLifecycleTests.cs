@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Run;
@@ -122,6 +123,7 @@ public sealed class TerminalLifecycleTests : IDisposable
     public void Immediate_terminal_shutdown_owns_created_shells_and_failed_start_leaves_no_connection()
     {
         MainWindow window = new() { Width = 1200, Height = 800 };
+        window.SetRenderScaling(2);
         window.TerminalPanel.Shell = OperatingSystem.IsWindows() ? (Path.Combine(Environment.SystemDirectory, "cmd.exe"), ["/D", "/Q"]) : ("/bin/sh", []);
         window.Show();
         window.OpenFolder(folder);
@@ -149,13 +151,48 @@ public sealed class TerminalLifecycleTests : IDisposable
                 Assert.Single(exits);
                 Assert.Empty(window.TerminalPanel.Tabs);
             }
-            window.TerminalPanel.Shell = (Path.Combine(folder, "missing-shell"), []);
-            TerminalSession failed = Ui.Await(window.TerminalPanel.NewSessionAsync(), "the missing shell's diagnostic");
-            Assert.Contains(failed.Screen.Lines, line => line.Text().Contains("could not start a shell", StringComparison.Ordinal));
-            Assert.False(failed.IsRunning);
-            Assert.Null(failed.ProcessId);
-            Await(window.TerminalPanel.CloseAllAsync(), "the failed shell's tab to close");
-            Assert.Empty(window.TerminalPanel.Tabs);
+            foreach (string missing in OperatingSystem.IsWindows() ? new[] { Path.Combine(folder, "missing-shell") }
+                : new[] { Path.Combine(folder, "missing-shell"), "./missing-shell" })
+            {
+                window.TerminalPanel.Shell = (missing, []);
+                TerminalSession failed = Ui.Await(window.TerminalPanel.NewSessionAsync(), "the missing shell's diagnostic");
+                Assert.Contains(failed.Screen.Lines, line => line.Text().Contains("could not start a shell", StringComparison.Ordinal));
+                Assert.Same(failed, window.TerminalPanel.Active);
+                Assert.False(failed.IsRunning);
+                Assert.Null(failed.ProcessId);
+                window.ShowToolWindow("terminal");
+                foreach (ThemeVariant theme in new[] { ThemeVariant.Dark, ThemeVariant.Light })
+                {
+                    window.RequestedThemeVariant = theme;
+                    Ui.Settle();
+                    UiAudit.Capture(window, $"terminal-missing-{(Path.IsPathRooted(missing) ? "absolute" : "relative")}-{theme.ToString().ToLowerInvariant()}");
+                }
+                Await(window.TerminalPanel.CloseAllAsync(), "the failed shell's tab to close");
+                Assert.Empty(window.TerminalPanel.Tabs);
+            }
+            if (!OperatingSystem.IsWindows())
+            {
+                string shellFolder = Path.Combine(folder, "shell folder");
+                Directory.CreateDirectory(shellFolder);
+                string executable = Path.Combine(shellFolder, "real-shell");
+                File.WriteAllText(executable, "#!/bin/sh\nprintf 'relative-shell-ready\\n'\nread answer\nexit 2\n");
+                File.SetUnixFileMode(executable, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+                window.TerminalPanel.Shell = ("./real-shell", []);
+                TerminalSession relative = Ui.Await(window.TerminalPanel.NewSessionAsync(shellFolder), "a relative executable in a spaced working directory");
+                window.ShowToolWindow("terminal");
+                Ui.WaitFor(() => relative.Screen.Lines.Any(line => line.Text().Contains("relative-shell-ready", StringComparison.Ordinal)), "the relative shell's real output");
+                int pid = Assert.IsType<int>(relative.ProcessId);
+                List<int> exits = [];
+                relative.Exited += (_, code) => exits.Add(code);
+                window.TerminalPanel.FocusView();
+                Ui.Settle();
+                Assert.Same(window.TerminalPanel.View, window.FocusManager?.GetFocusedElement());
+                window.KeyTextInput("finished");
+                Ui.Press(window, "enter");
+                Ui.WaitFor(() => !relative.IsRunning && Processes.Gone(pid), "the real program's exit, even when its code is also an errno", TimeSpan.FromSeconds(10));
+                Assert.Equal(2, Assert.Single(exits));
+                Assert.Empty(window.TerminalPanel.Tabs);
+            }
         }
         finally
         {
