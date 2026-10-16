@@ -192,6 +192,31 @@ public sealed class PackageSourcesTests : IDisposable
         Ui.Settle();
         Assert.Same(solution, nuget.Sources.Chosen);
         Assert.Contains(Descendants<TextBlock>(nuget.Sources), text => text.Text == solution.Path);
+        Button longEdit = FeedRow(nuget, name).Children.OfType<Button>().Single(button => ToolTip.GetTip(button) as string == "Edit");
+        Assert.True(longEdit.Focus());
+        Ui.Press(window, "enter");
+        Ui.Settle();
+        FeedDialog longDialog = Assert.Single(window.OwnedWindows.OfType<FeedDialog>());
+        longDialog.RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark;
+        longDialog.SetRenderScaling(2);
+        Ui.Settle();
+        Assert.Equal(name, longDialog.FeedName);
+        Assert.Equal(local, longDialog.Url);
+        foreach (string value in new[] { name, local })
+        {
+            TextBox field = Assert.Single(Descendants<TextBox>(longDialog), box => box.Text == value);
+            Assert.True(field.Focus());
+            Ui.Press(longDialog, "end");
+            Assert.Equal(value.Length, field.CaretIndex);
+            Ui.Press(longDialog, "home");
+            Assert.Equal(0, field.CaretIndex);
+            Assert.Equal(value, field.Text);
+        }
+        UiAudit.Capture(longDialog, $"nuget-feed-long-name-{(light ? "light" : "dark")}");
+        string[] clipped = [.. UiAudit.HorizontalOverflow(longDialog, "Editing a long feed name")];
+        Ui.Press(longDialog, "escape");
+        Ui.Settle();
+        Assert.True(clipped.Length == 0, string.Join(Environment.NewLine, clipped));
         Button privateEdit = FeedRow(nuget, "private").Children.OfType<Button>().Single(button => ToolTip.GetTip(button) as string == "Edit");
         Assert.True(privateEdit.Focus());
         Ui.Press(window, "enter");

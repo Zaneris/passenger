@@ -61,6 +61,11 @@ jobs:
           key: nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('global.json', '**/Directory.Packages.props', '**/Directory.Build.props', '**/*.csproj', '**/packages.lock.json') }}
           restore-keys: nuget-${{ runner.os }}-${{ runner.arch }}-
 
+      - name: Check owned disk-image cleanup after a volume unmounts
+        id: mount_checks
+        continue-on-error: true
+        run: python3 -I tools/test-dmg-mount.py -v
+
       - name: Make and check the arm64 disk image
         id: arm_image
         continue-on-error: true
@@ -83,13 +88,25 @@ jobs:
       - name: Both disk images passed their checks
         if: ${{ !cancelled() }}
         env:
+          MOUNT_OUTCOME: ${{ steps.mount_checks.outcome }}
           ARM_OUTCOME: ${{ steps.arm_image.outcome }}
           X64_OUTCOME: ${{ steps.x64_image.outcome }}
         run: |
-          if [ "$ARM_OUTCOME" != success ] || [ "$X64_OUTCOME" != success ]; then
-            echo "::error::Disk image checks: arm64=$ARM_OUTCOME, x64=$X64_OUTCOME"
+          if [ "$MOUNT_OUTCOME" != success ] || [ "$ARM_OUTCOME" != success ] || [ "$X64_OUTCOME" != success ]; then
+            echo "::error::Disk image checks: mounts=$MOUNT_OUTCOME, arm64=$ARM_OUTCOME, x64=$X64_OUTCOME"
             exit 1
           fi
+
+      - name: Disk-image attachment diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: disk-image-attachments
+          path: |
+            artifacts/package/*/mount*.plist
+            artifacts/package/*/mount.json
+          if-no-files-found: warn
+          retention-days: 7
 
   # #34: the Windows installer as `just package-win` builds it, installed silently as a person's would be (per user, no
   # administrator), an agent debugging a project through the Passenger it installed (so its Roslyn server and debugger
