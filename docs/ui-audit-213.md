@@ -259,6 +259,11 @@ production header fix or explaining the original intermittent failure. Root evid
 results exactly once per OS and zero failed tests, with a budget-only macOS shard failure and separate ARM image
 detach failure. Newer source still requires native CI; see the timing and case-growth evidence in MVP progress.
 
+Complete native `7241544` run `38839133992` later reproduces the Dark Profiler Snapshots-at-683 failure with the
+pre-capture assertion order. Its fractional transformed tab geometry is under investigation; the earlier passing
+focused run does not resolve that recurrence, and no product clipping cause, tolerance change or fixed header is
+claimed. The current Self Debugging deadline/restore repair has scoped Windows/Linux evidence, with macOS pending.
+
 | Tool surfaces | Current captured/tested state | Continuing source or capture work |
 | --- | --- | --- |
 | Hierarchy, Git, Unit Tests | Empty guidance fits its own 640px-window pane; both themes inspected. | Populated hierarchy/history/test views and responsive controls. |
@@ -269,8 +274,10 @@ detach failure. Newer source still requires native CI; see the timing and case-g
 | NuGet | Real local-feed toolbar/header/feed ellipsis, populated Sources configuration paths and `d702d41` package metadata/install/update/remove fit at 1200/683/640 and side200 with actual Windows/Linux input and both-theme captures. Explicit version choices survive only same-identity refresh while offered; automatic feed defaults remain live. | Remaining error/detail/source-credential states. Native package tests report an ancillary missing WindowsDesktop reference pack; no clean code-help claim. |
 | Profiler Memory/Frames subviews | Actual held-object comparison/object/root-path flows, million-object metadata and long Frames metrics/scrolling/source navigation have scoped Windows/Linux tests and both-theme captures. | Remaining error/cancellation/busy transitions and unexamined snapshot states; scoped evidence is listed above. |
 
-Long editor tabs and status paths now have scoped fixes above. Populated History/Git forms, optional status widgets
-and remaining popup/focus rules continue; the current native macOS Self Debugging failure takes priority. The capture
+Long editor tabs and status paths now have scoped fixes above. `9c805c4` adds real populated Git long-path/message,
+branch/file keyboard and resize checks on Windows/Linux; Local History, Commit and unexamined Git states continue.
+Optional status widgets and remaining popup/focus rules continue; the recurring native macOS Profiler header
+geometry failure takes priority after the timing checkpoint. The capture
 inventory is updated as those checks run; it is not a stopping condition.
 
 ## Reference and execution limits
