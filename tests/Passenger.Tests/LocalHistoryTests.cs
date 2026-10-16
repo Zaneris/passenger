@@ -1,9 +1,11 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Media.TextFormatting;
 using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Passenger.App;
@@ -204,6 +206,12 @@ public sealed class LocalHistoryTests : IDisposable
                             window.MouseWheel(at, new Vector(-30, 0));
                             Ui.Settle();
                             Assert.True(reader.Offset.X > 0, $"The diff {part} does not scroll to its complete text");
+                            ScrollBar bar = reader.GetVisualDescendants().OfType<ScrollBar>().Single(bar => bar.Orientation == Avalonia.Layout.Orientation.Horizontal);
+                            Thumb thumb = bar.GetVisualDescendants().OfType<Thumb>().First();
+                            TextLine line = Assert.Single(caption.TextLayout.TextLines);
+                            double textBottom = caption.TranslatePoint(default, reader)!.Value.Y + line.Height + line.OverhangAfter;
+                            double thumbTop = thumb.TranslatePoint(default, reader)!.Value.Y;
+                            Assert.True(textBottom <= thumbTop + 0.5, $"The diff {part} horizontal thumb paints over its caption: ink ends at {textBottom:0.0}px, thumb starts at {thumbTop:0.0}px");
                         }
                         Assert.True(caption.TextLayout.Width <= caption.Bounds.Width + 1, $"The diff {part} still clips its text inside the horizontal reader");
                         Reveal(reader, rightEdge: true);
