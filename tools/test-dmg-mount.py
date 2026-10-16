@@ -122,6 +122,20 @@ class MountCli(unittest.TestCase):
         self.cli("detach", self.record)
         self.assertFalse(self.record.exists())
 
+    def test_unknown_backing_file_cannot_authorize_work_cleanup(self):
+        def forget_ownership(value):
+            value["images"][0].pop("image-path")
+            value["images"][0]["system-entities"][1].pop("mount-point")
+
+        self.mutate(forget_ownership)
+        recorded = self.record.read_text()
+        result = self.cli("clear", self.root, success=False)
+        self.assertIn("no backing-image path", result.stderr)
+        self.assertEqual(self.record.read_text(), recorded)
+        self.assertTrue(self.image.exists())
+        self.assertTrue(self.mount.is_dir())
+        self.assertFalse(any(call[0] == "detach" for call in json.loads(self.state.read_text())["calls"]))
+
 
 @unittest.skipUnless(sys.platform == "darwin", "Real disk-image acceptance needs macOS")
 class NativeMountCli(unittest.TestCase):

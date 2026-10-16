@@ -29,6 +29,8 @@ def read_info(record):
     for image in value["images"]:
         if not isinstance(image, dict) or not isinstance(image.get("system-entities"), list):
             raise RuntimeError("hdiutil info returned an image without system-entities")
+        if not isinstance(image.get("image-path"), str) or not image["image-path"].strip():
+            raise RuntimeError(f"hdiutil info returned no backing-image path; ownership is unknown: {image}")
     return value["images"]
 
 
