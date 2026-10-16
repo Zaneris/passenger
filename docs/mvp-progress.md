@@ -31,6 +31,40 @@ the notices check for all 258 packages. Exact graph comparison finds only Messag
 and their owning project-reference metadata. Evidence is retained in the `ci-messagepack-patch` worktree's
 `artifacts/messagepack-patch/`; the new App DLL reports 2.5.303 while the independent Roslyn DLL remains 2.5.302.
 
+The two original failure families have separate source-specific repairs and evidence:
+
+- `655a092` adds the trailing `--` when reading a revision blob in `Git.TextAtAsync`. Git for Windows otherwise tries
+  to stat the `hash:path` argument, whose combined length can exceed its working-path limit; the failed read had
+  become an empty diff. This is a product repair, preserving long-path coverage and normal Git configuration.
+  Both-theme real Git Log/Enter/diff controls fail with the old command; the frozen VCS/History batch passes 44/44
+  with the fix. Isolated command probes also preserve an error for a genuinely missing blob. Source hashes, logs,
+  results and four inspected default/narrow frames are under the shell worktree's `artifacts/ci-git-diff/`.
+  Root merged and pushed this repair in `ced3c63`; its integration build has zero errors/seven unchanged fixture
+  warnings in 27.85s, and both original History cases plus both new VCS cases pass (4/4, 14s).
+- `0f341c7` fixes the Find Action test's query replacement. Avalonia Headless configures its own text-box hotkeys;
+  choosing Meta+A from the host OS left no selection and appended `Go to File` to the old query, producing zero rows.
+  The test now uses the actual configured Select All gesture and asserts both the selection and replacement text.
+  Both-theme wrong-gesture controls fail with that exact concatenated query; the configured-Meta positive and final
+  restored controls each pass 2/2. The broader local Action/Navigation/Shortcut/Editor Window batch passes 20/20.
+  Root merged and separately pushed the repair in `2ea6f8c`; its fresh integration build has zero errors/seven
+  existing fixture warnings in 29.17s and the same 20-case integration batch passes in 36s, with no skips.
+
+Original native metadata, four failed job logs, all 14 result archives and exact coverage analysis remain under
+`artifacts/resume-ci-2026-10-16/evidence/`. Action probes and actual captures are under the shipping worktree's
+`artifacts/ci-action-query/`. No timeout, coverage or layout assertion was weakened to explain the original run.
+
+The repaired source `2ea6f8c` completes [CI `38940010842`](https://github.com/tebeco/passenger/actions/runs/38940010842)
+in **27m12s**. Actual discovery, all 14 filtered discoveries and TRXs agree on **1,036 unique cases exactly once per
+system**. Windows reports **1,027 passed/nine skipped/zero failed**; Linux **944 passed/92 skipped/zero failed**;
+macOS **954 passed/81 skipped/one failed**. Both original History and Action theme cases and both new VCS cases
+pass natively; all packaging jobs pass. Three Mac shards still fail the unchanged 20-minute test budget:
+**21.0188, 20.8369 and 20.7928 minutes** (shards 1, 3 and 4). Mac shard 3 also fails the existing MCP input-latency
+assertion at `McpTests.cs:970`: a key waits **547ms** against the **250ms** bound while all 10,002 usages are found.
+The cause of that delay is not established. The Mac jobs' initial **2m12s–2m27s** runner queue is counted separately;
+it does not explain their measured TRX budget overruns. Neither the below-25-minute CI goal nor complete green
+native acceptance is met. Full results, failed logs, exact per-case coverage and class timings are retained under
+`artifacts/resume-ci-2026-10-16/evidence/final-38940010842/`, with `analysis.json` the machine-readable inventory.
+
 ## Issue status
 
 | Issue | Local result | What remains |
