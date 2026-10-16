@@ -9,6 +9,28 @@ No issue was closed, release published or tag pushed.
 The owner's shutdown resume point, preserved unmerged drafts and next verification steps are recorded in
 [the handoff](mvp-handoff.md). Its checkpoint does not mark the continuing work complete.
 
+## Resumed CI investigation — 2026-10-16
+
+The final shutdown source `74edf7d` ran all 1,034 expected cases exactly once per system in
+[CI `38848023088`](https://github.com/tebeco/passenger/actions/runs/38848023088), finishing in 24m58s. Windows reports
+1,023 passed, nine skipped and two failed; Linux 942 passed, 92 skipped and none failed; macOS 951 passed, 81 skipped
+and two failed. All 14 shards remain within the 20-minute test budget and all packaging jobs pass. The failures are
+the two-theme Windows populated Git History diff-content assertion and two-theme macOS Find Action pointer-row
+lookup; these are separate from setup, coverage or timing failures. WPF hot reload passes all 56 Windows cases.
+
+A subsequent fresh restore independently reports NU1902 for StreamJsonRpc 2.25.29's MessagePack 2.5.302 dependency.
+The [reviewed advisory](https://github.com/advisories/GHSA-qhrr-8q5h-9q3h) entered GitHub's database on October 15 at
+18:35:46 UTC; its [2.5.303 patch](https://github.com/MessagePack-CSharp/MessagePack-CSharp/releases/tag/v2.5.303) was
+published September 17 at 19:19:27 UTC. The bounded package repair explicitly references centrally managed 2.5.303
+in App/Lsp and updates their four affected lock graphs, preserving normal auditing and warning severity. This fixes
+the fresh NuGet graph blocker; Roslyn 5.11.0's separately downloaded payload still carries its own older MessagePack
+copy and needs separate upstream/provenance follow-up. It does not explain the earlier four assertion failures.
+The isolated patch passes audited restore, forced locked restore, a fresh solution build (zero errors/seven unchanged
+fixture warnings, 46.45s), all eight real C# language-server/Testing Platform/MCP integration controls (56.41s), and
+the notices check for all 258 packages. Exact graph comparison finds only MessagePack/Annotations version changes
+and their owning project-reference metadata. Evidence is retained in the `ci-messagepack-patch` worktree's
+`artifacts/messagepack-patch/`; the new App DLL reports 2.5.303 while the independent Roslyn DLL remains 2.5.302.
+
 ## Issue status
 
 | Issue | Local result | What remains |

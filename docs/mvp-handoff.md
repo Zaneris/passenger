@@ -3,6 +3,23 @@
 Work is paused for the owner's shutdown. This is a resume point, not whole-MVP, whole-UI, release or final MCP
 acceptance. Retain the worktrees and ignored artifacts; do not archive or clean them before resuming.
 
+## Resume investigation — 2026-10-16
+
+Final shutdown source `74edf7d` is confirmed by [CI `38848023088`](https://github.com/tebeco/passenger/actions/runs/38848023088).
+Every system reports all 1,034 expected cases exactly once: Windows 1,023 passed/nine skipped/two failed, Linux
+942 passed/92 skipped/zero failed, macOS 951 passed/81 skipped/two failed. The two failure families are Windows
+populated Git History's empty diff content and macOS Find Action's missing pointer-selected row, both themes.
+All 14 shards fit their 20-minute budget; all packaging jobs pass; the run takes 24m58s. Resume with these actual
+failures rather than the earlier pending-run assumptions below. Raw evidence is retained under
+`artifacts/resume-ci-2026-10-16/evidence/` in the main checkout.
+
+Fresh restore subsequently detects [GHSA-qhrr-8q5h-9q3h](https://github.com/advisories/GHSA-qhrr-8q5h-9q3h), added to
+GitHub's advisory database October 15 at 18:35:46 UTC. MessagePack 2.5.303, published September 17 at 19:19:27 UTC,
+patches StreamJsonRpc's older transitive minimum. The explicit App/Lsp package references and four lock updates
+retain strict auditing; this independent restore blocker is not the cause of those four native test assertions.
+Roslyn 5.11.0's separately downloaded payload still contains MessagePack 2.5.302 and remains an upstream/provenance
+follow-up; do not claim the whole bundled payload remediated by the project graph repair.
+
 ## Reviewed source and verification
 
 Before the final shutdown push, the confirmed remote checkpoint is `e43dd47`, containing the healthy native timing
