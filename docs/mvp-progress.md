@@ -6,6 +6,9 @@ whole milestone, platform suite or release has passed. The 2026-10-15 evidence r
 adds new evidence without replacing it. Reviewed commits are being pushed to the fork's `origin/main` as requested.
 No issue was closed, release published or tag pushed.
 
+The owner's shutdown resume point, preserved unmerged drafts and next verification steps are recorded in
+[the handoff](mvp-handoff.md). Its checkpoint does not mark the continuing work complete.
+
 ## Issue status
 
 | Issue | Local result | What remains |
