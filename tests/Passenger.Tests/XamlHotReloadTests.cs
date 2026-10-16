@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
@@ -261,6 +262,104 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
                 Assert.Equal(HotReloadResult.RestartNeeded, next.Result);
                 Assert.True(window.Debugger.HotReload!.Changed);
             }
+        }
+        finally
+        {
+            FutureEnded(window, watched);
+        }
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Literal_property_elements_update_their_parent_and_future_views_without_replacing_state(bool watched)
+    {
+        FutureViews();
+        string main = Path.Combine(folder, "MainWindow.axaml");
+        File.WriteAllText(main, File.ReadAllText(main).Replace("Text=\"Attached\" Grid.Row=\"0\" />", "Text=\"Attached\"><Grid.Row>0</Grid.Row></TextBlock>", StringComparison.Ordinal));
+        string child = Path.Combine(folder, "RepeatedView.axaml");
+        File.WriteAllText(child, File.ReadAllText(child).Replace("Text=\"Created before\" Width=\"200\" />", "Width=\"200\"><TextBlock.Text>Created before</TextBlock.Text></TextBlock>", StringComparison.Ordinal));
+        MainWindow window = FutureStarted(watched);
+        try
+        {
+            window.ApplySettings(window.Settings with { RestartOnRudeEdit = false });
+            LiveApp app = watched ? window.Session.RunApp! : window.LiveApp!;
+            int? process = app.ProcessId;
+            List<Element> before = Read(app);
+            HashSet<long> old = [.. before.Select(e => e.Id)];
+            long oldEntry = before.First(e => e.Name == "NewEntry").Id;
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Type) { Element = oldEntry, Text = "Kept property-element state", Replace = true }), "existing Avalonia state");
+            Assert.Null(window.OpenFile(main));
+            int rowLine = Array.FindIndex(File.ReadAllLines(main), line => line.Contains("<Grid.Row>", StringComparison.Ordinal)) + 1;
+            Typing.Replace(window, "Text=\"Before\"", "Text=\"Property batch applied\"");
+            Typing.Replace(window, "<Grid.Row>0</Grid.Row>", "<Grid.Row>invalid</Grid.Row>");
+            HotReloadOutcome invalid = FutureApplied(window, watched);
+            Assert.Equal(HotReloadResult.Errors, invalid.Result);
+            Assert.Contains(invalid.Problems, p => p.Path == main && p.Position.Line == rowLine - 1 && p.Message.Contains("Grid.Row", StringComparison.Ordinal));
+            Assert.Contains(Read(app), e => e.Text == "Before");
+            Assert.DoesNotContain(Read(app), e => e.Text == "Property batch applied");
+            Assert.True(watched ? window.Session.RunXaml.Changed : window.Debugger.HotReload!.Changed);
+            Typing.Replace(window, "<Grid.Row>invalid</Grid.Row>", "<Grid.Row>1</Grid.Row>");
+            HotReloadOutcome attached = FutureApplied(window, watched);
+            Assert.True(attached.Result == HotReloadResult.Applied, attached.Said);
+            ElementDetails attachedDetails = Ui.Await(app.DetailsAsync(Read(app).Single(e => e.Text == "Attached").Id), "the Avalonia attached property-element value");
+            Assert.Equal("1", attachedDetails.Properties.Single(p => p.Name == "Grid.Row").Value);
+            Assert.Null(window.OpenFile(child));
+            Typing.Replace(window, "<TextBlock.Text>Created before</TextBlock.Text>", "<TextBlock.Text>Property first</TextBlock.Text>");
+            HotReloadOutcome first = FutureApplied(window, watched);
+            Assert.True(first.Result == HotReloadResult.Applied, first.Said);
+            Typing.Replace(window, "<TextBlock.Text>Property first</TextBlock.Text>", "<TextBlock.Text>Property latest</TextBlock.Text>");
+            HotReloadOutcome latest = FutureApplied(window, watched);
+            Assert.True(latest.Result == HotReloadResult.Applied, latest.Said);
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Click) { Element = before.Single(e => e.Name == "CreateView").Id }), "a future Avalonia view with property-element literals");
+            Ui.WaitFor(() => FutureOutput(window, watched).Contains("Constructor saw Property latest; XAML before", StringComparison.Ordinal), "the constructor to see the property-element update");
+            List<Element> after = Read(app);
+            List<Element> made = [.. Flatten(after.Single(e => e.Type == "RepeatedView" && !old.Contains(e.Id)))];
+            Assert.Equal("Property latest", made.Single(e => e.Name == "NewLiteral").Text);
+            Assert.Equal("Constructor wins", made.Single(e => e.Name == "ConstructorValue").Text);
+            Assert.Equal("Kept property-element state", after.Single(e => e.Id == oldEntry).Text);
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Type) { Element = made.Single(e => e.Name == "NewEntry").Id, Text = "New property-element state", Replace = true }), "the future Avalonia binding");
+            Assert.Equal("New property-element state", Read(app).Single(e => e.Id == made.Single(e => e.Name == "NewBound").Id).Text);
+            Assert.Equal(process, app.ProcessId);
+            Capture(app, "property-elements-" + (watched ? "run" : "debug"));
+            Typing.Replace(window, "<TextBlock.Text>Property latest</TextBlock.Text>", "<TextBlock.Text>{Binding Name}</TextBlock.Text>");
+            HotReloadOutcome markup = FutureApplied(window, watched);
+            Assert.Equal(HotReloadResult.RestartNeeded, markup.Result);
+            Assert.Contains(markup.Problems, p => p.Path == child && p.Message.Contains("markup", StringComparison.OrdinalIgnoreCase));
+            Assert.Equal(3, Read(app).Count(e => e.Name == "NewLiteral" && e.Text == "Property latest"));
+            Ui.WaitFor(() => window.OwnedWindows.OfType<ChoiceDialog>().Any(), "the unsupported Avalonia property body to offer a restart");
+            ChoiceDialog asked = window.OwnedWindows.OfType<ChoiceDialog>().Single();
+            Ui.Settle();
+            Avalonia.Controls.Button never = asked.GetVisualDescendants().OfType<Avalonia.Controls.Button>().Single(b => (string?)b.Content == "Never");
+            Avalonia.Point at = never.TranslatePoint(new Avalonia.Point(never.Bounds.Width / 2, never.Bounds.Height / 2), asked)!.Value;
+            asked.MouseMove(at);
+            asked.MouseDown(at, Avalonia.Input.MouseButton.Left);
+            asked.MouseUp(at, Avalonia.Input.MouseButton.Left);
+            Ui.Settle();
+            Assert.Empty(window.OwnedWindows.OfType<ChoiceDialog>());
+            Typing.Replace(window, "<TextBlock.Text>{Binding Name}</TextBlock.Text>", "<TextBlock.Text>Property latest</TextBlock.Text>");
+            Typing.Replace(window, "x:Name=\"NewLiteral\"", "x:Name=\"NewLiteral\" Text=\"Duplicate\"");
+            HotReloadOutcome duplicate = FutureApplied(window, watched);
+            Assert.Equal(HotReloadResult.Errors, duplicate.Result);
+            Assert.Contains(duplicate.Problems, p => p.Path == child && p.Message.Contains("both an attribute and a property element", StringComparison.Ordinal));
+            Assert.DoesNotContain(Read(app), e => e.Text == "Duplicate");
+            Typing.Replace(window, "x:Name=\"NewLiteral\" Text=\"Duplicate\"", "x:Name=\"NewLiteral\"");
+            Typing.Replace(window, "<TextBlock.Text>Property latest</TextBlock.Text>", "<TextBlock.Text> Property latest </TextBlock.Text>");
+            Assert.True(watched ? window.Session.RunXaml.Changed : window.Debugger.HotReload!.Changed);
+            HotReloadOutcome whitespace = FutureApplied(window, watched);
+            Assert.Equal(HotReloadResult.RestartNeeded, whitespace.Result);
+            Assert.Contains(whitespace.Problems, p => p.Path == child && p.Message.Contains("whitespace", StringComparison.Ordinal));
+            Assert.Empty(window.OwnedWindows.OfType<ChoiceDialog>());
+            // Debug declines stop asking until the next edit; Run keeps the saved batch pending.
+            Assert.Equal(watched, watched ? window.Session.RunXaml.Changed : window.Debugger.HotReload!.Changed);
+            Typing.Replace(window, "<TextBlock.Text> Property latest </TextBlock.Text>", "<TextBlock.>Property latest</TextBlock.>");
+            Assert.True(watched ? window.Session.RunXaml.Changed : window.Debugger.HotReload!.Changed);
+            HotReloadOutcome incomplete = FutureApplied(window, watched);
+            Assert.Equal(HotReloadResult.RestartNeeded, incomplete.Result);
+            Assert.Contains(incomplete.Problems, p => p.Path == child && p.Message.Contains("structure", StringComparison.Ordinal));
+            Assert.Empty(window.OwnedWindows.OfType<ChoiceDialog>());
+            Assert.Equal(process, app.ProcessId);
+            Assert.Equal(3, Read(app).Count(e => e.Name == "NewLiteral" && e.Text == "Property latest"));
         }
         finally
         {
