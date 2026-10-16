@@ -552,12 +552,14 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
     }
 
     [AvaloniaTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Creating_a_new_import_invalidates_the_shared_hook_before_the_next_real_build_in_the_same_window(bool extension)
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void Creating_a_new_import_invalidates_the_shared_hook_before_the_next_real_build_in_the_same_window(int mode)
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "WPF runs on Windows alone");
         FutureViews("Light");
+        bool extension = mode > 0;
         string project = Path.Combine(folder, "WpfTreeApp.csproj");
         if (extension)
         {
@@ -565,6 +567,10 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
                 "<UseWPF>true</UseWPF><MSBuildUserExtensionsPath>$(MSBuildProjectDirectory)/FixtureExtensions</MSBuildUserExtensionsPath>", StringComparison.Ordinal));
             string state = Path.Combine(folder, "ImportState.cs");
             File.WriteAllText(state, File.ReadAllText(state).Replace("#if BEFORE_IMPORT_KEPT", "#if NEW_EXTENSION_KEPT\n    public const string Before = \"new extension kept\";\n#elif BEFORE_IMPORT_KEPT", StringComparison.Ordinal));
+            if (mode == 2)
+            {
+                Directory.CreateDirectory(Path.Combine(folder, "FixtureExtensions", "Current", "Microsoft.Common.targets", "ImportBefore"));
+            }
         }
         else
         {
@@ -578,7 +584,7 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
                 string directory = Path.Combine(folder, "FixtureExtensions", "Current", "Microsoft.Common.targets", "ImportBefore");
                 Directory.CreateDirectory(directory);
                 File.WriteAllText(Path.Combine(folder, "NewBefore.targets"), "<Project><PropertyGroup><DefineConstants>$(DefineConstants);NEW_EXTENSION_KEPT</DefineConstants></PropertyGroup></Project>");
-                File.WriteAllText(Path.Combine(directory, "New.targets"), """
+                File.WriteAllText(Path.Combine(directory, mode == 2 ? "obj" : "New.targets"), """
                     <Project><PropertyGroup><CustomBeforeMicrosoftCommonTargets>$(MSBuildThisFileDirectory)../../../../NewBefore.targets</CustomBeforeMicrosoftCommonTargets></PropertyGroup></Project>
                     """);
             }
@@ -613,6 +619,55 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
             Assert.Contains(refused.Problems, p => p.Message.Contains("CustomBefore", StringComparison.Ordinal));
             Assert.True(window.Debugger.HotReload!.Changed);
             Assert.DoesNotContain(Read(app), e => e.Text == "Must stay pending");
+        }
+        finally
+        {
+            FutureEnded(window, false);
+        }
+    }
+
+    [AvaloniaFact]
+    public void Creating_a_custom_named_ancestor_import_invalidates_its_missing_search_and_keeps_ordinary_hook_observations()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "WPF runs on Windows alone");
+        FutureViews("Light");
+        string project = Path.Combine(folder, "WpfTreeApp.csproj");
+        File.WriteAllText(project, File.ReadAllText(project).Replace("<UseWPF>true</UseWPF>",
+            "<UseWPF>true</UseWPF><_DirectoryBuildTargetsFile>Company.targets</_DirectoryBuildTargetsFile>", StringComparison.Ordinal));
+        string state = Path.Combine(folder, "ImportState.cs");
+        File.WriteAllText(state, File.ReadAllText(state).Replace("#if BEFORE_IMPORT_KEPT",
+            "#if COMPANY_ORIGINAL_HOOK\n    public const string Before = \"company original hook\";\n#elif BEFORE_IMPORT_KEPT", StringComparison.Ordinal));
+        MainWindow window = FutureStarted(false, "net11.0-windows");
+        try
+        {
+            File.WriteAllText(Path.Combine(folder, "Company.targets"), """
+                <Project>
+                  <PropertyGroup>
+                    <DefineConstants Condition="'$(CustomBeforeMicrosoftCommonTargets)' == '$(MSBuildProjectDirectory)\UserBefore.targets'">$(DefineConstants);COMPANY_ORIGINAL_HOOK</DefineConstants>
+                  </PropertyGroup>
+                </Project>
+                """);
+            Assert.Null(window.OpenFile(Path.Combine(folder, "RepeatedView.xaml")));
+            Typing.Replace(window, "Created before", "After named import");
+            HotReloadOutcome stillRunning = FutureApplied(window, false);
+            Assert.Equal(HotReloadResult.RestartNeeded, stillRunning.Result);
+            Assert.True(window.Debugger.HotReload!.Changed);
+            Assert.DoesNotContain(Read(window.LiveApp!), e => e.Text == "After named import");
+            Ui.Run(window, AppActions.Save);
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => !window.Debugger.IsDebugging, "the app built before its custom-named import to stop");
+            string? problem = Ui.Await(window.DebugAsync(), "the same window to rebuild with its newly found custom import", TimeSpan.FromMinutes(3));
+            Assert.True(problem is null, $"{problem}\n{window.BottomPanel.Build.Document.Snapshot}");
+            Ui.WaitFor(() => window.LiveApp?.State == LiveAppState.Connected, "the ordinarily rebuilt WPF app");
+            LiveApp app = window.LiveApp!;
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Click) { Element = Read(app).Single(e => e.Name == "CreateView").Id }), "the original Hook observation to execute in the rebuilt app");
+            Ui.WaitFor(() => Output(window).Contains("Imports=company original hook/after kept", StringComparison.Ordinal), "the new import to observe the original CustomBefore property");
+            Typing.Replace(window, "After named import", "Must remain pending");
+            HotReloadOutcome refused = FutureApplied(window, false);
+            Assert.Equal(HotReloadResult.RestartNeeded, refused.Result);
+            Assert.Contains(refused.Problems, p => p.Message.Contains("reads the CustomBefore", StringComparison.Ordinal));
+            Assert.True(window.Debugger.HotReload!.Changed);
+            Assert.DoesNotContain(Read(app), e => e.Text == "Must remain pending");
         }
         finally
         {

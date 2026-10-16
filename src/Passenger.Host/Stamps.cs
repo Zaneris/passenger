@@ -30,7 +30,7 @@ public static class Stamps
             foreach (FileSystemInfo entry in new DirectoryInfo(path).EnumerateFileSystemInfos(pattern ?? "*"))
             {
                 bool folder = entry is DirectoryInfo;
-                if (Counts(entry.Name, folder))
+                if (pattern is not null || Counts(entry.Name, folder))
                 {
                     names.Add(folder ? entry.Name + "/" : entry.Name);
                 }

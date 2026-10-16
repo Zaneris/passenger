@@ -29,6 +29,7 @@ internal static class WpfBuildPreparation
             // stamped cannot retain an import graph from just before a previously missing wildcard file was created.
             foreach (string mode in new[] { "ordinary", "watch", "design-time", "ordinary", "watch", "design-time" })
             {
+                discovered.Clear();
                 Dictionary<string, string> properties = mode == "design-time" ? new(DesignTimeBuilds.Defaults, StringComparer.OrdinalIgnoreCase)
                     : new(StringComparer.OrdinalIgnoreCase);
                 foreach ((string name, string value) in mode == "design-time" ? asked.DesignTimeProperties ?? asked.Properties : asked.Properties)
@@ -110,6 +111,19 @@ internal static class WpfBuildPreparation
                             if (!ToolsetImport(xml.FullPath, sdk) && xml.Properties.Count(p => p.Name.Equals(Hook, StringComparison.OrdinalIgnoreCase)) > (xml == project.Xml ? 1 : 0))
                             {
                                 Reject($"{Path.GetFileName(xml.FullPath)} changes the CustomBefore import property during evaluation");
+                            }
+                        }
+                        foreach (string name in new[] { "_DirectoryBuildPropsFile", "_DirectoryBuildTargetsFile", "_DirectoryPackagesPropsFile" })
+                        {
+                            if (project.GetPropertyValue(name) is not { Length: > 0 } file)
+                            {
+                                continue;
+                            }
+                            // The SDK's GetDirectoryNameOfFileAbove can return empty for a custom filename too. Keep
+                            // every searched candidate before the second pass, rather than only its eventual resolved path.
+                            for (string? directory = Path.GetDirectoryName(path); directory is not null; directory = Path.GetDirectoryName(directory))
+                            {
+                                Discover(Path.GetFullPath(Path.Combine(directory, ProjectCollection.Unescape(file).Replace('\\', Path.DirectorySeparatorChar))), path);
                             }
                         }
                         foreach (string name in new[] { "DirectoryBuildPropsPath", "DirectoryBuildTargetsPath", "DirectoryPackagesPropsPath" })
@@ -222,6 +236,10 @@ internal static class WpfBuildPreparation
                     }), global, collection);
                 }
             }
+            if (!inputs.Values.All(Stamps.Holds))
+            {
+                return new WpfBuildPrepared(null, "WPF future-view Hot Reload needs a restart: its build imports changed during preparation; build again to establish a stable source baseline", [], wpf);
+            }
             return unsupported is { } reason ? Refused(reason) : new WpfBuildPrepared(before, null, [.. inputs.Values], wpf);
         }
         catch (Exception error) when (error is InvalidProjectFileException or IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException or System.Xml.XmlException)
@@ -237,7 +255,7 @@ internal static class WpfBuildPreparation
         void Discover(string file, string project)
         {
             inputs.TryAdd(file, Stamps.File(file));
-            if (!discovered.Add(file + "\n" + project) || !File.Exists(file))
+            if (!File.Exists(file) || !discovered.Add(file + "\n" + project))
             {
                 return;
             }
