@@ -207,9 +207,14 @@ public sealed class ActionsTests : IDisposable
             Hover(details);
             UiAudit.Capture(owner, $"find-action-details-tooltip-320-{(light ? "light" : "dark")}");
 
-            Ui.Press(owner, OperatingSystem.IsMacOS() ? "meta A" : "control A");
+            Assert.True(query.IsFocused, "The query must keep focus after hovering the action tooltip");
+            // Headless installs its own hotkeys even on macOS; use the same Select All gesture the text box reads.
+            KeyGesture selectAll = query.GetPlatformSettings()!.HotkeyConfiguration.SelectAll.First();
+            Ui.Press(owner, new Keystroke(selectAll.Key, selectAll.KeyModifiers).Notation());
+            Assert.Equal(query.Text, query.SelectedText);
             owner.KeyTextInput("Go to File");
             Ui.Settle();
+            Assert.Equal("Go to File", query.Text);
             PointerChoose(AppActions.GoToFile);
             Assert.IsType<GoToFilePopup>(window.Popup);
             Assert.Same(owner, TopLevel.GetTopLevel(window.Popup));
