@@ -1,0 +1,122 @@
+# A manual native regression run, independent of the timed CI shards and release checks.
+name: Focused native tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      system:
+        description: Native runner for the selected regression
+        type: choice
+        options: [macOS, Windows, Linux]
+        default: macOS
+      filter:
+        description: VSTest filter (an empty selection fails)
+        type: string
+        default: FullyQualifiedName~Passenger.Tests.ProfilerTests|FullyQualifiedName~Passenger.Tests.ToolHeaderTests
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  AVALONIA_TELEMETRY_OPTOUT: 1
+
+jobs:
+  focused:
+    name: ${{ inputs.system }} native regression
+    runs-on: ${{ inputs.system == 'macOS' && 'macos-latest' || inputs.system == 'Windows' && 'windows-latest' || 'ubuntu-24.04' }}
+    timeout-minutes: 35
+    defaults:
+      run:
+        shell: bash
+    env:
+      TEST_FILTER: ${{ inputs.filter }}
+      FOCUSED_RESULTS: FocusedResults/${{ inputs.system }}
+      PASSENGER_UI_AUDIT: ${{ github.workspace }}/FocusedResults/${{ inputs.system }}/captures
+      PASSENGER_ENGINE_LOG: ${{ github.workspace }}/FocusedResults/${{ inputs.system }}/engine.log
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+          dotnet-version: 10.0.x
+
+      - name: Record the source and native toolchain
+        run: |
+          mkdir -p "$FOCUSED_RESULTS"
+          git rev-parse HEAD > "$FOCUSED_RESULTS/commit.txt"
+          printf '%s\n' "$TEST_FILTER" > "$FOCUSED_RESULTS/filter.txt"
+          printf '%s %s\n' "$RUNNER_OS" "$RUNNER_ARCH" > "$FOCUSED_RESULTS/platform.txt"
+          dotnet --info | tee "$FOCUSED_RESULTS/dotnet-info.txt"
+
+      - name: Register .NET's install location
+        if: runner.os == 'macOS'
+        run: sudo mkdir -p /etc/dotnet && echo "$DOTNET_ROOT" | sudo tee /etc/dotnet/install_location
+
+      - name: Let debugging tools read the runner's processes
+        if: runner.os == 'macOS'
+        run: |
+          DevToolsSecurity -status
+          id -Gn
+          security authorizationdb read system.privilege.taskport | plutil -p -
+          sudo dseditgroup -o edit -a "$USER" -t user _developer
+          sudo dscacheutil -flushcache
+          sudo security authorizationdb write system.privilege.taskport is-developer
+
+      - name: The libraries Passenger needs on Linux
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends git libx11-6 libice6 libsm6 libfontconfig1
+
+      - name: Restore cached NuGet packages
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('global.json', '**/Directory.Packages.props', '**/Directory.Build.props', '**/*.csproj', '**/packages.lock.json') }}
+          restore-keys: nuget-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Restore locked packages
+        run: dotnet restore --locked-mode 2>&1 | tee "$FOCUSED_RESULTS/restore.log"
+
+      - name: Build
+        run: dotnet build --no-restore 2>&1 | tee "$FOCUSED_RESULTS/build.log"
+
+      - name: Discover and run the selected tests
+        shell: pwsh
+        timeout-minutes: 20
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:TEST_FILTER)) { throw 'A focused run requires a nonblank test filter' }
+          dotnet test tests/Passenger.Tests --no-build --list-tests --filter $env:TEST_FILTER |
+            Tee-Object "$env:FOCUSED_RESULTS/selected.txt"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $selected = @(Get-Content "$env:FOCUSED_RESULTS/selected.txt" | Where-Object { $_ -match '^\s+Passenger\.Tests\.' })
+          if ($selected.Count -eq 0) { throw 'The requested filter selected no Passenger tests' }
+          dotnet test tests/Passenger.Tests --no-build --filter $env:TEST_FILTER `
+            --results-directory $env:FOCUSED_RESULTS --logger 'trx;LogFileName=focused.trx' --logger 'console;verbosity=normal' `
+            --blame-hang-timeout 5m --blame-hang-dump-type none 2>&1 | Tee-Object "$env:FOCUSED_RESULTS/tests.log"
+          $code = $LASTEXITCODE
+          if (-not (Test-Path "$env:FOCUSED_RESULTS/focused.trx")) { throw 'The selected tests produced no TRX results' }
+          $results = @(([xml](Get-Content -Raw "$env:FOCUSED_RESULTS/focused.trx")).TestRun.Results.UnitTestResult)
+          "Selected $($selected.Count) tests; recorded $($results.Count) results on $env:RUNNER_OS/$env:RUNNER_ARCH" |
+            Tee-Object "$env:FOCUSED_RESULTS/coverage.txt" | Add-Content $env:GITHUB_STEP_SUMMARY
+          @('The following Tests are available:') + @($results | ForEach-Object { "    $($_.testName)" }) |
+            Set-Content "$env:FOCUSED_RESULTS/reported.txt"
+          $python = if ($IsWindows) { 'python' } else { 'python3' }
+          & $python -I tools/test-shards.py check "$env:FOCUSED_RESULTS/selected.txt" "$env:FOCUSED_RESULTS/reported.txt"
+          $coverage = $LASTEXITCODE
+          if ($code -ne 0) { exit $code }
+          exit $coverage
+
+      - name: Upload native regression results and scale-two audit frames
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: focused-native-${{ inputs.system }}
+          path: FocusedResults/
