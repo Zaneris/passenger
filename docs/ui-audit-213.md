@@ -66,17 +66,25 @@ in both themes, with actual text/input and dismissal/focus restoration:
 
 | Surface | Existing source/entry point | Remaining shared checks |
 | --- | --- | --- |
-| GoToFilePopup, GoToLinePopup | Navigation actions | Width/title/row scale, shadow, focus, keyboard navigation. |
-| ActionPopup, SymbolPopup | Find Action / symbol navigation | Same shared rules, long labels and shortcuts. |
+| GoToFilePopup, GoToLinePopup | `46fcdc1`: actual navigation actions at 1200/683/640, main/detached owners, query/selection/focus preserved; Go to File pointer-selected Enter, ellipsis and full-path tooltip | Windows workflows and exact-file native Linux theme cases pass; remaining empty/error/history states, short-height and macOS execution. |
+| ActionPopup, SymbolPopup | Find Action / symbol navigation; `46fcdc1` captures/resizes a real Find Action query and outside dismissal | Long labels/shortcuts, pointer-selected keyboard action, Symbol Popup and remaining shared states. |
 | RecentLocationsPopup | Recent Locations | Preview has no scrollbar/stripe rail after `bce47d4`; popup layout/focus/shadow still to audit. |
 | FindInFilesPopup | Find in Files | Options, widths, scoped fields, narrow layout. |
 | CompletionPopup, CSharp.ChoicePopup | Actual completion/refactoring choices | Assist-layer shadows/rows/widths, keyboard selection and editor focus. |
-| BreakpointPopup, BreakpointsWindow | Breakpoint properties / View Breakpoints | Checkbox focus, conditions, default/narrow geometry. |
+| BreakpointPopup, BreakpointsWindow | `46fcdc1`: real anchored condition at 1200/683/640 preserves typed value/focus and shadow room; existing actual conditional/trace workflows pass | Full Breakpoints Window, checkbox focus and other property states remain. |
 | ErrorsPopup | IDE error display | Long error details, scale/scrolling, dismissal/focus. |
 | Vcs.NamePopup, Vcs.ChoicePopup, Vcs.UnstashPopup | Branch/tag/stash actions | Shared popup rules, invalid/disabled actions and narrow layout. |
 | Vcs.ChangePopup | Gutter change action | Code preview exception, action rows, shadow/focus. |
 | ContextMenu / submenu / dropdown | Main menu, tree/editor/terminal/status contexts | Shared shadow and row scale; checked current-value behavior exists. Encoding CLI named-click discrepancy still needs diagnosis. |
 | Tooltips, editor hover/signature cards | Real pointer/keyboard flows | Wrap/width/scale/focus where interactive; no blanket pass claimed. |
+
+`46fcdc1`'s final Windows Navigation/Editor Window/conditional-and-trace breakpoint run passes 14/14 in 27s,
+zero skips. Old shared host controls fail both themes at 683px from lost shadow space; the actual pointer-selected
+Go to File Enter control also fails both themes before the handler repair. `navigation-popup-frozen/` holds 32
+scale-2 frames. Seven final frames were inspected: normal Dark/narrow Light file results, the full-path Light tooltip,
+narrow Dark Go to Line, narrow Light Find Action, narrow Dark breakpoint properties and normal Light detached-file
+popup. Earlier draft/expanded captures were inspected separately. This is scoped width/input evidence; popup height,
+other bodies/states and macOS execution continue. Native Ubuntu passes both exact theme workflows in 12s with a zero-warning/error build; the clean `d9c7ce5` base and four copied source hashes are recorded in shipping `artifacts/2026-10-16/navigation-popup-native.log`. Its separate `navigation-popup-native/captures/` includes both themes; narrow Light file and Dark detached frames were inspected.
 
 ## Tool-window inventory
 
