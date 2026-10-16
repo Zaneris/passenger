@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
@@ -64,6 +65,7 @@ public sealed class CommitView : DockPanel
     private readonly Button commit;
     private readonly Button commitAndPush;
     private readonly TextBlock placeholder;
+    private readonly ScrollViewer footer;
     private string? beforeAmend;
 
     /// <summary>The merge's message the box was given, taken away again if the merge ends some other way.</summary>
@@ -75,6 +77,7 @@ public sealed class CommitView : DockPanel
         list = new ListBox
         {
             Classes = { "tree" },
+            [ScrollViewer.HorizontalScrollBarVisibilityProperty] = ScrollBarVisibility.Auto,
             ItemsSource = rows,
             SelectionMode = SelectionMode.Multiple,
             ItemTemplate = new FuncDataTemplate<object>((item, _) => item switch
@@ -193,18 +196,25 @@ public sealed class CommitView : DockPanel
         commit.Click += (_, _) => _ = CommitAsync(push: false);
         commitAndPush = new Button { Content = "Commit and Push..." };
         commitAndPush.Click += (_, _) => _ = CommitAsync(push: true);
-        StackPanel buttons = new()
+        WrapPanel buttons = new()
         {
             Orientation = Orientation.Horizontal,
-            Spacing = 8,
+            ItemSpacing = 8,
+            LineSpacing = 8,
             Margin = new Thickness(10, 0, 10, 10),
             Children = { commit, commitAndPush },
+        };
+        footer = new ScrollViewer
+        {
+            Content = new StackPanel { Children = { amend, message, buttons } },
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            MaxHeight = 96,
         };
         Border bottom = new()
         {
             [DockProperty] = Dock.Bottom,
             BorderThickness = new Thickness(0, 1, 0, 0),
-            Child = new StackPanel { Children = { amend, message, buttons } },
+            Child = footer,
         };
         bottom.Bind(Border.BorderBrushProperty, bottom.GetResourceObservable("Passenger.Divider"));
 
@@ -236,6 +246,13 @@ public sealed class CommitView : DockPanel
         vcs.Changed += OnChanged;
         vcs.BusyChanged += OnBusyChanged;
         Fill();
+    }
+
+    /// <summary>Bounds the message before measuring the files, so a resize never briefly collapses their viewport.</summary>
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        footer.MaxHeight = double.IsFinite(availableSize.Height) ? Math.Max(96, availableSize.Height / 2) : double.PositiveInfinity;
+        return base.MeasureOverride(availableSize);
     }
 
     /// <summary>Lists another folder's changes from now on, its session's working tree in place of the last's.</summary>
