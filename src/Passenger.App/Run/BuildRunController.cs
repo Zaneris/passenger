@@ -139,7 +139,7 @@ public sealed class BuildRunController
         if (!built.Task.IsCompleted)
         {
             // Canceled on the UI thread, by Stop, so the build it stops is the one begun here, still running.
-            stopping = cancel.Register(session.Builder.Stop);
+            stopping = cancel.Register(StopBuild);
         }
         return built.Task;
     }
@@ -219,14 +219,50 @@ public sealed class BuildRunController
         _ => false,
     };
 
-    private void BuildNext()
+    private void BuildNext() => _ = BuildNextAsync();
+
+    private async Task BuildNextAsync()
     {
+        TaskCompletionSource? held = building;
         string target = buildQueue.Dequeue();
         string verb = buildKind switch { BuildKind.Rebuild => "Rebuilding", BuildKind.Clean => "Cleaning", _ => "Building" };
         parts.Say($"{verb} {Path.GetFileName(target)}…");
-        if (session.Builder.StartDotnet(BuildOutput.Arguments(target, buildKind, buildFramework, BuildOutput.WindowsTargeting(target, session.Projects)), session.Folder!) is { } problem)
+        try
         {
-            FinishBuild(new BuildOutcome(BuildStatus.NotStarted, problem));
+            WpfPopulationBuild.Plan population = await session.PrepareWpfPopulationAsync();
+            if (building != held)
+            {
+                return;
+            }
+            if (session.IsEnded)
+            {
+                FinishBuild(new BuildOutcome(BuildStatus.Stopped, "Build stopped: the solution was closed"));
+                return;
+            }
+            List<string> arguments = [.. BuildOutput.Arguments(target, buildKind, buildFramework, BuildOutput.WindowsTargeting(target, session.Projects)), .. population.Arguments];
+            if (session.Builder.StartDotnet(arguments, session.Folder!) is { } problem)
+            {
+                FinishBuild(new BuildOutcome(BuildStatus.NotStarted, problem));
+            }
+        }
+        catch (Exception error)
+        {
+            if (building == held)
+            {
+                FinishBuild(new BuildOutcome(BuildStatus.NotStarted, $"Build could not start: {error.Message}"));
+            }
+        }
+    }
+
+    private void StopBuild()
+    {
+        if (building is not null && !session.Builder.IsRunning)
+        {
+            FinishBuild(new BuildOutcome(BuildStatus.Stopped, "Build stopped"));
+        }
+        else
+        {
+            session.Builder.Stop();
         }
     }
 
@@ -394,6 +430,7 @@ public sealed class BuildRunController
             RunProject = Path.GetDirectoryName(plan.Project);
             string running = hotReload ? $"Running {chosen.Name} with Hot Reload: a save applies its changes" : $"Running {chosen.Name}";
             // An Avalonia or WPF app is launched with the inspector in it, which tells of its failed bindings while it runs.
+            WpfPopulationBuild.Plan population = await session.PrepareWpfPopulationAsync();
             LaunchPlan launched = session.InspectedRun(plan, hotReload);
             LiveApp? inspected = session.RunApp;
             await session.RunXaml.StartAsync(hotReload ? inspected : null,
@@ -421,7 +458,7 @@ public sealed class BuildRunController
             {
                 // The terminal's text is the program's own: its failed bindings are in Problems alone.
                 WatchBindings(inspected, null);
-                string? refused = await RunInTerminalAsync(chosen.Name, hotReload ? DotnetStart(Watch(plan, watchHooks), plan.WorkingDirectory) : ChildProcesses.Command(plan.Program, plan.Arguments, plan.WorkingDirectory), variables, running);
+                string? refused = await RunInTerminalAsync(chosen.Name, hotReload ? DotnetStart(Watch(plan, watchHooks, population), plan.WorkingDirectory) : ChildProcesses.Command(plan.Program, plan.Arguments, plan.WorkingDirectory), variables, running);
                 if (refused is null && session.InTerminal is { } inTerminal)
                 {
                     parts.OpenBrowser(plan, inTerminal.Ended);
@@ -435,7 +472,7 @@ public sealed class BuildRunController
             parts.Say(running);
             WatchBindings(inspected, parts.Views.Run);
             string? notStarted = Started(hotReload
-                ? session.Runner.StartDotnet(Watch(plan, watchHooks), plan.WorkingDirectory, variables)
+                ? session.Runner.StartDotnet(Watch(plan, watchHooks, population), plan.WorkingDirectory, variables)
                 : session.Runner.Start(plan.Program, plan.Arguments, plan.WorkingDirectory, variables));
             if (notStarted is null)
             {
@@ -505,7 +542,7 @@ public sealed class BuildRunController
     /// <summary>dotnet watch's command line for a plan, as Rider's Hot Reload runs it: the project for its framework, no
     /// launch profile (the plan has its values already), the program's own arguments after <c>--</c>. It runs the program in
     /// its own working folder, which is the plan's.</summary>
-    private static List<string> Watch(LaunchPlan plan, string? hooks)
+    private static List<string> Watch(LaunchPlan plan, string? hooks, WpfPopulationBuild.Plan population)
     {
         List<string> watch = ["watch", "--non-interactive", "run", "--project", plan.Project!, "--no-launch-profile"];
         if (plan.Framework is { } framework)
@@ -516,6 +553,7 @@ public sealed class BuildRunController
         {
             watch.AddRange(["--environment", $"{Wire.StartupHooks}={hooks}"]);
         }
+        watch.AddRange(population.Arguments);
         watch.Add("--");
         watch.AddRange(plan.Built is { } assembly && plan.Arguments.Count > 0 && plan.Arguments[0] == assembly ? plan.Arguments.Skip(1) : plan.Arguments);
         return watch;
@@ -720,9 +758,9 @@ public sealed class BuildRunController
         _ = session.Debug.StopAsync();
         session.Runner.Stop();
         session.InTerminal?.Stop();
-        session.Builder.Stop();
+        StopBuild();
     }
 
     /// <summary>Why Stop cannot run now: nothing it stops is running.</summary>
-    public string? WhyNotStop() => session.Debug.IsDebugging || IsRunning || session.Builder.IsRunning ? null : "Nothing is running";
+    public string? WhyNotStop() => session.Debug.IsDebugging || IsRunning || IsBuilding ? null : "Nothing is running";
 }
