@@ -3,8 +3,10 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.Docking;
 using Passenger.App.Explorer;
 using Passenger.App.History;
 using Passenger.App.Vcs;
@@ -39,6 +41,167 @@ public sealed class LocalHistoryTests : IDisposable
         Trash.Folder = null;
         TestFolders.Delete(folder);
         TestFolders.Delete(trash);
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Long_local_history_labels_and_folder_files_remain_readable_and_revertible_in_narrow_panes(bool light)
+    {
+        string directory = "src/CustomerAdministrationAndReporting/SubscriptionProcessing";
+        string name = "SubscriptionRenewalConfirmationForCustomersWithDeferredPaymentTerms.txt";
+        string relative = directory + "/" + name;
+        string path = PathNames.Canonical(Write(relative, "Before review\n"));
+        string other = PathNames.Canonical(Write(directory + "/DeferredPaymentReportForInternationalSubscriptionCustomers.txt", "Other before review\n"));
+        string label = "Before reviewing international customer subscription renewal confirmations and deferred payment reports";
+        TestGit.Init(folder);
+        MainWindow window = Open(relative);
+        window.RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark;
+        window.SetRenderScaling(2);
+        try
+        {
+            window.OpenFile(other);
+            window.OpenFile(path);
+            Ui.Settle();
+            for (int index = 0; index < 18; index++)
+            {
+                ChooseFromEditorMenu(window, "Local History", "Put Label...");
+                window.KeyTextInput($"{label} ({index})");
+                Ui.Press(window, "ENTER");
+                Assert.False(window.IsPopupOpen);
+                SaveEdit(window, new TextEdit(0, window.EditorArea.Active!.Text.Snapshot.Length, $"Revision {index}\n"));
+            }
+            window.OpenFile(other);
+            SaveEdit(window, new TextEdit(0, window.EditorArea.Active!.Text.Snapshot.Length, "Other after review\n"));
+            window.OpenFile(path);
+            HistoryTab fileHistory = ShowFromFileMenu(window, "Show History...");
+            Ui.WaitFor(() => fileHistory.Rows.Count >= 36, "the real saved versions and long labels");
+            fileHistory.Select(fileHistory.Rows.Single(row => row.Title == label + " (0)"));
+            Ui.WaitFor(() => fileHistory.Diff?.Left.Document.Snapshot.ToString() == "Before review\n", "the labeled file version");
+            List<string> problems = [];
+            DockLayout layout = Audit(fileHistory, "file");
+            Button revert = fileHistory.GetVisualDescendants().OfType<Button>().Single(button => ToolTip.GetTip(button) as string == "Revert Selected and Later Changes");
+            Reveal(revert);
+            Assert.True(revert.Focus());
+            UiAudit.Capture(window, $"local-history-file-revert-200-{(light ? "light" : "dark")}");
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => File.ReadAllText(path) == "Before review\n", "the reachable toolbar to revert the real file");
+            window.EditorArea.CodeEditor.Focus();
+            Ui.Run(window, EditorActions.Undo);
+            Ui.Run(window, AppActions.Save);
+            Assert.Equal("Revision 17\n", File.ReadAllText(path));
+            window.DockHost.Apply(layout);
+            Ui.Settle();
+            HistoryTab folderHistory = ShowFromFileMenu(window, "Show Project History...");
+            Ui.WaitFor(() => folderHistory.Rows.Any(row => row.Title == label + " (0)"), "the project's labeled history");
+            folderHistory.Select(folderHistory.Rows.Single(row => row.Title == label + " (0)"));
+            Ui.WaitFor(() => folderHistory.Files.Count == 2, "both real changed files since the selected label");
+            Audit(folderHistory, "folder");
+            folderHistory.SelectFile(folderHistory.Files.Single(file => PathNames.Same(file.Path, other)));
+            Button revertFile = folderHistory.GetVisualDescendants().OfType<Button>().Single(button => ToolTip.GetTip(button) as string == "Revert Selection");
+            Reveal(revertFile);
+            Assert.True(revertFile.Focus());
+            UiAudit.Capture(window, $"local-history-folder-revert-200-{(light ? "light" : "dark")}");
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => File.ReadAllText(other) == "Other before review\n", "the reachable selection action to revert only its chosen file");
+            Assert.Equal("Revision 17\n", File.ReadAllText(path));
+            Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
+
+            DockLayout Audit(HistoryTab history, string kind)
+            {
+                DockLayout layout = window.DockHost.Capture();
+                long chosen = history.Selected!.Set;
+                bool reading = false;
+                foreach (double width in new double[] { 1200, 683, 640, 200 })
+                {
+                    window.Width = width == 200 ? 640 : width;
+                    if (width == 200)
+                    {
+                        window.DockHost.Apply(layout with
+                        {
+                            LeftWidth = 200,
+                            Windows = layout.Windows.ToDictionary(pair => pair.Key, pair => pair.Key == "localHistory"
+                                ? pair.Value with { Anchor = ToolAnchor.LeftTop, Shown = true }
+                                : pair.Value with { Shown = false }),
+                        });
+                    }
+                    Ui.Settle();
+                    Assert.Equal(chosen, history.Selected?.Set);
+                    UiAudit.Capture(window, $"local-history-{kind}-{width:0}-{(light ? "light" : "dark")}");
+                    problems.AddRange(UiAudit.HorizontalOverflow(window, $"Local History toolbar {width}px", history.Children[0]));
+                    ListBox activities = history.GetVisualDescendants().OfType<ListBox>().Single(list => ReferenceEquals(list.ItemsSource, history.Rows));
+                    ScrollViewer activityReader = activities.GetVisualDescendants().OfType<ScrollViewer>().First();
+                    if (reading)
+                    {
+                        Assert.True(activityReader.Offset.Y > 0, "Resizing jumped away from the activity being read");
+                    }
+                    problems.AddRange(UiAudit.HorizontalOverflow(window, $"Local History {kind} activity {width}px", activities));
+                    ReadAcross(activities, "labels");
+                    activityReader.Offset = default;
+                    Ui.Settle();
+                    Point rows = activities.TranslatePoint(new Point(Math.Min(40, activities.Bounds.Width / 2), Math.Min(30, activities.Bounds.Height / 2)), window)!.Value;
+                    window.MouseWheel(rows, new Vector(0, -8));
+                    Ui.Settle();
+                    Assert.True(activityReader.Offset.Y > 0, "The remaining history rows cannot be reached vertically");
+                    reading = true;
+                    Assert.Equal(chosen, history.Selected?.Set);
+                    Assert.True(activities.GetRealizedContainers().Count() < history.Rows.Count, "The activity list stopped virtualizing the real history");
+                    if (history.IsFolder)
+                    {
+                        ListBox files = history.GetVisualDescendants().OfType<ListBox>().Single(list => ReferenceEquals(list.ItemsSource, history.Files));
+                        problems.AddRange(UiAudit.HorizontalOverflow(window, $"Local History folder files {width}px", files));
+                        ReadAcross(files, "files");
+                    }
+
+                    void ReadAcross(ListBox list, string part)
+                    {
+                        Reveal(list);
+                        ScrollViewer reader = list.GetVisualDescendants().OfType<ScrollViewer>().First();
+                        Point over = list.TranslatePoint(new Point(Math.Min(40, list.Bounds.Width / 2), Math.Min(30, list.Bounds.Height / 2)), window)!.Value;
+                        window.MouseWheel(over, new Vector(-30, 0));
+                        Ui.Settle();
+                        if (reader.Offset.X <= 0)
+                        {
+                            problems.Add($"The complete {part} have no horizontal reading access in the {kind} {width}px history");
+                        }
+                        UiAudit.Capture(window, $"local-history-{kind}-{part}-{width:0}-{(light ? "light" : "dark")}");
+                        reader.Offset = default;
+                    }
+                }
+                return layout;
+            }
+
+            void Reveal(Control target)
+            {
+                foreach (ScrollViewer reader in target.GetVisualAncestors().OfType<ScrollViewer>())
+                {
+                    if (reader.HorizontalScrollBarVisibility == Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled)
+                    {
+                        continue;
+                    }
+                    Point over = reader.TranslatePoint(new Point(Math.Min(40, reader.Bounds.Width / 2), Math.Min(18, reader.Bounds.Height / 2)), window)!.Value;
+                    for (int attempt = 0; attempt < 20; attempt++)
+                    {
+                        Point at = target.TranslatePoint(default, reader)!.Value;
+                        double visible = Math.Min(reader.Viewport.Width, target.Bounds.Width);
+                        double amount = at.X < 0 ? -at.X : at.X + visible > reader.Viewport.Width ? reader.Viewport.Width - at.X - visible : 0;
+                        if (Math.Abs(amount) < 1)
+                        {
+                            break;
+                        }
+                        window.MouseWheel(over, new Vector(Math.Clamp(amount / 50, -5, 5), 0));
+                        Ui.Settle();
+                    }
+                    Point final = target.TranslatePoint(default, reader)!.Value;
+                    Assert.True(final.X >= -1 && final.X + Math.Min(reader.Viewport.Width, target.Bounds.Width) <= reader.Viewport.Width + 1,
+                        "Horizontal input could not reveal the Local History control");
+                }
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
     }
 
     [AvaloniaFact]
