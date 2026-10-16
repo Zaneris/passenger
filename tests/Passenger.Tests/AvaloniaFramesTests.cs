@@ -1,6 +1,10 @@
 using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Styling;
+using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.LiveTree;
 using Passenger.App.Profiling;
@@ -40,10 +44,19 @@ public sealed class AvaloniaFramesTests : IClassFixture<RestoredFolders>, IDispo
 
     private string Xaml => Path.Combine(folder, "MainWindow.axaml");
 
-    [AvaloniaFact]
-    public void A_slow_measure_in_a_profiled_avalonia_app_is_its_heaviest_control_in_each_frame_and_in_all()
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_slow_measure_in_a_profiled_avalonia_app_is_its_heaviest_control_in_each_frame_and_in_all(bool light)
     {
+        const string name = "ASlowLayoutControlWhoseCompleteNameMustStayReadableBesideItsProfilingMetricColumns";
+        string named = $"x:Name=\"{name}\"";
+        File.WriteAllText(Xaml, File.ReadAllText(Xaml).Replace("x:Name=\"Slow\"", named, StringComparison.Ordinal));
+        string program = Path.Combine(folder, "Program.cs");
+        File.WriteAllText(program, File.ReadAllText(program).Replace("window.Slow.", $"window.{name}.", StringComparison.Ordinal));
         MainWindow window = Opened();
+        window.RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark;
+        window.SetRenderScaling(2);
         // Thirty slow layouts, then the app ends, and with it the run, whose snapshot shows.
         // 80 slow frames (2.4 s), so the panel leads the whole table even when the first layout shapes text slowly under load.
         Assert.Null(Ui.Await(window.ProfileAsync("--frames 80"), "the app to build and start under the profiler", TimeSpan.FromMinutes(4)));
@@ -60,7 +73,7 @@ public sealed class AvaloniaFramesTests : IClassFixture<RestoredFolders>, IDispo
         foreach (UiFrame frame in slow.Skip(1))
         {
             ControlWork heaviest = frame.Controls[0];
-            Assert.True(heaviest.Control.Label == "SlowPanel#Slow", $"Frame {frame.Number}'s heaviest control was {heaviest.Control.Label} ({heaviest.Work.SelfMs:0.0} ms), not the slow panel");
+            Assert.True(heaviest.Control.Label == $"SlowPanel#{name}", $"Frame {frame.Number}'s heaviest control was {heaviest.Control.Label} ({heaviest.Work.SelfMs:0.0} ms), not the slow panel");
             Assert.InRange(heaviest.Work.MeasureSelfMs, 29.5, 2000);
             Assert.True(frame.MeasureMs >= heaviest.Work.MeasureMs - 0.1, $"Frame {frame.Number} measured for {frame.MeasureMs:0.0} ms, less than its slow panel's {heaviest.Work.MeasureMs:0.0}");
             Assert.True(frame.MeasurePasses >= 1 && frame.ArrangePasses >= 1, $"Frame {frame.Number} had {frame.MeasurePasses} measure and {frame.ArrangePasses} arrange passes");
@@ -75,24 +88,26 @@ public sealed class AvaloniaFramesTests : IClassFixture<RestoredFolders>, IDispo
         Assert.True(type.Cost.Name == "SlowPanel", $"The heaviest control type was {type.Cost.Name} ({type.Cost.Work.SelfMs:0.0} ms), not SlowPanel: {string.Join(", ", frames.Rows.Take(5).Select(r => $"{r.Cost.Name} {r.Cost.Work.SelfMs:0.0} ms"))}");
         Assert.True(type.IsExpanded);
         LayoutRow panel = frames.Rows[1];
-        Assert.Equal("SlowPanel#Slow", panel.Cost.Name);
+        Assert.Equal($"SlowPanel#{name}", panel.Cost.Name);
         Assert.True(panel.Cost.Work.Measures >= 31, $"The slow panel was measured {panel.Cost.Work.Measures} times");
         Assert.True(panel.Cost.Work.MeasureSelfMs >= 30 * 29.5, $"The slow panel's own measuring came to {panel.Cost.Work.MeasureSelfMs:0} ms");
         Assert.Contains("frames:", frames.Summary, StringComparison.Ordinal);
+        Audit("all");
 
         // A frame chosen on the chart is shown alone, its slow panel leading.
         int chosen = frames.Frames.ToList().IndexOf(slow[5]);
         frames.Chart.Select(chosen);
         Ui.Settle();
         Assert.StartsWith($"Frame {slow[5].Number} at ", frames.Summary, StringComparison.Ordinal);
-        Assert.Equal(["SlowPanel", "SlowPanel#Slow"], frames.Rows.Take(2).Select(r => r.Cost.Name));
+        Assert.Equal(["SlowPanel", $"SlowPanel#{name}"], frames.Rows.Take(2).Select(r => r.Cost.Name));
         Assert.Equal(1, frames.Rows[1].Cost.Work.Measures);
+        Audit("chosen");
 
         // The panel's row opens its element in the XAML.
-        Assert.Equal((Xaml, Line("x:Name=\"Slow\"")), (frames.Rows[1].Cost.Control?.File is { } file ? PathNames.Canonical(file) : null, frames.Rows[1].Cost.Control?.Line));
+        Assert.Equal((Xaml, Line(named)), (frames.Rows[1].Cost.Control?.File is { } file ? PathNames.Canonical(file) : null, frames.Rows[1].Cost.Control?.Line));
         Open(window, frames, frames.Rows[1]);
         Assert.True(window.EditorArea.Active?.Path == Xaml, $"The panel's row opened {window.EditorArea.Active?.Path}, not its XAML ({window.Status})");
-        Assert.Equal(Line("x:Name=\"Slow\"") - 1, window.EditorArea.CodeEditor.CaretPosition.Line);
+        Assert.Equal(Line(named) - 1, window.EditorArea.CodeEditor.CaretPosition.Line);
 
         // The frames are the snapshot's file's: opened again, they are there.
         string trace = view.Snapshot!.TracePath;
@@ -100,6 +115,74 @@ public sealed class AvaloniaFramesTests : IClassFixture<RestoredFolders>, IDispo
         Assert.Equal(frames.Frames.Count, reopened.UiFrames.Count);
         Assert.Equal("SlowPanel", UiFrames.ByType(reopened.UiFrames)[0].Name);
         window.Close();
+
+        void Audit(string page)
+        {
+            List<string> problems = [];
+            object? selected = frames.Table.SelectedItem;
+            ScrollViewer horizontal = Assert.Single(frames.Table.GetVisualAncestors().OfType<ScrollViewer>(), viewer => viewer.HorizontalScrollBarVisibility == ScrollBarVisibility.Auto);
+            TextBlock narrative = Assert.Single(frames.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == frames.Summary);
+            ScrollViewer details = narrative.GetVisualAncestors().OfType<ScrollViewer>().First();
+            Assert.True(frames.Table.ContainerFromItem(selected!)?.Focus() == true);
+            object? focus = window.FocusManager?.GetFocusedElement();
+            foreach (double width in new double[] { 1200, 683, 640 })
+            {
+                window.Width = width;
+                Ui.Settle();
+                Assert.Same(selected, frames.Table.SelectedItem);
+                Assert.Same(focus, window.FocusManager?.GetFocusedElement());
+                Assert.True(horizontal.Extent.Width > horizontal.Viewport.Width, "The long layout control has no horizontal reading viewport beside all its metrics");
+                Point over = horizontal.TranslatePoint(new Point(horizontal.Bounds.Width / 2, horizontal.Bounds.Height / 2), window)!.Value;
+                window.MouseMove(over);
+                for (int attempt = 0; attempt < 20 && horizontal.Offset.X < horizontal.Extent.Width - horizontal.Viewport.Width - 1; attempt++)
+                {
+                    window.MouseWheel(over, new Vector(-30, 0));
+                    Ui.Settle();
+                }
+                Assert.InRange(horizontal.Offset.X, horizontal.Extent.Width - horizontal.Viewport.Width - 1, horizontal.Extent.Width - horizontal.Viewport.Width + 1);
+                Grid header = Assert.Single(horizontal.GetVisualDescendants().OfType<Grid>(), grid => grid.Children.OfType<TextBlock>().Any(text => text.Text == "Own time"));
+                Control row = frames.Table.ContainerFromItem(selected!)!;
+                Grid cells = Assert.Single(row.GetVisualDescendants().OfType<Grid>(), grid => grid.ColumnDefinitions.Count == 6);
+                foreach (int column in Enumerable.Range(1, 5))
+                {
+                    Control label = Assert.Single(header.Children, child => Grid.GetColumn(child) == column);
+                    Control cell = Assert.Single(cells.Children, child => Grid.GetColumn(child) == column);
+                    double right = label.TranslatePoint(new Point(label.Bounds.Width, 0), frames)!.Value.X;
+                    Assert.InRange(Math.Abs(right - cell.TranslatePoint(new Point(cell.Bounds.Width, 0), frames)!.Value.X), 0, 1);
+                }
+                UiAudit.Capture(window, $"profiler-frames-{page}-{width:0}-{(light ? "light" : "dark")}");
+                horizontal.Offset = default;
+                Ui.Settle();
+                UiAudit.Capture(window, $"profiler-frames-{page}-names-{width:0}-{(light ? "light" : "dark")}");
+                if (details.Extent.Height > details.Viewport.Height + 1)
+                {
+                    Point overDetails = details.TranslatePoint(new Point(details.Bounds.Width / 2, details.Bounds.Height / 2), window)!.Value;
+                    window.MouseMove(overDetails);
+                    window.MouseWheel(overDetails, new Vector(0, -30));
+                    Ui.Settle();
+                    Assert.True(details.Offset.Y > 0, "The frame summary was clipped without vertical reading access");
+                    Assert.InRange(details.Offset.Y, details.Extent.Height - details.Viewport.Height - 1, details.Extent.Height - details.Viewport.Height + 1);
+                    Assert.Same(selected, frames.Table.SelectedItem);
+                    Assert.Same(focus, window.FocusManager?.GetFocusedElement());
+                    UiAudit.Capture(window, $"profiler-frames-{page}-details-{width:0}-{(light ? "light" : "dark")}");
+                    details.Offset = default;
+                    Ui.Settle();
+                }
+                problems.AddRange(UiAudit.HorizontalOverflow(window, $"Frames {page}", frames));
+                if (frames.Table.Bounds.Height < 22)
+                {
+                    problems.Add($"Frames {page}: its summary consumed the table's vertical reading viewport at {width}px");
+                }
+            }
+            Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
+            Ui.Press(window, "up");
+            Assert.NotSame(selected, frames.Table.SelectedItem);
+            Ui.Press(window, "down");
+            Assert.Same(selected, frames.Table.SelectedItem);
+            horizontal.Offset = default;
+            window.Width = 1200;
+            Ui.Settle();
+        }
     }
 
     [AvaloniaFact]
