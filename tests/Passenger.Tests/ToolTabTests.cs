@@ -190,6 +190,44 @@ public sealed class ToolTabTests : IDisposable
                 CheckLongTab();
                 UiAudit.Capture(window, $"terminal-many-{width:0}-{(light ? "light" : "dark")}");
             }
+            window.Width = 683;
+            Ui.Settle();
+            Reach(longTab);
+            Point held = longTab.TranslatePoint(new Point(longTab.Bounds.Width / 2, longTab.Bounds.Height / 2), window)!.Value;
+            window.MouseMove(held);
+            window.MouseDown(held, MouseButton.Left);
+            try
+            {
+                Ui.PumpUntil(() => longTab.IsPressed && longTab.RenderTransform?.Value.M11 < 0.981,
+                    "the real long terminal tab's held press transition", TimeSpan.FromSeconds(3));
+                Rect painted = UiAudit.BoundsIn(longTab, strip);
+                bool inside = Inside(longTab);
+                bool heldSelected = longTab.IsChecked == true;
+                TerminalSession? active = window.TerminalPanel.Active;
+                Assert.True(inside, $"The painted held terminal tab escapes its strip: painted={painted}, "
+                    + $"transform={longTab.RenderTransform?.Value}, origin plus original width={longTab.TranslatePoint(default, strip)!.Value.X + longTab.Bounds.Width}, strip={strip.Bounds.Size}");
+                Assert.True(heldSelected);
+                Assert.Same(run.Session, active);
+                Assert.True(Inside(Assert.Single(longTab.GetVisualDescendants().OfType<Button>(), button => button.Classes.Contains("tabClose"))));
+                UiAudit.Capture(window, $"terminal-held-long-tab-683-{(light ? "light" : "dark")}");
+            }
+            finally
+            {
+                window.MouseUp(held, MouseButton.Left);
+                Ui.Settle();
+            }
+            for (int attempt = 0; attempt < 160 && UiAudit.BoundsIn(longTab, strip).Left >= -1; attempt++)
+            {
+                Point at = strip.TranslatePoint(new Point(strip.Bounds.Width / 2, strip.Bounds.Height / 2), window)!.Value;
+                window.MouseWheel(at, new Vector(-0.5, 0));
+                Ui.Settle();
+            }
+            Assert.True(UiAudit.BoundsIn(longTab, strip).Left < -1, "The real strip did not scroll the long tab out of view");
+            Assert.False(Inside(longTab), "The geometry check accepted an actually clipped terminal tab");
+            Reach(longTab);
+            Click(longTab);
+            window.Width = 1200;
+            Ui.Settle();
             ToggleButton[] browsingButtons = Tabs(window.TerminalPanel);
             ToggleButton browsing = browsingButtons[^1];
             window.MouseMove(new Point(10, 10));
@@ -206,8 +244,9 @@ public sealed class ToolTabTests : IDisposable
                 Ui.Settle();
                 Assert.Same(browsing, window.FocusManager?.GetFocusedElement());
                 Assert.Same(run.Session, window.TerminalPanel.Active);
+                bool browsingInside = Inside(browsing);
                 UiAudit.Capture(window, $"terminal-tab-focus-{width:0}-{(light ? "light" : "dark")}");
-                Assert.True(Inside(browsing), "Resizing must keep a keyboard-focused inactive session tab visible without changing the running session");
+                Assert.True(browsingInside, "Resizing must keep a keyboard-focused inactive session tab visible without changing the running session");
                 Button focusedClose = Assert.Single(browsing.GetVisualDescendants().OfType<Button>(), button => button.Classes.Contains("tabClose"));
                 Ui.Press(window, "tab");
                 Ui.Settle();
@@ -251,8 +290,8 @@ public sealed class ToolTabTests : IDisposable
             Ui.Settle();
             // ItemsControl regenerates its tab presenters when the persistent terminal panel is reparented.
             longTab = LongTab();
-            UiAudit.Capture(window, $"terminal-many-side-200-{(light ? "light" : "dark")}");
             CheckLongTab();
+            UiAudit.Capture(window, $"terminal-many-side-200-{(light ? "light" : "dark")}");
             ToggleButton[] buttons = Tabs(window.TerminalPanel);
             for (int index = 0; index < buttons.Length; index++)
             {
@@ -298,7 +337,7 @@ public sealed class ToolTabTests : IDisposable
             void CheckLongTab()
             {
                 Assert.Same(run.Session, window.TerminalPanel.Active);
-                Assert.True(Inside(longTab), $"Resizing must reveal the complete selected run tab: at {longTab.TranslatePoint(default, strip)}, tab {longTab.Bounds}, strip {strip.Bounds}, viewport {strip.Viewport}, offset {strip.Offset}");
+                Assert.True(Inside(longTab), $"Resizing must reveal the complete selected run tab: painted {UiAudit.BoundsIn(longTab, strip)}, transform {longTab.RenderTransform?.Value}, tab {longTab.Bounds}, strip {strip.Bounds}, viewport {strip.Viewport}, offset {strip.Offset}");
                 Assert.Equal(title, ToolTip.GetTip(longTab));
                 TextBlock name = Assert.Single(longTab.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == title);
                 Assert.True(name.TextLayout.Width <= name.Bounds.Width + 1, "The long run name must ellipsize beside its close button");
@@ -307,7 +346,11 @@ public sealed class ToolTabTests : IDisposable
 
             ToggleButton LongTab() => Assert.Single(Tabs(window.TerminalPanel), button => button.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text == title));
 
-            bool Inside(Control control) => control.TranslatePoint(default, strip) is { } at && at.X >= -1 && at.X + control.Bounds.Width <= strip.Bounds.Width + 1;
+            bool Inside(Control control)
+            {
+                Rect painted = UiAudit.BoundsIn(control, strip);
+                return painted.Left >= -1 && painted.Right <= strip.Bounds.Width + 1;
+            }
 
             void Reach(Control control)
             {
