@@ -192,6 +192,7 @@ public sealed class ToolTabTests : IDisposable
             }
             ToggleButton[] browsingButtons = Tabs(window.TerminalPanel);
             ToggleButton browsing = browsingButtons[^1];
+            window.MouseMove(new Point(10, 10));
             Assert.True(browsingButtons[0].Focus());
             Ui.Settle();
             for (int attempt = 0; attempt < browsingButtons.Length * 2 + 2 && window.FocusManager?.GetFocusedElement() != browsing; attempt++)
@@ -207,7 +208,36 @@ public sealed class ToolTabTests : IDisposable
                 Assert.Same(run.Session, window.TerminalPanel.Active);
                 UiAudit.Capture(window, $"terminal-tab-focus-{width:0}-{(light ? "light" : "dark")}");
                 Assert.True(Inside(browsing), "Resizing must keep a keyboard-focused inactive session tab visible without changing the running session");
+                Button focusedClose = Assert.Single(browsing.GetVisualDescendants().OfType<Button>(), button => button.Classes.Contains("tabClose"));
+                Ui.Press(window, "tab");
+                Ui.Settle();
+                Assert.Same(focusedClose, window.FocusManager?.GetFocusedElement());
+                Assert.Same(run.Session, window.TerminalPanel.Active);
+                Assert.False(browsing.IsChecked == true || browsing.IsPointerOver || focusedClose.IsPointerOver);
+                Assert.Equal(1, focusedClose.Opacity);
+                PathIcon glyph = Assert.Single(focusedClose.GetVisualDescendants().OfType<PathIcon>());
+                Point center = glyph.TranslatePoint(new Point(glyph.Bounds.Width / 2, glyph.Bounds.Height / 2), window)!.Value;
+                Assert.True(window.TerminalPanel.TryFindResource("Passenger.Terminal.Background", window.ActualThemeVariant, out object? ground));
+                Assert.NotEqual(Assert.IsAssignableFrom<ISolidColorBrush>(ground).Color, Ui.Pixel(window, center));
+                Border ring = Assert.Single(window.GetVisualDescendants().OfType<Border>(), border => border.Name == "TabCloseFocusRing" && border.IsEffectivelyVisible);
+                Assert.Equal(focusedClose.CornerRadius, ring.CornerRadius);
+                Assert.Equal(focusedClose.Bounds.Size, ring.Bounds.Size);
+                Assert.Equal(new Point(), ring.TranslatePoint(default, focusedClose));
+                Assert.False(ring.IsHitTestVisible);
+                Control hit = Assert.IsAssignableFrom<Control>(window.InputHitTest(center));
+                Assert.True(hit == focusedClose || hit.GetVisualAncestors().Contains(focusedClose), "The close action's focus ring must not intercept its pointer target");
+                UiAudit.Capture(window, $"terminal-close-focus-{width:0}-{(light ? "light" : "dark")}");
+                Ui.Press(window, "shift+tab");
+                Ui.Settle();
+                Assert.Same(browsing, window.FocusManager?.GetFocusedElement());
             }
+            int closedPid = window.TerminalPanel.Tabs[^1].Session.ProcessId!.Value;
+            int sessionsBeforeClose = window.TerminalPanel.Tabs.Count;
+            Ui.Press(window, "tab");
+            Ui.Press(window, "enter");
+            Ui.WaitFor(() => window.TerminalPanel.Tabs.Count == sessionsBeforeClose - 1 && Processes.Gone(closedPid), "the keyboard close action to end only its background shell");
+            Assert.Same(run.Session, window.TerminalPanel.Active);
+            Assert.True(window.TerminalPanel.View.IsFocused);
             Reach(longTab);
             Click(longTab);
             DockLayout layout = window.DockHost.Capture();
