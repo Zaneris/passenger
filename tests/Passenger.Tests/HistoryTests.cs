@@ -162,7 +162,7 @@ public sealed class HistoryTests : IDisposable
             Ui.Press(window, "ENTER");
             Ui.WaitFor(() => window.OwnedWindows.OfType<DiffWindow>().Any(), "Enter on the chosen commit's real changed file to show its diff", TimeSpan.FromSeconds(5));
             DiffWindow diff = Assert.Single(window.OwnedWindows.OfType<DiffWindow>());
-            Assert.Equal(Git("show", $"{chosen}:{path}"), diff.View.Right.Document.Snapshot.ToString());
+            Assert.Equal(Git("show", $"{chosen}:{path}", "--"), diff.View.Right.Document.Snapshot.ToString());
             diff.Close();
             Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
 
