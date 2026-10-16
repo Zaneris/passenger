@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
@@ -90,6 +91,7 @@ public sealed class BranchesPanel : DockPanel
         list = new ListBox
         {
             Classes = { "tree" },
+            [ScrollViewer.HorizontalScrollBarVisibilityProperty] = ScrollBarVisibility.Auto,
             ItemTemplate = new FuncDataTemplate<BranchNode>((node, _) => node is null ? new TextBlock() : Row(node), supportsRecycling: false),
         };
         list.DoubleTapped += (_, e) =>

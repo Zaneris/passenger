@@ -3,8 +3,10 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.Docking;
 using Passenger.App.Explorer;
 using Passenger.App.ToolWindows;
 using Passenger.App.Vcs;
@@ -25,6 +27,175 @@ public sealed class HistoryTests : IDisposable
     private readonly string folder = TestFolders.Create("history-");
 
     public void Dispose() => TestFolders.Delete(folder);
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_populated_git_log_keeps_its_commit_files_message_and_actions_readable_in_narrow_panes(bool light)
+    {
+        string directory = "src/CustomerAdministrationAndReporting/InternationalSubscriptionProcessing";
+        string name = "SubscriptionRenewalConfirmationForCustomersWithDeferredPaymentTerms.txt";
+        string path = directory + "/" + name;
+        string subject = "Preserve customer subscription renewal confirmation and deferred payment reporting across every region";
+        string branch = "feature/customer-subscription-renewal-confirmation-and-deferred-payment-reporting";
+        Write(path, "Original\n");
+        TestGit.Init(folder);
+        Git("config", "user.name", "The international customer subscription and deferred payment reporting team");
+        for (int index = 0; index < 36; index++)
+        {
+            Write(path, $"Revision {index}\n");
+            Git("commit", "-q", "-am", $"{subject} ({index})", "-m", "The full message explains why this customer's subscription changed and preserves the complete reporting history.");
+        }
+        Git("branch", branch);
+        MainWindow window = Open(null);
+        window.RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark;
+        window.SetRenderScaling(2);
+        try
+        {
+            Ui.Run(window, AppActions.ShowGit);
+            GitLogView log = window.GitLog;
+            Ui.WaitFor(() => log.Rows.Count == 37 && log.Branches?.Branches.Any(item => item.Name == branch) == true,
+                "the real repository's complete history and long branch");
+            Assert.True(log.Branches!.Select(branch));
+            log.Branches.FocusRows();
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => log.Rows.Count == 37 && log.BranchFilterName == branch, "the chosen branch's complete history");
+            ListBox commits = log.GetVisualDescendants().OfType<ListBox>().Single(list => ReferenceEquals(list.ItemsSource, log.Rows));
+            log.Select(log.Rows[0].Commit);
+            log.FocusRows();
+            string newest = log.Selected!.Hash;
+            Ui.Press(window, "DOWN");
+            Ui.WaitFor(() => log.Files.Count == 1 && log.Details.Contains(log.Selected!.Hash, StringComparison.Ordinal), "the next commit's changed file and message");
+            string chosen = log.Selected!.Hash;
+            Assert.NotEqual(newest, chosen);
+            DockLayout layout = window.DockHost.Capture();
+            List<string> problems = [];
+            foreach (double width in new double[] { 1200, 683, 640, 200 })
+            {
+                window.Width = width == 200 ? 640 : width;
+                if (width == 200)
+                {
+                    window.DockHost.Apply(layout with
+                    {
+                        LeftWidth = 200,
+                        Windows = layout.Windows.ToDictionary(pair => pair.Key, pair => pair.Key == "git"
+                            ? pair.Value with { Anchor = ToolAnchor.LeftTop, Shown = true }
+                            : pair.Value with { Shown = false }),
+                    });
+                }
+                Ui.Settle();
+                Assert.Equal(chosen, log.Selected?.Hash);
+                Assert.Equal(branch, log.BranchFilterName);
+                Assert.Contains(subject, log.Details, StringComparison.Ordinal);
+                UiAudit.Capture(window, $"git-populated-{width:0}-{(light ? "light" : "dark")}");
+                problems.AddRange(UiAudit.HorizontalOverflow(window, $"Git {width}px", log));
+                TextBox message = log.GetVisualDescendants().OfType<TextBox>().Single(text => text.IsReadOnly);
+                if (message.Bounds.Width < 120)
+                {
+                    problems.Add($"The {width}px Git pane leaves no readable commit message ({message.Bounds.Width:0}px)");
+                }
+                ListBox changed = log.GetVisualDescendants().OfType<ListBox>().Single(list => ReferenceEquals(list.ItemsSource, log.Files));
+                Reveal(changed);
+                ScrollViewer fileReader = changed.GetVisualDescendants().OfType<ScrollViewer>().First();
+                Point at = fileReader.TranslatePoint(new Point(Math.Min(40, fileReader.Bounds.Width / 2), Math.Min(30, fileReader.Bounds.Height / 2)), window)!.Value;
+                window.MouseMove(at);
+                window.MouseWheel(at, new Vector(-30, 0));
+                Ui.Settle();
+                if (fileReader.Offset.X <= 0)
+                {
+                    problems.Add($"The full changed filename and directory have no horizontal reading access in the {width}px Git pane");
+                }
+                UiAudit.Capture(window, $"git-populated-files-{width:0}-{(light ? "light" : "dark")}");
+                fileReader.Offset = default;
+                ListBox branches = log.Branches.GetVisualDescendants().OfType<ListBox>().Single();
+                Reveal(branches);
+                ScrollViewer branchReader = branches.GetVisualDescendants().OfType<ScrollViewer>().First();
+                Point overBranches = branches.TranslatePoint(new Point(40, 30), window)!.Value;
+                window.MouseWheel(overBranches, new Vector(-30, 0));
+                Ui.Settle();
+                Assert.True(branchReader.Offset.X > 0, "The full selected branch name cannot be read horizontally");
+                Assert.Equal(branch, log.Branches.Selected?.Branch?.Name);
+                UiAudit.Capture(window, $"git-populated-branches-{width:0}-{(light ? "light" : "dark")}");
+                branchReader.Offset = default;
+                Reveal(message);
+                ScrollViewer messageReader = message.GetVisualDescendants().OfType<ScrollViewer>().First();
+                Point overMessage = message.TranslatePoint(new Point(40, 30), window)!.Value;
+                window.MouseWheel(overMessage, new Vector(0, -30));
+                Ui.Settle();
+                if (messageReader.Extent.Height > messageReader.Viewport.Height)
+                {
+                    Assert.True(messageReader.Offset.Y > 0, "The complete commit metadata cannot be read vertically");
+                }
+                UiAudit.Capture(window, $"git-populated-message-{width:0}-{(light ? "light" : "dark")}");
+                messageReader.Offset = default;
+                Reveal(commits);
+                ScrollViewer commitReader = commits.GetVisualDescendants().OfType<ScrollViewer>().First();
+                Point overCommits = commits.TranslatePoint(new Point(40, 30), window)!.Value;
+                window.MouseWheel(overCommits, new Vector(0, -6));
+                Ui.Settle();
+                Assert.True(commitReader.Offset.Y > 0, "The populated commit list cannot be read vertically");
+                Assert.Equal(chosen, log.Selected?.Hash);
+                Assert.True(commits.GetVisualDescendants().OfType<ListBoxItem>().Count() < log.Rows.Count,
+                    "The commit list lost its finite viewport and realized every history row");
+                commitReader.Offset = default;
+                Button refresh = log.GetVisualDescendants().OfType<Button>().Single(button => ToolTip.GetTip(button) as string == "Refresh");
+                Reveal(refresh);
+                refresh.Focus();
+                int loads = log.Loads;
+                Ui.Press(window, "ENTER");
+                Ui.WaitFor(() => log.Loads > loads && log.Selected?.Hash == chosen && log.Details.Contains(chosen, StringComparison.Ordinal),
+                    "Refresh to preserve the chosen commit and its full message");
+                UiAudit.Capture(window, $"git-populated-refresh-{width:0}-{(light ? "light" : "dark")}");
+            }
+            window.DockHost.Apply(layout);
+            Ui.Settle();
+            ListBox changedFiles = log.GetVisualDescendants().OfType<ListBox>().Single(list => ReferenceEquals(list.ItemsSource, log.Files));
+            Reveal(changedFiles);
+            changedFiles.SelectedIndex = 0;
+            TextBox messageInput = log.GetVisualDescendants().OfType<TextBox>().Single(text => text.IsReadOnly);
+            Assert.True(messageInput.Focus());
+            Ui.Press(window, "ENTER");
+            Assert.Empty(window.OwnedWindows.OfType<DiffWindow>());
+            Assert.True(changedFiles.ContainerFromIndex(0)!.Focus(), "The real changed-file row cannot receive keyboard focus");
+            Ui.Press(window, "RIGHT");
+            Assert.Empty(window.OwnedWindows.OfType<DiffWindow>());
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => window.OwnedWindows.OfType<DiffWindow>().Any(), "Enter on the chosen commit's real changed file to show its diff", TimeSpan.FromSeconds(5));
+            DiffWindow diff = Assert.Single(window.OwnedWindows.OfType<DiffWindow>());
+            Assert.Equal(Git("show", $"{chosen}:{path}"), diff.View.Right.Document.Snapshot.ToString());
+            diff.Close();
+            Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
+
+            void Reveal(Control target)
+            {
+                foreach (ScrollViewer reader in target.GetVisualAncestors().OfType<ScrollViewer>())
+                {
+                    if (reader.HorizontalScrollBarVisibility == Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled)
+                    {
+                        continue;
+                    }
+                    Point over = reader.TranslatePoint(new Point(Math.Min(40, reader.Bounds.Width / 2), Math.Min(18, reader.Bounds.Height / 2)), window)!.Value;
+                    for (int attempt = 0; attempt < 20; attempt++)
+                    {
+                        Point left = target.TranslatePoint(default, reader)!.Value;
+                        double visible = Math.Min(reader.Viewport.Width, target.Bounds.Width);
+                        double amount = left.X < 0 ? -left.X : left.X + visible > reader.Viewport.Width
+                            ? reader.Viewport.Width - left.X - visible : 0;
+                        if (Math.Abs(amount) < 1)
+                        {
+                            break;
+                        }
+                        window.MouseWheel(over, new Vector(Math.Clamp(amount / 50, -5, 5), 0));
+                        Ui.Settle();
+                    }
+                }
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
 
     [AvaloniaFact]
     public void A_files_history_follows_it_through_a_rename_and_a_double_click_on_a_commit_shows_what_it_did_to_the_file()
