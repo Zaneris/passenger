@@ -750,7 +750,8 @@ public sealed class Git
     /// <summary>A file's text at a revision (a hash, a branch, HEAD), or null when it had no such file.</summary>
     public async Task<string?> TextAtAsync(string revision, string path)
     {
-        GitResult show = await RunAsync(Root, ["show", "--end-of-options", $"{revision}:{Relative(path)}"]);
+        // A revision's blob is never a working-tree path, which Git for Windows may refuse to stat as too long.
+        GitResult show = await RunAsync(Root, ["show", "--end-of-options", $"{revision}:{Relative(path)}", "--"]);
         return show.Succeeded ? show.Output : null;
     }
 

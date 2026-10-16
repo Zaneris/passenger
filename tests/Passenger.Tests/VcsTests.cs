@@ -35,6 +35,53 @@ public sealed class VcsTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_commits_diff_reads_long_file_names_even_when_Git_does_not_allow_long_working_paths(bool light)
+    {
+        string name = "SubscriptionRenewal" + new string('x', 210) + ".txt";
+        string path = Path.Combine(folder, name);
+        File.WriteAllText(path, "Committed subscription\n");
+        Git("-c", "core.longpaths=true", "add", "--", name);
+        Git("commit", "-q", "-m", "Long subscription path");
+        Git("config", "core.longpaths", "false");
+        string revision = Git("rev-parse", "HEAD").Trim();
+        Assert.True(name.Length < 255 && revision.Length + 1 + name.Length > 255);
+        MainWindow window = Open();
+        window.RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark;
+        window.SetRenderScaling(2);
+        try
+        {
+            Ui.Run(window, AppActions.ShowGit);
+            GitLogView log = window.GitLog;
+            Ui.WaitFor(() => log.Rows.Count == 2, "the committed long-name file's history");
+            log.Select(log.Rows.Single(row => row.Commit.Hash == revision).Commit);
+            Ui.WaitFor(() => log.Files.Count == 1, "the commit's actual long-name file");
+            ListBox changed = Find(log, log.Files);
+            changed.SelectedIndex = 0;
+            Ui.Settle();
+            Assert.True(changed.ContainerFromIndex(0)!.Focus());
+            Ui.Press(window, "ENTER");
+            DiffWindow diff = Assert.Single(window.OwnedWindows.OfType<DiffWindow>());
+            diff.RequestedThemeVariant = window.RequestedThemeVariant;
+            Assert.Equal("Committed subscription\n", diff.View.Right.Document.Snapshot.ToString());
+            Assert.Equal(string.Empty, diff.View.Left.Document.Snapshot.ToString());
+            foreach (double width in new double[] { 1200, 640 })
+            {
+                diff.Width = width;
+                diff.SetRenderScaling(2);
+                Ui.Settle();
+                UiAudit.Capture(diff, $"git-revision-long-name-{width:0}-{(light ? "light" : "dark")}");
+            }
+            diff.Close();
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void An_edit_shows_a_change_bar_and_committing_it_from_the_commit_window_clears_it()
     {
