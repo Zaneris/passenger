@@ -1,10 +1,12 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Debugging;
+using Passenger.App.Docking;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
@@ -303,6 +305,23 @@ public sealed class HotReloadTests : IClassFixture<RestoredFolders>, IDisposable
                     Assert.Equal(problem.Message, ToolTip.GetTip(message));
                 }
             }
+
+            DockLayout bottom = window.DockHost.Capture();
+            window.DockHost.Apply(bottom with
+            {
+                LeftWidth = 200,
+                Windows = bottom.Windows.ToDictionary(pair => pair.Key, pair => pair.Key == "problems"
+                    ? pair.Value with { Anchor = ToolAnchor.LeftTop, Shown = true }
+                    : pair.Value.Anchor == ToolAnchor.LeftTop ? pair.Value with { Shown = false } : pair.Value),
+            });
+            Ui.Settle();
+            ToggleButton hot = Assert.Single(window.BottomPanel.Problems.GetVisualDescendants().OfType<ToggleButton>(), button => button.IsChecked == true);
+            Point hotAt = hot.TranslatePoint(default, window.BottomPanel.Problems)!.Value;
+            Assert.True(hotAt.X >= 0 && hotAt.X + hot.Bounds.Width <= window.BottomPanel.Problems.Bounds.Width,
+                "The dynamically shown Hot Reload category must remain visible when its populated Problems pane moves to a narrow side dock");
+            UiAudit.Capture(window, $"hot-reload-missing-baseline-side-200-{(light ? "light" : "dark")}");
+            window.DockHost.Apply(bottom);
+            Ui.Settle();
 
             // Roslyn acknowledged its no-effect snapshot internally. Restoring the exact DLL must not let a second
             // Apply silently consume the pending text; a new build/session is needed to recover safely.
