@@ -1087,6 +1087,157 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
         }
     }
 
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Added_literal_property_elements_keep_original_object_anchors_across_later_edits_and_future_views(bool watched)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "WPF runs on Windows alone");
+        FutureViews("Dark");
+        string child = Path.Combine(folder, "RepeatedView.xaml");
+        MainWindow window = FutureStarted(watched, "net11.0-windows");
+        try
+        {
+            window.ApplySettings(window.Settings with { RestartOnRudeEdit = false });
+            LiveApp app = watched ? window.Session.RunApp! : window.LiveApp!;
+            int? process = app.ProcessId;
+            List<Element> before = Read(app);
+            HashSet<long> old = [.. before.Select(e => e.Id)];
+            long entry = before.First(e => e.Name == "NewEntry").Id;
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Type) { Element = entry, Text = "Kept added-property state", Replace = true }), "existing view state");
+            Capture(app, "property-additions-" + (watched ? "run" : "debug") + "-before");
+            Assert.Null(window.OpenFile(child));
+            Typing.Replace(window, "Text=\"Created before\" Width=\"200\" />", "Text=\"Added first\" Width=\"200\">\n<TextBlock.FontSize>invalid</TextBlock.FontSize>\n</TextBlock>");
+            HotReloadOutcome invalid = FutureApplied(window, watched);
+            Assert.Equal(HotReloadResult.Errors, invalid.Result);
+            Assert.Contains(invalid.Problems, p => p.Path == child && p.Message.Contains("FontSize", StringComparison.Ordinal));
+            Assert.DoesNotContain(Read(app), e => e.Text == "Added first");
+            Assert.True(watched ? window.Session.RunXaml.Changed : window.Debugger.HotReload!.Changed);
+            Typing.Replace(window, "<TextBlock.FontSize>invalid</TextBlock.FontSize>", "<TextBlock.FontSize>22</TextBlock.FontSize>");
+            HotReloadOutcome first = FutureApplied(window, watched);
+            Assert.True(first.Result == HotReloadResult.Applied, first.Said);
+            foreach (Element element in Read(app).Where(e => e.Name == "NewLiteral"))
+            {
+                PropertyValue size = Ui.Await(app.DetailsAsync(element.Id), "the added property-element source").Properties.Single(p => p.Name == "FontSize");
+                Assert.Equal("22", size.Value);
+                Assert.Equal(ValueSources.Local, size.Source);
+            }
+            Typing.Replace(window, "<TextBlock.FontSize>22</TextBlock.FontSize>", "<TextBlock.FontSize>24</TextBlock.FontSize>");
+            Typing.Replace(window, "Text=\"Added first\"", "Text=\"Added latest\"");
+            Typing.Replace(window, "Text=\"XAML before\"", "Text=\"Below added property\"");
+            HotReloadOutcome latest = FutureApplied(window, watched);
+            Assert.True(latest.Result == HotReloadResult.Applied, latest.Said);
+            Assert.Equal(2 - 1, Read(app).Count(e => e.Name == "ConstructorValue" && e.Text == "Below added property"));
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Click) { Element = before.Single(e => e.Name == "CreateView").Id }), "a future view after adding a property element");
+            Ui.WaitFor(() => FutureOutput(window, watched).Contains("Constructor saw Added latest; Below added property", StringComparison.Ordinal), "the new view to receive both edits before its constructor writes");
+            List<Element> after = Read(app);
+            List<Element> made = [.. Flatten(after.Single(e => e.Type == "RepeatedView" && !old.Contains(e.Id)))];
+            Assert.Equal("Constructor wins", made.Single(e => e.Name == "ConstructorValue").Text);
+            Assert.Equal("Kept added-property state", after.Single(e => e.Id == entry).Text);
+            Assert.Equal(2, after.Count(e => e.Name == "NewLiteral" && e.Text == "Added latest"));
+            foreach (Element element in after.Where(e => e.Name == "NewLiteral"))
+            {
+                Assert.Equal("24", Ui.Await(app.DetailsAsync(element.Id), "the latest property element in every view").Properties.Single(p => p.Name == "FontSize").Value);
+            }
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Type) { Element = made.Single(e => e.Name == "NewEntry").Id, Text = "New added-property state", Replace = true }), "the new view's compiled binding");
+            Assert.Equal("New added-property state", Read(app).Single(e => e.Id == made.Single(e => e.Name == "NewBound").Id).Text);
+            Capture(app, "property-additions-" + (watched ? "run" : "debug") + "-after");
+            Typing.Replace(window, "x:Name=\"NewLiteral\"", "x:Name=\"NewLiteral\" FontSize=\"30\"");
+            HotReloadOutcome attribute = FutureApplied(window, watched);
+            Assert.Equal(HotReloadResult.Errors, attribute.Result);
+            Assert.Contains(attribute.Problems, p => p.Path == child && p.Message.Contains("both an attribute and a property element", StringComparison.Ordinal));
+            Typing.Replace(window, "x:Name=\"NewLiteral\" FontSize=\"30\"", "x:Name=\"NewLiteral\"");
+            Typing.Replace(window, "<TextBlock.FontSize>24</TextBlock.FontSize>", "<TextBlock.FontSize>24</TextBlock.FontSize><TextBlock.FontSize>30</TextBlock.FontSize>");
+            HotReloadOutcome duplicate = FutureApplied(window, watched);
+            Assert.Equal(HotReloadResult.Errors, duplicate.Result);
+            Assert.Contains(duplicate.Problems, p => p.Path == child && p.Message.Contains("more than once", StringComparison.Ordinal));
+            Typing.Replace(window, "<TextBlock.FontSize>24</TextBlock.FontSize><TextBlock.FontSize>30</TextBlock.FontSize>", " ");
+            Assert.DoesNotContain("<TextBlock.FontSize>", window.EditorArea.CodeEditor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+            HotReloadOutcome removed = watched ? FutureApplied(window, true) : Ui.Await(window.Debugger.ApplyChangesAsync(), "the property-element removal to be refused");
+            Assert.True(removed.Result == HotReloadResult.RestartNeeded, removed.Said);
+            Assert.Contains(removed.Problems, p => p.Path == child && p.Message.Contains("Removing XAML property elements", StringComparison.Ordinal));
+            if (watched)
+            {
+                Ui.WaitFor(() => window.OwnedWindows.OfType<ChoiceDialog>().Any(), "the removed property to offer a restart");
+                ChoiceDialog asked = window.OwnedWindows.OfType<ChoiceDialog>().Single();
+                Ui.Settle();
+                Avalonia.Controls.Button never = asked.GetVisualDescendants().OfType<Avalonia.Controls.Button>().Single(b => (string?)b.Content == "Never");
+                Avalonia.Point at = never.TranslatePoint(new Avalonia.Point(never.Bounds.Width / 2, never.Bounds.Height / 2), asked)!.Value;
+                asked.MouseMove(at);
+                asked.MouseDown(at, Avalonia.Input.MouseButton.Left);
+                asked.MouseUp(at, Avalonia.Input.MouseButton.Left);
+                Ui.Settle();
+            }
+            Assert.Equal(process, app.ProcessId);
+            foreach (Element element in Read(app).Where(e => e.Name == "NewLiteral"))
+            {
+                Assert.Equal("24", Ui.Await(app.DetailsAsync(element.Id), "the refused removal's retained local value").Properties.Single(p => p.Name == "FontSize").Value);
+            }
+            Assert.True(watched ? window.Session.RunXaml.Changed : window.Debugger.HotReload!.Changed);
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Click) { Element = before.Single(e => e.Name == "CreateView").Id }), "a future view while a removal remains pending");
+            List<Element> pending = Read(app);
+            Assert.Equal(3, pending.Count(e => e.Name == "NewLiteral" && e.Text == "Added latest"));
+            foreach (Element element in pending.Where(e => e.Name == "NewLiteral"))
+            {
+                Assert.Equal("24", Ui.Await(app.DetailsAsync(element.Id), "the last accepted value in a later view").Properties.Single(p => p.Name == "FontSize").Value);
+            }
+        }
+        finally
+        {
+            FutureEnded(window, watched);
+        }
+    }
+
+    [AvaloniaFact]
+    public void Unsafe_property_element_additions_and_reordering_preserve_the_live_tree_and_namescope()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "WPF runs on Windows alone");
+        MainWindow window = Debugged();
+        try
+        {
+            LiveApp app = window.LiveApp!;
+            int? process = app.ProcessId;
+            HashSet<long> original = [.. Read(app).Select(e => e.Id)];
+            Assert.Null(window.OpenFile(Path.Combine(folder, "MainWindow.xaml")));
+            Typing.Replace(window, "<StackPanel Margin", "<Window.Content>Must not replace the subtree</Window.Content><StackPanel Margin");
+            HotReloadOutcome content = Ui.Await(window.Debugger.ApplyChangesAsync(), "the implicit-content replacement to be refused");
+            Assert.Equal(HotReloadResult.RestartNeeded, content.Result);
+            Assert.Contains(content.Problems, p => p.Message.Contains("implicit text or child content", StringComparison.Ordinal));
+            Typing.Replace(window, "<Window.Content>Must not replace the subtree</Window.Content>", " ");
+            Typing.Replace(window, "<TextBlock Text=\"Before\" />", "<TextBlock Text=\"Before\"><TextBlock.Name>Must not rename</TextBlock.Name></TextBlock>");
+            HotReloadOutcome name = Ui.Await(window.Debugger.ApplyChangesAsync(), "the namescope edit to be refused");
+            Assert.Equal(HotReloadResult.RestartNeeded, name.Result);
+            Assert.Contains(name.Problems, p => p.Message.Contains("namescopes", StringComparison.Ordinal));
+            Typing.Replace(window, "<TextBlock.Name>Must not rename</TextBlock.Name>", "<TextBlock.DataContext>Must not replace the viewmodel</TextBlock.DataContext>");
+            HotReloadOutcome context = Ui.Await(window.Debugger.ApplyChangesAsync(), "the added data context to be refused");
+            Assert.Equal(HotReloadResult.RestartNeeded, context.Result);
+            Assert.Contains(context.Problems, p => p.Message.Contains("bindings", StringComparison.Ordinal));
+            Typing.Replace(window, "<TextBlock.DataContext>Must not replace the viewmodel</TextBlock.DataContext>", "<TextBlock.>Incomplete property</TextBlock.>");
+            HotReloadOutcome incomplete = Ui.Await(window.Debugger.ApplyChangesAsync(), "the incomplete property addition to be refused");
+            Assert.Equal(HotReloadResult.RestartNeeded, incomplete.Result);
+            Assert.Contains(incomplete.Problems, p => p.Message.Contains("structure", StringComparison.Ordinal));
+            Typing.Replace(window, "<TextBlock.>Incomplete property</TextBlock.>", "<TextBlock.FontSize>14</TextBlock.FontSize><TextBlock.Opacity>1</TextBlock.Opacity>");
+            HotReloadOutcome accepted = Ui.Await(window.Debugger.ApplyChangesAsync(), "two literal property additions to apply");
+            Assert.True(accepted.Result == HotReloadResult.Applied, accepted.Said);
+            Typing.Replace(window, "<TextBlock.FontSize>14</TextBlock.FontSize><TextBlock.Opacity>1</TextBlock.Opacity>", "<TextBlock.Opacity>1</TextBlock.Opacity><TextBlock.FontSize>14</TextBlock.FontSize>");
+            HotReloadOutcome order = Ui.Await(window.Debugger.ApplyChangesAsync(), "existing property order to be retained");
+            Assert.Equal(HotReloadResult.RestartNeeded, order.Result);
+            Assert.Contains(order.Problems, p => p.Message.Contains("structure", StringComparison.Ordinal));
+            Assert.True(window.Debugger.HotReload!.Changed);
+            Assert.Equal(process, app.ProcessId);
+            List<Element> after = Read(app);
+            Assert.Equal(original.Order(), after.Select(e => e.Id).Order());
+            Assert.Contains(after, e => e.Text == "Before");
+            Assert.DoesNotContain(after, e => e.Name == "Must not rename" || e.Text == "Must not replace the subtree");
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Type) { Element = after.Single(e => e.Name == "Entry").Id, Text = "Viewmodel survived", Replace = true }), "the original viewmodel and binding");
+            Assert.Equal("Viewmodel survived", Read(app).Single(e => e.Name == "Bound").Text);
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
     private static HotReloadOutcome FutureApplied(MainWindow window, bool watched)
     {
         if (!watched)
@@ -1166,6 +1317,13 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
 
     [AvaloniaFact]
     public void An_added_wpf_attribute_in_a_failed_batch_restores_the_style_source_instead_of_leaving_a_local_value()
+        => AddedPropertyRollback(element: false);
+
+    [AvaloniaFact]
+    public void An_added_wpf_property_element_in_a_failed_batch_restores_the_style_source_instead_of_leaving_a_local_value()
+        => AddedPropertyRollback(element: true);
+
+    private void AddedPropertyRollback(bool element)
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "WPF runs on Windows alone");
         AttributeView(throwing: true);
@@ -1175,10 +1333,18 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
             LiveApp app = window.LiveApp!;
             long caption = Read(app).Single(e => e.Text == "Before").Id;
             Assert.Null(window.OpenFile(Path.Combine(folder, "MainWindow.xaml")));
-            Typing.Replace(window, "Text=\"Before\" Style", "Text=\"Before\" Width=\"260\" Style");
+            if (element)
+            {
+                Typing.Replace(window, "Style=\"{StaticResource Caption}\" />", "Style=\"{StaticResource Caption}\"><TextBlock.Width>260</TextBlock.Width></TextBlock>");
+            }
+            else
+            {
+                Typing.Replace(window, "Text=\"Before\" Style", "Text=\"Before\" Width=\"260\" Style");
+            }
             Typing.Replace(window, "Fragile=\"Safe\"", "Fragile=\"Refuse\"");
             HotReloadOutcome refused = Ui.Await(window.Debugger.ApplyChangesAsync(), "the WPF setter to refuse the batch");
             Assert.Equal(HotReloadResult.RestartNeeded, refused.Result);
+            Assert.Contains(refused.Problems, p => p.Message.Contains("Setter refused", StringComparison.Ordinal));
             PropertyValue width = Ui.Await(app.DetailsAsync(caption), "the rolled back WPF attribute's value source").Properties.Single(p => p.Name == "Width");
             Assert.Equal("180", width.Value);
             Assert.Equal(ValueSources.Style, width.Source);
@@ -1192,6 +1358,13 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
 
     [AvaloniaFact]
     public void Adding_a_wpf_attribute_over_a_constructor_binding_requires_restart_without_replacing_the_binding()
+        => AddedPropertyBinding(element: false);
+
+    [AvaloniaFact]
+    public void Adding_a_wpf_property_element_over_a_constructor_binding_requires_restart_without_replacing_the_binding()
+        => AddedPropertyBinding(element: true);
+
+    private void AddedPropertyBinding(bool element)
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "WPF runs on Windows alone");
         File.WriteAllText(Path.Combine(folder, "MainWindow.xaml"), View.Replace("x:Name=\"Bound\" Text=\"{Binding Name}\"", "x:Name=\"Bound\"", StringComparison.Ordinal));
@@ -1201,7 +1374,14 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
         {
             LiveApp app = window.LiveApp!;
             Assert.Null(window.OpenFile(Path.Combine(folder, "MainWindow.xaml")));
-            Typing.Replace(window, "x:Name=\"Bound\"", "x:Name=\"Bound\" Text=\"Must not replace\"");
+            if (element)
+            {
+                Typing.Replace(window, "x:Name=\"Bound\" />", "x:Name=\"Bound\"><TextBlock.Text>Must not replace</TextBlock.Text></TextBlock>");
+            }
+            else
+            {
+                Typing.Replace(window, "x:Name=\"Bound\"", "x:Name=\"Bound\" Text=\"Must not replace\"");
+            }
             Typing.Replace(window, "Text=\"Before\"", "Text=\"Must not apply\"");
             HotReloadOutcome result = Ui.Await(window.Debugger.ApplyChangesAsync(), "the WPF constructor binding to be preserved");
             Assert.Equal(HotReloadResult.RestartNeeded, result.Result);
