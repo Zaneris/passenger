@@ -22,7 +22,7 @@ public partial class GoToFilePopup : UserControl
         this.index = index;
         this.recent = recent;
         Query.TextChanged += (_, _) => Refresh();
-        Query.AddHandler(KeyDownEvent, OnQueryKeyDown, RoutingStrategies.Tunnel);
+        AddHandler(KeyDownEvent, OnPopupKeyDown, RoutingStrategies.Tunnel);
         Refresh();
         Dispatcher.UIThread.Post(() => Query.Focus(), DispatcherPriority.Loaded);
     }
@@ -49,7 +49,7 @@ public partial class GoToFilePopup : UserControl
         Empty.Text = query.Trim().Length == 0 ? "No recent files" : "Nothing matches";
     }
 
-    private void OnQueryKeyDown(object? sender, KeyEventArgs e)
+    private void OnPopupKeyDown(object? sender, KeyEventArgs e)
     {
         switch (e.Key)
         {
@@ -90,6 +90,7 @@ public sealed record FileHit(string FullPath, string RelativePath)
 {
     public string Name => Path.GetFileName(RelativePath);
     public string Folder => Path.GetDirectoryName(RelativePath) is { Length: > 0 } folder ? folder : string.Empty;
+    public GridLength FolderWidth => Folder.Length == 0 ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
     public Geometry Icon => FileIcons.ForFile(FullPath);
     public IBrush IconBrush => FileIcons.BrushForFile(FullPath);
 }
