@@ -342,8 +342,8 @@ Shipping `artifacts/2026-10-16/{refresh-ci-74f-timings.py,ci-74f-timing-analysis
 retains exact raw-result analysis, failed-class retention and discovery/filter commands. The earlier `c9509e4`
 tables and 983/985 discovery snapshots above remain historical evidence, superseded for the current deal.
 
-Earlier timing checkpoints follow for provenance; their weights and coverage limits are superseded by the
-healthy `c9509e4` measurements above.
+Earlier timing checkpoints follow for provenance; their current-deal weights are superseded by healthy `74f481b`
+measurements, retaining the prior healthy `c9509e4` weights only for its two failed macOS classes as stated above.
 
 The completed [CI4 run at `f4d89b9`](https://github.com/tebeco/passenger/actions/runs/38821710686) contains exactly one
 result for each of its **943 tests in 129 classes per system** across all 13 shards. Windows reports 934 passed,
