@@ -131,7 +131,7 @@ public sealed class DesignTimeIsolationTests(ITestOutputHelper output)
     [AvaloniaFact]
     public void Custom_intermediates_and_nested_MSBuild_references_keep_their_own_outputs_and_cached_generated_documents()
     {
-        string root = TestFolders.Create("isolated builds-");
+        string root = PathNames.Canonical(TestFolders.Create("isolated builds-"));
         string settings = PathNames.Canonical(TestFolders.Create("isolated-settings-"));
         string library = Path.Combine(root, "Markup");
         string app = Path.Combine(root, "Consumer");

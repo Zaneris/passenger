@@ -92,6 +92,33 @@ internal sealed class Inspector
         }
     }
 
+    /// <summary>Layout does not finish a popup's opening slide: WPF translates its content from outside the viewport.
+    /// Wait for that translation's actual value to reach its base value before input uses the boxes. Animation clocks can
+    /// stay attached after they stop, so HasAnimatedProperties alone never says that a popup has settled.</summary>
+    public bool SettleInput(InputAction? action)
+    {
+        Settle();
+        Visual? target = action?.Element is long id && Find(id) is { } element ? TopOf(element)
+            : action?.Window is long window ? Find(window) as Visual : null;
+        foreach (Visual top in TopLevels())
+        {
+            if (action is not null && top != target || Popup(top) is not { IsOpen: true, PopupAnimation: PopupAnimation.Slide or PopupAnimation.Scroll, Child: { } child })
+            {
+                continue;
+            }
+            for (DependencyObject? at = child; at is not null && at != top; at = Shown.Parent(at))
+            {
+                if (at is UIElement { RenderTransform: TranslateTransform { HasAnimatedProperties: true } moving }
+                    && (moving.X != (double)moving.GetAnimationBaseValue(TranslateTransform.XProperty)
+                        || moving.Y != (double)moving.GetAnimationBaseValue(TranslateTransform.YProperty)))
+                {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
     /// <summary>Passenger has gone: nothing of the inspector's is left in the app's windows.</summary>
     public void Stop()
     {
