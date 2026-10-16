@@ -39,6 +39,102 @@ public sealed class DialogButtonsTests : IDisposable
     [AvaloniaTheory]
     [InlineData(false)]
     [InlineData(true)]
+    public void Keyboard_focus_surrounds_the_actual_checkbox_with_a_centered_rounded_non_intercepting_ring(bool light)
+    {
+        MainWindow window = new() { Width = 683, Height = 800, RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark };
+        window.Show();
+        window.OpenFolder(folder);
+        try
+        {
+            window.Open(other);
+            OpenProjectDialog dialog = Opened<OpenProjectDialog>(window);
+            dialog.RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark;
+            dialog.SetRenderScaling(2);
+            CheckBox option = Assert.Single(dialog.GetVisualDescendants().OfType<CheckBox>(), check => Equals(check.Content, "Don't ask again"));
+            for (int attempt = 0; attempt < 20 && !option.IsFocused; attempt++)
+            {
+                Ui.Press(dialog, "tab");
+            }
+            Assert.True(option.IsFocused, "The footer checkbox must be reachable with the actual Tab key");
+            UiAudit.Capture(dialog, $"checkbox-focus-{(light ? "light" : "dark")}");
+            Border ring = CheckGlyphRing(dialog, option);
+            bool before = option.IsChecked == true;
+            Ui.Press(dialog, "space");
+            Assert.Equal(!before, option.IsChecked);
+            Assert.True(option.IsFocused);
+            UiAudit.Capture(dialog, $"checkbox-focus-checked-{(light ? "light" : "dark")}");
+            Point at = option.TranslatePoint(new Point(10, option.Bounds.Height / 2), dialog)!.Value;
+            Control hit = Assert.IsAssignableFrom<Control>(dialog.InputHitTest(at));
+            Assert.True(hit == option || hit.GetVisualAncestors().Contains(option), "The focus ring must leave the real checkbox under its pointer target");
+            dialog.MouseDown(at, MouseButton.Left);
+            dialog.MouseUp(at, MouseButton.Left);
+            Ui.Settle();
+            Assert.Equal(before, option.IsChecked);
+            Ui.Press(dialog, "tab");
+            Assert.DoesNotContain(ring, dialog.GetVisualDescendants());
+            Button next = Assert.IsAssignableFrom<Button>(dialog.FocusManager!.GetFocusedElement());
+            Border buttonRing = Assert.Single(dialog.GetVisualDescendants().OfType<Border>(), border => border.Name == "ControlFocusRing");
+            Assert.True(buttonRing.CornerRadius.TopLeft > next.CornerRadius.TopLeft);
+            Assert.Equal(new Size(next.Bounds.Width + 6, next.Bounds.Height + 6), buttonRing.Bounds.Size);
+            Assert.Equal(new Point(-3, -3), buttonRing.TranslatePoint(default, next));
+            Assert.False(buttonRing.IsHitTestVisible);
+            Assert.Equal(Colour(dialog, "Passenger.Accent"), Ui.Pixel(dialog, buttonRing.TranslatePoint(new Point(0.5, buttonRing.Bounds.Height / 2), dialog)!.Value));
+            UiAudit.Capture(dialog, $"button-focus-{(light ? "light" : "dark")}");
+            Ui.Press(dialog, "shift+tab");
+            Assert.True(option.IsFocused);
+            option.IsEnabled = false;
+            Ui.Settle();
+            Assert.False(option.IsFocused);
+            Assert.DoesNotContain(dialog.GetVisualDescendants().OfType<Border>(), border => border.Name == "CheckboxFocusRing");
+            UiAudit.Capture(dialog, $"checkbox-disabled-{(light ? "light" : "dark")}");
+            dialog.Close();
+            Ui.Settle();
+
+            SettingsDialog settings = window.ShowSettings();
+            settings.RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark;
+            settings.SetRenderScaling(2);
+            settings.Query = "wrapped fragments";
+            settings.Width = 640;
+            Ui.Settle();
+            CheckBox wrapped = Assert.Single(settings.GetVisualDescendants().OfType<CheckBox>(), check => check.IsEffectivelyVisible);
+            Assert.True(wrapped.Bounds.Height > 28, "The real Settings label must wrap at its default font size for this focus alignment check");
+            for (int attempt = 0; attempt < 20 && !wrapped.IsFocused; attempt++)
+            {
+                Ui.Press(settings, "tab");
+            }
+            Assert.True(wrapped.IsFocused);
+            foreach (double width in new double[] { 640, 980, 683, 640 })
+            {
+                settings.Width = width;
+                Ui.Settle();
+                Assert.True(wrapped.IsFocused, "The same Settings checkbox must retain its keys through wrapping and column changes");
+                CheckGlyphRing(settings, wrapped);
+                UiAudit.Capture(settings, $"checkbox-wrapped-{width:0}-{(light ? "light" : "dark")}");
+            }
+            settings.Close();
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    private static Border CheckGlyphRing(Window dialog, CheckBox option)
+    {
+        Border ring = Assert.Single(dialog.GetVisualDescendants().OfType<Border>(), border => border.Name == "CheckboxFocusRing");
+        Border glyph = Assert.Single(option.GetVisualDescendants().OfType<Border>(), border => border.Name == "NormalRectangle");
+        Assert.True(ring.CornerRadius.TopLeft > glyph.CornerRadius.TopLeft);
+        Assert.Equal(new Size(glyph.Bounds.Width + 6, glyph.Bounds.Height + 6), ring.Bounds.Size);
+        Assert.Equal(new Point(-3, -3), ring.TranslatePoint(default, glyph));
+        Assert.Equal(Colour(dialog, "Passenger.Accent"), Solid(ring.BorderBrush));
+        Assert.Equal(Colour(dialog, "Passenger.Accent"), Ui.Pixel(dialog, ring.TranslatePoint(new Point(0.5, ring.Bounds.Height / 2), dialog)!.Value));
+        Assert.False(ring.IsHitTestVisible, "A focus ring must not intercept checkbox clicks");
+        return ring;
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void Every_dialog_has_its_buttons_words_centred_and_its_text_buttons_alike_with_the_default_where_Rider_puts_it(bool light)
     {
         ThemeVariant? before = Application.Current!.RequestedThemeVariant;
