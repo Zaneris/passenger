@@ -85,14 +85,18 @@ public sealed class ToolHeaderTests : IDisposable
                 {
                     window.Width = width;
                     Ui.Settle();
+                    bool selected = page.IsChecked == true;
+                    bool inside = Inside(page, strip);
+                    ToggleButton[] checkedPages = [.. pages.Where(button => button.IsChecked == true)];
+                    object? resizedFocus = window.FocusManager?.GetFocusedElement();
+                    string geometry = $"tab bounds={page.Bounds}, position={page.TranslatePoint(default, strip)}, strip={strip.Bounds}, "
+                        + $"viewport={strip.Viewport}, extent={strip.Extent}, offset={strip.Offset}, "
+                        + $"content={((Control)strip.Content!).Bounds}, profiler={window.ProfilerView.Bounds}, window={window.Bounds}";
                     UiAudit.Capture(window, $"profiler-page-{page.Content}-{width:0}-{(light ? "light" : "dark")}");
-                    Assert.True(page.IsChecked == true, $"'{page.Content}' lost selection at {width}px");
-                    Assert.True(Inside(page, strip), $"'{page.Content}' escapes its strip at {width}px: tab bounds={page.Bounds}, "
-                        + $"position={page.TranslatePoint(default, strip)}, strip={strip.Bounds}, viewport={strip.Viewport}, "
-                        + $"extent={strip.Extent}, offset={strip.Offset}, content={((Control)strip.Content!).Bounds}, "
-                        + $"profiler={window.ProfilerView.Bounds}, window={window.Bounds}");
-                    Assert.Same(page, Assert.Single(pages, button => button.IsChecked == true));
-                    Assert.Same(focus, window.FocusManager?.GetFocusedElement());
+                    Assert.True(selected, $"'{page.Content}' lost selection at {width}px: {geometry}");
+                    Assert.True(inside, $"'{page.Content}' escapes its strip at {width}px: {geometry}");
+                    Assert.Same(page, Assert.Single(checkedPages));
+                    Assert.Same(focus, resizedFocus);
                     CheckActions(tabsBar);
                 }
             }
