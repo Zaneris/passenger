@@ -460,7 +460,7 @@ public partial class MainWindow : Window
 
     private void OnDebugStateChanged()
     {
-        StopButton.IsVisible = session.Debug.IsDebugging || buildRun.IsRunning;
+        StopButton.IsVisible = session.Debug.IsDebugging || buildRun.IsRunning || buildRun.IsLaunching;
         ShowHotReloadButtons();
     }
 

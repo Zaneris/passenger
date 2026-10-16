@@ -1,0 +1,70 @@
+<Project>
+  <!-- ORIGINAL_IMPORT -->
+  <UsingTask TaskName="PassengerPrepareWpfPopulation" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Files ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+      <Prepared ParameterType="Microsoft.Build.Framework.ITaskItem[]" Output="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System" /><Using Namespace="System.IO" /><Using Namespace="System.Collections.Generic" /><Using Namespace="System.Text.RegularExpressions" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        const string call = "System.Windows.Application.LoadComponent(this, resourceLocater);";
+        const string marker = "[global::Passenger.Generated.WpfPopulationAttribute(1)]";
+        const string loaded = "global::Passenger.Generated.WpfPopulation.Loaded(this, resourceLocater);";
+        List<Microsoft.Build.Framework.ITaskItem> prepared = new List<Microsoft.Build.Framework.ITaskItem>();
+        foreach (Microsoft.Build.Framework.ITaskItem file in Files)
+        {
+            prepared.Add(file);
+            string path = file.GetMetadata("FullPath");
+            if (!(path.EndsWith(".g.cs", StringComparison.Ordinal) || path.EndsWith(".g.i.cs", StringComparison.Ordinal)) || !File.Exists(path))
+            {
+                continue;
+            }
+            string text = File.ReadAllText(path);
+            if (text.Contains(marker))
+            {
+                continue;
+            }
+            // Only the standard compiler-generated, guarded InitializeComponent shape is instrumented. An unknown
+            // compiler or custom loader still builds normally; its missing per-type marker makes Hot Reload refuse.
+            Match compiler = Regex.Match(text, @"GeneratedCodeAttribute\(""PresentationBuildTasks"", ""(?<major>\d+)\.");
+            int major;
+            Match declaration = Regex.Match(text, @"(?m)^(?<indent>\s*)(public|internal) partial class [A-Za-z_][A-Za-z_0-9]* :");
+            if (!compiler.Success || !int.TryParse(compiler.Groups["major"].Value, out major) || major < 8 || major > 11
+                || !declaration.Success || !text.Contains("public void InitializeComponent()") || !text.Contains("if (_contentLoaded)")
+                || !text.Contains("_contentLoaded = true;") || text.IndexOf(call, StringComparison.Ordinal) < 0
+                || text.IndexOf(call, StringComparison.Ordinal) != text.LastIndexOf(call, StringComparison.Ordinal))
+            {
+                continue;
+            }
+            text = text.Insert(declaration.Index, declaration.Groups["indent"].Value + marker + Environment.NewLine);
+            text = text.Replace(call, call + Environment.NewLine + "            #line hidden" + Environment.NewLine + "            " + loaded);
+            // SDK-owned generated files must remain usable by an ordinary incremental build after this hook is removed.
+            // A sibling keeps relative #line and checksum paths rooted exactly where WPF emitted them.
+            string copy = Path.Combine(Path.GetDirectoryName(path), "Passenger.XamlPopulation." + Path.GetFileName(path));
+            if (!File.Exists(copy) || File.ReadAllText(copy) != text)
+            {
+                File.WriteAllText(copy, text);
+            }
+            Microsoft.Build.Utilities.TaskItem item = new Microsoft.Build.Utilities.TaskItem(file);
+            item.ItemSpec = copy;
+            prepared[prepared.Count - 1] = item;
+        }
+        Prepared = prepared.ToArray();
+      ]]></Code>
+    </Task>
+  </UsingTask>
+  <Target Name="PassengerPrepareWpfPopulationBeforeCompile" BeforeTargets="CoreCompile"
+          Condition="'$(UseWPF)' == 'true' And '$(MSBuildProjectExtension)' == '.csproj'">
+    <PassengerPrepareWpfPopulation Files="@(Compile)">
+      <Output TaskParameter="Prepared" ItemName="_PassengerPopulationCompile" />
+    </PassengerPrepareWpfPopulation>
+    <ItemGroup>
+      <Compile Remove="@(Compile)" />
+      <Compile Include="@(_PassengerPopulationCompile)" />
+      <_PassengerPopulationCompile Remove="@(_PassengerPopulationCompile)" />
+      <Compile Remove="@(Compile)" Condition="'%(Compile.FullPath)' == '$(MSBuildThisFileDirectory)Population.g.cs'" />
+      <Compile Include="$(MSBuildThisFileDirectory)Population.g.cs" />
+    </ItemGroup>
+  </Target>
+</Project>

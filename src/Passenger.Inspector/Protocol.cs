@@ -22,7 +22,7 @@ namespace Passenger.Inspector;
 public static class Wire
 {
     /// <summary>Bumped by a change either end must know of: a hello of another version is refused, saying so.</summary>
-    public const int Version = 8;
+    public const int Version = 9;
 
     /// <summary>The app's environment: the socket's path, where it connects.</summary>
     public const string SocketVariable = "PASSENGER_INSPECTOR";
@@ -36,6 +36,9 @@ public static class Wire
 
     /// <summary>A WPF app's environment: the launched project's folder, where its XAML is when its build's symbols do not say.</summary>
     public const string ProjectVariable = "PASSENGER_INSPECTOR_PROJECT";
+
+    /// <summary>Why a WPF graph could not safely compose a population hook for newly created views.</summary>
+    public const string WpfPopulationProblemVariable = "PASSENGER_WPF_POPULATION_PROBLEM";
 
     /// <summary>A WPF app's environment, set to 1: WPF then records where in its XAML each object was made (its
     /// VisualDiagnostics.GetXamlSourceInfo) and raises BindingDiagnostics.BindingFailed, as Visual Studio has it for a run it

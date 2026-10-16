@@ -156,6 +156,12 @@ public sealed class ProjectHost : IAsyncDisposable
         (await AskAsync(HostMethods.Inspect, new InspectParams(project, properties, texts), null, cancel)).Deserialize<ProjectInsight>(HostJson.Options)
             ?? throw new ProjectHostFailed("the project host gave no answer for the project's evaluation");
 
+    /// <summary>Reads original imports without a global hook overriding them, through every referenced framework.</summary>
+    public async Task<WpfBuildPrepared> PrepareWpfBuildAsync(IReadOnlyList<string> projects, IReadOnlyDictionary<string, string> properties, IReadOnlyDictionary<string, string> designTimeProperties,
+        CancellationToken cancel = default) =>
+        (await AskAsync(HostMethods.WpfBuild, new WpfBuildParams(projects, properties, designTimeProperties), null, cancel)).Deserialize<WpfBuildPrepared>(HostJson.Options)
+            ?? throw new ProjectHostFailed("the project host gave no answer for the WPF population build hook");
+
     private async Task<JsonElement> AskAsync(string method, object parameters, Action<JsonElement>? partial, CancellationToken cancel)
     {
         TaskCompletionSource<JsonElement> answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
