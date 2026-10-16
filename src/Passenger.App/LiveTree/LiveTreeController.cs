@@ -50,6 +50,7 @@ public sealed class LiveTreeController
         window = new ToolWindow("liveTree", "Live Visual Tree", "Icon.LiveTree", View, ToolAnchor.RightTop) { Action = AppActions.ShowLiveTree };
         parts.Dock.Add(window);
         window.PropertyChanged += OnWindowChanged;
+        parts.Dock.PresentationChanged += (_, _) => FollowVisibility();
         parts.Actions.Add(new IdeAction(AppActions.SelectElement, "Select Element", "Debug", context => _ = PickAsync(View.SelectElement.IsChecked != true))
         {
             WhyNot = _ => WhyNotAsk(),
@@ -309,11 +310,16 @@ public sealed class LiveTreeController
         {
             return;
         }
-        if (window.IsShown && stale)
+        FollowVisibility();
+    }
+
+    private void FollowVisibility()
+    {
+        if (parts.Dock.IsShown(window.Id) && stale)
         {
             _ = RefreshAsync();
         }
-        else if (!window.IsShown && WhyNotAsk() is null)
+        else if (!parts.Dock.IsShown(window.Id) && WhyNotAsk() is null)
         {
             // Nothing outlined in the app while the window that chose it is away.
             _ = Unoutline(app!);
@@ -366,7 +372,7 @@ public sealed class LiveTreeController
         {
             return;
         }
-        if (Paused || !window.IsShown)
+        if (Paused || !parts.Dock.IsShown(window.Id))
         {
             stale = true;
             return;

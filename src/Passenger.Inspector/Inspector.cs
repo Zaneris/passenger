@@ -27,6 +27,7 @@ internal sealed class Inspector
     private readonly Driver driver;
     private readonly PropertyBreaks breaks = new();
     private readonly ValueWatch values;
+    private readonly XamlHotReload xaml;
     private bool told;
 
     /// <summary>Whether Passenger has asked for the tree since it was last told of a change, so it is told only once.</summary>
@@ -37,6 +38,7 @@ internal sealed class Inspector
     {
         Dispatcher.UIThread.VerifyAccess();
         this.connection = connection;
+        xaml = new XamlHotReload(result => connection.Send(new Reply { Event = Wire.XamlFailed, Updated = result }));
         picker = new Picker(this, connection);
         driver = new Driver(this);
         values = new ValueWatch(connection);
@@ -74,6 +76,7 @@ internal sealed class Inspector
                 Wire.Watch => Done(request, () => Watch(request)),
                 Wire.Values => new Reply { Id = request.Id, Values = Values(request) },
                 Wire.Overlays => new Reply { Id = request.Id, Windows = SetOverlays(request) },
+                Wire.ApplyXaml => new Reply { Id = request.Id, Updated = xaml.Apply(request.Update ?? throw new Refusal("No XAML edits were given")) },
                 _ => new Reply { Id = request.Id, Error = $"The inspector does not know '{request.Method}'" },
             };
         }
@@ -106,6 +109,7 @@ internal sealed class Inspector
     /// <summary>Passenger has gone: nothing of the inspector's is left in the app's windows.</summary>
     public void Stop()
     {
+        xaml.Stop();
         breaks.Stop();
         values.Stop();
         picker.Choose(false);

@@ -30,6 +30,7 @@ public sealed class DebugSession : IDisposable
     /// <summary>The adapter's latest events and standard error, which a wait that fails quotes.</summary>
     private readonly Queue<string> heard = new();
     private readonly string engineLog;
+    private readonly long engineLogStart;
     private readonly bool ownLog;
 
     private DebugSession(ITestOutputHelper output, Process? debuggee, bool terminateDebuggee, string? symbolCache = null)
@@ -46,6 +47,7 @@ public sealed class DebugSession : IDisposable
         string? kept = Environment.GetEnvironmentVariable("PASSENGER_ENGINE_LOG") is { Length: > 0 } named ? named : null;
         ownLog = kept is null;
         engineLog = kept ?? Path.Combine(TestRun.Root, $"engine-{Guid.NewGuid():N}.log");
+        engineLogStart = File.Exists(engineLog) ? new FileInfo(engineLog).Length : 0;
         // The symbols it decompiles go where the run's IDE keeps them (its state folder's), unless a test names a folder.
         string symbols = symbolCache ?? Passenger.App.Debugging.DebugSession.SymbolCache;
         List<string> arguments = [path, "--interpreter=vscode", $"--engineLogging={engineLog}", $"--symbolCache={symbols}"];
@@ -86,6 +88,25 @@ public sealed class DebugSession : IDisposable
     }
 
     public DapConnection Connection { get; }
+
+    /// <summary>The engine's log read with sharing, while the adapter is still writing it.</summary>
+    public string EngineLog
+    {
+        get
+        {
+            try
+            {
+                using FileStream file = new(engineLog, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                file.Seek(engineLogStart, SeekOrigin.Begin);
+                using StreamReader reader = new(file);
+                return reader.ReadToEnd();
+            }
+            catch (IOException)
+            {
+                return string.Empty;
+            }
+        }
+    }
 
     /// <summary>The adapter with DebuggableConsoleApp started for it to attach to; suspended, the
     /// program waits at startup until the attach lets it go, in configurationDone.</summary>

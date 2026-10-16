@@ -11,7 +11,7 @@ using Passenger.Text;
 
 namespace Passenger.Editor;
 
-/// <summary>Rider's error stripe: the vertical scrollbar's track stays and carries a mark for each problem (errors over
+/// <summary>Rider's error stripe: the vertical scrollbar's rail stays and carries a mark for each problem (errors over
 /// warnings over the rest), changed lines, search matches, the uses of the symbol at the caret, bookmarks and the caret,
 /// each where its line is in the file
 /// (a folded one at its fold). A mark says what it is on hover and takes the caret there on a click. Over the stripe's
@@ -33,7 +33,6 @@ public sealed partial class CodeEditor
         set
         {
             showErrorStripe = value;
-            vertical.AllowAutoHide = !value;
             stripe.IsVisible = counts.IsVisible = value;
             if (switcher is not null)
             {
@@ -141,11 +140,11 @@ public sealed partial class CodeEditor
         return new StripeMark(StripeMarkKind.Caret, RowOfOffset(document.Snapshot, caret, LeansBack(caret)).Row, 1, caret, "Caret");
     }
 
-    /// <summary>The scrollbar's track, where the marks go: between its arrows, in this control's coordinates.</summary>
+    /// <summary>The scrollbar's track, where the marks go, including when a short file needs no scrolling thumb.</summary>
     private Rect TrackRect()
     {
-        Rect bar = vertical.Bounds;
-        if (vertical.GetVisualDescendants().OfType<Track>().FirstOrDefault() is { } track && track.TranslatePoint(default, this) is { } origin)
+        Rect bar = stripe.Bounds;
+        if (vertical.IsVisible && vertical.GetVisualDescendants().OfType<Track>().FirstOrDefault() is { } track && track.TranslatePoint(default, this) is { } origin)
         {
             return new Rect(bar.X, origin.Y, bar.Width, track.Bounds.Height);
         }

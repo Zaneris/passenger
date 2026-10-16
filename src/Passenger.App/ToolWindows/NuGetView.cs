@@ -55,6 +55,7 @@ public sealed class NuGetView : DockPanel
     private PackageSourceSet sources = PackageSourceSet.None;
     private Dictionary<string, IPackageFeed> feeds = new(StringComparer.OrdinalIgnoreCase);
     private IPackageFeed? given;
+    private (string Package, string Root, string Feed, IPackageFeed[] Inputs, string Version)? versionChoice;
     private Task? reading;
 
     /// <summary>The audit's known vulnerabilities, read once the sources are and a listed package is installed.</summary>
@@ -69,18 +70,33 @@ public sealed class NuGetView : DockPanel
         this.projects = projects;
         this.root = root;
         search = new TextBox { Classes = { "search" }, PlaceholderText = "Search packages", Width = 260, Margin = new Thickness(8, 0) };
-        chooser = new ComboBox { Classes = { "compact" }, MinWidth = 130, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
+        chooser = new ComboBox
+        {
+            Classes = { "compact" }, Width = 180, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0),
+            SelectionBoxItemTemplate = new FuncDataTemplate<string>((name, _) => new TextBlock
+            {
+                Text = name, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center,
+            }),
+        };
         ToolTip.SetTip(chooser, "The feeds searched");
         chooser.SelectionChanged += (_, _) =>
         {
+            ToolTip.SetTip(chooser, chooser.SelectedItem ?? "The feeds searched");
             if (!choosing)
             {
                 _ = RefreshAsync();
             }
         };
         prerelease = new CheckBox { Content = "Prerelease", VerticalAlignment = VerticalAlignment.Center };
-        status = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0), TextTrimming = TextTrimming.CharacterEllipsis };
+        status = new TextBlock { Name = "NuGetPackageStatus", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0), TextTrimming = TextTrimming.CharacterEllipsis };
         status.Bind(TextBlock.ForegroundProperty, status.GetResourceObservable("Passenger.TextMuted"));
+        status.PropertyChanged += (_, change) =>
+        {
+            if (change.Property == TextBlock.TextProperty)
+            {
+                ToolTip.SetTip(status, status.Text);
+            }
+        };
         Button refresh = new() { Classes = { "tool" }, Content = new PathIcon(), Margin = new Thickness(6, 0, 0, 0) };
         ((PathIcon)refresh.Content).Bind(PathIcon.DataProperty, refresh.GetResourceObservable("Icon.Rerun"));
         ToolTip.SetTip(refresh, "Refresh");
@@ -91,15 +107,21 @@ public sealed class NuGetView : DockPanel
         Border top = new()
         {
             [DockProperty] = Dock.Top,
-            Height = 36,
             BorderThickness = new Thickness(0, 0, 0, 1),
-            Child = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Children = { search, chooser, prerelease, refresh, status } },
+            Child = new WrapPanel { Name = "NuGetPackageTools", Margin = new Thickness(0, 4), Children = { search, chooser, prerelease, refresh, status } },
+        };
+        top.SizeChanged += (_, change) =>
+        {
+            search.Width = Math.Min(260, Math.Max(0, change.NewSize.Width - search.Margin.Left - search.Margin.Right));
+            chooser.Width = Math.Min(180, Math.Max(0, change.NewSize.Width - chooser.Margin.Left - chooser.Margin.Right));
+            status.MaxWidth = Math.Max(0, change.NewSize.Width - status.Margin.Left - status.Margin.Right);
         };
         top.Bind(Border.BorderBrushProperty, top.GetResourceObservable("Passenger.Divider"));
 
         list = new ListBox
         {
             Classes = { "tree" },
+            [ScrollViewer.HorizontalScrollBarVisibilityProperty] = ScrollBarVisibility.Auto,
             ItemTemplate = new FuncDataTemplate<PackageRow>((row, _) => row is null ? new TextBlock() : Row(row), supportsRecycling: false),
         };
         list.SelectionChanged += (_, _) => _ = ShowAsync();
@@ -125,7 +147,9 @@ public sealed class NuGetView : DockPanel
         };
         DockPanel right = new();
         right.Children.Add(log);
-        right.Children.Add(new ScrollViewer { Content = details });
+        ScrollViewer reader = new() { Content = details, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto };
+        reader.SizeChanged += (_, e) => details.Width = Math.Max(600, e.NewSize.Width - details.Margin.Left - details.Margin.Right);
+        right.Children.Add(reader);
         Grid split = new() { ColumnDefinitions = new ColumnDefinitions("2*,1,3*") };
         HairlineDivider divider = new(GridResizeDirection.Columns) { [Grid.ColumnProperty] = 1 };
         Grid.SetColumn(right, 2);
@@ -138,10 +162,15 @@ public sealed class NuGetView : DockPanel
         Sources = new NuGetSourcesView(this);
         Children.Add(body);
         ShowPackages();
+        bool firstShow = true;
         AttachedToVisualTree += (_, _) =>
         {
             _ = Shown();
-            Dispatcher.UIThread.Post(() => search.Focus(), DispatcherPriority.Loaded);
+            if (firstShow)
+            {
+                firstShow = false;
+                Dispatcher.UIThread.Post(() => search.Focus(), DispatcherPriority.Loaded);
+            }
         };
     }
 
@@ -279,7 +308,7 @@ public sealed class NuGetView : DockPanel
         try
         {
             IReadOnlyList<PackageRow> found;
-            ToolTip.SetTip(status, null);
+            ToolTip.SetTip(status, status.Text);
             if (Query.Trim().Length == 0)
             {
                 found = [.. installed.OrderBy(p => p.Key, StringComparer.OrdinalIgnoreCase)
@@ -481,14 +510,20 @@ public sealed class NuGetView : DockPanel
     private void Show(Control content)
     {
         body.Content = content;
-        tabs.Children.Clear();
-        tabs.Children.Add(Tab("Packages", packages));
-        tabs.Children.Add(Tab("Sources", Sources));
+        if (tabs.Children.Count == 0)
+        {
+            tabs.Children.Add(Tab("Packages", packages));
+            tabs.Children.Add(Tab("Sources", Sources));
+        }
+        foreach (ToggleButton tab in tabs.Children.OfType<ToggleButton>())
+        {
+            tab.IsChecked = tab.Tag == content;
+        }
     }
 
     private ToggleButton Tab(string title, Control content)
     {
-        ToggleButton tab = new() { Classes = { "panelTab" }, IsChecked = body.Content == content, Content = title };
+        ToggleButton tab = new() { Classes = { "panelTab" }, IsChecked = body.Content == content, Content = title, Tag = content };
         tab.Click += (_, _) =>
         {
             if (content == Sources)
@@ -569,11 +604,18 @@ public sealed class NuGetView : DockPanel
         {
             return;
         }
+        IPackageFeed feed = Feed;
+        IPackageFeed[] inputs = feed is FeedSet set ? [.. set.Feeds] : [feed];
+        if (versionChoice is { } previous && (!previous.Package.Equals(row.Id, StringComparison.OrdinalIgnoreCase)
+            || previous.Root != (root() ?? string.Empty) || previous.Feed != feed.Name || !previous.Inputs.SequenceEqual(inputs, ReferenceEqualityComparer.Instance)))
+        {
+            versionChoice = null;
+        }
         IReadOnlyList<string> found;
         using IDisposable held = BackgroundWork.Scope();
         try
         {
-            found = await Feed.VersionsAsync(row.Id, prerelease.IsChecked == true, cancel.Token);
+            found = await feed.VersionsAsync(row.Id, prerelease.IsChecked == true, cancel.Token);
         }
         catch (OperationCanceledException) when (cancel.IsCancellationRequested)
         {
@@ -588,35 +630,46 @@ public sealed class NuGetView : DockPanel
             return;
         }
         versions = found;
+        if (versionChoice is { } unavailable && !versions.Contains(unavailable.Version, StringComparer.OrdinalIgnoreCase))
+        {
+            versionChoice = null;
+        }
         VulnerabilityData known = Known;
         string? vulnerable = row.Installed.Values.OfType<string>().Where(v => known.Of(row.Id, v).Count > 0).OrderByDescending(v => v, VersionOrder.Instance).FirstOrDefault();
         string? fix = vulnerable is null ? null : known.FixedVersion(row.Id, vulnerable, versions);
-        ChosenVersion = fix ?? versions.FirstOrDefault() ?? row.Version;
-        ComboBox picker = new() { Name = "Versions", ItemsSource = versions, SelectedItem = ChosenVersion, MinWidth = 140 };
+        ChosenVersion = versionChoice is { } choice && versions.Contains(choice.Version, StringComparer.OrdinalIgnoreCase)
+            ? choice.Version : fix ?? versions.FirstOrDefault() ?? row.Version;
+        ComboBox picker = new()
+        {
+            Name = "Versions", ItemsSource = versions, SelectedItem = ChosenVersion, MinWidth = 140, MaxWidth = 220,
+            ItemTemplate = new FuncDataTemplate<string>((value, _) => new TextBlock { Text = value, TextWrapping = TextWrapping.Wrap }),
+        };
         picker.SelectionChanged += (_, _) =>
         {
             ChosenVersion = picker.SelectedItem as string;
+            versionChoice = ChosenVersion is { } picked ? (row.Id, root() ?? string.Empty, feed.Name, inputs, picked) : null;
             ShowProjects(row);
         };
-        details.Children.Add(new StackPanel
+        details.Children.Add(new Grid
         {
-            Orientation = Orientation.Horizontal,
-            Spacing = 12,
-            Children = { new TextBlock { Text = row.Id, FontSize = 16, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center }, picker },
+            ColumnDefinitions = new ColumnDefinitions("*,Auto"),
+            ColumnSpacing = 12,
+            Children = { new TextBlock { Text = row.Id, FontSize = 16, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center }, picker },
         });
+        Grid.SetColumn(picker, 1);
         if (row.Description.Length > 0)
         {
             details.Children.Add(new TextBlock { Text = row.Description, TextWrapping = TextWrapping.Wrap });
         }
         if (row.Authors.Length > 0 || row.Downloads > 0)
         {
-            TextBlock by = new() { Text = row.Downloads > 0 ? $"{row.Authors}, {row.Downloads:N0} downloads" : row.Authors, FontSize = 12 };
+            TextBlock by = new() { Text = row.Downloads > 0 ? $"{row.Authors}, {row.Downloads:N0} downloads" : row.Authors, FontSize = 12, TextWrapping = TextWrapping.Wrap };
             by.Bind(TextBlock.ForegroundProperty, by.GetResourceObservable("Passenger.TextMuted"));
             details.Children.Add(by);
         }
         if (row.Feeds.Count > 0)
         {
-            TextBlock from = new() { Text = $"In {string.Join(", ", row.Feeds)}", FontSize = 12 };
+            TextBlock from = new() { Text = $"In {string.Join(", ", row.Feeds)}", FontSize = 12, TextWrapping = TextWrapping.Wrap };
             from.Bind(TextBlock.ForegroundProperty, from.GetResourceObservable("Passenger.TextMuted"));
             details.Children.Add(from);
         }
@@ -681,7 +734,7 @@ public sealed class NuGetView : DockPanel
         {
             bool has = row.Installed.TryGetValue(project.Path, out string? at);
             IReadOnlyList<Advisory> affecting = at is null ? [] : Known.Of(row.Id, at);
-            TextBlock version = new() { Text = has ? at ?? "installed" : string.Empty, Width = 110, VerticalAlignment = VerticalAlignment.Center };
+            TextBlock version = new() { Text = has ? at ?? "installed" : string.Empty, Width = 110, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
             version.Bind(TextBlock.ForegroundProperty, version.GetResourceObservable(affecting.Count > 0 ? "Passenger.Editor.Warning" : "Passenger.TextMuted"));
             // A slot of its own, so the buttons stand in one column whichever lines have the mark.
             Panel mark = new() { Width = 14, VerticalAlignment = VerticalAlignment.Center };
@@ -693,7 +746,7 @@ public sealed class NuGetView : DockPanel
             {
                 Orientation = Orientation.Horizontal,
                 Spacing = 8,
-                Children = { new TextBlock { Text = project.Name, Width = 220, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis }, version, mark },
+                Children = { new TextBlock { Text = project.Name, Width = 220, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap }, version, mark },
             };
             if (!has)
             {
@@ -713,7 +766,7 @@ public sealed class NuGetView : DockPanel
 
     private Button Action(string label, Func<Task<bool>> run)
     {
-        Button button = new() { Content = label, IsEnabled = !busy };
+        Button button = new() { Content = label, IsEnabled = !busy, VerticalAlignment = VerticalAlignment.Center };
         button.Click += (_, _) => _ = run();
         return button;
     }

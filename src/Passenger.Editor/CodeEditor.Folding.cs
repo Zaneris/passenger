@@ -356,7 +356,7 @@ public sealed partial class CodeEditor
             widest = Math.Max(widest, lines[i - first].WidthIncludingTrailingWhitespace);
         }
         double height = (lines.Length * metrics.LineHeight) + (2 * down);
-        double right = Bounds.Width - vertical.DesiredSize.Width - 4;
+        double right = Bounds.Width - ScrollRailWidth - 4;
         double width = Math.Min(widest + (2 * across), Math.Max(metrics.CharWidth * 8, right - GutterWidth));
         double x = Math.Max(GutterWidth, Math.Min(chip.Left, right - width));
         double y = below >= height || below >= above ? chip.Bottom + 2 : chip.Top - 2 - height;

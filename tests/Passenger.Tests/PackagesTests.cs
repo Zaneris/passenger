@@ -2,12 +2,17 @@ using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
 using Avalonia.VisualTree;
+using Avalonia.Styling;
 using Passenger.App;
+using Passenger.App.Docking;
 using Passenger.App.Packages;
 using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
@@ -24,9 +29,11 @@ public sealed class PackagesTests : IDisposable
     private readonly string folder = TestFolders.Create("nuget-");
     private readonly string feed;
     private readonly string project;
+    private readonly ITestOutputHelper output;
 
-    public PackagesTests()
+    public PackagesTests(ITestOutputHelper output)
     {
+        this.output = output;
         feed = Path.Combine(folder, "feed");
         Directory.CreateDirectory(feed);
         Package("Passenger.Sample", "1.0.0");
@@ -51,32 +58,142 @@ public sealed class PackagesTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
-    [AvaloniaFact]
-    public void A_package_found_in_the_feed_is_installed_updated_and_removed_in_a_project()
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_package_found_in_the_feed_is_installed_updated_and_removed_in_a_project(bool light)
     {
+        const string id = "Passenger.Sample.ALongPackageIdentifierWhoseCompleteNameMustRemainReadable";
+        const string name = "A project whose complete name must remain readable beside its installed version and package actions";
+        const string authors = "The development team whose full author information must remain readable in the package details";
+        string renamed = Path.Combine(folder, "Lib", name + ".csproj");
+        File.Move(project, renamed);
+        Package(id, "1.0.0", authors);
+        Package(id, "1.1.0", authors);
         MainWindow window = Open(new FolderFeed(feed));
+        window.RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark;
+        window.SetRenderScaling(2);
         NuGetView nuget = window.NuGet;
-        nuget.Query = "sample";
+        nuget.Query = "alongpackage";
         Task searched = nuget.RefreshAsync();
         Ui.Landed(() => searched.IsCompleted && nuget.Versions.Count == 2, "the package and its versions");
-        Assert.Equal("Passenger.Sample", Assert.Single(nuget.Rows).Id);
+        Assert.Equal(id, Assert.Single(nuget.Rows).Id);
         Assert.Equal(["1.1.0", "1.0.0"], nuget.Versions);
 
-        ProjectModel lib = Assert.Single(window.Projects);
-        nuget.ChosenVersion = "1.0.0";
-        Run(nuget, nuget.InstallAsync(lib));
-        Assert.Equal("1.0.0", Version(window));
+        Pickers(nuget).Single().SelectedItem = "1.0.0";
+        Ui.Settle();
+        Audit("found", "Install");
+        Invoke("Install");
+        Ui.Landed(() => !nuget.IsBusy && Version(window, id) == "1.0.0", "the package installed through its visible action");
+        Assert.Equal("1.0.0", Version(window, id));
 
         Ui.Landed(() => nuget.Selected?.IsInstalled == true && nuget.Versions.Count == 2, "the package marked installed");
-        nuget.ChosenVersion = "1.1.0";
-        Run(nuget, nuget.InstallAsync(Assert.Single(window.Projects)));
-        Assert.Equal("1.1.0", Version(window));
+        Pickers(nuget).Single().SelectedItem = "1.1.0";
+        Ui.Settle();
+        Audit("installed", "Update");
+        Invoke("Update");
+        Ui.Landed(() => !nuget.IsBusy && Version(window, id) == "1.1.0", "the package updated through its visible action");
+        Assert.Equal("1.1.0", Version(window, id));
 
         Ui.Landed(() => nuget.Selected?.IsInstalled == true, "the package still chosen");
-        Run(nuget, nuget.RemoveAsync(Assert.Single(window.Projects)));
-        Assert.Null(Version(window));
-        Assert.DoesNotContain("Passenger.Sample", File.ReadAllText(project), StringComparison.Ordinal);
+        Audit("updated", "Remove");
+        Invoke("Remove");
+        Ui.Landed(() => !nuget.IsBusy && Version(window, id) is null, "the package removed through its visible action");
+        Assert.Null(Version(window, id));
+        Assert.DoesNotContain(id, File.ReadAllText(renamed), StringComparison.Ordinal);
         window.Close();
+
+        void Invoke(string label)
+        {
+            Button action = Descendants<Button>(nuget).Single(button => button.Content as string == label);
+            ScrollViewer reader = Assert.Single(Descendants<ScrollViewer>(nuget), scroll => scroll.Content is StackPanel);
+            Assert.True(Reach(action, reader), $"{label} is outside the package details after scrolling");
+            Assert.True(action.Focus());
+            Ui.Press(window, "enter");
+        }
+
+        bool Reach(Button action, ScrollViewer reader)
+        {
+            Point over = reader.TranslatePoint(new Point(reader.Bounds.Width / 2, reader.Bounds.Height / 2), window)!.Value;
+            window.MouseMove(over);
+            for (int attempt = 0; attempt < 30; attempt++)
+            {
+                Point at = action.TranslatePoint(default, reader)!.Value;
+                double x = at.X < 0 ? -at.X : at.X + action.Bounds.Width > reader.Viewport.Width ? reader.Viewport.Width - at.X - action.Bounds.Width : 0;
+                double y = at.Y < 0 ? -at.Y : at.Y + action.Bounds.Height > reader.Viewport.Height ? reader.Viewport.Height - at.Y - action.Bounds.Height : 0;
+                if (Math.Abs(x) < 1 && Math.Abs(y) < 1)
+                {
+                    return true;
+                }
+                window.MouseWheel(over, new Vector(Math.Clamp(x / 50, -5, 5), Math.Clamp(y / 50, -5, 5)));
+                Ui.Settle();
+            }
+            return false;
+        }
+
+        void Audit(string phase, string label)
+        {
+            List<string> problems = [];
+            DockLayout layout = window.DockHost.Capture();
+            ScrollViewer reader = Assert.Single(Descendants<ScrollViewer>(nuget), scroll => scroll.Content is StackPanel);
+            ListBox packages = Assert.Single(Descendants<ListBox>(nuget));
+            foreach (double width in new double[] { 1200, 683, 640, 200 })
+            {
+                window.Width = width == 200 ? 640 : width;
+                if (width == 200)
+                {
+                    window.DockHost.Apply(layout with
+                    {
+                        LeftWidth = 200,
+                        Windows = layout.Windows.ToDictionary(pair => pair.Key, pair => pair.Key == "nuget"
+                            ? pair.Value with { Anchor = ToolAnchor.LeftTop, Shown = true }
+                            : pair.Value.Anchor == ToolAnchor.LeftTop ? pair.Value with { Shown = false } : pair.Value),
+                    });
+                }
+                Ui.Settle();
+                Assert.Equal(id, nuget.Selected?.Id);
+                if (phase == "found" && width == 1200 && window.CSharpService is { } service)
+                {
+                    output.WriteLine(string.Join('\n', service.ProjectProblems.Select(problem => problem.Message)));
+                }
+                string expected = phase == "found" ? "1.0.0" : "1.1.0";
+                if (nuget.ChosenVersion != expected)
+                {
+                    problems.Add($"Moving the package pane to {width}px changed the chosen version from {expected} to {nuget.ChosenVersion}");
+                }
+                ComboBox picker = Pickers(nuget).Single();
+                Assert.Contains(picker.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == expected);
+                UiAudit.Capture(window, $"nuget-package-{phase}-{width:0}-{(light ? "light" : "dark")}");
+                problems.AddRange(UiAudit.HorizontalOverflow(window, "NuGet package details", (Control)reader.Content!));
+                problems.AddRange(UiAudit.HorizontalOverflow(window, "NuGet package list", packages));
+                TextBlock projectName = Descendants<TextBlock>(nuget).Single(text => text.Text == name);
+                if (projectName.TextTrimming != Avalonia.Media.TextTrimming.None)
+                {
+                    problems.Add($"The complete project name is truncated in the {width}px package pane");
+                }
+                Button action = Descendants<Button>(nuget).Single(button => button.Content as string == label);
+                if (!Reach(action, reader))
+                {
+                    problems.Add($"{label} cannot be reached in the {width}px package details");
+                }
+                UiAudit.Capture(window, $"nuget-package-{phase}-actions-{width:0}-{(light ? "light" : "dark")}");
+                ScrollViewer listReader = packages.GetVisualDescendants().OfType<ScrollViewer>().First();
+                Point listAt = listReader.TranslatePoint(new Point(listReader.Bounds.Width / 2, listReader.Bounds.Height / 2), window)!.Value;
+                window.MouseMove(listAt);
+                window.MouseWheel(listAt, new Vector(-30, 0));
+                Ui.Settle();
+                if (listReader.Offset.X <= 0)
+                {
+                    problems.Add($"The long package identifier has no horizontal reading access in the {width}px list");
+                }
+                UiAudit.Capture(window, $"nuget-package-{phase}-list-{width:0}-{(light ? "light" : "dark")}");
+                listReader.Offset = default;
+                reader.Offset = default;
+            }
+            window.DockHost.Apply(layout);
+            Ui.Settle();
+            Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
+        }
     }
 
     [AvaloniaFact]
@@ -102,6 +219,62 @@ public sealed class PackagesTests : IDisposable
         .Where(line => line.Children.FirstOrDefault() is TextBlock { Text: { } text } && text == name)
         .SelectMany(line => line.Children.OfType<Button>())
         .FirstOrDefault(button => (string?)button.Content == "Install");
+
+    [AvaloniaFact]
+    public void A_chosen_version_survives_refresh_but_not_a_different_package_feed_or_removed_version()
+    {
+        Package("Passenger.Other", "1.0.0");
+        Package("Passenger.Sample", "2.0.0");
+        string second = Path.Combine(folder, "second");
+        Directory.CreateDirectory(second);
+        foreach (string version in new[] { "1.0.0", "2.0.0" })
+        {
+            File.Copy(Path.Combine(feed, $"Passenger.Sample.{version}.nupkg"), Path.Combine(second, $"Passenger.Sample.{version}.nupkg"));
+        }
+        File.Delete(Path.Combine(feed, "Passenger.Sample.2.0.0.nupkg"));
+        File.WriteAllText(Path.Combine(folder, "nuget.config"), "<configuration><packageSources><clear/><add key=\"alpha\" value=\"feed\"/><add key=\"beta\" value=\"second\"/></packageSources></configuration>");
+        MainWindow window = new() { Width = 1200, Height = 800 };
+        window.Show();
+        window.OpenFolder(Path.Combine(folder, "Lib"));
+        window.Perform(AppActions.ShowNuGet);
+        NuGetView nuget = window.NuGet;
+        Ui.Landed(() => nuget.FeedChoices.Contains("alpha"), "both actual folder feeds read");
+        nuget.ChosenFeed = "alpha";
+        nuget.Query = "passenger";
+        Refresh("the first folder feed searched");
+        ListBox list = Assert.Single(Descendants<ListBox>(nuget));
+        list.SelectedItem = nuget.Rows.Single(row => row.Id == "Passenger.Sample");
+        Ui.Landed(() => nuget.ChosenVersion == "1.1.0", "the first package's default version");
+        Package("Passenger.Sample", "1.2.0");
+        Refresh("a newer package version became available without a picker selection");
+        Assert.Equal("1.2.0", nuget.ChosenVersion);
+        File.Delete(Path.Combine(feed, "Passenger.Sample.1.2.0.nupkg"));
+        Refresh("the automatic default returned to the remaining newest version");
+        Assert.Equal("1.1.0", nuget.ChosenVersion);
+        Pickers(nuget).Single().SelectedItem = "1.0.0";
+        Refresh("the same package and feed refreshed");
+        Assert.Equal("1.0.0", nuget.ChosenVersion);
+        list.SelectedItem = nuget.Rows.Single(row => row.Id == "Passenger.Other");
+        Ui.Landed(() => nuget.ChosenVersion == "2.0.0", "the other package's own default, although it too offers 1.0.0");
+        list.SelectedItem = nuget.Rows.Single(row => row.Id == "Passenger.Sample");
+        Ui.Landed(() => nuget.ChosenVersion == "1.1.0", "the returned package's default");
+        Pickers(nuget).Single().SelectedItem = "1.0.0";
+        nuget.ChosenFeed = "beta";
+        Ui.Landed(() => nuget.Versions.SequenceEqual(["2.0.0", "1.0.0"]) && nuget.ChosenVersion == "2.0.0", "the other feed's default, although it too offers 1.0.0");
+        Pickers(nuget).Single().SelectedItem = "1.0.0";
+        File.Delete(Path.Combine(second, "Passenger.Sample.1.0.0.nupkg"));
+        Refresh("the chosen version removed from its feed");
+        Assert.Equal("2.0.0", nuget.ChosenVersion);
+        Assert.Equal(["2.0.0"], nuget.Versions);
+        window.Close();
+
+        void Refresh(string reason)
+        {
+            Task refreshed = nuget.RefreshAsync();
+            Ui.Landed(() => refreshed.IsCompleted, reason);
+            refreshed.GetAwaiter().GetResult();
+        }
+    }
 
     [AvaloniaFact]
     public void Prereleases_are_offered_as_semver_orders_them_so_beta_10_is_an_update_from_beta_2()
@@ -237,11 +410,11 @@ public sealed class PackagesTests : IDisposable
         Assert.True(change.Result, nuget.Log);
     }
 
-    private static string? Version(MainWindow window) =>
-        Assert.Single(window.Projects).Packages.Where(p => p.Name == "Passenger.Sample").Select(p => p.Version).FirstOrDefault();
+    private static string? Version(MainWindow window, string id = "Passenger.Sample") =>
+        Assert.Single(window.Projects).Packages.Where(p => p.Name == id).Select(p => p.Version).FirstOrDefault();
 
     /// <summary>A package with nothing in it but its manifest and an empty lib folder, so any framework takes it.</summary>
-    private void Package(string id, string version)
+    private void Package(string id, string version, string authors = "Passenger Tests")
     {
         using ZipArchive zip = ZipFile.Open(Path.Combine(feed, $"{id}.{version}.nupkg"), ZipArchiveMode.Create);
         using (StreamWriter spec = new(zip.CreateEntry($"{id}.nuspec").Open()))
@@ -252,7 +425,7 @@ public sealed class PackagesTests : IDisposable
                   <metadata>
                     <id>{id}</id>
                     <version>{version}</version>
-                    <authors>Passenger Tests</authors>
+                    <authors>{authors}</authors>
                     <description>A package for the tests.</description>
                   </metadata>
                 </package>

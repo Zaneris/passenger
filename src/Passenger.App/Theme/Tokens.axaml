@@ -8,6 +8,11 @@
             <SolidColorBrush x:Key="Passenger.Chrome" Color="#2B2D30" />
             <SolidColorBrush x:Key="Passenger.Field" Color="#1E1F22" />
             <SolidColorBrush x:Key="Passenger.FieldBorder" Color="#4E5157" />
+            <SolidColorBrush x:Key="Passenger.Button" Color="#393B40" />
+            <!-- Rider's disabledForeground/Background/BorderColor, rather than Fluent's filled disabled button. -->
+            <SolidColorBrush x:Key="Passenger.DisabledText" Color="#5A5D63" />
+            <SolidColorBrush x:Key="Passenger.DisabledBackground" Color="#2B2D30" />
+            <SolidColorBrush x:Key="Passenger.DisabledBorder" Color="#43454A" />
             <SolidColorBrush x:Key="Passenger.DropZone" Color="#3D7BF5" Opacity="0.18" />
             <SolidColorBrush x:Key="Passenger.Divider" Color="#1E1F22" />
             <!-- A rule between groups inside a page (Rider's Separator.separatorColor), which shows on the field's colour where
@@ -200,6 +205,10 @@
             <SolidColorBrush x:Key="Passenger.Chrome" Color="#F7F8FA" />
             <SolidColorBrush x:Key="Passenger.Field" Color="#FFFFFF" />
             <SolidColorBrush x:Key="Passenger.FieldBorder" Color="#C9CCD6" />
+            <SolidColorBrush x:Key="Passenger.Button" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="Passenger.DisabledText" Color="#A8ADBD" />
+            <SolidColorBrush x:Key="Passenger.DisabledBackground" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="Passenger.DisabledBorder" Color="#DFE1E5" />
             <SolidColorBrush x:Key="Passenger.DropZone" Color="#3D7BF5" Opacity="0.14" />
             <SolidColorBrush x:Key="Passenger.Divider" Color="#EBECF0" />
             <SolidColorBrush x:Key="Passenger.Separator" Color="#EBECF0" />

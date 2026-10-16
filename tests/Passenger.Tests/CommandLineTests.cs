@@ -33,7 +33,7 @@ public sealed class CommandLineTests : IDisposable
     [InlineData("--screenshot out.png --scale NaN", "--scale takes a number from 0.5 to 8, not 'NaN'")]
     [InlineData("--screenshot out.png --size 1600xInfinity", "--size takes WIDTHxHEIGHT, each a number of 0 or more, not '1600xInfinity'")]
     [InlineData("--screenshot out.png --wait 1e300", "--wait takes milliseconds from 1 to 600000, not '1e300'")]
-    [InlineData("--screenshot out.png --size 400x300", "--size is at least the window's smallest, 800x500, not '400x300'")]
+    [InlineData("--screenshot out.png --size 400x300", "--size is at least the window's smallest, 640x500, not '400x300'")]
     [InlineData("--screenshot out.png --size 3000x3000 --scale 8", "--size 3000x3000 at --scale 8 is 24000x24000 pixels, more than 16384 a side")]
     [InlineData("--screenshot out.png --crop 0,0,2000,100", "--crop 0,0,2000,100 reaches past the 1600x1000 window")]
     [InlineData("--screenshot out.png --click 1600,10", "--click 1600,10 is outside the 1600x1000 window")]

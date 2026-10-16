@@ -57,7 +57,7 @@ public sealed class BuildRunController
 
     /// <summary>A Run between its press and its program's start (the plan resolved, the project built), which a second
     /// press may not start again.</summary>
-    private bool launching;
+    private CancellationTokenSource? launching;
 
     /// <summary>The run configuration the Run window last ran.</summary>
     private string ran = string.Empty;
@@ -110,6 +110,9 @@ public sealed class BuildRunController
     /// <summary>Whether a program Run started runs, in the Run window or the terminal.</summary>
     public bool IsRunning => session.Runner.IsRunning || session.InTerminal is { IsRunning: true };
 
+    /// <summary>Run is preparing its program and can be canceled with Stop before a process exists.</summary>
+    public bool IsLaunching => launching is not null;
+
     /// <summary>Whether the program Run started runs under dotnet watch (Settings' Hot Reload when running), which applies
     /// the edits of each file saved.</summary>
     public bool WatchesHotReload => watching && IsRunning;
@@ -139,7 +142,7 @@ public sealed class BuildRunController
         if (!built.Task.IsCompleted)
         {
             // Canceled on the UI thread, by Stop, so the build it stops is the one begun here, still running.
-            stopping = cancel.Register(session.Builder.Stop);
+            stopping = cancel.Register(StopBuild);
         }
         return built.Task;
     }
@@ -219,14 +222,50 @@ public sealed class BuildRunController
         _ => false,
     };
 
-    private void BuildNext()
+    private void BuildNext() => _ = BuildNextAsync();
+
+    private async Task BuildNextAsync()
     {
+        TaskCompletionSource? held = building;
         string target = buildQueue.Dequeue();
         string verb = buildKind switch { BuildKind.Rebuild => "Rebuilding", BuildKind.Clean => "Cleaning", _ => "Building" };
         parts.Say($"{verb} {Path.GetFileName(target)}…");
-        if (session.Builder.StartDotnet(BuildOutput.Arguments(target, buildKind, buildFramework, BuildOutput.WindowsTargeting(target, session.Projects)), session.Folder!) is { } problem)
+        try
         {
-            FinishBuild(new BuildOutcome(BuildStatus.NotStarted, problem));
+            WpfPopulationBuild.Plan population = await session.PrepareWpfPopulationAsync();
+            if (building != held)
+            {
+                return;
+            }
+            if (session.IsEnded)
+            {
+                FinishBuild(new BuildOutcome(BuildStatus.Stopped, "Build stopped: the solution was closed"));
+                return;
+            }
+            List<string> arguments = [.. BuildOutput.Arguments(target, buildKind, buildFramework, BuildOutput.WindowsTargeting(target, session.Projects)), .. population.Arguments];
+            if (session.Builder.StartDotnet(arguments, session.Folder!) is { } problem)
+            {
+                FinishBuild(new BuildOutcome(BuildStatus.NotStarted, problem));
+            }
+        }
+        catch (Exception error)
+        {
+            if (building == held)
+            {
+                FinishBuild(new BuildOutcome(BuildStatus.NotStarted, $"Build could not start: {error.Message}"));
+            }
+        }
+    }
+
+    private void StopBuild()
+    {
+        if (building is not null && !session.Builder.IsRunning)
+        {
+            FinishBuild(new BuildOutcome(BuildStatus.Stopped, "Build stopped"));
+        }
+        else
+        {
+            session.Builder.Stop();
         }
     }
 
@@ -300,11 +339,11 @@ public sealed class BuildRunController
     }
 
     /// <summary>A configuration's plan, with these arguments in place of its own if given, or why it has none.</summary>
-    public async Task<(LaunchPlan? Plan, string? Problem)> ResolvePlanAsync(RunConfiguration chosen, string? arguments)
+    public async Task<(LaunchPlan? Plan, string? Problem)> ResolvePlanAsync(RunConfiguration chosen, string? arguments, CancellationToken cancel = default)
     {
         try
         {
-            return (await LaunchPlan.ResolveAsync(arguments is null ? chosen : chosen with { Arguments = arguments }, session.Projects, parts.StateFolder()), null);
+            return (await LaunchPlan.ResolveAsync(arguments is null ? chosen : chosen with { Arguments = arguments }, session.Projects, parts.StateFolder(), cancel), null);
         }
         catch (Exception error) when (error is LaunchException or IOException or InvalidOperationException or System.ComponentModel.Win32Exception)
         {
@@ -314,13 +353,15 @@ public sealed class BuildRunController
 
     /// <summary>A configuration's plan with its build before launch done: the plan to start, or why there is none (the
     /// folder left meanwhile among the reasons).</summary>
-    private async Task<(LaunchPlan? Plan, string? Problem)> PrepareAsync(RunConfiguration chosen, string? arguments, bool build = true)
+    private async Task<(LaunchPlan? Plan, string? Problem)> PrepareAsync(RunConfiguration chosen, string? arguments, bool build = true, CancellationToken cancel = default)
     {
-        (LaunchPlan? plan, string? problem) = await ResolvePlanAsync(chosen, arguments);
-        if (build && plan?.Build is { } step && await BuildBeforeLaunchAsync(step) is { Succeeded: false } unbuilt)
+        (LaunchPlan? plan, string? problem) = await ResolvePlanAsync(chosen, arguments, cancel);
+        cancel.ThrowIfCancellationRequested();
+        if (build && plan?.Build is { } step && await BuildBeforeLaunchAsync(step).WaitAsync(cancel) is { Succeeded: false } unbuilt)
         {
             return (null, unbuilt.Message);
         }
+        cancel.ThrowIfCancellationRequested();
         return session.IsEnded ? (null, Left) : (plan, problem);
     }
 
@@ -339,26 +380,56 @@ public sealed class BuildRunController
     /// after its build, its output and input in the Run window, or in a tab of the Terminal window when the configuration
     /// uses the terminal. Null once it runs (<see cref="RunEnd"/> is its end), else why it could not, which the status bar
     /// says too.</summary>
-    public async Task<string?> RunAsync(string? arguments = null)
+    public Task<string?> RunAsync(string? arguments = null) => session.Configurations.Chosen is { } chosen
+        ? RunAsync(chosen, arguments) : Task.FromResult<string?>(Said("Nothing to run: no executable project"));
+
+    private (RunConfiguration Configuration, string? Arguments)? watched;
+
+    /// <summary>Restarts the watched configuration, preserving its arguments, so XAML edits requiring a build take effect.</summary>
+    public async Task<string?> RestartRunAsync()
     {
-        if (session.Configurations.Chosen is not { } chosen)
+        if (!WatchesHotReload || watched is not var (configuration, arguments))
         {
-            return Said("Nothing to run: no executable project");
+            return "No watched program is running to restart";
         }
-        if (IsRunning || launching)
+        Task<int> ended = RunEnd;
+        session.Runner.Stop();
+        session.InTerminal?.Stop();
+        try
+        {
+            await ended.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        catch (TimeoutException)
+        {
+            return "The watched program did not finish stopping; retry once it has ended";
+        }
+        return session.IsEnded ? Left : await RunAsync(configuration, arguments);
+    }
+
+    private async Task<string?> RunAsync(RunConfiguration chosen, string? arguments)
+    {
+        if (IsRunning || launching is not null)
         {
             return Said("Already running");
         }
-        launching = true;
+        using CancellationTokenSource launch = CancellationTokenSource.CreateLinkedTokenSource(session.Closing);
+        launching = launch;
+        CancellationToken cancel = launch.Token;
+        LiveApp? inspected = null;
+        bool tracking = false;
+        bool started = false;
         using IDisposable held = BackgroundWork.Scope();
         try
         {
+            RunningChanged?.Invoke(this, EventArgs.Empty);
+            cancel.ThrowIfCancellationRequested();
             parts.Editors.SaveAll();
             parts.Views.Run.Clear();
             // dotnet watch builds the project itself, and runs it again after an edit it cannot apply.
             bool hotReload = parts.Settings().HotReload && chosen.Program.Length == 0;
             watching = hotReload;
-            (LaunchPlan? plan, string? problem) = await PrepareAsync(chosen, arguments, build: !hotReload);
+            watched = hotReload ? (chosen, arguments) : null;
+            (LaunchPlan? plan, string? problem) = await PrepareAsync(chosen, arguments, build: !hotReload, cancel);
             if (plan is null)
             {
                 return Said(problem!);
@@ -371,17 +442,43 @@ public sealed class BuildRunController
             RunProject = Path.GetDirectoryName(plan.Project);
             string running = hotReload ? $"Running {chosen.Name} with Hot Reload: a save applies its changes" : $"Running {chosen.Name}";
             // An Avalonia or WPF app is launched with the inspector in it, which tells of its failed bindings while it runs.
+            // Preparation is shared with builds and design-time loading. Stop cancels only this launch's wait;
+            // the shared result may still serve another caller, but can never resume a canceled launch.
+            WpfPopulationBuild.Plan population = await session.PrepareWpfPopulationAsync().WaitAsync(cancel);
+            cancel.ThrowIfCancellationRequested();
             LaunchPlan launched = session.InspectedRun(plan, hotReload);
-            LiveApp? inspected = session.RunApp;
+            inspected = session.RunApp;
+            tracking = true;
+            await session.RunXaml.StartAsync(hotReload ? inspected : null,
+                session.Projects.SelectMany(p => p.Evaluated?.Items.Select(i => i.Path) ?? []).Concat(parts.Editors.Documents.Select(d => d.Path))).WaitAsync(cancel);
+            cancel.ThrowIfCancellationRequested();
             ShowBindings();
             Dictionary<string, string> variables = hotReload
                 ? new Dictionary<string, string>(launched.Environment) { ["DOTNET_WATCH_SUPPRESS_EMOJIS"] = "1", ["DOTNET_WATCH_RESTART_ON_RUDE_EDIT"] = "true" }
                 : new Dictionary<string, string>(launched.Environment);
+            string? watchHooks = null;
+            if (hotReload && inspected is not null)
+            {
+                try
+                {
+                    watchHooks = await WatchHooksAsync(launched).WaitAsync(cancel);
+                    cancel.ThrowIfCancellationRequested();
+                }
+                catch (Exception error) when (error is ProjectHostFailed or IOException or UnauthorizedAccessException or LaunchException)
+                {
+                    cancel.ThrowIfCancellationRequested();
+                    inspected.Dispose();
+                    return Said($"Could not start Hot Reload with the XAML inspector: {error.Message}");
+                }
+                // watch and dotnet run are .NET programs too. Only the target gets the inspector, alongside watch's agent.
+                variables[Wire.StartupHooks] = string.Empty;
+            }
             if (plan.Console == ConsoleKind.Terminal)
             {
                 // The terminal's text is the program's own: its failed bindings are in Problems alone.
                 WatchBindings(inspected, null);
-                string? refused = await RunInTerminalAsync(chosen.Name, hotReload ? DotnetStart(Watch(plan), plan.WorkingDirectory) : ChildProcesses.Command(plan.Program, plan.Arguments, plan.WorkingDirectory), variables, running);
+                string? refused = await RunInTerminalAsync(chosen.Name, hotReload ? DotnetStart(Watch(plan, watchHooks, population), plan.WorkingDirectory) : ChildProcesses.Command(plan.Program, plan.Arguments, plan.WorkingDirectory), variables, running, cancel);
+                started = refused is null;
                 if (refused is null && session.InTerminal is { } inTerminal)
                 {
                     parts.OpenBrowser(plan, inTerminal.Ended);
@@ -395,8 +492,9 @@ public sealed class BuildRunController
             parts.Say(running);
             WatchBindings(inspected, parts.Views.Run);
             string? notStarted = Started(hotReload
-                ? session.Runner.StartDotnet(Watch(plan), plan.WorkingDirectory, variables)
+                ? session.Runner.StartDotnet(Watch(plan, watchHooks, population), plan.WorkingDirectory, variables)
                 : session.Runner.Start(plan.Program, plan.Arguments, plan.WorkingDirectory, variables));
+            started = notStarted is null;
             if (notStarted is null)
             {
                 parts.OpenBrowser(plan, session.Runner.Ended);
@@ -404,9 +502,27 @@ public sealed class BuildRunController
             EndWith(inspected, notStarted is null ? session.Runner.Ended : Task.CompletedTask);
             return notStarted;
         }
+        catch (OperationCanceledException) when (cancel.IsCancellationRequested)
+        {
+            return session.IsEnded ? Left : Said("Run was canceled");
+        }
         finally
         {
-            launching = false;
+            if (!started)
+            {
+                inspected?.Dispose();
+                if (tracking)
+                {
+                    // Reset this launch's snapshots and outstanding reads, while open documents keep the handlers
+                    // that a later watched Run needs. Only the folder's end releases those subscriptions.
+                    await session.RunXaml.StartAsync(null, []);
+                }
+            }
+            launching = null;
+            if (!session.IsEnded)
+            {
+                RunningChanged?.Invoke(this, EventArgs.Empty);
+            }
         }
     }
 
@@ -426,7 +542,7 @@ public sealed class BuildRunController
     /// <summary>Runs a plan's program in a tab of the Terminal window named for its configuration, the keys going to it, as
     /// Rider's Use external console runs one in a console of its own; Stop ends it, and its end shows in the status bar as
     /// a run's in the Run window does. Null once it runs, else why it could not.</summary>
-    private async Task<string?> RunInTerminalAsync(string name, ProcessStartInfo? start, IReadOnlyDictionary<string, string> variables, string running)
+    private async Task<string?> RunInTerminalAsync(string name, ProcessStartInfo? start, IReadOnlyDictionary<string, string> variables, string running, CancellationToken cancel)
     {
         if (start is null)
         {
@@ -443,7 +559,15 @@ public sealed class BuildRunController
         }
         catch (LaunchException failed)
         {
+            cancel.ThrowIfCancellationRequested();
             return Said(failed.Message);
+        }
+        if (cancel.IsCancellationRequested)
+        {
+            // Terminal creation can spawn asynchronously. Its eventual program still belongs to this canceled
+            // launch, so stop it before publishing the run or attaching it to the folder's views.
+            run.Stop();
+            cancel.ThrowIfCancellationRequested();
         }
         session.InTerminal = run;
         RunningChanged?.Invoke(this, EventArgs.Empty);
@@ -465,17 +589,45 @@ public sealed class BuildRunController
     /// <summary>dotnet watch's command line for a plan, as Rider's Hot Reload runs it: the project for its framework, no
     /// launch profile (the plan has its values already), the program's own arguments after <c>--</c>. It runs the program in
     /// its own working folder, which is the plan's.</summary>
-    private static List<string> Watch(LaunchPlan plan)
+    private static List<string> Watch(LaunchPlan plan, string? hooks, WpfPopulationBuild.Plan population)
     {
         List<string> watch = ["watch", "--non-interactive", "run", "--project", plan.Project!, "--no-launch-profile"];
         if (plan.Framework is { } framework)
         {
             watch.AddRange(["--framework", framework]);
         }
+        if (hooks is not null)
+        {
+            watch.AddRange(["--environment", $"{Wire.StartupHooks}={hooks}"]);
+        }
+        watch.AddRange(population.Arguments);
         watch.Add("--");
         watch.AddRange(plan.Built is { } assembly && plan.Arguments.Count > 0 && plan.Arguments[0] == assembly ? plan.Arguments.Skip(1) : plan.Arguments);
         return watch;
     }
+
+    /// <summary>dotnet watch supplies its agent through run's -e option, replacing an inherited startup-hook list.
+    /// Its target-only override must retain that agent as well as Passenger's inspector and the user's hooks.</summary>
+    private async Task<string> WatchHooksAsync(LaunchPlan plan)
+    {
+        ProjectHost host = await ProjectHosts.ForAsync(Path.GetDirectoryName(plan.Project)!);
+        string tools = Path.Combine(host.Sdk, "DotnetTools", "dotnet-watch");
+        string framework = plan.Framework ?? session.Projects.FirstOrDefault(p => PathNames.Same(p.Path, plan.Project!))?.TargetFrameworks.FirstOrDefault() ?? "net8.0";
+        int target = FrameworkMajor(framework);
+        string? agent = Directory.Exists(tools) ? Directory.EnumerateFiles(tools, "Microsoft.Extensions.DotNetDeltaApplier.dll", SearchOption.AllDirectories)
+            .Where(p => FrameworkMajor(Path.GetFileName(Path.GetDirectoryName(p))) <= target)
+            .OrderByDescending(p => FrameworkMajor(Path.GetFileName(Path.GetDirectoryName(p)))).FirstOrDefault() : null;
+        if (agent is null)
+        {
+            throw new LaunchException($"SDK {host.Version} has no compatible dotnet watch startup agent for {framework}");
+        }
+        string hooks = plan.Environment[Wire.StartupHooks];
+        return string.Join(Path.PathSeparator, new[] { agent }.Concat(hooks.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+            .Distinct(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal));
+    }
+
+    private static int FrameworkMajor(string? framework) => framework is not null && framework.StartsWith("net", StringComparison.OrdinalIgnoreCase)
+        && int.TryParse(framework[3..].Split('.', '-')[0], out int major) ? major : 0;
 
     /// <summary>A run that could not start leaves the Run window idle, Stop as the debugger has it, and says why.</summary>
     private string? Started(string? problem)
@@ -581,6 +733,17 @@ public sealed class BuildRunController
         {
             return;
         }
+        app.StateChanged += (_, _) =>
+        {
+            if (!session.IsEnded && app.State == LiveAppState.Waiting)
+            {
+                foreach ((LiveApp App, int Id) key in placed.Keys.Where(k => k.App == app).ToList())
+                {
+                    placed.Remove(key);
+                }
+                ShowBindings();
+            }
+        };
         app.BindingFailed += (_, failed) =>
         {
             if (session.IsEnded)
@@ -589,6 +752,18 @@ public sealed class BuildRunController
             }
             console?.Append(BindingErrors.Line(Placed(app, failed.Failure), session.Folder), error: true);
             ShowBindings();
+        };
+        app.XamlFailed += (_, failure) =>
+        {
+            if (session.IsEnded || app != session.LiveApp && app != session.RunApp)
+            {
+                return;
+            }
+            HotReloadOutcome observed = HotReload.XamlFailure(failure) with { Said = "A newly created view needs a restart to load accepted XAML changes" };
+            console?.Append($"Hot Reload: {observed.Said}\n", error: true);
+            parts.Views.Problems.ShowHotReload(observed.Said, observed.Problems);
+            parts.Dock.Show("problems");
+            parts.Say(observed.Said);
         };
     }
 
@@ -627,12 +802,13 @@ public sealed class BuildRunController
     /// <summary>Stop: the debugger's session, the program Run started (in the Run window or the terminal) and the build.</summary>
     public void Stop()
     {
+        launching?.Cancel();
         _ = session.Debug.StopAsync();
         session.Runner.Stop();
         session.InTerminal?.Stop();
-        session.Builder.Stop();
+        StopBuild();
     }
 
     /// <summary>Why Stop cannot run now: nothing it stops is running.</summary>
-    public string? WhyNotStop() => session.Debug.IsDebugging || IsRunning || session.Builder.IsRunning ? null : "Nothing is running";
+    public string? WhyNotStop() => session.Debug.IsDebugging || IsRunning || IsBuilding || launching is not null ? null : "Nothing is running";
 }

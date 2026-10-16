@@ -330,7 +330,7 @@ public sealed class FolderWatcher : IDisposable
         {
             return;
         }
-        if (!inGit && parts.Any(IgnoredFolders.Contains))
+        if (!inGit && (parts.Any(IgnoredFolders.Contains) || WorkspaceModel.IsTemporaryProject(path)))
         {
             return;
         }

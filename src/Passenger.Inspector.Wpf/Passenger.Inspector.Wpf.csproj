@@ -10,8 +10,6 @@
     <UseWPF>true</UseWPF>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <RootNamespace>Passenger.Inspector.Wpf</RootNamespace>
-    <!-- Only Windows runs WPF: the lock file holds its systems alone. -->
-    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
     <!-- Never optimized, a Release build as a Debug one: the debugger reads a binding error's argument where the app stops. -->
     <Optimize>false</Optimize>
   </PropertyGroup>
@@ -25,6 +23,7 @@
     <!-- What Passenger and its inspectors say to each other, and the app's end of the socket, one definition for all. -->
     <Compile Include="../Passenger.Inspector/Protocol.cs" Link="Protocol.cs" />
     <Compile Include="../Passenger.Inspector/Connection.cs" Link="Connection.cs" />
+    <Compile Include="../Passenger.Inspector/XamlUpdatePlan.cs" Link="XamlUpdatePlan.cs" />
     <!-- A property breakpoint's hit count is kept here, where its changes are seen, in the debugger's own words. -->
     <Compile Include="../Passenger.Dap/HitCondition.cs" Link="HitCondition.cs" />
   </ItemGroup>

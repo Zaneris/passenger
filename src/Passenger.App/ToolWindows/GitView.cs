@@ -160,11 +160,33 @@ public sealed class GitView : DockPanel
 
     private void DrawTabs()
     {
-        tabs.Children.Clear();
-        tabs.Children.Add(Tab("Log", null, Log));
+        bool closingFocus = false;
+        foreach (ToggleButton button in tabs.Children.OfType<ToggleButton>().ToArray())
+        {
+            if (button.Tag != Log && !histories.Any(history => history.View == button.Tag))
+            {
+                closingFocus |= button.IsKeyboardFocusWithin;
+                tabs.Children.Remove(button);
+            }
+        }
+        if (tabs.Children.Count == 0)
+        {
+            tabs.Children.Add(Tab("Log", null, Log));
+        }
         foreach ((HistoryScope? scope, string title, GitLogView view, Control _) in histories)
         {
-            tabs.Children.Add(Tab(title, scope is null ? null : vcs.Repository?.Relative(scope.Path), view));
+            if (!tabs.Children.OfType<ToggleButton>().Any(button => button.Tag == view))
+            {
+                tabs.Children.Add(Tab(title, scope is null ? null : vcs.Repository?.Relative(scope.Path), view));
+            }
+        }
+        foreach (ToggleButton button in tabs.Children.OfType<ToggleButton>())
+        {
+            button.IsChecked = button.Tag == Shown;
+        }
+        if (closingFocus)
+        {
+            tabs.Children.OfType<ToggleButton>().FirstOrDefault(button => button.IsChecked == true)?.Focus();
         }
     }
 
@@ -184,7 +206,7 @@ public sealed class GitView : DockPanel
             };
             content.Children.Add(close);
         }
-        ToggleButton tab = new() { Classes = { "panelTab" }, IsChecked = view == Shown, Content = content };
+        ToggleButton tab = new() { Classes = { "panelTab" }, IsChecked = view == Shown, Content = content, Tag = view };
         if (tip is not null)
         {
             ToolTip.SetTip(tab, tip);

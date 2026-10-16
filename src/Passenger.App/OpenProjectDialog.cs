@@ -18,7 +18,7 @@ public sealed class OpenProjectDialog : Window
     public OpenProjectDialog(string name)
     {
         Title = "Open Solution";
-        Width = 440;
+        Width = 560;
         SizeToContent = SizeToContent.Height;
         CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
@@ -32,7 +32,7 @@ public sealed class OpenProjectDialog : Window
         here.Click += (_, _) => Choose(OpenTarget.ThisWindow);
         apart.Click += (_, _) => Choose(OpenTarget.NewWindow);
 
-        StackPanel choices = new() { Classes = { "footer" }, Children = { cancel, here, apart } };
+        StackPanel choices = DialogFooter.OfChoices(apart, cancel, here);
         Content = new StackPanel
         {
             Margin = new Thickness(20),
@@ -41,8 +41,7 @@ public sealed class OpenProjectDialog : Window
             {
                 new TextBlock { Text = Title, FontWeight = FontWeight.SemiBold },
                 new TextBlock { Text = Question, TextWrapping = TextWrapping.Wrap },
-                remember,
-                choices,
+                DialogFooter.WithLeading(remember, choices),
             },
         };
     }

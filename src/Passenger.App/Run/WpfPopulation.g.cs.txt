@@ -1,0 +1,20 @@
+#nullable enable
+namespace Passenger.Generated
+{
+    [global::System.AttributeUsage(global::System.AttributeTargets.Class, Inherited = false)]
+    internal sealed class WpfPopulationAttribute : global::System.Attribute
+    {
+        public WpfPopulationAttribute(int version) { Version = version; }
+        public int Version { get; }
+    }
+
+    internal static class WpfPopulation
+    {
+        public static void Loaded(object instance, global::System.Uri source)
+        {
+            global::System.Action<object, global::System.Uri>? callback =
+                global::System.AppContext.GetData("Passenger.Wpf.Populated.1") as global::System.Action<object, global::System.Uri>;
+            callback?.Invoke(instance, source);
+        }
+    }
+}

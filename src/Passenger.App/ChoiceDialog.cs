@@ -20,7 +20,7 @@ public sealed class ChoiceDialog : Window
 
         Button cancel = new() { Content = "Cancel", IsCancel = true };
         cancel.Click += (_, _) => Close(null);
-        StackPanel buttons = new() { Classes = { "footer" }, Children = { cancel } };
+        List<Button> answers = [];
         for (int i = 0; i < choices.Count; i++)
         {
             string choice = choices[i];
@@ -30,8 +30,11 @@ public sealed class ChoiceDialog : Window
                 button.Classes.Add("primary");
             }
             button.Click += (_, _) => Close(choice);
-            buttons.Children.Add(button);
+            answers.Add(button);
         }
+        StackPanel buttons = answers.Count == 0
+            ? DialogFooter.Of(cancel, null)
+            : DialogFooter.OfChoices(answers[^1], cancel, [.. answers.Take(answers.Count - 1).Reverse()]);
         Content = new StackPanel
         {
             Margin = new Thickness(20),

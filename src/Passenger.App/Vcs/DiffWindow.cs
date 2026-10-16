@@ -15,6 +15,7 @@ public sealed class DiffWindow : Window
         MinWidth = 600;
         MinHeight = 300;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        // A full code surface keeps the editor's ground; form dialogs inherit the shared chrome.
         Bind(BackgroundProperty, this.GetResourceObservable("Passenger.Editor.Background"));
         View = view;
         Content = view;

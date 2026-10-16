@@ -1,9 +1,14 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
+using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Editors;
 using Passenger.Text;
+using Ellipse = Avalonia.Controls.Shapes.Ellipse;
 
 namespace Passenger.Tests;
 
@@ -31,6 +36,197 @@ public sealed class EditorTabsTests : IDisposable
     {
         TestFolders.Delete(folder);
         TestFolders.Delete(settings);
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void The_active_tabs_close_button_stays_visible_beside_its_unsaved_dot_and_a_pinned_tabs_pin(bool light)
+    {
+        MainWindow window = Keeping("One.cs", "Two.cs");
+        window.RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark;
+        window.Autosaves = false;
+        EditorGroup group = window.EditorArea.ActiveGroup;
+        window.MouseMove(new Point(600, 300));
+        Ui.Settle();
+        Assert.Equal(1, CloseButton("Two.cs").Opacity);
+        Assert.Equal(0, CloseButton("One.cs").Opacity);
+
+        window.OpenFile("One.cs");
+        window.KeyTextInput("// unsaved\n");
+        Ui.Settle();
+        Ellipse dot = Tab(group, "One.cs").GetVisualDescendants().OfType<Ellipse>().Single(e => e.Classes.Contains("modified"));
+        Button close = CloseButton("One.cs");
+        Assert.True(dot.IsEffectivelyVisible && dot.Opacity == 1, "The active file lost its unsaved indication to its close button");
+        Assert.Equal(1, close.Opacity);
+        Assert.True(dot.TranslatePoint(new Point(dot.Bounds.Width, 0), close)!.Value.X <= 0, "The unsaved dot overlaps the close button");
+
+        Ui.ChooseFromMenu(Tab(group, "One.cs"), "Pin Tab");
+        window.MouseMove(new Point(600, 300));
+        Ui.Settle();
+        Assert.True(PinShown(group, "One.cs"));
+        Assert.Equal(1, CloseButton("One.cs").Opacity);
+
+        // An inactive tab's close button appears under the pointer and closes that file without selecting it.
+        close = CloseButton("Two.cs");
+        Point at = close.TranslatePoint(new Point(close.Bounds.Width / 2, close.Bounds.Height / 2), window)!.Value;
+        window.MouseMove(at);
+        Ui.Settle();
+        Assert.Equal(1, close.Opacity);
+        window.MouseDown(at, Avalonia.Input.MouseButton.Left);
+        window.MouseUp(at, Avalonia.Input.MouseButton.Left);
+        Ui.Settle();
+        Assert.Equal(["One.cs"], Names(group));
+        Assert.Equal("One.cs", window.EditorArea.Active?.Name);
+
+        // The active close control works without first pointing at its tab.
+        window.MouseMove(new Point(600, 300));
+        close = CloseButton("One.cs");
+        at = close.TranslatePoint(new Point(close.Bounds.Width / 2, close.Bounds.Height / 2), window)!.Value;
+        window.MouseDown(at, Avalonia.Input.MouseButton.Left);
+        window.MouseUp(at, Avalonia.Input.MouseButton.Left);
+        Ui.Settle();
+        Assert.Empty(group.Tabs);
+        window.Close();
+
+        Button CloseButton(string name) => Tab(group, name).GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains("tabClose"));
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Long_editor_tabs_keep_their_name_modified_pin_and_close_actions_inside_each_resized_group(bool light)
+    {
+        const string Name = "A long filename whose active editor tab must keep its modified indication pin and close action visible while the editor resizes.cs";
+        File.WriteAllText(Path.Combine(folder, Name), "class LongName { int value; }\n");
+        MainWindow window = Keeping("One.cs", Name, "Two.cs");
+        window.RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark;
+        window.SetRenderScaling(2);
+        window.Autosaves = false;
+        window.OpenFile(Name);
+        window.KeyTextInput("// kept edit");
+        Ui.Press(window, "enter");
+        Ui.ChooseFromMenu(Tab(window.EditorArea.ActiveGroup, Name), "Pin Tab");
+        window.MouseMove(new Point(window.Width - 100, window.Height - 80));
+        SelectionSet selections = window.EditorArea.CodeEditor.Selections;
+        string text = window.EditorArea.CodeEditor.Document.Snapshot.ToString();
+        try
+        {
+            foreach (double width in new double[] { 1200, 683, 640, 900, 1200 })
+            {
+                window.Width = width;
+                Ui.Settle();
+                Check(window.EditorArea.ActiveGroup, "single");
+                Assert.Equal(Name, window.EditorArea.Active?.Name);
+                Assert.Equal(selections, window.EditorArea.CodeEditor.Selections);
+                Assert.Equal(text, window.EditorArea.CodeEditor.Document.Snapshot.ToString());
+                Assert.True(window.EditorArea.CodeEditor.IsFocused, "Fitting a tab must not take the keys from its editor");
+            }
+
+            FromEditorTabs(window, "Split Right");
+            foreach (double width in new double[] { 1200, 683, 640, 1200 })
+            {
+                window.Width = width;
+                Ui.Settle();
+                foreach (EditorGroup group in window.EditorArea.Groups)
+                {
+                    Check(group, "split");
+                }
+            }
+            FromEditorTabs(window, "Unsplit All");
+            window.Width = 640;
+            Ui.Settle();
+            EditorGroup joined = window.EditorArea.ActiveGroup;
+            Check(joined, "joined");
+            Assert.Equal(text, joined.Editor.Document.Snapshot.ToString());
+
+            // Closing an inactive long file must not select it or close the document the person is editing.
+            window.OpenFile("One.cs");
+            Ui.Settle();
+            Control longTab = Tab(joined, Name);
+            Button close = Assert.Single(longTab.GetVisualDescendants().OfType<Button>(), button => button.Classes.Contains("tabClose"));
+            ScrollViewer joinedStrip = Assert.IsType<ScrollViewer>(Assert.IsType<Border>(joined.TabStrip).Child);
+            for (int attempt = 0; attempt < 20 && !Inside(longTab, joinedStrip); attempt++)
+            {
+                double left = longTab.TranslatePoint(default, joinedStrip)!.Value.X;
+                double clipped = left < 0 ? left : left + longTab.Bounds.Width - joinedStrip.Bounds.Width;
+                Point wheel = joinedStrip.TranslatePoint(new Point(joinedStrip.Bounds.Width / 2, 16), window)!.Value;
+                window.MouseWheel(wheel, new Vector(-Math.Clamp(clipped / 50, -3, 3), 0));
+                Ui.Settle();
+            }
+            Assert.True(Inside(longTab, joinedStrip), "The inactive long tab must remain reachable by actual wheel input");
+            Button currentClose = Assert.Single(Tab(joined, "One.cs").GetVisualDescendants().OfType<Button>(), button => button.Classes.Contains("tabClose"));
+            window.MouseMove(new Point(window.Width - 100, window.Height - 80));
+            Assert.True(currentClose.Focus());
+            Ui.Settle();
+            Ui.Press(window, "shift+tab");
+            Assert.Same(close, window.FocusManager?.GetFocusedElement());
+            foreach (double width in new double[] { 1200, 683, 640 })
+            {
+                window.Width = width;
+                Ui.Settle();
+                Assert.Equal("One.cs", window.EditorArea.Active?.Name);
+                Assert.Same(close, window.FocusManager?.GetFocusedElement());
+                Assert.True(Inside(longTab, joinedStrip) && Inside(close, joinedStrip), "Resizing must keep the inactive tab's focused close action visible without selecting that file");
+                Assert.Equal(1, close.Opacity);
+                UiAudit.Capture(window, $"editor-long-tab-inactive-focus-{width:0}-{(light ? "light" : "dark")}");
+            }
+            Click(close);
+            Assert.Equal("One.cs", window.EditorArea.Active?.Name);
+            Assert.DoesNotContain(joined.Tabs, tab => tab.Document.Name == Name);
+            Assert.Equal(text, File.ReadAllText(Path.Combine(folder, Name)));
+
+            window.OpenFile(Name);
+            Ui.Settle();
+            window.MouseMove(new Point(10, 10));
+            close = Assert.Single(Tab(joined, Name).GetVisualDescendants().OfType<Button>(), button => button.Classes.Contains("tabClose"));
+            Assert.Equal(1, close.Opacity);
+            Click(close);
+            Assert.DoesNotContain(joined.Tabs, tab => tab.Document.Name == Name);
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        void Check(EditorGroup group, string placement)
+        {
+            Control tab = Tab(group, Name);
+            ScrollViewer strip = Assert.IsType<ScrollViewer>(Assert.IsType<Border>(group.TabStrip).Child);
+            Button close = Assert.Single(tab.GetVisualDescendants().OfType<Button>(), button => button.Classes.Contains("tabClose"));
+            bool fits = Inside(tab, strip) && Inside(close, strip);
+            UiAudit.Capture(window, $"editor-long-tab-{placement}-{window.Width:0}-{(light ? "light" : "dark")}");
+            Assert.True(fits, $"The {placement} long editor tab and its close action escape their {strip.Bounds.Width}px strip: tab {tab.TranslatePoint(default, strip)} {tab.Bounds}, close {close.TranslatePoint(default, strip)} {close.Bounds}");
+            Assert.Equal(1, close.Opacity);
+            TextBlock label = Assert.Single(tab.GetVisualDescendants().OfType<TextBlock>(), block => block.Classes.Contains("tabName"));
+            Assert.Equal(Name, label.Text);
+            Assert.True(label.TextLayout.Width <= label.Bounds.Width + 1, "Long editor filenames must ellipsize before the fixed actions");
+            Assert.EndsWith(Name, Assert.IsType<string>(ToolTip.GetTip(tab)), StringComparison.Ordinal);
+            Ellipse dot = Assert.Single(tab.GetVisualDescendants().OfType<Ellipse>(), shape => shape.Classes.Contains("modified"));
+            Assert.True(dot.IsEffectivelyVisible && Inside(dot, strip));
+            if (group.IsPinned(group.Active!))
+            {
+                Button pin = Assert.Single(tab.GetVisualDescendants().OfType<Button>(), button => button.Classes.Contains("tabPin"));
+                Assert.True(pin.IsEffectivelyVisible && Inside(pin, strip));
+            }
+        }
+
+        static bool Inside(Control control, Control strip) => control.TranslatePoint(default, strip) is { } at
+            && at.X >= -0.5 && at.X + control.Bounds.Width <= strip.Bounds.Width + 0.5;
+
+        void Click(Button button)
+        {
+            Point at = button.TranslatePoint(new Point(button.Bounds.Width / 2, button.Bounds.Height / 2), window)!.Value;
+            window.MouseMove(at);
+            Ui.Settle();
+            bool over = button.IsPointerOver;
+            string hit = window.InputHitTest(at)?.ToString() ?? "none";
+            UiAudit.Capture(window, $"editor-long-tab-close-{(window.EditorArea.Active?.Name == Name ? "active" : "inactive")}-{(light ? "light" : "dark")}");
+            Assert.True(over, $"The long tab close action is not under its actual pointer at {at}: hit {hit}, bounds {button.Bounds}, opacity {button.Opacity}, now {button.TranslatePoint(default, window)}");
+            window.MouseDown(at, Avalonia.Input.MouseButton.Left);
+            window.MouseUp(at, Avalonia.Input.MouseButton.Left);
+            Ui.Settle();
+        }
     }
 
     [AvaloniaFact]

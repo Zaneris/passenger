@@ -117,9 +117,8 @@ public sealed partial class SettingsDialog : Window
         DockPanel.SetDock(pageTop, Dock.Top);
         right.Children.Add(heading);
         right.Children.Add(pageTop);
-        right.Children.Add(new ScrollViewer { Content = body });
-        Border editorPane = new() { Child = right };
-        editorPane.Bind(Border.BackgroundProperty, editorPane.GetResourceObservable("Passenger.Editor.Background"));
+        right.Children.Add(new ScrollViewer { Name = "SettingsPageScroll", Content = body });
+        Border editorPane = new() { Classes = { "dialogPage" }, Child = right };
 
         DockPanel root = new();
         DockPanel.SetDock(bottom, Dock.Bottom);
@@ -437,19 +436,17 @@ public sealed partial class SettingsDialog : Window
         TextBlock name = new()
         {
             Text = label,
-            Width = 220,
-            Padding = new Thickness(0, 0, 16, 0),
             TextWrapping = TextWrapping.Wrap,
             VerticalAlignment = firstLine < 0 ? VerticalAlignment.Center : VerticalAlignment.Top,
             Margin = new Thickness(0, Math.Max(0, firstLine), 0, 0),
         };
-        Control row = new StackPanel { Orientation = Orientation.Horizontal, Children = { name, editor } };
+        TextBlock? said = null;
         if (note is not null)
         {
-            TextBlock said = new() { Text = note, TextWrapping = TextWrapping.Wrap, MaxWidth = 360, Margin = new Thickness(name.Width, 0, 0, 0), HorizontalAlignment = HorizontalAlignment.Left };
+            said = new TextBlock { Text = note, TextWrapping = TextWrapping.Wrap, MaxWidth = 360 };
             said.Bind(TextBlock.ForegroundProperty, said.GetResourceObservable("Passenger.TextMuted"));
-            row = new StackPanel { Spacing = 4, Children = { row, said } };
         }
+        Control row = new SettingsOptionRow(name, editor, said);
         options.Add(new Option(page, label, row, $"{page} {label} {keywords}", action));
         return row;
     }

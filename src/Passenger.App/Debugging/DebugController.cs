@@ -179,6 +179,9 @@ public sealed class DebugController : IDisposable
     /// <summary>The C# language server whose Edit and Continue computes Hot Reload's updates, when it runs.</summary>
     public Func<Lsp.RoslynSession?> Server { get; init; } = () => null;
 
+    /// <summary>The app's inspector, whose UI thread applies XAML changes while the program runs.</summary>
+    public Func<LiveApp?> Inspector { get; init; } = () => null;
+
     /// <summary>Whether a launch is debugged with Hot Reload (Settings' Hot Reload while debugging): its code may change
     /// as it runs, and edits made while it is paused are applied as it goes on.</summary>
     public Func<bool> HotReloadOn { get; init; } = () => false;
@@ -212,10 +215,23 @@ public sealed class DebugController : IDisposable
     /// <summary>Rider's Apply Hot Reload Changes: the edits since the launch or the last apply, applied to the program
     /// paused or running. Applied, the files' lines are the program's from now (the built lines forget their edits), their
     /// breakpoints are bound again in the new code, and a paused program's stop is read again where it now is.</summary>
-    public Task<HotReloadOutcome> ApplyChangesAsync()
+    public Task<HotReloadOutcome> ApplyChangesAsync() => ApplyChangesAsync(beforeResume: false);
+
+    private Task<HotReloadOutcome> ApplyChangesAsync(bool beforeResume)
     {
         UiThread.Check();
-        return applying ??= ApplyOnceAsync();
+        if (applying is { } active)
+        {
+            return active;
+        }
+        Task<HotReloadOutcome> started = ApplyOnceAsync(beforeResume);
+        // A managed-only pre-resume apply with no C# edits can finish synchronously. Its finally already cleared applying;
+        // caching that completed task afterward would keep every later XAML apply returning that old result.
+        if (!started.IsCompleted)
+        {
+            applying = started;
+        }
+        return started;
     }
 
     /// <summary>Apply Changes as the action runs it: an edit that needs a restart restarts the program, as Settings says.</summary>
@@ -242,7 +258,7 @@ public sealed class DebugController : IDisposable
         return false;
     }
 
-    private async Task<HotReloadOutcome> ApplyOnceAsync()
+    private async Task<HotReloadOutcome> ApplyOnceAsync(bool beforeResume)
     {
         using IDisposable held = BackgroundWork.Scope();
         try
@@ -254,14 +270,16 @@ public sealed class DebugController : IDisposable
                 return refused;
             }
             Message?.Invoke(this, "Applying Hot Reload changes…");
-            HotReloadOutcome outcome = await reload.ApplyAsync();
+            HotReloadOutcome outcome = beforeResume ? await reload.ApplyBeforeResumeAsync() : await reload.ApplyAsync();
             if (session != Session || disposed)
             {
                 return outcome;
             }
-            if (outcome.Result is HotReloadResult.Applied or HotReloadResult.NothingToApply)
+            if (outcome.Files.Count > 0 || outcome.Result is HotReloadResult.Applied or HotReloadResult.NothingToApply)
             {
-                List<string> files = [.. outcome.Files.Select(PathNames.Canonical)];
+                // A mixed update can apply C# before the app refuses XAML. These files still run their new lines.
+                // XAML property updates retain the original compiled element positions: they emit no new PDB lines.
+                List<string> files = [.. outcome.Files.Where(p => Path.GetExtension(p).ToLowerInvariant() is not (".axaml" or ".xaml")).Select(PathNames.Canonical)];
                 // The stop shown keeps its place in the text, then the files' lines are the program's.
                 if (executionPoint is { } point && files.Contains(point.Path))
                 {
@@ -286,7 +304,7 @@ public sealed class DebugController : IDisposable
                 UpdateAllMarks();
             }
             LastApplied = outcome;
-            view.Console.Append($"Hot Reload: {outcome.Said}\n", error: outcome.Result is not (HotReloadResult.Applied or HotReloadResult.NothingToApply));
+            view.Console.Append($"Hot Reload: {outcome.Said}\n", error: outcome.Result is not (HotReloadResult.Applied or HotReloadResult.NothingToApply or HotReloadResult.RegisteredForFutureViews));
             Message?.Invoke(this, outcome.Said);
             Applied?.Invoke(this, outcome);
             StateChanged?.Invoke(this, EventArgs.Empty);
@@ -385,7 +403,7 @@ public sealed class DebugController : IDisposable
                 }
             });
             Session = session;
-            hotReload = hotReloadOn ? new HotReload(session, Server) : null;
+            hotReload = hotReloadOn ? new HotReload(session, Server, Inspector) : null;
             view.Tree.Load = reference => session.VariablesAsync(reference);
             if (launched && !inTerminal)
             {
@@ -481,7 +499,7 @@ public sealed class DebugController : IDisposable
                 actions.Run(AppActions.Debug, c);
                 return;
             }
-            _ = d.ResumeAsync(session => session.ContinueAsync(), "resume");
+            _ = d.ResumeAsync(session => session.ContinueAsync(), "resume", applyXaml: true);
         }, (d, c) => d.IsDebugging ? d.NotPaused() : actions.WhyNot(AppActions.Debug, c), new("Run", 1, 0));
         Add(AppActions.Pause, "Pause Program", (d, c) => _ = d.Session!.PauseAsync(),
             (d, _) => !d.IsDebugging ? NothingDebugged : d.Session!.State == DebugState.Paused ? "The program is paused already" : null, new("Run", 1, 1));
@@ -531,15 +549,17 @@ public sealed class DebugController : IDisposable
     /// the Debug window as it was, and the reason in the status bar. Edits made while it was paused are applied first, as
     /// Rider's "Changes will be applied on the next step or resume": one that needs a restart restarts it (or asks, as
     /// Settings says); one that does not compile is left, and the program goes on in the code it has, never stranded.</summary>
-    private async Task ResumeAsync(Func<DebugSession, Task> resume, string action)
+    private async Task ResumeAsync(Func<DebugSession, Task> resume, string action, bool applyXaml = false)
     {
         if (Session is not { } session)
         {
             return;
         }
+        HotReload? reload = HotReload;
+        bool xamlAfterResume = reload is { Changed: true, HasXamlChanges: true };
         if (HotReload is { Changed: true } && WhyNotApply() is null && session.State == DebugState.Paused)
         {
-            if (await ApplyChangesAsync() is { Result: HotReloadResult.RestartNeeded } outcome && await RestartAsked(outcome))
+            if (await ApplyChangesAsync(beforeResume: xamlAfterResume) is { Result: HotReloadResult.RestartNeeded } outcome && await RestartAsked(outcome))
             {
                 return;
             }
@@ -551,6 +571,16 @@ public sealed class DebugController : IDisposable
         try
         {
             await resume(session);
+            // A step/run-to-cursor can stop before the UI thread serves anything. XAML stays pending for Continue;
+            // it must never queue a mutation behind that next stop or hold up the person's next step for its timeout.
+            if (applyXaml && xamlAfterResume && session == Session && session.State == DebugState.Running && reload == HotReload
+                && reload is { Changed: true, HasXamlChanges: true } && WhyNotApply() is null)
+            {
+                if (await ApplyChangesAsync() is { Result: HotReloadResult.RestartNeeded } outcome)
+                {
+                    await RestartAsked(outcome);
+                }
+            }
         }
         catch (DapException error) when (session == Session && session.State != DebugState.Ended)
         {
@@ -676,9 +706,16 @@ public sealed class DebugController : IDisposable
         {
             // The built lines first: a breakpoint's move asks them what it now asks of the debugger.
             lines?.Follow(document.Path, change);
-            if (hotReload is not null && change.Edits.Count > 0 && Path.GetExtension(document.Path).ToLowerInvariant() is ".cs" or ".razor" or ".cshtml")
+            if (hotReload is not null && change.Edits.Count > 0)
             {
-                hotReload.Edited(document.Path, change.Before);
+                if (Path.GetExtension(document.Path).ToLowerInvariant() is ".cs" or ".razor" or ".cshtml")
+                {
+                    hotReload.Edited(document.Path, change.Before);
+                }
+                else if (Path.GetExtension(document.Path).ToLowerInvariant() is ".axaml" or ".xaml")
+                {
+                    hotReload.EditedXaml(document.Path, change.Before, document.Text.Snapshot);
+                }
             }
             Breakpoints.Follow(document.Path, change);
             FollowStop(document, change);

@@ -4,9 +4,12 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Settings;
+using Passenger.App.Run;
+using Passenger.Core;
 
 namespace Passenger.Tests;
 
@@ -172,6 +175,165 @@ public sealed class TitleBarTests : IDisposable
         Ui.Settle();
         Assert.True(window.TitleBarMerged, "Turned on again, the toolbar did not become the title bar");
         window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Half_a_laptop_screen_keeps_the_toolbar_and_window_buttons_inside_it_even_with_long_names_and_a_live_run()
+    {
+        const string name = "A_solution_with_a_long_name_that_would_push_the_window_buttons_off_a_half_width_screen";
+        string project = Path.Combine(folder, name + ".csproj");
+        File.WriteAllText(project,
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings></PropertyGroup></Project>");
+        File.WriteAllText(Path.Combine(folder, "Program.cs"), "Console.WriteLine(\"ready at half width\");\nThread.Sleep(Timeout.Infinite);\n");
+        TestGit.Init(folder);
+        TestGit.Run(folder, "checkout", "-q", "-b", "a-branch-with-a-long-name-that-must-stay-in-its-own-toolbar-widget");
+        Restore.Run(folder);
+        MainWindow window = new() { Width = 683, Height = 768 };
+        window.Show();
+        try
+        {
+            window.OpenFolder(project);
+            window.OpenFile("Program.cs");
+            Ui.Settle();
+            string chosen = "The run configuration whose full name stays available when its label is shortened";
+            window.SetConfigurations([new RunConfiguration { Name = chosen, Project = PathNames.Canonical(project) }], chosen);
+            window.ApplySettings(window.Settings with { HotReload = true });
+            Assert.Null(Ui.Await(window.RunAsync(), "the half-width window's program to run", TimeSpan.FromMinutes(3)));
+            Ui.WaitFor(() => window.BottomPanel.Run.Document.Snapshot.ToString().Contains("ready at half width", StringComparison.Ordinal),
+                "the program to run under dotnet watch", TimeSpan.FromMinutes(2));
+            Ui.Settle();
+            Assert.True(Find<Button>(window, "StopButton").IsVisible && Find<Button>(window, "HotReloadButton").IsVisible,
+                "A live run with Hot Reload must exercise the toolbar's Stop and Apply Changes buttons too");
+            Fits(683);
+            Assert.Contains(chosen, (string)ToolTip.GetTip(Find<Button>(window, "RunConfigButton"))!, StringComparison.Ordinal);
+            Click(window, Centre(window, Find<Button>(window, "RunConfigButton")));
+            ContextMenu chooser = Assert.IsType<ContextMenu>(window.OpenContextMenu);
+            Assert.Contains(chooser.Items.OfType<MenuItem>(), item => item.Header as string == chosen);
+            chooser.Close();
+            Assert.True(window.Actions[AppActions.Build]!.Menus.Count > 0 && window.Actions[AppActions.Profile]!.Menus.Count > 0,
+                "Build and Profile must stay reachable from their menu when the toolbar gives their icons' room back");
+
+            window.Width = 1200;
+            Ui.Settle();
+            Fits(1200);
+            Assert.True(Find<Button>(window, "BuildButton").IsVisible && Find<Button>(window, "ProfileButton").IsVisible
+                && Find<TextBlock>(window, "ProjectName").IsVisible && Find<TextBlock>(window, "BranchName").IsVisible,
+                "Widening the window must restore the toolbar's icons and names");
+            Assert.Equal(chosen, window.Configuration?.Name);
+            foreach (double width in new double[] { 640, 800, 900, 1024, 1400, 683 })
+            {
+                window.Width = width;
+                Ui.Settle();
+                Fits(width);
+                Assert.Equal(chosen, window.Configuration?.Name);
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        void Fits(double width)
+        {
+            Assert.True(Math.Abs(window.Bounds.Width - width) < 1, $"The window's minimum prevented resizing it to {width}px");
+            Border bar = Bar(window);
+            Rect toolbar = new(bar.TranslatePoint(default, window)!.Value, bar.Bounds.Size);
+            Button[] buttons = [.. Bar(window).GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible)];
+            Rect[] bounds = [.. buttons.Select(b => new Rect(b.TranslatePoint(default, window)!.Value, b.Bounds.Size))];
+            for (int i = 0; i < buttons.Length; i++)
+            {
+                Assert.True(bounds[i].X >= toolbar.X && bounds[i].Right <= toolbar.Right
+                    && bounds[i].Y >= toolbar.Y && bounds[i].Bottom <= toolbar.Bottom,
+                    $"The {width}px toolbar's {buttons[i].Name ?? ToolTip.GetTip(buttons[i])} is cut off at {bounds[i]}");
+                Assert.True(bounds.Where((_, index) => index != i).All(other => !other.Intersects(bounds[i])),
+                    $"The {width}px toolbar's {buttons[i].Name ?? ToolTip.GetTip(buttons[i])} overlaps another button");
+            }
+        }
+    }
+
+    [AvaloniaFact]
+    public void At_the_smallest_width_the_welcome_screens_words_and_buttons_fit_and_its_project_widget_still_opens_solutions()
+    {
+        MainWindow window = new() { Width = 640, Height = 768 };
+        window.Show();
+        try
+        {
+            Ui.Settle();
+            Control welcome = window.GetVisualDescendants().OfType<Passenger.App.Welcome.WelcomeView>().Single();
+            foreach (TextBlock text in welcome.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible))
+            {
+                Assert.True(text.TextLayout.Width <= text.Bounds.Width + 1 && text.TextLayout.Height <= text.Bounds.Height + 1,
+                    $"Welcome's '{text.Text}' is clipped at the {window.Bounds.Width}px minimum: {text.TextLayout.Width}x{text.TextLayout.Height} in {text.Bounds.Size}");
+            }
+            foreach (Button button in welcome.GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible))
+            {
+                Rect bounds = new(button.TranslatePoint(default, welcome)!.Value, button.Bounds.Size);
+                Assert.True(bounds.X >= 0 && bounds.Right <= welcome.Bounds.Width && bounds.Y >= 0 && bounds.Bottom <= welcome.Bounds.Height,
+                    $"Welcome's '{button.Content}' is cut off at the {window.Bounds.Width}px minimum: {bounds}");
+            }
+            Button project = Find<Button>(window, "ProjectButton");
+            Assert.True(project.IsEffectivelyVisible && project.Bounds.Width >= 20,
+                "Without a solution's name or badge the compact project widget must still have a visible click target");
+            Click(window, Centre(window, project));
+            ContextMenu menu = Assert.IsType<ContextMenu>(window.OpenContextMenu);
+            Assert.Contains(menu.Items.OfType<MenuItem>(), item => item.Header as string == "Open...");
+            menu.Close();
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void The_empty_editor_keeps_a_long_folder_name_and_its_next_step_readable_beside_the_tool_windows(bool light)
+    {
+        const string name = "A_long_folder_name_with_no_open_file_should_stay_readable_at_half_width";
+        string projectFolder = Path.Combine(folder, name);
+        Directory.CreateDirectory(projectFolder);
+        File.WriteAllText(Path.Combine(projectFolder, "One.cs"), "class One { }\n");
+        MainWindow window = new() { Width = 1200, Height = 800, RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark };
+        window.SetRenderScaling(2);
+        window.Show();
+        try
+        {
+            window.OpenFolder(projectFolder);
+            window.ShowToolWindow("build");
+            foreach (double width in new double[] { 1200, 640, 683, 1200 })
+            {
+                window.Width = width;
+                Ui.Settle();
+                Check();
+                UiAudit.Capture(window, $"empty-editor-{width:0}-{(light ? "light" : "dark")}");
+            }
+            window.OpenFile("One.cs");
+            Ui.Settle();
+            Assert.True(window.EditorArea.Close(window.EditorArea.Active!));
+            window.Width = 640;
+            Ui.Settle();
+            Check();
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        void Check()
+        {
+            TextBlock title = Assert.Single(window.EditorArea.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == name && text.IsEffectivelyVisible);
+            TextBlock hint = Assert.Single(window.EditorArea.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Open a file from the Explorer." && text.IsEffectivelyVisible);
+            foreach (TextBlock text in new[] { title, hint })
+            {
+                Rect bounds = new(text.TranslatePoint(default, window.EditorArea)!.Value, text.Bounds.Size);
+                Assert.True(bounds.X >= 0 && bounds.Right <= window.EditorArea.Bounds.Width + 1
+                    && bounds.Y >= 0 && bounds.Bottom <= window.EditorArea.Bounds.Height + 1,
+                    $"Empty editor's '{text.Text}' extends outside the {window.Bounds.Width}px window's editor: {bounds}");
+                Assert.True(text.TextLayout.Width <= text.Bounds.Width + 1 && text.TextLayout.Height <= text.Bounds.Height + 1,
+                    $"Empty editor's '{text.Text}' is clipped at {window.Bounds.Width}px: {text.TextLayout.Width}x{text.TextLayout.Height} in {text.Bounds.Size}");
+            }
+        }
     }
 
     private MainWindow Open()

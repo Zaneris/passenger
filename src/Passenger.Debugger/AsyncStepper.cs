@@ -71,6 +71,9 @@ internal sealed class AsyncStepper
     private AsyncStep? _currentAsyncStep;
     private AsyncBreakpoint? _notifyDebuggerBreakpoint;
 
+    /// <summary>The async step's ownership and phase, for correlating callbacks with a simple step's completion.</summary>
+    public string State => _currentAsyncStep is { } step ? $"{step.Status} from thread {step.ThreadId}, resume IL_{step.ResumeOffset:X4}" : "none";
+
     public AsyncStepper(Dictionary<CORDB_ADDRESS, ModuleInfo> modules, ManagedDebugger debugger)
     {
         _modules = modules;

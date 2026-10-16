@@ -195,8 +195,7 @@ public sealed class NewProjectDialog : Window
             Spacing = 10,
             Children = { new StackPanel { Children = { heading, description }, Margin = new Thickness(0, 0, 0, 8) }, fields, Rule(), typeRow, details, offer },
         };
-        Border rightPane = new() { Child = new ScrollViewer { Content = right } };
-        rightPane.Bind(Border.BackgroundProperty, rightPane.GetResourceObservable("Passenger.Editor.Background"));
+        Border rightPane = new() { Classes = { "dialogPage" }, Child = new ScrollViewer { Content = right } };
 
         problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable("Passenger.Editor.Error"));
         working = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, IsVisible = false, Children = { bar, progress } };

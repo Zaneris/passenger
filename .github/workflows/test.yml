@@ -31,10 +31,19 @@ jobs:
       fail-fast: false
       matrix:
         system: [macOS, Windows, Linux]
-        # A system's number of shards is its `shards` below, and these numbers up to it (a system with fewer excludes
-        # its others). With four, about 13 to 15 minutes of tests each; GitHub runs five macOS jobs at once, so with
-        # CI's two disk images one of the six starts as another ends.
-        shard: [1, 2, 3, 4]
+        # Four macOS test shards plus CI's one sequential disk-image job fit GitHub's five macOS runner slots.
+        # Native Windows tests exceeded the unchanged 20-minute budget after the WPF class grew; six jobs leave
+        # room for that measured cost without raising the budget. Other systems keep their existing deal.
+        shard: [1, 2, 3, 4, 5, 6]
+        exclude:
+          - system: macOS
+            shard: 5
+          - system: Linux
+            shard: 5
+          - system: macOS
+            shard: 6
+          - system: Linux
+            shard: 6
         include:
           - system: macOS
             name: macOS (arm64)
@@ -43,7 +52,7 @@ jobs:
           - system: Windows
             name: Windows (x64)
             os: windows-latest
-            shards: 4
+            shards: 6
           - system: Linux
             name: Linux (x64)
             os: ubuntu-24.04
@@ -143,6 +152,7 @@ jobs:
           [ "$RUNNER_OS" != Windows ] || python=python
           mkdir -p TestResults/shards
           dotnet test tests/Passenger.Tests --no-build --list-tests > TestResults/suite.txt
+          "$python" -I tools/test-shards-tests.py TestResults/suite.txt
           "$python" -I tools/test-shards.py split TestResults/suite.txt --system "$SYSTEM" --of "$SHARDS" --out TestResults/shards
           for number in $(seq 1 "$SHARDS"); do
             dotnet test tests/Passenger.Tests --no-build --list-tests --settings "TestResults/shards/shard-$number.runsettings" \

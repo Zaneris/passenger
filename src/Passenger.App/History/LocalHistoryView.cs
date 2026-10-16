@@ -21,10 +21,8 @@ public sealed class LocalHistoryView : DockPanel
         empty = new TextBlock
         {
             Text = "Show History on a file or folder lists its versions here",
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
+            Classes = { "emptyHint" },
         };
-        empty.Bind(TextBlock.ForegroundProperty, empty.GetResourceObservable("Passenger.TextMuted"));
         body.Content = empty;
         Children.Add(body);
     }
@@ -91,10 +89,28 @@ public sealed class LocalHistoryView : DockPanel
 
     private void DrawTabs()
     {
-        tabs.Children.Clear();
+        bool closingFocus = false;
+        foreach (ToggleButton button in tabs.Children.OfType<ToggleButton>().ToArray())
+        {
+            if (!histories.Any(history => history.Tab == button.Tag))
+            {
+                closingFocus |= button.IsKeyboardFocusWithin;
+                tabs.Children.Remove(button);
+            }
+        }
         foreach ((string path, string title, HistoryTab tab) in histories)
         {
-            tabs.Children.Add(Tab(title, path, tab));
+            ToggleButton? button = tabs.Children.OfType<ToggleButton>().FirstOrDefault(button => button.Tag == tab);
+            if (button is null)
+            {
+                button = Tab(title, path, tab);
+                tabs.Children.Add(button);
+            }
+            button.IsChecked = tab == Shown;
+        }
+        if (closingFocus)
+        {
+            tabs.Children.OfType<ToggleButton>().FirstOrDefault(button => button.IsChecked == true)?.Focus();
         }
     }
 
@@ -114,7 +130,7 @@ public sealed class LocalHistoryView : DockPanel
             Orientation = Orientation.Horizontal,
             Children = { new TextBlock { Text = title, VerticalAlignment = VerticalAlignment.Center }, close },
         };
-        ToggleButton button = new() { Classes = { "panelTab" }, IsChecked = tab == Shown, Content = content };
+        ToggleButton button = new() { Classes = { "panelTab" }, IsChecked = tab == Shown, Content = content, Tag = tab };
         ToolTip.SetTip(button, tip);
         button.Click += (_, _) => Show(tab);
         return button;

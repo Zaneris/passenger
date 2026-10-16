@@ -132,14 +132,16 @@ public partial class ManagedDebugger
         {
             (_corDebug, _process) = await ClrDebugExtensions.Automatic(processId, _ =>
             {
+                _logger?.Invoke($"Calling launch.Resume() for process {processId}");
                 launch.Resume();
+                _logger?.Invoke($"launch.Resume() returned for process {processId}");
                 return Task.CompletedTask;
             }, corDebug =>
             {
                 corDebug.Initialize();
                 corDebug.SetManagedHandler(_callbacks);
                 return corDebug.DebugActiveProcess(processId, false);
-            }, _logger);
+            }, _logger, _starting.Token);
         }
         catch (Exception error)
         {

@@ -104,6 +104,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Diagnostics.NETCore.Client" />
     <ProjectReference Include="../../src/Passenger.Dap/Passenger.Dap.csproj" />
+    <ProjectReference Include="../../src/Passenger.DebugAdapter/Passenger.DebugAdapter.csproj" />
     <ProjectReference Include="../Debuggees/AsyncEntryConsoleApp/AsyncEntryConsoleApp.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../Debuggees/AsyncTopLevelStatementsConsoleApp/AsyncTopLevelStatementsConsoleApp.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../Debuggees/DebuggableConsoleApp/DebuggableConsoleApp.csproj" ReferenceOutputAssembly="false" />

@@ -22,7 +22,7 @@ namespace Passenger.Inspector;
 public static class Wire
 {
     /// <summary>Bumped by a change either end must know of: a hello of another version is refused, saying so.</summary>
-    public const int Version = 5;
+    public const int Version = 10;
 
     /// <summary>The app's environment: the socket's path, where it connects.</summary>
     public const string SocketVariable = "PASSENGER_INSPECTOR";
@@ -36,6 +36,9 @@ public static class Wire
 
     /// <summary>A WPF app's environment: the launched project's folder, where its XAML is when its build's symbols do not say.</summary>
     public const string ProjectVariable = "PASSENGER_INSPECTOR_PROJECT";
+
+    /// <summary>Why a WPF graph could not safely compose a population hook for newly created views.</summary>
+    public const string WpfPopulationProblemVariable = "PASSENGER_WPF_POPULATION_PROBLEM";
 
     /// <summary>A WPF app's environment, set to 1: WPF then records where in its XAML each object was made (its
     /// VisualDiagnostics.GetXamlSourceInfo) and raises BindingDiagnostics.BindingFailed, as Visual Studio has it for a run it
@@ -55,6 +58,7 @@ public static class Wire
     public const string Watch = "watch";
     public const string Values = "values";
     public const string Overlays = "overlays";
+    public const string ApplyXaml = "applyXaml";
 
     /// <summary>Avalonia's renderer debug overlays, by the names of its RendererDebugOverlays flags, in its order.</summary>
     public static readonly IReadOnlyList<string> OverlayNames = ["Fps", "DirtyRects", "LayoutTimeGraph", "RenderTimeGraph"];
@@ -77,6 +81,10 @@ public static class Wire
     public const string Picked = "picked";
     public const string PickEnded = "pickEnded";
     public const string BindingFailed = "bindingFailed";
+
+    /// <summary>A later instance could not use an accepted XAML update. The completed Apply result is unchanged; the
+    /// reported source now needs a restart, and Updated explains where population failed.</summary>
+    public const string XamlFailed = "xamlFailed";
 
     /// <summary>A property whose binding the last values read showed has changed since: what was read is out of date.</summary>
     public const string ValuesChanged = "valuesChanged";
@@ -117,6 +125,28 @@ public sealed record Request(int Id, string Method, long? Element = null, bool? 
     /// <summary>With Overlays: the renderer debug overlays every window of the app shows from now (<see cref="Wire.OverlayNames"/>),
     /// none to take them away; answered with the windows.</summary>
     public IReadOnlyList<string>? Overlays { get; init; }
+
+    /// <summary>With ApplyXaml: source edits validated together, then applied to live instances or registered for verified future views.</summary>
+    public XamlUpdate? Update { get; init; }
+}
+
+/// <summary>The XAML edits since the last successful apply; validation alone changes no objects or source anchors.</summary>
+public sealed record XamlUpdate(IReadOnlyList<XamlSourceUpdate> Files, bool ValidateOnly = false)
+{
+    /// <summary>A queued request must not mutate the app after the IDE stopped waiting for its answer.</summary>
+    public long? ExpiresUtc { get; init; }
+}
+
+public sealed record XamlSourceUpdate(string File, string Before, string After);
+
+public sealed record XamlUpdateProblem(string File, int Line, int Column, string Message, bool RestartRequired);
+
+/// <summary>All edits applied or registered, or none when validation failed. Changes counts live property updates.</summary>
+public sealed record XamlUpdateResult(bool Applied, int Changes, IReadOnlyList<XamlUpdateProblem> Problems)
+{
+    /// <summary>View types without matching live roots registered for future constructions, not a count of future instances.
+    /// Registration changes no live property and can report a later population failure through XamlFailed.</summary>
+    public int FutureViewRegistrations { get; init; }
 }
 
 /// <summary>A XAML file's bindings to read with their values: the file as the IDE has it, its elements by where the app's build
@@ -255,6 +285,7 @@ public sealed record Reply
     public InputDone? Done { get; init; }
 
     public XamlValues? Values { get; init; }
+    public XamlUpdateResult? Updated { get; init; }
 }
 
 /// <summary>The app's first word: its process, the Avalonia it runs (its assembly's version), and why the inspector cannot

@@ -82,6 +82,10 @@ internal static class HotReload
         }
         lock (session)
         {
+            if (session.RestartRequired is { } refused)
+            {
+                return refused;
+            }
             if (session.Pending is not null)
             {
                 return Failed("the last update has not been committed or discarded");
@@ -94,21 +98,37 @@ internal static class HotReload
         EmitSolutionUpdateResults results = await session.Service.EmitSolutionUpdateAsync(session.Id, solution,
             ImmutableDictionary<ProjectId, RunningProjectOptions>.Empty, NoTrackedSpans, cancel).ConfigureAwait(false);
 
-        List<HotReloadProblem> problems = [.. results.GetAllDiagnostics().Select(d => Problem(d, results.Solution))];
+        ImmutableArray<Diagnostic> diagnostics = [.. results.GetAllDiagnostics()];
+        List<HotReloadProblem> problems = [.. diagnostics.Select(d => Problem(d, results.Solution))];
         IReadOnlyList<string> changed = Changed(session.Committed, results.Solution ?? solution);
-        if (results.ModuleUpdates.Status == ModuleUpdateStatus.None)
-        {
-            // Nothing to apply: the service has taken the solution as it is as committed.
-            session.Committed = results.Solution ?? solution;
-            return new HotReloadEmitted(null, "none", [], problems, changed);
-        }
-        if (results.ModuleUpdates.Status == ModuleUpdateStatus.Blocked || problems.Any(p => p.Error))
+        // None can mean a stale/unbuilt project was excluded, rather than an insignificant edit. Roslyn has already
+        // advanced its snapshot in that case: keep our pending documents and built lines, and require a restart.
+        // A ready batch can also exclude a stale project: do not silently apply only the other projects' changes.
+        bool noEffect = diagnostics.Any(d => d.IsNoEffectDiagnostic())
+            || results.ModuleUpdates.Status == ModuleUpdateStatus.None && problems.Any(p => p.RestartRequired);
+        if (results.ModuleUpdates.Status == ModuleUpdateStatus.Blocked || problems.Any(p => p.Error) || noEffect)
         {
             if (results.ModuleUpdates.Status == ModuleUpdateStatus.Ready)
             {
                 session.Service.DiscardSolutionUpdate(session.Id);
             }
-            return new HotReloadEmitted(null, "blocked", [], problems, changed);
+            HotReloadEmitted refused = new(null, "blocked", [], problems, changed);
+            if (results.ModuleUpdates.Status == ModuleUpdateStatus.None && noEffect)
+            {
+                // Do not reset the EnC session: prior generations and active-statement remaps belong to it. A later
+                // emit against Roslyn's advanced snapshot could otherwise falsely acknowledge the same pending edits.
+                lock (session)
+                {
+                    session.RestartRequired = refused;
+                }
+            }
+            return refused;
+        }
+        if (results.ModuleUpdates.Status == ModuleUpdateStatus.None)
+        {
+            // Only insignificant changes, with no diagnostic saying an edit was left behind, are acknowledged.
+            session.Committed = results.Solution ?? solution;
+            return new HotReloadEmitted(null, "none", [], problems, changed);
         }
         lock (session)
         {
@@ -250,6 +270,9 @@ internal static class HotReload
 
         /// <summary>The solution of the update emitted and not yet committed or discarded.</summary>
         public Solution? Pending { get; set; }
+
+        /// <summary>A no-effect batch Roslyn already acknowledged internally: only rebuilding/restarting can recover.</summary>
+        public HotReloadEmitted? RestartRequired { get; set; }
     }
 
     /// <summary>The files' texts before the session's first edit to each, as Passenger kept them: the build's, which Roslyn

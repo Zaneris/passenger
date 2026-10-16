@@ -50,15 +50,17 @@ public sealed class LiveApp : IDisposable
     private static int made;
 
     private readonly Socket listener;
+    private readonly bool reconnect;
     private readonly CancellationTokenSource closing = new();
     private readonly Dictionary<int, TaskCompletionSource<Reply>> asked = [];
     private readonly SemaphoreSlim writing = new(1, 1);
     private NetworkStream? stream;
     private int next;
 
-    private LiveApp(string name, string socket, Socket listener, LaunchPlan? plan, IReadOnlyList<string> overlays, LiveAppKind kind = LiveAppKind.Avalonia)
+    private LiveApp(string name, string socket, Socket listener, LaunchPlan? plan, IReadOnlyList<string> overlays, LiveAppKind kind = LiveAppKind.Avalonia, bool reconnect = false)
     {
         this.listener = listener;
+        this.reconnect = reconnect;
         SocketPath = socket;
         Name = name;
         Overlays = overlays;
@@ -96,6 +98,9 @@ public sealed class LiveApp : IDisposable
 
     /// <summary>The framework the app is built on, which its inspector serves.</summary>
     public LiveAppKind Kind { get; }
+
+    /// <summary>A launched WPF app's immutable shared-build inputs must still match before its next XAML batch.</summary>
+    internal Func<Task<string?>>? XamlPreparation { get; set; }
 
     /// <summary>The framework and its version as the window says it, once the app has said hello: "Avalonia 12.1.4",
     /// "WPF 10.0.1"; the framework alone before.</summary>
@@ -183,6 +188,9 @@ public sealed class LiveApp : IDisposable
     /// it was last told), from before its UI is up until it ends.</summary>
     public event EventHandler<BindingFailedEventArgs>? BindingFailed;
 
+    /// <summary>A newly constructed view could not use a previously accepted XAML edit.</summary>
+    public event EventHandler<XamlUpdateResult>? XamlFailed;
+
     /// <summary>Each binding that failed in the app, once, with how many times it has, in the order they first failed.</summary>
     public IReadOnlyList<BindingFailure> Bindings => [.. bindings.Values];
 
@@ -192,18 +200,18 @@ public sealed class LiveApp : IDisposable
     /// these renderer debug overlays from its first window, or, with <paramref name="wpf"/>, on Windows with WPF (its
     /// assembly a WindowsDesktop app's that references WPF's); null for any other program, or when this build of Passenger
     /// carries no inspector for it.</summary>
-    public static LiveApp? For(LaunchPlan plan, IReadOnlyList<string>? overlays = null, bool wpf = true)
+    public static LiveApp? For(LaunchPlan plan, IReadOnlyList<string>? overlays = null, bool wpf = true, bool reconnect = false, LiveAppKind? expected = null)
     {
         if (plan.Built is not { } built)
         {
             return null;
         }
         LiveAppKind kind;
-        if (File.Exists(Path.Combine(Path.GetDirectoryName(built)!, "Avalonia.Base.dll")) && File.Exists(InspectorPath))
+        if ((expected == LiveAppKind.Avalonia || expected is null && File.Exists(Path.Combine(Path.GetDirectoryName(built)!, "Avalonia.Base.dll"))) && File.Exists(InspectorPath))
         {
             kind = LiveAppKind.Avalonia;
         }
-        else if (wpf && OperatingSystem.IsWindows() && File.Exists(WpfInspectorPath) && IsWpf(built))
+        else if (wpf && OperatingSystem.IsWindows() && File.Exists(WpfInspectorPath) && (expected == LiveAppKind.Wpf || expected is null && IsWpf(built)))
         {
             kind = LiveAppKind.Wpf;
         }
@@ -211,7 +219,7 @@ public sealed class LiveApp : IDisposable
         {
             return null;
         }
-        return Listen(plan.Name) is (string socket, Socket listener) ? new LiveApp(plan.Name, socket, listener, plan, overlays ?? [], kind) : null;
+        return Listen(plan.Name) is (string socket, Socket listener) ? new LiveApp(plan.Name, socket, listener, plan, overlays ?? [], kind, reconnect) : null;
     }
 
     /// <summary>Whether an assembly is a WPF app's: it runs on the WindowsDesktop framework (its runtimeconfig.json names it)
@@ -314,6 +322,18 @@ public sealed class LiveApp : IDisposable
     public async Task<XamlValues> ValuesAsync(XamlRead read) =>
         (await AskAsync(new Request(0, Wire.Values) { Xaml = read })).Values ?? throw new LiveAppException($"{Name} read no bindings");
 
+    /// <summary>Validates or applies XAML edits on the running app's UI thread, preserving the existing controls.</summary>
+    public async Task<XamlUpdateResult> ApplyXamlAsync(XamlUpdate update)
+    {
+        if (XamlPreparation is { } check && await check() is { } problem)
+        {
+            return new XamlUpdateResult(false, 0, [.. update.Files.Select(source => new XamlUpdateProblem(source.File, 1, 1, problem, true))]);
+        }
+        long expires = DateTimeOffset.UtcNow.Add(AnswerLimit - TimeSpan.FromSeconds(1)).ToUnixTimeMilliseconds();
+        return (await AskAsync(new Request(0, Wire.ApplyXaml) { Update = update with { ExpiresUtc = Math.Min(update.ExpiresUtc ?? long.MaxValue, expires) } }))
+            .Updated ?? throw new LiveAppException($"{Name} returned no XAML update result");
+    }
+
     /// <summary>Input to the app, as a person gives it, answered once it has been handled and laid out.</summary>
     public async Task<InputDone> InputAsync(InputAction input) =>
         (await AskAsync(new Request(0, Wire.Input) { Input = input })).Done ?? throw new LiveAppException($"{Name} did not say what the input did");
@@ -367,13 +387,23 @@ public sealed class LiveApp : IDisposable
     /// <summary>How long the app may take to answer: its UI thread busy, or the app paused under the debugger.</summary>
     public static readonly TimeSpan AnswerLimit = TimeSpan.FromSeconds(10);
 
-    /// <summary>Takes the app's one connection, then reads what it says until it goes.</summary>
+    /// <summary>Takes the app's connection, and under dotnet watch its replacement's after a restart, until the run ends.</summary>
     private async Task ServeAsync()
     {
-        Socket client;
         try
         {
-            client = await listener.AcceptAsync(closing.Token);
+            do
+            {
+                Socket client = await listener.AcceptAsync(closing.Token);
+                if (!reconnect)
+                {
+                    listener.Dispose();
+                    Forget(SocketPath);
+                }
+                UiThread.Post(() => Become(LiveAppState.Waiting));
+                await ReadConnectionAsync(client);
+            }
+            while (reconnect && !closing.IsCancellationRequested);
         }
         catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException)
         {
@@ -381,10 +411,14 @@ public sealed class LiveApp : IDisposable
         }
         finally
         {
-            // The one app it was made for has come (or will not): nothing else may connect.
             listener.Dispose();
             Forget(SocketPath);
+            UiThread.Post(() => Become(LiveAppState.Ended));
         }
+    }
+
+    private async Task ReadConnectionAsync(Socket client)
+    {
         NetworkStream network = new(client, ownsSocket: true);
         stream = network;
         try
@@ -422,8 +456,15 @@ public sealed class LiveApp : IDisposable
         finally
         {
             await network.DisposeAsync();
+            stream = null;
             FailAll();
-            UiThread.Post(() => Become(LiveAppState.Ended));
+            UiThread.Post(() =>
+            {
+                if (State != LiveAppState.Refused)
+                {
+                    Become(reconnect ? LiveAppState.Waiting : LiveAppState.Ended);
+                }
+            });
         }
     }
 
@@ -492,6 +533,9 @@ public sealed class LiveApp : IDisposable
             case Wire.ValuesChanged:
                 ValuesChanged?.Invoke(this, EventArgs.Empty);
                 break;
+            case Wire.XamlFailed when reply.Updated is { Applied: false } failed:
+                XamlFailed?.Invoke(this, failed);
+                break;
             case Wire.Picked:
                 Picked?.Invoke(this, reply.Element);
                 break;
@@ -517,6 +561,14 @@ public sealed class LiveApp : IDisposable
         if (State == state || State == LiveAppState.Ended)
         {
             return;
+        }
+        if (state == LiveAppState.Waiting)
+        {
+            ProcessId = null;
+            Problem = null;
+            Avalonia = null;
+            FrameworkSaid = null;
+            bindings.Clear();
         }
         State = state;
         StateChanged?.Invoke(this, EventArgs.Empty);

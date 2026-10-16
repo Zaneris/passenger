@@ -60,8 +60,8 @@ bookmarks, and Extend Selection through the syntax tree.
 
 ## Building
 
-You need the .NET 11 SDK (the release candidate works until it ships in November 2026) and
-[just](https://github.com/casey/just).
+You need the exact .NET SDK version named in [`global.json`](global.json) and [just](https://github.com/casey/just).
+The SDK, package lock files and WPF reference pack are pinned together; a newer installed SDK does not replace it.
 
 ```sh
 just build                 # Debug build; warnings are errors

@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -62,14 +63,14 @@ public sealed class DiffView : DockPanel
         count.Bind(TextBlock.ForegroundProperty, count.GetResourceObservable("Passenger.TextMuted"));
         settings = Tool("Icon.Settings", $"Settings ({(OperatingSystem.IsMacOS() ? "⌘⇧D" : "Ctrl+Shift+D")})", ShowSettings);
         settings[DockProperty] = Dock.Right;
-        settings.Margin = new Thickness(0, 0, 6, 0);
+        settings.Margin = new Thickness(0, 0, 6, 12);
         settings.VerticalAlignment = VerticalAlignment.Center;
         settings.ContextMenu = SettingsMenu();
         StackPanel tools = new()
         {
             Orientation = Orientation.Horizontal,
             Spacing = 2,
-            Margin = new Thickness(6, 0),
+            Margin = new Thickness(6, 0, 6, 12),
             VerticalAlignment = VerticalAlignment.Center,
             Children =
             {
@@ -79,7 +80,7 @@ public sealed class DiffView : DockPanel
                 count,
             },
         };
-        Border bar = new() { [DockProperty] = Dock.Top, Height = 34, BorderThickness = new Thickness(0, 0, 0, 1), Child = new DockPanel { Children = { settings, tools } } };
+        Border bar = new() { [DockProperty] = Dock.Top, MinHeight = 34, BorderThickness = new Thickness(0, 0, 0, 1), Child = new DockPanel { Children = { settings, Across(tools) } } };
         bar.Bind(Border.BackgroundProperty, bar.GetResourceObservable("Passenger.Chrome"));
         bar.Bind(Border.BorderBrushProperty, bar.GetResourceObservable("Passenger.Divider"));
         Children.Add(bar);
@@ -300,11 +301,19 @@ public sealed class DiffView : DockPanel
 
     private static Control Header(string text, int column)
     {
-        TextBlock label = new() { Text = text, FontSize = 12, Margin = new Thickness(12, 4) };
+        TextBlock label = new() { Text = text, FontSize = 12, Margin = new Thickness(12, 4, 12, 16) };
         label.Bind(TextBlock.ForegroundProperty, label.GetResourceObservable("Passenger.TextMuted"));
-        Grid.SetColumn(label, column);
-        return label;
+        ScrollViewer reader = Across(label);
+        Grid.SetColumn(reader, column);
+        return reader;
     }
+
+    private static ScrollViewer Across(Control content) => new()
+    {
+        HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+        VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+        Content = content,
+    };
 
     private static Button Tool(string icon, string tip, Action run)
     {

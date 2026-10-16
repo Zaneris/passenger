@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using Avalonia.Controls;
 using Passenger.App.CSharp;
 using Passenger.App.Run;
 using Passenger.App.Workspace;
@@ -184,7 +185,7 @@ public partial class MainWindow
         {
             if (session == next)
             {
-                StopButton.IsVisible = next.Debug.IsDebugging || buildRun.IsRunning;
+                StopButton.IsVisible = next.Debug.IsDebugging || buildRun.IsRunning || buildRun.IsLaunching;
                 ShowHotReloadButtons();
             }
         };
@@ -200,7 +201,7 @@ public partial class MainWindow
         {
             next.Attach(document);
         }
-        StopButton.IsVisible = next.Debug.IsDebugging || buildRun.IsRunning;
+        StopButton.IsVisible = next.Debug.IsDebugging || buildRun.IsRunning || buildRun.IsLaunching;
         ShowHotReloadButtons();
         // The last folder's build said nothing of this one.
         Bottom.Problems.ForgetBuild();
@@ -394,6 +395,7 @@ public partial class MainWindow
         }
         string shown = workspace.Name;
         ProjectName.Text = shown;
+        ToolTip.SetTip(ProjectButton, $"Open a solution, project or folder ({shown})");
         ProjectBadgeText.Text = Initials(shown);
         ProjectBadge.IsVisible = true;
         ShowTitle();

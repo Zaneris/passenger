@@ -6,6 +6,7 @@ using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Passenger.App.LiveTree;
 using Passenger.App.Run;
 
@@ -62,6 +63,7 @@ public sealed class ProblemsView : DockPanel
     private readonly ListBox list;
     private readonly TextBlock empty;
     private readonly Dictionary<ProblemsTab, ToggleButton> tabs = [];
+    private readonly ScrollViewer tabStrip;
     private IReadOnlyList<Problem> file = [];
     private IReadOnlyList<Problem>? solution;
     private IReadOnlyList<Problem> toolset = [];
@@ -72,15 +74,30 @@ public sealed class ProblemsView : DockPanel
 
     public ProblemsView()
     {
-        StackPanel strip = new() { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(8, 0), VerticalAlignment = VerticalAlignment.Center };
+        StackPanel strip = new() { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
         foreach (ProblemsTab tab in Enum.GetValues<ProblemsTab>())
         {
             ToggleButton button = new() { Classes = { "panelTab" } };
+            button.ContentTemplate = new FuncDataTemplate<string>((title, _) => new TextBlock { Text = title, TextTrimming = TextTrimming.CharacterEllipsis });
             button.Click += (_, _) => Shown = tab;
+            button.GotFocus += (_, _) => RevealTab();
             tabs[tab] = button;
             strip.Children.Add(button);
         }
-        Border bar = new() { [DockProperty] = Dock.Top, Height = 32, BorderThickness = new Thickness(0, 0, 0, 1), Child = strip };
+        tabStrip = new ScrollViewer { Name = "ProblemsCategoryStrip", Classes = { "toolTabs" }, Content = strip };
+        tabStrip.PropertyChanged += (_, change) =>
+        {
+            if (change.Property == ScrollViewer.ViewportProperty)
+            {
+                foreach (ToggleButton button in tabs.Values)
+                {
+                    button.MaxWidth = Math.Max(0, tabStrip.Viewport.Width);
+                }
+                RevealTab();
+            }
+        };
+        strip.SizeChanged += (_, _) => RevealTab();
+        Border bar = new() { [DockProperty] = Dock.Top, Height = 32, BorderThickness = new Thickness(0, 0, 0, 1), Child = tabStrip };
         bar.Bind(Border.BorderBrushProperty, bar.GetResourceObservable("Passenger.Divider"));
         Children.Add(bar);
         list = new ListBox
@@ -89,7 +106,7 @@ public sealed class ProblemsView : DockPanel
             ItemsSource = rows,
             ItemTemplate = new FuncDataTemplate<ProblemRow>((row, _) => Row(row), supportsRecycling: false),
         };
-        empty = new TextBlock { Classes = { "muted" }, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        empty = new TextBlock { Classes = { "emptyHint" } };
         Children.Add(new Panel { Children = { empty, list } });
         list.DoubleTapped += (_, _) => Choose();
         list.AddHandler(KeyDownEvent, (_, e) =>
@@ -284,10 +301,15 @@ public sealed class ProblemsView : DockPanel
         foreach ((ProblemsTab tab, ToggleButton button) in tabs)
         {
             button.IsChecked = tab == Shown;
+            ToolTip.SetTip(button, button.Content);
         }
+        RevealTab();
 
         static string Titled(string title, int count) => count == 0 ? title : $"{title}  {count}";
     }
+
+    private void RevealTab() => Dispatcher.UIThread.Post(() => (tabs.Values.FirstOrDefault(button => button.IsVisible && button.IsKeyboardFocusWithin)
+        ?? tabs.Values.FirstOrDefault(button => button.IsVisible && button.IsChecked == true))?.BringIntoView(), DispatcherPriority.Loaded);
 
     private void Refresh()
     {
@@ -378,19 +400,36 @@ public sealed class ProblemsView : DockPanel
         {
             return new TextBlock();
         }
-        StackPanel panel = new() { Orientation = Orientation.Horizontal, Height = 24, Margin = new Thickness(8 + (row.Depth * 16), 0, 8, 0) };
+        Thickness margin = new(8 + (row.Depth * 16), 0, 8, 0);
         TextBlock detail = new() { Text = row.Detail, FontSize = 12, Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         detail.Bind(TextBlock.ForegroundProperty, detail.GetResourceObservable("Passenger.TextMuted"));
         if (row.Problem is not { } problem)
         {
-            panel.Children.Add(new TextBlock { Text = row.Label, FontWeight = row.Depth == 0 ? FontWeight.SemiBold : FontWeight.Normal, VerticalAlignment = VerticalAlignment.Center });
-            panel.Children.Add(detail);
-            return panel;
+            TextBlock title = new()
+            {
+                Text = row.Label, FontWeight = row.Depth == 0 ? FontWeight.SemiBold : FontWeight.Normal,
+                VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
+            };
+            ToolTip.SetTip(title, row.Label);
+            Grid group = new() { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Height = 24, Margin = margin };
+            Grid.SetColumn(detail, 1);
+            group.Children.Add(title);
+            group.Children.Add(detail);
+            return group;
         }
+        Grid panel = new() { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), Height = 24, Margin = margin };
+        detail.TextTrimming = TextTrimming.CharacterEllipsis;
+        Grid.SetColumn(detail, 2);
+        panel.SizeChanged += (_, _) => detail.MaxWidth = Math.Max(0, panel.Bounds.Width * 0.3);
         PathIcon icon = new() { Margin = new Thickness(0, 0, 8, 0) };
         icon.Bind(PathIcon.DataProperty, icon.GetResourceObservable(problem.Severity == ProblemSeverity.Error ? "Icon.Error" : "Icon.Problems"));
         icon.Bind(PathIcon.ForegroundProperty, icon.GetResourceObservable(problem.Severity == ProblemSeverity.Error ? "Passenger.Editor.Error" : "Passenger.Editor.Warning"));
-        void Where() => detail.Text = problem.Code is { Length: > 0 } code ? $"{row.Detail}  {code}" : row.Detail;
+        void Where()
+        {
+            detail.Text = problem.Code is { Length: > 0 } code ? $"{row.Detail}  {code}" : row.Detail;
+            detail.IsVisible = !string.IsNullOrEmpty(detail.Text);
+            ToolTip.SetTip(detail, detail.Text);
+        }
         Where();
         // Followed only while shown, so a row let go of by the list holds nothing it showed.
         void OnMoved(object? sender, System.ComponentModel.PropertyChangedEventArgs e) => Where();
@@ -403,10 +442,10 @@ public sealed class ProblemsView : DockPanel
         panel.Children.Add(icon);
         // A message of several lines (a compiler's stack trace) shows its first in the row and all of them on hover.
         string label = row.Label;
+        ToolTip.SetTip(panel, row.Label);
         if (label.IndexOf('\n') is int lineEnd and >= 0)
         {
             label = label[..lineEnd].TrimEnd('\r');
-            ToolTip.SetTip(panel, row.Label);
         }
         // A rule's name the message ends with is its link (an ESLint problem's), else the address where the message has it.
         int at = problem.Link is not { } named ? -1
@@ -414,25 +453,38 @@ public sealed class ProblemsView : DockPanel
             : label.IndexOf(named.OriginalString, StringComparison.Ordinal);
         if (problem.Link is not { } link || at < 0)
         {
-            panel.Children.Add(new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 900 });
+            TextBlock message = new() { Text = label, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, [Grid.ColumnProperty] = 1 };
+            ToolTip.SetTip(message, row.Label);
+            panel.Children.Add(message);
         }
         else
         {
             // The link's words in the link colour, the words around them as they are.
             string address = problem.LinkText ?? link.OriginalString;
             Button open = new() { Classes = { "link" }, Content = address, VerticalAlignment = VerticalAlignment.Center };
+            open.ContentTemplate = new FuncDataTemplate<string>((text, _) => new TextBlock { Text = text, TextTrimming = TextTrimming.CharacterEllipsis });
             ToolTip.SetTip(open, $"Open {link.OriginalString} in the browser");
             open.Click += (_, e) =>
             {
                 LinkClicked?.Invoke(this, link);
                 e.Handled = true;
             };
-            panel.Children.Add(new TextBlock { Text = label[..at], VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 700 });
-            panel.Children.Add(open);
-            if (label[(at + address.Length)..] is { Length: > 0 } after)
+            string after = label[(at + address.Length)..];
+            Grid message = new()
             {
-                panel.Children.Add(new TextBlock { Text = after, VerticalAlignment = VerticalAlignment.Center });
-            }
+                ColumnDefinitions = new ColumnDefinitions($"{(at > 0 ? "*" : "0")},Auto,{(after.Length > 0 ? "*" : "0")}"),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                [Grid.ColumnProperty] = 1,
+                Children =
+                {
+                    new TextBlock { Text = label[..at], VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis },
+                    open,
+                    new TextBlock { Text = after, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, [Grid.ColumnProperty] = 2 },
+                },
+            };
+            Grid.SetColumn(open, 1);
+            panel.SizeChanged += (_, _) => open.MaxWidth = Math.Max(0, (panel.Bounds.Width - detail.MaxWidth - icon.DesiredSize.Width - detail.Margin.Left) * (at > 0 || after.Length > 0 ? 0.55 : 1));
+            panel.Children.Add(message);
         }
         panel.Children.Add(detail);
         return panel;

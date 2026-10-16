@@ -3,6 +3,8 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
+using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.Editor;
@@ -24,9 +26,9 @@ public sealed class FilePropertiesTests : IDisposable
         string path = Write("One.cs", "class One\n{\n}\n");
         MainWindow window = Open("One.cs");
 
-        // The status bar's widget offers the others, its own disabled, as Rider's popup does.
+        // Current values are checked, including in the native menu, and selecting one again leaves edits unsaved.
         Click(window, "LineSeparatorButton");
-        Assert.Equal(["CRLF - Windows (\\r\\n)", "LF - Unix and macOS (\\n) (disabled)", "CR - Classic Mac OS (\\r)"], Items(window.OpenContextMenu!));
+        MenuTests.CurrentValue(window.OpenContextMenu!.Items.OfType<MenuItem>(), "LF - Unix and macOS (\\n)");
         Choose(window, "CRLF - Windows (\\r\\n)");
         Assert.Equal("class One\r\n{\r\n}\r\n", File.ReadAllText(path));
         Assert.Equal("CRLF", Shown(window, "LineEndingText"));
@@ -42,7 +44,9 @@ public sealed class FilePropertiesTests : IDisposable
         // File, Line Separators makes it LF again.
         NativeMenu separators = Ui.Submenu(Ui.Submenu(window.MenuBar, "File"), "Line Separators");
         Assert.Equal(["CRLF - Windows (\\r\\n)", "LF - Unix and macOS (\\n)", "CR - Classic Mac OS (\\r)"], separators.Items.OfType<NativeMenuItem>().Select(i => i.Header));
-        Assert.False(separators.Items.OfType<NativeMenuItem>().First().IsEnabled, "File, Line Separators offers CRLF to a file that has it already");
+        NativeMenuItem current = Assert.Single(separators.Items.OfType<NativeMenuItem>(), i => i.IsChecked);
+        Assert.Equal("CRLF - Windows (\\r\\n)", current.Header);
+        Assert.True(current.IsEnabled, "File, Line Separators greys the current value instead of checking it");
         separators.Items.OfType<NativeMenuItem>().Single(i => i.Header == "LF - Unix and macOS (\\n)").Command!.Execute(null);
         Ui.Settle();
         Assert.Equal("class One\n\n{\n}\n", File.ReadAllText(path));
@@ -104,7 +108,7 @@ public sealed class FilePropertiesTests : IDisposable
 
         Click(window, "EncodingButton");
         Assert.Contains("windows-1252", Items(window.OpenContextMenu!));
-        Assert.Contains("ISO-8859-1 (disabled)", Items(window.OpenContextMenu!));
+        MenuTests.CurrentValue(window.OpenContextMenu!.Items.OfType<MenuItem>().Where(i => i.Header as string != "More"), "ISO-8859-1");
         Choose(window, "windows-1252");
         Answer(window, "Menu.txt: Reload or Convert to windows-1252", "Reload");
         Assert.Equal("Œuvre: “café” for 5 €\n", Text(window));
@@ -223,6 +227,166 @@ public sealed class FilePropertiesTests : IDisposable
         Ui.Press(window, Ui.Shortcut(AppActions.Save));
         Assert.Equal("public class One\r\n{\r\n}\r\n", File.ReadAllText(path));
         window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Choosing_the_current_separator_or_encoding_keeps_unsaved_edits_and_creates_no_undo_step()
+    {
+        string path = Write("One.cs", "class One { }\n");
+        MainWindow window = Open("One.cs");
+        window.EditorArea.CodeEditor.Selections = Passenger.Text.SelectionSet.Single(0);
+        window.KeyTextInput("public ");
+        Click(window, "LineSeparatorButton");
+        Choose(window, "LF - Unix and macOS (\\n)");
+        Click(window, "EncodingButton");
+        MenuTests.CurrentValue(window.OpenContextMenu!.Items.OfType<MenuItem>().Where(i => i.Header as string != "More"), "UTF-8");
+        Choose(window, "UTF-8");
+        Assert.True(window.EditorArea.Active!.IsModified);
+        Assert.Equal("class One { }\n", File.ReadAllText(path));
+        Assert.Empty(window.OwnedWindows);
+        window.EditorArea.CodeEditor.Focus();
+        Ui.Run(window, EditorActions.Undo);
+        Assert.Equal("class One { }\n", Text(window));
+        Assert.False(window.EditorArea.Active.IsModified);
+        window.Close();
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Long_status_breadcrumbs_leave_storage_widgets_and_messages_readable_and_remain_reachable(bool light)
+    {
+        const string Name = "A long file name that must not overlap the status caret separator encoding indentation or language widgets.cs";
+        string relative = Path.Combine("Long parent folder", "Nested source folder", Name);
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(folder, relative))!);
+        string path = Write(relative, "class LongName { }\n");
+        Write("Single.cs", "class Single { }\n");
+        MainWindow window = Open("Single.cs");
+        window.RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark;
+        window.SetRenderScaling(2);
+        try
+        {
+            for (int opened = 0; opened < 2; opened++)
+            {
+                Ui.Settle();
+                Button single = Assert.Single(window.FindControl<Control>("BreadcrumbHost")!.GetVisualDescendants().OfType<Button>(), button => button.Classes.Contains("crumb"));
+                Assert.True(single.IsEffectivelyVisible && single.Bounds.Width > 24, "A plain root-level file must bootstrap a readable breadcrumb after the hidden empty state");
+                Assert.Equal("Single.cs", single.Content);
+                UiAudit.Capture(window, $"status-path-single-{opened}-{(light ? "light" : "dark")}");
+                Ui.Run(window, AppActions.CloseTab);
+                Assert.Empty(window.Breadcrumbs);
+                if (opened == 0)
+                {
+                    window.OpenFile("Single.cs");
+                }
+            }
+            window.OpenFile(relative);
+            Ui.Settle();
+            Assert.Equal(["Long parent folder", "Nested source folder", Name], window.Breadcrumbs);
+            Control host = window.FindControl<Control>("BreadcrumbHost")!;
+            Control bar = host.GetVisualAncestors().OfType<DockPanel>().First();
+            StackPanel widgets = window.FindControl<TextBlock>("LanguageText")!.GetVisualAncestors().OfType<StackPanel>().First();
+            TextBlock message = window.FindControl<TextBlock>("StatusText")!;
+            Button[] crumbs = [.. host.GetVisualDescendants().OfType<Button>().Where(button => button.Classes.Contains("crumb"))];
+            foreach (double width in new double[] { 1200, 683, 640, 1200 })
+            {
+                window.Width = width;
+                Ui.Settle();
+                Check("path");
+            }
+            window.Width = 640;
+            Ui.Settle();
+            Click(window, "LineSeparatorButton");
+            Choose(window, "CRLF - Windows (\\r\\n)");
+            Assert.Equal("Changed Line Separators from LF to CRLF", window.Status);
+            Assert.Contains("\r\n", File.ReadAllText(path), StringComparison.Ordinal);
+            foreach (double width in new double[] { 640, 683, 1200, 640 })
+            {
+                window.Width = width;
+                Ui.Settle();
+                Check("message");
+                Assert.Equal(window.Status, ToolTip.GetTip(message));
+            }
+
+            // Every folder and the long filename stay reachable without sacrificing the status widgets.
+            for (int index = 0; index < crumbs.Length; index++)
+            {
+                Button crumb = crumbs[index];
+                for (int attempt = 0; attempt < 30 && !Inside(crumb, host); attempt++)
+                {
+                    double left = crumb.TranslatePoint(default, host)!.Value.X;
+                    double clipped = left < 0 ? left : left + crumb.Bounds.Width - host.Bounds.Width;
+                    Point wheel = host.TranslatePoint(new Point(host.Bounds.Width / 2, host.Bounds.Height / 2), window)!.Value;
+                    window.MouseWheel(wheel, new Vector(-Math.Clamp(clipped / 50, -3, 3), 0));
+                    Ui.Settle();
+                }
+                Assert.True(Inside(crumb, host), $"Breadcrumb '{crumb.Content}' cannot be reached in the finite status path");
+                Assert.IsType<string>(ToolTip.GetTip(crumb));
+                TextBlock label = Assert.Single(crumb.GetVisualDescendants().OfType<TextBlock>());
+                Assert.True(label.TextLayout.Width <= label.Bounds.Width + 1, "Long breadcrumb names must ellipsize inside their own reachable button");
+                Point at = crumb.TranslatePoint(new Point(crumb.Bounds.Width / 2, crumb.Bounds.Height / 2), window)!.Value;
+                window.MouseMove(at);
+                window.MouseDown(at, MouseButton.Left);
+                window.MouseUp(at, MouseButton.Left);
+                Ui.Settle();
+                string expected = index == 0 ? Path.Combine(folder, "Long parent folder")
+                    : index == 1 ? Path.Combine(folder, "Long parent folder", "Nested source folder") : path;
+                Assert.Contains(window.ExplorerView.SelectedNodes, node => node.Path == Passenger.Core.PathNames.Canonical(expected));
+                Assert.Equal(Name, window.EditorArea.Active?.Name);
+            }
+
+            Assert.True(crumbs[0].Focus());
+            Ui.Settle();
+            Ui.Press(window, "tab");
+            Assert.Same(crumbs[1], window.FocusManager?.GetFocusedElement());
+            foreach (double width in new double[] { 1200, 683, 640 })
+            {
+                window.Width = width;
+                Ui.Settle();
+                Assert.Same(crumbs[1], window.FocusManager?.GetFocusedElement());
+                Assert.True(Inside(crumbs[1], host), "Resizing must preserve the focused breadcrumb in its viewport");
+                Check("focused");
+            }
+
+            void Check(string state)
+            {
+                Point hostAt = host.TranslatePoint(default, bar)!.Value;
+                Point widgetsAt = widgets.TranslatePoint(default, bar)!.Value;
+                bool separated = hostAt.X >= 0 && hostAt.X + host.Bounds.Width <= widgetsAt.X + 0.5;
+                bool widgetsFit = widgets.Children.Where(control => control.IsEffectivelyVisible).All(control => Inside(control, bar));
+                List<string> missed = [];
+                bool actionsHit = widgets.Children.OfType<Button>().Where(button => button.IsEffectivelyVisible && button.IsEffectivelyEnabled && button.Bounds.Width > 0).All(button =>
+                {
+                    Point at = button.TranslatePoint(new Point(button.Bounds.Width / 2, button.Bounds.Height / 2), window)!.Value;
+                    window.MouseMove(at);
+                    Ui.Settle();
+                    IInputElement? hit = window.InputHitTest(at);
+                    bool reached = button.IsPointerOver && (hit == button || hit is Visual visual && visual.GetVisualAncestors().Contains(button));
+                    if (!reached)
+                    {
+                        missed.Add($"{button.Name} at {at}, hit {hit}");
+                    }
+                    return reached;
+                });
+                bool messageFits = Inside(message, bar) && message.TranslatePoint(default, bar)!.Value.X >= hostAt.X + host.Bounds.Width - 0.5
+                    && message.TextLayout.Width <= message.Bounds.Width + 1;
+                if (!string.IsNullOrEmpty(message.Text))
+                {
+                    Point messageAt = message.TranslatePoint(default, bar)!.Value;
+                    messageFits &= messageAt.X >= hostAt.X + host.Bounds.Width + 11.5
+                        && messageAt.X + message.Bounds.Width <= widgetsAt.X - 11.5;
+                }
+                UiAudit.Capture(window, $"status-path-{state}-{window.Width:0}-{(light ? "light" : "dark")}");
+                Assert.True(separated && widgetsFit && messageFits && actionsHit, $"The status path overlaps its widgets/message at {window.Width}px: path={hostAt} {host.Bounds}, widgets={widgetsAt} {widgets.Bounds}, message={message.Bounds}, missed actions: {string.Join("; ", missed)}");
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static bool Inside(Control control, Control parent) => control.TranslatePoint(default, parent) is { } at
+            && at.X >= -0.5 && at.X + control.Bounds.Width <= parent.Bounds.Width + 0.5;
     }
 
     private string Write(string name, string text)

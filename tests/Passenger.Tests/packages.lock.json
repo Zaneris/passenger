@@ -147,19 +147,10 @@
         "resolved": "8.3.1.3",
         "contentHash": "bx8CE8Js+XGX8PUxAHCBDEORt5aaBYtMN4Hr9QFs57Xithh6yjUyYqksizH6eRDhJkwsGI+SXWmPmMm8lZC9Pw=="
       },
-      "MessagePack": {
-        "type": "Transitive",
-        "resolved": "2.5.302",
-        "contentHash": "5DZsKli4dMEpm/glcMAheuO8/IesfaTskbfsuvgnQwWFKS5FN7Z6yNx+5F+UW94E+9N2qt8Zs63/XVzpLsElgA==",
-        "dependencies": {
-          "MessagePack.Annotations": "2.5.302",
-          "Microsoft.NET.StringTools": "17.6.3"
-        }
-      },
       "MessagePack.Annotations": {
         "type": "Transitive",
-        "resolved": "2.5.302",
-        "contentHash": "PTHQHbMJzx1VtUUCpnvPavD7o5X9s2dAJ4uQHAP2kBCwJKICpPTZq0qxzbB4/6iJJiIxem8zlxyfldGAx1SjSQ=="
+        "resolved": "2.5.303",
+        "contentHash": "Pc0i3x9lo5cKmfd6i3NmGpmOXxtK3VKEtEnuWSC8wTokjJGBK4qqcHKOfe0GTODSVQpGi0PazPLCV4N3dWXnlw=="
       },
       "MicroCom.Runtime": {
         "type": "Transitive",
@@ -193,6 +184,66 @@
         "type": "Transitive",
         "resolved": "18.10.1",
         "contentHash": "tV7tCyp/t+DuwQugLkCeUN7NBFFB4fEGRPr0gkMQ2nQgAvQQjmGlZZi1dsLzbyoe/A0mbnKybmkIh8qhT9p4Zw=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-arm": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "GzwfV6HrOiQTVENhSX8jBWDABQLXDEd4w23Dki6ZhYymMopI6LkMMsHv50UQRj4jK6bCwL4d7m3nfhXbg+vajA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-arm64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "FqmpJ9Wj9SfR4Qx7CGGxGNORO+tUrgvUJnjdz3lVDXpy93kLicMgbFsN5U3XJz0owqvY50oqbNwkrjHLsDToQA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-musl-arm": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "d26NDWCdi0gF0z7M7FRY1HNnbDqaGiYWUoFwDtbvLHfGKR4yeZnpZclFocASMqPEGqyDuSKtDWvRtuF0Rb51XQ=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-musl-arm64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "GXJXHeySdylltN8U/j+Xcs28Rp+IgAdTrgXb2L1kCWzIcJVP0GEsqx9c0Ql99Xqbbf9zKZHUgvvo0UrGUdof1g=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-musl-x64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "vOslVtLepFkWxb/kfO+XLaoIwhKbhP90DQRYuUOLZ+khwjbMhBmSp8moZLkuFiX10uzP9XccWVpQDY6/mRLjiA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-x64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "KsJ9sB7LeEsOzyNidfkyLfojiJ5h3jCNstjarLSkkNhF3ksgKbTPss2YKPHBuKnrXqN+tbPSP3Crp47tbXZvcg=="
+      },
+      "Microsoft.Diagnostics.DbgShim.osx-arm64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "CQC2XWoU09PXfSaBzqzYm9tQZDHP1U90eWWVWrt0d9AIPjgH7urU3g15D6gcyZ8vo1GkC88TY+SUUlvdJ/5IqA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.osx-x64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "+rMhhbSHnAj7bkODMlKLHDE1JilLo/JZ6M9X4GVhRUUNkSueuVx0FMZxrf+IrLlWQPF3i2rkNXy8MhPA3nJzMA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.win-arm64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "4P7pczr5luR9mvLgKkZZZE5MJlhUorJLLMUJ3OZY0IQPA7xNZiBjW5exGsUfl0Ad+tYVt44qQreqBa64LeuDSA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.win-x64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "fQVwKrbNCmnHEN7Mf0Dl5MK8s44qCZKxjwvAaIO/0lnWeAQAf8zq8MSoPvSrisyU2FwGhqEt/P4K/fUscr8bcQ=="
+      },
+      "Microsoft.Diagnostics.DbgShim.win-x86": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "df7NPcl7j8LrpxnmFLJa8+2qITS8xWG26fk6Z+Tk07pKGZXK+Z2bfxBXy4iH6kX1xNCikluOh/OQksiiQ8FbgQ=="
+      },
+      "Microsoft.DiaSymReader": {
+        "type": "Transitive",
+        "resolved": "2.0.0",
+        "contentHash": "QcZrCETsBJqy/vQpFtJc+jSXQ0K5sucQ6NUFbTNVHD4vfZZOwjZ/3sBzczkC4DityhD3AVO/+K/+9ioLs1AgRA=="
       },
       "Microsoft.Extensions.AI.Abstractions": {
         "type": "Transitive",
@@ -269,6 +320,16 @@
         "type": "Transitive",
         "resolved": "1.24.260710001",
         "contentHash": "JR1xAkZbNnAALBjzFpqSwEx7YZfD1LI228jF9j9cgKknBPCiFy9mpphlgH+TpTN8vajTUpcgg9Miy5Y8eUAH9g=="
+      },
+      "MP.Microsoft.CodeAnalysis.ExpressionEvaluator.ExpressionCompiler": {
+        "type": "Transitive",
+        "resolved": "5.9.0",
+        "contentHash": "YFsgxMlzzyXhcqNNnSsSDpNPGg6wZi89YEyilBNAs9UwNueQvcvlD2TAo/jjEBU+qli/CgDn5Usrsj7UFRsF4Q==",
+        "dependencies": {
+          "Microsoft.CodeAnalysis.Analyzers": "5.9.0-1.26328.17",
+          "Microsoft.CodeAnalysis.Common": "5.9.0",
+          "Microsoft.DiaSymReader": "2.0.0"
+        }
       },
       "Nerdbank.MessagePack": {
         "type": "Transitive",
@@ -434,6 +495,7 @@
           "Avalonia.Skia": "[12.1.4, )",
           "Avalonia.Themes.Fluent": "[12.1.4, )",
           "ICSharpCode.Decompiler": "[11.0.0.9375, )",
+          "MessagePack": "[2.5.303, )",
           "Microsoft.TestPlatform.TranslationLayer": "[18.10.1, )",
           "ModelContextProtocol.Core": "[2.2.0, )",
           "NuGet.Configuration": "[7.9.0, )",
@@ -456,6 +518,30 @@
       "passenger.dap": {
         "type": "Project"
       },
+      "passenger.debugadapter": {
+        "type": "Project",
+        "dependencies": {
+          "Passenger.Dap": "[0.1.0, )",
+          "Passenger.Debugger": "[0.1.0, )"
+        }
+      },
+      "passenger.debugger": {
+        "type": "Project",
+        "dependencies": {
+          "ICSharpCode.Decompiler": "[11.0.0.9375, )",
+          "MP.Microsoft.CodeAnalysis.CSharp.ExpressionEvaluator.ExpressionCompiler": "[5.9.0, )",
+          "Microsoft.CodeAnalysis.CSharp": "[5.9.0, )",
+          "Microsoft.Diagnostics.DbgShim": "[9.0.661903, )",
+          "Microsoft.Diagnostics.NETCore.Client": "[0.2.661903, )",
+          "Passenger.Core": "[0.1.0, )",
+          "Passenger.Dap": "[0.1.0, )",
+          "Passenger.Debugger.Interop": "[0.1.0, )",
+          "ZLinq": "[1.5.6, )"
+        }
+      },
+      "passenger.debugger.interop": {
+        "type": "Project"
+      },
       "passenger.editor": {
         "type": "Project",
         "dependencies": {
@@ -476,6 +562,7 @@
       "passenger.lsp": {
         "type": "Project",
         "dependencies": {
+          "MessagePack": "[2.5.303, )",
           "Passenger.Core": "[0.1.0, )",
           "Passenger.Text": "[0.1.0, )",
           "StreamJsonRpc": "[2.25.29, )"
@@ -594,6 +681,16 @@
         "resolved": "11.0.0.9375",
         "contentHash": "zjdmwehqkqtGHz/ItQJ3nSMFX65c0UW2wYBOiHWkP5WtY9Zm0f5Yz+Yh0UbKX+JiNtG57YbHPxh64VC08IZKMg=="
       },
+      "MessagePack": {
+        "type": "CentralTransitive",
+        "requested": "[2.5.303, )",
+        "resolved": "2.5.303",
+        "contentHash": "kpIHwsflNKnWD8OyA8BjPspMG5PYXycxuftnkJk0e5sW8OLHa3CMovuYiRI/4NJ4al1AyW88Ai2g+WCwTaWzFg==",
+        "dependencies": {
+          "MessagePack.Annotations": "2.5.303",
+          "Microsoft.NET.StringTools": "17.6.3"
+        }
+      },
       "Microsoft.CodeAnalysis.CSharp": {
         "type": "CentralTransitive",
         "requested": "[5.9.0, )",
@@ -602,6 +699,25 @@
         "dependencies": {
           "Microsoft.CodeAnalysis.Analyzers": "5.9.0-1.26328.17",
           "Microsoft.CodeAnalysis.Common": "[5.9.0]"
+        }
+      },
+      "Microsoft.Diagnostics.DbgShim": {
+        "type": "CentralTransitive",
+        "requested": "[9.0.661903, )",
+        "resolved": "9.0.661903",
+        "contentHash": "4ISlovmQkGq/GH5CI0zNvzR9t/jfHKl8gmkq8AS+o0BqZDfLaW4jL8SdOXv+qrrzpk/+KwWPxKMZBC0H0kap1g==",
+        "dependencies": {
+          "Microsoft.Diagnostics.DbgShim.linux-arm": "9.0.661903",
+          "Microsoft.Diagnostics.DbgShim.linux-arm64": "9.0.661903",
+          "Microsoft.Diagnostics.DbgShim.linux-musl-arm": "9.0.661903",
+          "Microsoft.Diagnostics.DbgShim.linux-musl-arm64": "9.0.661903",
+          "Microsoft.Diagnostics.DbgShim.linux-musl-x64": "9.0.661903",
+          "Microsoft.Diagnostics.DbgShim.linux-x64": "9.0.661903",
+          "Microsoft.Diagnostics.DbgShim.osx-arm64": "9.0.661903",
+          "Microsoft.Diagnostics.DbgShim.osx-x64": "9.0.661903",
+          "Microsoft.Diagnostics.DbgShim.win-arm64": "9.0.661903",
+          "Microsoft.Diagnostics.DbgShim.win-x64": "9.0.661903",
+          "Microsoft.Diagnostics.DbgShim.win-x86": "9.0.661903"
         }
       },
       "Microsoft.Diagnostics.Runtime": {
@@ -629,6 +745,19 @@
         "contentHash": "mq0LDPGl00dPI6Qd8HK29Yv31jb0eHR729tsNRyZl6rPJMJy6kJVFmhy05wW1IZdsDnFkWi5FkyFVpaLbkunFg==",
         "dependencies": {
           "Microsoft.TestPlatform.ObjectModel": "18.10.1"
+        }
+      },
+      "MP.Microsoft.CodeAnalysis.CSharp.ExpressionEvaluator.ExpressionCompiler": {
+        "type": "CentralTransitive",
+        "requested": "[5.9.0, )",
+        "resolved": "5.9.0",
+        "contentHash": "dswOZ/GeIQvGwkvHcFR9tf94DjOa3dGTr0wZeXjV6nxMCChRtaR7iLvrSjup4N8bVielozKcA1IStUtrEX4/jQ==",
+        "dependencies": {
+          "MP.Microsoft.CodeAnalysis.ExpressionEvaluator.ExpressionCompiler": "5.9.0",
+          "Microsoft.CodeAnalysis.Analyzers": "5.9.0-1.26328.17",
+          "Microsoft.CodeAnalysis.CSharp": "5.9.0",
+          "Microsoft.CodeAnalysis.Common": "5.9.0",
+          "Microsoft.DiaSymReader": "2.0.0"
         }
       },
       "NuGet.Configuration": {
@@ -678,6 +807,12 @@
         "requested": "[1.2.161, )",
         "resolved": "1.2.161",
         "contentHash": "OpHNacIumnkhaaX3ZlQ/TCR4YPOJvud2/PAOoWb6o+mIrLwIVA275I5wAgt4q/1O2VrJeDwR1qFQyqzG4lUArg=="
+      },
+      "ZLinq": {
+        "type": "CentralTransitive",
+        "requested": "[1.5.6, )",
+        "resolved": "1.5.6",
+        "contentHash": "O2lcAZ1hC2zytrTuJV8WwpGbFURvsAApIEkmFJUKL3CFpedt1cgNVn+ZF00YyN321NL7Vz766wHxIPTzSyfUWg=="
       }
     },
     "net11.0/linux-arm64": {
@@ -708,6 +843,61 @@
         "type": "Transitive",
         "resolved": "8.3.1.3",
         "contentHash": "bx8CE8Js+XGX8PUxAHCBDEORt5aaBYtMN4Hr9QFs57Xithh6yjUyYqksizH6eRDhJkwsGI+SXWmPmMm8lZC9Pw=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-arm": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "GzwfV6HrOiQTVENhSX8jBWDABQLXDEd4w23Dki6ZhYymMopI6LkMMsHv50UQRj4jK6bCwL4d7m3nfhXbg+vajA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-arm64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "FqmpJ9Wj9SfR4Qx7CGGxGNORO+tUrgvUJnjdz3lVDXpy93kLicMgbFsN5U3XJz0owqvY50oqbNwkrjHLsDToQA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-musl-arm": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "d26NDWCdi0gF0z7M7FRY1HNnbDqaGiYWUoFwDtbvLHfGKR4yeZnpZclFocASMqPEGqyDuSKtDWvRtuF0Rb51XQ=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-musl-arm64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "GXJXHeySdylltN8U/j+Xcs28Rp+IgAdTrgXb2L1kCWzIcJVP0GEsqx9c0Ql99Xqbbf9zKZHUgvvo0UrGUdof1g=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-musl-x64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "vOslVtLepFkWxb/kfO+XLaoIwhKbhP90DQRYuUOLZ+khwjbMhBmSp8moZLkuFiX10uzP9XccWVpQDY6/mRLjiA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-x64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "KsJ9sB7LeEsOzyNidfkyLfojiJ5h3jCNstjarLSkkNhF3ksgKbTPss2YKPHBuKnrXqN+tbPSP3Crp47tbXZvcg=="
+      },
+      "Microsoft.Diagnostics.DbgShim.osx-arm64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "CQC2XWoU09PXfSaBzqzYm9tQZDHP1U90eWWVWrt0d9AIPjgH7urU3g15D6gcyZ8vo1GkC88TY+SUUlvdJ/5IqA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.osx-x64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "+rMhhbSHnAj7bkODMlKLHDE1JilLo/JZ6M9X4GVhRUUNkSueuVx0FMZxrf+IrLlWQPF3i2rkNXy8MhPA3nJzMA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.win-arm64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "4P7pczr5luR9mvLgKkZZZE5MJlhUorJLLMUJ3OZY0IQPA7xNZiBjW5exGsUfl0Ad+tYVt44qQreqBa64LeuDSA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.win-x64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "fQVwKrbNCmnHEN7Mf0Dl5MK8s44qCZKxjwvAaIO/0lnWeAQAf8zq8MSoPvSrisyU2FwGhqEt/P4K/fUscr8bcQ=="
+      },
+      "Microsoft.Diagnostics.DbgShim.win-x86": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "df7NPcl7j8LrpxnmFLJa8+2qITS8xWG26fk6Z+Tk07pKGZXK+Z2bfxBXy4iH6kX1xNCikluOh/OQksiiQ8FbgQ=="
       },
       "Microsoft.Win32.Registry": {
         "type": "Transitive",
@@ -778,6 +968,61 @@
         "resolved": "8.3.1.3",
         "contentHash": "bx8CE8Js+XGX8PUxAHCBDEORt5aaBYtMN4Hr9QFs57Xithh6yjUyYqksizH6eRDhJkwsGI+SXWmPmMm8lZC9Pw=="
       },
+      "Microsoft.Diagnostics.DbgShim.linux-arm": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "GzwfV6HrOiQTVENhSX8jBWDABQLXDEd4w23Dki6ZhYymMopI6LkMMsHv50UQRj4jK6bCwL4d7m3nfhXbg+vajA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-arm64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "FqmpJ9Wj9SfR4Qx7CGGxGNORO+tUrgvUJnjdz3lVDXpy93kLicMgbFsN5U3XJz0owqvY50oqbNwkrjHLsDToQA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-musl-arm": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "d26NDWCdi0gF0z7M7FRY1HNnbDqaGiYWUoFwDtbvLHfGKR4yeZnpZclFocASMqPEGqyDuSKtDWvRtuF0Rb51XQ=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-musl-arm64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "GXJXHeySdylltN8U/j+Xcs28Rp+IgAdTrgXb2L1kCWzIcJVP0GEsqx9c0Ql99Xqbbf9zKZHUgvvo0UrGUdof1g=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-musl-x64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "vOslVtLepFkWxb/kfO+XLaoIwhKbhP90DQRYuUOLZ+khwjbMhBmSp8moZLkuFiX10uzP9XccWVpQDY6/mRLjiA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-x64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "KsJ9sB7LeEsOzyNidfkyLfojiJ5h3jCNstjarLSkkNhF3ksgKbTPss2YKPHBuKnrXqN+tbPSP3Crp47tbXZvcg=="
+      },
+      "Microsoft.Diagnostics.DbgShim.osx-arm64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "CQC2XWoU09PXfSaBzqzYm9tQZDHP1U90eWWVWrt0d9AIPjgH7urU3g15D6gcyZ8vo1GkC88TY+SUUlvdJ/5IqA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.osx-x64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "+rMhhbSHnAj7bkODMlKLHDE1JilLo/JZ6M9X4GVhRUUNkSueuVx0FMZxrf+IrLlWQPF3i2rkNXy8MhPA3nJzMA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.win-arm64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "4P7pczr5luR9mvLgKkZZZE5MJlhUorJLLMUJ3OZY0IQPA7xNZiBjW5exGsUfl0Ad+tYVt44qQreqBa64LeuDSA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.win-x64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "fQVwKrbNCmnHEN7Mf0Dl5MK8s44qCZKxjwvAaIO/0lnWeAQAf8zq8MSoPvSrisyU2FwGhqEt/P4K/fUscr8bcQ=="
+      },
+      "Microsoft.Diagnostics.DbgShim.win-x86": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "df7NPcl7j8LrpxnmFLJa8+2qITS8xWG26fk6Z+Tk07pKGZXK+Z2bfxBXy4iH6kX1xNCikluOh/OQksiiQ8FbgQ=="
+      },
       "Microsoft.Win32.Registry": {
         "type": "Transitive",
         "resolved": "5.0.0",
@@ -846,6 +1091,61 @@
         "type": "Transitive",
         "resolved": "8.3.1.3",
         "contentHash": "bx8CE8Js+XGX8PUxAHCBDEORt5aaBYtMN4Hr9QFs57Xithh6yjUyYqksizH6eRDhJkwsGI+SXWmPmMm8lZC9Pw=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-arm": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "GzwfV6HrOiQTVENhSX8jBWDABQLXDEd4w23Dki6ZhYymMopI6LkMMsHv50UQRj4jK6bCwL4d7m3nfhXbg+vajA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-arm64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "FqmpJ9Wj9SfR4Qx7CGGxGNORO+tUrgvUJnjdz3lVDXpy93kLicMgbFsN5U3XJz0owqvY50oqbNwkrjHLsDToQA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-musl-arm": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "d26NDWCdi0gF0z7M7FRY1HNnbDqaGiYWUoFwDtbvLHfGKR4yeZnpZclFocASMqPEGqyDuSKtDWvRtuF0Rb51XQ=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-musl-arm64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "GXJXHeySdylltN8U/j+Xcs28Rp+IgAdTrgXb2L1kCWzIcJVP0GEsqx9c0Ql99Xqbbf9zKZHUgvvo0UrGUdof1g=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-musl-x64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "vOslVtLepFkWxb/kfO+XLaoIwhKbhP90DQRYuUOLZ+khwjbMhBmSp8moZLkuFiX10uzP9XccWVpQDY6/mRLjiA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-x64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "KsJ9sB7LeEsOzyNidfkyLfojiJ5h3jCNstjarLSkkNhF3ksgKbTPss2YKPHBuKnrXqN+tbPSP3Crp47tbXZvcg=="
+      },
+      "Microsoft.Diagnostics.DbgShim.osx-arm64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "CQC2XWoU09PXfSaBzqzYm9tQZDHP1U90eWWVWrt0d9AIPjgH7urU3g15D6gcyZ8vo1GkC88TY+SUUlvdJ/5IqA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.osx-x64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "+rMhhbSHnAj7bkODMlKLHDE1JilLo/JZ6M9X4GVhRUUNkSueuVx0FMZxrf+IrLlWQPF3i2rkNXy8MhPA3nJzMA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.win-arm64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "4P7pczr5luR9mvLgKkZZZE5MJlhUorJLLMUJ3OZY0IQPA7xNZiBjW5exGsUfl0Ad+tYVt44qQreqBa64LeuDSA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.win-x64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "fQVwKrbNCmnHEN7Mf0Dl5MK8s44qCZKxjwvAaIO/0lnWeAQAf8zq8MSoPvSrisyU2FwGhqEt/P4K/fUscr8bcQ=="
+      },
+      "Microsoft.Diagnostics.DbgShim.win-x86": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "df7NPcl7j8LrpxnmFLJa8+2qITS8xWG26fk6Z+Tk07pKGZXK+Z2bfxBXy4iH6kX1xNCikluOh/OQksiiQ8FbgQ=="
       },
       "Microsoft.Win32.Registry": {
         "type": "Transitive",
@@ -916,6 +1216,61 @@
         "resolved": "8.3.1.3",
         "contentHash": "bx8CE8Js+XGX8PUxAHCBDEORt5aaBYtMN4Hr9QFs57Xithh6yjUyYqksizH6eRDhJkwsGI+SXWmPmMm8lZC9Pw=="
       },
+      "Microsoft.Diagnostics.DbgShim.linux-arm": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "GzwfV6HrOiQTVENhSX8jBWDABQLXDEd4w23Dki6ZhYymMopI6LkMMsHv50UQRj4jK6bCwL4d7m3nfhXbg+vajA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-arm64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "FqmpJ9Wj9SfR4Qx7CGGxGNORO+tUrgvUJnjdz3lVDXpy93kLicMgbFsN5U3XJz0owqvY50oqbNwkrjHLsDToQA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-musl-arm": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "d26NDWCdi0gF0z7M7FRY1HNnbDqaGiYWUoFwDtbvLHfGKR4yeZnpZclFocASMqPEGqyDuSKtDWvRtuF0Rb51XQ=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-musl-arm64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "GXJXHeySdylltN8U/j+Xcs28Rp+IgAdTrgXb2L1kCWzIcJVP0GEsqx9c0Ql99Xqbbf9zKZHUgvvo0UrGUdof1g=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-musl-x64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "vOslVtLepFkWxb/kfO+XLaoIwhKbhP90DQRYuUOLZ+khwjbMhBmSp8moZLkuFiX10uzP9XccWVpQDY6/mRLjiA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-x64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "KsJ9sB7LeEsOzyNidfkyLfojiJ5h3jCNstjarLSkkNhF3ksgKbTPss2YKPHBuKnrXqN+tbPSP3Crp47tbXZvcg=="
+      },
+      "Microsoft.Diagnostics.DbgShim.osx-arm64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "CQC2XWoU09PXfSaBzqzYm9tQZDHP1U90eWWVWrt0d9AIPjgH7urU3g15D6gcyZ8vo1GkC88TY+SUUlvdJ/5IqA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.osx-x64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "+rMhhbSHnAj7bkODMlKLHDE1JilLo/JZ6M9X4GVhRUUNkSueuVx0FMZxrf+IrLlWQPF3i2rkNXy8MhPA3nJzMA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.win-arm64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "4P7pczr5luR9mvLgKkZZZE5MJlhUorJLLMUJ3OZY0IQPA7xNZiBjW5exGsUfl0Ad+tYVt44qQreqBa64LeuDSA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.win-x64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "fQVwKrbNCmnHEN7Mf0Dl5MK8s44qCZKxjwvAaIO/0lnWeAQAf8zq8MSoPvSrisyU2FwGhqEt/P4K/fUscr8bcQ=="
+      },
+      "Microsoft.Diagnostics.DbgShim.win-x86": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "df7NPcl7j8LrpxnmFLJa8+2qITS8xWG26fk6Z+Tk07pKGZXK+Z2bfxBXy4iH6kX1xNCikluOh/OQksiiQ8FbgQ=="
+      },
       "Microsoft.Win32.Registry": {
         "type": "Transitive",
         "resolved": "5.0.0",
@@ -985,6 +1340,61 @@
         "resolved": "8.3.1.3",
         "contentHash": "bx8CE8Js+XGX8PUxAHCBDEORt5aaBYtMN4Hr9QFs57Xithh6yjUyYqksizH6eRDhJkwsGI+SXWmPmMm8lZC9Pw=="
       },
+      "Microsoft.Diagnostics.DbgShim.linux-arm": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "GzwfV6HrOiQTVENhSX8jBWDABQLXDEd4w23Dki6ZhYymMopI6LkMMsHv50UQRj4jK6bCwL4d7m3nfhXbg+vajA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-arm64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "FqmpJ9Wj9SfR4Qx7CGGxGNORO+tUrgvUJnjdz3lVDXpy93kLicMgbFsN5U3XJz0owqvY50oqbNwkrjHLsDToQA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-musl-arm": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "d26NDWCdi0gF0z7M7FRY1HNnbDqaGiYWUoFwDtbvLHfGKR4yeZnpZclFocASMqPEGqyDuSKtDWvRtuF0Rb51XQ=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-musl-arm64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "GXJXHeySdylltN8U/j+Xcs28Rp+IgAdTrgXb2L1kCWzIcJVP0GEsqx9c0Ql99Xqbbf9zKZHUgvvo0UrGUdof1g=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-musl-x64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "vOslVtLepFkWxb/kfO+XLaoIwhKbhP90DQRYuUOLZ+khwjbMhBmSp8moZLkuFiX10uzP9XccWVpQDY6/mRLjiA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-x64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "KsJ9sB7LeEsOzyNidfkyLfojiJ5h3jCNstjarLSkkNhF3ksgKbTPss2YKPHBuKnrXqN+tbPSP3Crp47tbXZvcg=="
+      },
+      "Microsoft.Diagnostics.DbgShim.osx-arm64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "CQC2XWoU09PXfSaBzqzYm9tQZDHP1U90eWWVWrt0d9AIPjgH7urU3g15D6gcyZ8vo1GkC88TY+SUUlvdJ/5IqA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.osx-x64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "+rMhhbSHnAj7bkODMlKLHDE1JilLo/JZ6M9X4GVhRUUNkSueuVx0FMZxrf+IrLlWQPF3i2rkNXy8MhPA3nJzMA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.win-arm64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "4P7pczr5luR9mvLgKkZZZE5MJlhUorJLLMUJ3OZY0IQPA7xNZiBjW5exGsUfl0Ad+tYVt44qQreqBa64LeuDSA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.win-x64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "fQVwKrbNCmnHEN7Mf0Dl5MK8s44qCZKxjwvAaIO/0lnWeAQAf8zq8MSoPvSrisyU2FwGhqEt/P4K/fUscr8bcQ=="
+      },
+      "Microsoft.Diagnostics.DbgShim.win-x86": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "df7NPcl7j8LrpxnmFLJa8+2qITS8xWG26fk6Z+Tk07pKGZXK+Z2bfxBXy4iH6kX1xNCikluOh/OQksiiQ8FbgQ=="
+      },
       "Microsoft.Win32.Registry": {
         "type": "Transitive",
         "resolved": "5.0.0",
@@ -1053,6 +1463,61 @@
         "type": "Transitive",
         "resolved": "8.3.1.3",
         "contentHash": "bx8CE8Js+XGX8PUxAHCBDEORt5aaBYtMN4Hr9QFs57Xithh6yjUyYqksizH6eRDhJkwsGI+SXWmPmMm8lZC9Pw=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-arm": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "GzwfV6HrOiQTVENhSX8jBWDABQLXDEd4w23Dki6ZhYymMopI6LkMMsHv50UQRj4jK6bCwL4d7m3nfhXbg+vajA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-arm64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "FqmpJ9Wj9SfR4Qx7CGGxGNORO+tUrgvUJnjdz3lVDXpy93kLicMgbFsN5U3XJz0owqvY50oqbNwkrjHLsDToQA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-musl-arm": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "d26NDWCdi0gF0z7M7FRY1HNnbDqaGiYWUoFwDtbvLHfGKR4yeZnpZclFocASMqPEGqyDuSKtDWvRtuF0Rb51XQ=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-musl-arm64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "GXJXHeySdylltN8U/j+Xcs28Rp+IgAdTrgXb2L1kCWzIcJVP0GEsqx9c0Ql99Xqbbf9zKZHUgvvo0UrGUdof1g=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-musl-x64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "vOslVtLepFkWxb/kfO+XLaoIwhKbhP90DQRYuUOLZ+khwjbMhBmSp8moZLkuFiX10uzP9XccWVpQDY6/mRLjiA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.linux-x64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "KsJ9sB7LeEsOzyNidfkyLfojiJ5h3jCNstjarLSkkNhF3ksgKbTPss2YKPHBuKnrXqN+tbPSP3Crp47tbXZvcg=="
+      },
+      "Microsoft.Diagnostics.DbgShim.osx-arm64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "CQC2XWoU09PXfSaBzqzYm9tQZDHP1U90eWWVWrt0d9AIPjgH7urU3g15D6gcyZ8vo1GkC88TY+SUUlvdJ/5IqA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.osx-x64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "+rMhhbSHnAj7bkODMlKLHDE1JilLo/JZ6M9X4GVhRUUNkSueuVx0FMZxrf+IrLlWQPF3i2rkNXy8MhPA3nJzMA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.win-arm64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "4P7pczr5luR9mvLgKkZZZE5MJlhUorJLLMUJ3OZY0IQPA7xNZiBjW5exGsUfl0Ad+tYVt44qQreqBa64LeuDSA=="
+      },
+      "Microsoft.Diagnostics.DbgShim.win-x64": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "fQVwKrbNCmnHEN7Mf0Dl5MK8s44qCZKxjwvAaIO/0lnWeAQAf8zq8MSoPvSrisyU2FwGhqEt/P4K/fUscr8bcQ=="
+      },
+      "Microsoft.Diagnostics.DbgShim.win-x86": {
+        "type": "Transitive",
+        "resolved": "9.0.661903",
+        "contentHash": "df7NPcl7j8LrpxnmFLJa8+2qITS8xWG26fk6Z+Tk07pKGZXK+Z2bfxBXy4iH6kX1xNCikluOh/OQksiiQ8FbgQ=="
       },
       "Microsoft.Win32.Registry": {
         "type": "Transitive",

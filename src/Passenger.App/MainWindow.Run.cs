@@ -117,7 +117,9 @@ public partial class MainWindow
         string? why = chosen is null ? null : configurations.WhyNotHere(chosen);
         RunConfigName.Text = chosen?.Name ?? "No configurations";
         RunConfigName.Classes.Set("muted", why is not null);
-        ToolTip.SetTip(RunConfigButton, why is null ? "Run configuration" : $"{chosen!.Name} cannot run here: {why}");
+        ToolTip.SetTip(RunConfigButton, why is null
+            ? chosen is null ? "Run configuration" : $"Run configuration: {chosen.Name}"
+            : $"{chosen!.Name} cannot run here: {why}");
     }
 
     /// <summary>The run configurations to choose from, as a menu under the toolbar widget, and Edit Configurations below
@@ -130,12 +132,11 @@ public partial class MainWindow
         {
             string name = each.Name;
             string? why = WhyNotHere(each);
-            MenuItem item = new() { Header = why is null ? name : Greyed(name, why) };
+            MenuItem item = MenuChoice(why is null ? name : Greyed(name, why), each == Configuration, () => SelectConfiguration(name));
             if (why is not null)
             {
                 ToolTip.SetTip(item, $"{name} cannot run here: {why}");
             }
-            item.Click += (_, _) => SelectConfiguration(name);
             menu.Items.Add(item);
         }
         if (menu.Items.Count == 0)

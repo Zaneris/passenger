@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -66,6 +68,58 @@ public sealed class WpfLiveTreeTests : IClassFixture<RestoredFolders>, IDisposab
     private string Xaml => Path.Combine(folder, "MainWindow.xaml");
 
     private string AppXaml => Path.Combine(folder, "App.xaml");
+
+    [AvaloniaFact]
+    public void A_busy_wpf_ui_refuses_input_with_its_actual_reason_and_never_delivers_the_click_after_recovery()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
+        string blocked = Path.Combine(folder, "blocked");
+        string release = Path.Combine(folder, "release");
+        string code = Path.Combine(folder, "MainWindow.xaml.cs");
+        File.WriteAllText(code, File.ReadAllText(code).Replace("InitializeComponent();", $$"""
+            InitializeComponent();
+            Count.Click += (_, _) =>
+            {
+                System.IO.File.WriteAllText({{JsonSerializer.Serialize(blocked)}}, "blocked");
+                while (!System.IO.File.Exists({{JsonSerializer.Serialize(release)}}))
+                    System.Threading.Thread.Sleep(5);
+            };
+            Delete.Click += (_, _) => Hello.Text = "Delete handled";
+            """, StringComparison.Ordinal));
+        MainWindow window = Debugged();
+        LiveApp app = window.LiveApp!;
+        long count = window.LiveTree.Rows.Single(r => r.Element.Name == "Count").Element.Id;
+        long delete = window.LiveTree.Rows.Single(r => r.Element.Name == "Delete").Element.Id;
+        try
+        {
+            Task<InputDone> clicked = app.InputAsync(new InputAction(InputKinds.Click) { Element = count });
+            Ui.PumpUntil(() => clicked.IsCompleted, "the click that starts the app's busy work to answer", TimeSpan.FromSeconds(4));
+            _ = clicked.GetAwaiter().GetResult();
+            Assert.True(File.Exists(blocked), "The app's actual click handler did not enter its blocked UI work");
+            Stopwatch took = Stopwatch.StartNew();
+            Task<InputDone> rejected = app.InputAsync(new InputAction(InputKinds.Click) { Element = delete });
+            Ui.PumpUntil(() => rejected.IsCompleted, "the blocked UI input to be refused", TimeSpan.FromSeconds(4));
+            LiveAppException refused = Assert.Throws<LiveAppException>(() => rejected.GetAwaiter().GetResult());
+            Assert.Contains("UI is busy: input was not sent", refused.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain("popup", refused.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.True(took.Elapsed < TimeSpan.FromSeconds(4), $"A blocked UI held an input request for {took.Elapsed}");
+            File.WriteAllText(release, "continue");
+            List<Element> recovered = [.. Ui.Await(app.AgentTreeAsync([]), "the recovered app's tree").Roots.SelectMany(Flatten)];
+            Assert.Equal("Nobody greeted", recovered.Single(e => e.Name == "Hello").Text);
+            Assert.Equal("Clicked once", recovered.Single(e => e.Name == "Counter").Text);
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Click) { Element = delete }), "a fresh explicit click after recovery");
+            List<Element> retried = [.. Ui.Await(app.AgentTreeAsync([]), "the retried app's tree").Roots.SelectMany(Flatten)];
+            Assert.Equal("Delete handled", retried.Single(e => e.Name == "Hello").Text);
+        }
+        finally
+        {
+            File.WriteAllText(release, "continue");
+            Stop(window);
+            window.Close();
+        }
+
+        static IEnumerable<Element> Flatten(Element element) => new[] { element }.Concat(element.Children.SelectMany(Flatten));
+    }
 
     [AvaloniaFact]
     public void A_debugged_wpf_app_shows_its_elements_where_each_value_comes_from_and_goes_to_their_xaml()

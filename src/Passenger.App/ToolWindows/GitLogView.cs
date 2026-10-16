@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
@@ -90,18 +91,20 @@ public sealed class GitLogView : DockPanel
         fileList = new ListBox
         {
             Classes = { "tree" },
+            [ScrollViewer.HorizontalScrollBarVisibilityProperty] = ScrollBarVisibility.Auto,
             ItemsSource = files,
             ItemTemplate = new FuncDataTemplate<FileChange>((change, _) => change is null ? new TextBlock() : FileRow(change), supportsRecycling: false),
         };
         fileList.DoubleTapped += (_, _) => RequestDiff();
-        fileList.KeyDown += (_, e) =>
+        fileList.AddHandler(KeyDownEvent, (_, e) =>
         {
-            if (e.Key == Key.Enter || (e.Key == Key.D && e.KeyModifiers == (OperatingSystem.IsMacOS() ? KeyModifiers.Meta : KeyModifiers.Control)))
+            if (e.Source is ListBoxItem row && fileList.SelectedItem is FileChange selected && ReferenceEquals(fileList.ContainerFromItem(selected), row)
+                && (e.Key == Key.Enter || (e.Key == Key.D && e.KeyModifiers == (OperatingSystem.IsMacOS() ? KeyModifiers.Meta : KeyModifiers.Control))))
             {
                 RequestDiff();
                 e.Handled = true;
             }
-        };
+        }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         details = new TextBox
         {
             IsReadOnly = true,
@@ -112,8 +115,7 @@ public sealed class GitLogView : DockPanel
             Padding = new Thickness(10, 8),
             FontSize = 12,
         };
-        placeholder = new TextBlock { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-        placeholder.Bind(TextBlock.ForegroundProperty, placeholder.GetResourceObservable("Passenger.TextMuted"));
+        placeholder = new TextBlock { Classes = { "emptyHint" } };
 
         filter = new TextBox { Classes = { "search" }, PlaceholderText = "Text or hash", Width = 240, Margin = new Thickness(8, 0) };
         filter.TextChanged += (_, _) => Filter();
@@ -141,9 +143,9 @@ public sealed class GitLogView : DockPanel
         Border top = new()
         {
             [DockProperty] = Dock.Top,
-            Height = 36,
+            MinHeight = 36,
             BorderThickness = new Thickness(0, 0, 0, 1),
-            Child = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Children = { filter, branchFilter, refresh } },
+            Child = Across(new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Children = { filter, branchFilter, refresh } }),
         };
         top.Bind(Border.BorderBrushProperty, top.GetResourceObservable("Passenger.Divider"));
 
@@ -153,31 +155,28 @@ public sealed class GitLogView : DockPanel
         right.Children.Add(fileList);
         right.Children.Add(between);
         right.Children.Add(details);
-        Grid split = new() { ColumnDefinitions = new ColumnDefinitions("3*,1,2*") };
+        Grid split = new() { ColumnDefinitions = new ColumnDefinitions("3*,1,2*"), MinWidth = 600 };
         HairlineDivider divider = new(GridResizeDirection.Columns) { [Grid.ColumnProperty] = 1 };
         Grid.SetColumn(right, 2);
-        split.Children.Add(new Panel { Children = { list, placeholder } });
+        split.Children.Add(list);
         split.Children.Add(divider);
         split.Children.Add(right);
+        Control body = split;
         if (scope is null && range is null)
         {
             Branches = new BranchesPanel(vcs);
             Branches.FilterRequested += (_, branch) => FilterBranch(branch);
             Branches.NavigateRequested += (_, branch) => _ = SelectHashAsync(branch.Hash);
-            Grid withBranches = new() { ColumnDefinitions = new ColumnDefinitions("240,1,*") };
+            Grid withBranches = new() { ColumnDefinitions = new ColumnDefinitions("240,1,*"), MinWidth = split.MinWidth + 241 };
             HairlineDivider beside = new(GridResizeDirection.Columns) { [Grid.ColumnProperty] = 1 };
             Grid.SetColumn(split, 2);
             withBranches.Children.Add(Branches);
             withBranches.Children.Add(beside);
             withBranches.Children.Add(split);
-            Children.Add(top);
-            Children.Add(withBranches);
+            body = withBranches;
         }
-        else
-        {
-            Children.Add(top);
-            Children.Add(split);
-        }
+        Children.Add(top);
+        Children.Add(new Panel { Children = { Across(body), placeholder } });
 
         onHistoryChanged = (_, _) =>
         {
@@ -431,10 +430,11 @@ public sealed class GitLogView : DockPanel
         DockPanel subject = new() { VerticalAlignment = VerticalAlignment.Center, ClipToBounds = true };
         foreach (string label in row.Commit.Refs)
         {
-            TextBlock text = new() { Text = label, FontSize = 11 };
+            TextBlock text = new() { Text = label, FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis };
             text.Bind(TextBlock.ForegroundProperty, text.GetResourceObservable("Passenger.Vcs.RefText"));
             Border tag = new() { [DockProperty] = Dock.Left, CornerRadius = new CornerRadius(3), Padding = new Thickness(5, 1), Margin = new Thickness(0, 0, 6, 0), Child = text, VerticalAlignment = VerticalAlignment.Center };
             tag.Bind(Border.BackgroundProperty, tag.GetResourceObservable("Passenger.Vcs.Ref"));
+            ToolTip.SetTip(tag, label);
             subject.Children.Add(tag);
         }
         if (FileChangeOf(row.Commit) is { } change && change.Path != Scope!.Path && vcs.Repository is { } repository)
@@ -500,6 +500,28 @@ public sealed class GitLogView : DockPanel
         TextBlock folder = new() { Text = where, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0), FontSize = 12 };
         folder.Bind(TextBlock.ForegroundProperty, folder.GetResourceObservable("Passenger.TextMuted"));
         return new StackPanel { Orientation = Orientation.Horizontal, Height = RowHeight, Children = { icon, name, folder } };
+    }
+
+    private static ScrollViewer Across(Control content)
+    {
+        ScrollViewer reader = new()
+        {
+            Content = content,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+        };
+        if (content is Grid columns)
+        {
+            columns.Width = columns.MinWidth;
+            reader.PropertyChanged += (_, change) =>
+            {
+                if (change.Property == ScrollViewer.ViewportProperty)
+                {
+                    columns.Width = Math.Max(columns.MinWidth, reader.Viewport.Width);
+                }
+            };
+        }
+        return reader;
     }
 
     /// <summary>A row's part of the graph: the lines through it, lane by lane, and the commit's dot.</summary>

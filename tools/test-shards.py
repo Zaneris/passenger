@@ -3,8 +3,8 @@
 
 CI (.github/workflows/test.yml) splits each system's tests across parallel shards, each a runner of its own. A shard
 lists the whole suite (`dotnet test --list-tests`) and `split` deals its classes out by their seconds on that system in
-tests/Passenger.Tests/TestTimes.json, the longest first, each to the shard with the fewest seconds so far, so every
-shard of a commit deals the same; each runs its own hand with `dotnet test --settings shard-N.runsettings`, whose
+tests/Passenger.Tests/TestTimes.json, the longest first, each where its collection adds the least to the projected
+finish time, so every shard of a commit deals the same; each runs its own hand with `dotnet test --settings shard-N.runsettings`, whose
 TestCaseFilter names its classes. A class the times lack weighs its budget in TestBudget.json. Before any test runs,
 `check` takes what each shard's settings list and fails unless every test of the suite is in exactly one. Once the
 shards have run, each system's summary job runs `cover`: every shard's job succeeded and every test of the suite has
@@ -16,10 +16,12 @@ import argparse
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 from collections import Counter
+from decimal import Decimal
 from xml.sax.saxutils import escape
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -93,15 +95,84 @@ def weights(classes, system, times, budget):
     return {c: known.get(c, budget.get("classes", {}).get(c, default)) for c in classes}, guessed
 
 
-def deal(weights, count):
-    """The classes in count hands, the heaviest first, each to the lightest hand so far (the first of equals)."""
+def collections(classes, root=ROOT):
+    """Read the suite's explicit collection conventions; fail when a new convention needs a new timing model."""
+    folder = os.path.join(root, "tests", "Passenger.Tests")
+    with open(os.path.join(folder, "Collections.cs"), encoding="utf-8") as file:
+        conventions = file.read()
+    if (len(re.findall(r"\[assembly:\s*CollectionBehavior\b", conventions)) != 1
+            or not re.search(r"\[assembly:\s*CollectionBehavior\(CollectionBehavior\.CollectionPerAssembly\)\]", conventions)
+            or not re.search(r"\[CollectionDefinition\(Name,\s*DisableParallelization\s*=\s*true\)\]\s*"
+                             r"public sealed class Alone\s*\{\s*public const string Name\s*=\s*\"Alone\";", conventions)):
+        sys.exit("test-shards: Collections.cs changed the assembly/Alone convention; update the parallel timing model")
+    with open(os.path.join(folder, "Debugging", "Helpers", "DebugSession.cs"), encoding="utf-8") as file:
+        debugger = file.read()
+    if len(re.findall(r'public const string Collection\s*=\s*"Debugger";', debugger)) != 1:
+        sys.exit("test-shards: DebugSession.Collection changed; update the parallel timing model")
+    declarations = {}
+    definitions = 0
+    for place, directories, files in os.walk(folder):
+        directories[:] = sorted(d for d in directories if d not in ("bin", "obj"))
+        for name in sorted(files):
+            if not name.endswith(".cs"):
+                continue
+            with open(os.path.join(place, name), encoding="utf-8") as file:
+                source = file.read()
+            definitions += len(re.findall(r"^\s*\[CollectionDefinition\b", source, re.MULTILINE))
+            attributes_count = len(re.findall(r"^\s*\[Collection\b", source, re.MULTILINE))
+            matched_attributes = 0
+            namespace = re.search(r"^namespace ([\w.]+);", source, re.MULTILINE)
+            if namespace is None:
+                if attributes_count:
+                    sys.exit(f"test-shards: {name} has a collection outside the supported file-scoped namespace convention")
+                continue
+            for declaration in re.finditer(r"(?P<attributes>(?:^\[[^\r\n]+\]\r?\n)*)"
+                                           r"^public (?:(?:sealed|partial|abstract) )*class (?P<name>\w+)\b", source, re.MULTILINE):
+                whole = namespace[1] + "." + declaration["name"]
+                short = whole[len(PREFIX):] if whole.startswith(PREFIX) else whole
+                attributes = re.findall(r"\[Collection\(([^\r\n]+)\)\]", declaration["attributes"])
+                matched_attributes += len(attributes)
+                if short in classes:
+                    declarations.setdefault(short, set()).update(attributes)
+            if attributes_count != matched_attributes:
+                sys.exit(f"test-shards: {name} has a collection outside the supported class attribute convention")
+    if definitions != 1:
+        sys.exit("test-shards: a collection definition was added; update the parallel timing model")
+    groups = {}
+    for name in sorted(classes):
+        if name not in declarations:
+            sys.exit(f"test-shards: no supported source declaration for {name}; its collection cannot be inferred")
+        attributes = declarations[name]
+        if not attributes:
+            groups[name] = "window"
+        elif attributes == {"Alone.Name"}:
+            groups[name] = "alone"
+        elif attributes == {"DebugSession.Collection"}:
+            groups[name] = "debugger"
+        else:
+            sys.exit(f"test-shards: {name} has an unsupported/conflicting collection: {sorted(attributes)}")
+    return groups
+
+
+def duration(seconds, groups):
+    """Alone runs after the window and debugger collections, which run beside each other."""
+    totals = {group: sum(spent for name, spent in seconds.items() if groups[name] == group)
+              for group in ("alone", "window", "debugger")}
+    return totals["alone"] + max(totals["window"], totals["debugger"])
+
+
+def deal(weights, count, groups):
+    """The longest classes first, each where its collection adds the least to the projected finish time."""
+    # Compare decimal seconds exactly: Python 3.12 changed float summation and therefore near-equal shard ties.
+    weights = {name: Decimal(str(seconds)) for name, seconds in weights.items()}
     hands = [[] for _ in range(count)]
-    totals = [0.0] * count
+    seconds = [{} for _ in range(count)]
     for name in sorted(weights, key=lambda c: (-weights[c], c)):
-        lightest = min(range(count), key=lambda i: (totals[i], i))
+        lightest = min(range(count), key=lambda i: (duration({**seconds[i], name: weights[name]}, groups),
+                                                   sum(seconds[i].values()), i))
         hands[lightest].append(name)
-        totals[lightest] += weights[name]
-    return hands, totals
+        seconds[lightest][name] = weights[name]
+    return hands, [float(duration(hand, groups)) for hand in seconds]
 
 
 def run_settings(classes):
@@ -119,9 +190,10 @@ def split(arguments):
         sys.exit(f"test-shards: {len(classes)} classes cannot be dealt to {arguments.of} shards")
     counts = Counter(owner(test) for test in tests)
     seconds, guessed = weights(classes, arguments.system, load(arguments.times, {}), load(arguments.budget, {}))
-    hands, totals = deal(seconds, arguments.of)
+    hands, totals = deal(seconds, arguments.of, collections(classes))
     print(f"{len(tests)} tests in {len(classes)} classes, dealt to {arguments.of} shards by their seconds on "
-          f"{arguments.system} (TestTimes.json; a class it lacks by its budget)")
+          f"{arguments.system} (TestTimes.json; a class it lacks by its budget). Window and debugger collections "
+          "overlap; Alone follows both. Estimates exclude runner/build overhead.")
     for number, (hand, total) in enumerate(zip(hands, totals), 1):
         print(f"\nShard {number}: {len(hand)} classes, {sum(counts[c] for c in hand)} tests, "
               f"about {total / 60:.1f} minutes")
@@ -230,8 +302,9 @@ def cover(arguments):
         print(lines[-1])
         # Dealt again from this run's own seconds, would the slowest shard end sooner by enough to be worth a commit?
         seconds = {name: spent for hand in hands.values() for name, spent in hand.items()}
-        slowest = max(sum(hand.values()) for hand in hands.values())
-        _, totals = deal(seconds, len(hands))
+        groups = collections(seconds)
+        slowest = max(duration(hand, groups) for hand in hands.values())
+        _, totals = deal(seconds, len(hands), groups)
         if slowest - max(totals) >= WORTH_DEALING_AGAIN:
             message = (f"Dealt from this run's own times, the slowest shard on {system} would take "
                        f"{max(totals) / 60:.1f} minutes of tests rather than {slowest / 60:.1f}: `just test-times "

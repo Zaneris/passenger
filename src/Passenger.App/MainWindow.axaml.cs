@@ -23,7 +23,7 @@ public partial class MainWindow : Window
 {
     /// <summary>The window's least width and height (its MinWidth and MinHeight), which a screenshot's <c>--size</c> is
     /// held to: Avalonia would widen a smaller window to them without a word.</summary>
-    public const double SmallestWidth = 800;
+    public const double SmallestWidth = 640;
 
     public const double SmallestHeight = 500;
 
@@ -460,7 +460,7 @@ public partial class MainWindow : Window
 
     private void OnDebugStateChanged()
     {
-        StopButton.IsVisible = session.Debug.IsDebugging || buildRun.IsRunning;
+        StopButton.IsVisible = session.Debug.IsDebugging || buildRun.IsRunning || buildRun.IsLaunching;
         ShowHotReloadButtons();
     }
 
@@ -486,6 +486,17 @@ public partial class MainWindow : Window
     /// <summary>The tool windows, each in the place IntelliJ gives it at first.</summary>
     private void AddToolWindows()
     {
+        Dock.FocusCenterRequested += (_, _) =>
+        {
+            if (Editors.Active is not null)
+            {
+                FocusEditor();
+            }
+            else
+            {
+                welcome.FocusSearch();
+            }
+        };
         Dock.Add(new Docking.ToolWindow("explorer", "Explorer", "Icon.Explorer", Explorer, Docking.ToolAnchor.LeftTop)
         {
             Action = AppActions.FocusExplorer,

@@ -1,8 +1,12 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Debugging;
+using Passenger.App.Docking;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
@@ -106,6 +110,83 @@ public sealed class HotReloadTests : IClassFixture<RestoredFolders>, IDisposable
     }
 
     [AvaloniaFact]
+    public void A_ready_update_that_excludes_a_missing_dependency_baseline_is_discarded_then_both_edits_can_be_retried()
+    {
+        string library = PathNames.Canonical(Directory.CreateDirectory(Path.Combine(folder, "Library")).FullName);
+        string words = Path.Combine(library, "Words.cs");
+        File.WriteAllText(words, "public static class Words\n{\n    public static string Greeting() => \"Hello\";\n}\n");
+        File.WriteAllText(GreeterPath, Greeter.Replace("Hello {i}", "{Words.Greeting()} {i}", StringComparison.Ordinal));
+        File.WriteAllText(Path.Combine(library, "Library.csproj"), """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
+            </Project>
+            """);
+        string project = Path.Combine(folder, "Greetings.csproj");
+        File.WriteAllText(project, File.ReadAllText(project).Replace("</Project>", """
+              <ItemGroup><Compile Remove="Library/**/*.cs" /><ProjectReference Include="Library/Library.csproj" /></ItemGroup>
+            </Project>
+            """, StringComparison.Ordinal));
+        Restore.Run(project);
+        MainWindow window = Open();
+        string baseline = Path.Combine(library, "obj", "Debug", "net10.0", "Library.dll");
+        byte[]? built = null;
+        try
+        {
+            Ui.Run(window, AppActions.Debug);
+            Ui.WaitFor(() => Output(window).Contains("Hello 2", StringComparison.Ordinal), "the main program and referenced library to run");
+            DebugSession first = window.Debugger.Session!;
+            built = File.ReadAllBytes(baseline);
+            File.Delete(baseline);
+            window.OpenFile(GreeterPath);
+            Replace(window, "static class Greeter", "// Main edit pending.\nstatic class Greeter");
+            Replace(window, "Console.WriteLine($\"{Words.Greeting()} {i}\");", "Console.WriteLine($\"{Words.Greeting()} {i}\"); Console.WriteLine(\"main edited\");");
+            // OpenFile accepts the temp directory's alias (/var on macOS) and owns its canonical (/private/var)
+            // document. Line mappings and the acknowledged Files use that same canonical document identity.
+            Assert.Null(window.OpenFile(Path.Combine(folder, "Library", "Words.cs")));
+            Assert.Equal(words, window.EditorArea.Active!.Path);
+            Replace(window, "public static class Words", "// Library edit pending.\npublic static class Words");
+            Replace(window, "Hello", "Howdy");
+
+            HotReloadOutcome refused = Ui.Await(window.Debugger.ApplyChangesAsync(), "the partial ready batch to be refused atomically");
+            TestContext.Current.TestOutputHelper?.WriteLine($"Partial batch: {refused.Result}: {refused.Said}");
+            Assert.Equal(HotReloadResult.RestartNeeded, refused.Result);
+            Assert.Contains(refused.Problems, p => p.Message.Contains("has not been built", StringComparison.Ordinal));
+            Assert.Empty(refused.Files);
+            Assert.Empty(refused.Modules);
+            Assert.True(window.Debugger.HotReload!.Changed);
+            Assert.Equal(4, window.Debugger.BuiltLine(GreeterPath, 5));
+            Assert.Equal(2, window.Debugger.BuiltLine(words, 3));
+            Assert.DoesNotContain("main edited", Output(window), StringComparison.Ordinal);
+            Assert.DoesNotContain("Howdy", Output(window), StringComparison.Ordinal);
+
+            // Ready was discarded, so Roslyn did not commit either project. Restoring the original dependency permits
+            // both edits to apply in the same session, without a second edit, partial commit or program restart.
+            File.WriteAllBytes(baseline, built);
+            HotReloadOutcome applied = Ui.Await(window.Debugger.ApplyChangesAsync(), "both pending projects to apply after the baseline is restored");
+            Assert.True(applied.Result == HotReloadResult.Applied, applied.Said);
+            Assert.Equal(2, applied.Modules.Count);
+            Assert.Contains(GreeterPath, applied.Files);
+            Assert.Contains(words, applied.Files);
+            Assert.False(window.Debugger.HotReload.Changed);
+            Assert.Equal(5, window.Debugger.BuiltLine(GreeterPath, 5));
+            Assert.Equal(3, window.Debugger.BuiltLine(words, 3));
+            Assert.Same(first, window.Debugger.Session);
+            int after = Output(window).Length;
+            Ui.WaitFor(() => Output(window)[after..].Contains("main edited", StringComparison.Ordinal)
+                && Output(window)[after..].Contains("Howdy", StringComparison.Ordinal), "the same program to run both edits");
+            Assert.DoesNotContain("Hello", Output(window)[after..], StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (built is not null)
+            {
+                File.WriteAllBytes(baseline, built);
+            }
+            End(window);
+        }
+    }
+
+    [AvaloniaFact]
     public void A_method_on_the_stack_runs_its_edited_statement_when_the_program_goes_on()
     {
         MainWindow window = Open();
@@ -129,6 +210,148 @@ public sealed class HotReloadTests : IClassFixture<RestoredFolders>, IDisposable
         }
         finally
         {
+            End(window);
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_comment_only_edit_is_acknowledged_and_a_later_code_edit_still_applies()
+    {
+        MainWindow window = Open();
+        try
+        {
+            Ui.Run(window, AppActions.Debug);
+            Ui.WaitFor(() => Output(window).Contains("Hello 2", StringComparison.Ordinal), "the program to greet");
+            window.OpenFile(GreeterPath);
+            Replace(window, "static class Greeter", "static class Greeter // Only a comment");
+            HotReloadOutcome comment = Ui.Await(window.Debugger.ApplyChangesAsync(), "the insignificant edit to be acknowledged");
+            Assert.Equal(HotReloadResult.NothingToApply, comment.Result);
+            Assert.Contains(GreeterPath, comment.Files);
+            Assert.False(window.Debugger.HotReload!.Changed);
+
+            Replace(window, "Hello", "Howdy");
+            HotReloadOutcome applied = Ui.Await(window.Debugger.ApplyChangesAsync(), "the later code edit to apply");
+            Assert.True(applied.Result == HotReloadResult.Applied, applied.Said);
+            Ui.WaitFor(() => Output(window).Contains("Howdy", StringComparison.Ordinal), "the program to run the code edited after the comment");
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void An_unavailable_build_baseline_keeps_edits_and_line_mapping_pending_until_the_program_is_restarted(bool light)
+    {
+        MainWindow window = Open();
+        window.RequestedThemeVariant = light ? Avalonia.Styling.ThemeVariant.Light : Avalonia.Styling.ThemeVariant.Dark;
+        window.SetRenderScaling(2);
+        string baseline = Path.Combine(folder, "obj", "Debug", "net10.0", "Greetings.dll");
+        byte[]? built = null;
+        try
+        {
+            window.OpenFile(GreeterPath);
+            window.EditorArea.CodeEditor.GoTo(new TextPosition(4, 8));
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            Ui.Run(window, AppActions.Debug);
+            Paused(window, "the program to stop before greeting");
+            DebugSession first = window.Debugger.Session!;
+            Assert.True(File.Exists(baseline), $"The normal build should have emitted {baseline}");
+            // The running program has its bin copy, but a clean or external build can remove Roslyn's obj baseline.
+            built = File.ReadAllBytes(baseline);
+            File.Delete(baseline);
+            Replace(window, "static class Greeter", "// The edit is still pending.\nstatic class Greeter");
+            Replace(window, "Hello", "Howdy");
+            Assert.Equal(4, window.Debugger.BuiltLine(GreeterPath, 5));
+
+            HotReloadOutcome refused = Ui.Await(window.Debugger.ApplyChangesAsync(), "Hot Reload to report the missing build baseline");
+            TestContext.Current.TestOutputHelper?.WriteLine($"Missing baseline: {refused.Result}: {refused.Said}");
+            Assert.True(refused.Result == HotReloadResult.RestartNeeded, $"An unavailable baseline must not consume the edit: {refused.Said}");
+            Assert.Contains(refused.Problems, p => p.Message.Contains("has not been built", StringComparison.Ordinal));
+            Assert.Contains("built", refused.Said, StringComparison.Ordinal);
+            Assert.Empty(refused.Files);
+            Assert.True(window.Debugger.HotReload!.Changed);
+            Assert.Equal(4, window.Debugger.BuiltLine(GreeterPath, 5));
+            Assert.Same(first, window.Debugger.Session);
+            window.ShowToolWindow("problems");
+            foreach (double width in new double[] { 1200, 683, 640, 1200 })
+            {
+                window.Width = width;
+                Ui.Settle();
+                TextBlock summary = Assert.Single(window.BottomPanel.Problems.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == refused.Said);
+                ListBox list = Assert.Single(window.BottomPanel.Problems.GetVisualDescendants().OfType<ListBox>());
+                Assert.Equal(refused.Said, ToolTip.GetTip(summary));
+                Assert.True(summary.TextLayout.Width <= summary.Bounds.Width + 1, "The Hot Reload summary must ellipsize within its row");
+                foreach (Control viewport in summary.GetVisualAncestors().OfType<Control>().Where(control => control == list || control.ClipToBounds))
+                {
+                    Point at = summary.TranslatePoint(default, viewport)!.Value;
+                    Assert.True(at.X >= -1 && at.X + summary.Bounds.Width <= viewport.Bounds.Width + 1,
+                        $"The Hot Reload summary escapes its {viewport.GetType().Name} viewport at window width {width}");
+                }
+                UiAudit.Capture(window, $"hot-reload-missing-baseline-{width:0}-" + (light ? "light" : "dark"));
+                foreach (Passenger.App.Run.Problem problem in refused.Problems)
+                {
+                    ListBoxItem item = Assert.Single(list.GetVisualDescendants().OfType<ListBoxItem>(), control => control.DataContext is Passenger.App.ToolWindows.ProblemRow row && row.Problem == problem);
+                    TextBlock message = Assert.Single(item.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == problem.Message);
+                    foreach (TextBlock label in item.GetVisualDescendants().OfType<TextBlock>().Where(text => !string.IsNullOrEmpty(text.Text)))
+                    {
+                        Point at = label.TranslatePoint(default, list)!.Value;
+                        Assert.True(at.X >= 0 && at.X + label.Bounds.Width <= list.Bounds.Width,
+                            $"The actual Hot Reload problem label '{label.Text}' escapes its list at window width {width}: {at} + {label.Bounds.Width} in {list.Bounds.Width}");
+                        Assert.True(label.TextLayout.Width <= label.Bounds.Width + 1, "A Hot Reload problem label must ellipsize within its row");
+                    }
+                    Assert.Equal(problem.Message, ToolTip.GetTip(message));
+                }
+            }
+
+            DockLayout bottom = window.DockHost.Capture();
+            window.DockHost.Apply(bottom with
+            {
+                LeftWidth = 200,
+                Windows = bottom.Windows.ToDictionary(pair => pair.Key, pair => pair.Key == "problems"
+                    ? pair.Value with { Anchor = ToolAnchor.LeftTop, Shown = true }
+                    : pair.Value.Anchor == ToolAnchor.LeftTop ? pair.Value with { Shown = false } : pair.Value),
+            });
+            Ui.Settle();
+            ToggleButton hot = Assert.Single(window.BottomPanel.Problems.GetVisualDescendants().OfType<ToggleButton>(), button => button.IsChecked == true);
+            Point hotAt = hot.TranslatePoint(default, window.BottomPanel.Problems)!.Value;
+            Assert.True(hotAt.X >= 0 && hotAt.X + hot.Bounds.Width <= window.BottomPanel.Problems.Bounds.Width,
+                "The dynamically shown Hot Reload category must remain visible when its populated Problems pane moves to a narrow side dock");
+            UiAudit.Capture(window, $"hot-reload-missing-baseline-side-200-{(light ? "light" : "dark")}");
+            window.DockHost.Apply(bottom);
+            Ui.Settle();
+
+            // Roslyn acknowledged its no-effect snapshot internally. Restoring the exact DLL must not let a second
+            // Apply silently consume the pending text; a new build/session is needed to recover safely.
+            File.WriteAllBytes(baseline, built);
+            HotReloadOutcome again = Ui.Await(window.Debugger.ApplyChangesAsync(), "the pending edit to remain restart-required");
+            Assert.Equal(HotReloadResult.RestartNeeded, again.Result);
+            Assert.Equal(refused.Said, again.Said);
+            Assert.Empty(again.Files);
+            Assert.True(window.Debugger.HotReload.Changed);
+            Assert.Equal(4, window.Debugger.BuiltLine(GreeterPath, 5));
+            Assert.Same(first, window.Debugger.Session);
+
+            Ui.Run(window, AppActions.ApplyHotReloadChanges);
+            Ui.WaitFor(() => window.Debugger.Session is { State: DebugState.Paused } next && next != first && window.Debugger.Stop is not null,
+                "the rebuilt program to stop at its retained breakpoint");
+            Assert.False(window.Debugger.HotReload!.Changed);
+            Assert.Equal(5, window.Debugger.BuiltLine(GreeterPath, 5));
+            window.EditorArea.CodeEditor.GoTo(new TextPosition(5, 8));
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            Ui.Run(window, AppActions.Resume);
+            Ui.WaitFor(() => Output(window).Contains("Howdy 2", StringComparison.Ordinal), "the rebuilt program to run the pending edit");
+            Assert.Contains("Howdy 1", Output(window), StringComparison.Ordinal);
+            Assert.DoesNotContain("Hello", Output(window), StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (built is not null)
+            {
+                File.WriteAllBytes(baseline, built);
+            }
             End(window);
         }
     }

@@ -128,12 +128,17 @@ internal static class BindingReader
 
     /// <summary>Every object of the app's windows and popups: their visual trees, which hold what templates made, and their
     /// logical trees, which hold what is not shown (a tab not chosen).</summary>
-    private static List<AvaloniaObject> Everything()
+    internal static List<AvaloniaObject> Everything() => Everything(Inspector.AllTopLevels());
+
+    /// <summary>A freshly populated view's objects, before it is attached to any window.</summary>
+    internal static List<AvaloniaObject> Everything(AvaloniaObject root) => Everything([root]);
+
+    private static List<AvaloniaObject> Everything(IEnumerable<AvaloniaObject> roots)
     {
         List<AvaloniaObject> all = [];
         HashSet<AvaloniaObject> seen = new(ReferenceEqualityComparer.Instance);
         Stack<AvaloniaObject> left = new();
-        foreach (TopLevel top in Inspector.AllTopLevels())
+        foreach (AvaloniaObject top in roots)
         {
             left.Push(top);
         }
@@ -228,7 +233,7 @@ internal static class BindingReader
 
     /// <summary>A property of an element by the name its attribute has: its own, or an attached one as Owner.Name (the owner's
     /// XML prefix left off), or its own written in full (TextBlock.Text).</summary>
-    private static AvaloniaProperty? PropertyNamed(AvaloniaObject made, string name)
+    internal static AvaloniaProperty? PropertyNamed(AvaloniaObject made, string name)
     {
         int dot = name.LastIndexOf('.');
         if (dot < 0)

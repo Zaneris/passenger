@@ -38,7 +38,7 @@ public sealed class ActionPopup : UserControl
         empty = new TextBlock { Classes = { "muted" }, Text = "No actions match", Margin = new Thickness(12, 0, 12, 12), IsVisible = false };
         results.DoubleTapped += (_, _) => Choose();
         query.TextChanged += (_, _) => Refresh();
-        query.AddHandler(KeyDownEvent, OnQueryKeyDown, RoutingStrategies.Tunnel);
+        AddHandler(KeyDownEvent, OnPopupKeyDown, RoutingStrategies.Tunnel);
         Content = new Border
         {
             Classes = { "popup" },
@@ -86,7 +86,7 @@ public sealed class ActionPopup : UserControl
         empty.IsVisible = found.Count == 0;
     }
 
-    private void OnQueryKeyDown(object? sender, KeyEventArgs e)
+    private void OnPopupKeyDown(object? sender, KeyEventArgs e)
     {
         switch (e.Key)
         {
@@ -118,23 +118,31 @@ public sealed class ActionPopup : UserControl
     private Control Row(IdeAction action)
     {
         TextBlock title = new() { Text = action.Title, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        if (!action.CanRun(context))
+        string? why = action.WhyNot(context);
+        if (why is not null)
         {
             // Listed, so it can be found, but greyed as Rider greys an action that cannot run where it is asked for.
             title.Bind(TextBlock.ForegroundProperty, title.GetResourceObservable("Passenger.TextMuted"));
         }
-        TextBlock group = new() { Text = action.Group, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0) };
+        TextBlock group = new() { Text = action.Group, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         group.Bind(TextBlock.ForegroundProperty, group.GetResourceObservable("Passenger.TextMuted"));
-        TextBlock keys = new() { Text = actions.Shortcut(action.Id) ?? string.Empty, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 4, 0) };
+        string shortcut = actions.Shortcut(action.Id) ?? string.Empty;
+        TextBlock keys = new() { Text = shortcut, FontSize = 12, VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Right, TextTrimming = TextTrimming.CharacterEllipsis };
         keys.Bind(TextBlock.ForegroundProperty, keys.GetResourceObservable("Passenger.TextMuted"));
-        DockPanel row = new() { Height = 26, Margin = new Thickness(4, 0) };
-        DockPanel.SetDock(keys, Dock.Right);
-        row.Children.Add(keys);
-        row.Children.Add(new StackPanel
+        Grid row = new()
         {
-            Orientation = Orientation.Horizontal,
-            Children = { title, group },
-        });
+            Height = 26,
+            Background = Brushes.Transparent,
+            Margin = new Thickness(4, 0),
+            ColumnSpacing = 10,
+            ColumnDefinitions = new ColumnDefinitions("3*,*,2*"),
+            Children = { title, group, keys },
+        };
+        Grid.SetColumn(group, 1);
+        Grid.SetColumn(keys, 2);
+        ToolTip.SetTip(row, action.Title + "\n" + action.Group + (shortcut.Length > 0 ? "\n" + shortcut : string.Empty)
+            + (why is not null ? "\n" + why : string.Empty));
         return row;
     }
 }

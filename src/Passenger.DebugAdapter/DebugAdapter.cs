@@ -54,6 +54,7 @@ public sealed class DebugAdapter
     {
         // The client that went may have gone before configurationDone's answer could be written.
         Volatile.Write(ref aborted, true);
+        debugger.CancelStartup();
         LetEventsGo();
         try
         {
@@ -84,7 +85,7 @@ public sealed class DebugAdapter
         connection.Handle<InitializeArguments, DapCapabilities>("initialize", Initialize, then: () => connection.SendEvent("initialized"));
         connection.Handle<LaunchArguments>("launch", Launch);
         connection.Handle<AttachArguments>("attach", Attach);
-        connection.Handle<DapEmpty>("configurationDone", ConfigurationDone, then: LetEventsGo);
+        connection.Handle<DapEmpty>("configurationDone", ConfigurationDone, finished: LetEventsGo);
         connection.Handle<SetBreakpointsArguments, SetBreakpointsResponse>("setBreakpoints", SetBreakpoints);
         connection.Handle<SetFunctionBreakpointsArguments, SetBreakpointsResponse>("setFunctionBreakpoints", SetFunctionBreakpoints);
         connection.Handle<SetExceptionBreakpointsArguments, SetExceptionBreakpointsResponse>("setExceptionBreakpoints", SetExceptionBreakpoints);
@@ -233,8 +234,16 @@ public sealed class DebugAdapter
         });
         connection.Handle<ThreadArguments>("stepOut", arguments => Locked(() => debugger.Step(arguments.ThreadId, StepType.StepOut)));
         connection.Handle<ThreadArguments>("pause", _ => Locked(() => debugger.Pause()));
-        connection.Handle<DisconnectArguments>("disconnect", arguments => Locked(() => debugger.Disconnect(arguments.TerminateDebuggee ?? false)), then: RequestShutdown);
-        connection.Handle<TerminateArguments>("terminate", _ => Locked(() => debugger.Terminate()));
+        connection.Handle<DisconnectArguments>("disconnect", arguments =>
+        {
+            debugger.CancelStartup();
+            return Locked(() => debugger.Disconnect(arguments.TerminateDebuggee ?? false));
+        }, then: RequestShutdown);
+        connection.Handle<TerminateArguments>("terminate", _ =>
+        {
+            debugger.CancelStartup();
+            return Locked(() => debugger.Terminate());
+        });
         connection.Handle<ThreadArguments, ExceptionInfoResponse>("exceptionInfo", ExceptionInfo);
         // Not under the engine's lock: a program waiting for input may be running, and the write is all.
         connection.Handle<InputArguments>("input", arguments =>
@@ -388,15 +397,14 @@ public sealed class DebugAdapter
             await debugger.DrainRuntimeEventQueue();
             await debugger.ConfigurationDone().ConfigureAwait(false);
         }
-        catch
+        finally
         {
-            held.Dispose();
-            throw;
-        }
-        Interlocked.Exchange(ref configuring, held);
-        if (Volatile.Read(ref aborted))
-        {
-            LetEventsGo();
+            // A failed configuration answers before a waiting disconnect can take the lock and end the adapter too.
+            Interlocked.Exchange(ref configuring, held);
+            if (Volatile.Read(ref aborted))
+            {
+                LetEventsGo();
+            }
         }
     }
 

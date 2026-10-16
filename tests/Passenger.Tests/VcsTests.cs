@@ -3,8 +3,11 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
+using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.Docking;
 using Passenger.App.ToolWindows;
 using Passenger.App.Vcs;
 using Passenger.Core;
@@ -31,6 +34,53 @@ public sealed class VcsTests : IDisposable
     }, folder);
 
     public void Dispose() => TestFolders.Delete(folder);
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_commits_diff_reads_long_file_names_even_when_Git_does_not_allow_long_working_paths(bool light)
+    {
+        string name = "SubscriptionRenewal" + new string('x', 210) + ".txt";
+        string path = Path.Combine(folder, name);
+        File.WriteAllText(path, "Committed subscription\n");
+        Git("-c", "core.longpaths=true", "add", "--", name);
+        Git("commit", "-q", "-m", "Long subscription path");
+        Git("config", "core.longpaths", "false");
+        string revision = Git("rev-parse", "HEAD").Trim();
+        Assert.True(name.Length < 255 && revision.Length + 1 + name.Length > 255);
+        MainWindow window = Open();
+        window.RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark;
+        window.SetRenderScaling(2);
+        try
+        {
+            Ui.Run(window, AppActions.ShowGit);
+            GitLogView log = window.GitLog;
+            Ui.WaitFor(() => log.Rows.Count == 2, "the committed long-name file's history");
+            log.Select(log.Rows.Single(row => row.Commit.Hash == revision).Commit);
+            Ui.WaitFor(() => log.Files.Count == 1, "the commit's actual long-name file");
+            ListBox changed = Find(log, log.Files);
+            changed.SelectedIndex = 0;
+            Ui.Settle();
+            Assert.True(changed.ContainerFromIndex(0)!.Focus());
+            Ui.Press(window, "ENTER");
+            DiffWindow diff = Assert.Single(window.OwnedWindows.OfType<DiffWindow>());
+            diff.RequestedThemeVariant = window.RequestedThemeVariant;
+            Assert.Equal("Committed subscription\n", diff.View.Right.Document.Snapshot.ToString());
+            Assert.Equal(string.Empty, diff.View.Left.Document.Snapshot.ToString());
+            foreach (double width in new double[] { 1200, 640 })
+            {
+                diff.Width = width;
+                diff.SetRenderScaling(2);
+                Ui.Settle();
+                UiAudit.Capture(diff, $"git-revision-long-name-{width:0}-{(light ? "light" : "dark")}");
+            }
+            diff.Close();
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
 
     [AvaloniaFact]
     public void An_edit_shows_a_change_bar_and_committing_it_from_the_commit_window_clears_it()
@@ -60,6 +110,176 @@ public sealed class VcsTests : IDisposable
         Assert.Empty(commit.Rows);
         Assert.Empty(commit.Message);
         window.Close();
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_populated_commit_keeps_its_files_message_and_actions_reachable_in_narrow_panes(bool light)
+    {
+        string directory = Path.Combine(folder, "src", "CustomerAdministrationAndReporting", "InternationalSubscriptionProcessing");
+        Directory.CreateDirectory(directory);
+        string[] paths = [.. Enumerable.Range(0, 24).Select(index => Path.Combine(directory, $"SubscriptionRenewalConfirmationForCustomersWithDeferredPaymentTerms{index:00}.txt"))];
+        foreach (string path in paths)
+        {
+            File.WriteAllText(path, "Original\n");
+        }
+        Git("add", "-A");
+        Git("commit", "-q", "-m", "Subscriptions");
+        foreach (string path in paths)
+        {
+            File.AppendAllText(path, "Changed\n");
+        }
+        File.WriteAllText(Path.Combine(folder, "NewSubscriptionReconciliationNotes.txt"), "Unversioned\n");
+        MainWindow window = Open();
+        window.RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark;
+        window.SetRenderScaling(2);
+        try
+        {
+            Ui.Run(window, AppActions.Commit);
+            CommitView commit = window.CommitView;
+            Ui.WaitFor(() => commit.Rows.OfType<CommitRow>().Count() == 25, "the real changed and unversioned files in Commit");
+            Assert.Equal(24, commit.Chosen.Count);
+            ListBox files = Find(commit, commit.Rows);
+            CommitRow chosen = commit.Rows.OfType<CommitRow>().First(row => row.Change.Kind is ChangeKind.Modified);
+            CheckBox all = files.ContainerFromIndex(0)!.GetVisualDescendants().OfType<CheckBox>().Single();
+            Assert.True(all.Focus());
+            Ui.Press(window, "SPACE");
+            Assert.Empty(commit.Chosen);
+            files.SelectedItem = chosen;
+            CheckBox one = files.ContainerFromItem(chosen)!.GetVisualDescendants().OfType<CheckBox>().Single();
+            Assert.True(one.Focus());
+            Ui.Press(window, "SPACE");
+            Assert.Equal(chosen.Change.Path, Assert.Single(commit.Chosen).Path);
+            string text = string.Join(" ", Enumerable.Repeat("Preserve customer subscription renewal confirmation and deferred payment reporting across every region.", 10));
+            commit.FocusMessage();
+            window.KeyTextInput(text);
+            TextBox message = commit.GetVisualDescendants().OfType<TextBox>().Single(box => box.AcceptsReturn);
+            int caret = message.CaretIndex;
+            DockLayout layout = window.DockHost.Capture();
+            List<string> problems = [];
+            int refreshes = 0;
+            (Size Extent, Size Viewport, double Offset, object? Item, double Top)? readingBeforeResize = null;
+            window.Vcs.Changed += (_, _) => refreshes++;
+            foreach (double width in new double[] { 1200, 683, 640, 200 })
+            {
+                window.Width = width == 200 ? 640 : width;
+                window.DockHost.Apply(layout with
+                {
+                    LeftWidth = 200,
+                    Windows = layout.Windows.ToDictionary(pair => pair.Key, pair => pair.Key == "commit"
+                        ? pair.Value with { Anchor = width == 200 ? ToolAnchor.LeftTop : ToolAnchor.BottomLeft, Shown = true }
+                        : pair.Value with { Shown = false }),
+                });
+                Ui.Settle();
+                Assert.Same(chosen, files.SelectedItem);
+                Assert.Equal(chosen.Change.Path, Assert.Single(commit.Chosen).Path);
+                Assert.Equal(text, commit.Message);
+                Assert.Equal(caret, message.CaretIndex);
+                UiAudit.Capture(window, $"commit-populated-{width:0}-{(light ? "light" : "dark")}");
+                problems.AddRange(UiAudit.HorizontalOverflow(window, $"Commit {width}px", commit));
+                if (files.Bounds.Height < 48)
+                {
+                    problems.Add($"The {width}px Commit pane leaves only {files.Bounds.Height:0}px for the changed files");
+                    continue;
+                }
+                ScrollViewer reader = files.GetVisualDescendants().OfType<ScrollViewer>().First();
+                if (readingBeforeResize is { } previous)
+                {
+                    double expected = Math.Min(previous.Offset, Math.Max(0, reader.Extent.Height - reader.Viewport.Height));
+                    string position = $"{width}px Commit resize: before offset {previous.Offset:0.0}, extent {previous.Extent}, viewport {previous.Viewport}; "
+                        + $"after offset {reader.Offset.Y:0.0}, extent {reader.Extent}, viewport {reader.Viewport}";
+                    Console.WriteLine(position);
+                    Assert.True(Math.Abs(expected - reader.Offset.Y) <= 0.5,
+                        $"The file reading position moved instead of retaining {expected:0.0}: {position}");
+                    if (expected == previous.Offset)
+                    {
+                        ListBoxItem anchor = ReadingRow();
+                        Assert.Same(previous.Item, anchor.Content);
+                        Assert.Equal(previous.Top, anchor.TranslatePoint(default, files)!.Value.Y, 1);
+                    }
+                }
+                Point over = files.TranslatePoint(new Point(50, Math.Min(60, files.Bounds.Height / 2)), window)!.Value;
+                window.MouseWheel(over, new Vector(-30, -8));
+                Ui.Settle();
+                Assert.True(reader.Offset.Y > 0, "The complete Commit file list cannot be read vertically");
+                if (width <= 683 && reader.Offset.X <= 0)
+                {
+                    problems.Add($"The complete filename and directory have no horizontal reading access in the {width}px Commit pane");
+                }
+                Assert.True(files.GetVisualDescendants().OfType<ListBoxItem>().Count() < commit.Rows.Count,
+                    "The Commit list lost its finite viewport and realized every file");
+                UiAudit.Capture(window, $"commit-files-{width:0}-{(light ? "light" : "dark")}");
+                reader.Offset = new Vector(0, reader.Offset.Y);
+                Button refresh = commit.GetVisualDescendants().OfType<Button>().Single(button => ToolTip.GetTip(button) as string == "Refresh");
+                Assert.True(refresh.Focus());
+                int before = refreshes;
+                double reading = reader.Offset.Y;
+                Ui.Press(window, "ENTER");
+                Ui.WaitFor(() => refreshes > before && !window.Vcs.IsBusy, "Commit Refresh to finish");
+                Assert.Same(chosen, files.SelectedItem);
+                Assert.Equal(chosen.Change.Path, Assert.Single(commit.Chosen).Path);
+                Assert.Equal(text, commit.Message);
+                Assert.Equal(caret, message.CaretIndex);
+                Assert.Equal(reading, reader.Offset.Y, 1);
+                UiAudit.Capture(window, $"commit-refresh-{width:0}-{(light ? "light" : "dark")}");
+                if (message.GetVisualAncestors().OfType<ScrollViewer>().FirstOrDefault() is { } footer)
+                {
+                    footer.Offset = default;
+                    Ui.Settle();
+                    Point overFooter = footer.TranslatePoint(new Point(footer.Bounds.Width - 3, footer.Bounds.Height / 2), window)!.Value;
+                    window.MouseWheel(overFooter, new Vector(0, -30));
+                    Ui.Settle();
+                    Assert.True(footer.Extent.Height <= footer.Viewport.Height || footer.Offset.Y > 0,
+                        "The Commit message footer cannot scroll to its actions in a short pane");
+                }
+                foreach (Button button in commit.GetVisualDescendants().OfType<Button>().Where(button => button.Content is "Commit" or "Commit and Push..."))
+                {
+                    Point at = button.TranslatePoint(default, commit)!.Value;
+                    Assert.True(at.X >= 0 && at.Y >= 0 && at.X + button.Bounds.Width <= commit.Bounds.Width + 0.5 && at.Y + button.Bounds.Height <= commit.Bounds.Height + 0.5,
+                        $"The {button.Content} action is outside the visible {width}px Commit pane at {at} with size {button.Bounds.Size}");
+                }
+                UiAudit.Capture(window, $"commit-actions-{width:0}-{(light ? "light" : "dark")}");
+                reader.Offset = new Vector(0, Math.Min(120, Math.Max(0, reader.Extent.Height - reader.Viewport.Height)));
+                Ui.Settle();
+                ListBoxItem row = ReadingRow();
+                readingBeforeResize = (reader.Extent, reader.Viewport, reader.Offset.Y, row.Content, row.TranslatePoint(default, files)!.Value.Y);
+            }
+            Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
+
+            files.ScrollIntoView(chosen);
+            Ui.Settle();
+            Button diffButton = commit.GetVisualDescendants().OfType<Button>().Single(button => (ToolTip.GetTip(button) as string)?.StartsWith("Show Diff", StringComparison.Ordinal) == true);
+            Assert.True(diffButton.Focus());
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => window.OwnedWindows.OfType<DiffWindow>().Any(), "the chosen Commit file's actual diff");
+            DiffWindow diff = Assert.Single(window.OwnedWindows.OfType<DiffWindow>());
+            Assert.Equal("Original\nChanged\n", diff.View.Right.Document.Snapshot.ToString());
+            diff.Close();
+            Button action = commit.GetVisualDescendants().OfType<Button>().Single(button => button.Content as string == "Commit");
+            foreach (ScrollViewer reader in action.GetVisualAncestors().OfType<ScrollViewer>())
+            {
+                reader.Offset = new Vector(reader.Offset.X, reader.Extent.Height);
+            }
+            Ui.Settle();
+            Assert.True(action.IsEnabled && action.Focus(), "Commit is unavailable in the real 200px pane");
+            Ui.Settle();
+            UiAudit.Capture(window, $"commit-action-200-{(light ? "light" : "dark")}");
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => !window.Vcs.IsBusy && commit.Message.Length == 0, "the chosen file committed through the button");
+            Assert.Equal(text, Git("log", "-1", "--format=%B").Trim());
+            string committed = Assert.Single(Git("diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD").Split('\n', StringSplitOptions.RemoveEmptyEntries));
+            Assert.Equal(Path.GetFileName(chosen.Change.Path), Path.GetFileName(committed));
+            Assert.Equal(24, window.Vcs.Changes.Count);
+
+            ListBoxItem ReadingRow() => files.GetVisualDescendants().OfType<ListBoxItem>()
+                .Where(row => row.TranslatePoint(default, files)!.Value.Y + row.Bounds.Height > 0)
+                .OrderBy(row => row.TranslatePoint(default, files)!.Value.Y).First();
+        }
+        finally
+        {
+            window.Close();
+        }
     }
 
     [AvaloniaFact]
@@ -115,6 +335,14 @@ public sealed class VcsTests : IDisposable
         Task submitted = popup.SubmitAsync();
         Ui.Landed(() => submitted.IsCompleted && window.Vcs.Branch == "feature/sale", "the new branch checked out");
         Assert.False(window.IsPopupOpen);
+
+        window.FindControl<Button>("BranchButton")!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Ui.Landed(() => window.OpenContextMenu is not null, "the branches menu");
+        MenuTests.CurrentValue(window.OpenContextMenu!.Items.OfType<MenuItem>().Where(i => i.ToggleType == MenuItemToggleType.Radio), "feature/sale")
+            .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(MenuItem.ClickEvent));
+        window.OpenContextMenu.Close();
+        Ui.Settle();
+        Assert.Equal("feature/sale", window.Vcs.Branch);
 
         // A commit on the branch, then main again: the editor shows main's text without being asked.
         File.WriteAllText(Path.Combine(folder, "Shop.cs"), Original.Replace("count++", "count += 2", StringComparison.Ordinal));

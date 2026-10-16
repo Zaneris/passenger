@@ -39,8 +39,7 @@ public sealed class AvailabilityDialog : Window
         DockPanel.SetDock(bottom, Dock.Bottom);
         root.Children.Add(bottom);
         root.Children.Add(new ScrollViewer { Content = places });
-        Border page = new() { Child = root };
-        page.Bind(Border.BackgroundProperty, page.GetResourceObservable("Passenger.Editor.Background"));
+        Border page = new() { Classes = { "dialogPage" }, Child = root };
         Content = page;
     }
 

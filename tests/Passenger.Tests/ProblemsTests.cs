@@ -1,6 +1,13 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
+using Avalonia.Styling;
+using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.Docking;
 using Passenger.App.Run;
 using Passenger.App.ToolWindows;
 using Passenger.Text;
@@ -115,6 +122,131 @@ public sealed class ProblemsTests : IDisposable
         Ui.Settle();
         Assert.Equal(["Several.cs:6:17", "Several.cs:7:18", "Several.cs:8:20"], Places());
         window.Close();
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Long_file_and_problem_categories_remain_reachable_with_real_diagnostics_in_narrow_panes(bool light)
+    {
+        const string Name = "A very long file name that keeps the current file tab readable while all other problem categories remain reachable.cs";
+        Write(Name, "class Another { public int Count = \"none\"; }\n");
+        MainWindow window = new() { Width = 1200, Height = 800, RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark };
+        window.SetRenderScaling(2);
+        window.Show();
+        window.OpenFolder(folder);
+        window.OpenFile(Name);
+        try
+        {
+            ProblemsView problems = window.BottomPanel.Problems;
+            Ui.WaitFor(() => problems.FileProblems.Any(problem => problem.Severity == ProblemSeverity.Error && problem.Message.Contains("string", StringComparison.Ordinal)),
+                "the actual long-named file's type error");
+            window.Perform(AppActions.ToggleSolutionAnalysis);
+            Ui.WaitFor(() => problems.SolutionProblems?.Any(problem => problem.Code == "CS0029") == true, "the actual solution's diagnostics");
+            BuildOutcome built = Ui.Await(window.BuildAsync(), "the actual compiler's errors");
+            Assert.Equal(BuildStatus.Failed, built.Status);
+            Assert.Contains(built.Problems, problem => problem.Code == "CS0029");
+            window.ShowToolWindow("problems");
+            Ui.Settle();
+            ToggleButton[] pages = [.. problems.GetVisualDescendants().OfType<ToggleButton>().Where(button => button.Classes.Contains("panelTab") && button.IsVisible)];
+            ProblemsTab[] kinds = [ProblemsTab.File, ProblemsTab.Solution, ProblemsTab.Toolset, ProblemsTab.Build, ProblemsTab.Bindings];
+            Assert.Equal(kinds.Length, pages.Length);
+            Control strip = problems.GetVisualDescendants().OfType<ScrollViewer>().SingleOrDefault(view => view.Name == "ProblemsCategoryStrip") ?? (Control)problems;
+            DockLayout bottom = window.DockHost.Capture();
+            window.Width = 640;
+            window.DockHost.Apply(bottom with
+            {
+                LeftWidth = 200,
+                Windows = bottom.Windows.ToDictionary(pair => pair.Key, pair => pair.Key == "problems"
+                    ? pair.Value with { Anchor = ToolAnchor.LeftTop, Shown = true }
+                    : pair.Value.Anchor == ToolAnchor.LeftTop ? pair.Value with { Shown = false } : pair.Value),
+            });
+            Ui.Settle();
+            foreach (string placement in new[] { "side-200", "bottom" })
+            {
+                if (placement == "bottom")
+                {
+                    window.DockHost.Apply(bottom);
+                    Ui.Settle();
+                }
+                foreach (double width in new double[] { 640, 683, 1200 })
+                {
+                    window.Width = width;
+                    Ui.Settle();
+                    for (int index = 0; index < pages.Length; index++)
+                    {
+                        ToggleButton page = pages[index];
+                        for (int attempt = 0; attempt < 20 && !Inside(page); attempt++)
+                        {
+                            double left = page.TranslatePoint(default, strip)!.Value.X;
+                            double clipped = left < 0 ? left : left + page.Bounds.Width - strip.Bounds.Width;
+                            // Fractional wheel input can reveal a tab almost as wide as the strip without overshooting it.
+                            double direction = -Math.Clamp(clipped / 50, -3, 3);
+                            Point wheel = new(strip.Bounds.Width / 2, 16);
+                            window.MouseWheel(strip.TranslatePoint(wheel, window)!.Value, new Vector(direction, 0));
+                            Ui.Settle();
+                        }
+                        bool contained = Inside(page);
+                        if (!contained)
+                        {
+                            UiAudit.Capture(window, $"problems-unreachable-{placement}-{(light ? "light" : "dark")}");
+                        }
+                        Assert.True(contained, $"The '{page.Content}' category cannot be brought fully into the actual {problems.Bounds.Width}px pane");
+                        Point at = page.TranslatePoint(new Point(page.Bounds.Width / 2, page.Bounds.Height / 2), window)!.Value;
+                        window.MouseMove(at);
+                        Assert.True(page.IsPointerOver);
+                        window.MouseDown(at, MouseButton.Left);
+                        window.MouseUp(at, MouseButton.Left);
+                        Ui.Settle();
+                        Assert.Equal(kinds[index], problems.Shown);
+                        Assert.Same(page, Assert.Single(pages, button => button.IsChecked == true));
+                        Assert.Equal(page.Content, ToolTip.GetTip(page));
+                        TextBlock label = Assert.Single(page.GetVisualDescendants().OfType<TextBlock>());
+                        Assert.True(label.TextLayout.Width <= label.Bounds.Width + 1, "A long Problems category name must ellipsize beside the other reachable categories");
+                        UiAudit.Capture(window, $"problems-tabs-{placement}-{width:0}-{kinds[index]}-{(light ? "light" : "dark")}");
+                    }
+                }
+            }
+            window.Width = 640;
+            Ui.Settle();
+            Assert.True(pages[0].Focus());
+            Ui.Settle();
+            for (int index = 0; index < pages.Length; index++)
+            {
+                for (int attempt = 0; attempt < 80 && !pages[index].IsFocused; attempt++)
+                {
+                    Ui.Press(window, "tab");
+                }
+                bool focused = pages[index].IsFocused && Inside(pages[index]);
+                if (!focused)
+                {
+                    UiAudit.Capture(window, $"problems-keyboard-unreachable-{kinds[index]}-{(light ? "light" : "dark")}");
+                }
+                Assert.True(focused, $"Keyboard focus must reveal the complete Problems category '{pages[index].Content}': focused={pages[index].IsFocused}, bounds={pages[index].Bounds}, at={pages[index].TranslatePoint(default, strip)}, strip={strip.Bounds}");
+                Ui.Press(window, "space");
+                Assert.Equal(kinds[index], problems.Shown);
+            }
+            Assert.True(pages[0].Focus());
+            Ui.Settle();
+            Ui.Press(window, "space");
+            Ui.Press(window, "tab");
+            Assert.True(pages[1].IsFocused);
+            foreach (double width in new double[] { 1200, 683, 640, 1200 })
+            {
+                window.Width = width;
+                Ui.Settle();
+                Assert.Equal(ProblemsTab.File, problems.Shown);
+                Assert.True(pages[1].IsFocused && Inside(pages[1]), "Resizing must preserve the visible inactive category's keyboard focus without switching the shown problems");
+                UiAudit.Capture(window, $"problems-focused-category-{width:0}-{(light ? "light" : "dark")}");
+            }
+
+            bool Inside(Control page) => page.TranslatePoint(default, strip) is { } at && at.X >= -0.5
+                && at.X + page.Bounds.Width <= strip.Bounds.Width + 0.5;
+        }
+        finally
+        {
+            window.Close();
+        }
     }
 
     private void Write(string name, string text) => File.WriteAllText(Path.Combine(folder, name), text);

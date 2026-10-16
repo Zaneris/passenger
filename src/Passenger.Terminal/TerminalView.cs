@@ -2,8 +2,10 @@ using System.Globalization;
 using System.Text;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
+using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Fonts.Tables.Cmap;
 
@@ -27,6 +29,9 @@ public sealed class TerminalView : Control
     private const double Pad = 6;
 
     private readonly Dictionary<int, IBrush> palette = [];
+    private readonly ScrollBar scrollBar = new() { Orientation = Orientation.Vertical, IsVisible = false };
+    private bool updatingScrollBar;
+    private bool showingAlternate;
     private TerminalSession? session;
     private double cellWidth = 8;
     private double cellHeight = 16;
@@ -56,6 +61,17 @@ public sealed class TerminalView : Control
         Focusable = true;
         ClipToBounds = true;
         Cursor = new Cursor(StandardCursorType.Ibeam);
+        VisualChildren.Add(scrollBar);
+        LogicalChildren.Add(scrollBar);
+        scrollBar.PropertyChanged += (_, change) =>
+        {
+            if (!updatingScrollBar && change.Property == RangeBase.ValueProperty && session is { } current)
+            {
+                long line = current.Screen.FirstLine + (long)Math.Round(scrollBar.Value);
+                heldTop = line < current.Screen.ScreenTop ? line : null;
+                InvalidateVisual();
+            }
+        };
         ActualThemeVariantChanged += (_, _) => Refresh();
         AttachedToVisualTree += (_, _) => Refresh();
         ContextMenu = Menu();
@@ -101,6 +117,7 @@ public sealed class TerminalView : Control
         session.Screen.ClearBuffer();
         ClearSelection();
         heldTop = null;
+        UpdateScrollBar();
         InvalidateVisual();
     }
 
@@ -127,12 +144,14 @@ public sealed class TerminalView : Control
                 session.Output -= OnOutput;
             }
             session = value;
+            showingAlternate = session?.Screen.IsAlternate == true;
             if (session is not null)
             {
                 session.Output += OnOutput;
                 FitSize();
             }
             heldTop = null;
+            UpdateScrollBar();
             InvalidateVisual();
         }
     }
@@ -151,7 +170,8 @@ public sealed class TerminalView : Control
                 return 0;
             }
             TerminalScreen screen = session.Screen;
-            return heldTop is { } held ? Math.Clamp(held, screen.FirstLine, screen.ScreenTop) : screen.ScreenTop;
+            return screen.IsAlternate ? screen.ScreenTop
+                : heldTop is { } held ? Math.Clamp(held, screen.FirstLine, screen.ScreenTop) : screen.ScreenTop;
         }
     }
 
@@ -208,9 +228,45 @@ public sealed class TerminalView : Control
             return;
         }
         TerminalScreen screen = session.Screen;
+        if (screen.IsAlternate)
+        {
+            return;
+        }
         long to = Math.Clamp(TopLine - lines, screen.FirstLine, screen.ScreenTop);
         heldTop = to < screen.ScreenTop ? to : null;
+        UpdateScrollBar();
         InvalidateVisual();
+    }
+
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        scrollBar.Measure(availableSize);
+        return new Size(double.IsInfinity(availableSize.Width) ? 600 : availableSize.Width,
+            double.IsInfinity(availableSize.Height) ? 400 : availableSize.Height);
+    }
+
+    protected override Size ArrangeOverride(Size finalSize)
+    {
+        double width = scrollBar.MinWidth;
+        scrollBar.Arrange(new Rect(Math.Max(0, finalSize.Width - width), 0, width, finalSize.Height));
+        UpdateScrollBar();
+        return finalSize;
+    }
+
+    /// <summary>The overlay describes the retained scrollback, without taking a column from the terminal's cells.
+    /// Its value is relative to the oldest retained line so long-running shells keep a small, exact range.</summary>
+    private void UpdateScrollBar()
+    {
+        updatingScrollBar = true;
+        TerminalScreen? screen = session?.Screen;
+        scrollBar.Maximum = screen is null ? 0 : screen.ScreenTop - screen.FirstLine;
+        scrollBar.ViewportSize = screen?.Rows ?? 0;
+        scrollBar.LargeChange = Math.Max(1, screen?.Rows ?? 1);
+        scrollBar.SmallChange = 1;
+        scrollBar.Value = screen is null ? 0 : TopLine - screen.FirstLine;
+        // An alternate screen belongs to the running program and has no terminal scrollback to browse.
+        scrollBar.IsVisible = screen is { IsAlternate: false, Scrollback.Count: > 0 };
+        updatingScrollBar = false;
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
@@ -283,6 +339,7 @@ public sealed class TerminalView : Control
             heldTop = null;
         }
         session.Resize(columns, rows);
+        UpdateScrollBar();
         InvalidateVisual();
     }
 
@@ -291,6 +348,13 @@ public sealed class TerminalView : Control
     /// nothing to read back through, and the view follows the output again.</summary>
     private void OnOutput(object? sender, EventArgs e)
     {
+        bool alternate = session?.Screen.IsAlternate == true;
+        if (showingAlternate != alternate)
+        {
+            showingAlternate = alternate;
+            // Coordinates chosen on one screen do not select the other program's cells at those same coordinates.
+            ClearSelection();
+        }
         if (session is { Screen.Scrollback.Count: 0 })
         {
             heldTop = null;
@@ -299,6 +363,7 @@ public sealed class TerminalView : Control
         {
             HoverLink(held);
         }
+        UpdateScrollBar();
         InvalidateVisual();
     }
 
@@ -940,6 +1005,7 @@ public sealed class TerminalView : Control
     private void Typed()
     {
         heldTop = null;
+        UpdateScrollBar();
         if (anchor is not null)
         {
             ClearSelection();

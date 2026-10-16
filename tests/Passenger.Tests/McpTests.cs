@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -95,6 +97,9 @@ public sealed partial class McpTests : IClassFixture<RestoredFolders>, IClassFix
         Assert.Equal("1", Local(stop, "i"));
         Assert.Equal("0", Local(stop, "total"));
         Assert.Equal("42", (await Call(client, "debug_evaluate", new() { ["expression"] = "Helper.Twice(i) + 40" })).GetProperty("value").GetString());
+        string architecture = (await Call(client, "debug_evaluate", new() { ["expression"] = "(int)System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture" })).GetProperty("value").GetString()!;
+        Assert.Equal(((int)RuntimeInformation.ProcessArchitecture).ToString(CultureInfo.InvariantCulture), architecture);
+        TestContext.Current.TestOutputHelper?.WriteLine($"Native architecture: test host {RuntimeInformation.ProcessArchitecture}, debuggee {(Architecture)int.Parse(architecture, CultureInfo.InvariantCulture)}");
 
         stop = await Call(client, "debug_continue");
         Assert.Equal("2", Local(stop, "i"));
@@ -940,6 +945,7 @@ public sealed partial class McpTests : IClassFixture<RestoredFolders>, IClassFix
             // The person types in another file while the agent asks for every usage of Twice.
             Task<JsonElement> usages = Task.Run(() => Call(client, "usages", new() { ["path"] = "Helper.cs", ["line"] = 3, ["column"] = 23 }));
             int typed = 0;
+            int sampled;
             TimeSpan longest;
             using (InputWait waits = new())
             {
@@ -952,11 +958,14 @@ public sealed partial class McpTests : IClassFixture<RestoredFolders>, IClassFix
                 }
                 waits.Stop();
                 longest = waits.Longest;
+                sampled = waits.Answered;
             }
             JsonElement[] found = [.. usages.GetAwaiter().GetResult().EnumerateArray()];
             Ui.Settle();
 
             // Every usage comes back, each with its own line, and every key the person typed meanwhile landed at once.
+            Assert.True(typed > 0, "the person typed while the usages were being found");
+            Assert.True(sampled > 0, "input responsiveness was sampled while the usages were being found");
             Assert.Equal(10_002, found.Length);
             Assert.All(found, place => Assert.Contains("Twice(", place.GetProperty("text").GetString(), StringComparison.Ordinal));
             Assert.Contains(found, place => place.GetProperty("path").GetString() == "Uses3.cs" && place.GetProperty("line").GetInt32() == 5005
