@@ -42,6 +42,7 @@
     <!-- Microsoft.Testing.Platform's test hosts speak JSON-RPC (Testing/TestingPlatformRunner.cs); the language server's
          client keeps its own use of it to itself. -->
     <PackageReference Include="StreamJsonRpc" />
+    <PackageReference Include="MessagePack" />
     <!-- The Windows install's hooks: what its installer and uninstaller ask of Passenger.exe (Installation.cs). -->
     <PackageReference Include="Velopack" />
   </ItemGroup>

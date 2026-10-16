@@ -27,6 +27,8 @@
     <!-- NuGet's own reading of its configuration (the NuGet window's package sources), as the CLI reads it. -->
     <PackageVersion Include="NuGet.Configuration" Version="7.9.0" />
     <PackageVersion Include="StreamJsonRpc" Version="2.25.29" />
+    <!-- StreamJsonRpc's transitive minimum predates the nested-array allocation security fix. -->
+    <PackageVersion Include="MessagePack" Version="2.5.303" />
     <PackageVersion Include="Porta.Pty" Version="2.2.2" />
     <!-- TextMate grammars' tokenizer, with Oniguruma's regular expressions (Onigwrap, a native per system): colour for
          the files beside the C#. -->

@@ -22,6 +22,7 @@
   <ItemGroup>
     <!-- Compiled against here alone: a server's failure reaches the app as a LanguageServerFailed, never as one of its exceptions. -->
     <PackageReference Include="StreamJsonRpc" PrivateAssets="compile;contentfiles;analyzers;build" />
+    <PackageReference Include="MessagePack" PrivateAssets="compile;contentfiles;analyzers;build" />
     <ProjectReference Include="../Passenger.Core/Passenger.Core.csproj" />
     <ProjectReference Include="../Passenger.Text/Passenger.Text.csproj" />
     <!-- Built first and carried under roslyn-extension/, never linked: the server loads it (RoslynExtension.cs). It is
