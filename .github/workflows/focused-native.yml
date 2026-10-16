@@ -7,7 +7,7 @@ on:
       system:
         description: Native runner for the selected regression
         type: choice
-        options: [macOS, Windows, Linux]
+        options: [macOS, Windows, Linux, Windows ARM64, Linux ARM64]
         default: macOS
       filter:
         description: VSTest filter (an empty selection fails)
@@ -26,7 +26,7 @@ env:
 jobs:
   focused:
     name: ${{ inputs.system }} native regression
-    runs-on: ${{ inputs.system == 'macOS' && 'macos-latest' || inputs.system == 'Windows' && 'windows-latest' || 'ubuntu-24.04' }}
+    runs-on: ${{ inputs.system == 'macOS' && 'macos-latest' || inputs.system == 'Windows' && 'windows-latest' || inputs.system == 'Windows ARM64' && 'windows-11-arm' || inputs.system == 'Linux ARM64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     timeout-minutes: 35
     defaults:
       run:
@@ -54,6 +54,26 @@ jobs:
           printf '%s\n' "$TEST_FILTER" > "$FOCUSED_RESULTS/filter.txt"
           printf '%s %s\n' "$RUNNER_OS" "$RUNNER_ARCH" > "$FOCUSED_RESULTS/platform.txt"
           dotnet --info | tee "$FOCUSED_RESULTS/dotnet-info.txt"
+
+      - name: Require a native ARM64 test host
+        if: ${{ contains(inputs.system, 'ARM64') }}
+        shell: pwsh
+        run: |
+          $runtime = [Runtime.InteropServices.RuntimeInformation]
+          $rid = if ($IsWindows) { 'win-arm64' } else { 'linux-arm64' }
+          $info = Get-Content "$env:FOCUSED_RESULTS/dotnet-info.txt"
+          if ($runtime::OSArchitecture -ne 'Arm64' -or $runtime::ProcessArchitecture -ne 'Arm64') {
+            throw "Expected native ARM64; OS=$($runtime::OSArchitecture), process=$($runtime::ProcessArchitecture)"
+          }
+          if (($info -join "`n") -notmatch '(?m)^\s*Architecture:\s+arm64\s*$' -or
+              ($info -join "`n") -notmatch "(?m)^\s*RID:\s+$rid\s*$") {
+            throw "dotnet is not the native $rid host"
+          }
+          [ordered]@{ rid=$rid; osArchitecture="$($runtime::OSArchitecture)";
+            processArchitecture="$($runtime::ProcessArchitecture)"; runnerOS=$env:RUNNER_OS; runnerArch=$env:RUNNER_ARCH } |
+            ConvertTo-Json | Set-Content "$env:FOCUSED_RESULTS/architecture.json"
+          '<RunSettings><RunConfiguration><TargetPlatform>ARM64</TargetPlatform></RunConfiguration></RunSettings>' |
+            Set-Content "$env:FOCUSED_RESULTS/native.runsettings"
 
       - name: Register .NET's install location
         if: runner.os == 'macOS'
@@ -93,12 +113,16 @@ jobs:
         timeout-minutes: 20
         run: |
           if ([string]::IsNullOrWhiteSpace($env:TEST_FILTER)) { throw 'A focused run requires a nonblank test filter' }
-          dotnet test tests/Passenger.Tests --no-build --list-tests --filter $env:TEST_FILTER |
+          $settings = @()
+          if (Test-Path "$env:FOCUSED_RESULTS/native.runsettings") {
+            $settings = @('--settings', "$env:FOCUSED_RESULTS/native.runsettings")
+          }
+          dotnet test tests/Passenger.Tests --no-build @settings --list-tests --filter $env:TEST_FILTER |
             Tee-Object "$env:FOCUSED_RESULTS/selected.txt"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $selected = @(Get-Content "$env:FOCUSED_RESULTS/selected.txt" | Where-Object { $_ -match '^\s+Passenger\.Tests\.' })
           if ($selected.Count -eq 0) { throw 'The requested filter selected no Passenger tests' }
-          dotnet test tests/Passenger.Tests --no-build --filter $env:TEST_FILTER `
+          dotnet test tests/Passenger.Tests --no-build @settings --filter $env:TEST_FILTER `
             --results-directory $env:FOCUSED_RESULTS --logger 'trx;LogFileName=focused.trx' --logger 'console;verbosity=normal' `
             --blame-hang-timeout 5m --blame-hang-dump-type none 2>&1 | Tee-Object "$env:FOCUSED_RESULTS/tests.log"
           $code = $LASTEXITCODE
