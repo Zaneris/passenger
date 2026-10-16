@@ -59,6 +59,9 @@ public sealed class DialogButtonsTests : IDisposable
             UiAudit.Capture(dialog, $"checkbox-focus-{(light ? "light" : "dark")}");
             Border ring = CheckGlyphRing(dialog, option);
             bool before = option.IsChecked == true;
+            Button primary = Assert.Single(dialog.GetVisualDescendants().OfType<Button>(), button => button.IsDefault);
+            int beforeInk = ButtonInk(dialog, primary);
+            Assert.True(beforeInk > 20, "The primary action must paint its label before keyboard focus moves to it");
             Ui.Press(dialog, "space");
             Assert.Equal(!before, option.IsChecked);
             Assert.True(option.IsFocused);
@@ -70,17 +73,44 @@ public sealed class DialogButtonsTests : IDisposable
             dialog.MouseUp(at, MouseButton.Left);
             Ui.Settle();
             Assert.Equal(before, option.IsChecked);
-            Ui.Press(dialog, "tab");
+            for (int attempt = 0; attempt < 10 && !primary.IsFocused; attempt++)
+            {
+                Ui.Press(dialog, "tab");
+            }
             Assert.DoesNotContain(ring, dialog.GetVisualDescendants());
             Button next = Assert.IsAssignableFrom<Button>(dialog.FocusManager!.GetFocusedElement());
+            Assert.Same(primary, next);
             Border buttonRing = Assert.Single(dialog.GetVisualDescendants().OfType<Border>(), border => border.Name == "ControlFocusRing");
             Assert.True(buttonRing.CornerRadius.TopLeft > next.CornerRadius.TopLeft);
             Assert.Equal(new Size(next.Bounds.Width + 6, next.Bounds.Height + 6), buttonRing.Bounds.Size);
             Assert.Equal(new Point(-3, -3), buttonRing.TranslatePoint(default, next));
             Assert.False(buttonRing.IsHitTestVisible);
             Assert.Equal(Colour(dialog, "Passenger.Accent"), Ui.Pixel(dialog, buttonRing.TranslatePoint(new Point(0.5, buttonRing.Bounds.Height / 2), dialog)!.Value));
+            Assert.True(buttonRing.Background is null || Solid(buttonRing.Background).A == 0, "A decorative focus outline must leave the action's label visible");
+            int focusedInk = ButtonInk(dialog, primary);
+            Assert.True(focusedInk >= beforeInk * 0.8, $"Keyboard focus must retain the primary label's actual painted ink: {beforeInk} before, {focusedInk} focused");
             UiAudit.Capture(dialog, $"button-focus-{(light ? "light" : "dark")}");
-            Ui.Press(dialog, "shift+tab");
+            // An opaque decorative fill would cover this very label: prove the rendered check detects that failure.
+            IBrush? clear = buttonRing.Background;
+            int coveredInk;
+            try
+            {
+                buttonRing.Background = primary.Background;
+                Ui.Settle();
+                coveredInk = ButtonInk(dialog, primary);
+                Assert.True(coveredInk < beforeInk * 0.2, "The rendered label check must detect an opaque adorner covering it");
+            }
+            finally
+            {
+                buttonRing.Background = clear;
+                Ui.Settle();
+            }
+            Assert.True(ButtonInk(dialog, primary) >= beforeInk * 0.8);
+            TestContext.Current.TestOutputHelper?.WriteLine($"Primary label ink: before={beforeInk}, focused={focusedInk}, opaque-adornment control={coveredInk}");
+            for (int attempt = 0; attempt < 20 && !option.IsFocused; attempt++)
+            {
+                Ui.Press(dialog, "tab");
+            }
             Assert.True(option.IsFocused);
             option.IsEnabled = false;
             Ui.Settle();
@@ -130,6 +160,37 @@ public sealed class DialogButtonsTests : IDisposable
         Assert.Equal(Colour(dialog, "Passenger.Accent"), Ui.Pixel(dialog, ring.TranslatePoint(new Point(0.5, ring.Bounds.Height / 2), dialog)!.Value));
         Assert.False(ring.IsHitTestVisible, "A focus ring must not intercept checkbox clicks");
         return ring;
+    }
+
+    private static int ButtonInk(Window window, Button button)
+    {
+        TextBlock label = Assert.Single(button.GetVisualDescendants().OfType<TextBlock>(), text => Equals(text.Text, button.Content));
+        Color ink = Solid(label.Foreground);
+        using Avalonia.Media.Imaging.WriteableBitmap frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("The dialog has no rendered frame");
+        PixelPoint at = PixelPoint.FromPoint(label.TranslatePoint(default, window)!.Value, window.RenderScaling);
+        int width = (int)Math.Ceiling(label.Bounds.Width * window.RenderScaling);
+        int height = (int)Math.Ceiling(label.Bounds.Height * window.RenderScaling);
+        byte[] pixels = new byte[width * height * 4];
+        System.Runtime.InteropServices.GCHandle pinned = System.Runtime.InteropServices.GCHandle.Alloc(pixels, System.Runtime.InteropServices.GCHandleType.Pinned);
+        try
+        {
+            frame.CopyPixels(new PixelRect(at.X, at.Y, width, height), pinned.AddrOfPinnedObject(), pixels.Length, width * 4);
+        }
+        finally
+        {
+            pinned.Free();
+        }
+        int red = frame.Format == Avalonia.Platform.PixelFormat.Rgba8888 ? 0 : 2;
+        int blue = red == 0 ? 2 : 0;
+        int count = 0;
+        for (int offset = 0; offset < pixels.Length; offset += 4)
+        {
+            if (Math.Abs(pixels[offset + red] - ink.R) + Math.Abs(pixels[offset + 1] - ink.G) + Math.Abs(pixels[offset + blue] - ink.B) <= 15)
+            {
+                count++;
+            }
+        }
+        return count;
     }
 
     [AvaloniaTheory]
