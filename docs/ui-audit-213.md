@@ -67,7 +67,8 @@ in both themes, with actual text/input and dismissal/focus restoration:
 | Surface | Existing source/entry point | Remaining shared checks |
 | --- | --- | --- |
 | GoToFilePopup, GoToLinePopup | `46fcdc1`: actual navigation actions at 1200/683/640, main/detached owners, query/selection/focus preserved; Go to File pointer-selected Enter, ellipsis and full-path tooltip | Windows workflows and exact-file native Linux theme cases pass; remaining empty/error/history states, short-height and macOS execution. |
-| ActionPopup, SymbolPopup | Find Action / symbol navigation; `46fcdc1` captures/resizes a real Find Action query and outside dismissal | Long labels/shortcuts, pointer-selected keyboard action, Symbol Popup and remaining shared states. |
+| ActionPopup | `6f07925` / `bb4bd1b`: actual long title/group/shortcut rows at 1200/683/640/320, pointer-selected Enter, full tooltip/unavailable reason, query/selection/focus retention | Windows and exact-file native Linux theme controls pass; remaining empty/error/short-height/macOS states. |
+| SymbolPopup | Symbol navigation | Long labels/details, actual keyboard/pointer selection, shadow/focus and narrow states. |
 | RecentLocationsPopup | Recent Locations | Preview has no scrollbar/stripe rail after `bce47d4`; popup layout/focus/shadow still to audit. |
 | FindInFilesPopup | Find in Files | Options, widths, scoped fields, narrow layout. |
 | CompletionPopup, CSharp.ChoicePopup | Actual completion/refactoring choices | Assist-layer shadows/rows/widths, keyboard selection and editor focus. |
@@ -85,6 +86,13 @@ scale-2 frames. Seven final frames were inspected: normal Dark/narrow Light file
 narrow Dark Go to Line, narrow Light Find Action, narrow Dark breakpoint properties and normal Light detached-file
 popup. Earlier draft/expanded captures were inspected separately. This is scoped width/input evidence; popup height,
 other bodies/states and macOS execution continue. Native Ubuntu passes both exact theme workflows in 12s with a zero-warning/error build; the clean `d9c7ce5` base and four copied source hashes are recorded in shipping `artifacts/2026-10-16/navigation-popup-native.log`. Its separate `navigation-popup-native/captures/` includes both themes; narrow Light file and Dark detached frames were inspected.
+
+`6f07925` adds finite Find Action title/group/shortcut columns and popup-level Enter routing after real pointer
+selection. `bb4bd1b` then fixes a native-proven row hit-area gap with a transparent Grid background; strict actual
+outside→row pointer input and the unchanged tooltip delay verify the whole row is hoverable. Final Windows
+Action/Terminal controls pass 4/4 in 30s; native Linux Action theme cases pass 2/2 in 10s. Both final native full
+tooltip and disabled-reason frames were inspected in `action-popup-native-hit-area/captures/`. No other popup
+family or whole short-height/macOS pass is inferred.
 
 ## Tool-window inventory
 
@@ -274,24 +282,24 @@ transformed rectangle remains inside. The installed theme's exact source has a 7
 Real wheel input requires rejection of a genuinely clipped tab; a real held Snapshots press at 683 then verifies
 its transformed rectangle, selected page/focus and rendered label. Windows class 6/6 passes, the old-helper-only
 control fails both themes, and restored final cases pass 2/2; both final scale-2 held frames were inspected.
-Tolerance and pre-capture geometry snapshots remain unchanged. This is a test repair with native acceptance
-pending, not a product reveal/style fix. The current Self Debugging repair likewise has Windows/Linux evidence,
-with macOS pending.
+Tolerance and pre-capture geometry snapshots remain unchanged. Complete native `aab25be` run `38843579821`
+now passes all six Tool Header cases, including both held Profiler controls. Self Debugging also passes on macOS
+in 101s. These are scoped native acceptance results, not a whole-UI pass or product reveal/style fix.
 
 | Tool surfaces | Current captured/tested state | Continuing source or capture work |
 | --- | --- | --- |
 | Hierarchy, Git, Unit Tests | Empty guidance fits its own 640px-window pane; both themes inspected. | Populated hierarchy/history/test views and responsive controls. |
-| Profiler | Responsive header plus actual CPU/heap data, long rows and guidance; Memory navigation/comparison and populated Frames now have actual Windows/Linux input/capture checks. macOS pre-capture Header/Profiler rerun passes four cases. | Remaining unexamined snapshot/error/busy interactions and full state inventory; no blanket Profiler/Rider pass or original intermittent header cause claimed. |
+| Profiler | Responsive header plus actual CPU/heap data, long rows and guidance; Memory navigation/comparison and populated Frames now have actual Windows/Linux input/capture checks. Later complete native `aab25be` passes all six Tool Header cases with transformed-rectangle controls. | Remaining unexamined snapshot/error/busy interactions and full state inventory; no blanket Profiler/Rider pass or original intermittent header cause claimed. |
 | Find, Structure, Bookmarks, Local History, Problems, Debug | Shared empty hints fit normal/narrow viewports. Problems adds actual compiler/solution/Hot Reload rows and reachable categories in side200/bottom panes, both themes. | Other populated tool rows, narrow action bars, keyboard focus and selection through resize. |
-| Terminal | Real-shell normal/narrow frames both themes inspected; `fc974f5` executes 23 actual terminal cases on Linux x64, with later macOS/Linux ARM missing-path acceptance. `6d1752c` adds many-session/long-name overflow and keyboard-focus resizing on Windows, with actual command routing and run exit. | Native execution of the newer overflow coverage and complete remaining focus inventory. |
+| Terminal | Real-shell normal/narrow frames both themes inspected; `fc974f5` executes 23 actual terminal cases on Linux x64, with later macOS/Linux ARM missing-path acceptance. `6d1752c` adds many-session/long-name overflow and keyboard-focus resizing on Windows, with actual command routing and run exit. | `aab25be` reveals the same mixed-coordinate press-transition test error; `88c97a1` repairs it with real held/wheel-clipping negatives on Windows. New native execution and remaining focus inventory continue. |
 | Explorer, Run, Build, Commit, Live Visual Tree | Captured at 1200/683 both themes in the 17-tool sweep. Earlier focused docking, console/editor scrollbar and empty-editor evidence remains. | Complete populated-state visual/input inventory; capture existence alone is not a pass. |
 | NuGet | Real local-feed toolbar/header/feed ellipsis, populated Sources configuration paths and `d702d41` package metadata/install/update/remove fit at 1200/683/640 and side200 with actual Windows/Linux input and both-theme captures. Explicit version choices survive only same-identity refresh while offered; automatic feed defaults remain live. | Remaining error/detail/source-credential states. Native package tests report an ancillary missing WindowsDesktop reference pack; no clean code-help claim. |
 | Profiler Memory/Frames subviews | Actual held-object comparison/object/root-path flows, million-object metadata and long Frames metrics/scrolling/source navigation have scoped Windows/Linux tests and both-theme captures. | Remaining error/cancellation/busy transitions and unexamined snapshot states; scoped evidence is listed above. |
 
 Long editor tabs and status paths now have scoped fixes above. `9c805c4` adds real populated Git long-path/message,
-branch/file keyboard and resize checks on Windows/Linux. `d229d3a` adds real Local History file/folder Revert, Undo/Save, long-label and side200 toolbar reading with ten Windows and two native Linux cases passing. DiffView, Commit and unexamined Git states continue.
-Optional status widgets and remaining popup/focus rules continue; the Profiler test repair still requires native
-acceptance while bounded IDE popup shadow/long-result work resumes. The capture
+branch/file keyboard and resize checks on Windows/Linux. `d229d3a` adds real Local History file/folder Revert, Undo/Save, long-label and side200 toolbar reading with ten Windows and two native Linux cases passing. `d3b675e` / `236fbf1` add real DiffView filename/version reading, Lines→Words and Revert checks; exact final Windows/native Linux theme cases each pass 2/2. Remaining diff, Commit and unexamined Git states continue.
+Optional status widgets and remaining popup/focus rules continue. Bounded Go to File/Line and Find Action
+width/shadow/input checks now have Windows/native Linux evidence; other popup families and states remain active. The capture
 inventory is updated as those checks run; it is not a stopping condition.
 
 ## Reference and execution limits
