@@ -19,7 +19,7 @@ No issue was closed, release published or tag pushed.
 | [#213 Whole-UI check](https://github.com/Zaneris/passenger/issues/213) | Ongoing. Responsive docking, menus, Settings, shared scrollbars/buttons/focus, Terminal process/tabs, tool headers, populated Profiler Memory/Frames, NuGet Sources and Problems strips have scoped evidence below. `b3b3458` and `82c4ba7` repair the reproduced long editor-tab and status-bar action clipping with actual pointer/keyboard checks at 640/683. Exact native pre-capture macOS Header/Profiler checks pass four actual cases without a claimed header source fix. See the [surface inventory](ui-audit-213.md). | Continue unexamined dialogs/menus/popups/populated tools, History/Git bodies, popup scale/shadows and radio/menu/focus states. Captured counts are not whole-UI visual passes. Native Rider behavior was not observed; bundled defaults provide the actual local reference. Unfinished implementation is not an external blocker. |
 | [#211 Final MCP pass](https://github.com/Zaneris/passenger/issues/211) | Audited the existing 65 tools and tests; concrete gaps listed below. | Remaining implementation and per-feature SDK-client tests. The owner requires this final pass after other MVP work; no completed final pass is claimed. |
 | [#208 Editor/server line-break drift](https://github.com/Zaneris/passenger/issues/208) | Existing `LspDocument.Unsplit` fix confirmed; both exact line-break regressions passed locally and in the complete native Windows/Linux/macOS CI3 run at `cc7456a`. | No further source change is indicated by these results. Overall CI failures are separate from this issue's passing regressions. |
-| [#206 CI shards](https://github.com/Zaneris/passenger/issues/206) | `0ac31f0` models collection finish time; `fd80a32` fits four macOS test shards beside one sequential two-image job into five runner slots. Windows uses five shards, Linux/macOS four. Timings use all 129 healthy classes/system from complete `c9509e4` CI, with unchanged budgets. All 13 actual VSTest filters cover the 985 tests at pushed `74f481b` exactly once. | Observe successful CI below 25 minutes with every shard below its 20-minute budget. Historical `c9509e4` has zero failed tests but a 20.4766-minute shard and ARM detach failure. Current `74f481b` run `38835542810` is still running; its macOS image job and Self Debugging case already fail. Newer class growth is unmeasured by the stored totals. |
+| [#206 CI shards](https://github.com/Zaneris/passenger/issues/206) | `0ac31f0` models collection finish time; `fd80a32` fits four macOS test shards beside one sequential two-image job into five runner slots. Windows uses five shards, Linux/macOS four. Timings now use 129 healthy classes on Windows/Linux and 127 on macOS from complete `74f481b` CI; its two failed macOS classes keep prior healthy weights. All 13 actual VSTest filters cover current `d9c7ce5`'s 995 tests exactly once, with budgets unchanged. | Observe successful CI below 25 minutes with every shard below its 20-minute budget. `74f481b` takes 29m21s: all Windows/Linux tests pass or skip, Windows shards 4/5 exceed budget, two macOS tests fail and its ARM image fails cleanup. Current class growth is unmeasured by the stored totals. |
 | [#57 Linux packaging/install](https://github.com/Zaneris/passenger/issues/57) | Native CI packaging passed at `04e303f`; x64/ARM64 archives passed architecture and actual install/update/uninstall/settings-retention checks. Native RC1 Ubuntu x64 publish `cc7456a` passed build, Roslyn, run, breakpoint/evaluate, CPU profile and PTY via MCP. Completed native Linux ARM run `38827279628` at `47f7a57` passes the full 948-case suite (908 passed/40 skipped), package/install/installed frame/MCP/uninstall; the host and debuggee are both ARM64. | Later-source native acceptance and an interactive Ubuntu desktop pass remain. The release dry run remains sequenced after the feature/MCP/site work. |
 | [#56 Release workflow](https://github.com/Zaneris/passenger/issues/56) | Existing workflow covers tests, six RIDs, fixed asset names, version/feed checks, signing hooks, checksums, tag notes and a non-publishing dry run. Packaging/release shell syntax checks passed. | The owner's required order is other MVP work and green three-system CI, then #211, then #55, then the final dry run, then an owner-chosen tag. The final dry run and tag were not performed out of sequence. Native signing/notarization was not exercised. |
 | [#55 Website/README refresh](https://github.com/Zaneris/passenger/issues/55) | Deferred as the owner explicitly requires this last, after the feature/MCP passes. Existing site, README and comments were inspected. | Commit a repeatable sample and screenshot command; retake all required views in both themes; revise the whole site/README/share card against the finished feature set. The `www` redirect needs the owner's Cloudflare dashboard because the deploy token cannot write redirect rules. |
@@ -257,7 +257,7 @@ takes **20.4766 minutes**, exceeding the unchanged 20-minute budget; its failed 
 coverage gate red. The ARM disk image separately fails detach; the x64 image passes. Updating test weights does
 not relabel either failure as success.
 
-`TestTimes.json` is refreshed from this run alone: **all 129 classes on each system**, including healthy results
+The previous timing checkpoint refreshed `TestTimes.json` from this run alone: **all 129 classes on each system**, including healthy results
 from the budget-failed macOS job. No failed-class time or fabricated measurement is included. Under the old actual
 assignment, the collection model predicts macOS shard 3 at 20.1423 minutes versus 20.4766 observed. Redealing the
 stored, rounded native weights gives the following projections; build, discovery, queue and packaging overhead
@@ -306,15 +306,41 @@ discovery of its built DLL and all 13 actual VSTest filtered listings again pass
 Its 34 added cases versus the measured 951 are still unmeasured by existing class totals; later editor/status
 additions are outside this discovery snapshot.
 
-[Full native CI `38835542810`](https://github.com/tebeco/passenger/actions/runs/38835542810) at `74f481b` is still
-running at this update. macOS shard 1 finishes in 18.1609 minutes with 235 passed/one failed: Self Debugging throws
-`Background work never finished` during `Ui.Await`/`Ui.Settle`, while its server log repeatedly reloads repository
-projects. This is not a budget failure, and no cause or timeout increase is claimed. The macOS image job also
-fails its final gate with `ARM_OUTCOME=failure`, despite the continue-on-error ARM step's API conclusion saying
-success. Nine mount controls and the x64 image pass; ARM detach is followed by `cannot find IO media` and a guard
-reporting `/dev/disk7 belongs to another image`. Root retains `ci-38835542810-macos-{1,images}.log` and
-`ci-38835542810-disk-images/` under `artifacts/milestone-1/integration/`. Neither this partial result nor passing
-package controls establish green CI or #206 acceptance.
+[Complete native CI `38835542810`](https://github.com/tebeco/passenger/actions/runs/38835542810) at `74f481b` takes
+**29m21s**, with exactly **985 selected/results per OS**, no missing or duplicate display names. Windows reports
+**976 passed/nine skipped**, Linux **918 passed/67 skipped**, and macOS **927 passed/56 skipped/two failed**.
+All 37 Windows WPF Hot Reload cases pass. Windows shards 4/5 fail only their unchanged 20-minute budget; the
+expanded WPF class alone takes 588.6 seconds versus the earlier ten-case weight. The observed shard minutes are:
+
+| System | Actual test minutes at `74f481b` | Redealt projection from its healthy class weights |
+| --- | --- | --- |
+| Windows | 15.99, 16.88, 18.83, 24.81, 21.75 | 19.37, 19.40, 19.38, 19.38, 19.37 |
+| Linux | 15.75, 18.55, 16.29, 14.37 | 16.04, 16.05, 16.05, 16.06 |
+| macOS | 18.16, 19.93, 19.51, 18.66 | 18.84, 18.84, 18.84, 18.84 |
+
+The refreshed `TestTimes.json` uses all **129 healthy classes on Windows/Linux and 127 on macOS**. macOS
+`SelfDebuggingTests` and `DesignTimeIsolationTests` keep their prior healthy `c9509e4` weights, 131.5/41.7 seconds;
+failed-case durations are excluded. macOS Self Debugging fails at `Ui.Await`/`Ui.Settle` with `Background work never
+finished`, while generated NuGet imports change and repository projects reload. Custom-intermediate restore
+separately fails because an existing `/private/var/.../project.nuget.cache` target is written via its `/var` alias.
+Both require source-attributed repairs/reruns; no timeout increase or original cause is inferred from the timing table.
+
+The macOS image job also fails its final gate with `ARM_OUTCOME=failure`, despite the continue-on-error ARM step's
+API conclusion saying success. Nine mount controls and the x64 image pass; ARM detach is followed by
+`cannot find IO media` and a guard reporting `/dev/disk7 belongs to another image`. Root retains
+`ci-38835542810-macos-{1,images}.log`, `ci-38835542810-disk-images/` and all 13 raw result artifacts under
+`artifacts/milestone-1/integration/`. No green CI or #206 acceptance is claimed.
+
+Exact current `d9c7ce5` discovery contains **995 tests in the same 129 classes**. All 13 real VSTest filtered listings
+pass exactly-once coverage: Windows 183/202/196/219/195, Linux 265/244/223/263 and macOS 290/224/292/189. Repeated
+allocation is byte-identical; all four shard CLI regressions pass. The historical result gate passes Linux and still
+refuses Windows shards 4/5 and macOS shards 1/3. The ten newer cases are unmeasured growth: Editor Tabs 6→8,
+File Properties 7→9, Packages 6→8, WPF Hot Reload 37→39 and Avalonia XAML Hot Reload 31→33. Existing class totals
+are not scaled for these additions; projections exclude build/discovery/queue/package overhead. Five/four/four
+shards, the five-slot macOS limit, 20-minute test budget and 45-minute job timeout remain unchanged.
+Shipping `artifacts/2026-10-16/{refresh-ci-74f-timings.py,ci-74f-timing-analysis.json,ci-d9c7ce5-validation.log,validate-ci-d9c7ce5.ps1}`
+retains exact raw-result analysis, failed-class retention and discovery/filter commands. The earlier `c9509e4`
+tables and 983/985 discovery snapshots above remain historical evidence, superseded for the current deal.
 
 Earlier timing checkpoints follow for provenance; their weights and coverage limits are superseded by the
 healthy `c9509e4` measurements above.
