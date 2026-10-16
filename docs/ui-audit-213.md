@@ -260,9 +260,15 @@ results exactly once per OS and zero failed tests, with a budget-only macOS shar
 detach failure. Newer source still requires native CI; see the timing and case-growth evidence in MVP progress.
 
 Complete native `7241544` run `38839133992` later reproduces the Dark Profiler Snapshots-at-683 failure with the
-pre-capture assertion order. Its fractional transformed tab geometry is under investigation; the earlier passing
-focused run does not resolve that recurrence, and no product clipping cause, tolerance change or fixed header is
-claimed. The current Self Debugging deadline/restore repair has scoped Windows/Linux evidence, with macOS pending.
+pre-capture assertion order. `2d0e231` subsequently identifies a mixed-coordinate test error during the real Fluent
+press transition: the transformed origin plus the untransformed width reports overflow while the actual whole
+transformed rectangle remains inside. The installed theme's exact source has a 75ms transition to scale 0.98.
+Real wheel input requires rejection of a genuinely clipped tab; a real held Snapshots press at 683 then verifies
+its transformed rectangle, selected page/focus and rendered label. Windows class 6/6 passes, the old-helper-only
+control fails both themes, and restored final cases pass 2/2; both final scale-2 held frames were inspected.
+Tolerance and pre-capture geometry snapshots remain unchanged. This is a test repair with native acceptance
+pending, not a product reveal/style fix. The current Self Debugging repair likewise has Windows/Linux evidence,
+with macOS pending.
 
 | Tool surfaces | Current captured/tested state | Continuing source or capture work |
 | --- | --- | --- |
@@ -275,9 +281,9 @@ claimed. The current Self Debugging deadline/restore repair has scoped Windows/L
 | Profiler Memory/Frames subviews | Actual held-object comparison/object/root-path flows, million-object metadata and long Frames metrics/scrolling/source navigation have scoped Windows/Linux tests and both-theme captures. | Remaining error/cancellation/busy transitions and unexamined snapshot states; scoped evidence is listed above. |
 
 Long editor tabs and status paths now have scoped fixes above. `9c805c4` adds real populated Git long-path/message,
-branch/file keyboard and resize checks on Windows/Linux; Local History, Commit and unexamined Git states continue.
-Optional status widgets and remaining popup/focus rules continue; the recurring native macOS Profiler header
-geometry failure takes priority after the timing checkpoint. The capture
+branch/file keyboard and resize checks on Windows/Linux. `d229d3a` adds real Local History file/folder Revert, Undo/Save, long-label and side200 toolbar reading with ten Windows and two native Linux cases passing. DiffView, Commit and unexamined Git states continue.
+Optional status widgets and remaining popup/focus rules continue; the Profiler test repair still requires native
+acceptance while bounded IDE popup shadow/long-result work resumes. The capture
 inventory is updated as those checks run; it is not a stopping condition.
 
 ## Reference and execution limits

@@ -89,7 +89,7 @@ public sealed class ToolHeaderTests : IDisposable
                     bool inside = Inside(page, strip);
                     ToggleButton[] checkedPages = [.. pages.Where(button => button.IsChecked == true)];
                     object? resizedFocus = window.FocusManager?.GetFocusedElement();
-                    string geometry = $"tab bounds={page.Bounds}, position={page.TranslatePoint(default, strip)}, strip={strip.Bounds}, "
+                    string geometry = $"tab bounds={page.Bounds}, painted={PaintedBounds(page, strip)}, transform={page.RenderTransform?.Value}, strip={strip.Bounds}, "
                         + $"viewport={strip.Viewport}, extent={strip.Extent}, offset={strip.Offset}, "
                         + $"content={((Control)strip.Content!).Bounds}, profiler={window.ProfilerView.Bounds}, window={window.Bounds}";
                     UiAudit.Capture(window, $"profiler-page-{page.Content}-{width:0}-{(light ? "light" : "dark")}");
@@ -100,6 +100,55 @@ public sealed class ToolHeaderTests : IDisposable
                     CheckActions(tabsBar);
                 }
             }
+            // Fluent scales a held tab around its centre. Its transformed origin plus its original width is not
+            // its painted rectangle: that combination falsely reported the last tab outside the native Mac strip.
+            ToggleButton last = pages[^1];
+            window.Width = 683;
+            Ui.Settle();
+            for (int attempt = 0; attempt < 20 && strip.Offset.X > 0.5; attempt++)
+            {
+                Point at = strip.TranslatePoint(new Point(strip.Bounds.Width / 2, strip.Bounds.Height / 2), window)!.Value;
+                window.MouseWheel(at, new Vector(3, 0));
+                Ui.Settle();
+            }
+            Assert.True(PaintedBounds(last, strip).Right > strip.Bounds.Width + 0.5,
+                "The real last tab was not clipped when the narrow strip was scrolled to its beginning");
+            Assert.False(Inside(last, strip), "The geometry check accepted a genuinely clipped tab");
+            for (int attempt = 0; attempt < 20 && strip.Offset.X < strip.Extent.Width - strip.Viewport.Width - 0.5; attempt++)
+            {
+                Point at = strip.TranslatePoint(new Point(strip.Bounds.Width / 2, strip.Bounds.Height / 2), window)!.Value;
+                window.MouseWheel(at, new Vector(-3, 0));
+                Ui.Settle();
+            }
+            Point held = last.TranslatePoint(new Point(last.Bounds.Width / 2, last.Bounds.Height / 2), window)!.Value;
+            window.MouseMove(held);
+            window.MouseDown(held, MouseButton.Left);
+            try
+            {
+                Ui.PumpUntil(() => last.IsPressed && last.RenderTransform?.Value.M11 < 0.981,
+                    "the real held tab's Fluent press transition", TimeSpan.FromSeconds(3));
+                Rect painted = PaintedBounds(last, strip);
+                bool inside = Inside(last, strip);
+                bool selected = last.IsChecked == true;
+                object? focused = window.FocusManager?.GetFocusedElement();
+                double mixedRight = last.TranslatePoint(default, strip)!.Value.X + last.Bounds.Width;
+                string geometry = $"painted={painted}, transformed origin plus original width={mixedRight}, "
+                    + $"transform={last.RenderTransform?.Value}, viewport={strip.Bounds.Size}, offset={strip.Offset}";
+                Console.WriteLine($"Held Snapshots at 683: {geometry}");
+                // Keep the acceptance boundary ahead of anything that ticks the renderer, including captures.
+                Assert.True(inside, $"The actually painted held tab escapes its strip: {geometry}");
+                Assert.True(selected);
+                Assert.Same(last, focused);
+                TextBlock label = Assert.Single(last.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Snapshots");
+                Assert.True(LabelInk(window, label) > 50, "The held tab's label is not readable in the actual rendered frame");
+                UiAudit.Capture(window, $"profiler-held-Snapshots-683-{(light ? "light" : "dark")}");
+            }
+            finally
+            {
+                window.MouseUp(held, MouseButton.Left);
+                Ui.Settle();
+            }
+            Assert.Same(last, Assert.Single(pages, button => button.IsChecked == true));
             window.Width = 640;
             Ui.Settle();
             foreach (string navigation in new[] { "shift+tab", "tab" })
@@ -207,7 +256,7 @@ public sealed class ToolHeaderTests : IDisposable
                 foreach (Control action in new Control[] { query, chooser, prerelease, refresh })
                 {
                     Assert.True(action.IsEffectivelyVisible && Inside(action, bar), $"{action.GetType().Name} escapes the {bar.Bounds.Width}px NuGet toolbar");
-                    Rect bounds = new(action.TranslatePoint(default, bar)!.Value, action.Bounds.Size);
+                    Rect bounds = PaintedBounds(action, bar);
                     Assert.DoesNotContain(taken, prior => prior.Intersects(bounds));
                     taken.Add(bounds);
                 }
@@ -474,8 +523,8 @@ public sealed class ToolHeaderTests : IDisposable
             Assert.True(Inside(strip, header));
             Assert.True(strip.Bounds.Width > 0);
             Assert.True(header.Bounds.Height is 32 or 64, $"The {tool.Id} header did not settle to one or two rows: {header.Bounds.Size}");
-            Rect titleBounds = new(title.TranslatePoint(default, header)!.Value, title.Bounds.Size);
-            Assert.False(titleBounds.Intersects(new Rect(strip.TranslatePoint(default, header)!.Value, strip.Bounds.Size)));
+            Rect titleBounds = PaintedBounds(title, header);
+            Assert.False(titleBounds.Intersects(PaintedBounds(strip, header)));
         }
     }
 
@@ -488,9 +537,48 @@ public sealed class ToolHeaderTests : IDisposable
         Ui.Settle();
     }
 
-    private static bool Inside(Control child, Control parent) => child.TranslatePoint(default, parent) is { } at
-        && at.X >= -0.5 && at.Y >= -0.5 && at.X + child.Bounds.Width <= parent.Bounds.Width + 0.5
-        && at.Y + child.Bounds.Height <= parent.Bounds.Height + 0.5;
+    private static Rect PaintedBounds(Control child, Control parent) => new Rect(child.Bounds.Size)
+        .TransformToAABB(child.TransformToVisual(parent) ?? throw new InvalidOperationException("The controls have no common visual ancestor"));
+
+    private static bool Inside(Control child, Control parent)
+    {
+        Rect painted = PaintedBounds(child, parent);
+        return painted.Left >= -0.5 && painted.Top >= -0.5 && painted.Right <= parent.Bounds.Width + 0.5
+            && painted.Bottom <= parent.Bounds.Height + 0.5;
+    }
+
+    private static int LabelInk(Window window, TextBlock label)
+    {
+        Avalonia.Media.Color ink = Assert.IsAssignableFrom<Avalonia.Media.ISolidColorBrush>(label.Foreground).Color;
+        Rect bounds = PaintedBounds(label, window);
+        int left = (int)Math.Floor(bounds.Left * window.RenderScaling);
+        int top = (int)Math.Floor(bounds.Top * window.RenderScaling);
+        int width = (int)Math.Ceiling(bounds.Right * window.RenderScaling) - left;
+        int height = (int)Math.Ceiling(bounds.Bottom * window.RenderScaling) - top;
+        using Avalonia.Media.Imaging.WriteableBitmap frame = window.CaptureRenderedFrame()
+            ?? throw new InvalidOperationException("The window has drawn no frame");
+        byte[] pixels = new byte[width * height * 4];
+        System.Runtime.InteropServices.GCHandle pinned = System.Runtime.InteropServices.GCHandle.Alloc(pixels, System.Runtime.InteropServices.GCHandleType.Pinned);
+        try
+        {
+            frame.CopyPixels(new PixelRect(left, top, width, height), pinned.AddrOfPinnedObject(), pixels.Length, width * 4);
+        }
+        finally
+        {
+            pinned.Free();
+        }
+        int red = frame.Format == Avalonia.Platform.PixelFormat.Rgba8888 ? 0 : 2;
+        int blue = red == 0 ? 2 : 0;
+        int count = 0;
+        for (int index = 0; index < pixels.Length; index += 4)
+        {
+            if (Math.Abs(pixels[index + red] - ink.R) + Math.Abs(pixels[index + 1] - ink.G) + Math.Abs(pixels[index + blue] - ink.B) <= 15)
+            {
+                count++;
+            }
+        }
+        return count;
+    }
 
     private static void CheckActions(Control bar)
     {
@@ -499,7 +587,7 @@ public sealed class ToolHeaderTests : IDisposable
             && !button.GetVisualAncestors().TakeWhile(ancestor => ancestor != bar).OfType<ScrollViewer>().Any()))
         {
             Assert.True(Inside(button, bar), $"'{button.Content ?? ToolTip.GetTip(button)}' escapes the {bar.Name} toolbar");
-            Rect bounds = new(button.TranslatePoint(default, bar)!.Value, button.Bounds.Size);
+            Rect bounds = PaintedBounds(button, bar);
             Assert.DoesNotContain(taken, prior => prior.Intersects(bounds));
             taken.Add(bounds);
         }
