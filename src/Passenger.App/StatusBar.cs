@@ -40,6 +40,10 @@ public sealed class StatusBar
         this.encodingText = encodingText;
         text.PropertyChanged += (_, e) =>
         {
+            if (e.Property == TextBlock.TextProperty)
+            {
+                ToolTip.SetTip(text, string.IsNullOrEmpty(text.Text) ? null : text.Text);
+            }
             if (e.Property == TextBlock.TextProperty && text.Text != marked)
             {
                 marked = null;
