@@ -31,14 +31,19 @@ jobs:
       fail-fast: false
       matrix:
         system: [macOS, Windows, Linux]
-        # Four macOS test shards plus CI's one sequential disk-image job fit GitHub's five macOS runner slots. The
-        # refreshed successful CI class times need five Windows shards to keep the unchanged 20-minute budget.
-        shard: [1, 2, 3, 4, 5]
+        # Four macOS test shards plus CI's one sequential disk-image job fit GitHub's five macOS runner slots.
+        # Native Windows tests exceeded the unchanged 20-minute budget after the WPF class grew; six jobs leave
+        # room for that measured cost without raising the budget. Other systems keep their existing deal.
+        shard: [1, 2, 3, 4, 5, 6]
         exclude:
           - system: macOS
             shard: 5
           - system: Linux
             shard: 5
+          - system: macOS
+            shard: 6
+          - system: Linux
+            shard: 6
         include:
           - system: macOS
             name: macOS (arm64)
@@ -47,7 +52,7 @@ jobs:
           - system: Windows
             name: Windows (x64)
             os: windows-latest
-            shards: 5
+            shards: 6
           - system: Linux
             name: Linux (x64)
             os: ubuntu-24.04
