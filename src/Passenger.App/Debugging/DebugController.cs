@@ -304,7 +304,7 @@ public sealed class DebugController : IDisposable
                 UpdateAllMarks();
             }
             LastApplied = outcome;
-            view.Console.Append($"Hot Reload: {outcome.Said}\n", error: outcome.Result is not (HotReloadResult.Applied or HotReloadResult.NothingToApply));
+            view.Console.Append($"Hot Reload: {outcome.Said}\n", error: outcome.Result is not (HotReloadResult.Applied or HotReloadResult.NothingToApply or HotReloadResult.RegisteredForFutureViews));
             Message?.Invoke(this, outcome.Said);
             Applied?.Invoke(this, outcome);
             StateChanged?.Invoke(this, EventArgs.Empty);

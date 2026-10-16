@@ -321,10 +321,13 @@ public sealed class RunXamlHotReload(EditorArea editors) : IDisposable
                     pending[source.File] = edited with { Before = source.After };
                 }
             }
-            return new HotReloadOutcome(result.Changes > 0 ? HotReloadResult.Applied : HotReloadResult.NothingToApply,
-                $"XAML changes applied to {result.Changes} live {(result.Changes == 1 ? "property" : "properties")}: {string.Join(", ", batch.Select(p => Path.GetFileName(p.File)))}")
+            return new HotReloadOutcome(result.Changes > 0 ? HotReloadResult.Applied
+                    : result.FutureViewRegistrations > 0 ? HotReloadResult.RegisteredForFutureViews : HotReloadResult.NothingToApply,
+                HotReload.DescribeXaml(result, batch))
             {
                 Files = [.. batch.Select(p => p.File)],
+                FutureViewRegistrations = result.FutureViewRegistrations,
+                LiveXamlProperties = result.Changes,
             };
         }
         catch (LiveAppException error)
