@@ -28,6 +28,9 @@ elif args[0] == "detach":
         sys.exit("detach was addressed by mount path instead of its owned device")
     if mode != "lying-detach":
         state["images"] = []
+    if mode == "reuse-detached-device":
+        state["images"] = [{"image-path": str(file.parent / "another image.dmg"),
+                            "system-entities": [{"dev-entry": "/dev/disk7"}]}]
     output = None
 elif args[0] == "info":
     output = {} if mode == "bad-info" else {"images": state["images"]}
@@ -86,10 +89,47 @@ class MountCli(unittest.TestCase):
         self.assertFalse(self.record.exists())
         self.assertFalse(any(call[0] == "detach" for call in json.loads(self.state.read_text())["calls"]))
 
-    def test_reused_device_cannot_detach_another_image(self):
+    def test_absent_owned_image_completes_without_detaching_a_reused_device(self):
         self.mutate(lambda value: value["images"][0].update({"image-path": str(self.root / "another image.dmg")}))
+        remaining = json.loads(self.state.read_text())["images"]
+        self.cli("detach", self.record)
+        self.assertFalse(self.record.exists())
+        state = json.loads(self.state.read_text())
+        self.assertEqual(state["images"], remaining)
+        self.assertFalse(any(call[0] == "detach" for call in state["calls"]))
+
+    def test_successful_detach_can_be_followed_by_immediate_device_reuse(self):
+        self.env["FAKE_MODE"] = "reuse-detached-device"
+        self.cli("detach", self.record)
+        self.assertFalse(self.record.exists())
+        state = json.loads(self.state.read_text())
+        self.assertEqual(state["images"][0]["image-path"], str(self.root / "another image.dmg"))
+        self.assertEqual([call for call in state["calls"] if call[0] == "detach"], [["detach", "/dev/disk7"]])
+
+    def test_reused_device_cannot_be_detached_when_the_owned_image_remains_attached(self):
+        def move_owned_image(value):
+            value["images"][0]["system-entities"] = [{"dev-entry": "/dev/disk8"}]
+            value["images"].append({"image-path": str(self.root / "another image.dmg"),
+                                    "system-entities": [{"dev-entry": "/dev/disk7"}]})
+
+        self.mutate(move_owned_image)
         result = self.cli("detach", self.record, success=False)
         self.assertIn("belongs to another image", result.stderr)
+        self.assertTrue(self.record.exists())
+        self.assertFalse(any(call[0] == "detach" for call in json.loads(self.state.read_text())["calls"]))
+
+    def test_changed_owned_device_cannot_be_detached(self):
+        self.mutate(lambda value: value["images"][0].update({"system-entities": [{"dev-entry": "/dev/disk8"}]}))
+        result = self.cli("detach", self.record, success=False)
+        self.assertIn("was attached as /dev/disk7", result.stderr)
+        self.assertTrue(self.record.exists())
+        self.assertFalse(any(call[0] == "detach" for call in json.loads(self.state.read_text())["calls"]))
+
+    def test_multiple_attachments_of_the_owned_image_cannot_be_detached(self):
+        self.mutate(lambda value: value["images"].append({"image-path": str(self.image),
+                                                        "system-entities": [{"dev-entry": "/dev/disk8"}]}))
+        result = self.cli("detach", self.record, success=False)
+        self.assertIn("multiple attachments", result.stderr)
         self.assertTrue(self.record.exists())
         self.assertFalse(any(call[0] == "detach" for call in json.loads(self.state.read_text())["calls"]))
 
