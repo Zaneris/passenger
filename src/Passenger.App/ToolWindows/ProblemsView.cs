@@ -395,11 +395,19 @@ public sealed class ProblemsView : DockPanel
             group.Children.Add(detail);
             return group;
         }
-        StackPanel panel = new() { Orientation = Orientation.Horizontal, Height = 24, Margin = margin };
+        Grid panel = new() { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), Height = 24, Margin = margin };
+        detail.TextTrimming = TextTrimming.CharacterEllipsis;
+        Grid.SetColumn(detail, 2);
+        panel.SizeChanged += (_, _) => detail.MaxWidth = Math.Max(0, panel.Bounds.Width * 0.3);
         PathIcon icon = new() { Margin = new Thickness(0, 0, 8, 0) };
         icon.Bind(PathIcon.DataProperty, icon.GetResourceObservable(problem.Severity == ProblemSeverity.Error ? "Icon.Error" : "Icon.Problems"));
         icon.Bind(PathIcon.ForegroundProperty, icon.GetResourceObservable(problem.Severity == ProblemSeverity.Error ? "Passenger.Editor.Error" : "Passenger.Editor.Warning"));
-        void Where() => detail.Text = problem.Code is { Length: > 0 } code ? $"{row.Detail}  {code}" : row.Detail;
+        void Where()
+        {
+            detail.Text = problem.Code is { Length: > 0 } code ? $"{row.Detail}  {code}" : row.Detail;
+            detail.IsVisible = !string.IsNullOrEmpty(detail.Text);
+            ToolTip.SetTip(detail, detail.Text);
+        }
         Where();
         // Followed only while shown, so a row let go of by the list holds nothing it showed.
         void OnMoved(object? sender, System.ComponentModel.PropertyChangedEventArgs e) => Where();
@@ -412,10 +420,10 @@ public sealed class ProblemsView : DockPanel
         panel.Children.Add(icon);
         // A message of several lines (a compiler's stack trace) shows its first in the row and all of them on hover.
         string label = row.Label;
+        ToolTip.SetTip(panel, row.Label);
         if (label.IndexOf('\n') is int lineEnd and >= 0)
         {
             label = label[..lineEnd].TrimEnd('\r');
-            ToolTip.SetTip(panel, row.Label);
         }
         // A rule's name the message ends with is its link (an ESLint problem's), else the address where the message has it.
         int at = problem.Link is not { } named ? -1
@@ -423,25 +431,38 @@ public sealed class ProblemsView : DockPanel
             : label.IndexOf(named.OriginalString, StringComparison.Ordinal);
         if (problem.Link is not { } link || at < 0)
         {
-            panel.Children.Add(new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 900 });
+            TextBlock message = new() { Text = label, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, [Grid.ColumnProperty] = 1 };
+            ToolTip.SetTip(message, row.Label);
+            panel.Children.Add(message);
         }
         else
         {
             // The link's words in the link colour, the words around them as they are.
             string address = problem.LinkText ?? link.OriginalString;
             Button open = new() { Classes = { "link" }, Content = address, VerticalAlignment = VerticalAlignment.Center };
+            open.ContentTemplate = new FuncDataTemplate<string>((text, _) => new TextBlock { Text = text, TextTrimming = TextTrimming.CharacterEllipsis });
             ToolTip.SetTip(open, $"Open {link.OriginalString} in the browser");
             open.Click += (_, e) =>
             {
                 LinkClicked?.Invoke(this, link);
                 e.Handled = true;
             };
-            panel.Children.Add(new TextBlock { Text = label[..at], VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 700 });
-            panel.Children.Add(open);
-            if (label[(at + address.Length)..] is { Length: > 0 } after)
+            string after = label[(at + address.Length)..];
+            Grid message = new()
             {
-                panel.Children.Add(new TextBlock { Text = after, VerticalAlignment = VerticalAlignment.Center });
-            }
+                ColumnDefinitions = new ColumnDefinitions($"{(at > 0 ? "*" : "0")},Auto,{(after.Length > 0 ? "*" : "0")}"),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                [Grid.ColumnProperty] = 1,
+                Children =
+                {
+                    new TextBlock { Text = label[..at], VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis },
+                    open,
+                    new TextBlock { Text = after, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, [Grid.ColumnProperty] = 2 },
+                },
+            };
+            Grid.SetColumn(open, 1);
+            panel.SizeChanged += (_, _) => open.MaxWidth = Math.Max(0, (panel.Bounds.Width - detail.MaxWidth - icon.DesiredSize.Width - detail.Margin.Left) * (at > 0 || after.Length > 0 ? 0.55 : 1));
+            panel.Children.Add(message);
         }
         panel.Children.Add(detail);
         return panel;

@@ -289,6 +289,19 @@ public sealed class HotReloadTests : IClassFixture<RestoredFolders>, IDisposable
                         $"The Hot Reload summary escapes its {viewport.GetType().Name} viewport at window width {width}");
                 }
                 UiAudit.Capture(window, $"hot-reload-missing-baseline-{width:0}-" + (light ? "light" : "dark"));
+                foreach (Passenger.App.Run.Problem problem in refused.Problems)
+                {
+                    ListBoxItem item = Assert.Single(list.GetVisualDescendants().OfType<ListBoxItem>(), control => control.DataContext is Passenger.App.ToolWindows.ProblemRow row && row.Problem == problem);
+                    TextBlock message = Assert.Single(item.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == problem.Message);
+                    foreach (TextBlock label in item.GetVisualDescendants().OfType<TextBlock>().Where(text => !string.IsNullOrEmpty(text.Text)))
+                    {
+                        Point at = label.TranslatePoint(default, list)!.Value;
+                        Assert.True(at.X >= 0 && at.X + label.Bounds.Width <= list.Bounds.Width,
+                            $"The actual Hot Reload problem label '{label.Text}' escapes its list at window width {width}: {at} + {label.Bounds.Width} in {list.Bounds.Width}");
+                        Assert.True(label.TextLayout.Width <= label.Bounds.Width + 1, "A Hot Reload problem label must ellipsize within its row");
+                    }
+                    Assert.Equal(problem.Message, ToolTip.GetTip(message));
+                }
             }
 
             // Roslyn acknowledged its no-effect snapshot internally. Restoring the exact DLL must not let a second
