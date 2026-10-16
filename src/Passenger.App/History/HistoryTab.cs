@@ -63,6 +63,7 @@ public sealed class HistoryTab : DockPanel
         list = new ListBox
         {
             Classes = { "tree" },
+            [ScrollViewer.HorizontalScrollBarVisibilityProperty] = ScrollBarVisibility.Auto,
             ItemTemplate = new FuncDataTemplate<HistoryRow>((row, _) => row is null ? new TextBlock() : Row(row), supportsRecycling: false),
         };
         list.SelectionChanged += (_, _) => _ = ShowAsync();
@@ -85,9 +86,9 @@ public sealed class HistoryTab : DockPanel
         Border top = new()
         {
             [DockProperty] = Dock.Top,
-            Height = 36,
+            MinHeight = 36,
             BorderThickness = new Thickness(0, 0, 0, 1),
-            Child = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Children = { filter, revert } },
+            Child = Across(new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Children = { filter, revert } }),
         };
         top.Bind(Border.BorderBrushProperty, top.GetResourceObservable("Passenger.Divider"));
 
@@ -97,6 +98,7 @@ public sealed class HistoryTab : DockPanel
             fileList = new ListBox
             {
                 Classes = { "tree" },
+                [ScrollViewer.HorizontalScrollBarVisibilityProperty] = ScrollBarVisibility.Auto,
                 SelectionMode = SelectionMode.Multiple,
                 ItemTemplate = new FuncDataTemplate<HistoryDifference>((file, _) => file is null ? new TextBlock() : FileRow(file), supportsRecycling: false),
             };
@@ -117,14 +119,14 @@ public sealed class HistoryTab : DockPanel
             split.Children.Add(diffHost);
             right = split;
         }
-        Grid body = new() { ColumnDefinitions = new ColumnDefinitions("2*,1,5*") };
+        Grid body = new() { ColumnDefinitions = new ColumnDefinitions("2*,1,5*"), MinWidth = 840 };
         HairlineDivider divider = new(GridResizeDirection.Columns) { [Grid.ColumnProperty] = 1 };
         Grid.SetColumn(right, 2);
         body.Children.Add(new Panel { Children = { list, placeholder } });
         body.Children.Add(divider);
         body.Children.Add(right);
         Children.Add(top);
-        Children.Add(body);
+        Children.Add(Across(body));
 
         onStoreChanged = (_, _) => _ = LoadAsync();
         store.Changed += onStoreChanged;
@@ -429,7 +431,7 @@ public sealed class HistoryTab : DockPanel
             tag.Bind(PathIcon.ForegroundProperty, tag.GetResourceObservable(row.System ? "Passenger.TextMuted" : "Passenger.Accent"));
             line.Children.Add(tag);
         }
-        TextBlock title = new() { Text = row.Title, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock title = new() { Text = row.Title, VerticalAlignment = VerticalAlignment.Center };
         if (row.IsLabel)
         {
             title.FontWeight = FontWeight.SemiBold;
@@ -456,6 +458,7 @@ public sealed class HistoryTab : DockPanel
         }
         string where = System.IO.Path.GetDirectoryName(System.IO.Path.GetRelativePath(Path, file.Path))?.Replace('\\', '/') ?? string.Empty;
         TextBlock folder = Muted(where);
+        folder.TextTrimming = TextTrimming.None;
         folder.FontSize = 12;
         folder.Margin = new Thickness(8, 0, 0, 0);
         return new StackPanel { Orientation = Orientation.Horizontal, Height = RowHeight, Children = { icon, name, folder } };
@@ -466,6 +469,28 @@ public sealed class HistoryTab : DockPanel
         TextBlock block = new() { Text = text, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         block.Bind(TextBlock.ForegroundProperty, block.GetResourceObservable("Passenger.TextMuted"));
         return block;
+    }
+
+    private static ScrollViewer Across(Control content)
+    {
+        ScrollViewer reader = new()
+        {
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Content = content,
+        };
+        if (content is Grid columns)
+        {
+            columns.Width = columns.MinWidth;
+            reader.PropertyChanged += (_, change) =>
+            {
+                if (change.Property == ScrollViewer.ViewportProperty)
+                {
+                    columns.Width = Math.Max(columns.MinWidth, reader.Viewport.Width);
+                }
+            };
+        }
+        return reader;
     }
 
     private static Button Tool(string icon, string tip, Action run)
