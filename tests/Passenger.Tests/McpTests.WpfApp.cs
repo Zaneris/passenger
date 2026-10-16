@@ -109,13 +109,16 @@ public sealed partial class McpTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task A_popup_that_stays_displaced_is_refused_without_queuing_a_later_click_or_blocking_other_commands(bool animated)
+    [InlineData(false, 0)]
+    [InlineData(true, 0)]
+    [InlineData(true, 1)]
+    public async Task A_popup_that_stays_displaced_is_refused_without_queuing_a_later_click_or_blocking_other_commands(bool animated, int frameRate)
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "WPF runs on Windows alone");
         string move = animated
-            ? "shift.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, new System.Windows.Media.Animation.DoubleAnimation(-200, -200, new System.Windows.Duration(TimeSpan.FromSeconds(1))) { RepeatBehavior = System.Windows.Media.Animation.RepeatBehavior.Forever });"
+            ? "System.Windows.Media.Animation.DoubleAnimation animation = new(-200, -200, new System.Windows.Duration(TimeSpan.FromSeconds(1))) { RepeatBehavior = System.Windows.Media.Animation.RepeatBehavior.Forever }; "
+                + (frameRate > 0 ? $"System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(animation, {frameRate}); " : "")
+                + "shift.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, animation);"
             : "shift.Y = -200;";
         string wpf = WpfInputFolder($$"""
             Loaded += (_, _) =>
@@ -142,24 +145,52 @@ public sealed partial class McpTests
                 };
             };
             """);
-        await using McpClient client = await Start(["--mcp", wpf]);
-        Assert.True((await Call(client, "build")).GetProperty("succeeded").GetBoolean());
-        Assert.True((await Call(client, "run", new() { ["waitSeconds"] = 0 })).GetProperty("stillRunning").GetBoolean());
-        await Call(client, "app_click", new() { ["control"] = "#Colour" });
-        Stopwatch took = Stopwatch.StartNew();
-        CallToolResult refused = await Result(client, "app_click", new() { ["control"] = "ComboBoxItem \"Blue\"" });
-        Assert.True(refused.IsError == true, Text(refused));
-        Assert.Contains(animated ? "still moving" : "out of view", Text(refused), StringComparison.Ordinal);
-        Assert.True(took.Elapsed < TimeSpan.FromSeconds(4), $"A permanently displaced popup held a command for {took.Elapsed}");
-        Assert.Contains("ComboBox#Colour \"Red\"", Text(await Call(client, "app_tree", new() { ["filter"] = "#Colour" })), StringComparison.Ordinal);
-        await Call(client, "app_click", new() { ["control"] = "#Delete" });
-        Assert.Contains("ComboBox#Colour \"Red\"", Text(await Call(client, "app_tree", new() { ["filter"] = "#Colour" })), StringComparison.Ordinal);
-        // The refused request cannot wake up and click later when the application's button restores the popup.
-        await Call(client, "app_key", new() { ["keys"] = "Escape" });
-        await Call(client, "app_click", new() { ["control"] = "#Colour" });
-        await Call(client, "app_click", new() { ["control"] = "ComboBoxItem \"Blue\"" });
-        Assert.Contains("ComboBox#Colour \"Blue\"", Text(await Call(client, "app_tree", new() { ["filter"] = "#Colour" })), StringComparison.Ordinal);
-        await Call(client, "stop");
+        string trace = Path.Combine(Directory.CreateDirectory(Path.Combine(AppContext.BaseDirectory, "wpf-input-traces")).FullName,
+            $"popup-{animated}-{frameRate}-{Guid.NewGuid():N}.log");
+        await using McpClient client = await Start(["--mcp", wpf], environment: new Dictionary<string, string?> { ["PASSENGER_INSPECTOR_TRACE"] = trace });
+        try
+        {
+            Assert.True((await Call(client, "build")).GetProperty("succeeded").GetBoolean());
+            Assert.True((await Call(client, "run", new() { ["waitSeconds"] = 0 })).GetProperty("stillRunning").GetBoolean());
+            await Call(client, "app_click", new() { ["control"] = "#Colour" });
+            Stopwatch took = Stopwatch.StartNew();
+            CallToolResult refused = await Result(client, "app_click", new() { ["control"] = "ComboBoxItem \"Blue\"" });
+            string text = Text(refused);
+            TestContext.Current.TestOutputHelper?.WriteLine($"Popup refusal ({took.Elapsed}, frame rate {frameRate}): {text}");
+            Assert.True(refused.IsError == true, text);
+            bool moving = text.Contains("popup is still moving", StringComparison.Ordinal);
+            bool busy = text.Contains("UI is busy: input was not sent", StringComparison.Ordinal);
+            Assert.True(animated ? moving || frameRate == 0 && busy : text.Contains("out of view", StringComparison.Ordinal), text);
+            if (animated)
+            {
+                // A clock redrawing every frame can starve Background work on a contended VM; neither refusal queues input.
+                string pattern = moving ? @"input (\d+) before: Moving;.*observed moving=True"
+                    : @"input (\d+) before: Busy;.*dispatcher timeout=True";
+                string observed = Ui.Shared(trace);
+                System.Text.RegularExpressions.Match phase = System.Text.RegularExpressions.Regex.Match(observed, pattern);
+                Assert.True(phase.Success, $"The refusal needs its actual target phase evidence:\n{text}\n{observed}");
+                Assert.DoesNotContain($"input {phase.Groups[1].Value}: dispatch queued", observed, StringComparison.Ordinal);
+            }
+            Assert.True(took.Elapsed < TimeSpan.FromSeconds(4), $"A permanently displaced popup held a command for {took.Elapsed}");
+            Assert.Contains("ComboBox#Colour \"Red\"", Text(await Call(client, "app_tree", new() { ["filter"] = "#Colour" })), StringComparison.Ordinal);
+            await Call(client, "app_click", new() { ["control"] = "#Delete" });
+            Assert.Contains("ComboBox#Colour \"Red\"", Text(await Call(client, "app_tree", new() { ["filter"] = "#Colour" })), StringComparison.Ordinal);
+            // The refused request cannot wake up and click later when the application's button restores the popup.
+            await Call(client, "app_key", new() { ["keys"] = "Escape" });
+            await Call(client, "app_click", new() { ["control"] = "#Colour" });
+            await Call(client, "app_click", new() { ["control"] = "ComboBoxItem \"Blue\"" });
+            Assert.Contains("ComboBox#Colour \"Blue\"", Text(await Call(client, "app_tree", new() { ["filter"] = "#Colour" })), StringComparison.Ordinal);
+            await Call(client, "stop");
+        }
+        finally
+        {
+            string observed = Ui.Shared(trace);
+            TestContext.Current.TestOutputHelper?.WriteLine($"Target inspector trace {trace}:\n{observed}");
+            if (observed.Length > 0)
+            {
+                TestContext.Current.AddAttachment("WPF popup input phases", System.Text.Encoding.UTF8.GetBytes(observed), "text/plain");
+            }
+        }
     }
 
     private string WpfInputFolder(string startup)
