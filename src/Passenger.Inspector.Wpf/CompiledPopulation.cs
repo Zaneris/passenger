@@ -75,15 +75,41 @@ internal static class CompiledPopulation
         reader.Nops();
         if (!reader.String(out string? slot) || slot != "Passenger.Wpf.Populated.1"
             || !reader.Token(0x28, typeof(AppContext).GetMethod(nameof(AppContext.GetData), [typeof(string)])!)
-            || !reader.Token(0x75, typeof(Action<object, Uri>)) || !reader.Store(out int callback)
-            || !reader.Local(callback) || !reader.Branch(0x3a, 0x2d, out int invoke)
-            || !reader.Branch(0x38, 0x2b, out int done))
+            || !reader.Token(0x75, typeof(Action<object, Uri>)))
         {
             return false;
         }
+        // Optimized null-conditional invocation keeps the callback on the stack; Debug stores it in a local.
+        bool stacked = reader.Take(0x25); // dup
+        int callback = -1;
+        int done = -1;
+        int invoke;
+        if (stacked)
+        {
+            if (!reader.Branch(0x3a, 0x2d, out invoke) || !reader.Take(0x26) || !reader.Take(0x2a)) // null -> pop; ret
+            {
+                return false;
+            }
+        }
+        else
+        {
+            if (!reader.Store(out callback) || !reader.Local(callback))
+            {
+                return false;
+            }
+            // Another optimized compiler keeps the local but jumps directly to the final return when null.
+            if (reader.Branch(0x39, 0x2c, out done))
+            {
+                invoke = reader.At;
+            }
+            else if (!reader.Branch(0x3a, 0x2d, out invoke) || !reader.Branch(0x38, 0x2b, out done))
+            {
+                return false;
+            }
+        }
         int invokeStart = reader.At;
         reader.Nops();
-        if (invoke < invokeStart || invoke > reader.At || !reader.Local(callback) || !reader.Take(0x02) || !reader.Take(0x03)
+        if (invoke < invokeStart || invoke > reader.At || (!stacked && !reader.Local(callback)) || !reader.Take(0x02) || !reader.Take(0x03)
             || !reader.Token(0x6f, typeof(Action<object, Uri>).GetMethod(nameof(Action<object, Uri>.Invoke))!))
         {
             return false;
@@ -96,7 +122,7 @@ internal static class CompiledPopulation
             return false;
         }
         reader.Nops();
-        return reader.End && done >= returnStart && done <= returns;
+        return reader.End && (stacked || done >= returnStart && done <= returns);
     }
 
     private sealed class Reader(byte[] il, Module module)
