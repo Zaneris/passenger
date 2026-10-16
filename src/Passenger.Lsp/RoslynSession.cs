@@ -382,9 +382,18 @@ public sealed class LspDocument : IDisposable
     public async Task<IReadOnlyList<LspLocation>> ImplementationAsync(int offset, CancellationToken cancel = default) =>
         Shapes.Locations(await Server.RequestAsync<JsonElement>("textDocument/implementation", new TextDocumentPositionParams(Identifier, PositionOf(offset)), cancel));
 
-    public async Task<IReadOnlyList<LspLocation>> ReferencesAsync(int offset, CancellationToken cancel = default) =>
-        Shapes.Locations(await Server.RequestAsync<JsonElement>("textDocument/references",
-            new ReferenceParams(Identifier, PositionOf(offset), new ReferenceContext(true)), cancel));
+    public async Task<IReadOnlyList<LspLocation>> ReferencesAsync(int offset, CancellationToken cancel = default)
+    {
+        JsonElement result = await Server.RequestAsync<JsonElement>("textDocument/references",
+            new ReferenceParams(Identifier, PositionOf(offset), new ReferenceContext(true)), cancel);
+        // A solution can return thousands of references; decoding even a ready response must leave input free.
+        return await Task.Run(() =>
+        {
+            IReadOnlyList<LspLocation> locations = Shapes.Locations(result);
+            cancel.ThrowIfCancellationRequested();
+            return locations;
+        }, cancel);
+    }
 
     public async Task<IReadOnlyList<DocumentHighlight>> HighlightsAsync(int offset, CancellationToken cancel = default) =>
         await Server.RequestAsync<List<DocumentHighlight>>("textDocument/documentHighlight", new TextDocumentPositionParams(Identifier, PositionOf(offset)), cancel) ?? [];

@@ -945,6 +945,7 @@ public sealed partial class McpTests : IClassFixture<RestoredFolders>, IClassFix
             // The person types in another file while the agent asks for every usage of Twice.
             Task<JsonElement> usages = Task.Run(() => Call(client, "usages", new() { ["path"] = "Helper.cs", ["line"] = 3, ["column"] = 23 }));
             int typed = 0;
+            int sampled;
             TimeSpan longest;
             using (InputWait waits = new())
             {
@@ -957,11 +958,14 @@ public sealed partial class McpTests : IClassFixture<RestoredFolders>, IClassFix
                 }
                 waits.Stop();
                 longest = waits.Longest;
+                sampled = waits.Answered;
             }
             JsonElement[] found = [.. usages.GetAwaiter().GetResult().EnumerateArray()];
             Ui.Settle();
 
             // Every usage comes back, each with its own line, and every key the person typed meanwhile landed at once.
+            Assert.True(typed > 0, "the person typed while the usages were being found");
+            Assert.True(sampled > 0, "input responsiveness was sampled while the usages were being found");
             Assert.Equal(10_002, found.Length);
             Assert.All(found, place => Assert.Contains("Twice(", place.GetProperty("text").GetString(), StringComparison.Ordinal));
             Assert.Contains(found, place => place.GetProperty("path").GetString() == "Uses3.cs" && place.GetProperty("line").GetInt32() == 5005
