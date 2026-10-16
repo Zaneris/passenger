@@ -615,15 +615,20 @@ public sealed class MemoryView : DockPanel
         return new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(row.Depth * 14, 0, 0, 0), Children = { toggle, text } };
     }
 
-    private static Control SnapshotRow(MemorySnapshot snapshot) => new StackPanel
+    private static Control SnapshotRow(MemorySnapshot snapshot)
     {
-        Margin = new Thickness(2, 4),
-        Children =
+        TextBlock details = Muted($"{snapshot.Taken:HH:mm:ss} · {snapshot.Objects:N0} objects · {Size(snapshot.Bytes)}");
+        details.TextWrapping = TextWrapping.Wrap;
+        return new StackPanel
         {
-            new TextBlock { Text = snapshot.Name, FontWeight = FontWeight.SemiBold },
-            Muted($"{snapshot.Taken:HH:mm:ss} · {snapshot.Objects:N0} objects · {Size(snapshot.Bytes)}"),
-        },
-    };
+            Margin = new Thickness(2, 4),
+            Children =
+            {
+                new TextBlock { Text = snapshot.Name, FontWeight = FontWeight.SemiBold },
+                details,
+            },
+        };
+    }
 
     /// <summary>A name, cut short with an ellipsis where its column ends, and whole in its tooltip.</summary>
     private static TextBlock Cell(string text)
