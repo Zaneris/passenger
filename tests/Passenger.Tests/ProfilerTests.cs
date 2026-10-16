@@ -89,6 +89,23 @@ public sealed class ProfilerTests : IDisposable
                 Assert.False(view.Timeline.IsEffectivelyVisible, "The sampling timeline should not describe an absent heap snapshot");
                 UiAudit.Capture(window, $"profiler-memory-not-taken-{width:0}-{(light ? "light" : "dark")}");
             }
+            window.Width = 1200;
+            Page("Frames");
+            List<string> frameProblems = [];
+            foreach (double width in new double[] { 1200, 683, 640 })
+            {
+                window.Width = width;
+                Ui.Settle();
+                TextBlock guidance = Assert.Single(view.FramesPage.GetVisualDescendants().OfType<TextBlock>(), text => text.Text?.StartsWith("No Avalonia frames in this run.", StringComparison.Ordinal) == true);
+                Point at = guidance.TranslatePoint(default, view.FramesPage)!.Value;
+                UiAudit.Capture(window, $"profiler-no-frames-{width:0}-{(light ? "light" : "dark")}");
+                frameProblems.AddRange(UiAudit.HorizontalOverflow(window, "No frames", view.FramesPage));
+                if (at.X < 11.5 || at.X + guidance.Bounds.Width > view.FramesPage.Bounds.Width - 11.5)
+                {
+                    frameProblems.Add($"The no-frames guidance touches the pane edge at {width}px");
+                }
+            }
+            Assert.True(frameProblems.Count == 0, string.Join(Environment.NewLine, frameProblems));
             foreach ((string page, string listName) in new[] { ("Call Tree", "ProfilerCallTree"), ("Hot Spots", "ProfilerHotSpots"), ("Allocations", "ProfilerAllocatedTypes") })
             {
                 window.Width = 1200;
