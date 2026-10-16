@@ -10,6 +10,10 @@ namespace Passenger.Tests;
 /// <summary>Whole-window audit evidence: optional scale-two compositor captures and controls that extend past the frame.</summary>
 public static class UiAudit
 {
+    /// <summary>The whole rectangle a control paints in another control's coordinates, including press transforms.</summary>
+    public static Rect BoundsIn(Control child, Control parent) => new Rect(child.Bounds.Size)
+        .TransformToAABB(child.TransformToVisual(parent) ?? throw new InvalidOperationException("The controls have no common visual ancestor"));
+
     public static void Capture(Window window, string name)
     {
         if (Environment.GetEnvironmentVariable("PASSENGER_UI_AUDIT") is not { Length: > 0 } folder)

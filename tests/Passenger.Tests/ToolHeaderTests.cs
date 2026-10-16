@@ -537,8 +537,7 @@ public sealed class ToolHeaderTests : IDisposable
         Ui.Settle();
     }
 
-    private static Rect PaintedBounds(Control child, Control parent) => new Rect(child.Bounds.Size)
-        .TransformToAABB(child.TransformToVisual(parent) ?? throw new InvalidOperationException("The controls have no common visual ancestor"));
+    private static Rect PaintedBounds(Control child, Control parent) => UiAudit.BoundsIn(child, parent);
 
     private static bool Inside(Control child, Control parent)
     {
