@@ -589,7 +589,7 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
         Assert.Equal(0, socket.Available);
     }
 
-    private MainWindow FutureStarted(bool watched, string framework)
+    private MainWindow FutureStarted(bool watched, string framework, string? inspectorTrace = null)
     {
         MainWindow window = new() { Width = 1400, Height = 900 };
         window.Show();
@@ -599,6 +599,10 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
             Ui.Settle();
             RunConfiguration selected = window.Session.Configurations.All.Single(c => PathNames.Same(c.Project, Path.Combine(folder, "WpfTreeApp.csproj")))
                 with { Name = "WPF " + framework, Framework = framework, Generated = false };
+            if (inspectorTrace is not null)
+            {
+                selected = selected with { Environment = new Dictionary<string, string>(selected.Environment) { ["PASSENGER_INSPECTOR_TRACE"] = inspectorTrace } };
+            }
             window.Session.Configurations.Set([selected], selected.Name, window.Session.Projects);
             if (watched)
             {
@@ -800,7 +804,9 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
         File.WriteAllText(main, File.ReadAllText(main).Replace("Text=\"Attached\" Grid.Row=\"0\" />", "Text=\"Attached\"><Grid.Row>0</Grid.Row></TextBlock>", StringComparison.Ordinal));
         string child = Path.Combine(folder, "RepeatedView.xaml");
         File.WriteAllText(child, File.ReadAllText(child).Replace("Text=\"Created before\" Width=\"200\" />", "Width=\"200\"><TextBlock.Text>Created before</TextBlock.Text></TextBlock>", StringComparison.Ordinal));
-        MainWindow window = FutureStarted(watched, "net11.0-windows");
+        string trace = Path.Combine(Directory.CreateDirectory(Path.Combine(AppContext.BaseDirectory, "wpf-input-traces")).FullName,
+            $"property-elements-{watched}-{Guid.NewGuid():N}.log");
+        MainWindow window = FutureStarted(watched, "net11.0-windows", trace);
         HotReloadOutcome ApplyEdit()
         {
             if (watched)
@@ -895,6 +901,14 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
         }
         finally
         {
+            string observed = Ui.Shared(trace);
+            string output = FutureOutput(window, watched);
+            TestContext.Current.TestOutputHelper?.WriteLine($"WPF property-element target trace {trace}:\n{observed}\nTarget output:\n{output}");
+            TestContext.Current.AddAttachment("WPF property-element output", Encoding.UTF8.GetBytes(output), "text/plain");
+            if (observed.Length > 0)
+            {
+                TestContext.Current.AddAttachment("WPF property-element input phases", Encoding.UTF8.GetBytes(observed), "text/plain");
+            }
             FutureEnded(window, watched);
         }
     }

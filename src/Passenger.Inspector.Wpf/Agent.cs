@@ -38,7 +38,7 @@ public static class Agent
                 File.AppendAllText(file, $"{DateTime.Now:HH:mm:ss.fff} [{Environment.ProcessId}/{Environment.CurrentManagedThreadId}] {step}{Environment.NewLine}");
             }
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
             // A trace that cannot be written is no failure of the app's.
         }
@@ -198,12 +198,15 @@ public static class Agent
     private static async Task AnswerAsync(Dispatcher dispatcher, Inspector inspector, Connection connection, Request request)
     {
         Reply reply;
+        string phase = "received";
+        Trace($"{request.Method} {request.Id}: received");
         try
         {
             bool input = request.Method == Wire.Input;
             if (input)
             {
-                Settling settled = await SettleInputAsync(dispatcher, inspector, request.Input);
+                phase = "before input";
+                Settling settled = await SettleInputAsync(dispatcher, inspector, request.Input, $"input {request.Id} before");
                 if (settled != Settling.Done)
                 {
                     throw new Refusal(settled == Settling.Moving
@@ -211,16 +214,27 @@ public static class Agent
                         : "The app's UI is busy: input was not sent; wait for it to finish its current work before acting");
                 }
             }
-            reply = await dispatcher.InvokeAsync(() => inspector.Handle(request));
+            phase = "dispatch queued";
+            Trace($"{request.Method} {request.Id}: dispatch queued");
+            reply = await dispatcher.InvokeAsync(() =>
+            {
+                Trace($"{request.Method} {request.Id}: handling");
+                Reply handled = inspector.Handle(request);
+                Trace($"{request.Method} {request.Id}: handled");
+                return handled;
+            });
             if (input)
             {
+                phase = "after input";
                 // An automation click runs at Input priority; its popup's layout and opening translation settle afterward.
                 // A never-ending animation still answers the click that opened it within Busy; no input is replayed.
-                await SettleInputAsync(dispatcher, inspector, null);
+                await SettleInputAsync(dispatcher, inspector, null, $"input {request.Id} after");
             }
         }
         catch (Exception error)
         {
+            Trace($"{request.Method} {request.Id}: {phase} failed with {error.GetType().Name}: {error.Message}; "
+                + $"dispatcher shutdown started={dispatcher.HasShutdownStarted}, finished={dispatcher.HasShutdownFinished}");
             reply = new Reply { Id = request.Id, Error = error.Message };
         }
         Trace($"{request.Method} {request.Id}: {reply.Error ?? (reply.Windows is { } windows ? $"{windows.Count} window(s)" : reply.Tree is { } tree ? $"{tree.Roots.Count} root(s)" : "answered")}");
@@ -229,34 +243,43 @@ public static class Agent
 
     private enum Settling { Done, Moving, Busy }
 
-    private static async Task<Settling> SettleInputAsync(Dispatcher dispatcher, Inspector inspector, InputAction? action)
+    private static async Task<Settling> SettleInputAsync(Dispatcher dispatcher, Inspector inspector, InputAction? action, string phase)
     {
         Stopwatch took = Stopwatch.StartNew();
         bool moving = false;
+        int samples = 0;
         while (took.Elapsed < Busy)
         {
             TimeSpan remaining = Busy - took.Elapsed;
             if (remaining <= TimeSpan.Zero)
             {
-                return moving ? Settling.Moving : Settling.Busy;
+                return Done(moving ? Settling.Moving : Settling.Busy, timedOut: false);
             }
             DispatcherOperation<bool> queued = dispatcher.InvokeAsync(() => inspector.SettleInput(action), DispatcherPriority.Background);
             try
             {
                 if (await queued.Task.WaitAsync(remaining))
                 {
-                    return Settling.Done;
+                    samples++;
+                    return Done(Settling.Done, timedOut: false);
                 }
+                samples++;
                 moving = true;
             }
             catch (TimeoutException)
             {
                 queued.Abort();
-                return Settling.Busy;
+                return Done(Settling.Busy, timedOut: true);
             }
             // Poll the observed transform while allowing WPF's animation/render work to advance on its own dispatcher.
             await Task.Delay(TimeSpan.FromMilliseconds(16));
         }
-        return moving ? Settling.Moving : Settling.Busy;
+        return Done(moving ? Settling.Moving : Settling.Busy, timedOut: false);
+
+        Settling Done(Settling result, bool timedOut)
+        {
+            Trace($"{phase}: {result}; samples={samples}, observed moving={moving}, dispatcher timeout={timedOut}, elapsed={took.Elapsed.TotalMilliseconds:0} ms");
+            return result;
+        }
     }
 }
