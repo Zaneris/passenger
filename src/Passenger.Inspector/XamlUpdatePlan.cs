@@ -169,10 +169,22 @@ internal sealed record XamlUpdatePlan(IReadOnlyList<XamlPropertyUpdate> Properti
 
     private static bool Markup(string value) => value.StartsWith('{') && !value.StartsWith("{}", StringComparison.Ordinal);
 
-    private static IEnumerable<string> Content(XElement element)
+    private static IEnumerable<(int Position, string Text)> Content(XElement element)
     {
         bool preserve = element.AncestorsAndSelf().Select(e => e.Attribute(XNamespace.Xml + "space")).FirstOrDefault(a => a is not null)?.Value == "preserve";
-        return element.Nodes().OfType<XText>().Select(t => t.Value).Where(text => preserve || !string.IsNullOrWhiteSpace(text));
+        int position = 0;
+        foreach (XNode node in element.Nodes())
+        {
+            if (node is XElement child && !PropertyLeaf(child))
+            {
+                position++;
+            }
+            else if (node is XText text && (preserve || !string.IsNullOrWhiteSpace(text.Value)))
+            {
+                // Text moving across an unchanged inline changes content even when both separate sequences agree.
+                yield return (position, text.Value);
+            }
+        }
     }
 
     private static bool PropertyLeaf(XElement element) => element.Name.LocalName.Contains('.') && !element.HasElements;
