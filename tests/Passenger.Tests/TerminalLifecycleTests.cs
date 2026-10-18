@@ -137,10 +137,6 @@ public sealed class TerminalLifecycleTests : IDisposable
         }
         finally
         {
-            foreach (TerminalSession session in sessions)
-            {
-                session.Kill();
-            }
             Await(window.TerminalPanel.CloseAllAsync(), "all shutdown sessions to release their terminals");
             window.Close();
             foreach (TerminalSession session in sessions)
@@ -171,7 +167,6 @@ public sealed class TerminalLifecycleTests : IDisposable
         }
         finally
         {
-            next?.Kill();
             Await(window.TerminalPanel.CloseAllAsync(), "remaining terminal tabs");
             if (next is not null)
             {
