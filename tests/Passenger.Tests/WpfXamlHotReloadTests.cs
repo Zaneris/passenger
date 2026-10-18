@@ -704,6 +704,58 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
         }
     }
 
+    [AvaloniaFact]
+    public void The_build_pane_stop_cancels_wpf_preparation_before_a_build_process_exists()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "WPF runs on Windows alone");
+        MainWindow window = new() { Width = 1200, Height = 800 };
+        string project = Path.Combine(folder, "WpfTreeApp.csproj");
+        string original = File.ReadAllText(project);
+        string pipe = "passenger-build-stop-" + Guid.NewGuid().ToString("N");
+        using NamedPipeServerStream server = new(pipe, PipeDirection.Out, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+        Task<BuildOutcome>? building = null;
+        try
+        {
+            window.Show();
+            window.OpenFolder(folder);
+            Ui.Settle();
+            File.WriteAllText(project, original.Replace("</Project>", $"<PropertyGroup Condition=\"'$(DotNetWatchBuild)' == 'true'\"><HeldPopulationRead>$([System.IO.File]::ReadAllText('\\\\.\\pipe\\{pipe}'))</HeldPopulationRead></PropertyGroup></Project>", StringComparison.Ordinal));
+            Task connected = server.WaitForConnectionAsync();
+            building = window.BuildAsync();
+            Ui.PumpUntil(() => connected.IsCompleted || building.IsCompleted, "WPF preparation to wait on its import", TimeSpan.FromSeconds(30));
+            Assert.True(connected.IsCompletedSuccessfully && !building.IsCompleted, "Build did not wait for preparation");
+            Assert.False(window.Session.Builder.IsRunning);
+            Button stop = window.BottomPanel.Build.GetVisualDescendants().OfType<Button>().Single(b => (string?)ToolTip.GetTip(b) == "Stop");
+            Assert.True(stop.IsEffectivelyVisible && stop.IsEnabled);
+            Point at = stop.TranslatePoint(new Point(stop.Bounds.Width / 2, stop.Bounds.Height / 2), window)!.Value;
+            window.MouseMove(at);
+            window.MouseDown(at, Avalonia.Input.MouseButton.Left);
+            window.MouseUp(at, Avalonia.Input.MouseButton.Left);
+            Assert.True(building.IsCompletedSuccessfully, "The Build pane's Stop ignored preparation before process startup");
+            Assert.Equal(BuildStatus.Stopped, building.Result.Status);
+            File.WriteAllText(project, original);
+            server.Write(Encoding.UTF8.GetBytes("Released by the test"));
+            server.Dispose();
+            Ui.Settle();
+            Assert.False(window.IsBuilding);
+            Assert.False(window.Session.Builder.IsRunning);
+            Assert.Equal(BuildStatus.Stopped, building.Result.Status);
+            BuildOutcome fresh = Ui.Await(window.BuildAsync(), "a fresh build after stopping preparation", TimeSpan.FromMinutes(2));
+            Assert.True(fresh.Succeeded, fresh.Message + "\n" + window.BottomPanel.Build.Document.Snapshot);
+        }
+        finally
+        {
+            File.WriteAllText(project, original);
+            server.Dispose();
+            window.Perform(AppActions.Stop);
+            if (building is { IsCompleted: false })
+            {
+                Ui.PumpUntil(() => building.IsCompleted, "the held build to finish cleanup", TimeSpan.FromSeconds(30));
+            }
+            window.Close();
+        }
+    }
+
     [AvaloniaTheory]
     [InlineData(false, false)]
     [InlineData(true, false)]

@@ -257,7 +257,8 @@ public sealed class BuildRunController
         }
     }
 
-    private void StopBuild()
+    /// <summary>Stops the build, including preparation before its process has started.</summary>
+    public void StopBuild()
     {
         if (building is not null && !session.Builder.IsRunning)
         {
