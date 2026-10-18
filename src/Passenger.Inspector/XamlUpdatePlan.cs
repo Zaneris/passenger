@@ -13,9 +13,9 @@ internal sealed record XamlUpdatePlan(IReadOnlyList<XamlPropertyUpdate> Properti
     {
         try
         {
-            XElement built = XElement.Parse(original, LoadOptions.SetLineInfo);
-            XElement before = XElement.Parse(source.Before, LoadOptions.SetLineInfo);
-            XElement after = XElement.Parse(source.After, LoadOptions.SetLineInfo);
+            XElement built = XElement.Parse(original, LoadOptions.SetLineInfo | LoadOptions.PreserveWhitespace);
+            XElement before = XElement.Parse(source.Before, LoadOptions.SetLineInfo | LoadOptions.PreserveWhitespace);
+            XElement after = XElement.Parse(source.After, LoadOptions.SetLineInfo | LoadOptions.PreserveWhitespace);
             // Property leaves describe values, not runtime objects. Inserting one must not shift the compiled source
             // anchor of any object after it, either in this update or in a later update against the accepted text.
             List<XElement> anchors = [.. built.DescendantsAndSelf().Where(e => !PropertyLeaf(e))];
@@ -87,8 +87,7 @@ internal sealed record XamlUpdatePlan(IReadOnlyList<XamlPropertyUpdate> Properti
                     }
                 }
                 if (old.Name.LocalName.Contains('.') && old.Value != next.Value
-                    || !old.Nodes().OfType<XText>().Select(t => t.Value.Trim()).Where(t => t.Length > 0)
-                    .SequenceEqual(next.Nodes().OfType<XText>().Select(t => t.Value.Trim()).Where(t => t.Length > 0)))
+                    || !Content(old).SequenceEqual(Content(next)))
                 {
                     return Refused(source, next, "Changing XAML text content or nested property objects needs a restart", true);
                 }
@@ -169,6 +168,24 @@ internal sealed record XamlUpdatePlan(IReadOnlyList<XamlPropertyUpdate> Properti
     }
 
     private static bool Markup(string value) => value.StartsWith('{') && !value.StartsWith("{}", StringComparison.Ordinal);
+
+    private static IEnumerable<(int Position, string Text)> Content(XElement element)
+    {
+        bool preserve = element.AncestorsAndSelf().Select(e => e.Attribute(XNamespace.Xml + "space")).FirstOrDefault(a => a is not null)?.Value == "preserve";
+        int position = 0;
+        foreach (XNode node in element.Nodes())
+        {
+            if (node is XElement child && !PropertyLeaf(child))
+            {
+                position++;
+            }
+            else if (node is XText text && (preserve || !string.IsNullOrWhiteSpace(text.Value)))
+            {
+                // Text moving across an unchanged inline changes content even when both separate sequences agree.
+                yield return (position, text.Value);
+            }
+        }
+    }
 
     private static bool PropertyLeaf(XElement element) => element.Name.LocalName.Contains('.') && !element.HasElements;
 

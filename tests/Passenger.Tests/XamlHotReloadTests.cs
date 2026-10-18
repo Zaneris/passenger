@@ -824,6 +824,64 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
         End(window);
     }
 
+    [AvaloniaTheory]
+    [InlineData("Before", " Before ")]
+    [InlineData(" ", "  ")]
+    public void Preserved_text_whitespace_changes_require_restart_and_do_not_apply_other_properties(string before, string after)
+    {
+        string file = Path.Combine(folder, "MainWindow.axaml");
+        string original = $"<TextBlock xml:space=\"preserve\">{before}</TextBlock>";
+        File.WriteAllText(file, File.ReadAllText(file).Replace("<TextBlock Text=\"Before\" />", original, StringComparison.Ordinal));
+        MainWindow window = Debugged();
+        try
+        {
+            LiveApp app = window.LiveApp!;
+            Assert.Null(window.OpenFile(file));
+            Typing.Replace(window, original, $"<TextBlock xml:space=\"preserve\">{after}</TextBlock>");
+            Typing.Replace(window, "Content=\"Count\"", "Content=\"Must not apply\"");
+            HotReloadOutcome refused = Ui.Await(window.Debugger.ApplyChangesAsync(), "preserved text changes to require restart");
+            Assert.Equal(HotReloadResult.RestartNeeded, refused.Result);
+            Assert.Contains(refused.Problems, p => p.Path == file && p.Message.Contains("text content", StringComparison.Ordinal));
+            Assert.True(window.Debugger.HotReload!.Changed);
+            Assert.Equal("Count", Read(app).Single(e => e.Name == "Increment").Text);
+            Assert.DoesNotContain(Read(app), e => e.Text == "Must not apply");
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    [AvaloniaFact]
+    public void Moving_text_across_an_inline_requires_restart_without_applying_the_batch()
+    {
+        string file = Path.Combine(folder, "MainWindow.axaml");
+        const string original = "<TextBlock x:Name=\"Mixed\">Before<Run Text=\" child\" /></TextBlock>";
+        File.WriteAllText(file, File.ReadAllText(file).Replace("<TextBlock Text=\"Before\" />", original, StringComparison.Ordinal));
+        File.WriteAllText(Path.Combine(folder, "MainWindow.axaml.cs"), Code.Replace("DataContext = new State();",
+            "DataContext = new State(); Console.WriteLine(\"Mixed=\" + string.Concat(Mixed.Inlines!.OfType<Avalonia.Controls.Documents.Run>().Select(run => run.Text)));", StringComparison.Ordinal));
+        MainWindow window = Debugged();
+        try
+        {
+            LiveApp app = window.LiveApp!;
+            Ui.WaitFor(() => Output(window).Contains("Mixed=Before child", StringComparison.Ordinal), "the compiled mixed-content ordering");
+            long mixed = Read(app).Single(e => e.Name == "Mixed").Id;
+            Assert.Null(window.OpenFile(file));
+            Typing.Replace(window, original, "<TextBlock x:Name=\"Mixed\"><Run Text=\" child\" />Before</TextBlock>");
+            Typing.Replace(window, "Content=\"Count\"", "Content=\"Must not apply\"");
+            HotReloadOutcome refused = Ui.Await(window.Debugger.ApplyChangesAsync(), "reordered mixed content to require restart");
+            Assert.Equal(HotReloadResult.RestartNeeded, refused.Result);
+            Assert.Contains(refused.Problems, p => p.Path == file && p.Message.Contains("text content", StringComparison.Ordinal));
+            Assert.True(window.Debugger.HotReload!.Changed);
+            Assert.Equal("Count", Read(app).Single(e => e.Name == "Increment").Text);
+            Assert.Equal(mixed, Read(app).Single(e => e.Name == "Mixed").Id);
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
     [AvaloniaFact]
     public void An_invalid_conversion_reports_its_file_and_line_and_changes_none_of_the_other_properties()
     {

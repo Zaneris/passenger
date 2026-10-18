@@ -198,7 +198,7 @@ public partial class MainWindow : Window
         testGutter = new Testing.TestGutter(Bottom.TestTree);
         Bind(session);
         Bottom.Build.RerunClicked += (_, _) => buildRun.Rebuild();
-        Bottom.Build.StopClicked += (_, _) => session.Builder.Stop();
+        Bottom.Build.StopClicked += (_, _) => buildRun.StopBuild();
         Bottom.Run.RerunClicked += (_, _) => Request(AppActions.RunProgram);
         Bottom.Run.StopClicked += (_, _) => session.Runner.Stop();
         Bottom.Run.HotReloadClicked += (_, _) => Request(AppActions.ApplyHotReloadChanges);
