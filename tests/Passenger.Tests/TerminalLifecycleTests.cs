@@ -113,6 +113,74 @@ public sealed class TerminalLifecycleTests : IDisposable
         }
     }
 
+    [AvaloniaFact]
+    public void Closing_the_window_stops_every_terminal_before_the_UI_loop_ends()
+    {
+        MainWindow window = new() { Width = 1200, Height = 800 };
+        window.TerminalPanel.Shell = OperatingSystem.IsWindows() ? (Path.Combine(Environment.SystemDirectory, "cmd.exe"), ["/D", "/Q"]) : ("/bin/sh", []);
+        window.Show();
+        List<TerminalSession> sessions = [];
+        try
+        {
+            for (int index = 0; index < 3; index++)
+            {
+                sessions.Add(Ui.Await(window.TerminalPanel.NewSessionAsync(folder), "a shell to start before window shutdown"));
+            }
+            using System.Diagnostics.Process first = System.Diagnostics.Process.GetProcessById(sessions[0].ProcessId!.Value);
+            using System.Diagnostics.Process second = System.Diagnostics.Process.GetProcessById(sessions[1].ProcessId!.Value);
+            using System.Diagnostics.Process third = System.Diagnostics.Process.GetProcessById(sessions[2].ProcessId!.Value);
+            window.Close();
+            // The application's dispatcher can stop as its last window closes. Do not pump it to kill the later tabs.
+            Assert.True(first.WaitForExit(5000), "Closing the window left its first terminal running without the UI loop");
+            Assert.True(second.WaitForExit(5000), "Closing the window left its second terminal running without the UI loop");
+            Assert.True(third.WaitForExit(5000), "Closing the window left its third terminal running without the UI loop");
+        }
+        finally
+        {
+            foreach (TerminalSession session in sessions)
+            {
+                session.Kill();
+            }
+            Await(window.TerminalPanel.CloseAllAsync(), "all shutdown sessions to release their terminals");
+            window.Close();
+            foreach (TerminalSession session in sessions)
+            {
+                Await(session.DisposeAsync().AsTask(), "each terminal's native teardown");
+            }
+        }
+    }
+
+    [AvaloniaFact]
+    public void Closing_old_terminals_does_not_discard_a_new_session_started_during_teardown()
+    {
+        MainWindow window = new() { Width = 1200, Height = 800 };
+        window.TerminalPanel.Shell = OperatingSystem.IsWindows() ? (Path.Combine(Environment.SystemDirectory, "cmd.exe"), ["/D", "/Q"]) : ("/bin/sh", []);
+        window.Show();
+        TerminalSession? next = null;
+        try
+        {
+            Ui.Await(window.TerminalPanel.NewSessionAsync(folder), "the old shell");
+            Task closing = window.TerminalPanel.CloseAllAsync();
+            // Closing a solution leaves its terminal pane available while native teardown finishes.
+            next = Ui.Await(window.TerminalPanel.NewSessionAsync(folder), "the replacement shell");
+            Await(closing, "the old terminal's teardown");
+            Assert.Same(next, Assert.Single(window.TerminalPanel.Tabs).Session);
+            Assert.Same(next, window.TerminalPanel.Active);
+            Assert.Same(next, window.TerminalPanel.View.Session);
+            Assert.True(next.IsRunning && Processes.IsRunning(next.ProcessId!.Value), "The new shell must remain available in its tab");
+        }
+        finally
+        {
+            next?.Kill();
+            Await(window.TerminalPanel.CloseAllAsync(), "remaining terminal tabs");
+            if (next is not null)
+            {
+                Await(next.DisposeAsync().AsTask(), "the replacement terminal's teardown");
+            }
+            window.Close();
+        }
+    }
+
     private static void Await(Task task, string what)
     {
         Ui.WaitFor(() => task.IsCompleted, what, TimeSpan.FromSeconds(30));
