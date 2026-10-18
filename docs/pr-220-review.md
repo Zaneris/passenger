@@ -2,6 +2,8 @@
 
 Reviewed head: `4009385ef12764550915ccb142c47644d395c29a` against `Zaneris/passenger:tebeco`, merge base `a5dc9928b7b9e77541025cedff4ed8304628afe5`. Fixes are integrated into `codex/pr-220-review`, published to `tebeco/passenger` (the workspace's `origin`).
 
+The fixes were subsequently merged to `main` at `97c9b2c`. See the [completed CI analysis and resume handoff](pr-220-ci-handoff.md) for native results, remaining failures, parallel tasks, dependencies and the exact pickup prompt. No CI fixes were started after that analysis.
+
 ## Findings
 
 ### 1. [P2] Build pane Stop does not cancel pending preparation
