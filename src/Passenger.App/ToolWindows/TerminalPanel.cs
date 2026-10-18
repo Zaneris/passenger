@@ -202,13 +202,18 @@ public sealed class TerminalPanel : DockPanel
     /// <summary>Ends every shell, and every program with all it started, as the IDE closes.</summary>
     public async Task CloseAllAsync()
     {
-        foreach (TerminalTab tab in tabs.ToArray())
-        {
-            tab.Run?.Stop();
-            await tab.Session.DisposeAsync();
-        }
+        TerminalTab[] closing = [.. tabs];
+        // Detach old tabs now so their teardown cannot clear a replacement session.
         tabs.Clear();
         view.Session = null;
+        List<Task> disposing = [];
+        foreach (TerminalTab tab in closing)
+        {
+            tab.Run?.Stop();
+            // Start every close before yielding: the window's dispatcher may stop after Closed returns.
+            disposing.Add(tab.Session.DisposeAsync().AsTask());
+        }
+        await Task.WhenAll(disposing);
     }
 
     private void Show(TerminalTab tab)
