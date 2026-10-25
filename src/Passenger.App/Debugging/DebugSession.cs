@@ -72,6 +72,9 @@ public sealed class DebugSession
     /// <summary>How many stops the adapter has told of, so a resume's answer that comes after the next stop leaves it be.</summary>
     private int stops;
 
+    /// <summary>How many stops the adapter has told of, the one paused at now the last.</summary>
+    public int Stops => stops;
+
     /// <summary>The stop last taken, shown again when the continue or step that left it is refused.</summary>
     private StoppedEvent? stoppedAt;
     private volatile bool killed;

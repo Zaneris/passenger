@@ -63,6 +63,16 @@ public sealed class DebugController : IDisposable
     /// <summary>The failed binding the program is paused at, once the stop is read; null otherwise.</summary>
     public BindingStop? BindingStop => Stop is not null ? bindingStop : null;
 
+    /// <summary>The session whose stop's reading last ended, with which of its stops that was.</summary>
+    private (DebugSession Session, int Stop)? read;
+
+    /// <summary>A stop has been read as far as it will be: described and its frames listed (<see cref="Stop"/>), or its
+    /// reading ended without, given up for what came next.</summary>
+    public event EventHandler? StopRead;
+
+    /// <summary>Whether the stop the session is paused at now has been read as far as it will be (<see cref="StopRead"/>).</summary>
+    public bool HasRead(DebugSession session) => Session == session && Stop is not null || read is ({ } of, int stop) && of == session && stop == session.Stops;
+
     /// <summary>Counts the stops shown and the runs between them, so what a stop's requests bring back once the program has
     /// gone on is dropped rather than shown over what is now true.</summary>
     private int shown;
@@ -1729,6 +1739,20 @@ public sealed class DebugController : IDisposable
     /// quiet never ends with the editor about to go there; its values are read after, unheld, as Continue never waits.</summary>
     private async Task ShowStop(DebugSession session)
     {
+        int stop = session.Stops;
+        try
+        {
+            await DescribeStop(session);
+        }
+        finally
+        {
+            read = (session, stop);
+            StopRead?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private async Task DescribeStop(DebugSession session)
+    {
         if (session.StoppedThread is not int thread)
         {
             return;
@@ -1899,6 +1923,7 @@ public sealed class DebugController : IDisposable
         {
             Stop = new DebugStop(thread, session.StopReason, stack, top, stopException?.Text) { Binding = bindingStop?.Problem };
             bindingFrame = bindingStop is not null && shows ? top?.Id : null;
+            StopRead?.Invoke(this, EventArgs.Empty);
         }
         view.ShowFrames(threads, threads.FirstOrDefault(t => t.Id == thread), stack, top);
         if (thread == session.StoppedThread)

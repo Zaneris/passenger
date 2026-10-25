@@ -1083,8 +1083,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             await Until(() => run.IsCompleted || Session.Debug.Session is { State: DebugState.Paused }, TimeSpan.FromMinutes(5), cancel);
             if (!run.IsCompleted)
             {
-                // Looked at every 50 ms: a stop's reading raises nothing as it lands.
-                await Until(() => Session.Debug.Stop is not null, TimeSpan.FromSeconds(5), cancel);
+                await StopReadAsync(Session.Debug.Session, cancel);
                 return TestInfo(tests) with { Debugger = await DebugSnapshotAsync() };
             }
         }
@@ -1675,10 +1674,18 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         DebugSession? going = session ?? Session.Debug.Session;
         await When(() => going is not { State: DebugState.Running or DebugState.Starting }, limit, cancel, StateOf(going));
-        // A stop is read just after the state says paused; looked at every 50 ms, as its reading raises nothing.
-        await Until(() => going is not { State: DebugState.Paused } || Session.Debug.Session == going && Session.Debug.Stop is not null, TimeSpan.FromSeconds(5), cancel);
+        await StopReadAsync(going, cancel);
         return await DebugSnapshotAsync(going);
     }
+
+    /// <summary>Waits for the Debug window to have read the stop a session is paused at (described, its frames listed), which
+    /// comes just after the state says paused, in as long as the adapter takes to answer what it asks; at most
+    /// <see cref="StopReadLimit"/>, past which the stop is taken as one the window never shows (its tab not chosen).</summary>
+    private async Task StopReadAsync(DebugSession? session, CancellationToken cancel) =>
+        await When(() => session is not { State: DebugState.Paused } || Session.Debug.HasRead(session), StopReadLimit, cancel, StateOf(session),
+            On(h => Session.Debug.StopRead += h, h => Session.Debug.StopRead -= h));
+
+    private static TimeSpan StopReadLimit => Waits.Of(TimeSpan.FromSeconds(60));
 
     /// <summary>The session a debugging tool acts on when it names none: the one paused, else the only one debugged; with
     /// none debugged the chosen tab's (ended, or none). Several debugged and none or several paused, the call is refused,
@@ -1720,6 +1727,32 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         return debugger.Tabs.Count > 1 ? snapshot with { Session = of is null ? null : debugger.TabOf(of)?.Name, Sessions = Sessions() } : snapshot;
     }
 
+    /// <summary>Why a paused session stopped and where, as debug_state says them, with nothing else of the stop read.</summary>
+    private async Task<(string? Reason, string? Location)> StoppedAtAsync(DebugSession session)
+    {
+        if (session.State != DebugState.Paused || session.StoppedThread is null)
+        {
+            return (null, null);
+        }
+        (_, DapStackFrame? top) = await StopFramesAsync(session);
+        return (session.StopReason, Located(top, session));
+    }
+
+    /// <summary>A paused session's frames and the one its stop shows: as the Debug window read them, else from the adapter.</summary>
+    private async Task<(IReadOnlyList<DapStackFrame> Frames, DapStackFrame? Top)> StopFramesAsync(DebugSession session)
+    {
+        DebugController debugger = Session.Debug;
+        // The controller's stop is always the one paused at now, since every change drops it; before it is read, the session's.
+        DebugStop? read = debugger.Session == session && debugger.Stop is { } stop && stop.Thread == session.StoppedThread ? stop : null;
+        IReadOnlyList<DapStackFrame> frames = read?.Frames ?? await Stack(session);
+        // The frame the stop shows: past the Live Visual Tree inspector's call a property or binding error breakpoint stops in.
+        return (frames, read?.Top ?? frames.FirstOrDefault(f => f.Source?.Path is not null) ?? (frames.Count > 0 ? frames[0] : null));
+    }
+
+    /// <summary>A frame's place as an agent reads it, path:line:column at the editor's line; null for one with no source.</summary>
+    private string? Located(DapStackFrame? frame, DebugSession session) =>
+        frame?.Source?.Path is { } path && Session.Debug.PlaceOf(frame, session) is { } at ? $"{Relative(path)}:{at.Line + 1}:{at.Column + 1}" : null;
+
     private async Task<DebugSnapshot> SnapshotOf(DebugSession? session)
     {
         DebugController debugger = Session.Debug;
@@ -1733,11 +1766,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             return new DebugSnapshot(session.State, null, null, [], [], null, summary);
         }
         bool shown = debugger.Session == session;
-        // The controller's stop is always the one paused at now, since every change drops it; before it is read, the session's.
-        DebugStop? read = shown && debugger.Stop is { } stop && stop.Thread == session.StoppedThread ? stop : null;
-        IReadOnlyList<DapStackFrame> frames = read?.Frames ?? await Stack(session);
-        // The frame the stop shows: past the Live Visual Tree inspector's call a property or binding error breakpoint stops in.
-        DapStackFrame? top = read?.Top ?? frames.FirstOrDefault(f => f.Source?.Path is not null) ?? (frames.Count > 0 ? frames[0] : null);
+        (IReadOnlyList<DapStackFrame> frames, DapStackFrame? top) = await StopFramesAsync(session);
         List<VariableInfo> locals = [];
         if (shown && debugger.BindingStop is { } failed)
         {
@@ -1766,7 +1795,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         return new DebugSnapshot(
             DebugState.Paused,
             session.StopReason,
-            top?.Source?.Path is { } path && debugger.PlaceOf(top, session) is { } at ? $"{Relative(path)}:{at.Line + 1}:{at.Column + 1}" : null,
+            Located(top, session),
             Frames(frames, session),
             locals,
             null,

@@ -157,6 +157,9 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
     public async Task An_agent_debugging_an_avalonia_app_clicks_into_a_breakpoint_reads_a_controls_sources_and_styles_breaks_where_a_property_changes_and_on_a_failed_binding()
     {
         await using McpClient client = await Start(["--mcp", appFolder], languageServer: false);
+        // Built first, as the build's time on a busy machine is none of what the launch's wait below measures.
+        JsonElement built = await Call(client, McpTools.Build);
+        Assert.True(built.GetProperty("succeeded").GetBoolean(), $"The app did not build: {built}");
         // The app never stops by itself, so debug_start must come back once its UI is up, well within waitSeconds.
         Stopwatch launching = Stopwatch.StartNew();
         JsonElement started = await Call(client, McpTools.DebugStart, new() { ["waitSeconds"] = 300 });
