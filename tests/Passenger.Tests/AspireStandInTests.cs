@@ -1782,6 +1782,53 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
+    /// <summary>An engine already down as an AppHost starts is said once, as the run begins: its events ending later, as a
+    /// slow CLI ends them, find it as it was and leave the status bar to the run's own words. A stand-in engine is held
+    /// down, its events let end once the run has said it runs.</summary>
+    [AvaloniaFact]
+    public void An_engine_down_as_an_AppHost_starts_is_said_once_and_its_events_ending_leave_the_runs_own_words()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
+        project.Reset();
+        string engineFolder = TestFolders.Create("aspire-engine-held-");
+        (string cli, string state) = ContainersTests.StandInEngine(engineFolder, up: false);
+        File.WriteAllText(state, "held");
+        string calls = Path.Combine(engineFolder, "calls");
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        project.Serve(backend);
+        MainWindow window = new()
+        {
+            Width = 1200, Height = 800, Autosaves = false, WarmServer = project.Server, StartsLanguageServer = false,
+            Engine = new Passenger.App.Containers.ContainerEngine(cli: cli),
+        };
+        window.Show();
+        window.OpenFolder(project.Folder);
+        Ui.Settle();
+        try
+        {
+            string config = StandInAppHost.Configuration;
+            Ui.WaitFor(() => window.Configurations.Any(configuration => configuration.Name == config), "the stand-in AppHost's Aspire configuration");
+            Assert.True(window.SelectConfiguration(config));
+            Ui.Launched(window, window.RunAsync(), "the stand-in AppHost to come up");
+            const string Down = "Docker isn't running (context stand-in)";
+            Assert.StartsWith(Down, Assert.Single(window.BottomPanel.Problems.ContainerProblems).Message, StringComparison.Ordinal);
+            Ui.WaitFor(() => File.ReadAllLines(calls).Contains("events"), "the run to follow the engine's events");
+            Assert.Equal($"Running {config}", window.Status);
+
+            File.WriteAllText(state, "down");
+            Ui.WaitFor(() => File.ReadAllLines(calls).SkipWhile(call => call != "events-ended").Contains("version"),
+                "the engine asked again as its events ended");
+            Ui.Settle();
+            Assert.Equal($"Running {config}", window.Status);
+            Assert.StartsWith(Down, Assert.Single(window.BottomPanel.Problems.ContainerProblems).Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+    }
+
     /// <summary>The Containers window's AppHost row has a merged Log and Stats over its containers: their lines each
     /// under its container's name, a toggle each, one turned off leaving its lines out, and each container's numbers, a
     /// reading changing its line in place. A stand-in engine lists the two containers the stand-in AppHost's resources

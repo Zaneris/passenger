@@ -974,11 +974,11 @@ public sealed class ContainersTests
         }
     }
 
-    /// <summary>A docker of the test's own whose engine is up or down as its <c>state</c> file says: a Linux server at
-    /// <paramref name="host"/> with no Compose v2 and no buildx, holding a container of a Compose project "shop"
-    /// (service web, port 8080) and a stopped one whose id begins as web's, its events going on while up, its logs and
-    /// stats what <paramref name="logs"/> and <paramref name="stats"/> (shell commands) write, and <paramref
-    /// name="more"/> listed too (<c>docker ps --format json</c> lines). The CLI and the state file.</summary>
+    /// <summary>A docker of the test's own, up or down as its <c>state</c> file says (held: down, its events kept until the
+    /// state changes), each command's first word written to <c>calls</c>: a Linux server at <paramref name="host"/> with no
+    /// Compose v2 or buildx, holding a container of a Compose project "shop" (service web, port 8080) and a stopped one whose
+    /// id begins as web's, its events going on while up, its logs and stats what <paramref name="logs"/> and <paramref
+    /// name="stats"/> write, and <paramref name="more"/> listed too (<c>docker ps</c> lines). The CLI and the state file.</summary>
     internal static (string Cli, string State) StandInEngine(string folder, bool up, string host = "unix:///nowhere/docker.sock",
         string logs = "echo 'hello from the stand-in web'", string stats = "exit 1", IReadOnlyList<string>? more = null)
     {
@@ -990,12 +990,14 @@ public sealed class ContainersTests
             "#!/bin/sh",
             "here=$(dirname \"$0\")",
             "running=$(cat \"$here/state\")",
+            "echo \"$1\" >> \"$here/calls\"",
             "case \"$1\" in",
             "  version) if [ \"$running\" = up ]; then echo '{\"Client\":{\"Version\":\"29.0.0\",\"Context\":\"stand-in\"},\"Server\":{\"Version\":\"29.0.0\",\"Os\":\"linux\",\"Arch\":\"arm64\"}}'; exit 0; fi",
             $"    echo '{{\"Client\":{{\"Version\":\"29.0.0\",\"Context\":\"stand-in\"}},\"Server\":null}}'; {Down} ;;",
             $"  context) echo '[{{\"Name\":\"stand-in\",\"Endpoints\":{{\"docker\":{{\"Host\":\"{host}\"}}}}}}]'; exit 0 ;;",
             "  compose|buildx) echo \"docker: '$1' is not a docker command.\" >&2; exit 1 ;;",
             "esac",
+            "if [ \"$1\" = events ] && [ \"$running\" = held ]; then while [ \"$(cat \"$here/state\")\" = held ]; do sleep 0.2; done; echo events-ended >> \"$here/calls\"; fi",
             $"[ \"$running\" = up ] || {{ {Down}; }}",
             "case \"$1\" in",
             "  ps) echo '{\"ID\":\"5a5d0c0ffee1\",\"Names\":\"shop-web-1\",\"Image\":\"busybox:1.37\",\"State\":\"running\",\"Status\":\"Up 5 minutes\",\"Ports\":\"0.0.0.0:8080->80/tcp\",\"Labels\":\"com.docker.compose.project=shop,com.docker.compose.service=web\"}'",
