@@ -2,7 +2,6 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -56,8 +55,8 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         list = new ListBox
         {
             Classes = { "tree" },
-            ItemTemplate = new FuncDataTemplate<GraphRow>((row, _) => row is null ? new TextBlock() : Row(row), supportsRecycling: false),
         };
+        ReusedRows.Use(list, Row);
         list.SelectionChanged += (_, _) => IdeErrors.Observe(ShowCommitAsync());
         list.DoubleTapped += (_, _) => RequestFileDiff();
         // Ahead of the list's own keys, which take Enter for its selection.
@@ -92,8 +91,8 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         {
             Classes = { "tree" },
             ItemsSource = files,
-            ItemTemplate = new FuncDataTemplate<FileChange>((change, _) => change is null ? new TextBlock() : FileRow(change), supportsRecycling: false),
         };
+        ReusedRows.Use(fileList, FileRow);
         fileList.DoubleTapped += (_, _) => RequestDiff();
         fileList.KeyDown += (_, e) =>
         {
@@ -417,32 +416,22 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         }
     }
 
-    private Control Row(GraphRow row)
+    /// <summary>A commit's row for whichever commit the list hands its container: its part of the graph, its refs as tags,
+    /// the path it had the file at (under another name then), its subject, author and date.</summary>
+    private Control Row()
     {
-        Graph graph = new(row) { Width = (row.Width * LaneWidth) + 8, Height = RowHeight };
+        Graph graph = new() { Height = RowHeight };
         // A dock, not a stack, so the subject is given the room left and trims to it.
         DockPanel subject = new() { VerticalAlignment = VerticalAlignment.Center, ClipToBounds = true };
-        foreach (string label in row.Commit.Refs)
-        {
-            // A long branch's name ends in an ellipsis and leaves the subject room.
-            TextBlock text = new() { Text = label, FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis };
-            text.Bind(TextBlock.ForegroundProperty, text.GetResourceObservable(TokenKeys.Vcs_RefText));
-            ToolTip.SetTip(text, label);
-            Border tag = new() { [DockProperty] = Dock.Left, Classes = { "tag" }, Padding = new Thickness(5, 1), Margin = new Thickness(0, 0, 6, 0), Child = text, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 160 };
-            tag.Bind(Border.BackgroundProperty, tag.GetResourceObservable(TokenKeys.Vcs_Ref));
-            subject.Children.Add(tag);
-        }
-        if (FileChangeOf(row.Commit) is { } change && change.Path != Scope!.Path && vcs.Repository is { } repository)
-        {
-            // Under another name then: the path the commit had the file at.
-            TextBlock then = Muted(repository.Relative(change.Path));
-            then[DockProperty] = Dock.Right;
-            then.MaxWidth = 280;
-            subject.Children.Add(then);
-        }
-        subject.Children.Add(new TextBlock { Text = row.Commit.Subject, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis });
-        TextBlock author = Muted(row.Commit.Author);
-        TextBlock date = Muted(When(row.Commit.Time));
+        TextBlock then = Muted();
+        then[DockProperty] = Dock.Right;
+        then.MaxWidth = 280;
+        TextBlock words = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        subject.Children.Add(then);
+        subject.Children.Add(words);
+        List<(Border Tag, TextBlock Text)> tags = [];
+        TextBlock author = Muted();
+        TextBlock date = Muted();
         // The author and the date at most 150 and 180 wide, and never more than half of a narrow log between them.
         Grid line = new() { Height = RowHeight };
         line.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
@@ -456,11 +445,39 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         line.Children.Add(subject);
         line.Children.Add(author);
         line.Children.Add(date);
-        return line;
-
-        static TextBlock Muted(string text)
+        return line.Showing<GraphRow>(row =>
         {
-            TextBlock block = MutedText.Of(text);
+            graph.Show(row);
+            graph.Width = (row.Width * LaneWidth) + 8;
+            IReadOnlyList<string> refs = row.Commit.Refs;
+            while (tags.Count < refs.Count)
+            {
+                // A long branch's name ends in an ellipsis and leaves the subject room.
+                TextBlock text = new() { FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis };
+                text.Bind(TextBlock.ForegroundProperty, text.GetResourceObservable(TokenKeys.Vcs_RefText));
+                Border tag = new() { [DockProperty] = Dock.Left, Classes = { "tag" }, Padding = new Thickness(5, 1), Margin = new Thickness(0, 0, 6, 0), Child = text, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 160 };
+                tag.Bind(Border.BackgroundProperty, tag.GetResourceObservable(TokenKeys.Vcs_Ref));
+                subject.Children.Insert(tags.Count, tag);
+                tags.Add((tag, text));
+            }
+            for (int i = 0; i < tags.Count; i++)
+            {
+                tags[i].Tag.IsVisible = i < refs.Count;
+                tags[i].Text.Text = i < refs.Count ? refs[i] : null;
+                ToolTip.SetTip(tags[i].Text, i < refs.Count ? refs[i] : null);
+            }
+            // Under another name then: the path the commit had the file at.
+            string? moved = FileChangeOf(row.Commit) is { } change && change.Path != Scope!.Path && vcs.Repository is { } repository ? repository.Relative(change.Path) : null;
+            then.IsVisible = moved is not null;
+            then.Text = moved;
+            words.Text = row.Commit.Subject;
+            author.Text = row.Commit.Author;
+            date.Text = When(row.Commit.Time);
+        });
+
+        static TextBlock Muted()
+        {
+            TextBlock block = MutedText.Of(string.Empty);
             block.Margin = new Thickness(8, 0);
             return block;
         }
@@ -479,30 +496,50 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         };
     }
 
-    private Control FileRow(FileChange change)
+    /// <summary>A changed file's row for whichever file the list hands its container: its icon, name in its change's
+    /// colour, and folder.</summary>
+    private Control FileRow()
     {
-        PathIcon icon = new()
-        {
-            Data = Explorer.FileIcons.ForFile(change.Path),
-            Foreground = Explorer.FileIcons.BrushForFile(change.Path),
-            Width = 14,
-            Height = 14,
-            Margin = new Thickness(8, 0, 6, 0),
-        };
-        TextBlock name = new() { Text = change.Name, VerticalAlignment = VerticalAlignment.Center };
-        name.Bind(TextBlock.ForegroundProperty, name.GetResourceObservable(CommitView.KindToken(change.Kind)));
-        string where = vcs.Repository is { } repository ? Path.GetDirectoryName(repository.Relative(change.Path))?.Replace('\\', '/') ?? string.Empty : string.Empty;
-        TextBlock folder = new() { Text = where, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0), FontSize = 12 };
+        PathIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(8, 0, 6, 0) };
+        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
+        TextBlock folder = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0), FontSize = 12 };
         folder.Classes.Add("muted");
+        string? kind = null;
         // The folder gives way first, then the name, each ending in an ellipsis, in a narrow pane.
-        return new ShrinkingRow { Height = RowHeight, Children = { icon, name, folder } };
+        ShrinkingRow row = new() { Height = RowHeight, Children = { icon, name, folder } };
+        return row.Showing<FileChange>(change =>
+        {
+            icon.Data = Explorer.FileIcons.ForFile(change.Path);
+            icon.Foreground = Explorer.FileIcons.BrushForFile(change.Path);
+            name.Text = change.Name;
+            string token = CommitView.KindToken(change.Kind);
+            if (token != kind)
+            {
+                kind = token;
+                name.Bind(TextBlock.ForegroundProperty, name.GetResourceObservable(token));
+            }
+            folder.Text = vcs.Repository is { } repository ? Path.GetDirectoryName(repository.Relative(change.Path))?.Replace('\\', '/') ?? string.Empty : string.Empty;
+        });
     }
 
     /// <summary>A row's part of the graph: the lines through it, lane by lane, and the commit's dot.</summary>
-    private sealed class Graph(GraphRow row) : Control
+    private sealed class Graph : Control
     {
+        private GraphRow? row;
+
+        /// <summary>Draws another commit's part of the graph.</summary>
+        public void Show(GraphRow shown)
+        {
+            row = shown;
+            InvalidateVisual();
+        }
+
         public override void Render(DrawingContext context)
         {
+            if (row is null)
+            {
+                return;
+            }
             double mid = Bounds.Height / 2;
             double bottom = Bounds.Height;
             string hash = row.Commit.Hash;

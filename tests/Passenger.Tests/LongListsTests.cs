@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -5,8 +7,10 @@ using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Navigation;
+using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Vcs;
 
 namespace Passenger.Tests;
 
@@ -44,6 +48,45 @@ public sealed class LongListsTests : IDisposable
             Assert.Equal(matches, popup.Matches.Count);
             Ui.Settle();
             return (window, popup.GetVisualDescendants().OfType<ListBox>().Single(l => l.ItemsSource is IEnumerable<SearchMatch>));
+        });
+    }
+
+    [AvaloniaFact]
+    public void A_scroll_step_down_two_thousand_commits_of_the_git_log_hands_the_rows_other_commits_never_making_one_again()
+    {
+        Holds("The Git log", "commits", 100, 2000, commits =>
+        {
+            string root = Repository(commits, files: 1);
+            MainWindow window = Git(root);
+            Ui.Landed(() => window.GitLog.Rows.Count == commits, $"the log's {commits} commits");
+            return (window, window.GitLog.GetVisualDescendants().OfType<ListBox>().Single(l => l.ItemsSource is IReadOnlyList<GraphRow>));
+        });
+    }
+
+    [AvaloniaFact]
+    public void A_scroll_step_down_a_commits_thousand_files_hands_the_rows_other_files_never_making_one_again()
+    {
+        Holds("A commit's files", "files", 100, 1000, files =>
+        {
+            string root = Repository(commits: 1, files);
+            MainWindow window = Git(root);
+            Ui.Landed(() => window.GitLog.Rows.Count == 1, "the log's commit");
+            ListBox log = window.GitLog.GetVisualDescendants().OfType<ListBox>().Single(l => l.ItemsSource is IReadOnlyList<GraphRow>);
+            Ui.Click(Ui.Row(log, window.GitLog.Rows[0]));
+            Ui.Landed(() => window.GitLog.Files.Count == files, $"the commit's {files} files");
+            return (window, window.GitLog.GetVisualDescendants().OfType<ListBox>().Single(l => l.ItemsSource is IEnumerable<FileChange>));
+        });
+    }
+
+    [AvaloniaFact]
+    public void A_scroll_step_down_a_thousand_branches_hands_the_rows_other_branches_never_making_one_again()
+    {
+        Holds("The branches", "branches", 100, 1000, branches =>
+        {
+            string root = Repository(commits: 1, files: 1, branches);
+            MainWindow window = Git(root);
+            Ui.Landed(() => window.GitBranches.Branches.Count >= branches, $"the {branches} branches");
+            return (window, window.GitBranches.GetVisualDescendants().OfType<ListBox>().Single(l => l.ItemsSource is IEnumerable<BranchNode>));
         });
     }
 
@@ -112,5 +155,43 @@ public sealed class LongListsTests : IDisposable
         string folder = PathNames.Canonical(TestFolders.Create("lists-"));
         folders.Add(folder);
         return folder;
+    }
+
+    /// <summary>A repository of commits on main, each adding a file, the last adding <paramref name="files"/>, and
+    /// <paramref name="branches"/> more branches at main.</summary>
+    private string Repository(int commits, int files, int branches = 0)
+    {
+        string root = Folder();
+        TestGit.Run(root, "init", "-q", "-b", "main");
+        StringBuilder stream = new();
+        for (int commit = 0; commit < commits; commit++)
+        {
+            string subject = $"Commit {commit}";
+            stream.Append(CultureInfo.InvariantCulture, $"commit refs/heads/main\ncommitter Passenger Tests <tests@passenger.invalid> {1_700_000_000 + (commit * 60)} +0000\n");
+            stream.Append(CultureInfo.InvariantCulture, $"data {Encoding.UTF8.GetByteCount(subject)}\n{subject}\n");
+            for (int file = 0; file < (commit == commits - 1 ? files : 1); file++)
+            {
+                string text = $"class C{commit}x{file} {{ }}\n";
+                stream.Append(CultureInfo.InvariantCulture, $"M 644 inline src/Area{file / 100}/C{commit}x{file}.cs\ndata {Encoding.UTF8.GetByteCount(text)}\n{text}\n");
+            }
+        }
+        for (int branch = 0; branch < branches; branch++)
+        {
+            stream.Append(CultureInfo.InvariantCulture, $"reset refs/heads/branch{branch:0000}\nfrom refs/heads/main\n\n");
+        }
+        ChildResult imported = Task.Run(() => ChildProcesses.RunAsync(ChildProcesses.Command("git", ["fast-import", "--quiet"], root), stream.ToString(), TimeSpan.FromMinutes(1).Scaled()))
+            .GetAwaiter().GetResult();
+        Assert.True(imported.Succeeded, $"git fast-import made no repository of {commits} commits: {imported.Error}");
+        TestGit.Run(root, "reset", "-q", "--hard");
+        return root;
+    }
+
+    /// <summary>The window on a repository with its Git window shown.</summary>
+    private static MainWindow Git(string root)
+    {
+        MainWindow window = Ui.OpenFolder(root, languageServer: false, width: 1300, height: 900);
+        window.Perform(AppActions.ShowGit);
+        Ui.Settle();
+        return window;
     }
 }

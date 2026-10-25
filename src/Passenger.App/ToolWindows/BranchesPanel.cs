@@ -1,7 +1,6 @@
 using System.Text.Json.Nodes;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -101,8 +100,8 @@ public sealed class BranchesPanel : DockPanel
         {
             Classes = { "tree" },
             ItemsSource = rows,
-            ItemTemplate = new FuncDataTemplate<BranchNode>((node, _) => node is null ? new TextBlock() : Row(node), supportsRecycling: false),
         };
+        ReusedRows.Use(list, Row);
         list.DoubleTapped += (_, e) =>
         {
             if (Selected is { } node)
@@ -520,53 +519,44 @@ public sealed class BranchesPanel : DockPanel
         e.Handled = true;
     }
 
-    private Control Row(BranchNode node)
+    /// <summary>A row for whichever group, branch or tag the list hands its container: a group's chevron, a branch's or
+    /// tag's mark (a favourite's star, the current branch's in the accent), its name, and where a local branch pushes.</summary>
+    private Control Row()
     {
-        ShrinkingRow row = new() { Height = ListRow.Height, Margin = new Thickness(node.Depth * 16, 0, 0, 0) };
-        if (node.IsGroup)
+        PathIcon chevron = new() { Classes = { "chevron" }, Width = 10, Height = 10, Margin = new Thickness(4, 0, 4, 0) };
+        Border hit = new() { Background = Brushes.Transparent, Child = chevron, VerticalAlignment = VerticalAlignment.Center };
+        Border gap = new() { Width = 18 };
+        PathIcon mark = new() { Width = 13, Height = 13, Margin = new Thickness(0, 0, 6, 0) };
+        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
+        // Where it pushes and pulls, muted after its name.
+        TextBlock tracked = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
+        tracked.Classes.Add("muted");
+        ShrinkingRow row = new() { Height = ListRow.Height, Children = { hit, gap, mark, name, tracked } };
+        hit.PointerPressed += (_, e) =>
         {
-            PathIcon chevron = new() { Classes = { "chevron" }, Width = 10, Height = 10, Margin = new Thickness(4, 0, 4, 0) };
-            node.FollowWhileShown(chevron, (_, _) => chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(node.IsExpanded ? IconKeys.ChevronDown : IconKeys.ChevronRight)));
-            Border hit = new() { Background = Brushes.Transparent, Child = chevron, VerticalAlignment = VerticalAlignment.Center };
-            hit.PointerPressed += (_, e) =>
+            if (row.DataContext is BranchNode node)
             {
                 Toggle(node);
                 e.Handled = true;
-            };
-            row.Children.Add(hit);
-        }
-        else
-        {
-            row.Children.Add(new Border { Width = 18 });
-        }
-        if (node.Kind is BranchNodeKind.Ref or BranchNodeKind.Head)
-        {
-            string icon = node.Branch?.Kind == RefKind.Tag ? IconKeys.Label : node.IsFavorite ? IconKeys.StarFilled : IconKeys.Branch;
-            PathIcon mark = new() { Width = 13, Height = 13, Margin = new Thickness(0, 0, 6, 0) };
-            mark.Bind(PathIcon.DataProperty, mark.GetResourceObservable(icon));
-            if (node.IsFavorite)
-            {
-                mark.Bind(PathIcon.ForegroundProperty, mark.GetResourceObservable(TokenKeys.Vcs_Favorite));
             }
-            else if (node.Branch?.IsCurrent == true || node.Kind == BranchNodeKind.Head)
-            {
-                mark.Bind(PathIcon.ForegroundProperty, mark.GetResourceObservable(TokenKeys.Accent));
-            }
-            row.Children.Add(mark);
-        }
-        TextBlock name = new() { Text = node.Title, VerticalAlignment = VerticalAlignment.Center };
-        if (node.Kind is BranchNodeKind.Group)
+        };
+        string? chevronKey = null;
+        string? markKey = null;
+        string? markBrush = null;
+        return row.Showing<BranchNode>(node =>
         {
-            name.FontWeight = FontWeight.SemiBold;
-        }
-        row.Children.Add(name);
-        if (node.Branch is { Kind: RefKind.Local, Upstream: { } upstream })
-        {
-            // Where it pushes and pulls, muted after its name.
-            TextBlock tracked = new() { Text = upstream, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
-            tracked.Classes.Add("muted");
-            row.Children.Add(tracked);
-        }
-        return row;
+            row.Margin = new Thickness(node.Depth * 16, 0, 0, 0);
+            hit.IsVisible = node.IsGroup;
+            gap.IsVisible = !node.IsGroup;
+            chevron.Resource(PathIcon.DataProperty, ref chevronKey, node.IsExpanded ? IconKeys.ChevronDown : IconKeys.ChevronRight);
+            mark.IsVisible = node.Kind is BranchNodeKind.Ref or BranchNodeKind.Head;
+            mark.Resource(PathIcon.DataProperty, ref markKey, node.Branch?.Kind == RefKind.Tag ? IconKeys.Label : node.IsFavorite ? IconKeys.StarFilled : IconKeys.Branch);
+            mark.Resource(PathIcon.ForegroundProperty, ref markBrush,
+                node.IsFavorite ? TokenKeys.Vcs_Favorite : node.Branch?.IsCurrent == true || node.Kind == BranchNodeKind.Head ? TokenKeys.Accent : null);
+            name.Text = node.Title;
+            name.FontWeight = node.Kind is BranchNodeKind.Group ? FontWeight.SemiBold : FontWeight.Normal;
+            tracked.IsVisible = node.Branch is { Kind: RefKind.Local, Upstream: not null };
+            tracked.Text = node.Branch?.Upstream;
+        });
     }
 }
