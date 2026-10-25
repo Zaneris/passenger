@@ -1,11 +1,17 @@
+using System.Buffers;
+
 namespace Passenger.Text;
 
 /// <summary>How well a typed query names a file: the file's own name (exact, then prefix, then CamelHumps initials like
 /// "CE" for CodeEditor, then anywhere in it, then its letters close together and in order), or its path when the query
-/// has a slash. Higher is better; null is no match. A name is read where it is in its path, nothing copied, since this
-/// is asked of every file in the folder for every key.</summary>
+/// has a slash ('/' and '\' alike). Higher is better; null is no match. A name is read where it is in its path and a
+/// path's slashes made one on the stack, nothing allocated, since this is asked of every file in the folder for every
+/// key; a file's letters, read once (<see cref="PathLetters"/>), pass over one missing a query's with one AND.</summary>
 public static class FuzzyMatch
 {
+    /// <summary>The longest query or path whose slashes are made one on the stack; a longer one takes a pooled buffer.</summary>
+    private const int OnStack = 256;
+
     public static int? Score(string query, string relativePath)
     {
         if (query.Length == 0)
@@ -14,13 +20,7 @@ public static class FuzzyMatch
         }
         if (query.Contains('/') || query.Contains('\\'))
         {
-            string normalized = relativePath.Replace('\\', '/');
-            string wanted = query.Replace('\\', '/');
-            if (normalized.Contains(wanted, StringComparison.OrdinalIgnoreCase))
-            {
-                return 600 - normalized.Length;
-            }
-            return InOrder(wanted, normalized) is { } spread ? 300 - spread - normalized.Length / 4 : null;
+            return Slashed(query, relativePath);
         }
         ReadOnlySpan<char> name = Path.GetFileName(relativePath.AsSpan());
         // Each way of matching below finds the query's letters in the name in order: most names fail this one look.
@@ -52,6 +52,84 @@ public static class FuzzyMatch
             return 500 - nameSpread - name.Length;
         }
         return null;
+    }
+
+    /// <summary>The score of <see cref="Score(string, string)"/>, for a file whose letters were read as the folder was
+    /// indexed: null at once when its name, or its path for a query with a slash, lacks one of <paramref name="wanted"/>
+    /// (the query's own, <see cref="Wanted"/>).</summary>
+    public static int? Score(string query, ulong wanted, string relativePath, PathLetters letters)
+    {
+        ulong held = query.Contains('/') || query.Contains('\\') ? letters.Path : letters.Name;
+        return (wanted & ~held) != 0 ? null : Score(query, relativePath);
+    }
+
+    /// <summary>The ASCII letters (either case) and digits of a query, a bit each, of which every file it matches holds
+    /// each somewhere (<see cref="Letters"/>).</summary>
+    public static ulong Wanted(string query)
+    {
+        ulong bits = 0;
+        foreach (char c in query)
+        {
+            bits |= Bit(c);
+        }
+        return bits;
+    }
+
+    /// <summary>The ASCII letters and digits a text holds, a bit each: its own, and those another of its characters is
+    /// taken for as each way of matching ignores case (the Kelvin sign is a k: its lower case, or its upper case, is the
+    /// letter), so a file without one of a query's never matches it.</summary>
+    public static ulong Letters(ReadOnlySpan<char> text)
+    {
+        ulong bits = 0;
+        foreach (char c in text)
+        {
+            bits |= char.IsAscii(c) ? Bit(c) : Bit(char.ToLowerInvariant(c)) | Bit(char.ToUpperInvariant(c));
+        }
+        return bits;
+    }
+
+    /// <summary>An ASCII letter's bit, the same in either case, or a digit's; none for any other character.</summary>
+    private static ulong Bit(char c) => c switch
+    {
+        >= 'a' and <= 'z' => 1UL << (c - 'a'),
+        >= 'A' and <= 'Z' => 1UL << (c - 'A'),
+        >= '0' and <= '9' => 1UL << (26 + c - '0'),
+        _ => 0,
+    };
+
+    /// <summary>A query with a slash scored along the whole path, each '\' in either read as '/'.</summary>
+    private static int? Slashed(string query, string relativePath)
+    {
+        char[]? rentedQuery = null;
+        char[]? rentedPath = null;
+        try
+        {
+            Span<char> asked = query.Length <= OnStack ? stackalloc char[query.Length] : (rentedQuery = ArrayPool<char>.Shared.Rent(query.Length)).AsSpan(0, query.Length);
+            query.AsSpan().Replace(asked, '\\', '/');
+            scoped ReadOnlySpan<char> path = relativePath;
+            if (relativePath.Contains('\\'))
+            {
+                Span<char> normalized = relativePath.Length <= OnStack ? stackalloc char[relativePath.Length] : (rentedPath = ArrayPool<char>.Shared.Rent(relativePath.Length)).AsSpan(0, relativePath.Length);
+                relativePath.AsSpan().Replace(normalized, '\\', '/');
+                path = normalized;
+            }
+            if (path.Contains(asked, StringComparison.OrdinalIgnoreCase))
+            {
+                return 600 - path.Length;
+            }
+            return InOrder(asked, path) is { } spread ? 300 - spread - path.Length / 4 : null;
+        }
+        finally
+        {
+            if (rentedQuery is not null)
+            {
+                ArrayPool<char>.Shared.Return(rentedQuery);
+            }
+            if (rentedPath is not null)
+            {
+                ArrayPool<char>.Shared.Return(rentedPath);
+            }
+        }
     }
 
     /// <summary>How well a typed word names a completion item's label, which is no path ('/', '\' and '.' are its own
@@ -150,7 +228,7 @@ public static class FuzzyMatch
             || name[i - 1] is '_' or '-' or '.' or ' ') && char.IsLetterOrDigit(name[i]);
 
     /// <summary>How spread out the query's letters are when found in order, or null if they are not.</summary>
-    private static int? InOrder(string query, ReadOnlySpan<char> text)
+    private static int? InOrder(ReadOnlySpan<char> query, ReadOnlySpan<char> text)
     {
         int q = 0;
         int first = -1;
@@ -169,4 +247,12 @@ public static class FuzzyMatch
         }
         return q == query.Length ? last - first + 1 - query.Length : null;
     }
+}
+
+/// <summary>The letters and digits of a file's name and of its whole path (<see cref="FuzzyMatch.Letters"/>), read once as
+/// the folder is indexed.</summary>
+public readonly record struct PathLetters(ulong Name, ulong Path)
+{
+    public static PathLetters Of(string relativePath) =>
+        new(FuzzyMatch.Letters(System.IO.Path.GetFileName(relativePath.AsSpan())), FuzzyMatch.Letters(relativePath));
 }

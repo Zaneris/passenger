@@ -15,6 +15,9 @@ public sealed class FileIndex
 
     private IReadOnlyList<string> files = [];
 
+    /// <summary>Each file's letters, by its place in <see cref="files"/>, read with the walk.</summary>
+    private PathLetters[] letters = [];
+
     public string? Root { get; private set; }
 
     public int Count => files.Count;
@@ -36,19 +39,20 @@ public sealed class FileIndex
         if (Root != root)
         {
             files = [];
+            letters = [];
         }
         Root = root;
         int walk = ++walks;
         IsWalking = true;
         // Held through the walk, then by the crossing, which lets go of what it can never deliver.
         IDisposable held = BackgroundWork.Scope();
-        IdeErrors.Observe(BackgroundWork.Unheld(() => Walk(root)).ContinueWith(walked =>
+        IdeErrors.Observe(BackgroundWork.Unheld(() => Read(Walk(root))).ContinueWith(walked =>
         {
             UiThread.Post(() =>
             {
                 if (walked.IsCompletedSuccessfully && walk == walks)
                 {
-                    files = walked.Result;
+                    (files, letters) = walked.Result;
                 }
                 if (walk == walks)
                 {
@@ -68,12 +72,14 @@ public sealed class FileIndex
         walks++;
         Root = null;
         files = [];
+        letters = [];
         IsWalking = false;
     }
 
     /// <summary>The best matches for a query, best first (the highest score, then the shortest path, then by name), as
-    /// relative paths. Only the best <paramref name="limit"/> are kept as the files are scored, the worst of them first
-    /// in line to go, since a first letter matches most of a large folder.</summary>
+    /// relative paths. A file without one of the query's letters is passed over unscored; only the best
+    /// <paramref name="limit"/> are kept as the rest are scored, the worst of them first in line to go, since a first
+    /// letter matches most of a large folder.</summary>
     public IReadOnlyList<string> Search(string query, int limit = 60)
     {
         string trimmed = query.Trim();
@@ -82,9 +88,11 @@ public sealed class FileIndex
             return [];
         }
         PriorityQueue<string, (int Score, string Path)> best = new(limit + 1, WorstFirst.Instance);
-        foreach (string path in files)
+        ulong wanted = FuzzyMatch.Wanted(trimmed);
+        for (int i = 0; i < files.Count; i++)
         {
-            if (FuzzyMatch.Score(trimmed, path) is not { } score)
+            string path = files[i];
+            if (FuzzyMatch.Score(trimmed, wanted, path, letters[i]) is not { } score)
             {
                 continue;
             }
@@ -120,6 +128,17 @@ public sealed class FileIndex
             int byLength = y.Path.Length.CompareTo(x.Path.Length);
             return byLength != 0 ? byLength : StringComparer.OrdinalIgnoreCase.Compare(y.Path, x.Path);
         }
+    }
+
+    /// <summary>The files walked, each with its letters.</summary>
+    private static (IReadOnlyList<string> Files, PathLetters[] Letters) Read(List<string> walked)
+    {
+        PathLetters[] read = new PathLetters[walked.Count];
+        for (int i = 0; i < read.Length; i++)
+        {
+            read[i] = PathLetters.Of(walked[i]);
+        }
+        return (walked, read);
     }
 
     /// <summary>The files under a folder, by their paths from it, left out and limited as the index's are: what Find in

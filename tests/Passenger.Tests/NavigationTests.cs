@@ -100,19 +100,65 @@ public sealed class NavigationTests : IDisposable
         Ui.Press(window, "ENTER");
         Assert.Matches(@"^Validator7x\d+\.cs$", window.EditorArea.Active?.Name ?? string.Empty);
         window.Close();
+    }
 
-        // Areas of 200 files each, of eight kinds, in two folders by turns.
-        static void Files(string root, int areas)
+    /// <summary>A query with a slash in Go to File matches along each file's whole path, '/' and '\' alike, copying no
+    /// path or query for it: over 20,000 files a key of either allocates on the UI thread under 8 bytes for each file more
+    /// than over 2,000, the least of three tries, and both slashes offer the same files in the same order.</summary>
+    [AvaloniaFact]
+    public void Go_to_file_with_a_slash_in_twenty_thousand_files_copies_nothing_for_a_file_and_takes_either_slash()
+    {
+        string small = TestFolders.Create("nav-small-");
+        Files(small, 10);
+        Files(folder, 100);
+        MainWindow window = new() { Width = 1200, Height = 800 };
+        window.Show();
+        (long fewSlash, long fewBackslash, string[] fewOffered) = SlashedKeys(window, small, 2000);
+        (long manySlash, long manyBackslash, string[] manyOffered) = SlashedKeys(window, folder, 20_000);
+        TestContext.Current.TestOutputHelper?.WriteLine($"A key after / allocated {fewSlash / 1024} KB over 2,000 files, {manySlash / 1024} KB over 20,000; after \\ {fewBackslash / 1024} KB and {manyBackslash / 1024} KB");
+        Assert.True(manySlash - fewSlash < 8 * 18_000,
+            $"A key after a / in Go to File over 20,000 files allocated {manySlash / 1024} KB on the UI thread, against {fewSlash / 1024} KB over 2,000: 8 bytes or more for each file more");
+        Assert.True(manyBackslash - fewBackslash < 8 * 18_000,
+            $"A key after a \\ in Go to File over 20,000 files allocated {manyBackslash / 1024} KB on the UI thread, against {fewBackslash / 1024} KB over 2,000: the query or each path was copied for each file");
+        Assert.True(fewOffered.Length > 0 && manyOffered.Length > 0, "Go to File offered nothing for Features/Validator2x1");
+        window.Close();
+    }
+
+    /// <summary>What a key typed after a query with a / and after the same with a \ allocates in Go to File over a folder,
+    /// the least of three tries of each, a full list of the folder's validators offered after it either way; and what a
+    /// longer query offers, which must be the same with either slash.</summary>
+    private static (long Slash, long Backslash, string[] Offered) SlashedKeys(MainWindow window, string root, int files)
+    {
+        window.OpenFolder(root);
+        Ui.WaitFor(() => window.FileIndex.Count >= files, $"the folder's {files} files indexed");
+        long[] keys = new long[2];
+        string[][] offered = new string[2][];
+        foreach ((int at, string slash) in (ReadOnlySpan<(int, string)>)[(0, "/"), (1, "\\")])
         {
-            string[] kinds = ["Controller", "Service", "Repository", "ViewModel", "Handler", "Validator", "Mapper", "Options"];
-            for (int area = 0; area < areas; area++)
+            Ui.Press(window, Ui.Shortcut(AppActions.GoToFile));
+            window.KeyTextInput($"Features{slash}Vali");
+            keys[at] = Least(window, "d");
+            window.KeyTextInput("ator2x1");
+            Ui.Settle();
+            offered[at] = [.. Assert.IsType<Passenger.App.Navigation.GoToFilePopup>(window.Popup).Rows.Select(hit => hit.RelativePath)];
+            Ui.Press(window, "ESCAPE");
+        }
+        Assert.True(offered[0].SequenceEqual(offered[1]),
+            $"Go to File offers [{string.Join(", ", offered[0].Take(5))}…] for Features/Validator2x1, and [{string.Join(", ", offered[1].Take(5))}…] for Features\\Validator2x1");
+        return (keys[0], keys[1], offered[0]);
+    }
+
+    /// <summary>Areas of 200 empty files each, of eight kinds, in two folders by turns.</summary>
+    private static void Files(string root, int areas)
+    {
+        string[] kinds = ["Controller", "Service", "Repository", "ViewModel", "Handler", "Validator", "Mapper", "Options"];
+        for (int area = 0; area < areas; area++)
+        {
+            string dir = Path.Combine(root, $"Area{area}", area % 2 == 0 ? "Features" : "Infrastructure");
+            Directory.CreateDirectory(dir);
+            for (int i = 0; i < 200; i++)
             {
-                string dir = Path.Combine(root, $"Area{area}", area % 2 == 0 ? "Features" : "Infrastructure");
-                Directory.CreateDirectory(dir);
-                for (int i = 0; i < 200; i++)
-                {
-                    File.WriteAllText(Path.Combine(dir, $"{kinds[i % kinds.Length]}{area}x{i}.cs"), string.Empty);
-                }
+                File.WriteAllText(Path.Combine(dir, $"{kinds[i % kinds.Length]}{area}x{i}.cs"), string.Empty);
             }
         }
     }
