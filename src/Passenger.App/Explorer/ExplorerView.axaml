@@ -19,26 +19,43 @@
                        HorizontalAlignment="Center" VerticalAlignment="Center" />
             <ListBox Name="Rows" Classes="tree" IsVisible="False" SelectionMode="Multiple"
                      DoubleTapped="OnRowDoubleTapped">
-                <ListBox.ItemTemplate>
-                    <DataTemplate x:DataType="explorer:ExplorerNode">
-                        <StackPanel Orientation="Horizontal" Margin="{Binding Indent}" Opacity="{Binding Opacity}" Height="24"
-                                    ToolTip.Tip="{Binding Tip}">
-                            <Border Width="18" Height="24" Background="Transparent" PointerPressed="OnChevronPressed">
-                                <PathIcon Classes="chevron" Data="{StaticResource Icon.ChevronRight}" IsVisible="{Binding HasChildren}"
-                                          RenderTransformOrigin="50%,50%">
-                                    <PathIcon.RenderTransform>
-                                        <RotateTransform Angle="{Binding ChevronAngle}" />
-                                    </PathIcon.RenderTransform>
-                                </PathIcon>
-                            </Border>
-                            <PathIcon Data="{Binding Icon}" Foreground="{Binding IconBrush}" Margin="0,0,6,0" />
-                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center"
-                                       Classes.vcsModified="{Binding IsVcsModified}" Classes.vcsAdded="{Binding IsVcsAdded}"
-                                       Classes.vcsUnversioned="{Binding IsVcsUnversioned}" Classes.vcsConflicted="{Binding IsVcsConflicted}" />
-                            <TextBlock Text="{Binding Detail}" Classes="muted" FontSize="12" Margin="8,0,0,0" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
+                <ListBox.Styles>
+                    <!-- A row is its container's own template, made once with it and handed each file the list shows there, so
+                         scrolling makes no row again. -->
+                    <Style Selector="ListBoxItem">
+                        <Setter Property="Template">
+                            <ControlTemplate x:DataType="explorer:ExplorerNode">
+                                <ContentPresenter Name="PART_ContentPresenter"
+                                                  Background="{TemplateBinding Background}"
+                                                  BorderBrush="{TemplateBinding BorderBrush}"
+                                                  BorderThickness="{TemplateBinding BorderThickness}"
+                                                  CornerRadius="{TemplateBinding CornerRadius}"
+                                                  Padding="{TemplateBinding Padding}"
+                                                  VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                                  HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}">
+                                    <ContentPresenter.Content>
+                                        <StackPanel Orientation="Horizontal" Margin="{Binding Indent}" Opacity="{Binding Opacity}" Height="24"
+                                                    ToolTip.Tip="{Binding Tip}">
+                                            <Border Width="18" Height="24" Background="Transparent" PointerPressed="OnChevronPressed">
+                                                <PathIcon Classes="chevron" Data="{StaticResource Icon.ChevronRight}" IsVisible="{Binding HasChildren}"
+                                                          RenderTransformOrigin="50%,50%">
+                                                    <PathIcon.RenderTransform>
+                                                        <RotateTransform Angle="{Binding ChevronAngle}" />
+                                                    </PathIcon.RenderTransform>
+                                                </PathIcon>
+                                            </Border>
+                                            <PathIcon Data="{Binding Icon}" Foreground="{Binding IconBrush}" Margin="0,0,6,0" />
+                                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center"
+                                                       Classes.vcsModified="{Binding IsVcsModified}" Classes.vcsAdded="{Binding IsVcsAdded}"
+                                                       Classes.vcsUnversioned="{Binding IsVcsUnversioned}" Classes.vcsConflicted="{Binding IsVcsConflicted}" />
+                                            <TextBlock Text="{Binding Detail}" Classes="muted" FontSize="12" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </ContentPresenter.Content>
+                                </ContentPresenter>
+                            </ControlTemplate>
+                        </Setter>
+                    </Style>
+                </ListBox.Styles>
             </ListBox>
         </Panel>
     </DockPanel>

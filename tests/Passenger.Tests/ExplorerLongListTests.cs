@@ -13,7 +13,8 @@ using Passenger.Core;
 namespace Passenger.Tests;
 
 /// <summary>The Explorer with every folder open, thousands of rows long: its scrollbar's thumb stays under the pointer
-/// through a drag.</summary>
+/// through a drag, and a scroll step hands the rows on screen other files rather than making them again, costing what it
+/// does in a short list.</summary>
 public sealed class ExplorerLongListTests : IDisposable
 {
     private readonly List<string> folders = [];
@@ -63,6 +64,45 @@ public sealed class ExplorerLongListTests : IDisposable
         Assert.Equal(files, Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories).Count());
         Assert.All(Directory.EnumerateDirectories(folder), area => Assert.Equal(6, Directory.EnumerateDirectories(area).Count()));
         window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_scroll_step_down_the_long_list_hands_its_rows_other_files_never_making_a_row_again_and_costs_what_it_does_in_a_short_one()
+    {
+        (long shortStep, int shortMade) = Steps(Folder(areas: 2, parts: 3, files: 8));
+        (long longStep, int longMade) = Steps(Folder(areas: 30, parts: 10, files: 10));
+        TestContext.Current.TestOutputHelper?.WriteLine(
+            $"A wheel step allocated {shortStep / 1024} KB on the UI thread over 57 rows, {longStep / 1024} KB over 3,331; a page down made {shortMade} and {longMade} rows again");
+        Assert.True(shortMade == 0 && longMade == 0,
+            $"Scrolling made {shortMade} rows of the short list and {longMade} of the long one again, where each container keeps its row and is handed "
+            + "another file: every row scrolled into view was built and styled anew, which a long list pays for on every frame of a thumb's drag");
+        Assert.True(longStep <= shortStep + (64 * 1024),
+            $"A wheel step allocated {longStep / 1024} KB on the UI thread over 3,331 rows, against {shortStep / 1024} KB over 57: a step costs the list's length");
+
+        // The least a wheel step allocated on the UI thread, and the rows a page down the bar's track made again.
+        (long Least, int Made) Steps(string folder)
+        {
+            MainWindow window = Open(folder);
+            ListBox rows = window.ExplorerView.Rows();
+            Point middle = Centre(rows, window);
+            long least = long.MaxValue;
+            for (int i = 0; i < 5; i++)
+            {
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                window.MouseWheel(middle, new Vector(0, -1));
+                Ui.Settle();
+                least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
+            }
+            HashSet<TextBlock> names = [.. rows.GetRealizedContainers().Select(Name)];
+            ExplorerNode top = (ExplorerNode)rows.GetRealizedContainers().MinBy(rows.IndexFromContainer)!.DataContext!;
+            Ui.Click(ThumbOf(rows).FindAncestorOfType<ScrollBar>()!.GetVisualDescendants().OfType<RepeatButton>().Single(b => b.Name == "PART_PageDownButton"));
+            Assert.True(rows.ContainerFromItem(top) is null, "A click on the bar's track below its thumb left the list where it was");
+            int made = rows.GetRealizedContainers().Count(row => !names.Contains(Name(row)));
+            window.Close();
+            return (least, made);
+        }
+
+        static TextBlock Name(Control row) => row.GetVisualDescendants().OfType<TextBlock>().First();
     }
 
     /// <summary>A folder of areas, each of parts, each of files, with nothing else in it.</summary>
