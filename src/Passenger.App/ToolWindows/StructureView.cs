@@ -114,8 +114,8 @@ public sealed class StructureView : DockPanel
         }
     }
 
-    /// <summary>The language server's state changed (the files connected, the projects loaded): a shown window without the
-    /// shown file's outline asks for it, since what it asked before the server had the file found nothing.</summary>
+    /// <summary>A file was opened in the language server, or its state changed (the projects loaded): a shown window without
+    /// the shown file's outline asks for it, since what it asked before the server had the file found nothing.</summary>
     public void FollowServer()
     {
         if (shown && asking is null && source?.Invoke() is { Lsp: not null } now && outlined != now.Path)

@@ -435,6 +435,8 @@ public partial class MainWindow
             service.StateChanged += (_, _) => usages.Refresh();
             service.StateChanged += (_, _) => OutlineWhenUnseen();
             service.StateChanged += (_, _) => structure?.FollowServer();
+            service.Connected += (_, _) => OutlineWhenUnseen();
+            service.Connected += (_, _) => structure?.FollowServer();
             service.StateChanged += (_, _) => RoutesServerChanged(service);
             service.ProjectsLoaded += (_, _) => RoutesProjectsLoaded(service);
             service.StateChanged += (_, _) =>

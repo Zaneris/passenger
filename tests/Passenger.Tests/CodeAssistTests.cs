@@ -80,6 +80,33 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    /// <summary>A file shown before its folder's language server has it names the member the caret is in once the server
+    /// does, though nothing changes after: here a file opened alone, its folder opened after, on a server already loaded
+    /// (the one the class's last window left), which is ready before the file is opened in it.</summary>
+    [AvaloniaFact]
+    public void A_file_shown_before_its_folders_server_has_it_names_the_member_the_caret_is_in_once_it_does()
+    {
+        MainWindow first = project.Open(file: null);
+        int warm = first.CSharpService!.Session!.Server.ProcessId;
+        first.Close();
+        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, WarmServer = project.Server, StateFolder = TestFolders.Create("assist-state-") };
+        window.Show();
+        window.OpenFile(project.PathOf("Program.cs"));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "Helper.Tw");
+        Ui.Settle();
+        Assert.Equal(["Program.cs"], window.Breadcrumbs);
+
+        window.OpenFolder(project.Folder);
+        Ui.WaitFor(() => window.CSharpService is { IsReady: true } && window.CSharpService.For(window.EditorArea.Active!)?.Lsp is not null,
+            "the language server to have the file");
+        Assert.Equal(warm, window.CSharpService!.Session!.Server.ProcessId);
+        Ui.Settle();
+        Assert.True(window.Breadcrumbs.SequenceEqual(["Program.cs", "Program", "Main()"]),
+            $"Once the language server had the file, the status bar's path named [{string.Join(" › ", window.Breadcrumbs)}], not the member the caret is in");
+        window.Close();
+    }
+
     /// <summary>Go to Symbol lists the solution's own declarations, never what a source generator wrote for them: a
     /// [GeneratedRegex] method is found in its own file, and nothing at a generated file's name.</summary>
     [AvaloniaFact]

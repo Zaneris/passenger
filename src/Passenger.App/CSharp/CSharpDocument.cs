@@ -43,16 +43,18 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
     /// <summary>The diagnostics last pulled, moved with the text since, so their lines are the text's as it is now.</summary>
     public IReadOnlyList<Diagnostic> Diagnostics => diagnostics.Placed;
 
-    internal void Connect(RoslynSession session)
+    /// <summary>Opens the file in the server unless it is open there already; whether it was opened now.</summary>
+    internal bool Connect(RoslynSession session)
     {
         if (Lsp is not null)
         {
-            return;
+            return false;
         }
         Lsp = session.Open(document.Path, document.Text);
         Colour(Lsp, session.Server);
         Pull(TimeSpan.Zero);
         FindContexts();
+        return true;
     }
 
     /// <summary>The projects the server has the file in, by Roslyn's own <c>textDocument/_vs_getProjectContexts</c>,

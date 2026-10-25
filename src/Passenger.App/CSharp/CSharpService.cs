@@ -70,6 +70,10 @@ public sealed class CSharpService : IAsyncDisposable
     /// <summary>The state changed (starting, loading projects, ready, failed); raised on the UI thread.</summary>
     public event EventHandler? StateChanged;
 
+    /// <summary>An open file was opened in the server, which answers for it from now on, whether or not the state changes
+    /// after; raised on the UI thread.</summary>
+    public event EventHandler<OpenDocument>? Connected;
+
     /// <summary>The server finished loading projects (the file shown's first, then the rest, or one loaded again); raised on
     /// the UI thread.</summary>
     public event EventHandler? ProjectsLoaded;
@@ -535,12 +539,18 @@ public sealed class CSharpService : IAsyncDisposable
     /// opened while its project loads would be one of the server's Miscellaneous Files meanwhile, whose project it restores.</summary>
     private void ConnectLoaded(RoslynSession started)
     {
+        List<OpenDocument>? connected = null;
         foreach ((OpenDocument open, CSharpDocument features) in documents)
         {
-            if (started.IsLoaded || HolderOf(open.Path) is not { } project || (reported.Server == started.Server && reported.Projects.Contains(project)))
+            if ((started.IsLoaded || HolderOf(open.Path) is not { } project || (reported.Server == started.Server && reported.Projects.Contains(project)))
+                && features.Connect(started))
             {
-                features.Connect(started);
+                (connected ??= []).Add(open);
             }
+        }
+        foreach (OpenDocument open in connected ?? [])
+        {
+            Connected?.Invoke(this, open);
         }
     }
 
