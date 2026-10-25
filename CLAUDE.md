@@ -109,6 +109,9 @@ referenced projects twice).
   a task (PSG0004; a read where the task has certainly ended passes, and the Debugger's ICorDebug callbacks and the
   tests are not looked at yet); a caller that must stay synchronous (Main's end, a library's synchronous callback) goes
   through `Synchronously.Run`, saying why.
+- **A catch-all is a boundary** that passes on what it caught (PSG0005; the Debugger's ICorDebug catches not looked at
+  yet); **work for the thread pool goes through `BackgroundWork`**: `Run`, or `Unheld`/`UnheldThread` saying why it
+  holds nothing (PSG0006; the tests not looked at yet).
 - **A malformed flag or environment value is fatal**, never a silent default (`LaunchOptions.cs`).
 - **A warning is fixed at its cause.** Turning it off (NoWarn, a pragma, a lowered severity, a suppression) or moving
   the line it checks (a raised budget or limit) does not count as fixing it; neither does an analyzer's baseline.
