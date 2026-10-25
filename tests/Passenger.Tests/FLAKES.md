@@ -10,6 +10,20 @@ that fixed it, in one of the forms below. A failure not yet understood goes in o
 
 ## 2026-10-25
 
+- `McpAvaloniaAppTests`' `An_agent_debugging_an_avalonia_app_…`, the Mac with several agents' runs at once: "paused on a
+  binding error the debugger could not describe" (#532). An agent's answer at a stop waited 5 s for the Debug window to
+  read it, and a binding error's stop is read by three of the adapter's answers (its frame, `$bindingError`, its words),
+  which a loaded machine gives later, so the answer came without them. Beside 20 CPU burners the same test failed sooner,
+  its click into a breakpoint said in 9.7 s and 24.6 s against 8 s (the answer read the stop's locals it never says) and
+  its first debug_start in 116 s with the app's first build in it. **A race in the IDE**: the answer waits for the stop's
+  read, woken as it lands, and the click's reads only its place; **the test** builds before timing the start (dd8589bb).
+- `AttachTests`' `A_program_held_at_its_start_runs_on_when_its_attach_ends_before_taking_hold_of_it` and
+  `…whose_runtime_starts_after_its_attach_ended_runs_on`, the Mac with several agents' runs at once: "Strings differ",
+  `The runtime has been configured to pause during st…` where "child ran" was expected (#532). Never a program left held:
+  it was let go and ended, but its attach, slow to start under load, held it past the 5 s after which its runtime writes
+  that notice to its standard output; 24 burners with the tests at nice 15 failed both so. **The test** read the runtime's
+  words as the program's; it reads the program's own, and a let-go that gives up is now told in the debug console
+  (6822d614).
 - `LongFileAssistTests`' `Typing_with_pauses_…`, CI macOS, release run 40125454882 (1bd14b59): the whole file's colours
   were asked for twice. CountedMessages noted where the server's refresh stood among Passenger's requests only once
   StreamJsonRpc had parsed it, which can come well after its last byte is read, so a whole-file request sent in that gap
