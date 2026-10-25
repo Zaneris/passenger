@@ -14,7 +14,7 @@ namespace Passenger.Tests;
 
 /// <summary>The Explorer with every folder open, thousands of rows long: its scrollbar's thumb stays under the pointer
 /// through a drag, a scroll step hands the rows on screen other files rather than making them again, and what the UI
-/// thread does for a step or for a file written elsewhere costs what it does in a short list.</summary>
+/// thread does for a step, a file written elsewhere or File Nesting turned off costs what it does in a short list.</summary>
 public sealed class ExplorerLongListTests : IDisposable
 {
     private readonly List<string> folders = [];
@@ -136,6 +136,50 @@ public sealed class ExplorerLongListTests : IDisposable
         }
     }
 
+    [AvaloniaFact]
+    public void Turning_file_nesting_off_reopens_every_folder_of_the_long_solution_and_its_chosen_row_costing_per_folder_what_a_short_one_does()
+    {
+        (long shortCost, int shortOpen) = Refreshes(Solution(areas: 2, parts: 3, files: 8));
+        (long longCost, int longOpen) = Refreshes(Solution(areas: 30, parts: 10, files: 10));
+        TestContext.Current.TestOutputHelper?.WriteLine(
+            $"Turning file nesting off allocated {shortCost / 1024} KB on the UI thread over {shortOpen} open rows, {longCost / 1024} KB over {longOpen}");
+        Assert.True(longCost / longOpen <= shortCost / shortOpen,
+            $"Turning file nesting off allocated {longCost / longOpen / 1024} KB on the UI thread for each of {longOpen} open rows, against "
+            + $"{shortCost / shortOpen / 1024} KB for each of {shortOpen}: reopening a folder cost the list's length");
+
+        // What the UI thread allocated from File Nesting's OK until the Explorer showed its rows again, and the rows open.
+        (long Cost, int Open) Refreshes(string folder)
+        {
+            MainWindow window = Open(folder);
+            ExplorerView view = window.ExplorerView;
+            List<string> open = [.. view.Tree.Rows.Where(r => r.IsExpanded).Select(r => r.Path ?? r.Name)];
+            ExplorerNode chosen = view.Tree.Rows[^2];
+            Ui.ClickRow(window, chosen);
+            FileNestingDialog dialog = OpenFileNesting(window);
+            Ui.Click(dialog.NestBox);
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            Ui.Click(dialog.OkButton);
+            Ui.WaitFor(() => !dialog.IsVisible, "the File Nesting dialog to close");
+            Ui.Settle();
+            long cost = GC.GetAllocatedBytesForCurrentThread() - before;
+            Assert.Equal(open, view.Tree.Rows.Where(r => r.IsExpanded).Select(r => r.Path ?? r.Name));
+            Assert.True(view.SelectedNodes.Select(n => n.Path).SequenceEqual([chosen.Path]),
+                $"Turning file nesting off left [{string.Join(", ", view.SelectedNodes.Select(n => n.Name))}] chosen, where {chosen.Name} was");
+            window.Close();
+            return (cost, open.Count);
+        }
+    }
+
+    /// <summary>File Nesting... from the Explorer's options in its header, as a person opens it.</summary>
+    private static FileNestingDialog OpenFileNesting(MainWindow window)
+    {
+        Control pane = window.ExplorerView.GetVisualAncestors().OfType<Control>().First(a => a.GetType().Name == "ToolPane");
+        Ui.Click(pane.GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) as string == "Options"));
+        Ui.Choose(window.DockHost.OpenOptions, "Appearance", "File Nesting…");
+        Ui.WaitFor(() => window.Frontmost is FileNestingDialog, "the File Nesting dialog");
+        return (FileNestingDialog)window.Frontmost;
+    }
+
     /// <summary>A folder of areas, each of parts, each of files, with nothing else in it.</summary>
     private string Folder(int areas, int parts, int files)
     {
@@ -148,6 +192,26 @@ public sealed class ExplorerLongListTests : IDisposable
                 for (int f = 0; f < files; f++)
                 {
                     TestFolders.Write(folder, $"Area{a:00}/Part{p:00}/File{f:00}.cs", "class C { }\n");
+                }
+            }
+        }
+        return folder;
+    }
+
+    /// <summary>A solution of one project, its folder holding areas, each of parts, each of files.</summary>
+    private string Solution(int areas, int parts, int files)
+    {
+        string folder = Folder(0, 0, 0);
+        TestFolders.Write(folder, "Shop.slnx", "<Solution>\n  <Project Path=\"Shop/Shop.csproj\" />\n</Solution>\n");
+        TestFolders.Write(folder, "Shop/Shop.csproj",
+            $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n</Project>\n");
+        for (int a = 0; a < areas; a++)
+        {
+            for (int p = 0; p < parts; p++)
+            {
+                for (int f = 0; f < files; f++)
+                {
+                    TestFolders.Write(folder, $"Shop/Area{a:00}/Part{p:00}/File{f:00}.cs", "class C { }\n");
                 }
             }
         }

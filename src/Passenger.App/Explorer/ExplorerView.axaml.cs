@@ -97,18 +97,25 @@ public partial class ExplorerView : UserControl
     public void Refresh()
     {
         static string Key(ExplorerNode row) => (row.Kind == NodeKind.SolutionFolder ? row.SolutionPath : row.Path) ?? $"{row.Depth}/{row.Kind}/{row.Name}";
-        List<(int Depth, string Key)> open = [.. Tree.Rows.Where(r => r.IsExpanded).Select(r => (r.Depth, Key(r)))];
+        HashSet<string> open = new(Tree.Rows.Where(r => r.IsExpanded).Select(Key), StringComparer.Ordinal);
         string? chosen = Selected is { } selected ? Key(selected) : null;
+        ExplorerNode? again = null;
         Show(Tree.IsSolutionView);
-        // Outermost first, so each opens inside one already open.
-        foreach ((_, string key) in open.OrderBy(o => o.Depth))
+        // Down the rows as they open: a folder's rows come in after it, so each folder is reached once its holder is open.
+        for (int at = 0; at < Tree.Rows.Count; at++)
         {
-            if (Tree.Rows.FirstOrDefault(r => Key(r) == key) is { HasChildren: true, IsExpanded: false } row)
+            ExplorerNode row = Tree.Rows[at];
+            string key = Key(row);
+            if (row is { HasChildren: true, IsExpanded: false } && open.Remove(key))
             {
                 Tree.Expand(row);
             }
+            if (again is null && key == chosen)
+            {
+                again = row;
+            }
         }
-        if (chosen is not null && Tree.Rows.FirstOrDefault(r => Key(r) == chosen) is { } again)
+        if (again is not null)
         {
             Rows.SelectedItem = again;
         }
