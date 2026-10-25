@@ -118,7 +118,7 @@ public class AttachTests(ITestOutputHelper testOutputHelper)
         // Disconnected before configurationDone, which would have taken hold of it and let it go.
         Assert.True(host.Disconnect(DebugSession.RequestLimit), "The disconnect was not answered");
         Assert.True(program.WaitForExit(TimeSpan.FromSeconds(30).Scaled()), "The program held at its start was left held when its attach ended before it took hold");
-        Assert.Equal("child ran", (await written).Trim());
+        Assert.Equal("child ran", Debuggees.HeldWrote(await written));
     }
 
     /// <summary>As above, for a program whose runtime opens its diagnostic port only after the attach has ended, as one a
@@ -141,7 +141,36 @@ public class AttachTests(ITestOutputHelper testOutputHelper)
 
         Assert.True(host.Disconnect(DebugSession.RequestLimit), "The disconnect was not answered");
         Assert.True(program.WaitForExit(TimeSpan.FromSeconds(30).Scaled()), "The program whose runtime started after its attach ended was left held at its start");
-        Assert.Equal("child ran", (await written).Trim());
+        Assert.Equal("child ran", Debuggees.HeldWrote(await written));
+    }
+
+    /// <summary>A program held at its start whose runtime has not opened its diagnostic port by the time its let-go gives up
+    /// (here a shell that becomes it half a minute on, the adapter's waits a tenth as long) is told in the console as left
+    /// waiting, with what ends the wait, rather than left held unsaid.</summary>
+    [Fact]
+    public async Task A_program_held_at_its_start_that_its_attachs_end_could_not_let_go_is_told_as_still_waiting()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows has no exec: a program a shell starts late has an id of its own, not the shell's attached to");
+        ProcessStartInfo start = Passenger.Core.ChildProcesses.Command("/bin/sh", ["-c", "sleep 30 && exec \"$0\" child", Debuggees.Apphost("PassengerCases")]);
+        start.Environment["DOTNET_DefaultDiagnosticPortSuspend"] = "1";
+        using Process program = Passenger.Core.ChildProcesses.Start(start);
+        try
+        {
+            using DebugSession host = DebugSession.ForAttach(testOutputHelper, program, new Dictionary<string, string> { [Passenger.Core.Waits.ScaleVariable] = "0.1" });
+            await host
+                .WithInitializeRequest()
+                .WithAttachRequest(program.Id)
+                .WaitForInitializedEvent();
+
+            Assert.True(host.Disconnect(DebugSession.RequestLimit), "The disconnect was not answered");
+            OutputEvent told = await host.WaitForEvent<OutputEvent>(o => o.Output.Contains($"Process {program.Id} was not let go", StringComparison.Ordinal));
+            Assert.True(told.Category == DapOutputCategories.Console && told.Output.Contains("waits there until a debugger attaches to it or it is stopped", StringComparison.Ordinal),
+                $"The program left held was told as: {told.Category}: {told.Output}");
+        }
+        finally
+        {
+            Passenger.Core.ChildProcesses.Kill(program);
+        }
     }
 
     [Fact]

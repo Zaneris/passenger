@@ -317,7 +317,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
             Ui.WaitFor(() => !window.Debugger.IsDebugging, "the program to run on to its end");
             Assert.True(window.Debugger.LastApplied?.Result == HotReloadResult.Applied, $"The edit was not applied as the program resumed: {window.Debugger.LastApplied?.Said}");
             Assert.True(program.WaitForExit(TimeSpan.FromSeconds(30).Scaled()), "The program attached to did not end");
-            Assert.Equal("first 6", output.Result.Trim());
+            Assert.Equal("first 6", Debugging.Helpers.Debuggees.HeldWrote(output.Result));
         }
         finally
         {

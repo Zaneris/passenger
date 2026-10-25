@@ -97,8 +97,10 @@ public sealed class DebugSession : IDisposable
         return new DebugSession(output, debuggee, terminateDebuggee: false, symbolCache);
     }
 
-    /// <summary>The adapter, to attach to a program the test started; the program ends with the session.</summary>
-    public static DebugSession ForAttach(ITestOutputHelper output, Process program) => new(output, program, terminateDebuggee: false);
+    /// <summary>The adapter, to attach to a program the test started; the program ends with the session. The adapter has
+    /// <paramref name="environment"/> over the run's.</summary>
+    public static DebugSession ForAttach(ITestOutputHelper output, Process program, IReadOnlyDictionary<string, string>? environment = null) =>
+        new(output, program, terminateDebuggee: false, environment: environment);
 
     /// <summary>The adapter alone, to launch a program itself; the program ends with the session. Decompiled symbols go to
     /// <paramref name="symbolCache"/> when given, and the adapter has <paramref name="environment"/> over the run's.</summary>
@@ -663,6 +665,12 @@ public static class Debuggees
         File.Copy(Source(name, "Program.cs"), Path.Combine(folder, "Program.cs"), overwrite: true);
         return project;
     }
+
+    /// <summary>What a program held at its start wrote, less the notice its runtime writes once it has waited there 5 s (its
+    /// attach slow to come on a busy machine): the notice's line, then the two variables that held it.</summary>
+    public static string HeldWrote(string written) => string.Join('\n', written.Split('\n').Select(line => line.TrimEnd('\r'))
+        .Where(line => !line.StartsWith("The runtime has been configured to pause during startup", StringComparison.Ordinal)
+            && !line.StartsWith("DOTNET_DiagnosticPorts=", StringComparison.Ordinal) && !line.StartsWith("DOTNET_DefaultDiagnosticPortSuspend=", StringComparison.Ordinal))).Trim();
 
     /// <summary>A program with no .NET in it, running a minute unless ended first: what an attach cannot take hold of.</summary>
     public static Process NotDotnet()

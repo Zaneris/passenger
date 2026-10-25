@@ -236,7 +236,8 @@ public partial class ManagedDebugger
     /// <summary>Lets go the runtime of a process an attach was to take hold of and did not (the session ended first, or the
     /// attach failed), should it be held at its start: it runs on undebugged rather than wait for good for a debugger that
     /// is not coming. A runtime already running takes the word as done; one still starting is waited for, within
-    /// <paramref name="within"/> when the client gives a time for the let-go.</summary>
+    /// <paramref name="within"/> when the client gives a time for the let-go. One that lives on not let go is told in the
+    /// console, never left waiting unsaid.</summary>
     private void ReleaseHeldTarget(TimeSpan? within = null)
     {
         int target = Interlocked.Exchange(ref _heldTarget, 0);
@@ -246,6 +247,24 @@ public partial class ManagedDebugger
         }
         string? why = DiagnosticClientHelper.Resume(target, within);
         _logger?.Invoke(why is null ? $"Let process {target} go: the debugger did not take hold of it" : $"Process {target}, not taken hold of, was not let go: {why}");
+        if (why is not null && Lives(target))
+        {
+            OnConsole?.Invoke($"Process {target} was not let go ({why}): a .NET program held at its start waits there until a debugger attaches to it or it is stopped.\n");
+        }
+    }
+
+    /// <summary>Whether the process is still there.</summary>
+    private static bool Lives(int processId)
+    {
+        try
+        {
+            using Process process = Process.GetProcessById(processId);
+            return !process.HasExited;
+        }
+        catch (Exception gone) when (gone is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            return false;
+        }
     }
 
     /// <summary>The client's breakpoints are set: the launch or attach asked for is made.</summary>

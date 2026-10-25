@@ -89,7 +89,7 @@ public sealed class McpSessionsTests : McpRig
             string detached = Unasked(window, client, McpTools.Stop, new() { ["detach"] = true, ["session"] = "First" }).GetString()!;
             Assert.True(detached.StartsWith("Detached from First, which runs on", StringComparison.Ordinal), $"The detach of First was answered: {detached}");
             Assert.True(program.WaitForExit(TimeSpan.FromSeconds(30).Scaled()), "First, let go, did not run on to its end");
-            Assert.Equal("first 3", written.Result.Trim());
+            Assert.Equal("first 3", Debugging.Helpers.Debuggees.HeldWrote(written.Result));
             Assert.Equal(DebugState.Paused, second.State);
             Assert.Equal("Stopped", Unasked(window, client, McpTools.Stop).GetString());
             WaitFor(() => !window.Debugger.IsDebugging, "every program to end");
