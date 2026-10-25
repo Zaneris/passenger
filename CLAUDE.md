@@ -171,10 +171,11 @@ Projects in `src/`:
   never your own `Map*`.
 - `Passenger.Editor`: the `CodeEditor` control (partials), `Keymap` and `EditorActions` (presets), `IHighlighter`; the
   gutter's columns but numbers and folds are the App's (`IGutterColumn`, `EditorGutter`), the editor naming no debugger,
-  test or VCS concept (EditorRulesTests). With soft wrap, whatever turns an offset into a place goes through
-  `Rows`/`RowSpan`. Wraps (`WrapMap`), rows (`RowMap`), folds (`FoldList`), hints (`HintList`) and built lines
-  (`LineRuns`) are runs an edit moves only where it reaches, so a key costs what it changed, not the file's size: keep
-  it so.
+  test or VCS concept (EditorRulesTests). What a file's editors draw is its one `DocumentDecorations`
+  (`OpenDocument.Decorations`, `CodeEditor.Show` takes it), never fed per split. With soft wrap, whatever turns an
+  offset into a place goes through `Rows`/`RowSpan`. Wraps (`WrapMap`), rows (`RowMap`), folds (`FoldList`), hints
+  (`HintList`) and built lines (`LineRuns`) are runs an edit moves only where it reaches, so a key costs what it
+  changed, not the file's size: keep it so.
 - `Passenger.Languages`: C# coloured by Roslyn's parser in-process (`CSharpHighlighter`, also each open file's one
   syntax service, `OpenDocument.Syntax`: use it, never a fresh parse), the rest by VS Code's TextMate grammars
   (`TextMateHighlighter`, scopes mapped in `ScopeColours`); `Highlighters.For` chooses. A new language: one `Language`
@@ -339,6 +340,8 @@ aspire and requests scenes run `tools/site-shots/services`, an AppHost that need
 - **Linux**: file systems tell letter case apart, so a test of another letter case skips there.
 - **MSBuild**: a build through another spelling of a project's path deletes what the first wrote (IncrementalClean;
   the terminal's shell is given its folder as PWD, #413). It keeps no idle node unless the process's nice value is 0.
+- **Avalonia 12's lists** re-attach, and so re-style, every recycled container and never reuse a `DataTemplate`'s
+  content: a long list's row lives in its container's template (ExplorerView).
 - **EventPipe from a program's start**: .NET 10's LoggingEventSource misreads the `FilterSpecs` it is made with, so a
   category takes no `:Level` there or none of its logs come (`LiveRequests.LogsSpec`).
 
