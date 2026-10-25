@@ -139,7 +139,7 @@ public partial class MainWindow
         CancellationTokenSource waiting = browserWait = new CancellationTokenSource();
         IdeErrors.Observe(ended.ContinueWith(_ => waiting.Cancel(), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default));
         // Not background work: it lasts as long as the program takes to listen, which no screenshot or settling test waits for.
-        IdeErrors.Observe(Task.Run(async () =>
+        IdeErrors.Observe(BackgroundWork.Unheld(async () =>
         {
             bool? listening = await BrowserLaunch.ListeningAsync(address, waiting.Token);
             if (listening is null)

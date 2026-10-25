@@ -148,7 +148,7 @@ public sealed class ContainerStatsPane : DockPanel
         forking = false;
         streaming = process;
         // Not background work: it streams for as long as the tab is shown, which no screenshot or settling test waits for.
-        IdeErrors.Observe(Task.Run(async () =>
+        IdeErrors.Observe(BackgroundWork.Unheld(async () =>
         {
             try
             {

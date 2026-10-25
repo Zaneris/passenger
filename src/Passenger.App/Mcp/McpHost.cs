@@ -237,7 +237,7 @@ public static partial class McpHost
         // The agent's own IDE: nobody else is at it to ask.
         AgentConnection connection = new(done.Token, attached: false);
         // Not held, and made on a worker while the window is: it serves as long as the agent stays, each tool holding what it starts.
-        IdeErrors.Observe(Task.Run(async () =>
+        IdeErrors.Observe(BackgroundWork.Unheld(async () =>
         {
             try
             {
@@ -286,7 +286,8 @@ public static partial class McpHost
         string folder = File.Exists(full) && WorkspaceModel.Opens(full) ? Path.GetDirectoryName(full)! : full;
         if (Directory.Exists(folder))
         {
-            IdeErrors.Observe(Task.Run(async () =>
+            // Not held: nothing drawn waits for it, and the folder's first evaluation waits for the host itself.
+            IdeErrors.Observe(BackgroundWork.Unheld(async () =>
             {
                 try
                 {
@@ -325,7 +326,7 @@ public static partial class McpHost
         using CancellationTokenSource done = new();
         using System.Runtime.InteropServices.PosixSignalRegistration? terminated = EndOnSignal(() => UiThread.Post(done.Cancel));
         // Not held: it waits for the end of the input, which its starter's own end closes.
-        IdeErrors.Observe(Task.Run(() =>
+        IdeErrors.Observe(BackgroundWork.Unheld(() =>
         {
             try
             {

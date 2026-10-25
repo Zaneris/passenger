@@ -419,7 +419,8 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
         Task drained = draining;
         Task readers = reading;
         TaskCompletionSource<int> finished = ended;
-        return deferredStop = Task.Run(async () =>
+        // Not held: the window's end waits for it with no UI thread to come back to (MainWindow.Ended).
+        return deferredStop = BackgroundWork.Unheld(async () =>
         {
             try
             {

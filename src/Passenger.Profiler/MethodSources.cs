@@ -67,7 +67,8 @@ public sealed class MethodSources : IDisposable
         }
         if (snapshot.Place is not { } place)
         {
-            return await Task.Run(() =>
+            // Not held, and back on no thread of the caller's: whoever asked waits for what it finds.
+            return await BackgroundWork.Unheld(() =>
             {
                 using MethodSources sources = new();
                 foreach (MethodCode code in asked)

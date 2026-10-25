@@ -124,7 +124,8 @@ internal sealed class NodeServer
             LanguageSession started = await BackgroundWork.Run(() => LanguageSession.StartAsync(start, cancelled), cancelled);
             if (cancelled.IsCancellationRequested || ended)
             {
-                IdeErrors.Observe(Task.Run(() => started.DisposeAsync().AsTask()));
+                // Not held: a start given up ends in its own time.
+                IdeErrors.Observe(BackgroundWork.Unheld(() => started.DisposeAsync().AsTask()));
                 return null;
             }
             if (Configure is { } configure)
@@ -222,6 +223,6 @@ internal sealed class NodeServer
         Starting = null;
         LanguageSession? ending = Session;
         Session = null;
-        return ending is null ? Task.CompletedTask : Task.Run(() => ending.DisposeAsync().AsTask());
+        return ending is null ? Task.CompletedTask : BackgroundWork.Unheld(() => ending.DisposeAsync().AsTask());
     }
 }

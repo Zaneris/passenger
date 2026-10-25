@@ -43,7 +43,8 @@ public sealed class WarmServer : IAsyncDisposable
             kept = session;
             keptProblems = problems;
         }
-        return before is null || before == session ? Task.CompletedTask : Task.Run(() => before.DisposeAsync().AsTask());
+        // Not held: the window's end waits for it with no UI thread to come back to (MainWindow.Ended).
+        return before is null || before == session ? Task.CompletedTask : BackgroundWork.Unheld(() => before.DisposeAsync().AsTask());
     }
 
     /// <summary>Ends the server kept, so the next window starts its own.</summary>
@@ -55,7 +56,8 @@ public sealed class WarmServer : IAsyncDisposable
             ending = kept;
             kept = null;
         }
-        return ending is null ? Task.CompletedTask : Task.Run(() => ending.DisposeAsync().AsTask());
+        // Not held: the window's end waits for it with no UI thread to come back to (MainWindow.Ended).
+        return ending is null ? Task.CompletedTask : BackgroundWork.Unheld(() => ending.DisposeAsync().AsTask());
     }
 
     /// <summary>Whether the server kept holds these files as the texts given, waited for until the limit; false when

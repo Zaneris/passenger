@@ -350,8 +350,9 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
         int parsedVersion = version;
         parsingVersion = parsedVersion;
         (int First, int Last)[] warm = [.. asked];
+        // Held from here, the parse's own start holding nothing, until what it parsed lands on the UI thread.
         BackgroundWork.Begin();
-        Task<(SyntaxTree Tree, FoldRegions Folds, Dictionary<int, (int Length, SyntaxSpan[] Spans)> Lines)> parse = Task.Run(() =>
+        Task<(SyntaxTree Tree, FoldRegions Folds, Dictionary<int, (int Length, SyntaxSpan[] Spans)> Lines)> parse = BackgroundWork.Unheld(() =>
         {
             long allocated = GC.GetAllocatedBytesForCurrentThread();
             SyntaxTree parsed = previous is null ? CSharpSyntaxTree.ParseText(parsedText, Options) : previous.WithChangedText(parsedText);

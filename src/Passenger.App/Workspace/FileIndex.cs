@@ -42,7 +42,7 @@ public sealed class FileIndex
         IsWalking = true;
         // Held through the walk, then by the crossing, which lets go of what it can never deliver.
         IDisposable held = BackgroundWork.Scope();
-        IdeErrors.Observe(Task.Run(() => Walk(root)).ContinueWith(walked =>
+        IdeErrors.Observe(BackgroundWork.Unheld(() => Walk(root)).ContinueWith(walked =>
         {
             UiThread.Post(() =>
             {

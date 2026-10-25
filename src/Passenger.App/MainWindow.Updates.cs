@@ -249,7 +249,7 @@ public partial class MainWindow
             }
         });
         // Not BackgroundWork: a download of minutes would hold every screenshot; its progress lands as it goes.
-        Task<UpdateOutcome> running = Task.Run(() => updater.DownloadAsync(release, progress, cancel), cancel);
+        Task<UpdateOutcome> running = BackgroundWork.Unheld(() => updater.DownloadAsync(release, progress, cancel), cancel);
         downloadTask = running;
         UpdateOutcome? outcome = null;
         try
@@ -339,7 +339,7 @@ public partial class MainWindow
         readyRelease = null;
         // Once the download stopped has let go of its files. Not drawn: removing hundreds of megabytes is the disk's work.
         Task? stopping = downloadTask;
-        IdeErrors.Observe(Task.Run(async () =>
+        IdeErrors.Observe(BackgroundWork.Unheld(async () =>
         {
             if (stopping is not null)
             {

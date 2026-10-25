@@ -43,7 +43,8 @@ public sealed class SymbolCache
         this.log = log;
         cache = new UsedCache(folder, UsedEntries.Files(3, ".pdb"), new UsedLimits(UnusedFor, InUse, MostBytes, Abandoned),
             log is null ? null : line => log($"Symbol cache: {line}"));
-        pruned = Task.Run(() => cache.Prune(DateTime.UtcNow));
+        // Not held: the cache's own chore, which the first write waits for.
+        pruned = Core.BackgroundWork.Unheld(() => cache.Prune(DateTime.UtcNow));
     }
 
     public string Folder => cache.Folder;
@@ -80,8 +81,8 @@ public sealed class SymbolCache
     public async Task<bool> WriteAsync(string assemblyPath, string name, Guid mvid, IReadOnlyList<string> references, CancellationToken cancel)
     {
         await pruned.ConfigureAwait(false);
-        return await Task.Factory.StartNew(() => Write(assemblyPath, name, mvid, references, cancel), CancellationToken.None,
-            TaskCreationOptions.LongRunning, TaskScheduler.Default).ConfigureAwait(false);
+        // Not held, on a thread of its own: a decompile blocks it for seconds.
+        return await Core.BackgroundWork.UnheldThread(() => Write(assemblyPath, name, mvid, references, cancel)).ConfigureAwait(false);
     }
 
     private bool Write(string assemblyPath, string name, Guid mvid, IReadOnlyList<string> references, CancellationToken cancel)

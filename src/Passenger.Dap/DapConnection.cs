@@ -79,8 +79,9 @@ public sealed class DapConnection : IAsyncDisposable
         {
             throw new InvalidOperationException("The connection is already started");
         }
-        dispatching = Task.Run(DispatchAsync);
-        reading = Task.Run(ReadAsync);
+        // Not held: both serve for as long as the connection lasts.
+        dispatching = BackgroundWork.Unheld(DispatchAsync);
+        reading = BackgroundWork.Unheld(ReadAsync);
     }
 
     /// <summary>Answers a request. A handler that throws answers with the exception's message as the

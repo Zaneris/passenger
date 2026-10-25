@@ -131,7 +131,7 @@ public sealed class ProjectBuilds
         CancellationToken released = hold.Token;
         try
         {
-            ProjectHost host = await Task.Run(() => ProjectHosts.ForAsync(following, released));
+            ProjectHost host = await BackgroundWork.Run(() => ProjectHosts.ForAsync(following, released));
             await host.HoldAsync(running => UiThread.Post(() => waiting(running)), released);
         }
         catch (ProjectHostFailed)
@@ -176,7 +176,7 @@ public sealed class ProjectBuilds
         }
         Dictionary<string, KeptBuild> held = new(known, StringComparer.Ordinal);
         // Read off the window's thread: a large solution's builds are megabytes.
-        Dictionary<string, ProjectToOpen> standing = await Task.Run(() => all
+        Dictionary<string, ProjectToOpen> standing = await BackgroundWork.Run(() => all
             .Where(p => held.TryGetValue(p, out KeptBuild? build) && build.Inputs.All(Stamps.Holds))
             .ToDictionary(p => p, p => new ProjectToOpen(p, held[p].Read(), Said(held[p].Diagnostics)), StringComparer.Ordinal));
         if (mine != generation)
@@ -215,7 +215,7 @@ public sealed class ProjectBuilds
         }
         try
         {
-            return (await Task.Run(() => ProjectHosts.ForAsync(following))).Sdk;
+            return (await BackgroundWork.Run(() => ProjectHosts.ForAsync(following))).Sdk;
         }
         catch (ProjectHostFailed)
         {
@@ -227,7 +227,7 @@ public sealed class ProjectBuilds
     private async Task<ProjectInfoResult> InfoAsync(string path)
     {
         await TakeCacheAsync();
-        if (!waiting.ContainsKey(path) && known.TryGetValue(path, out KeptBuild? held) && await Task.Run(() => held.Inputs.All(Stamps.Holds)))
+        if (!waiting.ContainsKey(path) && known.TryGetValue(path, out KeptBuild? held) && await BackgroundWork.Run(() => held.Inputs.All(Stamps.Holds)))
         {
             return new ProjectInfoResult(held.Read(), null, Said(held.Diagnostics));
         }
@@ -309,7 +309,7 @@ public sealed class ProjectBuilds
         long began = Stopwatch.GetTimestamp();
         try
         {
-            ProjectHost host = await Task.Run(() => ProjectHosts.ForAsync(following));
+            ProjectHost host = await BackgroundWork.Run(() => ProjectHosts.ForAsync(following));
             BuildDone done = await host.BuildAsync(round, properties, built => UiThread.Post(() => Land(mine, built)), cancel);
             if (mine == generation)
             {

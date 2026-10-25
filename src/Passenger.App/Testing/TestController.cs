@@ -400,7 +400,7 @@ public sealed class TestController : IAsyncDisposable
         ITestRunner? ending = runner;
         runner = null;
         // Not held: the window's end waits for it with no UI thread to come back to (MainWindow.Ended).
-        return ending is null ? ValueTask.CompletedTask : new ValueTask(Task.Run(ending.Dispose));
+        return ending is null ? ValueTask.CompletedTask : new ValueTask(BackgroundWork.Unheld(ending.Dispose));
     }
 
     /// <summary>The tests these rows run: a method's or a group's tests as a runner found them, a data row's own (its
@@ -457,7 +457,7 @@ public sealed class TestController : IAsyncDisposable
         {
             // A discovery that never said it had stopped: its runner ends, its test hosts with it.
             runner = null;
-            IdeErrors.Observe(Task.Run(stuck.Dispose));
+            IdeErrors.Observe(BackgroundWork.Unheld(stuck.Dispose));
         }
         Message?.Invoke(this, StoppedMessage);
         return StoppedMessage;

@@ -1,3 +1,5 @@
+using Passenger.Core;
+
 namespace Passenger.App.Containers;
 
 /// <summary>What one open folder had the engine start, ended with the folder (<see cref="ProjectSession"/>'s end): each
@@ -61,7 +63,7 @@ public sealed class FolderContainers(string? folder, ContainerEngine engine)
         }
         bool coming = upEnded is { IsCompleted: false };
         // Not held: nothing it does is drawn, and the process waits for it once the window's loop has stopped.
-        Task ended = Task.Run(async () =>
+        Task ended = BackgroundWork.Unheld(async () =>
         {
             if (coming)
             {

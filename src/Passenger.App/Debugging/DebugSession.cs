@@ -535,9 +535,9 @@ public sealed class DebugSession
     private Task EndProcessesAsync(TimeSpan answer, TimeSpan exit, bool terminate = true, TimeSpan? letGoWithin = null)
     {
         // Not held: the window's end waits for these with no UI thread to come back to (MainWindow.Ended).
-        Task asked = disconnected ??= Task.Run(() => DisconnectAsync(terminate, letGoWithin));
+        Task asked = disconnected ??= BackgroundWork.Unheld(() => DisconnectAsync(terminate, letGoWithin));
         ending.TrySetResult();
-        return Task.Run(async () =>
+        return BackgroundWork.Unheld(async () =>
         {
             await Task.WhenAny(asked, Task.Delay(answer));
             if (!adapter.WaitForExit(exit))

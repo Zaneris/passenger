@@ -245,7 +245,8 @@ public partial class ManagedDebugger
             SingleWriter = false
         });
         _callbacks.OnAnyEvent += QueueEvent;
-        Core.UnawaitedWork.Observe(Task.Run(ProcessRuntimeEventQueue));
+        // Not held: it serves the runtime's events for as long as the session lasts.
+        Core.UnawaitedWork.Observe(Core.BackgroundWork.Unheld(ProcessRuntimeEventQueue));
     }
 
     private void QueueEvent(object? sender, CorDebugManagedCallbackEventArgs e)

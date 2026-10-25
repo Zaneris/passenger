@@ -3,6 +3,7 @@ using System.Diagnostics.Tracing;
 using Microsoft.Diagnostics.NETCore.Client;
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers.Clr;
+using Passenger.Core;
 
 namespace Passenger.Profiler;
 
@@ -56,7 +57,7 @@ internal sealed class HeapHistory(int processId) : IAsyncDisposable
                     {
                         Dumped written = await DumpAsync(dump, cancel);
                         TimeSpan dumped = clock.Elapsed;
-                        Task<HeapGraph> reading = Task.Run(() => HeapGraph.Read(dump, cancel), cancel);
+                        Task<HeapGraph> reading = BackgroundWork.Run(() => HeapGraph.Read(dump, cancel), cancel);
                         int induced = await InduceAsync(cancel);
                         bool heard = induced >= 0 && await HeardAsync(induced, TimeSpan.FromSeconds(30));
                         HeapGraph graph;
@@ -106,7 +107,8 @@ internal sealed class HeapHistory(int processId) : IAsyncDisposable
         List<DateTime> samples = [];
         EventPipeSession sampling = await client.StartEventPipeSessionAsync(
             [new EventPipeProvider(Snapshot.SampleProvider, EventLevel.Informational)], requestRundown: false, circularBufferMB: 64, cancel);
-        Task reading = Task.Run(() =>
+        // Not held: read until its session stops.
+        Task reading = BackgroundWork.Unheld(() =>
         {
             using EventPipeEventSource events = new(sampling.EventStream);
             events.AllEvents += e =>
@@ -261,7 +263,7 @@ internal sealed class HeapHistory(int processId) : IAsyncDisposable
         source.Clr.GCStop += OnEnd;
         EventPipeEventSource events = source;
         // A thread of its own: the stream is read until the program ends or the run is put away.
-        listening = Task.Factory.StartNew(() =>
+        listening = BackgroundWork.UnheldThread(() =>
         {
             try
             {
@@ -279,7 +281,7 @@ internal sealed class HeapHistory(int processId) : IAsyncDisposable
                 }
                 waiting.Clear();
             }
-        }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        });
     }
 
     /// <summary>The collection under way that the events in between belong to: the innermost begun, as a background
@@ -370,7 +372,8 @@ internal sealed class HeapHistory(int processId) : IAsyncDisposable
         int found = -1;
         using EventPipeSession inducing = await new DiagnosticsClient(processId).StartEventPipeSessionAsync(
             [new EventPipeProvider(Runtime, EventLevel.Informational, GcKeyword | CollectKeyword)], requestRundown: false, circularBufferMB: 16, cancel);
-        Task reading = Task.Run(() =>
+        // Not held: read until its session stops.
+        Task reading = BackgroundWork.Unheld(() =>
         {
             using EventPipeEventSource events = new(inducing.EventStream);
             events.Clr.GCStart += e =>

@@ -566,7 +566,7 @@ public sealed class LanguageServer : IAsyncDisposable
     /// <summary>Makes a request nothing waits on the answer to (Razor's word that a file closed), from the thread pool, where
     /// its failure is caught: awaited on a window's thread as it closes, the failure would be left to a dispatcher that never
     /// runs again, unobserved.</summary>
-    internal void Tell(string method, object parameters) => UnawaitedWork.Observe(Task.Run(async () =>
+    internal void Tell(string method, object parameters) => UnawaitedWork.Observe(BackgroundWork.Unheld(async () =>
     {
         try
         {
@@ -636,7 +636,7 @@ public sealed class LanguageServer : IAsyncDisposable
         try
         {
             // Run apart, so a write held up by a server that reads nothing never holds the limit's clock.
-            await Task.Run(AnswerAsync).WaitAsync(ResponseLimit);
+            await BackgroundWork.Unheld(AnswerAsync).WaitAsync(ResponseLimit);
         }
         catch (TimeoutException)
         {

@@ -87,8 +87,10 @@ public static class ChildProcesses
     /// out. The child is started, its id known, once the task is done; what the start throws, the task throws.</summary>
     public static Task<Process> StartAsync(ProcessStartInfo start) => StartOffAsync(start, answers: null);
 
+    /// <summary>The fork, unheld: what started the child holds its own wait for it, and the window's end may wait for a
+    /// start with no UI thread to come back to.</summary>
     private static async Task<Process> StartOffAsync(ProcessStartInfo start, IReadOnlyCollection<int>? answers) =>
-        SynchronizationContext.Current is null ? Start(start, answers) : await Task.Run(() => Start(start, answers));
+        SynchronizationContext.Current is null ? Start(start, answers) : await BackgroundWork.Unheld(() => Start(start, answers));
 
     /// <summary><see cref="Start(ProcessStartInfo)"/>, with the exit codes that are the child's answer, not its failure.</summary>
     private static Process Start(ProcessStartInfo start, IReadOnlyCollection<int>? answers)

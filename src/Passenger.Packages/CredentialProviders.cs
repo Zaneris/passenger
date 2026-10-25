@@ -120,7 +120,7 @@ public sealed class CredentialProviders
             this.process = process;
             this.name = name;
             // Not background work of its own: the search that asked holds screenshots until it has its answer.
-            reading = Task.Run(ReadAsync);
+            reading = BackgroundWork.Unheld(ReadAsync);
             draining = process.StandardError.ReadToEndAsync();
         }
 

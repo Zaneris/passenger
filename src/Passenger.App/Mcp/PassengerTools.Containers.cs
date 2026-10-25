@@ -46,7 +46,8 @@ public sealed partial class PassengerTools
         ContainerEngine engine = window.Engine;
         TimeSpan time = TimeSpan.FromSeconds(Math.Clamp(followSeconds, 0, 300)) + ContainerEngine.AskLimit;
         AgentCall.Say(followSeconds > 0 ? $"Following {row.Name}'s log for {followSeconds} s" : $"Reading {row.Name}'s log");
-        ChildResult result = await Task.Run(() => followSeconds > 0
+        // Not held: the agent's answer, which its call waits for; nothing drawn changes.
+        ChildResult result = await BackgroundWork.Unheld(() => followSeconds > 0
             ? engine.RunForAsync(words, TimeSpan.FromSeconds(Math.Clamp(followSeconds, 1, 300)), cancel)
             : engine.RunAsync(words, time, cancel), cancel);
         if (!result.Succeeded)
@@ -68,7 +69,8 @@ public sealed partial class PassengerTools
         }
         ContainerEngine engine = window.Engine;
         AgentCall.Say($"Running in {one.Name}: {command}");
-        ChildResult result = await Task.Run(() => engine.RunAsync(["exec", one.Id, "sh", "-c", command], TimeSpan.FromSeconds(Math.Clamp(waitSeconds, 1, 600)), cancel), cancel);
+        // Not held: the agent's answer, which its call waits for; nothing drawn changes.
+        ChildResult result = await BackgroundWork.Unheld(() => engine.RunAsync(["exec", one.Id, "sh", "-c", command], TimeSpan.FromSeconds(Math.Clamp(waitSeconds, 1, 600)), cancel), cancel);
         return new ContainerExec(result.ExitCode, result.Output, result.Error.Length > 0 ? result.Error : null);
     });
 
@@ -123,7 +125,8 @@ public sealed partial class PassengerTools
         ContainerEngine engine = window.Engine;
         try
         {
-            return await Task.Run(async () =>
+            // Not held: the agent's answer, which its call waits for; nothing drawn changes.
+            return await BackgroundWork.Unheld(async () =>
             {
                 EngineState state = await engine.StateAsync(again, cancel);
                 return (state, state.Status is EngineStatus.Ready or EngineStatus.NoCompose ? await ContainerSnapshot.ReadAsync(engine, cancel, containersOnly) : ContainerSnapshot.Empty);

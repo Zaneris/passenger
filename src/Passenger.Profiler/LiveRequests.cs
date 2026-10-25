@@ -132,7 +132,8 @@ public sealed class LiveRequests : IAsyncDisposable
         }
         TaskCompletionSource recording = new(TaskCreationOptions.RunContinuationsAsynchronously);
         string? said = null;
-        Task reading = Task.Run(() => ErrorLines.ReadAsync(tools.StandardError, line =>
+        // Not held: read for as long as the tools run.
+        Task reading = BackgroundWork.Unheld(() => ErrorLines.ReadAsync(tools.StandardError, line =>
         {
             if (line.Trim() == InContainer.Recording)
             {
@@ -186,7 +187,8 @@ public sealed class LiveRequests : IAsyncDisposable
                 heard(told);
             }
         };
-        Task ended = Task.Factory.StartNew(() =>
+        // Not held, on a thread of its own: the trace is read until the program ends or the requests are put away.
+        Task ended = BackgroundWork.UnheldThread(() =>
         {
             try
             {
@@ -195,7 +197,7 @@ public sealed class LiveRequests : IAsyncDisposable
             catch (Exception error) when (error is IOException or ObjectDisposedException or EndOfStreamException or FormatException)
             {
             }
-        }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        });
         return new LiveRequests(source, ended, stop);
     }
 

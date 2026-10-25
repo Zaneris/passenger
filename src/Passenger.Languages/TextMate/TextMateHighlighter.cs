@@ -139,8 +139,9 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
             first = Math.Min(first, batch.First);
             tail = Math.Min(tail, batch.Tail);
         }
+        // Held from here, the pass's own start holding nothing, until what it coloured lands on the UI thread.
         BackgroundWork.Begin();
-        UnawaitedWork.Observe(Task.Run(() => Pass(old, text, first, tail, passVersion)).ContinueWith(done => OnUi(() =>
+        UnawaitedWork.Observe(BackgroundWork.Unheld(() => Pass(old, text, first, tail, passVersion)).ContinueWith(done => OnUi(() =>
         {
             try
             {

@@ -2,6 +2,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Passenger.Core;
 
 namespace Passenger.App.Mcp;
 
@@ -24,7 +25,7 @@ internal sealed class AppSocket : IDisposable
         Path = path;
         this.listener = listener;
         // Not held: it listens for as long as the process has a window agents reach.
-        IdeErrors.Observe(Task.Run(AcceptAsync));
+        IdeErrors.Observe(BackgroundWork.Unheld(AcceptAsync));
     }
 
     public string Path { get; }

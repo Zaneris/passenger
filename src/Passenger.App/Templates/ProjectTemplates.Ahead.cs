@@ -78,7 +78,7 @@ public static partial class ProjectTemplates
         try
         {
             // Not background work: nothing is drawn from it, and holding a settle would outlast a chord's second key.
-            TemplateCatalog catalog = await Task.Run(() => LoadAsync(folder));
+            TemplateCatalog catalog = await BackgroundWork.Unheld(() => LoadAsync(folder));
             IdeErrors.Write($"New Solution's templates read ahead in {System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalSeconds:0.00} s: "
                 + $"{catalog.Templates.Count} templates in {catalog.Families.Count} families, SDK {catalog.Sdk}");
         }
@@ -163,7 +163,7 @@ public static partial class ProjectTemplates
     {
         long change = Interlocked.Increment(ref changes);
         // Not background work, as a read ahead isn't: a template installed while a window waits for a key holds nothing.
-        IdeErrors.Observe(Task.Run(async () =>
+        IdeErrors.Observe(BackgroundWork.Unheld(async () =>
         {
             await Task.Delay(Settling);
             if (Interlocked.Read(ref changes) != change)

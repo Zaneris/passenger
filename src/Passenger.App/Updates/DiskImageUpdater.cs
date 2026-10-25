@@ -85,7 +85,8 @@ public sealed partial class DiskImageUpdater : Updater
         }
         string folder = Path.Combine(Staging, release.Version);
         string app = Path.Combine(folder, Staged);
-        await Task.Run(() => CleanAsync(keep: release.Version), cancel).ConfigureAwait(false);
+        // Not held: removing old copies is the disk's work, which nothing drawn waits for.
+        await BackgroundWork.Unheld(() => CleanAsync(keep: release.Version), cancel).ConfigureAwait(false);
         string identifier = await PlistAsync(Bundle, "CFBundleIdentifier", cancel).ConfigureAwait(false)
             ?? throw new UpdateFailedException($"{Bundle} names no bundle identifier");
         string? team = await TeamAsync(Bundle, cancel).ConfigureAwait(false);
@@ -99,7 +100,8 @@ public sealed partial class DiskImageUpdater : Updater
             }
             catch (UpdateRefusedException)
             {
-                await Task.Run(() => CleanAsync(keep: null), cancel).ConfigureAwait(false);
+                // Not held: removing old copies is the disk's work, which nothing drawn waits for.
+                await BackgroundWork.Unheld(() => CleanAsync(keep: null), cancel).ConfigureAwait(false);
             }
         }
         Directory.CreateDirectory(folder);

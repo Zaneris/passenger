@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
+using Passenger.Core;
 
 namespace Passenger.App.Discord;
 
@@ -55,7 +56,7 @@ public sealed class DiscordPresence(DiscordIpc ipc, Action<string> log)
             }
             wanted = activity;
             // Not BackgroundWork: nothing it does is drawn, and a Discord that never answers must hold no screenshot.
-            worker ??= Task.Run(RunAsync);
+            worker ??= BackgroundWork.Unheld(RunAsync);
         }
         wake.Writer.TryWrite(true);
     }

@@ -154,7 +154,8 @@ public sealed class ProfilerCommands
         CancellationToken closing = profiled.Aspire.ClosingToken;
         string kept = SnapshotFolder;
         using IDisposable held = BackgroundWork.Scope();
-        IReadOnlyList<SnapshotFile> files = await Task.Run(() =>
+        // Held by the scope, and back on no thread of the window's, which may be gone by then.
+        IReadOnlyList<SnapshotFile> files = await BackgroundWork.Unheld(() =>
         {
             if (trim)
             {
@@ -522,7 +523,7 @@ public sealed class ProfilerCommands
             {
                 recording = program.Recorded is { } place
                     ? await ProfilingSession.AttachAsync(program.Id, file, snapshots, place, resume: true, stop)
-                    : await Task.Run(() => ProfilingSession.AttachAsync(program.Id, file, snapshots, stop, resume: true), stop);
+                    : await BackgroundWork.Run(() => ProfilingSession.AttachAsync(program.Id, file, snapshots, stop, resume: true), stop);
             }
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested)
@@ -803,14 +804,15 @@ public sealed class ProfilerCommands
         using IDisposable held = BackgroundWork.Scope();
         try
         {
-            Snapshot snapshot = await Task.Run(() => run.StopAsync()).ConfigureAwait(false);
+            // Held by the scope, and back on no thread of the window's, which may be gone by then.
+            Snapshot snapshot = await BackgroundWork.Unheld(() => run.StopAsync()).ConfigureAwait(false);
             string read = $"Snapshot of {name}: {snapshot.Samples:N0} samples, kept in {Path.GetDirectoryName(snapshot.TracePath)}";
             if (closing.IsCancellationRequested)
             {
                 // Its folder was left as it was read: it is that folder's to list when it opens again.
                 return new SnapshotRead(snapshot, read);
             }
-            IReadOnlyList<SnapshotFile> files = await Task.Run(() =>
+            IReadOnlyList<SnapshotFile> files = await BackgroundWork.Unheld(() =>
             {
                 Snapshots.Trim(kept);
                 return Snapshots.List(kept);

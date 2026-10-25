@@ -162,7 +162,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
     private async Task FindDeclaredAsync(ProjectModel project)
     {
         IReadOnlyList<ProjectModel> all = bound?.Projects ?? [];
-        IReadOnlyList<EfPending> found = await Task.Run(() => DeclaredIn(project, all));
+        IReadOnlyList<EfPending> found = await BackgroundWork.Run(() => DeclaredIn(project, all));
         if (Project == project)
         {
             Declared = found;

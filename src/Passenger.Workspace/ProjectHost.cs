@@ -118,7 +118,8 @@ public sealed class ProjectHost : IAsyncDisposable
             }
             HostReady ready = reply.Result?.Deserialize<HostReady>(HostJson.Options) ?? throw new ProjectHostFailed("the project host did not say which SDK it loaded");
             ProjectHost host = new(process, ready, folder, globalJson);
-            UnawaitedWork.Observe(Task.Run(host.ReadAsync));
+            // Not held: it reads the host's answers for as long as the host lives.
+            UnawaitedWork.Observe(BackgroundWork.Unheld(host.ReadAsync));
             return host;
         }
         catch (Exception error)

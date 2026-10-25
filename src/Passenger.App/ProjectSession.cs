@@ -854,7 +854,7 @@ public sealed class ProjectSession : IAsyncDisposable
         WorkspaceRead = landed.Task;
         // Held through the walk, then by the crossing, which lets go of what it can never deliver.
         IDisposable held = BackgroundWork.Scope();
-        IdeErrors.Observe(Task.Run(() => WorkspaceModel.Read(walking, named)).ContinueWith(walked =>
+        IdeErrors.Observe(BackgroundWork.Unheld(() => WorkspaceModel.Read(walking, named)).ContinueWith(walked =>
         {
             // Seen here, so a walk that failed after another read began is no unobserved task's error later.
             _ = walked.Exception;
@@ -1023,7 +1023,7 @@ public sealed class ProjectSession : IAsyncDisposable
         foreach (ProfilingSession run in new[] { Profiling, Profiled?.Run }.OfType<ProfilingSession>().Distinct())
         {
             // Not held, and off the window's thread, whose loop may stop first: nothing it does is drawn.
-            parts.Add(("the profiler", Task.Run(() => run.LetGoAsync().AsTask())));
+            parts.Add(("the profiler", BackgroundWork.Unheld(() => run.LetGoAsync().AsTask())));
         }
         Profiling = null;
         foreach ((_, LiveApp app) in Debug.Apps)
@@ -1064,7 +1064,7 @@ public sealed class ProjectSession : IAsyncDisposable
             return Task.CompletedTask;
         }
         // Not held: nothing it does is drawn, and the process waits for it once the window's loop has stopped.
-        return Task.Run(async () =>
+        return BackgroundWork.Unheld(async () =>
         {
             try
             {

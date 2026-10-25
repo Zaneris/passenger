@@ -14,7 +14,7 @@ public static class ExceptionTypes
     private static Task<IReadOnlyList<string>>? runtime;
 
     /// <summary>The runtime's exception types by full name, in order; none when no runtime can be read.</summary>
-    public static Task<IReadOnlyList<string>> Runtime() => runtime ??= Task.Run(ReadRuntime);
+    public static Task<IReadOnlyList<string>> Runtime() => runtime ??= BackgroundWork.Run(ReadRuntime);
 
     /// <summary>The full names of the solution's classes a workspace symbol search for "Exception" finds whose names end so.</summary>
     public static IReadOnlyList<string> FromSymbols(IEnumerable<Lsp.SymbolInformation> symbols) =>

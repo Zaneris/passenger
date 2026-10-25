@@ -244,8 +244,8 @@ public sealed class ProjectModels
         long began = Stopwatch.GetTimestamp();
         try
         {
-            List<string> stale = await Task.Run(() => projects.Where(p => !before.TryGetValue(p, out EvaluatedProject? e) || !Holds(e)).ToList());
-            ProjectHost host = await Task.Run(() => ProjectHosts.ForAsync(following));
+            List<string> stale = await BackgroundWork.Run(() => projects.Where(p => !before.TryGetValue(p, out EvaluatedProject? e) || !Holds(e)).ToList());
+            ProjectHost host = await BackgroundWork.Run(() => ProjectHosts.ForAsync(following));
             if (mine != generation)
             {
                 return;

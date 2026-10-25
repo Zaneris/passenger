@@ -594,7 +594,7 @@ public sealed class CSharpService : IAsyncDisposable
             return new ValueTask(warm.Keep(ending, ProjectProblems));
         }
         // Not held: the window's end waits for it with no UI thread to come back to (MainWindow.Ended).
-        return ending is null ? ValueTask.CompletedTask : new ValueTask(Task.Run(() => ending.DisposeAsync().AsTask()));
+        return ending is null ? ValueTask.CompletedTask : new ValueTask(BackgroundWork.Unheld(() => ending.DisposeAsync().AsTask()));
     }
 
     /// <summary>Remembers how to take one of this service's handlers off its server again; from the UI thread, or the

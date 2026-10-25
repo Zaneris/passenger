@@ -121,7 +121,8 @@ public partial class ManagedDebugger
         _launch = launch;
         _initialThreadId = launch.InitialThreadId;
         _launchOutput = Task.WhenAll(Forward(launch.Output, isError: false), Forward(launch.Error, isError: true));
-        Task<int?> launchExit = Task.Run(launch.WaitForExit);
+        // Not held: it waits for the program to end.
+        Task<int?> launchExit = Core.BackgroundWork.Unheld(launch.WaitForExit);
         _launchExit = launchExit;
         // Told as the program goes, not when the runtime's word of it is handled, which mscordbi may lose tearing down.
         Core.UnawaitedWork.Observe(launchExit.ContinueWith(ended => ReportExit(ended.Result), TaskScheduler.Default));
@@ -161,8 +162,8 @@ public partial class ManagedDebugger
         SendAllBreakpointEvents();
         return;
 
-        // A program's output as it comes, a prompt with no line end included.
-        Task Forward(Stream stream, bool isError) => Task.Run(async () =>
+        // A program's output as it comes, a prompt with no line end included; not held, as it lasts as the program does.
+        Task Forward(Stream stream, bool isError) => Core.BackgroundWork.Unheld(async () =>
         {
             try
             {

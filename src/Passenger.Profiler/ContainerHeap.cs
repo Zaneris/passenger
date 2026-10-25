@@ -83,8 +83,8 @@ internal sealed class ContainerHeap(ProfilePlace place, int processId) : IAsyncD
             MemorySnapshot taken;
             try
             {
-                // Off the caller's thread: a heap of millions of objects takes a while to read back.
-                taken = await Task.Run(() => HeapWire.ReadSnapshot(answer.Body, this, asked, numberedAfter), CancellationToken.None).ConfigureAwait(false);
+                // Off the caller's thread and back on none of its, held by whoever asked: a heap of millions of objects takes a while.
+                taken = await BackgroundWork.Unheld(() => HeapWire.ReadSnapshot(answer.Body, this, asked, numberedAfter), CancellationToken.None).ConfigureAwait(false);
             }
             catch (Exception unreadable) when (unreadable is InvalidDataException or IOException or FormatException or OverflowException or ArgumentException
                 or IndexOutOfRangeException or OutOfMemoryException)
@@ -126,7 +126,8 @@ internal sealed class ContainerHeap(ProfilePlace place, int processId) : IAsyncD
             throw new InvalidOperationException($"Could not start Passenger's tools in {place.Where} for a memory snapshot: {error.Message}", error);
         }
         Process started = tools;
-        errorsRead = Task.Run(() => ErrorLines.ReadAsync(started.StandardError, line =>
+        // Not held: read for as long as the tools run.
+        errorsRead = BackgroundWork.Unheld(() => ErrorLines.ReadAsync(started.StandardError, line =>
         {
             if (line.Trim() is { Length: > 0 } said)
             {

@@ -33,7 +33,8 @@ public static class ShellEnvironment
         }
         began = Stopwatch.GetTimestamp();
         ManualResetEventSlim reading = readEnded = new();
-        UnawaitedWork.Observe(Task.Run(() => ReadAsync(reading)));
+        // Not held: what needs the environment waits on its gate.
+        UnawaitedWork.Observe(BackgroundWork.Unheld(() => ReadAsync(reading)));
     }
 
     /// <summary>Waits for the shell's environment, if it is being read, before a program is looked for or started: until the

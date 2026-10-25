@@ -287,7 +287,7 @@ public sealed class ContainerEngine
                 return under.WaitAsync(cancel);
             }
             // Not held: what draws the answer holds its own wait for it (a BackgroundWork.Run round StateAsync).
-            asking = Task.Run(AskStateAsync, CancellationToken.None);
+            asking = BackgroundWork.Unheld(AskStateAsync, CancellationToken.None);
             return asking.WaitAsync(cancel);
         }
     }
@@ -522,7 +522,7 @@ public sealed class ContainerEngine
             {
                 keeping = true;
                 // Not held: it runs for as long as anyone follows, and what it tells the window holds its own work.
-                IdeErrors.Observe(Task.Run(FollowAsync));
+                IdeErrors.Observe(BackgroundWork.Unheld(FollowAsync));
             }
         }
         return new Following(this, follower);

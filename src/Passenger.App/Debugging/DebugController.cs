@@ -760,8 +760,8 @@ public sealed class DebugController : IDisposable
         tab.Following = process;
         ConsoleSink sink = console.Sink;
         // For the program's life, as its output is: no screenshot waits on it. Its last words land as its follower ends.
-        IdeErrors.Observe(Task.Run(() => sink.PumpAsync(process.StandardOutput, ConsoleStream.Output)));
-        IdeErrors.Observe(Task.Run(() => sink.PumpAsync(process.StandardError, ConsoleStream.Error)));
+        IdeErrors.Observe(BackgroundWork.Unheld(() => sink.PumpAsync(process.StandardOutput, ConsoleStream.Output)));
+        IdeErrors.Observe(BackgroundWork.Unheld(() => sink.PumpAsync(process.StandardError, ConsoleStream.Error)));
     }
 
     /// <summary>Ends a tab's following of its program's output a moment after its session ended, its last words in.</summary>

@@ -35,7 +35,7 @@ public sealed class AgentSocket : IDisposable
         this.listener = listener;
         Path = path;
         // Not held: it listens for as long as the window does.
-        IdeErrors.Observe(Task.Run(AcceptAsync));
+        IdeErrors.Observe(BackgroundWork.Unheld(AcceptAsync));
     }
 
     /// <summary>The socket's file.</summary>
@@ -171,7 +171,7 @@ public sealed class AgentSocket : IDisposable
         {
             await using NetworkStream stream = new(client, ownsSocket: true);
             // Its tools are made once a process, off the UI thread, which the first connection's would hold; nothing drawn changes.
-            McpServerOptions options = await Task.Run(() => McpHost.Options(window, connection));
+            McpServerOptions options = await BackgroundWork.Unheld(() => McpHost.Options(window, connection));
             StreamServerTransport transport = new(stream, stream, "passenger");
             await using McpServer server = McpServer.Create(new PeerTransport(transport), options);
             Task running = server.RunAsync(gone.Token);

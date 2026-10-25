@@ -65,6 +65,18 @@ internal static class Rules
             + "the exception itself on before it can leave: rethrown, thrown inside another, or given whole to a call, a value "
             + "kept or returned, or a string made of it.");
 
+    public static readonly DiagnosticDescriptor BareTaskRun = new(
+        "PSG0006",
+        "Work goes to the thread pool past BackgroundWork",
+        "{0} starts work that no screenshot or test waits for: start it through BackgroundWork (Run, or Unheld saying why it must hold nothing)",
+        Category,
+        DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description: "Work given to the thread pool by Task.Run or StartNew is waited for by nothing waiting for the IDE to be "
+            + "quiet, so a screenshot or test can take what it changes half done. BackgroundWork.Run holds them until its answer "
+            + "is back; BackgroundWork.Unheld and UnheldThread are for work that must hold nothing, as a loop as long-lived "
+            + "as what it serves, each caller saying why.");
+
     public static readonly DiagnosticDescriptor KeysUnread = new(
         "PSG9001",
         "A resource keys file is not read",
