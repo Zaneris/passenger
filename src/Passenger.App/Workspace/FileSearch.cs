@@ -1,4 +1,5 @@
 using System.Text;
+using Microsoft.Win32.SafeHandles;
 using Passenger.Core;
 using Passenger.Text;
 
@@ -54,11 +55,19 @@ public static class FileSearch
         {
             return (IReadOnlyList<SearchMatch>)found;
         }
+        MatchFilter? filter = MatchFilter.For(query);
+        byte[] bytes = [];
         foreach (string path in place.Paths(root, files))
         {
             cancellation.ThrowIfCancellationRequested();
             // A preview's or a workbook's tab holds no text, so its file is searched as a closed one is, and passed over as binary.
-            TextSnapshot? text = open.Open(path) ?? Read(path);
+            TextSnapshot? text = open.Open(path);
+            if (text is null && filter is not null && !(ReadBytes(path, ref bytes) is int length && filter.MayMatch(bytes.AsSpan(0, length))))
+            {
+                // A closed file whose bytes hold no match is never read as text.
+                continue;
+            }
+            text ??= Read(path);
             if (text is null)
             {
                 continue;
@@ -80,6 +89,40 @@ public static class FileSearch
     /// <summary>A closed file's text as the editor reads it (<see cref="Editors.EditorArea.Read"/>); null for one that is
     /// binary (<see cref="FileText.LooksBinary"/>), too large or unreadable.</summary>
     private static TextSnapshot? Read(string path) => new FileInfo(path) is { Exists: true, Length: <= LargestFile } ? Editors.EditorArea.Read(path) : null;
+
+    /// <summary>A closed file's bytes read into the search's buffer, grown as one needs, sharing writes and deletes as
+    /// <see cref="FileText.Read"/> does: how many there are, or null for a file not there, too large or unreadable.</summary>
+    private static int? ReadBytes(string path, ref byte[] buffer)
+    {
+        try
+        {
+            using SafeFileHandle file = File.OpenHandle(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            long size = RandomAccess.GetLength(file);
+            if (size > LargestFile)
+            {
+                return null;
+            }
+            if (buffer.Length < size)
+            {
+                buffer = new byte[Math.Max(size, Math.Min(LargestFile, buffer.Length * 2L))];
+            }
+            int read = 0;
+            while (read < size)
+            {
+                int got = RandomAccess.Read(file, buffer.AsSpan(read, (int)size - read), read);
+                if (got == 0)
+                {
+                    break;
+                }
+                read += got;
+            }
+            return read;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
 
     /// <summary>The text with every match replaced, a regex's groups ($1, ${name}) filled in from each match as the
     /// Find bar's Replace fills them.</summary>

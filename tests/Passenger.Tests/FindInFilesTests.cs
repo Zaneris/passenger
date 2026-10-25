@@ -145,6 +145,98 @@ public sealed class FindInFilesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Find in Files reads as text only the files whose bytes may hold a match: over 2,000 files of 4 KB with a match
+    /// in a few, each search allocates (on every thread, the least of three) under 4 KB for each file more than over 20,
+    /// where reading one as text costs ten times that. It finds the same matches in UTF-8, UTF-8 with a BOM, UTF-16 and
+    /// 8-bit files, ignoring case as its regex does (a Kelvin sign is a k), matching case, by whole words and by regex.</summary>
+    [AvaloniaFact]
+    public void A_search_over_two_thousand_files_reads_as_text_only_those_whose_bytes_may_match()
+    {
+        (string Text, bool MatchCase, bool Words, bool Regex, string Found)[] queries =
+        [
+            ("needle", false, false, false, "Bom.cs:1:6, Found.cs:1:8, Latin.cs:1:13, Wide.cs:1:6"),
+            ("kelvin", false, false, false, "Kelvin.cs:1:4"),
+            ("Needle", true, false, false, "Found.cs:1:8"),
+            ("needle", false, true, false, "Bom.cs:1:6, Found.cs:1:8, Latin.cs:1:13, Wide.cs:1:6"),
+            (@"ne+dle\b", false, false, true, "Bom.cs:1:6, Found.cs:1:8, Latin.cs:1:13, Wide.cs:1:6"),
+        ];
+        string small = TestFolders.Create("find-few-");
+        string large = TestFolders.Create("find-many-");
+        try
+        {
+            Files(small, 20);
+            Files(large, 2000);
+            (long Bytes, string Found)[] few = Searches(small, queries);
+            (long Bytes, string Found)[] many = Searches(large, queries);
+            for (int i = 0; i < queries.Length; i++)
+            {
+                string asked = $"{queries[i].Text}{(queries[i].MatchCase ? " matching case" : string.Empty)}{(queries[i].Words ? " as a word" : string.Empty)}{(queries[i].Regex ? " as a regex" : string.Empty)}";
+                long each = (many[i].Bytes - few[i].Bytes) / 1980;
+                TestContext.Current.TestOutputHelper?.WriteLine($"{asked}: {few[i].Bytes / 1024:N0} KB over 20 files, {many[i].Bytes / 1024:N0} KB over 2,000, {each:N0} bytes a file more");
+                Assert.True(few[i].Found == queries[i].Found && many[i].Found == queries[i].Found,
+                    $"Find in Files for {asked} found [{few[i].Found}] over 20 files and [{many[i].Found}] over 2,000, not [{queries[i].Found}]");
+                Assert.True(each < 4096,
+                    $"Find in Files for {asked} allocated {many[i].Bytes / 1024:N0} KB over 2,000 files, {few[i].Bytes / 1024:N0} KB over 20: {each:N0} bytes for each file more, as if every file were read as text");
+            }
+        }
+        finally
+        {
+            TestFolders.Delete(small);
+            TestFolders.Delete(large);
+        }
+
+        // Files of code that hold no match, a hundred to a folder, and beside them a match in each encoding.
+        static void Files(string root, int count)
+        {
+            System.Text.StringBuilder code = new();
+            for (int i = 0; i < count; i++)
+            {
+                code.Clear().Append(System.Globalization.CultureInfo.InvariantCulture, $"class Filler{i}\n{{\n");
+                for (int j = 0; j < 80; j++)
+                {
+                    code.Append(System.Globalization.CultureInfo.InvariantCulture, $"    int field{j} = {j} * {i}; // a sum of the parts\n");
+                }
+                TestFolders.Write(root, $"src/Area{i / 100}/Filler{i}.cs", code.Append("}\n").ToString());
+            }
+            File.WriteAllText(Path.Combine(root, "Found.cs"), "// the Needle is here\nclass Found { }\n");
+            File.WriteAllText(Path.Combine(root, "Bom.cs"), "// a needle after a BOM\n", new System.Text.UTF8Encoding(true));
+            File.WriteAllText(Path.Combine(root, "Wide.cs"), "// a needle in UTF-16\n", System.Text.Encoding.Unicode);
+            File.WriteAllBytes(Path.Combine(root, "Latin.cs"), System.Text.Encoding.Latin1.GetBytes("// déjà une needle\n"));
+            File.WriteAllText(Path.Combine(root, "Kelvin.cs"), "// Kelvin's line\n");
+            File.WriteAllBytes(Path.Combine(root, "Blob.bin"), [.. System.Text.Encoding.ASCII.GetBytes("needle kelvin"), 0, 1, 2]);
+        }
+    }
+
+    /// <summary>What each search over a folder allocates on every thread from its query to its matches shown, the least of
+    /// three, as a test beside it may allocate meanwhile; and the matches as file:line:column, in order.</summary>
+    private static (long Bytes, string Found)[] Searches(string root, (string Text, bool MatchCase, bool Words, bool Regex, string Found)[] queries)
+    {
+        MainWindow window = Ui.OpenFolder(root, languageServer: false);
+        Ui.WaitFor(() => window.FileIndex.Count > 0 && !window.FileIndex.IsWalking, "the folder's files indexed");
+        FindInFilesPopup popup = window.ShowFindInFiles(replace: false)!;
+        List<(long Bytes, string Found)> searches = [];
+        foreach ((string text, bool matchCase, bool words, bool regex, _) in queries)
+        {
+            popup.MatchCase = matchCase;
+            popup.Words = words;
+            popup.Regex = regex;
+            long least = long.MaxValue;
+            for (int time = 0; time < 3; time++)
+            {
+                popup.Text = string.Empty;
+                Ui.Settle();
+                long before = GC.GetTotalAllocatedBytes(precise: true);
+                popup.Text = text;
+                Task searching = popup.SearchAsync();
+                Ui.WaitFor(() => searching.IsCompleted, $"the search for {text}");
+                least = Math.Min(least, GC.GetTotalAllocatedBytes(precise: true) - before);
+            }
+            searches.Add((least, string.Join(", ", popup.Matches.Select(m => $"{m.Name}:{m.Line + 1}:{m.Column + 1}").Order(StringComparer.Ordinal))));
+        }
+        window.Close();
+        return [.. searches];
+    }
+
     [AvaloniaFact]
     public void Replace_all_across_a_read_only_file_replaces_in_the_rest_and_says_which_file_it_left_and_why()
     {
