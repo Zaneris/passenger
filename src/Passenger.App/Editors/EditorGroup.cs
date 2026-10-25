@@ -68,13 +68,6 @@ public sealed class EditorGroup : DockPanel
         this.area = area;
         Editor = new CodeEditor { IsVisible = false };
         Gutter = new EditorGutter(Editor);
-        Editor.FoldsToggled += (_, regions) =>
-        {
-            if (active is not null)
-            {
-                active.Document.FoldRegions = regions;
-            }
-        };
         Find = new FindBar { [DockProperty] = Dock.Top };
         ItemsControl strip = new()
         {
@@ -383,14 +376,9 @@ public sealed class EditorGroup : DockPanel
         Editor.Indent = document.Indentation.Options;
         Editor.ReindentsPaste = document.Language.ReindentsPaste;
         Editor.ShowWhitespaces = document.ShowWhitespaces;
-        Editor.Show(document.Text, selections, scroll, document.SoftWrap);
+        // Its decorations are the file's, which every editor showing it reads.
+        Editor.Show(document.Text, selections, scroll, document.SoftWrap, document.Decorations);
         Editor.Highlighter = document.Highlighter;
-        Editor.SetMarkers(document.Markers);
-        Editor.SetFoldRegions(document.FoldRegions);
-        Editor.SetInlayHints(document.InlayHints);
-        Editor.SetLineAnnotations(document.ShownAnnotations);
-        Editor.SetChangeMarks(document.ChangeMarks);
-        Editor.SetBookmarks(document.Bookmarks);
         Gutter.Show(document);
         Editor.ContextLabel = ContextShown(document);
         Editor.IsReadOnly = document.IsReadOnly;
@@ -561,7 +549,6 @@ public sealed class EditorGroup : DockPanel
         {
             return;
         }
-        Gutter.Follow(document, e.PropertyName);
         switch (e.PropertyName)
         {
             case nameof(OpenDocument.Asset):
@@ -581,26 +568,8 @@ public sealed class EditorGroup : DockPanel
             case nameof(OpenDocument.Highlighter):
                 Editor.Highlighter = document.Highlighter;
                 break;
-            case nameof(OpenDocument.LineAnnotations) or nameof(OpenDocument.LiveValues):
-                Editor.SetLineAnnotations(document.ShownAnnotations);
-                break;
-            case nameof(OpenDocument.Markers):
-                Editor.SetMarkers(document.Markers);
-                break;
             case nameof(OpenDocument.Notice) or nameof(OpenDocument.NoticeAction) or nameof(OpenDocument.EncodingWarning):
                 ShowBanner(document);
-                break;
-            case nameof(OpenDocument.InlayHints):
-                Editor.SetInlayHints(document.InlayHints);
-                break;
-            case nameof(OpenDocument.FoldRegions):
-                Editor.SetFoldRegions(document.FoldRegions);
-                break;
-            case nameof(OpenDocument.ChangeMarks):
-                Editor.SetChangeMarks(document.ChangeMarks);
-                break;
-            case nameof(OpenDocument.Bookmarks):
-                Editor.SetBookmarks(document.Bookmarks);
                 break;
             case nameof(OpenDocument.ProjectContexts):
             case nameof(OpenDocument.ProjectContext):

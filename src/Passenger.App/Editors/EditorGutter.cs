@@ -9,7 +9,7 @@ using Passenger.Editor;
 namespace Passenger.App.Editors;
 
 /// <summary>An editor's gutter columns, fixed and always these: Git blame and the bookmarks left of the line numbers, the
-/// marks (the debugger's, the tests', run icons, colours) and the change bars right of them, each fed from the file the
+/// marks (the debugger's, the tests', run icons, colours) and the change bars right of them, each reading the file the
 /// editor shows.</summary>
 public sealed class EditorGutter
 {
@@ -18,6 +18,8 @@ public sealed class EditorGutter
     public EditorGutter(CodeEditor editor)
     {
         Editor = editor;
+        Bookmarks = new BookmarkColumn(editor);
+        Changes = new ChangeColumn(editor);
         editor.SetGutterColumns([Blame, Bookmarks], [Marks, Changes]);
         Gutters.AddOrUpdate(editor, this);
     }
@@ -26,66 +28,28 @@ public sealed class EditorGutter
 
     public BlameColumn Blame { get; } = new();
 
-    public BookmarkColumn Bookmarks { get; } = new();
+    public BookmarkColumn Bookmarks { get; }
 
     public MarkColumn Marks { get; } = new();
 
-    public ChangeColumn Changes { get; } = new();
+    public ChangeColumn Changes { get; }
 
     /// <summary>The gutter an editor has, if it has these columns.</summary>
     public static EditorGutter? Of(CodeEditor editor) => Gutters.TryGetValue(editor, out EditorGutter? gutter) ? gutter : null;
 
-    /// <summary>Shows a file's marks.</summary>
+    /// <summary>Shows a file's marks, which the columns read from the file as it changes them, as every editor of it does;
+    /// the bookmarks and the change bars are the editor's decorations.</summary>
     public void Show(OpenDocument document)
     {
-        Marks.SetLineMarks(document.LineMarks);
-        Marks.SetTestMarks(document.TestMarks);
-        Marks.SetRunMarks(document.GutterRunMarks);
-        Marks.SetColourMarks(document.ColourMarks);
-        Changes.SetMarks(document.ChangeMarks);
-        Blame.SetLabels(document.GutterAnnotations);
-        Bookmarks.SetLines(document.Bookmarks);
-    }
-
-    /// <summary>Follows a property of the file shown that changed, if it is one of the gutter's.</summary>
-    public void Follow(OpenDocument document, string? property)
-    {
-        switch (property)
-        {
-            case nameof(OpenDocument.LineMarks):
-                Marks.SetLineMarks(document.LineMarks);
-                break;
-            case nameof(OpenDocument.TestMarks):
-                Marks.SetTestMarks(document.TestMarks);
-                break;
-            case nameof(OpenDocument.RunMarks) or nameof(OpenDocument.RouteMarks):
-                Marks.SetRunMarks(document.GutterRunMarks);
-                break;
-            case nameof(OpenDocument.ColourMarks):
-                Marks.SetColourMarks(document.ColourMarks);
-                break;
-            case nameof(OpenDocument.ChangeMarks):
-                Changes.SetMarks(document.ChangeMarks);
-                break;
-            case nameof(OpenDocument.GutterAnnotations):
-                Blame.SetLabels(document.GutterAnnotations);
-                break;
-            case nameof(OpenDocument.Bookmarks):
-                Bookmarks.SetLines(document.Bookmarks);
-                break;
-        }
+        Marks.Show(document);
+        Blame.Show(document);
     }
 
     /// <summary>Shows no marks, as an editor showing no file does.</summary>
     public void Clear()
     {
-        Marks.SetLineMarks([]);
-        Marks.SetTestMarks([]);
-        Marks.SetRunMarks([]);
-        Marks.SetColourMarks([]);
-        Changes.SetMarks([]);
-        Blame.SetLabels([]);
-        Bookmarks.SetLines([]);
+        Marks.Show(null);
+        Blame.Show(null);
     }
 }
 

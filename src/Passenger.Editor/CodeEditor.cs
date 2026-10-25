@@ -81,6 +81,9 @@ public sealed partial class CodeEditor : Control
             Blinks++;
             InvalidateVisual();
         });
+        decorations = new DocumentDecorations(document);
+        ownsDecorations = true;
+        decorations.Changed += OnDecorationsChanged;
         document.ChangedFirst += OnChangedFirst;
         document.Changed += OnDocumentChanged;
         caretsText = document.Snapshot;
@@ -128,57 +131,30 @@ public sealed partial class CodeEditor : Control
     /// signature help can decide whether to open.</summary>
     public event EventHandler<string>? Typed;
 
+    /// <summary>What is drawn on the text shown: the document's own when the host gave them with it (<see cref="Show"/>), so
+    /// every editor of the document reads the same, else this editor's for the text it was given.</summary>
+    public DocumentDecorations Decorations => decorations;
+
+    private DocumentDecorations decorations;
+
+    /// <summary>Whether <see cref="decorations"/> were made for this editor alone, let go of with the text.</summary>
+    private bool ownsDecorations;
+
     /// <summary>The markers drawn over the text (sorted), from the language service.</summary>
-    public IReadOnlyList<Marker> Markers { get; private set; } = [];
+    public IReadOnlyList<Marker> Markers => decorations.Markers;
 
-    /// <summary>The furthest any marker up to each reaches, so a line finds its first marker by halving.</summary>
-    private int[] markerReach = [];
-
-    /// <summary>Sets the markers, taken as given when they are in order already, as a host carrying them through a key gives
-    /// them: thousands sorted again at every key cost it.</summary>
-    public void SetMarkers(IReadOnlyList<Marker> markers)
-    {
-        Markers = MarkersInOrder(markers) ? markers : [.. markers.OrderBy(m => m.Range.Start)];
-        if (markerReach.Length != Markers.Count)
-        {
-            markerReach = new int[Markers.Count];
-        }
-        for (int i = 0; i < Markers.Count; i++)
-        {
-            markerReach[i] = Math.Max(i > 0 ? markerReach[i - 1] : 0, Markers[i].Range.End);
-        }
-        ProblemCount = CountProblems(Markers);
-        counts.InvalidateMeasure();
-        InvalidateArrange();
-        InvalidateVisual();
-    }
-
-    private static bool MarkersInOrder(IReadOnlyList<Marker> markers)
-    {
-        for (int i = 1; i < markers.Count; i++)
-        {
-            if (markers[i].Range.Start < markers[i - 1].Range.Start)
-            {
-                return false;
-            }
-        }
-        return true;
-    }
+    public void SetMarkers(IReadOnlyList<Marker> markers) => decorations.SetMarkers(markers);
 
     /// <summary>The lines that differ from another text, from the host: on the error stripe, and with
     /// <see cref="ChangeBackgrounds"/> as the lines' tints.</summary>
-    public IReadOnlyList<ChangeMark> ChangeMarks { get; private set; } = [];
+    public IReadOnlyList<ChangeMark> ChangeMarks => decorations.ChangeMarks;
 
-    public void SetChangeMarks(IReadOnlyList<ChangeMark> marks)
-    {
-        ChangeMarks = marks;
-        InvalidateVisual();
-    }
+    public void SetChangeMarks(IReadOnlyList<ChangeMark> marks) => decorations.SetChangeMarks(marks);
 
     private readonly AnchoredList<InlineChange> inlineChanges = new(c => c.Range, (c, range) => c with { Range = range });
 
     /// <summary>The words that changed inside changed lines (sorted), drawn over the lines' tint in a stronger colour; they
-    /// move with edits until the host sets them again.</summary>
+    /// move with edits until the host sets them again. This editor's own, as what a diff's side or a change's popup marks.</summary>
     public IReadOnlyList<InlineChange> InlineChanges => inlineChanges.Items;
 
     public void SetInlineChanges(IReadOnlyList<InlineChange> changes)
@@ -192,23 +168,61 @@ public sealed partial class CodeEditor : Control
     }
 
     /// <summary>The bookmarked lines, marked on the error stripe.</summary>
-    public IReadOnlyList<int> Bookmarks { get; private set; } = [];
+    public IReadOnlyList<int> Bookmarks => decorations.Bookmarks;
 
-    public void SetBookmarks(IReadOnlyList<int> lines)
-    {
-        Bookmarks = lines;
-        InvalidateVisual();
-    }
+    public void SetBookmarks(IReadOnlyList<int> lines) => decorations.SetBookmarks(lines);
 
     /// <summary>Whether the change marks tint whole lines; a mark with no lines is then a rule between two.</summary>
     public bool ChangeBackgrounds { get; set; }
 
     /// <summary>Text after lines' code, from the host.</summary>
-    public IReadOnlyList<LineAnnotation> LineAnnotations { get; private set; } = [];
+    public IReadOnlyList<LineAnnotation> LineAnnotations => decorations.LineAnnotations;
 
-    public void SetLineAnnotations(IReadOnlyList<LineAnnotation> annotations)
+    public void SetLineAnnotations(IReadOnlyList<LineAnnotation> annotations) => decorations.SetLineAnnotations(annotations);
+
+    /// <summary>Reads decorations other than the ones shown, letting go of those if they were this editor's alone, and draws
+    /// what they hold.</summary>
+    private void Decorate(DocumentDecorations shown, bool owned)
     {
-        LineAnnotations = annotations;
+        if (!ReferenceEquals(shown, decorations))
+        {
+            decorations.Changed -= OnDecorationsChanged;
+            if (ownsDecorations)
+            {
+                decorations.Release();
+            }
+            decorations = shown;
+            decorations.Changed += OnDecorationsChanged;
+        }
+        ownsDecorations = owned;
+        wrappedHints = decorations.InlayHints;
+        stripeBuild = null;
+        counts.InvalidateMeasure();
+    }
+
+    /// <summary>Draws what the decorations were set to: problems counted again, lines with hints drawn otherwise wrapped
+    /// again, the rows of other folds.</summary>
+    private void OnDecorationsChanged(object? sender, DecorationKind kind)
+    {
+        switch (kind)
+        {
+            case DecorationKind.Markers:
+                counts.InvalidateMeasure();
+                InvalidateArrange();
+                break;
+            case DecorationKind.InlayHints:
+                HintList before = wrappedHints;
+                wrappedHints = decorations.InlayHints;
+                FollowHints(before, wrappedHints);
+                FollowInputMethod();
+                break;
+            case DecorationKind.Folds:
+                HideFoldPreview();
+                UpdateScrollBars();
+                ScrollWithinRows();
+                FollowInputMethod();
+                break;
+        }
         InvalidateVisual();
     }
 
@@ -348,46 +362,49 @@ public sealed partial class CodeEditor : Control
         set => ownKeys = value is null ? null : new KeymapDispatcher(value);
     }
 
+    /// <summary>The text shown, with decorations of this editor's own; <see cref="Show"/> shows a document's own.</summary>
     public TextDocument Document
     {
         get => document;
-        set
-        {
-            document.ChangedFirst -= OnChangedFirst;
-            document.Changed -= OnDocumentChanged;
-            document = value;
-            document.ChangedFirst += OnChangedFirst;
-            document.Changed += OnDocumentChanged;
-            lineShape++;
-            // A template's places, a composition, a GoTo waiting for layout and the folds are offsets in the text left behind.
-            EndSnippet();
-            CancelChoices();
-            pendingGoTo = null;
-            usages.Clear();
-            UsagesKept = false;
-            inlineChanges.Clear();
-            highlights.Clear();
-            hovered.Release();
-            pressed.Release();
-            HideFoldPreview();
-            folds = [];
-            EndComposition();
-            selections = SelectionSet.Single(0);
-            caretsText = value.Snapshot;
-            leaning = [];
-            wrapLeaning = [];
-            nextWrapLeaning = null;
-            wraps = null;
-            rowMap = null;
-            scroll = default;
-            widestLine = 0;
-            measuredWidth = 0;
-            ForgetLines();
-            InvalidateArrange();
-            InvalidateVisual();
-            FollowInputMethod();
-            SelectionChanged?.Invoke(this, EventArgs.Empty);
-        }
+        set => ShowText(value, null);
+    }
+
+    private void ShowText(TextDocument value, DocumentDecorations? shared)
+    {
+        document.ChangedFirst -= OnChangedFirst;
+        document.Changed -= OnDocumentChanged;
+        document = value;
+        document.ChangedFirst += OnChangedFirst;
+        document.Changed += OnDocumentChanged;
+        lineShape++;
+        // A template's places, a composition, a GoTo waiting for layout and the folds are offsets in the text left behind.
+        EndSnippet();
+        CancelChoices();
+        pendingGoTo = null;
+        usages.Clear();
+        UsagesKept = false;
+        inlineChanges.Clear();
+        highlights.Clear();
+        hovered.Release();
+        pressed.Release();
+        HideFoldPreview();
+        Decorate(shared ?? new DocumentDecorations(value), owned: shared is null);
+        EndComposition();
+        selections = SelectionSet.Single(0);
+        caretsText = value.Snapshot;
+        leaning = [];
+        wrapLeaning = [];
+        nextWrapLeaning = null;
+        wraps = null;
+        rowMap = null;
+        scroll = default;
+        widestLine = 0;
+        measuredWidth = 0;
+        ForgetLines();
+        InvalidateArrange();
+        InvalidateVisual();
+        FollowInputMethod();
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public IHighlighter? Highlighter
@@ -455,10 +472,11 @@ public sealed partial class CodeEditor : Control
     }
 
     /// <summary>Shows a document with the carets and scroll it was left at, as switching back to a
-    /// tab does, its lines wrapped or not as they were (the scroll is in its rows as they were).</summary>
-    public void Show(TextDocument shown, SelectionSet carets, Vector offset, bool wrapped = false)
+    /// tab does, its lines wrapped or not as they were (the scroll is in its rows as they were), drawn with its
+    /// decorations, which every editor showing it reads, or with ones of this editor's own.</summary>
+    public void Show(TextDocument shown, SelectionSet carets, Vector offset, bool wrapped = false, DocumentDecorations? decorated = null)
     {
-        Document = shown;
+        ShowText(shown, decorated);
         softWrap = wrapped;
         selections = carets.Clamp(shown.Snapshot.Length);
         caretsText = shown.Snapshot;
@@ -481,13 +499,6 @@ public sealed partial class CodeEditor : Control
         hover?.Stop();
         Highlighter = null;
         Document = new TextDocument();
-        SetMarkers([]);
-        SetChangeMarks([]);
-        SetInlineChanges([]);
-        SetBookmarks([]);
-        SetLineAnnotations([]);
-        SetInlayHints([]);
-        SetFoldRegions([]);
         SetHighlights([], -1);
         SetUsageHighlights([]);
         foldLines = null;

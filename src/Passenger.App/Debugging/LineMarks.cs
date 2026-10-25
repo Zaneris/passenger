@@ -61,13 +61,10 @@ public sealed class DebugMarks
     {
         executing.Clear();
         breakpoints.Clear();
-        for (int i = 0; i < Marks.Count; i++)
+        LineOrdered<LineMark> marks = LineOrdered<LineMark>.Of(Marks, static m => m.Line);
+        for (int i = marks.From(first); i < marks.Count && marks.LineOf(i) <= last; i++)
         {
-            LineMark mark = Marks[i];
-            if (mark.Line < first || mark.Line > last)
-            {
-                continue;
-            }
+            LineMark mark = marks[i];
             if (mark.Kind == LineMarkKind.ExecutionPoint)
             {
                 executing.Add(mark.Line);
@@ -92,10 +89,11 @@ public sealed class DebugMarks
     public void Tint(LineTints tints)
     {
         Find(tints.First, tints.Last);
-        for (int i = 0; i < Marks.Count; i++)
+        LineOrdered<LineMark> marks = LineOrdered<LineMark>.Of(Marks, static m => m.Line);
+        for (int i = marks.From(tints.First); i < marks.Count && marks.LineOf(i) <= tints.Last; i++)
         {
-            LineMark mark = Marks[i];
-            if (mark.Line < tints.First || mark.Line > tints.Last || mark.Kind == LineMarkKind.ExecutionPoint)
+            LineMark mark = marks[i];
+            if (mark.Kind == LineMarkKind.ExecutionPoint)
             {
                 continue;
             }

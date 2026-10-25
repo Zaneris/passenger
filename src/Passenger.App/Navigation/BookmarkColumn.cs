@@ -4,32 +4,29 @@ using Passenger.Editor;
 
 namespace Passenger.App.Navigation;
 
-/// <summary>The gutter's bookmarks, left of the line numbers: a ribbon on each bookmarked line. A press on it is the
-/// gutter's.</summary>
-public sealed class BookmarkColumn : IGutterColumn
+/// <summary>The gutter's bookmarks, left of the line numbers: a ribbon on each line the editor's decorations bookmark,
+/// read for the lines on screen. A press on it is the gutter's.</summary>
+public sealed class BookmarkColumn(CodeEditor editor) : IGutterColumn
 {
     /// <summary>Its strip, the numbers' margin.</summary>
     private const double StripWidth = 14;
 
-    public event EventHandler? Changed;
-
-    /// <summary>The bookmarked lines.</summary>
-    public IReadOnlyList<int> Lines { get; private set; } = [];
-
-    public void SetLines(IReadOnlyList<int> lines)
+    /// <summary>Never raised: its width stays, and the editor draws its decorations again as they are set.</summary>
+    public event EventHandler? Changed
     {
-        Lines = lines;
-        Changed?.Invoke(this, EventArgs.Empty);
+        add { }
+        remove { }
     }
 
     public double Width(GutterFont font) => StripWidth;
 
     public void Draw(GutterFrame frame)
     {
-        for (int i = 0; i < Lines.Count; i++)
+        LineOrdered<int> lines = editor.Decorations.BookmarksByLine;
+        for (int i = lines.From(frame.First); i < lines.Count && lines.LineOf(i) <= frame.Last; i++)
         {
-            int marked = Lines[i];
-            if (marked >= frame.First && marked <= frame.Last && !frame.IsHidden(marked))
+            int marked = lines.LineOf(i);
+            if (!frame.IsHidden(marked))
             {
                 DrawRibbon(frame, frame.Left + 3, frame.TopOf(marked));
             }

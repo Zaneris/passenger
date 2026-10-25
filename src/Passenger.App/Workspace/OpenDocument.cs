@@ -30,13 +30,11 @@ public sealed class OpenDocument : Observable
     /// <summary>The line of each of <see cref="lineAnnotations"/> and of <see cref="liveValues"/>, carried by the text.</summary>
     private AnchoredLine[] annotationLines = [];
     private AnchoredLine[] liveLines = [];
-    private IReadOnlyList<InlayHint> inlayHints = [];
     private IReadOnlyList<TestMark> testMarks = [];
     private IReadOnlyList<ColourMark> colourMarks = [];
     private IReadOnlyList<ChangeMark> changeMarks = [];
     private IReadOnlyList<string?> gutterAnnotations = [];
     private IReadOnlyList<int> bookmarks = [];
-    private IReadOnlyList<FoldRegion> foldRegions = [];
     private IFoldFinder? finder;
     private bool softWrap;
     private bool showWhitespaces;
@@ -199,6 +197,7 @@ public sealed class OpenDocument : Observable
     {
         Path = path;
         Text = new TextDocument(file.Text);
+        Decorations = new DocumentDecorations(Text);
         Encoding = file.Encoding;
         HasBom = file.HasBom;
         EncodingName = file.EncodingName;
@@ -217,23 +216,13 @@ public sealed class OpenDocument : Observable
             // Ahead of what moves with the change (the caret, then the breadcrumbs), which found afresh would read the file.
             ServerLines.After(change);
             Selections = TextEditing.MapThrough(Selections, change.Edits).Clamp(change.After.Length);
-            if (foldRegions.Count > 0)
+            if (lineAnnotations.Count > 0 && Set(ref lineAnnotations, Carried(lineAnnotations, annotationLines), nameof(LineAnnotations)))
             {
-                // Moved where the edit reaches them, the runs of regions past it shifted whole.
-                FoldRegions = FoldList.Of(foldRegions).Through(change.Edits);
+                Decorations.SetLineAnnotations(ShownAnnotations);
             }
-            if (inlayHints.Count > 0)
+            if (liveValues.Count > 0 && Set(ref liveValues, Carried(liveValues, liveLines), nameof(LiveValues)))
             {
-                // The same way: each editor has carried its own already, which this draws alike, so none wraps a line again.
-                InlayHints = HintList.Of(inlayHints).Through(change.Edits);
-            }
-            if (lineAnnotations.Count > 0)
-            {
-                Set(ref lineAnnotations, Carried(lineAnnotations, annotationLines), nameof(LineAnnotations));
-            }
-            if (liveValues.Count > 0)
-            {
-                Set(ref liveValues, Carried(liveValues, liveLines), nameof(LiveValues));
+                Decorations.SetLineAnnotations(ShownAnnotations);
             }
             FollowHeld(change.Edits);
             Raise(nameof(IsModified));
@@ -306,11 +295,23 @@ public sealed class OpenDocument : Observable
         set => Set(ref highlighter, value);
     }
 
+    /// <summary>What every editor showing the file draws on its text: its markers, hints, folds, annotations, change bars
+    /// and bookmarks, which the properties here set.</summary>
+    public DocumentDecorations Decorations { get; }
+
     /// <summary>The language service's markers (diagnostics), in this text's offsets.</summary>
     public IReadOnlyList<Marker> Markers
     {
         get => markers;
-        set => Set(ref markers, value);
+        set
+        {
+            if (!ReferenceEquals(markers, value))
+            {
+                markers = value;
+                Decorations.SetMarkers(value);
+                Raise();
+            }
+        }
     }
 
     private int checks;
@@ -402,7 +403,11 @@ public sealed class OpenDocument : Observable
     public IReadOnlyList<RunMark> RunMarks
     {
         get => runMarks;
-        set => Set(ref runMarks, value);
+        set
+        {
+            gutterRunMarks = null;
+            Set(ref runMarks, value);
+        }
     }
 
     private IReadOnlyList<RunMark> runMarks = [];
@@ -411,13 +416,18 @@ public sealed class OpenDocument : Observable
     public IReadOnlyList<RunMark> RouteMarks
     {
         get => routeMarks;
-        set => Set(ref routeMarks, value);
+        set
+        {
+            gutterRunMarks = null;
+            Set(ref routeMarks, value);
+        }
     }
 
     private IReadOnlyList<RunMark> routeMarks = [];
+    private IReadOnlyList<RunMark>? gutterRunMarks;
 
-    /// <summary>Every run icon its gutter draws: a run configuration's and a route's.</summary>
-    public IReadOnlyList<RunMark> GutterRunMarks => routeMarks.Count == 0 ? runMarks : [.. runMarks, .. routeMarks];
+    /// <summary>Every run icon its gutter draws: a run configuration's and a route's, put together once for each of theirs.</summary>
+    public IReadOnlyList<RunMark> GutterRunMarks => gutterRunMarks ??= routeMarks.Count == 0 ? runMarks : [.. runMarks, .. routeMarks];
 
     /// <summary>The colours its lines write or name (XAML's, C#'s), each a swatch in the gutter.</summary>
     public IReadOnlyList<ColourMark> ColourMarks
@@ -430,14 +440,23 @@ public sealed class OpenDocument : Observable
     public IReadOnlyList<ChangeMark> ChangeMarks
     {
         get => changeMarks;
-        set => Set(ref changeMarks, value);
+        set
+        {
+            if (!ReferenceEquals(changeMarks, value))
+            {
+                changeMarks = value;
+                Decorations.SetChangeMarks(value);
+                Raise();
+            }
+        }
     }
 
-    /// <summary>What folds in the text and which of it is folded, in this text's offsets.</summary>
+    /// <summary>What folds in the text and which of it is folded, in this text's offsets: the decorations', which a fold
+    /// in any editor of the file changes and the text carries through its changes.</summary>
     public IReadOnlyList<FoldRegion> FoldRegions
     {
-        get => foldRegions;
-        set => Set(ref foldRegions, value);
+        get => Decorations.FoldRegions;
+        set => Decorations.SetFoldRegions(value);
     }
 
     /// <summary>Which of the regions first found in the file fold as it opens (the window's: those folded as it last
@@ -454,7 +473,15 @@ public sealed class OpenDocument : Observable
     public IReadOnlyList<int> Bookmarks
     {
         get => bookmarks;
-        set => Set(ref bookmarks, value);
+        set
+        {
+            if (!ReferenceEquals(bookmarks, value))
+            {
+                bookmarks = value;
+                Decorations.SetBookmarks(value);
+                Raise();
+            }
+        }
     }
 
     /// <summary>Text per line at the gutter's left (Git blame's), empty for none.</summary>
@@ -464,12 +491,12 @@ public sealed class OpenDocument : Observable
         set => Set(ref gutterAnnotations, value);
     }
 
-    /// <summary>The language service's words inside lines (parameter names before arguments), in this text's offsets: a
-    /// <see cref="HintList"/>, which the text carries through each edit, as its editors carry theirs.</summary>
+    /// <summary>The language service's words inside lines (parameter names before arguments), in this text's offsets: the
+    /// decorations' <see cref="HintList"/>, which the text carries through each edit.</summary>
     public IReadOnlyList<InlayHint> InlayHints
     {
-        get => inlayHints;
-        set => Set(ref inlayHints, HintList.Of(value));
+        get => Decorations.InlayHints;
+        set => Decorations.SetInlayHints(value);
     }
 
     /// <summary>The debugger's text after lines: inline values, the exception it stopped on. Each goes with its line as
@@ -480,7 +507,10 @@ public sealed class OpenDocument : Observable
         set
         {
             annotationLines = Anchored(value, annotationLines);
-            Set(ref lineAnnotations, value);
+            if (Set(ref lineAnnotations, value))
+            {
+                Decorations.SetLineAnnotations(ShownAnnotations);
+            }
         }
     }
 
@@ -492,7 +522,10 @@ public sealed class OpenDocument : Observable
         set
         {
             liveLines = Anchored(value, liveLines);
-            Set(ref liveValues, value);
+            if (Set(ref liveValues, value))
+            {
+                Decorations.SetLineAnnotations(ShownAnnotations);
+            }
         }
     }
 
@@ -902,16 +935,17 @@ public sealed class OpenDocument : Observable
             FoldRegions = Opening(found);
             return;
         }
-        if (Same(foldRegions, found))
+        if (Same(FoldRegions, found))
         {
             return;
         }
         HashSet<int>? folded = null;
-        for (int i = 0; i < foldRegions.Count; i++)
+        IReadOnlyList<FoldRegion> regions = FoldRegions;
+        for (int i = 0; i < regions.Count; i++)
         {
-            if (foldRegions[i].Folded)
+            if (regions[i].Folded)
             {
-                (folded ??= []).Add(foldRegions[i].Start);
+                (folded ??= []).Add(regions[i].Start);
             }
         }
         if (folded is null)

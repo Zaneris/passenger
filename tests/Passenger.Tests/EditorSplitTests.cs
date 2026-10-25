@@ -6,6 +6,8 @@ using Avalonia.Input;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Editors;
+using Passenger.App.Workspace;
+using Passenger.Editor;
 using Passenger.Text;
 
 namespace Passenger.Tests;
@@ -260,6 +262,34 @@ public sealed class EditorSplitTests : IDisposable
         second.Close();
     }
 
+    /// <summary>A file in two splits is drawn from one set of decorations: its problems, hints, folds, annotations, change
+    /// bars, bookmarks and breakpoints show the same in the split not typed in, carried where the edit moved them, and a
+    /// fold toggled in one split folds the other.</summary>
+    [AvaloniaFact]
+    public void A_file_in_two_splits_shows_the_same_decorations_after_an_edit_in_one_and_folds_in_both()
+    {
+        File.WriteAllText(Path.Combine(folder, "Marked.cs"), SameDecorations.Text);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        window.OpenFile(Path.Combine(folder, "Marked.cs"));
+        Ui.Settle();
+        EditorArea area = window.EditorArea;
+        EditorGroup left = area.ActiveGroup;
+        SameDecorations.Decorate(window, left);
+        Assert.True(window.Perform(AppActions.SplitRight));
+        Ui.Settle();
+        EditorGroup right = area.ActiveGroup;
+        Assert.NotSame(left, right);
+
+        right.Editor.GoTo(new TextPosition(0, 0));
+        window.KeyTextInput("// note");
+        Ui.Press(window, "ENTER");
+        Ui.Settle();
+        SameDecorations.Check(right.Editor, left.Editor, "after a line typed in the right split");
+
+        SameDecorations.FoldMethod(left.Editor, right.Editor);
+        window.Close();
+    }
+
     private MainWindow Open(params string[] files)
     {
         MainWindow window = Ui.OpenFolder(folder);
@@ -298,4 +328,69 @@ public sealed class EditorSplitTests : IDisposable
 
     private static GridSplitter Divider(EditorArea area, GridResizeDirection direction) =>
         area.GetVisualDescendants().OfType<GridSplitter>().Single(s => s.ResizeDirection == direction);
+}
+
+/// <summary>What two editors of one file must both show, and the file that shows it.</summary>
+internal static class SameDecorations
+{
+    public const string Text = "class Marked\n{\n    void Run(int count)\n    {\n        Run(1);\n        int unused = 2;\n    }\n}\n";
+
+    /// <summary>Gives the file shown in a group what the IDE's services give one: a warning, a hint, an annotation and a
+    /// change bar set on it as theirs are, and a bookmark and a breakpoint toggled by their actions.</summary>
+    public static void Decorate(MainWindow window, EditorGroup group)
+    {
+        OpenDocument document = group.Active!;
+        CodeEditor editor = group.Editor;
+        Ui.WaitFor(() => editor.FoldRegions.Count == 2, "the class's and the method's regions");
+        int unused = Text.IndexOf("unused", StringComparison.Ordinal);
+        document.Markers = [new Marker(new TextRange(unused, "unused".Length), MarkerKind.Warning, "CS0219: The variable is assigned but its value is never used")];
+        document.InlayHints = [new InlayHint(Text.IndexOf("1);", StringComparison.Ordinal), "count:", PadRight: true)];
+        document.LineAnnotations = [new LineAnnotation(4, "count = 1", LineAnnotationLook.Muted)];
+        document.ChangeMarks = [new ChangeMark(5, 1, ChangeMarkKind.Added)];
+        editor.GoTo(new TextPosition(4, 8));
+        Assert.True(window.Perform(AppActions.ToggleBookmark));
+        editor.GoTo(new TextPosition(5, 8));
+        Assert.True(window.Perform(AppActions.ToggleBreakpoint));
+        Ui.Settle();
+    }
+
+    /// <summary>The editor typed in and the other show the same of each, what moves with the text a line down from where it
+    /// was set.</summary>
+    public static void Check(CodeEditor typed, CodeEditor other, string where)
+    {
+        // The problems stay where they were set, as their service carries them, and not without one.
+        Assert.True(typed.Markers.Count == 1 && typed.Markers.SequenceEqual(other.Markers) && typed.ProblemCount == other.ProblemCount,
+            $"The problems {where} are [{string.Join(", ", typed.Markers)}] in one editor and [{string.Join(", ", other.Markers)}] in the other");
+        Same(typed.InlayHints.Select(h => h.Offset), other.InlayHints.Select(h => h.Offset), "inlay hints", where, Text.IndexOf("1);", StringComparison.Ordinal) + 8);
+        Same(typed.LineAnnotations.Select(a => a.Line), other.LineAnnotations.Select(a => a.Line), "annotations", where, 5);
+        Same(typed.Bookmarks, other.Bookmarks, "bookmarks", where, 5);
+        Same(typed.LineMarks.Select(m => m.Line), other.LineMarks.Select(m => m.Line), "breakpoints", where, 6);
+        Assert.True(typed.ChangeMarks.Count > 0 && typed.ChangeMarks.SequenceEqual(other.ChangeMarks),
+            $"The change bars {where} are [{string.Join(", ", typed.ChangeMarks)}] in one editor and [{string.Join(", ", other.ChangeMarks)}] in the other");
+        Assert.True(typed.FoldRegions.Count == 2 && typed.FoldRegions.SequenceEqual(other.FoldRegions),
+            $"The folds {where} are [{string.Join(", ", typed.FoldRegions)}] in one editor and [{string.Join(", ", other.FoldRegions)}] in the other");
+    }
+
+    /// <summary>The method folded in one editor is folded in the other, which shows as few rows, and unfolded there opens
+    /// in the first.</summary>
+    public static void FoldMethod(CodeEditor one, CodeEditor other)
+    {
+        int rows = other.RowsShown;
+        one.GoTo(new TextPosition(4, 0));
+        Assert.True(one.TryExecute(EditorActions.ToggleFold));
+        Ui.Settle();
+        Assert.True(other.FoldRegions.Count(r => r.Folded) == 1 && other.RowsShown == one.RowsShown && other.RowsShown < rows,
+            $"The method folded in one editor shows {other.RowsShown} rows of {rows} in the other, folded [{string.Join(", ", other.FoldRegions.Where(r => r.Folded))}]");
+        Assert.True(other.TryExecute(EditorActions.UnfoldAll));
+        Ui.Settle();
+        Assert.True(!one.FoldRegions.Any(r => r.Folded) && one.RowsShown == rows, $"The method unfolded in the other editor stays folded in the first, which shows {one.RowsShown} rows of {rows}");
+    }
+
+    private static void Same<T>(IEnumerable<T> typed, IEnumerable<T> other, string what, string where, T moved)
+    {
+        T[] shown = [.. typed];
+        T[] there = [.. other];
+        Assert.True(shown.SequenceEqual([moved]) && there.SequenceEqual([moved]),
+            $"The {what} {where} are at [{string.Join(", ", shown)}] in one editor and [{string.Join(", ", there)}] in the other, where each should be at {moved}");
+    }
 }

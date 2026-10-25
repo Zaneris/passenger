@@ -53,7 +53,7 @@ public sealed partial class CodeEditor
     public int StripeMarksBuilt { get; private set; }
 
     /// <summary>The counts' errors and warnings, as their widget shows them, counted when the markers are set.</summary>
-    public (int Errors, int Warnings) ProblemCount { get; private set; }
+    public (int Errors, int Warnings) ProblemCount => decorations.Problems;
 
     /// <summary>Where a stripe mark is drawn, in this control's coordinates: what a click on it hits.</summary>
     public Point StripePoint(StripeMark mark)
@@ -61,18 +61,6 @@ public sealed partial class CodeEditor
         Rect track = TrackRect();
         (double top, double height) = ErrorStripe.Span(mark, track, RowCount);
         return new Point(track.Center.X, top + (height / 2));
-    }
-
-    private static (int Errors, int Warnings) CountProblems(IReadOnlyList<Marker> markers)
-    {
-        int errors = 0;
-        int warnings = 0;
-        foreach (Marker marker in markers)
-        {
-            errors += marker.Kind == MarkerKind.Error ? 1 : 0;
-            warnings += marker.Kind == MarkerKind.Warning ? 1 : 0;
-        }
-        return (errors, warnings);
     }
 
     /// <summary>Goes to the next error or warning after the caret, wrapping, as the counts' click does.</summary>

@@ -1,13 +1,18 @@
+using System.ComponentModel;
 using Avalonia;
 using Avalonia.Media.TextFormatting;
+using Passenger.App.Workspace;
 using Passenger.Editor;
 
 namespace Passenger.App.Vcs;
 
 /// <summary>The gutter's annotations column at its left edge (Git blame): each line's commit muted, on a ground of its own
-/// with a rule after it, as wide as the longest; none while the file shows none. A click on a line is <see cref="Pressed"/>'s.</summary>
+/// with a rule after it, as wide as the longest; none while the file shows none. Read from the file shown as it changes
+/// them. A click on a line is <see cref="Pressed"/>'s.</summary>
 public sealed class BlameColumn : IGutterColumn
 {
+    private OpenDocument? file;
+    private IReadOnlyList<string?> measured = [];
     private int longest;
 
     public event EventHandler? Changed;
@@ -16,12 +21,44 @@ public sealed class BlameColumn : IGutterColumn
     public event EventHandler<int>? Pressed;
 
     /// <summary>Text per line, null for a line with none; empty for no column.</summary>
-    public IReadOnlyList<string?> Labels { get; private set; } = [];
+    public IReadOnlyList<string?> Labels => file?.GutterAnnotations ?? [];
 
-    public void SetLabels(IReadOnlyList<string?> perLine)
+    /// <summary>Shows a file's annotations, followed as it changes them; none for no file.</summary>
+    public void Show(OpenDocument? document)
     {
-        Labels = perLine;
-        longest = perLine.Count == 0 ? 0 : perLine.Max(l => l?.Length ?? 0);
+        if (ReferenceEquals(document, file))
+        {
+            return;
+        }
+        if (file is not null)
+        {
+            file.PropertyChanged -= OnFileChanged;
+        }
+        file = document;
+        if (file is not null)
+        {
+            file.PropertyChanged += OnFileChanged;
+        }
+        Measure();
+    }
+
+    private void OnFileChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(OpenDocument.GutterAnnotations))
+        {
+            Measure();
+        }
+    }
+
+    /// <summary>Finds the longest label once for each list, and has the editor draw them.</summary>
+    private void Measure()
+    {
+        IReadOnlyList<string?> labels = Labels;
+        if (!ReferenceEquals(labels, measured))
+        {
+            measured = labels;
+            longest = labels.Count == 0 ? 0 : labels.Max(l => l?.Length ?? 0);
+        }
         Changed?.Invoke(this, EventArgs.Empty);
     }
 

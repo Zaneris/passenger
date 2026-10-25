@@ -18,6 +18,9 @@ public sealed partial class CodeEditor
     private readonly LabelCache<(int Number, bool Current)> numbers = new();
     private readonly Dictionary<TokenKind, TextRunProperties> runProperties = [];
     private (TextRunProperties Current, TextRunProperties Other) numberRuns;
+
+    /// <summary>The diff tints of the lines on screen, found again for each frame.</summary>
+    private readonly Dictionary<int, IBrush> changeTints = [];
     private double measuredWidth;
     private bool showWhitespaces;
 
@@ -55,14 +58,9 @@ public sealed partial class CodeEditor
         bool noneSelected = selections.Items.All(s => s.IsEmpty);
         LineTints marked = TintsOf(first, last);
         Dictionary<int, IBrush>? tints = ChangeBackgrounds ? ChangeTints(first, last) : null;
-        Dictionary<int, List<LineAnnotation>> annotations = [];
-        foreach (LineAnnotation annotation in LineAnnotations)
-        {
-            if (annotation.Line >= first && annotation.Line <= last)
-            {
-                (annotations.TryGetValue(annotation.Line, out List<LineAnnotation>? list) ? list : annotations[annotation.Line] = []).Add(annotation);
-            }
-        }
+        // The rows go down the lines, and the annotations with them from the first on screen.
+        LineOrdered<LineAnnotation> annotations = decorations.AnnotationsByLine;
+        int annotation = annotations.From(first);
         bool focused = IsFocused;
         BracePair? braced = MatchedBraces;
         double widest = 0;
@@ -137,9 +135,18 @@ public sealed partial class CodeEditor
                 {
                     end = DrawPlaceholder(context, line, fold, end, y);
                 }
-                if (annotations.TryGetValue(line, out List<LineAnnotation>? here))
+                while (annotation < annotations.Count && annotations.LineOf(annotation) < line)
                 {
-                    DrawAnnotations(context, here, end, y);
+                    annotation++;
+                }
+                int after = annotation;
+                while (after < annotations.Count && annotations.LineOf(after) == line)
+                {
+                    after++;
+                }
+                if (after > annotation)
+                {
+                    DrawAnnotations(context, annotations, annotation, after, end, y);
                 }
             }
 
@@ -401,13 +408,14 @@ public sealed partial class CodeEditor
     {
         RowSpan span = view.Span;
         IReadOnlyList<Marker> markers = Markers;
+        int[] reach = decorations.MarkerReach;
         // The markers before the first that reaches this far all end before the line.
         int low = 0;
         int high = markers.Count;
         while (low < high)
         {
             int middle = (low + high) / 2;
-            if (markerReach[middle] < span.Start)
+            if (reach[middle] < span.Start)
             {
                 low = middle + 1;
             }
@@ -453,11 +461,12 @@ public sealed partial class CodeEditor
     }
 
     /// <summary>A line's annotations after its code, a few spaces on, each in its look.</summary>
-    private void DrawAnnotations(DrawingContext context, List<LineAnnotation> annotations, double x, double y)
+    private void DrawAnnotations(DrawingContext context, LineOrdered<LineAnnotation> annotations, int from, int to, double x, double y)
     {
         x += metrics.CharWidth * 3;
-        foreach (LineAnnotation annotation in annotations)
+        for (int i = from; i < to; i++)
         {
+            LineAnnotation annotation = annotations[i];
             bool ground = annotation.Look == LineAnnotationLook.ErrorOnGround;
             bool error = ground || annotation.Look == LineAnnotationLook.Error;
             TextLine text = labels.Get((annotation.Text, error ? -4 : -3), () =>
@@ -506,9 +515,12 @@ public sealed partial class CodeEditor
     /// the first change's that holds it.</summary>
     private Dictionary<int, IBrush> ChangeTints(int first, int last)
     {
-        Dictionary<int, IBrush> tints = [];
-        foreach (ChangeMark change in ChangeMarks)
+        Dictionary<int, IBrush> tints = changeTints;
+        tints.Clear();
+        LineOrdered<ChangeMark> changes = decorations.ChangesByLine;
+        for (int i = changes.From(first); i < changes.Count && changes.LineOf(i) <= last; i++)
         {
+            ChangeMark change = changes[i];
             IBrush brush = change.Kind switch
             {
                 ChangeMarkKind.Added => palette.DiffAdded,
@@ -564,8 +576,10 @@ public sealed partial class CodeEditor
     /// <summary>A diff side's rule where the other side has lines this one has none of.</summary>
     private void DrawChangeRules(DrawingContext context, int first, int last, double gutter, double width)
     {
-        foreach (ChangeMark change in ChangeMarks)
+        LineOrdered<ChangeMark> changes = decorations.ChangesByLine;
+        for (int i = changes.From(first); i < changes.Count && changes.LineOf(i) <= last + 1; i++)
         {
+            ChangeMark change = changes[i];
             if (change.Count == 0 && change.Line >= first && change.Line <= last + 1)
             {
                 IBrush brush = change.Kind switch

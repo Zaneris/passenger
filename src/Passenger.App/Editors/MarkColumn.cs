@@ -1,8 +1,10 @@
+using System.ComponentModel;
 using Avalonia;
 using Avalonia.Media;
 using Passenger.App.Debugging;
 using Passenger.App.Testing;
 using Passenger.App.Vcs;
+using Passenger.App.Workspace;
 using Passenger.Editor;
 
 namespace Passenger.App.Editors;
@@ -17,8 +19,9 @@ public readonly record struct ColourMark(int Line, Color Colour, object? Data = 
 
 /// <summary>The gutter's column right of the line numbers: one icon a line, the execution point's arrow before a test's run
 /// icon before a run configuration's before a colour's swatch, and the breakpoints' dots over the numbers, the number giving
-/// way. A press within <see cref="Reach"/> of its left edge, as its icons reach into the change bars beside it, is its on a
-/// line with an icon: the arrow's drags the arrow to Set Next Statement, the rest are <see cref="Pressed"/>'s.</summary>
+/// way, each read from the file shown for the lines on screen. A press within <see cref="Reach"/> of its left edge, as its
+/// icons reach into the change bars beside it, is its on a line with an icon: the arrow's drags the arrow to Set Next
+/// Statement, the rest are <see cref="Pressed"/>'s.</summary>
 public sealed class MarkColumn : IGutterColumn
 {
     /// <summary>Its strip, between the numbers and the change bars.</summary>
@@ -31,6 +34,7 @@ public sealed class MarkColumn : IGutterColumn
     private readonly Dictionary<int, TestMarkKind> tests = [];
     private readonly HashSet<int> runs = [];
     private readonly Dictionary<int, Color> colours = [];
+    private OpenDocument? file;
 
     /// <summary>The line the dragged arrow is over, while it is dragged.</summary>
     private int arrowAt = -1;
@@ -46,69 +50,65 @@ public sealed class MarkColumn : IGutterColumn
     public Func<GutterClick, bool>? Pressed { get; set; }
 
     /// <summary>The debugger's marks: breakpoints and the execution point.</summary>
-    public IReadOnlyList<LineMark> LineMarks => debug.Marks;
+    public IReadOnlyList<LineMark> LineMarks => file?.LineMarks ?? [];
 
-    public IReadOnlyList<TestMark> TestMarks { get; private set; } = [];
+    public IReadOnlyList<TestMark> TestMarks => file?.TestMarks ?? [];
 
-    public IReadOnlyList<RunMark> RunMarks { get; private set; } = [];
+    public IReadOnlyList<RunMark> RunMarks => file?.GutterRunMarks ?? [];
 
-    public IReadOnlyList<ColourMark> ColourMarks { get; private set; } = [];
+    public IReadOnlyList<ColourMark> ColourMarks => file?.ColourMarks ?? [];
 
-    public void SetLineMarks(IReadOnlyList<LineMark> marks)
+    /// <summary>Shows a file's marks, followed as it changes them; none for no file.</summary>
+    public void Show(OpenDocument? document)
     {
-        debug.Marks = marks;
+        if (ReferenceEquals(document, file))
+        {
+            return;
+        }
+        if (file is not null)
+        {
+            file.PropertyChanged -= OnFileChanged;
+        }
+        file = document;
+        if (file is not null)
+        {
+            file.PropertyChanged += OnFileChanged;
+        }
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    public void SetTestMarks(IReadOnlyList<TestMark> marks)
+    private void OnFileChanged(object? sender, PropertyChangedEventArgs e)
     {
-        TestMarks = marks;
-        Changed?.Invoke(this, EventArgs.Empty);
-    }
-
-    public void SetRunMarks(IReadOnlyList<RunMark> marks)
-    {
-        RunMarks = marks;
-        Changed?.Invoke(this, EventArgs.Empty);
-    }
-
-    public void SetColourMarks(IReadOnlyList<ColourMark> marks)
-    {
-        ColourMarks = marks;
-        Changed?.Invoke(this, EventArgs.Empty);
+        if (e.PropertyName is nameof(OpenDocument.LineMarks) or nameof(OpenDocument.TestMarks) or nameof(OpenDocument.RunMarks)
+            or nameof(OpenDocument.RouteMarks) or nameof(OpenDocument.ColourMarks))
+        {
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     public double Width(GutterFont font) => StripWidth;
 
     public void Draw(GutterFrame frame)
     {
+        debug.Marks = LineMarks;
         debug.Find(frame.First, frame.Last);
         tests.Clear();
-        for (int i = 0; i < TestMarks.Count; i++)
+        LineOrdered<TestMark> testMarks = LineOrdered<TestMark>.Of(TestMarks, static m => m.Line);
+        for (int i = testMarks.From(frame.First); i < testMarks.Count && testMarks.LineOf(i) <= frame.Last; i++)
         {
-            TestMark test = TestMarks[i];
-            if (test.Line >= frame.First && test.Line <= frame.Last)
-            {
-                tests[test.Line] = test.Kind;
-            }
+            tests[testMarks[i].Line] = testMarks[i].Kind;
         }
         runs.Clear();
-        for (int i = 0; i < RunMarks.Count; i++)
+        LineOrdered<RunMark> runMarks = LineOrdered<RunMark>.Of(RunMarks, static m => m.Line);
+        for (int i = runMarks.From(frame.First); i < runMarks.Count && runMarks.LineOf(i) <= frame.Last; i++)
         {
-            RunMark run = RunMarks[i];
-            if (run.Line >= frame.First && run.Line <= frame.Last)
-            {
-                runs.Add(run.Line);
-            }
+            runs.Add(runMarks[i].Line);
         }
         colours.Clear();
-        for (int i = 0; i < ColourMarks.Count; i++)
+        LineOrdered<ColourMark> colourMarks = LineOrdered<ColourMark>.Of(ColourMarks, static m => m.Line);
+        for (int i = colourMarks.From(frame.First); i < colourMarks.Count && colourMarks.LineOf(i) <= frame.Last; i++)
         {
-            ColourMark colour = ColourMarks[i];
-            if (colour.Line >= frame.First && colour.Line <= frame.Last)
-            {
-                colours.TryAdd(colour.Line, colour.Colour);
-            }
+            colours.TryAdd(colourMarks[i].Line, colourMarks[i].Colour);
         }
         double left = frame.Left;
         foreach (GutterLine shown in frame.Lines)
@@ -149,7 +149,11 @@ public sealed class MarkColumn : IGutterColumn
         }
     }
 
-    public void Tint(LineTints tints) => debug.Tint(tints);
+    public void Tint(LineTints tints)
+    {
+        debug.Marks = LineMarks;
+        debug.Tint(tints);
+    }
 
     public GutterAnswer Press(GutterPress press)
     {
@@ -157,6 +161,7 @@ public sealed class MarkColumn : IGutterColumn
         {
             return GutterAnswer.Passed;
         }
+        debug.Marks = LineMarks;
         if (ExecutionPointDragged is not null && debug.Executes(press.Click.Line))
         {
             arrowFrom = arrowAt = press.Click.Line;

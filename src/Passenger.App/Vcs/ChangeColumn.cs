@@ -5,25 +5,23 @@ using Passenger.Text;
 
 namespace Passenger.App.Vcs;
 
-/// <summary>The gutter's change bars against the code, the lines that differ from the last commit: green for lines added,
-/// blue for lines changed, red in conflict, a grey wedge where lines were deleted. A click on one is <see cref="Pressed"/>'s.</summary>
-public sealed class ChangeColumn : IGutterColumn
+/// <summary>The gutter's change bars against the code, the lines the editor's decorations mark as differing from the last
+/// commit, read for the lines on screen: green for lines added, blue for lines changed, red in conflict, a grey wedge where
+/// lines were deleted. A click on one is <see cref="Pressed"/>'s.</summary>
+public sealed class ChangeColumn(CodeEditor editor) : IGutterColumn
 {
     /// <summary>Its strip, between the marks and the folds.</summary>
     public const double StripWidth = 8;
 
-    public event EventHandler? Changed;
+    /// <summary>Never raised: its width stays, and the editor draws its decorations again as they are set.</summary>
+    public event EventHandler? Changed
+    {
+        add { }
+        remove { }
+    }
 
     /// <summary>A click on a change: its popup.</summary>
     public event EventHandler<(GutterClick Click, ChangeMark Change)>? Pressed;
-
-    public IReadOnlyList<ChangeMark> Marks { get; private set; } = [];
-
-    public void SetMarks(IReadOnlyList<ChangeMark> marks)
-    {
-        Marks = marks;
-        Changed?.Invoke(this, EventArgs.Empty);
-    }
 
     /// <summary>The change a click on a line falls on: one with lines, on one of them, a deletion on either line beside it.</summary>
     public static ChangeMark? At(IReadOnlyList<ChangeMark> marks, int line) =>
@@ -36,9 +34,10 @@ public sealed class ChangeColumn : IGutterColumn
     public void Draw(GutterFrame frame)
     {
         double x = frame.Left + StripWidth - 5;
-        for (int i = 0; i < Marks.Count; i++)
+        LineOrdered<ChangeMark> changes = editor.Decorations.ChangesByLine;
+        for (int i = changes.From(frame.First); i < changes.Count && changes.LineOf(i) <= frame.Last + 1; i++)
         {
-            ChangeMark change = Marks[i];
+            ChangeMark change = changes[i];
             if (change.Line + Math.Max(1, change.Count) <= frame.First || change.Line > frame.Last + 1)
             {
                 continue;
@@ -70,7 +69,7 @@ public sealed class ChangeColumn : IGutterColumn
 
     public GutterAnswer Press(GutterPress press)
     {
-        if (press.Click.Context || !press.OnStrip || Pressed is null || At(Marks, press.Click.Line) is not { } change)
+        if (press.Click.Context || !press.OnStrip || Pressed is null || At(editor.ChangeMarks, press.Click.Line) is not { } change)
         {
             return GutterAnswer.Passed;
         }

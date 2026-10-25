@@ -82,6 +82,34 @@ public sealed class ErrorStripeTests
             $"A key above 4,000 warnings allocated {many / 1024:N0} KB on the UI thread, above 40 {few / 1024:N0} KB: the stripe's marks and the markers' order were made again from all of them");
     }
 
+    /// <summary>A frame over a file with a warning, an annotation, a change bar and a bookmark on each of 4,000 lines
+    /// allocates on the UI thread under twice what it does over 40: what is drawn on the text is read for the lines on
+    /// screen.</summary>
+    [AvaloniaFact]
+    public void A_frame_over_four_thousand_decorated_lines_costs_what_it_does_over_forty()
+    {
+        long few = BytesPerFrame(40);
+        long many = BytesPerFrame(4000);
+        TestContext.Current.TestOutputHelper?.WriteLine($"A frame allocated {few:N0} bytes over 40 decorated lines, {many:N0} over 4,000.");
+        Assert.True(many < few * 2,
+            $"A frame over 4,000 decorated lines allocated {many / 1024:N0} KB on the UI thread, over 40 {few / 1024:N0} KB: what it draws was read from every line's decorations");
+    }
+
+    /// <summary>What a blink of the caret in the middle of a file of decorated lines allocates on the UI thread.</summary>
+    private static long BytesPerFrame(int lines)
+    {
+        EditorRig rig = new(string.Concat(Enumerable.Range(0, lines).Select(i => $"        int value{i} = {i};\n")));
+        CodeEditor editor = rig.Editor;
+        TextSnapshot text = rig.Document.Snapshot;
+        editor.SetMarkers([.. Enumerable.Range(0, lines).Select(i => new Marker(new TextRange(text.GetLineStart(i) + 12, 5), MarkerKind.Warning, Unused))]);
+        editor.SetLineAnnotations([.. Enumerable.Range(0, lines).Select(i => new LineAnnotation(i, "value = 1", LineAnnotationLook.Muted))]);
+        editor.SetChangeMarks([.. Enumerable.Range(0, lines).Select(i => new ChangeMark(i, 1, i % 2 == 0 ? ChangeMarkKind.Added : ChangeMarkKind.Modified))]);
+        editor.SetBookmarks([.. Enumerable.Range(0, lines)]);
+        editor.Focus();
+        editor.GoTo(new TextPosition(lines / 2, 0));
+        return Ui.BlinkBytes(editor);
+    }
+
     /// <summary>What a key typed at the top of a file of a warning a line allocates on the UI thread, its warnings set again
     /// moved through it as a host carries them (their moving left out, which is the host's), the stripe drawn.</summary>
     private static long BytesPerKey(int lines)

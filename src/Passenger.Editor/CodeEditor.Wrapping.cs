@@ -363,12 +363,12 @@ public sealed partial class CodeEditor
         }
     }
 
-    /// <summary>Ahead of everyone who hears of an edit (<see cref="TextDocument.ChangedFirst"/>): the hints carried through it,
-    /// then the wraps, so the lines it touched wrap with their hints where they now stand, and the host's hints carried
-    /// alike after it change no line's rows.</summary>
+    /// <summary>Ahead of everyone who hears of an edit (<see cref="TextDocument.ChangedFirst"/>): the decorations' hints and
+    /// folds carried through it, then the wraps, so the lines it touched wrap with their hints where they now stand.</summary>
     private void OnChangedFirst(object? sender, DocumentChangedEventArgs change)
     {
-        hintList = hintList.Through(change.Edits);
+        decorations.Follow(change);
+        wrappedHints = decorations.InlayHints;
         FollowWraps(change);
     }
 
