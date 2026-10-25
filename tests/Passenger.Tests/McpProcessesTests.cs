@@ -53,12 +53,12 @@ public sealed class McpProcessesTests : McpRig, IClassFixture<RestoredFolders>
             SaveEdit($"save {save}");
         }
 
-        McpClient client = Await(Task.Run(() => Start(["--mcp", Folder], languageServer: false)), "the agent's Passenger starting");
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp", Folder], languageServer: false)), "the agent's Passenger starting");
         try
         {
-            Await(Task.Run(() => Call(client, McpTools.Open, new() { ["path"] = "Notes.txt" })), "the agent opening Notes.txt");
-            Await(Task.Run(() => Call(client, McpTools.AppType, new() { ["app"] = "ide", ["text"] = "second " })), "the agent typing");
-            Await(Task.Run(() => Call(client, McpTools.SaveAll)), "the agent saving");
+            Await(Waiting.Apart(() => Call(client, McpTools.Open, new() { ["path"] = "Notes.txt" })), "the agent opening Notes.txt");
+            Await(Waiting.Apart(() => Call(client, McpTools.AppType, new() { ["app"] = "ide", ["text"] = "second " })), "the agent typing");
+            Await(Waiting.Apart(() => Call(client, McpTools.SaveAll)), "the agent saving");
         }
         finally
         {
@@ -106,7 +106,7 @@ public sealed class McpProcessesTests : McpRig, IClassFixture<RestoredFolders>
         const int Earlier = 40_000;
         File.WriteAllText(log, string.Concat(Enumerable.Range(0, Earlier).Select(i =>
             $"{{\"s\":{(now - 100_000_000) * 1000 + i},\"t\":{now - ((Earlier - i) * 200L)},\"k\":\"label\",\"n\":\"earlier {i}\"}}\n")));
-        McpClient client = Await(Task.Run(() => Start(["--mcp", Folder], languageServer: false)), "the agent's Passenger starting");
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp", Folder], languageServer: false)), "the agent's Passenger starting");
         long[] clock = [new DateTimeOffset(2026, 3, 2, 9, 0, 0, TimeSpan.Zero).UtcTicks];
         global::Passenger.App.History.HistoryKeeping day = new(Days: 1) { Clock = () => new(Interlocked.Read(ref clock[0]), TimeSpan.Zero) };
         MainWindow window = new() { Width = 1200, Height = 800, StateFolder = OwnState, HistoryKeeping = day, StartsLanguageServer = false };
@@ -117,9 +117,9 @@ public sealed class McpProcessesTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             Assert.Equal(PathNames.Canonical(Path.GetDirectoryName(log)!), PathNames.Canonical(window.LocalHistory!.Root));
-            Await(Task.Run(() => Call(client, McpTools.Workspace)), "the agent's Passenger to have the folder open");
+            Await(Waiting.Apart(() => Call(client, McpTools.Workspace)), "the agent's Passenger to have the folder open");
             bool saving = true;
-            Task<int> labelling = Task.Run(async () =>
+            Task<int> labelling = Waiting.Apart(async () =>
             {
                 int put = 0;
                 while (Volatile.Read(ref saving) && put < 500)

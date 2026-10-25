@@ -243,39 +243,39 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
         try
         {
             Ui.Launched(window, window.RunAsync(), "the app to build and start", TimeSpan.FromMinutes(4));
-            client = Await(Task.Run(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+            client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
             McpClient agent = client;
 
-            Assert.Contains("Button#Count", Text(Await(Task.Run(() => Call(agent, McpTools.AppTree, new() { ["filter"] = "#Count" })), "the app's tree")), StringComparison.Ordinal);
+            Assert.Contains("Button#Count", Text(Await(Waiting.Apart(() => Call(agent, McpTools.AppTree, new() { ["filter"] = "#Count" })), "the app's tree")), StringComparison.Ordinal);
             Assert.Empty(window.OwnedWindows.OfType<ConfirmDialog>());
 
-            Task<JsonElement> clicking = Task.Run(() => Call(agent, McpTools.AppClick, new() { ["control"] = "#Count" }));
+            Task<JsonElement> clicking = Waiting.Apart(() => Call(agent, McpTools.AppClick, new() { ["control"] = "#Count" }));
             ConfirmDialog asked = Question(window, "the question for the agent's click");
             Assert.Contains("Allow app_click?", Texts(asked));
             Press(asked, "Allow");
             Assert.StartsWith("Clicked Button#Count", Text(Await(clicking, "the click")), StringComparison.Ordinal);
-            Assert.Contains("\"Clicked once\"", Text(Await(Task.Run(() => Call(agent, McpTools.AppTree, new() { ["control"] = "#Counter" })), "the counter")), StringComparison.Ordinal);
+            Assert.Contains("\"Clicked once\"", Text(Await(Waiting.Apart(() => Call(agent, McpTools.AppTree, new() { ["control"] = "#Counter" })), "the counter")), StringComparison.Ordinal);
 
             TextBlock project = window.FindControl<TextBlock>("ProjectName")!;
             // The tree names an element by its type, #name, any .classes, then its text.
             Assert.Matches($"TextBlock#ProjectName(\\.[\\w-]+)* \"{System.Text.RegularExpressions.Regex.Escape(project.Text!)}\"",
-                Text(Await(Task.Run(() => Call(agent, McpTools.AppTree, new() { ["app"] = "ide", ["filter"] = "#ProjectName" })), "Passenger's tree")));
-            Await(Task.Run(() => Call(agent, McpTools.AppClick, new() { ["app"] = "ide", ["control"] = "#RunConfigButton" })), "the click on Passenger's run configurations");
+                Text(Await(Waiting.Apart(() => Call(agent, McpTools.AppTree, new() { ["app"] = "ide", ["filter"] = "#ProjectName" })), "Passenger's tree")));
+            Await(Waiting.Apart(() => Call(agent, McpTools.AppClick, new() { ["app"] = "ide", ["control"] = "#RunConfigButton" })), "the click on Passenger's run configurations");
             Dictionary<string, object?> menu = new() { ["app"] = "ide", ["filter"] = "MenuItem \"AgentApp\"" };
-            Assert.Contains("MenuItem \"AgentApp\"", Text(Await(Task.Run(() => Call(agent, McpTools.AppTree, menu)), "the run configurations' menu")), StringComparison.Ordinal);
-            Task<JsonElement> escaping = Task.Run(() => Call(agent, McpTools.AppKey, new() { ["app"] = "ide", ["keys"] = "Escape" }));
+            Assert.Contains("MenuItem \"AgentApp\"", Text(Await(Waiting.Apart(() => Call(agent, McpTools.AppTree, menu)), "the run configurations' menu")), StringComparison.Ordinal);
+            Task<JsonElement> escaping = Waiting.Apart(() => Call(agent, McpTools.AppKey, new() { ["app"] = "ide", ["keys"] = "Escape" }));
             Press(Question(window, "the question for the agent's keys"), "Allow");
             string escaped = Text(Await(escaping, "the Escape"));
-            string after = Text(Await(Task.Run(() => Call(agent, McpTools.AppTree, menu)), "the menu closed"));
+            string after = Text(Await(Waiting.Apart(() => Call(agent, McpTools.AppTree, menu)), "the menu closed"));
             Assert.True(after.StartsWith("Nothing in Passenger matches", StringComparison.Ordinal), $"Escape ({escaped}) left the menu open: {after}");
 
-            Task<CallToolResult> building = Task.Run(() => Result(agent, McpTools.Build));
+            Task<CallToolResult> building = Waiting.Apart(() => Result(agent, McpTools.Build));
             ConfirmDialog question = Question(window, "the question for the agent's build");
-            CallToolResult clicked = Await(Task.Run(() => Result(agent, McpTools.AppClick, new() { ["app"] = "ide", ["window"] = "ConfirmDialog", ["control"] = "Button \"Allow\"" })),
+            CallToolResult clicked = Await(Waiting.Apart(() => Result(agent, McpTools.AppClick, new() { ["app"] = "ide", ["window"] = "ConfirmDialog", ["control"] = "Button \"Allow\"" })),
                 "the agent's click on the question's Allow");
             Assert.True(clicked.IsError == true && Text(clicked).Contains("only they answer it", StringComparison.Ordinal),
                 $"The agent's click on the question its own build waits on was answered: {Text(clicked)}");
-            CallToolResult entered = Await(Task.Run(() => Result(agent, McpTools.AppKey, new() { ["app"] = "ide", ["window"] = "ConfirmDialog", ["keys"] = "Enter" })),
+            CallToolResult entered = Await(Waiting.Apart(() => Result(agent, McpTools.AppKey, new() { ["app"] = "ide", ["window"] = "ConfirmDialog", ["keys"] = "Enter" })),
                 "the agent's Enter in the question");
             Assert.True(entered.IsError == true && Text(entered).Contains("only they answer it", StringComparison.Ordinal),
                 $"The agent's Enter in the question its own build waits on was answered: {Text(entered)}");
@@ -285,7 +285,7 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
 
             shown = window.ShowSettings();
             Ui.Settle();
-            CallToolResult set = Await(Task.Run(() => Result(agent, McpTools.AppClick, new() { ["app"] = "ide", ["window"] = "SettingsDialog", ["x"] = 20, ["y"] = 20 })),
+            CallToolResult set = Await(Waiting.Apart(() => Result(agent, McpTools.AppClick, new() { ["app"] = "ide", ["window"] = "SettingsDialog", ["x"] = 20, ["y"] = 20 })),
                 "the agent's click in Settings");
             Assert.True(set.IsError == true && Text(set).Contains("Settings is the person's alone", StringComparison.Ordinal),
                 $"The agent's click in Settings was answered: {Text(set)}");
@@ -324,7 +324,7 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
         MainWindow window = AgentsWindow(apps, languageServer: false);
         DebuggedAppsTests.Debug(window, "BindingErrorsApp", "Caption");
         DebuggedAppsTests.Debug(window, "LiveTreeApp", "Delete");
-        McpClient client = Await(Task.Run(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
         try
         {
             string chosen = Text(Unasked(window, client, McpTools.AppTree));

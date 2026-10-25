@@ -73,10 +73,10 @@ public sealed class McpContainersTests : McpRig, IClassFixture<RestoredFolders>
         string name = Docker.Container("exec", "sleep 600");
         string notes = Plain("mcp-ctr-");
         MainWindow window = Ui.OpenFolder(notes);
-        McpClient client = Await(Task.Run(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
         try
         {
-            Task<JsonElement> running = Task.Run(() => Call(client, McpTools.ContainerExec, new() { ["container"] = name, ["command"] = "echo $((6*7)) > /tmp/answer; cat /tmp/answer" }));
+            Task<JsonElement> running = Waiting.Apart(() => Call(client, McpTools.ContainerExec, new() { ["container"] = name, ["command"] = "echo $((6*7)) > /tmp/answer; cat /tmp/answer" }));
             Press(Admission(window, "the window to ask whether the agent may work there"), AgentAdmissionDialog.Allow);
             ConfirmDialog asked = Question(window, "the question for the agent's command in the container");
             Assert.Contains("Allow container_exec?", Texts(asked));
@@ -114,16 +114,16 @@ public sealed class McpContainersTests : McpRig, IClassFixture<RestoredFolders>
             Generated = false,
         };
         window.SetConfigurations([web], web.Name);
-        McpClient client = Await(Task.Run(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
         try
         {
-            Task<JsonElement> running = Task.Run(() => Call(client, McpTools.Run, new() { ["configuration"] = web.Name }));
+            Task<JsonElement> running = Waiting.Apart(() => Call(client, McpTools.Run, new() { ["configuration"] = web.Name }));
             Press(Admission(window, "the window to ask whether the agent may work there"), AgentAdmissionDialog.Allow);
             Press(Question(window, "the question for the agent's run"), "Allow");
             WaitFor(() => running.IsCompleted || window.CertificateQuestion is not null, "the agent's run", TimeSpan.FromMinutes(5));
             Assert.Null(window.CertificateQuestion);
             const string Said = "web over HTTP for this run: the development certificate is not trusted, and an agent's call started this run, and asks no one";
-            Assert.Contains(Said, running.GetAwaiter().GetResult().GetProperty("status").GetString(), StringComparison.Ordinal);
+            Assert.Contains(Said, Await(running, "the agent's run").GetProperty("status").GetString(), StringComparison.Ordinal);
             Assert.Contains(Said, window.Status, StringComparison.Ordinal);
             Assert.Equal("dev-certs https --check --trust\n", File.ReadAllText(Path.Combine(standIn, "asked")));
         }
@@ -144,24 +144,24 @@ public sealed class McpContainersTests : McpRig, IClassFixture<RestoredFolders>
         window.Show();
         window.OpenFolder(Plain("mcp-nocompose-"));
         Ui.Settle();
-        McpClient client = Await(Task.Run(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
         try
         {
-            Task<JsonElement> listing = Task.Run(() => Call(client, McpTools.Containers));
+            Task<JsonElement> listing = Waiting.Apart(() => Call(client, McpTools.Containers));
             Press(Admission(window, "the window to ask whether the agent may work there"), AgentAdmissionDialog.Allow);
             JsonElement listed = Await(listing, "the engine's containers, though its CLI has no compose to list projects");
             Assert.Equal("NoCompose", listed.GetProperty("status").GetString());
             JsonElement project = Assert.Single(listed.GetProperty("projects").EnumerateArray());
             Assert.Equal(("shop", "running(1)"), (project.GetProperty("name").GetString(), project.GetProperty("status").GetString()));
             Assert.Equal(["shop-web-1", "solo"], listed.GetProperty("containers").EnumerateArray().Select(c => c.GetProperty("name").GetString()));
-            Assert.Contains("hello from the stand-in web", Text(Await(Task.Run(() => Call(client, McpTools.Containers, new() { ["container"] = "shop-web-1" })), "the container's log")),
+            Assert.Contains("hello from the stand-in web", Text(Await(Waiting.Apart(() => Call(client, McpTools.Containers, new() { ["container"] = "shop-web-1" })), "the container's log")),
                 StringComparison.Ordinal);
             // The start both containers' ids share names neither: an action is never taken on the one listed first.
-            CallToolResult either = Await(Task.Run(() => Result(client, McpTools.Containers, new() { ["container"] = "5a5d0c0ffee" })), "the log of an id's start two share");
+            CallToolResult either = Await(Waiting.Apart(() => Result(client, McpTools.Containers, new() { ["container"] = "5a5d0c0ffee" })), "the log of an id's start two share");
             Assert.True(either.IsError == true && Text(either).Contains("begins the ids of 2 containers (shop-web-1, solo)", StringComparison.Ordinal),
                 $"An id's start two containers share answered: {Text(either)}");
             // A project's log is Compose's to read, so the engine's refusal is the agent's answer.
-            CallToolResult merged = Await(Task.Run(() => Result(client, McpTools.Containers, new() { ["container"] = "shop" })), "the project's log");
+            CallToolResult merged = Await(Waiting.Apart(() => Result(client, McpTools.Containers, new() { ["container"] = "shop" })), "the project's log");
             Assert.True(merged.IsError == true && Text(merged).Contains("'compose' is not a docker command", StringComparison.Ordinal)
                 && !Text(merged).Contains(PassengerTools.Faulted, StringComparison.Ordinal), $"The project's log answered: {Text(merged)}");
         }
@@ -187,7 +187,7 @@ public sealed class McpContainersTests : McpRig, IClassFixture<RestoredFolders>
         string left = Docker.Container("left", "sleep 600", state, machine, gone);
         string living = Docker.Container("living", "sleep 600", labels);
         string elsewhere = Docker.Container("elsewhere", "sleep 600", state, $"{ContainerLabels.Machine}=0123456789abcdef", gone);
-        McpClient client = Await(Task.Run(() => Start(["--mcp", Folder], environment: new() { [StateStore.Variable] = TestRun.Settings }, languageServer: false)), "Passenger starting");
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp", Folder], environment: new() { [StateStore.Variable] = TestRun.Settings }, languageServer: false)), "Passenger starting");
         try
         {
             Ui.WaitFor(() => Docker.State(left) is null, $"{left}, labelled with this state and a process that is gone, removed as Passenger started",

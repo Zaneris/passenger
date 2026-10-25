@@ -254,7 +254,7 @@ public abstract class McpRig : IDisposable
     protected T Await<T>(Task<T> task, string what)
     {
         WaitFor(() => task.IsCompleted, what, AgentLimit);
-        return task.GetAwaiter().GetResult();
+        return task.IsCompleted ? task.GetAwaiter().GetResult() : throw new InvalidOperationException($"The wait for {what} came back before it ended");
     }
 
     /// <summary><see cref="Ui.WaitFor"/>, failing with what Passenger said meanwhile.</summary>
@@ -281,7 +281,7 @@ public abstract class McpRig : IDisposable
     /// allowed, the call's answer.</summary>
     protected JsonElement Asked(MainWindow window, McpClient client, [IdentifierOf(typeof(McpTools))] string tool, string what, Dictionary<string, object?>? arguments = null)
     {
-        Task<JsonElement> calling = Task.Run(() => Call(client, tool, arguments));
+        Task<JsonElement> calling = Waiting.Apart(() => Call(client, tool, arguments));
         ConfirmDialog asked = Question(window, $"the question for the agent's {tool}");
         string[] said = Texts(asked);
         Assert.True(said.Contains($"Allow {tool}?") && said.Any(t => t.Contains($"wants to {what} (its {tool} tool)", StringComparison.Ordinal)),
@@ -293,11 +293,11 @@ public abstract class McpRig : IDisposable
     /// <summary>An agent's call answered without a question to the person.</summary>
     protected JsonElement Unasked(MainWindow window, McpClient client, [IdentifierOf(typeof(McpTools))] string tool, Dictionary<string, object?>? arguments = null)
     {
-        Task<JsonElement> calling = Task.Run(() => Call(client, tool, arguments));
+        Task<JsonElement> calling = Waiting.Apart(() => Call(client, tool, arguments));
         WaitFor(() => calling.IsCompleted || window.OwnedWindows.OfType<ConfirmDialog>().Any(), $"the agent's {tool}", AgentLimit);
         Assert.True(!window.OwnedWindows.OfType<ConfirmDialog>().Any(),
             $"The agent's {tool} asked the person: {string.Join(" | ", window.OwnedWindows.OfType<ConfirmDialog>().SelectMany(Texts))}");
-        return calling.GetAwaiter().GetResult();
+        return Await(calling, $"the agent's {tool}");
     }
 
     protected static string[] Texts(Avalonia.Controls.Window dialog) =>
@@ -510,7 +510,7 @@ public abstract class McpRig : IDisposable
     }
 
     /// <summary>The agent's session ended, the window's loop running meanwhile.</summary>
-    protected void Gone(McpClient client) => Await(Task.Run(async () =>
+    protected void Gone(McpClient client) => Await(Waiting.Apart(async () =>
     {
         await client.DisposeAsync();
         return true;

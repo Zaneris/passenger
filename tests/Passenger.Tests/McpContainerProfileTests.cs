@@ -15,9 +15,9 @@ public sealed class McpContainerProfileTests(ContainerRunDebuggingTests.Tools to
     [Fact]
     public async Task An_agent_profiles_a_program_in_a_container_its_hot_method_at_its_line_and_its_heap()
     {
-        ContainerProfilingTests.Spins spins = await Task.Run(() => ContainerProfilingTests.Spins.Shared);
+        ContainerProfilingTests.Spins spins = await Waiting.Apart(() => ContainerProfilingTests.Spins.Shared, Cancel);
         Assert.SkipWhen(spins.WhyNot is not null, spins.WhyNot ?? string.Empty);
-        string container = await Task.Run(() => spins.Start("agent", offWindow: true));
+        string container = await Waiting.Apart(() => spins.Start("agent", offWindow: true), Cancel);
         await using McpClient client = await Start(["--mcp", spins.Folder], languageServer: false);
 
         CallToolResult unattached = await Result(client, McpTools.Profile, new() { ["container"] = container, ["seconds"] = 1 });

@@ -23,7 +23,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
     [Fact]
     public async Task An_agent_reads_navigates_renames_and_refactors_avalonia_xaml_through_passengers_own_xaml_and_a_library_type_decompiled_once()
     {
-        string gallery = Taken("mcpaxaml-");
+        string gallery = await Taken("mcpaxaml-");
         // Another version's decompiled files, which no session has used for two months.
         string stale = Path.Combine(OwnState, "MetadataAsSource", "Decompiled", "Avalonia.Controls", "0123456789abcdef");
         Directory.CreateDirectory(stale);
@@ -97,7 +97,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
     public async Task An_agent_goes_to_sets_and_renames_aspire_resources_as_the_window_does()
     {
         string secrets = Path.Combine(TestRun.UserSecrets, AspireSecretsId, "secrets.json");
-        string shop = Taken("mcpaspire-");
+        string shop = await Taken("mcpaspire-");
         Directory.CreateDirectory(Path.GetDirectoryName(secrets)!);
         File.Delete(secrets);
         try
@@ -134,7 +134,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
     [Fact]
     public async Task An_agent_reads_navigates_renames_and_refactors_wpf_xaml_through_passengers_own_xaml()
     {
-        string gallery = Taken("mcpwxaml-");
+        string gallery = await Taken("mcpwxaml-");
         await using McpClient client = await Start(["--mcp", gallery]);
         string window = File.ReadAllText(Path.Combine(gallery, "MainWindow.xaml"));
 
@@ -304,7 +304,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
     [Fact]
     public async Task An_agent_lists_a_web_apps_routes_read_from_its_code()
     {
-        string shop = Taken("mcproutes-");
+        string shop = await Taken("mcproutes-");
         await using McpClient client = await Start(["--mcp", shop]);
 
         Assert.False((await Call(client, McpTools.Workspace)).TryGetProperty("routes", out JsonElement unasked) && unasked.ValueKind != JsonValueKind.Null,
@@ -333,9 +333,9 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
     }
 
     /// <summary>The test's own restored folder (<see cref="Restored"/>), removed with the test.</summary>
-    private string Taken(string name)
+    private async Task<string> Taken(string name)
     {
-        string taken = restored.Take(name);
+        string taken = await restored.Take(name);
         DeleteAtEnd(taken);
         return taken;
     }
@@ -348,7 +348,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         private readonly Dictionary<string, string> folders = new(StringComparer.Ordinal);
         private readonly HashSet<string> taken = new(StringComparer.Ordinal);
 
-        public string Take(string name)
+        public async Task<string> Take(string name)
         {
             if (folders.Count == 0)
             {
@@ -361,7 +361,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
                         folders[kind] = folder;
                         write(folder);
                     }
-                    Task.Run(() => Task.WhenAll(folders.Values.Select(Restore.RunAsync))).GetAwaiter().GetResult();
+                    await Task.WhenAll(folders.Values.Select(Restore.RunAsync));
                 }
                 catch
                 {

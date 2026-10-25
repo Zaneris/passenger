@@ -10,14 +10,14 @@ namespace Passenger.Analyzers;
 /// an awaiter's GetResult. A read of a task known to have ended waits for nothing and is passed over (<see cref="Ended"/>):
 /// the task is one the member cannot swap for another (<see cref="Held"/>), and the read sits where its having ended is
 /// certain, as ending is for good. Not looked at yet (<see cref="NotYet"/>): the debugger's engine, whose waits on the
-/// runtime's callbacks and teardown must block, and the tests, whose synchronous helpers wait on what they start.</summary>
+/// runtime's callbacks and teardown must block, and the test classes <see cref="TestsNotYet"/> names.</summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class BlockingWaits : DiagnosticAnalyzer
 {
     private static readonly ImmutableHashSet<string> EndedProperties =
         ImmutableHashSet.Create(StringComparer.Ordinal, "IsCompleted", "IsCompletedSuccessfully", "IsFaulted", "IsCanceled");
 
-    private static readonly ImmutableHashSet<string> NotYet = ImmutableHashSet.Create(StringComparer.Ordinal, "Passenger.Debugger", "Passenger.Tests");
+    private static readonly ImmutableHashSet<string> NotYet = ImmutableHashSet.Create(StringComparer.Ordinal, "Passenger.Debugger");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get; } = [Rules.BlockingWait];
 
@@ -39,7 +39,7 @@ public sealed class BlockingWaits : DiagnosticAnalyzer
     {
         IPropertyReferenceOperation read = (IPropertyReferenceOperation)context.Operation;
         if (read.Property.Name == "Result" && tasks.IsTask(read.Property.ContainingType) && !InNameOf(read)
-            && !Ended(read.Instance, read, tasks))
+            && !TestsNotYet.Contains(context.ContainingSymbol) && !Ended(read.Instance, read, tasks))
         {
             context.ReportDiagnostic(Diagnostic.Create(Rules.BlockingWait, read.Syntax.GetLocation(), "Result"));
         }
@@ -56,7 +56,7 @@ public sealed class BlockingWaits : DiagnosticAnalyzer
             "GetResult" when Tasks.IsAwaiter(method.ContainingType) => ("GetResult", Awaited(call.Instance)),
             _ => (null, null),
         };
-        if (said is not null && !Ended(task, call, tasks))
+        if (said is not null && !TestsNotYet.Contains(context.ContainingSymbol) && !Ended(task, call, tasks))
         {
             context.ReportDiagnostic(Diagnostic.Create(Rules.BlockingWait, call.Syntax.GetLocation(), said));
         }

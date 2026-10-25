@@ -116,8 +116,8 @@ public sealed class McpHotReloadTests : McpRig, IClassFixture<RestoredFolders>
             window.OpenFile(Path.Combine(Folder, "Helper.cs"));
             Typing.Replace(window, "value * 2", "value * 2 + 1");
 
-            client = Await(Task.Run(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
-            Task<JsonElement> applying = Task.Run(() => Call(client, McpTools.HotReload));
+            client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+            Task<JsonElement> applying = Waiting.Apart(() => Call(client, McpTools.HotReload));
             Press(Question(window, "the question for the agent's hot_reload"), "Allow");
             JsonElement applied = Await(applying, "the agent's hot_reload");
             Assert.True(applied.GetProperty("result").GetString() == "applied" && applied.GetProperty("methods").GetInt32() == 1, $"The agent's edit was not applied: {applied}");

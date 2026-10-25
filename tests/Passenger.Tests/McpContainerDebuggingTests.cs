@@ -73,10 +73,10 @@ public sealed class McpContainerDebuggingTests(ContainerRunDebuggingTests.Tools 
                     TimeSpan.FromMinutes(1), test), $"{service} did not stop in Main: {paused}");
                 await Call(client, McpTools.DebugContinue, new() { ["session"] = service, ["waitSeconds"] = 2 });
             }
-            string before = await Task.Run(() => ContainerRunsTests.Started(project, "web"), test);
+            string before = await Waiting.Apart(() => ContainerRunsTests.Started(project, "web"), test);
 
             Assert.Equal($"{project}/web: restart done", Text(await Call(client, McpTools.ContainerAction, new() { ["container"] = $"{project}/web", ["action"] = "restart" })));
-            Assert.NotEqual(before, await Task.Run(() => ContainerRunsTests.Started(project, "web"), test));
+            Assert.NotEqual(before, await Waiting.Apart(() => ContainerRunsTests.Started(project, "web"), test));
             JsonElement again = default;
             Assert.True(await Waiting.UntilAsync(async () => (again = await Call(client, McpTools.DebugState, new() { ["session"] = "web" })).GetProperty("state").GetString() == "paused",
                 TimeSpan.FromMinutes(1), test), $"web, restarted through the run, did not stop in Main again: {again}");
@@ -193,19 +193,19 @@ public sealed class McpContainerDebuggingTests(ContainerRunDebuggingTests.Tools 
         try
         {
             JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = "docker-compose: Web later" });
-            Dictionary<string, string> states = await Task.Run(() => ContainerRunsTests.States(project), test);
+            Dictionary<string, string> states = await Waiting.Apart(() => ContainerRunsTests.States(project), test);
             Assert.True(states.GetValueOrDefault("api") == "running" && !states.ContainsKey("web"), $"The run left these: {string.Join(", ", states)}; it answered {ran}");
             JsonElement unstarted = (await Call(client, McpTools.Workspace)).GetProperty("containerRun").GetProperty("resources").EnumerateArray()
                 .Single(r => r.GetProperty("name").GetString() == "web");
             Assert.True(unstarted.GetProperty("state").GetString() == "Not started", $"workspace listed web, marked Don't start, as {unstarted}");
-            string apiStarted = await Task.Run(() => ContainerRunsTests.Started(project, "api"), test);
+            string apiStarted = await Waiting.Apart(() => ContainerRunsTests.Started(project, "api"), test);
 
             JsonElement stop = await Call(client, McpTools.DebugStart, new() { ["resource"] = "web", ["waitSeconds"] = 120 });
             Assert.True(stop.GetProperty("state").GetString() == "paused" && stop.GetProperty("location").GetString()!.Contains("Web/Program.cs:1:", StringComparison.Ordinal),
                 $"debug_start of web, marked Don't start, answered: {stop}");
-            states = await Task.Run(() => ContainerRunsTests.States(project), test);
+            states = await Waiting.Apart(() => ContainerRunsTests.States(project), test);
             Assert.True(states.GetValueOrDefault("web") == "running" && states.GetValueOrDefault("api") == "running", $"debug_start of web left these: {string.Join(", ", states)}");
-            Assert.Equal(apiStarted, await Task.Run(() => ContainerRunsTests.Started(project, "api"), test));
+            Assert.Equal(apiStarted, await Waiting.Apart(() => ContainerRunsTests.Started(project, "api"), test));
 
             Assert.Equal("Stopped", Text(await Call(client, McpTools.Stop)));
             Assert.True(await Waiting.UntilAsync(() => Docker.NoneLeft(project), TimeSpan.FromMinutes(2), test),

@@ -75,17 +75,17 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
         window.Show();
         window.OpenFolder(project.Folder);
         Ui.Settle();
-        McpClient client = Await(Task.Run(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
         try
         {
             WaitFor(() => window.Configurations.Any(configuration => configuration.Name == StandInAppHost.Configuration), "the stand-in AppHost's Aspire configuration");
-            Task<JsonElement> running = Task.Run(() => Call(client, McpTools.Run, new() { ["configuration"] = StandInAppHost.Configuration, ["waitSeconds"] = 0 }));
+            Task<JsonElement> running = Waiting.Apart(() => Call(client, McpTools.Run, new() { ["configuration"] = StandInAppHost.Configuration, ["waitSeconds"] = 0 }));
             Press(Admission(window, "the window to ask whether the agent may work there"), AgentAdmissionDialog.Allow);
             Press(Question(window, "the question for the agent's run"), "Allow");
             WaitFor(() => running.IsCompleted || window.CertificateQuestion is not null, "the agent's run", TimeSpan.FromMinutes(2));
             Assert.Null(window.CertificateQuestion);
             const string Said = "StandIn.AppHost over HTTP for this run: the development certificate is not trusted, and an agent's call started this run, and asks no one";
-            Assert.Contains(Said, running.GetAwaiter().GetResult().GetProperty("status").GetString(), StringComparison.Ordinal);
+            Assert.Contains(Said, Await(running, "the agent's run").GetProperty("status").GetString(), StringComparison.Ordinal);
             Assert.Contains(Said, window.Status, StringComparison.Ordinal);
             Assert.Equal("dev-certs https --check --trust\n", DevCerts.Asked(standIn));
             Assert.Equal("http://localhost:7312", File.ReadAllText(project.UrlsFile).Split('\n')[0]);
@@ -94,7 +94,7 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
         {
             Gone(client);
             window.Close();
-            Await(Task.Run(async () =>
+            Await(Waiting.Apart(async () =>
             {
                 await backend.DisposeAsync();
                 return true;
@@ -125,10 +125,10 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
             Assert.False((int)answer is >= 200 and < 300, "The IDE started a service its configuration says not to start");
             backend.PushResource(project.Refused());
             WaitFor(() => window.Aspire.ResourceSnapshots.Any(resource => resource.Name == "apiservice" && resource.State == "FailedToStart"), "DCP's word of the refused start");
-            client = Await(Task.Run(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
-            Task<JsonElement> asked = Task.Run(() => Call(client, McpTools.Workspace));
+            client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+            Task<JsonElement> asked = Waiting.Apart(() => Call(client, McpTools.Workspace));
             WaitFor(() => asked.IsCompleted, "the agent's workspace");
-            JsonElement api = Assert.Single(Assert.Single(asked.GetAwaiter().GetResult().GetProperty("aspireApps").EnumerateArray())
+            JsonElement api = Assert.Single(Assert.Single(Await(asked, "the agent's workspace").GetProperty("aspireApps").EnumerateArray())
                 .GetProperty("resources").EnumerateArray(), resource => resource.GetProperty("name").GetString() == "apiservice");
             Assert.Equal(Passenger.App.Aspire.AspireAppRun.NotStarted, api.GetProperty("state").GetString());
         }
@@ -139,7 +139,7 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
                 Gone(client);
             }
             window.Close();
-            Await(Task.Run(async () =>
+            Await(Waiting.Apart(async () =>
             {
                 await backend.DisposeAsync();
                 return true;
@@ -209,14 +209,14 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
             Project = PathNames.Canonical(Path.Combine(Folder, "Sum.csproj")),
             Aspire = true,
         }], "Pending Aspire");
-        McpClient client = Await(Task.Run(() => Start(["--mcp-attach", ProcessId])), "the Aspire agent attaching");
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the Aspire agent attaching");
         Process? started = null;
         try
         {
             Ui.WaitFor(() => window.Configurations.Any(configuration => configuration.Aspire), "the explicit Aspire run configuration");
             string configuration = window.Configurations.First(candidate => candidate.Aspire).Name;
             using CancellationTokenSource giveUp = CancellationTokenSource.CreateLinkedTokenSource(Cancel);
-            Task<CallToolResult> starting = Task.Run(() => CallGivingUp(client, McpTools.Run,
+            Task<CallToolResult> starting = Waiting.Apart(() => CallGivingUp(client, McpTools.Run,
                 new() { ["configuration"] = configuration }, giveUp.Token));
             Window permission = Question(window, "permission for the Aspire startup");
             // Not settled: the start the answer lets go holds background work until it is given up.
@@ -228,15 +228,14 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
             ProcessRunner runner = Assert.Single(window.AspireRuntime.Apps).Runner;
             Ui.PumpUntil(() => runner.Shown().ToString().Contains("starting", StringComparison.Ordinal), "the AppHost's startup console marker");
             int port = new Uri("http://" + File.ReadAllText(endpointFile)).Port;
-            Task<string?> reading = Task.Run(async () => (await Call(client, McpTools.Output)).GetString());
-            Ui.PumpUntil(() => reading.IsCompleted, "reading the starting AppHost's console");
-            Assert.Contains("starting", reading.GetAwaiter().GetResult(), StringComparison.Ordinal);
+            Task<string?> reading = Waiting.Apart(async () => (await Call(client, McpTools.Output)).GetString());
+            Assert.Contains("starting", Ui.AwaitPumped(reading, "reading the starting AppHost's console"), StringComparison.Ordinal);
 
             giveUp.Cancel();
             Ui.PumpUntil(() => starting.IsCompleted && window.AspireRuntime.Apps.Count == 0 && started.HasExited,
                 "canceling the start to roll back the AppHost and listener", TimeSpan.FromMinutes(1));
-            Assert.ThrowsAny<OperationCanceledException>(() => starting.GetAwaiter().GetResult());
-            Assert.False(Await(Task.Run(async () =>
+            Assert.ThrowsAny<OperationCanceledException>(() => Ui.AwaitPumped(starting, "the start given up"));
+            Assert.False(Await(Waiting.Apart(async () =>
             {
                 using TcpClient socket = new();
                 try

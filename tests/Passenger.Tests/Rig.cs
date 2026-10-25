@@ -910,20 +910,47 @@ public static class Ui
         Draw();
     }
 
-    /// <summary>Waits for a task the window started (a run, a debug session's start) as <see cref="WaitFor"/> waits, and
-    /// gives its answer.</summary>
+    /// <summary>Waits on the UI thread for a task (a run the window started, an agent's call, a program of the test's
+    /// own) as <see cref="WaitFor"/> waits, the window's loop running its continuations meanwhile, and gives its answer,
+    /// read only once it has ended, so the thread is never held on it.</summary>
     public static T Await<T>(Task<T> task, string what, TimeSpan? limit = null)
     {
         WaitFor(() => task.IsCompleted, what, limit);
-        return task.GetAwaiter().GetResult();
+        return task.IsCompleted ? task.GetAwaiter().GetResult() : throw NotEnded(what);
     }
 
     /// <inheritdoc cref="Await{T}(Task{T}, string, TimeSpan?)"/>
     public static void Await(Task task, string what, TimeSpan? limit = null)
     {
         WaitFor(() => task.IsCompleted, what, limit);
+        if (!task.IsCompleted)
+        {
+            throw NotEnded(what);
+        }
         task.GetAwaiter().GetResult();
     }
+
+    /// <summary><see cref="Await{T}(Task{T}, string, TimeSpan?)"/> while background work is still under way (a held
+    /// start, a git made slow), the loop run as <see cref="PumpUntil"/> runs it, never waiting for that work to land.</summary>
+    public static T AwaitPumped<T>(Task<T> task, string what, TimeSpan? limit = null)
+    {
+        PumpUntil(() => task.IsCompleted, what, limit);
+        return task.IsCompleted ? task.GetAwaiter().GetResult() : throw NotEnded(what);
+    }
+
+    /// <inheritdoc cref="AwaitPumped{T}(Task{T}, string, TimeSpan?)"/>
+    public static void AwaitPumped(Task task, string what, TimeSpan? limit = null)
+    {
+        PumpUntil(() => task.IsCompleted, what, limit);
+        if (!task.IsCompleted)
+        {
+            throw NotEnded(what);
+        }
+        task.GetAwaiter().GetResult();
+    }
+
+    /// <summary>What a wait that came back with its task not ended throws, which its own limit makes it never do.</summary>
+    private static InvalidOperationException NotEnded(string what) => new($"The wait for {what} came back before it ended");
 
     /// <summary>Waits for a launch the window started (Run, Debug, Profile, a test run) as <see cref="Await"/> does, and
     /// fails unless it started, with its refusal and the build's own errors (<see cref="BuildErrors"/>).</summary>
@@ -1587,6 +1614,21 @@ public static class Waiting
         return Task.Delay(time, cancel);
 #pragma warning restore RS0030
     }
+
+    /// <summary>Work of the test's own on the thread pool (an agent and its calls, a stand-in's server, a program the test
+    /// runs beside the window), held by nothing a wait for the IDE to be quiet waits on: it is no work of the IDE's, and
+    /// the window often answers it only as the test goes on (a question clicked, a held start let go), so a quiet wait
+    /// holding it would wait on itself. The test waits for it by name (<see cref="Ui.Await{T}"/>, an await).</summary>
+    public static Task<T> Apart<T>(Func<Task<T>> work, CancellationToken cancel = default) => BackgroundWork.Unheld(work, cancel);
+
+    /// <inheritdoc cref="Apart{T}(Func{Task{T}}, CancellationToken)"/>
+    public static Task<T> Apart<T>(Func<T> work, CancellationToken cancel = default) => BackgroundWork.Unheld(work, cancel);
+
+    /// <inheritdoc cref="Apart{T}(Func{Task{T}}, CancellationToken)"/>
+    public static Task Apart(Func<Task> work, CancellationToken cancel = default) => BackgroundWork.Unheld(work, cancel);
+
+    /// <inheritdoc cref="Apart{T}(Func{Task{T}}, CancellationToken)"/>
+    public static Task Apart(Action work, CancellationToken cancel = default) => BackgroundWork.Unheld(work, cancel);
 }
 
 /// <summary>How long a key waits for the window's thread: work posted at input's priority, as the platform's keys wait

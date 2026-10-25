@@ -131,17 +131,17 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
         window.OpenFile(Path.Combine(Folder, "Program.cs"));
         Ui.Settle();
         window.ApplySettings(window.Settings with { McpServer = true });
-        McpClient client = Await(Task.Run(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
         try
         {
-            JsonElement read = Await(Task.Run(() => Call(client, McpTools.Settings)), "the agent reading the settings");
+            JsonElement read = Await(Waiting.Apart(() => Call(client, McpTools.Settings)), "the agent reading the settings");
             Assert.True(read.GetProperty("kept").GetBoolean(), "The person's window's settings were read as kept nowhere");
             JsonElement font = Setting(read, "editorFontSize");
             Assert.Equal((13.0, 6.0, 48.0), (font.GetProperty("value").GetDouble(), font.GetProperty("min").GetDouble(), font.GetProperty("max").GetDouble()));
             Assert.Equal(["Always", "ForWarningsOrErrors", "ForErrors", "Never"],
                 Setting(read, "showBuildResults").GetProperty("choices").EnumerateArray().Select(c => c.GetString()!));
 
-            Task<JsonElement> changing = Task.Run(() => Call(client, McpTools.SettingsSet, new()
+            Task<JsonElement> changing = Waiting.Apart(() => Call(client, McpTools.SettingsSet, new()
             {
                 ["changes"] = new Dictionary<string, object> { ["editorFontSize"] = 99, ["showBuildResults"] = "always" },
             }));
@@ -165,7 +165,7 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
                 (new() { ["agentFolders"] = new[] { Folder } }, "The folders agents join unasked are the person's to change"),
             })
             {
-                CallToolResult refused = Await(Task.Run(() => Result(client, McpTools.SettingsSet, new() { ["changes"] = changes })), "the refused settings change");
+                CallToolResult refused = Await(Waiting.Apart(() => Result(client, McpTools.SettingsSet, new() { ["changes"] = changes })), "the refused settings change");
                 Assert.True(refused.IsError == true && Text(refused).Contains(said, StringComparison.Ordinal), $"settings_set {JsonSerializer.Serialize(changes)} answered: {Text(refused)}");
             }
             Assert.Equal(48, window.Settings.EditorFontSize);

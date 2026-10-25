@@ -30,7 +30,7 @@ public sealed class McpSessionsTests : McpRig
         window.Debugger.Breakpoints.Toggle(counter, DebugSessionsTests.Pair.Next);
         DebugSession first = DebugSessionsTests.Debug(window, "First");
         DebugSession second = DebugSessionsTests.Debug(window, "Second");
-        McpClient client = Await(Task.Run(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
         System.Diagnostics.Process? program = null;
         try
         {
@@ -38,7 +38,7 @@ public sealed class McpSessionsTests : McpRig
             Assert.Equal(["First: paused", "Second: paused"], state.GetProperty("sessions").EnumerateArray().Select(s => s.GetString()));
             Assert.Equal("First", state.GetProperty("session").GetString());
 
-            CallToolResult refused = Await(Task.Run(() => Result(client, McpTools.DebugStep)), "the agent's unnamed step");
+            CallToolResult refused = Await(Waiting.Apart(() => Result(client, McpTools.DebugStep)), "the agent's unnamed step");
             string why = Text(refused);
             Assert.True(refused.IsError == true && why.Contains("First: paused", StringComparison.Ordinal) && why.Contains("Second: paused", StringComparison.Ordinal)
                 && why.Contains("session", StringComparison.Ordinal), $"An unnamed step with two programs paused was answered: {why}");
@@ -76,12 +76,12 @@ public sealed class McpSessionsTests : McpRig
             first = window.Debugger.SessionNamed("First")!;
             WaitFor(() => first.State == DebugState.Paused && second.State == DebugState.Paused, "both programs to stop at their breakpoints");
 
-            CallToolResult unnamed = Await(Task.Run(() => Result(client, McpTools.Stop, new() { ["detach"] = true })), "the agent's unnamed detach");
+            CallToolResult unnamed = Await(Waiting.Apart(() => Result(client, McpTools.Stop, new() { ["detach"] = true })), "the agent's unnamed detach");
             why = Text(unnamed);
             Assert.True(unnamed.IsError == true && why.Contains("First: paused", StringComparison.Ordinal) && why.Contains("Second: paused", StringComparison.Ordinal),
                 $"An unnamed detach with two programs paused was answered: {why}");
 
-            CallToolResult launched = Await(Task.Run(() => Result(client, McpTools.Stop, new() { ["detach"] = true, ["session"] = "Second" })), "the agent's detach of Second");
+            CallToolResult launched = Await(Waiting.Apart(() => Result(client, McpTools.Stop, new() { ["detach"] = true, ["session"] = "Second" })), "the agent's detach of Second");
             string notDetached = Text(launched);
             Assert.True(launched.IsError == true && notDetached.Contains("The debugger started this program", StringComparison.Ordinal),
                 $"The detach of a program the debugger started was answered: {notDetached}");
@@ -89,7 +89,7 @@ public sealed class McpSessionsTests : McpRig
             string detached = Unasked(window, client, McpTools.Stop, new() { ["detach"] = true, ["session"] = "First" }).GetString()!;
             Assert.True(detached.StartsWith("Detached from First, which runs on", StringComparison.Ordinal), $"The detach of First was answered: {detached}");
             Assert.True(program.WaitForExit(TimeSpan.FromSeconds(30).Scaled()), "First, let go, did not run on to its end");
-            Assert.Equal("first 3", Debugging.Helpers.Debuggees.HeldWrote(written.Result));
+            Assert.Equal("first 3", Debugging.Helpers.Debuggees.HeldWrote(Await(written, "First's output")));
             Assert.Equal(DebugState.Paused, second.State);
             Assert.Equal("Stopped", Unasked(window, client, McpTools.Stop).GetString());
             WaitFor(() => !window.Debugger.IsDebugging, "every program to end");
