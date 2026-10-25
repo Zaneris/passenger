@@ -197,13 +197,47 @@ public sealed class TestRun : IDisposable
               </config>
             </configuration>
             """);
-        Environment.SetEnvironmentVariable("DOTNET_CLI_HOME", home);
-        Environment.SetEnvironmentVariable("NUGET_COMMON_APPLICATION_DATA", Directory.CreateDirectory(Path.Combine(Root, "machine")).FullName);
-        Environment.SetEnvironmentVariable("NUGET_NETCORE_PLUGIN_PATHS", null);
-        Environment.SetEnvironmentVariable("NUGET_PLUGIN_PATHS", null);
+        Replace("DOTNET_CLI_HOME", home);
+        Replace("NUGET_COMMON_APPLICATION_DATA", Directory.CreateDirectory(Path.Combine(Root, "machine")).FullName);
+        Replace("NUGET_NETCORE_PLUGIN_PATHS", null);
+        Replace("NUGET_PLUGIN_PATHS", null);
         Environment.SetEnvironmentVariable("DOTNET_GENERATE_ASPNET_CERTIFICATE", "false");
         Environment.SetEnvironmentVariable("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false");
         Environment.SetEnvironmentVariable("DOTNET_NOLOGO", "1");
+    }
+
+    /// <summary>The person's own NuGet variables, which the run replaces with its own (null where they had none set).</summary>
+    private static readonly Dictionary<string, string?> PersonsNuGetVariables = [];
+
+    private static void Replace(string variable, string? value)
+    {
+        PersonsNuGetVariables[variable] = Environment.GetEnvironmentVariable(variable);
+        Environment.SetEnvironmentVariable(variable, value);
+    }
+
+    /// <summary>Until disposed, what the IDE starts has the person's NuGet settings back, as their own builds of their
+    /// checkout have, in MSBuild nodes of its own, since a node keeps the NuGet home it started with. A build of their
+    /// checkout then finds the restore their builds wrote current and writes none of it.</summary>
+    public static IDisposable PersonsNuGet()
+    {
+        Dictionary<string, string?> run = PersonsNuGetVariables.Keys.Append("MSBUILDDISABLENODEREUSE").ToDictionary(v => v, Environment.GetEnvironmentVariable);
+        foreach ((string variable, string? value) in PersonsNuGetVariables)
+        {
+            Environment.SetEnvironmentVariable(variable, value);
+        }
+        Environment.SetEnvironmentVariable("MSBUILDDISABLENODEREUSE", "1");
+        return new Restored(run);
+    }
+
+    private sealed class Restored(Dictionary<string, string?> variables) : IDisposable
+    {
+        public void Dispose()
+        {
+            foreach ((string variable, string? value) in variables)
+            {
+                Environment.SetEnvironmentVariable(variable, value);
+            }
+        }
     }
 
     /// <summary>The run's end, once every test is done (xunit disposes the assembly's fixture then).</summary>
