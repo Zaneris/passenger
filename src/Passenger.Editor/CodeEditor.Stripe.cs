@@ -451,7 +451,7 @@ public sealed partial class CodeEditor
             context.FillRectangle(palette.Background, new Rect(Bounds.Size), 4);
             if (errors + warnings == 0)
             {
-                Icon(context, palette.PassedIcon, palette.TestPassed, new Point(3, 2));
+                Icon(context, palette.PassedIcon, palette.Passed, new Point(3, 2));
                 return;
             }
             double x = 4;

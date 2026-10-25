@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
+using Passenger.App.Editors;
 using Passenger.App;
 using Passenger.App.ToolWindows;
 using Passenger.App.Vcs;
@@ -525,7 +526,7 @@ public sealed class VcsTests : IDisposable
         window.KeyTextInput("public ");
         Ui.Landed(() => Marks(window).Count == 1, "a change bar on line 5");
 
-        Ui.Click(editor, editor.GutterColumnPoint(GutterColumn.Changes, 4), settle: false);
+        Ui.Click(editor, editor.GutterColumnPoint(editor.Gutter!.Changes, 4), settle: false);
         Ui.Landed(() => window.Popup is ChangePopup, "the change's popup");
         ChangePopup popup = (ChangePopup)window.Popup!;
         Assert.Equal("    void Add() { count++; }", popup.Before);
@@ -570,7 +571,7 @@ public sealed class VcsTests : IDisposable
         // A click on a bar opens what the lines were from the comparison its bars came from: nothing is compared again.
         int comparisons = vcs.Comparisons;
         Ui.Settle();
-        Avalonia.Point at = editor.TranslatePoint(editor.GutterColumnPoint(GutterColumn.Changes, 8), window)!.Value;
+        Avalonia.Point at = editor.TranslatePoint(editor.GutterColumnPoint(editor.Gutter!.Changes, 8), window)!.Value;
         long allocated = GC.GetAllocatedBytesForCurrentThread();
         // Pressed raw: Ui.Click's look at the frame before it would count among what the click allocated.
         window.MouseDown(at, Avalonia.Input.MouseButton.Left);
@@ -726,7 +727,7 @@ public sealed class VcsTests : IDisposable
         Assert.StartsWith(Git("log", "-1", "--format=%ad", "--date=format-local:%Y-%m-%d", first).Trim(), shop.GutterAnnotations[0], StringComparison.Ordinal);
         Assert.Null(shop.GutterAnnotations[1]);
         Assert.NotNull(shop.GutterAnnotations[4]);
-        Assert.True(window.EditorArea.CodeEditor.IsInAnnotationColumn(new Point(4, 4)));
+        Assert.True(window.EditorArea.CodeEditor.IsOnGutterColumn(window.EditorArea.CodeEditor.Gutter!.Blame, new Point(4, 4)));
 
         window.EditorArea.CodeEditor.ApplyEdits([new TextEdit(0, 0, "// new\n")]);
         Ui.Landed(() => window.Vcs.BlameOf(shop) is { Count: > 0 } now && !now[0].IsCommitted, "the typed line blamed");
@@ -739,7 +740,7 @@ public sealed class VcsTests : IDisposable
         Task closing = window.ToggleAnnotationsAsync(shop);
         Ui.Landed(() => closing.IsCompleted, "the annotations closed");
         Assert.Empty(shop.GutterAnnotations);
-        Assert.False(editor.IsInAnnotationColumn(new Point(4, 4)));
+        Assert.False(editor.IsOnGutterColumn(editor.Gutter!.Blame, new Point(4, 4)));
         window.Close();
     }
 
@@ -834,7 +835,7 @@ public sealed class VcsTests : IDisposable
         Assert.Equal("main", Avalonia.Controls.ControlExtensions.FindControl<Avalonia.Controls.TextBlock>(window, "BranchName")?.Text);
         Assert.Equal([new ChangeMark(2, 1, ChangeMarkKind.Modified)], Marks(window));
         CodeEditor editor = window.EditorArea.CodeEditor;
-        Point bar = editor.TranslatePoint(editor.GutterColumnPoint(GutterColumn.Changes, 2), window)!.Value;
+        Point bar = editor.TranslatePoint(editor.GutterColumnPoint(editor.Gutter!.Changes, 2), window)!.Value;
         Avalonia.Media.Color drawn = Ui.Pixel(window, bar);
         Assert.True(drawn == Modified(), $"The changed line's bar is drawn {drawn}, not the modified bar's colour");
         window.Close();

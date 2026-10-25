@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Passenger.App.Editors;
 using Passenger.App;
 using Passenger.App.Endpoints;
 using Passenger.Roslyn.Extension;
@@ -298,7 +299,7 @@ public sealed class WebRoutesTests
         TextSnapshot text = editor.Document.Snapshot;
         editor.ScrollTo(new Vector(0, Math.Max(0, line * editor.LineHeight - editor.Bounds.Height / 3)));
         Ui.Settle();
-        double x = Enumerable.Range(0, 400).First(x => editor.IsInMarkColumn(new Point(x, 0))) + 3;
+        double x = Enumerable.Range(0, 400).First(x => editor.IsOnGutterColumn(editor.Gutter!.Marks, new Point(x, 0))) + 3;
         Ui.Click(editor, new Point(x, editor.PointOf(text.GetLineStart(line)).Y + editor.LineHeight / 2));
         return [.. Assert.IsType<MenuFlyout>(window.RouteMarkMenu).Items.OfType<MenuItem>()];
     }

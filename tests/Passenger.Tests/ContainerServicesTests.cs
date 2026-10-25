@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Passenger.App.Editors;
 using Passenger.App;
 using Passenger.App.Containers;
 using Passenger.App.Debugging;
@@ -339,7 +340,7 @@ public sealed class ContainerServicesTests(ContainerRunDebuggingTests.Tools tool
         int at = Array.IndexOf(compose.Text.Snapshot.ToString().Split('\n'), line);
         Ui.WaitFor(() => compose.RunMarks.Any(m => m.Line == at), $"the run icon beside {line.Trim()}");
         Passenger.Editor.CodeEditor shown = window.EditorArea.CodeEditor;
-        double x = Enumerable.Range(0, 400).First(x => shown.IsInMarkColumn(new Avalonia.Point(x, 0))) + 3;
+        double x = Enumerable.Range(0, 400).First(x => shown.IsOnGutterColumn(shown.Gutter!.Marks, new Avalonia.Point(x, 0))) + 3;
         Ui.Click(shown, new Avalonia.Point(x, shown.PointOf(compose.Text.Snapshot.GetLineStart(at)).Y + (shown.LineHeight / 2)));
         return [.. Assert.IsType<MenuFlyout>(window.RunMarkMenu).Items.OfType<Avalonia.Controls.MenuItem>()];
     }

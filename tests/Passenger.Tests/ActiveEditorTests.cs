@@ -10,6 +10,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.VisualTree;
+using Passenger.App.Editors;
 using Passenger.App;
 using Passenger.App.Settings;
 using Passenger.Editor;
@@ -273,7 +274,7 @@ public sealed class ActiveEditorTests : ActiveEditorFolders
         Assert.Equal(Token(window, TokenKeys.Editor_BreakpointLine), Ui.Pixel(window, tinted));
 
         // Rows shown: the six lines outside the fold and the comment's rows after its first.
-        Point chevron = editor.TranslatePoint(editor.GutterColumnPoint(GutterColumn.Folding, 3), window)!.Value;
+        Point chevron = editor.TranslatePoint(editor.FoldPoint(3), window)!.Value;
         window.MouseDown(chevron, MouseButton.Left);
         window.MouseUp(chevron, MouseButton.Left);
         Ui.Settle();
@@ -288,7 +289,7 @@ public sealed class ActiveEditorTests : ActiveEditorFolders
         Assert.Equal(8, editor.CaretPosition.Line);
 
         double secondRow = editor.PointOf(RowStarts(editor, comment)[0]).Y + (editor.LineHeight / 2);
-        Point beside = editor.TranslatePoint(new Point(editor.GutterColumnPoint(GutterColumn.Folding, 2).X, secondRow), window)!.Value;
+        Point beside = editor.TranslatePoint(new Point(editor.FoldPoint(2).X, secondRow), window)!.Value;
         window.MouseDown(beside, MouseButton.Left);
         window.MouseUp(beside, MouseButton.Left);
         Ui.Settle();
@@ -661,7 +662,7 @@ public abstract class ActiveEditorFolders : IDisposable
     protected static HashSet<Color> GutterBeside(MainWindow window, CodeEditor editor, int offset)
     {
         double top = editor.PointOf(offset).Y;
-        double right = editor.GutterColumnPoint(GutterColumn.Changes, 0).X - 3;
+        double right = editor.GutterColumnPoint(editor.Gutter!.Changes, 0).X - 3;
         using Avalonia.Media.Imaging.WriteableBitmap frame = window.CaptureRenderedFrame()
             ?? throw new InvalidOperationException("The window has drawn no frame.");
         Point from = editor.TranslatePoint(new Point(1, top + 2), window)!.Value;

@@ -67,6 +67,7 @@ public sealed class EditorGroup : DockPanel
     {
         this.area = area;
         Editor = new CodeEditor { IsVisible = false };
+        Gutter = new EditorGutter(Editor);
         Editor.FoldsToggled += (_, regions) =>
         {
             if (active is not null)
@@ -174,6 +175,9 @@ public sealed class EditorGroup : DockPanel
     private event EventHandler? CurrentChanged;
 
     public CodeEditor Editor { get; }
+
+    /// <summary>The columns of the editor's gutter, fed from the file it shows.</summary>
+    public EditorGutter Gutter { get; }
 
     /// <summary>A pane beside the editor for the file it shows (a XAML file's preview), half the group's width at first and
     /// resized by the hairline between them; null for none.</summary>
@@ -360,6 +364,7 @@ public sealed class EditorGroup : DockPanel
         {
             Find.Detach();
             Editor.Detach();
+            Gutter.Clear();
             Editor.IsReadOnly = true;
             Editor.IsVisible = false;
             Side = null;
@@ -383,14 +388,10 @@ public sealed class EditorGroup : DockPanel
         Editor.SetMarkers(document.Markers);
         Editor.SetFoldRegions(document.FoldRegions);
         Editor.SetInlayHints(document.InlayHints);
-        Editor.SetLineMarks(document.LineMarks);
         Editor.SetLineAnnotations(document.ShownAnnotations);
-        Editor.SetTestMarks(document.TestMarks);
-        Editor.SetRunMarks(document.GutterRunMarks);
-        Editor.SetColourMarks(document.ColourMarks);
         Editor.SetChangeMarks(document.ChangeMarks);
-        Editor.SetGutterAnnotations(document.GutterAnnotations);
         Editor.SetBookmarks(document.Bookmarks);
+        Gutter.Show(document);
         Editor.ContextLabel = ContextShown(document);
         Editor.IsReadOnly = document.IsReadOnly;
         ShowBanner(document);
@@ -486,6 +487,7 @@ public sealed class EditorGroup : DockPanel
                 // A split left empty goes, and nothing of the file it showed may keep it.
                 Find.Detach();
                 Editor.Detach();
+                Gutter.Clear();
                 Editor.IsVisible = false;
                 tabBar.IsVisible = false;
                 banner.IsVisible = false;
@@ -559,6 +561,7 @@ public sealed class EditorGroup : DockPanel
         {
             return;
         }
+        Gutter.Follow(document, e.PropertyName);
         switch (e.PropertyName)
         {
             case nameof(OpenDocument.Asset):
@@ -578,9 +581,6 @@ public sealed class EditorGroup : DockPanel
             case nameof(OpenDocument.Highlighter):
                 Editor.Highlighter = document.Highlighter;
                 break;
-            case nameof(OpenDocument.LineMarks):
-                Editor.SetLineMarks(document.LineMarks);
-                break;
             case nameof(OpenDocument.LineAnnotations) or nameof(OpenDocument.LiveValues):
                 Editor.SetLineAnnotations(document.ShownAnnotations);
                 break;
@@ -596,20 +596,8 @@ public sealed class EditorGroup : DockPanel
             case nameof(OpenDocument.FoldRegions):
                 Editor.SetFoldRegions(document.FoldRegions);
                 break;
-            case nameof(OpenDocument.TestMarks):
-                Editor.SetTestMarks(document.TestMarks);
-                break;
-            case nameof(OpenDocument.RunMarks) or nameof(OpenDocument.RouteMarks):
-                Editor.SetRunMarks(document.GutterRunMarks);
-                break;
-            case nameof(OpenDocument.ColourMarks):
-                Editor.SetColourMarks(document.ColourMarks);
-                break;
             case nameof(OpenDocument.ChangeMarks):
                 Editor.SetChangeMarks(document.ChangeMarks);
-                break;
-            case nameof(OpenDocument.GutterAnnotations):
-                Editor.SetGutterAnnotations(document.GutterAnnotations);
                 break;
             case nameof(OpenDocument.Bookmarks):
                 Editor.SetBookmarks(document.Bookmarks);

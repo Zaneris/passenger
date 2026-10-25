@@ -4,6 +4,8 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using Passenger.App.Debugging;
+using Passenger.App.Editors;
 using Passenger.App;
 using Passenger.App.Mcp;
 using Passenger.App.Settings;

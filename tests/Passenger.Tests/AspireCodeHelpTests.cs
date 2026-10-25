@@ -3,6 +3,7 @@ using Avalonia.Headless;
 using Avalonia.Input.Platform;
 using Avalonia.Controls;
 using Avalonia.VisualTree;
+using Passenger.App.Editors;
 using Passenger.App;
 using Passenger.Core;
 using Passenger.Editor;

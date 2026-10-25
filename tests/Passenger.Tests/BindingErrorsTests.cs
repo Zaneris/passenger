@@ -177,7 +177,7 @@ public sealed class BindingErrorsTests : IClassFixture<RestoredFolders>, IDispos
         Assert.True(window.DockHost.IsShown(ToolWindowIds.Problems) && window.BottomPanel.Problems.Shown == ProblemsTab.Bindings,
             $"A click on \"{window.Status}\" in the status bar showed {(window.DockHost.IsShown(ToolWindowIds.Problems) ? $"Problems' {window.BottomPanel.Problems.Shown} tab" : "nothing")}, not Problems' Bindings");
         window.ShowToolWindow(ToolWindowIds.Debug);
-        Assert.Contains(window.EditorArea.CodeEditor.LineAnnotations, a => a.Kind == LineAnnotationKind.Exception && a.Text.StartsWith("Binding error at MainWindow.axaml", StringComparison.Ordinal));
+        Assert.Contains(window.EditorArea.CodeEditor.LineAnnotations, a => a.Look == LineAnnotationLook.ErrorOnGround && a.Text.StartsWith("Binding error at MainWindow.axaml", StringComparison.Ordinal));
         Assert.Equal("\"Nmae\"", Member(window, "$bindingError", "Path"));
         Assert.Equal("\"Nmae\"", Member(window, "$bindingError", "FailedPart"));
         Assert.Contains("MainViewModel", Member(window, "$bindingError", "DataContext"), StringComparison.Ordinal);

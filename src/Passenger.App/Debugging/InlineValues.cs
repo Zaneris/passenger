@@ -50,7 +50,7 @@ public static class InlineValues
             }
         }
         return [.. named.OrderBy(p => p.Key).SelectMany(p => p.Value.Select(name =>
-            new LineAnnotation(p.Key, $"{name}: {Cut(values[name])}", LineAnnotationKind.InlineValue)))];
+            new LineAnnotation(p.Key, $"{name}: {Cut(values[name])}", LineAnnotationLook.Muted)))];
     }
 
     /// <summary>A token that names a local or parameter: declaring one, or used alone (not as a member of

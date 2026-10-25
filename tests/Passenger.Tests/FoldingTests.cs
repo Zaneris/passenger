@@ -67,7 +67,7 @@ public sealed class FoldingTests : IDisposable
         Assert.Single(editor.FoldRegions, r => r.Folded);
         Assert.Equal(new TextPosition(8, 8), editor.CaretPosition);
 
-        Point chevron = editor.TranslatePoint(editor.GutterColumnPoint(GutterColumn.Folding, 5), window)!.Value;
+        Point chevron = editor.TranslatePoint(editor.FoldPoint(5), window)!.Value;
         window.MouseDown(chevron, MouseButton.Left);
         window.MouseUp(chevron, MouseButton.Left);
         Ui.Settle();

@@ -3,6 +3,7 @@ using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Headless.XUnit;
+using Passenger.App.Editors;
 using Passenger.App;
 using Passenger.App.Run;
 using Passenger.App.Workspace;
@@ -862,7 +863,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         // The button's background names the palette's Accent: its swatch is the dark theme's, which the window shows.
         Ui.WaitFor(() => view.ColourMarks.Any(m => m.Line == button), "the swatch of the brush the button's background names");
         Assert.Equal(Color.Parse("#3D7BF5"), view.ColourMarks.Single(m => m.Line == button).Colour);
-        Point swatch = editor.TranslatePoint(editor.GutterColumnPoint(GutterColumn.Marks, button), window)!.Value;
+        Point swatch = editor.TranslatePoint(editor.GutterColumnPoint(editor.Gutter!.Marks, button), window)!.Value;
         Assert.Equal(Color.Parse("#3D7BF5"), Ui.Pixel(window, swatch));
 
         window.MouseDown(swatch, MouseButton.Left);
@@ -889,7 +890,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         int line = code.CaretPosition.Line;
         Ui.WaitFor(() => behind.ColourMarks.Any(m => m.Line == line), "the swatch of the colour FromRgb makes");
         Assert.Equal(Color.Parse("#336699"), behind.ColourMarks.Single(m => m.Line == line).Colour);
-        Ui.Click(code, code.GutterColumnPoint(GutterColumn.Marks, line));
+        Ui.Click(code, code.GutterColumnPoint(code.Gutter!.Marks, line));
         window.KeyTextInput("#AA0000");
         Ui.Press(window, "ENTER");
         Ui.Settle();

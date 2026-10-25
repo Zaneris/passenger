@@ -56,8 +56,7 @@ public sealed partial class CodeEditor : Control
     private Palette palette;
     private bool rainbowBraces = true;
     private IndentOptions indent = new();
-    private (TextRunProperties Value, TextRunProperties Exception) annotationRuns;
-    private TextRunProperties? questionRun;
+    private (TextRunProperties Value, TextRunProperties Error) annotationRuns;
 
     public CodeEditor()
     {
@@ -89,7 +88,7 @@ public sealed partial class CodeEditor : Control
         // A theme or a colour scheme laid over the application's resources (Settings) changes the brushes, not the variant.
         ResourcesChanged += (_, _) =>
         {
-            if (palette is not { } shown || !Palette.From(this).SameAs(shown))
+            if (palette is not { } shown || !Palette.From(this).SameAs(shown) || GutterBrushesChanged())
             {
                 RefreshStyle();
             }
@@ -100,7 +99,7 @@ public sealed partial class CodeEditor : Control
         numberRuns = (
             RunWith(palette.LineNumberCurrent),
             RunWith(palette.LineNumber));
-        annotationRuns = (ItalicRunWith(palette.InlineValue), ItalicRunWith(palette.Error));
+        annotationRuns = (ItalicRunWith(palette.Annotation), ItalicRunWith(palette.Error));
     }
 
     /// <summary>Raised when the view scrolls.</summary>
@@ -166,16 +165,8 @@ public sealed partial class CodeEditor : Control
         return true;
     }
 
-    /// <summary>The marks in the gutter (breakpoints, the execution point), from the host.</summary>
-    public IReadOnlyList<LineMark> LineMarks { get; private set; } = [];
-
-    public void SetLineMarks(IReadOnlyList<LineMark> marks)
-    {
-        LineMarks = marks;
-        InvalidateVisual();
-    }
-
-    /// <summary>The lines changed since the last commit, as bars against the code, from the host.</summary>
+    /// <summary>The lines that differ from another text, from the host: on the error stripe, and with
+    /// <see cref="ChangeBackgrounds"/> as the lines' tints.</summary>
     public IReadOnlyList<ChangeMark> ChangeMarks { get; private set; } = [];
 
     public void SetChangeMarks(IReadOnlyList<ChangeMark> marks)
@@ -200,7 +191,7 @@ public sealed partial class CodeEditor : Control
         InvalidateVisual();
     }
 
-    /// <summary>The bookmarked lines, drawn as ribbons at the line numbers' left.</summary>
+    /// <summary>The bookmarked lines, marked on the error stripe.</summary>
     public IReadOnlyList<int> Bookmarks { get; private set; } = [];
 
     public void SetBookmarks(IReadOnlyList<int> lines)
@@ -209,63 +200,10 @@ public sealed partial class CodeEditor : Control
         InvalidateVisual();
     }
 
-    /// <summary>Text per line in a column at the gutter's left (Git blame's author and date), null for a line with none;
-    /// empty for no column.</summary>
-    public IReadOnlyList<string?> GutterAnnotations { get; private set; } = [];
-
-    private double annotationWidth;
-
-    public void SetGutterAnnotations(IReadOnlyList<string?> perLine)
-    {
-        GutterAnnotations = perLine;
-        int longest = perLine.Count == 0 ? 0 : perLine.Max(l => l?.Length ?? 0);
-        annotationWidth = longest == 0 ? 0 : (longest * metrics.CharWidth) + 18;
-        InvalidateArrange();
-        InvalidateVisual();
-    }
-
-    /// <summary>Whether a point (in this control) is on the annotation column.</summary>
-    public bool IsInAnnotationColumn(Point at) => annotationWidth > 0 && at.X < annotationWidth;
-
-    /// <summary>Whether the change marks tint whole lines rather than draw bars in the gutter; a mark with no lines is then
-    /// a rule between two.</summary>
+    /// <summary>Whether the change marks tint whole lines; a mark with no lines is then a rule between two.</summary>
     public bool ChangeBackgrounds { get; set; }
 
-    /// <summary>Whether a point (in this control) is on the change bars' strip at the gutter's edge.</summary>
-    public bool IsInChangeColumn(Point at) => ShowLineNumbers && at.X >= GutterWidth - FoldWidth - 8 && at.X < GutterWidth - FoldWidth;
-
-    /// <summary>The tests' run icons in the gutter, from the host.</summary>
-    public IReadOnlyList<TestMark> TestMarks { get; private set; } = [];
-
-    public void SetTestMarks(IReadOnlyList<TestMark> marks)
-    {
-        TestMarks = marks;
-        InvalidateVisual();
-    }
-
-    /// <summary>The run icons in the gutter of what run configurations run (a compose file's services), from the host.</summary>
-    public IReadOnlyList<RunMark> RunMarks { get; private set; } = [];
-
-    public void SetRunMarks(IReadOnlyList<RunMark> marks)
-    {
-        RunMarks = marks;
-        InvalidateVisual();
-    }
-
-    /// <summary>The colours lines write, each a swatch in the gutter, from the host.</summary>
-    public IReadOnlyList<ColourMark> ColourMarks { get; private set; } = [];
-
-    public void SetColourMarks(IReadOnlyList<ColourMark> marks)
-    {
-        ColourMarks = marks;
-        InvalidateVisual();
-    }
-
-    /// <summary>Whether a point (in the editor's coordinates) is in the gutter's column of run icons and the
-    /// execution arrow, right of the line numbers.</summary>
-    public bool IsInMarkColumn(Point at) => ShowLineNumbers && at.X >= GutterWidth - FoldWidth - GutterPadRight && at.X < GutterWidth - FoldWidth;
-
-    /// <summary>Text after lines' code (the debugger's inline values, an exception), from the host.</summary>
+    /// <summary>Text after lines' code, from the host.</summary>
     public IReadOnlyList<LineAnnotation> LineAnnotations { get; private set; } = [];
 
     public void SetLineAnnotations(IReadOnlyList<LineAnnotation> annotations)
@@ -274,30 +212,29 @@ public sealed partial class CodeEditor : Control
         InvalidateVisual();
     }
 
-    /// <summary>A click on a line's number (from zero): the host's breakpoint toggle. With a handler, a click there no
-    /// longer selects the line.</summary>
+    /// <summary>A press on the gutter at a line (from zero) that none of its columns took: the host's. With a handler, a
+    /// click there no longer selects the line.</summary>
     public event EventHandler<GutterClick>? GutterClicked;
 
-    /// <summary>The execution arrow was dragged to another line (from zero), to Set Next Statement there. With a
-    /// handler, a press on the arrow drags it; let go where it was, it is the gutter click it began as.</summary>
-    public event EventHandler<int>? ExecutionPointDragged;
-
-    /// <summary>Where a line's number is drawn, in the editor's coordinates: what a popup about its breakpoint
-    /// is placed beside.</summary>
+    /// <summary>Where a line's number is drawn, in the editor's coordinates: what a popup about the line is placed beside.</summary>
     public Point GutterPoint(int line) => new(GutterWidth, TopOf(line) + metrics.LineHeight - scroll.Y);
 
-    /// <summary>The middle of one of the gutter's columns at a line, in the editor's coordinates: where a click on the
-    /// execution arrow or a test's icon, a change bar or a fold's chevron lands.</summary>
-    public Point GutterColumnPoint(GutterColumn column, int line)
+    /// <summary>The middle of a host's column of the gutter at a line, in the editor's coordinates: where a click on what
+    /// it draws there lands.</summary>
+    public Point GutterColumnPoint(IGutterColumn column, int line)
     {
-        double right = GutterWidth - FoldWidth;
-        double x = column switch
-        {
-            GutterColumn.Folding => GutterWidth - (FoldWidth / 2),
-            GutterColumn.Changes => right - 4,
-            _ => right - (GutterPadRight / 2),
-        };
-        return new Point(x, TopOf(line) - scroll.Y + (metrics.LineHeight / 2));
+        (double left, double width) = StripOf(column);
+        return new Point(left + (width / 2), TopOf(line) - scroll.Y + (metrics.LineHeight / 2));
+    }
+
+    /// <summary>The middle of a fold's chevron at a line, in the editor's coordinates.</summary>
+    public Point FoldPoint(int line) => new(GutterWidth - (FoldWidth / 2), TopOf(line) - scroll.Y + (metrics.LineHeight / 2));
+
+    /// <summary>Whether a point (in the editor's coordinates) is on a host's column of the gutter.</summary>
+    public bool IsOnGutterColumn(IGutterColumn column, Point at)
+    {
+        (double left, double width) = StripOf(column);
+        return ShowLineNumbers && at.X >= left && at.X < left + width;
     }
 
     /// <summary>The markers at an offset, for a tooltip.</summary>
@@ -487,9 +424,10 @@ public sealed partial class CodeEditor : Control
 
     private Typeface Typeface => new(FontFamily);
 
-    private double GutterWidth => ShowLineNumbers
-        ? annotationWidth + GutterPadLeft + Math.Max(2, Digits(document.Snapshot.LineCount)) * metrics.CharWidth + GutterPadRight + FoldWidth
-        : 4;
+    private double GutterWidth => ShowLineNumbers ? NumbersRight + columnRoom.Right + FoldWidth : 4;
+
+    /// <summary>Where the line numbers end: past the columns left of them and the numbers' widest.</summary>
+    private double NumbersRight => columnRoom.Left + (Math.Max(2, Digits(document.Snapshot.LineCount)) * metrics.CharWidth);
 
     private double TextLeft => GutterWidth + TextPadLeft;
 
@@ -544,14 +482,9 @@ public sealed partial class CodeEditor : Control
         Highlighter = null;
         Document = new TextDocument();
         SetMarkers([]);
-        SetLineMarks([]);
         SetChangeMarks([]);
         SetInlineChanges([]);
         SetBookmarks([]);
-        SetGutterAnnotations([]);
-        SetTestMarks([]);
-        SetRunMarks([]);
-        SetColourMarks([]);
         SetLineAnnotations([]);
         SetInlayHints([]);
         SetFoldRegions([]);
@@ -880,13 +813,13 @@ public sealed partial class CodeEditor : Control
         // The font and the tab are what the wraps measured with.
         look++;
         palette = Palette.From(this);
-        questionRun = null;
         hintRun = null;
         runProperties.Clear();
         numberRuns = (
             RunWith(palette.LineNumberCurrent),
             RunWith(palette.LineNumber));
-        annotationRuns = (ItalicRunWith(palette.InlineValue), ItalicRunWith(palette.Error));
+        annotationRuns = (ItalicRunWith(palette.Annotation), ItalicRunWith(palette.Error));
+        ForgetGutterLook();
         ForgetLines();
         // The stripe and the counts paint with the palette too, so they are drawn again with the next frame.
         stripeDrawn = default;

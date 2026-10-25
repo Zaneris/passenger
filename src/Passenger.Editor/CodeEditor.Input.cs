@@ -20,7 +20,6 @@ public sealed partial class CodeEditor
     private Point hoverAt;
     private bool hovering;
     private Drag drag;
-    private int arrowAt = -1;
     private EditorInputMethod? inputMethod;
     private string preedit = string.Empty;
 
@@ -75,7 +74,11 @@ public sealed partial class CodeEditor
             int line = LineAtY(point.Position.Y);
             if (line < document.Snapshot.LineCount)
             {
-                GutterClicked(this, new GutterClick(line, e.KeyModifiers, point.Position, Context: true));
+                GutterClick click = new(line, e.KeyModifiers, point.Position, Context: true);
+                if (!PressColumns(click, e.Pointer))
+                {
+                    GutterClicked(this, click);
+                }
                 e.Handled = true;
             }
             return;
@@ -118,13 +121,14 @@ public sealed partial class CodeEditor
         KeyModifiers command = Keystroke.Command;
 
         int pressed = LineAtY(point.Position.Y);
-        if (ExecutionPointDragged is not null && IsInMarkColumn(point.Position) && LineMarks.Any(m => m.Kind == LineMarkKind.ExecutionPoint && m.Line == pressed))
+        if (point.Position.X < GutterWidth && ShowLineNumbers && pressed < text.LineCount)
         {
-            drag = new Drag(DragMode.ExecutionPoint, pressed, point.Position);
-            arrowAt = pressed;
-            e.Pointer.Capture(this);
-            e.Handled = true;
-            return;
+            drag = default;
+            if (PressColumns(new GutterClick(pressed, mods, point.Position, Context: false), e.Pointer))
+            {
+                e.Handled = true;
+                return;
+            }
         }
         if (point.Position.X < GutterWidth && GutterClicked is not null && ShowLineNumbers)
         {
@@ -201,7 +205,7 @@ public sealed partial class CodeEditor
         base.OnPointerMoved(e);
         Point position = e.GetPosition(this);
         RestartHover(position);
-        Cursor = position.X < GutterWidth || drag.Mode == DragMode.ExecutionPoint ? Cursor.Default : new Cursor(StandardCursorType.Ibeam);
+        Cursor = position.X < GutterWidth || drag.Mode == DragMode.Gutter ? Cursor.Default : new Cursor(StandardCursorType.Ibeam);
         FollowLinks(position, drag.Mode != DragMode.None && e.GetCurrentPoint(this).Properties.IsLeftButtonPressed);
         bool inGutter = position.X < GutterWidth;
         if (inGutter != overGutter)
@@ -239,8 +243,8 @@ public sealed partial class CodeEditor
             case DragMode.Column:
                 SetSelections(ColumnSelection(text, drag.Start, position), reveal: true);
                 break;
-            case DragMode.ExecutionPoint:
-                arrowAt = Math.Clamp(LineAtY(position.Y), 0, text.LineCount - 1);
+            case DragMode.Gutter:
+                dragging?.Drag(Math.Clamp(LineAtY(position.Y), 0, text.LineCount - 1));
                 InvalidateVisual();
                 break;
         }
@@ -249,20 +253,9 @@ public sealed partial class CodeEditor
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
-        if (drag.Mode == DragMode.ExecutionPoint)
+        if (drag.Mode == DragMode.Gutter && dragging is not null)
         {
-            int from = drag.Anchor;
-            int to = arrowAt;
-            arrowAt = -1;
-            InvalidateVisual();
-            if (to != from)
-            {
-                ExecutionPointDragged?.Invoke(this, to);
-            }
-            else
-            {
-                GutterClicked?.Invoke(this, new GutterClick(from, e.KeyModifiers, e.GetPosition(this), Context: false));
-            }
+            DropColumn(e.KeyModifiers, e.GetPosition(this));
         }
         ReleaseLink(e.GetPosition(this));
         drag = default;
@@ -479,8 +472,8 @@ public sealed partial class CodeEditor
         Lines,
         Column,
 
-        /// <summary>The execution arrow, carried to the line it will go on from.</summary>
-        ExecutionPoint,
+        /// <summary>What a column of the gutter took to drag, carried from line to line.</summary>
+        Gutter,
     }
 
     /// <summary>A press being dragged: how it selects, where it began (as an offset, and as a point

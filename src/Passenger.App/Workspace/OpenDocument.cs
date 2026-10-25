@@ -1,5 +1,8 @@
 using System.Text;
 using Avalonia;
+using Passenger.App.Debugging;
+using Passenger.App.Editors;
+using Passenger.App.Testing;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Languages;

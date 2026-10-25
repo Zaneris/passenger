@@ -22,7 +22,7 @@ public partial class MainWindow
     /// <summary>A press on a line's swatch opens the picker for it; whether the press was on one.</summary>
     private bool PickColour(CodeEditor editor, OpenDocument document, GutterClick click)
     {
-        if (click.Context || !editor.IsInMarkColumn(click.Position) || document.ColourMarks.FirstOrDefault(m => m.Line == click.Line) is not { Data: ColourUse use })
+        if (click.Context || document.ColourMarks.FirstOrDefault(m => m.Line == click.Line) is not { Data: ColourUse use })
         {
             return false;
         }

@@ -150,46 +150,36 @@ public partial class MainWindow : Window
         Editors.ForEachEditor(editor => editor.ProblemsRequested += (_, _) => ShowToolWindow(ToolWindowIds.Problems));
         Editors.ForEachEditor(editor => editor.CaretLimitReached += (_, _) =>
             status.Text = string.Create(CultureInfo.InvariantCulture, $"Cannot create more than {SelectionSet.MaxCount:N0} carets"));
-        Editors.ForEachEditor(editor => editor.ExecutionPointDragged += (_, line) =>
+        Editors.ForEachGutter(gutter =>
         {
-            if (Editors.Active is { } active && session.Debug.Session is { State: DebugState.Paused } paused)
+            CodeEditor editor = gutter.Editor;
+            gutter.Marks.ExecutionPointDragged += (_, line) =>
             {
-                IdeErrors.Observe(session.Debug.SetNextStatementAsync(paused, active.Path, line));
-            }
+                if (Editors.Active is { } active && session.Debug.Session is { State: DebugState.Paused } paused)
+                {
+                    IdeErrors.Observe(session.Debug.SetNextStatementAsync(paused, active.Path, line));
+                }
+            };
+            gutter.Marks.Pressed = click => Editors.Active is { } active && PressMark(editor, active, click);
+            gutter.Blame.Pressed += (_, line) =>
+            {
+                if (Editors.Active is { } active)
+                {
+                    IdeErrors.Observe(ShowBlamedCommitAsync(active, line));
+                }
+            };
+            gutter.Changes.Pressed += (_, pressed) =>
+            {
+                if (Editors.Active is { } active)
+                {
+                    IdeErrors.Observe(ShowChangePopupAsync(editor, active, pressed.Change));
+                }
+            };
         });
         Editors.ForEachEditor(editor => editor.GutterClicked += (_, click) =>
         {
             if (Editors.Active is not { } active)
             {
-                return;
-            }
-            if (!click.Context && editor.IsInMarkColumn(click.Position) && active.TestMarks.Any(m => m.Line == click.Line))
-            {
-                ShowTestMenu(editor, active, click.Line);
-                return;
-            }
-            if (!click.Context && editor.IsInMarkColumn(click.Position) && active.RouteMarks.Any(m => m.Line == click.Line))
-            {
-                ShowRouteMarkMenu(editor, active, click.Line);
-                return;
-            }
-            if (!click.Context && editor.IsInMarkColumn(click.Position) && active.RunMarks.Any(m => m.Line == click.Line))
-            {
-                ShowRunMarkMenu(editor, active, click.Line);
-                return;
-            }
-            if (PickColour(editor, active, click))
-            {
-                return;
-            }
-            if (!click.Context && editor.IsInAnnotationColumn(click.Position))
-            {
-                IdeErrors.Observe(ShowBlamedCommitAsync(active, click.Line));
-                return;
-            }
-            if (!click.Context && editor.IsInChangeColumn(click.Position) && ChangeAt(active, click.Line) is { } change)
-            {
-                IdeErrors.Observe(ShowChangePopupAsync(editor, active, change));
                 return;
             }
             if (click.Context)
@@ -819,6 +809,28 @@ public partial class MainWindow : Window
         };
         popups.Show(popup, at);
         Dispatcher.UIThread.Post(popup.Properties.FocusCondition, DispatcherPriority.Loaded);
+    }
+
+    /// <summary>A press on an icon of the gutter's marks: a test's menu, a route's, a run configuration's or a colour's
+    /// picker; false where the line has none of these.</summary>
+    private bool PressMark(CodeEditor editor, OpenDocument document, GutterClick click)
+    {
+        if (document.TestMarks.Any(m => m.Line == click.Line))
+        {
+            ShowTestMenu(editor, document, click.Line);
+            return true;
+        }
+        if (document.RouteMarks.Any(m => m.Line == click.Line))
+        {
+            ShowRouteMarkMenu(editor, document, click.Line);
+            return true;
+        }
+        if (document.RunMarks.Any(m => m.Line == click.Line))
+        {
+            ShowRunMarkMenu(editor, document, click.Line);
+            return true;
+        }
+        return PickColour(editor, document, click);
     }
 
     /// <summary>The Breakpoints window, a breakpoint chosen in it.</summary>

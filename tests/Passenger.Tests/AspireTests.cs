@@ -14,6 +14,7 @@ using Avalonia.Input.Platform;
 using Avalonia.VisualTree;
 using Grpc.Core;
 using Grpc.Net.Client;
+using Passenger.App.Editors;
 using Passenger.App;
 using Passenger.App.Aspire;
 using Passenger.App.Aspire.Protocol;
@@ -973,7 +974,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
             && editor.PointOf(document.Text.Snapshot.GetLineStart(line)).Y >= 0
             && editor.PointOf(document.Text.Snapshot.GetLineStart(line)).Y + editor.LineHeight < editor.Bounds.Height,
             $"the visible {resource} run gutter mark");
-        double x = Enumerable.Range(0, 400).First(x => editor.IsInMarkColumn(new Point(x, 0))) + 3;
+        double x = Enumerable.Range(0, 400).First(x => editor.IsOnGutterColumn(editor.Gutter!.Marks, new Point(x, 0))) + 3;
         Ui.Click(editor, new Point(x, editor.PointOf(document.Text.Snapshot.GetLineStart(line)).Y + editor.LineHeight / 2));
         Assert.NotNull(window.RunMarkMenu);
     }

@@ -4,6 +4,7 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.VisualTree;
+using Passenger.App.Debugging;
 using Passenger.App;
 using Passenger.App.Editors;
 using Passenger.App.Explorer;

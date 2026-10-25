@@ -173,6 +173,15 @@ public sealed partial class EditorArea : UserControl
         }
     }
 
+    /// <summary>Runs for every editor's gutter there is and every one a split makes, as wiring for its columns' events.</summary>
+    public void ForEachGutter(Action<EditorGutter> hook) => ForEachEditor(editor =>
+    {
+        if (EditorGutter.Of(editor) is { } gutter)
+        {
+            hook(gutter);
+        }
+    });
+
     /// <summary>What the area shows with no file open and no folder: the Welcome screen, before one opens and once it
     /// closes.</summary>
     public void ShowWelcome(Control welcome)

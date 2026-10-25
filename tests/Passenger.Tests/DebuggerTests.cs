@@ -5,6 +5,7 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.VisualTree;
+using Passenger.App.Editors;
 using Passenger.App;
 using Passenger.App.Debugging;
 using Passenger.Core;
@@ -98,15 +99,15 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         }
         dock.Move(dock[ToolWindowIds.Debug], Passenger.App.Docking.ToolAnchor.BottomLeft);
         Ui.Settle();
-        Assert.Contains(new LineAnnotation(0, "total: 0", LineAnnotationKind.InlineValue), editor.LineAnnotations);
-        Assert.Contains(new LineAnnotation(1, "i: 1", LineAnnotationKind.InlineValue), editor.LineAnnotations);
-        Assert.Contains(new LineAnnotation(3, "total: 0", LineAnnotationKind.InlineValue), editor.LineAnnotations);
+        Assert.Contains(new LineAnnotation(0, "total: 0", LineAnnotationLook.Muted), editor.LineAnnotations);
+        Assert.Contains(new LineAnnotation(1, "i: 1", LineAnnotationLook.Muted), editor.LineAnnotations);
+        Assert.Contains(new LineAnnotation(3, "total: 0", LineAnnotationLook.Muted), editor.LineAnnotations);
         Assert.DoesNotContain(editor.LineAnnotations, a => a.Line > 3);
 
         Ui.Run(window, AppActions.Resume);
         Ui.WaitFor(() => Value(window, "i") == "2", "the second stop");
         Assert.Equal("1", Value(window, "total"));
-        Assert.Contains(new LineAnnotation(1, "i: 2", LineAnnotationKind.InlineValue), editor.LineAnnotations);
+        Assert.Contains(new LineAnnotation(1, "i: 2", LineAnnotationLook.Muted), editor.LineAnnotations);
 
         Ui.Run(window, AppActions.StepOver);
         Ui.WaitFor(() => editor.LineMarks.Any(m => m.Kind == LineMarkKind.ExecutionPoint && m.Line != 3), "the step");
@@ -252,7 +253,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Ui.Press(window, "Enter");
         Assert.Contains(new LineMark(4, LineMarkKind.BreakpointBound), editor.LineMarks);
         Assert.Contains(new LineMark(4, LineMarkKind.ExecutionPoint), editor.LineMarks);
-        Assert.Contains(new LineAnnotation(2, "i: 1", LineAnnotationKind.InlineValue), editor.LineAnnotations);
+        Assert.Contains(new LineAnnotation(2, "i: 1", LineAnnotationLook.Muted), editor.LineAnnotations);
 
         editor.GoTo(new TextPosition(0, 0));
         Ui.Run(window, AppActions.ToggleBreakpoint);
@@ -266,7 +267,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Assert.Equal(5, window.BottomPanel.Debug.Frames[0].Line);
         Assert.Contains(new LineMark(4, LineMarkKind.ExecutionPoint), editor.LineMarks);
         Assert.Contains(new LineMark(4, LineMarkKind.BreakpointBound), editor.LineMarks);
-        Assert.Contains(new LineAnnotation(2, "i: 2", LineAnnotationKind.InlineValue), editor.LineAnnotations);
+        Assert.Contains(new LineAnnotation(2, "i: 2", LineAnnotationLook.Muted), editor.LineAnnotations);
         Ui.Run(window, AppActions.Stop);
         Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
         window.Close();
@@ -368,7 +369,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Assert.Equal("0", Value(window, "total"));
         Assert.Contains(new LineMark(4, LineMarkKind.BreakpointBound), editor.LineMarks);
         Assert.Contains(new LineMark(4, LineMarkKind.ExecutionPoint), editor.LineMarks);
-        Assert.Contains(new LineAnnotation(4, "total: 0", LineAnnotationKind.InlineValue), editor.LineAnnotations);
+        Assert.Contains(new LineAnnotation(4, "total: 0", LineAnnotationLook.Muted), editor.LineAnnotations);
         // The debugger names the compiler's line 9; the frame's row, and the stack copied from it, the editor's 5.
         Passenger.App.ToolWindows.DebugModel view = window.BottomPanel.Debug;
         Assert.Equal(9, view.Frames[0].Line);
@@ -542,11 +543,11 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Assert.Contains(new LineMark(13, LineMarkKind.ExecutionPoint), editor.LineMarks);
 
         Ui.Run(window, AppActions.Resume);
-        WaitDebugging(window, () => editor.LineAnnotations.Any(a => a.Kind == LineAnnotationKind.Exception), "the exception at its line");
-        LineAnnotation thrown = Assert.Single(editor.LineAnnotations, a => a.Kind == LineAnnotationKind.Exception);
+        WaitDebugging(window, () => editor.LineAnnotations.Any(a => a.Look == LineAnnotationLook.ErrorOnGround), "the exception at its line");
+        LineAnnotation thrown = Assert.Single(editor.LineAnnotations, a => a.Look == LineAnnotationLook.ErrorOnGround);
         Assert.Equal(7, thrown.Line);
         Assert.StartsWith("IndexOutOfRangeException", thrown.Text, StringComparison.Ordinal);
-        Assert.Contains(new LineAnnotation(7, "index: 5", LineAnnotationKind.InlineValue), editor.LineAnnotations);
+        Assert.Contains(new LineAnnotation(7, "index: 5", LineAnnotationLook.Muted), editor.LineAnnotations);
         Assert.Contains("IndexOutOfRangeException", window.Status, StringComparison.Ordinal);
 
         WaitDebugging(window, () => Row(window, "$exception") is not null, "the exception in Variables");
@@ -659,8 +660,8 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
 
         // The argument exceptions and the first turn's pass: the stop is the second turn's, at the line that threw it.
         StartDebugging(window);
-        WaitDebugging(window, () => editor.LineAnnotations.Any(a => a.Kind == LineAnnotationKind.Exception), "the stop at the exception breakpoint");
-        LineAnnotation thrown = Assert.Single(editor.LineAnnotations, a => a.Kind == LineAnnotationKind.Exception);
+        WaitDebugging(window, () => editor.LineAnnotations.Any(a => a.Look == LineAnnotationLook.ErrorOnGround), "the stop at the exception breakpoint");
+        LineAnnotation thrown = Assert.Single(editor.LineAnnotations, a => a.Look == LineAnnotationLook.ErrorOnGround);
         Assert.Equal((11, "InvalidOperationException: operation 2"), (thrown.Line, thrown.Text));
         Assert.Equal("2", Value(window, "turn"));
 
@@ -690,7 +691,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Assert.Equal(ExceptionScenarios.Thrown | ExceptionScenarios.HandledInExternalCode | ExceptionScenarios.Unhandled, operation.Scenarios);
 
         StartDebugging(window);
-        WaitDebugging(window, () => editor.LineAnnotations.Any(a => a.Kind == LineAnnotationKind.Exception) || window.Debugger.Session?.State == DebugState.Ended,
+        WaitDebugging(window, () => editor.LineAnnotations.Any(a => a.Look == LineAnnotationLook.ErrorOnGround) || window.Debugger.Session?.State == DebugState.Ended,
             "the stop where List.Sort catches the comparer's exception");
         Assert.Equal((10, "InvalidOperationException: left to List.Sort"), Thrown(editor));
         Ui.Run(window, AppActions.Resume);
@@ -704,7 +705,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Ui.Click(Button(breakpoints, "Done"));
         Assert.Equal(ExceptionScenarios.Thrown | ExceptionScenarios.HandledInUserCode, operation.Scenarios);
         StartDebugging(window);
-        WaitDebugging(window, () => editor.LineAnnotations.Any(a => a.Kind == LineAnnotationKind.Exception) || window.Debugger.Session?.State == DebugState.Ended,
+        WaitDebugging(window, () => editor.LineAnnotations.Any(a => a.Look == LineAnnotationLook.ErrorOnGround) || window.Debugger.Session?.State == DebugState.Ended,
             "the stop at the exception the program catches");
         Assert.Equal((2, "InvalidOperationException: caught by the program"), Thrown(editor));
         Ui.Run(window, AppActions.Resume);
@@ -755,7 +756,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Assert.Equal("2", Value(window, "turn"));
         Assert.Contains(new LineMark(2, LineMarkKind.ExecutionPoint), editor.LineMarks);
         Ui.Run(window, AppActions.Resume);
-        Ui.WaitFor(() => editor.LineAnnotations.Any(a => a.Kind == LineAnnotationKind.Exception), "the stop at the exception breakpoint");
+        Ui.WaitFor(() => editor.LineAnnotations.Any(a => a.Look == LineAnnotationLook.ErrorOnGround), "the stop at the exception breakpoint");
         Assert.Equal((5, "InvalidOperationException: turn 2"), Thrown(editor));
         Ui.Run(window, AppActions.Stop);
         Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
@@ -900,7 +901,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
 
     /// <summary>The exception the stop shown names, and the line it shows it at.</summary>
     private static (int Line, string Text)? Thrown(CodeEditor editor) =>
-        editor.LineAnnotations.FirstOrDefault(a => a.Kind == LineAnnotationKind.Exception) is { Text: not null } thrown ? (thrown.Line, thrown.Text) : null;
+        editor.LineAnnotations.FirstOrDefault(a => a.Look == LineAnnotationLook.ErrorOnGround) is { Text: not null } thrown ? (thrown.Line, thrown.Text) : null;
 
     /// <summary>A stop where a local holds a string of megabytes shows the start of it in its row and in a hover, and
     /// Copy Value still has all of it.</summary>
@@ -1209,7 +1210,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
 
     /// <summary>Where a line's execution arrow is drawn, right of its number, in the window's coordinates.</summary>
     private static Point Arrow(MainWindow window, CodeEditor editor, int line) =>
-        editor.TranslatePoint(editor.GutterColumnPoint(GutterColumn.Marks, line), window)!.Value;
+        editor.TranslatePoint(editor.GutterColumnPoint(editor.Gutter!.Marks, line), window)!.Value;
 
     /// <summary>A top-level row of the Variables view, by name.</summary>
     private static string? Value(MainWindow window, string name) => Row(window, name)?.Value;

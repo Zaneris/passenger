@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Avalonia.Controls;
+using Passenger.App.Editors;
 using Passenger.App.Run;
 using Passenger.App.Workspace;
 using Passenger.App.Aspire;

@@ -2052,9 +2052,9 @@ public sealed class DebugController : IDisposable
             int line = Current(document.Path, current.Line - 1);
             IReadOnlyList<LineAnnotation> inline = document.Syntax is { } syntax ? InlineValues.For(syntax.Current, line, values) : [];
             document.LineAnnotations = stopException is { } thrown && thrown.FrameId == current.Id
-                ? [new LineAnnotation(line, thrown.Text, LineAnnotationKind.Exception), .. inline]
+                ? [new LineAnnotation(line, thrown.Text, LineAnnotationLook.ErrorOnGround), .. inline]
                 : bindingStop is { } failed && bindingFrame == current.Id
-                    ? [new LineAnnotation(line, $"Binding error{(BindingErrors.Where(failed.Problem) is { } where ? $" at {where}" : string.Empty)}: {BindingErrors.Stopped(failed.Problem.Failure)}", LineAnnotationKind.Exception), .. inline]
+                    ? [new LineAnnotation(line, $"Binding error{(BindingErrors.Where(failed.Problem) is { } where ? $" at {where}" : string.Empty)}: {BindingErrors.Stopped(failed.Problem.Failure)}", LineAnnotationLook.ErrorOnGround), .. inline]
                     : inline;
         }
     }

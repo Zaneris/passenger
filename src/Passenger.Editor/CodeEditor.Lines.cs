@@ -737,7 +737,7 @@ public sealed partial class CodeEditor
         }
     }
 
-    /// <summary>Labels drawn in the last frame (line numbers, hints, placeholders, inline values), by what they show. A
+    /// <summary>Labels drawn in the last frame (line numbers, hints, placeholders, annotations), by what they show. A
     /// frame keeps the ones it draws again and disposes the rest.</summary>
     private sealed class LabelCache<TKey>
         where TKey : notnull

@@ -352,10 +352,7 @@ public partial class MainWindow
     }
 
     /// <summary>The change bar a gutter click on a line falls on, or null.</summary>
-    private static ChangeMark? ChangeAt(OpenDocument document, int line) =>
-        document.ChangeMarks.Cast<ChangeMark?>().FirstOrDefault(m => m!.Value.Count == 0
-            ? line == m.Value.Line || line == m.Value.Line - 1
-            : line >= m.Value.Line && line < m.Value.Line + m.Value.Count);
+    private static ChangeMark? ChangeAt(OpenDocument document, int line) => ChangeColumn.At(document.ChangeMarks, line);
 
     /// <summary>A click on a change bar: a popup of what the lines were, with the change's actions.</summary>
     private async Task ShowChangePopupAsync(CodeEditor editor, OpenDocument document, ChangeMark change)
