@@ -94,7 +94,11 @@ public sealed class TerminalScreen
     public int CursorColumn { get; private set; }
 
     public bool CursorVisible { get; private set; } = true;
-    public CursorShape CursorShape { get; private set; }
+    public CursorShape CursorShape => RequestedCursorShape ?? CursorShape.Block;
+
+    /// <summary>The program's cursor requests, or null to use the person's configured defaults.</summary>
+    public CursorShape? RequestedCursorShape { get; private set; }
+    public bool? RequestedCursorBlinking { get; private set; }
 
     /// <summary>Whether the arrow keys send their application forms (ESC O A rather than ESC [ A), as vim asks.</summary>
     public bool ApplicationCursorKeys { get; private set; }
@@ -928,12 +932,19 @@ public sealed class TerminalScreen
         }
         if (middle == " " && final == 'q')
         {
-            CursorShape = Raw(0) switch
+            int requested = Raw(0);
+            if (requested is < 0 or > 6)
             {
+                return;
+            }
+            RequestedCursorShape = requested switch
+            {
+                0 => null,
                 3 or 4 => CursorShape.Underline,
                 5 or 6 => CursorShape.Bar,
                 _ => CursorShape.Block,
             };
+            RequestedCursorBlinking = requested == 0 ? null : requested % 2 == 1;
             return;
         }
         if (middle == "!" && final == 'p')
@@ -1108,6 +1119,9 @@ public sealed class TerminalScreen
                 break;
             case 7:
                 autoWrap = on;
+                break;
+            case 12:
+                RequestedCursorBlinking = on;
                 break;
             case 25:
                 CursorVisible = on;
@@ -1470,6 +1484,8 @@ public sealed class TerminalScreen
     private void SoftReset()
     {
         CursorVisible = true;
+        RequestedCursorShape = null;
+        RequestedCursorBlinking = null;
         originMode = false;
         autoWrap = true;
         insertMode = false;
@@ -1494,7 +1510,6 @@ public sealed class TerminalScreen
         BracketedPaste = false;
         MouseTracking = MouseTracking.None;
         SgrMouse = false;
-        CursorShape = CursorShape.Block;
         tabStops = Stops(Columns);
         Title = string.Empty;
     }

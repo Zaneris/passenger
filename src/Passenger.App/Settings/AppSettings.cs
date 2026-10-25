@@ -79,6 +79,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// scrolls.</summary>
     public bool WheelZoom { get; init; }
     public double TerminalFontSize { get; init; } = 13;
+    public string? TerminalFontFamily { get; init; }
+    public bool TerminalCopyOnSelection { get; init; }
+    public bool TerminalCursorBlinking { get; init; }
+    public Passenger.Terminal.CursorShape TerminalCursorStyle { get; init; } = Passenger.Terminal.CursorShape.Block;
 
     /// <summary>Code Folding, Fold by default: the comments a file begins with fold as it opens (a file keeps the folds
     /// it closed with instead, once it has some).</summary>
@@ -341,6 +345,8 @@ public sealed record AppSettings : IStateDocument<AppSettings>
             EditorFontSize = Math.Clamp(EditorFontSize, MinFontSize, MaxFontSize),
             EditorLineSpacing = Math.Clamp(EditorLineSpacing, MinLineSpacing, MaxLineSpacing),
             TerminalFontSize = Math.Clamp(TerminalFontSize, MinFontSize, MaxFontSize),
+            TerminalFontFamily = string.IsNullOrWhiteSpace(TerminalFontFamily) ? null : TerminalFontFamily.Trim(),
+            TerminalCursorStyle = Enum.IsDefined(TerminalCursorStyle) ? TerminalCursorStyle : defaults.TerminalCursorStyle,
             IdleSeconds = Math.Clamp(IdleSeconds, MinIdleSeconds, MaxIdleSeconds),
             ConsoleBufferKb = Math.Clamp(ConsoleBufferKb, MinConsoleBufferKb, MaxConsoleBufferKb),
             Keymap = Enum.IsDefined(Keymap) ? Keymap : defaults.Keymap,

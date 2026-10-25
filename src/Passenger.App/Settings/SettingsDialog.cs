@@ -383,6 +383,25 @@ public sealed partial class SettingsDialog : Window
             + "which Compose works out on this computer, stay.");
 
         Add(TerminalPage, "Font size", Number(Working.TerminalFontSize, AppSettings.MinFontSize, AppSettings.MaxFontSize, 1, v => Change(s => s with { TerminalFontSize = v })), "font size shell");
+        TextBox terminalFont = new() { Classes = { "search" }, Text = Working.TerminalFontFamily ?? string.Empty, PlaceholderText = "JetBrains Mono", Width = 320 };
+        terminalFont.TextChanged += (_, _) => Change(s => s with { TerminalFontFamily = terminalFont.Text });
+        Add(TerminalPage, "Font family", terminalFont, "font family name typeface shell",
+            "An installed monospace font. Blank, unavailable or proportional fonts use bundled JetBrains Mono.");
+        Add(TerminalPage, "Copy on selection", Check(Working.TerminalCopyOnSelection, v => Change(s => s with { TerminalCopyOnSelection = v })),
+            "copy selection clipboard mouse drag word");
+        Add(TerminalPage, "Cursor blinking", Check(Working.TerminalCursorBlinking, v => Change(s => s with { TerminalCursorBlinking = v })),
+            "cursor caret blink blinking", "Programs can override this setting until the terminal is reset.");
+        ComboBox terminalCursor = new()
+        {
+            ItemsSource = new[] { "Block", "Line", "Underline" }, Classes = { "form" },
+            SelectedIndex = Working.TerminalCursorStyle switch { Passenger.Terminal.CursorShape.Bar => 1, Passenger.Terminal.CursorShape.Underline => 2, _ => 0 },
+        };
+        terminalCursor.SelectionChanged += (_, _) => Change(s => s with
+        {
+            TerminalCursorStyle = terminalCursor.SelectedIndex switch { 1 => Passenger.Terminal.CursorShape.Bar, 2 => Passenger.Terminal.CursorShape.Underline, _ => Passenger.Terminal.CursorShape.Block },
+        });
+        Add(TerminalPage, "Cursor style", terminalCursor, "cursor caret type style shape block line bar underline",
+            "Programs can override this setting until the terminal is reset.");
         (string shell, _) = Passenger.Terminal.TerminalSession.DefaultShell();
         TextBox path = new() { Classes = { "search" }, Text = Working.TerminalShell ?? string.Empty, PlaceholderText = shell, Width = 320 };
         path.TextChanged += (_, _) => Change(s => s with { TerminalShell = string.IsNullOrWhiteSpace(path.Text) ? null : path.Text.Trim() });

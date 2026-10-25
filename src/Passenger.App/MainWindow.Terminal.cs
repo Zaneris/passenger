@@ -47,6 +47,16 @@ public partial class MainWindow
     private static void FollowTerminalSettings(ToolWindows.TerminalPanel panel, Passenger.App.Settings.AppSettings next, Passenger.App.Settings.AppSettings? before)
     {
         panel.View.FontSize = next.TerminalFontSize;
+        if (before is null || before.TerminalFontFamily != next.TerminalFontFamily)
+        {
+            Avalonia.Media.FontFamily? family = next.TerminalFontFamily is null ? null : Avalonia.Media.FontManager.Current.SystemFonts.FirstOrDefault(font =>
+                string.Equals(font.Name, next.TerminalFontFamily, StringComparison.OrdinalIgnoreCase));
+            panel.View.FontFamily = family is not null && new Avalonia.Media.Typeface(family).GlyphTypeface.Metrics.IsFixedPitch
+                ? family : Terminal.TerminalView.DefaultFontFamily;
+        }
+        panel.View.CopyOnSelection = next.TerminalCopyOnSelection;
+        panel.View.CursorBlinking = next.TerminalCursorBlinking;
+        panel.View.CursorStyle = next.TerminalCursorStyle;
         if (next.TerminalShell is { } shell && Run.CommandLine.Split(shell) is { Count: > 0 } parts)
         {
             panel.Shell = (parts[0], [.. parts.Skip(1)]);
