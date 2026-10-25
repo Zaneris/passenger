@@ -138,9 +138,8 @@ public sealed partial class CodeEditor
 
     /// <summary>The drag a column took let go: one that came to nothing is the click it began as, which the columns after it
     /// and then the host hear.</summary>
-    private void DropColumn(KeyModifiers modifiers, Point at)
+    private void DropColumn(IGutterColumn column, KeyModifiers modifiers, Point at)
     {
-        IGutterColumn column = dragging!;
         dragging = null;
         GutterClick click = new(drag.Anchor, modifiers, at, Context: false);
         (double left, double width) = StripOf(column);

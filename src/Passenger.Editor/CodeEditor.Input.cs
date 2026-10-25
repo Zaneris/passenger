@@ -253,9 +253,9 @@ public sealed partial class CodeEditor
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
-        if (drag.Mode == DragMode.Gutter && dragging is not null)
+        if (drag.Mode == DragMode.Gutter && dragging is { } column)
         {
-            DropColumn(e.KeyModifiers, e.GetPosition(this));
+            DropColumn(column, e.KeyModifiers, e.GetPosition(this));
         }
         ReleaseLink(e.GetPosition(this));
         drag = default;

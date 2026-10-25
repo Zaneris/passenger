@@ -15,10 +15,10 @@ public readonly record struct RunMark(int Line);
 /// its picker. <see cref="Data"/> is what the language knows it by.</summary>
 public readonly record struct ColourMark(int Line, Color Colour, object? Data = null);
 
-/// <summary>The gutter's column right of the line numbers: one icon a line, the execution point's arrow over a test's run
-/// icon over a run configuration's over a colour's swatch, and the breakpoints' dots over the numbers, the number giving
-/// way. A press on its icons, or within <see cref="Reach"/> of its left edge (they reach into the change bars beside it),
-/// is its: the arrow's drags it to Set Next Statement, the others' are <see cref="Pressed"/>'s.</summary>
+/// <summary>The gutter's column right of the line numbers: one icon a line, the execution point's arrow before a test's run
+/// icon before a run configuration's before a colour's swatch, and the breakpoints' dots over the numbers, the number giving
+/// way. A press within <see cref="Reach"/> of its left edge, as its icons reach into the change bars beside it, is its on a
+/// line with an icon: the arrow's drags the arrow to Set Next Statement, the rest are <see cref="Pressed"/>'s.</summary>
 public sealed class MarkColumn : IGutterColumn
 {
     /// <summary>Its strip, between the numbers and the change bars.</summary>
