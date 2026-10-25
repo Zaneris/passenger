@@ -8,9 +8,10 @@ using Passenger.Workspace;
 namespace Passenger.App.Run;
 
 /// <summary>A run configuration's changes written into the launch profile it was made from, in its project's
-/// <c>Properties/launchSettings.json</c>, as text: a value replaced where it stands, a property added after the profile's
-/// last, indented as they are (on their line, for a profile written on one), one taken out with its line, so the other
-/// profiles and properties, the comments and trailing commas dotnet run's reader takes, stay byte for byte as they were.</summary>
+/// <c>Properties/launchSettings.json</c>, or one of the folder's own added as a new profile (the file made as dotnet new
+/// makes it, if there is none), as text: a value replaced where it stands, a property or profile added after the last,
+/// indented as they are (on their line, for one written on one), one taken out with its line, so the other profiles and
+/// properties, the comments and trailing commas dotnet run's reader takes, stay byte for byte as they were.</summary>
 public static class LaunchSettingsEdits
 {
     /// <summary>One value of a profile: a property (<c>commandLineArgs</c>) or, given <see cref="Entry"/>, one entry of an
@@ -92,6 +93,120 @@ public static class LaunchSettingsEdits
             : edited == made ? string.Empty
             : edited.StartsWith(made + " ", StringComparison.Ordinal) ? edited[(made.Length + 1)..].Trim()
             : null;
+    }
+
+    /// <summary>Where a new launchSettings.json says its schema, as dotnet new writes it.</summary>
+    private const string Schema = "https://json.schemastore.org/launchsettings.json";
+
+    /// <summary>The name a configuration of the folder's own is saved under as a profile of its project: its own, less the
+    /// project's name the configurations generated from its profiles begin with ("Hello: Staging" is Staging).</summary>
+    public static string ProfileName(ProjectModel project, RunConfiguration configuration)
+    {
+        string generated = RunConfiguration.NameOf(project, string.Empty);
+        string name = configuration.Name.Trim();
+        return name.StartsWith(generated, StringComparison.OrdinalIgnoreCase) ? name[generated.Length..].Trim() : name;
+    }
+
+    /// <summary>The profile a configuration of a project run here is saved as, its values as dotnet run and Passenger read them:
+    /// its program, arguments, working folder (none for the project's), browser and variables, ASP.NET Core's addresses as
+    /// the <c>applicationUrl</c> its browser's address is made from, when it has one. What a profile has no place for (a
+    /// framework, the console, building first, the output folder to run in) is left for the folder to keep.</summary>
+    public static JsonObject ProfileOf(RunConfiguration configuration)
+    {
+        bool project = configuration.Program.Length == 0;
+        JsonObject profile = new() { ["commandName"] = project ? LaunchProfile.ProjectCommand : LaunchProfile.ExecutableCommand };
+        if (!project)
+        {
+            profile["executablePath"] = configuration.Program;
+        }
+        if (configuration.Arguments.Length > 0)
+        {
+            profile["commandLineArgs"] = configuration.Arguments;
+        }
+        if (configuration.WorkingDirectory.Trim() is { Length: > 0 } folder && folder != "$(ProjectDir)")
+        {
+            profile["workingDirectory"] = folder;
+        }
+        string? urls = project && configuration.BrowserUrl.Length > 0 && configuration.Environment.GetValueOrDefault("ASPNETCORE_URLS") is { } given
+            && !string.IsNullOrWhiteSpace(given) ? given : null;
+        if (configuration.LaunchBrowser)
+        {
+            profile["launchBrowser"] = true;
+        }
+        LaunchProfile made = new(string.Empty, profile["commandName"]!.GetValue<string>(), null, null, null, new Dictionary<string, string>(), urls, configuration.LaunchBrowser, null);
+        if (configuration.BrowserUrl.Length > 0 && LaunchUrl(made, configuration.BrowserUrl) is { Length: > 0 } url)
+        {
+            profile["launchUrl"] = url;
+        }
+        if (urls is not null)
+        {
+            profile["applicationUrl"] = urls;
+        }
+        IEnumerable<KeyValuePair<string, string>> variables = configuration.Environment.Where(v => urls is null || v.Key != "ASPNETCORE_URLS");
+        if (variables.Any())
+        {
+            profile["environmentVariables"] = new JsonObject(variables.Select(v => KeyValuePair.Create(v.Key, (JsonNode?)JsonValue.Create(v.Value))));
+        }
+        return profile;
+    }
+
+    /// <summary>Adds a profile to a project's launchSettings.json as a save writes (<see cref="FileText.Save"/>), its text
+    /// changed as <see cref="Added"/> changes it; with none there, the file is made, its folder too, as dotnet new makes one
+    /// (its schema, then its profiles) with the line breaks and charset its .editorconfig asks. Null once written, else why not.</summary>
+    public static string? Add(string path, string profile, JsonObject values)
+    {
+        if (!File.Exists(path))
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            EditorConfig conventions = EditorConfig.For(path);
+            FileEncoding charset = conventions.Charset ?? FileEncoding.Utf8;
+            LineSeparator separator = conventions.EndOfLine ?? LineSeparator.LF;
+            string made = JsonText.Laid(new JsonObject { ["$schema"] = Schema, ["profiles"] = new JsonObject { [profile] = values.DeepClone() } }) + "\n";
+            FileText.Save(path, LineEndings.In(made, separator.Held()), charset.Encoding, charset.Bom, separator == LineSeparator.CR);
+            return null;
+        }
+        FileText file = FileText.Load(path) ?? throw new IOException($"{Path.GetFileName(path)} is not a text file");
+        (string? text, string? problem) = Added(file.Text, profile, values);
+        if (text is null)
+        {
+            return problem;
+        }
+        FileText.Save(path, text, file.Encoding, file.HasBom, file.CrBreaks);
+        return null;
+    }
+
+    /// <summary>The text with a profile added after its last, laid out as the file lays out its profiles, every other
+    /// character as it was (a file with no <c>profiles</c> given them after its last property); null with why when it does
+    /// not read as JSON or has a profile of that name, its letter case aside, as dotnet run tells them apart.</summary>
+    public static (string? Text, string? Problem) Added(string text, string profile, JsonObject values)
+    {
+        JsonText.Node root;
+        try
+        {
+            root = new JsonText.Reader(text).Document();
+        }
+        catch (FormatException unreadable)
+        {
+            return (null, $"launchSettings.json does not read as JSON: {unreadable.Message}");
+        }
+        if (root.Kind != JsonText.Kind.Object)
+        {
+            return (null, "launchSettings.json does not hold an object");
+        }
+        JsonText.Layout layout = new(text, JsonText.Unit(text, root));
+        if (root.Member("profiles")?.Value is not { } profiles)
+        {
+            return (layout.Add(root, "profiles", new JsonObject { [profile] = values.DeepClone() }), null);
+        }
+        if (profiles.Kind != JsonText.Kind.Object)
+        {
+            return (null, "launchSettings.json's profiles are not an object");
+        }
+        if (profiles.Members.FirstOrDefault(m => string.Equals(m.Name, profile, StringComparison.OrdinalIgnoreCase)) is { } taken)
+        {
+            return (null, $"launchSettings.json has a profile named {taken.Name} already");
+        }
+        return (layout.Add(profiles, profile, values), null);
     }
 
     /// <summary>Writes the changes into a profile of a launchSettings.json as a save writes (<see cref="FileText.Save"/>):

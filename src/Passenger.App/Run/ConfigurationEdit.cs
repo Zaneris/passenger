@@ -109,6 +109,9 @@ public static class ConfigurationEdit
     public static IReadOnlyList<string> Changed(RunConfiguration source, RunConfiguration edited) =>
         Between(source, edited) is { } edit ? [.. edit.Select(f => f.Key)] : [];
 
+    /// <summary>Whether the two hold the same values, every field as the store keeps it.</summary>
+    public static bool Same(RunConfiguration one, RunConfiguration other) => JsonNode.DeepEquals(Node(one), Node(other));
+
     /// <summary>An edit with each path it names mapped, as the store keeps them relative to the folder and the window full.</summary>
     public static JsonObject Mapped(JsonObject edit, Func<string, string> path)
     {

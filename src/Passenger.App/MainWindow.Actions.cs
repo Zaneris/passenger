@@ -271,6 +271,8 @@ public partial class MainWindow
         Add(A.Debug, "Debug", "Run", _ => DebugSelected(), _ => Unconfigured("debug"), ("Run", 0, 1));
         // No key in Rider's Visual Studio keymaps.
         Add(A.EditConfigurations, "Edit Configurations…", "Run", _ => ShowRunConfigurations(), NeedsFolder, ("Run", 0, 5));
+        // Edit Configurations' button, on the configuration chosen there; elsewhere, on the toolbar's.
+        Add(A.SaveAsLaunchProfile, "Save as Launch Profile", "Run", _ => ShareChosen(), _ => WhyNotShare());
         // Rerun runs the last session again, as it ran; one still running is stopped first.
         Add(A.Rerun, "Rerun", "Run", c =>
         {

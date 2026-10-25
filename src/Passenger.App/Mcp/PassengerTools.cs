@@ -1577,9 +1577,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     [McpServerTool(Name = McpTools.IdeAction, Title = "Run an IDE action", Destructive = true), Description(
         "Runs an IDE action by its id (app.build, app.debug.stepOver...; ide_actions lists them) as its shortcut would, or " +
-        "says why it cannot. input: app.migrations.add's name, updateTo's target.")]
+        "says why it cannot. input: app.migrations.add's name, updateTo's target; app.saveAsLaunchProfile's configuration (else the chosen one).")]
     public Task<string> IdeAction(string action, string? input = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
         action.StartsWith("app.migrations.", StringComparison.Ordinal) && window.Actions[action] is not null ? await window.MigrationsForAgentAsync(action, input, cancel)
+        : action == AppActions.SaveAsLaunchProfile ? window.SaveAsLaunchProfileForAgent(input)
         : input is not null ? throw new InvalidOperationException($"{action} takes no input")
         : window.Actions.Run(action) is { } why ? throw new InvalidOperationException($"{action} did not run: {why}") : $"Ran {action}");
 

@@ -75,6 +75,18 @@ public static class JsonText
         return (text, null);
     }
 
+    /// <summary>A value written as dotnet new lays out launchSettings.json: each member and item of an object or array on a
+    /// line of its own, a level of <paramref name="unit"/> in from the line holding it (which stands at <paramref name="indent"/>).</summary>
+    public static string Laid(JsonNode? value, string unit = "  ", string eol = "\n", string indent = "") => value switch
+    {
+        JsonObject { Count: > 0 } members => "{" + string.Concat(members.Select((member, i) =>
+            $"{eol}{indent}{unit}{JsonSerializer.Serialize(member.Key, Written)}: {Laid(member.Value, unit, eol, indent + unit)}{(i < members.Count - 1 ? "," : string.Empty)}"))
+            + $"{eol}{indent}}}",
+        JsonArray { Count: > 0 } items => "[" + string.Concat(items.Select((item, i) =>
+            $"{eol}{indent}{unit}{Laid(item, unit, eol, indent + unit)}{(i < items.Count - 1 ? "," : string.Empty)}")) + $"{eol}{indent}]",
+        _ => value?.ToJsonString(Written) ?? "null",
+    };
+
     /// <summary>One level of the file's indentation: what its root's first property stands in from the root's own line,
     /// else two spaces, as dotnet new writes launchSettings.json.</summary>
     internal static string Unit(string text, Node root)
@@ -150,6 +162,19 @@ public static class JsonText
                 ? $"{{{eol}{MemberIndent(holder)}{unit}{one}{eol}{MemberIndent(holder)}}}"
                 : $"{{ {one} }}";
             return member is null ? Insert(holder, name, written) : Replace(member.Value.Start, member.Value.End, written);
+        }
+
+        /// <summary>A member added after the object's last, its value laid out (<see cref="Laid"/>) a level in from it where
+        /// the object holds its members on lines of their own or holds none, else written on the object's line as the
+        /// others are.</summary>
+        public string Add(Node holder, string name, JsonNode value)
+        {
+            if (holder.Members.Count == 0 && SameLine(text, holder.Start, holder.Close))
+            {
+                string outer = IndentOf(text, holder.Start);
+                return Replace(holder.Start + 1, holder.Close, $"{eol}{outer}{unit}{Quoted(name)}: {Laid(value, unit, eol, outer + unit)}{eol}{outer}");
+            }
+            return Insert(holder, name, Lined(holder) ? Laid(value, unit, eol, MemberIndent(holder)) : value.ToJsonString(Written));
         }
 
         /// <summary>A member put after the object's last, on a line of its own indented as the others where they have

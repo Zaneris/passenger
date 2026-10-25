@@ -8,6 +8,7 @@ using Passenger.App.Debugging;
 using Passenger.App.Editors;
 using Passenger.App;
 using Passenger.App.Mcp;
+using Passenger.App.Run;
 using Passenger.App.Settings;
 using Passenger.Core;
 using Passenger.Editor;
@@ -197,6 +198,38 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
             Assert.True(commit.IsError == true, $"Commit in a folder with no repository was answered as run: {said}");
             Assert.Contains(Refusals.NoRepository, said, StringComparison.Ordinal);
             Assert.False(window.DockHost.IsShown(ToolWindowIds.Commit), "Commit, refused for want of a repository, opened the Commit window anyway");
+        }
+        finally
+        {
+            Gone(client);
+            window.Close();
+        }
+    }
+
+    /// <summary>An agent saves one of the folder's own run configurations as a launch profile through ide_action, naming
+    /// it: the answer says where it went, the window lists it as generated from the profile, and one generated already is
+    /// refused, saying why.</summary>
+    [AvaloniaFact]
+    public void An_agent_saves_the_persons_run_configuration_as_a_launch_profile_and_is_told_why_not_for_a_generated_one()
+    {
+        MainWindow window = AgentsWindow(Folder, languageServer: false);
+        string project = PathNames.Canonical(Path.Combine(Folder, "Sum.csproj"));
+        window.SetConfigurations([new RunConfiguration { Name = "Twice", Project = project, Arguments = "--twice", WorkingDirectory = "$(ProjectDir)" }], "Twice");
+        McpClient client = Await(Task.Run(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        try
+        {
+            Task<JsonElement> saving = Task.Run(() => Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.SaveAsLaunchProfile, ["input"] = "Twice" }));
+            Press(Question(window, "the question for the agent's action"), "Allow");
+            Assert.Equal("Saved as the launch profile Twice in Sum's Properties/launchSettings.json, made for it: it is now Sum: Twice, generated from that profile",
+                Await(saving, "the agent's Save as Launch Profile").GetString());
+            Assert.True(window.Configurations.SingleOrDefault(c => c.Name == "Sum: Twice") is { Generated: true, Arguments: "--twice" },
+                $"The window does not list the configuration the agent saved as generated from its profile: {string.Join(", ", window.Configurations.Select(c => c.Name))}");
+
+            CallToolResult refused = Await(Task.Run(() => Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.SaveAsLaunchProfile, ["input"] = "Sum: Twice" })),
+                "the agent's Save as Launch Profile of a generated configuration");
+            string said = Text(refused);
+            Assert.True(refused.IsError == true, $"Save as Launch Profile of a generated configuration was answered as done: {said}");
+            Assert.Contains("Sum: Twice is generated from its launch profile already", said, StringComparison.Ordinal);
         }
         finally
         {

@@ -144,6 +144,51 @@ public sealed class RunConfigurations(string? folder, Func<WorkspaceModel?>? wor
         return All.FirstOrDefault(c => c.Generated && string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>One of the folder's own given way to the configuration a launch profile just written for it makes (Save as
+    /// Launch Profile): the own one gone, what of it the profile does not hold kept as the generated one's change, and the
+    /// toolbar's choice of it the generated one's; null, the own one kept, when the profile makes none.</summary>
+    public RunConfiguration? Share(string name, string project, string profile)
+    {
+        UiThread.Check();
+        if (own.FindIndex(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase)) is not (>= 0 and var at))
+        {
+            return null;
+        }
+        RunConfiguration mine = own[at];
+        own.RemoveAt(at);
+        Configure(projects);
+        if (All.FirstOrDefault(c => c.Generated && c.Kind == RunKind.Project && c.LaunchProfile == profile && PathNames.Same(c.Project, project)) is not { } made)
+        {
+            own.Insert(at, mine);
+            Configure(projects);
+            return null;
+        }
+        Change(made.Name, ConfigurationEdit.Between(made.Source ?? made, mine with { Name = made.Name }));
+        if (string.Equals(preferred, name, StringComparison.OrdinalIgnoreCase))
+        {
+            preferred = made.Name;
+        }
+        Configure(projects, picked ? preferred : null);
+        Write();
+        return All.FirstOrDefault(c => c.Generated && string.Equals(c.Name, made.Name, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>Undo of <see cref="Share"/>: the folder's own back in its place, the generated one's change as it was before,
+    /// and the own one chosen again if it was.</summary>
+    public void Unshare(RunConfiguration mine, int at, string generated, JsonObject? edit, bool chosen)
+    {
+        UiThread.Check();
+        own.Insert(Math.Clamp(at, 0, own.Count), mine);
+        Change(generated, edit is null ? null : (JsonObject)edit.DeepClone());
+        if (chosen)
+        {
+            preferred = mine.Name;
+            picked = true;
+        }
+        Configure(projects, picked ? preferred : null);
+        Write();
+    }
+
     private void Change(string name, JsonObject? edit)
     {
         if (edit is null)

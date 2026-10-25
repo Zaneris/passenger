@@ -204,6 +204,9 @@ public static class AppActions
     public const string StopAll = "app.stopAll";
     public const string Rerun = "app.rerun";
     public const string EditConfigurations = "app.editConfigurations";
+
+    // One of the folder's own run configurations saved as a launch profile of its project: no keys of Rider's.
+    public const string SaveAsLaunchProfile = "app.saveAsLaunchProfile";
     public const string ShowBuild = "app.showBuild";
     public const string ShowRun = "app.showRun";
     public const string ShowAspire = "app.showAspire";

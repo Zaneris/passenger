@@ -184,13 +184,13 @@ public sealed record RunConfiguration
         List<ProjectModel> all = [.. projects];
         foreach (ProjectModel project in all.Where(p => p.Exists && p.IsRunnable))
         {
-            string name = project.IsAspireHost ? $"Aspire: {project.Name}" : project.Name;
+            string name = NameOf(project);
             IReadOnlyList<LaunchProfile> profiles = Run.LaunchProfile.Read(project);
             if (!profiles.Any(p => p.Unsupported is null && !p.RunsInContainer))
             {
                 generated.Add(new RunConfiguration { Name = name, Project = project.Path, Aspire = project.IsAspireHost, Generated = true });
             }
-            generated.AddRange(profiles.Select(p => From(project, p) with { Name = $"{name}: {p.Name}", Generated = true }));
+            generated.AddRange(profiles.Select(p => From(project, p) with { Name = NameOf(project, p.Name), Generated = true }));
         }
         foreach (string path in singleFileAppHosts ?? [])
         {
@@ -222,6 +222,14 @@ public sealed record RunConfiguration
         }
         return generated;
     }
+
+    /// <summary>The name of the configuration generated for a project itself, which those of its launch profiles begin with
+    /// ("Hello", "Aspire: Host").</summary>
+    public static string NameOf(ProjectModel project) => project.IsAspireHost ? $"Aspire: {project.Name}" : project.Name;
+
+    /// <summary>The name of the configuration generated for a project's launch profile ("Hello: https"), unless another
+    /// generated one took it first.</summary>
+    public static string NameOf(ProjectModel project, string profile) => $"{NameOf(project)}: {profile}";
 
     /// <summary>A configuration with a launch profile's values: what generating one makes, and what choosing a profile in
     /// Edit Configurations fills in. A profile's own folder, else the project's, as <c>dotnet run</c> runs it; a container
