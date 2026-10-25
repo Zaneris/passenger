@@ -24,6 +24,19 @@ that fixed it, in one of the forms below. A failure not yet understood goes in o
   that notice to its standard output; 24 burners with the tests at nice 15 failed both so. **The test** read the runtime's
   words as the program's; it reads the program's own, and a let-go that gives up is now told in the debug console
   (6822d614).
+- `MigrationsTests`' `A_missing_tool_and_Design_package_are_found_before_the_command_fixed_in_place_and_the_command_made`,
+  the Mac under load, twice alone and once in four loaded runs here (#532): "Undo asked 0 questions". The test clicked
+  the project's row, undid, and clicked the same row again for the second undo; when the first undo came back within the
+  500 ms of a double click (0.43 s here), the second press was the row's double click, which opened Shop.csproj in an
+  editor that took the keys, so Undo went to the editor. Neither race in the IDE: **the test**'s two clicks at one place
+  were a person's double click; `Ui.Click` now waits out the double-click time after a click at the same place (33d096bd).
+- `AspireStandInTests`, a different test each run, beside other classes with Docker Desktop down (#532): the status read
+  "Docker isn't running (context desktop-linux): …" where the test expected its own words. An AppHost's start says the
+  engine's state, then follows its events; when they ended (at once for an engine that is down, later under load, as the
+  docker CLI is slow to fail) the window read the engine again and said the same words over what the run or an action
+  had said since, a window joining an events worker still retrying hearing no end, so which test it hit varied. A stand-in
+  engine held down until the run said it runs fails so every time. **A race in the IDE**: an event's read says the engine
+  only when its state changed (de915bfc).
 - `LongFileAssistTests`' `Typing_with_pauses_…`, CI macOS, release run 40125454882 (1bd14b59): the whole file's colours
   were asked for twice. CountedMessages noted where the server's refresh stood among Passenger's requests only once
   StreamJsonRpc had parsed it, which can come well after its last byte is read, so a whole-file request sent in that gap
