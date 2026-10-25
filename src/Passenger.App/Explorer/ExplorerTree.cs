@@ -168,21 +168,21 @@ public sealed class ExplorerTree
         {
             solution = solution.WithProjects(Current);
         }
-        bool any = false;
-        foreach (ExplorerNode node in Loaded(Root).Where(n => n.Kind == NodeKind.Project && n.Path is { } path && changed.Contains(path)).ToList())
+        List<ExplorerNode> reloaded = [];
+        foreach (ExplorerNode node in Loaded(Root, n => n.Kind == NodeKind.Project && n.Path is { } path && changed.Contains(path)))
         {
             ProjectModel project = projects[node.Path!];
             node.Detail = Unloaded.Contains(project.Path) ? "(unloaded)" : DetailOf(project);
             node.Tip = Unloaded.Contains(project.Path) ? null : TipOf(project);
-            foreach (ExplorerNode below in Loaded(node).ToList())
+            foreach (ExplorerNode below in Loaded(node, _ => true))
             {
-                any |= below.Reload();
+                if (below.Reload())
+                {
+                    reloaded.Add(below);
+                }
             }
         }
-        if (any)
-        {
-            Rebuild();
-        }
+        ShowAgain(reloaded);
     }
 
     public void Toggle(ExplorerNode node)
@@ -231,51 +231,57 @@ public sealed class ExplorerTree
             return;
         }
         HashSet<string> changed = new(folders, StringComparer.Ordinal);
-        bool any = false;
-        foreach (ExplorerNode node in Loaded(Root).ToList())
+        List<ExplorerNode> reloaded = [];
+        foreach (ExplorerNode node in Loaded(Root, n => n.Kind switch
         {
-            string? holds = node.Kind switch
+            NodeKind.Folder => n.Path is { } folder && changed.Contains(folder),
+            NodeKind.Project => n.Path is { } project && Path.GetDirectoryName(project) is { } holds && changed.Contains(holds),
+            _ => false,
+        }))
+        {
+            if (node.Reload())
             {
-                NodeKind.Folder => node.Path,
-                NodeKind.Project when node.Path is { } project => Path.GetDirectoryName(project),
-                _ => null,
-            };
-            if (holds is not null && changed.Contains(holds))
-            {
-                any |= node.Reload();
+                reloaded.Add(node);
             }
         }
-        if (any)
-        {
-            Rebuild();
-        }
+        ShowAgain(reloaded);
     }
 
-    /// <summary>The rows made again from the nodes as they now are: those still there kept, the rest taken out or put in.</summary>
-    private void Rebuild()
+    /// <summary>The rows under each node read again made anew from it as it now is, where it is shown open: those still
+    /// there kept, the rest taken out or put in, and every other row left as it was.</summary>
+    private void ShowAgain(List<ExplorerNode> reloaded)
     {
-        if (Root is null)
+        foreach (ExplorerNode node in reloaded.Where(n => n.IsExpanded))
         {
-            return;
-        }
-        List<ExplorerNode> wanted = [Root, .. Visible(Root)];
-        HashSet<ExplorerNode> shown = [.. Rows];
-        foreach (ExplorerNode node in wanted.Where(n => !shown.Contains(n)))
-        {
-            Mark(node);
-        }
-        Rows.Show(wanted);
-    }
-
-    /// <summary>The node and every one under it whose children have been read.</summary>
-    private static IEnumerable<ExplorerNode> Loaded(ExplorerNode node)
-    {
-        yield return node;
-        foreach (ExplorerNode child in node.LoadedChildren ?? [])
-        {
-            foreach (ExplorerNode below in Loaded(child))
+            List<ExplorerNode> wanted = [.. Visible(node)];
+            foreach (ExplorerNode row in wanted)
             {
-                yield return below;
+                Mark(row);
+            }
+            Rows.ShowUnder(node, wanted);
+        }
+    }
+
+    /// <summary>Those of the node and the nodes under it whose children have been read that are picked, all found before
+    /// any is read again, by a walk that makes nothing for the nodes it passes.</summary>
+    private static List<ExplorerNode> Loaded(ExplorerNode node, Func<ExplorerNode, bool> picked)
+    {
+        List<ExplorerNode> found = [];
+        Walk(node);
+        return found;
+
+        void Walk(ExplorerNode at)
+        {
+            if (picked(at))
+            {
+                found.Add(at);
+            }
+            if (at.LoadedChildren is { } children)
+            {
+                foreach (ExplorerNode child in children)
+                {
+                    Walk(child);
+                }
             }
         }
     }

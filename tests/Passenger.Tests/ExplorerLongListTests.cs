@@ -13,8 +13,8 @@ using Passenger.Core;
 namespace Passenger.Tests;
 
 /// <summary>The Explorer with every folder open, thousands of rows long: its scrollbar's thumb stays under the pointer
-/// through a drag, and a scroll step hands the rows on screen other files rather than making them again, costing what it
-/// does in a short list.</summary>
+/// through a drag, a scroll step hands the rows on screen other files rather than making them again, and what the UI
+/// thread does for a step or for a file written elsewhere costs what it does in a short list.</summary>
 public sealed class ExplorerLongListTests : IDisposable
 {
     private readonly List<string> folders = [];
@@ -103,6 +103,37 @@ public sealed class ExplorerLongListTests : IDisposable
         }
 
         static TextBlock Name(Control row) => row.GetVisualDescendants().OfType<TextBlock>().First();
+    }
+
+    [AvaloniaFact]
+    public void A_file_another_program_writes_into_the_long_list_costs_the_UI_thread_what_it_does_in_a_short_one()
+    {
+        long shortWrite = Writes(Folder(areas: 2, parts: 3, files: 8));
+        long longWrite = Writes(Folder(areas: 30, parts: 10, files: 10));
+        TestContext.Current.TestOutputHelper?.WriteLine(
+            $"A file written elsewhere allocated {shortWrite / 1024} KB on the UI thread until it showed, among 57 rows, {longWrite / 1024} KB among 3,331");
+        Assert.True(longWrite <= shortWrite + (256 * 1024),
+            $"A file written elsewhere allocated {longWrite / 1024} KB on the UI thread until the Explorer showed it among 3,331 rows, against {shortWrite / 1024} KB "
+            + "among 57: the refresh made the whole list again rather than its folder's rows");
+
+        // The least the UI thread allocated from a file written in the last folder until its row showed, of three.
+        long Writes(string folder)
+        {
+            MainWindow window = Open(folder);
+            string last = PathNames.Canonical(Directory.EnumerateDirectories(Directory.EnumerateDirectories(folder).Order().Last()).Order().Last());
+            long least = long.MaxValue;
+            for (int i = 0; i < 3; i++)
+            {
+                string name = $"Written{i}.cs";
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                File.WriteAllText(Path.Combine(last, name), "class Written { }\n");
+                Ui.WaitFor(() => window.ExplorerView.Tree.Rows.Any(r => r.Name == name), $"{name} in the Explorer");
+                Ui.Settle();
+                least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
+            }
+            window.Close();
+            return least;
+        }
     }
 
     /// <summary>A folder of areas, each of parts, each of files, with nothing else in it.</summary>
