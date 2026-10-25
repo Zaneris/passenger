@@ -1,7 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -85,8 +84,8 @@ public sealed class HierarchyView : DockPanel
         {
             Classes = { "tree" },
             ItemsSource = rows,
-            ItemTemplate = new FuncDataTemplate<HierarchyRow>((row, _) => row is null ? new TextBlock() : Row(row), supportsRecycling: false),
         };
+        ReusedRows.Use(list, Row);
         list.DoubleTapped += (_, _) => Go();
         TreeKeys.Attach<HierarchyRow>(list, Toggle, row =>
         {
@@ -204,36 +203,38 @@ public sealed class HierarchyView : DockPanel
         }
     }
 
-    private Control Row(HierarchyRow row)
+    /// <summary>A row for whichever symbol the list hands its container: its chevron, name, and what and where it is.</summary>
+    private Control Row()
     {
         PathIcon chevron = new() { Width = 10, Height = 10, Margin = new Thickness(0, 0, 4, 0) };
-        row.FollowWhileShown(chevron, (_, _) =>
-        {
-            chevron.IsVisible = row.Expands;
-            chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(row.IsExpanded ? IconKeys.ChevronDown : IconKeys.ChevronRight));
-        });
-        chevron.PointerPressed += (_, e) =>
-        {
-            Toggle(row);
-            e.Handled = true;
-        };
-        TextBlock name = new() { Text = row.Node.Item.Name, VerticalAlignment = VerticalAlignment.Center, FontWeight = row.Depth == 0 ? FontWeight.SemiBold : FontWeight.Normal };
+        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock detail = new()
         {
-            Text = $"{row.Node.Item.Detail}  {System.IO.Path.GetFileName(row.Node.Path)}:{row.Node.Where.Line + 1}",
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(10, 0, 0, 0),
             FontSize = 12,
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
         detail.Classes.Add("muted");
-        return new StackPanel
+        StackPanel line = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { chevron, name, detail } };
+        chevron.PointerPressed += (_, e) =>
         {
-            Orientation = Orientation.Horizontal,
-            Height = ListRow.Height,
-            Margin = new Thickness(8 + (row.Depth * 16), 0, 8, 0),
-            Children = { chevron, name, detail },
+            if (line.DataContext is HierarchyRow row)
+            {
+                Toggle(row);
+                e.Handled = true;
+            }
         };
+        string? chevronKey = null;
+        return line.Showing<HierarchyRow>(row =>
+        {
+            line.Margin = new Thickness(8 + (row.Depth * 16), 0, 8, 0);
+            chevron.IsVisible = row.Expands;
+            chevron.Resource(PathIcon.DataProperty, ref chevronKey, row.IsExpanded ? IconKeys.ChevronDown : IconKeys.ChevronRight);
+            name.Text = row.Node.Item.Name;
+            name.FontWeight = row.Depth == 0 ? FontWeight.SemiBold : FontWeight.Normal;
+            detail.Text = $"{row.Node.Item.Detail}  {System.IO.Path.GetFileName(row.Node.Path)}:{row.Node.Where.Line + 1}";
+        });
     }
 
     // As wide as its words: an option toggle is otherwise an icon's square.

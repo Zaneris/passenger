@@ -152,8 +152,8 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         {
             Classes = { "tree" },
             Height = ListRow.Height * 10,
-            ItemTemplate = new FuncDataTemplate<SearchMatch>((match, _) => match is null ? new TextBlock() : Row(match, ligatures), supportsRecycling: false),
         };
+        ReusedRows.Use(results, () => Row(ligatures));
         results.SelectionChanged += (_, _) => ShowPreview();
         results.DoubleTapped += (_, _) => Choose();
         ToolWindows.ListMenus.Attach(results, () => results.SelectedItem is not SearchMatch chosen ? [] :
@@ -550,13 +550,12 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
     }
 
     /// <summary>A match's line, its leading space trimmed and the match itself bold, and where it is at the right.</summary>
-    private static Control Row(SearchMatch match, bool ligatures)
+    /// <summary>A match's row for whichever match the list hands its container: its line, the match in bold, and where it is.</summary>
+    private static Control Row(bool ligatures)
     {
-        string line = match.LineText;
-        int indent = line.Length - line.TrimStart().Length;
-        int start = Math.Clamp(match.Column - indent, 0, Math.Max(0, line.Length - indent));
-        string trimmed = line[indent..];
-        int length = Math.Min(match.Length, trimmed.Length - start);
+        Avalonia.Controls.Documents.Run before = new();
+        Avalonia.Controls.Documents.Run matched = new() { FontWeight = FontWeight.Bold };
+        Avalonia.Controls.Documents.Run after = new();
         TextBlock text = new()
         {
             VerticalAlignment = VerticalAlignment.Center,
@@ -564,18 +563,26 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
             FontFamily = CSharp.Fonts.Mono,
             FontSize = 12,
             FontFeatures = CSharp.Fonts.Features(ligatures),
+            Inlines = [before, matched, after],
         };
-        text.Inlines = [];
-        text.Inlines.Add(new Avalonia.Controls.Documents.Run(trimmed[..start]));
-        text.Inlines.Add(new Avalonia.Controls.Documents.Run(trimmed.Substring(start, Math.Max(0, length))) { FontWeight = FontWeight.Bold });
-        text.Inlines.Add(new Avalonia.Controls.Documents.Run(trimmed[Math.Min(trimmed.Length, start + Math.Max(0, length))..]));
-        TextBlock where = new() { Text = $"{match.Name} {match.Line + 1}", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 4, 0), FontSize = 12 };
+        TextBlock where = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 4, 0), FontSize = 12 };
         where.Classes.Add("muted");
         DockPanel row = new() { Height = ListRow.Height, Margin = new Thickness(8, 0) };
         DockPanel.SetDock(where, Dock.Right);
         row.Children.Add(where);
         row.Children.Add(text);
-        ToolTip.SetTip(row, match.Path);
-        return row;
+        return row.Showing<SearchMatch>(match =>
+        {
+            string line = match.LineText;
+            int indent = line.Length - line.TrimStart().Length;
+            int start = Math.Clamp(match.Column - indent, 0, Math.Max(0, line.Length - indent));
+            string trimmed = line[indent..];
+            int length = Math.Max(0, Math.Min(match.Length, trimmed.Length - start));
+            before.Text = trimmed[..start];
+            matched.Text = trimmed.Substring(start, length);
+            after.Text = trimmed[Math.Min(trimmed.Length, start + length)..];
+            where.Text = $"{match.Name} {match.Line + 1}";
+            ToolTip.SetTip(row, match.Path);
+        });
     }
 }

@@ -1,7 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -80,8 +79,8 @@ public sealed class FindView : DockPanel
         {
             Classes = { "tree" },
             ItemsSource = rows,
-            ItemTemplate = new FuncDataTemplate<FindRow>((row, _) => row is null ? new TextBlock() : Row(row), supportsRecycling: false),
         };
+        ReusedRows.Use(list, Row);
         list.SelectionChanged += (_, _) => ShowPreview();
         list.DoubleTapped += (_, _) => Go();
         TreeKeys.Attach<FindRow>(list, Toggle, row =>
@@ -289,34 +288,55 @@ public sealed class FindView : DockPanel
     /// <summary>A group opened or closed is the one chosen.</summary>
     private void Choose(FindRow row) => list.SelectedItem = row;
 
-    private Control Row(FindRow row)
+    /// <summary>A row for whichever group or usage the list hands its container: a group's chevron, a file's icon, its
+    /// name and count; a usage's line number and code.</summary>
+    private Control Row()
     {
-        StackPanel panel = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Margin = new Thickness(8 + (row.Depth * 16), 0, 8, 0) };
-        if (row.Usage is { } usage)
-        {
-            TextBlock number = new() { Text = row.Detail, MinWidth = 36, FontFamily = new FontFamily("avares://Passenger.Editor/Fonts#JetBrains Mono"), FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
-            number.Classes.Add("muted");
-            panel.Children.Add(number);
-            panel.Children.Add(new TextBlock { Text = row.Label, FontFamily = new FontFamily("avares://Passenger.Editor/Fonts#JetBrains Mono"), FontSize = 12, VerticalAlignment = VerticalAlignment.Center });
-            return panel;
-        }
+        FontFamily mono = new("avares://Passenger.Editor/Fonts#JetBrains Mono");
+        TextBlock number = new() { MinWidth = 36, FontFamily = mono, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
+        number.Classes.Add("muted");
         PathIcon chevron = new() { Width = 10, Height = 10, Margin = new Thickness(0, 0, 6, 0) };
-        row.FollowWhileShown(chevron, (_, _) => chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(row.IsExpanded ? IconKeys.ChevronDown : IconKeys.ChevronRight)));
+        PathIcon icon = new() { Margin = new Thickness(0, 0, 6, 0) };
+        TextBlock label = new() { VerticalAlignment = VerticalAlignment.Center };
+        TextBlock count = new() { FontSize = 12, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        count.Classes.Add("muted");
+        StackPanel panel = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { number, chevron, icon, label, count } };
         chevron.PointerPressed += (_, e) =>
         {
-            Toggle(row);
-            e.Handled = true;
+            if (panel.DataContext is FindRow row)
+            {
+                Toggle(row);
+                e.Handled = true;
+            }
         };
-        panel.Children.Add(chevron);
-        if (row.Depth == 2 && row.Children.FirstOrDefault()?.Usage is { } first)
+        string? chevronKey = null;
+        return panel.Showing<FindRow>(row =>
         {
-            panel.Children.Add(new PathIcon { Data = Explorer.FileIcons.ForFile(first.Path), Foreground = Explorer.FileIcons.BrushForFile(first.Path), Margin = new Thickness(0, 0, 6, 0) });
-        }
-        panel.Children.Add(new TextBlock { Text = row.Label, VerticalAlignment = VerticalAlignment.Center, FontWeight = row.Depth == 0 ? FontWeight.SemiBold : FontWeight.Normal });
-        TextBlock count = new() { Text = row.Detail, FontSize = 12, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-        count.Classes.Add("muted");
-        panel.Children.Add(count);
-        return panel;
+            panel.Margin = new Thickness(8 + (row.Depth * 16), 0, 8, 0);
+            bool usage = row.Usage is not null;
+            number.IsVisible = usage;
+            number.Text = usage ? row.Detail : null;
+            chevron.IsVisible = !usage;
+            chevron.Resource(PathIcon.DataProperty, ref chevronKey, row.IsExpanded ? IconKeys.ChevronDown : IconKeys.ChevronRight);
+            FindRow? file = !usage && row.Depth == 2 && row.Children.FirstOrDefault()?.Usage is not null ? row.Children[0] : null;
+            icon.IsVisible = file is not null;
+            icon.Data = file is { Usage: { } first } ? Explorer.FileIcons.ForFile(first.Path) : null;
+            icon.Foreground = file is { Usage: { } at } ? Explorer.FileIcons.BrushForFile(at.Path) : null;
+            label.Text = row.Label;
+            label.FontWeight = !usage && row.Depth == 0 ? FontWeight.SemiBold : FontWeight.Normal;
+            if (usage)
+            {
+                label.FontFamily = mono;
+                label.FontSize = 12;
+            }
+            else
+            {
+                label.ClearValue(TextBlock.FontFamilyProperty);
+                label.ClearValue(TextBlock.FontSizeProperty);
+            }
+            count.IsVisible = !usage;
+            count.Text = usage ? null : row.Detail;
+        });
     }
 
     private sealed record Search(string Title, IReadOnlyList<FindRow> Roots);
