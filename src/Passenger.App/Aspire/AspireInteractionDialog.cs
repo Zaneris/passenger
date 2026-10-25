@@ -468,9 +468,13 @@ public sealed class AspireInteractionDialog : Window
         {
             Complete();
         }
-        catch (Exception error)
+        catch (RpcException)
         {
-            Problem.Text = error is RpcException ? "The AppHost interaction request failed." : error.Message;
+            Problem.Text = "The AppHost interaction request failed.";
+        }
+        catch (Exception refused) when (refused is InvalidOperationException or InvalidDataException or IOException or UnauthorizedAccessException)
+        {
+            Problem.Text = refused.Message;
         }
         finally
         {

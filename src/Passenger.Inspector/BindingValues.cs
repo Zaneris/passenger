@@ -59,6 +59,7 @@ internal static class BindingReader
         catch (Exception error)
         {
             slots.RemoveRange(1, slots.Count - 1);
+            InspectorTrace.Step($"the bindings could not be read: {error}");
             values = new XamlValues([], $"The inspector could not read the bindings: {error.GetType().Name}: {error.Message}");
         }
         slots[0] = JsonSerializer.Serialize(values, WireJson.Default.XamlValues);

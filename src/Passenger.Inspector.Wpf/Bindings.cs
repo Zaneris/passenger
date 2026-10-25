@@ -77,6 +77,7 @@ internal static partial class Bindings
         catch (Exception error)
         {
             // Never the app's failure: the inspector's own is said as one more binding failure of its own words.
+            InspectorTrace.Step($"a binding error could not be read: {error}");
             connection?.Send(new Reply { Event = Wire.BindingFailed, Error = $"The inspector could not read a binding error: {error.Message}" });
         }
     }
@@ -100,6 +101,7 @@ internal static partial class Bindings
         }
         catch (Exception error)
         {
+            InspectorTrace.Step($"a binding trace line could not be read: {error}");
             connection?.Send(new Reply { Event = Wire.BindingFailed, Error = $"The inspector could not read a binding error: {error.Message}" });
         }
     }

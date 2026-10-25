@@ -50,6 +50,7 @@ internal static class StartupHook
         }
         catch (Exception error)
         {
+            InspectorTrace.Step($"could not start in the app: {error}");
             Connection.Refuse(socket, null, $"The inspector could not start in the app: {error.GetBaseException().Message}");
         }
     }

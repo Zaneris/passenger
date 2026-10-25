@@ -60,9 +60,10 @@ public static class Frames
                 }
             }
         }
-        catch (Exception)
+        catch (Exception error)
         {
-            // The test's failure is the test's: nothing of drawing it may add to it.
+            // The test's failure is the test's: what went wrong drawing it is only said beside it, on the error stream.
+            Console.Error.WriteLine($"Passenger.TestFrames could not draw the failing test's windows: {error}");
         }
         finally
         {

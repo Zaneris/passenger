@@ -48,9 +48,15 @@ public sealed class Server(TextWriter protocol, HostReady ready)
             };
             Write(new HostReply { Id = request.Id, Result = JsonSerializer.SerializeToElement(result, result.GetType(), HostJson.Options) });
         }
+        catch (OperationCanceledException)
+        {
+            Write(new HostReply { Id = request.Id, Error = "cancelled" });
+        }
         catch (Exception error)
         {
-            Write(new HostReply { Id = request.Id, Error = error is OperationCanceledException ? "cancelled" : error.Message });
+            // Whole on the host's error stream, which Passenger logs; its message is the answer.
+            Console.Error.WriteLine($"Passenger.Host: {request.Method} failed: {error}");
+            Write(new HostReply { Id = request.Id, Error = error.Message });
         }
         finally
         {

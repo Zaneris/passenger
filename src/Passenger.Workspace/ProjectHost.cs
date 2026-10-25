@@ -308,7 +308,7 @@ public sealed class ProjectHost : IAsyncDisposable
         catch (Exception error)
         {
             why = $"the project host's answer could not be read ({error.GetType().Name}: {error.Message})";
-            PassengerLog.Write($"Project host (process {ProcessId}) was ended: {why}");
+            PassengerLog.Write($"Project host (process {ProcessId}) was ended: {why}: {error}");
             ChildProcesses.Kill(process);
         }
         Fail(why);

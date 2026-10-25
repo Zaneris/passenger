@@ -342,13 +342,14 @@ public sealed class McpProxy
                 joinedPath = socket;
                 joinedOn = McpHost.WindowFolder(socket);
             }
-            catch (Exception error)
+            catch (Exception error) when (error is IOException or McpException or InvalidOperationException)
             {
                 await stream.DisposeAsync();
-                if (error is IOException or McpException or InvalidOperationException)
-                {
-                    throw new NotJoined($"The connection to the Passenger window on {here} ended as the agent joined it; a later call tries again.");
-                }
+                throw new NotJoined($"The connection to the Passenger window on {here} ended as the agent joined it; a later call tries again.");
+            }
+            catch
+            {
+                await stream.DisposeAsync();
                 throw;
             }
             return joined;

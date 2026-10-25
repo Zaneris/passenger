@@ -52,6 +52,19 @@ internal static class Rules
             + "IsCompletedSuccessfully, IsFaulted or IsCanceled, after an early exit on its not having ended, after an await "
             + "of it or of a WhenAll naming it, in its ContinueWith's continuation, or the task a WhenAny gave.");
 
+    public static readonly DiagnosticDescriptor CatchAll = new(
+        "PSG0005",
+        "A catch takes every exception and passes none on",
+        "This catch takes every exception: catch what can be thrown here, or pass what it caught on (report it, rethrow it, or throw it inside another)",
+        Category,
+        DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description: "A catch of everything with no filter hides the IDE's own faults where nobody sees them. Catch what the "
+            + "code can throw there, or a filter naming it; where everything must be caught (a handler kept apart from "
+            + "others, a process's top level, a call into another's code, a loop that outlives one failure), the catch passes "
+            + "the exception itself on before it can leave: rethrown, thrown inside another, or given whole to a call, a value "
+            + "kept or returned, or a string made of it.");
+
     public static readonly DiagnosticDescriptor KeysUnread = new(
         "PSG9001",
         "A resource keys file is not read",
