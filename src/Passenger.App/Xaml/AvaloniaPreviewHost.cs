@@ -27,6 +27,9 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
     private IAvaloniaRemoteTransportConnection? connection;
     private Process? host;
     private bool disposed;
+
+    /// <summary>Whether the previewer's process has ended, whose end the pane says with its last words.</summary>
+    private bool ended;
     private Stopwatch? starting;
     private bool empty;
     private double drawnAt;
@@ -128,7 +131,14 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
         }
         connection = opened;
         opened.OnMessage += (_, message) => UiThread.Post(() => Received(opened, message));
-        opened.OnException += (_, error) => UiThread.Post(() => preview.Say($"The previewer's connection failed: {error.Message}"));
+        // A connection broken by the previewer's end says nothing over the end's own words, whichever is heard first.
+        opened.OnException += (_, error) => UiThread.Post(() =>
+        {
+            if (!ended)
+            {
+                preview.Say($"The previewer's connection failed: {error.Message}");
+            }
+        });
         opened.Start();
         double dpi = 96 * preview.Scaling;
         IdeErrors.Observe(opened.Send(new ClientSupportedPixelFormatsMessage { Formats = [RemoteFormat.Bgra8888, RemoteFormat.Rgba8888] }));
@@ -219,10 +229,11 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
         return result.Error.Split('\n')[0].Trim();
     }
 
-    private void Ended(Process ended)
+    private void Ended(Process process)
     {
-        if (!disposed && ended == host)
+        if (!disposed && process == host)
         {
+            ended = true;
             log.Ended();
         }
     }
