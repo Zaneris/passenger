@@ -243,8 +243,12 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             window.EditorArea.CodeEditor.ApplyEdits([new TextEdit(at, "Say() =>".Length, "Say(int times = 1) =>")]);
             Assert.True(window.Perform(AppActions.ApplyHotReloadChanges), $"Apply Hot Reload Changes could not run: {window.Status}");
             Assert.Equal("Hot Reload: saved for dotnet watch to apply", window.Status);
-            Assert.True(Waiting.Until(() => Processes.ReadId(started) is int again && again > 0 && again != second, TimeSpan.FromMinutes(1)),
-                "dotnet watch did not start the program again, for the signature changed while the window was held");
+            if (!Waiting.Until(() => Processes.ReadId(started) is int again && again > 0 && again != second, TimeSpan.FromMinutes(1)))
+            {
+                // What dotnet watch said meanwhile reaches the Run window only once the window runs again.
+                Ui.Settle();
+                Assert.Fail($"dotnet watch did not start the program again, for the signature changed while the window was held; the Run window:\n{Output(window)}");
+            }
             WaitWatched(window, () => window.Status?.Contains("dotnet watch is restarting the application", StringComparison.Ordinal) == true,
                 "the status bar to say dotnet watch restarted the program while the window was held", TimeSpan.FromMinutes(1));
 
