@@ -169,10 +169,12 @@ Projects in `src/`:
   (`TextDocument.AnchorAt`/`RangeAt`, moved before `Changed`; each handler isolated, its failure to
   `PassengerLog.Report`; `AnchoredList` for a list of them, read once a change): hold a place in the text with one,
   never your own `Map*`.
-- `Passenger.Editor`: the `CodeEditor` control (partials), `Keymap` and `EditorActions` (presets), `IHighlighter`. With
-  soft wrap, whatever turns an offset into a place goes through `Rows`/`RowSpan`. Wraps (`WrapMap`), rows (`RowMap`),
-  folds (`FoldList`), hints (`HintList`) and built lines (`LineRuns`) are runs an edit moves only where it reaches, so a
-  key costs what it changed, not the file's size: keep it so.
+- `Passenger.Editor`: the `CodeEditor` control (partials), `Keymap` and `EditorActions` (presets), `IHighlighter`; the
+  gutter's columns but numbers and folds are the App's (`IGutterColumn`, `EditorGutter`), the editor naming no debugger,
+  test or VCS concept (EditorRulesTests). With soft wrap, whatever turns an offset into a place goes through
+  `Rows`/`RowSpan`. Wraps (`WrapMap`), rows (`RowMap`), folds (`FoldList`), hints (`HintList`) and built lines
+  (`LineRuns`) are runs an edit moves only where it reaches, so a key costs what it changed, not the file's size: keep
+  it so.
 - `Passenger.Languages`: C# coloured by Roslyn's parser in-process (`CSharpHighlighter`, also each open file's one
   syntax service, `OpenDocument.Syntax`: use it, never a fresh parse), the rest by VS Code's TextMate grammars
   (`TextMateHighlighter`, scopes mapped in `ScopeColours`); `Highlighters.For` chooses. A new language: one `Language`
