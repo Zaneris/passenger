@@ -337,7 +337,7 @@ public abstract class McpRig : IDisposable
     /// <summary>A tool's whole result, an error's included, within the time the tool may take, or until the test gives up
     /// on it; with <paramref name="heard"/>, the call asks for progress and keeps what it is told.</summary>
     protected Task<CallToolResult> Result(McpClient client, [IdentifierOf(typeof(McpTools))] string tool, Dictionary<string, object?>? arguments = null, CancellationTokenSource? giveUp = null, Heard? heard = null) =>
-        Exchange($"The {tool} call", Limit(tool), cancel => client.CallToolAsync(tool, arguments, heard, cancellationToken: cancel).AsTask(), giveUp);
+        Exchange($"The {tool} call", Limit(tool, arguments), cancel => client.CallToolAsync(tool, arguments, heard, cancellationToken: cancel).AsTask(), giveUp);
 
     /// <summary>The progress an agent's call was told, as the SDK hands it over, on any thread.</summary>
     protected sealed class Heard : IProgress<ModelContextProtocol.ProgressNotificationValue>
@@ -391,16 +391,25 @@ public abstract class McpRig : IDisposable
         }
     }
 
-    /// <summary>How long a tool may take before the test calls it hung: minutes for one that builds first; for one that asks
-    /// the language server, longer than the 120 s Passenger waits for it to load the folder, so its own words come back;
-    /// a minute for any other.</summary>
-    protected static TimeSpan Limit([IdentifierOf(typeof(McpTools))] string tool) => tool switch
+    /// <summary>How long a tool may take before the test calls it hung: minutes for one that builds first (a Migrations
+    /// command's ide_action among them); for one that asks the language server, longer than the 120 s Passenger waits for it
+    /// to load the folder, so its own words come back; a minute for any other.</summary>
+    protected static TimeSpan Limit([IdentifierOf(typeof(McpTools))] string tool, Dictionary<string, object?>? arguments = null) => tool switch
     {
         McpTools.Build or McpTools.DebugStart or McpTools.Run or McpTools.TestsRun or McpTools.Profile or McpTools.NugetInstall => TimeSpan.FromMinutes(5),
+        McpTools.IdeAction when arguments?.GetValueOrDefault("action") is string action && Builds.Contains(action) => TimeSpan.FromMinutes(5),
         McpTools.Diagnostics or McpTools.SymbolInfo or McpTools.Definition or McpTools.Usages or McpTools.Hierarchy or McpTools.Rename or McpTools.CodeActions
             or McpTools.ApplyCodeAction or McpTools.Format or McpTools.FindSymbol or McpTools.Outline or McpTools.Refactor => TimeSpan.FromMinutes(3),
         _ => TimeSpan.FromMinutes(1),
     };
+
+    /// <summary>The actions whose ide_action builds before it runs: each Migrations command, which builds the project and its
+    /// startup project and then runs dotnet ef.</summary>
+    private static readonly HashSet<string> Builds =
+    [
+        AppActions.MigrationsRefresh, AppActions.AddMigration, AppActions.RemoveLastMigration, AppActions.UpdateDatabase,
+        AppActions.UpdateDatabaseTo, AppActions.ScriptMigrations, AppActions.BundleMigrations,
+    ];
 
     /// <summary>One exchange with Passenger, given up after a limit: one that runs out of time or fails ends the test naming
     /// it, with what Passenger said meanwhile, so a hang fails saying why rather than stopping the run in silence.</summary>
