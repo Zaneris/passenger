@@ -993,6 +993,18 @@ public static class Ui
         Assert.True(shown(), $"Once its background work had landed the window still lacked {what}");
     }
 
+    /// <summary><see cref="Landed(Func{bool}, string)"/> for a task that work ends (a diff opening, a commit), failing
+    /// unless it has ended once the work has landed, and its answer.</summary>
+    public static T Landed<T>(Task<T> task, string what)
+    {
+        Settle();
+        if (!task.IsCompleted)
+        {
+            throw new Xunit.Sdk.XunitException($"Once its background work had landed the window still lacked {what}");
+        }
+        return task.GetAwaiter().GetResult();
+    }
+
     /// <summary>Waits for something to become true while background work is still under way (a git made slow, an answer
     /// held back), running the dispatcher's loop but never waiting for that work to land as <see cref="WaitFor"/> does.</summary>
     public static void PumpUntil(Func<bool> condition, string what, TimeSpan? limit = null)

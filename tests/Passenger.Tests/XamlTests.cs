@@ -946,7 +946,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         Passenger.App.Xaml.XamlDocument xaml = window.XamlService.For(window.EditorArea.Active!)!;
         Ui.WaitFor(() => xaml.IsLoaded, "the project's XAML read");
         // Fluent's control list as an earlier session's Source Link gave it, merging in a file five folders up.
-        Passenger.Xaml.Metadata.AssemblyTypes fluent = xaml.Loaded.Result!.Types.Assemblies.Single(a => a.Name == "Avalonia.Themes.Fluent");
+        Passenger.Xaml.Metadata.AssemblyTypes fluent = Ui.Await(xaml.Loaded, "the project's XAML")!.Types.Assemblies.Single(a => a.Name == "Avalonia.Themes.Fluent");
         string entry = Path.Combine(Passenger.App.Xaml.LibrarySources.Folder, "SourceLink", fluent.Name,
             Passenger.App.Xaml.LibrarySources.Stamp(Passenger.App.Xaml.LibrarySources.Implementation(fluent.Path)));
         string escaped = Path.Combine(Passenger.App.State.StateStore.DefaultRoot, "escaped");

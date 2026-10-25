@@ -481,7 +481,7 @@ public abstract class DiscordFolders : IDisposable
             listening = cancel;
             if (OperatingSystem.IsWindows())
             {
-                _ = Task.Run(() => AcceptPipesAsync(cancel.Token));
+                _ = Waiting.Apart(() => AcceptPipesAsync(cancel.Token));
                 return;
             }
             string path = Base + "-0";
@@ -490,7 +490,7 @@ public abstract class DiscordFolders : IDisposable
             socket.Bind(new UnixDomainSocketEndPoint(path));
             socket.Listen(4);
             listener = socket;
-            _ = Task.Run(() => AcceptSocketsAsync(socket, cancel.Token));
+            _ = Waiting.Apart(() => AcceptSocketsAsync(socket, cancel.Token));
         }
 
         /// <summary>Discord quits: its socket goes and every connection ends.</summary>
@@ -525,7 +525,7 @@ public abstract class DiscordFolders : IDisposable
                 while (true)
                 {
                     Socket client = await socket.AcceptAsync(cancel);
-                    _ = Task.Run(() => ServeAsync(new NetworkStream(client, ownsSocket: true), cancel));
+                    _ = Waiting.Apart(() => ServeAsync(new NetworkStream(client, ownsSocket: true), cancel));
                 }
             }
             catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException)
@@ -552,7 +552,7 @@ public abstract class DiscordFolders : IDisposable
                         await pipe.DisposeAsync();
                         throw;
                     }
-                    _ = Task.Run(() => ServeAsync(pipe, cancel));
+                    _ = Waiting.Apart(() => ServeAsync(pipe, cancel));
                 }
             }
             catch (Exception error) when (error is OperationCanceledException or IOException or ObjectDisposedException)

@@ -106,8 +106,7 @@ public sealed class ConflictsTests : IDisposable
 
         Assert.Equal("Merge branch 'feature'", commit.Message);
         Task<bool> committed = commit.CommitAsync(push: false);
-        Ui.Landed(() => committed.IsCompleted, "the merge committed");
-        Assert.True(committed.Result, window.Status);
+        Assert.True(Ui.Landed(committed, "the merge committed"), window.Status);
         Assert.Equal(3, Git("rev-list", "--parents", "-n", "1", "HEAD").Split(' ', StringSplitOptions.RemoveEmptyEntries).Length);
         Assert.False(File.Exists(Path.Combine(folder, ".git", "MERGE_HEAD")), "The merge was still under way after its commit");
         Assert.Equal("Merge branch 'feature'", Git("log", "-1", "--format=%s").Trim());
@@ -177,8 +176,7 @@ public sealed class ConflictsTests : IDisposable
         Assert.True(window.Frontmost is not MergeWindow, "A merge window opened on a file a side lacks");
 
         Task<bool> committed = commit.CommitAsync(push: false);
-        Ui.Landed(() => committed.IsCompleted, "the merge committed");
-        Assert.True(committed.Result, window.Status);
+        Assert.True(Ui.Landed(committed, "the merge committed"), window.Status);
         Assert.Equal(["Main.cs", "Shop.cs"], Git("ls-files").Split('\n', StringSplitOptions.RemoveEmptyEntries));
         Assert.Equal(Old, Git("show", "HEAD:Main.cs"));
         window.Close();
@@ -218,8 +216,7 @@ public sealed class ConflictsTests : IDisposable
         Click(merge, view, view.IconAt(0, MergeSide.Left, ignore: false));
         Click(merge, view, view.IconAt(0, MergeSide.Right, ignore: true));
         Press(merge, "Apply Changes");
-        Ui.Landed(() => merging.IsCompleted, "the merge window closed");
-        Assert.True(merging.Result, window.Status);
+        Assert.True(Ui.Landed(merging, "the merge window closed"), window.Status);
         string merged = mine.Replace("Cake: 3", "Cake: 4", StringComparison.Ordinal);
         Assert.True(File.ReadAllBytes(menu).AsSpan().SequenceEqual(cp1252.GetBytes(merged)),
             $"The merge's result was not written in Windows-1252 with CRLF: {Convert.ToHexString(File.ReadAllBytes(menu))}");
@@ -344,8 +341,7 @@ public sealed class ConflictsTests : IDisposable
 
         MainWindow window = Open();
         Task<UnstashPopup?> showing = window.ShowUnstashAsync();
-        Ui.Landed(() => showing.IsCompleted, "the stashes");
-        Task popping = showing.Result!.PopAsync();
+        Task popping = Ui.Landed(showing, "the stashes")!.PopAsync();
         Ui.Landed(() => popping.IsCompleted && window.ConflictsWindow is not null, "the Conflicts dialog");
         Assert.Equal("Unstashed with conflicts: Shop.cs", window.Status);
         ConflictsDialog dialog = window.ConflictsWindow!;
@@ -377,8 +373,7 @@ public sealed class ConflictsTests : IDisposable
     private static string CommitRefused(MainWindow window)
     {
         Task<bool> committing = window.CommitView.CommitAsync(push: false);
-        Ui.Landed(() => committing.IsCompleted, "the commit's answer");
-        Assert.False(committing.Result, "A commit was made with files still in conflict");
+        Assert.False(Ui.Landed(committing, "the commit's answer"), "A commit was made with files still in conflict");
         return window.Status ?? string.Empty;
     }
 
@@ -424,7 +419,8 @@ public sealed class ConflictsTests : IDisposable
     /// <summary>A git command that is to stop for conflicts, as a merge or a pull does.</summary>
     private void Conflicting(params string[] arguments)
     {
-        ChildResult result = Task.Run(() => ChildProcesses.RunAsync(ChildProcesses.Command("git", arguments, folder), limit: TimeSpan.FromMinutes(1))).GetAwaiter().GetResult();
+        ChildResult result = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command("git", arguments, folder), limit: TimeSpan.FromMinutes(1))),
+            $"git {string.Join(' ', arguments)}");
         Assert.True(!result.Succeeded && Unmerged().Length > 0, $"git {string.Join(' ', arguments)} was to stop for conflicts: {result.Error}{result.Output}");
     }
 

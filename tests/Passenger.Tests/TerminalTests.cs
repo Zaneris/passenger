@@ -540,8 +540,7 @@ public sealed class TerminalTests
         Ui.Press(window, "ENTER");
         WaitForLine(program, "line hello", "the line as the program read it");
 
-        Ui.WaitFor(() => run.Ended.IsCompleted, "the program's end");
-        Assert.Equal(3, run.Ended.Result);
+        Assert.Equal(3, Ui.Await(run.Ended, "the program's end"));
         WaitForLine(program, "Process finished with exit code 3.", "its tab saying how it ended");
         Assert.Equal("Keys exited with code 3", window.Status);
         Assert.False(window.FindControl<Button>("StopButton")!.IsEnabled, "The toolbar's Stop could still be clicked once the program ended");

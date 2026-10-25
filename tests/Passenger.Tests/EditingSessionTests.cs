@@ -175,7 +175,7 @@ public sealed class EditingSessionTests
         {
             string[] pieces = ["a", "bc", "\r\n", "\n", "    ", "x y", "\t"];
             string pasted = string.Concat(Enumerable.Range(0, random.Next(1, 6)).Select(_ => pieces[random.Next(pieces.Length)]));
-            rig.Window.Clipboard!.SetTextAsync(pasted).GetAwaiter().GetResult();
+            Ui.Await(rig.Window.Clipboard!.SetTextAsync(pasted), "the text on the clipboard");
             rig.Press("meta V");
             Ui.Settle();
             string said = pasted.Replace("\r", "\\r", StringComparison.Ordinal).Replace("\n", "\\n", StringComparison.Ordinal);

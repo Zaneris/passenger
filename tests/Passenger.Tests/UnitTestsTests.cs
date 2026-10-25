@@ -153,8 +153,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
             "        Assert.True(run < 3, $\"failed on its run {run}\");\n    }\n}\n");
         MainWindow window = Open();
         Task<string?> found = window.Tests.DiscoverAsync(window.Folder!);
-        Ui.WaitFor(() => found.IsCompleted, "the tests to be found", TimeSpan.FromSeconds(120));
-        Assert.Null(found.Result);
+        Assert.Null(Ui.Await(found, "the tests to be found", TimeSpan.FromSeconds(120)));
 
         window.Perform(AppActions.ShowTests);
         Avalonia.Controls.ListBox tree = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window.BottomPanel.Tests)

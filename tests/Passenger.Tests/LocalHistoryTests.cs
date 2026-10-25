@@ -278,7 +278,8 @@ public sealed class LocalHistoryTests : IDisposable
 
         Task<VcsOutcome> checkout = window.Vcs.CheckoutAsync("side");
         Ui.WaitFor(() => checkout.IsCompleted && Text(window) == Saved1, "side checked out and the open file following it");
-        Assert.True(checkout.Result.Succeeded, checkout.Result.Message);
+        VcsOutcome checkedOut = Ui.Await(checkout, "side checked out");
+        Assert.True(checkedOut.Succeeded, checkedOut.Message);
         HistoryTab history = ShowFromFileMenu(window, "Show History…");
         Ui.WaitFor(() => history.Rows.Count == 1, "the checkout's change to the file");
         Assert.Equal("Git checkout", history.Rows[0].Title);

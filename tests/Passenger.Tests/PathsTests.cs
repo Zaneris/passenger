@@ -61,8 +61,7 @@ public sealed class PathsTests : IDisposable
         Ui.Settle();
         Assert.Equal(program, window.EditorArea.Active?.Path);
         Task<DiffWindow?> opening = window.ShowDiffAsync(Assert.Single(window.Vcs.Changes).Path);
-        Ui.WaitFor(() => opening.IsCompleted, "the diff to open");
-        DiffWindow diff = opening.Result!;
+        DiffWindow diff = Ui.Await(opening, "the diff to open")!;
         Assert.True(ReferenceEquals(window.EditorArea.Active!.Text, diff.View.Right.Document), "Show Diff opened a copy of the open file rather than the file itself");
         diff.Close();
         Ui.Settle();
@@ -82,8 +81,7 @@ public sealed class PathsTests : IDisposable
         Ui.WaitFor(() => commit.Chosen.Any(c => c.Name == "Program.cs"), "Program.cs in the Commit window");
         commit.Message = "Start at ten";
         Task<bool> committed = commit.CommitAsync(push: false);
-        Ui.WaitFor(() => committed.IsCompleted, "the commit");
-        Assert.True(committed.Result, window.Status);
+        Assert.True(Ui.Await(committed, "the commit"), window.Status);
         Assert.Equal("Start at ten", Git(repository, "log", "-1", "--format=%s").Trim());
         Ui.WaitFor(() => window.Vcs.Changes.Count == 0, "nothing left changed");
         window.Close();

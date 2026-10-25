@@ -205,7 +205,7 @@ public sealed class EditingBehaviourTests
     {
         EditorRig rig = new("first\nlast");
         rig.PlaceCaret("first\n".Length);
-        rig.Window.Clipboard!.SetTextAsync("one\rtwo\r").GetAwaiter().GetResult();
+        Ui.Await(rig.Window.Clipboard!.SetTextAsync("one\rtwo\r"), "the text on the clipboard");
         rig.Press("meta V");
         Ui.Settle();
         Assert.True(rig.Text == "first\none\ntwo\nlast",

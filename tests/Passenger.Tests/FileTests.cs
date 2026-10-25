@@ -151,8 +151,7 @@ public sealed class FileTests : IDisposable
             Assert.Contains("data.bin is a binary file, shown as its bytes' text", asked.Exception!.InnerException!.Message, StringComparison.Ordinal);
         }
         Task<string> replacing = agent.ReplaceInFiles("key", "lock");
-        Ui.WaitFor(() => replacing.IsCompleted, "replace_in_files' answer");
-        Assert.DoesNotContain("data.bin", replacing.Result, StringComparison.Ordinal);
+        Assert.DoesNotContain("data.bin", Ui.Await(replacing, "replace_in_files' answer"), StringComparison.Ordinal);
         Assert.Equal("lock\n", File.ReadAllText(Path.Combine(folder, "notes.txt")));
         Assert.True(bytes.AsSpan().SequenceEqual(File.ReadAllBytes(path)), "Replace in Files wrote over a binary file's bytes");
         Assert.False(window.EditorArea.Active.IsModified, "Replace in Files changed a binary file's tab");

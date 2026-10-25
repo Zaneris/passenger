@@ -156,8 +156,8 @@ public sealed class IdeErrorsTests : IDisposable
         TestGit.Run(folder, "switch", "-q", "main");
         File.WriteAllText(shop, "class Shop { long count; }\n");
         TestGit.Run(folder, "commit", "-q", "-am", "Long");
-        Passenger.Core.ChildResult merging = Task.Run(() => Passenger.Core.ChildProcesses.RunAsync(
-            Passenger.Core.ChildProcesses.Command("git", ["merge", "feature"], folder), limit: TimeSpan.FromMinutes(1).Scaled())).GetAwaiter().GetResult();
+        Passenger.Core.ChildResult merging = Ui.Await(Waiting.Apart(() => Passenger.Core.ChildProcesses.RunAsync(
+            Passenger.Core.ChildProcesses.Command("git", ["merge", "feature"], folder), limit: TimeSpan.FromMinutes(1).Scaled())), "git merge feature");
         Assert.False(merging.Succeeded, $"git merge was to stop for its conflict: {merging.Output}");
         MainWindow window = Ui.OpenFolder(folder);
         Ui.Landed(() => window.CommitView.Rows.OfType<CommitGroup>().Any(g => g.Name == "Merge Conflicts"), "the merge's conflict");
@@ -567,8 +567,7 @@ public sealed class IdeErrorsTests : IDisposable
         MainWindow window = OpenProgram(Calls);
         Ui.PlaceAfter(window.EditorArea.CodeEditor, "static void Ot");
         Task<string?> shown = window.ShowCallHierarchyAsync();
-        Ui.WaitFor(() => shown.IsCompleted, "the call hierarchy");
-        Assert.Null(shown.Result);
+        Assert.Null(Ui.Await(shown, "the call hierarchy"));
         HierarchyRow caller = Assert.Single(window.Hierarchy.Rows, r => r.Depth == 1);
         Assert.Contains("Helper", caller.Node.Item.Name, StringComparison.Ordinal);
         int first = window.CSharpService!.Session!.Server.ProcessId;
@@ -585,14 +584,14 @@ public sealed class IdeErrorsTests : IDisposable
         {
             End(first);
         }
-        Ui.PumpUntil(() => asked.IsCompleted, "Call Hierarchy to give up on the server that ended");
-        Assert.Equal("Call Hierarchy failed: the language server stopped before it answered", asked.Result);
+        Assert.Equal("Call Hierarchy failed: the language server stopped before it answered", Ui.AwaitPumped(asked, "Call Hierarchy to give up on the server that ended"));
 
         Ui.PumpUntil(() => window.CSharpService.Session is null, "the ended server to be let go");
         Task<string?> starting = window.ShowCallHierarchyAsync();
         Assert.True(starting.IsCompleted, "Call Hierarchy waited for a server that is not there");
-        Assert.StartsWith("Call Hierarchy needs the C# language server: ", starting.Result, StringComparison.Ordinal);
-        Assert.Equal(starting.Result, window.Status);
+        string? refused = Ui.Await(starting, "Call Hierarchy's refusal");
+        Assert.StartsWith("Call Hierarchy needs the C# language server: ", refused, StringComparison.Ordinal);
+        Assert.Equal(refused, window.Status);
         Ui.WaitFor(() => window.CSharpService.Session is { IsLoaded: true }, $"the language server to be started again ({window.CSharpService.State})");
 
         Task opening = window.Hierarchy.ExpandAsync(caller);
@@ -602,8 +601,7 @@ public sealed class IdeErrorsTests : IDisposable
         Assert.All(caller.Children!, c => Assert.Contains("Main", c.Item.Name, StringComparison.Ordinal));
 
         Task<string?> again = window.ShowCallHierarchyAsync();
-        Ui.WaitFor(() => again.IsCompleted, "the call hierarchy from the new server");
-        Assert.Null(again.Result);
+        Assert.Null(Ui.Await(again, "the call hierarchy from the new server"));
         Assert.Contains(window.Hierarchy.Rows, r => r.Depth == 1 && r.Node.Item.Name.Contains("Helper", StringComparison.Ordinal));
         window.Close();
     }

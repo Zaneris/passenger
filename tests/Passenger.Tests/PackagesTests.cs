@@ -220,8 +220,7 @@ public sealed class PackagesTests : IDisposable
 
     private static void Run(NuGetView nuget, Task<bool> change)
     {
-        Ui.Landed(() => change.IsCompleted, "the dotnet command's end");
-        Assert.True(change.Result, nuget.Log);
+        Assert.True(Ui.Landed(change, "the dotnet command's end"), nuget.Log);
     }
 
     private static string? Version(MainWindow window) =>

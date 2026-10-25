@@ -395,8 +395,8 @@ public sealed class BranchesTests : IDisposable
 
     private bool Ancestor(string ancestor, string of)
     {
-        Passenger.Core.ChildResult result = Task.Run(() => Passenger.Core.ChildProcesses.RunAsync(
-            Passenger.Core.ChildProcesses.Command("git", ["merge-base", "--is-ancestor", ancestor, of], folder), limit: TimeSpan.FromMinutes(1))).GetAwaiter().GetResult();
+        Passenger.Core.ChildResult result = Ui.Await(Waiting.Apart(() => Passenger.Core.ChildProcesses.RunAsync(
+            Passenger.Core.ChildProcesses.Command("git", ["merge-base", "--is-ancestor", ancestor, of], folder), limit: TimeSpan.FromMinutes(1))), $"git merge-base {ancestor} {of}");
         return result.Succeeded;
     }
 

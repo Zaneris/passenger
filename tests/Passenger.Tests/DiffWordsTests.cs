@@ -43,8 +43,7 @@ public sealed class DiffWordsTests : IDisposable
         string now = Text(window);
 
         Task<DiffWindow?> opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
-        Ui.Landed(() => opening.IsCompleted, "the diff open");
-        DiffWindow diff = opening.Result!;
+        DiffWindow diff = Ui.Landed(opening, "the diff open")!;
         DiffView view = diff.View;
         Assert.Equal(DiffHighlighting.Words, view.Highlighting);
         Assert.Equal([new DiffHunk(2, 1, 2, 1)], view.Hunks);
@@ -88,8 +87,7 @@ public sealed class DiffWordsTests : IDisposable
         string now = Text(window);
 
         Task<DiffWindow?> opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
-        Ui.Landed(() => opening.IsCompleted, "the diff open");
-        DiffWindow diff = opening.Result!;
+        DiffWindow diff = Ui.Landed(opening, "the diff open")!;
         DiffView view = diff.View;
         // "public " is new (green, on the file's side alone); "++" became " += 2".
         Assert.Equal(["++"], Marked(Original, view.Words.Left));
@@ -115,8 +113,7 @@ public sealed class DiffWordsTests : IDisposable
 
         // The next diff opens as chosen last; Ctrl+Shift+D (Cmd+Shift+D), Rider's key, opens its settings.
         opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
-        Ui.Landed(() => opening.IsCompleted, "the diff open again");
-        diff = opening.Result!;
+        diff = Ui.Landed(opening, "the diff open again")!;
         Assert.Equal(DiffHighlighting.None, diff.View.Highlighting);
         diff.View.Right.Focus();
         Ui.Press(diff, OperatingSystem.IsMacOS() ? "meta shift D" : "control shift D");
@@ -135,7 +132,8 @@ public sealed class DiffWordsTests : IDisposable
         Git("switch", "-q", "main");
         File.WriteAllText(Path.Combine(folder, "Shop.cs"), Original.Replace("int count", "long count", StringComparison.Ordinal));
         Git("commit", "-q", "-am", "Long");
-        ChildResult merged = Task.Run(() => ChildProcesses.RunAsync(ChildProcesses.Command("git", ["merge", "feature"], folder), limit: TimeSpan.FromMinutes(1))).GetAwaiter().GetResult();
+        ChildResult merged = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command("git", ["merge", "feature"], folder), limit: TimeSpan.FromMinutes(1))),
+            "git merge feature");
         Assert.False(merged.Succeeded, "The merge was to stop for its conflict");
 
         MainWindow window = Open();
@@ -174,26 +172,26 @@ public sealed class DiffWordsTests : IDisposable
         // The comparison the bars came from is the diff's; its 1,667 changes' words are worked out off the window's thread.
         Stopwatch opened = Stopwatch.StartNew();
         Task<DiffWindow?> opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
-        Ui.Landed(() => opening.IsCompleted, "the diff open");
-        DiffView view = opening.Result!.View;
+        DiffWindow shown = Ui.Landed(opening, "the diff open")!;
+        DiffView view = shown.View;
         Ui.Settle();
         Assert.True(view.Words.Right.Count == 1667, $"Once its work had landed the diff marked {view.Words.Right.Count} words of the 1,667 changed");
         opened.Stop();
         Assert.True(opened.Elapsed < TimeSpan.FromSeconds(5).Scaled(), $"The diff of 1,667 changes took {opened.Elapsed.TotalMilliseconds:F0} ms to open with its words marked");
         Assert.All(Marked(view.Right.Document.Snapshot.ToString(), view.Words.Right), w => Assert.Equal("Measure", w));
 
-        opening.Result.Close();
+        shown.Close();
         window.Perform(AppActions.CloseTab);
         File.WriteAllText(generated, string.Join("\n", lines.Select(l => l.Replace("int", "long", StringComparison.Ordinal))) + "\n");
         window.OpenFile(generated);
         Ui.Landed(() => Marks(window).Count == 1, "one bar over the whole rewrite");
         opened.Restart();
         opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
-        Ui.Landed(() => opening.IsCompleted, "the rewrite's diff open");
+        shown = Ui.Landed(opening, "the rewrite's diff open")!;
         opened.Stop();
         Assert.True(opened.Elapsed < TimeSpan.FromSeconds(5).Scaled(), $"The diff of a 20,000-line rewrite took {opened.Elapsed.TotalMilliseconds:F0} ms to open");
-        Assert.Empty(opening.Result!.View.Words.Right);
-        opening.Result.Close();
+        Assert.Empty(shown.View.Words.Right);
+        shown.Close();
         window.Close();
     }
 

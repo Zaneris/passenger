@@ -354,8 +354,7 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
             // Pressed without waiting for the clone, which waits for the server.
             dialog.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.None, null);
             dialog.KeyRelease(Key.Enter, RawInputModifiers.None, PhysicalKey.None, null);
-            Ui.PumpUntil(() => accepted.IsCompleted, "git to ask the server for the repository");
-            asked.Add(accepted.Result);
+            asked.Add(Ui.AwaitPumped(accepted, "git to ask the server for the repository"));
             Assert.True(dialog.IsCloning, "git asked the server, but the dialog does not say it is cloning");
             Assert.True(Directory.Exists(Path.Combine(clones, "stuck")), "git asked the server before making the clone's folder");
             int[] running = [git!.Value, .. Processes.Descendants(git.Value)];

@@ -197,8 +197,7 @@ public sealed class TestingPlatformDebuggingTests : TestingPlatformFolders, ICla
         {
             // Not settled: the start holds the window's background work while the debugger waits for the test host.
             Assert.True(window.Perform(AppActions.DebugTests), $"Debug Tests did not start: {Ui.Said(window)}");
-            Ui.PumpUntil(() => held.IsCompleted, "the build, then the test host's runtime to come to the hold", TimeSpan.FromMinutes(3));
-            host = held.Result;
+            host = Ui.AwaitPumped(held, "the build, then the test host's runtime to come to the hold", TimeSpan.FromMinutes(3));
             TestNode four = Method(window, "Two_and_two_make_four")!;
             Assert.Equal(TestState.Running, four.State);
 

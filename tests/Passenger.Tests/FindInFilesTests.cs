@@ -263,8 +263,7 @@ public sealed class FindInFilesTests : IDisposable
         Assert.Contains("void total()", window.EditorArea.Active!.Text.Snapshot.ToString(), StringComparison.Ordinal);
 
         Task<string> replacing = new Passenger.App.Mcp.PassengerTools(window).ReplaceInFiles("count|total", "sum", wholeWords: true, regex: true);
-        Ui.WaitFor(() => replacing.IsCompleted, "replace_in_files' answer");
-        Assert.Contains(replacing.Result, new[] { "Alpha.cs, Beta.cs", "Beta.cs, Alpha.cs" }.Select(files => $"Replaced 3 matches in 2 files: {files}; not replaced: Aardvark.cs (read-only)"));
+        Assert.Contains(Ui.Await(replacing, "replace_in_files' answer"), new[] { "Alpha.cs, Beta.cs", "Beta.cs, Alpha.cs" }.Select(files => $"Replaced 3 matches in 2 files: {files}; not replaced: Aardvark.cs (read-only)"));
         Assert.Equal("class Alpha\n{\n    int sum;\n}\n", File.ReadAllText(Path.Combine(folder, "Alpha.cs")));
         Assert.Contains("void sum()", File.ReadAllText(Path.Combine(folder, "Beta.cs")), StringComparison.Ordinal);
         Assert.Equal("class Aardvark { int count; }\n", File.ReadAllText(locked));

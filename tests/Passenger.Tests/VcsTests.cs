@@ -236,8 +236,8 @@ public sealed class VcsTests : IDisposable
         window.Vcs.ReloadOpenFiles();
         Ui.Landed(() => Text(window).Contains("count += 2", StringComparison.Ordinal), "the branch's text");
         Task<VcsOutcome> checkout = window.Vcs.CheckoutAsync("main");
-        Ui.Landed(() => checkout.IsCompleted, "the checkout done");
-        Assert.True(checkout.Result.Succeeded, checkout.Result.Message);
+        VcsOutcome checkedOut = Ui.Landed(checkout, "the checkout done");
+        Assert.True(checkedOut.Succeeded, checkedOut.Message);
         Assert.Equal("main", window.Vcs.Branch);
         Assert.Equal(Original, Text(window));
         Assert.False(window.EditorArea.Active!.IsModified);
@@ -338,8 +338,7 @@ public sealed class VcsTests : IDisposable
         Ui.Landed(() => window.Vcs.Changes.Count == 1, "Shop.cs listed as changed");
 
         Task<DiffWindow?> opening = window.ShowDiffAsync(window.Vcs.Changes[0].Path);
-        Ui.Landed(() => opening.IsCompleted, "the diff open");
-        DiffWindow diff = opening.Result!;
+        DiffWindow diff = Ui.Landed(opening, "the diff open")!;
         Assert.Same(diff, window.Frontmost);
         DiffView view = diff.View;
         Assert.Equal(Original, view.Left.Document.Snapshot.ToString());
@@ -370,8 +369,7 @@ public sealed class VcsTests : IDisposable
         window.Perform(AppActions.Save);
         editor.GoTo(new TextPosition(0, 0));
         Task<DiffWindow?> opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
-        Ui.Landed(() => opening.IsCompleted, "the diff open");
-        DiffWindow diff = opening.Result!;
+        DiffWindow diff = Ui.Landed(opening, "the diff open")!;
         DiffView view = diff.View;
         Ui.Landed(() => view.Right.IsFocused, "the diff's side of the file to have the keys");
 
@@ -409,8 +407,7 @@ public sealed class VcsTests : IDisposable
         window.Perform(AppActions.Save);
         editor.GoTo(new TextPosition(0, 0));
         Task<DiffWindow?> opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
-        Ui.Landed(() => opening.IsCompleted, "the diff open");
-        DiffWindow diff = opening.Result!;
+        DiffWindow diff = Ui.Landed(opening, "the diff open")!;
         DiffView view = diff.View;
         Ui.Landed(() => view.Right.IsFocused, "the diff's side of the file to have the keys");
         Assert.Equal([2, 4], view.Hunks.Select(h => h.NewStart));
@@ -447,8 +444,7 @@ public sealed class VcsTests : IDisposable
         Passenger.App.Workspace.OpenDocument shop = window.EditorArea.Active!;
         Ui.PumpUntil(() => window.Vcs.Repository is not null, "the working tree found");
         Task<DiffWindow?> opening = window.ShowDiffAsync(shop.Path);
-        Ui.PumpUntil(() => opening.IsCompleted, "the diff open");
-        DiffWindow diff = opening.Result!;
+        DiffWindow diff = Ui.AwaitPumped(opening, "the diff open")!;
         CodeEditor right = diff.View.Right;
         Assert.True(right.Highlighter is not Passenger.Languages.CSharp.SemanticHighlighter, "The language server answered before the diff opened, so it had nothing to follow");
 
@@ -493,8 +489,7 @@ public sealed class VcsTests : IDisposable
         MainWindow window = Open();
         string shop = window.EditorArea.Active!.Path;
         Task<DiffWindow?> opening = window.ShowDiffAsync(shop);
-        Ui.Landed(() => opening.IsCompleted, "the diff open");
-        DiffWindow diff = opening.Result!;
+        DiffWindow diff = Ui.Landed(opening, "the diff open")!;
 
         window.Perform(AppActions.CloseTab);
         Ui.Settle();
@@ -612,9 +607,9 @@ public sealed class VcsTests : IDisposable
         // The first Enter's bar can land before the second's: the wait is for the bar over both.
         Ui.Landed(() => Marks(window).SequenceEqual([new ChangeMark(6, 2, ChangeMarkKind.Added)]), "a bar over both blank lines");
         Task<DiffWindow?> opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
-        Ui.Landed(() => opening.IsCompleted, "the diff open");
-        Assert.Equal([new DiffHunk(6, 0, 6, 2)], opening.Result!.View.Hunks);
-        opening.Result.Close();
+        DiffWindow diff = Ui.Landed(opening, "the diff open")!;
+        Assert.Equal([new DiffHunk(6, 0, 6, 2)], diff.View.Hunks);
+        diff.Close();
 
         editor.GoTo(new TextPosition(7, 0));
         window.Perform(AppActions.RollbackLines);
@@ -675,13 +670,13 @@ public sealed class VcsTests : IDisposable
         Assert.Equal((PathNames.Canonical(shop), ChangeKind.Modified), (changed.Path, changed.Kind));
         Assert.Contains("Twice", log.Details, StringComparison.Ordinal);
         Task<DiffWindow?> opening = window.ShowCommitDiffAsync(twice, changed);
-        Ui.Landed(() => opening.IsCompleted, "the commit's diff");
-        DiffView diff = opening.Result!.View;
+        DiffWindow shown = Ui.Landed(opening, "the commit's diff")!;
+        DiffView diff = shown.View;
         Assert.Equal(Original, diff.Left.Document.Snapshot.ToString());
         Assert.Contains("count += 2", diff.Right.Document.Snapshot.ToString(), StringComparison.Ordinal);
         Assert.Single(diff.Hunks);
         Assert.False(diff.IsEditable);
-        opening.Result!.Close();
+        shown.Close();
 
         log.FilterText = twice.Hash[..7];
         Ui.Settle();
@@ -868,8 +863,7 @@ public sealed class VcsTests : IDisposable
         Assert.Contains("Half-done count", Git("stash", "list"), StringComparison.Ordinal);
 
         Task<UnstashPopup?> showing = window.ShowUnstashAsync();
-        Ui.Landed(() => showing.IsCompleted, "the stashes");
-        UnstashPopup unstash = showing.Result!;
+        UnstashPopup unstash = Ui.Landed(showing, "the stashes")!;
         Assert.Contains("Half-done count", Assert.Single(unstash.Stashes).Message, StringComparison.Ordinal);
         Task popping = unstash.PopAsync();
         Ui.Landed(() => popping.IsCompleted && Text(window).Contains("long int count", StringComparison.Ordinal), "the change back in the open file");
@@ -896,8 +890,7 @@ public sealed class VcsTests : IDisposable
             return Task.FromResult(agree);
         };
         Task<UnstashPopup?> showing = window.ShowUnstashAsync();
-        Ui.Landed(() => showing.IsCompleted, "the stashes");
-        UnstashPopup unstash = showing.Result!;
+        UnstashPopup unstash = Ui.Landed(showing, "the stashes")!;
         Assert.Equal(2, unstash.Stashes.Count);
         Ui.Settle();
         Assert.True(window.FocusManager?.GetFocusedElement() is Avalonia.Controls.ListBoxItem { DataContext: StashInfo { Index: 0 } },
@@ -1055,8 +1048,8 @@ public sealed class VcsTests : IDisposable
         Assert.Equal("main", window.Vcs.Branch);
 
         Task<VcsOutcome> checkout = window.Vcs.CheckoutAsync("other");
-        Ui.Landed(() => checkout.IsCompleted, "the checkout done");
-        Assert.True(checkout.Result.Succeeded, checkout.Result.Message);
+        VcsOutcome checkedOut = Ui.Landed(checkout, "the checkout done");
+        Assert.True(checkedOut.Succeeded, checkedOut.Message);
         Assert.Equal("sealed class Notes { }\n", File.ReadAllText(Path.Combine(folder, "Notes.cs")));
         window.OpenFile(Path.Combine(folder, "Shop.cs"));
         Ui.Landed(() => Text(window).Contains("count += 5", StringComparison.Ordinal), "the other branch's text");
@@ -1096,8 +1089,8 @@ public sealed class VcsTests : IDisposable
         File.WriteAllText(Path.Combine(folder, "[ab].cs"), "class Ab { int y; }\n");
         Ui.WaitFor(() => window.Vcs.Changes.Count == 2, "both files changed again");
         Task<CommitResult> commit = window.Vcs.CommitAsync([.. window.Vcs.Changes.Where(c => c.Name == "[ab].cs")], "Only brackets", amend: false, push: false);
-        Ui.Landed(() => commit.IsCompleted, "the commit made");
-        Assert.True(commit.Result.Succeeded, commit.Result.Commit.Message);
+        CommitResult made = Ui.Landed(commit, "the commit made");
+        Assert.True(made.Succeeded, made.Commit.Message);
         Assert.Equal("[ab].cs", Git("show", "--name-only", "--format=", "HEAD").Trim());
         window.Close();
     }
@@ -1260,8 +1253,7 @@ public sealed class VcsTests : IDisposable
         Ui.Landed(() => commit.Chosen.Any(c => c.Name == "Shop.cs"), "Shop.cs listed");
         commit.Message = "More";
         Task<bool> committed = commit.CommitAsync(push: false);
-        Ui.WaitFor(() => committed.IsCompleted, "the commit to be done once git had exited, its hook's job still holding git's errors", TimeSpan.FromSeconds(20));
-        Assert.True(committed.Result, window.Status);
+        Assert.True(Ui.Await(committed, "the commit to be done once git had exited, its hook's job still holding git's errors", TimeSpan.FromSeconds(20)), window.Status);
         Assert.Equal("More", Git("log", "-1", "--format=%s").Trim());
         Ui.Landed(() => !window.Vcs.IsBusy && window.Vcs.Changes.Count == 0, $"the commit's end, with nothing left to commit ({window.Status})");
         // Ended with git's process group; Windows' git hooks run under MSYS, whose ids are its own.
@@ -1333,8 +1325,7 @@ public sealed class VcsTests : IDisposable
         Ui.PumpUntil(() => !File.Exists(slow), "the save's status to begin", TimeSpan.FromSeconds(30));
         commit.Message = "Count with a long";
         Task<bool> committed = commit.CommitAsync(push: false);
-        Ui.Landed(() => committed.IsCompleted, "the commit made");
-        Assert.True(committed.Result, window.Status);
+        Assert.True(Ui.Landed(committed, "the commit made"), window.Status);
 
         // The slow status ends after the commit's own, and what it found before the commit never lands over it.
         Ui.Landed(() => File.Exists(slept), "the slow status ended");
@@ -1441,8 +1432,7 @@ public sealed class VcsTests : IDisposable
     private static WeakReference<DiffView> DiffAndClose(MainWindow window)
     {
         Task<DiffWindow?> opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
-        Ui.Landed(() => opening.IsCompleted, "the diff open");
-        DiffWindow diff = opening.Result!;
+        DiffWindow diff = Ui.Landed(opening, "the diff open")!;
         Assert.Same(window.EditorArea.Active!.Text, diff.View.Right.Document);
         diff.View.Right.Focus();
         diff.KeyTextInput("// ");

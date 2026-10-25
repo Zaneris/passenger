@@ -64,8 +64,7 @@ public sealed class ExplorerFilesTests : IDisposable
         window.Confirm = (_, _, _) => Task.FromResult(true);
         string moved = Path.Combine(folder, "Domain", "Purchase.cs");
         Task<bool> deleting = window.DeleteAsync(PathNames.Canonical(moved));
-        Ui.WaitFor(() => deleting.IsCompleted, "the delete");
-        Assert.True(deleting.Result);
+        Assert.True(Ui.Await(deleting, "the delete"));
         Assert.False(File.Exists(moved));
         Assert.True(File.Exists(Path.Combine(trash, "Purchase.cs")));
         Assert.Empty(window.EditorArea.Documents);
