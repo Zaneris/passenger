@@ -21,9 +21,10 @@ namespace Passenger.Tests;
 /// <summary>Rules the whole window keeps, each decided once in a shared piece and held here across what the tests open: a
 /// menu's current value checked and still enabled (MenuChoice); every tool window's tabs one look (ToolTabs, Shell.axaml's
 /// panelTab); every popup's width from one scale, its title one size and its rows one height (PopupFrame); a menu opening
-/// against its widget; the scrollbars, thin and arrowless; the open editor tab's ×; the focus ring; and the window at half
-/// a 1366-wide screen with nothing cut, a stripe putting what has no room behind More. Each rule that a look could break
-/// is held under both looks in one window, the look switched in place as Settings switches it.</summary>
+/// against its widget; the scrollbars, thin and arrowless; the open editor tab's ×; the focus ring; every list's rows made
+/// once (ReusedRows); and the window at half a 1366-wide screen with nothing cut, a stripe putting what has no room behind
+/// More. Each rule that a look could break is held under both looks in one window, the look switched in place as Settings
+/// switches it.</summary>
 public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
 {
     private readonly Project project;
@@ -1320,6 +1321,116 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
         bool Assembly(string name) => Enumerable.Range(2, name.Count(c => c == '.')).Any(parts =>
             Directory.Exists(Path.Combine(root, "src", string.Join('.', name.Split('.').Take(parts)))));
     }
+
+    /// <summary>Every list's rows are made once with their containers by ReusedRows and handed each item the list shows
+    /// there, so scrolling builds no row again: a list's rows from an item template (ItemTemplate, a data template of any
+    /// kind) or a container's template of its own fails here, naming its line. <see cref="NotYetReused"/> holds the lists
+    /// not moved yet, each taken off as it moves, and one no longer found fails too, so it only shrinks.</summary>
+    [Fact]
+    public void Every_lists_rows_are_made_once_by_ReusedRows_never_by_an_item_template()
+    {
+        Regex made = new(@"\b(?:FuncDataTemplate|FuncTreeDataTemplate|IDataTemplate|IRecyclingDataTemplate|ITreeDataTemplate|DataTemplates)\b(?:<(?:[^<>]|<[^<>]*>)+>)?|<(?:DataTemplate|TreeDataTemplate)\b|\bFuncControlTemplate<(?:ListBoxItem|ComboBoxItem|TreeViewItem)>");
+        Regex given = new(@"\bItemTemplate\s*=\s*""?[\w.{} ]*(?:<(?:[^<>]|<[^<>]*>)+>)?|<\w+\.ItemTemplate>");
+        Regex container = new(@"<Style Selector=""[^""]*(?:ListBoxItem|ComboBoxItem)""[^>]*>(?:(?!</Style>).)*?Property=""(?:Content)?Template""", RegexOptions.Singleline);
+        List<(string Key, string Where)> found = [];
+        foreach ((string path, string text) in UiFiles(theme: true).Where(f => !f.Path.EndsWith("/ReusedRows.cs", StringComparison.Ordinal)))
+        {
+            string[] lines = text.Split('\n');
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string trimmed = lines[i].TrimStart();
+                if (trimmed.StartsWith("//", StringComparison.Ordinal) || trimmed.StartsWith("<!--", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+                Match template = made.Match(lines[i]) is { Success: true } kind ? kind : given.Match(lines[i]);
+                if (template.Success)
+                {
+                    found.Add(($"{path}: {template.Value.Trim()}", $"{path}:{i + 1}"));
+                }
+            }
+            foreach (Match match in container.Matches(text))
+            {
+                found.Add(($"{path}: a ListBoxItem's Template", $"{path}:{text.AsSpan(0, match.Index).Count('\n') + 1}"));
+            }
+        }
+        List<string> known = [.. NotYetReused];
+        List<string> unknown = [];
+        foreach ((string key, string where) in found)
+        {
+            if (!known.Remove(key))
+            {
+                unknown.Add($"{where}: {key[(key.IndexOf(": ", StringComparison.Ordinal) + 2)..]}");
+            }
+        }
+        Assert.True(unknown.Count == 0, $"{unknown.Count} lists make their rows from an item template, building a row for every item scrolled into view: "
+            + $"give each a row made once through ReusedRows.Use, showing its DataContext (Showing):\n{string.Join("\n", unknown)}");
+        Assert.True(known.Count == 0, $"{known.Count} lists named as not yet on ReusedRows are no longer found: take each off NotYetReused:\n{string.Join("\n", known)}");
+    }
+
+    /// <summary>The lists whose rows still come from an item template, by file and template, to move to ReusedRows.</summary>
+    private static readonly string[] NotYetReused =
+    [
+        "src/Passenger.App/Aspire/AspireServiceDialog.cs: FuncDataTemplate<AspireSelection>",
+        "src/Passenger.App/Aspire/AspireView.cs: ItemTemplate = RunRows.Template<AspireRow>",
+        "src/Passenger.App/CSharp/AssistPopups.cs: FuncDataTemplate<Choice>",
+        "src/Passenger.App/CSharp/AssistPopups.cs: FuncDataTemplate<CompletionSlot>",
+        "src/Passenger.App/Containers/ContainerFilesPane.cs: FuncDataTemplate<ContainerFile>",
+        "src/Passenger.App/Containers/ContainersView.cs: ItemTemplate = RunRows.Template<ContainerRow>",
+        "src/Passenger.App/Debugging/AttachToProcessDialog.cs: FuncDataTemplate<AttachRow>",
+        "src/Passenger.App/Debugging/VariablesList.cs: FuncDataTemplate<VariableNode>",
+        "src/Passenger.App/Editors/EditorGroup.cs: FuncDataTemplate<EditorTab>",
+        "src/Passenger.App/Endpoints/EndpointsView.cs: FuncDataTemplate<object>",
+        "src/Passenger.App/Endpoints/RequestsView.cs: FuncDataTemplate<Row>",
+        "src/Passenger.App/ErrorsPopup.cs: FuncDataTemplate<IdeError>",
+        "src/Passenger.App/Explorer/AddReferenceDialog.cs: FuncDataTemplate<ReferenceChoice>",
+        "src/Passenger.App/Explorer/DockerDialogs.cs: FuncDataTemplate<ComposeChoice>",
+        "src/Passenger.App/History/HistoryTab.cs: FuncDataTemplate<HistoryDifference>",
+        "src/Passenger.App/History/HistoryTab.cs: FuncDataTemplate<HistoryRow>",
+        "src/Passenger.App/LiveTree/LiveTreeView.cs: FuncDataTemplate<LiveTreeRow>",
+        "src/Passenger.App/LiveTree/LiveTreeView.cs: FuncDataTemplate<PropertyValue>",
+        "src/Passenger.App/Migrations/MigrationsView.cs: FuncDataTemplate<MigrationRow?>",
+        "src/Passenger.App/Migrations/MigrationsView.cs: FuncDataTemplate<object>",
+        "src/Passenger.App/Navigation/FindInFilesPopup.cs: FuncDataTemplate<ProjectModel>",
+        "src/Passenger.App/Navigation/FindInFilesPopup.cs: FuncDataTemplate<SearchMatch>",
+        "src/Passenger.App/Profiling/FramesView.cs: FuncDataTemplate<LayoutRow>",
+        "src/Passenger.App/Profiling/MemoryView.cs: FuncDataTemplate<MemorySnapshot>",
+        "src/Passenger.App/Profiling/MemoryView.cs: FuncDataTemplate<T>",
+        "src/Passenger.App/Profiling/ProfilerView.cs: FuncDataTemplate<AllocatedType>",
+        "src/Passenger.App/Profiling/ProfilerView.cs: FuncDataTemplate<CallRow>",
+        "src/Passenger.App/Profiling/ProfilerView.cs: FuncDataTemplate<CallRow>",
+        "src/Passenger.App/Profiling/ProfilerView.cs: FuncDataTemplate<Collection>",
+        "src/Passenger.App/Profiling/ProfilerView.cs: FuncDataTemplate<HotSpot>",
+        "src/Passenger.App/Profiling/ProfilerView.cs: FuncDataTemplate<SnapshotFile>",
+        "src/Passenger.App/Run/RunConfigurationsDialog.cs: FuncDataTemplate<Entry>",
+        "src/Passenger.App/Run/RunConfigurationsDialog.cs: FuncDataTemplate<object>",
+        "src/Passenger.App/SearchPopup.cs: FuncDataTemplate<T>",
+        "src/Passenger.App/Settings/LiveTemplatesPane.cs: FuncDataTemplate<LiveTemplate>",
+        "src/Passenger.App/Settings/PostfixTemplatesPane.cs: FuncDataTemplate<PostfixTemplate?>",
+        "src/Passenger.App/Telemetry/TelemetryView.cs: FuncDataTemplate<RunItem<T>>",
+        "src/Passenger.App/Templates/NewProjectDialog.cs: FuncDataTemplate<ProjectTemplate?>",
+        "src/Passenger.App/Templates/NewProjectDialog.cs: FuncDataTemplate<TemplateFamily?>",
+        "src/Passenger.App/ToolWindows/BookmarksView.cs: FuncDataTemplate<Bookmark>",
+        "src/Passenger.App/ToolWindows/BranchesPanel.cs: FuncDataTemplate<BranchNode>",
+        "src/Passenger.App/ToolWindows/CommitView.cs: FuncDataTemplate<object>",
+        "src/Passenger.App/ToolWindows/DebugView.cs: FuncDataTemplate<DapStackFrame>",
+        "src/Passenger.App/ToolWindows/DebugView.cs: FuncDataTemplate<DapThread>",
+        "src/Passenger.App/ToolWindows/DebugView.cs: FuncDataTemplate<DebugTab>",
+        "src/Passenger.App/ToolWindows/FindView.cs: FuncDataTemplate<FindRow>",
+        "src/Passenger.App/ToolWindows/GitLogView.cs: FuncDataTemplate<FileChange>",
+        "src/Passenger.App/ToolWindows/GitLogView.cs: FuncDataTemplate<GraphRow>",
+        "src/Passenger.App/ToolWindows/HierarchyView.cs: FuncDataTemplate<HierarchyRow>",
+        "src/Passenger.App/ToolWindows/NuGetSourcesView.cs: FuncDataTemplate<ConfigFile>",
+        "src/Passenger.App/ToolWindows/NuGetView.cs: FuncDataTemplate<PackageRow>",
+        "src/Passenger.App/ToolWindows/ProblemsView.cs: FuncDataTemplate<ProblemRow>",
+        "src/Passenger.App/ToolWindows/RunRows.cs: FuncDataTemplate<RunItem<T>>",
+        "src/Passenger.App/ToolWindows/StructureView.cs: FuncDataTemplate<SymbolRow>",
+        "src/Passenger.App/ToolWindows/TerminalPanel.cs: FuncDataTemplate<TerminalTab>",
+        "src/Passenger.App/Vcs/ChangesWindow.cs: FuncDataTemplate<FileChange>",
+        "src/Passenger.App/Vcs/ConflictsDialog.cs: FuncDataTemplate<ConflictRow>",
+        "src/Passenger.App/Vcs/UnstashPopup.cs: FuncDataTemplate<StashInfo>",
+        "src/Passenger.App/Welcome/WelcomeView.cs: FuncDataTemplate<RecentRow?>",
+    ];
 
     /// <summary>Muted words are made one way, by the muted class (MutedText, or the class on a TextBlock of its own), so a
     /// change to how muted words look is made once: a TextBlock's foreground bound by hand to the muted colour fails here.</summary>

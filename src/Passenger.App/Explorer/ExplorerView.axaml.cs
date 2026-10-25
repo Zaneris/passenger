@@ -2,6 +2,8 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Layout;
+using Avalonia.Media;
 using Avalonia.VisualTree;
 using Passenger.App.Docking;
 using Passenger.Core;
@@ -24,6 +26,7 @@ public partial class ExplorerView : UserControl
     {
         InitializeComponent();
         Rows.ItemsSource = Tree.Rows;
+        ReusedRows.Use(Rows, Row);
         // Every key the keymap gives an action (Rename, Delete, the clipboard's) is the window's, run on the chosen row.
         TreeKeys.Attach<ExplorerNode>(Rows, Tree.Toggle, node =>
         {
@@ -339,6 +342,36 @@ public partial class ExplorerView : UserControl
             Tree.Toggle(node);
             e.Handled = true;
         }
+    }
+
+    /// <summary>A row for whichever file or folder the list hands its container: its chevron, icon, name and detail.</summary>
+    private Control Row()
+    {
+        RotateTransform turn = new();
+        PathIcon chevron = new() { Classes = { "chevron" }, RenderTransformOrigin = RelativePoint.Center, RenderTransform = turn };
+        chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(IconKeys.ChevronRight));
+        Border toggle = new() { Width = 18, Height = ListRow.Height, Background = Brushes.Transparent, Child = chevron };
+        toggle.PointerPressed += OnChevronPressed;
+        PathIcon icon = new() { Margin = new Thickness(0, 0, 6, 0) };
+        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
+        TextBlock detail = new() { Classes = { "muted" }, FontSize = 12, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        StackPanel row = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { toggle, icon, name, detail } };
+        return row.Showing<ExplorerNode>(node =>
+        {
+            row.Margin = node.Indent;
+            row.Opacity = node.Opacity;
+            ToolTip.SetTip(row, node.Tip);
+            chevron.IsVisible = node.HasChildren;
+            turn.Angle = node.ChevronAngle;
+            icon.Data = node.Icon;
+            icon.Foreground = node.IconBrush;
+            name.Text = node.Name;
+            name.Classes.Set("vcsModified", node.IsVcsModified);
+            name.Classes.Set("vcsAdded", node.IsVcsAdded);
+            name.Classes.Set("vcsUnversioned", node.IsVcsUnversioned);
+            name.Classes.Set("vcsConflicted", node.IsVcsConflicted);
+            detail.Text = node.Detail;
+        });
     }
 
     /// <summary>A left press on a file or folder on disk may begin a drag of it, or of the rows chosen with it. The row is
