@@ -377,7 +377,7 @@ the files under the agent's IDE.
 
 ## Building
 
-Building needs the .NET 11 SDK (11.0.100-rc.2 or later, as [`global.json`](global.json) asks, until .NET 11 ships in
+Building needs the .NET 11 SDK (11.0.100-rc.3 or later, as [`global.json`](global.json) asks, until .NET 11 ships in
 November 2026) and [just](https://github.com/casey/just). The tests need more:
 
 - **the .NET 10 SDK** beside it, since the programs the debugger's tests debug ([`tests/Debuggees`](tests/Debuggees))

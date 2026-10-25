@@ -18,7 +18,7 @@
     <!-- WPF's reference pack at the version global.json's SDK gives its own WPF (its TargetingPackVersion), downloaded
          for the tests' local feed so the WPF app they make restores off Windows; another SDK's fails WpfXamlTests naming
          the version to pin. A release candidate until .NET 11 ships (then 11.0.0, with the SDK at 11.0.100). -->
-    <WindowsDesktopRefVersion>11.0.0-rc.2.26504.105</WindowsDesktopRefVersion>
+    <WindowsDesktopRefVersion>11.0.0-rc.3.26522.148</WindowsDesktopRefVersion>
     <!-- EF Core and the dotnet-ef tool for the Migrations window's tests, downloaded for the tests' local feed: at its
          version, and at the one before for a tool that does not match and a stand-in provider that trails it. -->
     <EfCoreVersion>10.0.13</EfCoreVersion>
