@@ -400,3 +400,15 @@ that fixed it, in one of the forms below. A failure not yet understood goes in o
   the program has gone; two runs alone passed. **A race in the IDE**: an agent's run or debug of a resource that is no
   service Passenger runs and is not yet finished now waits, on the resource stream, up to 30 s for its start command
   (`RunAspireToolResourceAsync`), a finished one with none still refused at once.
+
+- `McpMigrationsTests`' `An_agent_fixes_what_dotnet_ef_lacks_through_code_actions_then_adds_and_applies_a_migration`, the Mac
+  under load: "The ide_action call had no answer in 90 s". A Migrations command builds the project and its startup project
+  and then runs dotnet ef, which on a loaded machine outlasted the minute McpRig gave a tool that builds nothing. Neither
+  race: **the test**'s limit for an action that does a build's work, now the 5 minutes build and run have (3027cd92).
+- `SelfDebuggingTests`, the Mac under load (the n18/n19 landing run): "The IDE was not quiet while waiting 300 s for Passenger
+  to build and start under its debugger". The window's build restored all 21 of Passenger's restoring projects again, its
+  NuGet home being the run's, rewriting the checkout's restore (which the person's next build wrote back); and it compiled
+  everything because that run's own build had restored six of main's projects through /Users/zaneris/documents/dev/passenger,
+  where the window builds through the disk's spelling. Neither race: **the test** builds with the person's NuGet settings in
+  nodes of its own, checks the restore's files unchanged, and fails first, saying why, on a checkout restored through
+  another spelling (8c4fb07e).

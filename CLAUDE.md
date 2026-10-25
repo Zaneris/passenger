@@ -342,7 +342,8 @@ aspire and requests scenes run `tools/site-shots/services`, an AppHost that need
   program inside an unsigned bundle, and the run's folder ends in `.noindex`, so Spotlight reads none of what a run makes.
 - **Linux**: file systems tell letter case apart, so a test of another letter case skips there.
 - **MSBuild**: a build through another spelling of a project's path deletes what the first wrote (IncrementalClean;
-  the terminal's shell is given its folder as PWD, #413). It keeps no idle node unless the process's nice value is 0.
+  the terminal's shell is given its folder as PWD, #413), and a reused node carries a project's earlier spelling and the
+  NuGet home it started with into the next build. It keeps no idle node unless the process's nice value is 0.
 - **The terminal reuses a line** once it leaves the screen and a full scrollback (`TerminalLine.Reuse`): nothing keeps a
   `TerminalLine` past its line number.
 - **Avalonia 12's lists** re-attach, and so re-style, every recycled container and never reuse a `DataTemplate`'s
