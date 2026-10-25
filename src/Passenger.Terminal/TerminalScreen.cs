@@ -54,6 +54,10 @@ public sealed class TerminalScreen
     private bool originMode;
     private bool insertMode;
     private bool lineDrawing;
+
+    /// <summary>Whether the decoder may hold the start of a character: the last bytes it took were not ASCII.</summary>
+    private bool utf8Open;
+
     private int lastRune = ' ';
     private Saved saved;
     private Saved savedMain;
@@ -162,13 +166,53 @@ public sealed class TerminalScreen
     public string ScreenText() => string.Join('\n', Lines.Select(l => l.Text()));
 
     /// <summary>Takes the program's output, as many bytes as arrived; a character split between two calls is kept
-    /// until the rest comes.</summary>
+    /// until the rest comes. A run of printable ASCII outside any sequence, most of what a log is, goes into its rows a
+    /// row's worth at a time (<see cref="PrintText"/>); the rest a character at a time.</summary>
     public void Feed(ReadOnlySpan<byte> bytes)
     {
         if (bytes.IsEmpty)
         {
             return;
         }
+        int at = 0;
+        while (at < bytes.Length)
+        {
+            ReadOnlySpan<byte> rest = bytes[at..];
+            if (utf8Open || rest[0] >= 0x80)
+            {
+                // Decoded up to and with the next ASCII byte, which ends whatever sequence the decoder holds.
+                int ascii = rest.IndexOfAnyInRange((byte)0, (byte)0x7F);
+                int take = ascii < 0 ? rest.Length : ascii + 1;
+                utf8Open = ascii < 0;
+                Decode(rest[..take]);
+                at += take;
+                continue;
+            }
+            if (state == State.Ground)
+            {
+                int run = rest.IndexOfAnyExceptInRange((byte)0x20, (byte)0x7E);
+                if (run != 0)
+                {
+                    int take = run < 0 ? rest.Length : run;
+                    highSurrogate = '\0';
+                    PrintText(rest[..take]);
+                    at += take;
+                    continue;
+                }
+            }
+            highSurrogate = '\0';
+            Process(rest[0]);
+            at++;
+        }
+        Version++;
+    }
+
+    public void Feed(string text) => Feed(Encoding.UTF8.GetBytes(text));
+
+    /// <summary>Bytes through the UTF-8 decoder, each character they make through the state machine; a pair of
+    /// surrogates is one character.</summary>
+    private void Decode(ReadOnlySpan<byte> bytes)
+    {
         int most = utf8.GetCharCount(bytes, flush: false);
         if (decoded.Length < most)
         {
@@ -195,10 +239,7 @@ public sealed class TerminalScreen
             highSurrogate = '\0';
             Process(c);
         }
-        Version++;
     }
-
-    public void Feed(string text) => Feed(Encoding.UTF8.GetBytes(text));
 
     /// <summary>A new size. At a new width the main screen and its scrollback reflow: rows the text wrapped across join
     /// and wrap again, so a line a narrower window cut reads whole once it widens, and the cursor stays on its
@@ -717,6 +758,74 @@ public sealed class TerminalScreen
         }
     }
 
+    /// <summary>Printable ASCII written as <see cref="Print"/> writes each of its characters, a row's worth at a time: up
+    /// to the row's end, where it wraps (or, with wrapping off, writes on over the last column), in insert mode pushing
+    /// the row's rest right, and through the line-drawing set when it is chosen, each of whose characters is one column.</summary>
+    private void PrintText(ReadOnlySpan<byte> text)
+    {
+        while (!text.IsEmpty)
+        {
+            if (wrapPending && autoWrap)
+            {
+                Lines[CursorRow].Wrapped = true;
+                CursorColumn = 0;
+                LineFeed();
+            }
+            wrapPending = false;
+            int column = CursorColumn;
+            int take = Math.Min(text.Length, Math.Max(1, Columns - column));
+            Cell[] cells = Lines[CursorRow].Cells;
+            if (insertMode)
+            {
+                if (!Narrow(cells.AsSpan(column, Columns - column)))
+                {
+                    // A wide character's half in the way is pushed and blanked a character at a time.
+                    foreach (byte c in text[..take])
+                    {
+                        Print(c);
+                    }
+                    text = text[take..];
+                    continue;
+                }
+                Array.Copy(cells, column, cells, column + take, Columns - column - take);
+            }
+            Cell written = new() { Style = style, Width = 1 };
+            for (int i = 0; i < take; i++)
+            {
+                Overwrite(cells, column + i);
+                written.Rune = Shown(text[i]);
+                cells[column + i] = written;
+            }
+            lastRune = written.Rune;
+            if (column + take >= Columns)
+            {
+                CursorColumn = Columns - 1;
+                wrapPending = true;
+            }
+            else
+            {
+                CursorColumn = column + take;
+            }
+            text = text[take..];
+        }
+    }
+
+    /// <summary>The character a printable ASCII byte shows: its own, or the line-drawing set's.</summary>
+    private int Shown(byte c) => lineDrawing && c >= 0x5f ? LineDrawing[c - 0x5f] : c;
+
+    /// <summary>Whether every cell is one column, with no half of a wide character among them.</summary>
+    private static bool Narrow(ReadOnlySpan<Cell> cells)
+    {
+        foreach (Cell cell in cells)
+        {
+            if (cell.Width != 1)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /// <summary>A character with no column of its own (a combining mark, a joiner, a variation selector) joins the
     /// grapheme in the cell before the cursor, so é written as e and a combining acute shows and copies whole; at a
     /// row's start there is nothing to join, and it is dropped.</summary>
@@ -799,19 +908,20 @@ public sealed class TerminalScreen
     }
 
     /// <summary>The scroll region moves up: its top rows leave (into the scrollback when the region is the screen's
-    /// top on the main screen) and blank rows come in at its bottom.</summary>
+    /// top on the main screen) and blank rows come in at its bottom, each made of a line nothing keeps any more where
+    /// there is one: the row that left, or the scrollback's oldest, which a full scrollback lets go.</summary>
     private void ScrollUp(int count)
     {
         count = Math.Min(count, bottom - top + 1);
         for (int i = 0; i < count; i++)
         {
-            TerminalLine leaving = Lines[top];
+            TerminalLine? left = Lines[top];
             if (top == 0 && !IsAlternate)
             {
-                AddScrollback(leaving);
+                left = scrollback.Add(left);
             }
             Array.Copy(Lines, top + 1, Lines, top, bottom - top);
-            Lines[bottom] = new TerminalLine(Columns, Erasing);
+            Lines[bottom] = Blank(left);
         }
     }
 
@@ -820,10 +930,15 @@ public sealed class TerminalScreen
         count = Math.Min(count, bottom - top + 1);
         for (int i = 0; i < count; i++)
         {
+            TerminalLine left = Lines[bottom];
             Array.Copy(Lines, top, Lines, top + 1, bottom - top);
-            Lines[top] = new TerminalLine(Columns, Erasing);
+            Lines[top] = Blank(left);
         }
     }
+
+    /// <summary>A blank row in the current background: <paramref name="left"/>, a line that has left the screen with
+    /// nothing keeping it, cleared, or a new one.</summary>
+    private TerminalLine Blank(TerminalLine? left) => left?.Reuse(Columns, Erasing) ?? new TerminalLine(Columns, Erasing);
 
     private void AddScrollback(TerminalLine line) => scrollback.Add(line);
 
@@ -1423,8 +1538,9 @@ public sealed class TerminalScreen
         top = CursorRow;
         for (int i = 0; i < Math.Min(count, bottom - top + 1); i++)
         {
+            TerminalLine left = Lines[top];
             Array.Copy(Lines, top + 1, Lines, top, bottom - top);
-            Lines[bottom] = new TerminalLine(Columns, Erasing);
+            Lines[bottom] = Blank(left);
         }
         top = saveTop;
         CursorColumn = 0;

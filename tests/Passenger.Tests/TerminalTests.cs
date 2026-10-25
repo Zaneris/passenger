@@ -395,6 +395,121 @@ public sealed class TerminalTests
         }
     }
 
+    /// <summary>Plain text lands where a terminal puts it a character at a time, however it arrives: at a row's last column
+    /// it waits and wraps with the next character (with wrapping off, writes on over that column), in insert mode it pushes
+    /// the row's rest right (beside a wide character too), it takes the line-drawing set and the colour set before it, a
+    /// repeat repeats its last character, and a run, an escape or a character's bytes split between writes read whole.</summary>
+    [AvaloniaFact]
+    public void Plain_text_lands_as_written_at_a_rows_end_in_insert_mode_and_split_between_writes()
+    {
+        string folder = TestFolders.Create("terminal-");
+        try
+        {
+            (MainWindow window, TerminalSession shell) = Open(folder);
+            TerminalScreen screen = shell.Screen;
+            window.Perform(AppActions.MaximizeToolWindow);
+            WaitForScreen(window, shell, s => s.Rows >= 18, "the terminal to take the frame");
+            int width = screen.Columns;
+            RunCase(window, "runs", width.ToString(CultureInfo.InvariantCulture));
+            WaitForScreen(window, shell, s => s.IsAlternate && s.Lines[17].Text() == "abbbb", "the program to write its rows");
+
+            string digits = string.Concat(Enumerable.Range(0, width).Select(i => (char)('0' + (i % 10))));
+            (string Text, bool Wrapped, string What)[] rows =
+            [
+                (new string(' ', width - 4) + "wxyz", true, "text written up to the last column"),
+                ("!", false, "the character after it, on the next row"),
+                (new string(' ', width - 3) + "125", false, "text past the last column with wrapping off, each character over the last"),
+                ("abXYcdef", false, "text inserted inside a row"),
+                (" Q字ab", false, "a character inserted over a wide character's second half"),
+                ("┌──┐ ok", false, "the line-drawing set's corners and lines"),
+                ("split-run", false, "a run split between two writes"),
+                ("café!", false, "a character's two bytes split between writes"),
+                ("red plain", false, "text after a colour whose escape was split between writes"),
+                (new string('-', width), true, "the first row of a run two rows and five long"),
+                (new string('-', width), true, "the second row of that run"),
+                ("-----", false, "the end of that run"),
+                (new string(' ', width - 2) + "ab", true, "a write ending at the last column"),
+                ("cd", false, "the next write, wrapped to the next row"),
+                ("<<" + digits[..^2], false, "text inserted at a full row's start, its last two columns pushed off"),
+                (new string(' ', width - 2) + "XY", true, "text inserted to the row's end"),
+                ("Z", false, "the rest of it, inserted on the next row"),
+                ("abbbb", false, "a repeat of the last character written"),
+            ];
+            for (int row = 0; row < rows.Length; row++)
+            {
+                TerminalLine line = screen.Lines[row];
+                Assert.True(line.Text() == rows[row].Text && line.Wrapped == rows[row].Wrapped,
+                    $"{rows[row].What} reads \"{line.Text()}\"{(line.Wrapped ? ", wrapped" : string.Empty)} on row {row + 1}, not \"{rows[row].Text}\"{(rows[row].Wrapped ? ", wrapped" : string.Empty)}:\n{Screen(shell)}");
+            }
+            Cell[] colours = screen.Lines[8].Cells;
+            Assert.True(colours[..3].All(c => c.Style == new CellStyle(1, CellStyle.Default, CellFlags.Bold)) && colours[4].Style == CellStyle.Plain,
+                $"\"red\" is not bold red with the rest of its row plain: {colours[0].Style}, {colours[4].Style}");
+
+            Ui.Press(window, "ENTER");
+            WaitForScreen(window, shell, s => !s.IsAlternate && s.CursorColumn > 0, "the shell's screen back with its prompt");
+            window.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(folder);
+        }
+    }
+
+    /// <summary>A log longer than the scrollback holds costs the window's thread nothing for each line past it: the line a
+    /// full scrollback lets go is the next row. 30,000 lines allocate on the UI thread under 64 bytes a line more than
+    /// 12,000, where a new row's cells alone take 16 bytes a column; the terminal is hidden meanwhile, so no frame counts.</summary>
+    [AvaloniaFact]
+    public void A_log_three_times_the_scrollback_costs_the_window_no_more_for_each_line_than_one_just_past_it()
+    {
+        long few = UiBytesForLog(12_000);
+        long many = UiBytesForLog(30_000);
+        long each = (many - few) / 18_000;
+        TestContext.Current.TestOutputHelper?.WriteLine($"The log allocated {few / 1024:N0} KB on the UI thread for 12,000 lines, {many / 1024:N0} KB for 30,000: {each} bytes for each line more.");
+        Assert.True(each < 64,
+            $"30,000 lines of a log allocated {many / 1024:N0} KB on the UI thread, 12,000 {few / 1024:N0} KB: {each} bytes for each line more, a row made new for each");
+    }
+
+    /// <summary>What a log of some lines allocates on the UI thread from its start to its last line, the terminal hidden.</summary>
+    private static long UiBytesForLog(int lines)
+    {
+        string folder = TestFolders.Create("terminal-");
+        try
+        {
+            (MainWindow window, TerminalSession shell) = Open(folder);
+            RunCase(window, "log", "go", lines.ToString(CultureInfo.InvariantCulture));
+            Ui.WaitFor(() => shell.Screen.Lines[shell.Screen.CursorRow].Text().Length == 0, "the program to start waiting");
+            Ui.Press(window, "shift ESCAPE");
+            Assert.False(window.DockHost.IsShown(ToolWindowIds.Terminal), "the terminal is still shown after Shift+Escape");
+            Ui.Settle();
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            File.WriteAllText(Path.Combine(folder, "go"), string.Empty);
+            Ui.WaitFor(() => Done(shell.Screen), $"the log's {lines} lines");
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            string last = $"line {lines:D7} of the build";
+            Assert.True(Lines(shell.Screen).Any(l => l.StartsWith(last, StringComparison.Ordinal)), $"the log's last line, {last}, is not in the terminal:\n{Screen(shell)}");
+            window.Close();
+            return allocated;
+        }
+        finally
+        {
+            TestFolders.Delete(folder);
+        }
+
+        // Read from the cells, so the looks while the log comes allocate nothing of their own.
+        static bool Done(TerminalScreen screen)
+        {
+            foreach (TerminalLine line in screen.Lines)
+            {
+                Cell[] cells = line.Cells;
+                if (cells.Length > 4 && cells[0].Rune == 'd' && cells[1].Rune == 'o' && cells[2].Rune == 'n' && cells[3].Rune == 'e' && cells[4].Rune == 0)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
     /// <summary>A run configuration that uses the terminal runs its program in a tab of the Terminal window named for it, a
     /// real terminal: the program clears the screen and writes in colour where it puts the cursor, reads a key and then a line
     /// typed into the view, and its tab, kept once it ends, says so with its exit code; the toolbar's Stop shows while it

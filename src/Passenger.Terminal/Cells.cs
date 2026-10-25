@@ -89,10 +89,25 @@ public sealed class TerminalLine
 
     public void Clear(int from, int to, CellStyle style)
     {
-        for (int i = Math.Max(0, from); i < Math.Min(to, Cells.Length); i++)
+        int start = Math.Max(0, from);
+        int end = Math.Min(to, Cells.Length);
+        if (start < end)
         {
-            Cells[i] = Cell.Blank(style);
+            Cells.AsSpan(start, end - start).Fill(Cell.Blank(style));
         }
+    }
+
+    /// <summary>The line blank again at a width, to come onto the screen as a new row once it has left for good.</summary>
+    internal TerminalLine Reuse(int columns, CellStyle style)
+    {
+        if (Cells.Length != columns)
+        {
+            Cells = new Cell[columns];
+        }
+        Clear(0, columns, style);
+        Wrapped = false;
+        graphemes?.Clear();
+        return this;
     }
 
     public void Resize(int columns, CellStyle style)

@@ -93,6 +93,55 @@ switch (args)
         }
         Lines(long.Parse(from), long.Parse(to));
         break;
+    case ["runs", string columns]:
+        // Plain text on the alternate screen, a row each case: at the last column, unwrapped, inserted, line-drawn, coloured,
+        // repeated, and split between writes; the shell's screen back once a line is typed.
+        int across = int.Parse(columns);
+        Write("\e[?1049h\e[H\e[2J");
+        Write($"\e[1;{across - 3}Hwxyz!");
+        Write($"\e[?7l\e[3;{across - 2}H12345\e[?7h");
+        Write("\e[4;1Habcdef\e[4;3H\e[4hXY\e[4l");
+        Write("\e[5;1H漢字ab\e[5;2H\e[4hQ\e[4l");
+        Write("\e[6;1H\e(0lqqk\e(B ok");
+        Write("\e[7;1Hsplit-");
+        Thread.Sleep(100);
+        Write("run");
+        output.Write([.. Encoding.UTF8.GetBytes("\e[8;1Hcaf"), 0xC3]);
+        output.Flush();
+        Thread.Sleep(100);
+        output.Write([0xA9, (byte)'!']);
+        output.Flush();
+        Write("\e[9;1H\e[1;");
+        Thread.Sleep(100);
+        Write("31mred\e[0m plain");
+        Write($"\e[10;1H{new string('-', (across * 2) + 5)}");
+        Write($"\e[13;{across - 1}Hab");
+        Thread.Sleep(100);
+        Write("cd");
+        Write($"\e[15;1H{string.Concat(Enumerable.Range(0, across).Select(i => (char)('0' + (i % 10))))}\e[15;1H\e[4h<<\e[4l");
+        Write($"\e[16;{across - 1}H\e[4hXYZ\e[4l");
+        Write("\e[18;1Hab\e[3b");
+        Console.ReadLine();
+        Write("\e[?1049l");
+        break;
+    case ["log", string file, string count]:
+        // A build's log of plain lines, once the test has made the file, then a last line saying it is done.
+        while (!File.Exists(file))
+        {
+            Thread.Sleep(50);
+        }
+        StringBuilder log = new();
+        for (int i = 1, n = int.Parse(count); i <= n; i++)
+        {
+            log.Append($"line {i:D7} of the build: Compiling Passenger.Terminal/TerminalScreen.cs, 0 warnings\n");
+            if (log.Length > 16 * 1024 || i == n)
+            {
+                Write(log.ToString());
+                log.Clear();
+            }
+        }
+        Write("done\n");
+        break;
     default:
         Console.Error.WriteLine($"No case '{string.Join(' ', args)}'");
         return 2;
