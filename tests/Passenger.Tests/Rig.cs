@@ -836,7 +836,7 @@ public static class Ui
     /// server writes it line by line, so unlike the IDE's own log there is no queue to flush first. Newest by when it was
     /// begun: a Windows directory listing dates a file still open by its last close, so a server still running looks older
     /// than the one shut down for it.</summary>
-    private static string ServerLogTail()
+    internal static string ServerLogTail()
     {
         DirectoryInfo logs = new(Passenger.App.CSharp.CSharpService.LogFolder);
         if (!logs.Exists || logs.EnumerateFiles("server-*.log").OrderByDescending(f => f.CreationTimeUtc).FirstOrDefault() is not { } newest)

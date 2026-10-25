@@ -500,7 +500,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         int server = window.CSharpService!.Session!.Server.ProcessId;
         int[] restored = ServerNodes(server);
         Assert.True(OperatingSystem.IsWindows() || restored.Length > 0,
-            $"The language server's restore left no MSBuild node in its process group, so there is none for a build to take up. MSBuild nodes now:\n{string.Join('\n', Processes.MSBuildNodes().Select(n => $"{Processes.Describe(n.Key)} {n.Value}"))}");
+            $"The language server's restore left no MSBuild node in its process group, so there is none for a build to take up. MSBuild nodes now:\n{string.Join('\n', Processes.MSBuildNodes().Select(n => $"{Processes.Describe(n.Key)} {n.Value}"))}{Ui.ServerLogTail()}");
         try
         {
             window.Perform(AppActions.Build);
