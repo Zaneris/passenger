@@ -64,8 +64,8 @@ public sealed class TestsView : DockPanel
             Classes = { "tree" },
             ItemsSource = model.Rows,
             SelectionMode = SelectionMode.Multiple,
-            ItemTemplate = new FuncDataTemplate<TestNode>((_, _) => new TestRow(model), supportsRecycling: true),
         };
+        ReusedRows.Use(tree, () => new TestRow(model));
         tree.SelectionChanged += (_, _) => ShowDetails();
         tree.DoubleTapped += (_, _) =>
         {
@@ -481,8 +481,9 @@ public sealed class TestsView : DockPanel
     private static string Format(TimeSpan duration) =>
         duration.TotalSeconds >= 1 ? $"{duration.TotalSeconds:0.0} s" : $"{Math.Max(1, (int)duration.TotalMilliseconds)} ms";
 
-    /// <summary>A row of the tree for whichever node the list gives it, recycled as the list scrolls: it follows its node's
-    /// changes only while it is shown, and lets go of them when the list takes it away or gives it another node.</summary>
+    /// <summary>A row of the tree for whichever node the list gives its container, handed another as the list scrolls: it
+    /// follows its node's changes only while it is shown, and lets go of them when the list takes it away or gives it
+    /// another node.</summary>
     private sealed class TestRow : StackPanel
     {
         private static readonly string[] StateClasses = ["running", "passed", "failed", "skipped"];
