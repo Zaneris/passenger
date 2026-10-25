@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.VisualTree;
 using Passenger.App.Docking;
 using Passenger.Core;
 using Passenger.Editor;
@@ -333,10 +334,11 @@ public partial class ExplorerView : UserControl
         }
     }
 
-    /// <summary>A left press on a file or folder on disk may begin a drag of it, or of the rows chosen with it.</summary>
+    /// <summary>A left press on a file or folder on disk may begin a drag of it, or of the rows chosen with it. The row is
+    /// the one pressed on, never one the scrollbar lies over, so a drag of the bar's thumb stays the bar's.</summary>
     private void OnRowsPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (RowAt(e.GetPosition(Rows)) is { IsMovable: true } row)
+        if ((e.Source as Visual)?.FindAncestorOfType<ListBoxItem>(includeSelf: true)?.DataContext is ExplorerNode { IsMovable: true } row)
         {
             // The rows chosen as it was pressed: the list then chooses the row alone.
             IReadOnlyList<ExplorerNode> chosen = SelectedNodes;
