@@ -1022,11 +1022,30 @@ public static class Ui
     private static void Click(Control control, Point? at, MouseButton button, RawInputModifiers modifiers, bool settle)
     {
         (TopLevel top, Point point) = Aim(control, at);
+        Apart(top, point);
         top.MouseDown(point, button, modifiers);
         top.MouseUp(point, button, modifiers);
+        lastClick = (new WeakReference<TopLevel>(top), point, DateTime.UtcNow);
         if (settle)
         {
             Settle();
+        }
+    }
+
+    /// <summary>Where and when the last click went down, its window held weakly, so a window closed is let go.</summary>
+    private static (WeakReference<TopLevel> Top, Point Point, DateTime At)? lastClick;
+
+    /// <summary>Waits out the double-click time after a click at the same place, so a second click there is a click of its
+    /// own, as two a person makes apart are, never the second of a double click (<see cref="DoubleClick"/> makes one).</summary>
+    private static void Apart(TopLevel top, Point point)
+    {
+        Avalonia.Platform.IPlatformSettings? platform = Application.Current?.PlatformSettings;
+        TimeSpan between = platform?.GetDoubleTapTime(PointerType.Mouse) ?? TimeSpan.FromMilliseconds(500);
+        Size near = platform?.GetDoubleTapSize(PointerType.Mouse) ?? new Size(4, 4);
+        if (lastClick is { } last && last.Top.TryGetTarget(out TopLevel? clicked) && clicked == top && Math.Abs(last.Point.X - point.X) <= near.Width / 2 && Math.Abs(last.Point.Y - point.Y) <= near.Height / 2
+            && DateTime.UtcNow - last.At is { } since && since < between)
+        {
+            Hold(between - since, "a second click at the same place to be a click of its own, not a double click");
         }
     }
 
