@@ -89,11 +89,15 @@ public sealed class LanguageServerProjectsTests : IClassFixture<RestoredFolders>
             Restore.Run(Path.Combine(root, "App.csproj"));
             string assets = Path.Combine(root, "obj", "project.assets.json");
             File.Move(assets, Path.Combine(root, "assets.prebuilt.json"));
-            Write(root, "Directory.Build.targets", """
+            // The build goes on a while after its assets arrive, so the language server asks for it while it runs and is given it.
+            int held = (int)Math.Ceiling(TimeSpan.FromSeconds(3).Scaled().TotalSeconds);
+            Write(root, "Directory.Build.targets", $"""
                 <Project>
                   <Target Name="AssetsArriveLate" BeforeTargets="CoreCompile"
                           Condition="'$(DesignTimeBuild)' == 'true' and !Exists('$(ProjectAssetsFile)')">
                     <Copy SourceFiles="$(MSBuildProjectDirectory)/assets.prebuilt.json" DestinationFiles="$(ProjectAssetsFile)" />
+                    <Exec Condition="'$(OS)' != 'Windows_NT'" Command="sleep {held}" />
+                    <Exec Condition="'$(OS)' == 'Windows_NT'" Command="powershell -NoProfile -Command Start-Sleep -Seconds {held}" />
                   </Target>
                 </Project>
                 """);
@@ -101,8 +105,11 @@ public sealed class LanguageServerProjectsTests : IClassFixture<RestoredFolders>
             string page = Path.Combine(root, "Page.cs");
             MainWindow first = Keeping(root);
             first.OpenFile(page);
-            WaitForCode(first, page, "CS0246", "the first build's missing package type, before its assets arrived");
+            // The error on Missing, which the server gives whether the package resolved or not.
+            WaitForCode(first, page, "CS0103", "the server's errors in Page.cs as the first window loaded it");
             Assert.True(File.Exists(assets), "The assets file did not arrive during the first design-time build");
+            Assert.True(Codes(first, page).Contains("CS0246"),
+                $"The first window's build resolved the package ({string.Join(", ", Codes(first, page))}): the language server was given a build made after its assets arrived, so none without them was kept for the next opening");
             first.Close();
 
             MainWindow second = Keeping(root);
