@@ -37,10 +37,38 @@ public static class Breaks
 
 /// <summary>A binding that failed, as the app stops at it: Passenger's <c>$bindingError</c> (in Variables, and in the
 /// breakpoint's condition and log message). The control and the property it sets, its path and the part of the path that
-/// failed, the control's DataContext, the framework's message, and where the control is written in XAML.</summary>
+/// failed, the control's DataContext, the framework's message, and where the control is written in XAML. Fields, so the
+/// debugger reads each with no code run in the stopped app, even once an evaluation has run past its time.</summary>
 [DebuggerDisplay("{Description,nq}")]
 public sealed class BindingError
 {
+    public readonly InspectedObject? Control;
+
+    public readonly InspectedProperty? Property;
+
+    /// <summary>The binding's path as its XAML writes it.</summary>
+    public readonly string Path;
+
+    /// <summary>The part of the path the framework could not read (Avalonia's "error point", or "(source)" when it had no
+    /// source), when it says which.</summary>
+    public readonly string? FailedPart;
+
+    /// <summary>The control's DataContext as the binding failed.</summary>
+    public readonly object? DataContext;
+
+    public readonly string Message;
+
+    /// <summary>The control's element in its XAML, "MainWindow.axaml:8:20", when the app's build recorded it: its XAML
+    /// compiler's line.</summary>
+    public readonly string? Xaml;
+
+    /// <summary>"TextBlock#Caption.Text to Nmae: Could not find a matching property accessor for 'Nmae' on ...".</summary>
+    public readonly string Description;
+
+    /// <summary>The failure as the protocol writes it (<see cref="BindingFailure"/>), which Passenger reads at the stop.</summary>
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    public readonly string Said;
+
     internal BindingError(InspectedObject? control, InspectedProperty? property, object? dataContext, BindingFailure failure, string said)
     {
         Control = control;
@@ -53,31 +81,4 @@ public sealed class BindingError
         Description = failure.Description;
         Said = said;
     }
-
-    public InspectedObject? Control { get; }
-
-    public InspectedProperty? Property { get; }
-
-    /// <summary>The binding's path as its XAML writes it.</summary>
-    public string Path { get; }
-
-    /// <summary>The part of the path the framework could not read (Avalonia's "error point", or "(source)" when it had no
-    /// source), when it says which.</summary>
-    public string? FailedPart { get; }
-
-    /// <summary>The control's DataContext as the binding failed.</summary>
-    public object? DataContext { get; }
-
-    public string Message { get; }
-
-    /// <summary>The control's element in its XAML, "MainWindow.axaml:8:20", when the app's build recorded it: its XAML
-    /// compiler's line.</summary>
-    public string? Xaml { get; }
-
-    /// <summary>"TextBlock#Caption.Text to Nmae: Could not find a matching property accessor for 'Nmae' on ...".</summary>
-    public string Description { get; }
-
-    /// <summary>The failure as the protocol writes it (<see cref="BindingFailure"/>), which Passenger reads at the stop.</summary>
-    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
-    public string Said { get; }
 }
