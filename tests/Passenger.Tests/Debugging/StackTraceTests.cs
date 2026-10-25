@@ -7,8 +7,18 @@ namespace Passenger.Tests.Debugging;
 [Collection(DebugSession.Collection)]
 public class StackTraceTests(ITestOutputHelper testOutputHelper)
 {
+    private static readonly int Selected = Debuggees.Line("DebuggableConsoleApp", "ClassWithBclCall.cs", "return x * 2;");
+    private static readonly int Ranged = Debuggees.Line("DebuggableConsoleApp", "ClassWithBclCall.cs", "int[] array = Enumerable.Range(1, 5)");
+    private static readonly int BclCalled = Debuggees.Line("DebuggableConsoleApp", "ClassWithBclCall.Test(4);");
+    private static readonly int NestedGenericCalled = Debuggees.Line("DebuggableConsoleApp", "MyNestedGenericClass<double, bool>.Test();");
+    private static readonly int NestedGenericBody = Debuggees.Line("DebuggableConsoleApp", "MyClassContainingAnotherClass.cs", "public static void Test()") + 2;
+    private static readonly int AnotherMethodAwaits = Debuggees.Line("DebuggableConsoleApp", "Namespace1/AnotherClass.cs", "await Task.Delay(10);");
+    private static readonly int InnerAwaited = Debuggees.Line("DebuggableConsoleApp", "AsyncStackTraceClass.cs", "await Task.Delay(10);") + 1;
+    private static readonly int MiddleAwaits = Debuggees.Line("DebuggableConsoleApp", "AsyncStackTraceClass.cs", "await InnerAsync();");
+    private static readonly int TestAwaits = Debuggees.Line("DebuggableConsoleApp", "AsyncStackTraceClass.cs", "await MiddleAsync();");
+
     [Fact]
-    public async Task StackTraceRequest_ReturnsFrames()
+    public async Task A_stop_lists_its_frames_down_to_Main_the_librarys_subtle_and_an_async_methods_by_its_own_name()
     {
         bool startSuspended = true;
         using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
@@ -21,23 +31,23 @@ public class StackTraceTests(ITestOutputHelper testOutputHelper)
         debugProtocolHost.Request(DapCommands.SetExceptionBreakpoints, new SetExceptionBreakpointsArguments([], [new(DapExceptionFilters.All), new(DapExceptionFilters.UserUnhandled)]));
         string breakpointedFilePath = Debuggees.Source("DebuggableConsoleApp", "ClassWithBclCall.cs");
         debugProtocolHost
-            .WithBreakpointsRequest([12], breakpointedFilePath)
+            .WithBreakpointsRequest([Selected], breakpointedFilePath)
             .WithConfigurationDoneRequest()
             .WithOptionalResumeRuntime(p2.Id, startSuspended);
 
         StoppedEvent stoppedEvent = await debugProtocolHost.WaitForStoppedEvent();
         (string filePath, int line, int column) stopInfo = stoppedEvent.ReadStopInfo();
         Assert.EndsWith("ClassWithBclCall.cs", stopInfo.filePath);
-        Assert.Equal(12, stopInfo.line);
+        Assert.Equal(Selected, stopInfo.line);
 
         // TODO: Handle formatting generic methods (and fully qualifying them), e.g. System.Linq.dll!System.Linq.Enumerable.RangeSelectIterator<int, int>.Fill() instead of System.Linq.dll!RangeSelectIterator`2.Fill()
         List<DapStackFrame> expectedStackFrames =
         [
-            new() { Id = 1, Column = 3, EndColumn =   16, Line = 12, EndLine =   12, Name = "DebuggableConsoleApp.dll!DebuggableConsoleApp.ClassWithBclCall.Selector(int x)",   Source = new DapSource { Name = "ClassWithBclCall.cs", SourceReference = 0, Path = breakpointedFilePath } },
+            new() { Id = 1, Column = 3, EndColumn =   16, Line = Selected, EndLine = Selected, Name = "DebuggableConsoleApp.dll!DebuggableConsoleApp.ClassWithBclCall.Selector(int x)",   Source = new DapSource { Name = "ClassWithBclCall.cs", SourceReference = 0, Path = breakpointedFilePath } },
             new() { Id = 2, Column = 0, EndColumn = null, Line =  0, EndLine = null, Name = "System.Linq.dll!System.Linq.Enumerable.RangeSelectIterator<int, int>.Fill(System.Span<int> results, int start, System.Func<int, int> func)",    Source = null, PresentationHint = "subtle" },
             new() { Id = 3, Column = 0, EndColumn = null, Line =  0, EndLine = null, Name = "System.Linq.dll!System.Linq.Enumerable.RangeSelectIterator<int, int>.ToArray()",   Source = null, PresentationHint = "subtle" },
-            new() { Id = 4, Column = 3, EndColumn =   65, Line =  7, EndLine =    7, Name = "DebuggableConsoleApp.dll!DebuggableConsoleApp.ClassWithBclCall.Test(int myParam)", Source = new DapSource { Name = "ClassWithBclCall.cs", SourceReference = 0, Path = breakpointedFilePath } },
-            new() { Id = 5, Column = 4, EndColumn =   29, Line = 31, EndLine =   31, Name = "DebuggableConsoleApp.dll!DebuggableConsoleApp.Program.Main(string[] args)",        Source = new DapSource { Name = "Program.cs",          SourceReference = 0, Path = Debuggees.Source("DebuggableConsoleApp", "Program.cs") } },
+            new() { Id = 4, Column = 3, EndColumn =   67, Line = Ranged, EndLine = Ranged, Name = "DebuggableConsoleApp.dll!DebuggableConsoleApp.ClassWithBclCall.Test(int myParam)", Source = new DapSource { Name = "ClassWithBclCall.cs", SourceReference = 0, Path = breakpointedFilePath } },
+            new() { Id = 5, Column = 4, EndColumn =   29, Line = BclCalled, EndLine = BclCalled, Name = "DebuggableConsoleApp.dll!DebuggableConsoleApp.Program.Main(string[] args)",        Source = new DapSource { Name = "Program.cs",          SourceReference = 0, Path = Debuggees.Source("DebuggableConsoleApp", "Program.cs") } },
 			// TODO: Return internal frames (thread.ActiveInternalFrames), such as a subtle "[Native to Managed Transition]".
 		];
 
@@ -51,19 +61,19 @@ public class StackTraceTests(ITestOutputHelper testOutputHelper)
         string breakpointedFilePath2 = Debuggees.Source("DebuggableConsoleApp", "MyClassContainingAnotherClass.cs");
         StoppedEvent stoppedEvent2 = await debugProtocolHost
             .WithBreakpointsRequest([], breakpointedFilePath)
-            .WithBreakpointsRequest([19], breakpointedFilePath2)
+            .WithBreakpointsRequest([NestedGenericBody], breakpointedFilePath2)
             .WithContinueRequest()
             .WaitForStoppedEvent();
 
         (string filePath, int line, int column) stopInfo2 = stoppedEvent2.ReadStopInfo();
         Assert.EndsWith("MyClassContainingAnotherClass.cs", stopInfo2.filePath);
-        Assert.Equal(19, stopInfo2.line);
+        Assert.Equal(NestedGenericBody, stopInfo2.line);
 
         // Numbered on from the first stop's five frames, so an id from that stop never names one of these.
         List<DapStackFrame> expectedStackFrames2 =
         [
-            new() { Id = 6, Column = 4, EndColumn =   5, Line = 19, EndLine = 19, Name = "DebuggableConsoleApp.dll!DebuggableConsoleApp.MyGenericClassContainingAnotherGenericClass<int, string>.MyNestedGenericClass<double, bool>.Test()", Source = new DapSource { Name = "MyClassContainingAnotherClass.cs", SourceReference = 0, Path = breakpointedFilePath2 } },
-            new() { Id = 7, Column = 4, EndColumn = 103, Line = 35, EndLine = 35, Name = "DebuggableConsoleApp.dll!DebuggableConsoleApp.Program.Main(string[] args)", Source = new DapSource { Name = "Program.cs", SourceReference = 0, Path = Debuggees.Source("DebuggableConsoleApp", "Program.cs") } },
+            new() { Id = 6, Column = 4, EndColumn =   5, Line = NestedGenericBody, EndLine = NestedGenericBody, Name = "DebuggableConsoleApp.dll!DebuggableConsoleApp.MyGenericClassContainingAnotherGenericClass<int, string>.MyNestedGenericClass<double, bool>.Test()", Source = new DapSource { Name = "MyClassContainingAnotherClass.cs", SourceReference = 0, Path = breakpointedFilePath2 } },
+            new() { Id = 7, Column = 4, EndColumn = 103, Line = NestedGenericCalled, EndLine = NestedGenericCalled, Name = "DebuggableConsoleApp.dll!DebuggableConsoleApp.Program.Main(string[] args)", Source = new DapSource { Name = "Program.cs", SourceReference = 0, Path = Debuggees.Source("DebuggableConsoleApp", "Program.cs") } },
         ];
 
         debugProtocolHost.WithStackTraceRequest(stoppedEvent2.ThreadId!.Value, out StackTraceResponse? stackTraceResponse2, null);
@@ -73,13 +83,13 @@ public class StackTraceTests(ITestOutputHelper testOutputHelper)
         string breakpointedFilePath3 = Debuggees.Source("DebuggableConsoleApp", "Namespace1", "AnotherClass.cs");
         StoppedEvent stoppedEvent3 = await debugProtocolHost
             .WithBreakpointsRequest([], breakpointedFilePath2)
-            .WithBreakpointsRequest([20], breakpointedFilePath3)
+            .WithBreakpointsRequest([AnotherMethodAwaits], breakpointedFilePath3)
             .WithContinueRequest()
             .WaitForStoppedEvent();
 
         (string filePath, int line, int column) stopInfo3 = stoppedEvent3.ReadStopInfo();
         Assert.EndsWith("AnotherClass.cs", stopInfo3.filePath);
-        Assert.Equal(20, stopInfo3.line);
+        Assert.Equal(AnotherMethodAwaits, stopInfo3.line);
 
         debugProtocolHost.WithStackTraceRequest(stoppedEvent3.ThreadId!.Value, out StackTraceResponse? stackTraceResponse3, null);
         List<string> userFrameNames = stackTraceResponse3.StackFrames
@@ -93,7 +103,7 @@ public class StackTraceTests(ITestOutputHelper testOutputHelper)
     }
 
     [Fact]
-    public async Task StackTraceRequest_AppendsSyntheticAsyncCallerFrames()
+    public async Task A_stop_in_an_awaited_method_lists_the_async_methods_awaiting_it_with_their_locals()
     {
         bool startSuspended = true;
         using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process process);
@@ -104,7 +114,7 @@ public class StackTraceTests(ITestOutputHelper testOutputHelper)
             .WaitForInitializedEvent();
         string filePath = Debuggees.Source("DebuggableConsoleApp", "AsyncStackTraceClass.cs");
         debugProtocolHost
-            .WithBreakpointsRequest([20], filePath)
+            .WithBreakpointsRequest([InnerAwaited], filePath)
             .WithConfigurationDoneRequest()
             .WithOptionalResumeRuntime(process.Id, startSuspended);
 
@@ -115,7 +125,7 @@ public class StackTraceTests(ITestOutputHelper testOutputHelper)
             ["DebuggableConsoleApp.dll!DebuggableConsoleApp.AsyncStackTraceClass.MiddleAsync()",
             "DebuggableConsoleApp.dll!DebuggableConsoleApp.AsyncStackTraceClass.TestAsync()"],
             stackTraceResponse.StackFrames.TakeLast(2).Select(frame => frame.Name));
-        Assert.Equal([13, 7], stackTraceResponse.StackFrames.TakeLast(2).Select(frame => frame.Line));
+        Assert.Equal([MiddleAwaits, TestAwaits], stackTraceResponse.StackFrames.TakeLast(2).Select(frame => frame.Line));
 
         DapStackFrame syntheticMiddleFrame = stackTraceResponse.StackFrames[^2];
         debugProtocolHost.WithScopesRequest(syntheticMiddleFrame.Id, out ScopesResponse? scopesResponse);
@@ -124,7 +134,7 @@ public class StackTraceTests(ITestOutputHelper testOutputHelper)
     }
 
     [Fact]
-    public async Task ResolveStackFrameRequest_DecompilesUnresolvedFrame()
+    public async Task A_library_frame_without_source_is_decompiled_when_it_is_resolved()
     {
         bool startSuspended = true;
         using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process process);
@@ -135,7 +145,7 @@ public class StackTraceTests(ITestOutputHelper testOutputHelper)
             .WaitForInitializedEvent();
         string breakpointedFilePath = Debuggees.Source("DebuggableConsoleApp", "ClassWithBclCall.cs");
         debugProtocolHost
-            .WithBreakpointsRequest([12], breakpointedFilePath)
+            .WithBreakpointsRequest([Selected], breakpointedFilePath)
             .WithConfigurationDoneRequest()
             .WithOptionalResumeRuntime(process.Id, startSuspended);
 

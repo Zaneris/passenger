@@ -71,7 +71,7 @@ public partial class MainWindow
         if (Autosaves && !(Editors.SaveAll(new HashSet<OpenDocument>(conflicted.Concat(leftUnsaved))) && conflicted.Count == 0))
         {
             e.Cancel = true;
-            _ = CloseUnsavedAsync(quit);
+            IdeErrors.Observe(CloseUnsavedAsync(quit));
             return;
         }
         quitting = quit;

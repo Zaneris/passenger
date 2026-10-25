@@ -4,8 +4,8 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.VisualTree;
-using Passenger.App.Workspace;
 using Passenger.Terminal;
+using Passenger.Workspace;
 
 namespace Passenger.App;
 

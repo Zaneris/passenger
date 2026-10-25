@@ -98,7 +98,7 @@ while (true)
     }
 }
 
-static class Counter
+internal static class Counter
 {
     public static long Value;
 
@@ -116,7 +116,7 @@ static class Counter
     }
 }
 
-class Slow
+internal class Slow
 {
     public string Value
     {
@@ -128,7 +128,7 @@ class Slow
     }
 }
 
-static class Passes
+internal static class Passes
 {
     public static long Count;
 
@@ -171,7 +171,7 @@ static class Passes
     private static string Say(string text) => $"said {text}";
 }
 
-static class Race
+internal static class Race
 {
     public static bool Throws;
     public static long Passes;
@@ -218,10 +218,10 @@ static class Race
     }
 }
 
-sealed class RaceException() : Exception("thrown by the racing thread");
+internal sealed class RaceException() : Exception("thrown by the racing thread");
 
 // What an await waits for, done on a thread of its own, which goes on with the awaiting method there.
-readonly struct ElsewhereAwaiter : System.Runtime.CompilerServices.ICriticalNotifyCompletion
+internal readonly struct ElsewhereAwaiter : System.Runtime.CompilerServices.ICriticalNotifyCompletion
 {
     public ElsewhereAwaiter GetAwaiter() => this;
 
@@ -238,7 +238,7 @@ readonly struct ElsewhereAwaiter : System.Runtime.CompilerServices.ICriticalNoti
 // evaluation) on a thread other than the one the method began on (or on any, WaitsFirst), it answers only once the
 // passing thread has passed again: an evaluation runs its thread alone, so the answer never comes while it runs, as one
 // that waits on what a paused thread holds never comes.
-struct WaitingBuilder
+internal struct WaitingBuilder
 {
     public static bool WaitsFirst;
 

@@ -3,9 +3,9 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
-using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Host;
+using Passenger.Workspace;
 
 namespace Passenger.App.Run;
 
@@ -87,13 +87,13 @@ public sealed class PublishDialog : Window
         SizeToContent = SizeToContent.Height;
         CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable("Passenger.Error"));
+        problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable(TokenKeys.Error));
 
         Button cancel = new() { Content = "Cancel", IsCancel = true };
         cancel.Click += (_, _) => Close(null);
-        publish.Click += (_, _) => _ = PublishAsync();
-        saveButton.Click += (_, _) => _ = SaveAsync();
-        browse.Click += (_, _) => _ = BrowseAsync();
+        publish.Click += (_, _) => IdeErrors.Observe(PublishAsync());
+        saveButton.Click += (_, _) => IdeErrors.Observe(SaveAsync());
+        browse.Click += (_, _) => IdeErrors.Observe(BrowseAsync());
         Closing += (_, _) => reads?.Cancel();
 
         frameworkBox.ItemsSource = project.TargetFrameworks;
@@ -130,7 +130,7 @@ public sealed class PublishDialog : Window
             },
         };
         Border top = new() { BorderThickness = new Thickness(0, 0, 0, 1), Child = header };
-        top.Bind(Border.BorderBrushProperty, top.GetResourceObservable("Passenger.Divider"));
+        top.Bind(Border.BorderBrushProperty, top.GetResourceObservable(TokenKeys.Divider));
         Border bottom = DialogFooter.Bar(DialogFooter.Of(publish, cancel, saveButton), problem);
         // Inset as the page above it is, so Publish ends where its fields do and a problem starts where its labels do.
         bottom.Padding = new Thickness(20, 10);
@@ -146,7 +146,7 @@ public sealed class PublishDialog : Window
         {
             if (!filling)
             {
-                _ = LoadAsync(Chosen);
+                IdeErrors.Observe(LoadAsync(Chosen));
             }
         };
         nameBox.TextChanged += (_, _) => Changed();
@@ -188,7 +188,7 @@ public sealed class PublishDialog : Window
             box.IsCheckedChanged += (_, _) => Changed();
         }
         ListProfiles(chosen);
-        _ = LoadAsync(Chosen);
+        IdeErrors.Observe(LoadAsync(Chosen));
     }
 
     /// <summary>The project's profiles as the dialog found them.</summary>
@@ -530,7 +530,7 @@ public sealed class PublishDialog : Window
         }
         else if (evaluate && loaded is not null && !reading)
         {
-            _ = DefaultFolderAsync();
+            IdeErrors.Observe(DefaultFolderAsync());
         }
         ShowDestination();
         if (!reading && !saving)

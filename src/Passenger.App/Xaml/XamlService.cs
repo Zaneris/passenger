@@ -2,6 +2,7 @@ using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
+using Passenger.Workspace;
 using Passenger.Xaml;
 using Passenger.Xaml.Projects;
 
@@ -83,8 +84,8 @@ public sealed class XamlService : IDisposable
         }
     }
 
-    /// <summary>Whether a path is a XAML file Passenger reads, by its extension.</summary>
-    public static bool IsXaml(string path) => Path.GetExtension(path).ToLowerInvariant() is ".axaml" or ".paml" or ".xaml";
+    /// <summary>Whether a path is a XAML file Passenger reads, by its name.</summary>
+    public static bool IsXaml(string path) => Languages.Language.ForPath(path) == Languages.Language.Xaml;
 
     /// <summary>An open file's XAML, null for a file that is not XAML of a C# project.</summary>
     public XamlDocument? For(OpenDocument document) => documents.GetValueOrDefault(document);
@@ -115,7 +116,7 @@ public sealed class XamlService : IDisposable
             }
             return;
         }
-        if (document.Language.Name == "C#")
+        if (document.Language == Languages.Language.CSharp)
         {
             // Only a file a XAML project may read waits for a pause: each wait holds background work half a second.
             Debounce wait = new(SourceSettle, () => SourceTypedAsync(document));
@@ -163,7 +164,7 @@ public sealed class XamlService : IDisposable
                 continue;
             }
             HashSet<string> open = [.. documents.Keys.Select(d => d.Path)];
-            _ = UpdateAsync(loading, builder =>
+            IdeErrors.Observe(UpdateAsync(loading, builder =>
             {
                 XamlProject? made = null;
                 foreach (string file in files)
@@ -178,7 +179,7 @@ public sealed class XamlService : IDisposable
                     }
                 }
                 return made;
-            });
+            }));
         }
     }
 
@@ -251,7 +252,7 @@ public sealed class XamlService : IDisposable
         Task<XamlProjectBuilder?> builder = BackgroundWork.Run(() => XamlProjectBuilder.For(project, DotnetRoot.Value, IdeErrors.Report, evaluations));
         loading = new XamlLoading(project, builder, LoadAsync(builder, texts));
         projects[project] = loading;
-        _ = AnnounceAsync(loading);
+        IdeErrors.Observe(AnnounceAsync(loading));
         return loading;
     }
 
@@ -332,7 +333,7 @@ public sealed class XamlService : IDisposable
         {
             document.Follow(again);
         }
-        _ = AnnounceAsync(again);
+        IdeErrors.Observe(AnnounceAsync(again));
     }
 
     private Dictionary<string, TextSnapshot> OpenTexts()

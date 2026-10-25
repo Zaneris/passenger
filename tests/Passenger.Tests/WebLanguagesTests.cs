@@ -341,14 +341,12 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
     {
         SkipWithoutNode(typescript: true);
         string folder = TestFolders.Create("own-typescript-");
-        CopyFolder(Path.Combine(AppContext.BaseDirectory, "web", "node_modules", "typescript"), Path.Combine(folder, "node_modules", "typescript"));
+        CopyFolder(Path.Combine(Passenger.App.Web.WebLanguages.Modules, "typescript"), Path.Combine(folder, "node_modules", "typescript"));
         File.WriteAllText(Path.Combine(folder, "tsconfig.json"), "{ \"compilerOptions\": { \"strict\": true } }\n");
         File.WriteAllText(Path.Combine(folder, "main.ts"), "const n: number = 1;\n");
-        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false };
-        window.Show();
+        MainWindow window = Ui.OpenFolder(folder, autosaves: false);
         try
         {
-            window.OpenFolder(folder);
             window.OpenFile(Path.Combine(PathNames.Canonical(folder), "main.ts"));
             Ui.Settle();
             Ui.WaitFor(() => window.LanguageShown?.StartsWith("TypeScript · TypeScript ", StringComparison.Ordinal) == true, "the status bar to name the TypeScript in use");
@@ -414,6 +412,6 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
     private static string? TooOld()
     {
         Passenger.App.Web.NodeRuntime node = Task.Run(() => Passenger.App.Web.NodeRuntime.FindAsync(null)).GetAwaiter().GetResult();
-        return node.Problem ?? node.TooOldFor(Path.Combine(AppContext.BaseDirectory, "web", "node_modules", "typescript-language-server", "package.json"), "the TypeScript language server");
+        return node.Problem ?? node.TooOldFor(Path.Combine(Passenger.App.Web.WebLanguages.Modules, "typescript-language-server", "package.json"), "the TypeScript language server");
     }
 }

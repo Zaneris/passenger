@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The folder's projects with no UI: the solution and project models, their files changed as text (SolutionEdits,
+       ProjectEdits), the project host that evaluates them, and the folder's walk. No Avalonia, so the boundary is the
+       project's own. -->
+  <PropertyGroup>
+    <RootNamespace>Passenger.Workspace</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- What the app's part of the folder and nuget.config's editing read as they did inside one assembly (JsonText's
+         layout, XmlText). -->
+    <InternalsVisibleTo Include="Passenger" />
+    <InternalsVisibleTo Include="Passenger.Packages" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Passenger.Core/Passenger.Core.csproj" />
+    <ProjectReference Include="../Passenger.Text/Passenger.Text.csproj" />
+    <!-- The host's messages, one definition for both ends. -->
+    <Compile Include="../Passenger.Host/Protocol.cs" Link="HostProtocol.cs" />
+    <Compile Include="../Passenger.Host/Stamps.cs" Link="HostStamps.cs" />
+  </ItemGroup>
+</Project>

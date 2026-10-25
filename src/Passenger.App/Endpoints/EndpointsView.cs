@@ -59,8 +59,8 @@ public sealed class EndpointsView : DockPanel
             Classes = { "tree" },
             ItemTemplate = new FuncDataTemplate<object>((row, _) => row switch
             {
-                FileRow file => FileHeading(file.Name, file.Path, "Icon.DocumentText"),
-                ProjectRow project => FileHeading(project.Name, project.Path, "Icon.Endpoints"),
+                FileRow file => FileHeading(file.Name, file.Path, IconKeys.DocumentText),
+                ProjectRow project => FileHeading(project.Name, project.Path, IconKeys.Endpoints),
                 EndpointRequest request => Row(request),
                 WebRoute route => RouteRow(route),
                 _ => new TextBlock(),
@@ -89,7 +89,7 @@ public sealed class EndpointsView : DockPanel
             }
             if (e.Key == Key.Enter && e.KeyModifiers == KeyModifiers.None)
             {
-                _ = TestAsync(chosen);
+                IdeErrors.Observe(TestAsync(chosen));
                 e.Handled = true;
             }
             else if (e.Key == Key.F4)
@@ -104,7 +104,7 @@ public sealed class EndpointsView : DockPanel
             ListMenus.Item("Go to Route", "F4", () => RouteGoToRequested?.Invoke(this, route)),
         ] : list.SelectedItem is not EndpointRequest chosen ? [] :
         [
-            ListMenus.Item("Test", "Enter", () => _ = TestAsync(chosen)),
+            ListMenus.Item("Test", "Enter", () => IdeErrors.Observe(TestAsync(chosen))),
             ListMenus.Item("Interactive Test…", null, () => InteractiveRequested?.Invoke(this, chosen)),
             ListMenus.Item("Go to Request", "F4", GoToChosen),
         ]);
@@ -113,7 +113,7 @@ public sealed class EndpointsView : DockPanel
         environments = new ComboBox { MinWidth = 140, VerticalAlignment = VerticalAlignment.Center };
         environments.SelectionChanged += (_, _) => EnvironmentChanged?.Invoke(this, EventArgs.Empty);
         ToolTip.SetTip(environments, $"The environment of {HttpVariables.PublicFile} whose variables the requests use");
-        Button refresh = ToolButtons.Of("Icon.Rerun", "Read the .http files again", () => Reload(root));
+        Button refresh = ToolButtons.Of(IconKeys.Rerun, "Read the .http files again", () => Reload(root));
         TextBlock label = new() { Text = "Environment", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
         StackPanel bar = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(8, 4), Spacing = 4, Children = { label, environments, refresh } };
         DockPanel.SetDock(bar, Dock.Top);
@@ -192,7 +192,7 @@ public sealed class EndpointsView : DockPanel
         {
             return;
         }
-        _ = ReadAsync(folder, read);
+        IdeErrors.Observe(ReadAsync(folder, read));
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
@@ -409,10 +409,10 @@ public sealed class EndpointsView : DockPanel
 
     private Control Row(EndpointRequest request)
     {
-        Button test = ToolButtons.Of("Icon.Run", "Test", () => _ = TestAsync(request));
-        Button interactive = ToolButtons.Of("Icon.Edit", "Interactive Test…", () => InteractiveRequested?.Invoke(this, request));
+        Button test = ToolButtons.Of(IconKeys.Run, "Test", () => IdeErrors.Observe(TestAsync(request)));
+        Button interactive = ToolButtons.Of(IconKeys.Edit, "Interactive Test…", () => InteractiveRequested?.Invoke(this, request));
         test.Name = "endpointTest";
-        ((PathIcon)test.Content!).Bind(PathIcon.ForegroundProperty, test.GetResourceObservable("Passenger.Run"));
+        ((PathIcon)test.Content!).Bind(PathIcon.ForegroundProperty, test.GetResourceObservable(TokenKeys.Run));
         interactive.Name = "endpointInteractive";
         StackPanel buttons = new() { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center, Children = { test, interactive } };
         DockPanel.SetDock(buttons, Dock.Right);
@@ -420,8 +420,8 @@ public sealed class EndpointsView : DockPanel
         PathIcon outcome = new() { Width = 12, Height = 12, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
         if (Outcome(request) is { } passed)
         {
-            outcome.Bind(PathIcon.DataProperty, outcome.GetResourceObservable(passed ? "Icon.TestPassed" : "Icon.TestFailed"));
-            outcome.Bind(PathIcon.ForegroundProperty, outcome.GetResourceObservable(passed ? "Passenger.Test.Passed" : "Passenger.Test.Failed"));
+            outcome.Bind(PathIcon.DataProperty, outcome.GetResourceObservable(passed ? IconKeys.TestPassed : IconKeys.TestFailed));
+            outcome.Bind(PathIcon.ForegroundProperty, outcome.GetResourceObservable(passed ? TokenKeys.Test_Passed : TokenKeys.Test_Failed));
         }
         DockPanel.SetDock(outcome, Dock.Left);
         Border method = MethodTag(request.Method);
@@ -453,9 +453,9 @@ public sealed class EndpointsView : DockPanel
         DockPanel row = new() { Height = ListRow.Height, Margin = new Thickness(22, 0, 4, 0) };
         if (RouteRequests.Sendable(route))
         {
-            Button send = ToolButtons.Of("Icon.Run", "Send Request", () => RouteSendRequested?.Invoke(this, route));
+            Button send = ToolButtons.Of(IconKeys.Run, "Send Request", () => RouteSendRequested?.Invoke(this, route));
             send.Name = "routeSend";
-            ((PathIcon)send.Content!).Bind(PathIcon.ForegroundProperty, send.GetResourceObservable("Passenger.Run"));
+            ((PathIcon)send.Content!).Bind(PathIcon.ForegroundProperty, send.GetResourceObservable(TokenKeys.Run));
             DockPanel.SetDock(send, Dock.Right);
             row.Children.Add(send);
         }
@@ -483,11 +483,11 @@ public sealed class EndpointsView : DockPanel
 
     private static string MethodColour(string method) => method switch
     {
-        "GET" => "Passenger.Test.Passed",
-        "POST" => "Passenger.Link",
-        "PUT" => "Passenger.Warning",
-        "PATCH" => "Passenger.Syntax.Number",
-        "DELETE" => "Passenger.Error",
-        _ => "Passenger.TextMuted",
+        "GET" => TokenKeys.Test_Passed,
+        "POST" => TokenKeys.Link,
+        "PUT" => TokenKeys.Warning,
+        "PATCH" => TokenKeys.Syntax_Number,
+        "DELETE" => TokenKeys.Error,
+        _ => TokenKeys.TextMuted,
     };
 }

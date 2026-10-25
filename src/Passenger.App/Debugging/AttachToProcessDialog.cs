@@ -57,7 +57,7 @@ public sealed class AttachToProcessDialog : Window
         Search = new TextBox { Classes = { "search" }, Text = search, PlaceholderText = "Search by name, process ID, user or command line" };
         Search.TextChanged += (_, _) => ShowRows();
         Search.AddHandler(KeyDownEvent, OnKey, RoutingStrategies.Tunnel);
-        Button refresh = ToolButtons.Of("Icon.Rerun", "Refresh", () => _ = RefreshAsync());
+        Button refresh = ToolButtons.Of(IconKeys.Rerun, "Refresh", () => IdeErrors.Observe(RefreshAsync()));
         refresh.Margin = new Thickness(6, 0, 0, 0);
         refresh.VerticalAlignment = VerticalAlignment.Center;
         DockPanel.SetDock(refresh, Dock.Right);
@@ -71,7 +71,7 @@ public sealed class AttachToProcessDialog : Window
             header.Children.Add(new TextBlock { [Grid.ColumnProperty] = column, Text = titles[column], Classes = { "muted" }, Margin = new Thickness(4, 5, 10, 5) });
         }
         Border headerFrame = new() { [DockPanel.DockProperty] = Dock.Top, Child = header, BorderThickness = new Thickness(0, 0, 0, 1) };
-        headerFrame.Bind(Border.BorderBrushProperty, headerFrame.GetResourceObservable("Passenger.Separator"));
+        headerFrame.Bind(Border.BorderBrushProperty, headerFrame.GetResourceObservable(TokenKeys.Separator));
 
         rows = new ListBox
         {

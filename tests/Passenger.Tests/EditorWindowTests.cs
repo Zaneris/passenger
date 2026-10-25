@@ -113,7 +113,7 @@ public sealed class EditorWindowTests : IDisposable
         EditorGroup first = Assert.Single(GroupsIn(window));
         Point from = Ui.Centre(Tab(first, "Two.cs"), window);
         Point outside = new(window.Bounds.Width + 60, 200);
-        Drag(window, from, outside);
+        Ui.Drag(window, from, outside);
 
         Window editors = EditorWindow("A tab dragged out of the main window");
         EditorGroup moved = Assert.Single(GroupsIn(editors));
@@ -126,7 +126,7 @@ public sealed class EditorWindowTests : IDisposable
 
         Point back = Ui.Centre(tab, editors);
         Point strip = editors.PointToClient(first.TabStrip.PointToScreen(new Point(first.TabStrip.Bounds.Width - 30, first.TabStrip.Bounds.Height / 2)));
-        Drag(editors, back, strip);
+        Ui.Drag(editors, back, strip);
         Assert.False(editors.IsVisible, "The editor window stayed open with its one tab dragged back out of it");
         Assert.Equal(["One.cs", "Two.cs"], Names(first));
         Assert.Same(first, Assert.Single(window.EditorArea.Groups));
@@ -189,9 +189,7 @@ public sealed class EditorWindowTests : IDisposable
 
     private MainWindow Open(double width, double height, params string[] files)
     {
-        MainWindow window = new() { Width = width, Height = height };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder, width: width, height: height);
         foreach (string file in files)
         {
             window.OpenFile(Path.Combine(folder, file));
@@ -225,17 +223,6 @@ public sealed class EditorWindowTests : IDisposable
             ?? throw new Xunit.Sdk.XunitException($"The tab's menu has no {title}: [{string.Join(", ", menu.Items.OfType<MenuItem>().Select(i => i.Header))}]");
         Ui.Click(chosen);
         menu.Close();
-        Ui.Settle();
-    }
-
-    private static void Drag(TopLevel window, Point from, Point to)
-    {
-        window.MouseDown(from, MouseButton.Left);
-        for (int step = 1; step <= 10; step++)
-        {
-            window.MouseMove(from + ((to - from) * (step / 10.0)), RawInputModifiers.LeftMouseButton);
-        }
-        window.MouseUp(to, MouseButton.Left);
         Ui.Settle();
     }
 }

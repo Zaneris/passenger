@@ -50,7 +50,7 @@ public partial class MainWindow
         WindowDecorationProperties.SetElementRole(Toolbar, merged && OperatingSystem.IsWindows() ? WindowDecorationsElementRole.TitleBar : WindowDecorationsElementRole.None);
         // What shows of the window round its content: Linux's edge where Passenger draws the frame.
         background?.Dispose();
-        background = this.Bind(BackgroundProperty, this.GetResourceObservable(merged && TitleBars.Offered ? "Passenger.WindowEdge" : "Passenger.Editor.Background"));
+        background = this.Bind(BackgroundProperty, this.GetResourceObservable(merged && TitleBars.Offered ? TokenKeys.WindowEdge : TokenKeys.Editor_Background));
         LayOutTitleBar();
     }
 

@@ -3,11 +3,11 @@ M:Passenger.Lsp.RoslynSession.StartAsync(System.String,System.String,System.Coll
 M:Passenger.Profiler.ProfilingSession.StartAsync(Passenger.Profiler.ProfileTarget,System.String,System.String,Passenger.Profiler.ProgramPump,System.Threading.CancellationToken);The profiler is tested through the window's Profile
 M:Passenger.Editor.Snippet.Parse(System.String,System.Collections.Generic.IReadOnlyList{Passenger.Editor.SnippetVariable},System.String,System.String,System.String);Templates are tested by typing their abbreviations in the window
 T:Passenger.Text.LineDiff;Change bars are tested in the window over a real repository
-T:Passenger.App.Vcs.CommitGraph;The log's graph is tested in the Git window over a real repository
+T:Passenger.Vcs.CommitGraph;The log's graph is tested in the Git window over a real repository
 M:Passenger.Text.TextDocument.#ctor(System.String);A test types into an editor (EditorRig) or the window, never into a document alone
 T:Passenger.Text.WordDiff;Word highlights are tested in the diff, the change popup and the merge window over a real repository
-T:Passenger.App.Packages.NuGetConfigEditor;A nuget.config is changed through the NuGet window's Sources tab, as a person changes it
-M:Passenger.App.Packages.PackageSourceSet.Load(System.String);Package sources are read by the NuGet window over a folder with its nuget.config files
+T:Passenger.Packages.NuGetConfigEditor;A nuget.config is changed through the NuGet window's Sources tab, as a person changes it
+M:Passenger.Packages.PackageSourceSet.Load(System.String);Package sources are read by the NuGet window over a folder with its nuget.config files
 M:Passenger.Editor.Snippet.FromProtocol(System.String);A completion's snippet is tested by choosing it from the completion list in the window
 M:System.Threading.Thread.Sleep(System.Int32);A test waits for what it checks (Ui.WaitFor, Ui.PumpUntil, Waiting.Until), and time it needs to pass is Ui.Hold's or Waiting.For's
 M:System.Threading.Thread.Sleep(System.TimeSpan);A test waits for what it checks (Ui.WaitFor, Ui.PumpUntil, Waiting.Until), and time it needs to pass is Ui.Hold's or Waiting.For's

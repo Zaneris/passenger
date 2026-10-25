@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Passenger.App.Vcs;
+using Passenger.Vcs;
 
 namespace Passenger.App.ToolWindows;
 

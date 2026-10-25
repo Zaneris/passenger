@@ -7,8 +7,8 @@ public class MyLambdaClass
 
 	public int Test()
 	{
-		var uncapturedString = "uncaptured";
-		var capturedString = "captured";
+		string uncapturedString = "uncaptured";
+		string capturedString = "captured";
 		int local = 10;
 
 		Func<int, int> outerLambda = x =>
@@ -39,10 +39,10 @@ public class MyLambdaClass
 
 	public int VariableShadowingMethod()
 	{
-		var value = 100;
+		int value = 100;
 		Func<int, int> outerLambda = x =>
 		{
-			var outerLocal = x + value;
+			int outerLocal = x + value;
 			Func<int, int> innerLambda = value =>
 			{
 				return value + outerLocal;

@@ -1,8 +1,8 @@
 using System.Diagnostics.CodeAnalysis;
 using Passenger.App.CSharp;
 using Passenger.App.Run;
-using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Workspace;
 
 namespace Passenger.App;
 
@@ -171,7 +171,7 @@ public partial class MainWindow
         ShowWorkspaceName();
         UpdateStatus();
         Remember();
-        _ = KeepSnapshotsAsync();
+        IdeErrors.Observe(KeepSnapshotsAsync());
     }
 
     /// <summary>What the open folder had in the window goes, kept with it in the store first: its editors close, each saved
@@ -351,7 +351,7 @@ public partial class MainWindow
                 // A package installed, updated or removed shows so in the NuGet window once the project's evaluation says so.
                 if (evaluated.PackagesChanged && nuget is { Rows.Count: > 0 })
                 {
-                    _ = nuget.RefreshAsync();
+                    IdeErrors.Observe(nuget.RefreshAsync());
                 }
             }
         };

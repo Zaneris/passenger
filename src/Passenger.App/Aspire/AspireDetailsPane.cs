@@ -46,7 +46,7 @@ public sealed class AspireDetailsPane(Action<Uri> browse, Action<string> open) :
         about.Add(("State", leftUnstarted ? State(AspireAppRun.NotStarted, null) : State(resource.State ?? "Unknown", Health(resource))));
         if (leftUnstarted)
         {
-            about.Add(("Why", Words(AspireAppRun.NotStartedWhy, brush: "Passenger.TextMuted")));
+            about.Add(("Why", Words(AspireAppRun.NotStartedWhy, brush: TokenKeys.TextMuted)));
         }
         if (resource.Source is { } source)
         {
@@ -77,7 +77,7 @@ public sealed class AspireDetailsPane(Action<Uri> browse, Action<string> open) :
             bool inactive = url.TryGetProperty("isInactive", out JsonElement flag) && flag.ValueKind == JsonValueKind.True;
             addresses.Add((name, target.Scheme is "http" or "https" && !inactive
                 ? Link(target.AbsoluteUri, target.AbsoluteUri, () => browse(target), "aspireDetailsUrl")
-                : Words(target.AbsoluteUri, brush: inactive ? "Passenger.TextMuted" : null)));
+                : Words(target.AbsoluteUri, brush: inactive ? TokenKeys.TextMuted : null)));
         }
         if (addresses.Count > 0)
         {
@@ -118,13 +118,13 @@ public sealed class AspireDetailsPane(Action<Uri> browse, Action<string> open) :
     {
         string status = Text(report, "status")?.ToLowerInvariant() ?? "no status";
         string words = string.Join(": ", ((string?[])[status, Text(report, "description"), Text(report, "exceptionMessage")]).Where(w => w is { Length: > 0 }));
-        return Words(words, brush: status == "unhealthy" ? "Passenger.Error" : null);
+        return Words(words, brush: status == "unhealthy" ? TokenKeys.Error : null);
     }
 
     /// <summary>A variable's or property's value, a secret's masked whatever the AppHost sent; none said so.</summary>
     private static SelectableTextBlock Value(string name, JsonElement value) => value.ValueKind switch
     {
-        JsonValueKind.Null or JsonValueKind.Undefined => Words("No value", brush: "Passenger.TextMuted"),
+        JsonValueKind.Null or JsonValueKind.Undefined => Words("No value", brush: TokenKeys.TextMuted),
         JsonValueKind.String => Words(ContainerSecrets.Shown(name, value.GetString() ?? string.Empty), code: true),
         JsonValueKind.Array => Words(ContainerSecrets.Shown(name, string.Join(", ", value.EnumerateArray().Select(Plain))), code: true),
         _ => Words(ContainerSecrets.Shown(name, value.GetRawText()), code: true),

@@ -9,6 +9,7 @@ using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.Tests;
 
@@ -169,12 +170,12 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         CodeEditor editor = window.EditorArea.CodeEditor;
         Ui.PlaceAfter(editor, "Background=\"{DynamicResource Passenger.");
         Ui.Run(window, AppActions.Complete);
-        Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("Passenger.Panel"), "Tokens.axaml's keys, which App.axaml merges in");
-        Assert.Contains("Passenger.Editor.Background", window.Assist.CompletionLabels);
+        Ui.WaitFor(() => window.Assist.CompletionLabels.Contains(TokenKeys.Panel), "Tokens.axaml's keys, which App.axaml merges in");
+        Assert.Contains(TokenKeys.Editor_Background, window.Assist.CompletionLabels);
         Ui.Press(window, "ESCAPE");
         Ui.PlaceAfter(editor, "<PathIcon Data=\"{StaticResource Icon.");
         Ui.Run(window, AppActions.Complete);
-        Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("Icon.Menu"), "Icons.axaml's geometries");
+        Ui.WaitFor(() => window.Assist.CompletionLabels.Contains(IconKeys.Menu), "Icons.axaml's geometries");
         Ui.Press(window, "ESCAPE");
 
         Ui.PlaceAfter(editor, "<Button Name=\"MenuButton\" Classes=\"");
@@ -342,9 +343,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
                     """);
                 Restore.Run(shop);
             }, folder);
-            MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false };
-            window.Show();
-            window.OpenFolder(folder);
+            MainWindow window = Ui.OpenFolder(folder, autosaves: false);
             window.OpenFile(Path.Combine(shop, "MainWindow.axaml"));
             OpenDocument view = window.EditorArea.Active!;
             Ui.WaitFor(() => view.Markers.Count == 2, "the two properties the referenced project's view model lacks marked");
@@ -431,9 +430,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
             TestFolders.LinkFolder(Path.Combine(views, "here"), views);
             TestFolders.LinkFolder(Path.Combine(views, "Parts", "up"), views);
 
-            MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false };
-            window.Show();
-            window.OpenFolder(folder);
+            MainWindow window = Ui.OpenFolder(folder, autosaves: false);
             window.OpenFile(Path.Combine(shop, "MainWindow.axaml"));
             Ui.Settle();
             CodeEditor editor = window.EditorArea.CodeEditor;
@@ -482,9 +479,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
                     """);
                 Restore.Run(folder);
             }, folder);
-            MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false };
-            window.Show();
-            window.OpenFolder(folder);
+            MainWindow window = Ui.OpenFolder(folder, autosaves: false);
             window.OpenFile(Path.Combine(folder, "MainView.axaml"));
             OpenDocument document = window.EditorArea.Active!;
             Passenger.App.Xaml.XamlDocument xaml = window.XamlService.For(document) ?? throw new InvalidOperationException("The XAML file of a C# project was given no XAML");
@@ -538,9 +533,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
                     """);
                 Restore.Run(folder);
             }, folder);
-            MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false };
-            window.Show();
-            window.OpenFolder(folder);
+            MainWindow window = Ui.OpenFolder(folder, autosaves: false);
             window.OpenFile(Path.Combine(folder, "MainWindow.axaml"));
             OpenDocument document = window.EditorArea.Active!;
             Ui.WaitFor(() => document.Markers.Any(m => m.Message.Contains("AvaloniaHeadlessPlatformOptions", StringComparison.Ordinal)),

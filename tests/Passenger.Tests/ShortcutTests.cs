@@ -97,9 +97,7 @@ public sealed class ShortcutTests : IDisposable
         {
             return;
         }
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder);
         window.TerminalPanel.Shell = ("cmd.exe", []);
         Ui.Run(window, AppActions.ShowTerminal);
         Ui.WaitFor(() => window.TerminalPanel.Active is { IsRunning: true }, "the shell to start");
@@ -118,9 +116,7 @@ public sealed class ShortcutTests : IDisposable
     private MainWindow Open()
     {
         File.WriteAllText(Path.Combine(folder, "One.cs"), Source);
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder);
         window.OpenFile(Path.Combine(folder, "One.cs"));
         Ui.Settle();
         return window;

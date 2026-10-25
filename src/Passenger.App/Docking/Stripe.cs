@@ -43,10 +43,10 @@ internal sealed class Stripe : Border
         };
         // Wide apart and drawn plainly, so the upper and lower windows read as two places, not one list.
         gap = new Rectangle { Height = 1, Width = 22, Margin = new Thickness(0, 12) };
-        gap.Bind(Shape.FillProperty, gap.GetResourceObservable("Passenger.StripeSeparator"));
+        gap.Bind(Shape.FillProperty, gap.GetResourceObservable(TokenKeys.StripeSeparator));
         // A window too short for every button puts the last ones behind More.
         PathIcon dots = new();
-        dots.Bind(PathIcon.DataProperty, dots.GetResourceObservable("Icon.More"));
+        dots.Bind(PathIcon.DataProperty, dots.GetResourceObservable(IconKeys.More));
         more = new ToggleButton { Classes = { "stripe" }, Content = dots, IsVisible = false, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0) };
         ToolTip.SetTip(more, "More Tool Windows");
         more.Click += (_, _) => ShowMore();

@@ -90,7 +90,7 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
                 {
                     session.opens = 2;
                     await server.NotifyAsync(ProjectMethods.Load, new LoadProjectsParams(before, solution)).ConfigureAwait(false);
-                    _ = session.OpenRestAsync(() => server.NotifyAsync(ProjectMethods.Load, new LoadProjectsParams(rest, solution)));
+                    Core.UnawaitedWork.Observe(session.OpenRestAsync(() => server.NotifyAsync(ProjectMethods.Load, new LoadProjectsParams(rest, solution))));
                     return session;
                 }
                 await server.NotifyAsync(ProjectMethods.Load, new LoadProjectsParams(rest, solution)).ConfigureAwait(false);
@@ -102,9 +102,9 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
                 session.opens = 2;
                 await server.NotifyAsync(LspMethods.ProjectOpen, new OpenProjectParams([.. ahead.Select(DocumentUris.FromPath)])).ConfigureAwait(false);
                 // The rest once those have loaded: opened at once, the server would take them all in one batch.
-                _ = session.OpenRestAsync(() => solution is not null
+                Core.UnawaitedWork.Observe(session.OpenRestAsync(() => solution is not null
                     ? server.NotifyAsync(LspMethods.SolutionOpen, new OpenSolutionParams(DocumentUris.FromPath(solution)))
-                    : server.NotifyAsync(LspMethods.ProjectOpen, new OpenProjectParams([.. projects.Select(DocumentUris.FromPath)])));
+                    : server.NotifyAsync(LspMethods.ProjectOpen, new OpenProjectParams([.. projects.Select(DocumentUris.FromPath)]))));
                 return session;
             }
             if (solution is not null)

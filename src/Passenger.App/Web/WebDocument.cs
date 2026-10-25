@@ -32,11 +32,9 @@ public sealed class WebDocument : IServerDocument, IDisposable
 
     private static readonly TimeSpan PushLimit = TimeSpan.FromSeconds(5);
 
-    /// <summary>The file's markers from its own server, from ESLint, and from the container engine's checks (BuildKit's of
-    /// a Dockerfile, Compose's of a compose file), which the editor shows together.</summary>
-    private IReadOnlyList<Marker> own = [];
-    private IReadOnlyList<Marker> lint = [];
-    private IReadOnlyList<Marker> engine = [];
+    /// <summary>The file's markers from the container engine's checks (BuildKit's of a Dockerfile, Compose's of a compose
+    /// file), which the editor shows with its own server's and ESLint's.</summary>
+    private readonly AnchoredList<Marker> engine = new(m => m.Range, (m, range) => m with { Range = range });
 
     internal WebDocument(OpenDocument document, WebServerKind kind, string languageId)
     {
@@ -45,7 +43,7 @@ public sealed class WebDocument : IServerDocument, IDisposable
         Kind = kind;
         LanguageId = languageId;
         // What a server before this one marked moves with the text until this one says otherwise.
-        own = document.Markers;
+        diagnostics.Adopt(document.Markers);
         document.Text.Changed += OnChanged;
         document.Saved += OnSaved;
         waiting = document.Checking();
@@ -77,24 +75,23 @@ public sealed class WebDocument : IServerDocument, IDisposable
     /// <summary>ESLint's share of the file, while ESLint checks it.</summary>
     public EslintDocument? Lint { get; set; }
 
-    /// <summary>ESLint's problems, shown with the server's own.</summary>
-    public void ShowLint(IReadOnlyList<Marker> markers)
-    {
-        lint = markers;
-        document.Markers = Shown();
-    }
+    /// <summary>ESLint's problems changed (<see cref="EslintDocument.Markers"/>): shown with the server's own.</summary>
+    public void ShowLint() => document.Markers = Shown();
 
-    /// <summary>The container engine's checks of the file, shown with the server's own (<see cref="Containers.EngineChecks"/>).</summary>
+    /// <summary>The container engine's checks of the file as it stands, shown with the server's own
+    /// (<see cref="Containers.EngineChecks"/>).</summary>
     public void ShowEngine(IReadOnlyList<Marker> markers)
     {
-        engine = markers;
+        engine.Set(document.Text, markers);
         document.Markers = Shown();
     }
 
-    /// <summary>Every source's markers, but an engine's on a line the server already marks as gravely: the engine's
-    /// checks and the server's often find the same problem, so the line is marked once.</summary>
+    /// <summary>Every source's markers where the text has carried them, but an engine's on a line the server already marks
+    /// as gravely: the engine's checks and the server's often find the same problem, so the line is marked once.</summary>
     private IReadOnlyList<Marker> Shown()
     {
+        IReadOnlyList<Marker> own = diagnostics.Markers;
+        IReadOnlyList<Marker> lint = Lint?.Markers ?? [];
         if (engine.Count == 0)
         {
             return [.. own, .. lint];
@@ -102,7 +99,7 @@ public sealed class WebDocument : IServerDocument, IDisposable
         TextSnapshot text = document.Text.Snapshot;
         int Line(Marker m) => text.GetLineFromOffset(Math.Min(m.Range.Start, text.Length));
         HashSet<(int, MarkerKind)> marked = [.. own.Select(m => (Line(m), m.Kind))];
-        return [.. own, .. lint, .. engine.Where(m => !marked.Contains((Line(m), m.Kind)))];
+        return [.. own, .. lint, .. engine.Items.Where(m => !marked.Contains((Line(m), m.Kind)))];
     }
 
     internal void Connect(LanguageSession started)
@@ -133,7 +130,7 @@ public sealed class WebDocument : IServerDocument, IDisposable
         }
         pushLimit?.Cancel();
         CancellationTokenSource limit = pushLimit = new CancellationTokenSource();
-        _ = Task.Delay(PushLimit, limit.Token).ContinueWith(waited =>
+        IdeErrors.Observe(Task.Delay(PushLimit, limit.Token).ContinueWith(waited =>
         {
             if (!waited.IsCanceled)
             {
@@ -145,7 +142,7 @@ public sealed class WebDocument : IServerDocument, IDisposable
                     }
                 });
             }
-        }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+        }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default));
     }
 
     private void PushLanded()
@@ -166,6 +163,7 @@ public sealed class WebDocument : IServerDocument, IDisposable
     public void Dispose()
     {
         diagnostics.Stop();
+        engine.Clear();
         PushLanded();
         Unreached();
         document.Text.Changed -= OnChanged;
@@ -180,12 +178,10 @@ public sealed class WebDocument : IServerDocument, IDisposable
 
     private void OnChanged(object? sender, DocumentChangedEventArgs e)
     {
-        diagnostics.Move(e);
-        if (own.Count + lint.Count + engine.Count > 0)
+        diagnostics.Moved();
+        // What it shows is every marker of its own server's and ESLint's, so with none shown only the engine's can move.
+        if (document.Markers.Count + engine.Count > 0)
         {
-            own = [.. own.Select(m => m with { Range = TextEditing.MapRange(m.Range, e.Edits) })];
-            lint = [.. lint.Select(m => m with { Range = TextEditing.MapRange(m.Range, e.Edits) })];
-            engine = [.. engine.Select(m => m with { Range = TextEditing.MapRange(m.Range, e.Edits) })];
             document.Markers = Shown();
         }
         AwaitPush();
@@ -247,7 +243,7 @@ public sealed class WebDocument : IServerDocument, IDisposable
     private void Show(IReadOnlyList<Diagnostic> reported)
     {
         // The server's own codes stay with the diagnostics, which its quick fixes are asked for by.
-        own = diagnostics.Take(reported, (d, range) => DiagnosticMarks.Marker(Named(d), range));
+        diagnostics.Take(reported, (d, range) => DiagnosticMarks.Marker(Named(d), range));
         document.Markers = Shown();
     }
 

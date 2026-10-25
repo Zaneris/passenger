@@ -178,10 +178,10 @@ public partial class MainWindow
     {
         int errors = Bottom.Problems.SolutionErrors;
         (string icon, string brush, string text, string tip) = !settings.SolutionWideAnalysis
-            ? ("Icon.Problems", "Passenger.TextMuted", string.Empty, "Solution-wide analysis is off: click to analyse every file of the solution")
+            ? (IconKeys.Problems, TokenKeys.TextMuted, string.Empty, "Solution-wide analysis is off: click to analyse every file of the solution")
             : !Bottom.Problems.ListsSolution || errors == 0
-                ? ("Icon.Check", "Passenger.Test.Passed", string.Empty, "Solution-wide analysis: no errors. Click to turn it off")
-                : ("Icon.Error", "Passenger.Error", errors.ToString(), $"Solution-wide analysis: {Plural.Of(errors, "error")}; Problems lists them. Click to turn it off");
+                ? (IconKeys.Check, TokenKeys.Test_Passed, string.Empty, "Solution-wide analysis: no errors. Click to turn it off")
+                : (IconKeys.Error, TokenKeys.Error, errors.ToString(), $"Solution-wide analysis: {Plural.Of(errors, "error")}; Problems lists them. Click to turn it off");
         AnalysisIcon.Bind(PathIcon.DataProperty, AnalysisIcon.GetResourceObservable(icon));
         AnalysisIcon.Bind(PathIcon.ForegroundProperty, AnalysisIcon.GetResourceObservable(brush));
         AnalysisText.Text = text;

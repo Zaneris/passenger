@@ -57,7 +57,7 @@ public sealed class MembersMoveDialog : RefactoringDialog
         header.Children.Add(Muted("Members", 0));
         header.Children.Add(Muted("Make abstract", 1));
         Border headerFrame = new() { Child = header, BorderThickness = new Thickness(0, 0, 0, 1) };
-        headerFrame.Bind(Border.BorderBrushProperty, headerFrame.GetResourceObservable("Passenger.Separator"));
+        headerFrame.Bind(Border.BorderBrushProperty, headerFrame.GetResourceObservable(TokenKeys.Separator));
         DockPanel.SetDock(headerFrame, Dock.Top);
         StackPanel rows = new() { Margin = new Thickness(0, 4) };
         foreach (Member member in hierarchy.Members)

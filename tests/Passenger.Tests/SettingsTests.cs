@@ -265,7 +265,7 @@ public sealed class SettingsTests : IDisposable
             dialog.Apply();
             Ui.Settle();
             Color harbour = Ui.Pixel(window, bare);
-            Assert.True(window.TryFindResource("Passenger.Frame", window.ActualThemeVariant, out object? frame) && frame is ISolidColorBrush desk && desk.Color == harbour && harbour != passenger,
+            Assert.True(window.TryFindResource(TokenKeys.Frame, window.ActualThemeVariant, out object? frame) && frame is ISolidColorBrush desk && desk.Color == harbour && harbour != passenger,
                 $"With Harbour applied the window's frame is {harbour}, where it was {passenger} under Passenger's own: Harbour's desk did not take its place");
 
             dialog.Page = SettingsDialog.EditorPage;

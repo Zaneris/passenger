@@ -52,7 +52,7 @@ public partial class MainWindow
     private void OutlineLater()
     {
         if (Editors.Active is { } document && (session.CSharp?.For(document)?.Lsp is not null
-            || StartsLanguageServer && document.Language.Name is "C#" or "Razor"))
+            || StartsLanguageServer && document.Language.Service == Languages.LanguageService.CSharp))
         {
             outlineAgain?.Restart();
         }
@@ -65,7 +65,7 @@ public partial class MainWindow
     {
         if (Editors.Active is { } document && outlined != document.Path)
         {
-            _ = OutlineAsync();
+            IdeErrors.Observe(OutlineAsync());
         }
     }
 

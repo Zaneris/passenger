@@ -9,15 +9,15 @@ public static class Program
 	{
 		Console.WriteLine("DebuggableConsoleApp is running");
 		Console.WriteLine("Log2");
-		var myLambdaClass = new MyLambdaClass();var myClassWithGenericMethod = new MyClassWithGenericMethod();
-		var myClass = new MyClass();
-		var myAsyncClass = new MyAsyncClass();
-		var myAsyncMethodEvalClass = new AsyncMethodEvalClass();
-		var myClassNoMembers = new MyClassNoMembers();
-		var hitConditionClass = new HitConditionClass();
-		var variablesClass = new VariablesClass();
-		var columnBreakpointClass = new ColumnBreakpointClass();
-		var exceptionToThrow = ExceptionToThrow.None;
+		MyLambdaClass myLambdaClass = new MyLambdaClass();MyClassWithGenericMethod myClassWithGenericMethod = new MyClassWithGenericMethod();
+		MyClass myClass = new MyClass();
+		MyAsyncClass myAsyncClass = new MyAsyncClass();
+		AsyncMethodEvalClass myAsyncMethodEvalClass = new AsyncMethodEvalClass();
+		MyClassNoMembers myClassNoMembers = new MyClassNoMembers();
+		HitConditionClass hitConditionClass = new HitConditionClass();
+		VariablesClass variablesClass = new VariablesClass();
+		ColumnBreakpointClass columnBreakpointClass = new ColumnBreakpointClass();
+		ExceptionToThrow exceptionToThrow = ExceptionToThrow.None;
 		while (true)
 		{
 			// Keep the application running to allow debugging
@@ -29,7 +29,7 @@ public static class Program
 			columnBreakpointClass.Test();
 			MultilineSwitchInMethodCall.Test();
 			ClassWithBclCall.Test(4);
-			var asyncResult = myAsyncClass.MyMethodAsync(4).GetAwaiter().GetResult();
+			int asyncResult = myAsyncClass.MyMethodAsync(4).GetAwaiter().GetResult();
 			myAsyncMethodEvalClass.Test().GetAwaiter().GetResult();
 			Exceptions.Test(exceptionToThrow);
 			MyGenericClassContainingAnotherGenericClass<int, string>.MyNestedGenericClass<double, bool>.Test();

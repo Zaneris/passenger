@@ -2,6 +2,7 @@ using Passenger.App.Editors;
 using Passenger.App.Explorer;
 using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Workspace;
 using E = Passenger.Editor.EditorActions;
 
 namespace Passenger.App;
@@ -354,13 +355,13 @@ public partial class MainWindow
         {
             return;
         }
-        _ = action switch
+        IdeErrors.Observe(action switch
         {
             E.Cut => HoldAsync(row, cut: true),
             E.Copy => HoldAsync(row, cut: false),
             E.Paste => PasteAsync(row),
             _ => DeleteRowAsync(row),
-        };
+        });
     }
 
     /// <summary>Undo or Redo that reaches a command of several files or of a file moved (a rename) takes all of it back
@@ -372,7 +373,7 @@ public partial class MainWindow
         {
             return false;
         }
-        _ = UndoCommandAsync(command, redo);
+        IdeErrors.Observe(UndoCommandAsync(command, redo));
         return true;
     }
 

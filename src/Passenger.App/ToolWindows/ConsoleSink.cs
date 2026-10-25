@@ -301,11 +301,11 @@ public sealed class ConsoleSink
             return;
         }
         IDisposable held = BackgroundWork.Scope();
-        _ = Task.Delay(wait).ContinueWith(_ =>
+        IdeErrors.Observe(Task.Delay(wait).ContinueWith(_ =>
         {
             UiThread.Post(take, DispatcherPriority.Background);
             held.Dispose();
-        }, TaskScheduler.Default);
+        }, TaskScheduler.Default));
     }
 
     /// <summary>One stream's terminal control sequences taken out of its text, in the shapes ECMA-48 gives them and xterm

@@ -21,8 +21,8 @@ internal sealed class ToolPane : DockPanel
     public ToolPane(DockHost host)
     {
         this.host = host;
-        Button options = HeaderButton("Icon.More", "Options");
-        Button hide = HeaderButton("Icon.Minimize", "Hide (⇧⎋)");
+        Button options = HeaderButton(IconKeys.More, "Options");
+        Button hide = HeaderButton(IconKeys.Minimize, "Hide (⇧⎋)");
         options.Click += (_, _) =>
         {
             MenuFlyout menu = OptionsMenu();

@@ -203,9 +203,7 @@ public sealed class TitleBarTests : IDisposable
     private MainWindow Open(double width = 1200)
     {
         File.WriteAllText(Path.Combine(folder, "One.cs"), "class One { }\n");
-        MainWindow window = new() { Width = width, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder, width: width);
         window.OpenFile("One.cs");
         Ui.Settle();
         return window;

@@ -513,6 +513,15 @@
           "StreamJsonRpc": "[2.26.150, )"
         }
       },
+      "passenger.packages": {
+        "type": "Project",
+        "dependencies": {
+          "NuGet.Configuration": "[7.9.0, )",
+          "Passenger.Core": "[0.2.0, )",
+          "Passenger.Text": "[0.2.0, )",
+          "Passenger.Workspace": "[0.2.0, )"
+        }
+      },
       "passenger.profiler": {
         "type": "Project",
         "dependencies": {
@@ -526,11 +535,29 @@
         "type": "Project",
         "dependencies": {
           "Avalonia": "[12.1.4, )",
+          "Passenger.Editor": "[0.2.0, )",
           "Porta.Pty": "[2.2.3, )"
         }
       },
       "passenger.text": {
-        "type": "Project"
+        "type": "Project",
+        "dependencies": {
+          "Passenger.Core": "[0.2.0, )"
+        }
+      },
+      "passenger.vcs": {
+        "type": "Project",
+        "dependencies": {
+          "Passenger.Core": "[0.2.0, )",
+          "Passenger.Text": "[0.2.0, )"
+        }
+      },
+      "passenger.workspace": {
+        "type": "Project",
+        "dependencies": {
+          "Passenger.Core": "[0.2.0, )",
+          "Passenger.Text": "[0.2.0, )"
+        }
       },
       "passenger.xaml": {
         "type": "Project",

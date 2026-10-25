@@ -66,7 +66,7 @@ public sealed class RequestsView : DockPanel
         placeholder = new TextBlock { Text = "No requests yet: run or debug a web app and send it one", Classes = { "emptyText" } };
         following = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0), TextTrimming = TextTrimming.CharacterEllipsis };
         following.Classes.Add("muted");
-        Button clear = ToolButtons.Of("Icon.Clear", "Clear the requests", log.Clear);
+        Button clear = ToolButtons.Of(IconKeys.Clear, "Clear the requests", log.Clear);
         DockPanel bar = new() { Margin = new Thickness(8, 4) };
         DockPanel.SetDock(clear, Dock.Left);
         bar.Children.Add(clear);
@@ -237,13 +237,13 @@ public sealed class RequestsView : DockPanel
         TextBlock outcome = Muted($"{(request.Status is { } status ? status.ToString(CultureInfo.InvariantCulture) : "…")}  {time}");
         if (request.Error is not null || request.Status >= 500)
         {
-            outcome.Bind(TextBlock.ForegroundProperty, outcome.GetResourceObservable("Passenger.Error"));
+            outcome.Bind(TextBlock.ForegroundProperty, outcome.GetResourceObservable(TokenKeys.Error));
         }
         DockPanel.SetDock(outcome, Dock.Right);
         row.Children.Add(outcome);
         if (request.HasRepeats)
         {
-            Border repeated = Marked("N+1", "Passenger.Warning");
+            Border repeated = Marked("N+1", TokenKeys.Warning);
             DockPanel.SetDock(repeated, Dock.Right);
             row.Children.Add(repeated);
         }
@@ -264,13 +264,13 @@ public sealed class RequestsView : DockPanel
         line.Children.Add(outcome);
         if (command.Slow)
         {
-            Border slow = Marked("slow", "Passenger.Error");
+            Border slow = Marked("slow", TokenKeys.Error);
             DockPanel.SetDock(slow, Dock.Right);
             line.Children.Add(slow);
         }
         if (command.Repeated)
         {
-            Border repeated = Marked($"×{command.Runs}", "Passenger.Warning");
+            Border repeated = Marked($"×{command.Runs}", TokenKeys.Warning);
             DockPanel.SetDock(repeated, Dock.Right);
             line.Children.Add(repeated);
         }

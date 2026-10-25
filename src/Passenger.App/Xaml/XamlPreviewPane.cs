@@ -43,21 +43,21 @@ public sealed class XamlPreviewPane : DockPanel
             },
         };
         // A tool window's ground over the preview's, told apart by shade.
-        header.Bind(Border.BackgroundProperty, header.GetResourceObservable("Passenger.Panel"));
+        header.Bind(Border.BackgroundProperty, header.GetResourceObservable(TokenKeys.Panel));
         error = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
-        error.Bind(TextBlock.ForegroundProperty, error.GetResourceObservable("Passenger.Error"));
+        error.Bind(TextBlock.ForegroundProperty, error.GetResourceObservable(TokenKeys.Error));
         errorBar = new Border { [DockProperty] = Dock.Top, Padding = new Thickness(10, 6), IsVisible = false, Child = error };
-        errorBar.Bind(Border.BackgroundProperty, errorBar.GetResourceObservable("Passenger.Banner"));
+        errorBar.Bind(Border.BackgroundProperty, errorBar.GetResourceObservable(TokenKeys.Banner));
         image = new Image { Stretch = Stretch.Fill };
         // The element at the caret, drawn over the frame in the frame's own units, so it shrinks with it.
         outline = new Border { BorderThickness = new Thickness(OutlineWidth), IsVisible = false, IsHitTestVisible = false };
-        outline.Bind(Border.BorderBrushProperty, outline.GetResourceObservable("Passenger.Accent"));
+        outline.Bind(Border.BorderBrushProperty, outline.GetResourceObservable(TokenKeys.Accent));
         marks = new Canvas { IsHitTestVisible = false, Children = { outline } };
         Panel framed = new() { Children = { image, marks } };
         framed.PointerPressed += OnFramePressed;
         // An edge, so a frame of the editor's own colour still shows where the design ends.
         edge = new Border { Child = framed, BorderThickness = new Thickness(1), Margin = new Thickness(16), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-        edge.Bind(Border.BorderBrushProperty, edge.GetResourceObservable("Passenger.Divider"));
+        edge.Bind(Border.BorderBrushProperty, edge.GetResourceObservable(TokenKeys.Divider));
         waiting = new TextBlock { Classes = { "muted" }, TextWrapping = TextWrapping.Wrap, MaxWidth = 320, TextAlignment = TextAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         // A frame larger than the pane is shrunk to fit it, never one smaller enlarged.
@@ -72,7 +72,7 @@ public sealed class XamlPreviewPane : DockPanel
         Children.Add(header);
         Children.Add(errorBar);
         Children.Add(view);
-        this.Bind(BackgroundProperty, this.GetResourceObservable("Passenger.Editor.Background"));
+        this.Bind(BackgroundProperty, this.GetResourceObservable(TokenKeys.Editor_Background));
         preview.Changed += (_, _) => Show();
         AttachedToVisualTree += (_, _) =>
         {

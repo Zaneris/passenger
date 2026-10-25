@@ -49,10 +49,7 @@ public sealed class DebuggedAppsTests : IClassFixture<RestoredFolders>, IDisposa
     [AvaloniaFact]
     public void Two_apps_debugged_at_once_each_keep_their_live_visual_tree_binding_values_and_failed_bindings_as_their_tab_is_chosen()
     {
-        MainWindow window = new() { Width = 1400, Height = 900, StartsLanguageServer = false };
-        window.Show();
-        window.OpenFolder(folder);
-        Ui.Settle();
+        MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
         Assert.Null(window.OpenFile(Xaml));
         CodeEditor editor = window.EditorArea.CodeEditor;
         int greeting = Line(Xaml, "x:Name=\"Greeting\"");

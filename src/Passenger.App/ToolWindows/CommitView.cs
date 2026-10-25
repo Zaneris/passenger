@@ -7,6 +7,8 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.App.Vcs;
+using Passenger.Editor;
+using Passenger.Vcs;
 
 namespace Passenger.App.ToolWindows;
 
@@ -54,7 +56,7 @@ public sealed class CommitGroup(string name, IReadOnlyList<CommitRow> rows) : Ob
 /// Conflicts, with its Resolve link and no box; Amend and the message below (a merge's own message while one is under
 /// way); Commit and Commit and Push. Double-click opens a file's diff, or a conflicted file's merge; Rollback puts the
 /// chosen ones back.</summary>
-public sealed class CommitView : DockPanel
+public sealed class CommitView : DockPanel, IOwnKeys
 {
     private VcsController vcs;
     private readonly ObservableCollection<object> rows = [];
@@ -91,7 +93,7 @@ public sealed class CommitView : DockPanel
             ListMenus.Item("Resolve Conflicts…", null, () => ResolveRequested?.Invoke(this, EventArgs.Empty)),
             ListMenus.Item("Jump to Source", "F4", () => OpenRequested?.Invoke(this, chosen.Change.Path)),
             new Separator(),
-            ListMenus.Item("Copy Path", null, () => _ = ListMenus.CopyAsync(this, chosen.Change.Path)),
+            ListMenus.Item("Copy Path", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Change.Path))),
         ] :
         [
             ListMenus.Item("Show Diff", "Enter", () => DiffRequested?.Invoke(this, chosen.Change.Path)),
@@ -101,7 +103,7 @@ public sealed class CommitView : DockPanel
             ListMenus.Item("Delete…", null, () => DeleteRequested?.Invoke(this, chosen.Change.Path), chosen.Change.Kind is not ChangeKind.Deleted),
             ListMenus.Item("Add to .gitignore", null, () => IgnoreRequested?.Invoke(this, chosen.Change.Path), chosen.Change.Kind is ChangeKind.Unversioned),
             new Separator(),
-            ListMenus.Item("Copy Path", null, () => _ = ListMenus.CopyAsync(this, chosen.Change.Path)),
+            ListMenus.Item("Copy Path", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Change.Path))),
         ]);
         // Double-click shows the diff and F4 the file.
         list.DoubleTapped += (_, _) =>
@@ -121,7 +123,7 @@ public sealed class CommitView : DockPanel
                     e.Handled = true;
                     return;
                 }
-                if ((e.Key == Key.D && e.KeyModifiers == (OperatingSystem.IsMacOS() ? KeyModifiers.Meta : KeyModifiers.Control)) || e.Key == Key.Enter)
+                if (e.Key == Key.Enter || AppActions.Presses(AppActions.ShowDiff, e))
                 {
                     Open(shown.Change);
                     e.Handled = true;
@@ -143,24 +145,7 @@ public sealed class CommitView : DockPanel
         placeholder = new TextBlock { Classes = { "emptyText" } };
 
         amend = new CheckBox { Content = "Amend", Margin = new Thickness(10, 4, 0, 0) };
-        amend.IsCheckedChanged += async (_, _) =>
-        {
-            if (amend.IsChecked == true)
-            {
-                // Amend starts from the last commit's message, and unchecking it gives back what was typed.
-                beforeAmend = message!.Text;
-                if (await vcs.LastMessageAsync() is { } last && (beforeAmend ?? string.Empty).Trim().Length == 0)
-                {
-                    message.Text = last;
-                }
-            }
-            else if (beforeAmend is not null)
-            {
-                message!.Text = beforeAmend;
-                beforeAmend = null;
-            }
-            UpdateButtons();
-        };
+        amend.IsCheckedChanged += (_, _) => IdeErrors.Observe(AmendChangedAsync());
         message = new TextBox
         {
             Classes = { "search" },
@@ -176,16 +161,16 @@ public sealed class CommitView : DockPanel
         // Ctrl+Enter (Cmd+Enter on the Mac) commits, seen as it tunnels: the box takes any Enter as a new line first.
         message.AddHandler(KeyDownEvent, (_, e) =>
         {
-            if (e.Key == Key.Enter && e.KeyModifiers == (OperatingSystem.IsMacOS() ? KeyModifiers.Meta : KeyModifiers.Control))
+            if (e.Key == Key.Enter && e.KeyModifiers == Keystroke.Command)
             {
-                _ = CommitAsync(push: false);
+                IdeErrors.Observe(CommitAsync(push: false));
                 e.Handled = true;
             }
         }, RoutingStrategies.Tunnel);
         commit = new Button { Content = "Commit", Classes = { "primary" } };
-        commit.Click += (_, _) => _ = CommitAsync(push: false);
+        commit.Click += (_, _) => IdeErrors.Observe(CommitAsync(push: false));
         commitAndPush = new Button { Content = "Commit and Push…" };
-        commitAndPush.Click += (_, _) => _ = CommitAsync(push: true);
+        commitAndPush.Click += (_, _) => IdeErrors.Observe(CommitAsync(push: true));
         StackPanel buttons = new()
         {
             Orientation = Orientation.Horizontal,
@@ -199,7 +184,7 @@ public sealed class CommitView : DockPanel
             BorderThickness = new Thickness(0, 1, 0, 0),
             Child = new StackPanel { Children = { amend, message, buttons } },
         };
-        bottom.Bind(Border.BorderBrushProperty, bottom.GetResourceObservable("Passenger.Divider"));
+        bottom.Bind(Border.BorderBrushProperty, bottom.GetResourceObservable(TokenKeys.Divider));
 
         StackPanel tools = new()
         {
@@ -209,9 +194,9 @@ public sealed class CommitView : DockPanel
             VerticalAlignment = VerticalAlignment.Center,
             Children =
             {
-                ToolButtons.Of("Icon.Rerun", "Refresh", () => _ = vcs.RefreshAsync()),
-                ToolButtons.Of("Icon.Rollback", "Rollback", () => RollbackRequested?.Invoke(this, ChosenOrSelected())),
-                ToolButtons.Of("Icon.Diff", $"Show Diff ({(OperatingSystem.IsMacOS() ? "⌘D" : "Ctrl+D")})", () =>
+                ToolButtons.Of(IconKeys.Rerun, "Refresh", () => IdeErrors.Observe(vcs.RefreshAsync())),
+                ToolButtons.Of(IconKeys.Rollback, "Rollback", () => RollbackRequested?.Invoke(this, ChosenOrSelected())),
+                ToolButtons.Of(AppActions.ShowDiff, IconKeys.Diff, "Show Diff", _ =>
                 {
                     if (list.SelectedItem is CommitRow row)
                     {
@@ -243,6 +228,25 @@ public sealed class CommitView : DockPanel
 
     private void OnChanged(object? sender, EventArgs e) => Fill();
 
+    /// <summary>Amend checked starts from the last commit's message, and unchecked gives back what was typed.</summary>
+    private async Task AmendChangedAsync()
+    {
+        if (amend.IsChecked == true)
+        {
+            beforeAmend = message.Text;
+            if (await vcs.LastMessageAsync() is { } last && (beforeAmend ?? string.Empty).Trim().Length == 0)
+            {
+                message.Text = last;
+            }
+        }
+        else if (beforeAmend is not null)
+        {
+            message.Text = beforeAmend;
+            beforeAmend = null;
+        }
+        UpdateButtons();
+    }
+
     private void OnBusyChanged(object? sender, EventArgs e) => UpdateButtons();
 
     /// <summary>The Merge Conflicts group's Resolve link: the Conflicts dialog.</summary>
@@ -255,6 +259,10 @@ public sealed class CommitView : DockPanel
     public event EventHandler<string>? MergeRequested;
 
     /// <summary>What a double-click or Enter opens: a conflicted file's merge, any other file's diff.</summary>
+    /// <summary>Show Diff's keys, as the Commit window takes them (<see cref="AppActions.KeysIn"/>), ahead of what they run
+    /// elsewhere while a file is chosen.</summary>
+    public bool TakesKey(KeyEventArgs e) => list.IsKeyboardFocusWithin && list.SelectedItem is CommitRow && AppActions.Presses(AppActions.ShowDiff, e);
+
     private void Open(FileChange change)
     {
         if (change.Kind is ChangeKind.Conflicted)
@@ -488,7 +496,7 @@ public sealed class CommitView : DockPanel
     private Control ConflictsRow(CommitGroup group)
     {
         TextBlock name = new() { Text = group.Name, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(26, 0, 0, 0) };
-        name.Bind(TextBlock.ForegroundProperty, name.GetResourceObservable("Passenger.Vcs.File.Conflicted"));
+        name.Bind(TextBlock.ForegroundProperty, name.GetResourceObservable(TokenKeys.Vcs_File_Conflicted));
         TextBlock count = new()
         {
             Text = Core.Plural.Of(group.Rows.Count, "file"),
@@ -576,10 +584,10 @@ public sealed class CommitView : DockPanel
     /// <summary>A changed file's colour by how it changed (modified, added, deleted, new).</summary>
     internal static string KindToken(ChangeKind kind) => kind switch
     {
-        ChangeKind.Added => "Passenger.Vcs.File.Added",
-        ChangeKind.Deleted => "Passenger.Vcs.File.Deleted",
-        ChangeKind.Unversioned => "Passenger.Vcs.File.Unversioned",
-        ChangeKind.Conflicted => "Passenger.Vcs.File.Conflicted",
-        _ => "Passenger.Vcs.File.Modified",
+        ChangeKind.Added => TokenKeys.Vcs_File_Added,
+        ChangeKind.Deleted => TokenKeys.Vcs_File_Deleted,
+        ChangeKind.Unversioned => TokenKeys.Vcs_File_Unversioned,
+        ChangeKind.Conflicted => TokenKeys.Vcs_File_Conflicted,
+        _ => TokenKeys.Vcs_File_Modified,
     };
 }

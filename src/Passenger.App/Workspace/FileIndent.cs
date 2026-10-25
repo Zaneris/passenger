@@ -1,3 +1,4 @@
+using Passenger.Languages;
 using Passenger.Text;
 
 namespace Passenger.App.Workspace;
@@ -23,9 +24,8 @@ public sealed record FileIndent(IndentOptions Options, IndentSource Source, stri
     /// <summary>How a file not open indents, read from disk as an open one's is.</summary>
     public static IndentOptions Of(string path, string text)
     {
-        IndentOptions language = Language.ForPath(path).Indent;
-        Language of = Language.ForPath(path);
-        return Choose(Workspace.EditorConfig.For(path), of.Detect(text), of.Indent).Options;
+        Language language = Language.ForPath(path);
+        return Choose(Text.EditorConfig.For(path), language.Detect(text), language.Indent).Options;
     }
 
     /// <summary>The widget's words for the indentation: "Tab", "4 spaces".</summary>

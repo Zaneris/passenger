@@ -6,7 +6,7 @@ Awaits.RunAsync().GetAwaiter().GetResult();
 Returns.Run();
 Throws.Run();
 
-static class Calls
+internal static class Calls
 {
     public static void Run()
     {
@@ -15,20 +15,20 @@ static class Calls
         Console.WriteLine($"nested {nested} {sum}");
     }
 
-    static int Inner() => 20;
+    private static int Inner() => 20;
 
-    static int Outer(int value)
+    private static int Outer(int value)
     {
         return value + 1;
     }
 
-    static int Add(int a, int b)
+    private static int Add(int a, int b)
     {
         return a + b;
     }
 }
 
-static class Lambdas
+internal static class Lambdas
 {
     public static void Run()
     {
@@ -36,15 +36,15 @@ static class Lambdas
         Console.WriteLine($"doubled {doubled.Length}");
     }
 
-    static int[] Numbers() => [1, 2, 3];
+    private static int[] Numbers() => [1, 2, 3];
 
-    static int Twice(int n)
+    private static int Twice(int n)
     {
         return n * 2;
     }
 }
 
-static class Awaits
+internal static class Awaits
 {
     public static async Task RunAsync()
     {
@@ -52,16 +52,16 @@ static class Awaits
         Console.WriteLine($"computed {computed}");
     }
 
-    static int Seed() => 4;
+    private static int Seed() => 4;
 
-    static async Task<int> ComputeAsync(int value)
+    private static async Task<int> ComputeAsync(int value)
     {
         await Task.Yield();
         return value * 3;
     }
 }
 
-static class Returns
+internal static class Returns
 {
     public static void Run()
     {
@@ -71,16 +71,16 @@ static class Returns
         Console.WriteLine($"{described} {ratio} {spot}");
     }
 
-    static int Count() => 42;
+    private static int Count() => 42;
 
-    static string Describe(int count) => $"count {count}";
+    private static string Describe(int count) => $"count {count}";
 
-    static double Ratio(int part, int whole) => (double)part / whole;
+    private static double Ratio(int part, int whole) => (double)part / whole;
 
-    static Spot Locate(int x, int y) => new(x, y);
+    private static Spot Locate(int x, int y) => new(x, y);
 }
 
-static class Throws
+internal static class Throws
 {
     public static void Run()
     {
@@ -94,7 +94,7 @@ static class Throws
         }
     }
 
-    static void Fail(string reason) => throw new InvalidOperationException(reason);
+    private static void Fail(string reason) => throw new InvalidOperationException(reason);
 }
 
-readonly record struct Spot(int X, int Y);
+internal readonly record struct Spot(int X, int Y);

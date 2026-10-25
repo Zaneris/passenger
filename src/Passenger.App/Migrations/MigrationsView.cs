@@ -5,7 +5,7 @@ using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.App.ToolWindows;
-using Passenger.App.Workspace;
+using Passenger.Workspace;
 
 namespace Passenger.App.Migrations;
 
@@ -65,13 +65,13 @@ public sealed class MigrationsView : DockPanel
         Border topBar = ToolBars.Top(top);
 
         Border leftBar = ToolBars.Side(
-            Tool(AppActions.MigrationsRefresh, "Icon.Rerun", "Refresh Migrations"),
-            Tool(AppActions.AddMigration, "Icon.Add", "Add Migration…"),
-            Tool(AppActions.UpdateDatabase, "Icon.Update", "Update Database"),
-            Tool(AppActions.RemoveLastMigration, "Icon.Clear", "Remove Last Migration"),
+            ToolButtons.Of(AppActions.MigrationsRefresh, IconKeys.Rerun, "Refresh Migrations", Request),
+            ToolButtons.Of(AppActions.AddMigration, IconKeys.Add, "Add Migration…", Request),
+            ToolButtons.Of(AppActions.UpdateDatabase, IconKeys.Update, "Update Database", Request),
+            ToolButtons.Of(AppActions.RemoveLastMigration, IconKeys.Clear, "Remove Last Migration", Request),
             ToolBars.Gap(),
-            Tool(AppActions.ScriptMigrations, "Icon.DocumentText", "Script Migrations…"),
-            Tool(AppActions.BundleMigrations, "Icon.Package", "Bundle Migrations"));
+            ToolButtons.Of(AppActions.ScriptMigrations, IconKeys.DocumentText, "Script Migrations…", Request),
+            ToolButtons.Of(AppActions.BundleMigrations, IconKeys.Package, "Bundle Migrations", Request));
 
         gaps = new StackPanel { [DockProperty] = Dock.Top, Name = "MigrationsGaps", Spacing = 4, Margin = new Thickness(8, 6, 8, 0) };
         list = new ListBox
@@ -83,7 +83,7 @@ public sealed class MigrationsView : DockPanel
         [
             ListMenus.Item($"Update Database to {chosen.Name}", null, () => ActionRequested?.Invoke(this, AppActions.UpdateDatabaseTo)),
             ListMenus.Item("Update Database", null, () => ActionRequested?.Invoke(this, AppActions.UpdateDatabase)),
-            ListMenus.Item("Copy Id", null, () => _ = ListMenus.CopyAsync(list, chosen.Id)),
+            ListMenus.Item("Copy Id", null, () => IdeErrors.Observe(ListMenus.CopyAsync(list, chosen.Id))),
         ]);
         placeholder = new TextBlock { Classes = { "emptyText" } };
         Children.Add(leftBar);
@@ -99,6 +99,8 @@ public sealed class MigrationsView : DockPanel
 
     /// <summary>A button or a menu item asked for one of the window's actions.</summary>
     public event EventHandler<string>? ActionRequested;
+
+    private void Request(string action) => ActionRequested?.Invoke(this, action);
 
     /// <summary>The migration chosen in the list, which Update Database to Here updates to.</summary>
     public MigrationRow? Chosen => list.SelectedItem as MigrationRow;
@@ -151,12 +153,12 @@ public sealed class MigrationsView : DockPanel
     private Control GapRow(EfGap gap)
     {
         PathIcon icon = new() { Width = 16, Height = 16, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 2, 6, 0) };
-        icon.Bind(PathIcon.DataProperty, icon.GetResourceObservable(gap.Blocks ? "Icon.Error" : "Icon.Problems"));
+        icon.Bind(PathIcon.DataProperty, icon.GetResourceObservable(gap.Blocks ? IconKeys.Error : IconKeys.Problems));
         StackPanel fixes = new() { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(0, 4, 0, 0) };
         foreach (EfFix fix in gap.Fixes)
         {
             Button button = new() { Content = fix.Title };
-            button.Click += (_, _) => _ = controller.FixAsync(fix);
+            button.Click += (_, _) => IdeErrors.Observe(controller.FixAsync(fix));
             fixes.Children.Add(button);
         }
         StackPanel words = new() { Children = { new TextBlock { Text = gap.Said, TextWrapping = TextWrapping.Wrap } } };
@@ -188,15 +190,6 @@ public sealed class MigrationsView : DockPanel
         SetDock(state, Dock.Right);
         DockPanel.SetDock(line.Children[1], Dock.Left);
         return line;
-    }
-
-    private Button Tool(string action, string icon, string tip)
-    {
-        Button button = ToolButtons.Of(icon, tip, () => ActionRequested?.Invoke(this, action));
-        button.Name = action;
-        ActionTips.Set(button, action, tip);
-        ActionButtons.Mark(button, action);
-        return button;
     }
 
     private static ComboBox Chooser(string name, string tip)

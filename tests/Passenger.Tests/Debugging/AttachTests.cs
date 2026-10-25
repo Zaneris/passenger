@@ -10,6 +10,8 @@ namespace Passenger.Tests.Debugging;
 [Collection(DebugSession.Collection)]
 public class AttachTests(ITestOutputHelper testOutputHelper)
 {
+    private static readonly int AfterCount = Debuggees.Line("DebuggableConsoleApp", "HitConditionClass.cs", "// breakpoint here");
+
     [Fact]
     public async Task A_program_held_at_its_start_is_let_go_by_the_attach_and_its_breakpoints_first_pass_is_seen()
     {
@@ -20,7 +22,7 @@ public class AttachTests(ITestOutputHelper testOutputHelper)
             .WaitForInitializedEvent();
         // The test never lets the program go itself: the attach does, once the debugger is registered for its runtime.
         host
-            .WithBreakpointsRequest(10, Debuggees.Source("DebuggableConsoleApp", "HitConditionClass.cs"))
+            .WithBreakpointsRequest(AfterCount, Debuggees.Source("DebuggableConsoleApp", "HitConditionClass.cs"))
             .WithConfigurationDoneRequest();
 
         StoppedEvent stopped = await host.WaitForStoppedEvent();
@@ -38,7 +40,7 @@ public class AttachTests(ITestOutputHelper testOutputHelper)
             .WithInitializeRequest()
             .WithAttachRequest(debuggee.Id)
             .WaitForInitializedEvent();
-        first.WithBreakpointsRequest(10, counted).WithConfigurationDoneRequest();
+        first.WithBreakpointsRequest(AfterCount, counted).WithConfigurationDoneRequest();
         StoppedEvent stopped = await first.WaitForStoppedEvent();
         first.WithEvaluateRequest(first.GetTopStackFrame(stopped.ThreadId!.Value).Id, "_count", out EvaluateResponse before);
 
@@ -52,7 +54,7 @@ public class AttachTests(ITestOutputHelper testOutputHelper)
             .WithInitializeRequest()
             .WithAttachRequest(debuggee.Id)
             .WaitForInitializedEvent();
-        second.WithBreakpointsRequest(10, counted).WithConfigurationDoneRequest();
+        second.WithBreakpointsRequest(AfterCount, counted).WithConfigurationDoneRequest();
         StoppedEvent again = await second.WaitForStoppedEvent();
         second.WithEvaluateRequest(second.GetTopStackFrame(again.ThreadId!.Value).Id, "_count", out EvaluateResponse after);
         Assert.True(int.Parse(after.Result, System.Globalization.CultureInfo.InvariantCulture) > int.Parse(before.Result, System.Globalization.CultureInfo.InvariantCulture),

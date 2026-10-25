@@ -3,8 +3,9 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using NuGet.Frameworks;
 using Passenger.App.Templates;
-using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.App.Aspire;
 

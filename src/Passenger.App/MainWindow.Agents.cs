@@ -82,6 +82,12 @@ public partial class MainWindow
         };
     }
 
+    /// <summary>What a screenshot's agent finds this Passenger by: its executable, and its process's id to attach to.</summary>
+    [IdentifierHome]
+    public const string AgentExecutableVariable = "PASSENGER";
+    [IdentifierHome]
+    public const string AgentPidVariable = "PASSENGER_PID";
+
     /// <summary>A screenshot's agent (<c>--agent</c>): the window's socket opened to it, and its command line run in a tab
     /// of the Terminal window, which it joins the window from as any agent does, with <c>$PASSENGER --mcp-attach
     /// $PASSENGER_PID</c>. Throws saying why agents cannot reach the window.</summary>
@@ -94,8 +100,8 @@ public partial class MainWindow
             agentSocket.Describe(Folder);
         }
         System.Diagnostics.ProcessStartInfo start = Core.ChildProcesses.Command(command[0], command.Skip(1), Folder ?? Environment.CurrentDirectory);
-        start.Environment["PASSENGER"] = Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "Passenger.exe" : "Passenger");
-        start.Environment["PASSENGER_PID"] = Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        start.Environment[AgentExecutableVariable] = Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "Passenger.exe" : "Passenger");
+        start.Environment[AgentPidVariable] = Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture);
         return ShowInTerminal("Agent", start);
     }
 

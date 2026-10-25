@@ -194,10 +194,7 @@ public sealed class ContainerProfilingTests(ContainerProfilingTests.Spins.Built 
     /// <summary>A window on the program's folder.</summary>
     private MainWindow Open()
     {
-        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
-        window.Show();
-        window.OpenFolder(spins.Folder);
-        Ui.Settle();
+        MainWindow window = Ui.OpenFolder(spins.Folder, languageServer: false);
         return window;
     }
 

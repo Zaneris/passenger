@@ -20,7 +20,7 @@ public static class ToolBars
     public static Border Top(Control content)
     {
         Border bar = new() { [DockPanel.DockProperty] = Dock.Top, MinHeight = Height, BorderThickness = new Thickness(0, 0, 0, 1), Child = content };
-        bar.Bind(Border.BorderBrushProperty, bar.GetResourceObservable("Passenger.Divider"));
+        bar.Bind(Border.BorderBrushProperty, bar.GetResourceObservable(TokenKeys.Divider));
         return bar;
     }
 
@@ -31,7 +31,7 @@ public static class ToolBars
         ToolColumn column = new() { Spacing = 2, Margin = new Thickness(0, 6) };
         column.Children.AddRange(buttons);
         Border bar = new() { [DockPanel.DockProperty] = Dock.Left, Width = Width, BorderThickness = new Thickness(0, 0, 1, 0), Child = column };
-        bar.Bind(Border.BorderBrushProperty, bar.GetResourceObservable("Passenger.Divider"));
+        bar.Bind(Border.BorderBrushProperty, bar.GetResourceObservable(TokenKeys.Divider));
         return bar;
     }
 

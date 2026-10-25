@@ -108,7 +108,7 @@ public partial class MainWindow
     {
         UiThread.Check();
         browsed.Add(address);
-        _ = Launcher.LaunchUriAsync(address);
+        IdeErrors.Observe(Launcher.LaunchUriAsync(address));
     }
 
     private readonly List<string> shownInFileManager = [];
@@ -137,9 +137,9 @@ public partial class MainWindow
             return;
         }
         CancellationTokenSource waiting = browserWait = new CancellationTokenSource();
-        _ = ended.ContinueWith(_ => waiting.Cancel(), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+        IdeErrors.Observe(ended.ContinueWith(_ => waiting.Cancel(), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default));
         // Not background work: it lasts as long as the program takes to listen, which no screenshot or settling test waits for.
-        _ = Task.Run(async () =>
+        IdeErrors.Observe(Task.Run(async () =>
         {
             bool? listening = await BrowserLaunch.ListeningAsync(address, waiting.Token);
             if (listening is null)
@@ -161,6 +161,6 @@ public partial class MainWindow
                     status.Text = BrowserLaunch.NotResponding(address);
                 }
             });
-        });
+        }));
     }
 }

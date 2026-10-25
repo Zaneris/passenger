@@ -43,11 +43,9 @@ public sealed class FileIconsTests : IDisposable
     [AvaloniaFact]
     public void Each_kind_of_file_is_drawn_in_a_shape_and_colour_of_its_own_in_the_Explorer_the_tabs_and_the_Commit_window()
     {
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
+        MainWindow window = Ui.OpenFolder(folder);
         try
         {
-            window.OpenFolder(folder);
             window.OpenFile(Path.Combine(folder, "Program.cs"));
             Ui.Settle();
             (string Name, string Shape, string? Colour)[] expected =
@@ -74,16 +72,16 @@ public sealed class FileIconsTests : IDisposable
             {
                 PathIcon icon = Drawn(window, name);
                 Assert.True(ReferenceEquals(Resource($"FileIcon.{shape}"), icon.Data), $"The Explorer does not draw {name} as its {shape}");
-                Assert.True(ReferenceEquals(Resource(colour is null ? "Passenger.File.Plain" : $"Passenger.FileIcon.{colour}"), icon.Foreground),
+                Assert.True(ReferenceEquals(Resource(colour is null ? TokenKeys.File_Plain : $"Passenger.FileIcon.{colour}"), icon.Foreground),
                     $"The Explorer does not draw {name} in the {colour ?? "plain"} file colour");
             }
-            Assert.True(ReferenceEquals(Resource("Icon.Explorer"), Drawn(window, "src").Data), "A plain folder lost the folder icon");
-            Assert.True(Icons(window.EditorArea).Any(i => ReferenceEquals(i.Data, Resource("FileIcon.CSharp")) && ReferenceEquals(i.Foreground, Resource("Passenger.FileIcon.Blue"))),
+            Assert.True(ReferenceEquals(Resource(IconKeys.Explorer), Drawn(window, "src").Data), "A plain folder lost the folder icon");
+            Assert.True(Icons(window.EditorArea).Any(i => ReferenceEquals(i.Data, Resource("FileIcon.CSharp")) && ReferenceEquals(i.Foreground, Resource(TokenKeys.FileIcon_Blue))),
                 "The open C# file's tab is not drawn with the C# icon");
 
             Ui.Landed(() => window.Vcs is { } vcs && vcs.Changes.Any(c => c.Name == "package.json"), "package.json listed as changed");
             window.DockHost.Show(ToolWindowIds.Commit);
-            Ui.Landed(() => Icons(window.CommitView).Any(i => ReferenceEquals(i.Data, Resource("FileIcon.Npm")) && ReferenceEquals(i.Foreground, Resource("Passenger.FileIcon.Red"))),
+            Ui.Landed(() => Icons(window.CommitView).Any(i => ReferenceEquals(i.Data, Resource("FileIcon.Npm")) && ReferenceEquals(i.Foreground, Resource(TokenKeys.FileIcon_Red))),
                 "the Commit window's package.json drawn with npm's icon");
         }
         finally
@@ -109,10 +107,5 @@ public sealed class FileIconsTests : IDisposable
         return app.TryFindResource(key, app.ActualThemeVariant, out object? value) && value is not null ? value : throw new InvalidOperationException($"The theme has no {key}");
     }
 
-    private void Write(string relative, string text)
-    {
-        string path = Path.Combine(folder, relative);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, text);
-    }
+    private void Write(string relative, string text) => TestFolders.Write(folder, relative, text);
 }

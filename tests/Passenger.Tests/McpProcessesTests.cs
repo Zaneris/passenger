@@ -56,9 +56,9 @@ public sealed class McpProcessesTests : McpRig, IClassFixture<RestoredFolders>
         McpClient client = Await(Task.Run(() => Start(["--mcp", Folder], languageServer: false)), "the agent's Passenger starting");
         try
         {
-            Await(Task.Run(() => Call(client, "open", new() { ["path"] = "Notes.txt" })), "the agent opening Notes.txt");
-            Await(Task.Run(() => Call(client, "app_type", new() { ["app"] = "ide", ["text"] = "second " })), "the agent typing");
-            Await(Task.Run(() => Call(client, "save_all")), "the agent saving");
+            Await(Task.Run(() => Call(client, McpTools.Open, new() { ["path"] = "Notes.txt" })), "the agent opening Notes.txt");
+            Await(Task.Run(() => Call(client, McpTools.AppType, new() { ["app"] = "ide", ["text"] = "second " })), "the agent typing");
+            Await(Task.Run(() => Call(client, McpTools.SaveAll)), "the agent saving");
         }
         finally
         {
@@ -117,7 +117,7 @@ public sealed class McpProcessesTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             Assert.Equal(PathNames.Canonical(Path.GetDirectoryName(log)!), PathNames.Canonical(window.LocalHistory!.Root));
-            Await(Task.Run(() => Call(client, "workspace")), "the agent's Passenger to have the folder open");
+            Await(Task.Run(() => Call(client, McpTools.Workspace)), "the agent's Passenger to have the folder open");
             bool saving = true;
             Task<int> labelling = Task.Run(async () =>
             {
@@ -125,7 +125,7 @@ public sealed class McpProcessesTests : McpRig, IClassFixture<RestoredFolders>
                 while (Volatile.Read(ref saving) && put < 500)
                 {
                     put++;
-                    await Call(client, "local_history_label", new() { ["name"] = $"agent {put}" });
+                    await Call(client, McpTools.LocalHistoryLabel, new() { ["name"] = $"agent {put}" });
                 }
                 return put;
             });
@@ -191,17 +191,17 @@ public sealed class McpProcessesTests : McpRig, IClassFixture<RestoredFolders>
         {
             client = await Connect(passenger, ["--mcp", Folder]);
             int load = await WrittenId("load.pid", "the language server's load of the project");
-            await Call(client, "run", new() { ["configuration"] = "Sum: Ran", ["arguments"] = "run", ["waitSeconds"] = 1 });
+            await Call(client, McpTools.Run, new() { ["configuration"] = "Sum: Ran", ["arguments"] = "run", ["waitSeconds"] = 1 });
             int run = await WrittenId("run.pid", "the program Run started");
             // The Run console is Run's program's, so the profiler attaches to it rather than start another there.
-            await Call(client, "profile", new() { ["attach"] = true, ["seconds"] = 1 });
-            await Call(client, "debug_start", new() { ["configuration"] = "Sum: Debugged", ["arguments"] = "debug", ["waitSeconds"] = 1 });
+            await Call(client, McpTools.Profile, new() { ["attach"] = true, ["seconds"] = 1 });
+            await Call(client, McpTools.DebugStart, new() { ["configuration"] = "Sum: Debugged", ["arguments"] = "debug", ["waitSeconds"] = 1 });
             int debugged = await WrittenId("debug.pid", "the program debugged");
             File.WriteAllText(Path.Combine(Folder, "linger"), string.Empty);
             // The build never ends: the test gives its call up once it has seen the step start.
-            building = Result(client, "build", giveUp: giveUp);
+            building = Result(client, McpTools.Build, giveUp: giveUp);
             int build = await WrittenId("build.pid", "the build's step");
-            await Call(client, "terminal_run", new()
+            await Call(client, McpTools.TerminalRun, new()
             {
                 ["command"] = OperatingSystem.IsWindows() ? "Set-Content -Path shell.pid -Value $PID" : "echo $$ > shell.pid; sleep 600 &",
                 ["waitSeconds"] = 2,
@@ -296,7 +296,7 @@ public sealed class McpBuildNodesTests : McpRig, IClassFixture<RestoredFolders>
                 File.Delete(Path.Combine(two, "A", "step.pid"));
                 File.Delete(Path.Combine(two, "B", "step.pid"));
                 HashSet<int> before = [.. Processes.Descendants(passenger.Id)];
-                Task<JsonElement> building = Call(client, "build");
+                Task<JsonElement> building = Call(client, McpTools.Build);
                 await WrittenId("two/A/step.pid", "project A's step");
                 await WrittenId("two/B/step.pid", "project B's step");
                 int[] during = [.. Processes.Descendants(passenger.Id).Where(id => !before.Contains(id))];

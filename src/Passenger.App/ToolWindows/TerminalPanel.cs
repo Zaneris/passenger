@@ -61,16 +61,16 @@ public sealed class TerminalPanel : DockPanel
             ItemTemplate = new FuncDataTemplate<TerminalTab>((tab, _) => tab is null ? new TextBlock() : Tab(tab), supportsRecycling: false),
         };
         Children.Add(view);
-        Bind(BackgroundProperty, this.GetResourceObservable("Passenger.Terminal.Background"));
+        Bind(BackgroundProperty, this.GetResourceObservable(TokenKeys.Terminal_Background));
         AttachedToVisualTree += (_, _) =>
         {
             if (tabs.Count == 0)
             {
-                _ = NewSessionAsync();
+                IdeErrors.Observe(NewSessionAsync());
             }
             FocusView();
         };
-        Button add = ToolButtons.Of("Icon.Add", "New Session", () => _ = NewSessionAsync());
+        Button add = ToolButtons.Of(IconKeys.Add, "New Session", () => IdeErrors.Observe(NewSessionAsync()));
         HeaderTools = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { strip, add } };
     }
 
@@ -104,7 +104,7 @@ public sealed class TerminalPanel : DockPanel
         {
             at = tabs.IndexOf(ended);
             tabs.RemoveAt(at);
-            _ = ended.Session.DisposeAsync();
+            IdeErrors.Observe(ended.Session.DisposeAsync().AsTask());
         }
         TerminalSession session = new(view.Session?.Screen.Columns ?? 120, view.Session?.Screen.Rows ?? 30);
         Run.TerminalRun run = new(name, session, start);
@@ -208,7 +208,7 @@ public sealed class TerminalPanel : DockPanel
             return;
         }
         tabs.RemoveAt(index);
-        _ = tab.Session.DisposeAsync();
+        IdeErrors.Observe(tab.Session.DisposeAsync().AsTask());
         if (tabs.Count == 0)
         {
             view.Session = null;

@@ -8,5 +8,6 @@
   <ItemGroup>
     <PackageReference Include="Avalonia" />
     <PackageReference Include="Porta.Pty" />
+    <ProjectReference Include="../Passenger.Editor/Passenger.Editor.csproj" />
   </ItemGroup>
 </Project>

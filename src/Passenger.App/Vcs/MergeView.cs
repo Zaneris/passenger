@@ -5,6 +5,7 @@ using Avalonia.Media;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
+using Passenger.Vcs;
 
 namespace Passenger.App.Vcs;
 
@@ -96,13 +97,13 @@ public sealed class MergeView : DockPanel
         }
 
         status = new TextBlock();
-        applyNonConflicting = ToolButtons.Of("Icon.ApplyNonConflicts", "Apply All Non-Conflicting Changes", ApplyNonConflicting);
+        applyNonConflicting = ToolButtons.Of(IconKeys.ApplyNonConflicts, "Apply All Non-Conflicting Changes", ApplyNonConflicting);
         // Two arrows meeting in the middle: the vertical one turned on its side.
         applyNonConflicting.Content = new PathIcon { RenderTransform = new RotateTransform(90) };
-        ((PathIcon)applyNonConflicting.Content).Bind(PathIcon.DataProperty, applyNonConflicting.GetResourceObservable("Icon.ApplyNonConflicts"));
-        resolveSimple = ToolButtons.Of("Icon.Wand", "Resolve Simple Conflicts", ResolveSimpleConflicts);
+        ((PathIcon)applyNonConflicting.Content).Bind(PathIcon.DataProperty, applyNonConflicting.GetResourceObservable(IconKeys.ApplyNonConflicts));
+        resolveSimple = ToolButtons.Of(IconKeys.Wand, "Resolve Simple Conflicts", ResolveSimpleConflicts);
         Border rule = new() { Width = 1, Height = 16, Margin = new Thickness(6, 0) };
-        rule.Bind(Border.BackgroundProperty, rule.GetResourceObservable("Passenger.Divider"));
+        rule.Bind(Border.BackgroundProperty, rule.GetResourceObservable(TokenKeys.Divider));
         Children.Add(DiffLines.Bar(name, Step, status, [applyNonConflicting, resolveSimple, rule]));
         Children.Add(sides);
 
@@ -128,7 +129,7 @@ public sealed class MergeView : DockPanel
         };
         DetachedFromVisualTree += (_, _) => keys?.RemoveHandler(KeyDownEvent, OnKeyDown);
         Show();
-        _ = MarkWordsAsync();
+        IdeErrors.Observe(MarkWordsAsync());
     }
 
     /// <summary>The words each side changed inside its changes' lines, worked out off the window's thread, then shown.</summary>

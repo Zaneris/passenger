@@ -27,7 +27,7 @@ public sealed class AssetPreviewControl : DockPanel, IDisposable
     {
         Focusable = true;
         LastChildFill = true;
-        Bind(BackgroundProperty, this.GetResourceObservable("Passenger.Editor.Background"));
+        Bind(BackgroundProperty, this.GetResourceObservable(TokenKeys.Editor_Background));
         if (asset.IsPending)
         {
             TextBlock loading = new() { Text = asset.Kind == AssetKind.Font ? "Loading the font…" : "Loading the image…", Margin = default };
@@ -99,7 +99,7 @@ public sealed class AssetPreviewControl : DockPanel, IDisposable
     private static TextBlock Label(string text)
     {
         TextBlock label = new() { Text = text, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(Gap) };
-        label.Bind(TextBlock.ForegroundProperty, label.GetResourceObservable("Passenger.Text"));
+        label.Bind(TextBlock.ForegroundProperty, label.GetResourceObservable(TokenKeys.Text));
         return label;
     }
 
@@ -128,7 +128,7 @@ public sealed class AssetPreviewControl : DockPanel, IDisposable
             run = new GlyphRun(typeface, SampleSize, text.AsMemory(), glyphs);
             bounds = run.Bounds.Union(run.InkBounds);
             AutomationProperties.SetName(this, text);
-            Bind(ForegroundProperty, this.GetResourceObservable("Passenger.Text"));
+            Bind(ForegroundProperty, this.GetResourceObservable(TokenKeys.Text));
         }
 
         /// <inheritdoc/>

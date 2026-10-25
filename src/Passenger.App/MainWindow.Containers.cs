@@ -34,30 +34,30 @@ public partial class MainWindow
             (AppActions.ContainerRemove, "Remove", "remove"),
             (AppActions.ContainerPull, "Pull", "pull")])
         {
-            actions!.Add(new IdeAction(id, title, "Containers", context => _ = id == AppActions.ContainerRemove ? RemoveAsync(Chosen()!) : ContainerActAsync(id, action, Chosen()!))
+            actions!.Add(new IdeAction(id, title, "Containers", context => IdeErrors.Observe(id == AppActions.ContainerRemove ? RemoveAsync(Chosen()!) : ContainerActAsync(id, action, Chosen()!)))
             {
                 WhyNot = _ => ContainerCommands.For(action, Chosen()) is { Words: null } refused ? refused.WhyNot ?? $"{Chosen()?.Name} cannot {action}" : null,
                 Works = id,
             });
         }
-        actions!.Add(new IdeAction(AppActions.ContainersRefresh, "Refresh", "Containers", context => _ = ContainersWindow.RefreshAsync()));
-        actions.Add(new IdeAction(AppActions.ContainerScale, "Scale Service…", "Containers", context => _ = ScaleAsync(Chosen()!))
+        actions!.Add(new IdeAction(AppActions.ContainersRefresh, "Refresh", "Containers", context => IdeErrors.Observe(ContainersWindow.RefreshAsync())));
+        actions.Add(new IdeAction(AppActions.ContainerScale, "Scale Service…", "Containers", context => IdeErrors.Observe(ScaleAsync(Chosen()!)))
         {
             WhyNot = _ => Chosen() is { Kind: ContainerRowKind.Service, Project: not null } chosen
                 ? chosen.LeftUnstarted ? ContainerCommands.NotStarted(chosen) : null : "No Compose service is chosen in the Containers window",
             Works = AppActions.ContainerScale,
         });
-        actions.Add(new IdeAction(AppActions.ContainerPrune, "Prune…", "Containers", context => _ = PruneAsync(Chosen()))
+        actions.Add(new IdeAction(AppActions.ContainerPrune, "Prune…", "Containers", context => IdeErrors.Observe(PruneAsync(Chosen())))
         {
             WhyNot = _ => Engine.Known is { IsReady: true } ? null : "The container engine is not running",
             Works = AppActions.ContainerPrune,
         });
-        actions.Add(new IdeAction(AppActions.ContainerInspect, "Inspect", "Containers", context => _ = InspectAsync(Chosen()!))
+        actions.Add(new IdeAction(AppActions.ContainerInspect, "Inspect", "Containers", context => IdeErrors.Observe(InspectAsync(Chosen()!)))
         {
             WhyNot = _ => Chosen() is { Kind: not ContainerRowKind.Group and not ContainerRowKind.Project and not ContainerRowKind.AppHost } ? null
                 : "No container, image, volume or network is chosen in the Containers window",
         });
-        actions.Add(new IdeAction(AppActions.ContainerShell, "Open Shell", "Containers", context => _ = OpenShellAsync(Chosen()!.Container!)) { WhyNot = OneContainer, Words = ["docker exec", "Attach"] });
+        actions.Add(new IdeAction(AppActions.ContainerShell, "Open Shell", "Containers", context => IdeErrors.Observe(OpenShellAsync(Chosen()!.Container!))) { WhyNot = OneContainer, Words = ["docker exec", "Attach"] });
         foreach (string tab in ContainersView.Pages)
         {
             // Log and Stats are every row's; the rest are a chosen row's, which a window not yet built has none of.
@@ -87,7 +87,7 @@ public partial class MainWindow
         });
 
         AddServiceActions();
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Containers, "Containers", "Icon.Containers", MakeContainers, Docking.ToolAnchor.BottomLeft)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Containers, "Containers", IconKeys.Containers, MakeContainers, Docking.ToolAnchor.BottomLeft)
         {
             Action = AppActions.ShowContainers,
             Menus = [new MenuPlace("Tools", 0, 4)],
@@ -114,7 +114,7 @@ public partial class MainWindow
         view.Files.Opened += (_, copy) => OpenCopy(copy);
         view.Files.Problem += (_, problem) => status.Text = problem;
         // The window's first use of it: Inspect's copies an earlier Passenger wrote unmasked go before anything reads them.
-        view.AttachedToVisualTree += (_, _) => _ = ForgetUnmaskedCopiesAsync();
+        view.AttachedToVisualTree += (_, _) => IdeErrors.Observe(ForgetUnmaskedCopiesAsync());
         // Added after the window marks its tool windows' buttons (ShowActionWork): its own marked as it is built.
         ActionButtons.ShowMarked(view, actions!);
         return view;
@@ -131,7 +131,7 @@ public partial class MainWindow
         }
         ProjectSession asking = session;
         ContainerEngine engine = Engine;
-        _ = ShowOnceRead();
+        IdeErrors.Observe(ShowOnceRead());
 
         async Task ShowOnceRead()
         {
@@ -179,7 +179,7 @@ public partial class MainWindow
         {
             if (OperatingSystem.IsMacOS())
             {
-                _ = ChildProcesses.RunAsync(ChildProcesses.Command("/usr/bin/open", ["-a", desktop]), limit: TimeSpan.FromSeconds(30));
+                IdeErrors.Observe(ChildProcesses.RunAsync(ChildProcesses.Command("/usr/bin/open", ["-a", desktop]), limit: TimeSpan.FromSeconds(30)));
             }
             else
             {

@@ -51,6 +51,10 @@ public static class HostMethods
     /// evaluated with the global properties given (a publish profile's, which the SDK imports by PublishProfile), as a build
     /// with those properties would see them.</summary>
     public const string Properties = "properties";
+
+    /// <summary><see cref="InputsParams"/> to <see cref="BuildInputs"/>: what a build of one project with the global properties
+    /// given reads (stamped) and makes, its references' too, or why a build of it reads more than its evaluations say.</summary>
+    public const string Inputs = "inputs";
 }
 
 public static class HostJson
@@ -265,6 +269,34 @@ public sealed record PropertiesParams(string Project, IReadOnlyDictionary<string
 
 /// <summary>Each property asked for that has a value, as evaluated, or why the project did not evaluate.</summary>
 public sealed record PropertiesAnswer(IReadOnlyDictionary<string, string> Values, string? Problem);
+
+/// <summary>A project a build is about to build, with the global properties the build gives it (its framework among them).</summary>
+public sealed record InputsParams(string Project, IReadOnlyDictionary<string, string> Properties);
+
+/// <summary>What a build of a project reads and makes, as its evaluations say, with the projects it references in turn.</summary>
+public sealed record BuildInputs
+{
+    /// <summary>Why a build of it reads more than its evaluations say (a target of the project's own, a project of a kind
+    /// not known, an evaluation that failed); null when they say it all.</summary>
+    public string? Unknown { get; init; }
+
+    /// <summary>The files it reads, stamped before they were read (as not there too, for those whose coming would change it):
+    /// each project file and its imports, its restore's assets, its items' files, the analyzers' settings over its sources
+    /// and the repository's HEAD.</summary>
+    public IReadOnlyList<Stamp> Reads { get; init; } = [];
+
+    /// <summary>The project's output folder, and the file its build lists what it wrote in (FileListAbsolute.txt).</summary>
+    public string? Output { get; init; }
+
+    public string? Written { get; init; }
+
+    /// <summary>The assemblies of the projects it references, every framework's, which its build copies from.</summary>
+    public IReadOnlyList<string> Referenced { get; init; } = [];
+
+    /// <summary>Those of <see cref="Reads"/> a restore writes (each project's assets, lock file and the props and targets it
+    /// imports), which the build's own restore may write before anything reads them.</summary>
+    public IReadOnlyList<string> Restored { get; init; } = [];
+}
 
 /// <summary>A place in a file of <see cref="ProjectInsight.Files"/>, its line and column from 1 as MSBuild counts them.</summary>
 public sealed record InsightPlace(int File, int Line, int Column);

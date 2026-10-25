@@ -330,7 +330,7 @@ public sealed class AspireModel : IDisposable
         UiThread.Check();
         if (!disposed)
         {
-            _ = RequestRefreshAsync();
+            IdeErrors.Observe(RequestRefreshAsync());
         }
     }
 

@@ -158,21 +158,15 @@ public sealed class BindingValuesController
         soon.Restart();
     }
 
-    /// <summary>An .axaml file's values go with its lines as it is edited, then are shown again from its text once typing pauses.</summary>
+    /// <summary>An .axaml file's values go with its lines as it is edited (<see cref="OpenDocument.LiveValues"/>), then are
+    /// shown again from its text once typing pauses.</summary>
     private void Follow(OpenDocument document)
     {
         if (!XamlBreakpoints.Compiled(document.Path))
         {
             return;
         }
-        document.Text.Changed += (_, change) =>
-        {
-            if (document.LiveValues.Count > 0)
-            {
-                document.LiveValues = [.. document.LiveValues.Select(a => a with { Line = TextEditing.MapLine(change.Before, change.Edits, change.After, a.Line) })];
-            }
-            soon.Restart();
-        };
+        document.Text.Changed += (_, _) => soon.Restart();
     }
 
     private Mode? ModeNow() => session?.Debug is { Session: { } debugged } debug && app is { State: LiveAppState.Connected or LiveAppState.Waiting } live

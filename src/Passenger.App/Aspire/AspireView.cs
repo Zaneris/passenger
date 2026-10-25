@@ -67,15 +67,15 @@ public sealed class AspireView : DockPanel, IDisposable
         StackPanel bar = RunWindowFrame.Tools(AppSelector);
         // Its Refresh, then the service actions (titled once bound), then the resource's own.
         foreach ((string action, string icon, string tip) in (ReadOnlySpan<(string, string, string)>)[
-            (AppActions.AspireDiscover, "Icon.Search", "Discover running Aspire AppHosts"),
-            (AppActions.AspireRefresh, "Icon.Rerun", "Refresh resources"),
+            (AppActions.AspireDiscover, IconKeys.Search, "Discover running Aspire AppHosts"),
+            (AppActions.AspireRefresh, IconKeys.Rerun, "Refresh resources"),
             .. RunWindows.ServiceActions.Select(service => (service.Action, service.Icon, service.Action)),
-            (AppActions.AspireCommand, "Icon.Menu", "The chosen resource's commands"),
-            (AppActions.AspireOpenLink, "Icon.Endpoints", "Open one of the chosen resource's addresses"),
-            (AppActions.AspireSource, "Icon.DocumentText", "Open the chosen resource's source"),
-            (AppActions.AspireContainer, "Icon.Containers", "Show the chosen resource's container in Containers")])
+            (AppActions.AspireCommand, IconKeys.Menu, "The chosen resource's commands"),
+            (AppActions.AspireOpenLink, IconKeys.Endpoints, "Open one of the chosen resource's addresses"),
+            (AppActions.AspireSource, IconKeys.DocumentText, "Open the chosen resource's source"),
+            (AppActions.AspireContainer, IconKeys.Containers, "Show the chosen resource's container in Containers")])
         {
-            Button button = RunWindowFrame.Tool(action, icon, tip, Request);
+            Button button = ToolButtons.Of(action, icon, tip, Request);
             tools.Add((button, action));
             bar.Children.Add(button);
         }
@@ -473,7 +473,7 @@ public sealed class AspireView : DockPanel, IDisposable
             IAsyncEnumerable<IReadOnlyList<AspireConsoleLog>>? stream = provider(selected, reading.Token);
             if (stream is not null)
             {
-                _ = ReadConsoleAsync(stream, consoleGeneration, selected, reading.Token);
+                IdeErrors.Observe(ReadConsoleAsync(stream, consoleGeneration, selected, reading.Token));
             }
         }
     }

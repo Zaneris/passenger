@@ -16,6 +16,7 @@ using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Inspector;
 using Passenger.Profiler;
+using Passenger.Workspace;
 using Passenger.Xaml.Projects;
 
 namespace Passenger.App;
@@ -733,8 +734,8 @@ public sealed class ProjectSession : IAsyncDisposable
         }
     }
 
-    /// <summary>A file the editor opened: the language server, the debugger and Git follow it, its gutter showing their
-    /// marks.</summary>
+    /// <summary>A file the editor opened: the language server, the debugger, Git, the bookmarks and the places follow it,
+    /// its gutter showing their marks.</summary>
     public void Attach(OpenDocument document)
     {
         CSharp?.Attach(document);
@@ -743,6 +744,8 @@ public sealed class ProjectSession : IAsyncDisposable
         MSBuild.Attach(document);
         Debug.Attach(document);
         Vcs.Attach(document);
+        Bookmarks.Attach(document.Path, document.Text);
+        Navigation.Attach(document.Path, document.Text);
     }
 
     /// <summary>A file the editor closed, which they follow no more.</summary>
@@ -754,6 +757,8 @@ public sealed class ProjectSession : IAsyncDisposable
         MSBuild.Detach(document);
         Debug.Detach(document);
         Vcs.Detach(document);
+        Bookmarks.Detach(document.Path);
+        Navigation.Detach(document.Path);
     }
 
     /// <summary>A file or folder moved: its bookmarks and breakpoints, Git, the recent files, the places, Local History and
@@ -828,7 +833,7 @@ public sealed class ProjectSession : IAsyncDisposable
     /// server, and for a folder without a solution the walk for its projects.</summary>
     public void Start(bool walk)
     {
-        _ = Vcs.OpenAsync(Folder!);
+        IdeErrors.Observe(Vcs.OpenAsync(Folder!));
         StartCSharp();
         if (walk)
         {
@@ -849,7 +854,7 @@ public sealed class ProjectSession : IAsyncDisposable
         WorkspaceRead = landed.Task;
         // Held through the walk, then by the crossing, which lets go of what it can never deliver.
         IDisposable held = BackgroundWork.Scope();
-        Task.Run(() => WorkspaceModel.Read(walking, named)).ContinueWith(walked =>
+        IdeErrors.Observe(Task.Run(() => WorkspaceModel.Read(walking, named)).ContinueWith(walked =>
         {
             // Seen here, so a walk that failed after another read began is no unobserved task's error later.
             _ = walked.Exception;
@@ -868,7 +873,7 @@ public sealed class ProjectSession : IAsyncDisposable
                 }
             });
             held.Dispose();
-        }, TaskScheduler.Default);
+        }, TaskScheduler.Default));
     }
 
     /// <summary>Takes a new read of the folder. The language server starts again only when what it loaded changed: another
@@ -891,7 +896,7 @@ public sealed class ProjectSession : IAsyncDisposable
     /// folder with neither a solution nor a project, nor in a window that starts none.</summary>
     private void StartCSharp()
     {
-        _ = CSharp?.DisposeAsync();
+        IdeErrors.Observe(CSharp?.DisposeAsync().AsTask() ?? Task.CompletedTask);
         CSharp = null;
         if (!IsEnded && setup.StartsLanguageServer && Workspace is { } opening && (opening.Solution is not null || opening.Projects.Count > 0))
         {
@@ -987,8 +992,9 @@ public sealed class ProjectSession : IAsyncDisposable
 
     public ValueTask DisposeAsync() => new(CloseAsync());
 
-    /// <summary>What ends at once (the store's documents, the watcher, Local History, programs, builds, the profiled run and
-    /// its port, a test run), and what is asked to end: the test runner and the language server, with the parts given.</summary>
+    /// <summary>What ends at once (the store's documents, the watcher, Local History, the bookmarks', places' and breakpoints'
+    /// hold on the files left open, programs, builds, the profiled run and its port, a test run), and what is asked to end:
+    /// the test runner and the language server, with the parts given.</summary>
     private List<(string What, Task Ending)> End(List<(string What, Task Ending)> parts, Task debuggers)
     {
         closing = true;
@@ -997,6 +1003,10 @@ public sealed class ProjectSession : IAsyncDisposable
         DesignTimeBuilds.Close();
         Watcher?.Dispose();
         LocalHistory?.Release();
+        // Files left open are the next session's to follow; what each store kept of them stays where it was carried.
+        Bookmarks.DetachAll();
+        Navigation.DetachAll();
+        Debug.Breakpoints.DetachAll();
         // A build stopped now says so with nothing of this folder's in Problems, which another folder's take next.
         Problems.Clear();
         parts.Add(("the Aspire applications", Aspire.DisposeAsync().AsTask()));

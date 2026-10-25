@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Passenger.App.Vcs;
+using Passenger.Vcs;
 
 namespace Passenger.App;
 
@@ -17,9 +18,9 @@ public partial class MainWindow
     {
         Add(AppActions.ResolveConflicts, "Resolve Conflicts…", _ => ShowConflicts(), 5,
             () => session.Vcs.Conflicts.Count == 0 ? "No conflicts found" : null);
-        Add(AppActions.ContinueRebase, "Continue Rebase", context => _ = session.Vcs.ContinueRebaseAsync(), 6, NoRebase);
-        Add(AppActions.AbortRebase, "Abort Rebase", context => _ = AbortAsync("Abort Rebase", $"Abort rebase in {Path.GetFileName(session.Vcs.Repository?.Root)}?"), 7, NoRebase);
-        Add(AppActions.AbortMerge, "Abort Merge", context => _ = AbortAsync("Abort Merge", "Abort merge?"), 8,
+        Add(AppActions.ContinueRebase, "Continue Rebase", context => IdeErrors.Observe(session.Vcs.ContinueRebaseAsync()), 6, NoRebase);
+        Add(AppActions.AbortRebase, "Abort Rebase", context => IdeErrors.Observe(AbortAsync("Abort Rebase", $"Abort rebase in {Path.GetFileName(session.Vcs.Repository?.Root)}?")), 7, NoRebase);
+        Add(AppActions.AbortMerge, "Abort Merge", context => IdeErrors.Observe(AbortAsync("Abort Merge", "Abort merge?")), 8,
             () => session.Vcs.Merge.Operation is MergeOperation.Merge ? null : "No merge in progress");
 
         string? NoRebase() => session.Vcs.Merge.Operation is MergeOperation.Rebase ? null : "No rebase in progress";
@@ -49,19 +50,25 @@ public partial class MainWindow
         ConflictsDialog dialog = null!;
         dialog = new ConflictsDialog(session.Vcs, conflict => MergeAsync(conflict.Path, dialog));
         conflictsDialog = dialog;
-        dialog.Closed += async (_, _) =>
+        dialog.Closed += (_, _) =>
         {
             conflictsDialog = null;
-            // Closed as the last file was resolved, while that is still being read.
-            await session.Vcs.Idle;
-            if (session.Vcs.Merge.Operation is MergeOperation.Rebase && session.Vcs.Conflicts.Count == 0
-                && await Confirm("Resolve Conflicts", "All conflicts have been resolved. Do you want to continue rebase?", "Continue Rebase"))
-            {
-                await session.Vcs.ContinueRebaseAsync();
-            }
+            IdeErrors.Observe(OfferToContinueRebaseAsync());
         };
-        _ = dialog.ShowDialog(this);
+        IdeErrors.Observe(dialog.ShowDialog(this));
         return dialog;
+    }
+
+    /// <summary>Once the Conflicts dialog closes with a rebase's last conflict resolved, whether to continue the rebase.</summary>
+    private async Task OfferToContinueRebaseAsync()
+    {
+        // Closed as the last file was resolved, while that is still being read.
+        await session.Vcs.Idle;
+        if (session.Vcs.Merge.Operation is MergeOperation.Rebase && session.Vcs.Conflicts.Count == 0
+            && await Confirm("Resolve Conflicts", "All conflicts have been resolved. Do you want to continue rebase?", "Continue Rebase"))
+        {
+            await session.Vcs.ContinueRebaseAsync();
+        }
     }
 
     /// <summary>The merge window on a conflicted file, over the Conflicts dialog (or this window), done once it closes:

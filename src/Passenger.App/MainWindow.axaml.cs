@@ -154,7 +154,7 @@ public partial class MainWindow : Window
         {
             if (Editors.Active is { } active && session.Debug.Session is { State: DebugState.Paused } paused)
             {
-                _ = session.Debug.SetNextStatementAsync(paused, active.Path, line);
+                IdeErrors.Observe(session.Debug.SetNextStatementAsync(paused, active.Path, line));
             }
         });
         Editors.ForEachEditor(editor => editor.GutterClicked += (_, click) =>
@@ -184,12 +184,12 @@ public partial class MainWindow : Window
             }
             if (!click.Context && editor.IsInAnnotationColumn(click.Position))
             {
-                _ = ShowBlamedCommitAsync(active, click.Line);
+                IdeErrors.Observe(ShowBlamedCommitAsync(active, click.Line));
                 return;
             }
             if (!click.Context && editor.IsInChangeColumn(click.Position) && ChangeAt(active, click.Line) is { } change)
             {
-                _ = ShowChangePopupAsync(editor, active, change);
+                IdeErrors.Observe(ShowChangePopupAsync(editor, active, change));
                 return;
             }
             if (click.Context)
@@ -235,7 +235,7 @@ public partial class MainWindow : Window
         Bind(session);
         Bottom.Build.RerunClicked += (_, _) => buildRun.Rebuild();
         Bottom.Build.StopClicked += (_, _) => session.Builder.Stop();
-        Bottom.Run.RerunClicked += (_, _) => _ = RerunAsync();
+        Bottom.Run.RerunClicked += (_, _) => IdeErrors.Observe(RerunAsync());
         Bottom.Run.StopClicked += (_, _) => session.Runner.Stop();
         Bottom.Run.HotReloadClicked += (_, _) => Request(AppActions.ApplyHotReloadChanges);
         Bottom.Run.NameKeys(AppActions.Rerun, AppActions.Stop, AppActions.ApplyHotReloadChanges);
@@ -310,7 +310,7 @@ public partial class MainWindow : Window
         {
             if (file.EndsWith(".nettrace", StringComparison.OrdinalIgnoreCase))
             {
-                _ = OpenSnapshotAsync(Path.GetFullPath(file));
+                IdeErrors.Observe(OpenSnapshotAsync(Path.GetFullPath(file)));
                 continue;
             }
             OpenFile(file);
@@ -324,7 +324,7 @@ public partial class MainWindow : Window
             welcome.FocusSearch();
         }
         PreloadTemplates();
-        _ = ForgetUnmaskedCopiesAsync();
+        IdeErrors.Observe(ForgetUnmaskedCopiesAsync());
     }
 
     private string? followed;
@@ -375,7 +375,7 @@ public partial class MainWindow : Window
         {
             if (!shifted)
             {
-                if (!BranchesTake(action) && debugView?.TakesAction(action) != true)
+                if (!BranchesTake(action))
                 {
                     Request(action);
                 }
@@ -554,7 +554,7 @@ public partial class MainWindow : Window
     /// <summary>The tool windows, each in its first place.</summary>
     private void AddToolWindows()
     {
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Explorer, "Explorer", "Icon.Explorer", Explorer, Docking.ToolAnchor.LeftTop)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Explorer, "Explorer", IconKeys.Explorer, Explorer, Docking.ToolAnchor.LeftTop)
         {
             Action = AppActions.FocusExplorer,
             HeaderTools = Explorer.TakeHeaderTools(),
@@ -568,28 +568,28 @@ public partial class MainWindow : Window
             OpenAtFirst = true,
         });
         // Shown however it is (its action, its stripe button, a layout), it asks for the file shown then itself.
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Structure, "Structure", "Icon.Structure", MakeStructure, Docking.ToolAnchor.LeftBottom) { Action = AppActions.ShowStructure });
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Run, "Run", "Icon.RunOutline", Bottom.Run, Docking.ToolAnchor.BottomLeft) { Action = AppActions.ShowRun, ActionTitle = "Run Tool Window" });
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Debug, "Debug", "Icon.Debug", () => debugView = new ToolWindows.DebugView(Bottom.Debug), Docking.ToolAnchor.BottomLeft)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Structure, "Structure", IconKeys.Structure, MakeStructure, Docking.ToolAnchor.LeftBottom) { Action = AppActions.ShowStructure });
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Run, "Run", IconKeys.RunOutline, Bottom.Run, Docking.ToolAnchor.BottomLeft) { Action = AppActions.ShowRun, ActionTitle = "Run Tool Window" });
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Debug, "Debug", IconKeys.Debug, () => debugView = new ToolWindows.DebugView(Bottom.Debug), Docking.ToolAnchor.BottomLeft)
         {
             Action = AppActions.ShowDebug,
             ActionTitle = "Debug Tool Window",
             Tools = () => debugView?.HeaderTools,
         });
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Aspire, "Aspire", "Icon.Aspire", MakeAspire, Docking.ToolAnchor.BottomLeft) { Action = AppActions.ShowAspire, ActionTitle = "Aspire Tool Window" });
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Aspire, "Aspire", IconKeys.Aspire, MakeAspire, Docking.ToolAnchor.BottomLeft) { Action = AppActions.ShowAspire, ActionTitle = "Aspire Tool Window" });
         Closed += (_, _) =>
         {
             Bottom.Aspire.Dispose();
             aspireView?.Dispose();
         };
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Tests, "Unit Tests", "Icon.Tests", Bottom.Tests, Docking.ToolAnchor.BottomLeft)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Tests, "Unit Tests", IconKeys.Tests, Bottom.Tests, Docking.ToolAnchor.BottomLeft)
         {
             Action = AppActions.ShowTests,
             Menus = [new MenuPlace("Tests", 2, 0)],
             Chosen = () => Bottom.Tests.Selected,
         });
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Build, "Build", "Icon.Build", Bottom.Build, Docking.ToolAnchor.BottomLeft) { Action = AppActions.ShowBuild, ActionTitle = "Build Tool Window" });
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Problems, "Problems", "Icon.Problems", () => new ToolWindows.ProblemsView(Bottom.Problems), Docking.ToolAnchor.BottomLeft)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Build, "Build", IconKeys.Build, Bottom.Build, Docking.ToolAnchor.BottomLeft) { Action = AppActions.ShowBuild, ActionTitle = "Build Tool Window" });
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Problems, "Problems", IconKeys.Problems, () => new ToolWindows.ProblemsView(Bottom.Problems), Docking.ToolAnchor.BottomLeft)
         {
             Action = AppActions.ShowProblems,
             ActionTitle = "Problems",

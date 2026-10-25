@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using Passenger.App.Mcp;
 using Passenger.Core;
 
 namespace Passenger.Tests;
@@ -24,43 +25,43 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
         Write("Aaa.cs", "static class Aaa\n{\n    public static int TwiceMore(int value) => value;\n}\n");
         await using McpClient client = await Start(["--mcp", Folder]);
         IList<McpClientTool> tools = await Exchange("Listing the tools", TimeSpan.FromMinutes(1), cancel => client.ListToolsAsync(cancellationToken: cancel).AsTask());
-        Assert.Contains(tools, t => t.Name == "debug_start");
-        string testsRun = Assert.Single(tools, t => t.Name == "tests_run").Description;
+        Assert.Contains(tools, t => t.Name == McpTools.DebugStart);
+        string testsRun = Assert.Single(tools, t => t.Name == McpTools.TestsRun).Description;
         Assert.True(testsRun.Contains("Testing Platform", StringComparison.Ordinal) && testsRun.Contains("xUnit v3", StringComparison.Ordinal),
             $"tests_run tells an agent its tests run otherwise than they do: {testsRun}");
         // Every session pays to read the list, so it says each thing once and is held under 62 KB (the owner's call).
-        Assert.Equal(["app_tree"], tools.Where(t => JsonSerializer.Serialize(t.ProtocolTool).Contains("#Panel/Button", StringComparison.Ordinal)).Select(t => t.Name));
+        Assert.Equal([McpTools.AppTree], tools.Where(t => JsonSerializer.Serialize(t.ProtocolTool).Contains("#Panel/Button", StringComparison.Ordinal)).Select(t => t.Name));
         Assert.DoesNotContain(tools, t => SaysNothing(t.ProtocolTool.InputSchema));
         Assert.DoesNotContain(tools, t => t.ProtocolTool.Annotations?.Title is not null);
         int listed = tools.Sum(t => JsonSerializer.Serialize(t.ProtocolTool, ModelContextProtocol.McpJsonUtilities.DefaultOptions).Length);
         Assert.True(listed < 62_000, $"The tools an agent reads as each session starts take {listed} bytes");
 
         // The symbol named as asked comes first, so a limit of one finds it rather than one with the name inside its own.
-        JsonElement symbol = Assert.Single((await Call(client, "find_symbol", new() { ["query"] = "Twice", ["limit"] = 1 })).EnumerateArray());
+        JsonElement symbol = Assert.Single((await Call(client, McpTools.FindSymbol, new() { ["query"] = "Twice", ["limit"] = 1 })).EnumerateArray());
         Assert.Equal(("Twice", "Helper.cs", 3), (symbol.GetProperty("name").GetString(), symbol.GetProperty("path").GetString(), symbol.GetProperty("line").GetInt32()));
 
         // Code in an answer reads as written, its quotes and angle brackets as they are, not as \u0022s an agent pays for.
-        string found = Text(await Result(client, "find_in_files", new() { ["text"] = "total {total}" }));
+        string found = Text(await Result(client, McpTools.FindInFiles, new() { ["text"] = "total {total}" }));
         Assert.True(found.Contains("Console.WriteLine($\\\"total {total}\\\");", StringComparison.Ordinal) && !found.Contains("\\u00", StringComparison.Ordinal),
             $"find_in_files wrote a line of code as: {found}");
 
-        JsonElement warning = Assert.Single((await Call(client, "diagnostics", new() { ["path"] = "Helper.cs" })).EnumerateArray(),
+        JsonElement warning = Assert.Single((await Call(client, McpTools.Diagnostics, new() { ["path"] = "Helper.cs" })).EnumerateArray(),
             d => d.GetProperty("code").GetString() == "CS0219");
         Assert.Equal("warning", warning.GetProperty("severity").GetString());
         Assert.Equal(5, warning.GetProperty("line").GetInt32());
 
-        await Call(client, "breakpoint_set", new() { ["path"] = "Program.cs", ["line"] = 4 });
-        JsonElement stop = await Call(client, "debug_start");
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 4 });
+        JsonElement stop = await Call(client, McpTools.DebugStart);
         Assert.Equal("paused", stop.GetProperty("state").GetString());
         Assert.StartsWith("Program.cs:4:", stop.GetProperty("location").GetString(), StringComparison.Ordinal);
         Assert.Equal("1", Local(stop, "i"));
         Assert.Equal("0", Local(stop, "total"));
-        Assert.Equal("42", (await Call(client, "debug_evaluate", new() { ["expression"] = "Helper.Twice(i) + 40" })).GetProperty("value").GetString());
+        Assert.Equal("42", (await Call(client, McpTools.DebugEvaluate, new() { ["expression"] = "Helper.Twice(i) + 40" })).GetProperty("value").GetString());
         int depth = stop.GetProperty("frames").GetArrayLength();
         foreach ((string tool, Dictionary<string, object?> arguments) in new (string, Dictionary<string, object?>)[]
         {
-            ("debug_evaluate", new() { ["expression"] = "i", ["frame"] = 99 }),
-            ("debug_evaluate", new() { ["expression"] = "i", ["value"] = "1", ["frame"] = 99 }),
+            (McpTools.DebugEvaluate, new() { ["expression"] = "i", ["frame"] = 99 }),
+            (McpTools.DebugEvaluate, new() { ["expression"] = "i", ["value"] = "1", ["frame"] = 99 }),
         })
         {
             CallToolResult past = await Result(client, tool, arguments);
@@ -69,35 +70,35 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
                 $"{tool} in frame 99 of a stack {depth} deep answered: {Text(past)}");
         }
 
-        stop = await Call(client, "debug_continue");
+        stop = await Call(client, McpTools.DebugContinue);
         Assert.Equal("2", Local(stop, "i"));
 
         // An agent's next step may be a click the debugger never sees, so the answer comes once the breakpoint is bound.
-        JsonElement later = Assert.Single((await Call(client, "breakpoint_set", new() { ["path"] = "Program.cs", ["line"] = 6 })).EnumerateArray(),
+        JsonElement later = Assert.Single((await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 6 })).EnumerateArray(),
             b => b.GetProperty("line").GetInt32() == 6);
         Assert.Equal("bound", later.GetProperty("status").GetString());
-        await Call(client, "breakpoint_set", new() { ["path"] = "Program.cs", ["line"] = 6, ["remove"] = true });
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 6, ["remove"] = true });
 
         // An edit made while paused runs once it goes on: Twice(2) and Twice(3) add one each.
-        await Call(client, "open", new() { ["path"] = "Helper.cs", ["line"] = 6, ["column"] = 25 });
-        await Call(client, "app_type", new() { ["app"] = "ide", ["text"] = " + 1" });
+        await Call(client, McpTools.Open, new() { ["path"] = "Helper.cs", ["line"] = 6, ["column"] = 25 });
+        await Call(client, McpTools.AppType, new() { ["app"] = "ide", ["text"] = " + 1" });
 
-        await Call(client, "breakpoint_set", new() { ["path"] = "Program.cs", ["line"] = 4, ["remove"] = true });
-        stop = await Call(client, "debug_continue");
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 4, ["remove"] = true });
+        stop = await Call(client, McpTools.DebugContinue);
         Assert.Equal("exception", stop.GetProperty("reason").GetString());
         Assert.StartsWith("System.InvalidOperationException: the end", stop.GetProperty("exception").GetString(), StringComparison.Ordinal);
-        string output = (await Call(client, "output", new() { ["of"] = "debug" })).GetString()!;
+        string output = (await Call(client, McpTools.Output, new() { ["of"] = "debug" })).GetString()!;
         Assert.True(output.Contains("total 14", StringComparison.Ordinal), $"The edit made while paused did not run once the program went on:\n{output}");
 
-        CallToolResult picture = await Result(client, "app_screenshot", new() { ["app"] = "ide" });
+        CallToolResult picture = await Result(client, McpTools.AppScreenshot, new() { ["app"] = "ide" });
         ImageContentBlock image = Assert.IsType<ImageContentBlock>(picture.Content[0]);
         Assert.Equal("image/png", image.MimeType);
         Assert.Equal([0x89, (byte)'P', (byte)'N', (byte)'G'], image.DecodedData.Slice(0, 4).ToArray());
 
-        await Call(client, "stop");
-        Assert.Equal("not debugging", (await Call(client, "debug_state")).GetProperty("state").GetString());
+        await Call(client, McpTools.Stop);
+        Assert.Equal("not debugging", (await Call(client, McpTools.DebugState)).GetProperty("state").GetString());
 
-        CallToolResult refused = await Result(client, "debug_continue");
+        CallToolResult refused = await Result(client, McpTools.DebugContinue);
         Assert.True(refused.IsError);
         Assert.Contains("debug_start starts it", Assert.IsType<TextContentBlock>(Assert.Single(refused.Content)).Text, StringComparison.Ordinal);
 
@@ -109,17 +110,17 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
             try
             {
                 Assert.Equal("looping", looping.StandardOutput.ReadLine());
-                JsonElement program = Assert.Single((await Call(client, "debug_state", new() { ["of"] = "processes" })).EnumerateArray(), p => p.GetProperty("processId").GetInt32() == looping.Id);
+                JsonElement program = Assert.Single((await Call(client, McpTools.DebugState, new() { ["of"] = "processes" })).EnumerateArray(), p => p.GetProperty("processId").GetInt32() == looping.Id);
                 Assert.Equal("LoopingConsoleApp", program.GetProperty("program").GetString());
                 string source = Debugging.Helpers.Debuggees.Source("LoopingConsoleApp", "Program.cs");
                 int line = Debugging.Helpers.Debuggees.Line("LoopingConsoleApp", "turns++;");
-                await Call(client, "breakpoint_set", new() { ["path"] = source, ["line"] = line });
-                JsonElement attached = await Call(client, "debug_attach", new() { ["processId"] = looping.Id });
+                await Call(client, McpTools.BreakpointSet, new() { ["path"] = source, ["line"] = line });
+                JsonElement attached = await Call(client, McpTools.DebugAttach, new() { ["processId"] = looping.Id });
                 Assert.Equal(("paused", Passenger.Dap.StopReasons.Breakpoint), (attached.GetProperty("state").GetString(), attached.GetProperty("reason").GetString()));
                 Assert.EndsWith($"Program.cs:{line}:5", attached.GetProperty("location").GetString(), StringComparison.Ordinal);
                 Assert.True(long.TryParse(Local(attached, "turns"), out long turns) && turns >= 0, $"The stop's locals had no count of turns: {attached}");
-                Assert.Equal("Detached from LoopingConsoleApp, which runs on", (await Call(client, "stop", new() { ["detach"] = true })).GetString());
-                Assert.Equal("not debugging", (await Call(client, "debug_state")).GetProperty("state").GetString());
+                Assert.Equal("Detached from LoopingConsoleApp, which runs on", (await Call(client, McpTools.Stop, new() { ["detach"] = true })).GetString());
+                Assert.Equal("not debugging", (await Call(client, McpTools.DebugState)).GetProperty("state").GetString());
                 Assert.False(looping.WaitForExit(TimeSpan.FromSeconds(2)), "The program the agent detached from ended");
             }
             finally
@@ -129,15 +130,15 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
         }
 
         // The C# server never takes a project file, so its problems must come at once from the editor's marks.
-        await Call(client, "open", new() { ["path"] = "Sum.csproj", ["line"] = 7, ["column"] = 1 });
-        await Call(client, "app_type", new() { ["app"] = "ide", ["text"] = "<Import Project=\"Missing.props\" />" });
+        await Call(client, McpTools.Open, new() { ["path"] = "Sum.csproj", ["line"] = 7, ["column"] = 1 });
+        await Call(client, McpTools.AppType, new() { ["app"] = "ide", ["text"] = "<Import Project=\"Missing.props\" />" });
         Stopwatch asked = Stopwatch.StartNew();
-        JsonElement missing = Assert.Single((await Call(client, "diagnostics", new() { ["path"] = "Sum.csproj" })).EnumerateArray());
+        JsonElement missing = Assert.Single((await Call(client, McpTools.Diagnostics, new() { ["path"] = "Sum.csproj" })).EnumerateArray());
         Assert.True(asked.Elapsed < TimeSpan.FromSeconds(60).Scaled(), $"The project file's diagnostics took {asked.Elapsed}");
         Assert.Equal(("error", 7), (missing.GetProperty("severity").GetString(), missing.GetProperty("line").GetInt32()));
         Assert.Contains("Missing.props", missing.GetProperty("message").GetString(), StringComparison.Ordinal);
         // The hover card's lines end as the system's do (Windows' "\r\n").
-        string framework = (await Call(client, "symbol_info", new() { ["path"] = "Sum.csproj", ["line"] = 4, ["column"] = 8 })).GetString()!.ReplaceLineEndings("\n");
+        string framework = (await Call(client, McpTools.SymbolInfo, new() { ["path"] = "Sum.csproj", ["line"] = 4, ["column"] = 8 })).GetString()!.ReplaceLineEndings("\n");
         Assert.True(framework.StartsWith($"TargetFramework = {TestProjects.Framework}\nMSBuild property, set in Sum.csproj, line 4", StringComparison.Ordinal),
             $"symbol_info on a project file's property did not say its value and where it was set: {framework}");
     }
@@ -161,14 +162,14 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
             Restore.Run(tests);
         }, tests);
         await using McpClient client = await Start(["--mcp", tests], languageServer: false);
-        await Call(client, "breakpoint_set", new() { ["path"] = "SumTests.cs", ["line"] = 10 });
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "SumTests.cs", ["line"] = 10 });
         // Stopped at the breakpoint, and at the failing test's exception where the exception breakpoints say so, in either order.
-        JsonElement ended = (await Call(client, "tests_run", new() { ["debug"] = true })).GetProperty("debugger");
+        JsonElement ended = (await Call(client, McpTools.TestsRun, new() { ["debug"] = true })).GetProperty("debugger");
         List<string> stops = [];
         while (ended.GetProperty("state").GetString() == "paused" && stops.Count < 5)
         {
             stops.Add(ended.GetProperty("location").GetString()!);
-            ended = await Call(client, "debug_continue");
+            ended = await Call(client, McpTools.DebugContinue);
         }
         Assert.Contains(stops, s => s.StartsWith("SumTests.cs:10:", StringComparison.Ordinal));
         Assert.Equal("not debugging", ended.GetProperty("state").GetString());
@@ -193,7 +194,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
         }));
         await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
         Task<int> held = hold.Held(TimeSpan.FromMinutes(3));
-        Task<CallToolResult> debugging = Result(client, "debug_start", new() { ["configuration"] = "Sum: Held" });
+        Task<CallToolResult> debugging = Result(client, McpTools.DebugStart, new() { ["configuration"] = "Sum: Held" });
         int program = 0;
         try
         {
@@ -203,14 +204,14 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
             }
             program = await held;
 
-            Assert.Equal("Stopped", (await Call(client, "stop")).GetString());
+            Assert.Equal("Stopped", (await Call(client, McpTools.Stop)).GetString());
             Assert.True(await Waiting.Within(debugging, TimeSpan.FromSeconds(15), TestContext.Current.CancellationToken),
                 $"debug_start still waited for the program {TimeSpan.FromSeconds(15).Scaled().TotalSeconds} s after the agent's stop{Said()}");
             CallToolResult stopped = await debugging;
             Assert.True(stopped.IsError == true && Text(stopped).Contains("Debugging Sum: Held was stopped as it started", StringComparison.Ordinal),
                 $"debug_start, stopped as it started, answered: {Text(stopped)}");
             Assert.True(Processes.Gone(program), $"The agent's stop left the program running: {Processes.Describe(program)}");
-            Assert.Equal("not debugging", (await Call(client, "debug_state")).GetProperty("state").GetString());
+            Assert.Equal("not debugging", (await Call(client, McpTools.DebugState)).GetProperty("state").GetString());
         }
         finally
         {
@@ -227,7 +228,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
         Write("Program.cs", "Console.WriteLine(\"waiting\");\nThread.Sleep(Timeout.Infinite);\n");
         await using McpClient client = await Start(["--mcp", Folder]);
         Heard heard = new();
-        CallToolResult ran = await Result(client, "run", new() { ["waitSeconds"] = 4 }, heard: heard);
+        CallToolResult ran = await Result(client, McpTools.Run, new() { ["waitSeconds"] = 4 }, heard: heard);
         Assert.False(ran.IsError == true, $"run failed: {Text(ran)}{Said()}");
         IReadOnlyList<ModelContextProtocol.ProgressNotificationValue> told = heard.Told;
         Assert.True(told.Count >= 2, $"A run that waited 4 s for its program told its agent {told.Count} times (every second asked): {heard}");
@@ -237,7 +238,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
             $"The agent was never told the run waits for its program: {heard}");
         // Each word says how long the call has taken so far.
         Assert.Matches(@"\(\d+\.\d s\)$", told[^1].Message ?? string.Empty);
-        await Call(client, "stop");
+        await Call(client, McpTools.Stop);
         Assert.True(Errors().Length == 0, $"The agent's Passenger wrote to its standard error, which an agent may never read:\n{string.Join('\n', Errors())}");
     }
 

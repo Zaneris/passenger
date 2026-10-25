@@ -10,6 +10,7 @@ using Passenger.Editor;
 using Passenger.Lsp;
 using Passenger.Roslyn.Extension;
 using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.App;
 
@@ -33,7 +34,7 @@ public partial class MainWindow
     {
         routesLater = new Debounce(TimeSpan.FromMilliseconds(400), () =>
         {
-            _ = ReadRoutesAsync();
+            IdeErrors.Observe(ReadRoutesAsync());
             return Task.CompletedTask;
         });
         Closed += (_, _) => routesLater.Stop();
@@ -69,7 +70,7 @@ public partial class MainWindow
     /// read once it is shown.</summary>
     private void FollowRoutes(EndpointsView view)
     {
-        view.RouteSendRequested += (_, route) => _ = SendRouteAsync(route);
+        view.RouteSendRequested += (_, route) => IdeErrors.Observe(SendRouteAsync(route));
         view.RouteGoToRequested += (_, route) => GoToRoute(route);
         view.AttachedToVisualTree += (_, _) => WantRoutes();
     }
@@ -249,7 +250,7 @@ public partial class MainWindow
         foreach ((WebRoute route, _, _) in RoutesIn(document).Where(r => r.At.Line == line && RouteRequests.Sendable(r.Route)))
         {
             MenuItem send = new() { Header = $"Send {RouteRequests.Title(route)}" };
-            send.Click += (_, _) => _ = SendRouteAsync(route);
+            send.Click += (_, _) => IdeErrors.Observe(SendRouteAsync(route));
             menu.Items.Add(send);
         }
         if (menu.Items.Count == 0)

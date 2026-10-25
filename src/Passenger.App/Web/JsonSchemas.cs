@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Passenger.Core;
 
 namespace Passenger.App.Web;
 
@@ -10,6 +11,7 @@ namespace Passenger.App.Web;
 /// on any thread.</summary>
 public sealed class JsonSchemas(Func<bool> download)
 {
+    [IdentifierHome]
     public const string Variable = "PASSENGER_SCHEMAS";
 
     /// <summary>SchemaStore's hosts, whose schemas Passenger carries by their file's name.</summary>
@@ -22,7 +24,7 @@ public sealed class JsonSchemas(Func<bool> download)
         (["tsconfig.json", "tsconfig.*.json"], "https://json.schemastore.org/tsconfig.json"),
         (["jsconfig.json", "jsconfig.*.json"], "https://json.schemastore.org/jsconfig.json"),
         (["appsettings.json", "appsettings.*.json"], "https://json.schemastore.org/appsettings.json"),
-        (["launchSettings.json"], "https://json.schemastore.org/launchsettings.json"),
+        ([Run.LaunchProfile.SettingsFile], "https://json.schemastore.org/launchsettings.json"),
         (["global.json"], "https://json.schemastore.org/global.json"),
     ];
 

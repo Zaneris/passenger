@@ -2,6 +2,7 @@ using Passenger.App.Explorer;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.App;
 
@@ -30,18 +31,7 @@ public partial class MainWindow
         popup.ScopeChanged += (_, scope) => KeepFindScope(scope, closing: false);
         // However it closes: a match chosen, Escape, a click outside.
         popup.DetachedFromVisualTree += (_, _) => KeepFindScope(popup.Scope, closing: true);
-        popup.ReplaceRequested += async (_, asked) =>
-        {
-            string what = FilesReplaced.Count(asked.Matches);
-            if (await Confirm("Replace in Files", $"Replace {what} with '{asked.Replacement}'? An open file's change can be undone there; a closed file is written.", "Replace All"))
-            {
-                FilesReplaced done = ReplaceInFiles(asked.Query, asked.Replacement, [.. asked.Matches.Select(m => m.Path).Distinct()]);
-                IReadOnlyList<SearchMatch> replaced = done.Replaced(asked.Matches);
-                string? refused = done.NotReplaced(Path.GetFileName);
-                status.Text = string.Join("; ", [replaced.Count > 0 ? $"Replaced {FilesReplaced.Count(replaced)}" : "Nothing replaced", .. done.Converted, .. refused is null ? [] : new[] { refused }]);
-                await popup.SearchAsync();
-            }
-        };
+        popup.ReplaceRequested += (_, asked) => IdeErrors.Observe(ReplaceAllAsync(popup, asked));
         popups.Show(popup, match =>
         {
             if (match is not null)
@@ -183,6 +173,21 @@ public partial class MainWindow
                 };
             default:
                 return SearchPlace.Everything(mask);
+        }
+    }
+
+    /// <summary>The popup's Replace All, once confirmed: the matches it lists replaced, said in the status bar, and the
+    /// popup's search run again over what is left.</summary>
+    private async Task ReplaceAllAsync(Navigation.FindInFilesPopup popup, (SearchQuery Query, string Replacement, IReadOnlyList<SearchMatch> Matches) asked)
+    {
+        string what = FilesReplaced.Count(asked.Matches);
+        if (await Confirm("Replace in Files", $"Replace {what} with '{asked.Replacement}'? An open file's change can be undone there; a closed file is written.", "Replace All"))
+        {
+            FilesReplaced done = ReplaceInFiles(asked.Query, asked.Replacement, [.. asked.Matches.Select(m => m.Path).Distinct()]);
+            IReadOnlyList<SearchMatch> replaced = done.Replaced(asked.Matches);
+            string? refused = done.NotReplaced(Path.GetFileName);
+            status.Text = string.Join("; ", [replaced.Count > 0 ? $"Replaced {FilesReplaced.Count(replaced)}" : "Nothing replaced", .. done.Converted, .. refused is null ? [] : new[] { refused }]);
+            await popup.SearchAsync();
         }
     }
 

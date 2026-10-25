@@ -3,6 +3,7 @@ using Avalonia.Headless.XUnit;
 using ModelContextProtocol.Client;
 using Passenger.App;
 using Passenger.App.Debugging;
+using Passenger.App.Mcp;
 using Passenger.Dap;
 using Passenger.Text;
 
@@ -87,19 +88,19 @@ public sealed class QuerySqlTests : McpRig, IClassFixture<QuerySqlTests.Shop>
     public async Task An_agents_debug_state_reads_a_querys_SQL_as_it_opens_its_row()
     {
         await using McpClient client = await Start(["--mcp", shop.Folder], languageServer: false);
-        await Call(client, "breakpoint_set", new() { ["path"] = "Program.cs", ["line"] = Shop.Stop + 1 });
-        JsonElement stop = await Call(client, "debug_start");
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = Shop.Stop + 1 });
+        JsonElement stop = await Call(client, McpTools.DebugStart);
         Assert.Equal("paused", stop.GetProperty("state").GetString());
         int query = stop.GetProperty("locals").EnumerateArray().Single(l => l.GetProperty("name").GetString() == "stocked").GetProperty("reference").GetInt32();
 
-        JsonElement row = (await Call(client, "debug_state", new() { ["reference"] = query })).EnumerateArray().First();
+        JsonElement row = (await Call(client, McpTools.DebugState, new() { ["reference"] = query })).EnumerateArray().First();
         Assert.Equal((DapRows.QuerySql, DapRows.QuerySqlUnread), (row.GetProperty("name").GetString(), row.GetProperty("value").GetString()));
-        JsonElement read = Assert.Single((await Call(client, "debug_state", new() { ["reference"] = row.GetProperty("reference").GetInt32() })).EnumerateArray());
+        JsonElement read = Assert.Single((await Call(client, McpTools.DebugState, new() { ["reference"] = row.GetProperty("reference").GetInt32() })).EnumerateArray());
         string sql = read.GetProperty("value").GetString()!;
         Assert.True(read.GetProperty("name").GetString() == DapRows.QuerySql && sql.Contains("FROM \"Products\" AS \"p\"", StringComparison.Ordinal),
             $"The agent read the query's SQL row as: {read}");
         Assert.Equal(0, read.GetProperty("reference").GetInt32());
-        await Call(client, "stop");
+        await Call(client, McpTools.Stop);
     }
 
     /// <summary>A query's row opened, its SQL row first among its members, unread.</summary>

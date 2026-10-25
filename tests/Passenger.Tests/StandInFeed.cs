@@ -1,8 +1,6 @@
 using System.IO.Compression;
-using System.Net;
-using System.Net.Sockets;
 using System.Text;
-using Passenger.App.Packages;
+using Passenger.Packages;
 
 namespace Passenger.Tests;
 
@@ -13,24 +11,20 @@ namespace Passenger.Tests;
 /// carried.</summary>
 public sealed class StandInFeed : IDisposable
 {
-    private readonly TcpListener listener = new(IPAddress.Loopback, 0);
-    private readonly CancellationTokenSource end = new();
+    private readonly StandInHttp http;
     private readonly Dictionary<string, Dictionary<string, byte[]>> packages = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, List<string>> advisories = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<(string Path, bool Authorized, string? Authorization)> requests = [];
-    private readonly Task accepting;
     private string? accepted;
 
     public StandInFeed(string? user = null, string? password = null)
     {
         Password = password;
         accepted = user is null ? null : Basic(user, password ?? string.Empty);
-        listener.Start();
-        Root = $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}";
-        accepting = Task.Run(AcceptAsync);
+        http = new StandInHttp(AnswerAsync);
     }
 
-    public string Root { get; }
+    public string Root => http.Root;
 
     public Uri Index => new($"{Root}/v3/index.json");
 
@@ -66,13 +60,7 @@ public sealed class StandInFeed : IDisposable
     /// <summary>Takes these credentials from now on, in place of the ones it was made with.</summary>
     public void Accept(string user, string password) => Volatile.Write(ref accepted, Basic(user, password));
 
-    public void Dispose()
-    {
-        end.Cancel();
-        listener.Stop();
-        accepting.Wait(TimeSpan.FromSeconds(10));
-        end.Dispose();
-    }
+    public void Dispose() => http.Dispose();
 
     /// <summary>A package with nothing in it but its manifest and an empty lib folder, so any framework takes it.</summary>
     public static byte[] Package(string id, string version)
@@ -101,63 +89,17 @@ public sealed class StandInFeed : IDisposable
 
     private static string Basic(string user, string password) => "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes($"{user}:{password}"));
 
-    private async Task AcceptAsync()
+    private Task AnswerAsync(StandInHttp.Exchange exchange)
     {
-        List<Task> answering = [];
-        try
+        string? authorization = exchange.Header("Authorization");
+        string? wanted = Volatile.Read(ref accepted);
+        bool authorized = wanted is null || authorization == wanted;
+        lock (requests)
         {
-            while (true)
-            {
-                TcpClient client = await listener.AcceptTcpClientAsync(end.Token);
-                answering.Add(Task.Run(() => AnswerAsync(client)));
-            }
+            requests.Add((exchange.Path, authorized, authorization));
         }
-        catch (Exception stopped) when (stopped is OperationCanceledException or SocketException or ObjectDisposedException or InvalidOperationException)
-        {
-            // Disposed.
-        }
-        await Task.WhenAll(answering);
-    }
-
-    private async Task AnswerAsync(TcpClient client)
-    {
-        using (client)
-        {
-            try
-            {
-                NetworkStream stream = client.GetStream();
-                byte[] buffer = new byte[16 * 1024];
-                int read = 0;
-                while (Encoding.ASCII.GetString(buffer, 0, read).IndexOf("\r\n\r\n", StringComparison.Ordinal) < 0)
-                {
-                    int more = await stream.ReadAsync(buffer.AsMemory(read), end.Token);
-                    if (more == 0)
-                    {
-                        return;
-                    }
-                    read += more;
-                }
-                string[] head = Encoding.ASCII.GetString(buffer, 0, read).Split("\r\n");
-                string path = head[0].Split(' ')[1];
-                string? authorization = head.Skip(1).FirstOrDefault(h => h.StartsWith("Authorization:", StringComparison.OrdinalIgnoreCase))?.Split(':', 2)[1].Trim();
-                string? wanted = Volatile.Read(ref accepted);
-                bool authorized = wanted is null || authorization == wanted;
-                lock (requests)
-                {
-                    requests.Add((path, authorized, authorization));
-                }
-                (int status, string type, byte[] body) = authorized ? Route(path) : (401, "text/plain", Encoding.UTF8.GetBytes("Who are you?"));
-                string reason = status switch { 200 => "OK", 401 => "Unauthorized", _ => "Not Found" };
-                string challenge = status == 401 ? "WWW-Authenticate: Basic realm=\"private\"\r\n" : string.Empty;
-                await stream.WriteAsync(Encoding.ASCII.GetBytes(
-                    $"HTTP/1.1 {status} {reason}\r\nContent-Type: {type}\r\nContent-Length: {body.Length}\r\n{challenge}Connection: close\r\n\r\n"), end.Token);
-                await stream.WriteAsync(body, end.Token);
-            }
-            catch (Exception gone) when (gone is OperationCanceledException or IOException or SocketException or ObjectDisposedException)
-            {
-                // The client or the stand-in went first.
-            }
-        }
+        (int status, string type, byte[] body) = authorized ? Route(exchange.Path) : (401, "text/plain", Encoding.UTF8.GetBytes("Who are you?"));
+        return exchange.ReplyAsync(status, type, body, status == 401 ? "WWW-Authenticate: Basic realm=\"private\"\r\n" : string.Empty);
     }
 
     private (int Status, string Type, byte[] Body) Route(string path)

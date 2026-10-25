@@ -95,9 +95,7 @@ public sealed class LongTextTests : IDisposable
     {
         string path = Path.Combine(folder, "words.txt");
         File.WriteAllText(path, string.Concat(Enumerable.Repeat("cat sat\n", 5000)));
-        MainWindow window = new() { Width = 1000, Height = 700 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder, width: 1000, height: 700);
         window.OpenFile(path);
         Ui.Settle();
         CodeEditor editor = window.EditorArea.CodeEditor;

@@ -23,10 +23,7 @@ public sealed class MenuTests : IDisposable
     [AvaloniaFact]
     public void Settings_applied_again_keep_the_menu_bar_macOS_was_given_with_each_menu_once()
     {
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
-        Ui.Settle();
+        MainWindow window = Ui.OpenFolder(folder);
         NativeMenu given = NativeMenu.GetMenu(window)!;
         int menus = given.Items.Count;
 
@@ -46,9 +43,7 @@ public sealed class MenuTests : IDisposable
     public void The_menus_show_each_actions_shortcut_disable_what_cannot_run_and_run_what_is_chosen()
     {
         File.WriteAllText(Path.Combine(folder, "One.cs"), "class One { }\n");
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder);
         window.OpenFile("One.cs");
         Ui.Settle();
         NativeMenu bar = window.MenuBar;
@@ -90,9 +85,7 @@ public sealed class MenuTests : IDisposable
     public void The_editors_menu_shows_a_chord_for_an_action_whose_keys_are_all_chords()
     {
         File.WriteAllText(Path.Combine(folder, "One.cs"), "class One { }\n");
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder);
         window.OpenFile("One.cs");
         Ui.Settle();
         window.EditorArea.CodeEditor.Focus();
@@ -111,10 +104,7 @@ public sealed class MenuTests : IDisposable
     [AvaloniaFact]
     public void A_toolbar_menu_opened_by_a_click_takes_the_keys_so_escape_closes_it_and_the_arrows_and_enter_choose()
     {
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
-        Ui.Settle();
+        MainWindow window = Ui.OpenFolder(folder);
         window.SetConfigurations([new RunConfiguration { Name = "First" }, new RunConfiguration { Name = "Second" }], "First");
         Ui.Settle();
 
@@ -159,12 +149,9 @@ public sealed class MenuTests : IDisposable
     {
         // The menu on the toolbar, as on Windows and Linux, rather than in macOS's own menu bar.
         MainWindow.SystemMenuBar = false;
-        MainWindow window = new() { Width = 1800, Height = 800 };
+        MainWindow window = Ui.OpenFolder(folder, width: 1800);
         try
         {
-            window.Show();
-            window.OpenFolder(folder);
-            Ui.Settle();
             window.ApplySettings(window.Settings with { MainMenuBar = true });
             Ui.Settle();
             MainMenuPlace place = window.FindControl<MainMenuPlace>("MainMenuPlace")!;
@@ -174,7 +161,7 @@ public sealed class MenuTests : IDisposable
 
             Assert.True(place.MenusShown == titles.Length, $"At 1800 wide the bar shows {place.MenusShown} of its {titles.Length} menus");
             Assert.True(button.Opacity == 0 && !button.IsHitTestVisible, "The main menu's button still shows beside a bar that holds every menu");
-            Color words = window.TryFindResource("Passenger.TitleBar.Text", window.ActualThemeVariant, out object? token) && token is ISolidColorBrush own
+            Color words = window.TryFindResource(TokenKeys.TitleBar_Text, window.ActualThemeVariant, out object? token) && token is ISolidColorBrush own
                 ? own.Color : throw new Xunit.Sdk.XunitException("The theme has no title bar words");
             Assert.All(titles, t => Assert.True(t.Foreground is ISolidColorBrush ink && ink.Color == words, $"The bar's {t.Content} is not in the title bar's own words"));
 
@@ -232,11 +219,9 @@ public sealed class MenuTests : IDisposable
     {
         MainWindow.SystemMenuBar = false;
         File.WriteAllText(Path.Combine(folder, "Notes.txt"), "notes\n");
-        MainWindow window = new() { Width = 1800, Height = 800 };
+        MainWindow window = Ui.OpenFolder(folder, width: 1800);
         try
         {
-            window.Show();
-            window.OpenFolder(folder);
             window.OpenFile("Notes.txt");
             window.ApplySettings(window.Settings with { MainMenuBar = true });
             window.EditorArea.CodeEditor.Focus();

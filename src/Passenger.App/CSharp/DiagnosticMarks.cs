@@ -79,47 +79,57 @@ internal static class DiagnosticMarks
 
 /// <summary>An open file's diagnostics from one server (C#'s, a web language's, ESLint's): pulled after a pause, each
 /// pull ending the one before it and held as background work, or taken as pushed, and carried with the text between
-/// reports, so a squiggle never drifts off its code. What each asks of its server is its own.</summary>
+/// reports by anchored ranges, so a squiggle never drifts off its code. What each asks of its server is its own.</summary>
 internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
 {
     private CancellationTokenSource? pulling;
 
-    /// <summary>The diagnostics as reported, and each one's range in the text as it stands, moved with every edit since.</summary>
+    /// <summary>The diagnostics as reported, and each one's range in the text as it stands, which the text carries.</summary>
     private Diagnostic[] found = [];
-    private TextRange[] ranges = [];
+    private AnchoredRange[] ranges = [];
+
+    /// <summary>The markers last given, each on the range that carries it.</summary>
+    private (AnchoredRange Range, Marker Marker)[] shown = [];
 
     /// <summary>The diagnostics placed on the server's lines of the text as it stands, made when first asked for after an
     /// edit, so a key costs a move of each range rather than a line table of the file.</summary>
     private IReadOnlyList<Diagnostic>? placed = [];
 
     /// <summary>The diagnostics last reported, moved with the text since, so their lines are the text's as it is now.</summary>
-    public IReadOnlyList<Diagnostic> Placed => placed ??= DiagnosticMarks.Placed(document.Text.Snapshot, found, ranges);
+    public IReadOnlyList<Diagnostic> Placed => placed ??= DiagnosticMarks.Placed(document.Text.Snapshot, found, [.. ranges.Select(r => r.Range)]);
 
     /// <summary>The diagnostics placed so, each with its range in the text as it stands.</summary>
-    public IEnumerable<(Diagnostic Diagnostic, TextRange Range)> PlacedRanges => Placed.Zip(ranges);
+    public IEnumerable<(Diagnostic Diagnostic, TextRange Range)> PlacedRanges => Placed.Zip(ranges.Select(r => r.Range));
 
-    /// <summary>Carries the diagnostics' ranges through an edit.</summary>
-    public void Move(DocumentChangedEventArgs e)
+    /// <summary>The markers last given, where the text has carried them since.</summary>
+    public IReadOnlyList<Marker> Markers => [.. shown.Select(s => s.Marker with { Range = s.Range.Range })];
+
+    /// <summary>The text changed: the diagnostics' ranges moved with it, and are placed on the server's lines again when
+    /// next asked for.</summary>
+    public void Moved()
     {
-        if (ranges.Length == 0)
+        if (ranges.Length > 0)
         {
-            return;
+            placed = null;
         }
-        for (int i = 0; i < ranges.Length; i++)
-        {
-            ranges[i] = TextEditing.MapRange(ranges[i], e.Edits);
-        }
-        placed = null;
+    }
+
+    /// <summary>Carries markers the file shows already (another server's, until this one reports) as it carries its own.</summary>
+    public void Adopt(IReadOnlyList<Marker> markers)
+    {
+        Release();
+        shown = [.. markers.Select(m => (Anchored(m.Range), m))];
     }
 
     /// <summary>Takes diagnostics reported for the text as it stands, and gives the markers they draw as.</summary>
     public IReadOnlyList<Marker> Take(IReadOnlyList<Diagnostic> diagnostics, Func<Diagnostic, TextRange, Marker?> marker)
     {
         ServerLines lines = ServerLines.Of(document.Text.Snapshot);
+        Release();
         found = [.. diagnostics];
-        ranges = [.. found.Select(d => DiagnosticMarks.Offsets(lines, d.Range))];
+        ranges = [.. found.Select(d => Anchored(DiagnosticMarks.Offsets(lines, d.Range)))];
         placed = diagnostics;
-        return [.. found.Select((d, i) => marker(d, ranges[i])).OfType<Marker>()];
+        return Show(marker);
     }
 
     /// <summary>Leaves out the diagnostics <paramref name="which"/> names, giving the markers the rest draw as, or null when
@@ -131,10 +141,43 @@ internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
             return null;
         }
         int[] kept = [.. Enumerable.Range(0, found.Length).Where(i => !which(found[i]))];
+        foreach (AnchoredRange dropped in ranges.Except(kept.Select(i => ranges[i])).Concat(shown.Select(s => s.Range).Except(ranges)))
+        {
+            dropped.Remove();
+        }
         ranges = [.. kept.Select(i => ranges[i])];
         found = [.. kept.Select(i => found[i])];
         placed = null;
-        return [.. found.Select((d, i) => marker(d, ranges[i])).OfType<Marker>()];
+        return Show(marker);
+    }
+
+    /// <summary>The markers the diagnostics draw as, on their ranges as they stand.</summary>
+    private IReadOnlyList<Marker> Show(Func<Diagnostic, TextRange, Marker?> marker)
+    {
+        List<(AnchoredRange, Marker)> drawn = [];
+        for (int i = 0; i < found.Length; i++)
+        {
+            if (marker(found[i], ranges[i].Range) is { } made)
+            {
+                drawn.Add((ranges[i], made));
+            }
+        }
+        shown = [.. drawn];
+        return [.. shown.Select(s => s.Marker)];
+    }
+
+    /// <summary>A range of the text, carried as a squiggle is: what is typed at its end goes inside it while it holds text.</summary>
+    private AnchoredRange Anchored(TextRange range) => document.Text.RangeAt(range, AnchorGravity.Before, AnchorGravity.After, empty: AnchorGravity.Before);
+
+    /// <summary>Lets every range go, the text no longer carrying them.</summary>
+    private void Release()
+    {
+        foreach (AnchoredRange range in ranges.Concat(shown.Select(s => s.Range)))
+        {
+            range.Remove();
+        }
+        ranges = [];
+        shown = [];
     }
 
     /// <summary>Asks the server again after <paramref name="delay"/>, ending the ask under way: <paramref name="ask"/> pulls
@@ -146,7 +189,7 @@ internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
         CancellationTokenSource cancel = new();
         pulling = cancel;
         BackgroundWork.Begin();
-        _ = PullAsync(delay, ask, cancel.Token, holdsChecks ? document.Checking() : null);
+        IdeErrors.Observe(PullAsync(delay, ask, cancel.Token, holdsChecks ? document.Checking() : null));
     }
 
     /// <summary>The server's diagnostics of the file, when they answer the text as it stands and no later ask has begun.</summary>
@@ -156,8 +199,12 @@ internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
         return !cancel.IsCancellationRequested && version == document.Text.Version ? diagnostics : null;
     }
 
-    /// <summary>Ends the ask under way: the file was let go.</summary>
-    public void Stop() => pulling?.Cancel();
+    /// <summary>Ends the ask under way and lets the diagnostics' ranges go: the file was let go.</summary>
+    public void Stop()
+    {
+        pulling?.Cancel();
+        Release();
+    }
 
     private static async Task PullAsync(TimeSpan delay, Func<CancellationToken, Task> ask, CancellationToken cancel, IDisposable? checking)
     {

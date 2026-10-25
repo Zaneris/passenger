@@ -201,7 +201,7 @@ public partial class ManagedDebugger
 
     /// <summary>The session is ending (a disconnect, a terminate, the client gone): what waits on it gives up. Called before the
     /// engine's lock is asked for, since configurationDone holds that lock while it waits for the program's runtime.</summary>
-    public void Ending() => _ = _ending.CancelAsync();
+    public void Ending() => Core.UnawaitedWork.Observe(_ending.CancelAsync());
 
     /// <summary>A request that leaves the stop (a continue, a step, a disconnect, a terminate) has come and waits for the
     /// engine's lock: an evaluation a read is running for the stop is left at once to end in the program, and no read
@@ -233,7 +233,7 @@ public partial class ManagedDebugger
         _callbacks = new CorDebugManagedCallback();
         EvalStatus = new EvalStatus
         {
-            AbortWhenDue = (thread, eval, after) => _ = AbortWhenDueAsync(thread, eval, after),
+            AbortWhenDue = (thread, eval, after) => Core.UnawaitedWork.Observe(AbortWhenDueAsync(thread, eval, after)),
             WhyNoAbortTakes = WhyNoAbortTakes,
             Log = logger,
         };
@@ -245,7 +245,7 @@ public partial class ManagedDebugger
             SingleWriter = false
         });
         _callbacks.OnAnyEvent += QueueEvent;
-        _ = Task.Run(ProcessRuntimeEventQueue);
+        Core.UnawaitedWork.Observe(Task.Run(ProcessRuntimeEventQueue));
     }
 
     private void QueueEvent(object? sender, CorDebugManagedCallbackEventArgs e)
@@ -388,8 +388,8 @@ public partial class ManagedDebugger
         }
         int continued = _continued;
         _logger?.Invoke($"{e.GetType().Name} waits for {wanted.Name}'s symbols to be decompiled");
-        DecompileAsync(wanted).ContinueWith(_ => _runtimeEventChannel.Writer.TryWrite(new AfterDecompiling(e, continued)),
-            CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        Core.UnawaitedWork.Observe(DecompileAsync(wanted).ContinueWith(_ => _runtimeEventChannel.Writer.TryWrite(new AfterDecompiling(e, continued)),
+            CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default));
         return true;
     }
 
@@ -1308,7 +1308,7 @@ internal sealed class EvalStatus
             leavers++;
             cancelling = leaving;
         }
-        _ = cancelling.CancelAsync();
+        Core.UnawaitedWork.Observe(cancelling.CancelAsync());
     }
 
     /// <summary>That request has the engine's lock: reads evaluate again once no other such waits.</summary>

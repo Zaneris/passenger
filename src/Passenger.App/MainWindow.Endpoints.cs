@@ -19,7 +19,7 @@ public partial class MainWindow
     private void AddEndpoints()
     {
         // Built as it is first shown or asked for (a route's request sent), over the session's files and routes then.
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Endpoints, "Endpoints", "Icon.Endpoints", () =>
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Endpoints, "Endpoints", IconKeys.Endpoints, () =>
         {
             EndpointsView view = new(new EndpointsParts(work, () => session.EndpointGrants, text => status.Text = text));
             endpoints = view;
@@ -36,7 +36,7 @@ public partial class MainWindow
             Chosen = () => endpoints?.Chosen,
         });
         // The row's Test button, Enter and its menu test it as this does; an agent or Find Action tests the row chosen.
-        actions!.Add(new IdeAction(AppActions.TestEndpoint, "Test Request", "Endpoints", context => _ = Endpoints.TestAsync(Endpoints.Chosen!))
+        actions!.Add(new IdeAction(AppActions.TestEndpoint, "Test Request", "Endpoints", context => IdeErrors.Observe(Endpoints.TestAsync(Endpoints.Chosen!)))
         {
             WhyNot = _ => endpoints?.Chosen is null ? "No request is chosen in the Endpoints window" : null,
             Words = ["HTTP Client", "Send Request"],
@@ -66,7 +66,7 @@ public partial class MainWindow
     {
         InteractiveTestDialog dialog = new(request, endpoints!);
         InteractiveTest = dialog;
-        _ = dialog.ShowDialog(this);
+        IdeErrors.Observe(dialog.ShowDialog(this));
         return dialog;
     }
 }

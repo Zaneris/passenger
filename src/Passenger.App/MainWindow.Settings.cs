@@ -117,7 +117,7 @@ public partial class MainWindow
     public SettingsDialog ShowSettings()
     {
         SettingsDialog dialog = new(settings, actions!, (from, to) => settingsStore.Apply(from, to), Mcp.AgentSetup.Here(Folder));
-        _ = dialog.ShowDialog(this);
+        IdeErrors.Observe(dialog.ShowDialog(this));
         return dialog;
     }
 

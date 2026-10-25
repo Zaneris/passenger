@@ -1,6 +1,6 @@
 using System.Text;
 using System.Text.Json;
-using Passenger.App.Workspace;
+using Passenger.Workspace;
 
 namespace Passenger.App.Run;
 
@@ -81,13 +81,19 @@ public sealed record LaunchProfile(
 
     private static readonly JsonDocumentOptions Lenient = new() { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
 
-    public static string SettingsPath(ProjectModel project) => Path.Combine(project.Folder, "Properties", "launchSettings.json");
+    /// <summary>The file a project's launch profiles are in, under its folder's Properties.</summary>
+    public const string SettingsFile = "launchSettings.json";
+
+    public static string SettingsPath(ProjectModel project) => SettingsIn(project.Folder);
+
+    /// <summary>The launch profiles' file of a project in this folder.</summary>
+    public static string SettingsIn(string folder) => Path.Combine(folder, "Properties", SettingsFile);
 
     /// <summary>Where a file-based program's profiles are, as <c>dotnet run</c> reads them: its folder's
     /// <c>Properties/launchSettings.json</c>, else the <c>.run.json</c> of its name beside it.</summary>
     public static string FileSettingsPath(string file)
     {
-        string settings = Path.Combine(Path.GetDirectoryName(file)!, "Properties", "launchSettings.json");
+        string settings = SettingsIn(Path.GetDirectoryName(file)!);
         return File.Exists(settings) ? settings : Path.ChangeExtension(file, ".run.json");
     }
 

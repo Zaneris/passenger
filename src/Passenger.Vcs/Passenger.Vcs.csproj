@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Version control with no UI: Git through its command line, the log's graph, a file's diff and the three-way merge.
+       No Avalonia, so the boundary is the project's own. -->
+  <PropertyGroup>
+    <RootNamespace>Passenger.Vcs</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The merge window reads a diff's places as the diff does (FileDiff.Place). -->
+    <InternalsVisibleTo Include="Passenger" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Passenger.Core/Passenger.Core.csproj" />
+    <ProjectReference Include="../Passenger.Text/Passenger.Text.csproj" />
+  </ItemGroup>
+</Project>

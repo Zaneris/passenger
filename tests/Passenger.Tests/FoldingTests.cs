@@ -28,9 +28,7 @@ public sealed class FoldingTests : IDisposable
     {
         string path = Path.Combine(folder, "Shapes.cs");
         File.WriteAllText(path, Source);
-        MainWindow window = new() { Width = 1000, Height = 700 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder, width: 1000, height: 700);
         window.OpenFile(path);
         Ui.Settle();
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -89,9 +87,7 @@ public sealed class FoldingTests : IDisposable
         static string Shapes(params string[] members) => "class Shapes\n{\n" + string.Concat(members) + "}\n";
         string path = Path.Combine(folder, "Shapes.cs");
         File.WriteAllText(path, Shapes(Area, Perimeter, Twice));
-        MainWindow window = new() { Width = 1000, Height = 700 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder, width: 1000, height: 700);
         window.OpenFile(path);
         Ui.Settle();
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -198,9 +194,7 @@ public sealed class FoldingTests : IDisposable
         string source = Members(200);
         string path = Path.Combine(folder, "Members.cs");
         File.WriteAllText(path, source);
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder);
         window.OpenFile(path);
         Ui.Settle();
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -343,9 +337,7 @@ public sealed class FoldingTests : IDisposable
         string source = text.ToString();
         string path = Path.Combine(folder, doc ? "Doc.cs" : "Plain.cs");
         File.WriteAllText(path, source);
-        MainWindow window = new() { Width = 1000, Height = 700 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder, width: 1000, height: 700);
         window.OpenFile(path);
         Ui.Settle();
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -391,9 +383,7 @@ public sealed class FoldingTests : IDisposable
         string source = text.Append("}\n").ToString();
         string path = Path.Combine(folder, "Folded.cs");
         File.WriteAllText(path, source);
-        MainWindow window = new() { Width = 1000, Height = 700 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder, width: 1000, height: 700);
         window.OpenFile(path);
         Ui.Settle();
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -435,9 +425,7 @@ public sealed class FoldingTests : IDisposable
     {
         string path = Path.Combine(folder, "Shapes.cs");
         File.WriteAllText(path, Source);
-        MainWindow window = new() { Width = 1000, Height = 700 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder, width: 1000, height: 700);
         window.OpenFile(path);
         Ui.Settle();
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -522,9 +510,7 @@ public sealed class FoldingTests : IDisposable
     {
         string path = Path.Combine(folder, "Members.cs");
         File.WriteAllText(path, Defined);
-        MainWindow window = new() { Width = 1000, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder, width: 1000);
         window.OpenFile(path);
         Ui.Settle();
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -584,9 +570,7 @@ public sealed class FoldingTests : IDisposable
         text.Append("}\n");
         string path = Path.Combine(folder, "Many.cs");
         File.WriteAllText(path, text.ToString());
-        MainWindow window = new() { Width = 1000, Height = 700 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder, width: 1000, height: 700);
         window.OpenFile(path);
         Ui.Settle();
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -629,9 +613,7 @@ public sealed class FoldingTests : IDisposable
 
             """);
         // No C# language server, which folds nothing here and would restore the project's package.
-        MainWindow window = new() { Width = 1000, Height = 700, StartsLanguageServer = false };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder, width: 1000, height: 700, languageServer: false);
         window.OpenFile(project);
         Ui.Settle();
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -717,9 +699,7 @@ public sealed class FoldingTests : IDisposable
         Assert.True(source.Count(c => c == '\n') > 20_000);
         string path = Path.Combine(folder, "Large.props");
         File.WriteAllText(path, source);
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder);
         window.OpenFile(path);
         Ui.Settle();
         CodeEditor editor = window.EditorArea.CodeEditor;

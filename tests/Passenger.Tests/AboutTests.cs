@@ -24,10 +24,7 @@ public sealed partial class AboutTests : IDisposable
     [AvaloniaFact]
     public void About_names_the_version_the_commit_and_the_runtime_and_opens_the_notices_and_the_licence_beside_the_app()
     {
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
-        Ui.Settle();
+        MainWindow window = Ui.OpenFolder(folder);
         try
         {
             AboutDialog about = OpenAbout(window);

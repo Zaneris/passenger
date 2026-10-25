@@ -21,7 +21,7 @@ public sealed class MergedLog : DockPanel
     {
         Console = new OutputView(toolbar: false);
         find = new Editors.FindBar { [DockProperty] = Dock.Top };
-        Button finding = ToolButtons.Of("Icon.Search", "Find in the log", OpenFind);
+        Button finding = ToolButtons.Of(IconKeys.Search, "Find in the log", OpenFind);
         finding.Name = findName;
         finding.VerticalAlignment = VerticalAlignment.Center;
         StackPanel right = new() { Orientation = Orientation.Horizontal, Spacing = 4, [DockProperty] = Dock.Right, Children = { finding } };

@@ -265,7 +265,7 @@ public sealed class FindView : DockPanel
             TextDocument document = new(text);
             preview.Document = document;
             (preview.Highlighter as IDisposable)?.Dispose();
-            preview.Highlighter = Languages.Highlighters.For(Workspace.Language.ForPath(usage.Path).Name, document);
+            preview.Highlighter = Languages.Highlighters.For(Languages.Language.ForPath(usage.Path), document);
             preview.Tag = usage.Path;
         }
         TextSnapshot snapshot = preview.Document.Snapshot;
@@ -301,7 +301,7 @@ public sealed class FindView : DockPanel
             return panel;
         }
         PathIcon chevron = new() { Width = 10, Height = 10, Margin = new Thickness(0, 0, 6, 0) };
-        row.FollowWhileShown(chevron, (_, _) => chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(row.IsExpanded ? "Icon.ChevronDown" : "Icon.ChevronRight")));
+        row.FollowWhileShown(chevron, (_, _) => chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(row.IsExpanded ? IconKeys.ChevronDown : IconKeys.ChevronRight)));
         chevron.PointerPressed += (_, e) =>
         {
             Toggle(row);

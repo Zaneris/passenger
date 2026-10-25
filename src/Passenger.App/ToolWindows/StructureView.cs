@@ -66,10 +66,10 @@ public sealed class StructureView : DockPanel
         [
             ListMenus.Item("Go to", "F4", () => GoToRequested?.Invoke(this, chosen)),
             ListMenus.Item("Find Usages", null, () => UsagesRequested?.Invoke(this, chosen)),
-            ListMenus.Item("Copy Name", null, () => _ = ListMenus.CopyAsync(this, chosen.Name)),
+            ListMenus.Item("Copy Name", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Name))),
         ]);
         Children.Add(new Panel { Children = { list, placeholder } });
-        this.Bind(BackgroundProperty, this.GetResourceObservable("Passenger.Panel"));
+        this.Bind(BackgroundProperty, this.GetResourceObservable(TokenKeys.Panel));
     }
 
     /// <summary>A member to go to.</summary>
@@ -106,7 +106,7 @@ public sealed class StructureView : DockPanel
         if (source?.Invoke() is { Lsp: not null })
         {
             settle.Stop();
-            _ = Refresh();
+            IdeErrors.Observe(Refresh());
         }
         else
         {
@@ -120,7 +120,7 @@ public sealed class StructureView : DockPanel
     {
         if (shown && asking is null && source?.Invoke() is { Lsp: not null } now && outlined != now.Path)
         {
-            _ = Refresh();
+            IdeErrors.Observe(Refresh());
         }
     }
 
@@ -139,7 +139,7 @@ public sealed class StructureView : DockPanel
     {
         base.OnAttachedToVisualTree(e);
         shown = true;
-        _ = Refresh();
+        IdeErrors.Observe(Refresh());
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)

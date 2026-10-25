@@ -72,7 +72,7 @@ public partial class MainWindow
             (AppActions.ServiceRun, "Run Service without Debugger", "Run Aspire Resource Without Debugger"),
             (AppActions.ServiceProfile, "Profile Service", "Profile Aspire Resource")])
         {
-            actions!.Add(new IdeAction(id, title, "Services", context => _ = ServiceActionAsync(id, AimOf(context)))
+            actions!.Add(new IdeAction(id, title, "Services", context => IdeErrors.Observe(ServiceActionAsync(id, AimOf(context))))
             {
                 WhyNot = context => WhyNotOn(id, AimOf(context)),
                 Words = [formerly, title.Replace("Service", "Container Service", StringComparison.Ordinal)],

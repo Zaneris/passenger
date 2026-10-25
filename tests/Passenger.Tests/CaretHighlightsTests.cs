@@ -44,14 +44,14 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
 
         UsageHighlight write = editor.UsageHighlights[1];
         UsageHighlight read = editor.UsageHighlights[2];
-        Assert.Equal(Token(window, "Passenger.Editor.UsageWrite"), Ui.Pixel(window, InBox(window, editor, write.Range.Start)));
-        Assert.Equal(Token(window, "Passenger.Editor.UsageRead"), Ui.Pixel(window, InBox(window, editor, read.Range.Start)));
+        Assert.Equal(Token(window, TokenKeys.Editor_UsageWrite), Ui.Pixel(window, InBox(window, editor, write.Range.Start)));
+        Assert.Equal(Token(window, TokenKeys.Editor_UsageRead), Ui.Pixel(window, InBox(window, editor, read.Range.Start)));
 
         CodeEditor.StripeMark writeMark = Assert.Single(editor.StripeMarks, m => m.Kind == StripeMarkKind.WriteUsage && m.Row == 7);
         CodeEditor.StripeMark readMark = Assert.Single(editor.StripeMarks, m => m.Kind == StripeMarkKind.Usage);
         Assert.Equal(9, readMark.Row);
-        Assert.Equal(Token(window, "Passenger.Editor.UsageWriteMark"), Ui.Pixel(window, editor.TranslatePoint(editor.StripePoint(writeMark), window)!.Value));
-        Assert.Equal(Token(window, "Passenger.Editor.UsageReadMark"), Ui.Pixel(window, editor.TranslatePoint(editor.StripePoint(readMark), window)!.Value));
+        Assert.Equal(Token(window, TokenKeys.Editor_UsageWriteMark), Ui.Pixel(window, editor.TranslatePoint(editor.StripePoint(writeMark), window)!.Value));
+        Assert.Equal(Token(window, TokenKeys.Editor_UsageReadMark), Ui.Pixel(window, editor.TranslatePoint(editor.StripePoint(readMark), window)!.Value));
         window.Close();
     }
 
@@ -164,7 +164,7 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
         int body = Braces.IndexOf("    {\n        return", StringComparison.Ordinal) + 4;
         int end = Braces.IndexOf("    }\n}", StringComparison.Ordinal) + 4;
         Assert.Equal((body, end), PairAt(window, editor, body));
-        Color brace = Token(window, "Passenger.Editor.MatchedBrace");
+        Color brace = Token(window, TokenKeys.Editor_MatchedBrace);
         Assert.Equal(brace, Ui.Pixel(window, InBox(window, editor, body)));
         Assert.Equal(brace, Ui.Pixel(window, InBox(window, editor, end)));
         Assert.NotEqual(brace, Ui.Pixel(window, InBox(window, editor, Braces.LastIndexOf('}'))));

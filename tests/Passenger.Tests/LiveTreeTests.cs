@@ -165,10 +165,7 @@ public sealed class LiveTreeTests : IClassFixture<RestoredFolders>, IDisposable
     /// <summary>The folder opened in a window and its app launched by Debug, its tree shown.</summary>
     private MainWindow Debugged()
     {
-        MainWindow window = new() { Width = 1400, Height = 900, StartsLanguageServer = false };
-        window.Show();
-        window.OpenFolder(folder);
-        Ui.Settle();
+        MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
         Ui.Launched(window, window.DebugAsync(), "the app to build and start under the debugger", TimeSpan.FromMinutes(4));
         Ui.WaitFor(() => window.LiveTree.Rows.Any(r => r.Element.Name == "Delete"),
             $"the Live Visual Tree to show the app's window ({window.LiveApp?.State} {window.LiveApp?.Problem})", TimeSpan.FromMinutes(2));

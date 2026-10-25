@@ -36,10 +36,7 @@ public sealed class BindingValuesTests : IClassFixture<RestoredFolders>, IDispos
     [AvaloniaFact]
     public void A_debugged_apps_view_shows_its_bindings_values_after_them_and_on_hover_paused_and_running_with_a_control_chosen()
     {
-        MainWindow window = new() { Width = 1400, Height = 900, StartsLanguageServer = false };
-        window.Show();
-        window.OpenFolder(folder);
-        Ui.Settle();
+        MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
         // Where rename has changed the name, on the app's UI thread.
         window.Debugger.Breakpoints.Toggle(CodeBehind, Line(CodeBehind, "Console.WriteLine"));
         Assert.Null(window.OpenFile(Xaml));

@@ -9,7 +9,7 @@ namespace Passenger.App.Mcp;
 
 public sealed partial class PassengerTools
 {
-    [McpServerTool(Name = "telemetry", Title = "Logs and traces", ReadOnly = true), Description(
+    [McpServerTool(Name = McpTools.Telemetry, Title = "Logs and traces", ReadOnly = true), Description(
         "A run's structured logs or traces (kind) from its dashboard: an Aspire AppHost's, or the container run's when its "
         + "configuration collects them; a resource's or Compose service's (resource) or one trace's (traceId) alone.")]
     public Task<TelemetryInfo> GetTelemetry(string kind = "logs", string? appHost = null,

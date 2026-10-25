@@ -1,5 +1,6 @@
 using Passenger.App.ToolWindows;
 using Passenger.App.Vcs;
+using Passenger.Vcs;
 
 namespace Passenger.App;
 
@@ -20,9 +21,9 @@ public partial class MainWindow
         panel.Favorites = branchFavorites;
         panel.NewBranchRequested += (_, branch) => ShowNewBranchFrom(branch);
         panel.RenameRequested += (_, branch) => ShowRenameBranch(branch);
-        panel.DeleteRequested += (_, branch) => _ = DeleteBranchAsync(branch);
+        panel.DeleteRequested += (_, branch) => IdeErrors.Observe(DeleteBranchAsync(branch));
         panel.CompareRequested += (_, branch) => CompareWithCurrent(branch);
-        panel.WorkingTreeDiffRequested += (_, branch) => _ = ShowWorkingTreeDiffAsync(branch);
+        panel.WorkingTreeDiffRequested += (_, branch) => IdeErrors.Observe(ShowWorkingTreeDiffAsync(branch));
         panel.FavoritesChanged += (_, favorites) => session.State?.GitBranches.Set(favorites);
     }
 
@@ -113,7 +114,7 @@ public partial class MainWindow
         }
         IReadOnlyList<FileChange> files = await session.Vcs.ChangesSinceAsync(branch);
         ChangesWindow window = new(branch.Name, files, repository);
-        window.DiffRequested += (_, change) => _ = CompareWithAsync(change.Path, branch.Ref.FullName, branch.Name, change.From ?? change.Path);
+        window.DiffRequested += (_, change) => IdeErrors.Observe(CompareWithAsync(change.Path, branch.Ref.FullName, branch.Name, change.From ?? change.Path));
         ShowOwn(window);
         return window;
     }

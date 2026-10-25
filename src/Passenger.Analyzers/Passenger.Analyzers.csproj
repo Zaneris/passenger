@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Passenger's own rules of its code and the generators beside them, given to every project as an analyzer
+       (Directory.Build.props), never carried. Each rule's id and words are in Rules.cs. -->
+  <PropertyGroup>
+    <!-- What the compiler loads an analyzer as, whichever host runs it: the build's or a language server's. -->
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <!-- The SDK's C#, which netstandard2.0 would otherwise hold at 7.3. -->
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>Passenger.Analyzers</RootNamespace>
+    <IsRoslynComponent>true</IsRoslynComponent>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="all" />
+    <!-- At an MIT release: netstandard2.0's library takes 1.1.0, under Microsoft's .NET Library terms, not an open licence. -->
+    <PackageReference Include="Microsoft.NETCore.Platforms" PrivateAssets="all" />
+    <AdditionalFiles Include="AnalyzerReleases.Shipped.md;AnalyzerReleases.Unshipped.md" />
+  </ItemGroup>
+</Project>

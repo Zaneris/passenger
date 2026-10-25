@@ -1,6 +1,3 @@
-using System.Net;
-using System.Net.Sockets;
-using System.Text;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -13,6 +10,7 @@ using Passenger.App.Settings;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Languages;
 using Passenger.Text;
 
 namespace Passenger.Tests;
@@ -945,10 +943,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
     /// <summary>A window on a folder of the test's own, opened as the solution or project named.</summary>
     private static MainWindow OpenOwn(string opened)
     {
-        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = false };
-        window.Show();
-        window.OpenFolder(opened);
-        Ui.Settle();
+        MainWindow window = Ui.OpenFolder(opened, languageServer: false, autosaves: false);
         return window;
     }
 
@@ -1008,16 +1003,13 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
     {
         private const string Token = "stand-in";
 
-        private readonly TcpListener listener = new(IPAddress.Loopback, 0);
-        private readonly CancellationTokenSource end = new();
         private readonly List<string> asked = [];
-        private readonly Task accepting;
+        private readonly StandInHttp http;
 
         public StandInHub()
         {
-            listener.Start();
-            Place = new Uri($"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/");
-            accepting = Task.Run(AcceptAsync);
+            http = new StandInHttp(AnswerAsync);
+            Place = new Uri($"{http.Root}/");
         }
 
         public Uri Place { get; }
@@ -1033,74 +1025,23 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
             }
         }
 
-        public void Dispose()
-        {
-            end.Cancel();
-            listener.Stop();
-            accepting.Wait(TimeSpan.FromSeconds(10));
-            end.Dispose();
-        }
+        public void Dispose() => http.Dispose();
 
-        private async Task AcceptAsync()
+        private Task AnswerAsync(StandInHttp.Exchange exchange)
         {
-            List<Task> answering = [];
-            try
+            lock (asked)
             {
-                while (true)
-                {
-                    TcpClient client = await listener.AcceptTcpClientAsync(end.Token);
-                    answering.Add(Task.Run(() => AnswerAsync(client)));
-                }
+                asked.Add(exchange.Line);
             }
-            catch (Exception stopped) when (stopped is OperationCanceledException or SocketException or ObjectDisposedException or InvalidOperationException)
+            string path = exchange.Path;
+            bool bearer = string.Equals(exchange.Header("Authorization"), $"Bearer {Token}", StringComparison.OrdinalIgnoreCase);
+            (int status, string body) = path switch
             {
-                // Disposed.
-            }
-            await Task.WhenAll(answering);
-        }
-
-        private async Task AnswerAsync(TcpClient client)
-        {
-            using (client)
-            {
-                try
-                {
-                    NetworkStream stream = client.GetStream();
-                    StringBuilder head = new();
-                    byte[] buffer = new byte[4096];
-                    while (!head.ToString().Contains("\r\n\r\n", StringComparison.Ordinal))
-                    {
-                        int read = await stream.ReadAsync(buffer, end.Token);
-                        if (read == 0)
-                        {
-                            return;
-                        }
-                        head.Append(Encoding.ASCII.GetString(buffer, 0, read));
-                    }
-                    string[] lines = head.ToString().Split("\r\n");
-                    string request = lines[0][..lines[0].LastIndexOf(' ')];
-                    lock (asked)
-                    {
-                        asked.Add(request);
-                    }
-                    string path = request[(request.IndexOf(' ') + 1)..];
-                    bool bearer = lines.Any(l => l.Equals($"Authorization: Bearer {Token}", StringComparison.OrdinalIgnoreCase));
-                    (int status, string body) = path switch
-                    {
-                        _ when path.StartsWith("/auth.docker.io/token?", StringComparison.Ordinal) => (200, $"{{\"token\":\"{Token}\"}}"),
-                        "/registry-1.docker.io/v2/library/postgres/tags/list" when bearer => (200, "{\"name\":\"library/postgres\",\"tags\":[\"16\",\"17\",\"17-alpine\",\"latest\"]}"),
-                        _ => (404, "{}"),
-                    };
-                    byte[] content = Encoding.UTF8.GetBytes(body);
-                    await stream.WriteAsync(Encoding.ASCII.GetBytes($"HTTP/1.1 {status} {(status == 200 ? "OK" : "Not Found")}\r\nContent-Type: application/json\r\n"
-                        + $"Content-Length: {content.Length}\r\nConnection: close\r\n\r\n"), end.Token);
-                    await stream.WriteAsync(content, end.Token);
-                }
-                catch (Exception gone) when (gone is IOException or OperationCanceledException or SocketException or ObjectDisposedException)
-                {
-                    // The server gave up on it, or the test ended.
-                }
-            }
+                _ when path.StartsWith("/auth.docker.io/token?", StringComparison.Ordinal) => (200, $"{{\"token\":\"{Token}\"}}"),
+                "/registry-1.docker.io/v2/library/postgres/tags/list" when bearer => (200, "{\"name\":\"library/postgres\",\"tags\":[\"16\",\"17\",\"17-alpine\",\"latest\"]}"),
+                _ => (404, "{}"),
+            };
+            return exchange.ReplyAsync(status, "application/json", body);
         }
     }
 
@@ -1232,7 +1173,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
             if (yaml)
             {
                 Passenger.App.Web.NodeRuntime node = Task.Run(() => Passenger.App.Web.NodeRuntime.FindAsync(null)).GetAwaiter().GetResult();
-                string? old = node.Problem ?? node.TooOldFor(Path.Combine(AppContext.BaseDirectory, "web", "node_modules", "yaml-language-server", "package.json"), "the YAML language server");
+                string? old = node.Problem ?? node.TooOldFor(Path.Combine(Passenger.App.Web.WebLanguages.Modules, "yaml-language-server", "package.json"), "the YAML language server");
                 Assert.SkipWhen(old is not null, $"The YAML language server cannot run here: {old}");
             }
         }

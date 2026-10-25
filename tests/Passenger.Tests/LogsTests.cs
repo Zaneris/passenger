@@ -282,9 +282,7 @@ public sealed class LogsTests : IDisposable
         File.WriteAllText(Path.Combine(folder, $"{untracked}.cs"), "class Untracked { }\n");
         File.WriteAllText(Path.Combine(folder, $"{untracked}.json"), "{ \"name\": \"logs\" }\n");
         DateTime opened = DateTime.Now;
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder);
         window.OpenFile($"{untracked}.cs");
         Ui.WaitFor(() => window.CSharpService is { IsReady: true }, $"the language server to start ({window.CSharpService?.State})");
         Ui.Landed(() => window.Vcs.HeadReads > 0, "the untracked file's last committed text to be asked of git");

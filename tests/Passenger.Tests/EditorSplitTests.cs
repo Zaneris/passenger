@@ -131,7 +131,7 @@ public sealed class EditorSplitTests : IDisposable
         Control two = Tab(first, "Two.cs");
         Point from = Ui.Centre(two, window);
         Point edge = first.Editor.TranslatePoint(new Point(first.Editor.Bounds.Width - 20, first.Editor.Bounds.Height / 2), window)!.Value;
-        Drag(window, from, edge);
+        Ui.Drag(window, from, edge);
         Assert.Equal(2, area.Groups.Count);
         EditorGroup second = area.Groups[1];
         Assert.Equal(["Two.cs"], second.Tabs.Select(t => t.Document.Name));
@@ -140,7 +140,7 @@ public sealed class EditorSplitTests : IDisposable
 
         Point back = Ui.Centre(Tab(second, "Two.cs"), window);
         Point strip = first.TabStrip.TranslatePoint(new Point(first.TabStrip.Bounds.Width - 30, first.TabStrip.Bounds.Height / 2), window)!.Value;
-        Drag(window, back, strip);
+        Ui.Drag(window, back, strip);
         Assert.Single(area.Groups);
         Assert.Equal(["One.cs", "Two.cs"], area.Groups[0].Tabs.Select(t => t.Document.Name));
         window.Close();
@@ -163,17 +163,17 @@ public sealed class EditorSplitTests : IDisposable
 
         // Grabbed 3 px right of its line, over the split after it.
         Point across = Ui.Centre(Divider(area, GridResizeDirection.Columns), window) + new Point(3, 0);
-        Drag(window, across, across - new Point(120, 0));
+        Ui.Drag(window, across, across - new Point(120, 0));
         Assert.True(Math.Abs(left.Bounds.Width - (leftWidth - 120)) < 2 && Math.Abs(top.Bounds.Width - (rightWidth + 120)) < 2,
             $"The splits beside each other were {leftWidth} and {rightWidth} wide, and {left.Bounds.Width} and {top.Bounds.Width} once their divider, grabbed right of its line, was dragged 120 px left");
 
         // Grabbed 3 px below its line, and 2 px above.
         Point down = Ui.Centre(Divider(area, GridResizeDirection.Rows), window) + new Point(0, 3);
-        Drag(window, down, down + new Point(0, 80));
+        Ui.Drag(window, down, down + new Point(0, 80));
         Assert.True(Math.Abs(top.Bounds.Height - (topHeight + 80)) < 2 && Math.Abs(bottom.Bounds.Height - (bottomHeight - 80)) < 2,
             $"The splits one over the other were {topHeight} and {bottomHeight} tall, and {top.Bounds.Height} and {bottom.Bounds.Height} once their divider, grabbed below its line, was dragged 80 px down");
         Point up = Ui.Centre(Divider(area, GridResizeDirection.Rows), window) - new Point(0, 2);
-        Drag(window, up, up - new Point(0, 40));
+        Ui.Drag(window, up, up - new Point(0, 40));
         Assert.True(Math.Abs(top.Bounds.Height - (topHeight + 40)) < 2 && Math.Abs(bottom.Bounds.Height - (bottomHeight - 40)) < 2,
             $"The splits one over the other were {topHeight + 80} and {bottomHeight - 80} tall, and {top.Bounds.Height} and {bottom.Bounds.Height} once their divider, grabbed above its line, was dragged 40 px up");
         window.Close();
@@ -262,9 +262,7 @@ public sealed class EditorSplitTests : IDisposable
 
     private MainWindow Open(params string[] files)
     {
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder);
         foreach (string file in files)
         {
             window.OpenFile(Path.Combine(folder, file));
@@ -300,15 +298,4 @@ public sealed class EditorSplitTests : IDisposable
 
     private static GridSplitter Divider(EditorArea area, GridResizeDirection direction) =>
         area.GetVisualDescendants().OfType<GridSplitter>().Single(s => s.ResizeDirection == direction);
-
-    private static void Drag(MainWindow window, Point from, Point to)
-    {
-        window.MouseDown(from, MouseButton.Left);
-        for (int step = 1; step <= 10; step++)
-        {
-            window.MouseMove(from + ((to - from) * (step / 10.0)), RawInputModifiers.LeftMouseButton);
-        }
-        window.MouseUp(to, MouseButton.Left);
-        Ui.Settle();
-    }
 }

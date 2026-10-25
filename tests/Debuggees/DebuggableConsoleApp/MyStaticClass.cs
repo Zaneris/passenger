@@ -6,6 +6,6 @@ public static class MyStaticClass
 
 	public static void Test()
 	{
-		var test = 4;
+		int test = 4;
 	}
 }

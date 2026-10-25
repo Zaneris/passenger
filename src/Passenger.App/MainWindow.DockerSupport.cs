@@ -3,6 +3,7 @@ using Passenger.App.Explorer;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.App;
 
@@ -30,7 +31,7 @@ public partial class MainWindow
         }
         DockerProject described = DockerFiles.Describe(model, session.Workspace?.Projects ?? []);
         DockerSupportDialog dialog = new(described.Name, described.ExistingDockerfile is not null);
-        _ = ApplyAsync();
+        IdeErrors.Observe(ApplyAsync());
         return dialog;
 
         async Task ApplyAsync()
@@ -159,7 +160,7 @@ public partial class MainWindow
                 $"{k.Service.Image}, for {string.Join(", ", k.Users.Select(u => Path.GetFileNameWithoutExtension(u.Path)))}{(k.Service.Note is { } note ? $" ({note})" : string.Empty)}",
                 true, k.Service.Service))];
         DockerComposeDialog dialog = new(solution.Name, projects, services);
-        _ = ApplyAsync();
+        IdeErrors.Observe(ApplyAsync());
         return dialog;
 
         async Task ApplyAsync()

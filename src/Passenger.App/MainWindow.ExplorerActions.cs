@@ -28,9 +28,9 @@ public partial class MainWindow
         Row(A.NewType, "Class/Interface…", row => AskType(NewGoesIn(row)!), Holds);
         Row(A.NewSolutionFolder, "New Solution Folder…", row => AskName("New Solution Folder", string.Empty, name => AddSolutionFolder(row.SolutionPath, name)),
             row => row.Kind is NodeKind.Solution or NodeKind.SolutionFolder ? null : "A solution folder goes in the solution or one of its folders");
-        Row(A.AddExistingProject, "Add Existing Project…", row => _ = AddExistingProjectsAsync(row.SolutionPath),
+        Row(A.AddExistingProject, "Add Existing Project…", row => IdeErrors.Observe(AddExistingProjectsAsync(row.SolutionPath)),
             row => row.Kind is NodeKind.Solution or NodeKind.SolutionFolder ? null : "A project is added to the solution or one of its folders", _ => "Existing Project…");
-        Row(A.AddExistingItem, "Add Existing Item…", row => _ = AddExistingItemsAsync(row.SolutionPath!),
+        Row(A.AddExistingItem, "Add Existing Item…", row => IdeErrors.Observe(AddExistingItemsAsync(row.SolutionPath!)),
             row => row is { Kind: NodeKind.SolutionFolder, SolutionPath: not null } ? null : "An existing item is added to a solution folder", _ => "Existing Item…");
         Row(A.AddReference, "Add Reference…", row => ShowAddReference(Referencing(row)!),
             row => Referencing(row) is null ? $"{row.Name} takes no reference" : null, row => row.Kind == NodeKind.Project ? "Reference…" : "Add Reference…");
@@ -54,7 +54,7 @@ public partial class MainWindow
         Row(A.ReloadProject, "Reload Project", row => SetUnloaded(row.Path!, false),
             row => row is not { Kind: NodeKind.Project, Path: { } project } ? $"{row.Name} is not a project" : Explorer.Tree.Unloaded.Contains(project) ? null : $"{row.Name} is loaded");
         // Compare With... for one file, Compare Files for two chosen together.
-        actions!.Add(new IdeAction(A.CompareFiles, "Compare Files", ExplorerGroup, c => _ = CompareAsync(RowOf(c)!))
+        actions!.Add(new IdeAction(A.CompareFiles, "Compare Files", ExplorerGroup, c => IdeErrors.Observe(CompareAsync(RowOf(c)!)))
         {
             WhyNot = c => RowOf(c) is not { } row ? NoRow : row is { Kind: NodeKind.File, IsSolutionItem: false, Path: not null } ? null : "Choose a file in the Explorer",
             TitleIn = c => RowOf(c) is { } row && Explorer.SelectedNodes.Contains(row) && Explorer.SelectedNodes.Count(n => n.IsFile) == 2 ? "Compare Files" : "Compare With…",
@@ -62,9 +62,9 @@ public partial class MainWindow
             KeysOf = () => AppActions.Preset == KeymapPreset.VisualStudio && !OperatingSystem.IsMacOS() ? E.Duplicate : null,
         });
         // The path of what is chosen in the Explorer, else of the file shown.
-        OnDisk(A.CopyPath, "Copy Path", path => _ = CopyPathAsync(path));
+        OnDisk(A.CopyPath, "Copy Path", path => IdeErrors.Observe(CopyPathAsync(path)));
         OnDisk(A.RevealInFileManager, FileManager.Showing, ShowInFileManager, FileManager.Name);
-        OnDisk(A.OpenInTerminal, "Open in Terminal", path => _ = OpenTerminalAt(Directory.Exists(path) ? path : Path.GetDirectoryName(path)!), "Terminal");
+        OnDisk(A.OpenInTerminal, "Open in Terminal", path => IdeErrors.Observe(OpenTerminalAt(Directory.Exists(path) ? path : Path.GetDirectoryName(path)!)), "Terminal");
         // Rider's RenameElement: the Explorer's row where its menu or keys ask, else what is at the editor's caret.
         actions.Add(new IdeAction(A.Rename, "Rename…", "Code", c =>
         {

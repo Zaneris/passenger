@@ -19,7 +19,7 @@ internal sealed class FloatWindow : Window
     /// size), or that is new and opens <paramref name="size"/> large over <paramref name="ide"/>.</summary>
     public FloatWindow(Visual ide, PixelRect? kept, Size size)
     {
-        this.Bind(BackgroundProperty, this.GetResourceObservable("Passenger.Panel"));
+        this.Bind(BackgroundProperty, this.GetResourceObservable(TokenKeys.Panel));
         if (kept is { } was && OnScreen(was) is { } at)
         {
             WindowStartupLocation = WindowStartupLocation.Manual;

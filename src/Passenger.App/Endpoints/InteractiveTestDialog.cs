@@ -112,12 +112,12 @@ public sealed class InteractiveTestDialog : Window
 
         Send = new Button { Content = "Send", IsDefault = true, Classes = { "primary" } };
         Button close = new() { Content = "Close", IsCancel = true };
-        Send.Click += (_, _) => _ = SendAsync();
+        Send.Click += (_, _) => IdeErrors.Observe(SendAsync());
         close.Click += (_, _) => Close();
         // A send under way is the window's test, which ends with the dialog.
         Closed += (_, _) => endpoints.Stop();
         Content = DialogFooter.Page(panes, DialogFooter.Bar(DialogFooter.Of(Send, close), problem));
-        Paint(problem, "Passenger.Error");
+        Paint(problem, TokenKeys.Error);
     }
 
     public ComboBox Method { get; }
@@ -283,7 +283,7 @@ public sealed class InteractiveTestDialog : Window
     private static TextBlock Caption(string text)
     {
         TextBlock caption = new() { Text = text, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
-        Paint(caption, "Passenger.TextMuted");
+        Paint(caption, TokenKeys.TextMuted);
         return caption;
     }
 

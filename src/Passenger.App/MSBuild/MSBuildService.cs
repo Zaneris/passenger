@@ -1,8 +1,9 @@
-using Passenger.App.Packages;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Host;
+using Passenger.Packages;
+using Passenger.Workspace;
 
 namespace Passenger.App.MSBuild;
 
@@ -94,7 +95,7 @@ public sealed class MSBuildService(Func<string?> folder, Func<WorkspaceModel?> w
     {
         foreach (MSBuildDocument other in documents.Values.Where(d => d != from && d.Project is { } own && PathNames.Same(own, insight.Project)).ToList())
         {
-            _ = other.AdoptAsync(insight, texts);
+            IdeErrors.Observe(other.AdoptAsync(insight, texts));
         }
     }
 

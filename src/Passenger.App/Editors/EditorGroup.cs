@@ -81,7 +81,7 @@ public sealed class EditorGroup : DockPanel
             ItemsPanel = new FuncTemplate<Panel?>(() => new StackPanel { Orientation = Orientation.Horizontal }),
             ItemTemplate = new FuncDataTemplate<EditorTab>((tab, _) => Tab(tab), supportsRecycling: false),
         };
-        PreviewToggle = ToolButtons.Toggle("Icon.Preview", "Preview");
+        PreviewToggle = ToolButtons.Toggle(IconKeys.Preview, "Preview");
         PreviewToggle.Classes.Add("tabStripTool");
         PreviewToggle.IsVisible = false;
         PreviewToggle[DockProperty] = Dock.Right;
@@ -131,7 +131,7 @@ public sealed class EditorGroup : DockPanel
             Child = new DockPanel { Children = { bannerLink, bannerText } },
         };
         // Its own tint tells it from the editor under it, with no rule between.
-        banner.Bind(Border.BackgroundProperty, banner.GetResourceObservable("Passenger.Banner"));
+        banner.Bind(Border.BackgroundProperty, banner.GetResourceObservable(TokenKeys.Banner));
         Children.Add(tabBar);
         Children.Add(banner);
         Children.Add(Find);
@@ -229,7 +229,7 @@ public sealed class EditorGroup : DockPanel
     internal void FollowMarkdown()
     {
         OpenDocument? document = active?.Document;
-        bool shows = document is not null && InEditor(document) && document.Language.Name == "Markdown";
+        bool shows = document is not null && InEditor(document) && document.Language == Languages.Language.Markdown;
         FollowPreviewToggle();
         if (shows && area.ShowsMarkdownPreview)
         {
@@ -252,7 +252,7 @@ public sealed class EditorGroup : DockPanel
     internal void FollowPreviewToggle()
     {
         OpenDocument? document = active is { } shown && InEditor(shown.Document) ? shown.Document : null;
-        bool markdown = document?.Language.Name == "Markdown";
+        bool markdown = document?.Language == Languages.Language.Markdown;
         bool xaml = !markdown && document is not null && area.HasXamlPreview(document);
         PreviewToggle.IsVisible = markdown || xaml;
         PreviewToggle.IsChecked = markdown ? area.ShowsMarkdownPreview : xaml && area.ShowsXamlPreview;
@@ -661,7 +661,7 @@ public sealed class EditorGroup : DockPanel
         TextBlock name = new() { Classes = { "tabName" }, VerticalAlignment = VerticalAlignment.Center };
         Ellipse modified = new() { Classes = { "modified" }, Width = 7, Height = 7 };
         PathIcon closeGlyph = new() { Classes = { "small" } };
-        closeGlyph.Bind(PathIcon.DataProperty, closeGlyph.GetResourceObservable("Icon.Close"));
+        closeGlyph.Bind(PathIcon.DataProperty, closeGlyph.GetResourceObservable(IconKeys.Close));
         Button close = new() { Classes = { "tabClose" }, Content = closeGlyph };
         ToolTip.SetTip(close, "Close");
         close.Click += (_, e) =>
@@ -670,7 +670,7 @@ public sealed class EditorGroup : DockPanel
             e.Handled = true;
         };
         PathIcon pinGlyph = new() { Classes = { "small" } };
-        pinGlyph.Bind(PathIcon.DataProperty, pinGlyph.GetResourceObservable("Icon.Pin"));
+        pinGlyph.Bind(PathIcon.DataProperty, pinGlyph.GetResourceObservable(IconKeys.Pin));
         Button pin = new() { Classes = { "tabPin" }, Content = pinGlyph };
         ToolTip.SetTip(pin, "Unpin Tab");
         pin.Click += (_, e) =>

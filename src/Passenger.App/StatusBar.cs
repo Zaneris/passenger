@@ -106,8 +106,8 @@ public sealed class StatusBar
             return;
         }
         bool error = kind == ProblemSeverity.Error;
-        icon.Bind(PathIcon.DataProperty, icon.GetResourceObservable(error ? "Icon.Error" : "Icon.Problems"));
-        icon.Bind(PathIcon.ForegroundProperty, icon.GetResourceObservable(error ? "Passenger.Error" : "Passenger.Warning"));
+        icon.Bind(PathIcon.DataProperty, icon.GetResourceObservable(error ? IconKeys.Error : IconKeys.Problems));
+        icon.Bind(PathIcon.ForegroundProperty, icon.GetResourceObservable(error ? TokenKeys.Error : TokenKeys.Warning));
         icon.Tag = kind;
         icon.IsVisible = true;
     }

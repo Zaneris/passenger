@@ -10,10 +10,10 @@ using Passenger.App.Editors;
 using Passenger.App.LiveTree;
 using Passenger.App.Settings;
 using Passenger.App.ToolWindows;
-using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Inspector;
 using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.App.Run;
 
@@ -64,11 +64,11 @@ public sealed record BuildRunParts(
 }
 
 /// <summary>A session's Build, Run and Debug as the window shows them: builds, rebuilds and cleans of the solution or of
-/// projects one after another (the output in the Build window, what they find in Problems, the window brought forward as
-/// Settings says), and the chosen run configuration resolved into a <see cref="LaunchPlan"/>, built as it says and started
-/// in the Run window, a tab of the Terminal window or under the debugger. The window makes one for each session it binds
-/// (<see cref="ProjectSession"/> owns the runners it drives), so a build or run never outlives its folder. A UI-thread
-/// object.</summary>
+/// projects one after another, or side by side for a start (the output in the Build window, what they find in Problems,
+/// the window brought forward as Settings says), and the chosen run configuration resolved into a <see cref="LaunchPlan"/>,
+/// built as it says and started in the Run window, a tab of the Terminal window or under the debugger. The window makes
+/// one for each session it binds (<see cref="ProjectSession"/> owns the runners it drives), so a build or run never
+/// outlives its folder. A UI-thread object.</summary>
 public sealed partial class BuildRunController
 {
     /// <summary>How many of a build's last lines its outcome carries.</summary>
@@ -91,6 +91,10 @@ public sealed partial class BuildRunController
 
     private BuildKind buildKind;
     private IReadOnlyList<string>? lastProjects;
+
+    /// <summary>The projects the build under way builds side by side, and the last build's, which Rerun builds so again.</summary>
+    private TogetherBuild? together;
+    private TogetherBuild? lastTogether;
     private string? buildFramework;
     private string? buildOutput;
     private Action<BuildOutcome>? afterBuild;
@@ -264,10 +268,10 @@ public sealed partial class BuildRunController
     {
         if (buildKind == BuildKind.Publish && published is { } again)
         {
-            _ = PublishAsync(again with { Folder = null });
+            IdeErrors.Observe(PublishAsync(again with { Folder = null }));
             return;
         }
-        Build(buildKind, lastProjects, framework: buildFramework, output: buildOutput);
+        Start(buildKind, lastProjects, null, buildFramework, BuildCause.Explicit, null, null, buildOutput, lastTogether);
     }
 
     /// <summary>Builds, rebuilds or cleans the solution, or the projects given one after another (stopping at the first
@@ -278,9 +282,10 @@ public sealed partial class BuildRunController
     public void Build(BuildKind kind, IReadOnlyList<string>? projects = null, Action<BuildOutcome>? then = null, string? framework = null,
         BuildCause cause = BuildCause.Explicit, string? output = null) => Start(kind, projects, then, framework, cause, null, null, output);
 
-    /// <summary>Starts a build, or the publish given (its work begun already, which the build holds until it ends).</summary>
+    /// <summary>Starts a build, or the publish given (its work begun already, which the build holds until it ends), or the
+    /// build of projects side by side given (its project the one in <paramref name="projects"/>).</summary>
     private void Start(BuildKind kind, IReadOnlyList<string>? projects, Action<BuildOutcome>? then, string? framework, BuildCause cause, PublishRequest? publish,
-        Working? work, string? output = null)
+        Working? work, string? output = null, TogetherBuild? side = null)
     {
         UiThread.Check();
         if (session.Folder is null || IsBuilding || session.IsEnded)
@@ -298,6 +303,8 @@ public sealed partial class BuildRunController
         }
         buildKind = kind;
         lastProjects = projects;
+        together = side;
+        lastTogether = side;
         buildFramework = projects is { Count: > 0 } ? framework : null;
         buildOutput = projects is { Count: > 0 } ? output : null;
         IReadOnlyList<string> whole = session.Workspace!.BuildTargets(session.Projects);
@@ -310,6 +317,7 @@ public sealed partial class BuildRunController
         {
             BuildOutcome nothing = new(BuildStatus.Refused, "Nothing to build: every project is unloaded");
             publishing = null;
+            together = null;
             work?.Dispose();
             parts.Say(nothing.Message);
             then?.Invoke(nothing);
@@ -330,7 +338,7 @@ public sealed partial class BuildRunController
         building = new TaskCompletionSource();
         BackgroundWork.Track(building.Task);
         // A build is a start Stop ends, as the Build window's Stop does; held until it ends, whoever began it.
-        buildWork = work ?? parts.Work.Begin(AppActions.Build, $"Building {Path.GetFileName(buildQueue.Peek())}…");
+        buildWork = work ?? parts.Work.Begin(AppActions.Build, $"Building {together?.Shown ?? Path.GetFileName(buildQueue.Peek())}…");
         BuildNext(first: true);
     }
 
@@ -364,10 +372,10 @@ public sealed partial class BuildRunController
     {
         string target = buildQueue.Dequeue();
         string verb = buildKind switch { BuildKind.Rebuild => "Rebuilding", BuildKind.Clean => "Cleaning", BuildKind.Publish => "Publishing", _ => "Building" };
-        string what = publishing is { } shown ? shown.Shown : Path.GetFileName(target);
+        string what = publishing is { } shown ? shown.Shown : together?.Shown ?? Path.GetFileName(target);
         parts.Say($"{verb} {what}…");
         buildWork?.Say($"{verb} {what}…");
-        bool windows = BuildOutput.WindowsTargeting(target, session.Projects);
+        bool windows = WindowsTargeting(together?.Projects ?? [target]);
         IReadOnlyList<string> arguments = publishing is { } publish ? publish.Arguments(windows) : BuildOutput.Arguments(target, buildKind, buildFramework, windows, buildOutput);
         if (session.Builder.StartDotnet(arguments, session.Folder!, after: first ? HoldDesignTimeBuildsAsync : null) is { } problem)
         {
@@ -441,9 +449,24 @@ public sealed partial class BuildRunController
         FinishBuild(session.Builder.WasStopped ? new BuildOutcome(BuildStatus.Stopped, $"{noun} stopped")
             : code == 0 && publishing is { } publish ? Published(publish, warned)
             : code == 0 ? new BuildOutcome(BuildStatus.Succeeded, $"{noun} succeeded{warned}")
-            : new BuildOutcome(BuildStatus.Failed, $"{noun} failed: {Plural.Of(errors, "error")}, {Plural.Of(warnings, "warning")}; "
+            : new BuildOutcome(BuildStatus.Failed, $"{noun} failed{FailedIn(problems)}: {Plural.Of(errors, "error")}, {Plural.Of(warnings, "warning")}; "
                 + (errors > 0 ? "Problems lists them" : $"dotnet exited with code {code}, the Build window says why")));
     }
+
+    /// <summary>Where a build of projects side by side failed: " in" and the projects its errors name, so each service whose
+    /// build failed is said, though their output came together; nothing for any other build.</summary>
+    private string FailedIn(IEnumerable<Problem> problems) =>
+        together is not null && problems.Where(p => p.Severity == ProblemSeverity.Error && p.Project is not null).Select(p => p.Project!)
+            .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList() is { Count: > 0 } named
+            ? $" in {Listed(named)}"
+            : string.Empty;
+
+    /// <summary>Names as a sentence lists them: "Web", "Api and Web", "Api, Web and Worker".</summary>
+    private static string Listed(IReadOnlyList<string> names) =>
+        names.Count == 1 ? names[0] : $"{string.Join(", ", names.Take(names.Count - 1))} and {names[^1]}";
+
+    /// <summary>Whether a build of these projects needs EnableWindowsTargeting, one of them or a project it references needing it.</summary>
+    private bool WindowsTargeting(IReadOnlyList<string> projects) => projects.Any(p => BuildOutput.WindowsTargeting(p, session.Projects));
 
     /// <summary>The one way a build that began ends: its window, Problems and the status bar say how, its caller hears it
     /// with what it found, and the background work it held is let go.</summary>
@@ -457,6 +480,7 @@ public sealed partial class BuildRunController
         TaskCompletionSource? held = building;
         building = null;
         publishing = null;
+        together = null;
         buildWork?.Dispose();
         buildWork = null;
         builtTexts = null;
@@ -556,23 +580,73 @@ public sealed partial class BuildRunController
     private string Canceled(Working work, string name) => session.IsEnded ? Refusals.SolutionClosed : StoppedStarting(name);
 
     /// <summary>A start's build of what it starts, in the Build window, which comes forward only as Settings says for a build
-    /// Run, Debug or Profile begins: stopped as the start is (<paramref name="stopping"/>), as Stop stops a build.</summary>
+    /// Run, Debug or Profile begins: stopped as the start is (<paramref name="stopping"/>), as Stop stops a build. What is
+    /// open is saved first; a project whose last build here stands (<see cref="UpToDate"/>) is not built again, the Build
+    /// window and the status bar saying so.</summary>
     public Task<BuildOutcome> BuildForAsync(BuildStep step, CancellationToken stopping) => BuildForAsync([step.Project], stopping, step.Framework, step.Output);
 
-    /// <summary>A start's build of projects one after another (<see cref="BuildForAsync(BuildStep, CancellationToken)"/>).</summary>
+    /// <summary>What a start says of a project it did not build: nothing its build reads changed since its last.</summary>
+    public static string UpToDateSaid(string project) => $"{project} is up to date: nothing its build reads has changed since it was built, so it was not built again";
+
+    /// <summary>What a start says of projects it did not build, one or several.</summary>
+    public static string UpToDateSaid(IReadOnlyList<string> projects) => projects.Count == 1 ? UpToDateSaid(projects[0])
+        : $"{Listed(projects)} are up to date: nothing their builds read has changed since they were built, so they were not built again";
+
+    /// <summary>A start's build of its projects (<see cref="BuildForAsync(BuildStep, CancellationToken)"/>), several side by
+    /// side in one dotnet build (<see cref="TogetherBuild"/>): none is built when the last build here of each stands, and all
+    /// are when one does not, what each build left then kept for its next start's check.</summary>
     private async Task<BuildOutcome> BuildForAsync(IReadOnlyList<string> projects, CancellationToken stopping, string? framework = null, string? output = null)
     {
-        TaskCompletionSource<BuildOutcome> built = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        Build(BuildKind.Build, projects, outcome => built.TrySetResult(outcome), framework, BuildCause.BeforeLaunch, output);
-        // On the window's thread, and only while the build under way is this one; the folder's end stops it itself.
-        using CancellationTokenRegistration stop = stopping.Register(() => UiThread.Post(() =>
+        UiThread.Check();
+        List<UpToDate.Check> checks = [];
+        TogetherBuild? side = null;
+        if (session.Folder is { } folder && !IsBuilding && !session.IsEnded && projects.Count > 0)
         {
-            if (!built.Task.IsCompleted && !session.IsEnded)
+            parts.Editors.SaveAll();
+            bool windows = WindowsTargeting(projects);
+            string state = parts.StateFolder();
+            (UpToDate.Check?[] found, side) = await BackgroundWork.Run(async () => (
+                await Task.WhenAll(projects.Select(project => UpToDate.CheckAsync(new BuildStep(project, framework, output),
+                    BuildOutput.Arguments(project, BuildKind.Build, framework, windows, output), windows, folder, stopping))),
+                projects.Count > 1 ? TogetherBuild.Write(state, folder, projects) : null));
+            if (stopping.IsCancellationRequested)
+            {
+                return new BuildOutcome(BuildStatus.Stopped, "Build stopped");
+            }
+            if (found.All(check => check is { Holds: true }) && !IsBuilding && !session.IsEnded)
+            {
+                string said = UpToDateSaid([.. projects.Select(project => Path.GetFileNameWithoutExtension(project))]);
+                parts.Views.Build.Clear();
+                parts.Views.Build.Append($"{said}\n");
+                parts.Say(said);
+                return new BuildOutcome(BuildStatus.Succeeded, said);
+            }
+            checks = [.. found.OfType<UpToDate.Check>()];
+        }
+        TaskCompletionSource<BuildOutcome> ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        // Where they cannot be built together (TogetherBuild.Write's null), they are built one after another.
+        Start(BuildKind.Build, side is null ? projects : [side.Project], outcome => ended.TrySetResult(outcome), framework, BuildCause.BeforeLaunch, null, null, output, side);
+        BuildOutcome built;
+        // On the window's thread, and only while the build under way is this one; the folder's end stops it itself.
+        using (stopping.Register(() => UiThread.Post(() =>
+        {
+            if (!ended.Task.IsCompleted && !session.IsEnded)
             {
                 session.Builder.Stop();
             }
-        }));
-        return await built.Task;
+        })))
+        {
+            built = await ended.Task;
+        }
+        if (built.Succeeded)
+        {
+            await BackgroundWork.Run(() => Task.WhenAll(checks.Select(check => UpToDate.BuiltAsync(check, stopping))));
+        }
+        else
+        {
+            checks.ForEach(UpToDate.Forget);
+        }
+        return built;
     }
 
     /// <summary>Runs the chosen configuration, with these arguments in place of its own if given: its plan's program started
@@ -783,7 +857,7 @@ public sealed partial class BuildRunController
         session.InTerminal = run;
         RunningChanged?.Invoke(this, EventArgs.Empty);
         parts.Say(running);
-        _ = Ended();
+        IdeErrors.Observe(Ended());
         return null;
 
         async Task Ended()
@@ -1148,7 +1222,7 @@ public sealed partial class BuildRunController
     {
         if (app is not null)
         {
-            _ = EndWithAsync(app, ended);
+            IdeErrors.Observe(EndWithAsync(app, ended));
         }
 
         static async Task EndWithAsync(LiveApp app, Task ended)
@@ -1271,8 +1345,8 @@ public sealed partial class BuildRunController
     public void Stop()
     {
         parts.Work.Stop();
-        _ = session.Debug.StopAsync();
-        _ = StopRest();
+        IdeErrors.Observe(session.Debug.StopAsync());
+        IdeErrors.Observe(StopRest());
     }
 
     /// <summary>Stop All, the window's and an agent's stop: as Stop, every program debugged ended rather than the chosen one;
@@ -1305,7 +1379,7 @@ public sealed partial class BuildRunController
     public void StopRun()
     {
         parts.Work.Of(AppActions.RunProgram)?.Cancel();
-        _ = session.StopContainersAsync();
+        IdeErrors.Observe(session.StopContainersAsync());
         session.RunProgram.Stop();
     }
 

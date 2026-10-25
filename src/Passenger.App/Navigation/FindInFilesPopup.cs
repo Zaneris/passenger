@@ -12,6 +12,7 @@ using Passenger.App.Workspace;
 using Passenger.Editor;
 using Passenger.Text;
 using Passenger.Core;
+using Passenger.Workspace;
 
 namespace Passenger.App.Navigation;
 
@@ -75,8 +76,8 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         projects = choices.Projects;
         Width = PopupFrame.Widest;
         query = new TextBox { Classes = { "search" }, PlaceholderText = "Text to find", Text = initial ?? string.Empty };
-        matchCase = Option(OptionGlyph("Icon.MatchCase"), "Match case (Alt+C)");
-        words = Option(OptionGlyph("Icon.WholeWord"), "Words (Alt+O)");
+        matchCase = Option(OptionGlyph(IconKeys.MatchCase), "Match case (Alt+C)");
+        words = Option(OptionGlyph(IconKeys.WholeWord), "Words (Alt+O)");
         regex = Option(new TextBlock { Text = ".*", FontFamily = CSharp.Fonts.Mono, FontWeight = FontWeight.Bold, FontSize = 12 }, "Regex (Alt+X)");
         DockPanel find = new() { Margin = new Thickness(10, 0, 10, 6) };
         StackPanel toggles = new() { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(6, 0, 0, 0), Children = { matchCase, words, regex } };
@@ -113,9 +114,9 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         projectBox.SelectedItem = choices.Projects.FirstOrDefault(p => p.Path == choices.Start.Project) ?? choices.Projects.FirstOrDefault();
         directoryBox = Field(choices.Directories, editable: true);
         directoryBox.Text = choices.Start.Directory ?? string.Empty;
-        recursive = new ToggleButton { Classes = { "option" }, Content = Glyph("Icon.Structure"), IsChecked = choices.Start.Recursive };
+        recursive = new ToggleButton { Classes = { "option" }, Content = Glyph(IconKeys.Structure), IsChecked = choices.Start.Recursive };
         ToolTip.SetTip(recursive, "Recursively (Alt+Y)");
-        Button browse = ToolButtons.Of("Icon.FolderOpen", "Choose a directory", () => _ = BrowseAsync());
+        Button browse = ToolButtons.Of(IconKeys.FolderOpen, "Choose a directory", () => IdeErrors.Observe(BrowseAsync()));
         browse.Margin = new Thickness(4, 0, 2, 0);
         DockPanel directory = new() { Children = { recursive, browse, directoryBox } };
         DockPanel.SetDock(recursive, Dock.Right);
@@ -158,13 +159,13 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         ToolWindows.ListMenus.Attach(results, () => results.SelectedItem is not SearchMatch chosen ? [] :
         [
             ToolWindows.ListMenus.Item("Go to", "Enter", Choose),
-            ToolWindows.ListMenus.Item("Copy Path", null, () => _ = ToolWindows.ListMenus.CopyAsync(this, chosen.Path)),
-            ToolWindows.ListMenus.Item("Copy Line", null, () => _ = ToolWindows.ListMenus.CopyAsync(this, chosen.LineText.Trim())),
+            ToolWindows.ListMenus.Item("Copy Path", null, () => IdeErrors.Observe(ToolWindows.ListMenus.CopyAsync(this, chosen.Path))),
+            ToolWindows.ListMenus.Item("Copy Line", null, () => IdeErrors.Observe(ToolWindows.ListMenus.CopyAsync(this, chosen.LineText.Trim()))),
         ]);
         preview = new CodeEditor { IsReadOnly = true, ShowErrorStripe = false, Height = 180, Focusable = false, Ligatures = ligatures };
         // Clear of the frame's rounded foot, which the editor's square corners would cover.
         Border previewFrame = new() { BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(0, 0, 0, 8), Child = preview };
-        previewFrame.Bind(Border.BorderBrushProperty, previewFrame.GetResourceObservable("Passenger.Divider"));
+        previewFrame.Bind(Border.BorderBrushProperty, previewFrame.GetResourceObservable(TokenKeys.Divider));
         Content = new Border
         {
             Classes = { "popup" },
@@ -328,7 +329,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
     /// <summary>Replace All, on the matches of the query and scope as they stand: those shown may be the last search's
     /// for a moment (a key or the scope changed within the pause before the next), so they are searched again
     /// first.</summary>
-    public void RequestReplace() => _ = ReplaceAsync();
+    public void RequestReplace() => IdeErrors.Observe(ReplaceAsync());
 
     private async Task ReplaceAsync()
     {
@@ -456,7 +457,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         TextDocument shown = new(text.ToString());
         preview.Show(shown, SelectionSet.Single(0), default);
         (preview.Highlighter as IDisposable)?.Dispose();
-        preview.Highlighter = Languages.Highlighters.For(Workspace.Language.ForPath(match.Path).Name, shown);
+        preview.Highlighter = Languages.Highlighters.For(Languages.Language.ForPath(match.Path), shown);
         if (match.Line < shown.Snapshot.LineCount)
         {
             int at = shown.Snapshot.GetLineStart(match.Line) + match.Column;

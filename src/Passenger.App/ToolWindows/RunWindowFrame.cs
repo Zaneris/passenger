@@ -42,23 +42,12 @@ public static class RunWindowFrame
         return made;
     }
 
-    /// <summary>The toolbar's row of buttons, each running one of the window's actions (<see cref="Tool"/>), with what else
-    /// the bar holds before them.</summary>
+    /// <summary>The toolbar's row of buttons, each running one of the window's actions (<see cref="ToolButtons"/>), with what
+    /// else the bar holds before them.</summary>
     public static StackPanel Tools(params Control[] before)
     {
         StackPanel tools = new() { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(6, 0), VerticalAlignment = VerticalAlignment.Center };
         tools.Children.AddRange(before);
         return tools;
-    }
-
-    /// <summary>A toolbar button that asks for one of the window's actions, marked as running it so the window shows that
-    /// action's work on it (<see cref="ActionButtons.ShowMarked"/>), its tip the action's title with its keys.</summary>
-    public static Button Tool(string action, string icon, string tip, Action<string> request)
-    {
-        Button button = ToolButtons.Of(icon, tip, () => request(action));
-        button.Name = action;
-        ActionTips.Set(button, action, tip);
-        ActionButtons.Mark(button, action);
-        return button;
     }
 }

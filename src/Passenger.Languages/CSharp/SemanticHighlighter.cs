@@ -184,7 +184,7 @@ public sealed class SemanticHighlighter : IHighlighter, IBraceMatcher, IDisposab
         askedFor = null;
         outAfter = null;
         BackgroundWork.Begin();
-        _ = Fetch(delay, request, cancel.Token);
+        UnawaitedWork.Observe(Fetch(delay, request, cancel.Token));
     }
 
     private async Task Fetch(TimeSpan delay, int request, CancellationToken cancel)

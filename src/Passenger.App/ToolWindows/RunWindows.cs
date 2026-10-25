@@ -27,9 +27,9 @@ public static class RunWindows
     /// <summary>The actions on a .NET service of a run with their icons, in their one order.</summary>
     public static IReadOnlyList<(string Action, string Icon)> ServiceActions { get; } =
     [
-        (AppActions.ServiceDebug, "Icon.Debug"),
-        (AppActions.ServiceAttach, "Icon.Attach"),
-        (AppActions.ServiceRun, "Icon.RunOutline"),
-        (AppActions.ServiceProfile, "Icon.Profile"),
+        (AppActions.ServiceDebug, IconKeys.Debug),
+        (AppActions.ServiceAttach, IconKeys.Attach),
+        (AppActions.ServiceRun, IconKeys.RunOutline),
+        (AppActions.ServiceProfile, IconKeys.Profile),
     ];
 }

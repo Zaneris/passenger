@@ -61,9 +61,9 @@ public sealed class FramesView : DockPanel
             VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
         };
         StackPanel legend = new() { Orientation = Orientation.Horizontal, Spacing = 14, Margin = new Thickness(12, 2, 12, 0) };
-        foreach ((string label, string brush) in new[] { ("Measure", "Passenger.Graph.0"), ("Arrange", "Passenger.Graph.1"), ("Render", "Passenger.Graph.2"), ("Other UI work", "Passenger.TextMuted"), ("Compositor", "Passenger.Graph.3") })
+        foreach ((string label, string brush) in new[] { ("Measure", TokenKeys.Graph_0), ("Arrange", TokenKeys.Graph_1), ("Render", TokenKeys.Graph_2), ("Other UI work", TokenKeys.TextMuted), ("Compositor", TokenKeys.Graph_3) })
         {
-            Border swatch = new() { Width = 9, Height = 9, VerticalAlignment = VerticalAlignment.Center, Opacity = brush == "Passenger.TextMuted" ? 0.35 : 1 };
+            Border swatch = new() { Width = 9, Height = 9, VerticalAlignment = VerticalAlignment.Center, Opacity = brush == TokenKeys.TextMuted ? 0.35 : 1 };
             swatch.Bind(Border.BackgroundProperty, swatch.GetResourceObservable(brush));
             legend.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5, Children = { swatch, Muted(label) } });
         }
@@ -77,14 +77,14 @@ public sealed class FramesView : DockPanel
             Child = new StackPanel { Children = { legend, strip, summary } },
             Padding = new Thickness(0, 4, 0, 0),
         };
-        band.Bind(Border.BorderBrushProperty, band.GetResourceObservable("Passenger.Divider"));
+        band.Bind(Border.BorderBrushProperty, band.GetResourceObservable(TokenKeys.Divider));
 
         (string Title, double Width)[] columns = [("Control", 0), ("Own time", NumberWidth), ("Measures", NumberWidth), ("Measure time", NumberWidth),
             ("Arranges", NumberWidth), ("Arrange time", NumberWidth + 16)];
         Grid header = Row(columns, [.. columns.Select((c, i) => (Control)Title(c.Title, i == 0))]);
         header.Margin = new Thickness(10, 4, 10, 0);
         Border heading = new() { [DockProperty] = Dock.Top, BorderThickness = new Thickness(0, 0, 0, 1), Child = header, Padding = new Thickness(0, 0, 0, 3) };
-        heading.Bind(Border.BorderBrushProperty, heading.GetResourceObservable("Passenger.Divider"));
+        heading.Bind(Border.BorderBrushProperty, heading.GetResourceObservable(TokenKeys.Divider));
         table = new ListBox
         {
             Classes = { "tree" },
@@ -227,7 +227,7 @@ public sealed class FramesView : DockPanel
     private Control RowOf(LayoutRow row, (string Title, double Width)[] columns)
     {
         PathIcon chevron = new() { Classes = { "chevron" }, IsVisible = row.Cost.Controls.Count > 0, RenderTransformOrigin = RelativePoint.Center };
-        chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable("Icon.ChevronRight"));
+        chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(IconKeys.ChevronRight));
         chevron.RenderTransform = new RotateTransform(row.IsExpanded ? 90 : 0);
         row.FollowWhileShown(chevron, (_, _) => chevron.RenderTransform = new RotateTransform(row.IsExpanded ? 90 : 0));
         Border toggle = new() { Width = 18, Height = ListRow.Height, Background = Brushes.Transparent, Child = chevron };

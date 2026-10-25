@@ -16,7 +16,7 @@ public partial class MainWindow
     private void AddBookmarks()
     {
         // Built as it is first shown, over the session's bookmarks then.
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Bookmarks, "Bookmarks", "Icon.Bookmark", () =>
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Bookmarks, "Bookmarks", IconKeys.Bookmark, () =>
         {
             bookmarksView = new(session.Bookmarks, (path, line) =>
                 Editors.Find(path) is { HoldsText: true } open && line < open.Text.Snapshot.LineCount ? open.Text.Snapshot.GetLineText(line) : string.Empty);
@@ -31,7 +31,7 @@ public partial class MainWindow
         Editors.Opened += (_, document) =>
         {
             document.Bookmarks = session.Bookmarks.LinesIn(document.Path);
-            document.Text.Changed += (_, change) => session.Bookmarks.Follow(document.Path, change);
+            document.Text.Changed += (_, _) => session.Bookmarks.Follow(document.Path);
         };
     }
 

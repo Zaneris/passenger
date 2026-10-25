@@ -27,7 +27,7 @@ public partial class MainWindow
     /// <summary>The session's programs and builds go now, so a server lets go of its port; the rest are asked to end.</summary>
     private void EndChildren()
     {
-        _ = terminal?.CloseAllAsync();
+        IdeErrors.Observe(terminal?.CloseAllAsync() ?? Task.CompletedTask);
         Ended = session.CloseAsync(
             ("the solution left before", ending),
             ("Discord", EndDiscord()));

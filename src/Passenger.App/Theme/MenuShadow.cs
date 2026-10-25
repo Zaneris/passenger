@@ -51,5 +51,5 @@ internal static class MenuShadow
     }
 
     private static Thickness? Room() =>
-        Application.Current?.TryGetResource("Passenger.MenuShadowRoom", null, out object? found) == true && found is Thickness room ? room : null;
+        Application.Current?.TryGetResource(TokenKeys.MenuShadowRoom, null, out object? found) == true && found is Thickness room ? room : null;
 }

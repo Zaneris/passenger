@@ -1,6 +1,6 @@
-using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Host;
+using Passenger.Workspace;
 
 namespace Passenger.App.Explorer;
 

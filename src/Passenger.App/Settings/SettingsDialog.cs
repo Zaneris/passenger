@@ -65,6 +65,13 @@ public sealed partial class SettingsDialog : Window
     /// cref="Passenger.Xaml.Features.XamlContentIndent"/>'s order.</summary>
     public static readonly string[] ContentIndents = ["Do not change indenting", "One indent from parent element", "No indent from parent element", "No indent at all"];
 
+    /// <summary>The words a search finds every option of a page by, beside each option's own.</summary>
+    internal const string FoldingWords = "fold by default folding collapse collapsed open opening region";
+    internal const string XamlWords = "xaml axaml xml code style formatting reformat format layout wpf avalonia";
+    internal const string EslintWords = "eslint lint linter linting javascript typescript code quality tools problems inspections";
+    internal const string PrettierWords = "prettier format formatter formatting reformat code style javascript typescript css json";
+    internal const string McpWords = "mcp model context protocol agents ai claude codex opencode attach socket";
+
     /// <summary>Puts what the options changed in force: from the settings as they were applied last, to the options'.</summary>
     private readonly Action<AppSettings, AppSettings> apply;
 
@@ -119,7 +126,7 @@ public sealed partial class SettingsDialog : Window
         left.Children.Add(search);
         left.Children.Add(new Panel { Children = { pages, nothing } });
         Border leftPane = new() { BorderThickness = new Thickness(0, 0, 1, 0), Child = left };
-        leftPane.Bind(Border.BorderBrushProperty, leftPane.GetResourceObservable("Passenger.Divider"));
+        leftPane.Bind(Border.BorderBrushProperty, leftPane.GetResourceObservable(TokenKeys.Divider));
         Border bottom = DialogFooter.Bar(DialogFooter.Of(ok, cancel, applyButton));
         DockPanel right = new() { Margin = new Thickness(20, 16, 20, 0) };
         DockPanel.SetDock(heading, Dock.Top);
@@ -218,12 +225,8 @@ public sealed partial class SettingsDialog : Window
 
     private void AddOptions(Mcp.AgentSetup agents)
     {
-        ComboBox look = new() { ItemsSource = LookChoices.Select(c => c.Name).ToArray(), SelectedIndex = Array.FindIndex(LookChoices, c => c.Look == Working.Look), Classes = { "form" } };
-        look.SelectionChanged += (_, _) => Change(s => s with { Look = LookChoices[Math.Max(0, look.SelectedIndex)].Look });
-        Add(Appearance, "Theme", look, "colour color theme look palette " + string.Join(" ", LookChoices.Select(c => c.Name.ToLowerInvariant())));
-        ComboBox theme = new() { ItemsSource = new[] { "System", "Dark", "Light" }, SelectedIndex = Working.Theme switch { ThemeChoice.Dark => 1, ThemeChoice.Light => 2, _ => 0 }, Classes = { "form" } };
-        theme.SelectionChanged += (_, _) => Change(s => s with { Theme = theme.SelectedIndex switch { 1 => ThemeChoice.Dark, 2 => ThemeChoice.Light, _ => ThemeChoice.System } });
-        Add(Appearance, "Dark or light", theme, "colour color theme dark light system sync os appearance mode");
+        Add(Declared.Look);
+        Add(Declared.Theme);
         if (TitleBars.Offered)
         {
             CheckBox merge = Check(Working.MergeMainMenuWithWindowTitle, v => Change(s => s with { MergeMainMenuWithWindowTitle = v }));
@@ -234,13 +237,10 @@ public sealed partial class SettingsDialog : Window
         }
         if (!OperatingSystem.IsMacOS())
         {
-            Add(Appearance, "Show main menu as a menu bar", Check(Working.MainMenuBar, v => Change(s => s with { MainMenuBar = v })),
-                "main menu bar hamburger file edit view toolbar ribbon menus",
-                "File, Edit, View and the rest side by side on the toolbar rather than behind its button. Those the toolbar has no room for go behind the button after them.");
+            Add(Declared.MainMenuBar);
         }
 
-        Add(SystemPage, "Reopen projects on startup", Check(Working.ReopenProjectsOnStartup, v => Change(s => s with { ReopenProjectsOnStartup = v })),
-            "reopen last solution project folder startup start launch welcome screen recent");
+        Add(Declared.ReopenProjectsOnStartup);
         StackPanel openIn = new() { Orientation = Orientation.Horizontal, Spacing = 16 };
         foreach ((OpenProjectIn choice, string name) in OpenProjectChoices)
         {
@@ -256,9 +256,8 @@ public sealed partial class SettingsDialog : Window
         }
         Add(SystemPage, "Open project in", openIn,
             "open solution project folder new window current window this window ask confirm where frame");
-        Add(SystemPage, "Save when leaving the IDE", Check(Working.SaveOnDeactivation, v => Change(s => s with { SaveOnDeactivation = v })),
-            "autosave files switching to a different application or the built-in terminal focus frame deactivation");
-        NumericUpDown seconds = Number(Working.IdleSeconds, AppSettings.MinIdleSeconds, AppSettings.MaxIdleSeconds, 1, v => Change(s => s with { IdleSeconds = (int)v }));
+        Add(Declared.SaveOnDeactivation);
+        NumericUpDown seconds = Declared.IdleSeconds.Box(Working, Change);
         seconds.IsEnabled = Working.SaveWhenIdle;
         CheckBox idle = Check(Working.SaveWhenIdle, v =>
         {
@@ -269,26 +268,17 @@ public sealed partial class SettingsDialog : Window
         Add(SystemPage, "Save when idle for", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { idle, seconds, unit } },
             "autosave files idle inactive seconds");
 
-        Add(UpdatesPage, "Check for updates", Check(Working.CheckForUpdates, v => Change(s => s with { CheckForUpdates = v })),
-            "updates check new version release newer download github automatic install restart",
-            "Passenger asks GitHub for its latest release when it starts and once a day. When a newer one is out, an installed "
-            + "Passenger downloads it, checks it against the SHA-256 the release gives, and installs it when it restarts; a "
-            + "copy built from source says in the status bar that it is out. Nothing is sent but the requests, which name "
-            + "Passenger and its version.");
+        Add(Declared.CheckForUpdates);
 
-        ComboBox scheme = new() { ItemsSource = ColourSchemeChoices.Select(c => c.Name).ToArray(), SelectedIndex = Array.FindIndex(ColourSchemeChoices, c => c.Scheme == Working.ColourScheme), Classes = { "form" } };
-        scheme.SelectionChanged += (_, _) => Change(s => s with { ColourScheme = ColourSchemeChoices[Math.Max(0, scheme.SelectedIndex)].Scheme });
-        Add(EditorPage, "Colour scheme", scheme, "colour color scheme syntax highlighting code colours rider keywords strings comments",
-            "The colours the code is drawn in: the theme's own, or Rider's, Dark or Light as the theme is. The editor keeps the theme's background.");
-        Add(EditorPage, "Font size", Number(Working.EditorFontSize, AppSettings.MinFontSize, AppSettings.MaxFontSize, 1, v => Change(s => s with { EditorFontSize = v })), "font size text");
-        Add(EditorPage, "Line spacing", Number(Working.EditorLineSpacing, AppSettings.MinLineSpacing, AppSettings.MaxLineSpacing, 0.1, v => Change(s => s with { EditorLineSpacing = v })), "font line height");
-        Add(EditorPage, "Enable ligatures", Check(Working.Ligatures, v => Change(s => s with { Ligatures = v })), "font arrows");
-        Add(EditorPage, "Show line numbers", Check(Working.ShowLineNumbers, v => Change(s => s with { ShowLineNumbers = v })), "gutter appearance");
-        Add(EditorPage, "Rainbow braces", Check(Working.RainbowBraces, v => Change(s => s with { RainbowBraces = v })), "brackets parentheses colour color nesting");
-        Add(EditorPage, "Solution-wide analysis", Check(Working.SolutionWideAnalysis, v => Change(s => s with { SolutionWideAnalysis = v })),
-            "errors problems whole solution analysis inspections without build");
-        Add(EditorPage, "Show parameter name hints", Check(Working.ParameterHints, v => Change(s => s with { ParameterHints = v })), "inlay hints parameter names arguments");
-        Add(EditorPage, "Show type name hints", Check(Working.TypeHints, v => Change(s => s with { TypeHints = v })), "inlay hints type names var lambda parameters new inferred");
+        Add(Declared.ColourScheme);
+        Add(Declared.EditorFontSize);
+        Add(Declared.EditorLineSpacing);
+        Add(Declared.Ligatures);
+        Add(Declared.ShowLineNumbers);
+        Add(Declared.RainbowBraces);
+        Add(Declared.SolutionWideAnalysis);
+        Add(Declared.ParameterHints);
+        Add(Declared.TypeHints);
         TextBox masks = new() { Classes = { "search" }, Text = Working.SoftWrapFiles, PlaceholderText = "No files", Width = 260, IsEnabled = Working.SoftWrap };
         ToolTip.SetTip(masks, "Use * and ? as wildcards and ; to separate patterns");
         masks.TextChanged += (_, _) => Change(s => s with { SoftWrapFiles = masks.Text ?? string.Empty });
@@ -299,28 +289,17 @@ public sealed partial class SettingsDialog : Window
         });
         Add(EditorPage, "Soft-wrap these files", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { wrapFiles, masks } },
             "soft wrap wrapping long lines width markdown text files masks");
-        Add(EditorPage, "Use the original line's indent for wrapped fragments", Check(Working.SoftWrapIndent, v => Change(s => s with { SoftWrapIndent = v })),
-            "soft wrap wrapped indent indentation fragments");
-        Add(EditorPage, "Show whitespaces", Check(Working.ShowWhitespaces, v => Change(s => s with { ShowWhitespaces = v })),
-            "whitespace spaces tabs dots arrows invisible characters appearance");
-        Add(EditorPage, OperatingSystem.IsMacOS() ? "Change font size with Command+Mouse Wheel" : "Change font size with Ctrl+Mouse Wheel",
-            Check(Working.WheelZoom, v => Change(s => s with { WheelZoom = v })), "zoom font size mouse wheel scroll ctrl control command cmd");
+        Add(Declared.SoftWrapIndent);
+        Add(Declared.ShowWhitespaces);
+        Add(Declared.WheelZoom);
 
-        const string Folding = "fold by default folding collapse collapsed open opening region";
-        Add(CodeFoldingPage, "File header", Check(Working.FoldFileHeader, v => Change(s => s with { FoldFileHeader = v })),
-            $"{Folding} comments licence license copyright top",
-            "Fold by default: what folds as a file opens. A file keeps the folds it was closed with, after a restart too.");
-        Add(CodeFoldingPage, "Imports", Check(Working.FoldImports, v => Change(s => s with { FoldImports = v })), $"{Folding} usings using directives");
-        Add(CodeFoldingPage, "Documentation comments", Check(Working.FoldDocComments, v => Change(s => s with { FoldDocComments = v })),
-            $"{Folding} doc xml summary comments");
-        Add(CodeFoldingPage, "Method bodies", Check(Working.FoldMethodBodies, v => Change(s => s with { FoldMethodBodies = v })),
-            $"{Folding} members bodies accessors properties functions");
-        Add(CodeFoldingPage, "Preprocessor regions", Check(Working.FoldPreprocessorRegions, v => Change(s => s with { FoldPreprocessorRegions = v })),
-            $"{Folding} #region endregion directives .net");
-        Add(CodeFoldingPage, "Line and block comments", Check(Working.FoldComments, v => Change(s => s with { FoldComments = v })),
-            $"{Folding} block comments .net");
-        Add(CodeFoldingPage, "XML tags", Check(Working.FoldXmlTags, v => Change(s => s with { FoldXmlTags = v })),
-            $"{Folding} xml elements tags project csproj props axaml xaml");
+        Add(Declared.FoldFileHeader);
+        Add(Declared.FoldImports);
+        Add(Declared.FoldDocComments);
+        Add(Declared.FoldMethodBodies);
+        Add(Declared.FoldPreprocessorRegions);
+        Add(Declared.FoldComments);
+        Add(Declared.FoldXmlTags);
 
         AddXamlCodeStyle();
 
@@ -342,22 +321,13 @@ public sealed partial class SettingsDialog : Window
             "build tool window open progress view start explicitly invoked solution rebuild clean toolset presentation");
         Add(BuildPage, "Tool Window: open the build progress view even when the build is invoked implicitly (i.e. Run/Debug)", implicitly,
             "build tool window open progress view start implicitly run debug profile before launch toolset presentation");
-        ComboBox results = new() { ItemsSource = BuildResultsChoices, SelectedIndex = (int)Working.ShowBuildResults, Classes = { "form" } };
-        results.SelectionChanged += (_, _) => Change(s => s with { ShowBuildResults = (BuildResultsMode)Math.Max(0, results.SelectedIndex) });
-        Add(BuildPage, "Showing build results after build completed", results,
-            "build tool window results after completed finished failed errors warnings always never toolset presentation");
+        Add(Declared.ShowBuildResults);
 
-        Add(HotReloadPage, "Hot Reload when debugging (Edit and Continue)", Check(Working.HotReloadWhileDebugging, v => Change(s => s with { HotReloadWhileDebugging = v })),
-            "hot reload edit and continue enc debug apply changes paused running alt f10");
-        Add(HotReloadPage, "Hot Reload when running (dotnet watch)", Check(Working.HotReload, v => Change(s => s with { HotReload = v })),
-            "hot reload dotnet watch run apply changes on save running without debugging");
-        Add(HotReloadPage, "Apply changes when a file is saved", Check(Working.HotReloadOnSave, v => Change(s => s with { HotReloadOnSave = v })),
-            "hot reload save apply changes debug edit and continue");
-        Add(HotReloadPage, "Always restart for a change it cannot apply", Check(Working.RestartOnRudeEdit, v => Change(s => s with { RestartOnRudeEdit = v })),
-            "hot reload rude edit restart ask always never dotnet watch");
-        NumericUpDown buffer = Number(Working.ConsoleBufferKb, AppSettings.MinConsoleBufferKb, AppSettings.MaxConsoleBufferKb, 64, v => Change(s => s with { ConsoleBufferKb = (int)v }));
-        Add(RunPage, "Console buffer size", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { buffer, new TextBlock { Text = "KB", VerticalAlignment = VerticalAlignment.Center } } },
-            "console cycle buffer size output limit lines run debug build kb");
+        Add(Declared.HotReloadWhileDebugging);
+        Add(Declared.HotReload);
+        Add(Declared.HotReloadOnSave);
+        Add(Declared.RestartOnRudeEdit);
+        Add(Declared.ConsoleBufferKb);
 
         string? onPath = Passenger.Core.Programs.Node();
         TextBox node = new() { Classes = { "search" }, Text = Working.NodeInterpreter ?? string.Empty, PlaceholderText = onPath ?? "Not found on the PATH", Width = 320 };
@@ -366,42 +336,18 @@ public sealed partial class SettingsDialog : Window
             "The Node.js the JavaScript, TypeScript, HTML, CSS and JSON language servers run on. Empty, it is the first on the PATH, "
             + "as the login shell finds it. Without one, those files keep their colours only.");
         AddCodeQualityTools();
-        Add(SchemasPage, "Allow downloading JSON Schemas from remote sources", Check(Working.DownloadJsonSchemas, v => Change(s => s with { DownloadJsonSchemas = v })),
-            "json schema schemas remote download web http https schemastore $schema validation completion",
-            "A JSON file that names a schema on the web ($schema) has it downloaded to check and complete it. package.json, "
-            + "tsconfig.json, jsconfig.json, appsettings.json, launchSettings.json and global.json use the schemas Passenger "
-            + "carries from SchemaStore, which are never downloaded.");
-        Add(DockerPage, "Complete image tags from Docker Hub", Check(Working.DockerHubTags, v => Change(s => s with { DockerHubTags = v })),
-            "docker hub dockerfile containerfile image images tag tags from completion registry remote download web network",
-            "In a Dockerfile, completion after FROM image: lists the image's tags, which the Dockerfile language server asks "
-            + "Docker Hub for, naming the image. Off, it asks Docker Hub nothing and offers no tags.");
-        Add(DockerPage, "Check Dockerfiles with BuildKit", Check(Working.BuildKitChecks, v => Change(s => s with { BuildKitChecks = v })),
-            "buildkit buildx build check checks lint rules warnings dockerfile containerfile base image images metadata registry registries network engine",
-            "As a Dockerfile opens and is saved, the container engine's BuildKit checks it by its build rules with the engine's own "
-            + "Dockerfile frontend, never one a # syntax= line names, which is neither pulled nor run. BuildKit reads each base "
-            + "image's metadata from its registry. Off, no check runs and no registry is asked; a compose file's values and errors, "
-            + "which Compose works out on this computer, stay.");
+        Add(Declared.DownloadJsonSchemas);
+        Add(Declared.DockerHubTags);
+        Add(Declared.BuildKitChecks);
 
-        Add(TerminalPage, "Font size", Number(Working.TerminalFontSize, AppSettings.MinFontSize, AppSettings.MaxFontSize, 1, v => Change(s => s with { TerminalFontSize = v })), "font size shell");
+        Add(Declared.TerminalFontSize);
         TextBox terminalFont = new() { Classes = { "search" }, Text = Working.TerminalFontFamily ?? string.Empty, PlaceholderText = "JetBrains Mono", Width = 320 };
         terminalFont.TextChanged += (_, _) => Change(s => s with { TerminalFontFamily = terminalFont.Text });
         Add(TerminalPage, "Font family", terminalFont, "font family name typeface shell",
             "An installed monospace font. Blank, unavailable or proportional fonts use bundled JetBrains Mono.");
-        Add(TerminalPage, "Copy on selection", Check(Working.TerminalCopyOnSelection, v => Change(s => s with { TerminalCopyOnSelection = v })),
-            "copy selection clipboard mouse drag word");
-        Add(TerminalPage, "Cursor blinking", Check(Working.TerminalCursorBlinking, v => Change(s => s with { TerminalCursorBlinking = v })),
-            "cursor caret blink blinking", "Programs can override this setting until the terminal is reset.");
-        ComboBox terminalCursor = new()
-        {
-            ItemsSource = new[] { "Block", "Line", "Underline" }, Classes = { "form" },
-            SelectedIndex = Working.TerminalCursorStyle switch { Passenger.Terminal.CursorShape.Bar => 1, Passenger.Terminal.CursorShape.Underline => 2, _ => 0 },
-        };
-        terminalCursor.SelectionChanged += (_, _) => Change(s => s with
-        {
-            TerminalCursorStyle = terminalCursor.SelectedIndex switch { 1 => Passenger.Terminal.CursorShape.Bar, 2 => Passenger.Terminal.CursorShape.Underline, _ => Passenger.Terminal.CursorShape.Block },
-        });
-        Add(TerminalPage, "Cursor style", terminalCursor, "cursor caret type style shape block line bar underline",
-            "Programs can override this setting until the terminal is reset.");
+        Add(Declared.TerminalCopyOnSelection);
+        Add(Declared.TerminalCursorBlinking);
+        Add(Declared.TerminalCursorStyle);
         (string shell, _) = Passenger.Terminal.TerminalSession.DefaultShell();
         TextBox path = new() { Classes = { "search" }, Text = Working.TerminalShell ?? string.Empty, PlaceholderText = shell, Width = 320 };
         path.TextChanged += (_, _) => Change(s => s with { TerminalShell = string.IsNullOrWhiteSpace(path.Text) ? null : path.Text.Trim() });
@@ -409,10 +355,9 @@ public sealed partial class SettingsDialog : Window
 
         AddAgents(agents);
 
-        ComboBox shows = new() { ItemsSource = DiscordChoices, SelectedIndex = (int)Working.DiscordShows, Classes = { "form" }, IsEnabled = Working.ShowInDiscord };
-        shows.SelectionChanged += (_, _) => Change(s => s with { DiscordShows = (DiscordShown)Math.Max(0, shows.SelectedIndex) });
-        NumericUpDown idleMinutes = Number(Working.DiscordIdleMinutes, AppSettings.MinDiscordIdleMinutes, AppSettings.MaxDiscordIdleMinutes, 1,
-            v => Change(s => s with { DiscordIdleMinutes = (int)v }));
+        ComboBox shows = Declared.DiscordShows.Box(Working, Change);
+        shows.IsEnabled = Working.ShowInDiscord;
+        NumericUpDown idleMinutes = Declared.DiscordIdleMinutes.Box(Working, Change);
         idleMinutes.IsEnabled = Working.ShowInDiscord && Working.DiscordIdle;
         CheckBox whenIdle = Check(Working.DiscordIdle, v =>
         {
@@ -441,17 +386,17 @@ public sealed partial class SettingsDialog : Window
             Children = { whenIdle, idleMinutes, new TextBlock { Text = "minutes", VerticalAlignment = VerticalAlignment.Center } },
         }, $"{Discord} idle inactive away timeout minutes");
 
-        Add(DiagnosticsPage, "Trace protocol messages", Check(Working.TraceProtocols, v => Change(s => s with { TraceProtocols = v })),
-            "trace log lsp dap json-rpc language server debugger adapter vstest tests messages verbose mcp agent calls",
-            "Every message to and from the C# language server, the debugger and the test runner is written to lsp.log, dap.log "
-            + "and vstest.log in the logs folder (Help, Show Log), and each agent's MCP call, with what it waited on and for how "
-            + "long, to mcp.log.");
-        Add(DiagnosticsPage, "Log every program started", Check(Working.LogEveryProgram, v => Change(s => s with { LogEveryProgram = v })),
-            "debug log processes programs commands git dotnet exit code time",
-            "Each program the IDE runs (git, dotnet, the servers) is written to passenger.log with its exit code and time. "
-            + "Otherwise only those that fail or take a second or more are.");
+        Add(Declared.TraceProtocols);
+        Add(Declared.LogEveryProgram);
 
         AddKeymap();
+    }
+
+    /// <summary>A declared setting's own row, on its page, its editor made from the declaration.</summary>
+    private void Add(Setting setting)
+    {
+        SettingRow row = setting.Row ?? throw new ArgumentException("A setting with no row of its own goes in a row the dialog builds", nameof(setting));
+        Add(row.Page, row.Label, setting.Editor(Working, Change), row.Words, row.Note);
     }
 
     /// <summary>A page that is one control of its own (the live templates' list and editor), the whole of its width, found
@@ -487,19 +432,6 @@ public sealed partial class SettingsDialog : Window
         }
         options.Add(new Option(page, label, row, $"{page} {label} {keywords}", action));
         return row;
-    }
-
-    private static NumericUpDown Number(double value, double min, double max, double step, Action<double> changed)
-    {
-        NumericUpDown number = new() { Value = (decimal)value, Minimum = (decimal)min, Maximum = (decimal)max, Increment = (decimal)step, Width = 140, FormatString = step < 1 ? "0.0" : "0" };
-        number.ValueChanged += (_, e) =>
-        {
-            if (e.NewValue is { } next)
-            {
-                changed((double)next);
-            }
-        };
-        return number;
     }
 
     private static CheckBox Check(bool value, Action<bool> changed)

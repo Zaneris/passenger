@@ -88,6 +88,9 @@ public sealed class DebugSession
     /// <summary>Why a start failed that was stopped (Stop, Detach, the window's close) before it was done.</summary>
     public const string StoppedStarting = "the session was stopped as it started";
 
+    /// <summary>The debug adapter the app carries, beside it in debugger/, which dotnet runs.</summary>
+    public static string AdapterPath => Path.Combine(AppContext.BaseDirectory, "debugger", "Passenger.DebugAdapter.dll");
+
     /// <summary>How the adapter starts: beside the app, or where the program is (a container's, over docker exec).</summary>
     private static ProcessStartInfo AdapterStart(AdapterPlace? place, bool elsewhere)
     {
@@ -100,7 +103,7 @@ public sealed class DebugSession
         }
         else
         {
-            string path = Path.Combine(AppContext.BaseDirectory, "debugger", "Passenger.DebugAdapter.dll");
+            string path = AdapterPath;
             if (!File.Exists(path))
             {
                 throw new FileNotFoundException("The debug adapter is not beside the app", path);
@@ -161,8 +164,8 @@ public sealed class DebugSession
         adapter.BeginErrorReadLine();
         adapter.EnableRaisingEvents = true;
         // After the last of its error stream, so a crash's own words reach the console and the log before its end.
-        adapter.Exited += (_, _) => Task.WhenAny(errorsRead.Task, Task.Delay(TimeSpan.FromSeconds(2)))
-            .ContinueWith(_ => UiThread.Post(() => OnAdapterExited(log)), TaskScheduler.Default);
+        adapter.Exited += (_, _) => IdeErrors.Observe(Task.WhenAny(errorsRead.Task, Task.Delay(TimeSpan.FromSeconds(2)))
+            .ContinueWith(_ => UiThread.Post(() => OnAdapterExited(log)), TaskScheduler.Default));
         connection = new DapConnection(adapter.StandardOutput.BaseStream, adapter.StandardInput.BaseStream, log) { Name = name };
         connection.EventReceived += (name, body) =>
         {
@@ -224,6 +227,12 @@ public sealed class DebugSession
     public Task<int> ProcessStarted => processStarted.Task;
 
     private readonly TaskCompletionSource<int> processStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>Done once the session has heard its adapter's process end, a launched program the adapter left running
+    /// ended by then.</summary>
+    public Task AdapterEnded => adapterEnded.Task;
+
+    private readonly TaskCompletionSource adapterEnded = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     /// <summary>The program the adapter launched, once it has said which it is: the adapter's child, which ends with the IDE
     /// (its job or process group), but which only the IDE can end once the adapter itself has died.</summary>
@@ -559,10 +568,11 @@ public sealed class DebugSession
         int code = adapter.ExitCode;
         if (code != 0 && !killed && place?.Running is { } running)
         {
-            _ = PlaceEndedAsync(running, code, log);
+            IdeErrors.Observe(PlaceEndedAsync(running, code, log).ContinueWith(_ => adapterEnded.TrySetResult(), TaskScheduler.Default));
             return;
         }
         AdapterExited(code, log);
+        adapterEnded.TrySetResult();
     }
 
     /// <summary>An adapter elsewhere that ended with a failure no one asked for: when its place has stopped (its container),
@@ -593,7 +603,7 @@ public sealed class DebugSession
             log($"{place.Where} stopped, and {Program} with it");
         }
         EndLaunched(log);
-        _ = EndAfterTerminal();
+        IdeErrors.Observe(EndAfterTerminal());
     }
 
     /// <summary>The adapter's process ended, its end read as <see cref="OnAdapterExited"/> says.</summary>
@@ -620,7 +630,7 @@ public sealed class DebugSession
             }
         }
         EndLaunched(log);
-        _ = EndAfterTerminal();
+        IdeErrors.Observe(EndAfterTerminal());
     }
 
     /// <summary>Ends the session once a program in the terminal has ended too, so its exit code, which the terminal saw, is
@@ -1098,7 +1108,7 @@ public sealed class DebugSession
         if (runToCursor is { } target)
         {
             runToCursor = null;
-            _ = SendBreakpointsAsync(target.Path);
+            IdeErrors.Observe(SendBreakpointsAsync(target.Path));
         }
         SetState(DebugState.Paused);
     }
@@ -1122,7 +1132,7 @@ public sealed class DebugSession
                 if (stopped.Reason == StopReasons.Breakpoint && !functionsAnswered.IsCompleted
                     && stopped.HitBreakpointIds?.Any(id => !byId.ContainsKey(id) && !propertyById.ContainsKey(id) && id != bindingErrorsId) == true)
                 {
-                    _ = TakeStopAfter(functionsAnswered, stopped);
+                    IdeErrors.Observe(TakeStopAfter(functionsAnswered, stopped));
                     break;
                 }
                 TakeStop(stopped);
@@ -1162,7 +1172,7 @@ public sealed class DebugSession
                 break;
             case DapEvents.Terminated:
                 programEnded = true;
-                _ = StopAsync();
+                IdeErrors.Observe(StopAsync());
                 break;
         }
     }
@@ -1215,7 +1225,7 @@ public sealed class DebugSession
             breakpoints.Leave(this);
         }
         SetState(DebugState.Ended);
-        _ = connection.DisposeAsync();
+        IdeErrors.Observe(connection.DisposeAsync().AsTask());
     }
 
     /// <summary>An event's body, copied off the connection's buffer for reading on the UI thread.</summary>

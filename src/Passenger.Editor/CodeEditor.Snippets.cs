@@ -7,7 +7,7 @@ namespace Passenger.Editor;
 /// <summary>A live template being filled in: each variable in turn has all its places selected, so what is typed fills
 /// every one, Tab (or Enter) goes on to the next and Shift+Tab back, and after the last the caret goes to the
 /// template's end. Escape, a caret that leaves the variable or another document shown ends it. Each place is boxed
-/// while it lasts.</summary>
+/// while it lasts, and the document carries it through edits by its anchors, which its end takes away.</summary>
 public sealed partial class CodeEditor
 {
     private Session? snippet;
@@ -20,7 +20,7 @@ public sealed partial class CodeEditor
     /// places.</summary>
     public void InsertSnippet(TextRange replace, Snippet inserted)
     {
-        snippet = null;
+        EndSnippet();
         string eol = document.LineEnding;
         // A template is written with '\n'; in a CRLF file each such break grows by one, and every place after it moves on.
         int Placed(int offset)
@@ -38,10 +38,21 @@ public sealed partial class CodeEditor
         ApplyEdits([new TextEdit(replace.Start, replace.Length, LineEndings.In(inserted.Text, eol))]);
         int at = replace.Start;
         TextRange end = TextRange.FromBounds(Placed(inserted.End.Start) + at, Placed(inserted.End.End) + at);
+        // A place grows with what is typed at either end of it; the end, once empty, goes along with what is typed at it.
         snippet = new Session(
-            [.. inserted.Fields.Select(f => f.Select(r => TextRange.FromBounds(Placed(r.Start) + at, Placed(r.End) + at)).ToList())],
-            end);
+            [.. inserted.Fields.Select(f => f.Select(r => document.RangeAt(TextRange.FromBounds(Placed(r.Start) + at, Placed(r.End) + at), AnchorGravity.Before, AnchorGravity.After)).ToList())],
+            document.RangeAt(end, AnchorGravity.Before, AnchorGravity.After, empty: AnchorGravity.After));
         StepField(1);
+    }
+
+    /// <summary>Ends the template being filled in, if one is, its places no longer carried.</summary>
+    private void EndSnippet()
+    {
+        if (snippet is { } session)
+        {
+            snippet = null;
+            session.Remove();
+        }
     }
 
     /// <summary>Tab, Shift+Tab, Enter and Escape while a template is filled in; false for any other action.</summary>
@@ -60,7 +71,7 @@ public sealed partial class CodeEditor
                 StepField(-1);
                 return true;
             case EditorActions.Escape:
-                snippet = null;
+                EndSnippet();
                 SetSelections(SelectionSet.Single(selections.Primary.Caret), reveal: false);
                 return true;
         }
@@ -76,7 +87,7 @@ public sealed partial class CodeEditor
         {
             if (next >= session.Fields.Count)
             {
-                snippet = null;
+                EndSnippet();
                 int length = document.Snapshot.Length;
                 SetSelections(SelectionSet.Single(new Selection(Math.Min(session.End.Start, length), Math.Min(session.End.End, length))), reveal: true);
                 return;
@@ -90,26 +101,6 @@ public sealed partial class CodeEditor
         }
     }
 
-    /// <summary>Carries the template's places through an edit; one typed into grows with it.</summary>
-    private void FollowSnippet(IReadOnlyList<TextEdit> edits)
-    {
-        if (snippet is not { } session)
-        {
-            return;
-        }
-        foreach (List<TextRange> field in session.Fields)
-        {
-            for (int i = 0; i < field.Count; i++)
-            {
-                int start = TextEditing.MapOffset(field[i].Start, edits, afterInsertions: false);
-                int end = TextEditing.MapOffset(field[i].End, edits, afterInsertions: true);
-                field[i] = TextRange.FromBounds(start, Math.Max(start, end));
-            }
-        }
-        int endStart = TextEditing.MapOffset(session.End.Start, edits, afterInsertions: session.End.Length == 0);
-        session.End = TextRange.FromBounds(endStart, Math.Max(endStart, TextEditing.MapOffset(session.End.End, edits, afterInsertions: true)));
-    }
-
     /// <summary>Ends the template when a caret goes outside the variable being filled in.</summary>
     private void CheckSnippet()
     {
@@ -117,10 +108,10 @@ public sealed partial class CodeEditor
         {
             return;
         }
-        List<TextRange> places = session.Fields[session.Current];
+        List<AnchoredRange> places = session.Fields[session.Current];
         if (!selections.Items.All(s => places.Any(r => r.Start <= s.Start && s.End <= r.End)))
         {
-            snippet = null;
+            EndSnippet();
             InvalidateVisual();
         }
     }
@@ -135,8 +126,9 @@ public sealed partial class CodeEditor
         for (int f = 0; f < session.Fields.Count; f++)
         {
             Pen pen = new(f == session.Current ? palette.Caret : palette.LineNumber, 1);
-            foreach (TextRange place in session.Fields[f])
+            foreach (AnchoredRange field in session.Fields[f])
             {
+                TextRange place = field.Range;
                 if (place.End > text.Length)
                 {
                     continue;
@@ -161,10 +153,19 @@ public sealed partial class CodeEditor
     }
 
     /// <summary>A template's places by variable, in Tab's order, and its end: where the caret goes, or what is selected.</summary>
-    private sealed class Session(List<List<TextRange>> fields, TextRange end)
+    private sealed class Session(List<List<AnchoredRange>> fields, AnchoredRange end)
     {
-        public List<List<TextRange>> Fields { get; } = fields;
-        public TextRange End { get; set; } = end;
+        public List<List<AnchoredRange>> Fields { get; } = fields;
+        public AnchoredRange End { get; } = end;
         public int Current { get; set; } = -1;
+
+        public void Remove()
+        {
+            foreach (AnchoredRange place in Fields.SelectMany(f => f))
+            {
+                place.Remove();
+            }
+            End.Remove();
+        }
     }
 }

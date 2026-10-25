@@ -109,6 +109,7 @@ public sealed partial class BuildRunController
         }
         if (program.WhyNot is { } why)
         {
+            run.Unreached[service.Name] = why;
             // Held at its start, it runs on; asked for as it runs, the profiler that cannot reach it refuses.
             string without = $"{service.Name} runs without the {(purpose == RunStart.Profile ? "profiler" : "debugger")}: {why}";
             if (asItRuns && purpose == RunStart.Profile)
@@ -118,6 +119,7 @@ public sealed partial class BuildRunController
             notes.Add(without);
             return null;
         }
+        run.Unreached.Remove(service.Name);
         foreach (string note in program.Notes)
         {
             notes.Add($"{service.Name}: {note}");

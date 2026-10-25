@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -31,9 +32,7 @@ public sealed class IdeErrorsTests : IDisposable
     {
         File.WriteAllText(Path.Combine(folder, "One.cs"), "class One { }\n");
         File.WriteAllText(Path.Combine(folder, "Two.cs"), "class Two { }\n");
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder);
         window.OpenFile("One.cs");
         window.OpenFile("Two.cs");
         Ui.Settle();
@@ -75,6 +74,186 @@ public sealed class IdeErrorsTests : IDisposable
         // Thrown on purpose: the check that fails a test over a caught error is not to see these.
         IdeErrors.Clear();
         window.Close();
+    }
+
+    /// <summary>A handler of a file's changes that throws is an error the IDE shows, and every handler after it still hears
+    /// of the change: the file's parse keeps up with the keys, the first of which the handler threw on.</summary>
+    [AvaloniaFact]
+    public void A_handler_of_a_files_changes_that_throws_leaves_those_after_it_in_step_with_the_text()
+    {
+        File.WriteAllText(Path.Combine(folder, "One.cs"), "class One { }\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        window.OpenFile("One.cs");
+        Ui.Settle();
+        IdeErrors.Clear();
+        Passenger.App.Workspace.OpenDocument document = window.EditorArea.Active!;
+        Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
+        bool thrown = false;
+        // Heard ahead of every handler of Changed: the editor's, the parse's and the file's own.
+        document.Text.ChangedFirst += (_, _) =>
+        {
+            if (!thrown)
+            {
+                thrown = true;
+                throw new InvalidOperationException("A change's handler went wrong");
+            }
+        };
+        editor.Selections = Passenger.Text.SelectionSet.Single("class One { ".Length);
+        editor.Focus();
+
+        window.KeyTextInput("x");
+        window.KeyTextInput("y");
+        Ui.Settle();
+
+        Assert.Equal("class One { xy}\n", document.Text.Snapshot.ToString());
+        Assert.True(document.Syntax!.Current.Text.ToString() == document.Text.Snapshot.ToString(),
+            $"The file's parse read \"{document.Syntax.Current.Text}\" after the keys, having missed the change a handler before it threw on");
+        Assert.Contains(IdeErrors.Errors, e => e.Kind == "InvalidOperationException" && e.Message == "A change's handler went wrong");
+        // Thrown on purpose: the check that fails a test over a caught error is not to see it.
+        IdeErrors.Clear();
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void An_error_in_what_replace_all_set_going_is_shown_and_logged_as_it_happens_not_once_its_task_is_collected()
+    {
+        File.WriteAllText(Path.Combine(folder, "Alpha.cs"), "class Alpha { int count; }\n");
+        MainWindow window = Ui.OpenFolder(folder);
+        Passenger.App.Navigation.FindInFilesPopup popup = window.ShowFindInFiles(replace: true)!;
+        popup.Text = "count";
+        Task searching = popup.SearchAsync();
+        Ui.WaitFor(() => searching.IsCompleted, "the search for count");
+        IdeErrors.Clear();
+        // The question fails after Replace All's handler has returned, as work it awaits would.
+        window.Confirm = async (_, _, _) =>
+        {
+            await Task.Yield();
+            throw new InvalidOperationException("The question went wrong");
+        };
+        popup.Replacement = "total";
+        popup.RequestReplace();
+        Ui.Settle();
+
+        Assert.True(IdeErrors.Errors.Any(e => e.Kind == "InvalidOperationException" && e.Message == "The question went wrong"),
+            $"Replace All's error went unreported until its task would be collected; the IDE's errors: {string.Join("; ", IdeErrors.Errors.Select(e => e.Message))}");
+        Assert.Equal("IDE error: The question went wrong", window.Status);
+        Assert.Contains("The question went wrong", Ui.IdeLog(), StringComparison.Ordinal);
+        Assert.Equal("class Alpha { int count; }\n", File.ReadAllText(Path.Combine(folder, "Alpha.cs")));
+        // Thrown on purpose: the check that fails a test over a caught error is not to see it.
+        IdeErrors.Clear();
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void An_error_in_what_the_Git_menus_Abort_Merge_set_going_is_shown_and_logged_as_it_happens_and_the_merge_stays()
+    {
+        string shop = Path.Combine(folder, "Shop.cs");
+        File.WriteAllText(shop, "class Shop { int count; }\n");
+        TestGit.Init(folder);
+        TestGit.Run(folder, "switch", "-q", "-c", "feature");
+        File.WriteAllText(shop, "class Shop { short count; }\n");
+        TestGit.Run(folder, "commit", "-q", "-am", "Short");
+        TestGit.Run(folder, "switch", "-q", "main");
+        File.WriteAllText(shop, "class Shop { long count; }\n");
+        TestGit.Run(folder, "commit", "-q", "-am", "Long");
+        Passenger.Core.ChildResult merging = Task.Run(() => Passenger.Core.ChildProcesses.RunAsync(
+            Passenger.Core.ChildProcesses.Command("git", ["merge", "feature"], folder), limit: TimeSpan.FromMinutes(1).Scaled())).GetAwaiter().GetResult();
+        Assert.False(merging.Succeeded, $"git merge was to stop for its conflict: {merging.Output}");
+        MainWindow window = Ui.OpenFolder(folder);
+        Ui.Landed(() => window.CommitView.Rows.OfType<CommitGroup>().Any(g => g.Name == "Merge Conflicts"), "the merge's conflict");
+        IdeErrors.Clear();
+        // The question fails after the action has returned, as work it awaits would.
+        window.Confirm = async (_, _, _) =>
+        {
+            await Task.Yield();
+            throw new InvalidOperationException("Abort Merge's question went wrong");
+        };
+
+        Assert.True(window.Perform(AppActions.AbortMerge), window.Status);
+        Ui.Settle();
+
+        Assert.True(IdeErrors.Errors.Any(e => e.Kind == "InvalidOperationException" && e.Message == "Abort Merge's question went wrong"),
+            $"Abort Merge's error went unreported until its task would be collected; the IDE's errors: {string.Join("; ", IdeErrors.Errors.Select(e => e.Message))}");
+        Assert.Equal("IDE error: Abort Merge's question went wrong", window.Status);
+        Assert.Contains("Abort Merge's question went wrong", Ui.IdeLog(), StringComparison.Ordinal);
+        Assert.True(File.Exists(Path.Combine(folder, ".git", "MERGE_HEAD")), "The merge was aborted though its question failed");
+        // Thrown on purpose: the check that fails a test over a caught error is not to see it.
+        IdeErrors.Clear();
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void An_error_in_the_question_a_file_changed_here_and_on_disk_asks_is_shown_and_logged_as_it_happens_and_the_disk_keeps_its_text()
+    {
+        string path = Path.Combine(folder, "One.cs");
+        File.WriteAllText(path, "class One { }\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        window.OpenFile("One.cs");
+        Ui.Settle();
+        IdeErrors.Clear();
+        bool asked = false;
+        // The question fails after the watcher's method has returned, as the dialog it awaits would.
+        window.AskConflict = async _ =>
+        {
+            asked = true;
+            await Task.Yield();
+            throw new InvalidOperationException("The conflict's question went wrong");
+        };
+        window.EditorArea.CodeEditor.Selections = Passenger.Text.SelectionSet.Single(0);
+        window.KeyTextInput("public ");
+        Ui.Settle();
+
+        File.WriteAllText(path, "class One { int disk; }\n");
+        Ui.WaitFor(() => asked, "the File Cache Conflict question");
+        Ui.Settle();
+
+        Assert.True(IdeErrors.Errors.Any(e => e.Kind == "InvalidOperationException" && e.Message == "The conflict's question went wrong"),
+            $"The conflict question's error went unreported until its task would be collected; the IDE's errors: {string.Join("; ", IdeErrors.Errors.Select(e => e.Message))}");
+        Assert.Equal("IDE error: The conflict's question went wrong", window.Status);
+        Assert.Contains("The conflict's question went wrong", Ui.IdeLog(), StringComparison.Ordinal);
+        Assert.Equal("class One { int disk; }\n", File.ReadAllText(path));
+        // Thrown on purpose: the check that fails a test over a caught error is not to see it.
+        IdeErrors.Clear();
+        // The edits the question never settled would keep the window open over them, into the next test.
+        window.EditorArea.Active!.Reload(overUnsaved: true);
+        window.Close();
+        Assert.DoesNotContain(window, PassengerApp.Windows);
+    }
+
+    /// <summary>Every place src's code lets go of a task it started (DroppedTasks): a discard, a call as a statement, a
+    /// lambda for a delegate that returns nothing. Passed over: a continuation whose lambda only reads the task's
+    /// Exception, which marks a fault seen and cannot fault itself, and a project not built, the container tools
+    /// (only the solution's build and the release make them).</summary>
+    [AvaloniaFact]
+    public void Nothing_in_src_leaves_a_fault_in_the_work_it_starts_for_the_garbage_collector_to_find()
+    {
+        Regex onlySeen = new(@"\.ContinueWith\(\s*(static\s+)?(\w+)\s*=>\s*(_ = )?\2\.Exception\s*[,)]");
+        string root = Passenger.Tests.Debugging.Helpers.Debuggees.Root;
+        List<string> found = [];
+        List<string> read = [];
+        foreach (string project in Directory.GetDirectories(Path.Combine(root, "src")).Order(StringComparer.Ordinal))
+        {
+            string name = Path.GetFileName(project);
+            Match named = Regex.Match(File.ReadAllText(Path.Combine(project, $"{name}.csproj")), "<AssemblyName>([^<]+)</AssemblyName>");
+            string assembly = Path.Combine(root, "artifacts", "bin", name, "debug", $"{(named.Success ? named.Groups[1].Value : name)}.dll");
+            if (!File.Exists(assembly))
+            {
+                continue;
+            }
+            read.Add(name);
+            foreach ((string file, int line) in DroppedTasks.In(assembly))
+            {
+                string[] lines = File.ReadAllLines(file);
+                string statement = string.Join(' ', lines.Skip(line - 1).Take(3).Select(l => l.Trim()));
+                if (!onlySeen.IsMatch(statement))
+                {
+                    found.Add($"{Path.GetRelativePath(root, file).Replace('\\', '/')}:{line}: {lines[line - 1].Trim()}");
+                }
+            }
+        }
+        Assert.Contains("Passenger.App", read);
+        Assert.True(found.Count == 0, $"Work whose task is let go reports its fault only once the task is collected, which may be never; "
+            + $"give it to IdeErrors.Observe (Core.UnawaitedWork.Observe below the app):\n{string.Join('\n', found.Order(StringComparer.Ordinal))}");
     }
 
     [AvaloniaFact]
@@ -482,9 +661,7 @@ public sealed class IdeErrorsTests : IDisposable
     private MainWindow OpenProgram(string? program = null)
     {
         WriteProgram(folder, program);
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder);
         window.OpenFile("Program.cs");
         Ui.Settle();
         Assert.True(window.CSharpService?.IsReady, window.CSharpService?.State);

@@ -2,6 +2,7 @@ namespace Passenger.App;
 
 /// <summary>Each tool window's id, named once: what its <see cref="Docking.ToolWindow"/> is made with, what shows, hides
 /// and asks after it, and what a kept layout (layout.json, each folder's) records it by, so a value here never changes.</summary>
+[IdentifierHome]
 public static class ToolWindowIds
 {
     public const string Explorer = "explorer";

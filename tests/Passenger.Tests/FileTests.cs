@@ -6,6 +6,7 @@ using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Text;
 
 namespace Passenger.Tests;
 
@@ -24,9 +25,7 @@ public sealed class FileTests : IDisposable
         string path = Path.Combine(folder, "Program.cs");
         File.WriteAllBytes(path, [.. bom, .. Encoding.UTF8.GetBytes("class A\r\n{\r\n}\r\n")]);
 
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder);
         window.OpenFile("Program.cs");
         Ui.Settle();
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -85,9 +84,7 @@ public sealed class FileTests : IDisposable
         string path = Path.Combine(folder, "data.bin");
         byte[] bytes = [0x89, 0x50, 0x4E, 0x47, 0x00, 0x00, 0x1A, 0x0A];
         File.WriteAllBytes(path, bytes);
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder);
         Assert.Null(window.OpenFile("data.bin"));
         Ui.Settle();
         Assert.True(window.EditorArea.Active is { IsBinary: true, IsReadOnly: true }, "data.bin should open as its bytes' text, read-only");
@@ -109,10 +106,7 @@ public sealed class FileTests : IDisposable
         {
             file.SetLength(65 * 1024 * 1024);
         }
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
-        Ui.Settle();
+        MainWindow window = Ui.OpenFolder(folder);
         long before = GC.GetAllocatedBytesForCurrentThread();
         string? why = window.OpenFile("huge.log");
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
@@ -140,9 +134,7 @@ public sealed class FileTests : IDisposable
         byte[] bytes = [(byte)'k', (byte)'e', (byte)'y', 0, (byte)'\n', (byte)'k', (byte)'e', (byte)'y', 0xFF];
         File.WriteAllBytes(path, bytes);
         File.WriteAllText(Path.Combine(folder, "notes.txt"), "key\n");
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder);
         window.OpenFile("data.bin");
         Ui.Settle();
         Assert.True(window.EditorArea.Active is { IsBinary: true, HoldsText: false }, "data.bin did not open as its bytes' text");
@@ -174,7 +166,7 @@ public sealed class FileTests : IDisposable
         string sentinel = Path.Combine(TestFolders.Create("save-sentinel-"), "sentinel.txt");
         File.WriteAllText(path, "class One { }\n");
         File.WriteAllText(sentinel, "keep this file\n");
-        string planted = path + Passenger.App.Workspace.FileText.SaveSuffix;
+        string planted = path + FileText.SaveSuffix;
         TestFolders.Link(planted, sentinel);
         MainWindow window = Open();
         try
@@ -184,7 +176,7 @@ public sealed class FileTests : IDisposable
             Assert.Equal("public class One { }\n", File.ReadAllText(path));
             Assert.Equal("keep this file\n", File.ReadAllText(sentinel));
             Assert.NotNull(new FileInfo(planted).LinkTarget);
-            Assert.Equal([planted], Directory.EnumerateFiles(folder, "*" + Passenger.App.Workspace.FileText.SaveSuffix));
+            Assert.Equal([planted], Directory.EnumerateFiles(folder, "*" + FileText.SaveSuffix));
         }
         finally
         {
@@ -246,7 +238,7 @@ public sealed class FileTests : IDisposable
             Assert.False(window.IsVisible, $"Quitting stopped at a file another program was reading: {window.Status}");
         }
         Assert.Equal("public class One { }\n", File.ReadAllText(path));
-        Assert.Empty(Directory.EnumerateFiles(folder, "*" + Passenger.App.Workspace.FileText.SaveSuffix));
+        Assert.Empty(Directory.EnumerateFiles(folder, "*" + FileText.SaveSuffix));
     }
 
     /// <summary>A save writes its temporary file under a name of its own, made new, so a link a cloned repository
@@ -258,7 +250,7 @@ public sealed class FileTests : IDisposable
         string elsewhere = Path.Combine(TestFolders.Create("save-elsewhere-"), "kept.txt");
         File.WriteAllText(path, "class One { }\n");
         File.WriteAllText(elsewhere, "keep this file\n");
-        string planted = path + Passenger.App.Workspace.FileText.SaveSuffix;
+        string planted = path + FileText.SaveSuffix;
         TestFolders.Link(planted, elsewhere);
         MainWindow window = Open();
         Edit(window, "One.cs", "public ");
@@ -267,7 +259,7 @@ public sealed class FileTests : IDisposable
         Assert.Equal("public class One { }\n", File.ReadAllText(path));
         Assert.True(File.ReadAllText(elsewhere) == "keep this file\n", "The save was written through a link beside the file, to the file it points at");
         Assert.NotNull(new FileInfo(planted).LinkTarget);
-        Assert.Equal([planted], Directory.EnumerateFiles(folder, "*" + Passenger.App.Workspace.FileText.SaveSuffix));
+        Assert.Equal([planted], Directory.EnumerateFiles(folder, "*" + FileText.SaveSuffix));
         window.Close();
     }
 

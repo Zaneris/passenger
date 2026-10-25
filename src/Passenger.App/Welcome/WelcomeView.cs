@@ -43,13 +43,13 @@ public sealed class WelcomeView : UserControl
         hero.Children.Add(mark);
         hero.Children.Add(new StackPanel { [Grid.ColumnProperty] = 1, VerticalAlignment = VerticalAlignment.Center, Children = { title, subtitle } });
 
-        NewSolutionButton = Action("Icon.Add", "New Solution", "From a template");
+        NewSolutionButton = Action(IconKeys.Add, "New Solution", "From a template");
         NewSolutionButton.Click += (_, _) => NewSolutionRequested?.Invoke(this, EventArgs.Empty);
-        Button open = Action("Icon.Solution", "Open", "A solution or project");
+        Button open = Action(IconKeys.Solution, "Open", "A solution or project");
         open.Click += (_, _) => OpenRequested?.Invoke(this, EventArgs.Empty);
-        Button openFolder = Action("Icon.FolderOpen", "Open Folder", "A folder of code");
+        Button openFolder = Action(IconKeys.FolderOpen, "Open Folder", "A folder of code");
         openFolder.Click += (_, _) => OpenFolderRequested?.Invoke(this, EventArgs.Empty);
-        Button clone = Action("Icon.Branch", "Clone Repository", "From a Git URL");
+        Button clone = Action(IconKeys.Branch, "Clone Repository", "From a Git URL");
         clone.Click += (_, _) => CloneRequested?.Invoke(this, EventArgs.Empty);
         WrapPanel actions = new() { Classes = { "welcomeActions" }, Children = { NewSolutionButton, open, openFolder, clone } };
         // Two or one across in a narrow page, so no tile is cut off at its edge.
@@ -67,7 +67,7 @@ public sealed class WelcomeView : UserControl
         Grid bar = new() { Classes = { "welcomeRecentBar" }, ColumnDefinitions = new ColumnDefinitions("Auto,*"), Children = { recent, search } };
 
         notice = new TextBlock { TextWrapping = TextWrapping.Wrap, IsVisible = false, Margin = new Thickness(4, 0, 4, 10) };
-        notice.Bind(TextBlock.ForegroundProperty, notice.GetResourceObservable("Passenger.Warning"));
+        notice.Bind(TextBlock.ForegroundProperty, notice.GetResourceObservable(TokenKeys.Warning));
         list = new ListBox
         {
             Classes = { "tree", "welcomeList" },
@@ -79,7 +79,7 @@ public sealed class WelcomeView : UserControl
         [
             ListMenus.Item("Open", "Enter", () => Chosen?.Invoke(this, chosen)),
             ListMenus.Item(FileManager.Showing, null, () => RevealRequested?.Invoke(this, chosen), !chosen.Missing),
-            ListMenus.Item("Copy Path", null, () => _ = ListMenus.CopyAsync(this, chosen.Path)),
+            ListMenus.Item("Copy Path", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Path))),
             new Separator(),
             ListMenus.Item("Remove from Recent Solutions", OperatingSystem.IsMacOS() ? "Back" : "Delete", () => RemoveRequested?.Invoke(this, chosen)),
         ]);
@@ -264,7 +264,7 @@ public sealed class WelcomeView : UserControl
         if (row.Missing)
         {
             TextBlock gone = new() { Text = "Missing", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 4, 0) };
-            gone.Bind(TextBlock.ForegroundProperty, gone.GetResourceObservable("Passenger.Warning"));
+            gone.Bind(TextBlock.ForegroundProperty, gone.GetResourceObservable(TokenKeys.Warning));
             DockPanel.SetDock(gone, Dock.Right);
             line.Children.Add(gone);
         }

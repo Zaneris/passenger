@@ -108,14 +108,14 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
         preview.Hold();
         TextSnapshot text = preview.Document.Document.Text.Snapshot;
         unanswered.Enqueue(text);
-        _ = open.Send(new UpdateXamlMessage { Xaml = text.ToString(), AssemblyPath = output, XamlFileProjectPath = preview.ProjectPath() });
+        IdeErrors.Observe(open.Send(new UpdateXamlMessage { Xaml = text.ToString(), AssemblyPath = output, XamlFileProjectPath = preview.ProjectPath() }));
     }
 
     public void Rescale(double scaling)
     {
         if (connection is { } open && !disposed)
         {
-            _ = open.Send(new ClientRenderInfoMessage { DpiX = 96 * scaling, DpiY = 96 * scaling });
+            IdeErrors.Observe(open.Send(new ClientRenderInfoMessage { DpiX = 96 * scaling, DpiY = 96 * scaling }));
         }
     }
 
@@ -131,8 +131,8 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
         opened.OnException += (_, error) => UiThread.Post(() => preview.Say($"The previewer's connection failed: {error.Message}"));
         opened.Start();
         double dpi = 96 * preview.Scaling;
-        _ = opened.Send(new ClientSupportedPixelFormatsMessage { Formats = [RemoteFormat.Bgra8888, RemoteFormat.Rgba8888] });
-        _ = opened.Send(new ClientRenderInfoMessage { DpiX = dpi, DpiY = dpi });
+        IdeErrors.Observe(opened.Send(new ClientSupportedPixelFormatsMessage { Formats = [RemoteFormat.Bgra8888, RemoteFormat.Rgba8888] }));
+        IdeErrors.Observe(opened.Send(new ClientRenderInfoMessage { DpiX = dpi, DpiY = dpi }));
         Update();
     }
 
@@ -159,7 +159,7 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
                 {
                     // The host's window takes its scale from what arrives once it exists; a reload keeps the one it had.
                     double scale = 96 * preview.Scaling;
-                    _ = from.Send(new ClientRenderInfoMessage { DpiX = scale, DpiY = scale });
+                    IdeErrors.Observe(from.Send(new ClientRenderInfoMessage { DpiX = scale, DpiY = scale }));
                 }
                 preview.Status = preview.Error is null ? "Live" : "The XAML did not load";
                 if (preview.Error is null && empty)
@@ -177,7 +177,7 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
                     starting = null;
                     IdeErrors.Write($"Preview of {Path.GetFileName(preview.Document.Document.Path)}: first frame {frame.Width}x{frame.Height} after {clock.ElapsedMilliseconds} ms");
                 }
-                _ = from.Send(new FrameReceivedMessage { SequenceId = frame.SequenceId });
+                IdeErrors.Observe(from.Send(new FrameReceivedMessage { SequenceId = frame.SequenceId }));
                 preview.Status = "Live";
                 preview.Tell();
                 preview.Let();

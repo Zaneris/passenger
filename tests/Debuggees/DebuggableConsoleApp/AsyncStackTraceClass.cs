@@ -9,7 +9,7 @@ public static class AsyncStackTraceClass
 
 	private static async Task MiddleAsync()
 	{
-		var middleValue = 17;
+		int middleValue = 17;
 		await InnerAsync();
 		GC.KeepAlive(middleValue);
 	}

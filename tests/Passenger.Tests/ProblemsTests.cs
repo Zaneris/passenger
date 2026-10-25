@@ -30,9 +30,7 @@ public sealed class ProblemsTests : IClassFixture<RestoredFolders>, IDisposable
     [AvaloniaFact]
     public void Solution_wide_analysis_lists_every_files_errors_and_follows_an_edit_that_breaks_a_file_nobody_has_open()
     {
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder);
         window.OpenFile("Helper.cs");
         Ui.Settle();
         ProblemsModel problems = window.BottomPanel.Problems;
@@ -104,9 +102,7 @@ public sealed class ProblemsTests : IClassFixture<RestoredFolders>, IDisposable
     [AvaloniaFact]
     public void Solution_wide_analysis_goes_on_following_edits_after_the_server_refuses_a_pull()
     {
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder);
         window.OpenFile("Helper.cs");
         Ui.Settle();
         ProblemsModel problems = window.BottomPanel.Problems;
@@ -144,9 +140,7 @@ public sealed class ProblemsTests : IClassFixture<RestoredFolders>, IDisposable
     public void Lines_typed_above_a_files_problems_move_their_rows_without_making_the_list_again()
     {
         Write("Several.cs", "class Several\n{\n    int First = \"one\";\n    int Second = \"two\";\n    string Third = 3;\n}\n");
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder);
         window.OpenFile("Several.cs");
         window.Perform(AppActions.ShowProblems);
         Ui.Settle();
@@ -191,9 +185,7 @@ public sealed class ProblemsTests : IClassFixture<RestoredFolders>, IDisposable
             warned.Append(System.Globalization.CultureInfo.InvariantCulture, $"        int unused{i};\n");
         }
         Write("Warned.cs", warned.Append("    }\n}\n").ToString());
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder);
         window.OpenFile("Warned.cs");
         window.Perform(AppActions.ShowProblems);
         ProblemsModel problems = window.BottomPanel.Problems;
@@ -265,9 +257,7 @@ public sealed class ProblemsTests : IClassFixture<RestoredFolders>, IDisposable
         const string Typed = "static class Typed\n{\n    static int Count()\n    {\n        int value = 1; int unused;\n        return value;\n    }\n}\n";
         Write("Typed.cs", Typed);
         string typed = Passenger.Core.PathNames.Canonical(Path.Combine(folder, "Typed.cs"));
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder);
         window.OpenFile("Typed.cs");
         window.Perform(AppActions.ShowProblems);
         ProblemsModel problems = window.BottomPanel.Problems;
@@ -313,9 +303,7 @@ public sealed class ProblemsTests : IClassFixture<RestoredFolders>, IDisposable
     {
         Write("Separated.cs", $"class Separated\n{{\n    /* Pasted:{(char)0x2028}a{(char)0x2029}b{(char)0x85}c\rd */\n    public int Below = \"none\";\n}}\n");
         string separated = Passenger.Core.PathNames.Canonical(Path.Combine(folder, "Separated.cs"));
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder);
         window.OpenFile("Program.cs");
         Ui.Settle();
         ProblemsModel problems = window.BottomPanel.Problems;
@@ -364,5 +352,5 @@ public sealed class ProblemsTests : IClassFixture<RestoredFolders>, IDisposable
         Ui.ChooseFromMenu(rows, "Go to");
     }
 
-    private void Write(string name, string text) => File.WriteAllText(Path.Combine(folder, name), text);
+    private void Write(string name, string text) => TestFolders.Write(folder, name, text);
 }

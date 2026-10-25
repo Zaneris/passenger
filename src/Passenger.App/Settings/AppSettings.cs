@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Passenger.App.State;
+using Passenger.Vcs;
 
 namespace Passenger.App.Settings;
 
@@ -12,14 +13,6 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     public const double MinFontSize = 6;
 
     public const double MaxFontSize = 48;
-    public const double MinLineSpacing = 0.8;
-    public const double MaxLineSpacing = 3;
-    public const int MinIdleSeconds = 1;
-    public const int MaxIdleSeconds = 3600;
-    public const int MinDiscordIdleMinutes = 1;
-    public const int MaxDiscordIdleMinutes = 24 * 60;
-    public const int MinConsoleBufferKb = 16;
-    public const int MaxConsoleBufferKb = 102_400;
 
     /// <summary>The names that soft-wrap at first.</summary>
     public const string DefaultSoftWrapFiles = "*.md; *.txt; *.rst; *.adoc";
@@ -294,7 +287,7 @@ public sealed record AppSettings : IStateDocument<AppSettings>
 
     /// <summary>The diff's Highlighting Differences: the words that changed inside changed lines marked, at first; the
     /// diff's Settings changes it for every diff after.</summary>
-    public Vcs.DiffHighlighting DiffHighlighting { get; init; } = Vcs.DiffHighlighting.Words;
+    public DiffHighlighting DiffHighlighting { get; init; } = DiffHighlighting.Words;
 
     /// <summary>Highlight Words in a change bar's popup: the words that changed marked in what the lines were and in
     /// the file while the popup is open; the popup's toggle changes it.</summary>
@@ -327,45 +320,33 @@ public sealed record AppSettings : IStateDocument<AppSettings>
         settings["discordShows"] = nameof(DiscordShown.PassengerOnly);
     }
 
-    /// <summary>A hand-edited or later build's value this build cannot use is brought into range, or back to its default;
-    /// a shortcut that does not parse is the keymap's to pass over.</summary>
+    /// <summary>A hand-edited or later build's value this build cannot use is brought into range, or back to its default
+    /// (each setting of one value as <see cref="Declared"/> says); a shortcut that does not parse is the keymap's to pass over.</summary>
     public AppSettings Clamped()
     {
         AppSettings defaults = new();
-        return this with
+        AppSettings clamped = this with
         {
-            Theme = Enum.IsDefined(Theme) ? Theme : defaults.Theme,
-            Look = Enum.IsDefined(Look) ? Look : defaults.Look,
-            ColourScheme = Enum.IsDefined(ColourScheme) ? ColourScheme : defaults.ColourScheme,
-            ShowBuildResults = Enum.IsDefined(ShowBuildResults) ? ShowBuildResults : defaults.ShowBuildResults,
-            DiffHighlighting = Enum.IsDefined(DiffHighlighting) ? DiffHighlighting : defaults.DiffHighlighting,
-            DiscordShows = Enum.IsDefined(DiscordShows) ? DiscordShows : defaults.DiscordShows,
-            OpenProjectIn = Enum.IsDefined(OpenProjectIn) ? OpenProjectIn : defaults.OpenProjectIn,
-            DiscordIdleMinutes = Math.Clamp(DiscordIdleMinutes, MinDiscordIdleMinutes, MaxDiscordIdleMinutes),
-            EditorFontSize = Math.Clamp(EditorFontSize, MinFontSize, MaxFontSize),
-            EditorLineSpacing = Math.Clamp(EditorLineSpacing, MinLineSpacing, MaxLineSpacing),
-            TerminalFontSize = Math.Clamp(TerminalFontSize, MinFontSize, MaxFontSize),
             TerminalFontFamily = string.IsNullOrWhiteSpace(TerminalFontFamily) ? null : TerminalFontFamily.Trim(),
-            TerminalCursorStyle = Enum.IsDefined(TerminalCursorStyle) ? TerminalCursorStyle : defaults.TerminalCursorStyle,
-            IdleSeconds = Math.Clamp(IdleSeconds, MinIdleSeconds, MaxIdleSeconds),
-            ConsoleBufferKb = Math.Clamp(ConsoleBufferKb, MinConsoleBufferKb, MaxConsoleBufferKb),
-            Keymap = Enum.IsDefined(Keymap) ? Keymap : defaults.Keymap,
             Shortcuts = Readable(Shortcuts),
             VSCodeShortcuts = Readable(VSCodeShortcuts),
             LiveTemplates = (LiveTemplates ?? []).Where(t => t.Value is not null).ToDictionary(t => t.Key, t => t.Value.Clamped()),
             PostfixTemplates = PostfixTemplates ?? [],
             TerminalShell = string.IsNullOrWhiteSpace(TerminalShell) ? null : TerminalShell,
             NodeInterpreter = string.IsNullOrWhiteSpace(NodeInterpreter) ? null : NodeInterpreter.Trim(),
-            Eslint = Enum.IsDefined(Eslint) ? Eslint : defaults.Eslint,
             EslintPackage = string.IsNullOrWhiteSpace(EslintPackage) ? null : EslintPackage.Trim(),
             EslintFiles = string.IsNullOrWhiteSpace(EslintFiles) ? defaults.EslintFiles : EslintFiles.Trim(),
-            Prettier = Enum.IsDefined(Prettier) ? Prettier : defaults.Prettier,
             PrettierPackage = string.IsNullOrWhiteSpace(PrettierPackage) ? null : PrettierPackage.Trim(),
             PrettierFiles = string.IsNullOrWhiteSpace(PrettierFiles) ? defaults.PrettierFiles : PrettierFiles.Trim(),
             SoftWrapFiles = SoftWrapFiles ?? defaults.SoftWrapFiles,
             XamlFormat = (XamlFormat ?? defaults.XamlFormat).Clamped(),
             AgentFolders = [.. (AgentFolders ?? []).Where(f => !string.IsNullOrWhiteSpace(f)).Distinct(Passenger.Core.PathNames.Comparer)],
         };
+        foreach (Setting setting in Declared.All)
+        {
+            clamped = setting.Clamp(clamped);
+        }
+        return clamped;
 
         // A shortcut kept under an action's former id is the action's now (one kept under its id now winning).
         static Dictionary<string, string[]> Readable(Dictionary<string, string[]>? shortcuts) =>

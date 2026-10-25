@@ -2,7 +2,6 @@ using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Passenger.App.Workspace;
 
 namespace Passenger.App.Mcp;
 
@@ -25,7 +24,7 @@ internal sealed class AppSocket : IDisposable
         Path = path;
         this.listener = listener;
         // Not held: it listens for as long as the process has a window agents reach.
-        _ = Task.Run(AcceptAsync);
+        IdeErrors.Observe(Task.Run(AcceptAsync));
     }
 
     public string Path { get; }
@@ -134,7 +133,7 @@ internal sealed class AppSocket : IDisposable
             {
                 return;
             }
-            _ = AnswerAsync(client);
+            IdeErrors.Observe(AnswerAsync(client));
         }
     }
 

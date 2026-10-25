@@ -1,5 +1,5 @@
-using Passenger.App.Vcs;
 using Passenger.Core;
+using Passenger.Vcs;
 
 namespace Passenger.App.History;
 

@@ -72,9 +72,9 @@ public sealed class LiveTreeView : DockPanel
 
     public LiveTreeView()
     {
-        SelectElement = ToolButtons.Toggle("Icon.SelectElement", "Select Element: point at a control in the app and click it");
+        SelectElement = ToolButtons.Toggle(IconKeys.SelectElement, "Select Element: point at a control in the app and click it");
         SelectElement.Click += (_, _) => PickRequested?.Invoke(this, SelectElement.IsChecked == true);
-        Button refresh = ToolButtons.Of("Icon.Rerun", "Refresh", () => RefreshRequested?.Invoke(this, EventArgs.Empty));
+        Button refresh = ToolButtons.Of(IconKeys.Rerun, "Refresh", () => RefreshRequested?.Invoke(this, EventArgs.Empty));
         status = new TextBlock { Classes = { "muted" }, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0), TextTrimming = TextTrimming.CharacterEllipsis };
         DockPanel top = new() { Margin = new Thickness(6, 0) };
         StackPanel buttons = new() { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center, Children = { SelectElement, refresh } };
@@ -85,7 +85,7 @@ public sealed class LiveTreeView : DockPanel
 
         bannerText = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
         banner = new Border { [DockProperty] = Dock.Top, Padding = new Thickness(10, 6), IsVisible = false, Child = bannerText };
-        banner.Bind(Border.BackgroundProperty, banner.GetResourceObservable("Passenger.Banner"));
+        banner.Bind(Border.BackgroundProperty, banner.GetResourceObservable(TokenKeys.Banner));
         Children.Add(banner);
 
         tree = new ListBox
@@ -336,7 +336,7 @@ public sealed class LiveTreeView : DockPanel
         title.Children.Add(new TextBlock { Text = details.Type, FontWeight = FontWeight.SemiBold, FontSize = 14 });
         if (details.Name is { Length: > 0 } name)
         {
-            title.Children.Add(Colored(new TextBlock { Text = $"#{name}", FontSize = 14 }, "Passenger.Syntax.Field"));
+            title.Children.Add(Colored(new TextBlock { Text = $"#{name}", FontSize = 14 }, TokenKeys.Syntax_Field));
         }
         heading.Children.Add(title);
         string classes = string.Join(" ", details.Classes.Select(c => "." + c).Concat(details.PseudoClasses));
@@ -483,7 +483,7 @@ public sealed class LiveTreeView : DockPanel
     {
         Element element = row.Element;
         PathIcon chevron = new() { Width = 10, Height = 10, Margin = new Thickness(0, 0, 4, 0), Opacity = row.Expands ? 1 : 0 };
-        void Point() => chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(row.IsExpanded ? "Icon.ChevronDown" : "Icon.ChevronRight"));
+        void Point() => chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(row.IsExpanded ? IconKeys.ChevronDown : IconKeys.ChevronRight));
         Point();
         row.FollowWhileShown(chevron, (_, _) => Point());
         chevron.PointerPressed += (_, e) =>
@@ -506,7 +506,7 @@ public sealed class LiveTreeView : DockPanel
         };
         if (element.Name is { Length: > 0 } name)
         {
-            line.Children.Add(Colored(new TextBlock { Text = $"#{name}", Margin = new Thickness(5, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center }, "Passenger.Syntax.Field"));
+            line.Children.Add(Colored(new TextBlock { Text = $"#{name}", Margin = new Thickness(5, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center }, TokenKeys.Syntax_Field));
         }
         if (element.Classes.Count > 0)
         {
@@ -531,7 +531,7 @@ public sealed class LiveTreeView : DockPanel
         {
             // A breakpoint's dot before a property that stops the app when it changes.
             Avalonia.Controls.Shapes.Ellipse dot = new() { Width = 8, Height = 8, Margin = new Thickness(0, 0, 5, 0), VerticalAlignment = VerticalAlignment.Center };
-            dot.Bind(Avalonia.Controls.Shapes.Shape.FillProperty, dot.GetResourceObservable("Passenger.Editor.Breakpoint"));
+            dot.Bind(Avalonia.Controls.Shapes.Shape.FillProperty, dot.GetResourceObservable(TokenKeys.Editor_Breakpoint));
             ToolTip.SetTip(dot, $"The app stops wherever {value.Name} is changed");
             DockPanel.SetDock(dot, Dock.Left);
             name.Children.Insert(0, dot);
@@ -567,7 +567,7 @@ public sealed class LiveTreeView : DockPanel
         block.Children.Add(top);
         block.Children.Add(new TextBlock { Text = $"{style.Kind} · {style.Origin}", Classes = { "muted" }, FontSize = 11, TextWrapping = TextWrapping.Wrap });
         TextBlock state = new() { Text = style.Applies ? "Applies" : $"Does not apply: {style.WhyNot}", FontSize = 12, TextWrapping = TextWrapping.Wrap };
-        Colored(state, style.Applies ? "Passenger.Test.Passed" : "Passenger.TextMuted");
+        Colored(state, style.Applies ? TokenKeys.Test_Passed : TokenKeys.TextMuted);
         block.Children.Add(state);
         foreach (SetterReport setter in style.Setters)
         {
@@ -635,7 +635,7 @@ public sealed class LiveTreeView : DockPanel
         grid.Children.Add(Side(edges.Right, 1, 2));
         grid.Children.Add(Side(edges.Bottom, 2, 1));
         Border box = new() { BorderThickness = new Thickness(1), Padding = new Thickness(2), Child = grid };
-        box.Bind(Border.BorderBrushProperty, box.GetResourceObservable("Passenger.Divider"));
+        box.Bind(Border.BorderBrushProperty, box.GetResourceObservable(TokenKeys.Divider));
         return box;
     }
 
@@ -654,7 +654,7 @@ public sealed class LiveTreeView : DockPanel
             Padding = new Thickness(10, 6),
             Child = new TextBlock { Text = text, FontFamily = Fonts.Mono, FontSize = 12, HorizontalAlignment = HorizontalAlignment.Center },
         };
-        content.Bind(Border.BackgroundProperty, content.GetResourceObservable("Passenger.Selected"));
+        content.Bind(Border.BackgroundProperty, content.GetResourceObservable(TokenKeys.Selected));
         return content;
     }
 

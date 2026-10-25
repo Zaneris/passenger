@@ -49,7 +49,26 @@ internal static class SymbolNames
             {
                 return new SymbolsFound([], 0);
             }
-            foreach (ISymbol symbol in await SymbolFinder.FindSourceDeclarationsAsync(solution, Bare(path[^1]), ignoreCase: false, cancel).ConfigureAwait(false))
+            // An indexer is this[], its parameters' types inside the brackets, or Item, its metadata's name where no [IndexerName] gives another.
+            string last = path[^1];
+            bool bracketed = last.StartsWith("this[", StringComparison.Ordinal) && last.EndsWith(']');
+            if (bracketed && last[5..^1].Trim().Length > 0)
+            {
+                parameters ??= [.. Split(last[5..^1], ',').Select(Normal)];
+            }
+            if (bracketed || last == "Item")
+            {
+                // Its declaration's index names it this, its compilation's member names this[].
+                foreach (ISymbol symbol in await SymbolFinder.FindSourceDeclarationsAsync(solution, n => n is "this" or WellKnownMemberNames.Indexer, SymbolFilter.Member, cancel)
+                    .ConfigureAwait(false))
+                {
+                    if (symbol is IPropertySymbol { IsIndexer: true } indexer && (bracketed || indexer.MetadataName == last) && In(indexer, path) && Takes(indexer, parameters))
+                    {
+                        found.Add(indexer);
+                    }
+                }
+            }
+            foreach (ISymbol symbol in bracketed ? [] : await SymbolFinder.FindSourceDeclarationsAsync(solution, Bare(last), ignoreCase: false, cancel).ConfigureAwait(false))
             {
                 if (In(symbol, path) && Takes(symbol, parameters))
                 {

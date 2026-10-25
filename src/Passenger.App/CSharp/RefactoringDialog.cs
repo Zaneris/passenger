@@ -27,9 +27,9 @@ public abstract class RefactoringDialog : Window
 
         NextButton = new Button { Content = "Next", IsDefault = true, Classes = { "primary" } };
         Button cancel = new() { Content = "Cancel", IsCancel = true };
-        NextButton.Click += (_, _) => _ = Next();
+        NextButton.Click += (_, _) => IdeErrors.Observe(Next());
         cancel.Click += (_, _) => Close(false);
-        problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable("Passenger.Error"));
+        problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable(TokenKeys.Error));
 
         StackPanel header = new()
         {
@@ -42,7 +42,7 @@ public abstract class RefactoringDialog : Window
             },
         };
         Border top = new() { BorderThickness = new Thickness(0, 0, 0, 1), Child = header };
-        top.Bind(Border.BorderBrushProperty, top.GetResourceObservable("Passenger.Divider"));
+        top.Bind(Border.BorderBrushProperty, top.GetResourceObservable(TokenKeys.Divider));
 
         Border bottom = DialogFooter.Bar(DialogFooter.Of(NextButton, cancel), problem);
         // Inset as the page above it is, so Next ends where its fields do and a problem starts where its labels do.

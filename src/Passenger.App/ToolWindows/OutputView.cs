@@ -42,12 +42,12 @@ public sealed class OutputView : DockPanel
         Document = new TextDocument();
         Sink = new ConsoleSink(Flush, limit);
         colours.Links = Links;
-        rerun = ToolButtons.Of("Icon.Rerun", "Rerun");
-        stop = ToolButtons.Of("Icon.Stop", "Stop");
-        hotReload = ToolButtons.Of("Icon.HotReload", "Apply Hot Reload Changes");
-        ((PathIcon)hotReload.Content!).Bind(PathIcon.ForegroundProperty, hotReload.GetResourceObservable("Passenger.HotReload"));
+        rerun = ToolButtons.Of(IconKeys.Rerun, "Rerun");
+        stop = ToolButtons.Of(IconKeys.Stop, "Stop");
+        hotReload = ToolButtons.Of(IconKeys.HotReload, "Apply Hot Reload Changes");
+        ((PathIcon)hotReload.Content!).Bind(PathIcon.ForegroundProperty, hotReload.GetResourceObservable(TokenKeys.HotReload));
         hotReload.IsVisible = false;
-        Button clear = ToolButtons.Of("Icon.Clear", "Clear");
+        Button clear = ToolButtons.Of(IconKeys.Clear, "Clear");
         stop.IsEnabled = false;
         rerun.Click += (_, _) => RerunClicked?.Invoke(this, EventArgs.Empty);
         stop.Click += (_, _) => StopClicked?.Invoke(this, EventArgs.Empty);
@@ -359,7 +359,7 @@ public sealed class OutputView : DockPanel
         }
         else if (AppActions.Keymap().ActionFor(new Shortcut(Keystroke.From(e))) == EditorActions.Paste)
         {
-            _ = PasteAsync();
+            IdeErrors.Observe(PasteAsync());
         }
         else
         {

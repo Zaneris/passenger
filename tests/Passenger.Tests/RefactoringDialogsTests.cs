@@ -266,9 +266,7 @@ public sealed class RefactoringDialogsTests
 
     private MainWindow Open(string file)
     {
-        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder, autosaves: false);
         window.OpenFile(PathOf(file));
         Ui.Settle();
         Assert.True(window.CSharpService?.IsReady, window.CSharpService?.State);

@@ -73,7 +73,7 @@ public sealed class ResponseView : DockPanel
         shown.IsVisible = true;
         empty.IsVisible = false;
         summary.Text = what;
-        Paint(summary, "Passenger.TextMuted");
+        Paint(summary, TokenKeys.TextMuted);
         criteria.Children.Clear();
         text.Text = string.Empty;
     }
@@ -82,7 +82,7 @@ public sealed class ResponseView : DockPanel
     public void Refused(string why)
     {
         Sending(why);
-        Paint(summary, "Passenger.Test.Failed");
+        Paint(summary, TokenKeys.Test_Failed);
     }
 
     public void Show(EndpointResponse response, IReadOnlyList<ExpectationResult> results)
@@ -95,22 +95,22 @@ public sealed class ResponseView : DockPanel
         summary.Text = response.Error is { } error
             ? $"Failed: {error} ({Milliseconds(response.Elapsed)})"
             : $"{response.Status} {response.Reason}   {Milliseconds(response.Elapsed)}   {Size(response.Size)}{(response.Cut ? ", the rest unread" : string.Empty)}";
-        Paint(summary, passed ? "Passenger.Test.Passed" : "Passenger.Test.Failed");
+        Paint(summary, passed ? TokenKeys.Test_Passed : TokenKeys.Test_Failed);
         criteria.Children.Clear();
         foreach (string note in response.Notes)
         {
             TextBlock said = new() { Text = note, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 4) };
-            Paint(said, "Passenger.TextMuted");
+            Paint(said, TokenKeys.TextMuted);
             criteria.Children.Add(said);
         }
         foreach (ExpectationResult result in results)
         {
             PathIcon mark = new() { Width = 12, Height = 12, Margin = new Thickness(0, 0, 6, 0) };
-            mark.Bind(PathIcon.DataProperty, mark.GetResourceObservable(result.Passed ? "Icon.TestPassed" : "Icon.TestFailed"));
-            Paint(mark, result.Passed ? "Passenger.Test.Passed" : "Passenger.Test.Failed");
+            mark.Bind(PathIcon.DataProperty, mark.GetResourceObservable(result.Passed ? IconKeys.TestPassed : IconKeys.TestFailed));
+            Paint(mark, result.Passed ? TokenKeys.Test_Passed : TokenKeys.Test_Failed);
             TextBlock what = new() { Text = result.Expectation.ToString(), FontFamily = CSharp.Fonts.Mono, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
             TextBlock had = new() { Text = $"  got {result.Actual}", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-            Paint(had, "Passenger.TextMuted");
+            Paint(had, TokenKeys.TextMuted);
             // What the answer had takes what the row leaves, so a narrow pane ends it in an ellipsis rather than cutting it.
             DockPanel.SetDock(mark, Dock.Left);
             DockPanel.SetDock(what, Dock.Left);

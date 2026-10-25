@@ -6,7 +6,11 @@ public static class Exceptions
 {
 	public static void Test(ExceptionToThrow exceptionToThrow)
 	{
-		if (exceptionToThrow is ExceptionToThrow.None) return;
+		if (exceptionToThrow is ExceptionToThrow.None)
+		{
+			return;
+		}
+
 		try
 		{
 			if (exceptionToThrow is ExceptionToThrow.Normal)
@@ -15,7 +19,7 @@ public static class Exceptions
 			}
 			else if (exceptionToThrow is ExceptionToThrow.ExternalCode)
 			{
-				var myInt = int.Parse("x");
+				int myInt = int.Parse("x");
 			}
 			else if (exceptionToThrow is ExceptionToThrow.HandledWithinExternalCode)
 			{
@@ -24,7 +28,7 @@ public static class Exceptions
 			}
 			else if (exceptionToThrow is ExceptionToThrow.UserUnhandled)
 			{
-				var numbers = new List<int> { 3, 1, 2 };
+				List<int> numbers = new List<int> { 3, 1, 2 };
 				// List.Sort catches the comparer exception in library code before propagating a wrapper to user code.
 				numbers.Sort((_, _) => throw new InvalidOperationException("User-unhandled test exception"));
 			}

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using Passenger.App.Mcp;
 using Passenger.App;
 
 namespace Passenger.Tests;
@@ -16,30 +17,30 @@ public sealed class McpMigrationsTests : McpRig
         string folder = ShopApp.Make(design: false, tool: null);
         await using McpClient client = await Start(["--mcp", folder], languageServer: false);
 
-        CallToolResult refused = await Result(client, "ide_action", new() { ["action"] = AppActions.AddMigration, ["input"] = "Initial" });
+        CallToolResult refused = await Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.AddMigration, ["input"] = "Initial" });
         string said = Text(refused);
         Assert.True(refused.IsError == true && said.Contains("dotnet ef is not installed here", StringComparison.Ordinal)
             && said.Contains("code_actions on Shop.csproj:1:1", StringComparison.Ordinal), $"Add Migration with no tool answered: {said}");
 
         string pin = $"Pin the Local dotnet-ef to {ShopApp.Version}";
         string design = $"Add Microsoft.EntityFrameworkCore.Design {ShopApp.Version}";
-        string[] offered = [.. (await Call(client, "code_actions", new() { ["path"] = "Shop.csproj", ["line"] = 1, ["column"] = 1 })).EnumerateArray().Select(a => a.GetString()!)];
+        string[] offered = [.. (await Call(client, McpTools.CodeActions, new() { ["path"] = "Shop.csproj", ["line"] = 1, ["column"] = 1 })).EnumerateArray().Select(a => a.GetString()!)];
         Assert.Contains($"{pin} [quickfix]", offered);
         Assert.Contains($"{design} [quickfix]", offered);
-        Assert.Contains("dotnet-tools.json", Text(await Call(client, "apply_code_action", new() { ["path"] = "Shop.csproj", ["line"] = 1, ["column"] = 1, ["title"] = pin })),
+        Assert.Contains("dotnet-tools.json", Text(await Call(client, McpTools.ApplyCodeAction, new() { ["path"] = "Shop.csproj", ["line"] = 1, ["column"] = 1, ["title"] = pin })),
             StringComparison.Ordinal);
-        Assert.Contains("Shop.csproj", Text(await Call(client, "apply_code_action", new() { ["path"] = "Shop.csproj", ["line"] = 1, ["column"] = 1, ["title"] = design })),
+        Assert.Contains("Shop.csproj", Text(await Call(client, McpTools.ApplyCodeAction, new() { ["path"] = "Shop.csproj", ["line"] = 1, ["column"] = 1, ["title"] = design })),
             StringComparison.Ordinal);
 
-        string added = Text(await Call(client, "ide_action", new() { ["action"] = AppActions.AddMigration, ["input"] = "Initial" }));
+        string added = Text(await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.AddMigration, ["input"] = "Initial" }));
         Assert.True(added.Contains("Added migration Initial", StringComparison.Ordinal) && added.Contains("_Initial: pending", StringComparison.Ordinal),
             $"Add Migration answered: {added}");
-        string updated = Text(await Call(client, "ide_action", new() { ["action"] = AppActions.UpdateDatabase }));
+        string updated = Text(await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.UpdateDatabase }));
         Assert.Contains("_Initial: applied", updated, StringComparison.Ordinal);
-        CallToolResult nameless = await Result(client, "ide_action", new() { ["action"] = AppActions.AddMigration });
+        CallToolResult nameless = await Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.AddMigration });
         Assert.True(nameless.IsError == true && Text(nameless).Contains("takes the migration's name as input", StringComparison.Ordinal),
             $"Add Migration with no name answered: {Text(nameless)}");
-        string script = Text(await Call(client, "ide_action", new() { ["action"] = AppActions.ScriptMigrations, ["input"] = "..Initial" }));
+        string script = Text(await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.ScriptMigrations, ["input"] = "..Initial" }));
         string file = script.Split(" into ", 2)[1].Split('\n')[0];
         Assert.Contains("CREATE TABLE \"Products\"", File.ReadAllText(file), StringComparison.Ordinal);
     }

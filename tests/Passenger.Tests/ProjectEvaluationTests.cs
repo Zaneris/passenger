@@ -1,9 +1,9 @@
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Explorer;
-using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Host;
+using Passenger.Workspace;
 
 namespace Passenger.Tests;
 
@@ -261,10 +261,7 @@ public sealed class ProjectEvaluationTests : IDisposable
     /// evaluation, and the server would restore the solution's packages, from nuget.org where the package cache lacks them.</summary>
     private MainWindow Open()
     {
-        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
-        window.Show();
-        window.OpenFolder(Path.Combine(folder, "Shop.slnx"));
-        Ui.Settle();
+        MainWindow window = Ui.OpenFolder(Path.Combine(folder, "Shop.slnx"), languageServer: false);
         return window;
     }
 
@@ -310,10 +307,5 @@ public sealed class ProjectEvaluationTests : IDisposable
             ?? throw new InvalidOperationException($"The Explorer shows no {kind} {name}: [{string.Join(", ", tree.Rows.Select(r => r.Name))}]");
     }
 
-    private void Write(string relative, string text)
-    {
-        string path = Path.Combine(folder, relative);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, text);
-    }
+    private void Write(string relative, string text) => TestFolders.Write(folder, relative, text);
 }

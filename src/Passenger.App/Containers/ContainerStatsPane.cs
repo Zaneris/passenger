@@ -45,8 +45,8 @@ public sealed class ContainerStatsPane : DockPanel
 
     private readonly Func<ContainerEngine> engine;
     private readonly StackPanel table = new() { Margin = new Thickness(8, 6) };
-    private readonly Sparkline cpu = new("Passenger.Link");
-    private readonly Sparkline memory = new("Passenger.Test.Passed");
+    private readonly Sparkline cpu = new(TokenKeys.Link);
+    private readonly Sparkline memory = new(TokenKeys.Test_Passed);
     private readonly TextBlock waiting = new() { Classes = { "emptyText" }, Text = "Waiting for the engine's first reading…" };
     private readonly Dictionary<string, ContainerStatsSample> latest = new(StringComparer.Ordinal);
     private Process? streaming;
@@ -117,7 +117,7 @@ public sealed class ContainerStatsPane : DockPanel
             waiting.Text = failed.Message;
             return;
         }
-        _ = StreamAsync(start, names, ++streams);
+        IdeErrors.Observe(StreamAsync(start, names, ++streams));
     }
 
     /// <summary>Starts a stream, its fork off the window's thread (#441); one let go of as it started (another row chosen,
@@ -148,7 +148,7 @@ public sealed class ContainerStatsPane : DockPanel
         forking = false;
         streaming = process;
         // Not background work: it streams for as long as the tab is shown, which no screenshot or settling test waits for.
-        _ = Task.Run(async () =>
+        IdeErrors.Observe(Task.Run(async () =>
         {
             try
             {
@@ -171,7 +171,7 @@ public sealed class ContainerStatsPane : DockPanel
             {
                 // Stopped under its read.
             }
-        });
+        }));
     }
 
     /// <summary>A stream's last line that says something, read to its end.</summary>

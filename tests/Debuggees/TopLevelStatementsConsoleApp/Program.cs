@@ -1,5 +1,5 @@
 ﻿
-var test = 4;
+int test = 4;
 test = 5;
 
-var myLambda = (int x) => x + test;
+Func<int, int> myLambda = (int x) => x + test;

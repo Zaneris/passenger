@@ -118,7 +118,7 @@ public partial class MainWindow
         };
         model.LeftUnstarted = (path, resource) => next.Aspire.FindApp(path)?.IsLeftUnstarted(resource) == true;
         model.TelemetryProvider = path => next.Aspire.FindApp(path)?.Telemetry;
-        model.SelectContainer = id => _ = ShowAspireContainerAsync(next, id);
+        model.SelectContainer = id => IdeErrors.Observe(ShowAspireContainerAsync(next, id));
         if (aspireDisplayChanged is not null)
         {
             Dock.LayoutChanged -= aspireDisplayChanged;

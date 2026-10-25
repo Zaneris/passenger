@@ -4,6 +4,7 @@ using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
+using Passenger.Workspace;
 using Passenger.Xaml.Features;
 using A = Passenger.App.AppActions;
 
@@ -38,7 +39,7 @@ public partial class MainWindow
         Editors.Opened += (_, document) =>
         {
             if (ConfigurationFiles.IsSettings(document.Path) || ConfigurationFiles.SecretsIdOf(document.Path) is not null
-                || Path.GetFileName(document.Path).Equals("launchSettings.json", StringComparison.OrdinalIgnoreCase))
+                || Path.GetFileName(document.Path).Equals(Run.LaunchProfile.SettingsFile, StringComparison.OrdinalIgnoreCase))
             {
                 document.Text.Changed += (_, _) => configurationTyped.Restart();
             }

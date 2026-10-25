@@ -314,12 +314,7 @@ public sealed class NavigationTests : IDisposable
         window.Close();
     }
 
-    private void Write(string relative, string text)
-    {
-        string path = Path.Combine(folder, relative);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, text);
-    }
+    private void Write(string relative, string text) => TestFolders.Write(folder, relative, text);
 
     private MainWindow Open() => Ui.OpenFolder(folder);
 }

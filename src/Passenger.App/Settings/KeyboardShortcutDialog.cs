@@ -40,8 +40,8 @@ public sealed class KeyboardShortcutDialog : Window
         cancel.Click += (_, _) => Close(null);
 
         PathIcon warning = new() { VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 1, 8, 0) };
-        warning.Bind(PathIcon.DataProperty, warning.GetResourceObservable("Icon.Problems"));
-        warning.Bind(PathIcon.ForegroundProperty, warning.GetResourceObservable("Passenger.Warning"));
+        warning.Bind(PathIcon.DataProperty, warning.GetResourceObservable(IconKeys.Problems));
+        warning.Bind(PathIcon.ForegroundProperty, warning.GetResourceObservable(TokenKeys.Warning));
         DockPanel conflicts = new() { IsVisible = false, Margin = new Thickness(0, 4, 0, 0) };
         DockPanel.SetDock(warning, Dock.Left);
         conflicts.Children.Add(warning);

@@ -1,4 +1,6 @@
 using Passenger.Core;
+using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.App.Workspace;
 
@@ -446,7 +448,7 @@ public sealed class FolderWatcher : IDisposable
                 bool saved = ownWrites.TryGetValue(canonical, out DateTime at) && DateTime.UtcNow - at < OwnWriteHeard;
                 structure |= created && !saved;
                 projects |= ProjectExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase)
-                    || Path.GetFileName(path).Equals("launchSettings.json", StringComparison.OrdinalIgnoreCase);
+                    || Path.GetFileName(path).Equals(Run.LaunchProfile.SettingsFile, StringComparison.OrdinalIgnoreCase);
             }
             if (pending)
             {
@@ -456,11 +458,11 @@ public sealed class FolderWatcher : IDisposable
         }
         // Held while the changes gather, then by the crossing, which lets go of what it can never deliver.
         IDisposable held = BackgroundWork.Scope();
-        _ = Task.Delay(Gather).ContinueWith(_ =>
+        IdeErrors.Observe(Task.Delay(Gather).ContinueWith(_ =>
         {
             UiThread.Post(Deliver);
             held.Dispose();
-        }, TaskScheduler.Default);
+        }, TaskScheduler.Default));
     }
 
     private void Deliver()

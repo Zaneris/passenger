@@ -10,6 +10,7 @@ using Passenger.App.Vcs;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
+using Passenger.Vcs;
 
 namespace Passenger.Tests;
 
@@ -115,6 +116,67 @@ public sealed class VcsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>The Commit window's Show Diff names the keys it takes there, Compare Files' in Visual Studio's keymap
+    /// (Duplicate's off macOS), and a diff's Settings Rider's Ctrl+Shift+D (Cmd+Shift+D); each key opens what it names, and
+    /// a key the person sets for either is named and opens it in place of the keymap's.</summary>
+    [AvaloniaFact]
+    public void The_commit_windows_Show_Diff_and_a_diffs_Settings_name_and_take_the_keys_of_the_keymap_in_force()
+    {
+        File.WriteAllText(Path.Combine(folder, "Shop.cs"), Original.Replace("int count", "long count", StringComparison.Ordinal));
+        string cmd = OperatingSystem.IsMacOS() ? "meta" : "control";
+        MainWindow window = Open();
+        try
+        {
+            window.Perform(AppActions.ShowCommit);
+            CommitView commit = window.CommitView;
+            Ui.Landed(() => commit.Rows.OfType<CommitRow>().Any(r => r.Change.Name == "Shop.cs"), "Shop.cs listed as changed");
+            Button showDiff = commit.GetVisualDescendants().OfType<Button>().Single(b => (ToolTip.GetTip(b) as string)?.StartsWith("Show Diff", StringComparison.Ordinal) == true);
+            Assert.Equal($"Show Diff ({Shortcut.Parse($"{cmd} D").Display()})", ToolTip.GetTip(showDiff));
+
+            DiffWindow diff = DiffFromCommit(window, $"{cmd} D");
+            Assert.Equal($"Settings ({Shortcut.Parse($"{cmd} shift D").Display()})", ToolTip.GetTip(diff.View.SettingsButton));
+            SettingsOpen(diff, $"{cmd} shift D");
+            diff.Close();
+            Ui.Settle();
+
+            window.ApplySettings(window.Settings with
+            {
+                Shortcuts = new() { [AppActions.ShowDiff] = [$"{cmd} alt D"], [AppActions.DiffSettings] = [$"{cmd} alt shift D"] },
+            });
+            Ui.Settle();
+            Assert.Equal($"Show Diff ({Shortcut.Parse($"{cmd} alt D").Display()})", ToolTip.GetTip(showDiff));
+            diff = DiffFromCommit(window, $"{cmd} alt D");
+            Assert.Equal($"Settings ({Shortcut.Parse($"{cmd} alt shift D").Display()})", ToolTip.GetTip(diff.View.SettingsButton));
+            diff.View.Right.Focus();
+            Ui.Press(diff, $"{cmd} shift D");
+            Assert.False(diff.View.SettingsButton.ContextMenu?.IsOpen, $"{cmd} shift D still opened the diff's settings, the person having set {cmd} alt shift D");
+            SettingsOpen(diff, $"{cmd} alt shift D");
+            diff.Close();
+        }
+        finally
+        {
+            window.ApplySettings(new Passenger.App.Settings.AppSettings());
+            window.Close();
+        }
+
+        static DiffWindow DiffFromCommit(MainWindow window, string keys)
+        {
+            ListBox changes = Find(window.CommitView, window.CommitView.Rows);
+            Ui.Click(Ui.Row(changes, window.CommitView.Rows.OfType<CommitRow>().First(r => r.Change.Name == "Shop.cs")));
+            Ui.Press(window, keys);
+            Ui.Landed(() => window.Frontmost is DiffWindow, $"the diff {keys} in the Commit window opens, as its Show Diff names");
+            return (DiffWindow)window.Frontmost;
+        }
+
+        static void SettingsOpen(DiffWindow diff, string keys)
+        {
+            diff.View.Right.Focus();
+            Ui.Press(diff, keys);
+            Assert.True(diff.View.SettingsButton.ContextMenu?.IsOpen, $"{keys}, which the diff's Settings names, did not open them");
+            diff.View.SettingsButton.ContextMenu!.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void A_renamed_file_keeps_its_change_bars_against_what_the_last_commit_has_where_it_was()
     {
@@ -187,7 +249,7 @@ public sealed class VcsTests : IDisposable
     public void A_file_saved_as_git_reads_the_folder_is_listed_as_changed_and_its_saves_temporary_file_never_is()
     {
         MainWindow window = Open();
-        string saving = Path.Combine(folder, "Shop.cs" + Passenger.App.Workspace.FileText.SaveSuffix);
+        string saving = Path.Combine(folder, "Shop.cs" + FileText.SaveSuffix);
         List<string> listed = [];
         window.Vcs.Changed += (_, _) => listed.AddRange(window.Vcs.Changes.Select(c => c.Name));
         window.EditorArea.CodeEditor.GoTo(new TextPosition(0, 0));
@@ -565,9 +627,7 @@ public sealed class VcsTests : IDisposable
     {
         Git("commit", "-q", "--allow-empty", "-m", "Second commit's subject");
         // As wide as a 1024x768 desktop leaves a maximized window, the Git window under the editors with its branches.
-        MainWindow window = new() { Width = 957, Height = 699 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder, width: 957, height: 699);
         GitLogView log = window.GitLog;
         window.Perform(AppActions.ShowGit);
         Ui.Landed(() => log.Rows.Count == 2, "the two commits");
@@ -636,9 +696,7 @@ public sealed class VcsTests : IDisposable
         File.WriteAllText(Path.Combine(folder, "Shop.cs"), Original.Replace("int count", "long count", StringComparison.Ordinal));
         Git("commit", "-q", "-am", "Long");
 
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(clone);
+        MainWindow window = Ui.OpenFolder(clone);
         window.OpenFile(Path.Combine(clone, "Shop.cs"));
         Ui.Settle();
         Assert.Equal("main", window.Vcs.Branch);
@@ -783,7 +841,7 @@ public sealed class VcsTests : IDisposable
     }
 
     private static Avalonia.Media.Color Modified() =>
-        Avalonia.Controls.ResourceNodeExtensions.TryFindResource(Avalonia.Application.Current!, "Passenger.Vcs.Modified", Avalonia.Styling.ThemeVariant.Dark, out object? brush) && brush is Avalonia.Media.ISolidColorBrush solid
+        Avalonia.Controls.ResourceNodeExtensions.TryFindResource(Avalonia.Application.Current!, TokenKeys.Vcs_Modified, Avalonia.Styling.ThemeVariant.Dark, out object? brush) && brush is Avalonia.Media.ISolidColorBrush solid
             ? solid.Color
             : throw new InvalidOperationException("The theme has no modified bar's colour");
 
@@ -961,7 +1019,7 @@ public sealed class VcsTests : IDisposable
         Ui.Landed(() => !window.Vcs.IsBusy, "the revert's end");
 
         Ui.Landed(() => log.Rows.Any(r => r.Commit.Subject == "First"), "the first commit in the log");
-        Passenger.App.Vcs.CommitInfo first = log.Rows.First(r => r.Commit.Subject == "First").Commit;
+        CommitInfo first = log.Rows.First(r => r.Commit.Subject == "First").Commit;
         log.Select(first);
         Ui.ChooseFromMenu(commits, "Copy Revision Number");
         Ui.WaitFor(() => Ui.Clipboard(window) == first.Hash, "the hash on the clipboard");
@@ -1074,7 +1132,7 @@ public sealed class VcsTests : IDisposable
         Assert.Equal(chosen, window.ExplorerView.SelectedNodes);
         Assert.Equal(loads, window.GitLog.Loads);
         Assert.Equal(3, window.FileIndex.Files.Count);
-        Assert.Empty(Directory.EnumerateFiles(folder, "*" + Passenger.App.Workspace.FileText.SaveSuffix, SearchOption.AllDirectories));
+        Assert.Empty(Directory.EnumerateFiles(folder, "*" + FileText.SaveSuffix, SearchOption.AllDirectories));
         window.Close();
     }
 
@@ -1334,9 +1392,7 @@ public sealed class VcsTests : IDisposable
 
     private MainWindow Open()
     {
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder);
         window.OpenFile(Path.Combine(folder, "Shop.cs"));
         Ui.Settle();
         return window;

@@ -183,10 +183,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
             "using Xunit;\n\nnamespace Frameworks.Tests;\n\npublic class RuntimeTests\n{\n    [Fact]\n    public void Runs_on_eleven() => Assert.Equal(11, Environment.Version.Major);\n\n" +
             "    [Fact]\n    public void Runs_anywhere() { }\n}\n");
         Restore.Run(Path.Combine(solution, "Frameworks.Tests"));
-        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
-        window.Show();
-        window.OpenFolder(solution);
-        Ui.Settle();
+        MainWindow window = Ui.OpenFolder(solution, languageServer: false);
 
         Assert.True(window.Perform(AppActions.RunAllTests));
         Ui.WaitFor(() => !window.Tests.IsBusy, "the run of every test", TimeSpan.FromSeconds(180));
@@ -264,9 +261,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
             }
             paths.Add(Write(solution, $"File{i}Tests.cs", file.Append("}\n").ToString()));
         }
-        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false };
-        window.Show();
-        window.OpenFolder(solution);
+        MainWindow window = Ui.OpenFolder(solution, autosaves: false);
         foreach (string path in paths)
         {
             window.OpenFile(path);
@@ -313,10 +308,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         Write(solution, "slow/Slow.Tests/SlowTests.cs", "using Xunit;\n\nnamespace Slow.Tests;\n\npublic class SlowTests\n{\n    [Fact]\n    public void Patient() { }\n}\n");
         Write(solution, "Suite.slnx", "<Solution>\n  <Folder Name=\"/tests/\">\n    <Project Path=\"tests/Fast.Tests/Fast.Tests.csproj\" />\n  </Folder>\n  <Project Path=\"slow/Slow.Tests/Slow.Tests.csproj\" />\n</Solution>\n");
         Restore.Run(Path.Combine(solution, "Suite.slnx"));
-        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
-        window.Show();
-        window.OpenFolder(solution);
-        Ui.Settle();
+        MainWindow window = Ui.OpenFolder(solution, languageServer: false);
 
         Passenger.App.Explorer.ExplorerNode folder = window.ExplorerView.Tree.Rows.First(r => r.Kind == Passenger.App.Explorer.NodeKind.SolutionFolder && r.Name == "tests");
         Ui.ClickRow(window, folder);
@@ -347,9 +339,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
             "  <Project Path=\"NUnit.Tests/NUnit.Tests.csproj\" />\n  <Project Path=\"MSTest.Tests/MSTest.Tests.csproj\" />\n</Solution>\n");
 
         // No C# language server, whose restore would ask nuget.org for the floating NUnit and MSTest versions every run.
-        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
-        window.Show();
-        window.OpenFolder(solution);
+        MainWindow window = Ui.OpenFolder(solution, languageServer: false);
         Tree(window);
         // A theory is one test, and an abstract class's tests show only under the classes deriving from it.
         Assert.Equal(
@@ -491,9 +481,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         Write(solution, "Tests.slnx", "<Solution>\n  <Project Path=\"Xunit.Tests/Xunit.Tests.csproj\" />\n  <Project Path=\"NUnit.Tests/NUnit.Tests.csproj\" />\n" +
             "  <Project Path=\"MSTest.Tests/MSTest.Tests.csproj\" />\n</Solution>\n");
         // No C# language server, nor its restore of the floating versions from nuget.org: the categories are read from code.
-        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
-        window.Show();
-        window.OpenFolder(solution);
+        MainWindow window = Ui.OpenFolder(solution, languageServer: false);
         Tree(window);
         Ui.WaitFor(() => Method(window, "Keeps") is not null, "the tests read from the code");
 
@@ -718,10 +706,7 @@ public sealed class UnitTestsResponsivenessTests : UnitTestsFolders
         Write(solution, "Tests.slnx", "<Solution>\n  <Project Path=\"Many.Tests/Many.Tests.csproj\" />\n  <Project Path=\"Few.Tests/Few.Tests.csproj\" />\n</Solution>\n");
         Restore.Run(Path.Combine(solution, "Tests.slnx"));
 
-        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
-        window.Show();
-        window.OpenFolder(solution);
-        Ui.Settle();
+        MainWindow window = Ui.OpenFolder(solution, languageServer: false);
         Assert.True(window.Perform(AppActions.RunAllTests));
         Ui.WaitFor(() => !window.Tests.IsBusy && Method(window, "Case_2999")?.State == TestState.Passed, "the first run of every test", TimeSpan.FromSeconds(180));
         Assert.Equal(3002, window.Tests.Tree.Roots.SelectMany(r => r.Methods).Count(m => m.State is TestState.Passed or TestState.Failed));
@@ -830,9 +815,7 @@ public sealed class UnitTestsResponsivenessTests : UnitTestsFolders
         // The least an Enter above the tests allocated on the UI thread, and whether the tree's methods stayed.
         (long Least, bool Kept) Enters(string solution, int tests)
         {
-            MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
-            window.Show();
-            window.OpenFolder(solution);
+            MainWindow window = Ui.OpenFolder(solution, languageServer: false);
             Tree(window);
             Ui.WaitFor(() => window.Tests.Tree.Roots.Sum(r => r.Methods.Count()) == tests, $"the tree's {tests} tests");
             window.OpenFile(Path.Combine(solution, "Few.Tests", "FewTests.cs"));
@@ -979,13 +962,7 @@ public abstract class UnitTestsFolders : IDisposable
 
     protected static string Text(CodeEditor editor) => editor.Document.Snapshot.ToString();
 
-    protected static string Write(string root, string relative, string text)
-    {
-        string path = Path.Combine(root, relative);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, text);
-        return path;
-    }
+    protected static string Write(string root, string relative, string text) => TestFolders.Write(root, relative, text);
 
     protected static ListBox Tree(MainWindow window)
     {
@@ -1009,18 +986,11 @@ public abstract class UnitTestsFolders : IDisposable
     /// running and debugging tests ask nothing of.</summary>
     protected MainWindow Open()
     {
-        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
-        window.Show();
-        window.OpenFolder(Folder);
+        MainWindow window = Ui.OpenFolder(Folder, languageServer: false);
         window.OpenFile(Source);
         Ui.Settle();
         return window;
     }
 
-    protected string Write(string relative, string text)
-    {
-        string path = Path.Combine(PathNames.Canonical(Folder), relative);
-        File.WriteAllText(path, text);
-        return path;
-    }
+    protected string Write(string relative, string text) => TestFolders.Write(PathNames.Canonical(Folder), relative, text);
 }

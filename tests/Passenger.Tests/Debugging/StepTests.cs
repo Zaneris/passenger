@@ -8,13 +8,26 @@ namespace Passenger.Tests.Debugging;
 public class StepTests(ITestOutputHelper testOutputHelper)
 {
     private const string Looping = "LoopingConsoleApp";
+    private static readonly int LogWritten = Debuggees.Line("DebuggableConsoleApp", "MyClass.cs", "Console.WriteLine($\"Log_MyMethod\");");
+    private static readonly int StaticCalled = Debuggees.Line("DebuggableConsoleApp", "MyClass.cs", "AnotherClass.MyStaticMethod();");
+    private static readonly int AnotherVarSet = Debuggees.Line("DebuggableConsoleApp", "MyClass.cs", "string anotherVar = \"asdf\";");
+    private static readonly int StaticOpened = Debuggees.Line("DebuggableConsoleApp", "Namespace1/AnotherClass.cs", "public static List<int> MyStaticMethod()") + 1;
+    private static readonly int TestSet = Debuggees.Line("DebuggableConsoleApp", "Namespace1/AnotherClass.cs", "int test = 4;");
+    private static readonly int ListMade = Debuggees.Line("DebuggableConsoleApp", "Namespace1/AnotherClass.cs", "List<int> myList = [1, 4, 8, 11];");
+    private static readonly int ListCopied = Debuggees.Line("DebuggableConsoleApp", "Namespace1/AnotherClass.cs", "List<int> myResult2 = myList.ToList();");
+    private static readonly int Returned = Debuggees.Line("DebuggableConsoleApp", "Namespace1/AnotherClass.cs", "return myResult;");
+    private static readonly int MyMethodCalled = Debuggees.Line("DebuggableConsoleApp", "myClass.MyMethod(13, 6);");
+    private static readonly int NoMembersCalled = Debuggees.Line("DebuggableConsoleApp", "myClassNoMembers.MyMethod(42);");
+    private static readonly int HitConditionCalled = Debuggees.Line("DebuggableConsoleApp", "hitConditionClass.Test();");
+    private static readonly int Operated = Debuggees.Line("DebuggableConsoleApp", "MultilineSwitchInMethodCall.cs", "Result result = DoOperation();");
+    private static readonly int Switched = Debuggees.Line("DebuggableConsoleApp", "MultilineSwitchInMethodCall.cs", "HandleOperationResult(result switch");
 
     /// <summary>Just My Code on, stopped in MyClass.MyMethod: a step of a thread the program does not have is refused and
     /// the thread that stopped steps on; a frame or value from before a step is refused; Step Into, Out and Over land where
     /// they should on the thread that stopped, a breakpoint inside a call stepped over stopping there, and a Step Into
     /// landing in code without source going on to the next user code.</summary>
     [Fact]
-    public async Task SharpDbgCli_StepRequests_Returns_StoppedEventsAtCorrectLocation()
+    public async Task Step_Into_Over_and_Out_each_stop_where_the_code_goes_next()
     {
         bool startSuspended = true;
 
@@ -25,7 +38,7 @@ public class StepTests(ITestOutputHelper testOutputHelper)
             .WithAttachRequest(p2.Id)
             .WaitForInitializedEvent();
         debugProtocolHost
-            .WithBreakpointsRequest(20)
+            .WithBreakpointsRequest(StaticCalled)
             .WithConfigurationDoneRequest()
             .WithOptionalResumeRuntime(p2.Id, startSuspended);
 
@@ -35,12 +48,12 @@ public class StepTests(ITestOutputHelper testOutputHelper)
         DapException refusedOut = Assert.Throws<DapException>(() => debugProtocolHost.WithStepOutRequest(999_999));
         Assert.Contains("no thread 999999", refusedOut.Reason, StringComparison.Ordinal);
         StoppedEvent steppedOn = await debugProtocolHost.WithStepOverRequest(first.ThreadId!.Value).WaitForStoppedEvent();
-        Assert.Equal((StopReasons.Step, 21), (steppedOn.Reason, steppedOn.Line));
+        Assert.Equal((StopReasons.Step, AnotherVarSet), (steppedOn.Reason, steppedOn.Line));
 
         StoppedEvent stoppedEvent = await debugProtocolHost.WithContinueRequest().WaitForStoppedEvent();
         (string filePath, int line, int column) stopInfo = stoppedEvent.ReadStopInfo();
         Assert.EndsWith("MyClass.cs", stopInfo.filePath);
-        Assert.Equal(20, stopInfo.line);
+        Assert.Equal(StaticCalled, stopInfo.line);
         int thread = stoppedEvent.ThreadId!.Value;
         DapStackFrame before = debugProtocolHost.GetTopStackFrame(thread);
         debugProtocolHost.WithScopesRequest(before.Id, out ScopesResponse scopes);
@@ -54,7 +67,7 @@ public class StepTests(ITestOutputHelper testOutputHelper)
             .WaitForStoppedEvent();
         (string filePath, int line, int column) stopInfo2 = stoppedEvent2.ReadStopInfo();
         Assert.EndsWith("AnotherClass.cs", stopInfo2.filePath);
-        Assert.Equal(7, stopInfo2.line);
+        Assert.Equal(StaticOpened, stopInfo2.line);
 
         // The frame, scope and values from before the step are refused.
         DapStackFrame after = debugProtocolHost.GetTopStackFrame(thread);
@@ -79,41 +92,41 @@ public class StepTests(ITestOutputHelper testOutputHelper)
             .WaitForStoppedEvent();
         (string filePath, int line, int column) stopInfo3 = stoppedEvent3.ReadStopInfo();
         Assert.EndsWith("MyClass.cs", stopInfo3.filePath);
-        Assert.Equal(20, stopInfo3.line);
+        Assert.Equal(StaticCalled, stopInfo3.line);
 
         StoppedEvent stoppedEvent4 = await debugProtocolHost.WithContinueRequest().WaitForStoppedEvent();
         (string filePath, int line, int column) stopInfo4 = stoppedEvent4.ReadStopInfo();
         Assert.EndsWith("MyClass.cs", stopInfo4.filePath);
-        Assert.Equal(20, stopInfo4.line);
+        Assert.Equal(StaticCalled, stopInfo4.line);
 
-        debugProtocolHost.WithBreakpointsRequest(8, Debuggees.Source("DebuggableConsoleApp", "Namespace1", "AnotherClass.cs"));
+        debugProtocolHost.WithBreakpointsRequest(TestSet, Debuggees.Source("DebuggableConsoleApp", "Namespace1", "AnotherClass.cs"));
 
         StoppedEvent stoppedEvent5 = await debugProtocolHost.WithStepOverRequest(stoppedEvent.ThreadId!.Value).WaitForStoppedEvent();
         (string filePath, int line, int column) stopInfo5 = stoppedEvent5.ReadStopInfo();
         Assert.EndsWith("AnotherClass.cs", stopInfo5.filePath);
-        Assert.Equal(8, stopInfo5.line);
+        Assert.Equal(TestSet, stopInfo5.line);
 
         StoppedEvent stoppedEvent6 = await debugProtocolHost.WithStepOverRequest(stoppedEvent.ThreadId!.Value).WaitForStoppedEvent();
         (string filePath, int line, int column) stopInfo6 = stoppedEvent6.ReadStopInfo();
         Assert.EndsWith("AnotherClass.cs", stopInfo6.filePath);
-        Assert.Equal(9, stopInfo6.line);
+        Assert.Equal(ListMade, stopInfo6.line);
 
         StoppedEvent stoppedEvent7 = await debugProtocolHost.WithContinueRequest().WaitForStoppedEvent();
         (string filePath, int line, int column) stopInfo7 = stoppedEvent7.ReadStopInfo();
         Assert.EndsWith("MyClass.cs", stopInfo7.filePath);
-        Assert.Equal(20, stopInfo7.line);
+        Assert.Equal(StaticCalled, stopInfo7.line);
 
         // A line whose Step Into goes into code without source.
-        debugProtocolHost.WithBreakpointsRequest(13, Debuggees.Source("DebuggableConsoleApp", "Namespace1", "AnotherClass.cs"));
+        debugProtocolHost.WithBreakpointsRequest(ListCopied, Debuggees.Source("DebuggableConsoleApp", "Namespace1", "AnotherClass.cs"));
         StoppedEvent stoppedEvent8 = await debugProtocolHost.WithContinueRequest().WaitForStoppedEvent();
         (string filePath, int line, int column) stopInfo8 = stoppedEvent8.ReadStopInfo();
         Assert.EndsWith("AnotherClass.cs", stopInfo8.filePath);
-        Assert.Equal(13, stopInfo8.line);
+        Assert.Equal(ListCopied, stopInfo8.line);
 
         StoppedEvent stoppedEvent9 = await debugProtocolHost.WithStepInRequest(stoppedEvent.ThreadId!.Value).WaitForStoppedEvent();
         (string filePath, int line, int column) stopInfo9 = stoppedEvent9.ReadStopInfo();
         Assert.EndsWith("AnotherClass.cs", stopInfo9.filePath);
-        Assert.Equal(14, stopInfo9.line);
+        Assert.Equal(Returned, stopInfo9.line);
 
         List<int> threadIds = [first.ThreadId!.Value, steppedOn.ThreadId!.Value, stoppedEvent.ThreadId!.Value, stoppedEvent2.ThreadId!.Value, stoppedEvent3.ThreadId!.Value, stoppedEvent4.ThreadId!.Value, stoppedEvent5.ThreadId!.Value, stoppedEvent6.ThreadId!.Value, stoppedEvent7.ThreadId!.Value, stoppedEvent8.ThreadId!.Value, stoppedEvent9.ThreadId!.Value];
         Assert.Single(threadIds.Distinct());
@@ -123,7 +136,7 @@ public class StepTests(ITestOutputHelper testOutputHelper)
     /// line after; a breakpoint on a multi-line switch expression is stopped at; and Step Into a module without symbols
     /// stops in its decompiled source.</summary>
     [Fact]
-    public async Task SharpDbgCli_StepOverToBreakpointedLine_SwitchExpressionBreakpoint_and_StepIntoModuleWithoutSymbols()
+    public async Task A_step_onto_a_breakpoints_line_stops_once_a_switch_expression_is_stopped_in_and_a_step_into_code_without_symbols_shows_it_decompiled()
     {
         bool startSuspended = true;
 
@@ -135,42 +148,42 @@ public class StepTests(ITestOutputHelper testOutputHelper)
             .WaitForInitializedEvent();
         string program = Debuggees.Source("DebuggableConsoleApp", "Program.cs");
         debugProtocolHost
-            .WithBreakpointsRequest([25, 26], program)
+            .WithBreakpointsRequest([MyMethodCalled, NoMembersCalled], program)
             .WithConfigurationDoneRequest()
             .WithOptionalResumeRuntime(p2.Id, startSuspended);
 
         StoppedEvent stoppedEvent = await debugProtocolHost.WaitForStoppedEvent();
         (string filePath, int line, int column) stopInfo = stoppedEvent.ReadStopInfo();
         Assert.EndsWith("Program.cs", stopInfo.filePath);
-        Assert.Equal(25, stopInfo.line);
+        Assert.Equal(MyMethodCalled, stopInfo.line);
 
         StoppedEvent stoppedEvent2 = await debugProtocolHost.WithStepOverRequest(stoppedEvent.ThreadId!.Value).WaitForStoppedEvent();
         (string filePath, int line, int column) stopInfo2 = stoppedEvent2.ReadStopInfo();
         Assert.EndsWith("Program.cs", stopInfo2.filePath);
-        Assert.Equal(26, stopInfo2.line);
+        Assert.Equal(NoMembersCalled, stopInfo2.line);
 
         StoppedEvent stoppedEvent3 = await debugProtocolHost.WithStepOverRequest(stoppedEvent.ThreadId!.Value).WaitForStoppedEvent();
         (string filePath, int line, int column) stopInfo3 = stoppedEvent3.ReadStopInfo();
         Assert.EndsWith("Program.cs", stopInfo3.filePath);
-        Assert.Equal(27, stopInfo3.line);
+        Assert.Equal(HitConditionCalled, stopInfo3.line);
 
         debugProtocolHost
             .WithClearBreakpointsRequest(program)
-            .WithBreakpointsRequest([7, 9], Debuggees.Source("DebuggableConsoleApp", "MultilineSwitchInMethodCall.cs"));
+            .WithBreakpointsRequest([Operated, Switched], Debuggees.Source("DebuggableConsoleApp", "MultilineSwitchInMethodCall.cs"));
         StoppedEvent switched = await debugProtocolHost.WithContinueRequest().WaitForStoppedEvent();
         Assert.EndsWith("MultilineSwitchInMethodCall.cs", switched.ReadStopInfo().filePath);
-        Assert.Equal(7, switched.ReadStopInfo().line);
+        Assert.Equal(Operated, switched.ReadStopInfo().line);
         switched = await debugProtocolHost.WithContinueRequest().WaitForStoppedEvent();
         Assert.EndsWith("MultilineSwitchInMethodCall.cs", switched.ReadStopInfo().filePath);
-        Assert.Equal(9, switched.ReadStopInfo().line);
+        Assert.Equal(Switched, switched.ReadStopInfo().line);
 
         // Console.WriteLine ships no symbols.
         debugProtocolHost
             .WithClearBreakpointsRequest(Debuggees.Source("DebuggableConsoleApp", "MultilineSwitchInMethodCall.cs"))
-            .WithBreakpointsRequest(15);
+            .WithBreakpointsRequest(LogWritten);
         StoppedEvent logged = await debugProtocolHost.WithContinueRequest().WaitForStoppedEvent();
         Assert.EndsWith("MyClass.cs", logged.ReadStopInfo().filePath);
-        Assert.Equal(15, logged.ReadStopInfo().line);
+        Assert.Equal(LogWritten, logged.ReadStopInfo().line);
         StoppedEvent decompiled = await debugProtocolHost.WithStepInRequest(logged.ThreadId!.Value).WaitForStoppedEvent();
         Assert.EndsWith("Console.cs", decompiled.ReadStopInfo().filePath);
         // A newer ICSharpCode.Decompiler may move the decompiled code's line.

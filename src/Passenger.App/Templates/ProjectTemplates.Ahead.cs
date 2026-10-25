@@ -69,7 +69,7 @@ public static partial class ProjectTemplates
         {
             return;
         }
-        Dispatcher.UIThread.Post(() => _ = PreloadAsync(folder), DispatcherPriority.Background);
+        Dispatcher.UIThread.Post(() => IdeErrors.Observe(PreloadAsync(folder)), DispatcherPriority.Background);
     }
 
     private static async Task PreloadAsync(string folder)
@@ -163,7 +163,7 @@ public static partial class ProjectTemplates
     {
         long change = Interlocked.Increment(ref changes);
         // Not background work, as a read ahead isn't: a template installed while a window waits for a key holds nothing.
-        _ = Task.Run(async () =>
+        IdeErrors.Observe(Task.Run(async () =>
         {
             await Task.Delay(Settling);
             if (Interlocked.Read(ref changes) != change)
@@ -198,6 +198,6 @@ public static partial class ProjectTemplates
                 }
             }
             UiThread.Post(() => Changed?.Invoke());
-        });
+        }));
     }
 }

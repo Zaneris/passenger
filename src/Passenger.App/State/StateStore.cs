@@ -52,6 +52,7 @@ public sealed class StateStore
     public bool UsedBefore { get; }
 
     /// <summary>The variable that names the folder in the user's local application data's place.</summary>
+    [IdentifierHome]
     public const string Variable = "PASSENGER_SETTINGS";
 
     /// <summary>The folder: PASSENGER_SETTINGS names it, else the user's local application data.</summary>

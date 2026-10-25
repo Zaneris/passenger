@@ -5,7 +5,6 @@ using Avalonia.Controls.Documents;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
-using Passenger.App.Workspace;
 using Passenger.Editor;
 using Passenger.Text;
 using TextRun = Avalonia.Controls.Documents.Run;
@@ -73,7 +72,7 @@ public sealed class MarkdownPicture : Panel
         Children.Add(alt);
         if (load is not null)
         {
-            _ = ShowAsync(load(file));
+            IdeErrors.Observe(ShowAsync(load(file)));
         }
     }
 
@@ -101,15 +100,16 @@ public sealed class MarkdownCode : Border
 {
     private readonly SelectableTextBlock text;
     private readonly string code;
+    private readonly Languages.Language? language;
     private TextDocument? document;
     private IHighlighter? highlighter;
 
     protected override Type StyleKeyOverride => typeof(Border);
 
-    private MarkdownCode(string code, string? language)
+    private MarkdownCode(string code, Languages.Language? language)
     {
         this.code = code;
-        Language = language;
+        this.language = language;
         Classes.Add("code");
         // "=>" as written rather than the font's arrow.
         text = new SelectableTextBlock
@@ -126,13 +126,13 @@ public sealed class MarkdownCode : Border
     internal static MarkdownCode Of(Markdown.Code code) => new(code.Text, LanguageOf(code.Info));
 
     /// <summary>The language the editor colours it as, by the name the IDE gives it; null for none.</summary>
-    public string? Language { get; }
+    public string? Language => language?.Name;
 
     /// <summary>The code as drawn, a run a coloured stretch.</summary>
     public IEnumerable<TextRun> Runs => text.Inlines!.OfType<TextRun>();
 
     /// <summary>The language a fence's word names, by the file a person would keep it in: <c>csharp</c> as a .cs file is.</summary>
-    private static string? LanguageOf(string info)
+    private static Languages.Language? LanguageOf(string info)
     {
         string word = info.Trim('{', '}', '.').ToLowerInvariant();
         string? file = word switch
@@ -147,18 +147,18 @@ public sealed class MarkdownCode : Border
             _ when word.All(c => char.IsLetterOrDigit(c) || c is '-' or '_') => $"code.{word}",
             _ => null,
         };
-        return file is not null && Workspace.Language.ForPath(file).Name is var name && name != Workspace.Language.PlainText.Name ? name : null;
+        return file is not null && Languages.Language.ForPath(file) is var language && language != Languages.Language.PlainText ? language : null;
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
-        if (Language is null || highlighter is not null)
+        if (language is null || highlighter is not null)
         {
             return;
         }
         document = new TextDocument(code);
-        highlighter = Languages.Highlighters.For(Language, document);
+        highlighter = Languages.Highlighters.For(language, document);
         if (highlighter is not null)
         {
             highlighter.Changed += OnColoured;

@@ -7,6 +7,8 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.App.State;
 using Passenger.App.Vcs;
+using Passenger.Editor;
+using Passenger.Vcs;
 
 namespace Passenger.App.ToolWindows;
 
@@ -123,7 +125,7 @@ public sealed class BranchesPanel : DockPanel
         ListMenus.Attach(list, () => Selected is { Branch: { } branch } ? Menu(branch) : []);
         search = new TextBox { Classes = { "search" }, PlaceholderText = "Branch or tag", Margin = new Thickness(6, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center };
         search.TextChanged += (_, _) => Show();
-        favorite = ToolButtons.Of("Icon.Star", "Mark/Unmark As Favorite", () =>
+        favorite = ToolButtons.Of(IconKeys.Star, "Mark/Unmark As Favorite", () =>
         {
             if (Selected is { Branch: { } branch })
             {
@@ -131,17 +133,17 @@ public sealed class BranchesPanel : DockPanel
             }
         });
         Border strip = ToolBars.Side(
-            ToolButtons.Of("Icon.Add", "New Branch…", () => Request(NewBranchRequested)),
-            ToolButtons.Of("Icon.Update", "Update Selected", () =>
+            ToolButtons.Of(IconKeys.Add, "New Branch…", () => Request(NewBranchRequested)),
+            ToolButtons.Of(IconKeys.Update, "Update Selected", () =>
             {
                 if (Selected is { Branch: { Kind: RefKind.Local } branch })
                 {
-                    _ = vcs.UpdateBranchAsync(branch);
+                    IdeErrors.Observe(vcs.UpdateBranchAsync(branch));
                 }
             }),
-            ToolButtons.Of("Icon.Clear", "Delete", () => Request(DeleteRequested)),
+            ToolButtons.Of(IconKeys.Clear, "Delete", () => Request(DeleteRequested)),
             favorite,
-            ToolButtons.Of("Icon.Locate", "Navigate Log to Selected Branch Head", () => Request(NavigateRequested)));
+            ToolButtons.Of(IconKeys.Locate, "Navigate Log to Selected Branch Head", () => Request(NavigateRequested)));
         Border top = ToolBars.Top(search);
         Children.Add(strip);
         Children.Add(top);
@@ -204,12 +206,12 @@ public sealed class BranchesPanel : DockPanel
         }
         if (!isCurrent)
         {
-            Add("Checkout", () => _ = vcs.CheckoutRefAsync(branch, Branches));
+            Add("Checkout", () => IdeErrors.Observe(vcs.CheckoutRefAsync(branch, Branches)));
         }
         Add($"New Branch from {it}…", () => NewBranchRequested?.Invoke(this, branch));
         if (branch.Kind == RefKind.Local && !isCurrent)
         {
-            Add(current is null ? "Checkout and Rebase onto Current" : $"Checkout and Rebase onto {here}", () => _ = vcs.CheckoutAndRebaseAsync(branch), current is not null);
+            Add(current is null ? "Checkout and Rebase onto Current" : $"Checkout and Rebase onto {here}", () => IdeErrors.Observe(vcs.CheckoutAndRebaseAsync(branch)), current is not null);
         }
         Separate();
         if (!isCurrent)
@@ -220,17 +222,17 @@ public sealed class BranchesPanel : DockPanel
         Separate();
         if (!isCurrent && branch.Kind != RefKind.Tag)
         {
-            Add(current is null ? "Rebase Current onto Selected" : $"Rebase {here} onto {it}", () => _ = vcs.RebaseOntoAsync(branch), current is not null);
+            Add(current is null ? "Rebase Current onto Selected" : $"Rebase {here} onto {it}", () => IdeErrors.Observe(vcs.RebaseOntoAsync(branch)), current is not null);
         }
         if (!isCurrent)
         {
-            Add(current is null ? "Merge into Current" : $"Merge {it} into {here}", () => _ = vcs.MergeAsync(branch));
+            Add(current is null ? "Merge into Current" : $"Merge {it} into {here}", () => IdeErrors.Observe(vcs.MergeAsync(branch)));
         }
         Separate();
         if (branch.Kind == RefKind.Local)
         {
-            Add("Update", () => _ = vcs.UpdateBranchAsync(branch), isCurrent || branch.UpstreamRemote is not null);
-            Add("Push…", () => _ = vcs.PushBranchAsync(branch));
+            Add("Update", () => IdeErrors.Observe(vcs.UpdateBranchAsync(branch)), isCurrent || branch.UpstreamRemote is not null);
+            Add("Push…", () => IdeErrors.Observe(vcs.PushBranchAsync(branch)));
             Separate();
             Add("Rename…", () => RenameRequested?.Invoke(this, branch));
         }
@@ -497,7 +499,7 @@ public sealed class BranchesPanel : DockPanel
         {
             return;
         }
-        KeyModifiers command = mac ? KeyModifiers.Meta : KeyModifiers.Control;
+        KeyModifiers command = Keystroke.Command;
         if (node.Branch is { } branch && (e.Key == Key.Delete && e.KeyModifiers == KeyModifiers.None
             || mac && e.Key == Key.Back && e.KeyModifiers is KeyModifiers.None or KeyModifiers.Meta) && !branch.IsCurrent)
         {
@@ -524,7 +526,7 @@ public sealed class BranchesPanel : DockPanel
         if (node.IsGroup)
         {
             PathIcon chevron = new() { Classes = { "chevron" }, Width = 10, Height = 10, Margin = new Thickness(4, 0, 4, 0) };
-            node.FollowWhileShown(chevron, (_, _) => chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(node.IsExpanded ? "Icon.ChevronDown" : "Icon.ChevronRight")));
+            node.FollowWhileShown(chevron, (_, _) => chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(node.IsExpanded ? IconKeys.ChevronDown : IconKeys.ChevronRight)));
             Border hit = new() { Background = Brushes.Transparent, Child = chevron, VerticalAlignment = VerticalAlignment.Center };
             hit.PointerPressed += (_, e) =>
             {
@@ -539,16 +541,16 @@ public sealed class BranchesPanel : DockPanel
         }
         if (node.Kind is BranchNodeKind.Ref or BranchNodeKind.Head)
         {
-            string icon = node.Branch?.Kind == RefKind.Tag ? "Icon.Label" : node.IsFavorite ? "Icon.StarFilled" : "Icon.Branch";
+            string icon = node.Branch?.Kind == RefKind.Tag ? IconKeys.Label : node.IsFavorite ? IconKeys.StarFilled : IconKeys.Branch;
             PathIcon mark = new() { Width = 13, Height = 13, Margin = new Thickness(0, 0, 6, 0) };
             mark.Bind(PathIcon.DataProperty, mark.GetResourceObservable(icon));
             if (node.IsFavorite)
             {
-                mark.Bind(PathIcon.ForegroundProperty, mark.GetResourceObservable("Passenger.Vcs.Favorite"));
+                mark.Bind(PathIcon.ForegroundProperty, mark.GetResourceObservable(TokenKeys.Vcs_Favorite));
             }
             else if (node.Branch?.IsCurrent == true || node.Kind == BranchNodeKind.Head)
             {
-                mark.Bind(PathIcon.ForegroundProperty, mark.GetResourceObservable("Passenger.Accent"));
+                mark.Bind(PathIcon.ForegroundProperty, mark.GetResourceObservable(TokenKeys.Accent));
             }
             row.Children.Add(mark);
         }

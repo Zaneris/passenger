@@ -7,6 +7,7 @@ using Passenger.App;
 using Passenger.App.ToolWindows;
 using Passenger.App.Vcs;
 using Passenger.Core;
+using Passenger.Vcs;
 
 namespace Passenger.Tests;
 
@@ -295,9 +296,7 @@ public sealed class ConflictsTests : IDisposable
         Write("Shop.cs", Shop.Replace("int count", "long count", StringComparison.Ordinal));
         Git("commit", "-q", "-am", "Long");
 
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(clone);
+        MainWindow window = Ui.OpenFolder(clone);
         window.OpenFile(Path.Combine(clone, "Shop.cs"));
         Ui.Settle();
         bool asked = false;
@@ -368,9 +367,7 @@ public sealed class ConflictsTests : IDisposable
 
     private MainWindow Open()
     {
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder);
         window.OpenFile(Path.Combine(folder, "Shop.cs"));
         Ui.Settle();
         return window;
@@ -431,7 +428,7 @@ public sealed class ConflictsTests : IDisposable
         Assert.True(!result.Succeeded && Unmerged().Length > 0, $"git {string.Join(' ', arguments)} was to stop for conflicts: {result.Error}{result.Output}");
     }
 
-    private void Write(string name, string text) => File.WriteAllText(Path.Combine(folder, name), text);
+    private void Write(string name, string text) => TestFolders.Write(folder, name, text);
 
     private string Read(string name) => File.ReadAllText(Path.Combine(folder, name));
 

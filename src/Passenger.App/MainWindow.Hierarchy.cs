@@ -17,7 +17,7 @@ public partial class MainWindow
 
     private void AddHierarchy()
     {
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Hierarchy, "Hierarchy", "Icon.Hierarchy", () =>
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Hierarchy, "Hierarchy", IconKeys.Hierarchy, () =>
         {
             hierarchy = new HierarchyView();
             hierarchy.GoToRequested += (_, node) => NavigateTo(node.Path, node.Where);
@@ -25,12 +25,12 @@ public partial class MainWindow
             return hierarchy;
         }, Docking.ToolAnchor.RightTop));
         // What the server finds at the caret, or why it found nothing, the status bar says as it answers.
-        actions!.Add(new IdeAction(AppActions.CallHierarchy, "Call Hierarchy", "IDE", context => _ = ShowCallHierarchyAsync())
+        actions!.Add(new IdeAction(AppActions.CallHierarchy, "Call Hierarchy", "IDE", context => IdeErrors.Observe(ShowCallHierarchyAsync()))
         {
             WhyNot = Refusals.NeedsFile,
             Menus = [new MenuPlace("Navigate", 2, 6)],
         });
-        actions.Add(new IdeAction(AppActions.TypeHierarchy, "Type Hierarchy", "IDE", context => _ = ShowTypeHierarchyAsync())
+        actions.Add(new IdeAction(AppActions.TypeHierarchy, "Type Hierarchy", "IDE", context => IdeErrors.Observe(ShowTypeHierarchyAsync()))
         {
             WhyNot = Refusals.NeedsFile,
             Menus = [new MenuPlace("Navigate", 2, 7)],

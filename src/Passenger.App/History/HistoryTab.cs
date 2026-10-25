@@ -11,6 +11,7 @@ using Passenger.App.Vcs;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Text;
+using Passenger.Vcs;
 
 namespace Passenger.App.History;
 
@@ -62,10 +63,10 @@ public sealed class HistoryTab : DockPanel
             Classes = { "tree" },
             ItemTemplate = new FuncDataTemplate<HistoryRow>((row, _) => row is null ? new TextBlock() : Row(row), supportsRecycling: false),
         };
-        list.SelectionChanged += (_, _) => _ = ShowAsync();
+        list.SelectionChanged += (_, _) => IdeErrors.Observe(ShowAsync());
         ListMenus.Attach(list, () => Selected is null ? [] :
         [
-            ListMenus.Item("Revert Selected and Later Changes", null, () => _ = RevertAsync()),
+            ListMenus.Item("Revert Selected and Later Changes", null, () => IdeErrors.Observe(RevertAsync())),
         ]);
         placeholder = MutedText.Of(string.Empty);
         placeholder.HorizontalAlignment = HorizontalAlignment.Center;
@@ -77,8 +78,8 @@ public sealed class HistoryTab : DockPanel
         diffHost.Content = diffPlaceholder;
 
         filter = new TextBox { Classes = { "search" }, PlaceholderText = isFolder ? "Search by file name" : "Search by content", Width = 240, Margin = new Thickness(8, 0) };
-        filter.TextChanged += (_, _) => _ = FilterAsync();
-        Button revert = ToolButtons.Of("Icon.Rollback", "Revert Selected and Later Changes", () => _ = RevertAsync());
+        filter.TextChanged += (_, _) => IdeErrors.Observe(FilterAsync());
+        Button revert = ToolButtons.Of(IconKeys.Rollback, "Revert Selected and Later Changes", () => IdeErrors.Observe(RevertAsync()));
         Border top = ToolBars.Top(new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Children = { filter, revert } });
 
         Control right = diffHost;
@@ -90,13 +91,13 @@ public sealed class HistoryTab : DockPanel
                 SelectionMode = SelectionMode.Multiple,
                 ItemTemplate = new FuncDataTemplate<HistoryDifference>((file, _) => file is null ? new TextBlock() : FileRow(file), supportsRecycling: false),
             };
-            fileList.SelectionChanged += (_, _) => _ = ShowFileAsync();
-            ListMenus.Attach(fileList, () => fileList.SelectedItems?.Count > 0 ? [ListMenus.Item("Revert Selection", null, () => _ = RevertSelectionAsync())] : []);
+            fileList.SelectionChanged += (_, _) => IdeErrors.Observe(ShowFileAsync());
+            ListMenus.Attach(fileList, () => fileList.SelectedItems?.Count > 0 ? [ListMenus.Item("Revert Selection", null, () => IdeErrors.Observe(RevertSelectionAsync()))] : []);
             Border fileBar = new()
             {
                 [DockProperty] = Dock.Top,
                 Height = 30,
-                Child = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4, 0), Children = { ToolButtons.Of("Icon.Rollback", "Revert Selection", () => _ = RevertSelectionAsync()) } },
+                Child = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4, 0), Children = { ToolButtons.Of(IconKeys.Rollback, "Revert Selection", () => IdeErrors.Observe(RevertSelectionAsync())) } },
             };
             Grid split = new() { RowDefinitions = new RowDefinitions("*,1,2*") };
             DockPanel changes = new() { Children = { fileBar, fileList } };
@@ -116,7 +117,7 @@ public sealed class HistoryTab : DockPanel
         Children.Add(top);
         Children.Add(body);
 
-        onStoreChanged = (_, _) => _ = LoadAsync();
+        onStoreChanged = (_, _) => IdeErrors.Observe(LoadAsync());
         store.Changed += onStoreChanged;
         host.Editors.Closed += OnFileClosed;
         // A diff that left the window (another tab shown, the tool window hidden or moved) let go of its panes: back, it is shown anew.
@@ -127,10 +128,10 @@ public sealed class HistoryTab : DockPanel
             {
                 away = false;
                 shownDiff = null;
-                _ = ShowAsync();
+                IdeErrors.Observe(ShowAsync());
             }
         };
-        _ = LoadAsync();
+        IdeErrors.Observe(LoadAsync());
     }
 
     /// <summary>The file or folder the history is of, as it is named now.</summary>
@@ -394,8 +395,8 @@ public sealed class HistoryTab : DockPanel
         {
             // The IDE's own labels (Tests Passed) muted beside the person's.
             PathIcon tag = new() { Width = 12, Height = 12, Margin = new Thickness(0, 0, 6, 0), [DockProperty] = Dock.Left };
-            tag.Bind(PathIcon.DataProperty, tag.GetResourceObservable("Icon.Label"));
-            tag.Bind(PathIcon.ForegroundProperty, tag.GetResourceObservable(row.System ? "Passenger.TextMuted" : "Passenger.Accent"));
+            tag.Bind(PathIcon.DataProperty, tag.GetResourceObservable(IconKeys.Label));
+            tag.Bind(PathIcon.ForegroundProperty, tag.GetResourceObservable(row.System ? TokenKeys.TextMuted : TokenKeys.Accent));
             line.Children.Add(tag);
         }
         TextBlock title = new() { Text = row.Title, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };

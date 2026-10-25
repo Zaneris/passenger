@@ -28,9 +28,10 @@ public sealed class DocumentChangedEventArgs(TextSnapshot before, TextSnapshot a
     public ChangeReason Reason { get; } = reason;
 }
 
-/// <summary>A document's text, its history and its line ending. Every change goes through
-/// <see cref="Edit"/>, <see cref="Undo"/> or <see cref="Redo"/> and raises <see cref="Changed"/>
-/// once per step.</summary>
+/// <summary>A document's text, its history, its line ending and its anchors. Every change goes through
+/// <see cref="Edit"/>, <see cref="Undo"/> or <see cref="Redo"/>, carries the anchors, and raises <see cref="ChangedFirst"/>
+/// then <see cref="Changed"/> once per step, telling each handler apart: one that throws is reported as the IDE's error
+/// (<see cref="Core.PassengerLog.Report"/>), and those after it still hear of the change.</summary>
 public sealed class TextDocument
 {
     /// <summary>How long a pause still lets typing join the previous undo step.</summary>
@@ -38,6 +39,9 @@ public sealed class TextDocument
 
     private readonly List<UndoEntry> undo = [];
     private readonly List<UndoEntry> redo = [];
+    private readonly AnchorTree anchors = new();
+    private readonly ChangeHandlers first = new();
+    private readonly ChangeHandlers changed = new();
     private TextSnapshot saved;
     private bool mergeBroken = true;
 
@@ -50,12 +54,20 @@ public sealed class TextDocument
 
     /// <summary>Raised on the thread that made the change, before the change returns: a document an editor shows is
     /// changed on the UI thread alone.</summary>
-    public event EventHandler<DocumentChangedEventArgs>? Changed;
+    public event EventHandler<DocumentChangedEventArgs>? Changed
+    {
+        add => changed.Add(value);
+        remove => changed.Remove(value);
+    }
 
     /// <summary>Raised for each change before <see cref="Changed"/>, for what keeps a view of the text in step with it,
     /// so a handler of Changed that asks the view where a line is drawn finds it carried through the change rather than
     /// made again for the whole text.</summary>
-    public event EventHandler<DocumentChangedEventArgs>? ChangedFirst;
+    public event EventHandler<DocumentChangedEventArgs>? ChangedFirst
+    {
+        add => first.Add(value);
+        remove => first.Remove(value);
+    }
 
     public TextSnapshot Snapshot { get; private set; }
 
@@ -78,6 +90,26 @@ public sealed class TextDocument
 
     /// <summary>The step the next <see cref="Redo"/> makes again, or null, as <see cref="NextUndo"/> is.</summary>
     public object? NextRedo => redo.Count > 0 ? redo[^1] : null;
+
+    /// <summary>How many anchors the document carries.</summary>
+    public int Anchors => anchors.Count;
+
+    /// <summary>A place the document carries through its changes from now on, until <see cref="Anchor.Remove"/>.</summary>
+    public Anchor AnchorAt(int offset, AnchorGravity gravity)
+    {
+        Anchor anchor = new(gravity);
+        anchors.Add(anchor, Math.Clamp(offset, 0, Snapshot.Length));
+        return anchor;
+    }
+
+    /// <summary>A stretch the document carries through its changes from now on, its ends of the gravities given; with
+    /// <paramref name="empty"/>, both ends take that gravity once it is empty.</summary>
+    public AnchoredRange RangeAt(TextRange range, AnchorGravity start, AnchorGravity end, AnchorGravity? empty = null) =>
+        new(AnchorAt(range.Start, start), AnchorAt(range.End, end), empty);
+
+    /// <summary>A stretch carried as a mark on the text is (a squiggle, a match, a use): what is typed at its start stays
+    /// out, what is typed at its end goes in while it holds text, and once its text is gone it stays empty.</summary>
+    public AnchoredRange MarkAt(TextRange range) => RangeAt(range, AnchorGravity.Before, AnchorGravity.After, empty: AnchorGravity.Before);
 
     public static string DetectLineEnding(string text)
     {
@@ -275,8 +307,9 @@ public sealed class TextDocument
         Snapshot = after;
         Version++;
         DocumentChangedEventArgs change = new(before, after, SortedEdits.Of(edits), Version, reason);
-        ChangedFirst?.Invoke(this, change);
-        Changed?.Invoke(this, change);
+        anchors.Apply(change.Edits);
+        first.Raise(this, change);
+        changed.Raise(this, change);
     }
 
     private sealed class UndoEntry(EditKind kind, SelectionSet selectionsBefore, SelectionSet selectionsAfter, long time, List<Step> steps)

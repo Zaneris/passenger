@@ -124,7 +124,7 @@ internal sealed class NodeServer
             LanguageSession started = await BackgroundWork.Run(() => LanguageSession.StartAsync(start, cancelled), cancelled);
             if (cancelled.IsCancellationRequested || ended)
             {
-                _ = Task.Run(() => started.DisposeAsync().AsTask());
+                IdeErrors.Observe(Task.Run(() => started.DisposeAsync().AsTask()));
                 return null;
             }
             if (Configure is { } configure)

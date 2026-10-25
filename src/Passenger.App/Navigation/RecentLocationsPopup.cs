@@ -144,13 +144,13 @@ public sealed class RecentLocationsPopup : SearchPopup<RecentLocation>
             MinWidth = 28,
             Margin = new Thickness(8, 0, 10, 0),
         };
-        numbers.Bind(TextBlock.ForegroundProperty, numbers.GetResourceObservable("Passenger.Editor.LineNumber"));
+        numbers.Bind(TextBlock.ForegroundProperty, numbers.GetResourceObservable(TokenKeys.Editor_LineNumber));
         DockPanel fragment = new();
         DockPanel.SetDock(numbers, Dock.Left);
         fragment.Children.Add(numbers);
         fragment.Children.Add(code);
         Border frame = new() { Child = fragment, Classes = { "box" }, ClipToBounds = true, Padding = new Thickness(0, 4) };
-        frame.Bind(Border.BackgroundProperty, frame.GetResourceObservable("Passenger.Editor.Background"));
+        frame.Bind(Border.BackgroundProperty, frame.GetResourceObservable(TokenKeys.Editor_Background));
         // A closed row lets go of the colours it was shown with, whose changes would otherwise still reach it.
         code.DetachedFromVisualTree += (_, _) => code.Highlighter = null;
         return new StackPanel { Margin = new Thickness(0, 2, 0, 6), Children = { header, frame } };

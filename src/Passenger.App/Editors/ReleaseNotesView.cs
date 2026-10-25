@@ -7,6 +7,7 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Passenger.App.Updates;
 using Passenger.App.Workspace;
+using Passenger.Core;
 using Passenger.Editor;
 
 namespace Passenger.App.Editors;

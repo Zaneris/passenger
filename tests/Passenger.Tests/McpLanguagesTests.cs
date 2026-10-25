@@ -1,6 +1,7 @@
 using System.Text.Json;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using Passenger.App.Mcp;
 using Passenger.Core;
 
 namespace Passenger.Tests;
@@ -31,49 +32,48 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         McpClient client = await Start(["--mcp", gallery]);
         string window = File.ReadAllText(Path.Combine(gallery, "MainWindow.axaml"));
 
-        string decompiled = Assert.Single((await Call(client, "definition", At(window, "MainWindow.axaml", "<StackPan"))).EnumerateArray()).GetProperty("path").GetString()!;
+        string decompiled = Assert.Single((await Call(client, McpTools.Definition, At(window, "MainWindow.axaml", "<StackPan"))).EnumerateArray()).GetProperty("path").GetString()!;
         Assert.EndsWith("Avalonia.Controls.StackPanel.cs", decompiled, StringComparison.Ordinal);
         Assert.False(Directory.Exists(stale), $"The decompiled files of a version unused for two months were kept: {stale}");
         DateTime written = File.GetLastWriteTimeUtc(decompiled);
 
-        string outline = (await Call(client, "outline", new() { ["path"] = "MainWindow.axaml" })).GetString()!;
+        string outline = (await Call(client, McpTools.Outline, new() { ["path"] = "MainWindow.axaml" })).GetString()!;
         Assert.True(outline.StartsWith("Window x:Class=\"Gallery.MainWindow\" x:DataType=\"vm:MainViewModel\" (line 1)\n  StackPanel (line 10)\n", StringComparison.Ordinal)
             && outline.Contains("\n    Button Name=\"Go\" (line 12)", StringComparison.Ordinal), $"The window's outline is not its element tree:\n{outline}");
 
-        Assert.Equal("class Avalonia.Controls.Button : ContentControl", (await Call(client, "symbol_info", At(window, "MainWindow.axaml", "<Butt"))).GetString());
-        JsonElement greeting = Assert.Single((await Call(client, "definition", At(window, "MainWindow.axaml", "{Binding Gree"))).EnumerateArray());
+        Assert.Equal("class Avalonia.Controls.Button : ContentControl", (await Call(client, McpTools.SymbolInfo, At(window, "MainWindow.axaml", "<Butt"))).GetString());
+        JsonElement greeting = Assert.Single((await Call(client, McpTools.Definition, At(window, "MainWindow.axaml", "{Binding Gree"))).EnumerateArray());
         Assert.Equal((Path.Combine("ViewModels", "MainViewModel.cs"), 5), (greeting.GetProperty("path").GetString(), greeting.GetProperty("line").GetInt32()));
         Assert.Contains("public string Greeting", greeting.GetProperty("text").GetString(), StringComparison.Ordinal);
-        JsonElement[] accents = [.. (await Call(client, "definition", At(window, "MainWindow.axaml", "{StaticResource Acc"))).EnumerateArray()];
+        JsonElement[] accents = [.. (await Call(client, McpTools.Definition, At(window, "MainWindow.axaml", "{StaticResource Acc"))).EnumerateArray()];
         Assert.Equal([(Path.Combine("Styles", "Palette.axaml"), 5), (Path.Combine("Styles", "Palette.axaml"), 9)],
             accents.Select(a => (a.GetProperty("path").GetString(), a.GetProperty("line").GetInt32())));
 
-        string[] uses = [.. (await Call(client, "usages", At(window, "MainWindow.axaml", "Name=\"G"))).EnumerateArray()
-            .Select(u => $"{u.GetProperty("path").GetString()}:{u.GetProperty("line").GetInt32()}")];
+        string[] uses = [.. Used(await Call(client, McpTools.Usages, At(window, "MainWindow.axaml", "Name=\"G"))).Select(u => $"{u.Path}:{u.Line}")];
         Assert.True(uses.Contains("MainWindow.axaml:12") && uses.Contains("MainWindow.axaml:13") && uses.Contains("MainWindow.axaml.cs:10"),
             $"The button's name was not found where its file and its code-behind use it: {string.Join(", ", uses)}");
         // A binding's path is not what XAML's Find Usages finds, and the agent hears what it does find.
-        CallToolResult path = await Result(client, "usages", At(window, "MainWindow.axaml", "{Binding Gree"));
+        CallToolResult path = await Result(client, McpTools.Usages, At(window, "MainWindow.axaml", "{Binding Gree"));
         Assert.True(path.IsError == true && Text(path).Contains("finds an element's name or a resource's key", StringComparison.Ordinal),
             $"usages on a binding's path did not say what XAML's Find Usages finds: {Text(path)}");
 
-        JsonElement missing = Assert.Single((await Call(client, "diagnostics", new() { ["path"] = "MainWindow.axaml" })).EnumerateArray());
+        JsonElement missing = Assert.Single((await Call(client, McpTools.Diagnostics, new() { ["path"] = "MainWindow.axaml" })).EnumerateArray());
         Assert.Contains("'Subtitle'", missing.GetProperty("message").GetString(), StringComparison.Ordinal);
         Dictionary<string, object?> subtitle = At(window, "MainWindow.axaml", "{Binding Subt");
-        Assert.Contains("Create property 'Subtitle' [quickfix]", Strings(await Call(client, "code_actions", subtitle)));
-        await Call(client, "apply_code_action", new(subtitle) { ["title"] = "Create property 'Subtitle'" });
+        Assert.Contains("Create property 'Subtitle' [quickfix]", Strings(await Call(client, McpTools.CodeActions, subtitle)));
+        await Call(client, McpTools.ApplyCodeAction, new(subtitle) { ["title"] = "Create property 'Subtitle'" });
         Assert.Contains("public string? Subtitle { get; set; }", File.ReadAllText(Path.Combine(gallery, "ViewModels", "MainViewModel.cs")), StringComparison.Ordinal);
 
         Dictionary<string, object?> margin = At(window, "MainWindow.axaml", "<StackPanel Margin=\"1");
         Assert.Equal(["Extract Resource… [refactor.extract], choices: MainWindow.axaml <Window.Resources>; App.axaml <Application.Resources>; Palette.axaml <ResourceDictionary>",
-            "Extract Style… [refactor.extract], choices: MainWindow.axaml <Window.Styles>; App.axaml <Application.Styles>"], Strings(await Call(client, "code_actions", margin)));
-        Assert.Equal("Extracted resource 'PanelMargin' to MainWindow.axaml <Window.Resources>", (await Call(client, "apply_code_action",
+            "Extract Style… [refactor.extract], choices: MainWindow.axaml <Window.Styles>; App.axaml <Application.Styles>"], Strings(await Call(client, McpTools.CodeActions, margin)));
+        Assert.Equal("Extracted resource 'PanelMargin' to MainWindow.axaml <Window.Resources>", (await Call(client, McpTools.ApplyCodeAction,
             new(margin) { ["title"] = "Extract Resource…", ["choice"] = "MainWindow.axaml <Window.Resources>", ["name"] = "PanelMargin" })).GetString());
         window = File.ReadAllText(Path.Combine(gallery, "MainWindow.axaml"));
         Assert.True(window.Contains("<Thickness x:Key=\"PanelMargin\">12</Thickness>", StringComparison.Ordinal)
             && window.Contains("<StackPanel Margin=\"{StaticResource PanelMargin}\"", StringComparison.Ordinal), $"Extract Resource did not reach the file on disk:\n{window}");
 
-        string renamed = (await Call(client, "rename", new(At(window, "MainWindow.axaml", "Name=\"G")) { ["newName"] = "Start" })).GetString()!;
+        string renamed = (await Call(client, McpTools.Rename, new(At(window, "MainWindow.axaml", "Name=\"G")) { ["newName"] = "Start" })).GetString()!;
         Assert.Equal("Renamed Go to Start in 2 files: MainWindow.axaml, MainWindow.axaml.cs", renamed);
         Assert.Contains("Start.Content = \"Start\";", File.ReadAllText(Path.Combine(gallery, "MainWindow.axaml.cs")), StringComparison.Ordinal);
         Assert.Contains("{Binding #Start.Content}", File.ReadAllText(Path.Combine(gallery, "MainWindow.axaml")), StringComparison.Ordinal);
@@ -83,7 +83,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         window = File.ReadAllText(Path.Combine(gallery, "MainWindow.axaml"));
         await using (McpClient again = await Start(["--mcp", gallery], languageServer: false))
         {
-            string second = Assert.Single((await Call(again, "definition", At(window, "MainWindow.axaml", "<StackPan"))).EnumerateArray()).GetProperty("path").GetString()!;
+            string second = Assert.Single((await Call(again, McpTools.Definition, At(window, "MainWindow.axaml", "<StackPan"))).EnumerateArray()).GetProperty("path").GetString()!;
             Assert.True(decompiled == second, $"The second session decompiled the type again into another folder: {second}, the first's {decompiled}");
         }
         Assert.True(File.GetLastWriteTimeUtc(decompiled) == written, "The second session wrote the decompiled file again");
@@ -105,21 +105,21 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
             McpClient client = await Start(["--mcp", shop]);
             string api = File.ReadAllText(Path.Combine(shop, "Api", "Program.cs"));
             string host = File.ReadAllText(Path.Combine(shop, "Host", "Program.cs"));
-            JsonElement declared = Assert.Single((await Call(client, "definition", At(api, "Api/Program.cs", "GetConnectionString(\"conn"))).EnumerateArray());
+            JsonElement declared = Assert.Single((await Call(client, McpTools.Definition, At(api, "Api/Program.cs", "GetConnectionString(\"conn"))).EnumerateArray());
             Assert.Equal((Path.Combine("Host", "Program.cs"), 4), (declared.GetProperty("path").GetString(), declared.GetProperty("line").GetInt32()));
 
-            Assert.Contains((await Call(client, "diagnostics", new() { ["path"] = "Host/Program.cs" })).EnumerateArray(),
+            Assert.Contains((await Call(client, McpTools.Diagnostics, new() { ["path"] = "Host/Program.cs" })).EnumerateArray(),
                 d => d.GetProperty("message").GetString()!.StartsWith("Parameter 'password' has no value", StringComparison.Ordinal));
             Dictionary<string, object?> password = At(host, "Host/Program.cs", "AddParameter(\"pass");
             const string fix = "Set password in the AppHost's user secrets…";
-            Assert.Contains($"{fix} [quickfix]", Strings(await Call(client, "code_actions", password)));
-            CallToolResult unvalued = await Result(client, "apply_code_action", new(password) { ["title"] = fix });
+            Assert.Contains($"{fix} [quickfix]", Strings(await Call(client, McpTools.CodeActions, password)));
+            CallToolResult unvalued = await Result(client, McpTools.ApplyCodeAction, new(password) { ["title"] = fix });
             Assert.True(unvalued.IsError == true && Text(unvalued).Contains("give it as name", StringComparison.Ordinal), $"The fix was made with no value: {Text(unvalued)}");
-            string set = (await Call(client, "apply_code_action", new(password) { ["title"] = fix, ["name"] = "agent-secret" })).GetString()!;
+            string set = (await Call(client, McpTools.ApplyCodeAction, new(password) { ["title"] = fix, ["name"] = "agent-secret" })).GetString()!;
             Assert.Equal("Set password in the AppHost's user secrets", set);
             Assert.Contains("\"Parameters:password\": \"agent-secret\"", File.ReadAllText(secrets), StringComparison.Ordinal);
 
-            string renamed = (await Call(client, "rename", new(At(api, "Api/Program.cs", "GetConnectionString(\"conn")) { ["newName"] = "store" })).GetString()!;
+            string renamed = (await Call(client, McpTools.Rename, new(At(api, "Api/Program.cs", "GetConnectionString(\"conn")) { ["newName"] = "store" })).GetString()!;
             Assert.StartsWith("Renamed connected to store in 2 files", renamed, StringComparison.Ordinal);
             Assert.Contains("builder.AddConnectionString(\"store\")", File.ReadAllText(Path.Combine(shop, "Host", "Program.cs")), StringComparison.Ordinal);
             Assert.Contains("GetConnectionString(\"store\")", File.ReadAllText(Path.Combine(shop, "Api", "Program.cs")), StringComparison.Ordinal);
@@ -138,36 +138,35 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         await using McpClient client = await Start(["--mcp", gallery]);
         string window = File.ReadAllText(Path.Combine(gallery, "MainWindow.xaml"));
 
-        string outline = (await Call(client, "outline", new() { ["path"] = "MainWindow.xaml" })).GetString()!;
+        string outline = (await Call(client, McpTools.Outline, new() { ["path"] = "MainWindow.xaml" })).GetString()!;
         Assert.True(outline.StartsWith("Window x:Class=\"Gallery.MainWindow\" (line 1)\n  Window.Resources (line 10)\n    Style TargetType=\"Button\" (line 11)\n", StringComparison.Ordinal)
             && outline.Contains("\n    Button x:Name=\"Go\" (line 30)", StringComparison.Ordinal), $"The window's outline is not its element tree:\n{outline}");
         Assert.Equal("class System.Windows.Controls.TextBlock : FrameworkElement",
-            (await Call(client, "symbol_info", At(window, "MainWindow.xaml", "<StackPanel Margin=\"12\">\n        <TextBl"))).GetString());
-        JsonElement accent = Assert.Single((await Call(client, "definition", At(window, "MainWindow.xaml", "{StaticResource Acc"))).EnumerateArray());
+            (await Call(client, McpTools.SymbolInfo, At(window, "MainWindow.xaml", "<StackPanel Margin=\"12\">\n        <TextBl"))).GetString());
+        JsonElement accent = Assert.Single((await Call(client, McpTools.Definition, At(window, "MainWindow.xaml", "{StaticResource Acc"))).EnumerateArray());
         Assert.Equal((Path.Combine("Themes", "Brushes.xaml"), 4), (accent.GetProperty("path").GetString(), accent.GetProperty("line").GetInt32()));
-        JsonElement library = Assert.Single((await Call(client, "definition", At(window, "MainWindow.xaml", "<StackPanel Margin=\"12\">\n        <TextBl"))).EnumerateArray());
+        JsonElement library = Assert.Single((await Call(client, McpTools.Definition, At(window, "MainWindow.xaml", "<StackPanel Margin=\"12\">\n        <TextBl"))).EnumerateArray());
         Assert.EndsWith("System.Windows.Controls.TextBlock.cs", library.GetProperty("path").GetString(), StringComparison.Ordinal);
 
-        string[] keyed = [.. (await Call(client, "usages", At(window, "MainWindow.xaml", "{StaticResource Acc"))).EnumerateArray()
-            .Select(u => $"{u.GetProperty("path").GetString()}:{u.GetProperty("line").GetInt32()}")];
+        string[] keyed = [.. Used(await Call(client, McpTools.Usages, At(window, "MainWindow.xaml", "{StaticResource Acc"))).Select(u => $"{u.Path}:{u.Line}")];
         Assert.True(keyed.Contains("App.xaml:12") && keyed.Contains("MainWindow.xaml:30") && keyed.Contains($"{Path.Combine("Themes", "Brushes.xaml")}:4"),
             $"The brush's key was not found where the project's XAML uses and defines it: {string.Join(", ", keyed)}");
-        string[] named = [.. (await Call(client, "usages", At(window, "MainWindow.xaml", "x:Name=\"G"))).EnumerateArray().Select(u => u.GetProperty("text").GetString()!)];
+        string[] named = [.. Used(await Call(client, McpTools.Usages, At(window, "MainWindow.xaml", "x:Name=\"G"))).Select(u => u.Text)];
         Assert.True(named.Any(u => u.Contains("Go.Content = \"Start\";", StringComparison.Ordinal)) && named.Any(u => u.Contains("ElementName=Go", StringComparison.Ordinal)),
             $"The button's name was not found where its file and its code-behind use it: {string.Join(" | ", named)}");
 
         Dictionary<string, object?> margin = At(window, "MainWindow.xaml", "<StackPanel Margin=\"1");
         Assert.Contains("Extract Resource… [refactor.extract], choices: MainWindow.xaml <Window.Resources>; App.xaml <Application.Resources>; Brushes.xaml <ResourceDictionary>",
-            Strings(await Call(client, "code_actions", margin)));
-        CallToolResult nowhere = await Result(client, "apply_code_action", new(margin) { ["title"] = "Extract Resource…", ["choice"] = "Elsewhere" });
+            Strings(await Call(client, McpTools.CodeActions, margin)));
+        CallToolResult nowhere = await Result(client, McpTools.ApplyCodeAction, new(margin) { ["title"] = "Extract Resource…", ["choice"] = "Elsewhere" });
         Assert.True(nowhere.IsError == true && Text(nowhere).Contains("it can go in: MainWindow.xaml <Window.Resources>", StringComparison.Ordinal),
             $"Extract Resource to a place it does not offer answered: {Text(nowhere)}");
         Dictionary<string, object?> button = At(window, "MainWindow.xaml", "<Butt");
         Assert.Equal("Extracted 2 properties of Button (Content, Background) to style 'ButtonStyle' in MainWindow.xaml <Window.Resources>",
-            (await Call(client, "apply_code_action", new(button) { ["title"] = "Extract Style…", ["choice"] = "MainWindow.xaml <Window.Resources>" })).GetString());
+            (await Call(client, McpTools.ApplyCodeAction, new(button) { ["title"] = "Extract Style…", ["choice"] = "MainWindow.xaml <Window.Resources>" })).GetString());
         Assert.Contains("<Style x:Key=\"ButtonStyle\" TargetType=\"Button\">", File.ReadAllText(Path.Combine(gallery, "MainWindow.xaml")), StringComparison.Ordinal);
 
-        string renamed = (await Call(client, "rename", new(At(File.ReadAllText(Path.Combine(gallery, "MainWindow.xaml")), "MainWindow.xaml", "x:Name=\"G")) { ["newName"] = "Start" })).GetString()!;
+        string renamed = (await Call(client, McpTools.Rename, new(At(File.ReadAllText(Path.Combine(gallery, "MainWindow.xaml")), "MainWindow.xaml", "x:Name=\"G")) { ["newName"] = "Start" })).GetString()!;
         Assert.Equal("Renamed Go to Start in 2 files: MainWindow.xaml, MainWindow.xaml.cs", renamed);
         Assert.Contains("Start.Content = \"Start\";", File.ReadAllText(Path.Combine(gallery, "MainWindow.xaml.cs")), StringComparison.Ordinal);
         Assert.Contains("ElementName=Start", File.ReadAllText(Path.Combine(gallery, "MainWindow.xaml")), StringComparison.Ordinal);
@@ -206,46 +205,46 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         string app = Path.Combine("src", "app.js");
         string script = File.ReadAllText(Path.Combine(web, app));
 
-        string outline = (await Call(client, "outline", new() { ["path"] = app })).GetString()!;
+        string outline = (await Call(client, McpTools.Outline, new() { ["path"] = app })).GetString()!;
         Assert.True(outline.Contains("greet (function, line 1)", StringComparison.Ordinal) && outline.Contains("total (variable, line 4)", StringComparison.Ordinal),
             $"The script's outline is not its server's:\n{outline}");
         Dictionary<string, object?> call = At(script, app, "let total = gre");
-        Assert.Contains("function greet(name: any): string", (await Call(client, "symbol_info", call)).GetString(), StringComparison.Ordinal);
-        JsonElement declared = Assert.Single((await Call(client, "definition", call)).EnumerateArray());
+        Assert.Contains("function greet(name: any): string", (await Call(client, McpTools.SymbolInfo, call)).GetString(), StringComparison.Ordinal);
+        JsonElement declared = Assert.Single((await Call(client, McpTools.Definition, call)).EnumerateArray());
         Assert.Equal((app, 1), (declared.GetProperty("path").GetString(), declared.GetProperty("line").GetInt32()));
-        Assert.Equal([1, 4], (await Call(client, "usages", call)).EnumerateArray().Select(u => u.GetProperty("line").GetInt32()).Order());
+        Assert.Equal([1, 4], Used(await Call(client, McpTools.Usages, call)).Select(u => u.Line).Order());
 
-        JsonElement problem = Assert.Single((await Call(client, "diagnostics", new() { ["path"] = app })).EnumerateArray(),
+        JsonElement problem = Assert.Single((await Call(client, McpTools.Diagnostics, new() { ["path"] = app })).EnumerateArray(),
             d => d.GetProperty("message").GetString()!.Contains("(prefer-const)", StringComparison.Ordinal));
         Assert.Equal(("error", 4), (problem.GetProperty("severity").GetString(), problem.GetProperty("line").GetInt32()));
         Dictionary<string, object?> let = At(script, app, "let t");
-        string[] actions = Strings(await Call(client, "code_actions", let));
+        string[] actions = Strings(await Call(client, McpTools.CodeActions, let));
         Assert.True(actions.Length > 0 && actions[0].StartsWith("ESLint: Fix 'prefer-const'", StringComparison.Ordinal), $"ESLint's fix is not first among the line's actions: {string.Join(" | ", actions)}");
-        Assert.Equal($"Applied 'ESLint: Fix 'prefer-const'' to {app}", (await Call(client, "apply_code_action", new(let) { ["title"] = "ESLint: Fix 'prefer-const'" })).GetString());
+        Assert.Equal($"Applied 'ESLint: Fix 'prefer-const'' to {app}", (await Call(client, McpTools.ApplyCodeAction, new(let) { ["title"] = "ESLint: Fix 'prefer-const'" })).GetString());
         Assert.Contains("const total = greet('Ada')", File.ReadAllText(Path.Combine(web, app)), StringComparison.Ordinal);
 
-        string renamed = (await Call(client, "rename", new(At(script, app, "function gre")) { ["newName"] = "welcome" })).GetString()!;
+        string renamed = (await Call(client, McpTools.Rename, new(At(script, app, "function gre")) { ["newName"] = "welcome" })).GetString()!;
         Assert.Equal($"Renamed in 1 file: {app}", renamed);
         string written = File.ReadAllText(Path.Combine(web, app));
         Assert.True(written.Contains("function welcome(name)", StringComparison.Ordinal) && written.Contains("welcome('Ada')", StringComparison.Ordinal),
             $"The rename did not reach the script on disk:\n{written}");
 
-        Assert.StartsWith("Prettier: formatted ", (await Call(client, "format", new() { ["path"] = Path.Combine("src", "format.js") })).GetString(), StringComparison.Ordinal);
+        Assert.StartsWith("Prettier: formatted ", (await Call(client, McpTools.Format, new() { ["path"] = Path.Combine("src", "format.js") })).GetString(), StringComparison.Ordinal);
         Assert.Equal("const label = { name: 'tea', price: 3 }\nconsole.log(label)\n", File.ReadAllText(Path.Combine(web, "src", "format.js")));
 
         string css = Path.Combine("styles", "site.css");
         string sheet = File.ReadAllText(Path.Combine(web, css));
-        Assert.Equal(2, Assert.Single((await Call(client, "definition", At(sheet, css, "var(--acc"))).EnumerateArray()).GetProperty("line").GetInt32());
-        await Call(client, "rename", new(At(sheet, css, "var(--acc")) { ["newName"] = "--brand" });
+        Assert.Equal(2, Assert.Single((await Call(client, McpTools.Definition, At(sheet, css, "var(--acc"))).EnumerateArray()).GetProperty("line").GetInt32());
+        await Call(client, McpTools.Rename, new(At(sheet, css, "var(--acc")) { ["newName"] = "--brand" });
         Assert.Equal(":root {\n  --brand: #3574f0;\n}\n\n.cart {\n  color: var(--brand);\n}\n", File.ReadAllText(Path.Combine(web, css)));
 
         string manifest = File.ReadAllText(Path.Combine(web, "package.json"));
-        CallToolResult none = await Result(client, "usages", At(manifest, "package.json", "\"bui"));
+        CallToolResult none = await Result(client, McpTools.Usages, At(manifest, "package.json", "\"bui"));
         Assert.True(none.IsError == true && Text(none).Contains("JSON has no usages", StringComparison.Ordinal), $"usages in package.json answered: {Text(none)}");
-        JsonElement package = Assert.Single((await Call(client, "definition", At(manifest, "package.json", "\"esl"))).EnumerateArray());
+        JsonElement package = Assert.Single((await Call(client, McpTools.Definition, At(manifest, "package.json", "\"esl"))).EnumerateArray());
         Assert.Equal(Path.Combine("node_modules", "eslint", "package.json"), package.GetProperty("path").GetString());
         Assert.Equal("Renamed build to compile in package.json, and in 1 script that runs it",
-            (await Call(client, "rename", new(At(manifest, "package.json", "\"bui")) { ["newName"] = "compile" })).GetString());
+            (await Call(client, McpTools.Rename, new(At(manifest, "package.json", "\"bui")) { ["newName"] = "compile" })).GetString());
         manifest = File.ReadAllText(Path.Combine(web, "package.json"));
         Assert.True(manifest.Contains("\"compile\": \"node src/app.js\"", StringComparison.Ordinal) && manifest.Contains("\"all\": \"npm run compile\"", StringComparison.Ordinal),
             $"The script's rename did not reach package.json on disk:\n{manifest}");
@@ -270,28 +269,28 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
 
         Dictionary<string, object?> company = At(project, "Shop.csproj", "$(Comp");
         // The hover card's lines end as the system's do (Windows' "\r\n").
-        string said = (await Call(client, "symbol_info", company)).GetString()!.ReplaceLineEndings("\n");
+        string said = (await Call(client, McpTools.SymbolInfo, company)).GetString()!.ReplaceLineEndings("\n");
         Assert.True(said.StartsWith("Company = Passenger\nMSBuild property, set in Directory.Build.props, line 3", StringComparison.Ordinal),
             $"symbol_info on a property did not say its evaluated value and where it was set: {said}");
-        JsonElement set = Assert.Single((await Call(client, "definition", company)).EnumerateArray());
+        JsonElement set = Assert.Single((await Call(client, McpTools.Definition, company)).EnumerateArray());
         Assert.Equal(("Directory.Build.props", 3), (set.GetProperty("path").GetString(), set.GetProperty("line").GetInt32()));
         Assert.Equal("<Company>Passenger</Company>", set.GetProperty("text").GetString());
-        JsonElement target = Assert.Single((await Call(client, "definition", At(project, "Shop.csproj", "DependsOnTargets=\"Gre"))).EnumerateArray());
+        JsonElement target = Assert.Single((await Call(client, McpTools.Definition, At(project, "Shop.csproj", "DependsOnTargets=\"Gre"))).EnumerateArray());
         Assert.Equal(("Shop.csproj", 6), (target.GetProperty("path").GetString(), target.GetProperty("line").GetInt32()));
-        string[] sdk = [.. (await Call(client, "definition", At(project, "Shop.csproj", "Sdk=\"Microsoft.NE"))).EnumerateArray().Select(p => p.GetProperty("path").GetString()!)];
+        string[] sdk = [.. (await Call(client, McpTools.Definition, At(project, "Shop.csproj", "Sdk=\"Microsoft.NE"))).EnumerateArray().Select(p => p.GetProperty("path").GetString()!)];
         Assert.True(sdk.Length > 0 && sdk.All(Path.IsPathRooted) && sdk.Any(p => p.EndsWith("Sdk.props", StringComparison.Ordinal)),
             $"The SDK's definition is not its own files: {string.Join(", ", sdk)}");
 
-        string outline = (await Call(client, "outline", new() { ["path"] = "Shop.csproj" })).GetString()!;
+        string outline = (await Call(client, McpTools.Outline, new() { ["path"] = "Shop.csproj" })).GetString()!;
         Assert.Equal($"Project Sdk=\"Microsoft.NET.Sdk\" (line 1)\n  PropertyGroup (line 2)\n    TargetFramework = {TestProjects.Framework} (property, line 3)\n"
             + "    Product = $(Company) Shop (property, line 4)\n  Target Name=\"Greet\" (target, line 6)\n    Message (task, line 7)\n  Target Name=\"Wave\" (target, line 9)", outline);
 
         foreach ((string tool, Dictionary<string, object?> arguments) in new (string, Dictionary<string, object?>)[]
         {
-            ("usages", company),
-            ("rename", new(company) { ["newName"] = "Maker" }),
-            ("code_actions", company),
-            ("format", new() { ["path"] = "Shop.csproj" }),
+            (McpTools.Usages, company),
+            (McpTools.Rename, new(company) { ["newName"] = "Maker" }),
+            (McpTools.CodeActions, company),
+            (McpTools.Format, new() { ["path"] = "Shop.csproj" }),
         })
         {
             CallToolResult lacking = await Result(client, tool, arguments);
@@ -308,9 +307,9 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         string shop = Taken("mcproutes-");
         await using McpClient client = await Start(["--mcp", shop]);
 
-        Assert.False((await Call(client, "workspace")).TryGetProperty("routes", out JsonElement unasked) && unasked.ValueKind != JsonValueKind.Null,
+        Assert.False((await Call(client, McpTools.Workspace)).TryGetProperty("routes", out JsonElement unasked) && unasked.ValueKind != JsonValueKind.Null,
             "The workspace listed routes unasked");
-        JsonElement routes = (await Call(client, "workspace", new() { ["routes"] = true })).GetProperty("routes");
+        JsonElement routes = (await Call(client, McpTools.Workspace, new() { ["routes"] = true })).GetProperty("routes");
         string[] listed = [.. routes.EnumerateArray().Select(r => r.GetProperty("route").GetString()!)];
         foreach (string route in new[] { "GET /api/todos/{id:int}", "PUT /orders/{id:guid}", "GET /api/Products/{id}", "POST /Orders/Edit/{id:int}?handler=Cancel", "GET /counter", "HUB /chat" })
         {
@@ -454,26 +453,26 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         });
         await using McpClient client = await Start(["--mcp", compose]);
 
-        JsonElement service = Assert.Single((await Call(client, "definition", At(Compose, "compose.yaml", "[ap"))).EnumerateArray());
+        JsonElement service = Assert.Single((await Call(client, McpTools.Definition, At(Compose, "compose.yaml", "[ap"))).EnumerateArray());
         Assert.Equal(("compose.yaml", 6, 3), (service.GetProperty("path").GetString(), service.GetProperty("line").GetInt32(), service.GetProperty("column").GetInt32()));
-        JsonElement dockerfile = Assert.Single((await Call(client, "definition", At(Compose, "compose.yaml", "build: ."))).EnumerateArray());
+        JsonElement dockerfile = Assert.Single((await Call(client, McpTools.Definition, At(Compose, "compose.yaml", "build: ."))).EnumerateArray());
         Assert.Equal(("Dockerfile", 1), (dockerfile.GetProperty("path").GetString(), dockerfile.GetProperty("line").GetInt32()));
-        CallToolResult image = await Result(client, "definition", At(Compose, "compose.yaml", "image:   ngi"));
+        CallToolResult image = await Result(client, McpTools.Definition, At(Compose, "compose.yaml", "image:   ngi"));
         Assert.True(image.IsError == true && Text(image).Contains("https://hub.docker.com/_/nginx", StringComparison.Ordinal), $"definition on an image answered: {Text(image)}");
 
-        string outline = (await Call(client, "outline", new() { ["path"] = "compose.yaml" })).GetString()!;
+        string outline = (await Call(client, McpTools.Outline, new() { ["path"] = "compose.yaml" })).GetString()!;
         Assert.True(outline.Contains("web (", StringComparison.Ordinal) && outline.Contains("depends_on (", StringComparison.Ordinal), $"The compose file's outline is not its server's:\n{outline}");
-        JsonElement problem = Assert.Single((await Call(client, "diagnostics", new() { ["path"] = "Dockerfile" })).EnumerateArray());
+        JsonElement problem = Assert.Single((await Call(client, McpTools.Diagnostics, new() { ["path"] = "Dockerfile" })).EnumerateArray());
         Assert.Contains("Unknown instruction: FROMM", problem.GetProperty("message").GetString(), StringComparison.Ordinal);
 
-        string renamed = (await Call(client, "rename", new(At(Compose, "compose.yaml", "[ap")) { ["newName"] = "backend" })).GetString()!;
+        string renamed = (await Call(client, McpTools.Rename, new(At(Compose, "compose.yaml", "[ap")) { ["newName"] = "backend" })).GetString()!;
         Assert.Equal("Renamed the service api to backend in 1 file: compose.yaml", renamed);
         string written = Compose.Replace("api", "backend", StringComparison.Ordinal);
         Assert.Equal(written, File.ReadAllText(Path.Combine(compose, "compose.yaml")));
-        CallToolResult taken = await Result(client, "rename", new(At(written, "compose.yaml", "  back")) { ["newName"] = "web" });
+        CallToolResult taken = await Result(client, McpTools.Rename, new(At(written, "compose.yaml", "  back")) { ["newName"] = "web" });
         Assert.True(taken.IsError == true && Text(taken).EndsWith(": compose.yaml has a service named web already", StringComparison.Ordinal), $"A rename to a name taken answered: {Text(taken)}");
 
-        Assert.StartsWith("Reformatted", (await Call(client, "format", new() { ["path"] = "compose.yaml" })).GetString(), StringComparison.Ordinal);
+        Assert.StartsWith("Reformatted", (await Call(client, McpTools.Format, new() { ["path"] = "compose.yaml" })).GetString(), StringComparison.Ordinal);
         Assert.Equal("services:\n  web:\n    image: nginx:1.27\n    ports: [\"8080:80\"]\n    depends_on: [backend]\n  backend:\n    build: .\n", File.ReadAllText(Path.Combine(compose, "compose.yaml")));
     }
 }

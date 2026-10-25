@@ -4,6 +4,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Passenger.App.Welcome;
+using Passenger.Packages;
 
 namespace Passenger.App.Packages;
 
@@ -40,7 +41,7 @@ public sealed class FeedDialog : Window
         enabled = new CheckBox { IsChecked = feed is null || !feed.DisabledHere };
         insecure = new CheckBox { IsChecked = feed?.AllowInsecure == true };
         problem = new TextBlock { TextWrapping = TextWrapping.Wrap, IsVisible = false };
-        problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable("Passenger.Error"));
+        problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable(TokenKeys.Error));
 
         Grid fields = new() { ColumnDefinitions = new ColumnDefinitions("Auto,*"), RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,Auto,Auto"), RowSpacing = 8 };
         Row(fields, 0, "Name:", name);

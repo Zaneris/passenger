@@ -68,8 +68,8 @@ public sealed class TelemetryView : IDisposable
         StructuredLogs.SelectionChanged += (_, _) => ShowLog();
         TraceList.SelectionChanged += (_, _) => ShowTrace();
         SpanList.SelectionChanged += (_, _) => ShowSpan();
-        logTrace = PageTool("Icon.Locate", "Show the structured log's trace and span", showTrace, "telemetryShowTrace", ShowSelectedTrace, request);
-        spanLogs = PageTool("Icon.DocumentText", "Show a retained log of this trace and span", showLogs, "telemetryShowLogs", ShowRelatedLogs, request);
+        logTrace = PageTool(IconKeys.Locate, "Show the structured log's trace and span", showTrace, "telemetryShowTrace", ShowSelectedTrace, request);
+        spanLogs = PageTool(IconKeys.DocumentText, "Show a retained log of this trace and span", showLogs, "telemetryShowLogs", ShowRelatedLogs, request);
         logTrace.IsEnabled = false;
         spanLogs.IsEnabled = false;
         foreach (OutputView output in new[] { logDetails, spanDetails })
@@ -205,7 +205,7 @@ public sealed class TelemetryView : IDisposable
             return;
         }
         reading = new CancellationTokenSource();
-        _ = WatchAsync(stream.Item1, stream.Item2, stream.Item3, reading.Token);
+        IdeErrors.Observe(WatchAsync(stream.Item1, stream.Item2, stream.Item3, reading.Token));
     }
 
     /// <summary>Empties both pages and stops streaming.</summary>
@@ -590,20 +590,19 @@ public sealed class TelemetryView : IDisposable
     /// the action's keys), else the view's own.</summary>
     private static Button PageTool(string icon, string tip, string? action, string name, Action own, Func<string, bool>? request)
     {
-        Button button = ToolButtons.Of(icon, tip, () =>
+        if (action is null)
         {
-            if (action is null || request?.Invoke(action) != true)
+            Button button = ToolButtons.Of(icon, tip, own);
+            button.Name = name;
+            return button;
+        }
+        return ToolButtons.Of(action, icon, tip, asked =>
+        {
+            if (request?.Invoke(asked) != true)
             {
                 own();
             }
         });
-        button.Name = action ?? name;
-        if (action is not null)
-        {
-            ActionTips.Set(button, action, tip);
-            ActionButtons.Mark(button, action);
-        }
-        return button;
     }
 
     /// <summary>A page's bar: what it says, its buttons at the right.</summary>

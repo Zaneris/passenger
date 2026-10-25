@@ -1,16 +1,19 @@
 using System.Text.Json.Nodes;
 using Passenger.App.State;
+using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Text;
 
 namespace Passenger.App.Navigation;
 
-/// <summary>A bookmark: a file and a line (from zero) in it.</summary>
+/// <summary>A bookmark: a file and a line (from zero) in it, carried with the file's text while it is open.</summary>
 public sealed class Bookmark(string path, int line)
 {
     public string Path { get; internal set; } = path;
 
-    public int Line { get; internal set; } = line;
+    public int Line => At.Line;
+
+    internal AnchoredLine At { get; } = new(line);
 
     public string Name => System.IO.Path.GetFileName(Path);
 }
@@ -33,10 +36,13 @@ public sealed record BookmarksState : IStateDocument<BookmarksState>
 public sealed record KeptBookmark(string Path, int Line);
 
 /// <summary>Bookmarks: lines marked to come back to, Toggle Bookmark on the caret's line, Next and Previous across
-/// every file in the order they were set. A bookmark in an open file moves with its line.</summary>
+/// every file in the order they were set. A bookmark in an open file moves with its line, by an anchor in its text.</summary>
 public sealed class BookmarkStore
 {
     private readonly List<Bookmark> all = [];
+
+    /// <summary>The text of each file open, whose bookmarks it carries.</summary>
+    private readonly Dictionary<string, TextDocument> open = new(StringComparer.Ordinal);
 
     /// <summary>A file's bookmarks changed: set, removed or moved.</summary>
     public event EventHandler<string>? Changed;
@@ -54,7 +60,7 @@ public sealed class BookmarkStore
     {
         foreach (KeptBookmark bookmark in kept.Bookmarks.Where(k => !all.Any(b => b.Path == k.Path && b.Line == k.Line)))
         {
-            all.Add(new Bookmark(bookmark.Path, bookmark.Line));
+            all.Add(Made(bookmark.Path, bookmark.Line));
         }
         foreach (string path in kept.Bookmarks.Select(b => b.Path).Distinct())
         {
@@ -66,6 +72,10 @@ public sealed class BookmarkStore
     public void Clear()
     {
         List<string> paths = [.. all.Select(b => b.Path).Distinct()];
+        foreach (Bookmark bookmark in all)
+        {
+            bookmark.At.Detach();
+        }
         all.Clear();
         foreach (string path in paths)
         {
@@ -79,10 +89,11 @@ public sealed class BookmarkStore
         if (all.FirstOrDefault(b => b.Path == path && b.Line == line) is { } there)
         {
             all.Remove(there);
+            there.At.Detach();
         }
         else
         {
-            all.Add(new Bookmark(path, line));
+            all.Add(Made(path, line));
         }
         Changed?.Invoke(this, path);
     }
@@ -91,8 +102,49 @@ public sealed class BookmarkStore
     {
         if (all.Remove(bookmark))
         {
+            bookmark.At.Detach();
             Changed?.Invoke(this, bookmark.Path);
         }
+    }
+
+    /// <summary>A file opened: its bookmarks move with its text until it closes.</summary>
+    public void Attach(string path, TextDocument text)
+    {
+        open[path] = text;
+        foreach (Bookmark bookmark in all.Where(b => b.Path == path))
+        {
+            bookmark.At.Attach(text);
+        }
+    }
+
+    /// <summary>A file closed: its bookmarks stay on the lines they were carried to.</summary>
+    public void Detach(string path)
+    {
+        open.Remove(path);
+        foreach (Bookmark bookmark in all.Where(b => b.Path == path))
+        {
+            bookmark.At.Detach();
+        }
+    }
+
+    /// <summary>The session ended with files still open, which the next session follows: every file is let go as if
+    /// closed, its bookmarks kept on the lines they were carried to.</summary>
+    public void DetachAll()
+    {
+        foreach (string path in open.Keys.ToList())
+        {
+            Detach(path);
+        }
+    }
+
+    private Bookmark Made(string path, int line)
+    {
+        Bookmark made = new(path, line);
+        if (open.TryGetValue(path, out TextDocument? text))
+        {
+            made.At.Attach(text);
+        }
+        return made;
     }
 
     /// <summary>The bookmark after (or before) a place, through every file in their order, round past the last.</summary>
@@ -119,25 +171,26 @@ public sealed class BookmarkStore
             bookmark.Path = PathNames.Moved(bookmark.Path, from, to);
             changed.Add(bookmark.Path);
         }
+        foreach (string path in open.Keys.Where(p => PathNames.Within(p, from)).ToList())
+        {
+            open.Remove(path, out TextDocument? text);
+            open[PathNames.Moved(path, from, to)] = text!;
+        }
         foreach (string path in changed)
         {
             Changed?.Invoke(this, path);
         }
     }
 
-    /// <summary>Carries a file's bookmarks through an edit to it, with their lines' first characters.</summary>
-    public void Follow(string path, DocumentChangedEventArgs change)
+    /// <summary>Reads the lines of a file's bookmarks after an edit to it, their anchors having carried them.</summary>
+    public void Follow(string path)
     {
         bool moved = false;
-        foreach (Bookmark bookmark in all.Where(b => b.Path == path))
+        foreach (Bookmark bookmark in all)
         {
-            int start = change.Before.GetLineStart(Math.Min(bookmark.Line, change.Before.LineCount - 1));
-            int mapped = TextEditing.MapOffset(start, change.Edits, afterInsertions: true);
-            int line = change.After.GetLineFromOffset(Math.Min(mapped, change.After.Length));
-            if (line != bookmark.Line)
+            if (bookmark.Path == path)
             {
-                bookmark.Line = line;
-                moved = true;
+                moved |= bookmark.At.Follow();
             }
         }
         if (moved)
@@ -147,6 +200,7 @@ public sealed class BookmarkStore
             foreach (Bookmark extra in twice)
             {
                 all.Remove(extra);
+                extra.At.Detach();
             }
             Changed?.Invoke(this, path);
         }

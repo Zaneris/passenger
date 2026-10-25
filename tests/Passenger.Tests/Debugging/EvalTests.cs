@@ -7,8 +7,11 @@ namespace Passenger.Tests.Debugging;
 [Collection(DebugSession.Collection)]
 public class EvalTests(ITestOutputHelper testOutputHelper)
 {
+    /// <summary>At a stop in a method, its locals and parameters are listed as they are, and an evaluation reads and assigns
+    /// them, its fields and properties (static ones too, by any qualified name), and calls its methods, a chain of calls
+    /// keeping each one's result alive.</summary>
     [Fact]
-    public async Task SharpDbgCli_EvaluationRequest_Returns()
+    public async Task At_a_stop_the_locals_are_listed_as_they_are_and_an_evaluation_reads_assigns_and_calls_what_the_method_sees()
     {
         bool startSuspended = true;
 
@@ -19,7 +22,7 @@ public class EvalTests(ITestOutputHelper testOutputHelper)
             .WithAttachRequest(p2.Id)
             .WaitForInitializedEvent();
         debugProtocolHost
-            .WithBreakpointsRequest(22, Debuggees.Source("DebuggableConsoleApp", "MyClass.cs"))
+            .WithBreakpointsRequest(Debuggees.MyMethodEnd, Debuggees.Source("DebuggableConsoleApp", "MyClass.cs"))
             .WithConfigurationDoneRequest()
             .WithOptionalResumeRuntime(p2.Id, startSuspended);
 
@@ -35,6 +38,7 @@ public class EvalTests(ITestOutputHelper testOutputHelper)
         [
             new() {Name = "this", Value = "{DebuggableConsoleApp.MyClass}", Type = "DebuggableConsoleApp.MyClass", EvaluateName = "this", VariablesReference = 3 },
             new() {Name = "myParam", Value = "13", Type = "long", EvaluateName = "myParam" },
+            new() {Name = "myIntParam", Value = "6", Type = "int", EvaluateName = "myIntParam" },
             new() {Name = "myInt", Value = "4", Type = "int", EvaluateName = "myInt" },
             new() {Name = "enumVar", Value = "SecondValue", Type = "DebuggableConsoleApp.MyEnum", EvaluateName = "enumVar", VariablesReference = 4 },
             new() {Name = "enumWithFlagsVar", Value = "FlagValue1 | FlagValue3", Type = "DebuggableConsoleApp.MyEnumWithFlags", EvaluateName = "enumWithFlagsVar", VariablesReference = 5 },
@@ -47,7 +51,7 @@ public class EvalTests(ITestOutputHelper testOutputHelper)
 
         debugProtocolHost.WithVariablesRequest(scope.VariablesReference, out List<DapVariable>? variables);
 
-        Assert.Equal(11, variables.Count);
+        variables.ShouldBeEquivalentToDebuggerVariables(expectedVariables);
 
         int stackFrameId = stackTraceResponse.StackFrames!.First().Id;
         debugProtocolHost.WithEvaluateRequest(stackFrameId, "myInt + 10", out EvaluateResponse? evaluateResponse);
@@ -462,8 +466,9 @@ public class EvalTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("null", arrayNullAssignmentResponse.Result);
     }
 
+    /// <summary>A name a lambda's parameter shadows evaluates to the parameter where the stop is, not the method's local.</summary>
     [Fact]
-    public async Task SharpDbgCli_EvaluationRequest_ShadowedLocal_ResolvesCorrectSlot()
+    public async Task An_evaluation_of_a_name_a_lambda_shadows_reads_the_lambdas_own_parameter()
     {
         bool startSuspended = true;
 
@@ -474,7 +479,8 @@ public class EvalTests(ITestOutputHelper testOutputHelper)
             .WithAttachRequest(p2.Id)
             .WaitForInitializedEvent();
         debugProtocolHost
-            .WithBreakpointsRequest(48, Debuggees.Source("DebuggableConsoleApp", "Lambdas", "MyLambdaClass.cs"))
+            .WithBreakpointsRequest(Debuggees.Line("DebuggableConsoleApp", "Lambdas/MyLambdaClass.cs", "return value + outerLocal;"),
+                Debuggees.Source("DebuggableConsoleApp", "Lambdas", "MyLambdaClass.cs"))
             .WithConfigurationDoneRequest()
             .WithOptionalResumeRuntime(p2.Id, startSuspended);
 
@@ -490,8 +496,10 @@ public class EvalTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("200", evaluateResponse.Result);
     }
 
+    /// <summary>Inside a generic method its type parameter is the type it was called with: default(T), typeof(T) and its
+    /// argument evaluate as that type's.</summary>
     [Fact]
-    public async Task SharpDbgCli_EvaluationRequest_GenericMethod_Evaluates()
+    public async Task An_evaluation_inside_a_generic_method_knows_its_type_argument()
     {
         bool startSuspended = true;
 
@@ -502,7 +510,8 @@ public class EvalTests(ITestOutputHelper testOutputHelper)
             .WithAttachRequest(p2.Id)
             .WaitForInitializedEvent();
         debugProtocolHost
-            .WithBreakpointsRequest(7, Debuggees.Source("DebuggableConsoleApp", "MyClassWithGenericMethod.cs"))
+            .WithBreakpointsRequest(Debuggees.Line("DebuggableConsoleApp", "MyClassWithGenericMethod.cs", "return arg;"),
+                Debuggees.Source("DebuggableConsoleApp", "MyClassWithGenericMethod.cs"))
             .WithConfigurationDoneRequest()
             .WithOptionalResumeRuntime(p2.Id, startSuspended);
 
@@ -540,8 +549,9 @@ public class EvalTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("6", named.Result);
     }
 
+    /// <summary>A stop in a static class's method reads the class's static field.</summary>
     [Fact]
-    public async Task SharpDbgCli_EvaluationRequest_StaticClassMethod_EvaluatesCorrectFieldValue()
+    public async Task An_evaluation_in_a_static_classs_method_reads_its_field()
     {
         bool startSuspended = true;
 
@@ -552,7 +562,7 @@ public class EvalTests(ITestOutputHelper testOutputHelper)
             .WithAttachRequest(p2.Id)
             .WaitForInitializedEvent();
         debugProtocolHost
-            .WithBreakpointsRequest([9], Debuggees.Source("DebuggableConsoleApp", "MyStaticClass.cs"))
+            .WithBreakpointsRequest([Debuggees.Line("DebuggableConsoleApp", "MyStaticClass.cs", "int test = 4;")], Debuggees.Source("DebuggableConsoleApp", "MyStaticClass.cs"))
             .WithConfigurationDoneRequest()
             .WithOptionalResumeRuntime(p2.Id, startSuspended);
 
@@ -578,7 +588,7 @@ public class EvalTests(ITestOutputHelper testOutputHelper)
             .WithAttachRequest(program.Id)
             .WaitForInitializedEvent();
         host
-            .WithBreakpointsRequest(22, Debuggees.Source("DebuggableConsoleApp", "MyClass.cs"))
+            .WithBreakpointsRequest(Debuggees.MyMethodEnd, Debuggees.Source("DebuggableConsoleApp", "MyClass.cs"))
             .WithConfigurationDoneRequest()
             .WithOptionalResumeRuntime(program.Id, true);
 

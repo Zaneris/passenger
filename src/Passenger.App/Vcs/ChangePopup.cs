@@ -4,7 +4,7 @@ using Avalonia.Controls.Documents;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Passenger.Editor;
+using Passenger.Text;
 
 namespace Passenger.App.Vcs;
 
@@ -23,7 +23,7 @@ public sealed class ChangePopup : UserControl
         Before = before;
         this.highlightWords = highlightWords;
         ToggleButton highlight = new() { Classes = { "option" }, IsChecked = highlightWords, Content = new PathIcon(), Focusable = false, Margin = new Thickness(4, 0, 0, 0) };
-        ((PathIcon)highlight.Content).Bind(PathIcon.DataProperty, highlight.GetResourceObservable("Icon.Highlight"));
+        ((PathIcon)highlight.Content).Bind(PathIcon.DataProperty, highlight.GetResourceObservable(IconKeys.Highlight));
         ToolTip.SetTip(highlight, "Highlight Words");
         highlight.IsCheckedChanged += (_, _) =>
         {
@@ -38,10 +38,10 @@ public sealed class ChangePopup : UserControl
             Spacing = 2,
             Children =
             {
-                ToolButtons.Of("Icon.ArrowUp", "Previous Change", previous),
-                ToolButtons.Of("Icon.ArrowDown", "Next Change", next),
-                ToolButtons.Of("Icon.Rollback", "Rollback", rollback),
-                ToolButtons.Of("Icon.Diff", "Show Diff", diff),
+                ToolButtons.Of(IconKeys.ArrowUp, "Previous Change", previous),
+                ToolButtons.Of(IconKeys.ArrowDown, "Next Change", next),
+                ToolButtons.Of(IconKeys.Rollback, "Rollback", rollback),
+                ToolButtons.Of(IconKeys.Diff, "Show Diff", diff),
                 highlight,
             },
         };
@@ -51,7 +51,7 @@ public sealed class ChangePopup : UserControl
             old = new TextBlock { FontFamily = CSharp.Fonts.Mono, FontSize = 12, Padding = new Thickness(8, 6) };
             ShowText();
             Border text = new() { Classes = { "box" }, Child = new ScrollViewer { MaxHeight = 260, MaxWidth = 640, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, Content = old } };
-            text.Bind(Border.BackgroundProperty, text.GetResourceObservable("Passenger.Diff.Modified"));
+            text.Bind(Border.BackgroundProperty, text.GetResourceObservable(TokenKeys.Diff_Modified));
             content.Children.Add(text);
         }
         Content = new Border { Classes = { "popup" }, Padding = new Thickness(6), Child = content };
@@ -92,7 +92,7 @@ public sealed class ChangePopup : UserControl
                 inlines.Add(new Avalonia.Controls.Documents.Run(Before[at..word.Range.Start]));
             }
             Avalonia.Controls.Documents.Run changed = new(Before.Substring(word.Range.Start, word.Range.Length));
-            changed.Bind(TextElement.BackgroundProperty, old.GetResourceObservable(word.Kind == ChangeMarkKind.Deleted ? "Passenger.Diff.DeletedWord" : "Passenger.Diff.ModifiedWord"));
+            changed.Bind(TextElement.BackgroundProperty, old.GetResourceObservable(word.Kind == ChangeMarkKind.Deleted ? TokenKeys.Diff_DeletedWord : TokenKeys.Diff_ModifiedWord));
             inlines.Add(changed);
             at = word.Range.End;
         }

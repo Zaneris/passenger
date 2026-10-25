@@ -83,7 +83,7 @@ public sealed class TableFile
             {
                 header = value;
                 stale = true;
-                _ = ReadAsync();
+                IdeErrors.Observe(ReadAsync());
             }
         }
     }
@@ -98,7 +98,7 @@ public sealed class TableFile
             {
                 sheet = value;
                 stale = true;
-                _ = ReadAsync();
+                IdeErrors.Observe(ReadAsync());
             }
         }
     }
@@ -124,7 +124,7 @@ public sealed class TableFile
         }
         if (stale && ShowsTable)
         {
-            _ = ReadAsync();
+            IdeErrors.Observe(ReadAsync());
         }
     }
 

@@ -123,7 +123,7 @@ public sealed partial class SettingsDialog
         foreach (IdeAction action in actions.All.OrderBy(a => a.Title, StringComparer.Ordinal))
         {
             WrapPanel keys = new() { Width = 300, VerticalAlignment = VerticalAlignment.Center };
-            Button edit = ToolButtons.Of("Icon.More", "Edit Shortcuts");
+            Button edit = ToolButtons.Of(IconKeys.More, "Edit Shortcuts");
             StackPanel editor = new() { Orientation = Orientation.Horizontal, Spacing = 6, Children = { keys, edit } };
             Panel row = (Panel)Add(KeymapPage, action.Title, editor, RowWords(action, current.ShortcutsFor(action.Id).Select(s => s.Display())), action: action.Id);
             // Transparent so a click anywhere along the row is the row's.
@@ -173,8 +173,8 @@ public sealed partial class SettingsDialog
         KeymapChoice.SelectionChanged += (_, _) => ChooseKeymap(KeymapChoices[Math.Max(0, KeymapChoice.SelectedIndex)]);
 
         Grid icon = new() { Width = 18, Height = 18 };
-        PathIcon keyboard = Glyph("Icon.Keyboard");
-        PathIcon magnifier = Glyph("Icon.Search");
+        PathIcon keyboard = Glyph(IconKeys.Keyboard);
+        PathIcon magnifier = Glyph(IconKeys.Search);
         magnifier.Width = magnifier.Height = 10;
         magnifier.HorizontalAlignment = HorizontalAlignment.Right;
         magnifier.VerticalAlignment = VerticalAlignment.Bottom;
@@ -184,12 +184,12 @@ public sealed partial class SettingsDialog
         ToolTip.SetTip(FindByShortcut, "Find Actions by Shortcut");
         FindByShortcut.Click += (_, _) => findPopup.IsOpen = true;
 
-        ClearFiltering.Content = Glyph("Icon.Close");
+        ClearFiltering.Content = Glyph(IconKeys.Close);
         ((PathIcon)ClearFiltering.Content).Width = ((PathIcon)ClearFiltering.Content).Height = 10;
         ToolTip.SetTip(ClearFiltering, "Clear Filtering");
         ClearFiltering.Click += (_, _) => ClearShortcutFilter();
         filterChip.Child = new StackPanel { Orientation = Orientation.Horizontal, Children = { filterText, ClearFiltering } };
-        filterChip.Bind(Border.BackgroundProperty, filterChip.GetResourceObservable("Passenger.Selected"));
+        filterChip.Bind(Border.BackgroundProperty, filterChip.GetResourceObservable(TokenKeys.Selected));
 
         TextBlock title = new() { Text = "Find Shortcut", FontWeight = FontWeight.SemiBold };
         Border popup = new()
@@ -236,7 +236,7 @@ public sealed partial class SettingsDialog
     {
         Keymap current = Current;
         IReadOnlyList<Shortcut> keys = current.ShortcutsFor(action);
-        List<Control> items = [Item("Add Keyboard Shortcut", () => _ = AddKeyboardShortcut(action))];
+        List<Control> items = [Item("Add Keyboard Shortcut", () => IdeErrors.Observe(AddKeyboardShortcut(action)))];
         if (keys.Count > 0)
         {
             items.Add(new Separator());
@@ -335,7 +335,7 @@ public sealed partial class SettingsDialog
                 foreach (string keys in shown)
                 {
                     Border box = new() { Classes = { "box" }, Padding = new Thickness(6, 1), Margin = new Thickness(0, 2, 4, 2), Child = new TextBlock { Text = keys, FontSize = 12 } };
-                    box.Bind(Border.BackgroundProperty, box.GetResourceObservable("Passenger.Selected"));
+                    box.Bind(Border.BackgroundProperty, box.GetResourceObservable(TokenKeys.Selected));
                     row.Keys.Children.Add(box);
                 }
                 int option = options.FindIndex(o => o.Page == KeymapPage && o.Action == id);

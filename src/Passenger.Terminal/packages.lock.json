@@ -47,6 +47,32 @@
         "type": "Transitive",
         "resolved": "1.24.260710001",
         "contentHash": "JR1xAkZbNnAALBjzFpqSwEx7YZfD1LI228jF9j9cgKknBPCiFy9mpphlgH+TpTN8vajTUpcgg9Miy5Y8eUAH9g=="
+      },
+      "passenger.core": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Diagnostics.NETCore.Client": "[0.2.750501, )"
+        }
+      },
+      "passenger.editor": {
+        "type": "Project",
+        "dependencies": {
+          "Avalonia": "[12.1.4, )",
+          "Passenger.Core": "[0.2.0, )",
+          "Passenger.Text": "[0.2.0, )"
+        }
+      },
+      "passenger.text": {
+        "type": "Project",
+        "dependencies": {
+          "Passenger.Core": "[0.2.0, )"
+        }
+      },
+      "Microsoft.Diagnostics.NETCore.Client": {
+        "type": "CentralTransitive",
+        "requested": "[0.2.750501, )",
+        "resolved": "0.2.750501",
+        "contentHash": "XVOWyjoikpjTecPv8fYWspgNGhXtOeMX3K3wq9kXftU9U04V6IwCY4NQuVrY/BIBwmui6lF8z7pNP64cwFvUNQ=="
       }
     },
     "net11.0/linux-arm64": {

@@ -1,5 +1,7 @@
 using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.App;
 
@@ -21,7 +23,7 @@ public partial class MainWindow
     {
         if (conflicted.Add(document))
         {
-            _ = ResolveConflictAsync(document);
+            IdeErrors.Observe(ResolveConflictAsync(document));
         }
     };
 
@@ -69,7 +71,7 @@ public partial class MainWindow
             }
         }
         // A settings file, a launch profile or a compose file written: the reads of keys nothing gave are looked at again.
-        if (changes.Lost || changes.Paths.Any(p => ConfigurationFiles.IsSettings(p) || Path.GetFileName(p).Equals("launchSettings.json", StringComparison.OrdinalIgnoreCase)
+        if (changes.Lost || changes.Paths.Any(p => ConfigurationFiles.IsSettings(p) || Path.GetFileName(p).Equals(Run.LaunchProfile.SettingsFile, StringComparison.OrdinalIgnoreCase)
             || Web.ComposeDeclarations.IsCompose(p)))
         {
             session.CSharp?.ConfigurationChanged();
@@ -89,7 +91,7 @@ public partial class MainWindow
         FollowOpenFiles(changes.Paths, every: changes.Lost);
         if (changes.Paths.Count > 0 || changes.Git)
         {
-            _ = session.Vcs.RefreshAsync();
+            IdeErrors.Observe(session.Vcs.RefreshAsync());
         }
     }
 
@@ -189,7 +191,7 @@ public partial class MainWindow
         }
         else if (conflicted.Add(document))
         {
-            _ = ResolveConflictAsync(document);
+            IdeErrors.Observe(ResolveConflictAsync(document));
         }
     }
 
@@ -203,7 +205,7 @@ public partial class MainWindow
         }
         // Held while it waits, so a screenshot or a test finds the tab as the wait leaves it.
         IDisposable held = BackgroundWork.Scope();
-        _ = Task.Delay(ComeBack).ContinueWith(_ =>
+        IdeErrors.Observe(Task.Delay(ComeBack).ContinueWith(_ =>
         {
             UiThread.Post(() =>
             {
@@ -222,7 +224,7 @@ public partial class MainWindow
                 }
             });
             held.Dispose();
-        }, TaskScheduler.Default);
+        }, TaskScheduler.Default));
     }
 
     /// <summary>File Cache Conflict: the disk's version, or the edits made here, written over the disk's. Until it is

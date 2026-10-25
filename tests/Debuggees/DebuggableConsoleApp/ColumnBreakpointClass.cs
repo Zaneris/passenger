@@ -6,12 +6,12 @@ public class ColumnBreakpointClass
 
 	public void Test()
 	{
-		var first = 1; var second = first + 1; var third = second + 1; // column-breakpoint-line
+		int first = 1; int second = first + 1; int third = second + 1; // column-breakpoint-line
 		_sink = third;
 
-		var multi =
+		int multi =
 			1 + 25 +
-			12 + 5; var after = multi + 1; // column-breakpoint-multiline
+			12 + 5; int after = multi + 1; // column-breakpoint-multiline
 		_sink += after;
 	}
 }

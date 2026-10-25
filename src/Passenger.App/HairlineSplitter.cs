@@ -27,7 +27,7 @@ public sealed class HairlineDivider : Panel
     public HairlineDivider(GridResizeDirection direction, bool drawn = true)
     {
         ZIndex = 1;
-        line.Bind(Border.BackgroundProperty, line.GetResourceObservable("Passenger.Divider"));
+        line.Bind(Border.BackgroundProperty, line.GetResourceObservable(TokenKeys.Divider));
         line.IsVisible = drawn;
         Splitter = new HairlineSplitter { Classes = { direction == GridResizeDirection.Columns ? "hairline" : "hairlineRows" }, ResizeDirection = direction };
         Children.Add(line);

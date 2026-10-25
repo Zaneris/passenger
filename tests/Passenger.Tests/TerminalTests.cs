@@ -12,6 +12,7 @@ using Passenger.App.Docking;
 using Passenger.App.Run;
 using Passenger.App.Settings;
 using Passenger.Core;
+using Passenger.Editor;
 using Passenger.Terminal;
 
 namespace Passenger.Tests;
@@ -73,7 +74,7 @@ public sealed class TerminalTests
             Point cell = view.PointOf(row, column);
             double width = view.PointOf(row, column + 1).X - cell.X;
             double height = view.PointOf(row + 1, column).Y - cell.Y;
-            Color background = ((ISolidColorBrush)view.FindResource(window.ActualThemeVariant, "Passenger.Terminal.Background")!).Color;
+            Color background = ((ISolidColorBrush)view.FindResource(window.ActualThemeVariant, TokenKeys.Terminal_Background)!).Color;
             bool Drawn(Point at) => Ui.Pixel(window, view.TranslatePoint(at, window)!.Value) != background;
             Assert.Equal(centre, Drawn(cell));
             Assert.Equal(left, Drawn(cell + new Point(1 - width / 2, 0)));
@@ -170,7 +171,7 @@ public sealed class TerminalTests
             window.TerminalPanel.FocusView();
             Ui.Settle();
             TerminalView view = window.TerminalPanel.View;
-            Color background = ((ISolidColorBrush)view.FindResource(window.ActualThemeVariant, "Passenger.Terminal.Background")!).Color;
+            Color background = ((ISolidColorBrush)view.FindResource(window.ActualThemeVariant, TokenKeys.Terminal_Background)!).Color;
             Assert.Equal(background, Ui.Pixel(window, CursorCentre(window)));
             Run(window, $"printf '\\033[2 q'; read x; printf '{reset}'");
             WaitForScreen(window, shell, s => s.CursorColumn == 0, "the program waiting with its block cursor");
@@ -203,7 +204,7 @@ public sealed class TerminalTests
             window.TerminalPanel.FocusView();
             Ui.Settle();
             Point centre = CursorCentre(window);
-            Color background = ((ISolidColorBrush)view.FindResource(window.ActualThemeVariant, "Passenger.Terminal.Background")!).Color;
+            Color background = ((ISolidColorBrush)view.FindResource(window.ActualThemeVariant, TokenKeys.Terminal_Background)!).Color;
             Ui.WaitFor(() => Ui.Pixel(window, centre) == background, "the blinking cursor to disappear");
             Ui.WaitFor(() => Ui.Pixel(window, centre) != background, "the blinking cursor to reappear");
             SettingsDialog other = window.ShowSettings();
@@ -235,7 +236,7 @@ public sealed class TerminalTests
         {
             (MainWindow window, TerminalSession shell) = Open(folder, "/bin/sh");
             TerminalView view = window.TerminalPanel.View;
-            Color background = ((ISolidColorBrush)view.FindResource(window.ActualThemeVariant, "Passenger.Terminal.Background")!).Color;
+            Color background = ((ISolidColorBrush)view.FindResource(window.ActualThemeVariant, TokenKeys.Terminal_Background)!).Color;
             Run(window, "printf '\\033[1 q'; read x; printf '\\033[?12l'; read x; printf '\\033[?12h'; read x; printf '\\033[0 q'");
             WaitForScreen(window, shell, s => s.CursorColumn == 0 && s.RequestedCursorBlinking == true, "the program to request a blinking cursor");
             Ui.WaitFor(() => Ui.Pixel(window, CursorCentre(window)) == background, "the program's cursor to blink off");
@@ -356,9 +357,7 @@ public sealed class TerminalTests
         string folder = TestFolders.Create("terminal-");
         try
         {
-            MainWindow window = new() { Width = 1200, Height = 800 };
-            window.Show();
-            window.OpenFolder(folder);
+            MainWindow window = Ui.OpenFolder(folder);
             window.TerminalPanel.Shell = OperatingSystem.IsWindows() ? ("cmd.exe", []) : ("/bin/sh", []);
             Ui.Run(window, AppActions.ShowTerminal);
             Ui.WaitFor(() => window.TerminalPanel.Active is { IsRunning: true }, "the shell to start");
@@ -532,6 +531,7 @@ public sealed class TerminalTests
             string hundred = string.Concat(Enumerable.Range(10, 50));
             RunCase(window, "hundred");
             WaitForLine(shell, hundred, "the line of 100 printed");
+            WaitForScreen(window, shell, s => s.CursorColumn > 0 && s.Lines[s.CursorRow].Text() != hundred, "the prompt after the program");
             window.KeyTextInput("echo kept");
             Ui.WaitFor(() => screen.Lines[screen.CursorRow].Text().EndsWith("echo kept", StringComparison.Ordinal), "the command typed");
             string prompt = screen.Lines[screen.CursorRow].Text();
@@ -776,10 +776,7 @@ public sealed class TerminalTests
     {
         string project = PathNames.Canonical(Debugging.Helpers.Debuggees.CopyTo("TerminalConsoleApp", folder));
         Restore.Run(folder);
-        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
-        window.Show();
-        window.OpenFolder(folder);
-        Ui.Settle();
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         window.SetConfigurations([new RunConfiguration { Name = "Keys", Project = project, Arguments = arguments, Console = ConsoleKind.Terminal }], "Keys");
         return window;
     }
@@ -893,10 +890,7 @@ public sealed class TerminalTests
         TerminalView view = window.TerminalPanel.View;
         Point from = view.TranslatePoint(view.PointOf(fromLine, fromColumn), window)!.Value;
         Point to = view.TranslatePoint(view.PointOf(toLine, toColumn), window)!.Value;
-        window.MouseDown(from, MouseButton.Left);
-        window.MouseMove(to, RawInputModifiers.LeftMouseButton);
-        window.MouseUp(to, MouseButton.Left);
-        Ui.Settle();
+        Ui.Drag(window, from, to);
     }
 
     /// <summary>The window over a folder, its Terminal open on the system's plain shell (cmd.exe on Windows, sh elsewhere).</summary>
@@ -905,9 +899,7 @@ public sealed class TerminalTests
     /// <summary>The window over a folder, its Terminal open on a shell of the test's and the keys going to it.</summary>
     internal static (MainWindow Window, TerminalSession Shell) Open(string folder, string shell, params string[] arguments)
     {
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder);
         window.TerminalPanel.Shell = (shell, arguments);
         Ui.Run(window, AppActions.ShowTerminal);
         Ui.WaitFor(() => window.TerminalPanel.Active is { IsRunning: true }, "the shell to start");

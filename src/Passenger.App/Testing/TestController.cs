@@ -1,6 +1,6 @@
 using Passenger.App.Aspire;
-using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Workspace;
 
 namespace Passenger.App.Testing;
 
@@ -457,7 +457,7 @@ public sealed class TestController : IAsyncDisposable
         {
             // A discovery that never said it had stopped: its runner ends, its test hosts with it.
             runner = null;
-            _ = Task.Run(stuck.Dispose);
+            IdeErrors.Observe(Task.Run(stuck.Dispose));
         }
         Message?.Invoke(this, StoppedMessage);
         return StoppedMessage;

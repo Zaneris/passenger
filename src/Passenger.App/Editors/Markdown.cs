@@ -158,7 +158,7 @@ internal static partial class Markdown
             {
                 // Drawn as the check it is, never one to click: the file's text is what says it is done.
                 PathIcon tick = new() { Classes = { "mdTick" }, IsVisible = done };
-                tick.Bind(PathIcon.DataProperty, tick.GetResourceObservable("Icon.Check"));
+                tick.Bind(PathIcon.DataProperty, tick.GetResourceObservable(IconKeys.Check));
                 mark = new Border { Classes = { "box", "mdTask" }, Child = tick };
                 mark.Classes.Set("done", done);
                 Avalonia.Automation.AutomationProperties.SetName(mark, done ? "Done" : "Not done");
@@ -867,15 +867,15 @@ public sealed class MarkdownText : SelectableTextBlock
         if (code)
         {
             run.FontFamily = CodeBlock.Font;
-            run.Bind(TextElement.BackgroundProperty, this.GetResourceObservable("Passenger.Hover"));
+            run.Bind(TextElement.BackgroundProperty, this.GetResourceObservable(TokenKeys.Hover));
         }
         if (link is not null)
         {
-            run.Bind(TextElement.ForegroundProperty, this.GetResourceObservable("Passenger.Link"));
+            run.Bind(TextElement.ForegroundProperty, this.GetResourceObservable(TokenKeys.Link));
         }
         else if (muted)
         {
-            run.Bind(TextElement.ForegroundProperty, this.GetResourceObservable("Passenger.TextMuted"));
+            run.Bind(TextElement.ForegroundProperty, this.GetResourceObservable(TokenKeys.TextMuted));
         }
         Inlines!.Add(run);
         shown.Append(text);

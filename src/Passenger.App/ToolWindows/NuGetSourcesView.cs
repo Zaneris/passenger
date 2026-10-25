@@ -7,6 +7,7 @@ using Avalonia.Media;
 using Passenger.App.Packages;
 using Passenger.App.Welcome;
 using Passenger.Core;
+using Passenger.Packages;
 
 namespace Passenger.App.ToolWindows;
 
@@ -40,7 +41,7 @@ public sealed class NuGetSourcesView : Grid
                 Draw();
             }
         };
-        problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable("Passenger.Error"));
+        problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable(TokenKeys.Error));
         DockPanel right = new();
         DockPanel.SetDock(problem, Dock.Bottom);
         problem.Margin = new Thickness(14, 0, 14, 8);
@@ -118,7 +119,7 @@ public sealed class NuGetSourcesView : Grid
 
     private void DrawFile(ConfigFile file)
     {
-        Button add = ToolButtons.Of("Icon.Add", "Add Feed", () => _ = AddAsync(file));
+        Button add = ToolButtons.Of(IconKeys.Add, "Add Feed", () => IdeErrors.Observe(AddAsync(file)));
         add.IsEnabled = !file.ReadOnly && file.Problem is null;
         add.Name = "AddFeed";
         DockPanel header = new() { Children = { add, Title("Feeds", default) } };
@@ -158,7 +159,7 @@ public sealed class NuGetSourcesView : Grid
         bool enabled = effective?.Enabled ?? !feed.DisabledHere;
         CheckBox toggle = new() { IsChecked = enabled, IsEnabled = !file.ReadOnly, VerticalAlignment = VerticalAlignment.Center, MinWidth = 0, Margin = new Thickness(0, 0, 4, 0) };
         ToolTip.SetTip(toggle, "Enabled");
-        toggle.IsCheckedChanged += (_, _) => _ = SetEnabledAsync(file, feed.Name, toggle.IsChecked == true);
+        toggle.IsCheckedChanged += (_, _) => IdeErrors.Observe(SetEnabledAsync(file, feed.Name, toggle.IsChecked == true));
         TextBlock name = new() { Text = feed.Name, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         TextBlock url = new() { Classes = { "muted" }, Text = feed.Value, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(10, 0) };
         ToolTip.SetTip(url, feed.Value);
@@ -169,12 +170,12 @@ public sealed class NuGetSourcesView : Grid
         if (feed.Username is not null || feed.HasPassword)
         {
             PathIcon locked = new() { Classes = { "small" }, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
-            locked.Bind(PathIcon.DataProperty, locked.GetResourceObservable("Icon.Lock"));
+            locked.Bind(PathIcon.DataProperty, locked.GetResourceObservable(IconKeys.Lock));
             ToolTip.SetTip(locked, feed.Username is { } user ? $"Credentials for {user} in this file" : "Credentials in this file");
             Add(row, locked, 3);
         }
-        Button edit = ToolButtons.Of("Icon.Edit", "Edit", () => _ = EditAsync(file, feed));
-        Button delete = ToolButtons.Of("Icon.Clear", "Delete Feed", () => _ = DeleteAsync(file, feed));
+        Button edit = ToolButtons.Of(IconKeys.Edit, "Edit", () => IdeErrors.Observe(EditAsync(file, feed)));
+        Button delete = ToolButtons.Of(IconKeys.Clear, "Delete Feed", () => IdeErrors.Observe(DeleteAsync(file, feed)));
         edit.IsEnabled = delete.IsEnabled = !file.ReadOnly;
         Add(row, edit, 4);
         Add(row, delete, 5);
@@ -269,7 +270,7 @@ public sealed class NuGetSourcesView : Grid
     private static Control FileRow(ConfigFile file)
     {
         PathIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(6, 0, 6, 0) };
-        icon.Bind(PathIcon.DataProperty, icon.GetResourceObservable("Icon.DocumentText"));
+        icon.Bind(PathIcon.DataProperty, icon.GetResourceObservable(IconKeys.DocumentText));
         TextBlock place = new()
         {
             Classes = { "muted" },
@@ -301,7 +302,7 @@ public sealed class NuGetSourcesView : Grid
     private static TextBlock Error(string text)
     {
         TextBlock error = new() { Text = text, TextWrapping = TextWrapping.Wrap };
-        error.Bind(TextBlock.ForegroundProperty, error.GetResourceObservable("Passenger.Error"));
+        error.Bind(TextBlock.ForegroundProperty, error.GetResourceObservable(TokenKeys.Error));
         return error;
     }
 

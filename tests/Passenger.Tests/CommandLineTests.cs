@@ -3,6 +3,7 @@ using System.Diagnostics;
 using Avalonia;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
+using Passenger.App.State;
 using Passenger.Core;
 using SkiaSharp;
 
@@ -279,7 +280,7 @@ public sealed class CommandLineTests : IDisposable
         {
             start.ArgumentList.Add(argument);
         }
-        start.Environment["PASSENGER_SETTINGS"] = state;
+        start.Environment[StateStore.Variable] = state;
         foreach ((string variable, string value) in environment ?? new Dictionary<string, string>())
         {
             start.Environment[variable] = value;

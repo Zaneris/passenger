@@ -4,6 +4,7 @@ namespace Passenger.Lsp;
 /// the Language Server Protocol's, then Visual Studio's and Roslyn's own that Roslyn's server speaks, then the TypeScript
 /// server's. A name misspelt here is misspelt everywhere at once, so a request the other end never answers shows at its
 /// one place.</summary>
+[IdentifierHome]
 public static class LspMethods
 {
     public const string Initialize = "initialize";

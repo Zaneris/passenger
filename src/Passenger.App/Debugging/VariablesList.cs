@@ -31,7 +31,7 @@ public sealed class VariablesList : ListBox
             // A double-click opens what has members, and sets what has none; a query's SQL opens its text.
             if (SelectedItem is VariableNode node && node.HasChildren)
             {
-                _ = Toggle(node);
+                IdeErrors.Observe(Toggle(node));
             }
             else if (SelectedItem is VariableNode { IsQueryText: true } text)
             {
@@ -42,7 +42,7 @@ public sealed class VariablesList : ListBox
                 EditSelectedValue();
             }
         };
-        TreeKeys.Attach<VariableNode>(this, node => _ = Toggle(node), node =>
+        TreeKeys.Attach<VariableNode>(this, node => IdeErrors.Observe(Toggle(node)), node =>
         {
             if (!node.IsQueryText || Tree.Rows.Any(r => r.IsEditing))
             {
@@ -185,8 +185,8 @@ public sealed class VariablesList : ListBox
         items.AddRange(
         [
             ListMenus.Item("Set Value…", "F2", () => EditSelectedValue(), node.Expression is not null),
-            ListMenus.Item("Copy Value", null, () => _ = ListMenus.CopyAsync(this, node.Value)),
-            ListMenus.Item("Copy Name", null, () => _ = ListMenus.CopyAsync(this, node.Name)),
+            ListMenus.Item("Copy Value", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, node.Value))),
+            ListMenus.Item("Copy Name", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, node.Name))),
             new Separator(),
             ListMenus.Item("Add to Watches", null, () => EvaluateRequested?.Invoke(this, (node.Expression!, true)), node.Expression is not null && node.Role != VariableRole.Watch),
             ListMenus.Item("Inspect", null, () => EvaluateRequested?.Invoke(this, (node.Expression!, false)), node.Expression is not null),
@@ -202,9 +202,9 @@ public sealed class VariablesList : ListBox
             ToolTip.SetShowOnDisabled(watch, true);
             items.Add(new Separator());
             items.Add(watch);
-            _ = Offer(watch, offer(node));
+            IdeErrors.Observe(Offer(watch, offer(node)));
             // Asked again each time the menu opens: the row may have been watched, or let go, since it was chosen.
-            watch.AttachedToVisualTree += (_, _) => _ = Offer(watch, offer(node));
+            watch.AttachedToVisualTree += (_, _) => IdeErrors.Observe(Offer(watch, offer(node)));
         }
         return items;
     }
@@ -227,7 +227,7 @@ public sealed class VariablesList : ListBox
             return new TextBlock();
         }
         PathIcon chevron = new() { Classes = { "chevron" }, IsVisible = node.HasChildren, RenderTransformOrigin = RelativePoint.Center };
-        chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable("Icon.ChevronRight"));
+        chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(IconKeys.ChevronRight));
         chevron.RenderTransform = new RotateTransform(node.ChevronAngle);
         node.FollowWhileShown(chevron, (_, e) =>
         {
@@ -241,7 +241,7 @@ public sealed class VariablesList : ListBox
         {
             if (node.HasChildren)
             {
-                _ = Toggle(node);
+                IdeErrors.Observe(Toggle(node));
                 e.Handled = true;
             }
         };
@@ -249,11 +249,11 @@ public sealed class VariablesList : ListBox
         // Marks for what the debugger adds to a frame's values: a call's value, the exception stopped at, a query's SQL.
         string iconKey = node switch
         {
-            { Role: VariableRole.Watch } => "Icon.Evaluate",
-            { IsReturnValue: true } => "Icon.StepOut",
-            { IsException: true } => "Icon.Error",
-            { IsQuerySql: true } => "Icon.Database",
-            _ => "Icon.Variable",
+            { Role: VariableRole.Watch } => IconKeys.Evaluate,
+            { IsReturnValue: true } => IconKeys.StepOut,
+            { IsException: true } => IconKeys.Error,
+            { IsQuerySql: true } => IconKeys.Database,
+            _ => IconKeys.Variable,
         };
         icon.Bind(PathIcon.DataProperty, icon.GetResourceObservable(iconKey));
         TextBlock type = new() { Text = node.TypeLabel, VerticalAlignment = VerticalAlignment.Center };
@@ -261,7 +261,7 @@ public sealed class VariablesList : ListBox
         TextBlock value = new() { Text = node.Shown, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 900 };
         if (node.Role == VariableRole.Error)
         {
-            value.Bind(TextBlock.ForegroundProperty, value.GetResourceObservable("Passenger.Error"));
+            value.Bind(TextBlock.ForegroundProperty, value.GetResourceObservable(TokenKeys.Error));
         }
         ToolTip.SetTip(value, node.Lines);
         TextBox editor = new() { Classes = { "search" }, MinHeight = 22, Height = 22, MinWidth = 240, Padding = new Thickness(6, 0), IsVisible = false, VerticalAlignment = VerticalAlignment.Center };

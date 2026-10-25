@@ -5,6 +5,7 @@ namespace Passenger.App;
 /// <summary>The ids of the IDE's own actions, beside the editor's (<see cref="EditorActions"/>), and the keymaps of each
 /// platform that bind both by id: Rider's Visual Studio keymaps for these too, and its VS Code keymaps. Each action is
 /// declared by its feature (<see cref="IdeAction"/>, in the window's <see cref="ActionRegistry"/>).</summary>
+[IdentifierHome]
 public static class AppActions
 {
     public const string Open = "app.open";
@@ -389,6 +390,9 @@ public static class AppActions
     public const string PreviousChange = "app.vcs.previousChange";
     public const string RollbackLines = "app.vcs.rollbackLines";
     public const string ShowDiff = "app.vcs.showDiff";
+
+    // Rider's Diff.ShowSettingsPopup, a diff's Settings: $default's Ctrl+Shift+D, none in its VS Code keymaps.
+    public const string DiffSettings = "app.vcs.diffSettings";
     public const string ShowGit = "app.vcs.showGit";
     public const string Annotate = "app.vcs.annotate";
     public const string UpdateProject = "app.vcs.update";
@@ -439,6 +443,22 @@ public static class AppActions
     /// <summary>The keymap in force: the chosen keymap with the person's shortcuts over it, made once until those
     /// change, since every tip and menu reads it; a caller reads it and never binds into it.</summary>
     public static Keymap Keymap() => inForce ??= Keymap(Preset, UserShortcuts);
+
+    /// <summary>The action whose keys a place takes for one of its own, where Rider's keymaps give a key two actions told
+    /// apart by where it is pressed and the keymap gives it to the other: Show Diff in the Commit window and the Git log
+    /// takes Compare Files' keys in Visual Studio's keymap (Duplicate's off macOS; none in VS Code's), and the Debug
+    /// window's evaluate box adds a watch by Complete Statement's keys (Start New Line Before's in VS Code's). The
+    /// action's own once the person gives it some.</summary>
+    public static string KeysIn(string id) => UserShortcuts.ContainsKey(id) ? id : id switch
+    {
+        ShowDiff when Preset == KeymapPreset.VisualStudio => OperatingSystem.IsMacOS() ? CompareFiles : EditorActions.Duplicate,
+        AddToWatches => Preset == KeymapPreset.VisualStudio ? CompleteStatement : EditorActions.StartNewLineBefore,
+        _ => id,
+    };
+
+    /// <summary>Whether a key pressed is one a place takes for an action (<see cref="KeysIn"/>), in the keymap in force.</summary>
+    public static bool Presses(string id, Avalonia.Input.KeyEventArgs e) =>
+        Keymap().ShortcutsFor(KeysIn(id)).Any(s => s.Second is null && s.First == Keystroke.From(e));
 
     /// <summary>The Visual Studio keymap with these shortcuts over it.</summary>
     public static Keymap Keymap(IReadOnlyDictionary<string, string[]> overrides) => Keymap(KeymapPreset.VisualStudio, overrides);
@@ -557,6 +577,7 @@ public static class AppActions
                 .Bind(NextChange, "shift meta alt N")
                 .Bind(PreviousChange, "shift meta alt P")
                 .Bind(RollbackLines, "meta alt Z")
+                .Bind(DiffSettings, "meta shift D")
                 .Bind(ShowGit, "meta 9")
                 .Bind(ShowTerminal, "meta control 1")
                 .Bind(UpdateProject, "meta alt W")
@@ -679,6 +700,7 @@ public static class AppActions
             .Bind(NextChange, "shift control alt N")
             .Bind(PreviousChange, "shift control alt P")
             .Bind(RollbackLines, "control alt Z")
+            .Bind(DiffSettings, "control shift D")
             .Bind(ShowGit, "alt 9")
             .Bind(ShowTerminal, "control alt 1")
             .Bind(UpdateProject, "control alt W")

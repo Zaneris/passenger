@@ -38,7 +38,7 @@ public static class Dotnet
     }
 
     /// <summary>The global.json dotnet reads in a folder (the nearest over it) with its last write and length; empty for none.</summary>
-    private static string GlobalJsonOver(string folder)
+    public static string GlobalJsonOver(string folder)
     {
         for (string? at = folder; at is not null; at = Path.GetDirectoryName(at))
         {

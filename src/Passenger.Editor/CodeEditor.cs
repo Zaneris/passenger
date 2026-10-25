@@ -184,26 +184,20 @@ public sealed partial class CodeEditor : Control
         InvalidateVisual();
     }
 
+    private readonly AnchoredList<InlineChange> inlineChanges = new(c => c.Range, (c, range) => c with { Range = range });
+
     /// <summary>The words that changed inside changed lines (sorted), drawn over the lines' tint in a stronger colour; they
     /// move with edits until the host sets them again.</summary>
-    public IReadOnlyList<InlineChange> InlineChanges { get; private set; } = [];
+    public IReadOnlyList<InlineChange> InlineChanges => inlineChanges.Items;
 
     public void SetInlineChanges(IReadOnlyList<InlineChange> changes)
     {
-        if (changes.Count == 0 && InlineChanges.Count == 0)
+        if (changes.Count == 0 && inlineChanges.Count == 0)
         {
             return;
         }
-        InlineChanges = [.. changes.OrderBy(c => c.Range.Start)];
+        inlineChanges.Set(document, [.. changes.OrderBy(c => c.Range.Start)]);
         InvalidateVisual();
-    }
-
-    private void FollowInlineChanges(IReadOnlyList<TextEdit> edits)
-    {
-        if (InlineChanges.Count > 0)
-        {
-            InlineChanges = [.. InlineChanges.Select(c => c with { Range = TextEditing.MapRange(c.Range, edits) })];
-        }
     }
 
     /// <summary>The bookmarked lines, drawn as ribbons at the line numbers' left.</summary>
@@ -429,14 +423,15 @@ public sealed partial class CodeEditor : Control
             document.Changed += OnDocumentChanged;
             lineShape++;
             // A template's places, a composition, a GoTo waiting for layout and the folds are offsets in the text left behind.
-            snippet = null;
+            EndSnippet();
             CancelChoices();
             pendingGoTo = null;
-            UsageHighlights = [];
+            usages.Clear();
             UsagesKept = false;
-            InlineChanges = [];
-            HoveredLink = null;
-            pressedLink = null;
+            inlineChanges.Clear();
+            highlights.Clear();
+            hovered.Release();
+            pressed.Release();
             HideFoldPreview();
             folds = [];
             EndComposition();
@@ -567,15 +562,17 @@ public sealed partial class CodeEditor : Control
         stripeDrawn = default;
     }
 
-    /// <summary>Ranges a search found (sorted), drawn behind the text, the current one stronger. The
-    /// search owns them and sets them again when the text changes.</summary>
-    public IReadOnlyList<TextRange> Highlights { get; private set; } = [];
+    private readonly AnchoredList<TextRange> highlights = new(r => r, (_, range) => range);
+
+    /// <summary>Ranges a search found (sorted), drawn behind the text, the current one stronger; they move with edits until
+    /// the search sets them again.</summary>
+    public IReadOnlyList<TextRange> Highlights => highlights.Items;
 
     public int CurrentHighlight { get; private set; } = -1;
 
     public void SetHighlights(IReadOnlyList<TextRange> ranges, int current)
     {
-        Highlights = ranges;
+        highlights.Set(document, ranges);
         CurrentHighlight = current;
         InvalidateVisual();
     }
@@ -781,12 +778,10 @@ public sealed partial class CodeEditor : Control
     private void OnDocumentChanged(object? sender, DocumentChangedEventArgs e)
     {
         FollowLineShape(e);
-        FollowSnippet(e.Edits);
         // What was offered to choose among is the text left behind.
         CancelChoices();
-        FollowUsages(e.Edits);
-        FollowInlineChanges(e.Edits);
-        FollowLinkEdits(e.Edits);
+        FollowUsages();
+        FollowLinkEdits();
         HideFoldPreview();
         if (!editing)
         {

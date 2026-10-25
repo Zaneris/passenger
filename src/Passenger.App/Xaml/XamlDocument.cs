@@ -25,9 +25,9 @@ public sealed class XamlDocument : IDisposable
     private readonly XamlService service;
     private readonly Debounce analysing;
     private (int Version, XamlProject Project, XamlFile File)? last;
-    private IReadOnlyList<Marker> live = [];
-    private List<Marker> built = [];
-    private IReadOnlyList<(TextRange Range, ResourceGap Gap)> gaps = [];
+    private readonly AnchoredList<Marker> live = new(m => m.Range, (m, range) => m with { Range = range });
+    private readonly AnchoredList<Marker> built = new(m => m.Range, (m, range) => m with { Range = range });
+    private readonly AnchoredList<(TextRange Range, ResourceGap Gap)> gaps = new(g => g.Range, (g, range) => (range, g.Gap));
     private bool disposed;
 
     /// <summary>Whether a check is due that has not begun (the text, its project or a .resx it reads changed), and the one
@@ -42,7 +42,7 @@ public sealed class XamlDocument : IDisposable
         Loading = loading;
         analysing = new Debounce(Settle, AnalyseAsync, document.Checking);
         document.Text.Changed += OnChanged;
-        _ = AnalyseAsync();
+        IdeErrors.Observe(AnalyseAsync());
     }
 
     public OpenDocument Document { get; }
@@ -62,7 +62,7 @@ public sealed class XamlDocument : IDisposable
     public IReadOnlyList<XamlDiagnostic> Diagnostics { get; private set; } = [];
 
     /// <summary>The localized keys its last check found a language lacks, where each is read in the text as it stands.</summary>
-    internal IReadOnlyList<(TextRange Range, ResourceGap Gap)> Gaps => gaps;
+    internal IReadOnlyList<(TextRange Range, ResourceGap Gap)> Gaps => gaps.Items;
 
     /// <summary>Whether its last check found it reads localized strings, so a .resx or XLIFF file's change checks it again.</summary>
     internal bool ReadsLocalized { get; private set; }
@@ -182,8 +182,8 @@ public sealed class XamlDocument : IDisposable
         }
         Diagnostics = found;
         ReadsLocalized = localizes;
-        gaps = [.. found.Where(d => d.Gap is not null).Select(d => (d.Range, d.Gap!))];
-        live = [.. found.Select(d => new Marker(d.Range, d.Severity == XamlSeverity.Error ? MarkerKind.Error : MarkerKind.Warning, d.Message))];
+        gaps.Set(Document.Text, [.. found.Where(d => d.Gap is not null).Select(d => (d.Range, d.Gap!))]);
+        live.Set(Document.Text, [.. found.Select(d => new Marker(d.Range, d.Severity == XamlSeverity.Error ? MarkerKind.Error : MarkerKind.Warning, d.Message))]);
         Show();
         IReadOnlyList<ColourUse> colours = await BackgroundWork.Run(() => Colours.InXaml(file, file.Variant));
         if (!disposed && Document.Text.Version == version)
@@ -197,7 +197,7 @@ public sealed class XamlDocument : IDisposable
     internal void Built(IEnumerable<Problem> problems)
     {
         TextSnapshot text = Document.Text.Snapshot;
-        built = [];
+        List<Marker> found = [];
         foreach (Problem problem in problems)
         {
             if (problem.Position.Line >= text.LineCount)
@@ -208,8 +208,9 @@ public sealed class XamlDocument : IDisposable
             int start = line.Start + Math.Min(problem.Position.Column, line.Length);
             TextRange range = WordAt(text, start, line);
             string code = problem.Code is { Length: > 0 } c ? $"{c}: " : string.Empty;
-            built.Add(new Marker(range, problem.Severity == ProblemSeverity.Error ? MarkerKind.Error : MarkerKind.Warning, code + Plain(problem.Message)));
+            found.Add(new Marker(range, problem.Severity == ProblemSeverity.Error ? MarkerKind.Error : MarkerKind.Warning, code + Plain(problem.Message)));
         }
+        built.Set(Document.Text, found);
         Show();
     }
 
@@ -239,33 +240,46 @@ public sealed class XamlDocument : IDisposable
 
     private void OnChanged(object? sender, DocumentChangedEventArgs e)
     {
-        live = [.. live.Select(m => m with { Range = TextEditing.MapRange(m.Range, e.Edits) })];
-        gaps = [.. gaps.Select(g => (TextEditing.MapRange(g.Range, e.Edits), g.Gap))];
         due = true;
         if (built.Count > 0)
         {
             DropEditedLines(e);
         }
-        Show();
+        if (live.Count + built.Count > 0 || Document.Markers.Count > 0)
+        {
+            Show();
+        }
         analysing.Restart();
     }
 
-    /// <summary>A build's problem on a line edited since is the build's, no longer this text's.</summary>
+    /// <summary>A build's problem on a line edited since is the build's, no longer this text's: one on a line of the text as
+    /// it stands that an edit of the change reached.</summary>
     private void DropEditedLines(DocumentChangedEventArgs e)
     {
-        TextSnapshot before = e.Before;
-        HashSet<int> edited = [.. e.Edits.SelectMany(edit => Enumerable.Range(before.GetLineFromOffset(Math.Min(edit.Start, before.Length)),
-            before.GetLineFromOffset(Math.Min(edit.End, before.Length)) - before.GetLineFromOffset(Math.Min(edit.Start, before.Length)) + 1))];
-        built = [.. built.Where(m => !edited.Contains(before.GetLineFromOffset(Math.Min(m.Range.Start, before.Length))))
-            .Select(m => m with { Range = TextEditing.MapRange(m.Range, e.Edits) })];
+        TextSnapshot after = e.After;
+        HashSet<int> edited = [];
+        int shift = 0;
+        foreach (TextEdit edit in e.Edits)
+        {
+            int start = Math.Min(edit.Start + shift, after.Length);
+            int last = after.GetLineFromOffset(Math.Min(start + edit.Text.Length, after.Length));
+            for (int line = after.GetLineFromOffset(start); line <= last; line++)
+            {
+                edited.Add(line);
+            }
+            shift += edit.Text.Length - edit.Length;
+        }
+        built.Drop(m => edited.Contains(after.GetLineFromOffset(Math.Min(m.Range.Start, after.Length))));
     }
 
-    /// <summary>The markers shown: what the check found, and the build's where the check found nothing on that line.</summary>
+    /// <summary>The markers shown, where the text has carried them: what the check found, and the build's where the check
+    /// found nothing on that line.</summary>
     private void Show()
     {
         TextSnapshot text = Document.Text.Snapshot;
-        HashSet<int> lines = [.. live.Where(m => m.Range.Start <= text.Length).Select(m => text.GetLineFromOffset(m.Range.Start))];
-        Document.Markers = [.. live, .. built.Where(m => m.Range.Start > text.Length || !lines.Contains(text.GetLineFromOffset(m.Range.Start)))];
+        IReadOnlyList<Marker> found = live.Items;
+        HashSet<int> lines = [.. found.Where(m => m.Range.Start <= text.Length).Select(m => text.GetLineFromOffset(m.Range.Start))];
+        Document.Markers = [.. found, .. built.Items.Where(m => m.Range.Start > text.Length || !lines.Contains(text.GetLineFromOffset(m.Range.Start)))];
     }
 
     /// <summary>The project was read again (its C# changed, another XAML file did): the file is checked against it.</summary>
@@ -288,6 +302,9 @@ public sealed class XamlDocument : IDisposable
         disposed = true;
         analysing.Stop();
         Document.Text.Changed -= OnChanged;
+        live.Clear();
+        built.Clear();
+        gaps.Clear();
         last = null;
     }
 }

@@ -27,7 +27,7 @@ public sealed class TestFramesStrip : Border
     {
         IsVisible = false;
         BorderThickness = new Thickness(0, 0, 0, 1);
-        this.Bind(BorderBrushProperty, this.GetResourceObservable("Passenger.Divider"));
+        this.Bind(BorderBrushProperty, this.GetResourceObservable(TokenKeys.Divider));
         // Held to half the room above the details (Fit), the thumbnails draw smaller rather than leaving the details a line.
         Child = new ScrollViewer
         {
@@ -67,7 +67,7 @@ public sealed class TestFramesStrip : Border
             return;
         }
         bool several = frames.Select(f => f.Result).Distinct().Count() > 1;
-        _ = ShowAsync(test, [.. frames.Select(f => (several ? $"{TestNode.ResultName(f.Result)}: {f.Frame.Name}" : f.Frame.Name, f.Frame.Path))], frames);
+        IdeErrors.Observe(ShowAsync(test, [.. frames.Select(f => (several ? $"{TestNode.ResultName(f.Result)}: {f.Frame.Name}" : f.Frame.Name, f.Frame.Path))], frames));
     }
 
     private async Task ShowAsync(string test, IReadOnlyList<(string Name, string Path)> frames, IReadOnlyList<(TestOutcome, TestAttachment)> showing)
@@ -150,7 +150,7 @@ public sealed class TestFramesStrip : Border
     private static Border Outlined(Image picture)
     {
         Border outline = new() { BorderThickness = new Thickness(1), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Child = picture };
-        outline.Bind(Border.BorderBrushProperty, outline.GetResourceObservable("Passenger.Divider"));
+        outline.Bind(Border.BorderBrushProperty, outline.GetResourceObservable(TokenKeys.Divider));
         return outline;
     }
 

@@ -78,20 +78,20 @@ public sealed class ContainersView : DockPanel
         StackPanel tools = RunWindowFrame.Tools();
         // Its Refresh, then the service actions, then a container's own.
         foreach ((string action, string icon) in (ReadOnlySpan<(string, string)>)[
-            (AppActions.ContainersRefresh, "Icon.Rerun"),
+            (AppActions.ContainersRefresh, IconKeys.Rerun),
             .. RunWindows.ServiceActions,
-            (AppActions.ContainerStart, "Icon.Run"),
-            (AppActions.ContainerStop, "Icon.Stop"),
-            (AppActions.ContainerRestart, "Icon.Update"),
-            (AppActions.ContainerPause, "Icon.Pause"),
-            (AppActions.ContainerRemove, "Icon.Close"),
-            (AppActions.ContainerShell, "Icon.Terminal"),
-            (AppActions.ContainerInspect, "Icon.DocumentText"),
-            (AppActions.ContainerPull, "Icon.ArrowDown"),
-            (AppActions.ContainerScale, "Icon.Add"),
-            (AppActions.ContainerPrune, "Icon.Clear")])
+            (AppActions.ContainerStart, IconKeys.Run),
+            (AppActions.ContainerStop, IconKeys.Stop),
+            (AppActions.ContainerRestart, IconKeys.Update),
+            (AppActions.ContainerPause, IconKeys.Pause),
+            (AppActions.ContainerRemove, IconKeys.Close),
+            (AppActions.ContainerShell, IconKeys.Terminal),
+            (AppActions.ContainerInspect, IconKeys.DocumentText),
+            (AppActions.ContainerPull, IconKeys.ArrowDown),
+            (AppActions.ContainerScale, IconKeys.Add),
+            (AppActions.ContainerPrune, IconKeys.Clear)])
         {
-            tools.Children.Add(RunWindowFrame.Tool(action, icon, parts.Title(action), Request));
+            tools.Children.Add(ToolButtons.Of(action, icon, parts.Title(action), Request));
         }
 
         list = new ListBox
@@ -340,7 +340,7 @@ public sealed class ContainersView : DockPanel
                 });
             }
         });
-        _ = RefreshAsync();
+        IdeErrors.Observe(RefreshAsync());
         ShowChosen();
     }
 

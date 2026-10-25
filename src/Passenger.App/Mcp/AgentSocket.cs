@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Net.Sockets;
+using System.Text.Json;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Passenger.Core;
@@ -33,7 +35,7 @@ public sealed class AgentSocket : IDisposable
         this.listener = listener;
         Path = path;
         // Not held: it listens for as long as the window does.
-        _ = Task.Run(AcceptAsync);
+        IdeErrors.Observe(Task.Run(AcceptAsync));
     }
 
     /// <summary>The socket's file.</summary>
@@ -156,7 +158,7 @@ public sealed class AgentSocket : IDisposable
             {
                 return;
             }
-            _ = ServeAsync(client);
+            IdeErrors.Observe(ServeAsync(client));
         }
     }
 
@@ -319,7 +321,7 @@ public sealed class AgentConnection(CancellationToken gone, bool attached)
     /// <summary>Whether the person lets this agent use a tool, or why not: asked the first time, and again after a no or no
     /// answer within the window's limit; never on a window nobody is at (<see cref="MainWindow.AgentsUnattended"/>), whose
     /// agent uses them all. Every call of the tool waits on the one question, which goes away unanswered once none waits.</summary>
-    internal async Task<string?> AllowAsync(MainWindow window, Tool tool, IDictionary<string, System.Text.Json.JsonElement>? arguments, AgentCall call, CancellationToken cancel)
+    internal async Task<string?> AllowAsync(MainWindow window, Tool tool, IDictionary<string, JsonElement>? arguments, AgentCall call, CancellationToken cancel)
     {
         UiThread.Check();
         if (window.AgentsUnattended || allowed.Contains(tool.Name))
@@ -330,7 +332,7 @@ public sealed class AgentConnection(CancellationToken gone, bool attached)
         {
             CancellationTokenSource takenAway = CancellationTokenSource.CreateLinkedTokenSource(Gone);
             asked = new(window.AllowAgentAsync(Agent, tool.Name, tool.Title ?? tool.Name,
-                [.. (arguments ?? new Dictionary<string, System.Text.Json.JsonElement>()).Select(a => (a.Key, Shown(a.Value)))], takenAway.Token), takenAway);
+                [.. (arguments ?? new Dictionary<string, JsonElement>()).Select(a => (a.Key, Shown(a.Value)))], takenAway.Token), takenAway);
             allowing[tool.Name] = asked;
         }
         asked.Waiting++;
@@ -379,8 +381,8 @@ public sealed class AgentConnection(CancellationToken gone, bool attached)
         window.Agents++;
     }
 
-    private static string Shown(System.Text.Json.JsonElement value) =>
-        value.ValueKind == System.Text.Json.JsonValueKind.String ? value.GetString() ?? string.Empty : value.GetRawText();
+    private static string Shown(JsonElement value) =>
+        value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : value.GetRawText();
 
     /// <summary>A tool's question while it is asked: its answer, what takes it away unanswered, and how many calls wait on it.</summary>
     private sealed class Asked(Task<Admission> answer, CancellationTokenSource takenAway)
@@ -406,6 +408,11 @@ internal sealed class ConnectedTool(McpServerTool tool, MainWindow? window, Agen
             AgentConnection.NameOf(request.Server.ClientInfo), connection.Attached ? "window" : "mcp", IdeLog.Traces);
         try
         {
+            if (Misgiven(shown, request.Params?.Arguments) is { } misgiven)
+            {
+                told.Ended("answered an error");
+                return Refused(misgiven);
+            }
             CallToolResult answer = await ServeAsync(request, shown, told, call.Token);
             told.Ended(answer.IsError == true ? "answered an error" : "answered");
             return answer;
@@ -465,4 +472,52 @@ internal sealed class ConnectedTool(McpServerTool tool, MainWindow? window, Agen
     }
 
     private static CallToolResult Refused(string why) => new() { IsError = true, Content = [new TextContentBlock { Text = why }] };
+
+    /// <summary>What is wrong with a call's arguments by its tool's schema (a parameter it lacks, a required one missing, a
+    /// value of another type), with every parameter it takes, else null: the SDK answers each with no word of which.</summary>
+    private static string? Misgiven(Tool tool, IDictionary<string, JsonElement>? arguments)
+    {
+        JsonElement schema = tool.InputSchema;
+        List<(string Name, string Type)> parameters = [];
+        if (schema.TryGetProperty("properties", out JsonElement properties) && properties.ValueKind == JsonValueKind.Object)
+        {
+            parameters.AddRange(properties.EnumerateObject().Select(p =>
+                (p.Name, p.Value.TryGetProperty("type", out JsonElement type) && type.ValueKind == JsonValueKind.String ? type.GetString()! : "any")));
+        }
+        HashSet<string> required = schema.TryGetProperty("required", out JsonElement needed) && needed.ValueKind == JsonValueKind.Array
+            ? [.. needed.EnumerateArray().Select(n => n.GetString() ?? string.Empty)]
+            : [];
+        List<string> wrong = [];
+        foreach ((string name, JsonElement value) in arguments ?? new Dictionary<string, JsonElement>())
+        {
+            if (parameters.FindIndex(p => p.Name == name) is int at and >= 0)
+            {
+                if (!Fits(value, parameters[at].Type))
+                {
+                    wrong.Add($"takes {(parameters[at].Type is "integer" or "array" or "object" ? "an" : "a")} {parameters[at].Type} as {name}, not {value.GetRawText()}");
+                }
+            }
+            else
+            {
+                wrong.Add($"has no parameter {name}");
+            }
+        }
+        wrong.AddRange(parameters.Where(p => required.Contains(p.Name) && arguments?.ContainsKey(p.Name) != true).Select(p => $"needs {p.Name}"));
+        return wrong.Count == 0 ? null
+            : $"{tool.Name} {string.Join(", and ", wrong)}. Its parameters: {(parameters.Count == 0 ? "none" : string.Join(", ", parameters.Select(p => $"{p.Name} ({p.Type}{(required.Contains(p.Name) ? ", required" : string.Empty)})")))}";
+
+        // A number written as a string passes, as the SDK reads one so; null is the SDK's to judge.
+        static bool Fits(JsonElement value, string type) => value.ValueKind == JsonValueKind.Null || type switch
+        {
+            "string" => value.ValueKind == JsonValueKind.String,
+            "integer" => value.ValueKind == JsonValueKind.Number ? value.TryGetInt64(out _)
+                : value.ValueKind == JsonValueKind.String && long.TryParse(value.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out _),
+            "number" => value.ValueKind == JsonValueKind.Number
+                || value.ValueKind == JsonValueKind.String && double.TryParse(value.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out _),
+            "boolean" => value.ValueKind is JsonValueKind.True or JsonValueKind.False,
+            "array" => value.ValueKind == JsonValueKind.Array,
+            "object" => value.ValueKind == JsonValueKind.Object,
+            _ => true,
+        };
+    }
 }

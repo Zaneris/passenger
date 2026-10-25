@@ -52,7 +52,7 @@ public sealed class ExtractInterfaceDialog : RefactoringDialog
 
         TextBlock membersTitle = new() { Text = "Members", Classes = { "muted" }, Margin = new Thickness(8, 5) };
         Border titleFrame = new() { Child = membersTitle, BorderThickness = new Thickness(0, 0, 0, 1) };
-        titleFrame.Bind(Border.BorderBrushProperty, titleFrame.GetResourceObservable("Passenger.Separator"));
+        titleFrame.Bind(Border.BorderBrushProperty, titleFrame.GetResourceObservable(TokenKeys.Separator));
         DockPanel.SetDock(titleFrame, Dock.Top);
         Border listFrame = new()
         {

@@ -12,6 +12,7 @@ public static class ShellEnvironment
     private static readonly TimeSpan Limit = TimeSpan.FromSeconds(10);
 
     /// <summary>The variable naming the file the shell writes its environment to.</summary>
+    [IdentifierHome]
     private const string Written = "PASSENGER_SHELL_ENVIRONMENT";
 
     /// <summary>What a shell sets for itself, never for the programs an IDE starts.</summary>

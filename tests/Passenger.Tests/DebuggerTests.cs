@@ -1983,9 +1983,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         {
             return sum.Open(Program, languageServer: hotReload);
         }
-        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = hotReload };
-        window.Show();
-        window.OpenFolder(fresh);
+        MainWindow window = Ui.OpenFolder(fresh, languageServer: hotReload);
         window.OpenFile(Program);
         Ui.Settle();
         return window;
@@ -2035,13 +2033,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     }
 
     /// <summary>A file written into the test's own folder, which it takes for a program of its own.</summary>
-    private string Write(string relative, string text)
-    {
-        string path = Path.Combine(PathNames.Canonical(Fresh()), relative);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, text);
-        return path;
-    }
+    private string Write(string relative, string text) => TestFolders.Write(PathNames.Canonical(Fresh()), relative, text);
 
     /// <summary>A window on <see cref="Sleeper"/> with its Program.cs open, which never saves what the test types, a
     /// configuration of its own (named apart from the project's generated one) giving the program the file to write its id
@@ -2049,9 +2041,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     private MainWindow OpenSleeper(string started, bool languageServer)
     {
         string project = PathNames.Canonical(sleeper.Folder);
-        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = languageServer };
-        window.Show();
-        window.OpenFolder(sleeper.Folder);
+        MainWindow window = Ui.OpenFolder(sleeper.Folder, autosaves: false, languageServer: languageServer);
         window.OpenFile(Path.Combine(project, "Program.cs"));
         Ui.Settle();
         window.SetConfigurations([new Passenger.App.Run.RunConfiguration { Name = "Sleeper writing its id", Project = Path.Combine(project, "Sleeper.csproj"), Arguments = $"\"{started}\"" }], "Sleeper writing its id");

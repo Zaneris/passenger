@@ -2,9 +2,10 @@ using System.Xml;
 using Avalonia.Controls;
 using Passenger.App.Editors;
 using Passenger.App.Run;
-using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Host;
+using Passenger.Text;
+using Passenger.Workspace;
 using A = Passenger.App.AppActions;
 
 namespace Passenger.App;
@@ -32,7 +33,7 @@ public partial class MainWindow
             Words = ["dotnet publish", "Publish Profile", "Deploy"],
             Works = A.Publish,
         });
-        actions.Add(new IdeAction(A.PublishAgain, "Publish Again", "Build", c => _ = PublishAgainAsync(c))
+        actions.Add(new IdeAction(A.PublishAgain, "Publish Again", "Build", c => IdeErrors.Observe(PublishAgainAsync(c)))
         {
             WhyNot = c => AgainTarget(c).Why,
             Menus = [new MenuPlace("Build", 2, 1)],
@@ -125,7 +126,7 @@ public partial class MainWindow
             }
         };
         BuildRunController publishing = buildRun;
-        _ = PublishAfterAsync();
+        IdeErrors.Observe(PublishAfterAsync());
         return dialog;
 
         async Task PublishAfterAsync()

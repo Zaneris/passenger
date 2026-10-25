@@ -58,11 +58,7 @@ public sealed class Navigator
             }
             shownLast = Editors.Active;
         };
-        Editors.Opened += (_, document) => document.Text.Changed += (_, change) =>
-        {
-            Places.Follow(document.Path, change);
-            NoteEdit(document);
-        };
+        Editors.Opened += (_, document) => document.Text.Changed += (_, _) => NoteEdit(document);
     }
 
     private EditorArea Editors => parts.Editors;
@@ -210,7 +206,7 @@ public sealed class Navigator
             else if (parts.TextOf(place.Path) is { } read)
             {
                 TextDocument closed = new(read.ToString());
-                IHighlighter? colours = Languages.Highlighters.For(Language.ForPath(place.Path).Name, closed);
+                IHighlighter? colours = Languages.Highlighters.For(Languages.Language.ForPath(place.Path), closed);
                 if (colours is IDisposable disposable)
                 {
                     made.Add(disposable);
@@ -301,7 +297,7 @@ public sealed class Navigator
         CSharpService? csharp = Session.CSharp;
         if (csharp?.Session is not { IsLoaded: true } server)
         {
-            throw new Lsp.LanguageServerFailed(csharp is null ? "no C# language server runs for this folder" : $"the C# language server is not ready: {csharp.State}");
+            throw new Lsp.LanguageServerFailed(csharp is null ? Refusals.NoCSharp : $"the C# language server is not ready: {csharp.State}");
         }
         IReadOnlyList<Lsp.SymbolInformation> found = await server.SymbolsAsync(query.Trim(), cancel);
         string? root = Session.Folder;

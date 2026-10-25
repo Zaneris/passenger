@@ -3,6 +3,8 @@ using System.Text.Json;
 using Passenger.App.Containers;
 using Passenger.Core;
 using Passenger.Host;
+using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.App.Workspace;
 

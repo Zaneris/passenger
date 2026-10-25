@@ -8,17 +8,17 @@ public class MyClass : MyClassBase
 	private static int _counter = 1;
 	public void MyMethod(long myParam, int myIntParam)
 	{
-		var myInt = 4;
-		var enumVar = MyEnum.SecondValue;
-		var enumWithFlagsVar = MyEnumWithFlags.FlagValue1 | MyEnumWithFlags.FlagValue3;
-		var structVar = new MyStruct { Id = 5, Name = "StructName" };
+		int myInt = 4;
+		MyEnum enumVar = MyEnum.SecondValue;
+		MyEnumWithFlags enumWithFlagsVar = MyEnumWithFlags.FlagValue1 | MyEnumWithFlags.FlagValue3;
+		MyStruct structVar = new MyStruct { Id = 5, Name = "StructName" };
 		Console.WriteLine($"Log_MyMethod");
 		_counter = 1;
 		int? nullableInt;
 		int? nullableIntWithVal = 4;
 		MyClass? nullableRefType;
 		AnotherClass.MyStaticMethod();
-		var anotherVar = "asdf";
+		string anotherVar = "asdf";
 		;
 	}
 	//private const int nq = -1;

@@ -323,9 +323,7 @@ public sealed class RazorDebuggingTests : IDisposable
     [AvaloniaFact]
     public void Breakpoints_in_a_pages_code_block_and_markup_and_in_a_components_code_behind_stop_the_app_as_each_page_is_asked_for()
     {
-        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         string code = Path.Combine(PathNames.Canonical(folder), "Components", "Pages", "Tally.razor.cs");
         string visits = Path.Combine(PathNames.Canonical(folder), "Components/Pages/Visits.razor");
         window.OpenFile(code);

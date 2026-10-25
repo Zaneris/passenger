@@ -38,7 +38,7 @@ public sealed class KeyValueGrid : Border
             header.Children.Add(title);
         }
         Border headerFrame = new() { Child = header, BorderThickness = new Thickness(0, 0, 0, 1) };
-        headerFrame.Bind(BorderBrushProperty, headerFrame.GetResourceObservable("Passenger.Separator"));
+        headerFrame.Bind(BorderBrushProperty, headerFrame.GetResourceObservable(TokenKeys.Separator));
         DockPanel.SetDock(headerFrame, Dock.Top);
         Child = new DockPanel { Children = { headerFrame, new ScrollViewer { Content = table } } };
         AddEmpty();
@@ -85,7 +85,7 @@ public sealed class KeyValueGrid : Border
         CheckBox check = new() { IsChecked = on, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, MinWidth = 0 };
         TextBox keyBox = new() { Classes = { "cell" }, Text = key, FontFamily = CSharp.Fonts.Mono, FontSize = 12 };
         TextBox valueBox = new() { Classes = { "cell" }, Text = value, FontFamily = CSharp.Fonts.Mono, FontSize = 12 };
-        Button remove = ToolButtons.Of("Icon.Close", "Remove");
+        Button remove = ToolButtons.Of(IconKeys.Close, "Remove");
         remove.VerticalAlignment = VerticalAlignment.Center;
         ((PathIcon)remove.Content!).Classes.Add("small");
         Grid cells = new() { ColumnDefinitions = new ColumnDefinitions(Columns) };
@@ -96,7 +96,7 @@ public sealed class KeyValueGrid : Border
             cells.Children.Add(parts[i]);
         }
         Border view = new() { Child = cells, BorderThickness = new Thickness(0, 0, 0, 1) };
-        view.Bind(BorderBrushProperty, view.GetResourceObservable("Passenger.Separator"));
+        view.Bind(BorderBrushProperty, view.GetResourceObservable(TokenKeys.Separator));
         Row row = new(check, keyBox, valueBox, remove, view);
         rows.Add(row);
         table.Children.Add(view);

@@ -33,12 +33,12 @@ public partial class MainWindow
             // A container run's services take the edits through the debugger attached to each, whatever else is debugged.
             if (session.Debug.HotReload is not null || session.Debug.Running.Count > 0)
             {
-                _ = ApplyHotReloadAsync(session.Debug.SettingsRestart);
+                IdeErrors.Observe(ApplyHotReloadAsync(session.Debug.SettingsRestart));
             }
             else
             {
                 // Done once dotnet watch has said what it made of the save; the status bar follows its later words.
-                _ = WorkingAsync(AppActions.ApplyHotReloadChanges, "Applying Hot Reload changes…", () => SaveForWatchAsync(TimeSpan.Zero));
+                IdeErrors.Observe(WorkingAsync(AppActions.ApplyHotReloadChanges, "Applying Hot Reload changes…", () => SaveForWatchAsync(TimeSpan.Zero)));
             }
         }, _ => session.Debug.Running.Count > 0 ? null
             : session.Debug.HotReload is not null || session.Debug.IsDebugging ? session.Debug.WhyNotApply()
@@ -64,6 +64,7 @@ public partial class MainWindow
     ];
 
     /// <summary>The variable that gives <see cref="WatchSaysLater"/> in milliseconds.</summary>
+    [IdentifierHome]
     public const string WatchSaysLaterVariable = "PASSENGER_WATCH_LATER_MS";
 
     /// <summary>How long an agent's answer waits, once dotnet watch has applied the changes, for the restart they can

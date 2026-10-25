@@ -28,11 +28,7 @@ public sealed partial class SettingsDialog
 
     private void AddAgents(AgentSetup setup)
     {
-        const string Words = "mcp model context protocol agents ai claude codex opencode attach socket";
-        Add(McpPage, "Enable MCP Server", Check(Working.McpServer, v => Change(s => s with { McpServer = v })), Words,
-            "Agents started with passenger --mcp-attach can use this window without asking to: read and change files, build, run and "
-            + "debug, use Git, NuGet and the terminal. Off, the window asks before letting each agent in. Either way, an agent asks "
-            + "before it first uses each tool that changes anything beyond saving, stopping and stepping.");
+        Add(Declared.McpServer);
 
         TextBlock none = new() { Classes = { "emptyText" }, Text = "None: a window asks before it lets an agent in" };
         void List()
@@ -61,7 +57,7 @@ public sealed partial class SettingsDialog
                 RemoveAgentFolderButton,
             },
         };
-        Add(McpPage, "Folders agents join unasked", folders, $"{Words} always for this folder allowed trusted remove take back let in",
+        Add(McpPage, "Folders agents join unasked", folders, $"{McpWords} always for this folder allowed trusted remove take back let in",
             "Always for this folder, in the question a window asks an agent, puts its folder here: agents then join that folder's "
             + "window without the question. Remove takes it back once you choose OK or Apply, and an agent on its window is asked "
             + "again at its next call.");
@@ -81,7 +77,7 @@ public sealed partial class SettingsDialog
                     + "agent's own, with no window, which asks nothing."),
             },
         });
-        const string SetupWords = $"{Words} setup set up install configure command config json toml claude code desktop codex opencode copy path";
+        const string SetupWords = $"{McpWords} setup set up install configure command config json toml claude code desktop codex opencode copy path";
         options.Add(new Option(McpPage, "Set up an agent", heading, $"{McpPage} {SetupWords}"));
         List<(string, string)> setups = [];
         void Setup(string title, string text, string note, string words)
@@ -114,22 +110,25 @@ public sealed partial class SettingsDialog
         void AddBlock(Control row, string title, string words) => options.Add(new Option(McpPage, title, row, $"{McpPage} {title} {words}"));
     }
 
+    /// <summary>A setup's text to the clipboard, its Copy then saying Copied and every other setup's Copy again.</summary>
+    private async Task CopySetupAsync(Button copy, string text)
+    {
+        if (Clipboard is { } clipboard)
+        {
+            await clipboard.SetTextAsync(text);
+        }
+        foreach (Button other in copyButtons.Values)
+        {
+            other.Content = other == copy ? "Copied" : "Copy";
+        }
+    }
+
     /// <summary>One agent's setup: its heading with Copy at the right, what to do with it, and the text to copy as code.</summary>
     private Control SetupBlock(string title, string text, string note)
     {
         Button copy = new() { Content = "Copy" };
         copyButtons[title] = copy;
-        copy.Click += async (_, _) =>
-        {
-            if (Clipboard is { } clipboard)
-            {
-                await clipboard.SetTextAsync(text);
-            }
-            foreach (Button other in copyButtons.Values)
-            {
-                other.Content = other == copy ? "Copied" : "Copy";
-            }
-        };
+        copy.Click += (_, _) => IdeErrors.Observe(CopySetupAsync(copy, text));
         DockPanel head = new();
         DockPanel.SetDock(copy, Dock.Right);
         head.Children.Add(copy);

@@ -200,9 +200,7 @@ public sealed class FindTests : IDisposable
     private (MainWindow Window, CodeEditor Editor) Open(string text)
     {
         File.WriteAllText(Path.Combine(folder, "Notes.txt"), text);
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder);
         window.OpenFile("Notes.txt");
         Ui.Settle();
         CodeEditor editor = window.EditorArea.CodeEditor;

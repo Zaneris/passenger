@@ -74,7 +74,7 @@ public sealed class DockHost : Grid
         Place(rightSeam, 1, 5);
         foreach (Border seam in (Border[])[leftSeam, rightSeam])
         {
-            seam.Bind(Border.BackgroundProperty, seam.GetResourceObservable("Passenger.Divider"));
+            seam.Bind(Border.BackgroundProperty, seam.GetResourceObservable(TokenKeys.Divider));
         }
         foreach (ToolAnchor anchor in Enum.GetValues<ToolAnchor>())
         {
@@ -133,7 +133,7 @@ public sealed class DockHost : Grid
     public event EventHandler<Window>? WindowOpened;
 
     /// <summary>The window of an id (<see cref="ToolWindowIds"/>); an id no window has is the caller's mistake, and throws.</summary>
-    public ToolWindow this[string id] => Find(id) ?? throw new ArgumentException($"No tool window has the id '{id}'", nameof(id));
+    public ToolWindow this[[IdentifierOf(typeof(ToolWindowIds))] string id] => Find(id) ?? throw new ArgumentException($"No tool window has the id '{id}'", nameof(id));
 
     /// <summary>The window of an id, or null: a kept layout may name one this build has not.</summary>
     private ToolWindow? Find(string id) => windows.FirstOrDefault(w => w.Id == id);
@@ -172,7 +172,7 @@ public sealed class DockHost : Grid
     }
 
     /// <summary>Shows a window in its place, hiding the one that was there.</summary>
-    public void Show(string id)
+    public void Show([IdentifierOf(typeof(ToolWindowIds))] string id)
     {
         ToolWindow window = this[id];
         hiddenAll = null;
@@ -193,7 +193,7 @@ public sealed class DockHost : Grid
         LayoutChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    public void Hide(string id)
+    public void Hide([IdentifierOf(typeof(ToolWindowIds))] string id)
     {
         if (this[id] is { IsShown: true } window)
         {
@@ -343,7 +343,7 @@ public sealed class DockHost : Grid
         }
     }
 
-    public void Toggle(string id)
+    public void Toggle([IdentifierOf(typeof(ToolWindowIds))] string id)
     {
         if (this[id].IsShown)
         {
@@ -366,7 +366,7 @@ public sealed class DockHost : Grid
         return true;
     }
 
-    public bool IsShown(string id) => this[id].IsShown;
+    public bool IsShown([IdentifierOf(typeof(ToolWindowIds))] string id) => this[id].IsShown;
 
     /// <summary>Moves a window to another place (at an index among its buttons there), shown if it was.</summary>
     public void Move(ToolWindow window, ToolAnchor anchor, int? index = null)

@@ -20,6 +20,7 @@ public interface ILibraryFiles
 /// editor shows read-only, written whole or not at all and never outside its assembly version's folder.</summary>
 public sealed class SourceLink : ILibraryFiles
 {
+    [IdentifierHome]
     public const string Variable = "PASSENGER_SYMBOLS";
 
     private static readonly Guid SourceLinkKind = new("CC110556-A091-4D38-9FEC-25AB9A351A6A");

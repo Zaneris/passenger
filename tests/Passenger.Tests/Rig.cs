@@ -7,6 +7,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Passenger.App.State;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
@@ -60,6 +61,8 @@ public sealed class TestRun : IDisposable
     /// so (<see cref="TestRun()"/>), the run's own clean-up beforehand taking 1.</summary>
     public static double TimeScale => ReadTimeScale.Value.Scale;
 
+    [IdentifierHome]
+
     public const string TimeScaleVariable = "PASSENGER_TEST_TIME_SCALE";
 
     private static readonly Lazy<(double Scale, string? Problem)> ReadTimeScale = new(() =>
@@ -109,7 +112,7 @@ public sealed class TestRun : IDisposable
         Directory.CreateDirectory(Settings);
         string gitConfig = Path.Combine(Root, "gitconfig");
         File.WriteAllText(gitConfig, string.Empty);
-        Environment.SetEnvironmentVariable("PASSENGER_SETTINGS", Settings);
+        Environment.SetEnvironmentVariable(StateStore.Variable, Settings);
         Environment.SetEnvironmentVariable("GIT_CONFIG_GLOBAL", gitConfig);
         Environment.SetEnvironmentVariable("GIT_CONFIG_NOSYSTEM", "1");
         // Configuration given on git's command line through the environment, which would come before the file's.
@@ -539,12 +542,14 @@ public static class TestFolders
         }
     }
 
-    /// <summary>A file of a test's folder written, the folders it is in made first.</summary>
-    public static void Write(string folder, string relative, string text)
+    /// <summary>A file of a test's folder written, the folders it is in made first; its full path, its separators the
+    /// system's, as the IDE's own paths are.</summary>
+    public static string Write(string folder, string relative, string text)
     {
-        string path = Path.Combine(folder, relative);
+        string path = Path.GetFullPath(Path.Combine(folder, relative));
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, text);
+        return path;
     }
 
     public static void Begin(string test) => Made[test] = [];
@@ -1001,6 +1006,19 @@ public static class Ui
         Settle();
     }
 
+    /// <summary>A drag with the left button from one point of a window to another (its units), through ten moves between,
+    /// as a person's hand goes.</summary>
+    public static void Drag(TopLevel window, Point from, Point to)
+    {
+        window.MouseDown(from, MouseButton.Left);
+        for (int step = 1; step <= 10; step++)
+        {
+            window.MouseMove(from + ((to - from) * (step / 10.0)), RawInputModifiers.LeftMouseButton);
+        }
+        window.MouseUp(to, MouseButton.Left);
+        Settle();
+    }
+
     private static void Click(Control control, Point? at, MouseButton button, RawInputModifiers modifiers, bool settle)
     {
         (TopLevel top, Point point) = Aim(control, at);
@@ -1060,10 +1078,10 @@ public static class Ui
 
     /// <summary>A person's window shown on a folder, once the folder's opening work has landed; without the C# language
     /// server for a test that asks nothing of C# (<see cref="Passenger.App.MainWindow.StartsLanguageServer"/>), which then
-    /// waits for no server's start, load or restore.</summary>
-    public static Passenger.App.MainWindow OpenFolder(string folder, double width = 1200, double height = 800, bool languageServer = true)
+    /// waits for no server's start, load or restore; saving only when asked for a test that reads what it left unsaved.</summary>
+    public static Passenger.App.MainWindow OpenFolder(string folder, double width = 1200, double height = 800, bool languageServer = true, bool autosaves = true)
     {
-        Passenger.App.MainWindow window = new() { Width = width, Height = height, StartsLanguageServer = languageServer };
+        Passenger.App.MainWindow window = new() { Width = width, Height = height, StartsLanguageServer = languageServer, Autosaves = autosaves };
         window.Show();
         window.OpenFolder(folder);
         Settle();
@@ -1767,26 +1785,11 @@ public static partial class Processes
         }
     }
 
-    /// <summary>A process as a failure names it: its id and its command line (its name on Windows).</summary>
-    public static string Describe(int id)
-    {
-        try
-        {
-            if (OperatingSystem.IsWindows())
-            {
-                using System.Diagnostics.Process process = System.Diagnostics.Process.GetProcessById(id);
-                return $"{id} {process.ProcessName}";
-            }
-            using System.Diagnostics.Process ps = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("ps", ["-o", "command=", "-p", id.ToString(System.Globalization.CultureInfo.InvariantCulture)]) { RedirectStandardOutput = true })!;
-            string command = ps.StandardOutput.ReadToEnd().Trim();
-            ps.WaitForExit();
-            return $"{id} {command}";
-        }
-        catch (Exception gone) when (gone is ArgumentException or InvalidOperationException)
-        {
-            return $"{id} (gone)";
-        }
-    }
+    /// <summary>A process as a failure names it: its id and its command line (its name where the system gives none), as
+    /// Core reads them.</summary>
+    public static string Describe(int id) => Passenger.Core.DotnetProcesses.Describe(id) is { } process
+        ? $"{id} {(process.CommandLine.Length > 0 ? process.CommandLine : process.Name)}"
+        : $"{id} (gone)";
 
     /// <summary>Each process now by id, as ps lists it on macOS and Linux: its id, parent, nice value and command line, for a
     /// failure to say what ran and at what priority. Empty on Windows, which has no ps.</summary>
@@ -1835,7 +1838,8 @@ public static partial class Processes
         return (counted, Math.Max(1, Environment.ProcessorCount * 3 / 2));
     }
 
-    private static string[] Ps(params string[] arguments)
+    /// <summary>The lines ps lists for these arguments, each trimmed (macOS and Linux).</summary>
+    public static string[] Ps(params string[] arguments)
     {
         using System.Diagnostics.Process ps = System.Diagnostics.Process.Start(new ProcessStartInfo("ps", arguments) { RedirectStandardOutput = true })!;
         string text = ps.StandardOutput.ReadToEnd();
@@ -1862,17 +1866,22 @@ public static partial class Processes
     /// <summary>Each process and its parent: ps's columns on macOS and Linux, Win32_Process's on Windows, which has no ps.</summary>
     private static IEnumerable<(int Child, int Parent)> ParentsOfAll()
     {
-        System.Diagnostics.ProcessStartInfo list = OperatingSystem.IsWindows()
-            ? new("powershell", ["-NoProfile", "-Command", "Get-CimInstance Win32_Process | ForEach-Object { \"$($_.ProcessId) $($_.ParentProcessId)\" }"])
-            : new("ps", ["-A", "-o", "pid=,ppid="]);
-        list.RedirectStandardOutput = true;
-        string text;
-        using (System.Diagnostics.Process ps = System.Diagnostics.Process.Start(list)!)
+        string[] lines;
+        if (OperatingSystem.IsWindows())
         {
-            text = ps.StandardOutput.ReadToEnd();
-            ps.WaitForExit();
+            System.Diagnostics.ProcessStartInfo list = new("powershell", ["-NoProfile", "-Command", "Get-CimInstance Win32_Process | ForEach-Object { \"$($_.ProcessId) $($_.ParentProcessId)\" }"])
+            {
+                RedirectStandardOutput = true,
+            };
+            using System.Diagnostics.Process listing = System.Diagnostics.Process.Start(list)!;
+            lines = listing.StandardOutput.ReadToEnd().Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            listing.WaitForExit();
         }
-        foreach (string line in text.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        else
+        {
+            lines = Ps("-A", "-o", "pid=,ppid=");
+        }
+        foreach (string line in lines)
         {
             string[] words = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             if (words.Length == 2 && int.TryParse(words[0], out int child) && int.TryParse(words[1], out int parent))
@@ -2031,33 +2040,6 @@ public static partial class NativeStacks
             {
             }
         }
-    }
-
-    /// <summary>A child of a process by its program's name, from the process list (macOS and Linux); null when there is
-    /// none, or elsewhere.</summary>
-    public static int? ChildNamed(int parent, string name)
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            return null;
-        }
-        using System.Diagnostics.Process ps = System.Diagnostics.Process.Start(new ProcessStartInfo("ps", ["-A", "-o", "pid=,ppid=,comm="])
-        {
-            RedirectStandardOutput = true,
-            UseShellExecute = false,
-        })!;
-        string listed = ps.StandardOutput.ReadToEnd();
-        ps.WaitForExit();
-        foreach (string line in listed.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            string[] columns = line.Split(' ', 3, StringSplitOptions.RemoveEmptyEntries);
-            if (columns.Length == 3 && columns[1] == parent.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                && Path.GetFileName(columns[2]) == name && int.TryParse(columns[0], out int child))
-            {
-                return child;
-            }
-        }
-        return null;
     }
 
     // "    881 Thread_57752918   DispatchQueue_1: com.apple.main-thread  (serial)"

@@ -1,6 +1,8 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Passenger.App.Workspace;
+using Passenger.Text;
+using Passenger.Workspace;
 using A = Passenger.App.AppActions;
 
 namespace Passenger.App;
@@ -84,7 +86,7 @@ public partial class MainWindow
         string current = document.EncodingName;
         // Doubled, Shift_JIS's underscore is shown rather than taken for an access key.
         MenuItem Item(FileEncoding encoding) => MenuChoice.Of(encoding.Name.Replace("_", "__", StringComparison.Ordinal), encoding.Name == current,
-            () => _ = ChooseEncodingAsync(document, encoding));
+            () => IdeErrors.Observe(ChooseEncodingAsync(document, encoding)));
         MenuItem more = new() { Header = "More" };
         foreach (FileEncoding encoding in FileEncoding.More)
         {

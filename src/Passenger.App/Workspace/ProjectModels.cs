@@ -3,6 +3,7 @@ using System.Diagnostics;
 using Passenger.App.State;
 using Passenger.Core;
 using Passenger.Host;
+using Passenger.Workspace;
 
 namespace Passenger.App.Workspace;
 
@@ -181,7 +182,7 @@ public sealed class ProjectModels
             }
         }
         BackgroundWork.Begin();
-        _ = RoundAsync(generation, folder, projects, before, Properties(next.Workspace), ending.Token);
+        IdeErrors.Observe(RoundAsync(generation, folder, projects, before, Properties(next.Workspace), ending.Token));
     }
 
     /// <summary>The workspace's projects, the active file's first and then those it references as last evaluated, through

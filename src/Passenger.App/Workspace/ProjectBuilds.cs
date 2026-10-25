@@ -8,6 +8,7 @@ using Passenger.Editor;
 using Passenger.Host;
 using Passenger.Lsp;
 using Passenger.Roslyn.Extension;
+using Passenger.Workspace;
 
 namespace Passenger.App.Workspace;
 
@@ -294,10 +295,10 @@ public sealed class ProjectBuilds
         Dictionary<string, string> properties = new(solution(), StringComparer.OrdinalIgnoreCase)
         {
             // What Roslyn's server gives its own build host, so Razor's generated C# is in the builds as it would be there.
-            ["RazorDesignTimeTargets"] = Path.Combine(AppContext.BaseDirectory, "roslyn", "Targets", "Microsoft.NET.Sdk.Razor.DesignTime.targets"),
+            ["RazorDesignTimeTargets"] = Path.Combine(RoslynServerFolder.Carried, "Targets", "Microsoft.NET.Sdk.Razor.DesignTime.targets"),
         };
         // Not background work: only the language server's load waits on it, and a large solution's round takes minutes.
-        _ = RoundAsync(generation, folder, round, properties, ending.Token);
+        IdeErrors.Observe(RoundAsync(generation, folder, round, properties, ending.Token));
     }
 
     /// <summary>The solution the projects are built under now, by the path its global properties give.</summary>
@@ -394,7 +395,11 @@ public sealed record ProjectBuildCache : IStateDocument<ProjectBuildCache>
 
     public Dictionary<string, KeptBuild> Projects { get; init; } = [];
 
-    public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, ForgetWindowsTargeting, ForgetAll];
+    public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, ForgetWindowsTargeting, ForgetAll, ForgetUnrestored];
+
+    /// <summary>Builds kept before restore outputs were stamped before the build may lack package references even though
+    /// their stamps still hold.</summary>
+    private static void ForgetUnrestored(JsonObject document) => document.Remove("projects");
 
     /// <summary>Every build, kept before they stamped the Directory.Build.props, .targets and Directory.Packages.props
     /// MSBuild looks for above a project and the props and targets a restore writes, which may have come since unseen.</summary>

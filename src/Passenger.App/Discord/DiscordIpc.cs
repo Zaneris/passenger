@@ -5,6 +5,7 @@ namespace Passenger.App.Discord;
 /// <c>PASSENGER_DISCORD_IPC</c> names in their stead.</summary>
 public sealed record DiscordIpc(IReadOnlyList<string> Places)
 {
+    [IdentifierHome]
     public const string Variable = "PASSENGER_DISCORD_IPC";
 
     /// <summary>How long Passenger waits before looking for Discord again.</summary>

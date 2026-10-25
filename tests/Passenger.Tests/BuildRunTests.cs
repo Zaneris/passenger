@@ -63,10 +63,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         Assert.True(File.Exists(apphost), $"The build made no apphost at {apphost}");
         File.Delete(apphost);
 
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(Path.Combine(Folder, "Zebra.slnx"));
-        Ui.Settle();
+        MainWindow window = Ui.OpenFolder(Path.Combine(Folder, "Zebra.slnx"));
         try
         {
             Assert.Equal("Zebra", window.Solution?.Name);
@@ -665,10 +662,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         {
             return [];
         }
-        using Process ps = Process.Start(new ProcessStartInfo("ps", ["-A", "-o", "pid=,pgid=,command="]) { RedirectStandardOutput = true })!;
-        string listed = ps.StandardOutput.ReadToEnd();
-        ps.WaitForExit();
-        return [.. listed.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+        return [.. Processes.Ps("-A", "-o", "pid=,pgid=,command=")
             .Select(line => line.Split(' ', 3, StringSplitOptions.RemoveEmptyEntries))
             .Where(words => words.Length == 3 && words[2].Contains("/nodemode:1", StringComparison.Ordinal)
                 && int.TryParse(words[1], System.Globalization.CultureInfo.InvariantCulture, out int pgid) && pgid == group)
@@ -771,6 +765,8 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
 
             window.ApplySettings(window.Settings with { OpenBuildWindowOnImplicitBuild = true });
             window.ShowToolWindow(ToolWindowIds.Problems);
+            // A change for it to build, a run of what its last build left starting with none.
+            Write("src/Hello/Program.cs", "Console.WriteLine(\"Hello again\");\n");
             window.Perform(AppActions.RunProgram);
             Ui.PumpUntil(() => window.IsBuilding, "the second run's build to start", TimeSpan.FromMinutes(1));
             Assert.True(window.DockHost.IsShown(ToolWindowIds.Build), "With Rider's \"even when the build is invoked implicitly\" on, Run's build did not open the Build window");

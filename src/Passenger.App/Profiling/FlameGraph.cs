@@ -57,7 +57,7 @@ public sealed class FlameGraph : Control
     public override void Render(DrawingContext context)
     {
         bars.Clear();
-        context.FillRectangle(Brush("Passenger.Editor.Background", Brushes.Transparent), new Rect(Bounds.Size));
+        context.FillRectangle(Brush(TokenKeys.Editor_Background, Brushes.Transparent), new Rect(Bounds.Size));
         if (zoom is null || zoom.Total == 0)
         {
             return;
@@ -105,7 +105,7 @@ public sealed class FlameGraph : Control
         {
             return;
         }
-        FormattedText label = new(Short(node.Name), CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface("Inter"), 11, Brush("Passenger.Text", Brushes.Transparent))
+        FormattedText label = new(Short(node.Name), CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface("Inter"), 11, Brush(TokenKeys.Text, Brushes.Transparent))
         {
             MaxTextWidth = Math.Max(1, bar.Width - 8),
             MaxLineCount = 1,

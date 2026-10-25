@@ -16,8 +16,11 @@ public sealed partial class CodeEditor
 {
     private Func<TextSnapshot, int, IReadOnlyList<TextLink>>? links;
 
+    /// <summary>The link under the pointer.</summary>
+    private readonly HeldLink hovered = new();
+
     /// <summary>The link a press began on, opened by the release if it lands on it with nothing selected.</summary>
-    private TextLink? pressedLink;
+    private readonly HeldLink pressed = new();
 
     /// <summary>The links on a line (from zero) of a text, in its offsets, as the host finds them; null for an editor with
     /// none. Asked for each line drawn and the line under the pointer as it moves, so the host keeps what it found; the
@@ -28,12 +31,12 @@ public sealed partial class CodeEditor
         set
         {
             links = value;
-            HoveredLink = null;
+            hovered.Release();
         }
     }
 
     /// <summary>The link under the pointer, which a click opens; null when it is over none.</summary>
-    public TextLink? HoveredLink { get; private set; }
+    public TextLink? HoveredLink => hovered.Link;
 
     /// <summary>A link was clicked: the host opens what it names.</summary>
     public event EventHandler<TextLink>? LinkClicked;
@@ -84,7 +87,7 @@ public sealed partial class CodeEditor
         {
             return;
         }
-        HoveredLink = dragging ? null : LinkAt(position);
+        hovered.Hold(document, dragging ? null : LinkAt(position));
         if (HoveredLink is not null)
         {
             Cursor = new Cursor(StandardCursorType.Hand);
@@ -93,33 +96,67 @@ public sealed partial class CodeEditor
 
     /// <summary>A press with no keys held, once: the link it is on, which its release opens.</summary>
     private void PressLink(Point position, KeyModifiers modifiers, int clicks) =>
-        pressedLink = modifiers == KeyModifiers.None && clicks == 1 ? LinkAt(position) : null;
+        pressed.Hold(document, modifiers == KeyModifiers.None && clicks == 1 ? LinkAt(position) : null);
 
     /// <summary>A release: the link the press began on is opened if the release is on it and nothing was selected between.</summary>
     private void ReleaseLink(Point position)
     {
-        TextLink? pressed = pressedLink;
-        pressedLink = null;
-        if (pressed is not null && selections.Primary.IsEmpty && !selections.HasMultiple && LinkAt(position)?.Range == pressed.Range)
+        TextLink? link = pressed.Link;
+        pressed.Release();
+        if (link is not null && selections.Primary.IsEmpty && !selections.HasMultiple && LinkAt(position)?.Range == link.Range)
         {
-            LinkClicked?.Invoke(this, pressed);
+            LinkClicked?.Invoke(this, link);
         }
     }
 
-    /// <summary>The links held carried through an edit, as output arrives and the oldest goes; one an edit touched is gone.</summary>
-    private void FollowLinkEdits(IReadOnlyList<TextEdit> edits)
+    /// <summary>The links held read after an edit where their ranges carried them, as output arrives and the oldest goes.</summary>
+    private void FollowLinkEdits()
     {
-        HoveredLink = Carried(HoveredLink);
-        pressedLink = Carried(pressedLink);
+        hovered.Follow();
+        pressed.Follow();
+    }
 
-        TextLink? Carried(TextLink? link)
+    /// <summary>A link held on a range of the text, carried with it; one an edit touched is gone.</summary>
+    private sealed class HeldLink
+    {
+        private AnchoredRange? at;
+
+        public TextLink? Link { get; private set; }
+
+        /// <summary>Holds a link of the text as it stands, or none, in place of the one held.</summary>
+        public void Hold(TextDocument text, TextLink? link)
         {
-            if (link is null)
+            if (link is not null && link == Link)
             {
-                return null;
+                return;
             }
-            TextRange moved = TextEditing.MapRange(link.Range, edits);
-            return moved.Length == link.Range.Length ? link with { Range = moved } : null;
+            Release();
+            Link = link;
+            at = link is null ? null : text.MarkAt(link.Range);
+        }
+
+        /// <summary>Reads the link's range after an edit: a range of another length was touched, and the link goes.</summary>
+        public void Follow()
+        {
+            if (Link is not { } link || at is null || at.Range == link.Range)
+            {
+                return;
+            }
+            if (at.Range.Length == link.Range.Length)
+            {
+                Link = link with { Range = at.Range };
+            }
+            else
+            {
+                Release();
+            }
+        }
+
+        public void Release()
+        {
+            at?.Remove();
+            at = null;
+            Link = null;
         }
     }
 

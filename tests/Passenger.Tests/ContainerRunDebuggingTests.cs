@@ -251,17 +251,29 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
         }
     }
 
-    /// <summary>A service whose compose environment turns its runtime's debugger off, its diagnostic port left on (which would
-    /// take a hold, with no debugger coming to let it go), is never held: under Debug and under Profile it comes up and
-    /// serves, the run's console saying why neither reaches it, Debug's status too, and Profile refusing for want of one.</summary>
-    [AvaloniaFact]
-    public void A_service_whose_environment_turns_its_debugger_off_is_never_held_and_serves_under_Debug_and_Profile_saying_why()
+    /// <summary>A service whose runtime's debugger is turned off, its diagnostic port left on (which would take a hold, with no
+    /// debugger coming to let it go), by its compose environment or by its Dockerfile's ENV (its image's own, which Compose's
+    /// model never shows), is never held: under Debug and under Profile it comes up and serves, the run's console saying why
+    /// neither reaches it, Debug's status too, and Profile's refusal naming it and why.</summary>
+    [AvaloniaTheory]
+    [InlineData("compose")]
+    [InlineData("Dockerfile")]
+    public void A_service_whose_environment_turns_its_debugger_off_is_never_held_and_serves_under_Debug_and_Profile_saying_why(string offBy)
     {
         Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
-        (string folder, string project) = Shop("off");
-        string compose = File.ReadAllText(Path.Combine(folder, "compose.yaml"));
-        TestFolders.Write(folder, "compose.yaml", compose.Replace("    depends_on:", "    environment: { DOTNET_EnableDiagnostics_Debugger: \"0\" }\n    depends_on:",
-            StringComparison.Ordinal));
+        (string folder, string project) = Shop($"off{offBy.ToLowerInvariant()[..3]}");
+        if (offBy == "compose")
+        {
+            string compose = File.ReadAllText(Path.Combine(folder, "compose.yaml"));
+            TestFolders.Write(folder, "compose.yaml", compose.Replace("    depends_on:", "    environment: { DOTNET_EnableDiagnostics_Debugger: \"0\" }\n    depends_on:",
+                StringComparison.Ordinal));
+        }
+        else
+        {
+            // Fast mode runs the runtime stage, base, whose ENV is the image's environment.
+            string dockerfile = File.ReadAllText(Path.Combine(folder, "Web", "Dockerfile"));
+            TestFolders.Write(folder, "Web/Dockerfile", dockerfile.Replace("EXPOSE 8080\n", "EXPOSE 8080\nENV DOTNET_EnableDiagnostics_Debugger=0\n", StringComparison.Ordinal));
+        }
         MainWindow window = ContainerRunsTests.Open(folder);
         RunConfiguration marked = window.Configurations.First(c => c.Kind == RunKind.Compose).Copied() with
         {
@@ -284,7 +296,7 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
                 }
                 else
                 {
-                    Assert.Equal("Shop, web debugged started no .NET service to profile", refused);
+                    Assert.Equal($"Shop, web debugged started no .NET service the profiler can reach (web: {Why})", refused);
                 }
                 Assert.Contains($"web: {Why}", ContainerRunsTests.Run(window), StringComparison.Ordinal);
                 int port = ContainerRunsTests.Published(project, "web");

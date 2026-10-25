@@ -6,6 +6,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Passenger.Core;
 
 namespace Passenger.App;
 
@@ -47,14 +48,7 @@ public sealed class AboutDialog : Window
 
         Button copy = new() { Content = "Copy and Close" };
         Button close = new() { Content = "Close", IsDefault = true, IsCancel = true, Classes = { "primary" } };
-        copy.Click += async (_, _) =>
-        {
-            if (Clipboard is { } clipboard)
-            {
-                await clipboard.SetTextAsync(Text);
-            }
-            Close();
-        };
+        copy.Click += (_, _) => IdeErrors.Observe(CopyAndCloseAsync());
         close.Click += (_, _) => Close();
 
         Content = DialogFooter.Page(new StackPanel
@@ -85,6 +79,15 @@ public sealed class AboutDialog : Window
             };
             return link;
         }
+    }
+
+    private async Task CopyAndCloseAsync()
+    {
+        if (Clipboard is { } clipboard)
+        {
+            await clipboard.SetTextAsync(Text);
+        }
+        Close();
     }
 
     /// <summary>What Copy and Close copies for a bug report: the version, the full commit, the runtime and the

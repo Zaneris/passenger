@@ -1,7 +1,7 @@
 using Passenger.App.Explorer;
 using Passenger.App.Templates;
-using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Workspace;
 
 namespace Passenger.App;
 
@@ -47,7 +47,7 @@ public partial class MainWindow
                 OpenNewSolution(solution, made.Projects);
             }
         };
-        _ = dialog.ShowDialog(this);
+        IdeErrors.Observe(dialog.ShowDialog(this));
         return dialog;
     }
 
@@ -70,7 +70,7 @@ public partial class MainWindow
                 Reveal(into, last);
             }
         };
-        _ = dialog.ShowDialog(this);
+        IdeErrors.Observe(dialog.ShowDialog(this));
         return dialog;
     }
 

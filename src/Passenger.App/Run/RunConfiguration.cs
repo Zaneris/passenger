@@ -2,7 +2,7 @@ using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Passenger.App.Aspire;
 using Passenger.App.State;
-using Passenger.App.Workspace;
+using Passenger.Workspace;
 
 namespace Passenger.App.Run;
 

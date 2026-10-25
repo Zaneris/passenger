@@ -15,4 +15,14 @@
   <ItemGroup>
     <AvaloniaResource Include="Fonts/*.ttf" />
   </ItemGroup>
+
+  <!-- The theme's keys as constants for the editor, the IDE and the tests (Passenger.Analyzers' ResourceKeys), read from the
+       XAML that gives them: TokenKeys every Passenger.* key, IconKeys every Icon.* one. -->
+  <ItemGroup>
+    <AdditionalFiles Include="../Passenger.App/Theme/Tokens.axaml;../Passenger.App/Theme/ControlThemes.axaml;../Passenger.App/Theme/Shell.axaml"
+                     KeysClass="TokenKeys" KeysPrefix="Passenger." />
+    <AdditionalFiles Include="../Passenger.App/Theme/Icons.axaml" KeysClass="IconKeys" KeysPrefix="Icon." />
+    <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="KeysClass" />
+    <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="KeysPrefix" />
+  </ItemGroup>
 </Project>

@@ -132,7 +132,7 @@ public sealed class NamePopup : UserControl, IAnswers<bool>
         }
         else if (e.Key == Key.Enter)
         {
-            _ = SubmitAsync();
+            IdeErrors.Observe(SubmitAsync());
             e.Handled = true;
         }
         else if (kinds is not null && ListKeys.Move(kinds, e))

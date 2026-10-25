@@ -31,7 +31,7 @@ public partial class MainWindow
 
     private void AddLocalHistory()
     {
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.LocalHistory, "Local History", "Icon.History", () => localHistoryView = new LocalHistoryView(),
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.LocalHistory, "Local History", IconKeys.History, () => localHistoryView = new LocalHistoryView(),
             Docking.ToolAnchor.BottomLeft)
         {
             Tools = () => localHistoryView?.Tabs,
@@ -49,7 +49,7 @@ public partial class MainWindow
             WhyNot = NeedsFolder,
             Menus = [new MenuPlace(LocalHistoryMenu, 1, 0)],
         });
-        actions.Add(new IdeAction(AppActions.RecentChanges, "Recent Changes", "Local History", context => _ = ShowRecentChangesAsync())
+        actions.Add(new IdeAction(AppActions.RecentChanges, "Recent Changes", "Local History", context => IdeErrors.Observe(ShowRecentChangesAsync()))
         {
             WhyNot = NeedsFolder,
             Menus = [new MenuPlace(LocalHistoryMenu, 1, 1)],

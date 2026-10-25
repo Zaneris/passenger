@@ -7,6 +7,8 @@ namespace Passenger.Tests.Debugging;
 [Collection(DebugSession.Collection)]
 public class Variables2Tests(ITestOutputHelper testOutputHelper)
 {
+    private static readonly int TestEnd = Debuggees.Line("DebuggableConsoleApp", "VariablesClass.cs", "CompositeValueFixtures localCompositeValues = new CompositeValueFixtures();") + 1;
+
     /// <summary>A float's and a double's values read as C# writes them whatever the machine's culture, and Set Value takes
     /// back the text shown. The culture comes from LANG and LC_ALL on macOS and Linux; Windows takes it from the user's
     /// settings, so there the test holds the values to C#'s alone.</summary>
@@ -18,7 +20,7 @@ public class Variables2Tests(ITestOutputHelper testOutputHelper)
             .WithInitializeRequest()
             .WithLaunchRequest(Debuggees.Program("DebuggableConsoleApp"), stopAtEntry: false, justMyCode: true)
             .WaitForInitializedEvent();
-        host.WithBreakpointsRequest(150, Debuggees.Source("DebuggableConsoleApp", "VariablesClass.cs"))
+        host.WithBreakpointsRequest(TestEnd, Debuggees.Source("DebuggableConsoleApp", "VariablesClass.cs"))
             .WithConfigurationDoneRequest();
         StoppedEvent stopped = await host.WaitForStoppedEvent();
         host.WithStackTraceRequest(stopped.ThreadId!.Value, out StackTraceResponse? frames)
@@ -47,7 +49,7 @@ public class Variables2Tests(ITestOutputHelper testOutputHelper)
     }
 
     [Fact]
-    public async Task SyncMethod_VariablesClass_VariablesRequest_ReturnsCorrectVariables()
+    public async Task A_stop_lists_locals_and_fields_of_every_kind_with_their_values_and_types()
     {
         bool startSuspended = true;
 
@@ -59,12 +61,12 @@ public class Variables2Tests(ITestOutputHelper testOutputHelper)
             .WaitForInitializedEvent();
         string breakpointedFilePath = Debuggees.Source("DebuggableConsoleApp", "VariablesClass.cs");
         debugProtocolHost
-            .WithBreakpointsRequest([150], breakpointedFilePath)
+            .WithBreakpointsRequest([TestEnd], breakpointedFilePath)
             .WithConfigurationDoneRequest()
             .WithOptionalResumeRuntime(p2.Id, startSuspended);
 
         StoppedEvent stoppedEvent = await debugProtocolHost.WaitForStoppedEvent();
-        Assert.Equal((breakpointedFilePath, 150, 3), stoppedEvent.ReadStopInfo());
+        Assert.Equal((breakpointedFilePath, TestEnd, 3), stoppedEvent.ReadStopInfo());
         debugProtocolHost
             .WithStackTraceRequest(stoppedEvent.ThreadId!.Value, out StackTraceResponse? stackTraceResponse)
             .WithScopesRequest(stackTraceResponse.StackFrames!.First().Id, out ScopesResponse? scopesResponse);
@@ -127,6 +129,8 @@ public class Variables2Tests(ITestOutputHelper testOutputHelper)
 
 file static class TestExtensions
 {
+    private static readonly int Throwing = Debuggees.Line("DebuggableConsoleApp", "VariablesClass.cs", "private int ThrowingProperty =>");
+
     public static void AssertInstanceThisInstanceVariables(this DebugSession debugProtocolHost, int variablesReference, string breakpointedFilePath)
     {
         string expectedDateTimeField = new DateTime(2026, 6, 15, 10, 5, 8).ToString();
@@ -135,7 +139,7 @@ file static class TestExtensions
         string expectedTimeSpanField = TimeSpan.FromMinutes(5).ToString();
         string expectedGuidField = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
         string expectedNullableGuidField = "f0e1d2c3-b4a5-9687-7869-5a4b3c2d1e0f";
-        string expectedThrowingPropertyValue = $"System.InvalidOperationException: ThrowingProperty was accessed{Environment.NewLine}   at DebuggableConsoleApp.VariablesClass.get_ThrowingProperty() in {breakpointedFilePath}:line 93";
+        string expectedThrowingPropertyValue = $"System.InvalidOperationException: ThrowingProperty was accessed{Environment.NewLine}   at DebuggableConsoleApp.VariablesClass.get_ThrowingProperty() in {breakpointedFilePath}:line {Throwing}";
 
         List<DapVariable> expectedVariables =
         [

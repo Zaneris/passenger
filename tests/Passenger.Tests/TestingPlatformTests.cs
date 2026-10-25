@@ -127,9 +127,7 @@ public sealed class TestingPlatformTests : TestingPlatformFolders, IClassFixture
             "    [TestMethod]\n    [DataRow(1)]\n    [DataRow(2)]\n    public void Counts(int items) => Assert.IsTrue(items > 0);\n}\n");
         Write(solution, "Suite.slnx", "<Solution>\n  <Project Path=\"Vs.Tests/Vs.Tests.csproj\" />\n  <Project Path=\"Store.Tests/Store.Tests.csproj\" />\n</Solution>\n");
         Restore.Run(Path.Combine(solution, "Suite.slnx"));
-        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
-        window.Show();
-        window.OpenFolder(solution);
+        MainWindow window = Ui.OpenFolder(solution, languageServer: false);
         Tree(window);
         Ui.WaitFor(() => Method(window, "Keeps") is not null && Method(window, "Adds") is not null, "both projects' tests read from the code");
 
@@ -273,9 +271,7 @@ public abstract class TestingPlatformFolders : IDisposable
     /// language server, which finding, running and debugging tests ask nothing of.</summary>
     protected MainWindow Open()
     {
-        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         window.OpenFile(source);
         Ui.Settle();
         Tree(window);
@@ -290,13 +286,7 @@ public abstract class TestingPlatformFolders : IDisposable
         return made;
     }
 
-    protected static string Write(string root, string relative, string text)
-    {
-        string path = Path.Combine(root, relative);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, text);
-        return path;
-    }
+    protected static string Write(string root, string relative, string text) => TestFolders.Write(root, relative, text);
 
     /// <summary>The Unit Tests window's rows as a person reads them, indented by depth.</summary>
     protected static List<string> Shown(MainWindow window) => [.. window.Tests.Tree.Rows.Select(r => new string(' ', r.Depth * 2) + r.Name)];

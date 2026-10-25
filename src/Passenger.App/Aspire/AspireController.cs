@@ -2,7 +2,6 @@ using Passenger.App.Debugging;
 using Passenger.App.LiveTree;
 using Passenger.App.Run;
 using Passenger.App.ToolWindows;
-using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Profiler;
 using System.Diagnostics;
@@ -10,6 +9,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text.Json;
+using Passenger.Workspace;
 
 namespace Passenger.App.Aspire;
 
@@ -612,7 +612,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         catch (OperationCanceledException) when (cancel.IsCancellationRequested)
         {
             // A request can give up after its UI launch succeeds; that late process still belongs to the app.
-            _ = CleanLateLaunchAsync();
+            IdeErrors.Observe(CleanLateLaunchAsync());
             throw;
         }
 
@@ -791,9 +791,9 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         string service = name ?? Path.GetFileNameWithoutExtension(path);
         TimeSpan limit = Waits.Of(ProfileLimit);
         app.ProfileAsked.TrySetResult(service);
-        _ = Task.Delay(limit, app.Lifetime.Token).ContinueWith(_ => app.ProfileStarted.TrySetResult(
+        IdeErrors.Observe(Task.Delay(limit, app.Lifetime.Token).ContinueWith(_ => app.ProfileStarted.TrySetResult(
             $"{service} did not start under the profiler within {limit.TotalSeconds:0.##} s of its AppHost asking for it"),
-            CancellationToken.None, TaskContinuationOptions.OnlyOnRanToCompletion | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            CancellationToken.None, TaskContinuationOptions.OnlyOnRanToCompletion | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default));
         return true;
     }
 
@@ -1456,7 +1456,7 @@ public sealed class AspireAppRun : ServiceRun
     internal void Choose(string name, bool debugging)
     {
         decided.Add(name);
-        _ = HoldAsync(name, debugging ? RunStart.Debug : null, CancellationToken.None);
+        IdeErrors.Observe(HoldAsync(name, debugging ? RunStart.Debug : null, CancellationToken.None));
     }
 
     /// <summary>The service's start the session attached to keeps its tab (which the Aspire window chooses) and session.</summary>

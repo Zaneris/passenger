@@ -99,7 +99,7 @@ internal sealed partial class InfoCard : Border
         FontFeatures = Fonts.NoLigatures,
         FontSize = 12.5,
         TextWrapping = TextWrapping.Wrap,
-        Foreground = Brush("Passenger.Text"),
+        Foreground = Brush(TokenKeys.Text),
     });
 
     public void AddText(string text, IBrush? colour = null) => parts.Children.Add(new TextBlock
@@ -107,7 +107,7 @@ internal sealed partial class InfoCard : Border
         Text = text,
         TextWrapping = TextWrapping.Wrap,
         FontSize = 12.5,
-        Foreground = colour ?? Brush("Passenger.TextMuted"),
+        Foreground = colour ?? Brush(TokenKeys.TextMuted),
     });
 
     /// <summary>Hover markdown, as Roslyn writes it: fenced code blocks and prose between them.</summary>
@@ -323,7 +323,7 @@ internal sealed class CompletionRowView : DockPanel
         {
             FontSize = 10,
             FontWeight = FontWeight.Bold,
-            Foreground = InfoCard.Brush("Passenger.BadgeText"),
+            Foreground = InfoCard.Brush(TokenKeys.BadgeText),
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
         };
@@ -339,7 +339,7 @@ internal sealed class CompletionRowView : DockPanel
         detail = new TextBlock
         {
             [DockPanel.DockProperty] = Dock.Right,
-            Foreground = InfoCard.Brush("Passenger.TextMuted"),
+            Foreground = InfoCard.Brush(TokenKeys.TextMuted),
             FontSize = 12,
             Margin = new Thickness(12, 0, 4, 0),
             TextTrimming = TextTrimming.CharacterEllipsis,
@@ -436,7 +436,7 @@ internal sealed class ChoicePopup : Border
                     new TextBlock
                     {
                         Text = choice?.Mnemonic?.ToString(),
-                        Foreground = InfoCard.Brush("Passenger.TextMuted"),
+                        Foreground = InfoCard.Brush(TokenKeys.TextMuted),
                         FontFamily = Fonts.Mono,
                         Width = 10,
                         IsVisible = numbered,
@@ -446,7 +446,7 @@ internal sealed class ChoicePopup : Border
                     new TextBlock
                     {
                         Text = choice?.Detail,
-                        Foreground = InfoCard.Brush("Passenger.TextMuted"),
+                        Foreground = InfoCard.Brush(TokenKeys.TextMuted),
                         FontFamily = choice?.DetailIsCode == true ? Fonts.Mono : FontFamily.Default,
                         FontSize = 12,
                         TextTrimming = TextTrimming.CharacterEllipsis,

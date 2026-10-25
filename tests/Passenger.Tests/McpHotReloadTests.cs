@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Avalonia.Headless.XUnit;
 using ModelContextProtocol.Client;
+using Passenger.App.Mcp;
 using Passenger.App;
 
 namespace Passenger.Tests;
@@ -28,62 +29,62 @@ public sealed class McpHotReloadTests : McpRig, IClassFixture<RestoredFolders>
             + "for (int i = 1; i <= 3; i++)\n{\n    total += Helper.Twice(i);\n}\nConsole.WriteLine($\"total {total}\");\n");
         Write("Helper.cs", "static class Helper\n{\n    static int calls;\n\n    public static int Twice(int value)\n    {\n        calls++;\n        return value * 2;\n    }\n}\n");
         await using McpClient client = await Start(["--mcp", Folder]);
-        await Call(client, "breakpoint_set", new() { ["exception"] = "System.InvalidOperationException" });
+        await Call(client, McpTools.BreakpointSet, new() { ["exception"] = "System.InvalidOperationException" });
         // Listed with "Any exception", the new one in every scenario.
-        JsonElement[] exceptions = [.. (await Call(client, "debug_state", new() { ["of"] = "breakpoints" })).EnumerateArray()
+        JsonElement[] exceptions = [.. (await Call(client, McpTools.DebugState, new() { ["of"] = "breakpoints" })).EnumerateArray()
             .Where(b => b.TryGetProperty("exception", out JsonElement type) && type.ValueKind == JsonValueKind.String)];
         Assert.Equal(["Any exception", "System.InvalidOperationException"], exceptions.Select(b => b.GetProperty("exception").GetString()));
         Assert.Equal(["thrownInUserCode", "thrownInExternalCode", "handledInUserCode", "handledInExternalCode", "unhandled"],
             exceptions[1].GetProperty("scenarios").EnumerateArray().Select(s => s.GetString()));
 
-        await Call(client, "breakpoint_set", new() { ["path"] = "Program.cs", ["line"] = 2 });
-        Assert.StartsWith("Program.cs:2:", (await Call(client, "debug_start")).GetProperty("location").GetString(), StringComparison.Ordinal);
-        await Call(client, "breakpoint_set", new() { ["path"] = "Program.cs", ["line"] = 2, ["remove"] = true });
-        JsonElement ranTo = await Call(client, "debug_continue", new() { ["path"] = "Program.cs", ["line"] = 4 });
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 2 });
+        Assert.StartsWith("Program.cs:2:", (await Call(client, McpTools.DebugStart)).GetProperty("location").GetString(), StringComparison.Ordinal);
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 2, ["remove"] = true });
+        JsonElement ranTo = await Call(client, McpTools.DebugContinue, new() { ["path"] = "Program.cs", ["line"] = 4 });
         Assert.StartsWith("Program.cs:4:", ranTo.GetProperty("location").GetString(), StringComparison.Ordinal);
         Assert.Equal("11", Local(ranTo, "total"));
-        JsonElement moved = await Call(client, "debug_set_next_statement", new() { ["path"] = "Program.cs", ["line"] = 3 });
+        JsonElement moved = await Call(client, McpTools.DebugSetNextStatement, new() { ["path"] = "Program.cs", ["line"] = 3 });
         Assert.StartsWith("Program.cs:3:", moved.GetProperty("location").GetString(), StringComparison.Ordinal);
         Assert.Equal("11", Local(moved, "total"));
 
         // The argument exception passes; the stop is the first turn's, at the line that throws the type named.
-        JsonElement thrown = await Call(client, "debug_continue");
+        JsonElement thrown = await Call(client, McpTools.DebugContinue);
         Assert.Equal("exception", thrown.GetProperty("reason").GetString());
         Assert.StartsWith("System.InvalidOperationException: operation 1", thrown.GetProperty("exception").GetString(), StringComparison.Ordinal);
         Assert.StartsWith("Program.cs:8:", thrown.GetProperty("location").GetString(), StringComparison.Ordinal);
         // Removed while paused, it lets the second turn's pass: the next stop is the loop's, line 3 done twice.
-        await Call(client, "breakpoint_set", new() { ["exception"] = "System.InvalidOperationException", ["remove"] = true });
-        await Call(client, "breakpoint_set", new() { ["path"] = "Program.cs", ["line"] = 12 });
-        JsonElement looped = await Call(client, "debug_continue");
+        await Call(client, McpTools.BreakpointSet, new() { ["exception"] = "System.InvalidOperationException", ["remove"] = true });
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 12 });
+        JsonElement looped = await Call(client, McpTools.DebugContinue);
         Assert.True(looped.GetProperty("location").GetString()!.StartsWith("Program.cs:12:", StringComparison.Ordinal) && Local(looped, "total") == "121",
             $"With the exception breakpoint removed, the program did not run on to the loop, line 3 done twice: {looped}");
 
-        await Call(client, "open", new() { ["path"] = "Helper.cs", ["line"] = 8, ["column"] = 25 });
-        await Call(client, "app_type", new() { ["app"] = "ide", ["text"] = " + 1" });
-        JsonElement applied = await Call(client, "hot_reload");
+        await Call(client, McpTools.Open, new() { ["path"] = "Helper.cs", ["line"] = 8, ["column"] = 25 });
+        await Call(client, McpTools.AppType, new() { ["app"] = "ide", ["text"] = " + 1" });
+        JsonElement applied = await Call(client, McpTools.HotReload);
         Assert.True(applied.GetProperty("result").GetString() == "applied" && applied.GetProperty("methods").GetInt32() == 1
             && applied.GetProperty("files").EnumerateArray().Select(f => f.GetString()).SequenceEqual(["Helper.cs"]) && !applied.GetProperty("restartNeeded").GetBoolean(),
             $"The edit to Twice's body was not applied: {applied}");
-        Assert.Equal("124", Local(await Call(client, "debug_continue"), "total"));
+        Assert.Equal("124", Local(await Call(client, McpTools.DebugContinue), "total"));
 
         // The runtime cannot change a field's type; with restart false the program stays paused in the code it has.
-        await Call(client, "open", new() { ["path"] = "Helper.cs", ["line"] = 3, ["column"] = 12 });
-        await Call(client, "app_type", new() { ["app"] = "ide", ["text"] = "u" });
-        JsonElement rude = await Call(client, "hot_reload", new() { ["restart"] = false });
+        await Call(client, McpTools.Open, new() { ["path"] = "Helper.cs", ["line"] = 3, ["column"] = 12 });
+        await Call(client, McpTools.AppType, new() { ["app"] = "ide", ["text"] = "u" });
+        JsonElement rude = await Call(client, McpTools.HotReload, new() { ["restart"] = false });
         Assert.True(rude.GetProperty("result").GetString() == "restartNeeded" && rude.GetProperty("restartNeeded").GetBoolean() && !rude.GetProperty("restarted").GetBoolean(),
             $"Changing a field's type did not say a restart is needed, or restarted unasked: {rude}");
         JsonElement edit = Assert.Single(rude.GetProperty("edits").EnumerateArray(), e => e.GetProperty("severity").GetString() == "error");
         Assert.True(edit.GetProperty("path").GetString() == "Helper.cs" && edit.GetProperty("line").GetInt32() == 3
             && edit.GetProperty("code").GetString()!.StartsWith("ENC", StringComparison.Ordinal), $"The rude edit is not named at its line: {edit}");
-        JsonElement still = await Call(client, "debug_state");
+        JsonElement still = await Call(client, McpTools.DebugState);
         Assert.True(still.GetProperty("state").GetString() == "paused" && Local(still, "total") == "124", $"The program did not stay where it was: {still}");
 
-        JsonElement restarted = await Call(client, "hot_reload", new() { ["restart"] = true });
+        JsonElement restarted = await Call(client, McpTools.HotReload, new() { ["restart"] = true });
         Assert.True(restarted.GetProperty("restarted").GetBoolean() && restarted.GetProperty("debugger").GetProperty("state").GetString() == "paused"
             && restarted.GetProperty("debugger").GetProperty("location").GetString()!.StartsWith("Program.cs:12:", StringComparison.Ordinal),
             $"The restart for the rude edit did not stop at the breakpoint again: {restarted}");
-        Assert.Equal("114", Local(await Call(client, "debug_continue"), "total"));
-        await Call(client, "stop");
+        Assert.Equal("114", Local(await Call(client, McpTools.DebugContinue), "total"));
+        await Call(client, McpTools.Stop);
     }
 
     /// <summary>An agent's hot_reload on the person's window is the window's own Apply Hot Reload Changes: it shows as that
@@ -116,7 +117,7 @@ public sealed class McpHotReloadTests : McpRig, IClassFixture<RestoredFolders>
             Typing.Replace(window, "value * 2", "value * 2 + 1");
 
             client = Await(Task.Run(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
-            Task<JsonElement> applying = Task.Run(() => Call(client, "hot_reload"));
+            Task<JsonElement> applying = Task.Run(() => Call(client, McpTools.HotReload));
             Press(Question(window, "the question for the agent's hot_reload"), "Allow");
             JsonElement applied = Await(applying, "the agent's hot_reload");
             Assert.True(applied.GetProperty("result").GetString() == "applied" && applied.GetProperty("methods").GetInt32() == 1, $"The agent's edit was not applied: {applied}");
@@ -148,29 +149,29 @@ public sealed class McpHotReloadTests : McpRig, IClassFixture<RestoredFolders>
             "while (true)\n{\n    Console.WriteLine(Talk.Say());\n    Thread.Sleep(200);\n}\n\nstatic class Talk\n{\n    public static string Say() => \"before the edit\";\n}\n");
         await using McpClient client = await Start(["--mcp", Folder]);
         // As where run comes first, never built: the design-time build's output folder goes, for dotnet watch to make.
-        Assert.Contains((await Call(client, "find_symbol", new() { ["query"] = "Talk" })).EnumerateArray(), s => s.GetProperty("path").GetString() == "Program.cs");
+        Assert.Contains((await Call(client, McpTools.FindSymbol, new() { ["query"] = "Talk" })).EnumerateArray(), s => s.GetProperty("path").GetString() == "Program.cs");
         TestFolders.Delete(Path.Combine(Folder, "bin"));
-        Assert.True((await Call(client, "run", new() { ["waitSeconds"] = 0, ["hotReload"] = true })).GetProperty("stillRunning").GetBoolean());
+        Assert.True((await Call(client, McpTools.Run, new() { ["waitSeconds"] = 0, ["hotReload"] = true })).GetProperty("stillRunning").GetBoolean());
         // dotnet watch watches once it has loaded the project, which is after the program has started.
         string output = string.Empty;
         await Waiting.UntilAsync(async () =>
         {
-            output = (await Call(client, "output", new() { ["lines"] = 100000 })).GetString()!;
+            output = (await Call(client, McpTools.Output, new() { ["lines"] = 100000 })).GetString()!;
             return output.Contains("before the edit", StringComparison.Ordinal) && output.Contains("Waiting for changes", StringComparison.Ordinal);
         }, TimeSpan.FromMinutes(2), Cancel, TimeSpan.FromMilliseconds(500));
         Assert.True(output.Contains("Waiting for changes", StringComparison.Ordinal), $"dotnet watch never watched the program:\n{output[..Math.Min(output.Length, 3000)]}");
 
-        await Call(client, "open", new() { ["path"] = "Program.cs", ["line"] = 9, ["column"] = 51 });
-        await Call(client, "app_type", new() { ["app"] = "ide", ["text"] = ", edited" });
-        JsonElement applied = await Call(client, "hot_reload");
+        await Call(client, McpTools.Open, new() { ["path"] = "Program.cs", ["line"] = 9, ["column"] = 51 });
+        await Call(client, McpTools.AppType, new() { ["app"] = "ide", ["text"] = ", edited" });
+        JsonElement applied = await Call(client, McpTools.HotReload);
         Assert.True(applied.GetProperty("result").GetString() == "applied" && applied.GetProperty("said").GetString()!.Contains("dotnet watch applied the changes", StringComparison.Ordinal),
-            $"dotnet watch did not apply the saved edit: {applied}\n{(await Call(client, "output")).GetString()}");
+            $"dotnet watch did not apply the saved edit: {applied}\n{(await Call(client, McpTools.Output)).GetString()}");
         await Waiting.UntilAsync(async () =>
         {
-            output = (await Call(client, "output")).GetString()!;
+            output = (await Call(client, McpTools.Output)).GetString()!;
             return output.Contains("before the edit, edited", StringComparison.Ordinal);
         }, TimeSpan.FromSeconds(30), Cancel, TimeSpan.FromMilliseconds(500));
         Assert.True(output.Contains("before the edit, edited", StringComparison.Ordinal), $"The running program never ran the edit:\n{output[Math.Max(0, output.Length - 3000)..]}");
-        await Call(client, "stop");
+        await Call(client, McpTools.Stop);
     }
 }

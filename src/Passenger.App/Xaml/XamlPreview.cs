@@ -25,13 +25,14 @@ public sealed class XamlPreview : IDisposable
     /// <summary>Counts starts, so one overtaken by another (a build finishing while it copied) lets its previewer go.</summary>
     private int starts;
     private double scaling = 1;
-    private IReadOnlyList<PreviewElement> elements = [];
 
-    public XamlPreview(XamlDocument document)
-    {
-        this.document = document;
-        document.Document.Text.Changed += OnTextChanged;
-    }
+    /// <summary>The elements on the ranges of their XAML and of their tags, which the text carries, and the elements as last
+    /// read from both.</summary>
+    private readonly AnchoredList<PreviewElement> wholes = new(e => e.Whole, (e, range) => e with { Whole = range });
+    private readonly AnchoredList<TextRange> tags = new(r => r, (_, range) => range);
+    private (IReadOnlyList<PreviewElement> Wholes, IReadOnlyList<TextRange> Tags, IReadOnlyList<PreviewElement> Read) elements = ([], [], []);
+
+    public XamlPreview(XamlDocument document) => this.document = document;
 
     /// <summary>The frame, its status, its error or its elements changed; raised on the UI thread.</summary>
     public event EventHandler? Changed;
@@ -53,8 +54,21 @@ public sealed class XamlPreview : IDisposable
     /// typed since) and its box in the frame; empty when the previewer gives none (Avalonia's) or the text drawn is gone.</summary>
     public IReadOnlyList<PreviewElement> Elements
     {
-        get => elements;
-        internal set => elements = value;
+        get
+        {
+            IReadOnlyList<PreviewElement> carried = wholes.Items;
+            IReadOnlyList<TextRange> tagged = tags.Items;
+            if (!ReferenceEquals(carried, elements.Wholes) || !ReferenceEquals(tagged, elements.Tags))
+            {
+                elements = (carried, tagged, [.. carried.Select((element, i) => element with { Tag = tagged[i] })]);
+            }
+            return elements.Read;
+        }
+        internal set
+        {
+            wholes.Set(document.Document.Text, value);
+            tags.Set(document.Document.Text, [.. value.Select(e => e.Tag)]);
+        }
     }
 
     internal XamlDocument Document => document;
@@ -133,11 +147,11 @@ public sealed class XamlPreview : IDisposable
     }
 
     /// <summary>The deepest of the file's elements drawn at a point of the frame, in its units; null for none.</summary>
-    public PreviewElement? ElementAt(Point point) => elements.LastOrDefault(e => e.Box.Contains(point));
+    public PreviewElement? ElementAt(Point point) => Elements.LastOrDefault(e => e.Box.Contains(point));
 
     /// <summary>The innermost of the file's drawn elements whose XAML holds an offset; null for none.</summary>
     public PreviewElement? ElementAround(int offset) =>
-        elements.Where(e => e.Whole.Start <= offset && offset < e.Whole.End).OrderBy(e => e.Whole.Length).FirstOrDefault();
+        Elements.Where(e => e.Whole.Start <= offset && offset < e.Whole.End).OrderBy(e => e.Whole.Length).FirstOrDefault();
 
     /// <summary>The previewer started again on the project's newest build, the last frame shown until the new one comes.</summary>
     /// <summary>Whether a previewer runs for the file, rather than the pane saying why none does.</summary>
@@ -172,13 +186,13 @@ public sealed class XamlPreview : IDisposable
         }
         IDisposable held = BackgroundWork.Scope();
         waiting = held;
-        _ = Task.Delay(Answer).ContinueWith(_ => UiThread.Post(() =>
+        IdeErrors.Observe(Task.Delay(Answer).ContinueWith(_ => UiThread.Post(() =>
         {
             if (waiting == held)
             {
                 Let();
             }
-        }), TaskScheduler.Default);
+        }), TaskScheduler.Default));
     }
 
     internal void Let()
@@ -244,19 +258,6 @@ public sealed class XamlPreview : IDisposable
             ? version
             : null;
 
-    /// <summary>The elements follow what is typed, so a click or the caret finds them until the next frame places them.</summary>
-    private void OnTextChanged(object? sender, DocumentChangedEventArgs e)
-    {
-        if (elements.Count > 0)
-        {
-            elements = [.. elements.Select(element => element with
-            {
-                Tag = TextEditing.MapRange(element.Tag, e.Edits),
-                Whole = TextEditing.MapRange(element.Whole, e.Edits),
-            })];
-        }
-    }
-
     private void Stop()
     {
         Let();
@@ -267,8 +268,9 @@ public sealed class XamlPreview : IDisposable
     public void Dispose()
     {
         disposed = true;
-        document.Document.Text.Changed -= OnTextChanged;
         Stop();
+        wholes.Clear();
+        tags.Clear();
     }
 
     /// <summary>What a previewer's process last said, its last five lines, heard on any thread: once it ends, they go to

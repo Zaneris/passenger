@@ -32,6 +32,8 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
         this.service = service;
         this.document = document;
         diagnostics = new ServerDiagnostics(document, holdsChecks: false);
+        // What the server before this one reported, until this one does.
+        diagnostics.Adopt(document.Markers);
         document.Text.Changed += OnChanged;
         document.Saved += OnSaved;
     }
@@ -68,7 +70,7 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
         if (Lsp is { IsRazor: false } lsp)
         {
             BackgroundWork.Begin();
-            _ = FindContextsAsync(lsp);
+            IdeErrors.Observe(FindContextsAsync(lsp));
         }
     }
 
@@ -184,13 +186,11 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
 
     private void OnChanged(object? sender, DocumentChangedEventArgs e)
     {
-        // Moved with the text, as the markers are, so a fix asked for at the caret finds the problems on its line.
-        diagnostics.Move(e);
+        // The markers and the problems a fix asked for at the caret reads, where the text carried their ranges.
+        diagnostics.Moved();
         if (document.Markers.Count > 0)
         {
-            document.Markers = document.Markers
-                .Select(m => m with { Range = TextEditing.MapRange(m.Range, e.Edits) })
-                .ToList();
+            document.Markers = diagnostics.Markers;
         }
         Pull(Settle);
         // An AppHost's edit may change what its services are told is missing; any other file's changes only its own.

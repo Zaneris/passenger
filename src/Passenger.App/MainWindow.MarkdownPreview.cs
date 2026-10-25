@@ -14,7 +14,7 @@ public partial class MainWindow
         actions!.Add(new IdeAction(A.MarkdownPreview, "Markdown Preview", "Editor", _ => ToggleMarkdownPreview())
         {
             WhyNot = context => context.File is null ? Refusals.NoFile
-                : context.File.Language.Name != "Markdown" ? "The preview is for Markdown files" : null,
+                : context.File.Language != Languages.Language.Markdown ? "The preview is for Markdown files" : null,
             IsChecked = _ => Editors.ShowsMarkdownPreview,
             Menus = [new MenuPlace("View", 4, 1)],
             Words = ["Preview Markdown", "Editor and Preview"],

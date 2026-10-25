@@ -522,7 +522,7 @@ public sealed class ContainerEngine
             {
                 keeping = true;
                 // Not held: it runs for as long as anyone follows, and what it tells the window holds its own work.
-                _ = Task.Run(FollowAsync);
+                IdeErrors.Observe(Task.Run(FollowAsync));
             }
         }
         return new Following(this, follower);

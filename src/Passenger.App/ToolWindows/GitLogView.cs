@@ -7,6 +7,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.App.Vcs;
+using Passenger.Vcs;
 
 namespace Passenger.App.ToolWindows;
 
@@ -18,7 +19,7 @@ namespace Passenger.App.ToolWindows;
 /// the branches panel at its left, a branch chosen there filtering it to that branch's commits (its Branch filter,
 /// cleared by its x); given a <see cref="LogRange"/> it lists the commits of one branch another lacks (Compare with
 /// Current).</summary>
-public sealed class GitLogView : DockPanel
+public sealed class GitLogView : DockPanel, IOwnKeys
 {
     private const double LaneWidth = 12;
     private const double RowHeight = ListRow.Height;
@@ -57,7 +58,7 @@ public sealed class GitLogView : DockPanel
             Classes = { "tree" },
             ItemTemplate = new FuncDataTemplate<GraphRow>((row, _) => row is null ? new TextBlock() : Row(row), supportsRecycling: false),
         };
-        list.SelectionChanged += (_, _) => _ = ShowCommitAsync();
+        list.SelectionChanged += (_, _) => IdeErrors.Observe(ShowCommitAsync());
         list.DoubleTapped += (_, _) => RequestFileDiff();
         // Ahead of the list's own keys, which take Enter for its selection.
         list.AddHandler(KeyDownEvent, (_, e) =>
@@ -75,13 +76,13 @@ public sealed class GitLogView : DockPanel
                 ListMenus.Item("Compare with Local", null, () => CompareRequested?.Invoke(this, (commit, change))),
                 new Separator(),
             } : [],
-            ListMenus.Item("Copy Revision Number", null, () => _ = ListMenus.CopyAsync(this, commit.Hash)),
+            ListMenus.Item("Copy Revision Number", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, commit.Hash))),
             new Separator(),
-            ListMenus.Item("Checkout Revision", null, () => _ = vcs.CheckoutRevisionAsync(commit.Hash)),
+            ListMenus.Item("Checkout Revision", null, () => IdeErrors.Observe(vcs.CheckoutRevisionAsync(commit.Hash))),
             ListMenus.Item("New Branch…", null, () => NewBranchRequested?.Invoke(this, commit)),
             new Separator(),
-            ListMenus.Item("Cherry-Pick", null, () => _ = vcs.CherryPickAsync(commit.Hash)),
-            ListMenus.Item("Revert Commit", null, () => _ = vcs.RevertAsync(commit.Hash)),
+            ListMenus.Item("Cherry-Pick", null, () => IdeErrors.Observe(vcs.CherryPickAsync(commit.Hash))),
+            ListMenus.Item("Revert Commit", null, () => IdeErrors.Observe(vcs.RevertAsync(commit.Hash))),
             ListMenus.Sub("Reset Current Branch to Here",
                 ListMenus.Item("Soft: the changes since kept staged", null, () => ResetRequested?.Invoke(this, (commit, ResetMode.Soft))),
                 ListMenus.Item("Mixed: the changes since kept in the files", null, () => ResetRequested?.Invoke(this, (commit, ResetMode.Mixed))),
@@ -96,7 +97,7 @@ public sealed class GitLogView : DockPanel
         fileList.DoubleTapped += (_, _) => RequestDiff();
         fileList.KeyDown += (_, e) =>
         {
-            if (e.Key == Key.Enter || (e.Key == Key.D && e.KeyModifiers == (OperatingSystem.IsMacOS() ? KeyModifiers.Meta : KeyModifiers.Control)))
+            if (e.Key == Key.Enter || AppActions.Presses(AppActions.ShowDiff, e))
             {
                 RequestDiff();
                 e.Handled = true;
@@ -116,11 +117,11 @@ public sealed class GitLogView : DockPanel
 
         filter = new TextBox { Classes = { "search" }, PlaceholderText = "Text or hash", Width = 240, Margin = new Thickness(8, 0) };
         filter.TextChanged += (_, _) => Filter();
-        Button refresh = ToolButtons.Of("Icon.Rerun", "Refresh", () => _ = LoadAsync());
+        Button refresh = ToolButtons.Of(IconKeys.Rerun, "Refresh", () => IdeErrors.Observe(LoadAsync()));
         // The Branch filter, shown while the log is filtered to a branch, its x showing every branch again.
         branchFilterText = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
         PathIcon clearGlyph = new() { Classes = { "small" } };
-        clearGlyph.Bind(PathIcon.DataProperty, clearGlyph.GetResourceObservable("Icon.Close"));
+        clearGlyph.Bind(PathIcon.DataProperty, clearGlyph.GetResourceObservable(IconKeys.Close));
         Button clearBranch = new() { Classes = { "tabPin" }, Content = clearGlyph, Margin = new Thickness(6, 0, 0, 0) };
         ToolTip.SetTip(clearBranch, "Clear Branch Filter");
         clearBranch.Click += (_, _) => FilterBranch(null, all: true);
@@ -133,7 +134,7 @@ public sealed class GitLogView : DockPanel
             VerticalAlignment = VerticalAlignment.Center,
             Child = new StackPanel { Orientation = Orientation.Horizontal, Children = { branchFilterText, clearBranch } },
         };
-        branchFilter.Bind(Border.BackgroundProperty, branchFilter.GetResourceObservable("Passenger.Selected"));
+        branchFilter.Bind(Border.BackgroundProperty, branchFilter.GetResourceObservable(TokenKeys.Selected));
         Border top = ToolBars.Top(new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Children = { filter, branchFilter, refresh } });
 
         Grid right = new() { RowDefinitions = new RowDefinitions("*,1,*") };
@@ -152,7 +153,7 @@ public sealed class GitLogView : DockPanel
         {
             Branches = new BranchesPanel(vcs);
             Branches.FilterRequested += (_, branch) => FilterBranch(branch);
-            Branches.NavigateRequested += (_, branch) => _ = SelectHashAsync(branch.Hash);
+            Branches.NavigateRequested += (_, branch) => IdeErrors.Observe(SelectHashAsync(branch.Hash));
             Grid withBranches = new() { ColumnDefinitions = new ColumnDefinitions("240,1,*") };
             HairlineDivider beside = new(GridResizeDirection.Columns) { [Grid.ColumnProperty] = 1 };
             Grid.SetColumn(split, 2);
@@ -174,7 +175,7 @@ public sealed class GitLogView : DockPanel
             stale = true;
             if (VisualRoot is not null)
             {
-                _ = LoadAsync();
+                IdeErrors.Observe(LoadAsync());
             }
         };
         vcs.HistoryChanged += onHistoryChanged;
@@ -182,7 +183,7 @@ public sealed class GitLogView : DockPanel
         {
             if (stale)
             {
-                _ = LoadAsync();
+                IdeErrors.Observe(LoadAsync());
             }
         };
     }
@@ -209,7 +210,7 @@ public sealed class GitLogView : DockPanel
         (BranchFilter, BranchFilterName) = all ? (null, null) : branch is null ? ("HEAD", "HEAD") : (branch.Ref.FullName, branch.Name);
         branchFilter.IsVisible = BranchFilter is not null;
         branchFilterText.Text = $"Branch: {BranchFilterName}";
-        _ = LoadAsync();
+        IdeErrors.Observe(LoadAsync());
     }
 
     /// <summary>A history's tab closed: it stops following the history.</summary>
@@ -404,6 +405,10 @@ public sealed class GitLogView : DockPanel
         details.Text = $"{message}\n\n{commit.Hash}{refs}\n{commit.Author} <{commit.Email}>\n{commit.Time.ToLocalTime():f}";
     }
 
+    /// <summary>Show Diff's keys, as the log's list of a commit's files takes them (<see cref="AppActions.KeysIn"/>), ahead
+    /// of what they run elsewhere while one is chosen.</summary>
+    public bool TakesKey(KeyEventArgs e) => fileList.IsKeyboardFocusWithin && fileList.SelectedItem is FileChange && AppActions.Presses(AppActions.ShowDiff, e);
+
     private void RequestDiff()
     {
         if (Selected is { } commit && fileList.SelectedItem is FileChange change)
@@ -421,10 +426,10 @@ public sealed class GitLogView : DockPanel
         {
             // A long branch's name ends in an ellipsis and leaves the subject room.
             TextBlock text = new() { Text = label, FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis };
-            text.Bind(TextBlock.ForegroundProperty, text.GetResourceObservable("Passenger.Vcs.RefText"));
+            text.Bind(TextBlock.ForegroundProperty, text.GetResourceObservable(TokenKeys.Vcs_RefText));
             ToolTip.SetTip(text, label);
             Border tag = new() { [DockProperty] = Dock.Left, Classes = { "tag" }, Padding = new Thickness(5, 1), Margin = new Thickness(0, 0, 6, 0), Child = text, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 160 };
-            tag.Bind(Border.BackgroundProperty, tag.GetResourceObservable("Passenger.Vcs.Ref"));
+            tag.Bind(Border.BackgroundProperty, tag.GetResourceObservable(TokenKeys.Vcs_Ref));
             subject.Children.Add(tag);
         }
         if (FileChangeOf(row.Commit) is { } change && change.Path != Scope!.Path && vcs.Repository is { } repository)

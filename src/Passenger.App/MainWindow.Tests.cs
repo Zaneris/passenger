@@ -116,7 +116,7 @@ public partial class MainWindow
         session.Tests.Open(Folder, projectsRead: read.IsCompleted);
         if (!read.IsCompleted)
         {
-            _ = FindTestsOnceRead(read, session);
+            IdeErrors.Observe(FindTestsOnceRead(read, session));
         }
     }
 
@@ -140,7 +140,7 @@ public partial class MainWindow
         }
         ShowToolWindow(ToolWindowIds.Tests);
         ProjectSession running = session;
-        _ = Go();
+        IdeErrors.Observe(Go());
 
         async Task Go()
         {

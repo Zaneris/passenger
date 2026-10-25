@@ -88,7 +88,7 @@ public sealed class MarkdownPreview : ScrollViewer
         if (onScreen)
         {
             Hear(next);
-            _ = RenderAsync();
+            IdeErrors.Observe(RenderAsync());
         }
     }
 
@@ -124,7 +124,7 @@ public sealed class MarkdownPreview : ScrollViewer
         Hear(document);
         if (document is not null && entries.Count == 0)
         {
-            _ = RenderAsync();
+            IdeErrors.Observe(RenderAsync());
         }
     }
 
@@ -146,7 +146,7 @@ public sealed class MarkdownPreview : ScrollViewer
         if (e.PropertyName == nameof(OpenDocument.Path))
         {
             Clear();
-            _ = RenderAsync();
+            IdeErrors.Observe(RenderAsync());
         }
     }
 

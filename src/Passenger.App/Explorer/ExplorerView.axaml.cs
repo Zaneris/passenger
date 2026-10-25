@@ -5,6 +5,7 @@ using Avalonia.Interactivity;
 using Passenger.App.Docking;
 using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Workspace;
 
 namespace Passenger.App.Explorer;
 
@@ -136,14 +137,14 @@ public partial class ExplorerView : UserControl
     public ExplorerTree Tree { get; } = new();
 
     private string? folder;
-    private Workspace.SolutionModel? solution;
+    private SolutionModel? solution;
 
     /// <summary>The project opened alone, which the Solution view shows at its top.</summary>
-    private Workspace.ProjectModel? project;
+    private ProjectModel? project;
 
     /// <summary>Shows a workspace: its solution's view if it has one (or the project it was opened as), its folder's files
     /// otherwise.</summary>
-    public void Load(Workspace.WorkspaceModel workspace)
+    public void Load(WorkspaceModel workspace)
     {
         folder = workspace.Folder;
         Take(workspace);
@@ -168,7 +169,7 @@ public partial class ExplorerView : UserControl
     public void RefreshFolders(IEnumerable<string> folders) => Tree.RefreshFolders(folders);
 
     /// <summary>The folder's solution read again (a project added or changed on disk), the rows open kept.</summary>
-    public void Reload(Workspace.WorkspaceModel workspace)
+    public void Reload(WorkspaceModel workspace)
     {
         Take(workspace);
         Refresh();
@@ -176,7 +177,7 @@ public partial class ExplorerView : UserControl
 
     /// <summary>Projects MSBuild evaluated again: their rows show them anew, every other row as it was (open, chosen,
     /// focused), and a file waiting to be chosen is chosen once it shows.</summary>
-    public void UpdateProjects(Workspace.WorkspaceModel workspace, IEnumerable<Workspace.ProjectModel> updated)
+    public void UpdateProjects(WorkspaceModel workspace, IEnumerable<ProjectModel> updated)
     {
         // A row made again takes the keys with it: they stay the Explorer's, on the row chosen, for the next Paste.
         bool keys = Rows.IsKeyboardFocusWithin;
@@ -192,7 +193,7 @@ public partial class ExplorerView : UserControl
         }
     }
 
-    private void Take(Workspace.WorkspaceModel workspace)
+    private void Take(WorkspaceModel workspace)
     {
         solution = workspace.Solution;
         project = workspace.ProjectFile is null ? null : workspace.Projects.FirstOrDefault();

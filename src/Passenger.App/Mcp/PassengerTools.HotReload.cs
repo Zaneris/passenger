@@ -10,7 +10,7 @@ namespace Passenger.App.Mcp;
 /// apply came to, never with what the status bar says.</summary>
 public sealed partial class PassengerTools
 {
-    [McpServerTool(Name = "hot_reload", Title = "Apply Hot Reload changes", Destructive = true), Description(
+    [McpServerTool(Name = McpTools.HotReload, Title = "Apply Hot Reload changes", Destructive = true), Description(
         "Applies the editors' edits (saved or not) since the launch or the last apply to the running program, as Apply Hot " +
         "Reload Changes does: a debug_start launch, paused or running (Edit and Continue), or a run with Hot Reload (saved for " +
         "dotnet watch). Returns the result (applied, nothingToApply, restartNeeded, errors, failed), what it said and updated, " +

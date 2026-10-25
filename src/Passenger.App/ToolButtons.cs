@@ -8,7 +8,7 @@ namespace Passenger.App;
 /// <summary>A toolbar's icon button (a tool window's, a diff's, a dialog's list's): its icon at the one size every icon
 /// has, its tip, and what a click does. It never takes the keys from what it acts on, so the list or editor beside it
 /// keeps them. One call per button, so every toolbar's buttons are alike; one that runs one of the window's actions is
-/// bound by <see cref="ActionButtons"/> too.</summary>
+/// made by the overload that takes it, or bound by <see cref="ActionButtons"/>.</summary>
 public static class ToolButtons
 {
     public static Button Of(string icon, string tip, Action? run = null)
@@ -18,6 +18,18 @@ public static class ToolButtons
         {
             button.Click += (_, _) => run();
         }
+        return button;
+    }
+
+    /// <summary>A button that asks for one of the window's actions its view's way (<paramref name="request"/>, given the
+    /// action): named by the action, its tip naming the action's keys as the keymap in force has them
+    /// (<see cref="ActionTips"/>), and marked so the window shows the action's work on it (<see cref="ActionButtons.ShowMarked"/>).</summary>
+    public static Button Of(string action, string icon, string tip, Action<string> request)
+    {
+        Button button = Of(icon, tip, () => request(action));
+        button.Name = action;
+        ActionTips.Set(button, action, tip);
+        ActionButtons.Mark(button, action);
         return button;
     }
 

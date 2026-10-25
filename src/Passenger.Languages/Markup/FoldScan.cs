@@ -25,7 +25,7 @@ public sealed class FoldScan : IFoldFinder, IDisposable
         this.document = document;
         this.find = find;
         document.Changed += OnChanged;
-        _ = ScanAsync();
+        UnawaitedWork.Observe(ScanAsync());
     }
 
     /// <summary>An XML file's folds: each element over several lines, folded after its start tag's line to read
@@ -55,7 +55,7 @@ public sealed class FoldScan : IFoldFinder, IDisposable
         version++;
         if (!scanning)
         {
-            _ = ScanAsync();
+            UnawaitedWork.Observe(ScanAsync());
         }
     }
 

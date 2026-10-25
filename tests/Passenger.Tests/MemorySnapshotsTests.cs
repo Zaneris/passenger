@@ -343,10 +343,7 @@ public sealed class MemorySnapshotsTests : IDisposable
             $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <OutputType>Exe</OutputType>\n    <TargetFramework>{framework}</TargetFramework>\n    <ImplicitUsings>enable</ImplicitUsings>\n    <Nullable>enable</Nullable>\n  </PropertyGroup>\n</Project>\n");
         File.WriteAllText(Path.Combine(project, "Program.cs"), program);
         Restore.Run(project);
-        MainWindow window = new() { Width = 1400, Height = 900, StartsLanguageServer = false };
-        window.Show();
-        window.OpenFolder(project);
-        Ui.Settle();
+        MainWindow window = Ui.OpenFolder(project, width: 1400, height: 900, languageServer: false);
         Task<string?> started = window.ProfileAsync();
         Ui.Launched(window, started, "the build and the start", TimeSpan.FromMinutes(3));
         Ui.PumpUntil(() => Console(window).Contains("ready", StringComparison.Ordinal), "the program to be ready");

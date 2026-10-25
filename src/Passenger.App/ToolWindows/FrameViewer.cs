@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Passenger.Editor;
 
 namespace Passenger.App.ToolWindows;
 
@@ -36,7 +37,7 @@ public sealed class FrameViewer : Window, IOwnKeys
         MinWidth = 320;
         MinHeight = 200;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        Bind(BackgroundProperty, this.GetResourceObservable("Passenger.Editor.Background"));
+        Bind(BackgroundProperty, this.GetResourceObservable(TokenKeys.Editor_Background));
         sizeText.Classes.Add("muted");
 
         Border framed = new()
@@ -47,7 +48,7 @@ public sealed class FrameViewer : Window, IOwnKeys
             Margin = new Thickness(Gap),
             Child = image,
         };
-        framed.Bind(Border.BorderBrushProperty, framed.GetResourceObservable("Passenger.Divider"));
+        framed.Bind(Border.BorderBrushProperty, framed.GetResourceObservable(TokenKeys.Divider));
         scroller = new ScrollViewer
         {
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
@@ -64,10 +65,10 @@ public sealed class FrameViewer : Window, IOwnKeys
             VerticalAlignment = VerticalAlignment.Center,
             Children =
             {
-                ToolButtons.Of("Icon.ZoomIn", $"Zoom In ({Keys("=")})", ZoomIn),
-                ToolButtons.Of("Icon.ZoomOut", $"Zoom Out ({Keys("-")})", ZoomOut),
-                ToolButtons.Of("Icon.ActualSize", $"Actual Size ({Keys("/")})", () => ZoomTo(1)),
-                ToolButtons.Of("Icon.ZoomFit", "Fit Zoom to Window", FitToWindow),
+                ToolButtons.Of(IconKeys.ZoomIn, $"Zoom In ({Keys("=")})", ZoomIn),
+                ToolButtons.Of(IconKeys.ZoomOut, $"Zoom Out ({Keys("-")})", ZoomOut),
+                ToolButtons.Of(IconKeys.ActualSize, $"Actual Size ({Keys("/")})", () => ZoomTo(1)),
+                ToolButtons.Of(IconKeys.ZoomFit, "Fit Zoom to Window", FitToWindow),
                 zoomText,
             },
         };
@@ -75,7 +76,7 @@ public sealed class FrameViewer : Window, IOwnKeys
         DockPanel.SetDock(tools, Avalonia.Controls.Dock.Left);
         sizeText.HorizontalAlignment = HorizontalAlignment.Right;
         Border top = ToolBars.Top(bar);
-        top.Bind(Border.BackgroundProperty, top.GetResourceObservable("Passenger.Panel"));
+        top.Bind(Border.BackgroundProperty, top.GetResourceObservable(TokenKeys.Panel));
         Content = new DockPanel { Children = { top, scroller } };
 
         KeyDown += OnKey;
@@ -168,8 +169,7 @@ public sealed class FrameViewer : Window, IOwnKeys
 
     private Action? Command(KeyEventArgs e)
     {
-        KeyModifiers command = OperatingSystem.IsMacOS() ? KeyModifiers.Meta : KeyModifiers.Control;
-        bool held = (e.KeyModifiers & ~KeyModifiers.Shift) == command;
+        bool held = (e.KeyModifiers & ~KeyModifiers.Shift) == Keystroke.Command;
         return e.Key switch
         {
             Key.OemPlus or Key.Add when held => ZoomIn,
@@ -185,8 +185,7 @@ public sealed class FrameViewer : Window, IOwnKeys
     /// <summary>The command modifier with the wheel zooms; the wheel alone scrolls.</summary>
     private void OnWheel(object? sender, PointerWheelEventArgs e)
     {
-        KeyModifiers command = OperatingSystem.IsMacOS() ? KeyModifiers.Meta : KeyModifiers.Control;
-        if ((e.KeyModifiers & command) == 0 || e.Delta.Y == 0)
+        if ((e.KeyModifiers & Keystroke.Command) == 0 || e.Delta.Y == 0)
         {
             return;
         }

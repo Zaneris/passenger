@@ -109,7 +109,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
 
     private static void ToolWindowTabs(MainWindow window)
     {
-        Color accent = Brush(window, "Passenger.Accent");
+        Color accent = Brush(window, TokenKeys.Accent);
         (string Where, double Height, double Size, Thickness Padding, Thickness Border)? first = null;
         int seen = 0;
         foreach (string action in (string[])[AppActions.ShowProblems, AppActions.ShowGit, AppActions.ShowDebug, AppActions.ShowTerminal, AppActions.ShowLocalHistory, AppActions.ShowAspire])
@@ -764,7 +764,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
                 TextBlock words = Named<TextBlock>(window, "StatusText");
                 Ui.Press(window, Ui.Shortcut(AppActions.ApplyHotReloadChanges));
                 Hover(window, said);
-                Assert.True(window.StatusPlace is null && !said.Focusable && said.Cursor is null && Colour(words) == Brush(window, "Passenger.TextMuted") && !Underlined(words),
+                Assert.True(window.StatusPlace is null && !said.Focusable && said.Cursor is null && Colour(words) == Brush(window, TokenKeys.TextMuted) && !Underlined(words),
                     $"\"{window.Status}\", which goes nowhere, is drawn in {Colour(words)} {(Underlined(words) ? "underlined" : "")} under the pointer with the cursor {said.Cursor}, "
                     + "where the status bar's words that go nowhere stay its muted words");
 
@@ -775,9 +775,9 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
                     Assert.True(window.Status == "IDE error: A status bar link's own error" && window.StatusPlace is not null, $"The status bar says \"{window.Status}\" with no place, not the IDE error going to IDE Internal Errors");
                     window.MouseMove(new Point(1, 1));
                     Hover(window, said);
-                    Assert.True(said.Focusable && said.Cursor?.ToString() == "Hand" && Colour(words) == Brush(window, "Passenger.Link") && Underlined(words),
+                    Assert.True(said.Focusable && said.Cursor?.ToString() == "Hand" && Colour(words) == Brush(window, TokenKeys.Link) && Underlined(words),
                         $"\"{window.Status}\", which goes to IDE Internal Errors, is drawn in {Colour(words)} {(Underlined(words) ? "underlined" : "not underlined")} under the pointer "
-                        + $"with the cursor {said.Cursor}, {(said.Focusable ? "" : "out of the keys' reach, ")}not a link in the link's colour ({Brush(window, "Passenger.Link")}) underlined, with the hand");
+                        + $"with the cursor {said.Cursor}, {(said.Focusable ? "" : "out of the keys' reach, ")}not a link in the link's colour ({Brush(window, TokenKeys.Link)}) underlined, with the hand");
                     Ui.Click(said);
                     Assert.True(window.Popup is ErrorsPopup, $"A click on \"{window.Status}\" showed {window.Popup?.GetType().Name ?? "nothing"}, not IDE Internal Errors");
                     Ui.Press(window, "ESCAPE");
@@ -895,10 +895,10 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
 
     private static void Areas(MainWindow window)
     {
-        Color frame = Brush(window, "Passenger.Frame");
-        Color panel = Brush(window, "Passenger.Panel");
-        Color editor = Brush(window, "Passenger.Editor.Background");
-        Color line = Brush(window, "Passenger.Divider");
+        Color frame = Brush(window, TokenKeys.Frame);
+        Color panel = Brush(window, TokenKeys.Panel);
+        Color editor = Brush(window, TokenKeys.Editor_Background);
+        Color line = Brush(window, TokenKeys.Divider);
 
         // The frame one ground with no rule round it; the tool windows a step lighter; the editor a step from both.
         foreach (Border part in window.GetVisualDescendants().OfType<Border>().Where(b => b.IsEffectivelyVisible
@@ -937,7 +937,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
         picture.Meets("the left stripe and the Explorer", new Point(explorer.Left, explorer.Top + (explorer.Height * 0.8)), across: true, frame, panel);
         picture.Meets("the Explorer and the editor", new Point(explorer.Right, code.Top + (code.Height * 0.7)), across: true, panel, editor);
         // The caret's line, the file's first, lit across the editor.
-        picture.Meets("the tabs' strip and the editor", new Point(code.Right - 60, code.Top), across: false, frame, Brush(window, "Passenger.Editor.CurrentLine"));
+        picture.Meets("the tabs' strip and the editor", new Point(code.Right - 60, code.Top), across: false, frame, Brush(window, TokenKeys.Editor_CurrentLine));
         picture.Meets("the editor and Problems", new Point(code.Left + 6, problems.Top), across: false, editor, panel);
         picture.Meets("Problems and the status bar", new Point(problems.Left + (problems.Width * 0.6), status.Top), across: false, panel, frame);
         // Where two tool windows of one ground meet, a line shows the edge.
@@ -964,11 +964,11 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
         SettingsDialog? settings = null;
         try
         {
-            Color popup = Brush(window, "Passenger.Popup");
-            Color edge = Brush(window, "Passenger.PopupBorder");
-            Color text = Brush(window, "Passenger.Text");
-            Color field = Brush(window, "Passenger.Field");
-            Color chosenRow = Brush(window, "Passenger.RowSelected");
+            Color popup = Brush(window, TokenKeys.Popup);
+            Color edge = Brush(window, TokenKeys.PopupBorder);
+            Color text = Brush(window, TokenKeys.Text);
+            Color field = Brush(window, TokenKeys.Field);
+            Color chosenRow = Brush(window, TokenKeys.RowSelected);
             ToggleButton stripe = window.DockHost.GetVisualDescendants().OfType<ToggleButton>().First(b => b.Classes.Contains("stripe") && b.IsEffectivelyVisible);
             ToolTip.SetIsOpen(stripe, true);
             Ui.Settle();
@@ -1001,7 +1001,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
                 + $"where it is the popup's ground ({popup}) and edge ({edge}), as a menu is");
             ComboBoxItem chosen = (ComboBoxItem)combo.ContainerFromIndex(combo.SelectedIndex)!;
             ContentPresenter band = chosen.GetVisualDescendants().OfType<ContentPresenter>().First(p => p.Name == "PART_ContentPresenter");
-            object? radius = window.TryFindResource("Passenger.ControlRadius", window.ActualThemeVariant, out object? found) ? found : null;
+            object? radius = window.TryFindResource(TokenKeys.ControlRadius, window.ActualThemeVariant, out object? found) ? found : null;
             Assert.True(band.Background is ISolidColorBrush row && row.Color == chosenRow && radius is CornerRadius rounded && chosen.CornerRadius == rounded
                 && Math.Abs(chosen.Bounds.Height - ListRow.Height) < 0.5 && chosen.Margin.Left > 0,
                 $"A drop-down's chosen item is drawn on {(band.Background as ISolidColorBrush)?.Color} with corners of {chosen.CornerRadius}, {chosen.Bounds.Height:0.#} px tall, "
@@ -1030,8 +1030,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
             foreach ((string fore, string ground, double least) in ContrastPairs)
             {
                 // A see-through ground is drawn over what it stands on: the title bar's hover over the bar, a row's over a tool window.
-                Color[] under = Colours(ground.StartsWith("Passenger.TitleBar.", StringComparison.Ordinal) ? "Passenger.TitleBar" : ground == "Passenger.HoverOnFrame" ? "Passenger.Frame" : "Passenger.Panel", variant);
-                Color[] grounds = Colours(ground == "Passenger.HoverOnFrame" ? "Passenger.Hover" : ground, variant);
+                Color[] under = Colours(ground.StartsWith("Passenger.TitleBar.", StringComparison.Ordinal) ? TokenKeys.TitleBar : ground == "Passenger.HoverOnFrame" ? TokenKeys.Frame : TokenKeys.Panel, variant);
+                Color[] grounds = Colours(ground == "Passenger.HoverOnFrame" ? TokenKeys.Hover : ground, variant);
                 double worst = (from f in Colours(fore, variant) from g in grounds from u in under select Ratio(f, Over(g, u))).Min();
                 if (worst < least)
                 {
@@ -1060,7 +1060,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
             Assert.True(shapes.SequenceEqual(theme.Keys.Select(k => k.ToString()!).Order(StringComparer.Ordinal)), $"{look} does not give every shape Tokens.axaml gives");
         }
         // The code's colours, which Rider's scheme gives in its place; the editor's ground, gutter and cards stay the theme's.
-        string[] scheme = [.. keys.Where(k => (k.StartsWith("Passenger.Editor.", StringComparison.Ordinal) && k is not ("Passenger.Editor.Background" or "Passenger.Editor.Gutter" or "Passenger.Editor.PopupBorder"))
+        string[] scheme = [.. keys.Where(k => (k.StartsWith("Passenger.Editor.", StringComparison.Ordinal) && k is not (TokenKeys.Editor_Background or TokenKeys.Editor_Gutter or TokenKeys.Editor_PopupBorder))
             || k.StartsWith("Passenger.Syntax.", StringComparison.Ordinal) || k.StartsWith("Passenger.SyntaxStyle.", StringComparison.Ordinal) || k.StartsWith("Passenger.Diff.", StringComparison.Ordinal))];
         Assert.Equal(scheme, Keys(rider, ThemeVariant.Dark));
         Assert.Equal(scheme, Keys(rider, ThemeVariant.Light));
@@ -1265,10 +1265,10 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
             + $"(Tokens.axaml and Harbour.axaml, Dark and Light) or a radius resource, and read that:\n{string.Join("\n", found)}");
     }
 
-    /// <summary>Every theme key and icon the code names ("Passenger.X" and "Icon.X" in C#, a resource in XAML) is one the
-    /// app's resources give, dark and light: a misspelt or missing one finds nothing, drawn as nothing (Transparent, no icon)
-    /// with no error. A literal of that shape naming something else (a project's assembly, a diagnostic's source) is passed
-    /// over; a key made at run time ($"Icon.{kind}") is its own code's to check.</summary>
+    /// <summary>Every theme key and icon the code names (TokenKeys and IconKeys, a literal still shaped like one in C#, a
+    /// resource in XAML) is one the app's resources give, dark and light: a misspelt or missing one finds nothing, drawn as
+    /// nothing (Transparent, no icon) with no error. A literal of that shape naming something else (a project's assembly, a
+    /// diagnostic's source) is passed over; a key made at run time ($"Icon.{kind}") is its own code's to check.</summary>
     [AvaloniaFact]
     public void Every_theme_key_and_icon_the_code_names_is_one_the_resources_give_dark_and_light()
     {
@@ -1278,6 +1278,15 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
         string root = Passenger.Tests.Debugging.Helpers.Debuggees.Root;
         List<string> missing = [];
         int named = 0;
+        foreach (System.Reflection.FieldInfo key in typeof(TokenKeys).GetFields().Concat(typeof(IconKeys).GetFields()))
+        {
+            named++;
+            string value = (string)key.GetRawConstantValue()!;
+            if (!app.TryGetResource(value, ThemeVariant.Dark, out _) || !app.TryGetResource(value, ThemeVariant.Light, out _))
+            {
+                missing.Add($"{key.DeclaringType!.Name}.{key.Name}: {value}");
+            }
+        }
         foreach ((string path, string text) in UiFiles(theme: true))
         {
             string[] lines = text.Split('\n');
@@ -1317,7 +1326,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
     [Fact]
     public void Muted_words_take_the_muted_class_never_the_colour_bound_by_hand()
     {
-        Regex byHand = new(@"Bind\(TextBlock\.ForegroundProperty, \w+\.GetResourceObservable\(""Passenger\.TextMuted""\)\)");
+        Regex byHand = new(@"Bind\(TextBlock\.ForegroundProperty, \w+\.GetResourceObservable\(TokenKeys\.TextMuted\)\)");
         string[] found = [.. UiFiles().SelectMany(f => f.Text.Split('\n').Select((line, i) => (f.Path, Line: i + 1, Text: line)))
             .Where(l => byHand.IsMatch(l.Text)).Select(l => $"{l.Path}:{l.Line}")];
         Assert.True(found.Length == 0, $"{found.Length} TextBlocks bind the muted colour by hand: give each the muted class (MutedText.Of, or Classes.Add(\"muted\")):\n"
@@ -1486,67 +1495,67 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
         const double Text = 4.5;
         const double Mark = 3;
         List<(string, string, double)> pairs = [];
-        foreach (string ground in (string[])["Passenger.Panel", "Passenger.Frame", "Passenger.Field", "Passenger.Popup", "Passenger.List", "Passenger.Hover", "Passenger.HoverOnFrame",
-            "Passenger.Selected", "Passenger.RowSelected", "Passenger.Editor.Background", "Passenger.Banner", "Passenger.Button", "Passenger.Welcome.Tile"])
+        foreach (string ground in (string[])[TokenKeys.Panel, TokenKeys.Frame, TokenKeys.Field, TokenKeys.Popup, TokenKeys.List, TokenKeys.Hover, "Passenger.HoverOnFrame",
+            TokenKeys.Selected, TokenKeys.RowSelected, TokenKeys.Editor_Background, TokenKeys.Banner, TokenKeys.Button, TokenKeys.Welcome_Tile])
         {
-            pairs.Add(("Passenger.Text", ground, Text));
-            pairs.Add(("Passenger.TextMuted", ground, Text));
+            pairs.Add((TokenKeys.Text, ground, Text));
+            pairs.Add((TokenKeys.TextMuted, ground, Text));
         }
-        foreach (string ground in (string[])["Passenger.Panel", "Passenger.Frame", "Passenger.Popup", "Passenger.Editor.Background"])
+        foreach (string ground in (string[])[TokenKeys.Panel, TokenKeys.Frame, TokenKeys.Popup, TokenKeys.Editor_Background])
         {
-            pairs.Add(("Passenger.Link", ground, Text));
-            pairs.Add(("Passenger.Error", ground, Text));
-            pairs.Add(("Passenger.Warning", ground, Text));
-            pairs.Add(("Passenger.Focus", ground, Mark));
-            pairs.Add(("Passenger.Icon", ground, Mark));
+            pairs.Add((TokenKeys.Link, ground, Text));
+            pairs.Add((TokenKeys.Error, ground, Text));
+            pairs.Add((TokenKeys.Warning, ground, Text));
+            pairs.Add((TokenKeys.Focus, ground, Mark));
+            pairs.Add((TokenKeys.Icon, ground, Mark));
         }
-        pairs.Add(("Passenger.Focus", "Passenger.Field", Mark));
-        pairs.Add(("Passenger.LinkHover", "Passenger.Panel", Text));
-        pairs.Add(("Passenger.Accent", "Passenger.Panel", Mark));
-        pairs.Add(("Passenger.AccentText", "Passenger.Accent", Text));
-        pairs.Add(("Passenger.AccentText", "Passenger.AccentHover", Text));
-        pairs.Add(("Passenger.AccentText", "Passenger.Welcome.Badge", Text));
-        pairs.Add(("Passenger.Menu.SelectedText", "Passenger.Menu.Selected", Text));
-        pairs.Add(("Passenger.Tab.ActiveText", "Passenger.Tab.Active", Text));
-        pairs.Add(("Passenger.Stripe.SelectedIcon", "Passenger.Stripe.Selected", Mark));
-        pairs.Add(("Passenger.Welcome.ChipIcon", "Passenger.Welcome.Chip", Mark));
+        pairs.Add((TokenKeys.Focus, TokenKeys.Field, Mark));
+        pairs.Add((TokenKeys.LinkHover, TokenKeys.Panel, Text));
+        pairs.Add((TokenKeys.Accent, TokenKeys.Panel, Mark));
+        pairs.Add((TokenKeys.AccentText, TokenKeys.Accent, Text));
+        pairs.Add((TokenKeys.AccentText, TokenKeys.AccentHover, Text));
+        pairs.Add((TokenKeys.AccentText, TokenKeys.Welcome_Badge, Text));
+        pairs.Add((TokenKeys.Menu_SelectedText, TokenKeys.Menu_Selected, Text));
+        pairs.Add((TokenKeys.Tab_ActiveText, TokenKeys.Tab_Active, Text));
+        pairs.Add((TokenKeys.Stripe_SelectedIcon, TokenKeys.Stripe_Selected, Mark));
+        pairs.Add((TokenKeys.Welcome_ChipIcon, TokenKeys.Welcome_Chip, Mark));
         foreach (string file in (string[])["Modified", "Added", "Unversioned", "Conflicted"])
         {
-            pairs.Add(($"Passenger.Vcs.File.{file}", "Passenger.Panel", Text));
-            pairs.Add(($"Passenger.Vcs.File.{file}", "Passenger.RowSelected", Text));
+            pairs.Add(($"Passenger.Vcs.File.{file}", TokenKeys.Panel, Text));
+            pairs.Add(($"Passenger.Vcs.File.{file}", TokenKeys.RowSelected, Text));
         }
         foreach (string colour in (string[])["Red", "Orange", "Yellow", "Green", "Cyan", "Blue", "Purple", "Pink", "Maroon", "Grey"])
         {
-            pairs.Add(($"Passenger.FileIcon.{colour}", "Passenger.Panel", Mark));
+            pairs.Add(($"Passenger.FileIcon.{colour}", TokenKeys.Panel, Mark));
         }
-        foreach (string ground in (string[])["Passenger.TitleBar", "Passenger.TitleBar.Hover", "Passenger.TitleBar.Pressed"])
+        foreach (string ground in (string[])[TokenKeys.TitleBar, TokenKeys.TitleBar_Hover, TokenKeys.TitleBar_Pressed])
         {
-            pairs.Add(("Passenger.TitleBar.Text", ground, Text));
-            pairs.Add(("Passenger.TitleBar.Focus", ground, Mark));
+            pairs.Add((TokenKeys.TitleBar_Text, ground, Text));
+            pairs.Add((TokenKeys.TitleBar_Focus, ground, Mark));
         }
         foreach (string mark in (string[])["Icon", "Run", "Stop", "HotReload"])
         {
-            pairs.Add(($"Passenger.TitleBar.{mark}", "Passenger.TitleBar", Mark));
+            pairs.Add(($"Passenger.TitleBar.{mark}", TokenKeys.TitleBar, Mark));
         }
-        pairs.Add(("Passenger.TitleBar.BadgeText", "Passenger.TitleBar.Badge", Text));
-        pairs.Add(("Passenger.Terminal.Foreground", "Passenger.Terminal.Background", Text));
-        foreach (string ground in (string[])["Passenger.Editor.Background", "Passenger.Editor.CurrentLine", "Passenger.Editor.Selection", "Passenger.Editor.ExecutionLine"])
+        pairs.Add((TokenKeys.TitleBar_BadgeText, TokenKeys.TitleBar_Badge, Text));
+        pairs.Add((TokenKeys.Terminal_Foreground, TokenKeys.Terminal_Background, Text));
+        foreach (string ground in (string[])[TokenKeys.Editor_Background, TokenKeys.Editor_CurrentLine, TokenKeys.Editor_Selection, TokenKeys.Editor_ExecutionLine])
         {
-            pairs.Add(("Passenger.Editor.Text", ground, Text));
+            pairs.Add((TokenKeys.Editor_Text, ground, Text));
         }
-        pairs.Add(("Passenger.Editor.LineNumber", "Passenger.Editor.Gutter", Text));
-        pairs.Add(("Passenger.Editor.LineNumberCurrent", "Passenger.Editor.Gutter", Text));
-        pairs.Add(("Passenger.Editor.InlineValue", "Passenger.Editor.Background", Text));
-        pairs.Add(("Passenger.Editor.InlineValue", "Passenger.Editor.ExecutionLine", Text));
-        pairs.Add(("Passenger.Editor.InlayHint", "Passenger.Editor.InlayHintBack", Text));
-        pairs.Add(("Passenger.Editor.Caret", "Passenger.Editor.Background", Mark));
-        pairs.Add(("Passenger.Editor.Caret", "Passenger.Editor.CurrentLine", Mark));
+        pairs.Add((TokenKeys.Editor_LineNumber, TokenKeys.Editor_Gutter, Text));
+        pairs.Add((TokenKeys.Editor_LineNumberCurrent, TokenKeys.Editor_Gutter, Text));
+        pairs.Add((TokenKeys.Editor_InlineValue, TokenKeys.Editor_Background, Text));
+        pairs.Add((TokenKeys.Editor_InlineValue, TokenKeys.Editor_ExecutionLine, Text));
+        pairs.Add((TokenKeys.Editor_InlayHint, TokenKeys.Editor_InlayHintBack, Text));
+        pairs.Add((TokenKeys.Editor_Caret, TokenKeys.Editor_Background, Mark));
+        pairs.Add((TokenKeys.Editor_Caret, TokenKeys.Editor_CurrentLine, Mark));
         foreach (string kind in (string[])["Keyword", "ControlKeyword", "Comment", "DocComment", "String", "StringEscape", "Number", "Preprocessor", "Class", "Interface",
             "Struct", "Enum", "Delegate", "TypeParameter", "Method", "Property", "Event", "Field", "Constant", "EnumMember", "ErrorOutput", "UserInput", "Link",
             "Brace1", "Brace2", "Brace3", "Tag", "AttributeName", "AttributeValue", "Entity", "JsonKey", "YamlKey", "Heading", "Code", "Quote", "LinkDestination"])
         {
-            pairs.Add(($"Passenger.Syntax.{kind}", "Passenger.Editor.Background", Text));
-            pairs.Add(($"Passenger.Syntax.{kind}", "Passenger.Editor.CurrentLine", Text));
+            pairs.Add(($"Passenger.Syntax.{kind}", TokenKeys.Editor_Background, Text));
+            pairs.Add(($"Passenger.Syntax.{kind}", TokenKeys.Editor_CurrentLine, Text));
         }
         return [.. pairs];
     }
@@ -1687,10 +1696,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
     /// <summary>A window on the class's project, with no C# language server: the rules are the window's, whatever C# says.</summary>
     private MainWindow Open(double width, double height)
     {
-        MainWindow window = new() { Width = width, Height = height, Autosaves = false, StartsLanguageServer = false };
-        window.Show();
-        window.OpenFolder(project.Folder);
-        Ui.Settle();
+        MainWindow window = Ui.OpenFolder(project.Folder, width: width, height: height, languageServer: false, autosaves: false);
         return window;
     }
 

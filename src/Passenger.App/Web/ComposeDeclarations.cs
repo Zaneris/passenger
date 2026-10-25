@@ -1,9 +1,9 @@
 using System.Text.RegularExpressions;
 using Passenger.App.Containers;
-using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Lsp;
 using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.App.Web;
 

@@ -27,11 +27,8 @@ public sealed class WpfLiveTreeTests : IClassFixture<RestoredFolders>, IDisposab
 {
     private const string OnlyOnWindows = "WPF runs on Windows alone";
 
-    /// <summary>The variable that has the WPF inspector in the app write each step of its start to a file.</summary>
-    private const string InspectorTrace = "PASSENGER_INSPECTOR_TRACE";
-
     private readonly string folder = string.Empty;
-    private readonly string? traceBefore = Environment.GetEnvironmentVariable(InspectorTrace);
+    private readonly string? traceBefore = Environment.GetEnvironmentVariable(Wire.TraceVariable);
 
     public WpfLiveTreeTests(RestoredFolders folders)
     {
@@ -48,12 +45,12 @@ public sealed class WpfLiveTreeTests : IClassFixture<RestoredFolders>, IDisposab
             return WpfApp.Project(made, "WpfTreeApp");
         }));
         // What the inspector did as the app started, quoted by a failure's message; the app launched inherits it.
-        Environment.SetEnvironmentVariable(InspectorTrace, Trace);
+        Environment.SetEnvironmentVariable(Wire.TraceVariable, Trace);
     }
 
     public void Dispose()
     {
-        Environment.SetEnvironmentVariable(InspectorTrace, traceBefore);
+        Environment.SetEnvironmentVariable(Wire.TraceVariable, traceBefore);
         if (folder.Length > 0)
         {
             TestFolders.Delete(folder);

@@ -38,12 +38,12 @@ public sealed class ContainerFilesPane : DockPanel
             Classes = { "tree" },
             ItemTemplate = new FuncDataTemplate<ContainerFile>((file, _) => file is null ? new Panel() : Row(file), supportsRecycling: false),
         };
-        list.DoubleTapped += (_, _) => _ = ActivateAsync(list.SelectedItem as ContainerFile);
+        list.DoubleTapped += (_, _) => IdeErrors.Observe(ActivateAsync(list.SelectedItem as ContainerFile));
         list.KeyDown += (_, e) =>
         {
             if (e.Key == Key.Enter)
             {
-                _ = ActivateAsync(list.SelectedItem as ContainerFile);
+                IdeErrors.Observe(ActivateAsync(list.SelectedItem as ContainerFile));
                 e.Handled = true;
             }
         };
@@ -82,7 +82,7 @@ public sealed class ContainerFilesPane : DockPanel
         said.Text = "Listing /…";
         if (next is not null)
         {
-            _ = ListAsync("/");
+            IdeErrors.Observe(ListAsync("/"));
         }
     }
 
@@ -340,8 +340,8 @@ public sealed class ContainerFilesPane : DockPanel
     private Control Row(ContainerFile file)
     {
         PathIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(0, 0, 6, 0) };
-        icon.Bind(PathIcon.DataProperty, icon.GetResourceObservable(file.IsFolder ? open.Contains(file.Path) ? "Icon.FolderOpen" : "Icon.Explorer" : "Icon.DocumentText"));
-        icon.Bind(PathIcon.ForegroundProperty, icon.GetResourceObservable("Passenger.TextMuted"));
+        icon.Bind(PathIcon.DataProperty, icon.GetResourceObservable(file.IsFolder ? open.Contains(file.Path) ? IconKeys.FolderOpen : IconKeys.Explorer : IconKeys.DocumentText));
+        icon.Bind(PathIcon.ForegroundProperty, icon.GetResourceObservable(TokenKeys.TextMuted));
         TextBlock name = new() { Text = file.Name, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         ToolTip.SetTip(name, file.Path);
         return new StackPanel { Orientation = Orientation.Horizontal, Height = ListRow.Height, Margin = new Thickness(8 + (file.Depth * 16), 0, 8, 0), Children = { icon, name } };

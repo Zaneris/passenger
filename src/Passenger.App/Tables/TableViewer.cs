@@ -42,8 +42,8 @@ public sealed class TableViewer
                 },
             },
         };
-        Bar.Bind(Border.BackgroundProperty, Bar.GetResourceObservable("Passenger.Panel"));
-        Bar.Bind(Border.BorderBrushProperty, Bar.GetResourceObservable("Passenger.Divider"));
+        Bar.Bind(Border.BackgroundProperty, Bar.GetResourceObservable(TokenKeys.Panel));
+        Bar.Bind(Border.BorderBrushProperty, Bar.GetResourceObservable(TokenKeys.Divider));
         Bar.BorderThickness = new Thickness(0, 0, 0, 1);
         header.IsCheckedChanged += (_, _) =>
         {

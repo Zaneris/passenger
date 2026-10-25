@@ -21,7 +21,7 @@ public sealed class ToolColumn : Panel
     public ToolColumn()
     {
         ClipToBounds = true;
-        more = ToolButtons.Of("Icon.More", "More", ShowMore);
+        more = ToolButtons.Of(IconKeys.More, "More", ShowMore);
         Children.Add(more);
     }
 

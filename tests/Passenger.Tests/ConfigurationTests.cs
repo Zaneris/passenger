@@ -8,6 +8,7 @@ using Passenger.App;
 using Passenger.App.Explorer;
 using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Workspace;
 
 namespace Passenger.Tests;
 
@@ -259,7 +260,7 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
         }
     }
 
-    private static string? ProjectEditsPropertyIn(string text) => Passenger.App.Workspace.ProjectEdits.PropertyIn(text, "UserSecretsId");
+    private static string? ProjectEditsPropertyIn(string text) => ProjectEdits.PropertyIn(text, "UserSecretsId");
 
     /// <summary>The card shown with the pointer resting on some text of the editor's.</summary>
     private static string Hover(MainWindow window, string text)

@@ -10,7 +10,7 @@ public static class MSBuildFiles
     private static readonly HashSet<string> Installed = new(StringComparer.Ordinal);
 
     /// <summary>Whether a path is an MSBuild file the code help reads: a project, or a .props or .targets.</summary>
-    public static bool Is(string path) => Path.GetExtension(path).ToLowerInvariant() is ".csproj" or ".fsproj" or ".vbproj" or ".proj" or ".props" or ".targets";
+    public static bool Is(string path) => Languages.Language.ForPath(path) == Languages.Language.MSBuild;
 
     /// <summary>Whether a path is a project file, evaluated as itself.</summary>
     public static bool IsProject(string path) => Path.GetExtension(path).ToLowerInvariant() is ".csproj" or ".fsproj" or ".vbproj" or ".proj";

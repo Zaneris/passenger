@@ -192,10 +192,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             }
         }
         ChildProcesses.Started += Heard;
-        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = false };
-        window.Show();
-        window.OpenFolder(project.Folder);
-        Ui.Settle();
+        MainWindow window = Ui.OpenFolder(project.Folder, languageServer: false, autosaves: false);
         try
         {
             Ui.WaitFor(() => window.Configurations.Any(configuration => configuration.Name == StandInAppHost.Configuration), "the stand-in AppHost's Aspire configuration");
@@ -1191,7 +1188,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             Control row = Row(window, "apiservice");
             Avalonia.Controls.Shapes.Ellipse dot = row.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Ellipse>().Single();
             Assert.Equal($"{AspireAppRun.NotStarted}. {AspireAppRun.NotStartedWhy}", ToolTip.GetTip(dot));
-            Assert.Equal(Colour(window, "Passenger.TextMuted"), (dot.Fill as Avalonia.Media.ISolidColorBrush)?.Color);
+            Assert.Equal(Colour(window, TokenKeys.TextMuted), (dot.Fill as Avalonia.Media.ISolidColorBrush)?.Color);
             Ui.Click(Words(row, "apiservice"));
             Ui.Click(Tab(window, "Details"));
             string[] shown = [.. window.AspireWindow.Details.GetVisualDescendants().OfType<TextBlock>().Select(text => text.Text ?? string.Empty)];

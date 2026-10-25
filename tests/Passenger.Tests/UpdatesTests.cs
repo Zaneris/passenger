@@ -1,7 +1,5 @@
 using System.Collections.Concurrent;
 using System.IO.Compression;
-using System.Net;
-using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Security.Cryptography;
@@ -966,21 +964,17 @@ public sealed class UpdatesTests : IClassFixture<UpdatesTests.DiskImages>, IDisp
     {
         private const string DownloadPath = "/Zaneris/passenger/releases/download/";
 
-        private readonly TcpListener listener = new(IPAddress.Loopback, 0);
-        private readonly CancellationTokenSource end = new();
         private readonly List<string> heads = [];
         private readonly ConcurrentDictionary<string, byte[]> files = new(StringComparer.Ordinal);
-        private readonly Task accepting;
+        private readonly StandInHttp http;
         private Reply? answer;
         private Held? holding;
 
         public StandIn()
         {
-            listener.Start();
-            string root = $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}";
-            Latest = new Uri($"{root}/repos/Zaneris/passenger/releases/latest");
-            Downloads = new Uri(root + DownloadPath);
-            accepting = Task.Run(AcceptAsync);
+            http = new StandInHttp(AnswerAsync);
+            Latest = new Uri($"{http.Root}/repos/Zaneris/passenger/releases/latest");
+            Downloads = new Uri(http.Root + DownloadPath);
         }
 
         public sealed record Reply(int Status, string Body);
@@ -1027,98 +1021,45 @@ public sealed class UpdatesTests : IClassFixture<UpdatesTests.DiskImages>, IDisp
         public void Dispose()
         {
             Let();
-            end.Cancel();
-            listener.Stop();
-            accepting.Wait(TimeSpan.FromSeconds(10));
-            end.Dispose();
+            http.Dispose();
         }
 
-        private async Task AcceptAsync()
+        private async Task AnswerAsync(StandInHttp.Exchange exchange)
         {
-            List<Task> answering = [];
-            try
+            lock (heads)
             {
-                while (true)
-                {
-                    TcpClient client = await listener.AcceptTcpClientAsync(end.Token);
-                    answering.Add(Task.Run(() => AnswerAsync(client)));
-                }
+                heads.Add(exchange.Head);
             }
-            catch (Exception stopped) when (stopped is OperationCanceledException or SocketException or ObjectDisposedException or InvalidOperationException)
+            if (exchange.Path.StartsWith(DownloadPath, StringComparison.Ordinal))
             {
-                // Disposed, before the loop first listened too, as a test that skips at once has it.
+                await SendFileAsync(exchange, exchange.Path[DownloadPath.Length..]);
             }
-            await Task.WhenAll(answering);
-        }
-
-        private async Task AnswerAsync(TcpClient client)
-        {
-            using (client)
+            else if (Answer is { } reply)
             {
-                try
-                {
-                    NetworkStream stream = client.GetStream();
-                    byte[] buffer = new byte[16 * 1024];
-                    int read = 0;
-                    while (Encoding.ASCII.GetString(buffer, 0, read).IndexOf("\r\n\r\n", StringComparison.Ordinal) < 0)
-                    {
-                        int more = await stream.ReadAsync(buffer.AsMemory(read), end.Token);
-                        if (more == 0)
-                        {
-                            return;
-                        }
-                        read += more;
-                    }
-                    string head = Encoding.ASCII.GetString(buffer, 0, read);
-                    lock (heads)
-                    {
-                        heads.Add(head);
-                    }
-                    string path = head.Split(' ')[1];
-                    if (path.StartsWith(DownloadPath, StringComparison.Ordinal))
-                    {
-                        await SendFileAsync(stream, path[DownloadPath.Length..]);
-                        return;
-                    }
-                    if (Answer is not { } reply)
-                    {
-                        // Held until the client gives up and closes, or the stand-in goes.
-                        while (await stream.ReadAsync(buffer, end.Token) > 0)
-                        {
-                        }
-                        return;
-                    }
-                    byte[] body = Encoding.UTF8.GetBytes(reply.Body);
-                    string reason = reply.Status switch { 200 => "OK", 404 => "Not Found", _ => "Internal Server Error" };
-                    byte[] response = Encoding.ASCII.GetBytes(
-                        $"HTTP/1.1 {reply.Status} {reason}\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: {body.Length}\r\nConnection: close\r\n\r\n");
-                    await stream.WriteAsync(response, end.Token);
-                    await stream.WriteAsync(body, end.Token);
-                }
-                catch (Exception gone) when (gone is OperationCanceledException or IOException or SocketException or ObjectDisposedException)
-                {
-                    // The client or the stand-in went first.
-                }
+                await exchange.ReplyAsync(reply.Status, "application/json; charset=utf-8", reply.Body);
+            }
+            else
+            {
+                await exchange.UntilClosedAsync();
             }
         }
 
-        private async Task SendFileAsync(NetworkStream stream, string file)
+        private async Task SendFileAsync(StandInHttp.Exchange exchange, string file)
         {
             if (!files.TryGetValue(file, out byte[]? body))
             {
-                await stream.WriteAsync(Encoding.ASCII.GetBytes("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"), end.Token);
+                await exchange.ReplyAsync(404, null, []);
                 return;
             }
-            await stream.WriteAsync(Encoding.ASCII.GetBytes(
-                $"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {body.Length}\r\nConnection: close\r\n\r\n"), end.Token);
+            await exchange.HeadAsync(200, "application/octet-stream", body.Length);
             Held? hold = Volatile.Read(ref holding) is { } held && file.EndsWith("/" + held.Name, StringComparison.Ordinal) ? held : null;
             int half = hold is null ? body.Length : body.Length / 2;
-            await stream.WriteAsync(body.AsMemory(0, half), end.Token);
-            await stream.FlushAsync(end.Token);
+            await exchange.Stream.WriteAsync(body.AsMemory(0, half), exchange.Ending);
+            await exchange.Stream.FlushAsync(exchange.Ending);
             if (hold is not null)
             {
-                await hold.Gate.Task.WaitAsync(end.Token);
-                await stream.WriteAsync(body.AsMemory(half), end.Token);
+                await hold.Gate.Task.WaitAsync(exchange.Ending);
+                await exchange.Stream.WriteAsync(body.AsMemory(half), exchange.Ending);
             }
         }
 

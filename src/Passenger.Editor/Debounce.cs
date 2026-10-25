@@ -18,7 +18,7 @@ public sealed class Debounce(TimeSpan delay, Func<Task> work, Func<IDisposable>?
         waiting?.Cancel();
         CancellationTokenSource cancel = new();
         waiting = cancel;
-        _ = WaitAsync(cancel);
+        UnawaitedWork.Observe(WaitAsync(cancel));
     }
 
     /// <summary>Drops the wait under way; work already begun runs on, and says itself whether it still lands.</summary>

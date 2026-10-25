@@ -37,6 +37,8 @@
     <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.4" />
     <PackageVersion Include="Google.Protobuf" Version="3.36.2" />
     <PackageVersion Include="Grpc.Net.Client" Version="2.84.0" />
+    <!-- Also what Passenger's analyzers are compiled against (src/Passenger.Analyzers), so never past the compiler of
+         global.json's SDK, nor of Roslyn's server at RoslynServerVersion, which load them. -->
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
     <PackageVersion Include="ModelContextProtocol.Core" Version="2.3.0" />
     <!-- The NuGet window's package sources, read by NuGet's own code, so they match the CLI's. -->
@@ -88,6 +90,8 @@
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="$(NpgsqlEfVersion)" />
     <PackageVersion Include="Avalonia.Headless.XUnit" Version="12.1.4" />
     <PackageVersion Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" />
+    <!-- The analyzers' (src/Passenger.Analyzers): the last release, MIT where netstandard2.0's 1.1.0 is not. -->
+    <PackageVersion Include="Microsoft.NETCore.Platforms" Version="7.0.4" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />

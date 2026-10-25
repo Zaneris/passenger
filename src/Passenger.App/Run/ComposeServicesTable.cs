@@ -2,7 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Passenger.App.Containers;
-using Passenger.App.Workspace;
+using Passenger.Workspace;
 
 namespace Passenger.App.Run;
 
@@ -50,7 +50,7 @@ public sealed class ComposeServicesTable : Border
             header.Children.Add(title);
         }
         Border headerFrame = new() { Child = header, BorderThickness = new Thickness(0, 0, 0, 1) };
-        headerFrame.Bind(BorderBrushProperty, headerFrame.GetResourceObservable("Passenger.Separator"));
+        headerFrame.Bind(BorderBrushProperty, headerFrame.GetResourceObservable(TokenKeys.Separator));
         DockPanel.SetDock(headerFrame, Dock.Top);
         Child = new DockPanel { Children = { headerFrame, new StackPanel { Children = { table, said } } } };
     }
@@ -200,7 +200,7 @@ public sealed class ComposeServicesTable : Border
             cells.Children.Add(parts[i]);
         }
         Border view = new() { Child = cells, BorderThickness = new Thickness(0, 0, 0, 1) };
-        view.Bind(BorderBrushProperty, view.GetResourceObservable("Passenger.Separator"));
+        view.Bind(BorderBrushProperty, view.GetResourceObservable(TokenKeys.Separator));
         Row row = new(service, projectBox, actionBox, view) { Named = named ? project : null };
         Actions(row, action);
         rows.Add(row);

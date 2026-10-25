@@ -6,6 +6,7 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Passenger.Vcs;
 
 namespace Passenger.App.Vcs;
 
@@ -38,7 +39,7 @@ public sealed class UnstashPopup : UserControl
             SelectedIndex = stashes.Count > 0 ? 0 : -1,
             ItemTemplate = new FuncDataTemplate<StashInfo>((stash, _) => stash is null ? new TextBlock() : Row(stash), supportsRecycling: false),
         };
-        list.DoubleTapped += (_, _) => _ = PopAsync();
+        list.DoubleTapped += (_, _) => IdeErrors.Observe(PopAsync());
         Button pop = Action("Pop", () => PopAsync(), primary: true);
         Button apply = Action("Apply", () => ApplyAsync());
         Button remove = Action("Drop", () => DropAsync());
@@ -152,12 +153,12 @@ public sealed class UnstashPopup : UserControl
                 e.Handled = true;
                 break;
             case Key.Enter:
-                _ = PopAsync();
+                IdeErrors.Observe(PopAsync());
                 e.Handled = true;
                 break;
             case Key.Delete:
                 // Not Backspace, the Mac's delete key, which is pressed in passing too easily to throw a stash away.
-                _ = DropAsync();
+                IdeErrors.Observe(DropAsync());
                 e.Handled = true;
                 break;
         }
@@ -170,7 +171,7 @@ public sealed class UnstashPopup : UserControl
         {
             button.Classes.Add("primary");
         }
-        button.Click += (_, _) => _ = run();
+        button.Click += (_, _) => IdeErrors.Observe(run());
         return button;
     }
 

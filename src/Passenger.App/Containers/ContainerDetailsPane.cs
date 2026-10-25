@@ -218,7 +218,7 @@ public sealed class ContainerDetailsPane : DetailsTables
             Details = null;
             Say($"Reading what the engine says of {next.Name}…");
         }
-        _ = ReadAsync(next, reads);
+        IdeErrors.Observe(ReadAsync(next, reads));
     }
 
     private async Task ReadAsync(ContainerInfo shown, int read)
@@ -268,7 +268,7 @@ public sealed class ContainerDetailsPane : DetailsTables
         }
         if (details.Error is { } error)
         {
-            about.Add(("Error", Words(error, brush: "Passenger.Error")));
+            about.Add(("Error", Words(error, brush: TokenKeys.Error)));
         }
         Section("Container", about);
         if (details.HealthCheck is not null || details.Health is not null)
@@ -282,7 +282,7 @@ public sealed class ContainerDetailsPane : DetailsTables
             {
                 health.Add(("Status", Words(now == "unhealthy" && details.FailingStreak > 0
                     ? $"unhealthy: its last {Plural.Of(details.FailingStreak, "check")} failed" : now,
-                    brush: now == "unhealthy" ? "Passenger.Error" : null)));
+                    brush: now == "unhealthy" ? TokenKeys.Error : null)));
             }
             foreach (HealthProbe probe in details.Probes)
             {
@@ -294,7 +294,7 @@ public sealed class ContainerDetailsPane : DetailsTables
         if (details.Ports.Count > 0 || details.Unpublished.Count > 0)
         {
             Section("Ports", [.. details.Ports.Select(p => ($"{p.Inside}/{p.Protocol}", Port(p, details.State == "running"))),
-                .. details.Unpublished.Select(p => (p, (Control)Words("Not published", brush: "Passenger.TextMuted")))]);
+                .. details.Unpublished.Select(p => (p, (Control)Words("Not published", brush: TokenKeys.TextMuted)))]);
         }
         if (details.DependsOn.Count > 0)
         {
@@ -324,7 +324,7 @@ public sealed class ContainerDetailsPane : DetailsTables
     internal static Border HealthTag(string health)
     {
         TextBlock said = new() { Text = health, FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
-        said.Bind(TextBlock.ForegroundProperty, said.GetResourceObservable(health == "healthy" ? "Passenger.Test.Passed" : health == "unhealthy" ? "Passenger.Error" : "Passenger.Warning"));
+        said.Bind(TextBlock.ForegroundProperty, said.GetResourceObservable(health == "healthy" ? TokenKeys.Test_Passed : health == "unhealthy" ? TokenKeys.Error : TokenKeys.Warning));
         return new Border { Classes = { "tag" }, Padding = new Thickness(5, 0), VerticalAlignment = VerticalAlignment.Center, Child = said };
     }
 

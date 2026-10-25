@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Passenger.Core;
+using Passenger.Text;
 
 namespace Passenger.App.State;
 
@@ -104,7 +105,7 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
             }
             scheduled = true;
         }
-        _ = Task.Delay(Delay).ContinueWith(_ => Write(), TaskScheduler.Default);
+        IdeErrors.Observe(Task.Delay(Delay).ContinueWith(_ => Write(), TaskScheduler.Default));
     }
 
     /// <summary>Writes a change still waiting, now, on the caller's thread: as the window closes, since the process does
@@ -398,10 +399,10 @@ internal static class StateFile
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         string target = new FileInfo(path).LinkTarget is not null ? File.ResolveLinkTarget(path, returnFinalTarget: true)?.FullName ?? path : path;
-        if (Workspace.FileText.IsReadOnly(target))
+        if (FileText.IsReadOnly(target))
         {
             // Made read-only to keep it as it is: logged as a write that failed, never moved over.
-            throw new Workspace.ReadOnlyFileException(path);
+            throw new ReadOnlyFileException(path);
         }
         UnixFileMode? mode = !OperatingSystem.IsWindows() && File.Exists(target) ? File.GetUnixFileMode(target) : null;
         AtomicFile.Write(target, Encoding.UTF8.GetBytes(document.ToJsonString(Options) + "\n"), mode);

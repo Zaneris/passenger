@@ -11,6 +11,7 @@ using Passenger.App.Vcs;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
+using Passenger.Vcs;
 
 namespace Passenger.Tests;
 
@@ -522,11 +523,5 @@ public sealed class LocalHistoryTests : IDisposable
 
     private static string Text(MainWindow window) => window.EditorArea.Active!.Text.Snapshot.ToString();
 
-    private string Write(string relative, string text)
-    {
-        string path = Path.Combine(folder, relative);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, text);
-        return path;
-    }
+    private string Write(string relative, string text) => TestFolders.Write(folder, relative, text);
 }

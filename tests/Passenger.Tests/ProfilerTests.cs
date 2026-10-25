@@ -477,10 +477,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
                 }
             }
             """);
-        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
-        window.Show();
-        window.OpenFolder(project);
-        Ui.Settle();
+        MainWindow window = Ui.OpenFolder(project, languageServer: false);
         IReadOnlyList<int> Programs() => [.. Directory.GetFiles(pids, "*.pid").Select(p => int.Parse(Path.GetFileNameWithoutExtension(p), System.Globalization.CultureInfo.InvariantCulture))];
         string generated = window.Configuration!.Name;
         try
@@ -593,10 +590,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
     /// which profiling asks nothing of.</summary>
     private MainWindow OpenWaits(string name, string pids, bool undiagnosed = false)
     {
-        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = false };
-        window.Show();
-        window.OpenFolder(waits.Folder);
-        Ui.Settle();
+        MainWindow window = Ui.OpenFolder(waits.Folder, languageServer: false, autosaves: false);
         Configure(window, name, pids, undiagnosed);
         return window;
     }

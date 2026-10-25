@@ -1,3 +1,5 @@
+using System.IO.Compression;
+using System.Text.Json.Nodes;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -53,6 +55,96 @@ public sealed class LanguageServerProjectsTests : IClassFixture<RestoredFolders>
     {
         TestFolders.Delete(folder);
         TestFolders.Delete(settings);
+    }
+
+    [AvaloniaFact]
+    public void A_project_whose_packages_arrive_during_its_first_build_is_built_again_when_opened_again()
+    {
+        string root = PathNames.Canonical(TestFolders.Create("late-assets-"));
+        try
+        {
+            string feed = Directory.CreateDirectory(Path.Combine(root, "feed")).FullName;
+            string package = Path.Combine(feed, "Passenger.RestoreTest.1.0.0.nupkg");
+            File.WriteAllBytes(package, StandInFeed.Package("Passenger.RestoreTest", "1.0.0"));
+            using (ZipArchive zip = ZipFile.Open(package, ZipArchiveMode.Update))
+            {
+                zip.CreateEntryFromFile(typeof(PathNames).Assembly.Location, "lib/net11.0/Passenger.Core.dll");
+            }
+            Write(root, "nuget.config", """
+                <configuration>
+                  <packageSources><clear /><add key="local" value="feed" /></packageSources>
+                  <config><add key="globalPackagesFolder" value="packages" /></config>
+                </configuration>
+                """);
+            Write(root, "App.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net11.0</TargetFramework>
+                    <RestorePackagesPath>$(MSBuildProjectDirectory)/packages</RestorePackagesPath>
+                  </PropertyGroup>
+                  <ItemGroup><PackageReference Include="Passenger.RestoreTest" Version="1.0.0" /></ItemGroup>
+                </Project>
+                """);
+            Write(root, "Page.cs", "using Passenger.Core;\nclass Page { string Path() => PathNames.Canonical(Missing); }\n");
+            Restore.Run(Path.Combine(root, "App.csproj"));
+            string assets = Path.Combine(root, "obj", "project.assets.json");
+            File.Move(assets, Path.Combine(root, "assets.prebuilt.json"));
+            Write(root, "Directory.Build.targets", """
+                <Project>
+                  <Target Name="AssetsArriveLate" BeforeTargets="CoreCompile"
+                          Condition="'$(DesignTimeBuild)' == 'true' and !Exists('$(ProjectAssetsFile)')">
+                    <Copy SourceFiles="$(MSBuildProjectDirectory)/assets.prebuilt.json" DestinationFiles="$(ProjectAssetsFile)" />
+                  </Target>
+                </Project>
+                """);
+
+            string page = Path.Combine(root, "Page.cs");
+            MainWindow first = Keeping(root);
+            first.OpenFile(page);
+            WaitForCode(first, page, "CS0246", "the first build's missing package type, before its assets arrived");
+            Assert.True(File.Exists(assets), "The assets file did not arrive during the first design-time build");
+            first.Close();
+
+            MainWindow second = Keeping(root);
+            second.OpenFile(page);
+            WaitForCode(second, page, "CS0103", "the error on Missing after the package's PathNames type resolves");
+            Assert.True(second.Session.DesignTimeBuilds.Builds > 0,
+                "Opened again after its assets arrived, the project reused a build that resolved no package assemblies");
+            Assert.DoesNotContain("CS0246", Codes(second, page));
+            Assert.DoesNotContain("CS0234", Codes(second, page));
+            second.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(root);
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_folder_opened_with_builds_kept_before_restore_inputs_were_stamped_is_built_again_once()
+    {
+        string program = Path.Combine(folder, "App", "Program.cs");
+        MainWindow first = Keeping();
+        first.OpenFile(program);
+        WaitForAbsent(first, program);
+        first.Close();
+
+        string cache = Assert.Single(Directory.GetFiles(settings, "projectBuilds.json", SearchOption.AllDirectories));
+        JsonObject document = JsonNode.Parse(File.ReadAllText(cache))!.AsObject();
+        document["version"] = 3;
+        File.WriteAllText(cache, document.ToJsonString());
+
+        MainWindow second = Keeping();
+        second.OpenFile(program);
+        WaitForAbsent(second, program);
+        Assert.Equal(2, second.Session.DesignTimeBuilds.Builds);
+        second.Close();
+
+        MainWindow third = Keeping();
+        third.OpenFile(program);
+        WaitForAbsent(third, program);
+        Assert.Equal(0, third.Session.DesignTimeBuilds.Builds);
+        third.Close();
     }
 
     [AvaloniaFact]
@@ -185,12 +277,12 @@ public sealed class LanguageServerProjectsTests : IClassFixture<RestoredFolders>
     private static bool Missing(MainWindow window, OpenDocument document) =>
         window.CSharpService?.For(document)?.Diagnostics.Any(d => d.Code?.ToString() == "CS0103" && d.Message.Contains("Missing", StringComparison.Ordinal)) == true;
 
-    private MainWindow Keeping()
+    private MainWindow Keeping(string? root = null)
     {
         MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings };
         window.Show();
         window.KeepLayout();
-        window.OpenFolder(Path.Combine(folder, "Shapes.slnx"));
+        window.OpenFolder(root ?? Path.Combine(folder, "Shapes.slnx"));
         Ui.Settle();
         return window;
     }
@@ -200,10 +292,5 @@ public sealed class LanguageServerProjectsTests : IClassFixture<RestoredFolders>
         Ui.WaitFor(() => window.EditorArea.Documents.FirstOrDefault(d => d.Path == program) is { } open && window.CSharpService?.For(open)?.Diagnostics.Any(d => d.Code?.ToString() == "CS0117" && d.Message.Contains("Absent", StringComparison.Ordinal)) == true,
             "the server's error on Greeter.Absent, which it gives only knowing Lib's Greeter", TimeSpan.FromMinutes(2));
 
-    private static void Write(string root, string relative, string text)
-    {
-        string path = Path.Combine(root, relative);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, text);
-    }
+    private static void Write(string root, string relative, string text) => TestFolders.Write(root, relative, text);
 }

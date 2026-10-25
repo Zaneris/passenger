@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Passenger.App.Settings;
 using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Languages;
 using Passenger.Lsp;
 
 namespace Passenger.App.Web;
@@ -21,7 +22,7 @@ public enum WebServerKind
     /// <summary>VS Code's JSON server, with SchemaStore's schemas for the well-known files (<see cref="JsonSchemas"/>).</summary>
     Json,
 
-    /// <summary>dockerfile-language-server-nodejs: Dockerfiles and Containerfiles, by their names (<see cref="WebLanguages.IsDockerfile"/>).</summary>
+    /// <summary>dockerfile-language-server-nodejs: Dockerfiles and Containerfiles, by their names (<see cref="Language.Dockerfile"/>).</summary>
     Dockerfile,
 
     /// <summary>Red Hat's yaml-language-server: every YAML file, a compose file checked and completed by the Compose
@@ -124,46 +125,22 @@ public sealed class WebLanguages : IAsyncDisposable
     /// <summary>The Node.js found for the servers, once one has been looked for.</summary>
     public NodeRuntime? Node => finding is { IsCompletedSuccessfully: true } found ? found.Result : null;
 
-    /// <summary>The server and language a file is answered in, by its name; null for a file none of them reads.</summary>
+    /// <summary>The server and language a file is answered in, by its language; null for a file none of them reads.</summary>
     public static (WebServerKind Kind, string LanguageId)? LanguageOf(string path)
     {
-        string name = Path.GetFileName(path);
-        // By name before extension: Dockerfile.dev is a Dockerfile, whatever follows its dot.
-        if (IsDockerfile(name))
+        Language language = Language.ForPath(path);
+        WebServerKind? kind = language.Service switch
         {
-            return (WebServerKind.Dockerfile, "dockerfile");
-        }
-        return Path.GetExtension(path).ToLowerInvariant() switch
-        {
-            ".ts" or ".mts" or ".cts" => (WebServerKind.TypeScript, "typescript"),
-            ".tsx" => (WebServerKind.TypeScript, "typescriptreact"),
-            ".js" or ".mjs" or ".cjs" => (WebServerKind.TypeScript, "javascript"),
-            ".jsx" => (WebServerKind.TypeScript, "javascriptreact"),
-            ".html" or ".htm" => (WebServerKind.Html, "html"),
-            ".css" => (WebServerKind.Css, "css"),
-            ".scss" => (WebServerKind.Css, "scss"),
-            ".less" => (WebServerKind.Css, "less"),
-            ".jsonc" => (WebServerKind.Json, "jsonc"),
-            ".json" => (WebServerKind.Json, AllowsComments(name) ? "jsonc" : "json"),
-            ".yml" or ".yaml" => (WebServerKind.Yaml, "yaml"),
+            LanguageService.TypeScript => WebServerKind.TypeScript,
+            LanguageService.Html => WebServerKind.Html,
+            LanguageService.Css => WebServerKind.Css,
+            LanguageService.Json => WebServerKind.Json,
+            LanguageService.Dockerfile => WebServerKind.Dockerfile,
+            LanguageService.Yaml => WebServerKind.Yaml,
             _ => null,
         };
+        return kind is { } server ? (server, language.IdOf(path)) : null;
     }
-
-    /// <summary>Whether a file's name makes it a Dockerfile, as Docker's and Podman's builds name them: Dockerfile or
-    /// Containerfile, either with a suffix after a dot (Dockerfile.dev), or any name ending in .dockerfile.</summary>
-    public static bool IsDockerfile(string name) =>
-        name.Equals("Dockerfile", StringComparison.OrdinalIgnoreCase) || name.StartsWith("Dockerfile.", StringComparison.OrdinalIgnoreCase)
-        || name.Equals("Containerfile", StringComparison.OrdinalIgnoreCase) || name.StartsWith("Containerfile.", StringComparison.OrdinalIgnoreCase)
-        || name.EndsWith(".dockerfile", StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>The JSON files whose readers take comments (TypeScript's configuration, ASP.NET Core's settings and launch
-    /// profiles, the SDK's global.json, ESLint's), which the JSON server then does not mark as errors.</summary>
-    private static bool AllowsComments(string name) =>
-        name.StartsWith("tsconfig", StringComparison.OrdinalIgnoreCase) || name.StartsWith("jsconfig", StringComparison.OrdinalIgnoreCase)
-        || name.StartsWith("appsettings", StringComparison.OrdinalIgnoreCase)
-        || name.Equals("launchSettings.json", StringComparison.OrdinalIgnoreCase) || name.Equals("global.json", StringComparison.OrdinalIgnoreCase)
-        || name.Equals(".eslintrc.json", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>A server's name as the status bar and banner say it.</summary>
     public static string Name(WebServerKind kind) => kind switch
@@ -241,7 +218,7 @@ public sealed class WebLanguages : IAsyncDisposable
         }
         if (servers.GetValueOrDefault(features.Kind) is { Problem: { } problem })
         {
-            document.Notice = Notice(features.LanguageId, problem);
+            document.Notice = Notice(Language.ForPath(document.Path), problem);
             document.NoticeAction = null;
             return;
         }
@@ -274,7 +251,7 @@ public sealed class WebLanguages : IAsyncDisposable
         document.Notice = tools.Count == 1
             ? $"{tools[0]} is not installed: {Shown(manifest)} lists {packages}, which is not in node_modules."
             : $"{string.Join(" and ", tools)} are not installed: {Shown(manifest)} lists {packages}, which are not in node_modules.";
-        document.NoticeAction = new NoticeAction("Run 'npm install'", () => _ = InstallAsync(where));
+        document.NoticeAction = new NoticeAction("Run 'npm install'", () => IdeErrors.Observe(InstallAsync(where)));
     }
 
     private void AnnounceAll()
@@ -440,7 +417,7 @@ public sealed class WebLanguages : IAsyncDisposable
         configured = node;
         finding = null;
         Eslint.Reset();
-        _ = Prettier.ResetAsync();
+        IdeErrors.Observe(Prettier.ResetAsync());
         foreach ((WebServerKind kind, NodeServer server) in servers.ToList())
         {
             Replace(kind, server);
@@ -534,22 +511,8 @@ public sealed class WebLanguages : IAsyncDisposable
     }
 
     /// <summary>The banner over a file whose server cannot run, in the file's own language.</summary>
-    private static string Notice(string languageId, string problem) =>
-        $"{Spoken(languageId)} has its colours only: {problem}.";
-
-    /// <summary>A server's language as a person names it.</summary>
-    private static string Spoken(string languageId) => languageId switch
-    {
-        "typescript" or "typescriptreact" => "TypeScript",
-        "javascript" or "javascriptreact" => "JavaScript",
-        "html" => "HTML",
-        "css" => "CSS",
-        "scss" => "SCSS",
-        "less" => "Less",
-        "dockerfile" => "A Dockerfile",
-        "yaml" => "YAML",
-        _ => "JSON",
-    };
+    private static string Notice(Language language, string problem) =>
+        $"{(language == Language.Dockerfile ? "A Dockerfile" : language.Name)} has its colours only: {problem}.";
 
     /// <summary>The npm package a server is, whose package.json says which Node.js it needs.</summary>
     private static string Package(WebServerKind kind) => kind switch
@@ -694,7 +657,7 @@ public sealed class WebLanguages : IAsyncDisposable
     /// the reason given, which their banners say.</summary>
     private void Replace(WebServerKind kind, NodeServer server, string? stopped = null)
     {
-        _ = server.End();
+        IdeErrors.Observe(server.End());
         List<OpenDocument> open = [.. documents.Where(d => d.Value.Kind == kind).Select(d => d.Key)];
         foreach (OpenDocument document in open)
         {

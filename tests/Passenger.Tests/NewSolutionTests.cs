@@ -502,12 +502,7 @@ public sealed class NewSolutionTests : IDisposable
         Ui.Settle();
     }
 
-    private void Write(string relative, string text)
-    {
-        string path = Path.Combine(place, relative);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, text);
-    }
+    private void Write(string relative, string text) => TestFolders.Write(place, relative, text);
 
     /// <summary>Puts the tests' theme back once a window that keeps its settings has put the person's in force.</summary>
     private static IDisposable TestsTheme() => new ThemeBack(Avalonia.Application.Current!.RequestedThemeVariant);

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Passenger.Core;
+using Passenger.Packages;
 
 namespace Passenger.App.Migrations;
 
@@ -95,7 +96,7 @@ public static class EfTools
         {
             return null;
         }
-        string? version = Directory.GetDirectories(store).Select(Path.GetFileName).OfType<string>().Max(Packages.VersionOrder.Instance);
+        string? version = Directory.GetDirectories(store).Select(Path.GetFileName).OfType<string>().Max(VersionOrder.Instance);
         return version is null ? null : new EfTool(EfToolPlace.Global, version, program);
     }
 

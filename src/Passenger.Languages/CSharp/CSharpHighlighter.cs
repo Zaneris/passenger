@@ -363,7 +363,7 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
             return (Tree: parsed, Folds: folds, Lines: read);
         });
         running = parse;
-        parse.ContinueWith(done => OnUi(() =>
+        UnawaitedWork.Observe(parse.ContinueWith(done => OnUi(() =>
         {
             try
             {
@@ -395,7 +395,7 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
             {
                 BackgroundWork.End();
             }
-        }), TaskScheduler.Default);
+        }), TaskScheduler.Default));
     }
 
     /// <summary>The lines the landing parse classified on its worker, as the lines kept for the text as it stands: carried

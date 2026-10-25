@@ -3,10 +3,12 @@ using ModelContextProtocol.Server;
 using Passenger.App.Packages;
 using Passenger.App.Profiling;
 using Passenger.App.Vcs;
-using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Packages;
 using Passenger.Terminal;
 using Passenger.Text;
+using Passenger.Vcs;
+using Passenger.Workspace;
 
 namespace Passenger.App.Mcp;
 
@@ -16,7 +18,7 @@ public sealed partial class PassengerTools
 {
     // Version control
 
-    [McpServerTool(Name = "vcs_status", Title = "Changed files", ReadOnly = true), Description(
+    [McpServerTool(Name = McpTools.VcsStatus, Title = "Changed files", ReadOnly = true), Description(
         "The branch and the files changed since the last commit (modified, added, deleted, renamed, unversioned, conflicted). " +
         "While a merge, rebase, unstash or cherry-pick is stopped for conflicts, conflicts says what is under way, which " +
         "branches yours and theirs are (in a rebase yours is the branch being rebased) and whether each side modified or " +
@@ -40,7 +42,7 @@ public sealed partial class PassengerTools
         return new VcsStatus(vcs.Branch, [.. vcs.Changes.Select(c => new VcsChange(Relative(c.Path), c.Kind.ToString().ToLowerInvariant(), c.From is { } from ? Relative(from) : null))], conflicts);
     });
 
-    [McpServerTool(Name = "vcs_resolve", Title = "Resolve a conflict", Destructive = true), Description(
+    [McpServerTool(Name = McpTools.VcsResolve, Title = "Resolve a conflict", Destructive = true), Description(
         "Resolves a file in conflict (vcs_status lists them) as the Conflicts dialog does: take yours or theirs, that side's " +
         "version whole (a side that deleted it deletes it), or give text, the merged file to write; then marks it resolved. " +
         "Once none is left, vcs_commit finishes a merge, cherry-pick or revert, and the Continue Rebase action (ide_action) a " +
@@ -79,7 +81,7 @@ public sealed partial class PassengerTools
         return diff.Length == 0 ? "No changes" : diff;
     });
 
-    [McpServerTool(Name = "vcs_commit", Title = "Commit", Destructive = true), Description(
+    [McpServerTool(Name = McpTools.VcsCommit, Title = "Commit", Destructive = true), Description(
         "Commits the paths given, else every changed file but the unversioned (saved first), with message; amend changes the " +
         "last commit, push pushes after. Returns the commit and how the push went; a push the remote refuses is an error with " +
         "git's reason, the commit made all the same.")]
@@ -106,7 +108,7 @@ public sealed partial class PassengerTools
         };
     });
 
-    [McpServerTool(Name = "vcs_log", Title = "The history", ReadOnly = true), Description(
+    [McpServerTool(Name = McpTools.VcsLog, Title = "The history", ReadOnly = true), Description(
         "The newest commits of every branch, with their branches and tags. With a path, Show History's: the commits from HEAD " +
         "that changed that file (followed through renames) or folder, each with what it did there; with startLine and endLine " +
         "too, those that changed those lines.")]
@@ -138,7 +140,7 @@ public sealed partial class PassengerTools
             changes?.Select(c => new VcsChange(Relative(c.Path), c.Kind.ToString().ToLowerInvariant(), c.From is { } from ? Relative(from) : null)).ToList());
     });
 
-    [McpServerTool(Name = "vcs_checkout", Title = "Check out a branch", Destructive = true), Description(
+    [McpServerTool(Name = McpTools.VcsCheckout, Title = "Check out a branch", Destructive = true), Description(
         "Checks out a branch (with create, a new one from the head), as the branch menu does; open files take what is on disk after.")]
     public Task<string> VcsCheckout(string branch, bool create = false, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
@@ -153,7 +155,7 @@ public sealed partial class PassengerTools
         return $"On {vcs.Branch}";
     });
 
-    [McpServerTool(Name = "vcs_stash", Title = "Stash or unstash changes", Destructive = true), Description(
+    [McpServerTool(Name = McpTools.VcsStash, Title = "Stash or unstash changes", Destructive = true), Description(
         "Stash Changes and Unstash Changes. action: list (the stashes, newest first, by index), push (every uncommitted " +
         "change, new files too, put away under message, open files saved first), pop or apply (stash index's changes back; pop " +
         "drops it after), drop (throw stash index away).")]
@@ -187,7 +189,7 @@ public sealed partial class PassengerTools
 
     // Packages
 
-    [McpServerTool(Name = "nuget_search", Title = "Search NuGet", ReadOnly = true), Description(
+    [McpServerTool(Name = McpTools.NugetSearch, Title = "Search NuGet", ReadOnly = true), Description(
         "Packages a query finds on the feeds of the folder's nuget.config files (every enabled one, or feed), each with its " +
         "newest version, downloads and the feeds that have it. A feed that does not answer fails the search only when none " +
         "does.")]
@@ -196,7 +198,7 @@ public sealed partial class PassengerTools
         CancellationToken cancel = default) => OnUi(cancel, async () =>
         await (await Session.Packages.FeedAsync(feed)).SearchAsync(query, prerelease, cancel));
 
-    [McpServerTool(Name = "nuget_install", Title = "Install or remove a package", Destructive = true), Description(
+    [McpServerTool(Name = McpTools.NugetInstall, Title = "Install or remove a package", Destructive = true), Description(
         "Adds a package to a project (its name or .csproj) at a version (else the newest on the folder's enabled feeds), or " +
         "moves it to that version, through dotnet add package as the NuGet window does, restoring from the folder's " +
         "nuget.config feeds; with remove, takes it out through dotnet remove package. Answers the version installed and the " +
@@ -227,7 +229,7 @@ public sealed partial class PassengerTools
 
     // The profiler
 
-    [McpServerTool(Name = "profile", Title = "Profile a configuration", Destructive = true), Description(
+    [McpServerTool(Name = McpTools.Profile, Title = "Profile a configuration", Destructive = true), Description(
         "Profiles a configuration from its start, as Profile does, until it ends or for seconds (then the snapshot; it runs on " +
         "until stop). Returns its length, the hot spots by own time (the folder's with source, path:line), the busiest " +
         "thread's hot path, and for an Avalonia app its frames: the UI thread's median and longest, measure, arrange, render " +
@@ -438,7 +440,7 @@ public sealed partial class PassengerTools
 
     // The terminal
 
-    [McpServerTool(Name = "terminal_run", Title = "Run in the terminal", Destructive = true), Description(
+    [McpServerTool(Name = McpTools.TerminalRun, Title = "Run in the terminal", Destructive = true), Description(
         "Types a command into the IDE's Terminal window (opened if need be) and presses Enter, as the person would, then " +
         "waits until the shell prompts again or the output has been quiet for 2 s, and returns what it printed. While the tab " +
         "runs a terminal configuration's program, the line goes to it.")]

@@ -87,7 +87,7 @@ public static class Themes
         FluentTheme fluent = app.Styles.OfType<FluentTheme>().Single();
         foreach (ThemeVariant variant in (ThemeVariant[])[ThemeVariant.Dark, ThemeVariant.Light])
         {
-            if (app.TryGetResource("Passenger.Accent", variant, out object? found) && found is ISolidColorBrush accent)
+            if (app.TryGetResource(TokenKeys.Accent, variant, out object? found) && found is ISolidColorBrush accent)
             {
                 fluent.Palettes[variant] = new ColorPaletteResources { Accent = accent.Color };
             }

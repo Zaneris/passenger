@@ -37,7 +37,7 @@ public partial class MainWindow
             Menus = [new MenuPlace("View", 4, 0)],
         });
         Editors.HasXamlPreview = document => session.Xaml.For(document) is not null;
-        Editors.PreviewToggleClicked += (_, group) => Request(group.Active?.Language.Name == "Markdown" ? A.MarkdownPreview : A.XamlPreview);
+        Editors.PreviewToggleClicked += (_, group) => Request(group.Active?.Language == Languages.Language.Markdown ? A.MarkdownPreview : A.XamlPreview);
         Editors.ActiveChanged += (_, _) => FollowPreviews();
         Editors.Closed += (_, document) => EndPreview(document);
         Editors.ForEachEditor(editor => editor.SelectionChanged += (_, _) => OutlineAtCaret(editor));
@@ -66,7 +66,7 @@ public partial class MainWindow
                 // A preview that found no previewer may have read the project before its restore landed.
                 foreach (XamlPreview preview in previews.Values.Select(p => p.Preview).Where(p => !p.Running))
                 {
-                    _ = preview.RestartAsync();
+                    IdeErrors.Observe(preview.RestartAsync());
                 }
             }
         };
@@ -130,7 +130,7 @@ public partial class MainWindow
         EventHandler<DocumentChangedEventArgs> changed = (_, _) => typing.Restart();
         shown.Text.Changed += changed;
         previews[shown] = new(preview, pane, typing, changed);
-        _ = preview.StartAsync();
+        IdeErrors.Observe(preview.StartAsync());
         return pane;
     }
 
@@ -173,7 +173,7 @@ public partial class MainWindow
         }
         foreach (XamlPreview preview in previews.Values.Select(p => p.Preview))
         {
-            _ = preview.RestartAsync();
+            IdeErrors.Observe(preview.RestartAsync());
         }
     }
 

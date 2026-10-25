@@ -64,7 +64,7 @@ public sealed class UsageHighlighting
     public event EventHandler<string>? Message;
 
     public void AddActions(ActionRegistry actions) =>
-        actions.Add(new IdeAction(AppActions.HighlightUsages, "Highlight Usages in File", "Code", context => _ = HighlightInFile())
+        actions.Add(new IdeAction(AppActions.HighlightUsages, "Highlight Usages in File", "Code", context => IdeErrors.Observe(HighlightInFile()))
         {
             WhyNot = context => context.File is null ? Refusals.NoFile
                 : service()?.For(context.File) is not null ? null

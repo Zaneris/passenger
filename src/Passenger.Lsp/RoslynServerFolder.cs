@@ -10,7 +10,7 @@ namespace Passenger.Lsp;
 /// and Gatekeeper then calls a downloaded copy damaged) or cannot be written (a system-wide Linux install), the
 /// server runs from a copy in the state's cache, one per build of it (<see cref="Stamp"/>); elsewhere from roslyn/ itself.
 /// Passenger's own reads of roslyn/ (the Razor design-time targets) stay with the app's.</summary>
-internal static class RoslynServerFolder
+public static class RoslynServerFolder
 {
     /// <summary>The server's assembly, which dotnet runs.</summary>
     public const string Assembly = "Microsoft.CodeAnalysis.LanguageServer.dll";

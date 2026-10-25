@@ -1,7 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
-using Passenger.App.Workspace;
+using Passenger.Workspace;
 
 namespace Passenger.App.Aspire;
 

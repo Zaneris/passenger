@@ -1,5 +1,6 @@
 using System.Text.Json;
 using ModelContextProtocol.Client;
+using Passenger.App.Mcp;
 using Passenger.Core;
 
 namespace Passenger.Tests;
@@ -128,7 +129,7 @@ public sealed class InstalledAppTests : McpRig, IClassFixture<RestoredFolders>
             ? await Start([Path.Combine(app, "Passenger.dll"), "--mcp", Folder], executable: Dotnet.Host())
             : await Start(["--mcp", Folder], executable: Path.Combine(app, "Passenger")))
         {
-            Assert.Contains((await Call(client, "diagnostics", new() { ["path"] = "Helper.cs" })).EnumerateArray(),
+            Assert.Contains((await Call(client, McpTools.Diagnostics, new() { ["path"] = "Helper.cs" })).EnumerateArray(),
                 d => d.GetProperty("code").GetString() == "CS0219");
             // Its MEF caches are written unawaited as it starts, wherever it runs from.
             Assert.True(await Waiting.UntilAsync(() => Copies().Append(roslyn).SelectMany(Caches).Any(), TimeSpan.FromMinutes(1), Cancel),

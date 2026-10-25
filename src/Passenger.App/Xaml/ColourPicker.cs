@@ -40,8 +40,8 @@ internal sealed class ColourPicker : Border
         // The swatches as tall as the field and buttons beside them, rounded as they are.
         Border before = new() { Width = 28, Height = 28, Background = new SolidColorBrush(ToColor(start)) };
         after = new Border { Width = 28, Height = 28 };
-        before.Bind(Border.CornerRadiusProperty, before.GetResourceObservable("Passenger.ControlRadius", r => r is CornerRadius c ? new CornerRadius(c.TopLeft, 0, 0, c.BottomLeft) : default(CornerRadius)));
-        after.Bind(Border.CornerRadiusProperty, after.GetResourceObservable("Passenger.ControlRadius", r => r is CornerRadius c ? new CornerRadius(0, c.TopRight, c.BottomRight, 0) : default(CornerRadius)));
+        before.Bind(Border.CornerRadiusProperty, before.GetResourceObservable(TokenKeys.ControlRadius, r => r is CornerRadius c ? new CornerRadius(c.TopLeft, 0, 0, c.BottomLeft) : default(CornerRadius)));
+        after.Bind(Border.CornerRadiusProperty, after.GetResourceObservable(TokenKeys.ControlRadius, r => r is CornerRadius c ? new CornerRadius(0, c.TopRight, c.BottomRight, 0) : default(CornerRadius)));
         // The field takes what the swatches and buttons leave.
         hex = new TextBox { Classes = { "search" }, FontFamily = new FontFamily("avares://Passenger.Editor/Fonts#JetBrains Mono") };
         Button choose = new() { Content = "Choose", Classes = { "primary" }, IsDefault = true };
@@ -240,8 +240,8 @@ internal sealed class ColourPicker : Border
                 GradientStops = { new GradientStop(Color.FromArgb(0, 0, 0, 0), 0), new GradientStop(Colors.Black, 1) },
             }, area, 3);
             Point at = new(Picker.s * area.Width, (1 - Picker.v) * area.Height);
-            context.DrawEllipse(null, new Pen(Token("Passenger.Picker.RingInner"), 2), at, 5, 5);
-            context.DrawEllipse(null, new Pen(Token("Passenger.Picker.RingOuter"), 1), at, 6.5, 6.5);
+            context.DrawEllipse(null, new Pen(Token(TokenKeys.Picker_RingInner), 2), at, 5, 5);
+            context.DrawEllipse(null, new Pen(Token(TokenKeys.Picker_RingOuter), 1), at, 6.5, 6.5);
         }
     }
 
@@ -283,7 +283,7 @@ internal sealed class ColourPicker : Border
                 {
                     if (((int)(x / 7) + (int)(y / 7)) % 2 == 0)
                     {
-                        context.FillRectangle(Token("Passenger.Picker.Checker"), new Rect(x, y, Math.Min(7, area.Width - x), Math.Min(7, area.Height - y)));
+                        context.FillRectangle(Token(TokenKeys.Picker_Checker), new Rect(x, y, Math.Min(7, area.Width - x), Math.Min(7, area.Height - y)));
                     }
                 }
             }
@@ -300,8 +300,8 @@ internal sealed class ColourPicker : Border
     private static void Marker(DrawingContext context, Rect area, double at)
     {
         double x = Math.Clamp(at * area.Width, 2, area.Width - 2);
-        context.DrawRectangle(null, new Pen(Token("Passenger.Picker.RingInner"), 2), new Rect(x - 3, -1, 6, area.Height + 2), 2, 2);
-        context.DrawRectangle(null, new Pen(Token("Passenger.Picker.RingOuter"), 1), new Rect(x - 4.5, -2.5, 9, area.Height + 5), 3, 3);
+        context.DrawRectangle(null, new Pen(Token(TokenKeys.Picker_RingInner), 2), new Rect(x - 3, -1, 6, area.Height + 2), 2, 2);
+        context.DrawRectangle(null, new Pen(Token(TokenKeys.Picker_RingOuter), 1), new Rect(x - 4.5, -2.5, 9, area.Height + 5), 3, 3);
     }
 
     private static IBrush Token(string key) => CSharp.InfoCard.Brush(key);

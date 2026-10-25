@@ -5,8 +5,10 @@ using Passenger.App.Editors;
 using Passenger.App.Packages;
 using Passenger.App.Run;
 using Passenger.App.ToolWindows;
-using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Packages;
+using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.App.Migrations;
 
@@ -55,6 +57,10 @@ internal sealed record EfSetting(ProjectModel Project, ProjectModel Startup, str
     /// <summary>The database of a compose run or an AppHost that runs the startup project, as this machine reaches it; null
     /// for the one its configuration gives.</summary>
     public EfRunDatabase? Database { get; init; }
+
+    /// <summary>The output folders dotnet ef loads the startup project's and the project's assemblies from, as the build
+    /// before the command makes them; null when MSBuild could not say, so every read runs.</summary>
+    public IReadOnlyList<string>? Outputs { get; init; }
 }
 
 /// <summary>The Migrations window's model and commands over each session it binds: the folder's EF Core projects, the
@@ -227,6 +233,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         Context = name;
         Migrations = [];
         Listed = false;
+        migrationsRead = null;
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -250,7 +257,19 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         Migrations = [];
         Listed = false;
         Failure = null;
+        contextsRead = null;
+        migrationsRead = null;
+        checks.Clear();
     }
+
+    /// <summary>What the contexts were last listed from (<see cref="ReadOf"/>): listed again only once it changed.</summary>
+    private string? contextsRead;
+
+    /// <summary>What the migrations were listed from; null when a command's own output made the list, which no build has yet.</summary>
+    private string? migrationsRead;
+
+    /// <summary>Each context's model check, with what it read: its answer stands while that does.</summary>
+    private readonly Dictionary<string, (string Read, bool Changed)> checks = [];
 
     /// <summary>Whether a project references EF Core, or a provider of it, itself.</summary>
     public static bool UsesEf(ProjectModel project) =>
@@ -309,10 +328,12 @@ public sealed partial class MigrationsController(MigrationsParts parts)
     }
 
     /// <summary>Lists the chosen project's contexts and the chosen context's migrations, with which the database has: built
-    /// first, as every command is. Never asks: what is missing stays in the window with its fix.</summary>
-    public Task<EfDone> ListAsync(string action, CancellationToken cancel = default, bool build = true)
+    /// first, as every command is. Never asks: what is missing stays in the window with its fix. Without
+    /// <paramref name="rereads"/>, the contexts and the model's check are taken from their last reads where what those read
+    /// stands.</summary>
+    public Task<EfDone> ListAsync(string action, CancellationToken cancel = default, bool build = true, bool rereads = true)
     {
-        Task<EfDone> listed = ListingAsync(action, cancel, build);
+        Task<EfDone> listed = ListingAsync(action, cancel, build, rereads);
         if (!listed.IsCompleted)
         {
             listing = listed;
@@ -323,33 +344,18 @@ public sealed partial class MigrationsController(MigrationsParts parts)
     /// <summary>The listing under way, which a command asked for meanwhile waits for.</summary>
     private Task? listing;
 
-    private Task<EfDone> ListingAsync(string action, CancellationToken cancel, bool build) =>
+    private Task<EfDone> ListingAsync(string action, CancellationToken cancel, bool build, bool rereads) =>
         CommandAsync(action, "Listing migrations", asks: false, cancel, async (setting, work) =>
         {
-            EfOutcome contexts = await RunAsync(setting with { Context = null }, ["dbcontext", "list", "--json"], work);
-            if (!contexts.Succeeded)
+            string? read = await BackgroundWork.Run(() => ReadOf(setting));
+            if (await ReadAsync(setting, read, work, contexts: true, fresh: rereads) is { } failed)
             {
-                return Failed(setting, contexts);
-            }
-            Contexts = ReadContexts(contexts.Data);
-            if (Context is null || !Contexts.Any(c => c.Name == Context || c.FullName == Context))
-            {
-                Context = Contexts.FirstOrDefault()?.Name;
+                return failed;
             }
             if (Context is null)
             {
-                Migrations = [];
-                Listed = true;
                 return Done($"{setting.Project.Name} has no DbContext");
             }
-            EfOutcome listed = await RunAsync(setting with { Context = Context }, ["migrations", "list", "--json"], work);
-            if (!listed.Succeeded)
-            {
-                return Failed(setting, listed);
-            }
-            Migrations = ReadMigrations(listed.Data);
-            Listed = true;
-            await CheckPendingAsync(setting with { Context = Context }, work);
             int pending = Migrations.Count(m => m.Applied == false);
             return Done(Migrations.Count == 0 ? $"{Context} has no migrations"
                 : Migrations.All(m => m.Applied is null) ? $"{Context}: {Plural.Of(Migrations.Count, "migration")}; the database could not be read"
@@ -366,24 +372,26 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             {
                 return Failed(setting, added);
             }
-            List<string> written = [];
-            if (added.Data.Length > 0)
-            {
-                try
-                {
-                    using JsonDocument read = JsonDocument.Parse(added.Data);
-                    written.AddRange(read.RootElement.EnumerateObject().Where(p => p.Value.ValueKind == JsonValueKind.String).Select(p => p.Value.GetString()!));
-                }
-                catch (JsonException)
-                {
-                    // The files are on disk whatever it said; the watcher sees them.
-                }
-            }
+            IReadOnlyList<string> written = Written(added);
             parts.FollowWritten(written);
-            // The new migration is in no build yet: listed once the next command builds.
-            Migrations = [.. Migrations, new MigrationRow(Path.GetFileNameWithoutExtension(written.FirstOrDefault() ?? name), name, false)];
+            string? made = MigrationId(added);
+            string id = made ?? Path.GetFileNameWithoutExtension(written.FirstOrDefault() ?? name);
+            // Add's answer says the listing but whether the database can be read, which the first migration's leaves to one.
+            if (Listed && setting.Context is { } context && context == Context && made is not null && Migrations.Count > 0
+                && string.CompareOrdinal(Migrations[^1].Id, id) < 0)
+            {
+                Migrations = [.. Migrations, new MigrationRow(id, name, Migrations.All(m => m.Applied is null) ? null : false)];
+                migrationsRead = null;
+                checks.Remove(context);
+                await ShowPendingAsync(setting, context, changed: false);
+                then = Relist.No;
+            }
+            else
+            {
+                Migrations = [.. Migrations, new MigrationRow(id, name, false)];
+            }
             return Done($"Added migration {name} to {setting.Context ?? setting.Project.Name}");
-        }, Relist.Built);
+        }, Relist.Built | Relist.Listed);
 
     /// <summary>Removes the chosen context's last migration (once the person agrees), then lists again.</summary>
     public async Task<EfDone> RemoveLastAsync(string action, CancellationToken cancel = default)
@@ -401,8 +409,15 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             {
                 return Failed(setting, removed);
             }
+            // What remove deleted says the listing: the last one gone; the model's check waits for the build without it.
+            if (Listed && setting.Context == Context && Migrations.Count > 0 && MigrationId(removed) == Migrations[^1].Id)
+            {
+                Migrations = [.. Migrations.SkipLast(1)];
+                migrationsRead = null;
+                then = Relist.Built | Relist.Checked;
+            }
             return Done($"Removed the last migration of {setting.Context ?? setting.Project.Name}");
-        }, Relist.Built);
+        }, Relist.Built | Relist.Listed);
     }
 
     /// <summary>Updates the database to the latest migration, or to the one given ("0" for none), asking first when that
@@ -424,8 +439,58 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         return await CommandAsync(action, $"Updating the database to {to}", asks: true, cancel, async (setting, work) =>
         {
             EfOutcome updated = await RunAsync(setting, target is null ? ["database", "update"] : ["database", "update", target], work);
-            return updated.Succeeded ? Done($"Updated the database of {setting.Context ?? setting.Project.Name} to {to}") : Failed(setting, updated);
+            if (!updated.Succeeded)
+            {
+                return Failed(setting, updated);
+            }
+            // Its success says the database: the listed migrations up to the target applied, while the listing is of this build.
+            if (Listed && setting.Context == Context && migrationsRead is { } listedFrom && UpdatedTo(target) is { } rows
+                && await BackgroundWork.Run(() => ReadOf(setting)) == listedFrom)
+            {
+                Migrations = rows;
+                then = Relist.Checked;
+            }
+            return Done($"Updated the database of {setting.Context ?? setting.Project.Name} to {to}");
         }, Relist.Listed);
+    }
+
+    /// <summary>The listed migrations as an update to the target leaves the database (null for the latest, "0" for none):
+    /// those up to it applied, the rest not; null when the target is not among them.</summary>
+    private IReadOnlyList<MigrationRow>? UpdatedTo(string? target)
+    {
+        int at = target is null ? Migrations.Count - 1
+            : target == "0" ? -1
+            : Migrations.ToList().FindIndex(m => m.Id == target) is >= 0 and var id ? id
+            : Migrations.ToList().FindIndex(m => m.Name == target);
+        return target is not null && target != "0" && at < 0 ? null : [.. Migrations.Select((m, i) => m with { Applied = i <= at })];
+    }
+
+    /// <summary>The files a command's <c>--json</c> answer names (add's and remove's); none when it said nothing that reads,
+    /// the files being on disk whatever it said.</summary>
+    private static IReadOnlyList<string> Written(EfOutcome outcome) =>
+        Answer(outcome) is { } answer ? [.. answer.Values] : [];
+
+    /// <summary>The migration add made or remove deleted, by its file's name (its id); null when the answer does not say.</summary>
+    private static string? MigrationId(EfOutcome outcome) =>
+        Answer(outcome)?.GetValueOrDefault("migrationFile") is { Length: > 0 } file ? Path.GetFileNameWithoutExtension(file) : null;
+
+    /// <summary>A command's <c>--json</c> answer's text values by name; null when it said nothing that reads.</summary>
+    private static Dictionary<string, string>? Answer(EfOutcome outcome)
+    {
+        if (outcome.Data.Length == 0)
+        {
+            return null;
+        }
+        try
+        {
+            using JsonDocument read = JsonDocument.Parse(outcome.Data);
+            return read.RootElement.ValueKind != JsonValueKind.Object ? null
+                : read.RootElement.EnumerateObject().Where(p => p.Value.ValueKind == JsonValueKind.String).ToDictionary(p => p.Name, p => p.Value.GetString()!);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     /// <summary>The applied migrations an update to the target takes back, newest first.</summary>
@@ -472,14 +537,19 @@ public sealed partial class MigrationsController(MigrationsParts parts)
                 : Failed(setting, bundled);
         });
 
-    /// <summary>Whether a command's end lists the migrations again: no, as they are built, or once built again (a migration
-    /// added or removed is in no build yet).</summary>
+    /// <summary>What a command's end reads again: nothing, the model's check, the listing with it, each once built again
+    /// where the command changed the code (a migration added or removed is in no build yet).</summary>
+    [Flags]
     private enum Relist
     {
-        No,
-        Listed,
-        Built,
+        No = 0,
+        Checked = 1,
+        Listed = 2 | Checked,
+        Built = 4,
     }
+
+    /// <summary>What the command under way reads again as it ends, lowered by a command whose own output said the rest.</summary>
+    private Relist then;
 
     /// <summary>One command of the window: one at a time, under its action's work; found ready (asking about each gap when
     /// <paramref name="asks"/>, the person's commands; listing only says them), built, then run; the listing read again
@@ -503,6 +573,8 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             return Said(new EfDone(false, ActionWork.Busy(parts.Work.Of(action)!)));
         }
         running = work;
+        then = relist;
+        settled = false;
         using CancellationTokenRegistration stopping = cancel.Register(parts.Work.Stop);
         try
         {
@@ -512,22 +584,18 @@ public sealed partial class MigrationsController(MigrationsParts parts)
                 return Said(new EfDone(false, why!));
             }
             EfDone done = await run(setting, work);
-            if (done.Done && relist != Relist.No && !work.IsStopped && session == parts.Session()
-                && (relist == Relist.Listed || await BuildAsync(setting.Project, setting.Startup, setting.Framework, work) is null))
+            if (done.Done && then != Relist.No && !work.IsStopped && session == parts.Session()
+                && (!then.HasFlag(Relist.Built) || await BuildAsync(setting.Project, setting.Startup, setting.Framework, work) is null))
             {
-                EfOutcome listed = await RunAsync(setting with { Context = Context }, ["migrations", "list", "--json"], work);
-                if (listed.Succeeded)
-                {
-                    Migrations = ReadMigrations(listed.Data);
-                    Listed = true;
-                    await CheckPendingAsync(setting with { Context = Context }, work);
-                }
+                string? read = await BackgroundWork.Run(() => ReadOf(setting));
+                await ReadAsync(setting with { Context = Context }, read, work, contexts: false, list: then.HasFlag(Relist.Listed));
             }
             return Said(done);
         }
         finally
         {
             running = null;
+            toolRestore = null;
             work.Dispose();
             if (session == parts.Session())
             {
@@ -645,8 +713,49 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             environment = new Dictionary<string, string>(environment.Concat(database.Environment).GroupBy(e => e.Key).Select(g => g.Last()));
         }
         Database = database?.Where;
-        return (new EfSetting(project, startup, framework, folder, environment, Context, tool, restore.Runtime ?? runtime) { Database = database }, null);
+        IReadOnlyList<string>? outputs = await OutputsAsync(project, startup, framework, parts.Session().Projects, work.Stopping);
+        return (new EfSetting(project, startup, framework, folder, environment, Context, tool, restore.Runtime ?? runtime) { Database = database, Outputs = outputs }, null);
     }
+
+    /// <summary>The folders a build puts the startup project's assembly in, and the project's where the startup project does
+    /// not reference it (else its copy is in the startup project's), as MSBuild evaluates them with what a build of each
+    /// is given; null when either cannot be said.</summary>
+    private static async Task<IReadOnlyList<string>?> OutputsAsync(ProjectModel project, ProjectModel startup, string? framework, IReadOnlyList<ProjectModel> all,
+        CancellationToken cancel)
+    {
+        List<string> folders = [];
+        foreach (ProjectModel each in project == startup || References(startup, project, all, []) ? [startup] : new[] { startup, project })
+        {
+            Dictionary<string, string> globals = global::Passenger.App.Workspace.ProjectModels.Properties(null, each);
+            if (framework is not null)
+            {
+                globals["TargetFramework"] = framework;
+            }
+            try
+            {
+                ProjectHost host = await ProjectHosts.ForAsync(each.Folder, cancel);
+                Host.PropertiesAnswer answer = await host.PropertiesAsync(each.Path, globals, [Host.CarriedProperties.TargetPath], cancel);
+                if (answer.Values.GetValueOrDefault(Host.CarriedProperties.TargetPath) is not { Length: > 0 } target)
+                {
+                    return null;
+                }
+                folders.Add(Path.GetDirectoryName(PathNames.Canonical(target))!);
+            }
+            catch (ProjectHostFailed)
+            {
+                return null;
+            }
+        }
+        return folders;
+    }
+
+    /// <summary>What dotnet ef reads of a setting's build, which none of its reads answers otherwise while it stands: the
+    /// projects, framework, working folder and environment, and the assemblies, symbols and settings in the output folders
+    /// and the working folder (<see cref="BuiltInputs.Stamp"/>); null when the outputs are not known. On any thread.</summary>
+    private static string? ReadOf(EfSetting setting) => setting.Outputs is not { } outputs ? null
+        : string.Join('\n', (string[])[setting.Project.Path, setting.Startup.Path, setting.Framework ?? string.Empty, setting.Folder,
+            .. setting.Environment.OrderBy(e => e.Key, StringComparer.Ordinal).Select(e => $"{e.Key}={e.Value}"),
+            .. outputs.Select(BuiltInputs.Stamp), BuiltInputs.Stamp(setting.Folder)]);
 
     private static string Title(string stage)
     {
@@ -680,7 +789,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         try
         {
             IPackageFeed feed = await parts.Feed();
-            foreach (string candidate in await feed.VersionsAsync(left.Id, Packages.VersionOrder.IsPrerelease(version), CancellationToken.None))
+            foreach (string candidate in await feed.VersionsAsync(left.Id, VersionOrder.IsPrerelease(version), CancellationToken.None))
             {
                 if (await EfProviders.RangeAsync(feed, left.Id, candidate, restore.Framework, CancellationToken.None) is { } range && EfRestore.InRange(range, version))
                 {
@@ -951,6 +1060,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
     /// showing it as any build's: null once built, else why not.</summary>
     private async Task<string?> BuildAsync(ProjectModel project, ProjectModel startup, string? framework, Working work)
     {
+        settled = false;
         work.Say($"Building {startup.Name}…");
         BuildRunController builds = parts.Builds();
         if (builds.IsBuilding)
@@ -992,7 +1102,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
 
     /// <summary>Runs dotnet ef with the setting's projects, framework and context, never building, its lines in the Build
     /// window as they come; EF's warning that the tool is older than the runtime kept as a gap.</summary>
-    private async Task<EfOutcome> RunAsync(EfSetting setting, IReadOnlyList<string> verb, Working work)
+    private async Task<EfOutcome> RunAsync(EfSetting setting, IReadOnlyList<string> verb, Working work, bool retried = false)
     {
         List<string> arguments = [.. verb, "--project", setting.Project.Path, "--startup-project", setting.Startup.Path, "--no-build", "--prefix-output"];
         if (setting.Framework is { } framework)
@@ -1024,23 +1134,17 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         Task<EfOutcome> running = EfRun.RunAsync(start, parts.Views.Build.Sink, work.Stopping);
         BackgroundWork.Track(running);
         EfOutcome outcome = await running;
-        // A manifest's tool the folder never restored, whose package the cache holds: restored, reaching no feed, and run again.
-        if (!outcome.Succeeded && !restoring && setting.Tool is { Place: EfToolPlace.Local } local && NotRestored(outcome)
+        // A manifest's tool never restored, whose package the cache holds: restored once, reaching no feed, and run again.
+        if (!outcome.Succeeded && !retried && setting.Tool is { Place: EfToolPlace.Local } local && NotRestored(outcome)
             && EfTools.Cached(local.Version, setting.Startup.Folder))
         {
-            restoring = true;
-            try
+            toolRestore ??= ToolCommandAsync(["tool", "restore", "--tool-manifest", local.Where], Path.GetDirectoryName(local.Where)!, work);
+            if (await toolRestore is null)
             {
-                if (await ToolCommandAsync(["tool", "restore", "--tool-manifest", local.Where], Path.GetDirectoryName(local.Where)!, work) is null)
-                {
-                    return await RunAsync(setting, verb, work);
-                }
-            }
-            finally
-            {
-                restoring = false;
+                return await RunAsync(setting, verb, work, retried: true);
             }
         }
+        settled |= outcome.Succeeded;
         if (outcome.Succeeded && EfGaps.Warned(outcome, setting.Startup.Name) is { } older && !Gaps.Any(g => g.Said == older.Said))
         {
             Gaps = [.. Gaps, older];
@@ -1048,17 +1152,122 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         return outcome;
     }
 
-    /// <summary>Whether the context's model has changes no migration covers (<c>dotnet ef migrations has-pending-model-changes</c>,
-    /// EF Core 8 and later; an earlier one's refusal says nothing), its class found in the project for Problems to place it,
-    /// and Problems told.</summary>
-    private async Task CheckPendingAsync(EfSetting setting, Working work)
+    /// <summary>The contexts (with <paramref name="contexts"/>, unless what they were listed from stands), the chosen
+    /// context's migrations (with <paramref name="list"/>; with no context chosen, the only one's) and its model's check,
+    /// side by side once a run has left dotnet ef nothing to copy into the output (<see cref="settled"/>), else one by one. What
+    /// the build stands as (<paramref name="read"/>, <see cref="ReadOf"/>) is kept with each answer; <paramref name="fresh"/>
+    /// takes nothing from earlier reads. Null once read, else the failure.</summary>
+    private async Task<EfDone?> ReadAsync(EfSetting setting, string? read, Working work, bool contexts, bool list = true, bool fresh = false)
     {
-        if (setting.Context is not { } context || Migrations.Count == 0)
+        string? remembered = fresh ? null : read;
+        bool together = settled;
+        string? context = Context;
+        Task<EfOutcome>? naming = contexts && (remembered is null || remembered != contextsRead) ? RunAsync(setting with { Context = null }, ["dbcontext", "list", "--json"], work) : null;
+        if (naming is not null && !together)
         {
-            return;
+            if (Named(setting, await naming, read) is { } unnamed)
+            {
+                return unnamed;
+            }
+            naming = null;
+            context = Context;
+            together = settled;
+        }
+        bool none = contexts && naming is null && Context is null;
+        Task<EfOutcome>? listing = list && !none ? RunAsync(setting with { Context = context }, ["migrations", "list", "--json"], work) : null;
+        // Beside the listing where the context had migrations; its answer is kept while the listing finds some.
+        Task<bool>? checking = (together || listing is null) && context is not null && Migrations.Count > 0
+            ? PendingAsync(setting with { Context = context }, read, work, fresh) : null;
+        await Task.WhenAll(new Task?[] { naming, listing, checking }.OfType<Task>());
+        if (naming is not null)
+        {
+            if (Named(setting, naming.Result, read) is { } unnamed)
+            {
+                return unnamed;
+            }
+            // Listed with no context named, dotnet ef took the only one; with another, it is read again for this one.
+            if (Context != context && !(context is null && Contexts.Count == 1))
+            {
+                checking = null;
+                listing = list && Context is not null ? RunAsync(setting with { Context = Context }, ["migrations", "list", "--json"], work) : null;
+            }
+            context = Context;
+        }
+        if (contexts && Context is null)
+        {
+            Migrations = [];
+            Listed = true;
+            migrationsRead = read;
+            return null;
+        }
+        if (listing is not null)
+        {
+            EfOutcome listed = await listing;
+            if (!listed.Succeeded)
+            {
+                return Failed(setting, listed);
+            }
+            Migrations = ReadMigrations(listed.Data);
+            Listed = true;
+            migrationsRead = read;
+        }
+        if (Migrations.Count > 0 && context is not null)
+        {
+            await ShowPendingAsync(setting, context, await (checking ?? PendingAsync(setting with { Context = context }, read, work, fresh)));
+        }
+        return null;
+    }
+
+    /// <summary>The contexts dotnet ef listed taken as the project's, the chosen one kept while it is among them; null once
+    /// taken, else the failure.</summary>
+    private EfDone? Named(EfSetting setting, EfOutcome named, string? read)
+    {
+        if (!named.Succeeded)
+        {
+            return Failed(setting, named);
+        }
+        Contexts = ReadContexts(named.Data);
+        contextsRead = read;
+        if (Context is null || !Contexts.Any(c => c.Name == Context || c.FullName == Context))
+        {
+            Context = Contexts.FirstOrDefault()?.Name;
+        }
+        return null;
+    }
+
+    /// <summary>Whether a dotnet ef run has ended well since the command began and since its last build, so its runs can go
+    /// side by side: each copies what it lacks of Roslyn's MSBuild build host into the startup project's output as it
+    /// starts (all of it into a new output, what a package's new version brings into one), and two copying at once fail
+    /// ("The file … already exists"); one that has ended leaves none to copy.</summary>
+    private bool settled;
+
+    /// <summary>Whether the setting's context's model has changes no migration covers (<c>dotnet ef migrations
+    /// has-pending-model-changes</c>, EF Core 8 and later; an earlier one's refusal says nothing): unless
+    /// <paramref name="fresh"/>, its last answer where what it read (<paramref name="read"/>) stands, else asked, the
+    /// answer kept with what it read once it gave one.</summary>
+    private async Task<bool> PendingAsync(EfSetting setting, string? read, Working work, bool fresh = false)
+    {
+        string context = setting.Context!;
+        if (!fresh && read is not null && checks.TryGetValue(context, out (string Read, bool Changed) was) && was.Read == read)
+        {
+            return was.Changed;
         }
         EfOutcome checkedOut = await RunAsync(setting, ["migrations", "has-pending-model-changes"], work);
         bool changed = checkedOut.ExitCode != 0 && checkedOut.Errors.Any(e => e.Contains("Changes have been made to the model", StringComparison.Ordinal));
+        if (read is not null && (checkedOut.Succeeded || changed))
+        {
+            checks[context] = (read, changed);
+        }
+        else
+        {
+            checks.Remove(context);
+        }
+        return changed;
+    }
+
+    /// <summary>A context's model check in Problems, its class found in the project to place it.</summary>
+    private async Task ShowPendingAsync(EfSetting setting, string context, bool changed)
+    {
         List<EfPending> pending = [.. Pending.Where(p => p.Context != context)];
         if (changed)
         {
@@ -1105,12 +1314,12 @@ public sealed partial class MigrationsController(MigrationsParts parts)
     {
         if (built.Succeeded && running is null && Listed && Gaps.All(g => !g.Blocks) && parts.Session().Folder is not null)
         {
-            _ = ListAsync(AppActions.MigrationsRefresh, build: false);
+            IdeErrors.Observe(ListAsync(AppActions.MigrationsRefresh, build: false, rereads: false));
         }
     }
 
-    /// <summary>Whether a run's tool restores the folder's local tools first, so it is not restored twice.</summary>
-    private bool restoring;
+    /// <summary>The command's restore of the folder's local tools, which every run that found them not restored waits for.</summary>
+    private Task<string?>? toolRestore;
 
     /// <summary>Whether dotnet said the manifest's tools are not restored, before the tool ran.</summary>
     private static bool NotRestored(EfOutcome outcome) => outcome.Lines.Any(l => EfRun.Split(l).Kind.Length == 0 && l.Contains("dotnet tool restore", StringComparison.Ordinal));

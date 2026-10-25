@@ -38,10 +38,10 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
         NameBox.TextChanged += (_, _) => Update();
         ReturnTypeBox.TextChanged += (_, _) => Update();
 
-        AddButton = ToolButtons.Of("Icon.Add", "Add");
-        RemoveButton = ToolButtons.Of("Icon.Minimize", "Remove");
-        UpButton = ToolButtons.Of("Icon.ArrowUp", "Move Up");
-        DownButton = ToolButtons.Of("Icon.ArrowDown", "Move Down");
+        AddButton = ToolButtons.Of(IconKeys.Add, "Add");
+        RemoveButton = ToolButtons.Of(IconKeys.Minimize, "Remove");
+        UpButton = ToolButtons.Of(IconKeys.ArrowUp, "Move Up");
+        DownButton = ToolButtons.Of(IconKeys.ArrowDown, "Move Down");
         AddButton.Click += (_, _) => Add();
         RemoveButton.Click += (_, _) => Remove();
         UpButton.Click += (_, _) => Shift(-1);
@@ -56,7 +56,7 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
             header.Children.Add(title);
         }
         Border headerFrame = new() { Child = header, BorderThickness = new Thickness(0, 0, 0, 1) };
-        headerFrame.Bind(Border.BorderBrushProperty, headerFrame.GetResourceObservable("Passenger.Separator"));
+        headerFrame.Bind(Border.BorderBrushProperty, headerFrame.GetResourceObservable(TokenKeys.Separator));
         Border tableFrame = new()
         {
             Classes = { "framed" },
@@ -65,7 +65,7 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
         };
 
         Border previewFrame = new() { Classes = { "framed" }, Padding = new Thickness(10, 8), Child = preview };
-        previewFrame.Bind(Border.BackgroundProperty, previewFrame.GetResourceObservable("Passenger.Editor.Background"));
+        previewFrame.Bind(Border.BackgroundProperty, previewFrame.GetResourceObservable(TokenKeys.Editor_Background));
 
         for (int i = 0; i < signature.Parameters.Count; i++)
         {
@@ -126,7 +126,7 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
         {
             if (each == row)
             {
-                each.View.Bind(Border.BackgroundProperty, each.View.GetResourceObservable("Passenger.RowSelected"));
+                each.View.Bind(Border.BackgroundProperty, each.View.GetResourceObservable(TokenKeys.RowSelected));
             }
             else
             {

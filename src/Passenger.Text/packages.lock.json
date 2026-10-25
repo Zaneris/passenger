@@ -7,6 +7,18 @@
         "requested": "[5.6.0, )",
         "resolved": "5.6.0",
         "contentHash": "Kcobt3pnOdO0A+6CKiMHZdTEluJpsfxiV20axtZdmfBQnDmiWTKPJADlgAfdTuKNAnVarrkJa0UEGwuOo91muw=="
+      },
+      "passenger.core": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Diagnostics.NETCore.Client": "[0.2.750501, )"
+        }
+      },
+      "Microsoft.Diagnostics.NETCore.Client": {
+        "type": "CentralTransitive",
+        "requested": "[0.2.750501, )",
+        "resolved": "0.2.750501",
+        "contentHash": "XVOWyjoikpjTecPv8fYWspgNGhXtOeMX3K3wq9kXftU9U04V6IwCY4NQuVrY/BIBwmui6lF8z7pNP64cwFvUNQ=="
       }
     },
     "net11.0/linux-arm64": {},

@@ -4,7 +4,8 @@ using System.Net.Http.Json;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Passenger.App.Packages;
+using Passenger.Core;
+using Passenger.Packages;
 
 namespace Passenger.App.Updates;
 
@@ -12,6 +13,7 @@ namespace Passenger.App.Updates;
 /// how long it waits for the answer.</summary>
 public sealed record ReleaseFeed(Uri Latest, TimeSpan Timeout)
 {
+    [IdentifierHome]
     public const string Variable = "PASSENGER_RELEASES";
 
     public static readonly Uri GitHub = new("https://api.github.com/repos/Zaneris/passenger/releases/latest");
@@ -34,7 +36,7 @@ public sealed record ReleaseFeed(Uri Latest, TimeSpan Timeout)
         : new ReleaseFeed(GitHub, ShortTimeout);
 
     private static Uri Parse(string text) =>
-        Releases.Web(text)
+        WebAddress.Of(text)
         ?? throw new FormatException($"{Variable} takes the http or https URL of a latest release as GitHub's API answers it, not '{text}'");
 }
 
@@ -150,10 +152,6 @@ public static partial class Releases
         }
     }
 
-    /// <summary>An absolute http or https URL, or null: what a release's JSON names is opened only as a web page.</summary>
-    public static Uri? Web(string? text) =>
-        Uri.TryCreate(text, UriKind.Absolute, out Uri? uri) && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp) ? uri : null;
-
     private static ReleaseAnswer Compare(GitHubRelease release, string running)
     {
         string tag = release.TagName ?? string.Empty;
@@ -169,10 +167,10 @@ public static partial class Releases
             return new ReleaseAnswer.Current($"Passenger {running} is up to date: the latest release is {tag}");
         }
         string? asset = ThisSystemsAsset();
-        ReleaseFile[] files = [.. (release.Assets ?? []).Select(a => a.Name is { Length: > 0 } name && Web(a.BrowserDownloadUrl) is { } url
+        ReleaseFile[] files = [.. (release.Assets ?? []).Select(a => a.Name is { Length: > 0 } name && WebAddress.Of(a.BrowserDownloadUrl) is { } url
             ? new ReleaseFile(name, url, a.Size) : null).OfType<ReleaseFile>()];
         Uri? download = files.FirstOrDefault(f => f.Name == asset)?.Url;
-        Uri page = Web(release.HtmlUrl) ?? ReleaseFeed.GitHubReleases;
+        Uri page = WebAddress.Of(release.HtmlUrl) ?? ReleaseFeed.GitHubReleases;
         Uri link = download ?? page;
         return new ReleaseAnswer.Newer(new LatestRelease(number, tag, link, download is null ? null : asset) { Page = page, Files = files },
             $"Passenger {number} is out ({tag}; this is {running}): {link}");

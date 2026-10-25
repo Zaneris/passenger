@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Passenger.App.State;
+using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Dap;
 using Passenger.Text;
@@ -59,12 +60,15 @@ public abstract class Breakpoint
     public abstract string Location { get; }
 }
 
-/// <summary>A line breakpoint (lines from zero); in Avalonia XAML, on one attribute of the line when it names one
-/// (<see cref="XamlBreakpoints"/>).</summary>
+/// <summary>A line breakpoint (lines from zero), carried with its file's text while it is open; in Avalonia XAML, on one
+/// attribute of the line when it names one (<see cref="XamlBreakpoints"/>).</summary>
 public sealed class LineBreakpoint(string path, int line, string? attribute = null) : Breakpoint
 {
     public string Path { get; internal set; } = path;
-    public int Line { get; internal set; } = line;
+
+    public int Line => At.Line;
+
+    internal AnchoredLine At { get; } = new(line);
 
     /// <summary>The XAML attribute it is on, by its name as written, or null for its whole line.</summary>
     public string? Attribute { get; } = attribute;
@@ -220,8 +224,9 @@ public sealed record KeptBindingErrorBreakpoint
 }
 
 /// <summary>Every breakpoint: the line breakpoints by file, the CLR exception breakpoints, XAML Binding Errors and the
-/// session's data and property breakpoints. A breakpoint in an open file moves with the text around it, so an edit above
-/// it leaves it on its line; one whose line is deleted lands where the deletion did, and two on one line become one.
+/// session's data and property breakpoints. A breakpoint in an open file moves with the text around it by an anchor in it,
+/// so an edit above it leaves it on its line; one whose line is deleted lands where the deletion did, and two on one line
+/// become one.
 /// Muted, none of them stops the program, though each keeps whether it is on.</summary>
 public sealed class BreakpointStore
 {
@@ -229,6 +234,9 @@ public sealed class BreakpointStore
     private readonly List<ExceptionBreakpoint> exceptions = [new(null)];
     private readonly List<DataBreakpoint> data = [];
     private readonly List<PropertyBreakpoint> properties = [];
+
+    /// <summary>The text of each file open, whose breakpoints it carries.</summary>
+    private readonly Dictionary<string, TextDocument> open = new(StringComparer.Ordinal);
     private int lastProperty;
 
     /// <summary>A file's breakpoints changed: added, removed, moved, muted, or the debugger said something.</summary>
@@ -312,14 +320,14 @@ public sealed class BreakpointStore
             List<LineBreakpoint> list = For(file.Key);
             foreach (KeptBreakpoint breakpoint in file.Where(b => list.All(there => there.Line != b.Line || there.Attribute != b.Attribute)))
             {
-                list.Add(new LineBreakpoint(breakpoint.Path, breakpoint.Line, breakpoint.Attribute)
+                list.Add(Anchored(new LineBreakpoint(breakpoint.Path, breakpoint.Line, breakpoint.Attribute)
                 {
                     Enabled = breakpoint.Enabled,
                     Suspend = breakpoint.Suspend,
                     Condition = breakpoint.Condition,
                     HitCondition = breakpoint.HitCondition,
                     LogMessage = breakpoint.LogMessage,
-                });
+                }));
             }
             Sort(list);
             Changed?.Invoke(this, file.Key);
@@ -372,6 +380,7 @@ public sealed class BreakpointStore
         Muted = false;
         foreach (string path in Files.ToList())
         {
+            Unanchor(byPath[path]);
             byPath[path].Clear();
             Changed?.Invoke(this, path);
         }
@@ -516,9 +525,10 @@ public sealed class BreakpointStore
     public void Toggle(string path, int line)
     {
         List<LineBreakpoint> list = For(path);
+        Unanchor(list.Where(b => b.Line == line));
         if (list.RemoveAll(b => b.Line == line) == 0)
         {
-            list.Add(new LineBreakpoint(path, line));
+            list.Add(Anchored(new LineBreakpoint(path, line)));
             Sort(list);
         }
         Changed?.Invoke(this, path);
@@ -532,10 +542,11 @@ public sealed class BreakpointStore
         if (list.FirstOrDefault(b => b.Line == line && b.Attribute == attribute) is { } existing)
         {
             list.Remove(existing);
+            existing.At.Detach();
         }
         else
         {
-            list.Add(new LineBreakpoint(path, line, attribute));
+            list.Add(Anchored(new LineBreakpoint(path, line, attribute)));
             Sort(list);
         }
         Changed?.Invoke(this, path);
@@ -549,7 +560,7 @@ public sealed class BreakpointStore
         {
             return existing;
         }
-        LineBreakpoint added = new(path, line, attribute);
+        LineBreakpoint added = Anchored(new LineBreakpoint(path, line, attribute));
         list.Add(added);
         Sort(list);
         Changed?.Invoke(this, path);
@@ -626,7 +637,7 @@ public sealed class BreakpointStore
             Toggle(path, line);
             return;
         }
-        LineBreakpoint tracepoint = new(path, line) { Suspend = false };
+        LineBreakpoint tracepoint = Anchored(new LineBreakpoint(path, line) { Suspend = false });
         List<LineBreakpoint> list = For(path);
         list.Add(tracepoint);
         Sort(list);
@@ -639,6 +650,7 @@ public sealed class BreakpointStore
     {
         if (breakpoint is LineBreakpoint line && For(line.Path).Remove(line))
         {
+            line.At.Detach();
             Changed?.Invoke(this, line.Path);
         }
         else if (breakpoint is ExceptionBreakpoint { IsAny: false } exception && exceptions.Remove(exception))
@@ -739,10 +751,42 @@ public sealed class BreakpointStore
             Changed?.Invoke(this, path);
             Changed?.Invoke(this, moved);
         }
+        foreach (string path in open.Keys.Where(p => PathNames.Within(p, from)).ToList())
+        {
+            open.Remove(path, out TextDocument? text);
+            open[PathNames.Moved(path, from, to)] = text!;
+        }
     }
 
-    /// <summary>Carries a file's breakpoints through an edit to it.</summary>
-    public void Follow(string path, DocumentChangedEventArgs change)
+    /// <summary>A file opened: its breakpoints move with its text until it closes.</summary>
+    public void Attach(string path, TextDocument text)
+    {
+        open[path] = text;
+        foreach (LineBreakpoint breakpoint in In(path))
+        {
+            breakpoint.At.Attach(text);
+        }
+    }
+
+    /// <summary>A file closed: its breakpoints stay on the lines they were carried to.</summary>
+    public void Detach(string path)
+    {
+        open.Remove(path);
+        Unanchor(In(path));
+    }
+
+    /// <summary>The session ended with files still open, which the next session follows: every file is let go as if
+    /// closed, its breakpoints kept on the lines they were carried to.</summary>
+    public void DetachAll()
+    {
+        foreach (string path in open.Keys.ToList())
+        {
+            Detach(path);
+        }
+    }
+
+    /// <summary>Reads the lines of a file's breakpoints after an edit to it, their anchors having carried them.</summary>
+    public void Follow(string path)
     {
         if (!byPath.TryGetValue(path, out List<LineBreakpoint>? list) || list.Count == 0)
         {
@@ -751,20 +795,33 @@ public sealed class BreakpointStore
         bool moved = false;
         foreach (LineBreakpoint breakpoint in list)
         {
-            int line = TextEditing.MapLine(change.Before, change.Edits, change.After, breakpoint.Line);
-            if (line != breakpoint.Line)
-            {
-                breakpoint.Line = line;
-                moved = true;
-            }
+            moved |= breakpoint.At.Follow();
         }
         if (moved)
         {
             List<LineBreakpoint> unique = [.. list.GroupBy(b => (b.Line, b.Attribute)).Select(g => g.First())];
+            Unanchor(list.Except(unique));
             Sort(unique);
             list.Clear();
             list.AddRange(unique);
             Changed?.Invoke(this, path);
+        }
+    }
+
+    private LineBreakpoint Anchored(LineBreakpoint breakpoint)
+    {
+        if (open.TryGetValue(breakpoint.Path, out TextDocument? text))
+        {
+            breakpoint.At.Attach(text);
+        }
+        return breakpoint;
+    }
+
+    private static void Unanchor(IEnumerable<LineBreakpoint> breakpoints)
+    {
+        foreach (LineBreakpoint breakpoint in breakpoints.ToList())
+        {
+            breakpoint.At.Detach();
         }
     }
 

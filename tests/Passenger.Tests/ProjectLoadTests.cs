@@ -7,9 +7,9 @@ using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
 using Avalonia.VisualTree;
 using Passenger.App;
-using Passenger.App.Packages;
 using Passenger.App.Run;
 using Passenger.App.ToolWindows;
+using Passenger.Packages;
 
 namespace Passenger.Tests;
 
@@ -208,9 +208,7 @@ public sealed class ProjectLoadTests : IDisposable
     /// <summary>A window on the folder, its projects loaded by the language server.</summary>
     private MainWindow Open()
     {
-        MainWindow window = new() { Width = 1400, Height = 900 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900);
         Ui.WaitFor(() => window.CSharpService is { IsReady: true }, $"the language server to load the projects ({window.CSharpService?.State})");
         Ui.Settle();
         return window;

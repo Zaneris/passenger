@@ -50,7 +50,7 @@ public sealed class WorkingActionsTests : WorkingActionsFolders, IClassFixture<R
         Dispatcher.UIThread.RunJobs();
         AvaloniaHeadlessPlatform.ForceRenderTimerTick(1);
         Assert.True(run.TranslatePoint(default, window) == placed, "Run should stay where it was clicked, so a second click lands on it and not on what moved under the pointer");
-        Color accent = ((ISolidColorBrush)window.FindResource(window.ActualThemeVariant, "Passenger.Accent")!).Color;
+        Color accent = ((ISolidColorBrush)window.FindResource(window.ActualThemeVariant, TokenKeys.Accent)!).Color;
         int drawn = Ring(window, run).Count(c => Math.Abs(c.R - accent.R) + Math.Abs(c.G - accent.G) + Math.Abs(c.B - accent.B) < 90);
         Assert.True(drawn >= 9, $"Run's ring should be drawn round its icon in the accent in the frame after the click, but {drawn} of 16 points round it were");
 
@@ -113,10 +113,7 @@ public sealed class WorkingActionsTests : WorkingActionsFolders, IClassFixture<R
         string repository = TestFolders.Create("working-git-");
         File.WriteAllText(Path.Combine(repository, "readme.txt"), "a\n");
         TestGit.Init(repository);
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(repository);
-        Ui.Settle();
+        MainWindow window = Ui.OpenFolder(repository);
         try
         {
             Assert.True(window.Perform(AppActions.Fetch));
@@ -245,10 +242,5 @@ public abstract class WorkingActionsFolders : IDisposable
 
     protected static string[] Lines(string text) => text.Split('\n', StringSplitOptions.TrimEntries);
 
-    protected static void Write(string root, string relative, string text)
-    {
-        string path = Path.Combine(root, relative);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, text);
-    }
+    protected static void Write(string root, string relative, string text) => TestFolders.Write(root, relative, text);
 }

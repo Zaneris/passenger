@@ -77,7 +77,7 @@ public sealed class EngineChecks : IDisposable
         {
             return;
         }
-        EngineCheck? check = WebLanguages.IsDockerfile(Path.GetFileName(document.Path)) ? new DockerfileCheck(this, document, web)
+        EngineCheck? check = Languages.Language.ForPath(document.Path) == Languages.Language.Dockerfile ? new DockerfileCheck(this, document, web)
             : ComposeDeclarations.IsCompose(document.Path) ? new ComposeCheck(this, document, web) : null;
         if (check is null)
         {
@@ -265,6 +265,8 @@ internal abstract class EngineCheck : IDisposable
 
     private readonly WebDocument web;
     private readonly Debounce later;
+    private readonly AnchoredList<(TextRange Range, Func<TextSnapshot, IReadOnlyList<CSharp.EditorFix>> Fixes)> faults =
+        new(f => f.Range, (f, range) => (range, f.Fixes));
     private CancellationTokenSource? running;
     private bool disposed;
 
@@ -299,7 +301,7 @@ internal abstract class EngineCheck : IDisposable
 
     /// <summary>What the check found that Passenger's own fixes take, each where it is marked with its fixes, carried with the
     /// text typed after, as the markers are.</summary>
-    public IReadOnlyList<(TextRange Range, Func<TextSnapshot, IReadOnlyList<CSharp.EditorFix>> Fixes)> Faults { get; private set; } = [];
+    public IReadOnlyList<(TextRange Range, Func<TextSnapshot, IReadOnlyList<CSharp.EditorFix>> Fixes)> Faults => faults.Items;
 
     /// <summary>Whether the file is checked again once typing pauses, rather than only as it opens and is saved.</summary>
     protected abstract bool AsTyped { get; }
@@ -333,7 +335,7 @@ internal abstract class EngineCheck : IDisposable
         CancellationTokenSource cancel = new();
         running = cancel;
         Starting();
-        _ = RunAsync(Document.Text.Snapshot, Document.Text.Version, cancel, Document.Checking());
+        IdeErrors.Observe(RunAsync(Document.Text.Snapshot, Document.Text.Version, cancel, Document.Checking()));
     }
 
     /// <summary>Checks the text again once typing (or another program's writes) pauses.</summary>
@@ -400,7 +402,7 @@ internal abstract class EngineCheck : IDisposable
         {
             Document.InlayHints = found.Hints;
         }
-        Faults = [.. found.Findings.Where(f => f is { Range: not null, Fixes: not null }).Select(f => (f.Range!.Value, f.Fixes!))];
+        faults.Set(Document.Text, [.. found.Findings.Where(f => f is { Range: not null, Fixes: not null }).Select(f => (f.Range!.Value, f.Fixes!))]);
         if (found.Gaps.Count != Gaps.Count || found.Gaps.Zip(Gaps).Any(g => !g.First.Same(g.Second)))
         {
             Gaps = found.Gaps;
@@ -417,10 +419,6 @@ internal abstract class EngineCheck : IDisposable
     private void OnChanged(object? sender, DocumentChangedEventArgs e)
     {
         // The hints move with the text itself (OpenDocument.InlayHints), a value's before what is typed at it.
-        if (Faults.Count > 0)
-        {
-            Faults = [.. Faults.Select(f => (TextEditing.MapRange(f.Range, e.Edits), f.Fixes))];
-        }
         if (AsTyped)
         {
             Later();
@@ -450,7 +448,7 @@ internal abstract class EngineCheck : IDisposable
             Document.InlayHints = [];
         }
         Problems = [];
-        Faults = [];
+        faults.Clear();
         Gaps = [];
     }
 
@@ -640,6 +638,7 @@ internal sealed class DockerfileCheck(EngineChecks owner, OpenDocument document,
 /// through the Dockerfiles it opens.</summary>
 public static class BuildKitChecks
 {
+    [IdentifierHome]
     public const string Variable = "PASSENGER_BUILDKIT_CHECKS";
 
     /// <summary>The setting's default; a value of the variable other than <c>off</c> or <c>on</c> is fatal as the IDE starts.</summary>

@@ -22,6 +22,10 @@ public sealed class VsTestRunner : ITestRunner
 {
     private const string RunSettings = "<RunSettings><RunConfiguration><DesignMode>true</DesignMode></RunConfiguration></RunSettings>";
 
+    /// <summary>Names a file for VSTest's own diagnostic log, for a run that goes wrong inside it.</summary>
+    [IdentifierHome]
+    public const string LogVariable = "PASSENGER_VSTEST_LOG";
+
     /// <summary>The translation layer's constructor that names the dotnet running vstest.console.dll: the public ones run
     /// the .dll under this process's own executable, which is right inside dotnet and wrong under Passenger's apphost (it
     /// would start Passenger again). It is internal to the package version pinned, so a version without it fails every
@@ -63,8 +67,7 @@ public sealed class VsTestRunner : ITestRunner
         {
             InheritEnvironmentVariables = true,
         };
-        // PASSENGER_VSTEST_LOG=FILE keeps VSTest's own diagnostic log, for a run that goes wrong inside it.
-        if (Environment.GetEnvironmentVariable("PASSENGER_VSTEST_LOG") is { Length: > 0 } logFile)
+        if (Environment.GetEnvironmentVariable(LogVariable) is { Length: > 0 } logFile)
         {
             parameters.LogFilePath = logFile;
             parameters.TraceLevel = TraceLevel.Verbose;
@@ -79,7 +82,7 @@ public sealed class VsTestRunner : ITestRunner
         if (cancellation.IsCancellationRequested)
         {
             // Stopped while it started: it ends now, rather than run idle until the IDE does.
-            _ = Task.Run(runner.Dispose);
+            IdeErrors.Observe(Task.Run(runner.Dispose));
             cancellation.ThrowIfCancellationRequested();
         }
         return runner;
@@ -94,7 +97,7 @@ public sealed class VsTestRunner : ITestRunner
         Discovery handler = new(log);
         // The blocking call returns once VSTest has told the handler discovery is complete, stopped or not.
         Task discovering = BackgroundWork.Run(() => console.DiscoverTests([.. assemblies.Select(a => a.Path)], RunSettings, new TestPlatformOptions(), handler));
-        using (cancel.Register(() => Task.Run(console.CancelDiscovery)))
+        using (cancel.Register(() => IdeErrors.Observe(Task.Run(console.CancelDiscovery))))
         {
             try
             {
@@ -139,7 +142,7 @@ public sealed class VsTestRunner : ITestRunner
             }
         }
         Run handler = new(running, outcomes, log);
-        using (cancel.Register(() => Task.Run(console.CancelTestRun)))
+        using (cancel.Register(() => IdeErrors.Observe(Task.Run(console.CancelTestRun))))
         {
             // Not held: a debugged run waits here while stopped at a breakpoint.
             await Told(Task.Run(() =>

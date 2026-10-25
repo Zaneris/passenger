@@ -183,7 +183,7 @@ public sealed class CellGrid : Control
         switch (action)
         {
             case EditorActions.Copy:
-                _ = Copy();
+                IdeErrors.Observe(Copy());
                 return true;
             case EditorActions.SelectAll when table is not null:
                 Choose((0, 0), (table.RowCount - 1, table.ColumnCount - 1));
@@ -416,7 +416,7 @@ public sealed class CellGrid : Control
         {
             return;
         }
-        KeyModifiers command = OperatingSystem.IsMacOS() ? KeyModifiers.Meta : KeyModifiers.Control;
+        KeyModifiers command = Keystroke.Command;
         bool far = e.KeyModifiers.HasFlag(command);
         bool extend = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
         int page = Math.Max(1, (int)(Body.Height / RowHeight) - 1);
@@ -695,20 +695,20 @@ public sealed class CellGrid : Control
             IBrush Brush(string key) =>
                 control.TryFindResource(key, control.ActualThemeVariant, out object? found) && found is IBrush brush ? brush : Brushes.Transparent;
             return new Palette(
-                Brush("Passenger.Editor.Background"),
-                Brush("Passenger.Editor.Text"),
-                Brush("Passenger.Syntax.Number"),
-                Brush("Passenger.Panel"),
-                Brush("Passenger.Editor.Text"),
-                Brush("Passenger.Hover"),
-                Brush("Passenger.Editor.LineNumber"),
-                Brush("Passenger.Separator"),
-                Brush("Passenger.Divider"),
-                Brush("Passenger.Editor.Selection"),
-                Brush("Passenger.Editor.SelectionInactive"),
-                Brush("Passenger.Editor.SearchMatch"),
-                Brush("Passenger.Editor.SearchCurrent"),
-                new Pen(Brush("Passenger.Accent"), 1));
+                Brush(TokenKeys.Editor_Background),
+                Brush(TokenKeys.Editor_Text),
+                Brush(TokenKeys.Syntax_Number),
+                Brush(TokenKeys.Panel),
+                Brush(TokenKeys.Editor_Text),
+                Brush(TokenKeys.Hover),
+                Brush(TokenKeys.Editor_LineNumber),
+                Brush(TokenKeys.Separator),
+                Brush(TokenKeys.Divider),
+                Brush(TokenKeys.Editor_Selection),
+                Brush(TokenKeys.Editor_SelectionInactive),
+                Brush(TokenKeys.Editor_SearchMatch),
+                Brush(TokenKeys.Editor_SearchCurrent),
+                new Pen(Brush(TokenKeys.Accent), 1));
         }
     }
 }

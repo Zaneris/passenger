@@ -13,18 +13,18 @@ public static class FileIcons
         ? Find<Geometry>($"FileIcon.{look.Shape}")
         : Find<Geometry>(node.Kind switch
         {
-            NodeKind.SolutionFolder => node.IsExpanded ? "Icon.SolutionFolderOpen" : "Icon.SolutionFolder",
-            NodeKind.Framework => "Icon.Reference",
-            _ => node.IsExpanded ? "Icon.FolderOpen" : "Icon.Explorer",
+            NodeKind.SolutionFolder => node.IsExpanded ? IconKeys.SolutionFolderOpen : IconKeys.SolutionFolder,
+            NodeKind.Framework => IconKeys.Reference,
+            _ => node.IsExpanded ? IconKeys.FolderOpen : IconKeys.Explorer,
         });
 
     public static IBrush BrushFor(ExplorerNode node) => Look(node) is { } look
         ? Tint(look)
         : Find<IBrush>(node.Kind switch
         {
-            NodeKind.SolutionFolder => "Passenger.File.SolutionFolder",
-            NodeKind.Framework => "Passenger.File.Plain",
-            _ => "Passenger.File.Folder",
+            NodeKind.SolutionFolder => TokenKeys.File_SolutionFolder,
+            NodeKind.Framework => TokenKeys.File_Plain,
+            _ => TokenKeys.File_Folder,
         });
 
     public static Geometry ForFile(string path) => Find<Geometry>($"FileIcon.{FileIconSet.ForFile(Path.GetFileName(path)).Shape}");
@@ -42,7 +42,7 @@ public static class FileIcons
         _ => FileIconSet.ForFile(Path.GetFileName(node.Path ?? node.Name)),
     };
 
-    private static IBrush Tint(FileIconLook look) => Find<IBrush>(look.Colour is { } colour ? $"Passenger.FileIcon.{colour}" : "Passenger.File.Plain");
+    private static IBrush Tint(FileIconLook look) => Find<IBrush>(look.Colour is { } colour ? $"Passenger.FileIcon.{colour}" : TokenKeys.File_Plain);
 
     private static T Find<T>(string key) where T : class =>
         Application.Current is { } app && app.TryFindResource(key, app.ActualThemeVariant, out object? value) && value is T found

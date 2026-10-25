@@ -10,6 +10,7 @@ using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.App.Containers;
 
@@ -265,8 +266,24 @@ public static class ContainerPlans
         // Each port Passenger pins is chosen once for the plan: every override it writes after (a hold, a restart) keeps it.
         Dictionary<(string Service, int Port), int> pinned = [];
         async Task WriteOverride(IReadOnlyList<DotnetService> now, IReadOnlyCollection<string> held, IReadOnlyCollection<string> modifiable, DevelopmentCertificate.Exported? certificate,
-            CancellationToken stop) =>
-            WriteJson(overrideFile, await OverrideAsync(model, projectName, now, mode, labels, projects, state, pin ? pinned : null, held, modifiable, certificate, keepId, telemetry, stop), overriding: true);
+            CancellationToken stop)
+        {
+            Dictionary<string, IReadOnlyDictionary<string, string>> images = [];
+            WriteJson(overrideFile, await OverrideAsync(model, projectName, now, mode, labels, projects, state, pin ? pinned : null, held, modifiable, certificate, keepId, telemetry,
+                images, stop), overriding: true);
+            // A hold is its image's to refuse too, read as the override just written builds it: one its image turns off goes unheld.
+            List<ComposeService> holding = [.. model.Services.Where(s => held.Contains(s.Name) && now.Any(d => d.Service == s.Name && d.Starts))];
+            if (holding.Count == 0)
+            {
+                return;
+            }
+            images = await ImageEnvironmentsAsync(engine, compose, runsIn, holding, projectName, mode, stop);
+            if (holding.Any(s => HeldStart.DebuggerOff(Started(s, images)) is not null))
+            {
+                WriteJson(overrideFile, await OverrideAsync(model, projectName, now, mode, labels, projects, state, pin ? pinned : null, held, modifiable, certificate, keepId,
+                    telemetry, images, stop), overriding: true);
+            }
+        }
         if (mode == ContainerMode.Images || dotnet.Count == 0)
         {
             await WriteOverride(dotnet, [], [], null, cancel);
@@ -507,7 +524,8 @@ public static class ContainerPlans
     /// they serve; a service held for the debugger started held (its debugger on), its code open to Hot Reload. JSON, read as YAML.</summary>
     private static async Task<JsonObject> OverrideAsync(ComposeModel model, string project, IReadOnlyList<DotnetService> dotnet, ContainerMode mode, IReadOnlyList<string> labels,
         IReadOnlyList<ProjectModel> projects, string state, Dictionary<(string Service, int Port), int>? pinned, IReadOnlyCollection<string> held,
-        IReadOnlyCollection<string> modifiable, DevelopmentCertificate.Exported? certificate, bool keepId, ContainerTelemetry? telemetry, CancellationToken cancel)
+        IReadOnlyCollection<string> modifiable, DevelopmentCertificate.Exported? certificate, bool keepId, ContainerTelemetry? telemetry,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> images, CancellationToken cancel)
     {
         JsonObject services = [];
         HashSet<string> heard = new(StringComparer.Ordinal);
@@ -521,7 +539,7 @@ public static class ContainerPlans
                 // Built again with Passenger's labels, never under the image name its files give, which stays the person's.
                 if (mode == ContainerMode.Images)
                 {
-                    entry["image"] = $"{project}-{service.Name}:passenger";
+                    entry["image"] = ImageOf(service, project, mode);
                     entry["pull_policy"] = "build";
                 }
             }
@@ -540,7 +558,7 @@ public static class ContainerPlans
                         {
                             build["target"] = stage;
                         }
-                        entry["image"] = $"{project}-{service.Name}:passenger-fast";
+                        entry["image"] = ImageOf(service, project, mode);
                         entry["pull_policy"] = "build";
                     }
                     entry["entrypoint"] = new JsonArray("dotnet", $"{AppFolder}/{built.Assembly}.dll");
@@ -583,7 +601,7 @@ public static class ContainerPlans
                     }
                 }
                 // Held until what attaches lets it go, never where nothing can; the profiler's gets no changeable code to measure.
-                if (held.Contains(service.Name) && HeldStart.DebuggerOff(name => service.Environment.GetValueOrDefault(name)) is null)
+                if (held.Contains(service.Name) && HeldStart.DebuggerOff(Started(service, images)) is null)
                 {
                     foreach ((string name, string value) in HeldStart.Variables(changeable: modifiable.Contains(service.Name)))
                     {
@@ -641,6 +659,71 @@ public static class ContainerPlans
         }
         return made;
     }
+
+    /// <summary>The image a service runs: one built from its folder under Passenger's own tag for the mode, else the one it names.</summary>
+    private static string? ImageOf(ComposeService service, string project, ContainerMode mode) =>
+        service.Context is null ? service.Image : mode == ContainerMode.Images ? $"{project}-{service.Name}:passenger" : $"{project}-{service.Name}:passenger-fast";
+
+    /// <summary>A variable of a service's runtime as its container starts it: Compose's environment's, else its image's own.</summary>
+    private static Func<string, string?> Started(ComposeService service, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> images) =>
+        name => service.Environment.TryGetValue(name, out string? set) ? set : images.GetValueOrDefault(service.Name)?.GetValueOrDefault(name);
+
+    /// <summary>The environment each service's image gives its runtime (<c>docker image inspect</c>'s Config.Env), one built
+    /// from its folder built first as <c>up</c> builds it. A service whose image is not here (its build failed, which
+    /// <c>up</c> then says, or one only pulled that <c>up</c> is yet to pull) is left out, its environment Compose's alone.</summary>
+    private static async Task<Dictionary<string, IReadOnlyDictionary<string, string>>> ImageEnvironmentsAsync(ContainerEngine engine, IReadOnlyList<string> compose,
+        string folder, IReadOnlyList<ComposeService> services, string project, ContainerMode mode, CancellationToken cancel)
+    {
+        Dictionary<string, IReadOnlyDictionary<string, string>> read = new(StringComparer.Ordinal);
+        string[] built = [.. services.Where(s => s.Context is not null).Select(s => s.Name)];
+        try
+        {
+            if (built.Length > 0)
+            {
+                await engine.RunAsync([.. compose, "build", "--", .. built], ImageLimit, cancel, folder);
+            }
+        }
+        catch (TimeoutException)
+        {
+            // Still building after its limit: up builds it again, saying what it does, and the image there now is read.
+        }
+        foreach (ComposeService service in services)
+        {
+            if (ImageOf(service, project, mode) is { } image && await EnvironmentAsync(image) is { } variables)
+            {
+                read[service.Name] = variables;
+            }
+        }
+        return read;
+
+        async Task<Dictionary<string, string>?> EnvironmentAsync(string image)
+        {
+            JsonElement described;
+            try
+            {
+                described = await engine.JsonAsync(["image", "inspect", image], cancel);
+            }
+            catch (Exception unread) when (unread is ContainerCommandException or JsonException or TimeoutException)
+            {
+                return null;
+            }
+            if (described.ValueKind != JsonValueKind.Array || described.GetArrayLength() == 0 || !described[0].TryGetProperty("Config", out JsonElement config)
+                || config.ValueKind != JsonValueKind.Object || !config.TryGetProperty("Env", out JsonElement environment) || environment.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+            Dictionary<string, string> variables = new(StringComparer.Ordinal);
+            foreach (string[] pair in environment.EnumerateArray().Select(e => e.ValueKind == JsonValueKind.String ? e.GetString()?.Split('=', 2) : null).OfType<string[]>()
+                .Where(p => p.Length == 2))
+            {
+                variables[pair[0]] = pair[1];
+            }
+            return variables;
+        }
+    }
+
+    /// <summary>How long a service's image may take to build before its hold is read without it.</summary>
+    private static readonly TimeSpan ImageLimit = TimeSpan.FromMinutes(15);
 
     /// <summary>Where the container finds an ASP.NET Core app's static web assets in Development, which its build's manifest
     /// names by the host's folders (wwwroot, obj's, packages'): each folder mounted under /passenger/assets, and the manifest
@@ -1207,7 +1290,7 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
             }
             watching = started;
             Task pumped = Task.WhenAll(console.PumpAsync(started.StandardOutput, ConsoleStream.Output), console.PumpAsync(started.StandardError, ConsoleStream.Output));
-            _ = Ended();
+            IdeErrors.Observe(Ended());
 
             // A watch that ends while the run lasts says so, rather than leaving its files unsynced unsaid.
             async Task Ended()

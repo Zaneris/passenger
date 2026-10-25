@@ -112,7 +112,7 @@ public sealed class TestGutter
     {
         if (files.TryGetValue(document, out Declared? file))
         {
-            _ = ReadAsync(document, file, ++file.Asked, parsed);
+            IdeErrors.Observe(ReadAsync(document, file, ++file.Asked, parsed));
         }
     }
 

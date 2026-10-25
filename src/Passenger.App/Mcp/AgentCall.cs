@@ -12,6 +12,7 @@ namespace Passenger.App.Mcp;
 public sealed class AgentCall : IAsyncDisposable
 {
     /// <summary>The variable that gives <see cref="Every"/> in milliseconds.</summary>
+    [IdentifierHome]
     public const string EveryVariable = "PASSENGER_MCP_PROGRESS_MS";
 
     /// <summary>The call the flow serves, so a tool's own code reaches it however deep (the dispatcher flows it too).</summary>
@@ -112,7 +113,7 @@ public sealed class AgentCall : IAsyncDisposable
         waitingOn = onWhat;
         Log($"waiting: {onWhat}");
         // Not held, and never on the caller's thread (the window's): it changes nothing drawn, and the agent's pipe may be slow.
-        _ = Task.Run(() => TellAsync());
+        IdeErrors.Observe(Task.Run(() => TellAsync()));
     }
 
     /// <summary>The wait is over, with what it came to.</summary>
@@ -136,7 +137,7 @@ public sealed class AgentCall : IAsyncDisposable
         {
             heard = message;
         }
-        _ = TellAsync(message);
+        IdeErrors.Observe(TellAsync(message));
     }
 
     /// <summary>How the call ended, logged: answered, an error, given up by the agent, failed.</summary>

@@ -3,6 +3,8 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 using Passenger.Editor;
+using Passenger.Text;
+using Passenger.Vcs;
 
 namespace Passenger.App.Vcs;
 
@@ -21,7 +23,7 @@ public sealed class DiffStrip(Func<IEnumerable<DiffBand>> bands, MergeSide iconS
 
     public override void Render(DrawingContext context)
     {
-        context.FillRectangle(Find("Passenger.Editor.Background"), new Rect(Bounds.Size));
+        context.FillRectangle(Find(TokenKeys.Editor_Background), new Rect(Bounds.Size));
         double width = Bounds.Width;
         foreach (DiffBand band in bands())
         {
@@ -31,10 +33,10 @@ public sealed class DiffStrip(Func<IEnumerable<DiffBand>> bands, MergeSide iconS
             }
             (string tint, string edge) = band.Kind switch
             {
-                ChangeMarkKind.Conflict => ("Passenger.Diff.Conflict", "Passenger.Vcs.Conflict"),
-                ChangeMarkKind.Added => ("Passenger.Diff.Added", "Passenger.Vcs.Added"),
-                ChangeMarkKind.Deleted => ("Passenger.Diff.Deleted", "Passenger.Vcs.Deleted"),
-                _ => ("Passenger.Diff.Modified", "Passenger.Vcs.Modified"),
+                ChangeMarkKind.Conflict => (TokenKeys.Diff_Conflict, TokenKeys.Vcs_Conflict),
+                ChangeMarkKind.Added => (TokenKeys.Diff_Added, TokenKeys.Vcs_Added),
+                ChangeMarkKind.Deleted => (TokenKeys.Diff_Deleted, TokenKeys.Vcs_Deleted),
+                _ => (TokenKeys.Diff_Modified, TokenKeys.Vcs_Modified),
             };
             StreamGeometry shape = new();
             using (StreamGeometryContext path = shape.Open())

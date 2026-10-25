@@ -11,6 +11,7 @@ using Passenger.App.Vcs;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
+using Passenger.Vcs;
 
 namespace Passenger.Tests;
 
@@ -208,9 +209,7 @@ public sealed class HistoryTests : IDisposable
 
     private MainWindow Open(string? file)
     {
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder);
         if (file is not null)
         {
             window.OpenFile(Path.Combine(folder, file));
@@ -243,12 +242,7 @@ public sealed class HistoryTests : IDisposable
 
     private string Full(string relative) => PathNames.Canonical(Path.Combine(folder, relative));
 
-    private void Write(string relative, string text)
-    {
-        string path = Path.Combine(folder, relative);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, text);
-    }
+    private void Write(string relative, string text) => TestFolders.Write(folder, relative, text);
 
     private string Git(params string[] arguments) => TestGit.Run(folder, arguments);
 }

@@ -5,6 +5,7 @@ using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
+using Passenger.Vcs;
 
 namespace Passenger.App;
 
@@ -16,13 +17,13 @@ public partial class MainWindow
 {
     private void AddHistoryActions()
     {
-        Add(AppActions.CompareWithRevision, "Compare with Revision…", context => _ = ShowCompareWithRevisionAsync(Target(context, fileOnly: true)!), 3, fileOnly: true);
-        Add(AppActions.CompareWithBranch, "Compare with Branch or Tag…", context => _ = ShowCompareWithBranchAsync(Target(context, fileOnly: true)!), 4, fileOnly: true);
-        Add(AppActions.ShowHistory, "Show History", context => _ = ShowHistoryAsync(Target(context, fileOnly: false)!), 5, fileOnly: false);
+        Add(AppActions.CompareWithRevision, "Compare with Revision…", context => IdeErrors.Observe(ShowCompareWithRevisionAsync(Target(context, fileOnly: true)!)), 3, fileOnly: true);
+        Add(AppActions.CompareWithBranch, "Compare with Branch or Tag…", context => IdeErrors.Observe(ShowCompareWithBranchAsync(Target(context, fileOnly: true)!)), 4, fileOnly: true);
+        Add(AppActions.ShowHistory, "Show History", context => IdeErrors.Observe(ShowHistoryAsync(Target(context, fileOnly: false)!)), 5, fileOnly: false);
         actions!.Add(new IdeAction(AppActions.ShowHistoryForSelection, "Show History for Selection…", "Git", context =>
         {
             (int first, int last) = SelectedLines(context.Editor);
-            _ = ShowSelectionHistoryAsync(context.File!.Path, first, last);
+            IdeErrors.Observe(ShowSelectionHistoryAsync(context.File!.Path, first, last));
         })
         {
             WhyNot = context => NeedsFolder(context) ?? (session.Vcs.Repository is null ? Refusals.NoRepository : Refusals.NeedsFile(context)),
@@ -177,7 +178,7 @@ public partial class MainWindow
         {
             if (chosen?.Value is GitRef named)
             {
-                _ = CompareWithAsync(path, named.FullName, named.Name, path);
+                IdeErrors.Observe(CompareWithAsync(path, named.FullName, named.Name, path));
             }
         });
         return popup;
@@ -199,7 +200,7 @@ public partial class MainWindow
         {
             if (chosen?.Value is HistoryCommit revision)
             {
-                _ = CompareWithAsync(path, revision.Commit.Hash, revision.Commit.Short, revision.Changes.FirstOrDefault()?.Path ?? path);
+                IdeErrors.Observe(CompareWithAsync(path, revision.Commit.Hash, revision.Commit.Short, revision.Changes.FirstOrDefault()?.Path ?? path));
             }
         });
         return popup;

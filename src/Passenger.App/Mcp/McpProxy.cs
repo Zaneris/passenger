@@ -23,10 +23,12 @@ public sealed class McpProxy
 {
     /// <summary><c>headless</c> has a call with no window start this build headless, as its own child, in the state
     /// PASSENGER_SETTINGS names, never the person's installed Passenger.</summary>
+    [IdentifierHome]
     public const string StartVariable = "PASSENGER_START";
 
     /// <summary>What the proxy tells a Passenger it starts for an agent (<c>agent</c>), which takes it out of its own
     /// environment as it starts, so nothing it runs inherits it.</summary>
+    [IdentifierHome]
     public const string StartedForVariable = "PASSENGER_STARTED_FOR";
 
     /// <summary>Whether an agent's --mcp-attach started this Passenger, to open a folder for it: its window shows the person
@@ -178,7 +180,7 @@ public sealed class McpProxy
         }
         call.Logged("forwarded to the window");
         AgentCall.Say($"Waiting for the Passenger window on {here} to answer");
-        bool opens = tool == "open";
+        bool opens = tool == McpTools.Open;
         if (opens)
         {
             Interlocked.Increment(ref opening);
@@ -330,9 +332,14 @@ public sealed class McpProxy
             (NetworkStream stream, string socket) = await ConnectAsync(joiningCancel) ?? await StartAsync(call, joiningCancel);
             try
             {
-                // The agent's own name, which the window shows the person when it asks.
-                joined = await McpClient.CreateAsync(PeerTransport.Of(new StreamClientTransport(stream, stream)),
-                    new McpClientOptions { ClientInfo = agent ?? new Implementation { Name = "An agent", Version = "0" }, ProtocolVersion = protocol }, cancellationToken: joiningCancel);
+                joined = await McpClient.CreateAsync(PeerTransport.Of(new StreamClientTransport(stream, stream)), new McpClientOptions
+                {
+                    // The agent's own name, which the window shows the person when it asks.
+                    ClientInfo = agent ?? new Implementation { Name = "An agent", Version = "0" },
+                    ProtocolVersion = protocol,
+                    // This build's own server always answers the latest version's probe, so it is waited for, never given up on.
+                    DiscoverProbeTimeout = Timeout.InfiniteTimeSpan,
+                }, cancellationToken: joiningCancel);
                 joined.RegisterNotificationHandler(NotificationMethods.ProgressNotification, Heard);
                 joinedSocket = stream.Socket;
                 joinedPath = socket;
@@ -493,8 +500,8 @@ public sealed class McpProxy
             start.RedirectStandardOutput = true;
             start.RedirectStandardError = true;
             headless = ChildProcesses.Start(start);
-            _ = headless.StandardOutput.BaseStream.CopyToAsync(Stream.Null, CancellationToken.None);
-            _ = headless.StandardError.BaseStream.CopyToAsync(Stream.Null, CancellationToken.None);
+            IdeErrors.Observe(headless.StandardOutput.BaseStream.CopyToAsync(Stream.Null, CancellationToken.None));
+            IdeErrors.Observe(headless.StandardError.BaseStream.CopyToAsync(Stream.Null, CancellationToken.None));
             return;
         }
         if (OperatingSystem.IsMacOS() && Bundle(self) is { } app)

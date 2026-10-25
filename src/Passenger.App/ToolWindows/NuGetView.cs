@@ -6,9 +6,10 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Passenger.App.Packages;
-using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Packages;
+using Passenger.Workspace;
 
 namespace Passenger.App.ToolWindows;
 
@@ -65,17 +66,17 @@ public sealed class NuGetView : DockPanel
         {
             if (!choosing)
             {
-                _ = RefreshAsync();
+                IdeErrors.Observe(RefreshAsync());
             }
         };
         prerelease = new CheckBox { Content = "Prerelease", VerticalAlignment = VerticalAlignment.Center };
         status = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0), TextTrimming = TextTrimming.CharacterEllipsis };
         status.Classes.Add("muted");
-        Button refresh = ToolButtons.Of("Icon.Rerun", "Refresh", () => _ = ReloadSourcesAsync());
+        Button refresh = ToolButtons.Of(IconKeys.Rerun, "Refresh", () => IdeErrors.Observe(ReloadSourcesAsync()));
         refresh.Margin = new Thickness(6, 0, 0, 0);
         typing = new Debounce(Pause, RefreshAsync);
         search.TextChanged += (_, _) => typing.Restart();
-        prerelease.IsCheckedChanged += (_, _) => _ = RefreshAsync();
+        prerelease.IsCheckedChanged += (_, _) => IdeErrors.Observe(RefreshAsync());
         // In a narrow window the search and the count give way, so the feed chooser, Prerelease and Refresh keep their room.
         Grid row = new() { ColumnDefinitions = new ColumnDefinitions("3*,Auto,Auto,Auto,2*"), VerticalAlignment = VerticalAlignment.Center };
         row.ColumnDefinitions[0].MaxWidth = 276;
@@ -92,7 +93,7 @@ public sealed class NuGetView : DockPanel
             Classes = { "tree" },
             ItemTemplate = new FuncDataTemplate<PackageRow>((row, _) => row is null ? new TextBlock() : Row(row), supportsRecycling: false),
         };
-        list.SelectionChanged += (_, _) => _ = ShowAsync();
+        list.SelectionChanged += (_, _) => IdeErrors.Observe(ShowAsync());
         details = new StackPanel { Spacing = 8, Margin = new Thickness(14, 10) };
         log = new TextBox
         {
@@ -106,7 +107,7 @@ public sealed class NuGetView : DockPanel
             IsVisible = false,
             [DockProperty] = Dock.Bottom,
         };
-        log.Bind(TextBox.BorderBrushProperty, log.GetResourceObservable("Passenger.Divider"));
+        log.Bind(TextBox.BorderBrushProperty, log.GetResourceObservable(TokenKeys.Divider));
         DockPanel right = new();
         right.Children.Add(log);
         right.Children.Add(new ScrollViewer { Content = details });
@@ -125,7 +126,7 @@ public sealed class NuGetView : DockPanel
         Follow(model);
         AttachedToVisualTree += (_, _) =>
         {
-            _ = Shown();
+            IdeErrors.Observe(Shown());
             Dispatcher.UIThread.Post(() => search.Focus(), DispatcherPriority.Loaded);
         };
     }
@@ -150,7 +151,7 @@ public sealed class NuGetView : DockPanel
         Follow(next);
         if (next.Sources == PackageSourceSet.None && read)
         {
-            _ = ReloadSourcesAsync(list: false);
+            IdeErrors.Observe(ReloadSourcesAsync(list: false));
         }
     }
 
@@ -180,7 +181,7 @@ public sealed class NuGetView : DockPanel
     private void OnChanged(object? sender, PackageOutcome outcome)
     {
         status.Text = outcome.Done ? "Done" : "The change failed; the log says why";
-        _ = RefreshAsync();
+        IdeErrors.Observe(RefreshAsync());
     }
 
     /// <summary>An advisory's link clicked, for the browser.</summary>
@@ -245,7 +246,7 @@ public sealed class NuGetView : DockPanel
     public void ShowSources()
     {
         Show(Sources);
-        _ = ReloadSourcesAsync(list: false);
+        IdeErrors.Observe(ReloadSourcesAsync(list: false));
     }
 
     /// <summary>Reads the folder's nuget.config files again (after one changed, here or on disk), keeping the feed chosen
@@ -254,7 +255,8 @@ public sealed class NuGetView : DockPanel
     {
         // Held to the list shown next, so a screenshot waits for it rather than for the sources alone.
         using IDisposable held = BackgroundWork.Scope();
-        if (await model.ReloadSourcesAsync() && list)
+        // Sources read with no folder open are never current, so listing then would read them again without end.
+        if (await model.ReloadSourcesAsync() && list && model.IsCurrent)
         {
             await RefreshAsync();
         }
@@ -559,8 +561,8 @@ public sealed class NuGetView : DockPanel
     private Border Vulnerability(IReadOnlyList<Advisory> advisories, string version, string? fix)
     {
         PathIcon warning = new() { Width = 14, Height = 14, Margin = new Thickness(0, 1, 8, 0), VerticalAlignment = VerticalAlignment.Top, [DockProperty] = Dock.Left };
-        warning.Bind(PathIcon.DataProperty, warning.GetResourceObservable("Icon.Problems"));
-        warning.Bind(PathIcon.ForegroundProperty, warning.GetResourceObservable("Passenger.Warning"));
+        warning.Bind(PathIcon.DataProperty, warning.GetResourceObservable(IconKeys.Problems));
+        warning.Bind(PathIcon.ForegroundProperty, warning.GetResourceObservable(TokenKeys.Warning));
         StackPanel said = new() { Spacing = 4 };
         said.Children.Add(new TextBlock
         {
@@ -596,7 +598,7 @@ public sealed class NuGetView : DockPanel
             Padding = new Thickness(10, 8),
             Child = new DockPanel { Children = { warning, said } },
         };
-        block.Bind(Border.BackgroundProperty, block.GetResourceObservable("Passenger.Banner"));
+        block.Bind(Border.BackgroundProperty, block.GetResourceObservable(TokenKeys.Banner));
         return block;
     }
 
@@ -613,7 +615,7 @@ public sealed class NuGetView : DockPanel
             bool has = row.Installed.TryGetValue(project.Path, out string? at);
             IReadOnlyList<Advisory> affecting = at is null ? [] : Known.Of(row.Id, at);
             TextBlock version = new() { Text = has ? at ?? "installed" : string.Empty, Width = 110, VerticalAlignment = VerticalAlignment.Center };
-            version.Bind(TextBlock.ForegroundProperty, version.GetResourceObservable(affecting.Count > 0 ? "Passenger.Warning" : "Passenger.TextMuted"));
+            version.Bind(TextBlock.ForegroundProperty, version.GetResourceObservable(affecting.Count > 0 ? TokenKeys.Warning : TokenKeys.TextMuted));
             // A slot of its own, so the buttons stand in one column whichever lines have the mark.
             Panel mark = new() { Width = 14, VerticalAlignment = VerticalAlignment.Center };
             if (affecting.Count > 0)
@@ -645,7 +647,7 @@ public sealed class NuGetView : DockPanel
     private Button Action(string label, Func<Task<bool>> run)
     {
         Button button = new() { Content = label, IsEnabled = !model.IsBusy };
-        button.Click += (_, _) => _ = run();
+        button.Click += (_, _) => IdeErrors.Observe(run());
         return button;
     }
 
@@ -654,7 +656,7 @@ public sealed class NuGetView : DockPanel
         TextBlock version = new() { Text = row.Version, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
         version.Classes.Add("muted");
         PathIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(6, 0, 6, 0) };
-        icon.Bind(PathIcon.DataProperty, icon.GetResourceObservable("Icon.Package"));
+        icon.Bind(PathIcon.DataProperty, icon.GetResourceObservable(IconKeys.Package));
         StackPanel line = new()
         {
             Orientation = Orientation.Horizontal,
@@ -678,8 +680,8 @@ public sealed class NuGetView : DockPanel
     private static PathIcon Warning(string tip)
     {
         PathIcon warning = new() { Width = 12, Height = 12, VerticalAlignment = VerticalAlignment.Center };
-        warning.Bind(PathIcon.DataProperty, warning.GetResourceObservable("Icon.Problems"));
-        warning.Bind(PathIcon.ForegroundProperty, warning.GetResourceObservable("Passenger.Warning"));
+        warning.Bind(PathIcon.DataProperty, warning.GetResourceObservable(IconKeys.Problems));
+        warning.Bind(PathIcon.ForegroundProperty, warning.GetResourceObservable(TokenKeys.Warning));
         ToolTip.SetTip(warning, tip);
         return warning;
     }

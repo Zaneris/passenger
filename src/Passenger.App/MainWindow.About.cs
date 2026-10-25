@@ -17,7 +17,7 @@ public partial class MainWindow
     public AboutDialog ShowAbout()
     {
         AboutDialog dialog = new(path => OpenFile(path));
-        _ = dialog.ShowDialog(this);
+        IdeErrors.Observe(dialog.ShowDialog(this));
         return dialog;
     }
 

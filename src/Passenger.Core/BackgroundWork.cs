@@ -122,7 +122,7 @@ public static class BackgroundWork
         Action<Action> landing = toUiThread
             ?? throw new InvalidOperationException("BackgroundWork.Track needs the UI thread's post, which the app gives as it starts (BackgroundWork.Install)");
         IDisposable held = Scope(file, line);
-        _ = task.ContinueWith(_ => landing(held.Dispose), TaskScheduler.Default);
+        UnawaitedWork.Observe(task.ContinueWith(_ => landing(held.Dispose), TaskScheduler.Default));
     }
 
     /// <summary>Gives <see cref="Track"/> the way onto the UI thread, which only the app knows: what it is given runs

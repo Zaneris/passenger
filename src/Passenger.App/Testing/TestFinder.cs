@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Workspace;
 
 namespace Passenger.App.Testing;
 
@@ -158,7 +159,7 @@ public sealed class TestFinder
         IReadOnlyList<ProjectModel> others = every;
         long began = Stopwatch.GetTimestamp();
         listings++;
-        _ = ReadAsync();
+        IdeErrors.Observe(ReadAsync());
 
         async Task ReadAsync()
         {

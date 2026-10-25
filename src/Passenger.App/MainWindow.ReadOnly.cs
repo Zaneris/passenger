@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Passenger.App.Workspace;
+using Passenger.Text;
 
 namespace Passenger.App;
 
@@ -30,7 +31,7 @@ public partial class MainWindow
             modified = document.IsModified;
             if (modified && !was && !document.IsReadOnly && FileText.IsReadOnly(document.Path))
             {
-                _ = MakeWritableAsync([document]);
+                IdeErrors.Observe(MakeWritableAsync([document]));
             }
         };
     };

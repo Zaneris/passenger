@@ -69,7 +69,7 @@ public sealed partial class PassengerTools
                 ? new ServerServed(document, LanguageOf(document), server, web)
                 : throw new InvalidOperationException(languages.Unready("Its code help", document));
         }
-        if (document.Language.Name is "C#" or "Razor")
+        if (document.Language.Service == Languages.LanguageService.CSharp)
         {
             (_, LspDocument lsp) = await Code(path, cancel);
             return new ServerServed(document, document.Language.Name, lsp);
@@ -130,32 +130,23 @@ public sealed partial class PassengerTools
 
     /// <summary>A file's language as the tools name it: XAML, MSBuild and the web languages by what reads them, the rest as
     /// the editor names them.</summary>
-    private static string LanguageOf(OpenDocument document) =>
-        XamlService.IsXaml(document.Path) ? "XAML"
-        : MSBuild.MSBuildFiles.Is(document.Path) ? "MSBuild"
-        : WebLanguages.LanguageOf(document.Path)?.LanguageId switch
-        {
-            "typescript" or "typescriptreact" => "TypeScript",
-            "javascript" or "javascriptreact" => "JavaScript",
-            "html" => "HTML",
-            "css" => "CSS",
-            "scss" => "SCSS",
-            "less" => "Less",
-            "json" or "jsonc" => "JSON",
-            "dockerfile" => "Dockerfile",
-            "yaml" => "YAML",
-            _ => document.Language.Name,
-        };
+    private static string LanguageOf(OpenDocument document) => Languages.Language.ForPath(document.Path) switch
+    {
+        { Service: Languages.LanguageService.Xaml } => "XAML",
+        { Service: Languages.LanguageService.MSBuild } => "MSBuild",
+        { Service: not (Languages.LanguageService.None or Languages.LanguageService.CSharp) } web => web.Name,
+        _ => document.Language.Name,
+    };
 
     /// <summary>Go to Declaration in JSON, whose server has none: a package.json dependency's package, a script's run.</summary>
     private async Task<IReadOnlyList<Place>> JsonDefinition(ServerServed json, int offset, CancellationToken cancel)
     {
         // A settings file's key: the options property it sets, else what reads it, as the window's goes.
-        if (await window.Assist.SettingsDeclarationsAsync(json.Document, offset) is { } settings)
+        if (await window.Assist.Languages.Settings.SettingsDeclarationsAsync(json.Document, offset) is { } settings)
         {
             return await PlacesOf(settings, cancel);
         }
-        ((string Path, TextPosition Position)? place, string said) = await CodeAssist.JsonDeclarationAsync(json.Lsp, json.Document, offset);
+        ((string Path, TextPosition Position)? place, string said) = await WebAssist.JsonDeclarationAsync(json.Lsp, json.Document, offset);
         return place is { } found ? await PlacesOf([found], cancel)
             : said == Refusals.NoDeclaration ? []
             : throw new InvalidOperationException(said);
@@ -169,7 +160,7 @@ public sealed partial class PassengerTools
         {
             return null;
         }
-        ComposeAnswer answer = await CodeAssist.ComposeDeclarationAsync(compose.Lsp, compose.Document, offset,
+        ComposeAnswer answer = await ComposeAssist.ComposeDeclarationAsync(compose.Lsp, compose.Document, offset,
             ServerPlaces.Texts(Editors), Session.Workspace?.Projects ?? []);
         if (answer.Page is { } page)
         {
@@ -183,15 +174,15 @@ public sealed partial class PassengerTools
     /// <summary>Aspire's Go to Declaration in an AppHost's or a service's C# file, as the window's goes: AddProject's project,
     /// a connection string's or service's name to the AppHost line declaring it; null elsewhere, for the server's own.</summary>
     private async Task<IReadOnlyList<Place>?> AspireDefinition(Served served, int offset, CancellationToken cancel) =>
-        served is ServerServed { Web: null, Language: "C#" } csharp && Session.AspireFiles.RoleOf(csharp.Document.Path) != Aspire.AspireRole.None
-            && await CodeAssist.AspireDeclarationAsync(csharp.Lsp, offset, ServerPlaces.Texts(Editors)) is { } place
+        served is ServerServed { Web: null } csharp && csharp.Document.Language == Languages.Language.CSharp && Session.AspireFiles.RoleOf(csharp.Document.Path) != Aspire.AspireRole.None
+            && await CSharpAssist.AspireDeclarationAsync(csharp.Lsp, offset, ServerPlaces.Texts(Editors)) is { } place
             ? await PlacesOf([place], cancel) : null;
 
     /// <summary>A localized key's Go to Declaration in a C# or Razor file, as the window's goes: each language's entry of it, a
     /// generated class's property as the server declares it first; null elsewhere, for the server's own.</summary>
     private async Task<IReadOnlyList<Place>?> LocalizedDefinition(Served served, int offset, CancellationToken cancel)
     {
-        if (served is not ServerServed { Web: null } code || await window.Assist.LocalizedDeclarationsAsync(code.Document, offset) is not { } found)
+        if (served is not ServerServed { Web: null } code || await window.Assist.Languages.CSharp.LocalizedDeclarationsAsync(code.Document, offset) is not { } found)
         {
             return null;
         }
@@ -220,12 +211,12 @@ public sealed partial class PassengerTools
         using ChangeTracker asked = new(document.Text);
         IReadOnlyList<DocumentSymbol> outline = await json.Lsp.OutlineAsync();
         ServerLines lines = ServerLines.Of(asked.Snapshot);
-        if (CodeAssist.JsonPropertyAt(outline, lines, offset) is not { } at)
+        if (WebAssist.JsonPropertyAt(outline, lines, offset) is not { } at)
         {
             throw new InvalidOperationException("Nothing to rename here: JSON's Rename renames a property, so put the place on its name");
         }
         string old = at.Path[^1].Name;
-        if (asked.Map(CodeAssist.JsonRenameEdits(at.Path, at.Key, lines, newName, CodeAssist.IsPackageJson(document))) is not { } placed)
+        if (asked.Map(WebAssist.JsonRenameEdits(at.Path, at.Key, lines, newName, WebAssist.IsPackageJson(document))) is not { } placed)
         {
             throw new InvalidOperationException("Rename was not applied: the property was edited meanwhile");
         }
@@ -238,7 +229,7 @@ public sealed partial class PassengerTools
     /// <summary>ESLint's fixes for the problems on a web file's line, which Show Context Actions lists first; none where ESLint
     /// does not check the file.</summary>
     private async Task<IReadOnlyList<EslintFix>> LintFixes(Served served, int offset) =>
-        served is ServerServed { Web: not null } ? await window.Assist.LintFixes(served.Document, offset) : [];
+        served is ServerServed { Web: not null } ? await window.Assist.Languages.Web.LintFixes(served.Document, offset) : [];
 
     /// <summary>One of ESLint's fixes made, as choosing it makes it: its server's command, which hands the window its edit
     /// before it answers; the file saved.</summary>
@@ -281,9 +272,9 @@ public sealed partial class PassengerTools
         }
         List<(string Path, TextPosition Position)> places = [];
         List<string> unreached = [];
-        foreach (XamlTarget target in (IReadOnlyList<XamlTarget>)[.. symbol.Targets, .. await window.Assist.XamlLocalizedTargetsAsync(xaml.File, offset)])
+        foreach (XamlTarget target in (IReadOnlyList<XamlTarget>)[.. symbol.Targets, .. await window.Assist.Languages.Xaml.XamlLocalizedTargetsAsync(xaml.File, offset)])
         {
-            ((string Path, TextPosition Position)? place, string? said) = await window.Assist.XamlPlaceAsync(target, xaml.File);
+            ((string Path, TextPosition Position)? place, string? said) = await window.Assist.Languages.Xaml.XamlPlaceAsync(target, xaml.File);
             if (place is { } found)
             {
                 places.Add(found);
@@ -309,9 +300,9 @@ public sealed partial class PassengerTools
         {
             await CodeBehindRead(cancel);
         }
-        return await window.Assist.XamlUsesAsync(xaml.File, symbol) is { } uses
+        return await window.Assist.Languages.Xaml.XamlUsesAsync(xaml.File, symbol) is { } uses
             ? await Places(uses, cancel)
-            : throw new InvalidOperationException($"{CodeAssist.XamlUsesWhat}; {symbol.Name} is neither");
+            : throw new InvalidOperationException($"{XamlAssist.XamlUsesWhat}; {symbol.Name} is neither");
     }
 
     /// <summary>Waits for the C# server to load the workspace, when one runs: an element's field is found in the code-behind
@@ -330,7 +321,7 @@ public sealed partial class PassengerTools
         {
             return $"{newName} is its name already";
         }
-        if (await window.Assist.XamlRenameAsync(xaml.Xaml, named.Value, newName) is not { } renamed)
+        if (await window.Assist.Languages.Xaml.XamlRenameAsync(xaml.Xaml, named.Value, newName) is not { } renamed)
         {
             throw new InvalidOperationException($"{Path.GetFileName(xaml.Document.Path)} is no longer XAML Passenger reads");
         }
@@ -454,7 +445,7 @@ public sealed partial class PassengerTools
                 return await ApplyOwnFix(xaml.Document, fix, value: name);
             case XamlFix fix:
                 IReadOnlyList<XamlFileChange> changes = [new XamlFileChange(fix.Path, fix.Edits), .. fix.Others];
-                refused = window.Assist.ApplyFileChanges(fix.Title, changes);
+                refused = window.Assist.Actions.ApplyFileChanges(fix.Title, changes);
                 if (refused is not null)
                 {
                     throw new InvalidOperationException($"{what} was not applied: {refused}");
@@ -471,7 +462,7 @@ public sealed partial class PassengerTools
             {
                 throw new InvalidOperationException($"{what} cannot name the resource '{key}': {problem}");
             }
-            refused = window.Assist.ApplyFileChanges("Extract Resource", XamlRefactorings.ExtractResource(xaml.File, value, key, place, everywhere: true));
+            refused = window.Assist.Actions.ApplyFileChanges("Extract Resource", XamlRefactorings.ExtractResource(xaml.File, value, key, place, everywhere: true));
             if (refused is not null)
             {
                 throw new InvalidOperationException($"{what} was not applied: {refused}");
@@ -491,7 +482,7 @@ public sealed partial class PassengerTools
         {
             throw new InvalidOperationException($"{what} cannot name the style '{style}': {named}");
         }
-        refused = window.Assist.ApplyFileChanges("Extract Style", XamlRefactorings.ExtractStyle(xaml.File, source, style, properties, into));
+        refused = window.Assist.Actions.ApplyFileChanges("Extract Style", XamlRefactorings.ExtractStyle(xaml.File, source, style, properties, into));
         if (refused is not null)
         {
             throw new InvalidOperationException($"{what} was not applied: {refused}");

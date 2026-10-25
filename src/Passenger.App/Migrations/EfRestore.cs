@@ -1,5 +1,5 @@
 using System.Text.Json;
-using Passenger.App.Packages;
+using Passenger.Packages;
 
 namespace Passenger.App.Migrations;
 

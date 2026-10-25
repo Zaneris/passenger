@@ -215,7 +215,7 @@ public sealed class ProfilerView : DockPanel
         {
             left.Children.Add(page);
         }
-        Button open = ToolButtons.Of("Icon.FolderOpen", "Open Snapshot", () => OpenSnapshotRequested?.Invoke(this, EventArgs.Empty));
+        Button open = ToolButtons.Of(IconKeys.FolderOpen, "Open Snapshot", () => OpenSnapshotRequested?.Invoke(this, EventArgs.Empty));
         heap = new Button { Name = "ProfilerGetMemorySnapshot", Content = "Get Memory Snapshot", IsVisible = false };
         heap.Click += (_, _) => MemoryRequested?.Invoke(this, EventArgs.Empty);
         StackPanel right = new() { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(6, 0), VerticalAlignment = VerticalAlignment.Center, Children = { heap, stop, kill, open } };
@@ -228,9 +228,9 @@ public sealed class ProfilerView : DockPanel
         Border top = ToolBars.Top(bar);
         Children.Add(top);
         timeline = new Timeline();
-        timeline.Chosen += (_, stretch) => _ = ChooseAsync(stretch);
+        timeline.Chosen += (_, stretch) => IdeErrors.Observe(ChooseAsync(stretch));
         timelineBand = new Border { [DockProperty] = Dock.Top, BorderThickness = new Thickness(0, 0, 0, 1), Child = timeline, IsVisible = false, Padding = new Thickness(0, 4) };
-        timelineBand.Bind(Border.BorderBrushProperty, timelineBand.GetResourceObservable("Passenger.Divider"));
+        timelineBand.Bind(Border.BorderBrushProperty, timelineBand.GetResourceObservable(TokenKeys.Divider));
         Children.Add(timelineBand);
         Children.Add(new Panel { Children = { tree, spots, flameScroll, frames, allocations, garbage, memory, keptPage, placeholder } });
         ticking = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
@@ -622,7 +622,7 @@ public sealed class ProfilerView : DockPanel
     private Control Row(CallRow row)
     {
         PathIcon chevron = new() { Classes = { "chevron" }, IsVisible = row.Node.Children.Count > 0, RenderTransformOrigin = RelativePoint.Center };
-        chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable("Icon.ChevronRight"));
+        chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(IconKeys.ChevronRight));
         chevron.RenderTransform = new RotateTransform(row.IsExpanded ? 90 : 0);
         row.FollowWhileShown(chevron, (_, _) => chevron.RenderTransform = new RotateTransform(row.IsExpanded ? 90 : 0));
         Border toggle = new() { Width = 18, Height = ListRow.Height, Background = Brushes.Transparent, Child = chevron };

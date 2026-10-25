@@ -89,7 +89,7 @@ public static class IdeErrors
         installed = true;
         TaskScheduler.UnobservedTaskException += (_, e) =>
         {
-            Report(e.Exception.InnerExceptions.Count == 1 ? e.Exception.InnerException! : e.Exception);
+            Report(Single(e.Exception));
             e.SetObserved();
         };
         // Past saving: an exception off the UI thread still ends the process, but leaves its reason in the log.
@@ -99,6 +99,8 @@ public static class IdeErrors
             Flush();
         };
         Logger.Sink = new Sink();
+        Core.PassengerLog.Install(Write, Report);
+        Core.UnawaitedWork.Install(Report);
         // No program's secret reaches the log or a console's echo of its command line, whoever started it.
         Core.ChildProcesses.Shown = Containers.ContainerSecrets.CommandLine;
         // Every program at debug level; otherwise those worth a person's look.
@@ -153,6 +155,16 @@ public static class IdeErrors
         Write(reported.Count == 1 ? $"Error: {details}" : $"Error, occurred {reported.Count} times: {reported.Kind}: {reported.Message}");
         Dispatcher.UIThread.Post(() => Raised?.Invoke(null, reported));
     }
+
+    /// <summary>Work started that nothing awaits (a handler's, a menu item's, a callback's, a method's that returns before
+    /// it ends): its fault is reported as it faults, as an exception escaping a handler is, never only once the task is
+    /// collected. A cancelled task is no fault.</summary>
+    public static void Observe(Task work) =>
+        _ = work.ContinueWith(faulted => Report(Single(faulted.Exception!)), CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+
+    /// <summary>A task's one exception as itself; several as the AggregateException holding them.</summary>
+    private static Exception Single(AggregateException error) => error.InnerExceptions.Count == 1 ? error.InnerException! : error;
 
     /// <summary>Forgets the errors shown (Clear All); the log keeps them.</summary>
     public static void Clear()

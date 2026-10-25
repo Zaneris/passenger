@@ -128,6 +128,83 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         window.Close();
     }
 
+    /// <summary>A compose run builds its .NET services side by side in one dotnet build: with an error in each, it starts
+    /// nothing, says the build failed in both, and Problems lists each one's error under its own project; mended, it comes
+    /// up from one more build, and Rerun with nothing changed builds nothing, the Build window saying both are up to date.</summary>
+    [AvaloniaFact]
+    public void A_compose_run_builds_its_services_in_one_build_says_each_ones_errors_and_Rerun_builds_nothing_unchanged()
+    {
+        Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
+        (string folder, string project) = Restored("together");
+        foreach (string app in (string[])["Web", "Api"])
+        {
+            TestFolders.Write(folder, $"{app}/Message.cs", "public static class Message\n{\n    public const string Text = \"unbuilt\"\n}\n");
+        }
+        List<string> builds = [];
+        EventHandler<ChildStart> started = (_, child) =>
+        {
+            if (child.Command.Contains(" build ", StringComparison.Ordinal))
+            {
+                lock (builds)
+                {
+                    builds.Add(child.Command);
+                }
+            }
+        };
+        ChildProcesses.Started += started;
+        MainWindow window = Open(folder);
+        try
+        {
+            Assert.True(window.SelectConfiguration("Compose: compose.yaml"));
+            string? refused = Ui.Await(window.RunAsync(), "the run whose services do not build", TimeSpan.FromMinutes(3));
+            Assert.True(refused?.StartsWith("Build failed in Api and Web: 2 errors", StringComparison.Ordinal) == true,
+                $"A run whose services both fail to build answered: {refused}");
+            string[] built = Builds();
+            Assert.True(built.Length == 1 && !built[0].Contains("Web.csproj", StringComparison.Ordinal) && !built[0].Contains("Api.csproj", StringComparison.Ordinal),
+                $"The services were not built together in one dotnet build:\n{string.Join('\n', built)}");
+            Assert.True(Docker.NoneLeft(project), "A run whose build failed started containers");
+            ProblemsModel problems = window.BottomPanel.Problems;
+            problems.Shown = ProblemsTab.Build;
+            Assert.Equal(["Api", "Message.cs", "Web", "Message.cs"], problems.Rows.Where(r => r.Problem is null).Select(r => r.Label));
+            foreach (string app in (string[])["Web", "Api"])
+            {
+                Problem error = Assert.Single(problems.Problems, p => p.Severity == ProblemSeverity.Error && p.Project == app);
+                Assert.Equal(PathNames.Canonical(Path.Combine(folder, app, "Message.cs")), error.Path);
+                Assert.Equal("CS1002", error.Code);
+            }
+
+            foreach (string app in (string[])["Web", "Api"])
+            {
+                File.WriteAllText(Path.Combine(folder, app, "Message.cs"), $"public static class Message\n{{\n    public const string Text = \"{app.ToLowerInvariant()} 1\";\n}}\n");
+            }
+            Launched(window, "the mended services to come up");
+            Assert.Equal(2, Builds().Length);
+            Assert.Equal("web 1", Served(window, project, "web"));
+            Assert.Equal("api 1", Served(window, project, "api"));
+
+            Assert.True(window.Perform(AppActions.Rerun), "Rerun did not run");
+            Ui.WaitFor(() => window.Status?.Contains("nothing changed, nothing restarted", StringComparison.Ordinal) == true, "Rerun with nothing changed", TimeSpan.FromMinutes(2));
+            window.BottomPanel.Build.Flush();
+            string console = window.BottomPanel.Build.Document.Snapshot.ToString();
+            Assert.True(Builds().Length == 2 && console.Contains(BuildRunController.UpToDateSaid(["Api", "Web"]), StringComparison.Ordinal),
+                $"Rerun with nothing changed was to build nothing and say so, but started {Builds().Length - 2} more dotnet builds, the Build window saying:\n{console}");
+        }
+        finally
+        {
+            ChildProcesses.Started -= started;
+            Docker.Stopped(window, project, "Stop to take every container down");
+        }
+        window.Close();
+
+        string[] Builds()
+        {
+            lock (builds)
+            {
+                return [.. builds];
+            }
+        }
+    }
+
     [AvaloniaFact]
     public void In_images_mode_a_container_path_in_the_runs_output_links_to_the_workspace_file()
     {

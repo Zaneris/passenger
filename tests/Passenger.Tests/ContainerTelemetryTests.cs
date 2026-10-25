@@ -80,11 +80,11 @@ public sealed class ContainerTelemetryTests : McpRig
                 $"the request's trace, with web's request to itself, its log's span chosen ({view.Telemetry.TracesStatus})", TimeSpan.FromMinutes(1));
 
             client = Await(Task.Run(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
-            Task<JsonElement> logs = Task.Run(() => Call(client, "telemetry", new() { ["resource"] = "web", ["limit"] = 50 }));
+            Task<JsonElement> logs = Task.Run(() => Call(client, McpTools.Telemetry, new() { ["resource"] = "web", ["limit"] = 50 }));
             Press(Admission(window, "the window to ask whether the agent may work there"), AgentAdmissionDialog.Allow);
             JsonElement read = Await(logs, "the agent's telemetry of web's logs");
             Assert.Contains(read.GetProperty("logs").EnumerateArray(), item => item.GetProperty("message").GetString()?.Contains("Passenger order 42", StringComparison.Ordinal) == true);
-            JsonElement traced = Await(Task.Run(() => Call(client, "telemetry", new() { ["kind"] = "traces", ["traceId"] = log.TraceId })), "the agent's telemetry of the request's trace");
+            JsonElement traced = Await(Task.Run(() => Call(client, McpTools.Telemetry, new() { ["kind"] = "traces", ["traceId"] = log.TraceId })), "the agent's telemetry of the request's trace");
             Assert.True(Assert.Single(traced.GetProperty("traces").EnumerateArray()).GetProperty("spans").GetArrayLength() >= 3, traced.ToString());
         }
         finally

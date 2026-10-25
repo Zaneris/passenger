@@ -135,8 +135,8 @@ internal sealed class WpfPreviewHost : IPreviewHost
         started.BeginErrorReadLine();
         starting = Stopwatch.StartNew();
         // Long-lived readers of the previewer's streams: each answer holds the window's work itself (UiThread.Post).
-        _ = Task.Run(() => WriteAsync(started));
-        _ = Task.Run(() => ReadAsync(started));
+        IdeErrors.Observe(Task.Run(() => WriteAsync(started)));
+        IdeErrors.Observe(Task.Run(() => ReadAsync(started)));
         preview.Say($"Starting the previewer on {Path.GetFileName(assembly)}…");
         Update();
     }
@@ -369,7 +369,7 @@ internal sealed class WpfPreviewHost : IPreviewHost
     }
 
     /// <summary>A copy let go once its previewer has let go of its files, off the UI thread; nothing drawn waits for it.</summary>
-    private static void Forget(string folder, Process? ending = null) => _ = Task.Run(async () =>
+    private static void Forget(string folder, Process? ending = null) => IdeErrors.Observe(Task.Run(async () =>
     {
         try
         {
@@ -394,7 +394,7 @@ internal sealed class WpfPreviewHost : IPreviewHost
                 await Task.Delay(200);
             }
         }
-    });
+    }));
 
     public void Dispose()
     {

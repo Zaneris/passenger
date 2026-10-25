@@ -27,7 +27,7 @@ public enum ToolMode
 /// <summary>A tool window (Explorer, Debug, Unit Tests): its content, its button on a stripe, and where it docks.
 /// The person moves it by dragging its button or its header, or with Move to in its header's menu. One given how to
 /// build its view builds it when first shown or asked for, so a window's start makes no view it hides (#233).</summary>
-public sealed class ToolWindow(string id, string title, string icon, Func<Control> build, ToolAnchor anchor) : Observable
+public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, string title, string icon, Func<Control> build, ToolAnchor anchor) : Observable
 {
     private ToolAnchor anchor = anchor;
     private bool isShown;
@@ -41,6 +41,7 @@ public sealed class ToolWindow(string id, string title, string icon, Func<Contro
         this.content = content;
     }
 
+    [IdentifierOf(typeof(ToolWindowIds))]
     public string Id { get; } = id;
 
     /// <summary>Its name on its header and button, a count with it when it has one ("Problems 3").</summary>

@@ -612,9 +612,7 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
         /// <summary>A window on the project with a file open, its servers started.</summary>
         public MainWindow Open(string file)
         {
-            MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false };
-            window.Show();
-            window.OpenFolder(Folder);
+            MainWindow window = Ui.OpenFolder(Folder, autosaves: false);
             window.OpenFile(PathOf(file));
             Ui.Settle();
             return window;

@@ -11,7 +11,7 @@ public sealed record HistoryPlace(string Path, int Offset, int Line);
 /// place ahead. The caret moved by a key or a click changes neither, so Forward still goes where Back came from. An
 /// edit keeps its place among the places edited, which Last Edit Location steps back through and Next Edit Location
 /// forward. Each list keeps at most <see cref="Limit"/> places, and the places in an open file move with its
-/// text.</summary>
+/// text, each by an anchor in it.</summary>
 public sealed class NavigationHistory
 {
     /// <summary>How many places each way.</summary>
@@ -20,8 +20,11 @@ public sealed class NavigationHistory
     /// <summary>Two places in a file fewer lines apart than this are one.</summary>
     private const int NearLines = 4;
 
-    private readonly List<HistoryPlace> behind = [];
-    private readonly List<HistoryPlace> ahead = [];
+    private readonly List<Spot> behind = [];
+    private readonly List<Spot> ahead = [];
+
+    /// <summary>The text of each file open, whose places it carries.</summary>
+    private readonly Dictionary<string, TextDocument> open = new(StringComparer.Ordinal);
 
     /// <summary>The places left, by a navigation or for another file, and those edited, the latest last: Recent Locations'.</summary>
     private readonly List<Kept> visited = [];
@@ -36,7 +39,7 @@ public sealed class NavigationHistory
     public void Left(HistoryPlace from)
     {
         PutBehind(from);
-        ahead.Clear();
+        Clear(ahead);
         Visited(from);
     }
 
@@ -59,7 +62,7 @@ public sealed class NavigationHistory
     {
         for (int i = Math.Min(editStep, edited.Count) + step; i >= 0 && i < edited.Count; i += step)
         {
-            HistoryPlace place = edited[i].Place;
+            HistoryPlace place = edited[i].Spot.Place;
             if ((here is null || !Near(here, place)) && exists(place.Path))
             {
                 editStep = i;
@@ -76,23 +79,24 @@ public sealed class NavigationHistory
         List<HistoryPlace> listed = [];
         foreach (Kept recent in (editedOnly ? edited : visited.Concat(edited)).OrderByDescending(p => p.When))
         {
-            if ((here is null || !Near(here, recent.Place)) && listed.All(l => !Near(l, recent.Place)))
+            HistoryPlace place = recent.Spot.Place;
+            if ((here is null || !Near(here, place)) && listed.All(l => !Near(l, place)))
             {
-                listed.Add(recent.Place);
+                listed.Add(place);
             }
         }
         return listed;
     }
 
     /// <summary>The files edited, the latest first.</summary>
-    public IReadOnlyList<string> EditedFiles => [.. edited.OrderByDescending(p => p.When).Select(p => p.Place.Path).Distinct()];
+    public IReadOnlyList<string> EditedFiles => [.. edited.OrderByDescending(p => p.When).Select(p => p.Spot.Place.Path).Distinct()];
 
     /// <summary>Forgets a place Recent Locations listed (its Delete), with those near it.</summary>
     public void Forget(HistoryPlace place)
     {
-        visited.RemoveAll(p => Near(p.Place, place));
+        Forget(visited, place);
         int before = edited.Count;
-        edited.RemoveAll(p => Near(p.Place, place));
+        Forget(edited, place);
         if (edited.Count != before)
         {
             editStep = edited.Count;
@@ -109,7 +113,7 @@ public sealed class NavigationHistory
         }
         if (here is not null)
         {
-            Keep(ahead, here);
+            Keep(ahead, Made(here));
         }
         return target;
     }
@@ -134,127 +138,195 @@ public sealed class NavigationHistory
         return target;
     }
 
-    /// <summary>Carries a file's places through an edit to it. Text typed at a place goes before it, so a place stays
-    /// on the text it was at. Only a place that moved is made anew: every key comes here, and most places are in other
-    /// files or before the key.</summary>
-    public void Follow(string path, DocumentChangedEventArgs change)
+    /// <summary>A file opened: its places move with its text until it closes. Text typed at a place goes before it, so a
+    /// place stays on the text it was at.</summary>
+    public void Attach(string path, TextDocument text)
     {
-        Carry(behind);
-        Carry(ahead);
-        CarryRecent(visited);
-        CarryRecent(edited);
-
-        void Carry(List<HistoryPlace> places)
+        open[path] = text;
+        foreach (Spot spot in Spots().Where(s => s.Place.Path == path))
         {
-            for (int i = 0; i < places.Count; i++)
-            {
-                places[i] = Carried(places[i]);
-            }
+            spot.Attach(text);
         }
+    }
 
-        void CarryRecent(List<Kept> places)
+    /// <summary>A file closed: its places stay where they were carried.</summary>
+    public void Detach(string path)
+    {
+        open.Remove(path);
+        foreach (Spot spot in Spots().Where(s => s.Place.Path == path))
         {
-            for (int i = 0; i < places.Count; i++)
-            {
-                HistoryPlace place = places[i].Place;
-                HistoryPlace moved = Carried(place);
-                if (!ReferenceEquals(moved, place))
-                {
-                    places[i] = places[i] with { Place = moved };
-                }
-            }
+            spot.Detach();
         }
+    }
 
-        HistoryPlace Carried(HistoryPlace place)
+    /// <summary>The session ended with files still open, which the next session follows: every file is let go as if
+    /// closed, its places kept where they were carried.</summary>
+    public void DetachAll()
+    {
+        foreach (string path in open.Keys.ToList())
         {
-            if (place.Path != path)
-            {
-                return place;
-            }
-            int mapped = TextEditing.MapOffset(Math.Min(place.Offset, change.Before.Length), change.Edits, afterInsertions: true);
-            int offset = Math.Min(mapped, change.After.Length);
-            int line = change.After.GetLineFromOffset(offset);
-            return offset == place.Offset && line == place.Line ? place : place with { Offset = offset, Line = line };
+            Detach(path);
         }
     }
 
     /// <summary>Carries the places in a file, or in every file of a folder, to where it moved.</summary>
     public void Move(string from, string to)
     {
-        foreach (List<HistoryPlace> places in new[] { behind, ahead })
+        foreach (Spot spot in Spots())
         {
-            for (int i = 0; i < places.Count; i++)
-            {
-                places[i] = places[i] with { Path = PathNames.Moved(places[i].Path, from, to) };
-            }
+            spot.Move(from, to);
         }
-        foreach (List<Kept> places in new[] { visited, edited })
+        foreach (string path in open.Keys.Where(p => PathNames.Within(p, from)).ToList())
         {
-            for (int i = 0; i < places.Count; i++)
-            {
-                places[i] = places[i] with { Place = places[i].Place with { Path = PathNames.Moved(places[i].Place.Path, from, to) } };
-            }
+            open.Remove(path, out TextDocument? text);
+            open[PathNames.Moved(path, from, to)] = text!;
         }
     }
 
     /// <summary>Forgets every place, as another folder opens: each folder's are its own.</summary>
     public void Clear()
     {
-        behind.Clear();
-        ahead.Clear();
+        Clear(behind);
+        Clear(ahead);
+        foreach (Kept kept in visited.Concat(edited))
+        {
+            kept.Spot.Detach();
+        }
         visited.Clear();
         edited.Clear();
         editStep = 0;
     }
 
+    private IEnumerable<Spot> Spots() => behind.Concat(ahead).Concat(visited.Select(k => k.Spot)).Concat(edited.Select(k => k.Spot));
+
+    private Spot Made(HistoryPlace place)
+    {
+        Spot made = new(place);
+        if (open.TryGetValue(place.Path, out TextDocument? text))
+        {
+            made.Attach(text);
+        }
+        return made;
+    }
+
+    private static void Clear(List<Spot> places)
+    {
+        foreach (Spot spot in places)
+        {
+            spot.Detach();
+        }
+        places.Clear();
+    }
+
+    private static void Forget(List<Kept> places, HistoryPlace near)
+    {
+        for (int i = places.Count - 1; i >= 0; i--)
+        {
+            if (Near(places[i].Spot.Place, near))
+            {
+                places[i].Spot.Detach();
+                places.RemoveAt(i);
+            }
+        }
+    }
+
     /// <summary>Keeps a place as the latest of its list, in place of the last when near it.</summary>
     private void Merge(List<Kept> places, HistoryPlace place)
     {
-        if (places.Count > 0 && Near(places[^1].Place, place))
+        if (places.Count > 0 && Near(places[^1].Spot.Place, place))
         {
+            places[^1].Spot.Detach();
             places.RemoveAt(places.Count - 1);
         }
-        places.Add(new Kept(place, ++count));
+        places.Add(new Kept(Made(place), ++count));
         if (places.Count > Limit)
         {
+            places[0].Spot.Detach();
             places.RemoveAt(0);
         }
     }
 
     private void PutBehind(HistoryPlace place)
     {
-        if (behind.Count > 0 && Near(behind[^1], place))
+        if (behind.Count > 0 && Near(behind[^1].Place, place))
         {
+            behind[^1].Detach();
             behind.RemoveAt(behind.Count - 1);
         }
-        Keep(behind, place);
+        Keep(behind, Made(place));
     }
 
     private static bool Near(HistoryPlace one, HistoryPlace other) => one.Path == other.Path && Math.Abs(one.Line - other.Line) < NearLines;
 
-    private static void Keep(List<HistoryPlace> places, HistoryPlace place)
+    private static void Keep(List<Spot> places, Spot place)
     {
         places.Add(place);
         if (places.Count > Limit)
         {
+            places[0].Detach();
             places.RemoveAt(0);
         }
     }
 
-    private static HistoryPlace? Take(List<HistoryPlace> places, Func<string, bool> exists)
+    private static HistoryPlace? Take(List<Spot> places, Func<string, bool> exists)
     {
         while (places.Count > 0)
         {
-            HistoryPlace last = places[^1];
+            Spot last = places[^1];
             places.RemoveAt(places.Count - 1);
-            if (exists(last.Path))
+            HistoryPlace place = last.Place;
+            last.Detach();
+            if (exists(place.Path))
             {
-                return last;
+                return place;
             }
         }
         return null;
     }
 
     /// <summary>A place Recent Locations may list, and how recently it was kept, counted over both of its lists.</summary>
-    private sealed record Kept(HistoryPlace Place, long When);
+    private sealed record Kept(Spot Spot, long When);
+
+    /// <summary>A place kept, read from its anchor while its file is open.</summary>
+    private sealed class Spot(HistoryPlace place)
+    {
+        private HistoryPlace place = place;
+        private Anchor? anchor;
+        private TextDocument? text;
+
+        public HistoryPlace Place
+        {
+            get
+            {
+                if (anchor is not null && text is not null)
+                {
+                    int offset = anchor.Offset;
+                    int line = text.Snapshot.GetLineFromOffset(offset);
+                    if (offset != place.Offset || line != place.Line)
+                    {
+                        place = place with { Offset = offset, Line = line };
+                    }
+                }
+                return place;
+            }
+        }
+
+        public void Attach(TextDocument document)
+        {
+            Detach();
+            text = document;
+            anchor = document.AnchorAt(place.Offset, AnchorGravity.After);
+        }
+
+        /// <summary>Its file closed, or it is no longer kept: it stays where it was last carried.</summary>
+        public void Detach()
+        {
+            place = Place;
+            anchor?.Remove();
+            anchor = null;
+            text = null;
+        }
+
+        public void Move(string from, string to) => place = Place with { Path = PathNames.Moved(place.Path, from, to) };
+    }
 }

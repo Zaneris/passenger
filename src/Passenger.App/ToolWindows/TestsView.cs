@@ -29,11 +29,11 @@ public sealed class TestsView : DockPanel
     /// it.</summary>
     private static readonly (TestState State, string Name, string Icon, string Brush)[] Filters =
     [
-        (TestState.Passed, "Passed Tests", "Icon.TestPassed", "Passenger.Test.Passed"),
-        (TestState.Failed, "Failed Tests", "Icon.TestFailed", "Passenger.Test.Failed"),
-        (TestState.Skipped, "Ignored Tests", "Icon.TestSkipped", "Passenger.Test.Skipped"),
-        (TestState.NotRun, "Tests Not Run", "Icon.TestNotRun", "Passenger.Test.NotRun"),
-        (TestState.Running, "Running Tests", "Icon.TestRunning", "Passenger.Test.Running"),
+        (TestState.Passed, "Passed Tests", IconKeys.TestPassed, TokenKeys.Test_Passed),
+        (TestState.Failed, "Failed Tests", IconKeys.TestFailed, TokenKeys.Test_Failed),
+        (TestState.Skipped, "Ignored Tests", IconKeys.TestSkipped, TokenKeys.Test_Skipped),
+        (TestState.NotRun, "Tests Not Run", IconKeys.TestNotRun, TokenKeys.Test_NotRun),
+        (TestState.Running, "Running Tests", IconKeys.TestRunning, TokenKeys.Test_Running),
     ];
 
     private readonly ListBox tree;
@@ -120,7 +120,7 @@ public sealed class TestsView : DockPanel
 
         // Above the tree: what changes it, then a filter for each outcome; the search on the right.
         PathIcon magnifier = new() { Width = 14, Height = 14, Margin = new Thickness(8, 0, 0, 0) };
-        magnifier.Bind(PathIcon.DataProperty, magnifier.GetResourceObservable("Icon.Search"));
+        magnifier.Bind(PathIcon.DataProperty, magnifier.GetResourceObservable(IconKeys.Search));
         search = new TextBox
         {
             [DockProperty] = Dock.Right,
@@ -133,8 +133,8 @@ public sealed class TestsView : DockPanel
         };
         search.TextChanged += (_, _) => model.SearchFor(search.Text ?? string.Empty);
         search.KeyDown += OnSearchKey;
-        groupBy = ToolButtons.Of("Icon.GroupBy", "Group By", ShowGroupBy);
-        all = Filter("Icon.TestAll", "Passenger.Icon", "All Tests", out allCount);
+        groupBy = ToolButtons.Of(IconKeys.GroupBy, "Group By", ShowGroupBy);
+        all = Filter(IconKeys.TestAll, TokenKeys.Icon, "All Tests", out allCount);
         all.Click += (_, _) =>
         {
             model.ShowOutcomes([]);
@@ -149,8 +149,8 @@ public sealed class TestsView : DockPanel
             VerticalAlignment = VerticalAlignment.Center,
             Children =
             {
-                ToolButtons.Of("Icon.ExpandAll", "Expand All", model.ExpandAll),
-                ToolButtons.Of("Icon.CollapseAll", "Collapse All", model.CollapseAll),
+                ToolButtons.Of(IconKeys.ExpandAll, "Expand All", model.ExpandAll),
+                ToolButtons.Of(IconKeys.CollapseAll, "Collapse All", model.CollapseAll),
                 groupBy,
                 Divider(),
                 all,
@@ -168,13 +168,13 @@ public sealed class TestsView : DockPanel
         Border topBar = ToolBars.Top(top);
         ShowFilters();
         ShowPlaceholder();
-        stop = ActionTool(AppActions.StopTests, "Icon.Stop", "Stop");
+        stop = ToolButtons.Of(AppActions.StopTests, IconKeys.Stop, "Stop", Request);
         stop.IsEnabled = false;
         Border leftBar = ToolBars.Side(
-            ActionTool(AppActions.RunAllTests, "Icon.Run", "Run All Tests"),
-            ActionTool(AppActions.RunTests, "Icon.RunOutline", "Run Selected Tests"),
-            ActionTool(AppActions.DebugTests, "Icon.Debug", "Debug Selected Tests"),
-            ActionTool(AppActions.RerunFailedTests, "Icon.Rerun", "Rerun Failed Tests"),
+            ToolButtons.Of(AppActions.RunAllTests, IconKeys.Run, "Run All Tests", Request),
+            ToolButtons.Of(AppActions.RunTests, IconKeys.RunOutline, "Run Selected Tests", Request),
+            ToolButtons.Of(AppActions.DebugTests, IconKeys.Debug, "Debug Selected Tests", Request),
+            ToolButtons.Of(AppActions.RerunFailedTests, IconKeys.Rerun, "Rerun Failed Tests", Request),
             stop);
         Children.Add(leftBar);
         Children.Add(topBar);
@@ -226,6 +226,8 @@ public sealed class TestsView : DockPanel
 
     /// <summary>A toolbar button pressed: the app action it runs.</summary>
     public event EventHandler<string>? ActionRequested;
+
+    private void Request(string action) => ActionRequested?.Invoke(this, action);
 
     /// <summary>The rows chosen to run (false) or debug (true), from their menu.</summary>
     public event EventHandler<bool>? RunRequested;
@@ -344,15 +346,6 @@ public sealed class TestsView : DockPanel
     /// <summary>The Group By menu while it is open.</summary>
     public ContextMenu? OpenMenu { get; private set; }
 
-    /// <summary>A toolbar button that runs one of the window's actions.</summary>
-    private Button ActionTool(string action, string icon, string tip)
-    {
-        Button button = ToolButtons.Of(icon, tip, () => ActionRequested?.Invoke(this, action));
-        ActionTips.Set(button, action, tip);
-        ActionButtons.Mark(button, action);
-        return button;
-    }
-
     /// <summary>An outcome's filter: its mark and how many tests have it. A click with Ctrl, ⌘ or Shift held adds it to
     /// those chosen.</summary>
     private ToggleButton Filter(string icon, string brush, string name, out TextBlock count)
@@ -376,7 +369,7 @@ public sealed class TestsView : DockPanel
     private Border Divider()
     {
         Border line = new() { Width = 1, Height = 18, Margin = new Thickness(4, 0), VerticalAlignment = VerticalAlignment.Center };
-        line.Bind(Border.BackgroundProperty, line.GetResourceObservable("Passenger.Divider"));
+        line.Bind(Border.BackgroundProperty, line.GetResourceObservable(TokenKeys.Divider));
         return line;
     }
 
@@ -507,7 +500,7 @@ public sealed class TestsView : DockPanel
             Orientation = Orientation.Horizontal;
             Height = ListRow.Height;
             chevron = new PathIcon { Classes = { "chevron" }, RenderTransformOrigin = RelativePoint.Center, RenderTransform = turn };
-            chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable("Icon.ChevronRight"));
+            chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(IconKeys.ChevronRight));
             Border toggle = new() { Width = 18, Height = ListRow.Height, Background = Brushes.Transparent, Child = chevron };
             toggle.PointerPressed += (_, e) =>
             {

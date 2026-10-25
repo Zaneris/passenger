@@ -1,5 +1,5 @@
 using System.Text.RegularExpressions;
-using Passenger.App.Workspace;
+using Passenger.Text;
 
 namespace Passenger.App.Templates;
 

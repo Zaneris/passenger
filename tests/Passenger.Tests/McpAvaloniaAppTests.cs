@@ -6,6 +6,7 @@ using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using Passenger.App.Mcp;
 using Passenger.App;
 using Passenger.App.Settings;
 using Passenger.Core;
@@ -54,21 +55,21 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
     public async Task An_agent_runs_an_avalonia_app_sees_it_clicks_its_button_types_into_it_scrolls_it_reads_its_failed_bindings_and_profiles_its_frames()
     {
         await using McpClient client = await Start(["--mcp", appFolder], languageServer: false);
-        JsonElement built = await Call(client, "build");
+        JsonElement built = await Call(client, McpTools.Build);
         Assert.True(built.GetProperty("succeeded").GetBoolean(), $"The app did not build: {built}");
         Assert.False(built.TryGetProperty("outputTail", out _), $"A build that succeeded was answered with MSBuild's output: {built}");
         // The app never ends by itself, so run must come back once its UI is up, well within waitSeconds.
         long began = Stopwatch.GetTimestamp();
-        JsonElement ran = await Call(client, "run", new() { ["waitSeconds"] = 300 });
+        JsonElement ran = await Call(client, McpTools.Run, new() { ["waitSeconds"] = 300 });
         Assert.True(ran.GetProperty("stillRunning").GetBoolean(), $"The app ended as it started: {ran}");
         Assert.True(ran.GetProperty("status").GetString()!.Contains("its UI up", StringComparison.Ordinal) && Stopwatch.GetElapsedTime(began) < TimeSpan.FromSeconds(25).Scaled(),
             $"run waited {Stopwatch.GetElapsedTime(began).TotalSeconds:0} s for an app that never ends, and said: {ran}");
 
-        JsonElement windows = await Call(client, "app_windows");
+        JsonElement windows = await Call(client, McpTools.AppWindows);
         JsonElement main = Assert.Single(windows.GetProperty("windows").EnumerateArray());
         Assert.Equal(("Agent App", 480d, 360d), (main.GetProperty("title").GetString(), main.GetProperty("width").GetDouble(), main.GetProperty("height").GetDouble()));
 
-        CallToolResult picture = await Result(client, "app_screenshot");
+        CallToolResult picture = await Result(client, McpTools.AppScreenshot);
         ImageContentBlock image = Assert.Single(picture.Content.OfType<ImageContentBlock>());
         double scaling = main.GetProperty("scaling").GetDouble();
         Assert.Equal(((int)(480 * scaling), (int)(360 * scaling)), PngSize(image.DecodedData.ToArray()));
@@ -76,54 +77,54 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
         Assert.True(image.DecodedData.Length > 4000, $"The app's picture is {image.DecodedData.Length} bytes, as a blank one would be");
         Assert.Contains("pixels a unit", Assert.Single(picture.Content.OfType<TextContentBlock>()).Text, StringComparison.Ordinal);
 
-        string buttons = Text(await Call(client, "app_tree", new() { ["filter"] = "Button" }));
+        string buttons = Text(await Call(client, McpTools.AppTree, new() { ["filter"] = "Button" }));
         Assert.Contains("Button#Count \"Count\"", buttons, StringComparison.Ordinal);
-        Assert.Contains("\"Not clicked yet\"", Text(await Call(client, "app_tree", new() { ["control"] = "#Counter" })), StringComparison.Ordinal);
-        string clicked = Text(await Call(client, "app_click", new() { ["control"] = "#Count" }));
+        Assert.Contains("\"Not clicked yet\"", Text(await Call(client, McpTools.AppTree, new() { ["control"] = "#Counter" })), StringComparison.Ordinal);
+        string clicked = Text(await Call(client, McpTools.AppClick, new() { ["control"] = "#Count" }));
         Assert.StartsWith("Clicked Button#Count @", clicked, StringComparison.Ordinal);
-        Assert.Contains("\"Clicked once\"", Text(await Call(client, "app_tree", new() { ["control"] = "#Counter" })), StringComparison.Ordinal);
+        Assert.Contains("\"Clicked once\"", Text(await Call(client, McpTools.AppTree, new() { ["control"] = "#Counter" })), StringComparison.Ordinal);
         // By what it says: the button is clicked, not the text inside it.
-        await Call(client, "app_click", new() { ["control"] = "\"Count\"" });
-        Assert.Contains("\"Clicked 2 times\"", Text(await Call(client, "app_tree", new() { ["control"] = "#Counter" })), StringComparison.Ordinal);
+        await Call(client, McpTools.AppClick, new() { ["control"] = "\"Count\"" });
+        Assert.Contains("\"Clicked 2 times\"", Text(await Call(client, McpTools.AppTree, new() { ["control"] = "#Counter" })), StringComparison.Ordinal);
 
-        Assert.Contains("it shows \"Ada\"", Text(await Call(client, "app_type", new() { ["control"] = "#NameBox", ["text"] = "Ada" })), StringComparison.Ordinal);
-        await Call(client, "app_key", new() { ["keys"] = "Enter" });
-        Assert.Contains("\"Hello, Ada\"", Text(await Call(client, "app_tree", new() { ["control"] = "#Greeting" })), StringComparison.Ordinal);
-        Assert.Contains("it shows \"Grace\"", Text(await Call(client, "app_type", new() { ["control"] = "#NameBox", ["text"] = "Grace", ["replace"] = true })), StringComparison.Ordinal);
+        Assert.Contains("it shows \"Ada\"", Text(await Call(client, McpTools.AppType, new() { ["control"] = "#NameBox", ["text"] = "Ada" })), StringComparison.Ordinal);
+        await Call(client, McpTools.AppKey, new() { ["keys"] = "Enter" });
+        Assert.Contains("\"Hello, Ada\"", Text(await Call(client, McpTools.AppTree, new() { ["control"] = "#Greeting" })), StringComparison.Ordinal);
+        Assert.Contains("it shows \"Grace\"", Text(await Call(client, McpTools.AppType, new() { ["control"] = "#NameBox", ["text"] = "Grace", ["replace"] = true })), StringComparison.Ordinal);
 
-        await Call(client, "app_click", new() { ["control"] = "#Colour" });
-        JsonElement popup = Assert.Single((await Call(client, "app_windows")).GetProperty("windows").EnumerateArray(), w => w.TryGetProperty("owner", out _));
+        await Call(client, McpTools.AppClick, new() { ["control"] = "#Colour" });
+        JsonElement popup = Assert.Single((await Call(client, McpTools.AppWindows)).GetProperty("windows").EnumerateArray(), w => w.TryGetProperty("owner", out _));
         Assert.Equal(("PopupRoot", main.GetProperty("id").GetString()), (popup.GetProperty("type").GetString(), popup.GetProperty("owner").GetString()));
-        string picked = Text(await Call(client, "app_click", new() { ["control"] = "ComboBoxItem \"Blue\"" }));
-        string colour = Text(await Call(client, "app_tree", new() { ["filter"] = "#Colour" }));
+        string picked = Text(await Call(client, McpTools.AppClick, new() { ["control"] = "ComboBoxItem \"Blue\"" }));
+        string colour = Text(await Call(client, McpTools.AppTree, new() { ["filter"] = "#Colour" }));
         Assert.True(colour.Contains("ComboBox#Colour \"Blue\"", StringComparison.Ordinal), $"Blue, clicked in the drop-down ({picked}), is not chosen: {colour}");
 
-        CallToolResult hidden = await Result(client, "app_click", new() { ["control"] = "\"Item 30\"" });
+        CallToolResult hidden = await Result(client, McpTools.AppClick, new() { ["control"] = "\"Item 30\"" });
         Assert.True(hidden.IsError, "A click on an item out of view was sent to whatever is there");
         Assert.Contains("scrolled out of view inside ScrollViewer#List", Text(hidden), StringComparison.Ordinal);
-        Assert.Contains("ScrollViewer#List at 0,", Text(await Call(client, "app_scroll", new() { ["control"] = "#List", ["dy"] = 3 })), StringComparison.Ordinal);
-        string list = Text(await Call(client, "app_tree", new() { ["control"] = "#List", ["properties"] = new[] { "Offset" } }));
+        Assert.Contains("ScrollViewer#List at 0,", Text(await Call(client, McpTools.AppScroll, new() { ["control"] = "#List", ["dy"] = 3 })), StringComparison.Ordinal);
+        string list = Text(await Call(client, McpTools.AppTree, new() { ["control"] = "#List", ["properties"] = new[] { "Offset" } }));
         Assert.DoesNotContain("Offset=0, 0", list, StringComparison.Ordinal);
         Assert.EndsWith("[out of view]", list.Split('\n').Single(l => l.Contains("\"Item 1\"", StringComparison.Ordinal)), StringComparison.Ordinal);
 
-        JsonElement failed = Assert.Single((await Call(client, "app_binding_errors")).EnumerateArray());
+        JsonElement failed = Assert.Single((await Call(client, McpTools.AppBindingErrors)).EnumerateArray());
         Assert.Equal(("TextBlock#Caption", "Nmae", "Name"), (failed.GetProperty("control").GetString(), failed.GetProperty("path").GetString(),
             failed.GetProperty("nearest").EnumerateArray().Single().GetString()));
         Assert.Equal(AppXamlPlace("Nmae"), failed.GetProperty("place").GetString());
 
-        Assert.Contains("TextBlock#ProjectName", Text(await Call(client, "app_tree", new() { ["app"] = "ide", ["filter"] = "#ProjectName" })), StringComparison.Ordinal);
+        Assert.Contains("TextBlock#ProjectName", Text(await Call(client, McpTools.AppTree, new() { ["app"] = "ide", ["filter"] = "#ProjectName" })), StringComparison.Ordinal);
 
         // The tools say so once the app has ended, a moment after Stop.
-        await Call(client, "stop");
+        await Call(client, McpTools.Stop);
         CallToolResult gone = null!;
-        await Waiting.UntilAsync(async () => (gone = await Result(client, "app_tree")).IsError == true, TimeSpan.FromSeconds(10), Cancel, TimeSpan.FromMilliseconds(200));
+        await Waiting.UntilAsync(async () => (gone = await Result(client, McpTools.AppTree)).IsError == true, TimeSpan.FromSeconds(10), Cancel, TimeSpan.FromMilliseconds(200));
         Assert.True(gone.IsError, "The tree of an app that has ended was answered");
         Assert.Contains("AgentApp has ended", Text(gone), StringComparison.Ordinal);
 
-        JsonElement undrawn = (await Call(client, "profile", new() { ["arguments"] = "--quit-at-once" })).GetProperty("frames");
+        JsonElement undrawn = (await Call(client, McpTools.Profile, new() { ["arguments"] = "--quit-at-once" })).GetProperty("frames");
         Assert.True(undrawn.GetProperty("count").GetInt32() == 0 && undrawn.GetProperty("why").GetString() is { Length: > 0 },
             $"The profile of an Avalonia app that drew nothing did not say why it has no frames: {undrawn}");
-        JsonElement profiled = await Call(client, "profile", new() { ["arguments"] = "--quit-once-drawn" });
+        JsonElement profiled = await Call(client, McpTools.Profile, new() { ["arguments"] = "--quit-once-drawn" });
         JsonElement frames = profiled.GetProperty("frames");
         Assert.True(frames.GetProperty("count").GetInt32() > 0, $"The profile of an Avalonia app has no frames: {frames}");
         string[] places = [.. frames.GetProperty("heaviest").EnumerateArray().Select(c => c.TryGetProperty("xaml", out JsonElement at) ? at.GetString() : null).OfType<string>()];
@@ -158,28 +159,28 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
         await using McpClient client = await Start(["--mcp", appFolder], languageServer: false);
         // The app never stops by itself, so debug_start must come back once its UI is up, well within waitSeconds.
         Stopwatch launching = Stopwatch.StartNew();
-        JsonElement started = await Call(client, "debug_start", new() { ["waitSeconds"] = 300 });
+        JsonElement started = await Call(client, McpTools.DebugStart, new() { ["waitSeconds"] = 300 });
         Assert.True(started.GetProperty("status").GetString()!.Contains("its UI up", StringComparison.Ordinal) && launching.Elapsed < TimeSpan.FromSeconds(50).Scaled(),
             $"debug_start waited {launching.Elapsed.TotalSeconds:0} s for an app that never stops, and said: {started}");
-        Assert.Single((await Call(client, "app_windows")).GetProperty("windows").EnumerateArray());
+        Assert.Single((await Call(client, McpTools.AppWindows)).GetProperty("windows").EnumerateArray());
 
         // Set while the app runs; the click must say where it stopped, as the paused app cannot say what the click did.
-        await Call(client, "breakpoint_set", new() { ["path"] = "MainWindow.axaml.cs", ["line"] = 23 });
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "MainWindow.axaml.cs", ["line"] = 23 });
         Stopwatch asked = Stopwatch.StartNew();
-        string clicked = Text(await Call(client, "app_click", new() { ["control"] = "#Count" }));
+        string clicked = Text(await Call(client, McpTools.AppClick, new() { ["control"] = "#Count" }));
         Assert.True(asked.Elapsed < TimeSpan.FromSeconds(8).Scaled(), $"The click that stopped at a breakpoint took {asked.Elapsed} to say so: {clicked}");
         Assert.Contains("and that paused the program (breakpoint) at MainWindow.axaml.cs:23:", clicked, StringComparison.Ordinal);
-        JsonElement stopped = await Call(client, "debug_state");
+        JsonElement stopped = await Call(client, McpTools.DebugState);
         Assert.Equal("paused", stopped.GetProperty("state").GetString());
         string[] frames = [.. stopped.GetProperty("frames").EnumerateArray().Select(f => f.GetString()!)];
         Assert.True(frames[0].Contains("MainWindow.axaml.cs:23", StringComparison.Ordinal) && frames.Length < 8
             && frames.Any(f => f.Contains(" frames outside the folder's code (", StringComparison.Ordinal) && f.Contains("Avalonia.", StringComparison.Ordinal)),
             $"The stop's frames, for an agent:\n{string.Join('\n', frames)}");
-        await Call(client, "breakpoint_set", new() { ["path"] = "MainWindow.axaml.cs", ["line"] = 23, ["remove"] = true });
-        await Call(client, "debug_continue", new() { ["waitSeconds"] = 1 });
-        Assert.Contains("\"Clicked once\"", Text(await Call(client, "app_tree", new() { ["control"] = "#Counter" })), StringComparison.Ordinal);
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "MainWindow.axaml.cs", ["line"] = 23, ["remove"] = true });
+        await Call(client, McpTools.DebugContinue, new() { ["waitSeconds"] = 1 });
+        Assert.Contains("\"Clicked once\"", Text(await Call(client, McpTools.AppTree, new() { ["control"] = "#Counter" })), StringComparison.Ordinal);
 
-        JsonElement button = await Call(client, "app_details", new() { ["control"] = "#Count" });
+        JsonElement button = await Call(client, McpTools.AppDetails, new() { ["control"] = "#Count" });
         Assert.Equal("Button", button.GetProperty("type").GetString());
         Assert.Equal(AppXamlPlace("Button x:Name=\"Count\""), button.GetProperty("xaml").GetString());
         JsonElement content = Assert.Single(button.GetProperty("properties").EnumerateArray(), p => p.GetProperty("name").GetString() == "Content");
@@ -189,42 +190,42 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
             && s.GetProperty("whyNot").GetString() == "`:pressed` is not active on it"), $"The button's styles do not say which apply and why not: {button.GetProperty("styles")}");
         Assert.DoesNotContain(button.GetProperty("properties").EnumerateArray(), p => p.GetProperty("source").GetString() == "Default");
 
-        JsonElement watched = Assert.Single((await Call(client, "breakpoint_set", new() { ["control"] = "#Counter", ["property"] = "Text" })).EnumerateArray());
+        JsonElement watched = Assert.Single((await Call(client, McpTools.BreakpointSet, new() { ["control"] = "#Counter", ["property"] = "Text" })).EnumerateArray());
         Assert.Equal("Text on TextBlock#Counter", watched.GetProperty("property").GetString());
-        Assert.True((await Call(client, "app_details", new() { ["control"] = "#Counter", ["properties"] = "Text" })).GetProperty("properties").EnumerateArray()
+        Assert.True((await Call(client, McpTools.AppDetails, new() { ["control"] = "#Counter", ["properties"] = "Text" })).GetProperty("properties").EnumerateArray()
             .Any(p => p.GetProperty("name").GetString() == "Text" && p.TryGetProperty("breakpoint", out JsonElement marked) && marked.GetBoolean()),
             "The counter's details do not mark its watched text");
-        clicked = Text(await Call(client, "app_click", new() { ["control"] = "#Count" }));
+        clicked = Text(await Call(client, McpTools.AppClick, new() { ["control"] = "#Count" }));
         Assert.True(clicked.Contains("and that paused the program", StringComparison.Ordinal) && clicked.Contains("at MainWindow.axaml.cs:24:", StringComparison.Ordinal),
             $"The click did not stop where the code-behind sets the watched text: {clicked}");
 
-        await Call(client, "open", new() { ["path"] = "MainWindow.axaml" });
-        JsonElement stop = await Call(client, "debug_state");
+        await Call(client, McpTools.Open, new() { ["path"] = "MainWindow.axaml" });
+        JsonElement stop = await Call(client, McpTools.DebugState);
         string[] values = stop.TryGetProperty("bindingValues", out JsonElement shown) ? [.. shown.EnumerateArray().Select(v => v.GetString()!)] : [];
         Assert.True(values.Contains("MainWindow.axaml:12: Text: \"Ada\"") && values.Any(v => v.StartsWith("MainWindow.axaml:11: Text: binding failed at Nmae: ", StringComparison.Ordinal)),
             $"The binding values at the stop are not those the editor shows: {stop}");
 
         // By the breakpoint's own id for its element, since the paused app answers no query.
-        await Call(client, "breakpoint_set", new() { ["control"] = watched.GetProperty("control").GetString(), ["property"] = "Text", ["remove"] = true });
-        Assert.DoesNotContain((await Call(client, "debug_state", new() { ["of"] = "breakpoints" })).EnumerateArray(), b => b.TryGetProperty("property", out _));
-        await Call(client, "debug_continue", new() { ["waitSeconds"] = 1 });
-        Assert.Contains("\"Clicked 2 times\"", Text(await Call(client, "app_tree", new() { ["control"] = "#Counter" })), StringComparison.Ordinal);
-        await Call(client, "stop");
+        await Call(client, McpTools.BreakpointSet, new() { ["control"] = watched.GetProperty("control").GetString(), ["property"] = "Text", ["remove"] = true });
+        Assert.DoesNotContain((await Call(client, McpTools.DebugState, new() { ["of"] = "breakpoints" })).EnumerateArray(), b => b.TryGetProperty("property", out _));
+        await Call(client, McpTools.DebugContinue, new() { ["waitSeconds"] = 1 });
+        Assert.Contains("\"Clicked 2 times\"", Text(await Call(client, McpTools.AppTree, new() { ["control"] = "#Counter" })), StringComparison.Ordinal);
+        await Call(client, McpTools.Stop);
 
-        JsonElement on = Assert.Single((await Call(client, "breakpoint_set", new() { ["bindingErrors"] = true })).EnumerateArray(), b => b.TryGetProperty("bindingErrors", out _));
+        JsonElement on = Assert.Single((await Call(client, McpTools.BreakpointSet, new() { ["bindingErrors"] = true })).EnumerateArray(), b => b.TryGetProperty("bindingErrors", out _));
         Assert.True(on.GetProperty("enabled").GetBoolean(), $"XAML Binding Errors is not on: {on}");
-        JsonElement failed = await Call(client, "debug_start");
+        JsonElement failed = await Call(client, McpTools.DebugStart);
         Assert.True(failed.GetProperty("state").GetString() == "paused"
             && failed.GetProperty("locals").EnumerateArray().Any(l => l.GetProperty("name").GetString() == "$bindingError" && l.GetProperty("value").GetString()!.Contains("Nmae", StringComparison.Ordinal)),
             $"The misspelt binding did not stop the app with XAML Binding Errors on: {failed}");
         // At the editor's line, which XamlIl's runs one past below the window's lone '\r'.
         int reference = failed.GetProperty("locals").EnumerateArray().First(l => l.GetProperty("name").GetString() == "$bindingError").GetProperty("reference").GetInt32();
-        JsonElement xaml = Assert.Single((await Call(client, "debug_state", new() { ["reference"] = reference })).EnumerateArray(), m => m.GetProperty("name").GetString() == "Xaml");
+        JsonElement xaml = Assert.Single((await Call(client, McpTools.DebugState, new() { ["reference"] = reference })).EnumerateArray(), m => m.GetProperty("name").GetString() == "Xaml");
         Assert.Equal($"\"{AppXamlPlace("TextBlock x:Name=\"Caption\"")}\"", xaml.GetProperty("value").GetString());
-        JsonElement off = Assert.Single((await Call(client, "breakpoint_set", new() { ["bindingErrors"] = true, ["remove"] = true })).EnumerateArray(), b => b.TryGetProperty("bindingErrors", out _));
+        JsonElement off = Assert.Single((await Call(client, McpTools.BreakpointSet, new() { ["bindingErrors"] = true, ["remove"] = true })).EnumerateArray(), b => b.TryGetProperty("bindingErrors", out _));
         Assert.False(off.GetProperty("enabled").GetBoolean(), $"XAML Binding Errors is still on: {off}");
-        Assert.Equal("running", (await Call(client, "debug_continue", new() { ["waitSeconds"] = 2 })).GetProperty("state").GetString());
-        await Call(client, "stop");
+        Assert.Equal("running", (await Call(client, McpTools.DebugContinue, new() { ["waitSeconds"] = 2 })).GetProperty("state").GetString());
+        await Call(client, McpTools.Stop);
     }
 
     /// <summary>On the person's window an agent asks before its first click or key in their app or in Passenger itself, and
@@ -242,36 +243,36 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
             client = Await(Task.Run(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
             McpClient agent = client;
 
-            Assert.Contains("Button#Count", Text(Await(Task.Run(() => Call(agent, "app_tree", new() { ["filter"] = "#Count" })), "the app's tree")), StringComparison.Ordinal);
+            Assert.Contains("Button#Count", Text(Await(Task.Run(() => Call(agent, McpTools.AppTree, new() { ["filter"] = "#Count" })), "the app's tree")), StringComparison.Ordinal);
             Assert.Empty(window.OwnedWindows.OfType<ConfirmDialog>());
 
-            Task<JsonElement> clicking = Task.Run(() => Call(agent, "app_click", new() { ["control"] = "#Count" }));
+            Task<JsonElement> clicking = Task.Run(() => Call(agent, McpTools.AppClick, new() { ["control"] = "#Count" }));
             ConfirmDialog asked = Question(window, "the question for the agent's click");
             Assert.Contains("Allow app_click?", Texts(asked));
             Press(asked, "Allow");
             Assert.StartsWith("Clicked Button#Count", Text(Await(clicking, "the click")), StringComparison.Ordinal);
-            Assert.Contains("\"Clicked once\"", Text(Await(Task.Run(() => Call(agent, "app_tree", new() { ["control"] = "#Counter" })), "the counter")), StringComparison.Ordinal);
+            Assert.Contains("\"Clicked once\"", Text(Await(Task.Run(() => Call(agent, McpTools.AppTree, new() { ["control"] = "#Counter" })), "the counter")), StringComparison.Ordinal);
 
             TextBlock project = window.FindControl<TextBlock>("ProjectName")!;
             // The tree names an element by its type, #name, any .classes, then its text.
             Assert.Matches($"TextBlock#ProjectName(\\.[\\w-]+)* \"{System.Text.RegularExpressions.Regex.Escape(project.Text!)}\"",
-                Text(Await(Task.Run(() => Call(agent, "app_tree", new() { ["app"] = "ide", ["filter"] = "#ProjectName" })), "Passenger's tree")));
-            Await(Task.Run(() => Call(agent, "app_click", new() { ["app"] = "ide", ["control"] = "#RunConfigButton" })), "the click on Passenger's run configurations");
+                Text(Await(Task.Run(() => Call(agent, McpTools.AppTree, new() { ["app"] = "ide", ["filter"] = "#ProjectName" })), "Passenger's tree")));
+            Await(Task.Run(() => Call(agent, McpTools.AppClick, new() { ["app"] = "ide", ["control"] = "#RunConfigButton" })), "the click on Passenger's run configurations");
             Dictionary<string, object?> menu = new() { ["app"] = "ide", ["filter"] = "MenuItem \"AgentApp\"" };
-            Assert.Contains("MenuItem \"AgentApp\"", Text(Await(Task.Run(() => Call(agent, "app_tree", menu)), "the run configurations' menu")), StringComparison.Ordinal);
-            Task<JsonElement> escaping = Task.Run(() => Call(agent, "app_key", new() { ["app"] = "ide", ["keys"] = "Escape" }));
+            Assert.Contains("MenuItem \"AgentApp\"", Text(Await(Task.Run(() => Call(agent, McpTools.AppTree, menu)), "the run configurations' menu")), StringComparison.Ordinal);
+            Task<JsonElement> escaping = Task.Run(() => Call(agent, McpTools.AppKey, new() { ["app"] = "ide", ["keys"] = "Escape" }));
             Press(Question(window, "the question for the agent's keys"), "Allow");
             string escaped = Text(Await(escaping, "the Escape"));
-            string after = Text(Await(Task.Run(() => Call(agent, "app_tree", menu)), "the menu closed"));
+            string after = Text(Await(Task.Run(() => Call(agent, McpTools.AppTree, menu)), "the menu closed"));
             Assert.True(after.StartsWith("Nothing in Passenger matches", StringComparison.Ordinal), $"Escape ({escaped}) left the menu open: {after}");
 
-            Task<CallToolResult> building = Task.Run(() => Result(agent, "build"));
+            Task<CallToolResult> building = Task.Run(() => Result(agent, McpTools.Build));
             ConfirmDialog question = Question(window, "the question for the agent's build");
-            CallToolResult clicked = Await(Task.Run(() => Result(agent, "app_click", new() { ["app"] = "ide", ["window"] = "ConfirmDialog", ["control"] = "Button \"Allow\"" })),
+            CallToolResult clicked = Await(Task.Run(() => Result(agent, McpTools.AppClick, new() { ["app"] = "ide", ["window"] = "ConfirmDialog", ["control"] = "Button \"Allow\"" })),
                 "the agent's click on the question's Allow");
             Assert.True(clicked.IsError == true && Text(clicked).Contains("only they answer it", StringComparison.Ordinal),
                 $"The agent's click on the question its own build waits on was answered: {Text(clicked)}");
-            CallToolResult entered = Await(Task.Run(() => Result(agent, "app_key", new() { ["app"] = "ide", ["window"] = "ConfirmDialog", ["keys"] = "Enter" })),
+            CallToolResult entered = Await(Task.Run(() => Result(agent, McpTools.AppKey, new() { ["app"] = "ide", ["window"] = "ConfirmDialog", ["keys"] = "Enter" })),
                 "the agent's Enter in the question");
             Assert.True(entered.IsError == true && Text(entered).Contains("only they answer it", StringComparison.Ordinal),
                 $"The agent's Enter in the question its own build waits on was answered: {Text(entered)}");
@@ -281,7 +282,7 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
 
             shown = window.ShowSettings();
             Ui.Settle();
-            CallToolResult set = Await(Task.Run(() => Result(agent, "app_click", new() { ["app"] = "ide", ["window"] = "SettingsDialog", ["x"] = 20, ["y"] = 20 })),
+            CallToolResult set = Await(Task.Run(() => Result(agent, McpTools.AppClick, new() { ["app"] = "ide", ["window"] = "SettingsDialog", ["x"] = 20, ["y"] = 20 })),
                 "the agent's click in Settings");
             Assert.True(set.IsError == true && Text(set).Contains("Settings is the person's alone", StringComparison.Ordinal),
                 $"The agent's click in Settings was answered: {Text(set)}");
@@ -323,16 +324,16 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
         McpClient client = Await(Task.Run(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
         try
         {
-            string chosen = Text(Unasked(window, client, "app_tree"));
+            string chosen = Text(Unasked(window, client, McpTools.AppTree));
             Assert.True(chosen.Contains("Delete", StringComparison.Ordinal) && !chosen.Contains("Caption", StringComparison.Ordinal),
                 $"The agent's app_tree naming no app was not the chosen tab's, LiveTreeApp's: {chosen}");
-            string named = Text(Unasked(window, client, "app_tree", new() { ["app"] = "BindingErrorsApp" }));
+            string named = Text(Unasked(window, client, McpTools.AppTree, new() { ["app"] = "BindingErrorsApp" }));
             Assert.True(named.Contains("Caption", StringComparison.Ordinal) && !named.Contains("Delete", StringComparison.Ordinal),
                 $"The agent's app_tree naming BindingErrorsApp was not that app's: {named}");
-            JsonElement failures = Unasked(window, client, "app_binding_errors");
+            JsonElement failures = Unasked(window, client, McpTools.AppBindingErrors);
             Assert.True(failures.EnumerateArray().Any(f => f.GetProperty("app").GetString() == "BindingErrorsApp" && f.GetProperty("path").GetString() == "Nmae"),
                 $"The first app's failed binding was not listed under its name: {failures}");
-            Assert.Equal("Stopped", Unasked(window, client, "stop").GetString());
+            Assert.Equal("Stopped", Unasked(window, client, McpTools.Stop).GetString());
             WaitFor(() => !window.Debugger.IsDebugging, "both apps to end");
         }
         finally

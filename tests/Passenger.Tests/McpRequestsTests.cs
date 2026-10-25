@@ -1,6 +1,7 @@
 using System.Net.Http;
 using System.Text.Json;
 using ModelContextProtocol.Client;
+using Passenger.App.Mcp;
 
 namespace Passenger.Tests;
 
@@ -17,11 +18,11 @@ public sealed class McpRequestsTests : McpRig
         LiveRequestsTests.WriteShop(shop, port.Port);
         await using McpClient client = await Start(["--mcp", shop]);
         port.LetGo(Path.Combine(shop, "gate"));
-        await Call(client, "run", new() { ["configuration"] = "Shop: http", ["waitSeconds"] = 5 });
+        await Call(client, McpTools.Run, new() { ["configuration"] = "Shop: http", ["waitSeconds"] = 5 });
         try
         {
             // The first ask follows the app, so what it serves from then on is heard.
-            string following = (await Call(client, "output", new() { ["requests"] = true })).GetString()!;
+            string following = (await Call(client, McpTools.Output, new() { ["requests"] = true })).GetString()!;
             Assert.True(following.StartsWith("Following Shop: http (process", StringComparison.Ordinal), $"output with requests did not follow the shop: {following}");
             using HttpClient http = new();
             Assert.True(await Waiting.UntilAsync(() =>
@@ -38,7 +39,7 @@ public sealed class McpRequestsTests : McpRig
             string said = string.Empty;
             Assert.True(await Waiting.UntilAsync(async () =>
             {
-                said = (await Call(client, "output", new() { ["requests"] = true })).GetString()!;
+                said = (await Call(client, McpTools.Output, new() { ["requests"] = true })).GetString()!;
                 return said.Split('\n').Any(l => l.StartsWith("GET /orders 200", StringComparison.Ordinal) && l.Contains("->", StringComparison.Ordinal)) && said.Split('\n').Length >= 6;
             }, TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken), $"The agent never read the orders' request and its commands: {said}");
             string request = said.Split('\n').First(l => l.StartsWith("GET /orders 200", StringComparison.Ordinal));
@@ -52,7 +53,7 @@ public sealed class McpRequestsTests : McpRig
             string[] signUp = [];
             Assert.True(await Waiting.UntilAsync(async () =>
             {
-                said = (await Call(client, "output", new() { ["requests"] = true })).GetString()!;
+                said = (await Call(client, McpTools.Output, new() { ["requests"] = true })).GetString()!;
                 string[] lines = said.Split('\n');
                 int at = Array.FindIndex(lines, l => l.StartsWith("GET /sign-up/ada 200", StringComparison.Ordinal));
                 signUp = at < 0 ? [] : [.. lines.Skip(at + 1).TakeWhile(l => l.StartsWith("  ", StringComparison.Ordinal))];
@@ -64,7 +65,7 @@ public sealed class McpRequestsTests : McpRig
         }
         finally
         {
-            await Call(client, "stop");
+            await Call(client, McpTools.Stop);
         }
     }
 }

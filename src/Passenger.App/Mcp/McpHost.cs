@@ -9,8 +9,8 @@ using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Passenger.App.State;
-using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Workspace;
 
 namespace Passenger.App.Mcp;
 
@@ -28,6 +28,7 @@ public static partial class McpHost
 
     /// <summary>The variable that, set to <c>off</c>, has an <c>--mcp</c> Passenger start no C# language server
     /// (<see cref="MainWindow.StartsLanguageServer"/>), for an agent that asks nothing of C#.</summary>
+    [IdentifierHome]
     public const string LanguageServerVariable = "PASSENGER_MCP_LANGUAGE_SERVER";
 
     /// <summary>Whether <c>--mcp</c>'s IDE starts the C# language server: always, unless <see cref="LanguageServerVariable"/>
@@ -209,7 +210,7 @@ public static partial class McpHost
             {
                 context.Cancel = true;
                 end();
-                _ = Task.Delay(EndLimit).ContinueWith(_ => Environment.Exit(143), TaskScheduler.Default);
+                IdeErrors.Observe(Task.Delay(EndLimit).ContinueWith(_ => Environment.Exit(143), TaskScheduler.Default));
             });
         }
         catch (PlatformNotSupportedException)
@@ -228,25 +229,26 @@ public static partial class McpHost
         Stream output = Console.OpenStandardOutput();
         // Standard output is the protocol's alone, and standard error the agent may never read: the console goes to the log.
         IdeLog.TakeConsole();
+        StartHostAhead(launch);
 
         using CancellationTokenSource done = new();
         TaskCompletionSource<PassengerTools> ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
         // The agent's own IDE: nobody else is at it to ask.
         AgentConnection connection = new(done.Token, attached: false);
-        McpServer server = McpServer.Create(new PeerTransport(new StreamServerTransport(input, output, "passenger")), Options(ready.Task, connection));
-        // Not held: it serves for as long as the agent stays, and each tool holds what it starts.
-        _ = Task.Run(async () =>
+        // Not held, and made on a worker while the window is: it serves as long as the agent stays, each tool holding what it starts.
+        IdeErrors.Observe(Task.Run(async () =>
         {
             try
             {
+                McpServer server = McpServer.Create(new PeerTransport(new StreamServerTransport(input, output, "passenger")), Options(ready.Task, connection));
                 await server.RunAsync(done.Token);
             }
             finally
             {
                 ended.TrySetResult();
             }
-        });
+        }));
         using System.Runtime.InteropServices.PosixSignalRegistration? terminated = EndOnSignal(() => ended.TrySetResult());
 
         AppBuilder.Configure<App>()
@@ -264,12 +266,38 @@ public static partial class McpHost
         window.Start(launch);
         ready.SetResult(new PassengerTools(window, connection));
         // Posted once the dispatcher is this thread's: the agent may have gone before it was.
-        _ = ended.Task.ContinueWith(_ => UiThread.Post(done.Cancel), TaskScheduler.Default);
+        IdeErrors.Observe(ended.Task.ContinueWith(_ => UiThread.Post(done.Cancel), TaskScheduler.Default));
         Dispatcher.UIThread.MainLoop(done.Token);
         // What the agent left running (a program, a debugger) ends with the windows, as it does with the person's.
         PassengerApp.Quit();
         PassengerApp.End();
         return 0;
+    }
+
+    /// <summary>Starts the project host for the folder the command line names, on a worker, while the window is made, which
+    /// the folder's first evaluation would wait for; one that cannot start says why when the folder asks for it.</summary>
+    private static void StartHostAhead(LaunchOptions launch)
+    {
+        if ((launch.Workspace ?? launch.Folder) is not { } named)
+        {
+            return;
+        }
+        string full = PathNames.Canonical(named);
+        string folder = File.Exists(full) && WorkspaceModel.Opens(full) ? Path.GetDirectoryName(full)! : full;
+        if (Directory.Exists(folder))
+        {
+            IdeErrors.Observe(Task.Run(async () =>
+            {
+                try
+                {
+                    await ProjectHosts.ForAsync(folder);
+                }
+                catch (ProjectHostFailed)
+                {
+                    // Said when the folder asks for its host.
+                }
+            }));
+        }
     }
 
     /// <summary><c>--headless [PATH]</c>: a person's window on the headless platform, which <c>--mcp-attach</c> starts
@@ -297,7 +325,7 @@ public static partial class McpHost
         using CancellationTokenSource done = new();
         using System.Runtime.InteropServices.PosixSignalRegistration? terminated = EndOnSignal(() => UiThread.Post(done.Cancel));
         // Not held: it waits for the end of the input, which its starter's own end closes.
-        _ = Task.Run(() =>
+        IdeErrors.Observe(Task.Run(() =>
         {
             try
             {
@@ -307,7 +335,7 @@ public static partial class McpHost
             {
                 UiThread.Post(done.Cancel);
             }
-        });
+        }));
         Dispatcher.UIThread.MainLoop(done.Token);
         PassengerApp.Quit();
         PassengerApp.End();

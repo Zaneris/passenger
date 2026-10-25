@@ -29,6 +29,13 @@
     <DisableTransitiveFrameworkReferenceDownloads>true</DisableTransitiveFrameworkReferenceDownloads>
   </PropertyGroup>
 
+  <!-- Passenger's own rules (src/Passenger.Analyzers) over every project but theirs, as an analyzer alone: nothing of it
+       is referenced or carried. -->
+  <ItemGroup Condition="'$(MSBuildProjectName)' != 'Passenger.Analyzers'">
+    <ProjectReference Include="$(MSBuildThisFileDirectory)src/Passenger.Analyzers/Passenger.Analyzers.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all" />
+  </ItemGroup>
+
   <!-- Passenger's own code writes a whole file only through AtomicFile, FileText.Save or OwnFiles: File.WriteAll* is
        banned under src/ (src/BannedSymbols.txt), which warnings as errors make a failed build. -->
   <ItemGroup Condition="$(MSBuildProjectDirectory.StartsWith('$(MSBuildThisFileDirectory)src'))">

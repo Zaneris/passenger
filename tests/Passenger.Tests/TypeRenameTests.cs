@@ -11,6 +11,7 @@ using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
+using Passenger.Vcs;
 
 namespace Passenger.Tests;
 
@@ -237,9 +238,7 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
 
     private MainWindow Open(string file)
     {
-        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder, autosaves: false);
         window.OpenFile(Path.Combine(folder, file));
         Ui.Settle();
         Assert.True(window.CSharpService?.IsReady, window.CSharpService?.State);

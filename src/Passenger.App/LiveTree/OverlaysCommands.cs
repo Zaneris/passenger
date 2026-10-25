@@ -27,12 +27,12 @@ public sealed class OverlaysCommands
         OverlaysButton debug = parts.Views.Debug.Overlays;
         run.Shown = () => RunApp()?.Overlays ?? [];
         debug.Shown = () => DebugApp()?.Overlays ?? [];
-        run.Toggled += (_, name) => _ = ToggleAsync(RunApp(), name);
-        debug.Toggled += (_, name) => _ = ToggleAsync(DebugApp(), name);
+        run.Toggled += (_, name) => IdeErrors.Observe(ToggleAsync(RunApp(), name));
+        debug.Toggled += (_, name) => IdeErrors.Observe(ToggleAsync(DebugApp(), name));
         for (int i = 0; i < OverlaysButton.All.Count; i++)
         {
             (string name, string title) = OverlaysButton.All[i];
-            parts.Actions.Add(new IdeAction(Ids[i], $"Avalonia Debug Overlay: {title}", "Run", context => _ = ToggleAsync(Front(), name))
+            parts.Actions.Add(new IdeAction(Ids[i], $"Avalonia Debug Overlay: {title}", "Run", context => IdeErrors.Observe(ToggleAsync(Front(), name)))
             {
                 TitleIn = _ => title,
                 WhyNot = _ => Front() is null ? NoApp : null,

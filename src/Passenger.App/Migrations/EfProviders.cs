@@ -1,5 +1,5 @@
-using Passenger.App.Packages;
-using Passenger.App.Workspace;
+using Passenger.Packages;
+using Passenger.Workspace;
 
 namespace Passenger.App.Migrations;
 

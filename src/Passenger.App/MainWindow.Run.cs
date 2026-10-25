@@ -6,6 +6,7 @@ using Passenger.App.Editors;
 using Passenger.App.Run;
 using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Workspace;
 
 namespace Passenger.App;
 
@@ -60,7 +61,7 @@ public partial class MainWindow
                 RunConfigurationsDialog = null;
             }
         };
-        _ = dialog.ShowDialog(this);
+        IdeErrors.Observe(dialog.ShowDialog(this));
         return dialog;
     }
 
@@ -122,7 +123,7 @@ public partial class MainWindow
     /// <summary>How Edit Configurations reads a Compose configuration's services: Compose's model through the window's engine,
     /// asked only once the engine answers as ready.</summary>
     private static Func<RunConfiguration, CancellationToken, Task<IReadOnlyList<(ComposeService Service, string? Project, bool Built)>>> ReadServices(
-        IReadOnlyList<Workspace.ProjectModel> projects, ContainerEngine engine) => async (configuration, cancel) =>
+        IReadOnlyList<ProjectModel> projects, ContainerEngine engine) => async (configuration, cancel) =>
         {
             EngineState state = await engine.StateAsync(cancel: cancel);
             return state.IsReady ? await ContainerPlans.ServicesAsync(configuration, projects, engine, cancel)
@@ -165,7 +166,7 @@ public partial class MainWindow
     }
 
     /// <summary>Run, from its key, the toolbar or the Run window: what stopped it, if anything, is in the status bar.</summary>
-    private void RunSelected() => _ = RunAsync();
+    private void RunSelected() => IdeErrors.Observe(RunAsync());
 
     /// <summary>Rerun, of the configuration chosen (<see cref="BuildRunController.RerunAsync"/>): what stopped it, if anything,
     /// is in the status bar.</summary>
@@ -174,7 +175,7 @@ public partial class MainWindow
     /// <summary>Debug, from its key or the toolbar: what stopped it, if anything, goes to the status bar.</summary>
     public void DebugSelected()
     {
-        _ = Debug();
+        IdeErrors.Observe(Debug());
 
         async Task Debug()
         {

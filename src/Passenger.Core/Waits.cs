@@ -7,6 +7,7 @@ namespace Passenger.Core;
 /// <see cref="ScaleVariable"/> gives the factor, a number above 0, 1 when unset; any other value is fatal.</summary>
 public static class Waits
 {
+    [IdentifierHome]
     public const string ScaleVariable = "PASSENGER_WAIT_SCALE";
 
     public static double Scale => Environment.GetEnvironmentVariable(ScaleVariable) is { Length: > 0 } given

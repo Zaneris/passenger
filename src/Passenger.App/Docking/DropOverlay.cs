@@ -18,8 +18,8 @@ public sealed class DropOverlay : Canvas
         IsVisible = false;
         ZIndex = 2;
         zone.Child = label;
-        zone.Bind(Border.BorderBrushProperty, zone.GetResourceObservable("Passenger.Accent"));
-        zone.Bind(Border.BackgroundProperty, zone.GetResourceObservable("Passenger.DropZone"));
+        zone.Bind(Border.BorderBrushProperty, zone.GetResourceObservable(TokenKeys.Accent));
+        zone.Bind(Border.BackgroundProperty, zone.GetResourceObservable(TokenKeys.DropZone));
         Children.Add(zone);
     }
 

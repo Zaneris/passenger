@@ -1,9 +1,9 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
-using Passenger.App.Packages;
 using Passenger.App.Updates;
 using Passenger.Core;
+using Passenger.Packages;
 
 namespace Passenger.App;
 
@@ -65,7 +65,7 @@ public partial class MainWindow
     private void AddUpdates()
     {
         actions!.Add(new IdeAction(AppActions.CheckForUpdates, "Check for Updates…", "Help",
-            context => _ = CheckForUpdatesAsync(asked: true))
+            context => IdeErrors.Observe(CheckForUpdatesAsync(asked: true)))
         {
             Menus = OperatingSystem.IsMacOS() ? [] : [new MenuPlace("Help", 3, 1)],
         });
@@ -158,9 +158,9 @@ public partial class MainWindow
             return;
         }
         updateTimer = new DispatcherTimer { Interval = UpdateInterval };
-        updateTimer.Tick += (_, _) => _ = CheckForUpdatesAsync(asked: false);
+        updateTimer.Tick += (_, _) => IdeErrors.Observe(CheckForUpdatesAsync(asked: false));
         updateTimer.Start();
-        _ = CheckForUpdatesAsync(asked: false);
+        IdeErrors.Observe(CheckForUpdatesAsync(asked: false));
     }
 
     /// <summary>Asks for the latest release, off the UI thread. A newer one downloads when this copy installs updates
@@ -339,14 +339,14 @@ public partial class MainWindow
         readyRelease = null;
         // Once the download stopped has let go of its files. Not drawn: removing hundreds of megabytes is the disk's work.
         Task? stopping = downloadTask;
-        _ = Task.Run(async () =>
+        IdeErrors.Observe(Task.Run(async () =>
         {
             if (stopping is not null)
             {
                 await stopping.ContinueWith(_ => { }, TaskScheduler.Default);
             }
             updater.Discard();
-        });
+        }));
     }
 
     /// <summary>What the last session's install came to, said once: the version it installed, or that it did not.</summary>
@@ -389,7 +389,7 @@ public partial class MainWindow
     {
         UpdateShown = release with { Link = link };
         string opens = link == release.Link && release.Asset is { } asset ? $"Download {asset}" : $"Open the release page of {release.Tag}";
-        Notice(UpdateNotice.Available, "Icon.ArrowDown", "Passenger.Link", $"Passenger {release.Version} available",
+        Notice(UpdateNotice.Available, IconKeys.ArrowDown, TokenKeys.Link, $"Passenger {release.Version} available",
             $"{(why is null ? string.Empty : why + "\n")}{opens}\n{link}");
     }
 
@@ -397,7 +397,7 @@ public partial class MainWindow
     private void ShowDownloading(LatestRelease release, int percent)
     {
         UpdateShown = release;
-        Notice(UpdateNotice.Downloading, "Icon.ArrowDown", "Passenger.Link",
+        Notice(UpdateNotice.Downloading, IconKeys.ArrowDown, TokenKeys.Link,
             percent < 100 ? $"Downloading Passenger {release.Version}: {percent}%" : $"Checking Passenger {release.Version}…",
             $"Passenger {release.Version} is downloading from GitHub, to be checked and installed when Passenger restarts.\nClick to open its release page.");
     }
@@ -405,7 +405,7 @@ public partial class MainWindow
     private void ShowReady(LatestRelease release)
     {
         UpdateShown = release;
-        Notice(UpdateNotice.Ready, "Icon.Rerun", "Passenger.Link", $"Restart to update to Passenger {release.Version}",
+        Notice(UpdateNotice.Ready, IconKeys.Rerun, TokenKeys.Link, $"Restart to update to Passenger {release.Version}",
             $"Passenger {release.Version} is downloaded and checked. Click to restart into it;\notherwise it installs when Passenger closes.");
     }
 
@@ -414,7 +414,7 @@ public partial class MainWindow
     private void ShowRefused(LatestRelease release, string why)
     {
         UpdateShown = release with { Link = release.Page };
-        Notice(UpdateNotice.Refused, "Icon.Error", "Passenger.Warning", $"Passenger {release.Version} not installed",
+        Notice(UpdateNotice.Refused, IconKeys.Error, TokenKeys.Warning, $"Passenger {release.Version} not installed",
             $"{why}\nOpen the release page of {release.Tag}\n{release.Page}");
     }
 

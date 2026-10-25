@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
+using Passenger.Vcs;
 
 namespace Passenger.App.Vcs;
 
@@ -45,7 +46,7 @@ public sealed class MergeWindow : Window, IOwnKeys
         {
             if (e.Key == Key.Escape && e.KeyModifiers == KeyModifiers.None)
             {
-                _ = CancelAsync();
+                IdeErrors.Observe(CancelAsync());
                 e.Handled = true;
             }
         };
@@ -56,7 +57,7 @@ public sealed class MergeWindow : Window, IOwnKeys
             if (!finished && e.CloseReason == WindowCloseReason.WindowClosing && View.IsModified)
             {
                 e.Cancel = true;
-                _ = CancelAsync();
+                IdeErrors.Observe(CancelAsync());
             }
         };
     }
@@ -148,7 +149,7 @@ public sealed class MergeWindow : Window, IOwnKeys
     private static Button Action(string label, Func<Task> run)
     {
         Button button = new() { Content = label };
-        button.Click += (_, _) => _ = run();
+        button.Click += (_, _) => IdeErrors.Observe(run());
         return button;
     }
 }

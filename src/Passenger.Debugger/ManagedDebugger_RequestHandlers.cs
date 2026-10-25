@@ -124,7 +124,7 @@ public partial class ManagedDebugger
         Task<int?> launchExit = Task.Run(launch.WaitForExit);
         _launchExit = launchExit;
         // Told as the program goes, not when the runtime's word of it is handled, which mscordbi may lose tearing down.
-        _ = launchExit.ContinueWith(ended => ReportExit(ended.Result), TaskScheduler.Default);
+        Core.UnawaitedWork.Observe(launchExit.ContinueWith(ended => ReportExit(ended.Result), TaskScheduler.Default));
         int processId = launch.ProcessId;
 
         _logger?.Invoke($"Process created suspended with PID: {processId}");

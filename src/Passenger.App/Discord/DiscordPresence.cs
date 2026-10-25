@@ -140,7 +140,7 @@ public sealed class DiscordPresence(DiscordIpc ipc, Action<string> log)
                     sent = null;
                     quiet = false;
                     log($"Discord: connected at {connection.Where}");
-                    _ = connection.Lost.ContinueWith(_ => wake.Writer.TryWrite(true), TaskScheduler.Default);
+                    IdeErrors.Observe(connection.Lost.ContinueWith(_ => wake.Writer.TryWrite(true), TaskScheduler.Default));
                 }
                 if (now == sent)
                 {

@@ -33,7 +33,7 @@ public static class FileManager
         {
             // Linux's file managers have no one way to choose a file: its folder is shown.
             string folder = Directory.Exists(path) ? path : Path.GetDirectoryName(path) ?? path;
-            _ = window.Launcher.LaunchDirectoryInfoAsync(new DirectoryInfo(folder));
+            IdeErrors.Observe(window.Launcher.LaunchDirectoryInfoAsync(new DirectoryInfo(folder)));
             return;
         }
         System.Diagnostics.ProcessStartInfo start = OperatingSystem.IsMacOS()
@@ -46,6 +46,6 @@ public static class FileManager
         }
         // Explorer answers 1 when it has handed the request to the running shell.
         _ = ChildProcesses.RunAsync(start, limit: TimeSpan.FromSeconds(30), answers: OperatingSystem.IsWindows() ? [1] : null)
-            .ContinueWith(ran => ran.Exception?.Handle(_ => true), TaskScheduler.Default);
+            .ContinueWith(ran => ran.Exception, TaskScheduler.Default);
     }
 }

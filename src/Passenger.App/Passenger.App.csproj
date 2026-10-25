@@ -41,7 +41,8 @@
     <!-- The Model Context Protocol server (Mcp/), the official SDK's core, without its ASP.NET half. -->
     <PackageReference Include="ModelContextProtocol.Core" />
     <PackageReference Include="Microsoft.TestPlatform.TranslationLayer" />
-    <!-- The folder's nuget.config files as NuGet reads them: the NuGet window's feeds, credentials and source mapping. -->
+    <!-- NuGet's own reading of the machine's settings and of target frameworks: the global packages folder EF's tools are
+         found in (Migrations/EfTools.cs) and which framework takes another's (Aspire/AspireOrchestration.cs). -->
     <PackageReference Include="NuGet.Configuration" />
     <!-- Microsoft.Testing.Platform's test hosts speak JSON-RPC (Testing/TestingPlatformRunner.cs). -->
     <PackageReference Include="StreamJsonRpc" />
@@ -54,8 +55,11 @@
     <ProjectReference Include="../Passenger.Editor/Passenger.Editor.csproj" />
     <ProjectReference Include="../Passenger.Languages/Passenger.Languages.csproj" />
     <ProjectReference Include="../Passenger.Lsp/Passenger.Lsp.csproj" />
+    <ProjectReference Include="../Passenger.Packages/Passenger.Packages.csproj" />
     <ProjectReference Include="../Passenger.Text/Passenger.Text.csproj" />
     <ProjectReference Include="../Passenger.Terminal/Passenger.Terminal.csproj" />
+    <ProjectReference Include="../Passenger.Vcs/Passenger.Vcs.csproj" />
+    <ProjectReference Include="../Passenger.Workspace/Passenger.Workspace.csproj" />
     <ProjectReference Include="../Passenger.Xaml/Passenger.Xaml.csproj" />
     <ProjectReference Include="../Passenger.Profiler/Passenger.Profiler.csproj" />
     <ProjectReference Include="../Passenger.Dap/Passenger.Dap.csproj" />
@@ -78,12 +82,9 @@
                       GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishReadyToRun" />
     <Compile Include="../Passenger.TestFrames/Variables.cs" Link="Testing/TestFramesVariables.cs" />
     <!-- Built first and carried under host/, never linked: MSBuild's evaluation runs in its own process on the machine's
-         dotnet (Workspace/ProjectHost.cs), so it is built for none of the systems the app is published for. -->
+         dotnet (Passenger.Workspace's ProjectHost.cs), so it is built for none of the systems the app is published for. -->
     <ProjectReference Include="../Passenger.Host/Passenger.Host.csproj" ReferenceOutputAssembly="false" Private="false"
                       GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishReadyToRun" />
-    <!-- The host's messages, one definition for both ends. -->
-    <Compile Include="../Passenger.Host/Protocol.cs" Link="Workspace/HostProtocol.cs" />
-    <Compile Include="../Passenger.Host/Stamps.cs" Link="Workspace/HostStamps.cs" />
     <!-- Built first and carried under wpfpreview/ on Windows, never linked: WPF's previewer runs in its own process on a
          WPF project's own runtime (Xaml/WpfPreviewHost.cs). It is built everywhere, as WPF compiles anywhere
          (EnableWindowsTargeting), and for none of the systems the app is published for. -->

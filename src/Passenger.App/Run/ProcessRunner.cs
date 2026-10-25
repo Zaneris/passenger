@@ -132,7 +132,7 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
             return Launch(start, null);
         }
         running = true;
-        _ = LaunchAfterAsync(start, after, ended = new(TaskCreationOptions.RunContinuationsAsynchronously));
+        IdeErrors.Observe(LaunchAfterAsync(start, after, ended = new(TaskCreationOptions.RunContinuationsAsynchronously)));
         return null;
     }
 

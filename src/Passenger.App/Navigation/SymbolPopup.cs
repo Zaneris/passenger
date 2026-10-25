@@ -44,7 +44,7 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
     {
         this.search = search;
         typing = new Debounce(Pause, Refresh);
-        _ = Refresh();
+        IdeErrors.Observe(Refresh());
     }
 
     /// <summary>The popup's switch turned, before it asks again; its search reads what it is now.</summary>
@@ -61,7 +61,7 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
     protected override void OptionTurned()
     {
         OptionChanged?.Invoke(this, IsOptionChecked);
-        _ = Refresh();
+        IdeErrors.Observe(Refresh());
     }
 
     protected override Control Draw(SymbolRow row) => Row(row);
@@ -118,7 +118,7 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
         {
             [DockPanel.DockProperty] = Dock.Right,
             Text = row.Where ?? string.Empty,
-            Foreground = InfoCard.Brush("Passenger.TextMuted"),
+            Foreground = InfoCard.Brush(TokenKeys.TextMuted),
             FontSize = 12,
             Margin = new Thickness(12, 0, 8, 0),
             TextTrimming = TextTrimming.CharacterEllipsis,
@@ -136,7 +136,7 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
                 new TextBlock
                 {
                     Text = row.Detail ?? string.Empty,
-                    Foreground = InfoCard.Brush("Passenger.TextMuted"),
+                    Foreground = InfoCard.Brush(TokenKeys.TextMuted),
                     FontSize = 12,
                     Margin = new Thickness(row.Detail?.StartsWith(':') == true ? -8 : 0, 0, 0, 0),
                     VerticalAlignment = VerticalAlignment.Center,
@@ -161,7 +161,7 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
             Text = letter,
             FontSize = 10,
             FontWeight = FontWeight.Bold,
-            Foreground = InfoCard.Brush("Passenger.BadgeText"),
+            Foreground = InfoCard.Brush(TokenKeys.BadgeText),
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
         },
@@ -170,21 +170,21 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
     /// <summary>The letter and colour of a symbol of each kind (the protocol's SymbolKind).</summary>
     public static (string Letter, string Brush) Badge(SymbolKind kind) => kind switch
     {
-        SymbolKind.Namespace => ("N", "Passenger.Syntax.Keyword"),
-        SymbolKind.Class => ("C", "Passenger.Syntax.Class"),
-        SymbolKind.Method or SymbolKind.Function => ("m", "Passenger.Syntax.Method"),
-        SymbolKind.Property => ("p", "Passenger.Syntax.Property"),
-        SymbolKind.Field => ("f", "Passenger.Syntax.Field"),
-        SymbolKind.Constructor => ("m", "Passenger.Syntax.Method"),
-        SymbolKind.Enum => ("E", "Passenger.Syntax.Enum"),
-        SymbolKind.Interface => ("I", "Passenger.Syntax.Interface"),
-        SymbolKind.Variable => ("v", "Passenger.TextMuted"),
-        SymbolKind.Constant => ("c", "Passenger.Syntax.Constant"),
-        SymbolKind.EnumMember => ("e", "Passenger.Syntax.EnumMember"),
-        SymbolKind.Struct => ("S", "Passenger.Syntax.Struct"),
-        SymbolKind.Event => ("e", "Passenger.Syntax.Event"),
-        SymbolKind.Operator => ("o", "Passenger.TextMuted"),
-        SymbolKind.TypeParameter => ("T", "Passenger.Syntax.TypeParameter"),
-        _ => ("·", "Passenger.TextMuted"),
+        SymbolKind.Namespace => ("N", TokenKeys.Syntax_Keyword),
+        SymbolKind.Class => ("C", TokenKeys.Syntax_Class),
+        SymbolKind.Method or SymbolKind.Function => ("m", TokenKeys.Syntax_Method),
+        SymbolKind.Property => ("p", TokenKeys.Syntax_Property),
+        SymbolKind.Field => ("f", TokenKeys.Syntax_Field),
+        SymbolKind.Constructor => ("m", TokenKeys.Syntax_Method),
+        SymbolKind.Enum => ("E", TokenKeys.Syntax_Enum),
+        SymbolKind.Interface => ("I", TokenKeys.Syntax_Interface),
+        SymbolKind.Variable => ("v", TokenKeys.TextMuted),
+        SymbolKind.Constant => ("c", TokenKeys.Syntax_Constant),
+        SymbolKind.EnumMember => ("e", TokenKeys.Syntax_EnumMember),
+        SymbolKind.Struct => ("S", TokenKeys.Syntax_Struct),
+        SymbolKind.Event => ("e", TokenKeys.Syntax_Event),
+        SymbolKind.Operator => ("o", TokenKeys.TextMuted),
+        SymbolKind.TypeParameter => ("T", TokenKeys.Syntax_TypeParameter),
+        _ => ("·", TokenKeys.TextMuted),
     };
 }

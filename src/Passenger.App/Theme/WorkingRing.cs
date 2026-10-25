@@ -34,7 +34,7 @@ public sealed class WorkingRing : Control
         base.OnAttachedToVisualTree(e);
         if (!IsSet(BrushProperty))
         {
-            this.Bind(BrushProperty, this.GetResourceObservable("Passenger.Accent"));
+            this.Bind(BrushProperty, this.GetResourceObservable(TokenKeys.Accent));
         }
     }
 

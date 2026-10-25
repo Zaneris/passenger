@@ -8,9 +8,9 @@ using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
 using Avalonia.VisualTree;
 using Passenger.App;
-using Passenger.App.Packages;
 using Passenger.App.ToolWindows;
-using Passenger.App.Workspace;
+using Passenger.Packages;
+using Passenger.Workspace;
 
 namespace Passenger.Tests;
 
@@ -200,10 +200,7 @@ public sealed class PackagesTests : IDisposable
     /// language server, which nothing here asks of, so none starts and restores the project.</summary>
     private MainWindow Open(IPackageFeed packages, string? opened = null)
     {
-        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
-        window.Show();
-        window.OpenFolder(opened ?? Path.Combine(folder, "Lib"));
-        Ui.Settle();
+        MainWindow window = Ui.OpenFolder(opened ?? Path.Combine(folder, "Lib"), languageServer: false);
         window.NuGet.Feed = packages;
         window.Perform(AppActions.ShowNuGet);
         // Shown before a query is typed, so the window's first list is its own and not a second search for that query.

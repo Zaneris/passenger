@@ -35,16 +35,16 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             "using Xunit;\n\nnamespace Sums;\n\npublic class SumTests\n{\n    [Fact]\n    public void Two_and_two_make_four() => Assert.Equal(4, 2 + 2);\n\n"
             + "    [Fact]\n    public void Three_and_three_make_six() => Assert.Equal(6, 3 + 3);\n}\n");
         await using McpClient client = await Start(["--mcp", tests], languageServer: false);
-        Assert.Equal(2, (await Call(client, "tests_list")).GetArrayLength());
-        JsonElement test = Assert.Single((await Call(client, "tests_list", new() { ["filter"] = "two_make_four" })).EnumerateArray());
+        Assert.Equal(2, (await Call(client, McpTools.TestsList)).GetArrayLength());
+        JsonElement test = Assert.Single((await Call(client, McpTools.TestsList, new() { ["filter"] = "two_make_four" })).EnumerateArray());
         Assert.Equal(("Sums.SumTests.Two_and_two_make_four", "notRun", "SumTests.cs:8"),
             (test.GetProperty("test").GetString(), test.GetProperty("state").GetString(), test.GetProperty("location").GetString()));
-        Assert.Equal(1, (await Call(client, "tests_list", new() { ["limit"] = 1 })).GetArrayLength());
-        Assert.Equal(0, (await Call(client, "tests_list", new() { ["state"] = "failed" })).GetArrayLength());
-        JsonElement notRun = await Call(client, "tests_list", new() { ["state"] = test.GetProperty("state").GetString() });
+        Assert.Equal(1, (await Call(client, McpTools.TestsList, new() { ["limit"] = 1 })).GetArrayLength());
+        Assert.Equal(0, (await Call(client, McpTools.TestsList, new() { ["state"] = "failed" })).GetArrayLength());
+        JsonElement notRun = await Call(client, McpTools.TestsList, new() { ["state"] = test.GetProperty("state").GetString() });
         Assert.True(notRun.GetArrayLength() == 2 && notRun.EnumerateArray().All(t => t.GetProperty("state").GetString() == "notRun"),
             $"tests_list asked for the state it says the tests are in answered: {notRun}");
-        CallToolResult wrong = await Result(client, "tests_list", new() { ["state"] = "broken" });
+        CallToolResult wrong = await Result(client, McpTools.TestsList, new() { ["state"] = "broken" });
         Assert.True(wrong.IsError == true && Text(wrong).Contains("there are passed, failed, skipped and notRun", StringComparison.Ordinal), $"tests_list in no state answered: {Text(wrong)}");
     }
 
@@ -58,17 +58,17 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Directory.CreateDirectory(Path.Combine(Folder, "Properties"));
         File.WriteAllText(Path.Combine(Folder, "Properties", "launchSettings.json"), "{\n  \"profiles\": {\n    \"Jobs\": { \"commandName\": \"RetryFailed\" }\n  }\n}\n");
         await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
-        JsonElement built = await Call(client, "build");
+        JsonElement built = await Call(client, McpTools.Build);
         JsonElement error = built.GetProperty("problems").EnumerateArray().FirstOrDefault(p => p.GetProperty("severity").GetString() == "error");
         Assert.True(!built.GetProperty("succeeded").GetBoolean() && error.ValueKind == JsonValueKind.Object, $"The build of a string given to an int did not fail with an error: {built}");
         string code = error.GetProperty("code").GetString()!;
 
-        CallToolResult jobs = await Result(client, "run", new() { ["configuration"] = "Sum: Jobs" });
+        CallToolResult jobs = await Result(client, McpTools.Run, new() { ["configuration"] = "Sum: Jobs" });
         Assert.True(jobs.IsError == true && Text(jobs).Contains("Passenger does not know the RetryFailed command", StringComparison.Ordinal),
             $"The run of a profile Passenger does not run was answered: {Text(jobs)}");
         Assert.False(Text(jobs).Contains(code, StringComparison.Ordinal), $"A run refused before any build named the last build's errors: {Text(jobs)}");
 
-        CallToolResult sum = await Result(client, "run", new() { ["configuration"] = "Sum" });
+        CallToolResult sum = await Result(client, McpTools.Run, new() { ["configuration"] = "Sum" });
         Assert.True(sum.IsError == true && Text(sum).Contains($"{code} ", StringComparison.Ordinal) && Text(sum).Contains("Program.cs:1:", StringComparison.Ordinal),
             $"A run refused for its own build's failure did not name that build's error: {Text(sum)}");
     }
@@ -95,25 +95,25 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         await using McpClient client = await Start(["--mcp", library], languageServer: false);
         Dictionary<string, object?> project = new() { ["path"] = "Lib.csproj" };
         Dictionary<string, object?> versions = new() { ["path"] = "Directory.Packages.props" };
-        Assert.DoesNotContain("Passenger.Sample", (await Call(client, "editor_text", project)).GetString(), StringComparison.Ordinal);
-        Assert.DoesNotContain("Passenger.Sample", (await Call(client, "editor_text", versions)).GetString(), StringComparison.Ordinal);
-        JsonElement found = Assert.Single((await Call(client, "nuget_search", new() { ["query"] = "Passenger" })).EnumerateArray());
+        Assert.DoesNotContain("Passenger.Sample", (await Call(client, McpTools.EditorText, project)).GetString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("Passenger.Sample", (await Call(client, McpTools.EditorText, versions)).GetString(), StringComparison.Ordinal);
+        JsonElement found = Assert.Single((await Call(client, McpTools.NugetSearch, new() { ["query"] = "Passenger" })).EnumerateArray());
         Assert.Equal(("Passenger.Sample", "1.0.0"), (found.GetProperty("id").GetString(), found.GetProperty("version").GetString()));
 
-        JsonElement install = await Call(client, "nuget_install", new() { ["project"] = "Lib", ["id"] = "Passenger.Sample" });
+        JsonElement install = await Call(client, McpTools.NugetInstall, new() { ["project"] = "Lib", ["id"] = "Passenger.Sample" });
         Assert.Equal(("Passenger.Sample", "1.0.0", "Lib"), (install.GetProperty("package").GetString(), install.GetProperty("version").GetString(), install.GetProperty("project").GetString()));
         Assert.Equal(["Directory.Packages.props", "Lib.csproj"], install.GetProperty("changed").EnumerateArray().Select(f => f.GetString()!).Order(StringComparer.Ordinal));
-        string installed = (await Call(client, "editor_text", project)).GetString()!;
+        string installed = (await Call(client, McpTools.EditorText, project)).GetString()!;
         Assert.True(installed.Contains("<PackageReference Include=\"Passenger.Sample\" />", StringComparison.Ordinal),
             $"nuget_install answered with the open project file still as it was:\n{installed}");
-        string pinned = (await Call(client, "editor_text", versions)).GetString()!;
+        string pinned = (await Call(client, McpTools.EditorText, versions)).GetString()!;
         Assert.True(pinned.Contains("<PackageVersion Include=\"Passenger.Sample\" Version=\"1.0.0\" />", StringComparison.Ordinal),
             $"nuget_install answered with the open Directory.Packages.props still as it was:\n{pinned}");
 
-        JsonElement remove = await Call(client, "nuget_install", new() { ["project"] = "Lib", ["id"] = "Passenger.Sample", ["remove"] = true });
+        JsonElement remove = await Call(client, McpTools.NugetInstall, new() { ["project"] = "Lib", ["id"] = "Passenger.Sample", ["remove"] = true });
         Assert.Contains("Lib.csproj", remove.GetProperty("changed").EnumerateArray().Select(f => f.GetString()));
         Assert.True(!remove.TryGetProperty("version", out JsonElement left) || left.ValueKind == JsonValueKind.Null, $"nuget_install with remove answered a version: {remove}");
-        string removed = (await Call(client, "editor_text", project)).GetString()!;
+        string removed = (await Call(client, McpTools.EditorText, project)).GetString()!;
         Assert.False(removed.Contains("Passenger.Sample", StringComparison.Ordinal), $"nuget_install with remove answered with the open project file still holding the package:\n{removed}");
     }
 
@@ -132,30 +132,30 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             File.WriteAllText(Path.Combine(repository, "New.txt"), "new\n");
 
             await using McpClient client = await Start(["--mcp", repository]);
-            JsonElement status = await Call(client, "vcs_status");
+            JsonElement status = await Call(client, McpTools.VcsStatus);
             Assert.Equal("main", status.GetProperty("branch").GetString());
             Assert.Equal(["Notes.txt modified", "New.txt unversioned"], status.GetProperty("changes").EnumerateArray()
                 .Select(c => $"{c.GetProperty("path").GetString()} {c.GetProperty("kind").GetString()}").Order(StringComparer.Ordinal).Reverse());
-            string diff = (await Call(client, "vcs_status", new() { ["path"] = "Notes.txt" })).GetString()!;
+            string diff = (await Call(client, McpTools.VcsStatus, new() { ["path"] = "Notes.txt" })).GetString()!;
             Assert.Contains("-two\n+2\n", diff, StringComparison.Ordinal);
 
             // With no paths, every change but the new file goes in.
-            Assert.EndsWith(" Two as a number", (await Call(client, "vcs_commit", new() { ["message"] = "Two as a number" })).GetString(), StringComparison.Ordinal);
-            JsonElement log = await Call(client, "vcs_log", new() { ["count"] = 5 });
+            Assert.EndsWith(" Two as a number", (await Call(client, McpTools.VcsCommit, new() { ["message"] = "Two as a number" })).GetString(), StringComparison.Ordinal);
+            JsonElement log = await Call(client, McpTools.VcsLog, new() { ["count"] = 5 });
             Assert.Equal(["Two as a number", "First"], log.EnumerateArray().Select(c => c.GetProperty("subject").GetString()));
-            Assert.Equal(["New.txt"], (await Call(client, "vcs_status")).GetProperty("changes").EnumerateArray().Select(c => c.GetProperty("path").GetString()));
+            Assert.Equal(["New.txt"], (await Call(client, McpTools.VcsStatus)).GetProperty("changes").EnumerateArray().Select(c => c.GetProperty("path").GetString()));
 
-            JsonElement stashed = Assert.Single((await Call(client, "vcs_stash", new() { ["action"] = "push", ["message"] = "the new file" })).EnumerateArray());
+            JsonElement stashed = Assert.Single((await Call(client, McpTools.VcsStash, new() { ["action"] = "push", ["message"] = "the new file" })).EnumerateArray());
             Assert.EndsWith("the new file", stashed.GetProperty("message").GetString(), StringComparison.Ordinal);
             Assert.False(File.Exists(Path.Combine(repository, "New.txt")), "Stash Changes left the new file in place");
-            Assert.Empty((await Call(client, "vcs_stash", new() { ["action"] = "pop", ["index"] = 0 })).EnumerateArray());
+            Assert.Empty((await Call(client, McpTools.VcsStash, new() { ["action"] = "pop", ["index"] = 0 })).EnumerateArray());
             Assert.Equal("new\n", File.ReadAllText(Path.Combine(repository, "New.txt")));
 
             // A branch an agent names is a name, never one of git's options: git switch --orphan=x would empty the tree.
-            CallToolResult orphan = await Result(client, "vcs_checkout", new() { ["branch"] = "--orphan=x" });
+            CallToolResult orphan = await Result(client, McpTools.VcsCheckout, new() { ["branch"] = "--orphan=x" });
             Assert.True(orphan.IsError, "vcs_checkout took the branch --orphan=x for an option, and checked out an empty branch");
             Assert.True(File.Exists(Path.Combine(repository, "Notes.txt")), "Checking out the branch --orphan=x emptied the working tree");
-            Assert.Equal("main", (await Call(client, "vcs_status")).GetProperty("branch").GetString());
+            Assert.Equal("main", (await Call(client, McpTools.VcsStatus)).GetProperty("branch").GetString());
 
             string notes = Path.Combine(repository, "Notes.txt");
             TestGit.Run(repository, "switch", "-q", "-c", "feature");
@@ -166,27 +166,27 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             TestGit.Run(repository, "commit", "-q", "-am", "Two in Roman");
             ChildResult merging = await ChildProcesses.RunAsync(ChildProcesses.Command("git", ["merge", "feature"], repository), limit: TimeSpan.FromMinutes(1), cancel: Cancel);
             Assert.False(merging.Succeeded, $"The merge was to stop for its conflict: {merging.Output}");
-            JsonElement conflicts = (await Call(client, "vcs_status")).GetProperty("conflicts");
+            JsonElement conflicts = (await Call(client, McpTools.VcsStatus)).GetProperty("conflicts");
             Assert.Equal("Merging branch feature into branch main", conflicts.GetProperty("operation").GetString());
             Assert.Equal(("main", "feature"), (conflicts.GetProperty("yours").GetString(), conflicts.GetProperty("theirs").GetString()));
             JsonElement conflicted = Assert.Single(conflicts.GetProperty("files").EnumerateArray());
             Assert.Equal(("Notes.txt", "modified", "modified"), (conflicted.GetProperty("path").GetString(), conflicted.GetProperty("yours").GetString(), conflicted.GetProperty("theirs").GetString()));
-            CallToolResult early = await Result(client, "vcs_commit", new() { ["message"] = "Half a merge" });
+            CallToolResult early = await Result(client, McpTools.VcsCommit, new() { ["message"] = "Half a merge" });
             Assert.True(early.IsError == true, "A commit was made with a file still in conflict");
-            Assert.Equal("Notes.txt resolved; no conflicts are left", (await Call(client, "vcs_resolve", new() { ["path"] = "Notes.txt", ["take"] = "theirs" })).GetString());
+            Assert.Equal("Notes.txt resolved; no conflicts are left", (await Call(client, McpTools.VcsResolve, new() { ["path"] = "Notes.txt", ["take"] = "theirs" })).GetString());
             Assert.Equal("one\nTWO\nthree\n", File.ReadAllText(notes));
-            JsonElement resolved = await Call(client, "vcs_status");
+            JsonElement resolved = await Call(client, McpTools.VcsStatus);
             Assert.True(!resolved.TryGetProperty("conflicts", out JsonElement left) || left.ValueKind == JsonValueKind.Null, $"vcs_status still lists conflicts: {left}");
-            await Call(client, "vcs_commit", new() { ["message"] = "Merge feature" });
+            await Call(client, McpTools.VcsCommit, new() { ["message"] = "Merge feature" });
             Assert.Equal(3, TestGit.Run(repository, "rev-list", "--parents", "-n", "1", "HEAD").Split(' ', StringSplitOptions.RemoveEmptyEntries).Length);
             Assert.Equal("one\nTWO\nthree\n", TestGit.Run(repository, "show", "HEAD:Notes.txt"));
 
             // Windows' own PowerShell (5.1, where pwsh is not installed) has no &&, and sh has no PowerShell subexpressions.
             string command = OperatingSystem.IsWindows() ? "echo (6*7); ls" : "echo $((6*7)) && ls";
-            string answer = (await Call(client, "terminal_run", new() { ["command"] = command })).GetString()!;
+            string answer = (await Call(client, McpTools.TerminalRun, new() { ["command"] = command })).GetString()!;
             Assert.Contains("42", answer, StringComparison.Ordinal);
             Assert.Contains("Notes.txt", answer, StringComparison.Ordinal);
-            string screen = (await Call(client, "output", new() { ["of"] = "terminal" })).GetString()!;
+            string screen = (await Call(client, McpTools.Output, new() { ["of"] = "terminal" })).GetString()!;
             Assert.True(screen.Contains("42", StringComparison.Ordinal), $"output of terminal did not show what the command printed:\n{screen}");
             if (OperatingSystem.IsWindows())
             {
@@ -199,8 +199,8 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             {
                 // Past the scrollback's limit, where each line printed drops the oldest.
                 int beyond = global::Passenger.Terminal.TerminalScreen.ScrollbackLimit + 100;
-                await Call(client, "terminal_run", new() { ["command"] = $"seq 1 {beyond}" });
-                string past = (await Call(client, "terminal_run", new() { ["command"] = "echo one; echo two" })).GetString()!;
+                await Call(client, McpTools.TerminalRun, new() { ["command"] = $"seq 1 {beyond}" });
+                string past = (await Call(client, McpTools.TerminalRun, new() { ["command"] = "echo one; echo two" })).GetString()!;
                 Assert.True(past.Contains("one\ntwo", StringComparison.Ordinal), $"past the scrollback's limit, terminal_run answered a command that printed one and two with:\n{past}");
             }
         }
@@ -220,7 +220,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         {
             string work = Repository(root, refusing: true);
             await using McpClient client = await Start(["--mcp", work]);
-            CallToolResult refused = await Result(client, "vcs_commit", new() { ["message"] = "Two as a number", ["push"] = true });
+            CallToolResult refused = await Result(client, McpTools.VcsCommit, new() { ["message"] = "Two as a number", ["push"] = true });
             string said = Text(refused);
             Assert.True(refused.IsError == true, $"A push the remote refused was answered as done: {said}");
             Assert.Contains("pre-receive hook declined", said, StringComparison.Ordinal);
@@ -252,12 +252,12 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             string used = ProfileGit(home, "sleep 300 &\n");
             TestGit.Run(repository, "init", "-q");
             await using McpClient client = await Start(["--mcp", repository], environment: Launchd(home));
-            await Call(client, "vcs_status");
+            await Call(client, McpTools.VcsStatus);
             Assert.True(File.Exists(used), "With a job its profile left running, Passenger never took the login shell's PATH, and ran a git other than the one it finds");
 
             // Each git start waits for the shell's environment while it is still being read.
             long began = Stopwatch.GetTimestamp();
-            await Call(client, "vcs_status");
+            await Call(client, McpTools.VcsStatus);
             TimeSpan took = Stopwatch.GetElapsedTime(began);
             Assert.True(took < TimeSpan.FromSeconds(10).Scaled(),
                 $"Git's status took {took.TotalSeconds:0.0} s the second time: the git it ran waited for the login shell's environment again, the profile's job holding up its read");
@@ -269,13 +269,29 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>A call whose arguments its tool does not take is answered with what is wrong and every parameter the tool
+    /// takes, before the tool runs.</summary>
+    [Fact]
+    public async Task An_agents_call_with_a_parameter_its_tool_lacks_or_misses_hears_which_and_what_the_tool_takes()
+    {
+        string folder = TestFolders.Create("mcp-parameters-");
+        DeleteAtEnd(folder);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        CallToolResult named = await Result(client, McpTools.FindSymbol, new() { ["name"] = "Language" });
+        Assert.True(named.IsError == true && Text(named) == "find_symbol has no parameter name, and needs query. Its parameters: query (string, required), kind (string), "
+            + "limit (integer), exact (boolean)", $"find_symbol given name for query answered: {Text(named)}");
+        CallToolResult typed = await Result(client, McpTools.EditorText, new() { ["path"] = "Program.cs", ["from"] = "first" });
+        Assert.True(typed.IsError == true && Text(typed).StartsWith("editor_text takes an integer as from, not \"first\". Its parameters: path (string, required), from (integer)", StringComparison.Ordinal),
+            $"editor_text given a word for a line answered: {Text(typed)}");
+    }
+
     /// <summary>An agent's view of the IDE's actions: every one the IDE declares, listed with why it cannot run now, and run by
     /// its id as its shortcut would.</summary>
     [Fact]
     public async Task An_agent_lists_every_action_the_ide_declares_and_one_it_runs_says_why_when_it_cannot()
     {
         await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
-        string[] listed = [.. (await Call(client, "ide_actions")).EnumerateArray().Select(a => a.GetString()!)];
+        string[] listed = [.. (await Call(client, McpTools.IdeActions)).EnumerateArray().Select(a => a.GetString()!)];
         HashSet<string> ids = [.. listed.Select(line => line[..line.IndexOf(": ", StringComparison.Ordinal)])];
         string[] declared = [.. typeof(AppActions).GetFields(BindingFlags.Public | BindingFlags.Static)
             .Where(f => f.IsLiteral && f.FieldType == typeof(string)).Select(f => (string)f.GetRawConstantValue()!)];
@@ -284,13 +300,13 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
 
         string hotReload = Assert.Single(listed, l => l.StartsWith($"{AppActions.ApplyHotReloadChanges}: ", StringComparison.Ordinal));
         Assert.Contains(" - cannot run: Nothing runs", hotReload, StringComparison.Ordinal);
-        CallToolResult refused = await Result(client, "ide_action", new() { ["action"] = AppActions.ApplyHotReloadChanges });
+        CallToolResult refused = await Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.ApplyHotReloadChanges });
         Assert.True(refused.IsError == true && Text(refused).Contains($"{AppActions.ApplyHotReloadChanges} did not run: Nothing runs", StringComparison.Ordinal),
             $"Apply Hot Reload Changes with nothing running answered: {Text(refused)}");
         string selectElement = Assert.Single(listed, l => l.StartsWith($"{AppActions.SelectElement}: ", StringComparison.Ordinal));
         Assert.Contains("cannot run: No Avalonia or WPF app is being debugged", selectElement, StringComparison.Ordinal);
 
-        Assert.Equal($"Ran {AppActions.ShowLiveTree}", (await Call(client, "ide_action", new() { ["action"] = AppActions.ShowLiveTree })).GetString());
+        Assert.Equal($"Ran {AppActions.ShowLiveTree}", (await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.ShowLiveTree })).GetString());
     }
 
     /// <summary>An agent's publish, build's with a project to publish: the project to a folder, answered with where it landed
@@ -299,13 +315,13 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
     public async Task An_agent_publishes_a_project_and_is_told_the_folder_it_landed_in_or_why_not()
     {
         await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
-        JsonElement published = await Call(client, "build", new() { ["publish"] = "Sum" });
+        JsonElement published = await Call(client, McpTools.Build, new() { ["publish"] = "Sum" });
         Assert.True(published.GetProperty("succeeded").GetBoolean(), $"The publish ended: {published}");
         string landed = published.GetProperty("folder").GetString() ?? string.Empty;
         Assert.True(File.Exists(Path.Combine(landed, "Sum.dll")), $"The publish says it landed in {landed}, which holds no Sum.dll");
         Assert.StartsWith("Published Sum to ", published.GetProperty("outcome").GetString(), StringComparison.Ordinal);
 
-        JsonElement missing = await Call(client, "build", new() { ["publish"] = "Sum", ["profile"] = "Nightly" });
+        JsonElement missing = await Call(client, McpTools.Build, new() { ["publish"] = "Sum", ["profile"] = "Nightly" });
         Assert.False(missing.GetProperty("succeeded").GetBoolean(), $"A publish with no such profile ended: {missing}");
         Assert.Contains("has no publish profile Nightly", missing.GetProperty("outcome").GetString(), StringComparison.Ordinal);
     }

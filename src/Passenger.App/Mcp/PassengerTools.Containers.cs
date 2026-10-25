@@ -10,7 +10,7 @@ namespace Passenger.App.Mcp;
 public sealed partial class PassengerTools
 {
     // A container's log is this tool's with container: a tool of its own cost every session's list more.
-    [McpServerTool(Name = "containers", Title = "The container engine", ReadOnly = true), Description(
+    [McpServerTool(Name = McpTools.Containers, Title = "The container engine", ReadOnly = true), Description(
         "The docker engine of the person's current context: its status (with what to do when it cannot serve), its Compose " +
         "projects with their services, and every container with its state, health, ports and image. With container (its name " +
         "or id, a Compose project or project/service with every service's lines), its log instead: the last tail lines, or " +
@@ -57,7 +57,7 @@ public sealed partial class PassengerTools
         return row.Container is null ? result.Output : string.Join('\n', new[] { result.Output.TrimEnd('\n'), result.Error.TrimEnd('\n') }.Where(s => s.Length > 0));
     });
 
-    [McpServerTool(Name = "container_exec", Title = "Run a command in a container", Destructive = true), Description(
+    [McpServerTool(Name = McpTools.ContainerExec, Title = "Run a command in a container", Destructive = true), Description(
         "Runs a shell command line (sh -c) in a running container (its name or id) and answers its exit code and output.")]
     public Task<ContainerExec> ContainerExec(string container, string command, int waitSeconds = 30, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
@@ -73,7 +73,7 @@ public sealed partial class PassengerTools
     });
 
     // An AppHost resource's commands are this tool's too: a parameter costs every session's tool list less than a tool.
-    [McpServerTool(Name = "container_action", Title = "Start, stop, restart or remove a container", Destructive = true), Description(
+    [McpServerTool(Name = McpTools.ContainerAction, Title = "Start, stop, restart or remove a container", Destructive = true), Description(
         "As the Containers window's buttons, action start, stop, restart or remove on a container (its name or id), a Compose " +
         "project (remove takes it down, its volumes kept) or a project/service; never a volume or image. Given an Aspire " +
         "resource (its target), action is one of its commands, run as the Aspire window does.")]

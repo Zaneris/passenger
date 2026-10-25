@@ -310,10 +310,7 @@ public sealed class FindInFilesScopeTests : IClassFixture<FindInFilesScopeTests.
     /// projects ask nothing of C#.</summary>
     private MainWindow Open()
     {
-        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
-        window.Show();
-        window.OpenFolder(folder);
-        Ui.Settle();
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         return window;
     }
 

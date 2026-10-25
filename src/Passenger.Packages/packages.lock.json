@@ -1,0 +1,74 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net11.0": {
+      "Microsoft.CodeAnalysis.BannedApiAnalyzers": {
+        "type": "Direct",
+        "requested": "[5.6.0, )",
+        "resolved": "5.6.0",
+        "contentHash": "Kcobt3pnOdO0A+6CKiMHZdTEluJpsfxiV20axtZdmfBQnDmiWTKPJADlgAfdTuKNAnVarrkJa0UEGwuOo91muw=="
+      },
+      "NuGet.Configuration": {
+        "type": "Direct",
+        "requested": "[7.9.0, )",
+        "resolved": "7.9.0",
+        "contentHash": "oY9XZp+TWjOmiGmU4R4JWBRY3F4TAVo7tqPr/z7MOsFcEpdYHMryjNSscoLBxUTR3WmFmYgO0Gvu4eRbz6pzOg==",
+        "dependencies": {
+          "NuGet.Common": "7.9.0",
+          "System.Security.Cryptography.ProtectedData": "8.0.0"
+        }
+      },
+      "NuGet.Common": {
+        "type": "Transitive",
+        "resolved": "7.9.0",
+        "contentHash": "OWFEzHpwvgzSaHYmWzfbyTm6oBOy/BFSFEDk73zM9jiJaxdopYZ/DrqIQogaM3F+ZGTppBJffmzu5adetEI/YA==",
+        "dependencies": {
+          "NuGet.Frameworks": "7.9.0"
+        }
+      },
+      "NuGet.Frameworks": {
+        "type": "Transitive",
+        "resolved": "7.9.0",
+        "contentHash": "w2adPmgUafmW9ON1MzDjuHmViN0vtiPV48Dz3OE6px8BiGSqrnWHOjwFEPOEPAZx20J1c7bxp90Hxo9l4xGWtw=="
+      },
+      "System.Security.Cryptography.ProtectedData": {
+        "type": "Transitive",
+        "resolved": "8.0.0",
+        "contentHash": "+TUFINV2q2ifyXauQXRwy4CiBhqvDEDZeVJU7qfxya4aRYOKzVBpN+4acx25VcPB9ywUN6C0n8drWl110PhZEg=="
+      },
+      "passenger.core": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Diagnostics.NETCore.Client": "[0.2.750501, )"
+        }
+      },
+      "passenger.text": {
+        "type": "Project",
+        "dependencies": {
+          "Passenger.Core": "[0.2.0, )"
+        }
+      },
+      "passenger.workspace": {
+        "type": "Project",
+        "dependencies": {
+          "Passenger.Core": "[0.2.0, )",
+          "Passenger.Text": "[0.2.0, )"
+        }
+      },
+      "Microsoft.Diagnostics.NETCore.Client": {
+        "type": "CentralTransitive",
+        "requested": "[0.2.750501, )",
+        "resolved": "0.2.750501",
+        "contentHash": "XVOWyjoikpjTecPv8fYWspgNGhXtOeMX3K3wq9kXftU9U04V6IwCY4NQuVrY/BIBwmui6lF8z7pNP64cwFvUNQ=="
+      }
+    },
+    "net11.0/linux-arm64": {},
+    "net11.0/linux-musl-arm64": {},
+    "net11.0/linux-musl-x64": {},
+    "net11.0/linux-x64": {},
+    "net11.0/osx-arm64": {},
+    "net11.0/osx-x64": {},
+    "net11.0/win-arm64": {},
+    "net11.0/win-x64": {}
+  }
+}

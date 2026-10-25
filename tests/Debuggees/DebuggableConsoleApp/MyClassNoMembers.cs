@@ -4,8 +4,8 @@ public class MyClassNoMembers
 {
 	public void MyMethod(long myParam)
 	{
-		var myInt = 4;
-		var anotherVar = "asdf";
+		int myInt = 4;
+		string anotherVar = "asdf";
 	}
 
 	public string Test(int test)

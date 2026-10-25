@@ -7,6 +7,7 @@ using Avalonia.Input.Platform;
 using Avalonia.Media;
 using Avalonia.Media.Fonts.Tables.Cmap;
 using Avalonia.Threading;
+using Passenger.Editor;
 
 namespace Passenger.Terminal;
 
@@ -97,7 +98,7 @@ public sealed class TerminalView : Control
         // A theme laid over the application's resources (Settings) changes the brushes, not the variant.
         ResourcesChanged += (_, _) =>
         {
-            if (Find("Passenger.Terminal.Background") != background || Find("Passenger.Terminal.Foreground") != foreground)
+            if (Find(TokenKeys.Terminal_Background) != background || Find(TokenKeys.Terminal_Foreground) != foreground)
             {
                 Refresh();
             }
@@ -111,9 +112,9 @@ public sealed class TerminalView : Control
         bool mac = OperatingSystem.IsMacOS();
         KeyModifiers clipboard = mac ? KeyModifiers.Meta : KeyModifiers.Control | KeyModifiers.Shift;
         MenuItem copy = new() { Header = "Copy", InputGesture = new KeyGesture(Key.C, clipboard) };
-        copy.Click += (_, _) => _ = CopyAsync();
+        copy.Click += (_, _) => Core.UnawaitedWork.Observe(CopyAsync());
         MenuItem paste = new() { Header = "Paste", InputGesture = new KeyGesture(Key.V, clipboard) };
-        paste.Click += (_, _) => _ = PasteAsync();
+        paste.Click += (_, _) => Core.UnawaitedWork.Observe(PasteAsync());
         MenuItem clear = new() { Header = "Clear Buffer", InputGesture = mac ? new KeyGesture(Key.K, KeyModifiers.Meta) : null };
         clear.Click += (_, _) => ClearBuffer();
         ContextMenu menu = new() { Items = { copy, paste, new Separator(), clear } };
@@ -133,7 +134,7 @@ public sealed class TerminalView : Control
     public event EventHandler<object>? LinkClicked;
 
     /// <summary>The key that opens a link with a click: Cmd on the Mac, Ctrl elsewhere.</summary>
-    private static KeyModifiers LinkKey => OperatingSystem.IsMacOS() ? KeyModifiers.Meta : KeyModifiers.Control;
+    private static KeyModifiers LinkKey => Keystroke.Command;
 
     /// <summary>Clear Buffer: the scrollback and the screen cleared but for the prompt.</summary>
     public void ClearBuffer()
@@ -323,12 +324,12 @@ public sealed class TerminalView : Control
     private void Refresh()
     {
         palette.Clear();
-        foreground = Find("Passenger.Terminal.Foreground") ?? Brushes.Transparent;
-        background = Find("Passenger.Terminal.Background") ?? Brushes.Transparent;
-        cursor = Find("Passenger.Terminal.Cursor") ?? foreground;
-        selection = Find("Passenger.Terminal.Selection") ?? Brushes.Transparent;
-        link = Find("Passenger.Syntax.Link") ?? Brushes.Transparent;
-        linkUnderline = Find("Passenger.Editor.LinkUnderline") ?? link;
+        foreground = Find(TokenKeys.Terminal_Foreground) ?? Brushes.Transparent;
+        background = Find(TokenKeys.Terminal_Background) ?? Brushes.Transparent;
+        cursor = Find(TokenKeys.Terminal_Cursor) ?? foreground;
+        selection = Find(TokenKeys.Terminal_Selection) ?? Brushes.Transparent;
+        link = Find(TokenKeys.Syntax_Link) ?? Brushes.Transparent;
+        linkUnderline = Find(TokenKeys.Editor_LinkUnderline) ?? link;
         Measure();
         FitSize();
         InvalidateVisual();
@@ -995,14 +996,14 @@ public sealed class TerminalView : Control
         if ((mac && mods == KeyModifiers.Meta && e.Key == Key.C) || (!mac && mods == (KeyModifiers.Control | KeyModifiers.Shift) && e.Key == Key.C)
             || (!mac && mods == KeyModifiers.Control && e.Key == Key.C && SelectedText.Length > 0))
         {
-            _ = CopyAsync();
+            Core.UnawaitedWork.Observe(CopyAsync());
             e.Handled = true;
             return;
         }
         if ((mac && mods == KeyModifiers.Meta && e.Key == Key.V) || (!mac && mods == (KeyModifiers.Control | KeyModifiers.Shift) && e.Key == Key.V)
             || (mods == KeyModifiers.Shift && e.Key == Key.Insert))
         {
-            _ = PasteAsync();
+            Core.UnawaitedWork.Observe(PasteAsync());
             e.Handled = true;
             return;
         }

@@ -37,7 +37,7 @@ public sealed partial class EditorArea : UserControl
         activeGroup = NewGroup();
         activeGroup.IsCurrent = true;
         emptyTitle = new TextBlock { Text = "Passenger", FontSize = 28, FontWeight = FontWeight.SemiBold, HorizontalAlignment = HorizontalAlignment.Center };
-        emptyTitle.Bind(TextBlock.ForegroundProperty, emptyTitle.GetResourceObservable("Passenger.Text"));
+        emptyTitle.Bind(TextBlock.ForegroundProperty, emptyTitle.GetResourceObservable(TokenKeys.Text));
         emptyHint = new TextBlock { Classes = { "muted" }, Text = "Open a solution, project or folder to start.", HorizontalAlignment = HorizontalAlignment.Center };
         folderHint = new StackPanel { Spacing = 10, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Children = { emptyTitle, emptyHint } };
         emptyState.Content = folderHint;

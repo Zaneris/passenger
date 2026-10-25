@@ -9,6 +9,7 @@ using Passenger.Editor;
 using Passenger.Text;
 using Passenger.Roslyn.Extension;
 using Passenger.App.Run;
+using Passenger.Workspace;
 
 namespace Passenger.Tests;
 
@@ -196,7 +197,7 @@ public sealed class AspireCodeHelpTests : IClassFixture<AspireCodeHelpTests.Proj
     {
         string projectFile = project.PathOf("OtherHost/OtherHost.csproj");
         string writtenProject = File.ReadAllText(projectFile);
-        Assert.Null(Passenger.App.Workspace.ProjectEdits.PropertyIn(writtenProject, "UserSecretsId"));
+        Assert.Null(ProjectEdits.PropertyIn(writtenProject, "UserSecretsId"));
         project.Rewrite("OtherHost/Program.cs", "using Aspire.Hosting;\nvar builder = DistributedApplication.CreateBuilder(args);\n"
             + "var token = builder.AddParameter(\"token\", secret: true);\nbuilder.Build().Run();\n");
         MainWindow window = project.Open(project.PathOf("OtherHost/Program.cs"));
@@ -209,9 +210,9 @@ public sealed class AspireCodeHelpTests : IClassFixture<AspireCodeHelpTests.Proj
             using IDisposable following = Avalonia.AvaloniaObjectExtensions.GetObservable(window.FindControl<TextBlock>("StatusText")!, TextBlock.TextProperty)
                 .Subscribe(new Avalonia.Reactive.AnonymousObserver<string?>(text => said.Add(text ?? string.Empty)));
             SetParameter(window, "AddParameter(\"tok", "Set token in the AppHost's user secrets…", secret: true, "t0ken-value");
-            Ui.WaitFor(() => Passenger.App.Workspace.ProjectEdits.PropertyIn(File.ReadAllText(projectFile), "UserSecretsId") is not null,
+            Ui.WaitFor(() => ProjectEdits.PropertyIn(File.ReadAllText(projectFile), "UserSecretsId") is not null,
                 () => $"the AppHost to be given a UserSecretsId ({window.Status})");
-            id = Passenger.App.Workspace.ProjectEdits.PropertyIn(File.ReadAllText(projectFile), "UserSecretsId")!;
+            id = ProjectEdits.PropertyIn(File.ReadAllText(projectFile), "UserSecretsId")!;
             Assert.True(Guid.TryParse(id, out _), $"The AppHost was not given a GUID for its UserSecretsId: {id}");
             string secrets = Path.Combine(TestRun.UserSecrets, id, "secrets.json");
             Ui.WaitFor(() => File.Exists(secrets) && File.ReadAllText(secrets).Contains("\"Parameters:token\": \"t0ken-value\"", StringComparison.Ordinal),

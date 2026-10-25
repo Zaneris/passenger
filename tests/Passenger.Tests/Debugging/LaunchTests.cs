@@ -9,7 +9,7 @@ namespace Passenger.Tests.Debugging;
 public class LaunchTests(ITestOutputHelper testOutputHelper)
 {
     [Fact]
-    public async Task StopAtEntry_StopsInMainWithEntryReason()
+    public async Task Stop_at_entry_stops_in_Main_saying_so()
     {
         using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         string program = Debuggees.Program("DebuggableConsoleApp");
@@ -29,7 +29,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
     }
 
     [Fact]
-    public async Task StopAtEntry_TopLevelStatementsEntrypointStopsInMainWithEntryReason()
+    public async Task Stop_at_entry_in_top_level_statements_stops_at_their_first_saying_so()
     {
         using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         string program = Debuggees.Program("TopLevelStatementsConsoleApp");
@@ -46,7 +46,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
         DapStackFrame topFrame = host.GetTopStackFrame(stoppedEvent.ThreadId!.Value);
         Assert.Contains("Main", topFrame.Name);
         Assert.EndsWith("Program.cs", topFrame.Source?.Path);
-        Assert.Equal(2, topFrame.Line);
+        Assert.Equal(Debuggees.Line("TopLevelStatementsConsoleApp", "int test = 4;"), topFrame.Line);
         host
             .WithScopesRequest(topFrame.Id, out ScopesResponse? scopesResponse)
             .WithVariablesRequest(scopesResponse.Scopes.Single().VariablesReference, out List<DapVariable>? variables);
@@ -54,7 +54,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
     }
 
     [Fact]
-    public async Task StopAtEntry_AsyncEntrypointStopsInMainWithEntryReason()
+    public async Task Stop_at_entry_in_an_async_Main_stops_at_its_start_saying_so()
     {
         using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         string program = Debuggees.Program("AsyncEntryConsoleApp");
@@ -71,7 +71,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
         DapStackFrame topFrame = host.GetTopStackFrame(stoppedEvent.ThreadId!.Value);
         Assert.Contains("Main", topFrame.Name);
         Assert.EndsWith("Program.cs", topFrame.Source?.Path);
-        Assert.Equal(5, topFrame.Line);
+        Assert.Equal(Debuggees.Line("AsyncEntryConsoleApp", "static async Task Main(") + 1, topFrame.Line);
         host
             .WithScopesRequest(topFrame.Id, out ScopesResponse? scopesResponse)
             .WithVariablesRequest(scopesResponse.Scopes.Single().VariablesReference, out List<DapVariable>? variables);
@@ -79,7 +79,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
     }
 
     [Fact]
-    public async Task StopAtEntry_AsyncTopLevelStatementsEntrypointStopsInMainWithEntryReason()
+    public async Task Stop_at_entry_in_async_top_level_statements_stops_at_their_first_saying_so()
     {
         using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         string program = Debuggees.Program("AsyncTopLevelStatementsConsoleApp");
@@ -96,7 +96,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
         DapStackFrame topFrame = host.GetTopStackFrame(stoppedEvent.ThreadId!.Value);
         Assert.Contains("Main", topFrame.Name);
         Assert.EndsWith("Program.cs", topFrame.Source?.Path);
-        Assert.Equal(2, topFrame.Line);
+        Assert.Equal(Debuggees.Line("AsyncTopLevelStatementsConsoleApp", "int test = 4;"), topFrame.Line);
         host
             .WithScopesRequest(topFrame.Id, out ScopesResponse? scopesResponse)
             .WithVariablesRequest(scopesResponse.Scopes.Single().VariablesReference, out List<DapVariable>? variables);
@@ -106,6 +106,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
     [Fact]
     public async Task A_launched_program_reads_its_own_input_never_the_adapters()
     {
+        int written = Debuggees.Line("ReadsInputConsoleApp", "Console.WriteLine($\"read:");
         using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         string source = Debuggees.Source("ReadsInputConsoleApp", "Program.cs");
 
@@ -114,14 +115,14 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
             .WithLaunchRequest(Debuggees.Program("ReadsInputConsoleApp"), stopAtEntry: false, justMyCode: true)
             .WaitForInitializedEvent();
         host
-            .WithBreakpointsRequest(3, source)
+            .WithBreakpointsRequest(written, source)
             .WithConfigurationDoneRequest();
         // While it waits on its console, every request still reaches the debugger.
         host.Request(DapCommands.SetExceptionBreakpoints, new SetExceptionBreakpointsArguments([]));
         host.Request(DapCommands.Input, new InputArguments("hello\n"));
 
         StoppedEvent stopped = await host.WaitForStoppedEvent();
-        Assert.Equal(3, stopped.ReadStopInfo().line);
+        Assert.Equal(written, stopped.ReadStopInfo().line);
         host.WithStackTraceRequest(stopped.ThreadId!.Value, out StackTraceResponse stack)
             .WithEvaluateRequest(stack.StackFrames[0].Id, "line", out EvaluateResponse line);
         Assert.Equal("\"hello\"", line.Result);
@@ -229,7 +230,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
             .WithInitializeRequest()
             .WithLaunchRequest(Debuggees.Program("DebuggableConsoleApp"), stopAtEntry: false, justMyCode: true, environment: hold.Environment)
             .WaitForInitializedEvent();
-        host.WithBreakpointsRequest(22);
+        host.WithBreakpointsRequest();
         Task configured = host.Send(DapCommands.ConfigurationDone);
         await hold.Held();
 
@@ -238,7 +239,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
         await hold.LetGo();
         await configured.WaitAsync(DebugSession.RequestLimit, TestContext.Current.CancellationToken);
         StoppedEvent stopped = await host.WaitForStoppedEvent();
-        Assert.True((stopped.Reason, stopped.Line) == (StopReasons.Breakpoint, 22), $"The program that started late stopped for {stopped.Reason} at line {stopped.Line}, not at its breakpoint");
+        Assert.True((stopped.Reason, stopped.Line) == (StopReasons.Breakpoint, Debuggees.MyMethodEnd), $"The program that started late stopped for {stopped.Reason} at line {stopped.Line}, not at its breakpoint");
     }
 
     /// <summary>A launch stopped while its program's runtime is still starting ends at once, the program with it, and says why:

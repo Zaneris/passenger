@@ -8,8 +8,15 @@ namespace Passenger.Tests.Debugging;
 [Collection(Alone.Name)]
 public class ExceptionTests(ITestOutputHelper testOutputHelper)
 {
+    private static readonly int LoopHead = Debuggees.Line("DebuggableConsoleApp", "myLambdaClass.Test();");
+    private static readonly int ExceptionsCalled = Debuggees.Line("DebuggableConsoleApp", "Exceptions.Test(exceptionToThrow);");
+    private static readonly int AfterThrow = ExceptionsCalled + 1;
+    private static readonly int Thrown = Debuggees.Line("DebuggableConsoleApp", "Exceptions.cs", "throw new InvalidOperationException(\"Test exception\");");
+    private static readonly int Parsed = Debuggees.Line("DebuggableConsoleApp", "Exceptions.cs", "int myInt = int.Parse(\"x\");");
+    private static readonly int Caught = Debuggees.Line("DebuggableConsoleApp", "Exceptions.cs", "catch (Exception e)");
+
     [Fact]
-    public async Task SharpDbgCli_Exception_VariablesHasExceptionScope()
+    public async Task At_an_exceptions_stop_the_exception_is_listed_with_the_locals_and_evaluates()
     {
         bool startSuspended = true;
         using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
@@ -21,14 +28,14 @@ public class ExceptionTests(ITestOutputHelper testOutputHelper)
         debugProtocolHost.Request(DapCommands.SetExceptionBreakpoints, new SetExceptionBreakpointsArguments([], [new(DapExceptionFilters.All), new(DapExceptionFilters.UserUnhandled)]));
         string breakpointedFilePath = Debuggees.Source("DebuggableConsoleApp", "Exceptions.cs");
         debugProtocolHost
-            .WithBreakpointsRequest([24], Debuggees.Source("DebuggableConsoleApp", "Program.cs"))
+            .WithBreakpointsRequest([LoopHead], Debuggees.Source("DebuggableConsoleApp", "Program.cs"))
             .WithConfigurationDoneRequest()
             .WithOptionalResumeRuntime(p2.Id, startSuspended);
 
         StoppedEvent stoppedEvent = await debugProtocolHost.WaitForStoppedEvent();
         (string filePath, int line, int column) stopInfo = stoppedEvent.ReadStopInfo();
         Assert.EndsWith("Program.cs", stopInfo.filePath);
-        Assert.Equal(24, stopInfo.line);
+        Assert.Equal(LoopHead, stopInfo.line);
 
         // set 'ExceptionToThrow' to .Normal - we do not want other tests to stop at the 'exception' stop event, only this one
         debugProtocolHost.WithStackTraceRequest(stoppedEvent.ThreadId!.Value, out StackTraceResponse? stackTraceResponse);
@@ -40,7 +47,7 @@ public class ExceptionTests(ITestOutputHelper testOutputHelper)
         StoppedEvent stoppedEvent2 = await debugProtocolHost.WaitForStoppedEvent();
         (string filePath, int line, int column) stopInfo2 = stoppedEvent2.ReadStopInfo();
         Assert.EndsWith("Exceptions.cs", stopInfo2.filePath);
-        Assert.Equal(14, stopInfo2.line); // Where the exception is thrown
+        Assert.Equal(Thrown, stopInfo2.line); // Where the exception is thrown
 
         debugProtocolHost
             .WithStackTraceRequest(stoppedEvent2.ThreadId!.Value, out StackTraceResponse? stackTraceResponse2)
@@ -51,7 +58,7 @@ public class ExceptionTests(ITestOutputHelper testOutputHelper)
 
         List<DapVariable> expectedVariables =
         [
-            new() { Name = "$exception",  EvaluateName = "$exception",  Value = $"System.InvalidOperationException: Test exception{Environment.NewLine}   at DebuggableConsoleApp.Exceptions.Test(ExceptionToThrow exceptionToThrow) in {breakpointedFilePath}:line 14", Type = "System.InvalidOperationException", VariablesReference = 2 },
+            new() { Name = "$exception",  EvaluateName = "$exception",  Value = $"System.InvalidOperationException: Test exception{Environment.NewLine}   at DebuggableConsoleApp.Exceptions.Test(ExceptionToThrow exceptionToThrow) in {breakpointedFilePath}:line {Thrown}", Type = "System.InvalidOperationException", VariablesReference = 2 },
             new() { Name = "exceptionToThrow", EvaluateName = "exceptionToThrow", Value = "Normal",  Type = "DebuggableConsoleApp.ExceptionToThrow", VariablesReference = 3 },
         ];
         debugProtocolHost.WithVariablesRequest(scope.VariablesReference, out List<DapVariable>? variables);
@@ -74,7 +81,7 @@ public class ExceptionTests(ITestOutputHelper testOutputHelper)
                 TypeName = "InvalidOperationException",
                 FullTypeName = "System.InvalidOperationException",
                 EvaluateName = "$exception",
-                StackTrace = $"   at DebuggableConsoleApp.Exceptions.Test(ExceptionToThrow exceptionToThrow) in {breakpointedFilePath}:line 14",
+                StackTrace = $"   at DebuggableConsoleApp.Exceptions.Test(ExceptionToThrow exceptionToThrow) in {breakpointedFilePath}:line {Thrown}",
                 InnerException = [],
                 FormattedDescription = "**System.InvalidOperationException:** 'Test exception'",
                 HResult = -2146233079,
@@ -87,7 +94,7 @@ public class ExceptionTests(ITestOutputHelper testOutputHelper)
     }
 
     [Fact]
-    public async Task ExceptionInExternalCode_JustMyCodeEnabled_HasNoSourceInfo()
+    public async Task An_exception_thrown_in_code_not_the_programs_own_stops_with_no_source_under_Just_My_Code()
     {
         bool startSuspended = true;
         using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
@@ -99,14 +106,14 @@ public class ExceptionTests(ITestOutputHelper testOutputHelper)
         debugProtocolHost.Request(DapCommands.SetExceptionBreakpoints, new SetExceptionBreakpointsArguments([], [new(DapExceptionFilters.All), new(DapExceptionFilters.UserUnhandled)]));
         string breakpointedFilePath = Debuggees.Source("DebuggableConsoleApp", "Exceptions.cs");
         debugProtocolHost
-            .WithBreakpointsRequest([24], Debuggees.Source("DebuggableConsoleApp", "Program.cs"))
+            .WithBreakpointsRequest([LoopHead], Debuggees.Source("DebuggableConsoleApp", "Program.cs"))
             .WithConfigurationDoneRequest()
             .WithOptionalResumeRuntime(p2.Id, startSuspended);
 
         StoppedEvent stoppedEvent = await debugProtocolHost.WaitForStoppedEvent();
         (string filePath, int line, int column) stopInfo = stoppedEvent.ReadStopInfo();
         Assert.EndsWith("Program.cs", stopInfo.filePath);
-        Assert.Equal(24, stopInfo.line);
+        Assert.Equal(LoopHead, stopInfo.line);
 
         // set 'ExceptionToThrow' to .ExternalCode - we do not want other tests to stop at the 'exception' stop event, only this one
         debugProtocolHost.WithStackTraceRequest(stoppedEvent.ThreadId!.Value, out StackTraceResponse? stackTraceResponse);
@@ -127,15 +134,15 @@ public class ExceptionTests(ITestOutputHelper testOutputHelper)
         [
             new() { Id = 2, Column = 0, EndColumn =  null, Line =  0, EndLine =  null, Name = "System.Private.CoreLib.dll!System.Number.ThrowFormatException<char>(System.ReadOnlySpan<char> value)", Source = null, PresentationHint = "subtle" },
             new() { Id = 3, Column = 0, EndColumn =  null, Line =  0, EndLine =  null, Name = "System.Private.CoreLib.dll!System.Int32.Parse(string s)",                 Source = null, PresentationHint = "subtle" },
-            new() { Id = 4, Column = 5, EndColumn = 32,    Line = 18, EndLine = 18,    Name = "DebuggableConsoleApp.dll!DebuggableConsoleApp.Exceptions.Test(DebuggableConsoleApp.ExceptionToThrow exceptionToThrow)", Source = new DapSource { Name = "Exceptions.cs", SourceReference = 0, Path = breakpointedFilePath } },
-            new() { Id = 5, Column = 4, EndColumn = 38,    Line = 34, EndLine = 34,    Name = "DebuggableConsoleApp.dll!DebuggableConsoleApp.Program.Main(string[] args)",    Source = new DapSource { Name = "Program.cs",    SourceReference = 0, Path = Debuggees.Source("DebuggableConsoleApp", "Program.cs") } },
+            new() { Id = 4, Column = 5, EndColumn = 32,    Line = Parsed, EndLine = Parsed, Name = "DebuggableConsoleApp.dll!DebuggableConsoleApp.Exceptions.Test(DebuggableConsoleApp.ExceptionToThrow exceptionToThrow)", Source = new DapSource { Name = "Exceptions.cs", SourceReference = 0, Path = breakpointedFilePath } },
+            new() { Id = 5, Column = 4, EndColumn = 38,    Line = ExceptionsCalled, EndLine = ExceptionsCalled, Name = "DebuggableConsoleApp.dll!DebuggableConsoleApp.Program.Main(string[] args)",    Source = new DapSource { Name = "Program.cs",    SourceReference = 0, Path = Debuggees.Source("DebuggableConsoleApp", "Program.cs") } },
         ];
 
         Assert.Equal(expectedStackFrames, stackTraceResponse2.StackFrames.WithoutResolution());
         Assert.Single(scopesResponse2.Scopes);
         DapScope scope = scopesResponse2.Scopes.Single();
 
-        string expectedStackTrace = $"   at System.Number.ThrowFormatException[TChar](ReadOnlySpan`1 value){Environment.NewLine}   at System.Int32.Parse(String s){Environment.NewLine}   at DebuggableConsoleApp.Exceptions.Test(ExceptionToThrow exceptionToThrow) in {breakpointedFilePath}:line 18";
+        string expectedStackTrace = $"   at System.Number.ThrowFormatException[TChar](ReadOnlySpan`1 value){Environment.NewLine}   at System.Int32.Parse(String s){Environment.NewLine}   at DebuggableConsoleApp.Exceptions.Test(ExceptionToThrow exceptionToThrow) in {breakpointedFilePath}:line {Parsed}";
         List<DapVariable> expectedVariables =
         [
             new() { Name = "$exception",  EvaluateName = "$exception",  Value = $"System.FormatException: The input string 'x' was not in a correct format.{Environment.NewLine}{expectedStackTrace}", Type = "System.FormatException", VariablesReference = 2 }
@@ -174,12 +181,12 @@ public class ExceptionTests(ITestOutputHelper testOutputHelper)
         // Now we should land on the catch block
         StoppedEvent stoppedEvent3 = await debugProtocolHost.WithStepOverRequest(stoppedEvent2.ThreadId!.Value).WaitForStoppedEvent();
         (string filePath, int line, int column) stopInfo3 = stoppedEvent3.ReadStopInfo();
-        Assert.Equal((breakpointedFilePath, 32, 3), stopInfo3);
+        Assert.Equal((breakpointedFilePath, Caught, 3), stopInfo3);
     }
 
     /// <summary>Each exception filter and condition in turn, in one program with Just My Code on: from the loop's head
-    /// (Program.cs line 24, no filter set while the loop came round) the filter and the exception to throw are set, and the
-    /// program stops at the exception with its type and break mode, or goes on to the line after the throw (35) without.</summary>
+    /// (no filter set while the loop came round) the filter and the exception to throw are set, and the
+    /// program stops at the exception with its type and break mode, or goes on to the line after the throw without.</summary>
     [Fact]
     public async Task Each_exception_filter_and_condition_stops_at_the_exceptions_it_names_and_at_no_other()
     {
@@ -217,12 +224,9 @@ public class ExceptionTests(ITestOutputHelper testOutputHelper)
             ("System.ArgumentException", "always"));
     }
 
-    private const int LoopHead = 24;
-    private const int AfterThrow = 35;
-
     private static string ProgramPath => Debuggees.Source("DebuggableConsoleApp", "Program.cs");
 
-    /// <summary>DebuggableConsoleApp attached to as it starts, stopped at the line after its loop's throw (35) with no
+    /// <summary>DebuggableConsoleApp attached to as it starts, stopped at the line after its loop's throw with no
     /// exception filter set.</summary>
     private async Task<DebugSession> AttachedAfterTheThrow(bool justMyCode)
     {
@@ -248,7 +252,7 @@ public class ExceptionTests(ITestOutputHelper testOutputHelper)
         }
     }
 
-    /// <summary>One turn of DebuggableConsoleApp's loop from a stop after the throw (line 35): no filter while the loop
+    /// <summary>One turn of DebuggableConsoleApp's loop from a stop after the throw: no filter while the loop
     /// comes round to its head, there the filters given and the exception chosen, then the stop at the exception with its type
     /// and break mode (or none) and the stop after the throw again. A failure names the round.</summary>
     private static async Task Round(DebugSession host, string round, SetExceptionBreakpointsArguments filters, string exceptionToThrow,

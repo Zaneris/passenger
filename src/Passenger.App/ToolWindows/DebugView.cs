@@ -7,6 +7,7 @@ using Avalonia.Layout;
 using Avalonia.VisualTree;
 using Passenger.App.Debugging;
 using Passenger.Dap;
+using Passenger.Editor;
 
 namespace Passenger.App.ToolWindows;
 
@@ -16,7 +17,7 @@ namespace Passenger.App.ToolWindows;
 /// thread on the left with the variables of the chosen frame on the right, an expression to evaluate or watch above
 /// them. Each program debugged has a tab in the window's header (<see cref="DebugModel.Sessions"/>), whose frames,
 /// values, console and toolbar the window shows while it is chosen.</summary>
-public sealed class DebugView : DockPanel
+public sealed class DebugView : DockPanel, IOwnKeys
 {
     private readonly DebugModel model;
     private readonly ComboBox threads;
@@ -82,8 +83,9 @@ public sealed class DebugView : DockPanel
             [DockProperty] = Dock.Top,
             Classes = { "search" },
             Margin = new Thickness(6, 6, 6, 4),
-            PlaceholderText = $"Evaluate expression (Enter) or add a watch ({(OperatingSystem.IsMacOS() ? "⇧⌘Enter" : "Ctrl+Shift+Enter")})",
         };
+        string enter = new Keystroke(Key.Enter, KeyModifiers.None).Display();
+        ActionTips.SetWords(evaluate, AppActions.AddToWatches, keys => keys is null ? $"Evaluate expression ({enter})" : $"Evaluate expression ({enter}) or add a watch ({keys})");
         evaluate.AddHandler(KeyDownEvent, OnEvaluateKey, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         // The debugger the model has now asked, whichever folder's it is: each folder's sets it as it is made.
         variables = new VariablesList(model.Tree) { DataWatch = node => model.DataWatch!(node) };
@@ -122,12 +124,12 @@ public sealed class DebugView : DockPanel
                 debuggerTab,
                 consoleTab,
                 new Border { Width = 12 },
-                Tool(AppActions.StepOver, "Icon.StepOver", "Step Over"),
-                Tool(AppActions.StepInto, "Icon.StepInto", "Step Into"),
-                Tool(AppActions.SmartStepInto, "Icon.SmartStepInto", "Smart Step Into"),
-                Tool(AppActions.StepOut, "Icon.StepOut", "Step Out"),
-                Tool(AppActions.RunToCursor, "Icon.RunToCursor", "Run to Cursor"),
-                Tool(AppActions.Evaluate, "Icon.Evaluate", "Evaluate Expression"),
+                Tool(AppActions.StepOver, IconKeys.StepOver, "Step Over"),
+                Tool(AppActions.StepInto, IconKeys.StepInto, "Step Into"),
+                Tool(AppActions.SmartStepInto, IconKeys.SmartStepInto, "Smart Step Into"),
+                Tool(AppActions.StepOut, IconKeys.StepOut, "Step Out"),
+                Tool(AppActions.RunToCursor, IconKeys.RunToCursor, "Run to Cursor"),
+                Tool(AppActions.Evaluate, IconKeys.Evaluate, "Evaluate Expression"),
                 new Border { Width = 12 },
                 model.Overlays,
             },
@@ -135,7 +137,7 @@ public sealed class DebugView : DockPanel
         Border topBar = ToolBars.Top(top);
 
         // Under the program's own buttons: pressed while every breakpoint is muted.
-        mute = ToolButtons.Toggle("Icon.MuteBreakpoints", "Mute Breakpoints");
+        mute = ToolButtons.Toggle(IconKeys.MuteBreakpoints, "Mute Breakpoints");
         ActionTips.Set(mute, AppActions.MuteBreakpoints, "Mute Breakpoints");
         mute.Click += (_, _) =>
         {
@@ -144,14 +146,14 @@ public sealed class DebugView : DockPanel
         };
 
         Border leftBar = ToolBars.Side(
-            Tool(AppActions.Rerun, "Icon.Rerun", "Rerun"),
-            Tool(AppActions.Resume, "Icon.Resume", "Resume Program"),
-            Tool(AppActions.Pause, "Icon.Pause", "Pause Program"),
-            Tool(AppActions.Stop, "Icon.Stop", "Stop"),
-            Tool(AppActions.Detach, "Icon.Detach", "Detach"),
+            Tool(AppActions.Rerun, IconKeys.Rerun, "Rerun"),
+            Tool(AppActions.Resume, IconKeys.Resume, "Resume Program"),
+            Tool(AppActions.Pause, IconKeys.Pause, "Pause Program"),
+            Tool(AppActions.Stop, IconKeys.Stop, "Stop"),
+            Tool(AppActions.Detach, IconKeys.Detach, "Detach"),
             HotReloadTool(),
             ToolBars.Gap(),
-            Tool(AppActions.ViewBreakpoints, "Icon.Breakpoints", "View Breakpoints and Exceptions"),
+            Tool(AppActions.ViewBreakpoints, IconKeys.Breakpoints, "View Breakpoints and Exceptions"),
             mute);
 
         Children.Add(leftBar);
@@ -260,27 +262,17 @@ public sealed class DebugView : DockPanel
         evaluate.Focus();
     }
 
-    /// <summary>Add to Watches from the Evaluate field, Ctrl+Shift+Enter (⇧⌘Enter), the keys Complete Current
-    /// Statement has elsewhere: true when the field has the keyboard and an expression, and took them.</summary>
-    public bool TakesAction(string action)
-    {
-        if (action != AppActions.CompleteStatement || !evaluate.IsKeyboardFocusWithin || string.IsNullOrWhiteSpace(evaluate.Text))
-        {
-            return false;
-        }
-        model.Evaluate(evaluate.Text.Trim(), true);
-        evaluate.Text = string.Empty;
-        return true;
-    }
+    /// <summary>Add to Watches from the Evaluate field, by the keys the keymap in force gives it there
+    /// (<see cref="AppActions.KeysIn"/>), ahead of what they run elsewhere.</summary>
+    public bool TakesKey(KeyEventArgs e) => evaluate.IsKeyboardFocusWithin && AppActions.Presses(AppActions.AddToWatches, e);
 
     private void OnEvaluateKey(object? sender, KeyEventArgs e)
     {
-        if (e.Key != Key.Enter || string.IsNullOrWhiteSpace(evaluate.Text))
+        bool watch = AppActions.Presses(AppActions.AddToWatches, e);
+        if ((!watch && e.Key != Key.Enter) || string.IsNullOrWhiteSpace(evaluate.Text))
         {
             return;
         }
-        KeyModifiers command = OperatingSystem.IsMacOS() ? KeyModifiers.Meta : KeyModifiers.Control;
-        bool watch = e.KeyModifiers.HasFlag(command) && e.KeyModifiers.HasFlag(KeyModifiers.Shift);
         model.Evaluate(evaluate.Text.Trim(), watch);
         if (watch)
         {
@@ -299,30 +291,24 @@ public sealed class DebugView : DockPanel
         DapStackFrame? chosen = frames.SelectedItem as DapStackFrame;
         return
         [
-            ListMenus.Item("Copy Stack", null, () => _ = ListMenus.CopyAsync(this, string.Join('\n', model.Frames.Select(f => f.Source?.Path is { } path ? $"{f.Name} in {path}:{model.LineOf(f)}" : f.Name)))),
+            ListMenus.Item("Copy Stack", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, string.Join('\n', model.Frames.Select(f => f.Source?.Path is { } path ? $"{f.Name} in {path}:{model.LineOf(f)}" : f.Name))))),
             ListMenus.Item("Go to Source", "F4", () => model.GoToFrame(chosen!), chosen?.Source is not null),
         ];
     }
 
     private IReadOnlyList<Control> ThreadsMenu() =>
-        threads.SelectedItem is DapThread thread ? [ListMenus.Item("Copy Name", null, () => _ = ListMenus.CopyAsync(this, ThreadLabel(thread)))] : [];
+        threads.SelectedItem is DapThread thread ? [ListMenus.Item("Copy Name", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, ThreadLabel(thread))))] : [];
 
     /// <summary>Apply Hot Reload Changes, a flame: shown while the session has Hot Reload.</summary>
     private Button HotReloadTool()
     {
-        Button button = Tool(AppActions.ApplyHotReloadChanges, "Icon.HotReload", "Apply Hot Reload Changes");
-        ((PathIcon)button.Content!).Bind(PathIcon.ForegroundProperty, button.GetResourceObservable("Passenger.HotReload"));
+        Button button = Tool(AppActions.ApplyHotReloadChanges, IconKeys.HotReload, "Apply Hot Reload Changes");
+        ((PathIcon)button.Content!).Bind(PathIcon.ForegroundProperty, button.GetResourceObservable(TokenKeys.HotReload));
         button.IsVisible = false;
         return button;
     }
 
-    private Button Tool(string action, string icon, string tip)
-    {
-        Button button = ToolButtons.Of(icon, tip, () => model.Request(action));
-        ActionTips.Set(button, action, tip);
-        tools[action] = button;
-        return button;
-    }
+    private Button Tool(string action, string icon, string tip) => tools[action] = ToolButtons.Of(action, icon, tip, model.Request);
 
     private static string ThreadLabel(DapThread thread) =>
         string.IsNullOrEmpty(thread.Name) || thread.Name == "<No Name>" ? $"Thread {thread.Id}" : $"{thread.Name} ({thread.Id})";

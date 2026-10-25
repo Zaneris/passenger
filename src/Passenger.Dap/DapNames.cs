@@ -4,6 +4,7 @@ namespace Passenger.Dap;
 /// for both ends, so a name one end misspells is a build error rather than a request the other never answers. Passenger's
 /// own extend the protocol: <see cref="ResolveStackFrame"/>, <see cref="HotReloadState"/>, <see cref="ApplyChanges"/> and
 /// <see cref="Input"/>.</summary>
+[IdentifierHome]
 public static class DapCommands
 {
     public const string Initialize = "initialize";
@@ -50,6 +51,7 @@ public static class DapCommands
 }
 
 /// <summary>The events Passenger's debug adapter tells the IDE, by the protocol's names, each written once for both ends.</summary>
+[IdentifierHome]
 public static class DapEvents
 {
     public const string Initialized = "initialized";
@@ -65,6 +67,7 @@ public static class DapEvents
 
 /// <summary>Why the program stopped, the stopped event's reason, by the protocol's names: what the engine reports, what the
 /// adapter passes on and what the IDE tells apart, each written once.</summary>
+[IdentifierHome]
 public static class StopReasons
 {
     public const string Step = "step";
@@ -83,6 +86,7 @@ public static class StopReasons
 
 /// <summary>The rows Passenger's debug adapter adds among a value's members, by their names, which the IDE tells apart: each
 /// written once for both ends.</summary>
+[IdentifierHome]
 public static class DapRows
 {
     /// <summary>An EF Core query's SQL: a lazy row, read only as it is opened.</summary>
@@ -94,6 +98,7 @@ public static class DapRows
 
 /// <summary>The exception filters Passenger's debug adapter offers, by their ids: what initialize's answer lists, what
 /// setExceptionBreakpoints names and what the adapter reads back, each written once.</summary>
+[IdentifierHome]
 public static class DapExceptionFilters
 {
     /// <summary>Every exception, handled or not, as it is thrown.</summary>
@@ -105,6 +110,7 @@ public static class DapExceptionFilters
 
 /// <summary>An output event's categories, by the protocol's names: what the adapter tells and the IDE sorts into its
 /// console's streams, each written once.</summary>
+[IdentifierHome]
 public static class DapOutputCategories
 {
     /// <summary>What the program writes to its standard output.</summary>
@@ -122,6 +128,7 @@ public static class DapOutputCategories
 
 /// <summary>The debug adapter's command line, as it reads it and as the IDE and the tests start it, each flag written once:
 /// netcoredbg's, so a client written for that runs this.</summary>
+[IdentifierHome]
 public static class AdapterFlags
 {
     /// <summary>The protocol spoken on standard input and output, the only one the adapter speaks.</summary>

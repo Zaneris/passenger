@@ -66,10 +66,7 @@ public sealed class ContainerDetailsTests
 
     private static void Read(string project, string compose)
     {
-        MainWindow window = new() { Width = 1200, Height = 900 };
-        window.Show();
-        window.OpenFolder(TestFolders.Create("ctr-details-window-"));
-        Ui.Settle();
+        MainWindow window = Ui.OpenFolder(TestFolders.Create("ctr-details-window-"), width: 1200, height: 900);
         window.ShowToolWindow(ToolWindowIds.Containers);
         Ui.Settle();
         ContainersView view = window.ContainersWindow;

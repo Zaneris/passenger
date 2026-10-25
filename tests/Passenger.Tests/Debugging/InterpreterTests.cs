@@ -84,7 +84,7 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
             .WithLaunchRequest(Debuggees.Program("DebuggableConsoleApp"), stopAtEntry: false, justMyCode: true)
             .WaitForInitializedEvent();
         // Stopped in MyMethod, where System.Linq is loaded and _intList is 1, 4, 8, 25.
-        host.WithBreakpointsRequest(22, Debuggees.Source("DebuggableConsoleApp", "MyClass.cs")).WithConfigurationDoneRequest();
+        host.WithBreakpointsRequest(Debuggees.MyMethodEnd, Debuggees.Source("DebuggableConsoleApp", "MyClass.cs")).WithConfigurationDoneRequest();
         StoppedEvent stop = await host.WaitForStoppedEvent();
         int frame = host.GetTopStackFrame(stop.ThreadId!.Value).Id;
 

@@ -222,19 +222,12 @@ public sealed class FilePropertiesTests : IDisposable
         window.Close();
     }
 
-    private string Write(string name, string text)
-    {
-        string path = Path.Combine(folder, name);
-        File.WriteAllText(path, text);
-        return path;
-    }
+    private string Write(string name, string text) => TestFolders.Write(folder, name, text);
 
     /// <summary>A window on the folder with a file of it open; it saves only when asked.</summary>
     private MainWindow Open(string file)
     {
-        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder, autosaves: false);
         window.OpenFile(file);
         Ui.Settle();
         window.EditorArea.CodeEditor.Focus();

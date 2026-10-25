@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Passenger.Analyzers/Passenger.Analyzers.csproj" />
     <Project Path="src/Passenger.App/Passenger.App.csproj" />
     <Project Path="src/Passenger.ContainerTools/Passenger.ContainerTools.csproj" />
     <Project Path="src/Passenger.Core/Passenger.Core.csproj" />
@@ -13,11 +14,14 @@
     <Project Path="src/Passenger.Inspector.Wpf/Passenger.Inspector.Wpf.csproj" />
     <Project Path="src/Passenger.Languages/Passenger.Languages.csproj" />
     <Project Path="src/Passenger.Lsp/Passenger.Lsp.csproj" />
+    <Project Path="src/Passenger.Packages/Passenger.Packages.csproj" />
     <Project Path="src/Passenger.Profiler/Passenger.Profiler.csproj" />
     <Project Path="src/Passenger.Roslyn.Extension/Passenger.Roslyn.Extension.csproj" />
     <Project Path="src/Passenger.Terminal/Passenger.Terminal.csproj" />
     <Project Path="src/Passenger.TestFrames/Passenger.TestFrames.csproj" />
     <Project Path="src/Passenger.Text/Passenger.Text.csproj" />
+    <Project Path="src/Passenger.Vcs/Passenger.Vcs.csproj" />
+    <Project Path="src/Passenger.Workspace/Passenger.Workspace.csproj" />
     <Project Path="src/Passenger.WpfPreview/Passenger.WpfPreview.csproj" />
     <Project Path="src/Passenger.Xaml/Passenger.Xaml.csproj" />
   </Folder>

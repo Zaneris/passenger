@@ -71,7 +71,7 @@ public sealed class ActiveEditorTests : ActiveEditorFolders
             Assert.True(At(editor, start - 1).X <= edge - width, $"A row of the accented line ends at {At(editor, start - 1).X:F0}, past the view's edge at {edge:F0}.");
         }
 
-        Color gutter = Token(window, "Passenger.Editor.Gutter");
+        Color gutter = Token(window, TokenKeys.Editor_Gutter);
         Assert.True(GutterBeside(window, editor, line.Start).Any(c => c != gutter), "The wrapped line's first row has no number beside it.");
         Assert.Equal([gutter], GutterBeside(window, editor, starts[0]));
 
@@ -266,11 +266,11 @@ public sealed class ActiveEditorTests : ActiveEditorFolders
         Ui.WaitFor(() => editor.LineMarks.Any(m => m.Line == 5), "the breakpoint");
         List<int> sumStarts = RowStarts(editor, sum);
         Assert.NotEmpty(sumStarts);
-        Color dot = Token(window, "Passenger.Editor.Breakpoint");
+        Color dot = Token(window, TokenKeys.Editor_Breakpoint);
         Assert.True(GutterBeside(window, editor, sum.Start).Contains(dot), "No breakpoint is drawn beside its line's first row.");
         Assert.False(GutterBeside(window, editor, sumStarts[0]).Contains(dot), "A breakpoint is drawn beside its line's second row too.");
         Point tinted = editor.TranslatePoint(new Point(TextEdge(editor) - 3, editor.PointOf(sumStarts[0]).Y + 2), window)!.Value;
-        Assert.Equal(Token(window, "Passenger.Editor.BreakpointLine"), Ui.Pixel(window, tinted));
+        Assert.Equal(Token(window, TokenKeys.Editor_BreakpointLine), Ui.Pixel(window, tinted));
 
         // Rows shown: the six lines outside the fold and the comment's rows after its first.
         Point chevron = editor.TranslatePoint(editor.GutterColumnPoint(GutterColumn.Folding, 3), window)!.Value;
@@ -310,8 +310,8 @@ public sealed class ActiveEditorTests : ActiveEditorFolders
         TextSnapshot text = editor.Document.Snapshot;
         int tab = text.GetLineStart(2);
         int space = tab + "\tint".Length;
-        Color background = Token(window, "Passenger.Editor.Background");
-        Color whitespace = Token(window, "Passenger.Editor.Whitespace");
+        Color background = Token(window, TokenKeys.Editor_Background);
+        Color whitespace = Token(window, TokenKeys.Editor_Whitespace);
         Assert.Equal(background, Ui.Pixel(window, SpaceDot(window, editor, space)));
         Assert.Equal(background, Ui.Pixel(window, TabShaft(window, editor, tab)));
 
@@ -600,9 +600,7 @@ public abstract class ActiveEditorFolders : IDisposable
     {
         string path = Path.Combine(folder, name);
         File.WriteAllText(path, text);
-        MainWindow window = new() { Width = 1100, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder, width: 1100);
         window.OpenFile(path);
         Ui.Settle();
         return window;

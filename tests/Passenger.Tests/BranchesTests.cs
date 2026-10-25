@@ -5,6 +5,7 @@ using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.ToolWindows;
 using Passenger.App.Vcs;
+using Passenger.Vcs;
 
 namespace Passenger.Tests;
 
@@ -362,9 +363,7 @@ public sealed class BranchesTests : IDisposable
 
     private MainWindow Open()
     {
-        MainWindow window = new() { Width = 1300, Height = 900 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder, width: 1300, height: 900);
         window.Perform(AppActions.ShowGit);
         Ui.Settle();
         Ui.Landed(() => window.GitBranches.Rows.Count > 0, "the branches panel");

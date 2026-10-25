@@ -52,7 +52,7 @@ internal static class Program
         if (options.Mcp != McpMode.Attach && options.Screenshot is null)
         {
             // What a crash left goes now, not held: an engine that answers slowly or not at all delays nothing.
-            _ = Containers.ContainerLabels.LookForLeftovers(Containers.ContainerEngine.Shared, State.StateStore.DefaultRoot);
+            IdeErrors.Observe(Containers.ContainerLabels.LookForLeftovers(Containers.ContainerEngine.Shared, State.StateStore.DefaultRoot));
         }
         switch (options.Mcp)
         {

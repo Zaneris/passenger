@@ -163,10 +163,7 @@ public sealed class WindowsOnlyProjectsTests : IClassFixture<WindowsOnlyProjects
         /// <summary>A window on the solution, the folder's state its own.</summary>
         public MainWindow Open()
         {
-            MainWindow window = new() { Width = 1400, Height = 880 };
-            window.Show();
-            window.OpenFolder(PathOf("Desktop.slnx"));
-            Ui.Settle();
+            MainWindow window = Ui.OpenFolder(PathOf("Desktop.slnx"), width: 1400, height: 880);
             return window;
         }
 

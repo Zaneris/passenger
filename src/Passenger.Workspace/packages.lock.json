@@ -1,0 +1,39 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net11.0": {
+      "Microsoft.CodeAnalysis.BannedApiAnalyzers": {
+        "type": "Direct",
+        "requested": "[5.6.0, )",
+        "resolved": "5.6.0",
+        "contentHash": "Kcobt3pnOdO0A+6CKiMHZdTEluJpsfxiV20axtZdmfBQnDmiWTKPJADlgAfdTuKNAnVarrkJa0UEGwuOo91muw=="
+      },
+      "passenger.core": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Diagnostics.NETCore.Client": "[0.2.750501, )"
+        }
+      },
+      "passenger.text": {
+        "type": "Project",
+        "dependencies": {
+          "Passenger.Core": "[0.2.0, )"
+        }
+      },
+      "Microsoft.Diagnostics.NETCore.Client": {
+        "type": "CentralTransitive",
+        "requested": "[0.2.750501, )",
+        "resolved": "0.2.750501",
+        "contentHash": "XVOWyjoikpjTecPv8fYWspgNGhXtOeMX3K3wq9kXftU9U04V6IwCY4NQuVrY/BIBwmui6lF8z7pNP64cwFvUNQ=="
+      }
+    },
+    "net11.0/linux-arm64": {},
+    "net11.0/linux-musl-arm64": {},
+    "net11.0/linux-musl-x64": {},
+    "net11.0/linux-x64": {},
+    "net11.0/osx-arm64": {},
+    "net11.0/osx-x64": {},
+    "net11.0/win-arm64": {},
+    "net11.0/win-x64": {}
+  }
+}

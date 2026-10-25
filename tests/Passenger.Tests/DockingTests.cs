@@ -41,7 +41,7 @@ public sealed class DockingTests
         ToggleButton debug = Button(window, ToolWindowIds.Debug);
         Point from = Ui.Centre(debug, window);
         Point to = new(window.Bounds.Width - 20, 120);
-        Drag(window, from, to);
+        Ui.Drag(window, from, to);
         ToolWindow moved = window.DockHost[ToolWindowIds.Debug];
         Assert.Equal(ToolAnchor.RightTop, moved.Anchor);
         Assert.True(moved.IsShown);
@@ -64,13 +64,13 @@ public sealed class DockingTests
         Assert.Single(Stripe(window, right: true));
         Point lowest = Ui.Centre(Button(window, ToolWindowIds.Hierarchy), window);
 
-        Drag(window, Ui.Centre(Button(window, ToolWindowIds.Debug), window), lowest - new Point(0, 4));
+        Ui.Drag(window, Ui.Centre(Button(window, ToolWindowIds.Debug), window), lowest - new Point(0, 4));
         Assert.Equal(ToolAnchor.RightTop, dock[ToolWindowIds.Debug].Anchor);
 
         // Below the middle of the lower group's first button, a drop joins that group.
         dock.Move(dock[ToolWindowIds.Debug], ToolAnchor.BottomLeft);
         Ui.Settle();
-        Drag(window, Ui.Centre(Button(window, ToolWindowIds.Run), window), Ui.Centre(Button(window, ToolWindowIds.Hierarchy), window) + new Point(0, 4));
+        Ui.Drag(window, Ui.Centre(Button(window, ToolWindowIds.Run), window), Ui.Centre(Button(window, ToolWindowIds.Hierarchy), window) + new Point(0, 4));
         Assert.Equal(ToolAnchor.RightBottom, dock[ToolWindowIds.Run].Anchor);
         window.Close();
     }
@@ -84,7 +84,7 @@ public sealed class DockingTests
         Control header = Header(window, "Explorer");
         Point from = Ui.Centre(header, window);
         Point to = new(window.Bounds.Width * 0.8, window.Bounds.Height * 0.85);
-        Drag(window, from, to);
+        Ui.Drag(window, from, to);
         Assert.Equal(ToolAnchor.BottomRight, window.DockHost[ToolWindowIds.Explorer].Anchor);
         Assert.True(window.DockHost.IsShown(ToolWindowIds.Explorer));
         Assert.True(window.DockHost.IsShown(ToolWindowIds.Run));
@@ -175,7 +175,7 @@ public sealed class DockingTests
         // The person's own size, dragged above the default.
         Control splitter = dock.Children.First(c => Grid.GetRow(c) == 1).GetVisualDescendants().OfType<GridSplitter>().Single();
         Point grip = Ui.Centre(splitter, first);
-        Drag(first, grip, grip - new Point(0, 60));
+        Ui.Drag(first, grip, grip - new Point(0, 60));
         double restored = dock.RowDefinitions[2].ActualHeight;
         Assert.True(restored > 320, $"The bottom area was not dragged taller: {restored}");
         Ui.Run(first, AppActions.MaximizeToolWindow);
@@ -270,15 +270,15 @@ public sealed class DockingTests
 
         // Each grabbed 3 px past its line, over the area after it.
         Point grip = Ui.Centre(Divider(dock, c => Grid.GetColumn(c) == 2), window) + new Point(3, 0);
-        Drag(window, grip, grip + new Point(60, 0));
+        Ui.Drag(window, grip, grip + new Point(60, 0));
         Assert.True(Math.Abs(dock.ColumnDefinitions[1].ActualWidth - (left + 60)) < 1,
             $"The left area was {left} wide, and {dock.ColumnDefinitions[1].ActualWidth} once its divider, grabbed right of its line, was dragged 60 px right");
         grip = Ui.Centre(Divider(dock, c => Grid.GetColumn(c) == 4), window) + new Point(3, 0);
-        Drag(window, grip, grip - new Point(60, 0));
+        Ui.Drag(window, grip, grip - new Point(60, 0));
         Assert.True(Math.Abs(dock.ColumnDefinitions[5].ActualWidth - (right + 60)) < 1,
             $"The right area was {right} wide, and {dock.ColumnDefinitions[5].ActualWidth} once its divider, grabbed right of its line, was dragged 60 px left");
         grip = Ui.Centre(Divider(dock, c => Grid.GetRow(c) == 1), window) + new Point(0, 3);
-        Drag(window, grip, grip - new Point(0, 60));
+        Ui.Drag(window, grip, grip - new Point(0, 60));
         Assert.True(Math.Abs(dock.RowDefinitions[2].ActualHeight - (bottom + 60)) < 1,
             $"The bottom area was {bottom} tall, and {dock.RowDefinitions[2].ActualHeight} once its divider, grabbed below its line, was dragged 60 px up");
 
@@ -286,7 +286,7 @@ public sealed class DockingTests
         Ui.Settle();
         Control center = dock.Center!;
         Point edge = center.TranslatePoint(new Point(center.Bounds.Width - 2, center.Bounds.Height / 2), window)!.Value;
-        Drag(window, edge, edge - new Point(60, 0));
+        Ui.Drag(window, edge, edge - new Point(60, 0));
         Assert.True(dock.ColumnDefinitions[5].ActualWidth == 0,
             $"A drag at the editor's right edge, the right area closed, opened {dock.ColumnDefinitions[5].ActualWidth} px of empty area there");
         window.Close();
@@ -297,7 +297,7 @@ public sealed class DockingTests
     {
         MainWindow window = Open();
         DockHost dock = window.DockHost;
-        Avalonia.Media.Color line = Application.Current!.TryFindResource("Passenger.Divider", window.ActualThemeVariant, out object? brush) && brush is Avalonia.Media.ISolidColorBrush solid
+        Avalonia.Media.Color line = Application.Current!.TryFindResource(TokenKeys.Divider, window.ActualThemeVariant, out object? brush) && brush is Avalonia.Media.ISolidColorBrush solid
             ? solid.Color
             : throw new InvalidOperationException("The theme has no divider colour");
         foreach (string id in new[] { ToolWindowIds.Tests, ToolWindowIds.Debug, ToolWindowIds.Git })
@@ -329,7 +329,7 @@ public sealed class DockingTests
         dock.Hide(ToolWindowIds.Build);
         dock.Show(ToolWindowIds.Explorer);
 
-        Drag(window, Ui.Centre(Button(window, ToolWindowIds.Debug), window), new Point(window.Bounds.Width - 20, 120));
+        Ui.Drag(window, Ui.Centre(Button(window, ToolWindowIds.Debug), window), new Point(window.Bounds.Width - 20, 120));
         dock.Move(dock[ToolWindowIds.Tests], ToolAnchor.LeftBottom, 0);
         dock.Show(ToolWindowIds.Tests);
         dock.Show(ToolWindowIds.Run);
@@ -338,7 +338,7 @@ public sealed class DockingTests
         dock.Show(ToolWindowIds.Build);
         Ui.Settle();
         Point divider = Ui.Centre(Divider(dock, c => Grid.GetRow(c) == 1), window) + new Point(0, 3);
-        Drag(window, divider, divider - new Point(0, 150));
+        Ui.Drag(window, divider, divider - new Point(0, 150));
         Assert.Equal(ToolAnchor.RightTop, dock[ToolWindowIds.Debug].Anchor);
         Assert.Single(window.OwnedWindows);
         Assert.True(dock.RowDefinitions[2].ActualHeight > bottom + 100, $"The bottom area dragged 150 px taller is {dock.RowDefinitions[2].ActualHeight} tall, from {bottom}");
@@ -519,15 +519,4 @@ public sealed class DockingTests
     private static Control Header(MainWindow window, string title) =>
         window.DockHost.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == title && t.FontWeight == Avalonia.Media.FontWeight.SemiBold)
             .FindAncestorOfType<Border>()!;
-
-    private static void Drag(MainWindow window, Point from, Point to)
-    {
-        window.MouseDown(from, MouseButton.Left);
-        for (int step = 1; step <= 10; step++)
-        {
-            window.MouseMove(from + ((to - from) * (step / 10.0)), RawInputModifiers.LeftMouseButton);
-        }
-        window.MouseUp(to, MouseButton.Left);
-        Ui.Settle();
-    }
 }

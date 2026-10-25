@@ -7,6 +7,7 @@ using Passenger.App.Run;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.App;
 
@@ -21,8 +22,8 @@ public partial class MainWindow
     {
         AddExplorerActions();
         AddConfiguration();
-        Explorer.Dropped += (_, dropped) => _ = DropAsync(dropped);
-        Explorer.NestingAsked += (_, _) => _ = AskNestingAsync();
+        Explorer.Dropped += (_, dropped) => IdeErrors.Observe(DropAsync(dropped));
+        Explorer.NestingAsked += (_, _) => IdeErrors.Observe(AskNestingAsync());
         Editors.Moved += (_, move) => OnFileMoved(move);
         // The watcher that saw the move reads the Explorer, the index and Git again itself.
         Editors.Followed += (_, move) => session.Followed(move);
@@ -452,7 +453,7 @@ public partial class MainWindow
         {
             session.Index.Build(folder);
         }
-        _ = session.Vcs.RefreshAsync();
+        IdeErrors.Observe(session.Vcs.RefreshAsync());
     }
 
     private static string? Invalid(string name) =>

@@ -41,7 +41,7 @@ public partial class MainWindow
     {
         runMarksLater = new Debounce(TimeSpan.FromMilliseconds(300), () =>
         {
-            _ = ReadRunMarksAsync();
+            IdeErrors.Observe(ReadRunMarksAsync());
             return Task.CompletedTask;
         });
         Closed += (_, _) =>
@@ -78,7 +78,7 @@ public partial class MainWindow
     }
 
     /// <summary>Whether a file is a compose file or a Dockerfile, where a container configuration's run icon may stand.</summary>
-    private static bool IsRunFile(string path) => Web.ComposeDeclarations.IsCompose(path) || Web.WebLanguages.IsDockerfile(Path.GetFileName(path));
+    private static bool IsRunFile(string path) => Web.ComposeDeclarations.IsCompose(path) || Languages.Language.ForPath(path) == Languages.Language.Dockerfile;
 
     /// <summary>The AppHost an open C# file is a source of, as a configuration names it; null for any other file, whose keys
     /// read no AppHost's resources.</summary>
@@ -329,11 +329,11 @@ public partial class MainWindow
             }
             string from = here.Length > 1 && target.Service is not null ? $" ({target.Configuration.Name})" : string.Empty;
             MenuItem run = new() { Header = $"Run '{what}'{from}" };
-            run.Click += (_, _) => RunTarget(target);
+            run.Click += (_, _) => IdeErrors.Observe(RunTarget(target));
             MenuItem debug = new() { Header = $"Debug '{what}'{from}" };
-            debug.Click += (_, _) => RunTarget(target, RunStart.Debug);
+            debug.Click += (_, _) => IdeErrors.Observe(RunTarget(target, RunStart.Debug));
             MenuItem profile = new() { Header = $"Profile '{what}'{from}" };
-            profile.Click += (_, _) => RunTarget(target, RunStart.Profile);
+            profile.Click += (_, _) => IdeErrors.Observe(RunTarget(target, RunStart.Profile));
             menu.Items.Add(run);
             menu.Items.Add(debug);
             menu.Items.Add(profile);

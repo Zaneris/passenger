@@ -9,6 +9,7 @@ using Passenger.App.Vcs;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
+using Passenger.Vcs;
 
 namespace Passenger.Tests;
 
@@ -197,9 +198,7 @@ public sealed class DiffWordsTests : IDisposable
 
     private MainWindow Open()
     {
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder);
         window.OpenFile(Path.Combine(folder, "Shop.cs"));
         Ui.Settle();
         return window;

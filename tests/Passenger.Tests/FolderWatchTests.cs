@@ -7,6 +7,8 @@ using Passenger.App;
 using Passenger.App.Explorer;
 using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.Tests;
 
@@ -120,8 +122,7 @@ public sealed class FolderWatchTests : IDisposable
         Ui.Press(window, Ui.Shortcut(AppActions.GoToFile));
         window.KeyTextInput("Shop");
         Ui.Settle();
-        Avalonia.Controls.ListBox results = Avalonia.Controls.ControlExtensions.FindControl<Avalonia.Controls.ListBox>(window.Popup!, "Results")!;
-        string[] offered = [.. results.Items.OfType<Passenger.App.Navigation.FileHit>().Select(h => h.Name)];
+        string[] offered = [.. Assert.IsType<Passenger.App.Navigation.GoToFilePopup>(window.Popup).Rows.Select(h => h.Name)];
         Assert.True(offered.SequenceEqual(["Shop.cs"]), $"Go to File offers [{string.Join(", ", offered)}] for Shop, a save's temporary file among them");
         Ui.Press(window, "ESCAPE");
 
@@ -626,12 +627,7 @@ public sealed class FolderWatchTests : IDisposable
 
     private static readonly string Project = TestProjects.Console();
 
-    private void Write(string relative, string text)
-    {
-        string path = Path.Combine(folder, relative);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, text);
-    }
+    private void Write(string relative, string text) => TestFolders.Write(folder, relative, text);
 
     /// <summary>A window on the folder, watching it the platform's way unless told another; with the C# language server
     /// only where a test asks C# of it, so a project's folder starts and restores none for nothing.</summary>

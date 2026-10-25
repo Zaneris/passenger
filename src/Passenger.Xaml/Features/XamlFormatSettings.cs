@@ -109,21 +109,9 @@ public sealed record XamlFormatSettings
     /// <summary>XAML Styler's Remove ending tag of empty element: <c>&lt;Grid&gt;&lt;/Grid&gt;</c> is <c>&lt;Grid /&gt;</c>.</summary>
     public bool CollapseEmptyElements { get; init; }
 
-    /// <summary>A hand-edited value this build cannot use back to its default, a number brought into range.</summary>
-    public XamlFormatSettings Clamped()
-    {
-        XamlFormatSettings defaults = new();
-        return this with
-        {
-            AttributeStyle = Enum.IsDefined(AttributeStyle) ? AttributeStyle : defaults.AttributeStyle,
-            AttributeIndent = Enum.IsDefined(AttributeIndent) ? AttributeIndent : defaults.AttributeIndent,
-            ChildIndent = Enum.IsDefined(ChildIndent) ? ChildIndent : defaults.ChildIndent,
-            TextIndent = Enum.IsDefined(TextIndent) ? TextIndent : defaults.TextIndent,
-            MaxBlankLines = Math.Clamp(MaxBlankLines, 0, MostBlankLines),
-            RightMargin = Math.Clamp(RightMargin, 0, WidestMargin),
-            AttributeOrder = string.IsNullOrWhiteSpace(AttributeOrder) ? defaults.AttributeOrder : AttributeOrder,
-        };
-    }
+    /// <summary>An empty attribute order back to the default.</summary>
+    public XamlFormatSettings Clamped() =>
+        this with { AttributeOrder = string.IsNullOrWhiteSpace(AttributeOrder) ? DefaultAttributeOrder : AttributeOrder };
 
     /// <summary>The .editorconfig keys read, as Rider names them: ReSharper's XML formatter's (which XAML's is) with their
     /// <c>resharper_</c> forms, and XAML Styler's options under <c>xaml_</c>.</summary>

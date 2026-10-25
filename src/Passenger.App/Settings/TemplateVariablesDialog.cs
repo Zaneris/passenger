@@ -30,8 +30,8 @@ public sealed class TemplateVariablesDialog : Window
         MinHeight = 260;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
-        Button up = ToolButtons.Of("Icon.ArrowUp", "Up");
-        Button down = ToolButtons.Of("Icon.ArrowDown", "Down");
+        Button up = ToolButtons.Of(IconKeys.ArrowUp, "Up");
+        Button down = ToolButtons.Of(IconKeys.ArrowDown, "Down");
         up.Click += (_, _) => Move(-1);
         down.Click += (_, _) => Move(1);
         names.SelectionChanged += (_, _) => ShowChosen();
@@ -40,7 +40,7 @@ public sealed class TemplateVariablesDialog : Window
         EditableBox = new CheckBox { Content = "Editable" };
         EditableBox.IsCheckedChanged += (_, _) => Edit(v => v with { Editable = EditableBox.IsChecked == true });
         ChangeMacroButton = new Button { Content = "Change macro" };
-        ChangeMacroButton.Click += (_, _) => _ = ChangeMacro();
+        ChangeMacroButton.Click += (_, _) => IdeErrors.Observe(ChangeMacro());
         DoneButton = new Button { Content = "Done", IsDefault = true, Classes = { "primary" } };
         DoneButton.Click += (_, _) => Close(true);
 

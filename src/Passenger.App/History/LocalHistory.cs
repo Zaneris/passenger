@@ -4,8 +4,9 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.App.History;
 
@@ -393,7 +394,7 @@ public sealed class LocalHistory
             }
             draining = true;
         }
-        _ = BackgroundWork.Run(Drain);
+        IdeErrors.Observe(BackgroundWork.Run(Drain));
     }
 
     private void Drain()

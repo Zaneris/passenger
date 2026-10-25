@@ -1,9 +1,10 @@
-using Passenger.App.Packages;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Host;
+using Passenger.Packages;
 using Passenger.Text;
+using Passenger.Workspace;
 using Passenger.Xaml.Syntax;
 
 namespace Passenger.App.MSBuild;
@@ -22,7 +23,7 @@ public sealed class MSBuildDocument : IDisposable
     private readonly Debounce inspecting;
     private (int Version, XmlTree Tree)? parsed;
     private IReadOnlyList<InsightDiagnostic> diagnostics = [];
-    private IReadOnlyList<Marker> markers = [];
+    private readonly AnchoredList<Marker> markers = new(m => m.Range, (m, range) => m with { Range = range });
     private bool disposed;
 
     internal MSBuildDocument(MSBuildService service, OpenDocument document)
@@ -302,9 +303,9 @@ public sealed class MSBuildDocument : IDisposable
         }
         TextSnapshot text = Document.Text.Snapshot;
         XmlTree tree = Tree;
-        markers = [.. diagnostics.Select(d => new Marker(RangeOf(text, tree, d), d.Error ? MarkerKind.Error : MarkerKind.Warning,
-            (d.Code is { Length: > 0 } code ? $"{code}: " : string.Empty) + Plain(d.Message))), .. advisories];
-        Document.Markers = markers;
+        markers.Set(Document.Text, [.. diagnostics.Select(d => new Marker(RangeOf(text, tree, d), d.Error ? MarkerKind.Error : MarkerKind.Warning,
+            (d.Code is { Length: > 0 } code ? $"{code}: " : string.Empty) + Plain(d.Message))), .. advisories]);
+        Document.Markers = markers.Items;
     }
 
     /// <summary>Where a problem MSBuild places at a line and column goes: an import not found on its Project, a
@@ -344,8 +345,10 @@ public sealed class MSBuildDocument : IDisposable
 
     private void OnChanged(object? sender, DocumentChangedEventArgs e)
     {
-        markers = [.. markers.Select(m => m with { Range = TextEditing.MapRange(m.Range, e.Edits) })];
-        Document.Markers = markers;
+        if (markers.Count > 0)
+        {
+            Document.Markers = markers.Items;
+        }
         inspecting.Restart();
     }
 
@@ -354,6 +357,7 @@ public sealed class MSBuildDocument : IDisposable
         disposed = true;
         inspecting.Stop();
         Document.Text.Changed -= OnChanged;
+        markers.Clear();
         if (Document.Markers.Count > 0)
         {
             Document.Markers = [];

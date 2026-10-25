@@ -8,6 +8,7 @@ using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
+using Passenger.Vcs;
 
 namespace Passenger.App;
 
@@ -73,13 +74,13 @@ public partial class MainWindow
     private void AddVcs()
     {
         // Each built as it is first shown or asked for, over the session's Git then.
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Commit, "Commit", "Icon.Commit", MakeCommit, Docking.ToolAnchor.LeftTop)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Commit, "Commit", IconKeys.Commit, MakeCommit, Docking.ToolAnchor.LeftTop)
         {
             Action = AppActions.ShowCommit,
             ActionTitle = "Commit Tool Window",
             Menus = [new MenuPlace("Git", 3, 0)],
         });
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Git, "Git", "Icon.Branch", MakeGit, Docking.ToolAnchor.BottomLeft)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Git, "Git", IconKeys.Branch, MakeGit, Docking.ToolAnchor.BottomLeft)
         {
             Action = AppActions.ShowGit,
             Menus = [new MenuPlace("Git", 3, 1)],
@@ -92,7 +93,7 @@ public partial class MainWindow
         Activated += (_, _) =>
         {
             session.Vcs.ReloadOpenFiles();
-            _ = session.Vcs.RefreshAsync();
+            IdeErrors.Observe(session.Vcs.RefreshAsync());
         };
     }
 
@@ -101,12 +102,12 @@ public partial class MainWindow
     {
         ToolWindows.CommitView view = commitView = new ToolWindows.CommitView(session.Vcs);
         view.OpenRequested += (_, path) => OpenFile(path);
-        view.DiffRequested += (_, path) => _ = ShowDiffAsync(path);
-        view.RollbackRequested += async (_, changes) => await RollbackAsync(changes);
-        view.DeleteRequested += async (_, path) => await DeleteAsync(path);
+        view.DiffRequested += (_, path) => IdeErrors.Observe(ShowDiffAsync(path));
+        view.RollbackRequested += (_, changes) => IdeErrors.Observe(RollbackAsync(changes));
+        view.DeleteRequested += (_, path) => IdeErrors.Observe(DeleteAsync(path));
         view.IgnoreRequested += (_, path) => Ignore(path);
         view.ResolveRequested += (_, _) => ShowConflicts();
-        view.MergeRequested += (_, path) => _ = MergeAsync(path);
+        view.MergeRequested += (_, path) => IdeErrors.Observe(MergeAsync(path));
         view.Confirm = (title, text, yes) => Confirm(title, text, yes);
         return view;
     }
@@ -116,22 +117,14 @@ public partial class MainWindow
     private ToolWindows.GitView MakeGit()
     {
         ToolWindows.GitView view = gitView = new ToolWindows.GitView(session.Vcs);
-        view.DiffRequested += (_, chosen) => _ = ShowCommitDiffAsync(chosen.Commit, chosen.File);
-        view.CompareRequested += (_, chosen) => _ = CompareWithAsync(chosen.Local, chosen.Commit.Hash, chosen.Commit.Short, chosen.File.Path);
+        view.DiffRequested += (_, chosen) => IdeErrors.Observe(ShowCommitDiffAsync(chosen.Commit, chosen.File));
+        view.CompareRequested += (_, chosen) => IdeErrors.Observe(CompareWithAsync(chosen.Local, chosen.Commit.Hash, chosen.Commit.Short, chosen.File.Path));
         view.NewBranchRequested += (_, commit) =>
         {
             NamePopup popup = new($"New Branch from {commit.Short}", string.Empty, async name => (await session.Vcs.NewBranchAtAsync(name, commit.Hash)).Problem);
             popups.Show(popup, _ => { });
         };
-        view.ResetRequested += async (_, reset) =>
-        {
-            if (reset.Mode == ResetMode.Hard && !await Confirm("Reset Current Branch to Here",
-                $"Move {session.Vcs.Branch ?? "HEAD"} to {reset.Commit.Short} and drop every change since, committed or not?", "Reset"))
-            {
-                return;
-            }
-            await session.Vcs.ResetAsync(reset.Commit.Hash, reset.Mode);
-        };
+        view.ResetRequested += (_, reset) => IdeErrors.Observe(ResetToAsync(reset));
         FollowBranches(view.Log.Branches!);
         return view;
     }
@@ -182,7 +175,7 @@ public partial class MainWindow
 
     private void ShowBranches()
     {
-        _ = ShowBranchesAsync();
+        IdeErrors.Observe(ShowBranchesAsync());
     }
 
     private async Task ShowBranchesAsync()
@@ -206,7 +199,7 @@ public partial class MainWindow
         {
             if (Folder is { } open)
             {
-                menu.Items.Add(Item("Create Git Repository…", () => _ = session.Vcs.InitAsync(open)));
+                menu.Items.Add(Item("Create Git Repository…", () => IdeErrors.Observe(session.Vcs.InitAsync(open))));
             }
             else
             {
@@ -389,7 +382,7 @@ public partial class MainWindow
             GoToChange(step);
             if (Editors.Active is { } now && ChangeAt(now, Editors.CodeEditor.CaretPosition.Line) is { } next)
             {
-                _ = ShowChangePopupAsync(Editors.CodeEditor, now, next);
+                IdeErrors.Observe(ShowChangePopupAsync(Editors.CodeEditor, now, next));
             }
         }
         // The file's changed words are marked in it while the popup shows them; an edit since moves them.
@@ -407,9 +400,9 @@ public partial class MainWindow
             rollback: () => Then(() =>
             {
                 editor.GoTo(new TextPosition(Math.Min(change.Line, document.Text.Snapshot.LineCount - 1), 0));
-                _ = RollbackLinesAsync();
+                IdeErrors.Observe(RollbackLinesAsync());
             }),
-            diff: () => Then(() => _ = ShowDiffAsync(document.Path)));
+            diff: () => Then(() => IdeErrors.Observe(ShowDiffAsync(document.Path))));
         bool open = true;
         popup.DetachedFromVisualTree += (_, _) =>
         {
@@ -463,7 +456,7 @@ public partial class MainWindow
     {
         ContextMenu menu = new();
         MenuItem annotate = new() { Header = session.Vcs.IsAnnotated(document) ? "Close Annotations" : "Annotate with Git Blame", IsEnabled = session.Vcs.Repository is not null };
-        annotate.Click += (_, _) => _ = ToggleAnnotationsAsync(document);
+        annotate.Click += (_, _) => IdeErrors.Observe(ToggleAnnotationsAsync(document));
         menu.Items.Add(annotate);
         menu.Open(editor);
     }
@@ -477,20 +470,25 @@ public partial class MainWindow
             // Every file is saved before a commit, so the window lists what the editors show.
             Editors.SaveAll();
             ShowToolWindow(ToolWindowIds.Commit);
-            _ = session.Vcs.RefreshAsync();
+            IdeErrors.Observe(session.Vcs.RefreshAsync());
             CommitView.FocusMessage();
         }, new("Git", 0, 0));
-        Add(AppActions.Push, "Push…", context => _ = session.Vcs.PushAsync(), new("Git", 0, 1));
-        Add(AppActions.UpdateProject, "Update Project…", context => _ = session.Vcs.UpdateAsync(), new("Git", 0, 2));
-        Add(AppActions.Fetch, "Fetch", context => _ = session.Vcs.FetchAsync(), new("Git", 0, 3));
+        Add(AppActions.Push, "Push…", context => IdeErrors.Observe(session.Vcs.PushAsync()), new("Git", 0, 1));
+        Add(AppActions.UpdateProject, "Update Project…", context => IdeErrors.Observe(session.Vcs.UpdateAsync()), new("Git", 0, 2));
+        Add(AppActions.Fetch, "Fetch", context => IdeErrors.Observe(session.Vcs.FetchAsync()), new("Git", 0, 3));
         Add(AppActions.Branches, "Branches…", _ => ShowBranches(), new("Git", 0, 4));
         Add(AppActions.Stash, "Stash Changes…", _ => ShowStash(), new("Git", 1, 0));
-        Add(AppActions.Unstash, "Unstash Changes…", context => _ = ShowUnstashAsync(), new("Git", 1, 1));
-        Add(AppActions.ShowDiff, "Show Diff", context => _ = ShowDiffAsync(context.File!.Path), new("Git", 2, 0), onFile: true);
-        Add(AppActions.Annotate, "Annotate with Git Blame", context => _ = ToggleAnnotationsAsync(context.File!), new("Git", 2, 1), onFile: true);
-        Add(AppActions.RollbackLines, "Rollback Lines", context => _ = RollbackLinesAsync(), new("Git", 2, 2), onFile: true);
+        Add(AppActions.Unstash, "Unstash Changes…", context => IdeErrors.Observe(ShowUnstashAsync()), new("Git", 1, 1));
+        Add(AppActions.ShowDiff, "Show Diff", context => IdeErrors.Observe(ShowDiffAsync(context.File!.Path)), new("Git", 2, 0), onFile: true);
+        Add(AppActions.Annotate, "Annotate with Git Blame", context => IdeErrors.Observe(ToggleAnnotationsAsync(context.File!)), new("Git", 2, 1), onFile: true);
+        Add(AppActions.RollbackLines, "Rollback Lines", context => IdeErrors.Observe(RollbackLinesAsync()), new("Git", 2, 2), onFile: true);
         Add(AppActions.NextChange, "Next Change", _ => GoToChange(1), new("Navigate", 3, 2), onFile: true);
         Add(AppActions.PreviousChange, "Previous Change", _ => GoToChange(-1), new("Navigate", 3, 3), onFile: true);
+        // A diff's own, whatever it compares: how its differences are highlighted.
+        actions!.Add(new IdeAction(AppActions.DiffSettings, "Diff Settings", "Git", context => DiffWithKeys(context)!.ShowSettings())
+        {
+            WhyNot = context => DiffWithKeys(context) is null ? "No diff has the keys" : null,
+        });
 
         void Add(string id, string title, Action<ActionContext> run, MenuPlace menu, bool onFile = false) =>
             actions!.Add(new IdeAction(id, title, "Git", run)
@@ -500,6 +498,18 @@ public partial class MainWindow
             });
     }
 
+    private static DiffView? DiffWithKeys(ActionContext context) => (context.Focused as Visual)?.FindAncestorOfType<DiffView>(includeSelf: true);
+
+    /// <summary>The Git window's Reset Current Branch to Here: a hard reset, which drops changes, only once confirmed.</summary>
+    private async Task ResetToAsync((CommitInfo Commit, ResetMode Mode) reset)
+    {
+        if (reset.Mode == ResetMode.Hard && !await Confirm("Reset Current Branch to Here",
+            $"Move {session.Vcs.Branch ?? "HEAD"} to {reset.Commit.Short} and drop every change since, committed or not?", "Reset"))
+        {
+            return;
+        }
+        await session.Vcs.ResetAsync(reset.Commit.Hash, reset.Mode);
+    }
 
     private async Task RollbackAsync(IReadOnlyList<FileChange> changes)
     {
@@ -599,6 +609,6 @@ public partial class MainWindow
         }
         FollowWritten([ignore]);
         status.Text = $"Added {line} to .gitignore";
-        _ = session.Vcs.RefreshAsync();
+        IdeErrors.Observe(session.Vcs.RefreshAsync());
     }
 }

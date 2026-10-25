@@ -2,6 +2,7 @@ using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
+using Passenger.Vcs;
 
 namespace Passenger.App.Vcs;
 
@@ -208,7 +209,7 @@ public sealed class VcsController : IDisposable
         TaskCompletionSource next = asked ??= new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         if (!reading)
         {
-            _ = ReadInTurnAsync();
+            IdeErrors.Observe(ReadInTurnAsync());
         }
         return next.Task;
     }
@@ -342,7 +343,7 @@ public sealed class VcsController : IDisposable
         }
         foreach (OpenDocument document in documents.Keys)
         {
-            _ = MarkAsync(document);
+            IdeErrors.Observe(MarkAsync(document));
         }
 
         static async Task<string?> TextOfAsync(Task<IReadOnlyDictionary<string, string?>> texts, string path, string origin)
@@ -373,11 +374,11 @@ public sealed class VcsController : IDisposable
                 tracked.Reblame.Restart();
             }
         };
-        tracked.OnSaved = (_, _) => _ = ReadAsync();
+        tracked.OnSaved = (_, _) => IdeErrors.Observe(ReadAsync());
         document.Text.Changed += tracked.OnChanged;
         document.Saved += tracked.OnSaved;
         documents[document] = tracked;
-        _ = MarkAsync(document);
+        IdeErrors.Observe(MarkAsync(document));
     }
 
     public void Detach(OpenDocument document)

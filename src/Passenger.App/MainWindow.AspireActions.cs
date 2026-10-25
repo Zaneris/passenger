@@ -11,12 +11,12 @@ public partial class MainWindow
         Add(A.AspireDiscover, "Discover Aspire AppHosts", "Aspire", context =>
         {
             ShowToolWindow(ToolWindowIds.Aspire);
-            _ = WorkingAsync(A.AspireDiscover, "Discovering AppHosts", () => Aspire.RefreshAppsAsync());
+            IdeErrors.Observe(WorkingAsync(A.AspireDiscover, "Discovering AppHosts", () => Aspire.RefreshAppsAsync()));
         });
         Add(A.AspireRefresh, "Refresh Aspire Resources", "Aspire", context =>
         {
             ShowToolWindow(ToolWindowIds.Aspire);
-            _ = WorkingAsync(A.AspireRefresh, "Refreshing resources", () => Aspire.RequestRefreshAsync());
+            IdeErrors.Observe(WorkingAsync(A.AspireRefresh, "Refreshing resources", () => Aspire.RequestRefreshAsync()));
         },
             _ => Aspire.SelectedApp is null ? "No Aspire AppHost is selected" : null);
         // A resource's Debug, Attach, Run without Debugger and Profile are every run of services' (AddServiceActions).
@@ -24,7 +24,7 @@ public partial class MainWindow
         {
             if (Aspire.TakePendingCommand() is { } command)
             {
-                _ = WorkingAsync(A.AspireCommand, "Running resource command", () => Aspire.ExecuteSelectedCommandAsync(command));
+                IdeErrors.Observe(WorkingAsync(A.AspireCommand, "Running resource command", () => Aspire.ExecuteSelectedCommandAsync(command)));
             }
             else
             {

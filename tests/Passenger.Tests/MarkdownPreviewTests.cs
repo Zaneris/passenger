@@ -144,8 +144,8 @@ public sealed class MarkdownPreviewTests
 
         MarkdownCode[] code = [.. preview.GetLogicalDescendants().OfType<MarkdownCode>()];
         Assert.True(code.Select(c => c.Language).SequenceEqual(["C#", "JSON"]), $"The fences are coloured as [{string.Join(", ", code.Select(c => c.Language))}], not C# and JSON");
-        IBrush keyword = Brush(window, "Passenger.Syntax.Keyword");
-        IBrush text = Brush(window, "Passenger.Syntax.String");
+        IBrush keyword = Brush(window, TokenKeys.Syntax_Keyword);
+        IBrush text = Brush(window, TokenKeys.Syntax_String);
         Ui.WaitFor(() => code[0].Runs.Any(r => r.Text == "class" && r.Foreground == keyword), "the C# fence's 'class' in the editor's keyword colour");
         Ui.WaitFor(() => code[1].Runs.Any(r => r.Text?.Contains("shop", StringComparison.Ordinal) == true && r.Foreground == text), "the JSON fence's string in the editor's string colour");
 

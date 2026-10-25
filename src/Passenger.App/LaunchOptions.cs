@@ -1,9 +1,9 @@
 using System.Globalization;
 using Avalonia;
 using Avalonia.Input;
-using Passenger.App.Workspace;
 using Passenger.Editor;
 using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.App;
 

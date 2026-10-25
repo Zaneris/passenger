@@ -566,7 +566,7 @@ public sealed class LanguageServer : IAsyncDisposable
     /// <summary>Makes a request nothing waits on the answer to (Razor's word that a file closed), from the thread pool, where
     /// its failure is caught: awaited on a window's thread as it closes, the failure would be left to a dispatcher that never
     /// runs again, unobserved.</summary>
-    internal void Tell(string method, object parameters) => _ = Task.Run(async () =>
+    internal void Tell(string method, object parameters) => UnawaitedWork.Observe(Task.Run(async () =>
     {
         try
         {
@@ -576,11 +576,11 @@ public sealed class LanguageServer : IAsyncDisposable
         {
             // Gone, or refused: nothing waits on it.
         }
-    });
+    }));
 
     /// <summary>Sends a notification nothing waits on (a document's change, its closing). One the server can no longer
     /// take, having ended or been ended, is dropped: a server started again is sent the open documents afresh.</summary>
-    public void Notify(string method, object parameters) => _ = NotifyOrDropAsync(method, parameters);
+    public void Notify(string method, object parameters) => UnawaitedWork.Observe(NotifyOrDropAsync(method, parameters));
 
     private async Task NotifyOrDropAsync(string method, object parameters)
     {
@@ -627,7 +627,7 @@ public sealed class LanguageServer : IAsyncDisposable
         if (slowest is not null && Interlocked.CompareExchange(ref checking, 1, 0) == 0)
         {
             Interlocked.Exchange(ref checkedAt, Stopwatch.GetTimestamp());
-            _ = CheckAsync(slowest, waited);
+            UnawaitedWork.Observe(CheckAsync(slowest, waited));
         }
     }
 

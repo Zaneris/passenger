@@ -3,6 +3,7 @@ using System.Text.Json;
 using Avalonia.Headless.XUnit;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using Passenger.App.Mcp;
 using Passenger.App;
 using Passenger.Core;
 
@@ -27,12 +28,12 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
         Write("Notes.txt", "one two\ntwo three\n");
         await using McpClient client = await Start(["--mcp", Folder]);
 
-        JsonElement found = await Call(client, "find_in_files", new() { ["text"] = "Twice" });
+        JsonElement found = await Call(client, McpTools.FindInFiles, new() { ["text"] = "Twice" });
         Assert.Equal(["Helper.cs:3", "Program.cs:4"], Places(found));
-        Assert.Equal(["Helper.cs:3"], Places(await Call(client, "find_in_files", new() { ["text"] = "Twice", ["mask"] = "*.cs, !Program.cs" })));
-        Assert.Equal(["Program.cs:4"], Places(await Call(client, "find_in_files", new() { ["text"] = @"Twice\(\w\)", ["regex"] = true })));
-        await Call(client, "open", new() { ["path"] = "Helper.cs", ["line"] = 1, ["column"] = 1 });
-        Assert.Equal(["Helper.cs:3"], Places(await Call(client, "find_in_files", new() { ["text"] = "Twice", ["scope"] = "openFiles" })));
+        Assert.Equal(["Helper.cs:3"], Places(await Call(client, McpTools.FindInFiles, new() { ["text"] = "Twice", ["mask"] = "*.cs, !Program.cs" })));
+        Assert.Equal(["Program.cs:4"], Places(await Call(client, McpTools.FindInFiles, new() { ["text"] = @"Twice\(\w\)", ["regex"] = true })));
+        await Call(client, McpTools.Open, new() { ["path"] = "Helper.cs", ["line"] = 1, ["column"] = 1 });
+        Assert.Equal(["Helper.cs:3"], Places(await Call(client, McpTools.FindInFiles, new() { ["text"] = "Twice", ["scope"] = "openFiles" })));
         foreach ((Dictionary<string, object?> arguments, string said) in new (Dictionary<string, object?>, string)[]
         {
             (new() { ["text"] = "(", ["regex"] = true }, "Invalid pattern '('"),
@@ -40,61 +41,61 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
             (new() { ["text"] = "Twice", ["mask"] = "*.cs; *.json" }, "File masks should be comma-separated"),
         })
         {
-            CallToolResult refused = await Result(client, "find_in_files", arguments);
+            CallToolResult refused = await Result(client, McpTools.FindInFiles, arguments);
             Assert.True(refused.IsError == true && Text(refused).Contains(said, StringComparison.Ordinal), $"find_in_files {JsonSerializer.Serialize(arguments)} answered: {Text(refused)}");
         }
 
-        await Call(client, "app_type", new() { ["app"] = "ide", ["text"] = "/* a */ " });
-        await Call(client, "save_all");
-        await Call(client, "app_type", new() { ["app"] = "ide", ["text"] = "/* b */ " });
-        await Call(client, "save_all");
-        JsonElement[] rows = [.. (await Call(client, "local_history", new() { ["path"] = "Helper.cs" })).GetProperty("rows").EnumerateArray()];
+        await Call(client, McpTools.AppType, new() { ["app"] = "ide", ["text"] = "/* a */ " });
+        await Call(client, McpTools.SaveAll);
+        await Call(client, McpTools.AppType, new() { ["app"] = "ide", ["text"] = "/* b */ " });
+        await Call(client, McpTools.SaveAll);
+        JsonElement[] rows = [.. (await Call(client, McpTools.LocalHistory, new() { ["path"] = "Helper.cs" })).GetProperty("rows").EnumerateArray()];
         Assert.True(rows.Length >= 2 && rows[0].GetProperty("title").GetString() == "Change" && rows[1].GetProperty("title").GetString() == "Change",
             $"Helper.cs's history after two saves: {string.Join("; ", rows.Select(r => r.GetRawText()))}");
-        JsonElement before = await Call(client, "local_history", new() { ["path"] = "Helper.cs", ["set"] = rows[0].GetProperty("set").GetInt64() });
+        JsonElement before = await Call(client, McpTools.LocalHistory, new() { ["path"] = "Helper.cs", ["set"] = rows[0].GetProperty("set").GetInt64() });
         Assert.True(before.GetProperty("exists").GetBoolean());
         Assert.Equal("/* a */ " + helper, before.GetProperty("text").GetString());
 
-        Assert.Equal("Label agent was here put", (await Call(client, "local_history_label", new() { ["name"] = "agent was here" })).GetString());
-        JsonElement labelled = (await Call(client, "local_history")).GetProperty("rows")[0];
+        Assert.Equal("Label agent was here put", (await Call(client, McpTools.LocalHistoryLabel, new() { ["name"] = "agent was here" })).GetString());
+        JsonElement labelled = (await Call(client, McpTools.LocalHistory)).GetProperty("rows")[0];
         Assert.Equal(("agent was here", true), (labelled.GetProperty("title").GetString(), labelled.GetProperty("label").GetBoolean()));
-        await Call(client, "local_history_revert", new() { ["path"] = "Helper.cs", ["set"] = rows[1].GetProperty("set").GetInt64() });
+        await Call(client, McpTools.LocalHistoryRevert, new() { ["path"] = "Helper.cs", ["set"] = rows[1].GetProperty("set").GetInt64() });
         Assert.Equal(helper, File.ReadAllText(Path.Combine(Folder, "Helper.cs")));
-        Assert.EndsWith("\tstatic class Helper", (await Call(client, "editor_text", new() { ["path"] = "Helper.cs", ["to"] = 1 })).GetString(), StringComparison.Ordinal);
-        string reverted = (await Call(client, "local_history", new() { ["path"] = "Helper.cs" })).GetProperty("rows")[0].GetProperty("title").GetString()!;
+        Assert.EndsWith("\tstatic class Helper", (await Call(client, McpTools.EditorText, new() { ["path"] = "Helper.cs", ["to"] = 1 })).GetString(), StringComparison.Ordinal);
+        string reverted = (await Call(client, McpTools.LocalHistory, new() { ["path"] = "Helper.cs" })).GetProperty("rows")[0].GetProperty("title").GetString()!;
         Assert.StartsWith("Revert to ", reverted, StringComparison.Ordinal);
-        CallToolResult unknown = await Result(client, "local_history_revert", new() { ["path"] = "Helper.cs", ["set"] = 999_999 });
+        CallToolResult unknown = await Result(client, McpTools.LocalHistoryRevert, new() { ["path"] = "Helper.cs", ["set"] = 999_999 });
         Assert.True(unknown.IsError == true && Text(unknown).Contains("No change set 999999", StringComparison.Ordinal), $"A revert to no change set answered: {Text(unknown)}");
 
-        JsonElement built = await Call(client, "build");
+        JsonElement built = await Call(client, McpTools.Build);
         Assert.False(built.GetProperty("succeeded").GetBoolean());
-        JsonElement problems = await Call(client, "diagnostics");
+        JsonElement problems = await Call(client, McpTools.Diagnostics);
         string[] build = [.. problems.GetProperty("build").EnumerateArray().Select(p => $"{p.GetProperty("code").GetString()} {p.GetProperty("path").GetString()}:{p.GetProperty("line").GetInt32()}")];
         Assert.True(build.Contains("CS0029 Bad.cs:3") && build.Contains("CS0219 Helper.cs:5"), $"Problems' Build tab, for an agent: {string.Join("; ", build)}");
         Assert.Equal(JsonValueKind.Array, problems.GetProperty("toolset").ValueKind);
         Assert.False(problems.TryGetProperty("solution", out _), "Problems' solution tab was answered with solution-wide analysis off");
-        string output = (await Call(client, "output", new() { ["of"] = "build" })).GetString()!;
+        string output = (await Call(client, McpTools.Output, new() { ["of"] = "build" })).GetString()!;
         Assert.True(output.Contains("CS0029", StringComparison.Ordinal), $"The Build window's console, for an agent, lacks the build's error:\n{output}");
         // A run refused for a failed build names its errors, so the agent fixes them without a second call to find them.
-        CallToolResult notRun = await Result(client, "run");
+        CallToolResult notRun = await Result(client, McpTools.Run);
         Assert.True(notRun.IsError == true && Text(notRun).Contains("Bad.cs:3:", StringComparison.Ordinal) && Text(notRun).Contains("CS0029", StringComparison.Ordinal),
             $"A run refused for a failed build answered: {Text(notRun)}");
 
-        JsonElement turnedOn = Assert.Single((await Call(client, "settings_set", new() { ["changes"] = new Dictionary<string, object> { ["solutionWideAnalysis"] = true } })).EnumerateArray());
+        JsonElement turnedOn = Assert.Single((await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["solutionWideAnalysis"] = true } })).EnumerateArray());
         Assert.Equal((false, true), (turnedOn.GetProperty("before").GetBoolean(), turnedOn.GetProperty("after").GetBoolean()));
-        string[] solution = [.. (await Call(client, "diagnostics")).GetProperty("solution").EnumerateArray().Select(p => $"{p.GetProperty("code").GetString()} {p.GetProperty("path").GetString()}:{p.GetProperty("line").GetInt32()}")];
+        string[] solution = [.. (await Call(client, McpTools.Diagnostics)).GetProperty("solution").EnumerateArray().Select(p => $"{p.GetProperty("code").GetString()} {p.GetProperty("path").GetString()}:{p.GetProperty("line").GetInt32()}")];
         Assert.True(solution.Contains("CS0029 Bad.cs:3"), $"Solution-wide analysis's problems, for an agent: {string.Join("; ", solution)}");
         // A windowless Passenger's settings are its own, kept nowhere.
-        Assert.False((await Call(client, "settings")).GetProperty("kept").GetBoolean());
+        Assert.False((await Call(client, McpTools.Settings)).GetProperty("kept").GetBoolean());
 
         Assert.Equal("Replaced 2 matches in 1 file: Notes.txt",
-            (await Call(client, "replace_in_files", new() { ["text"] = "two", ["replacement"] = "2", ["mask"] = "*.txt" })).GetString());
+            (await Call(client, McpTools.ReplaceInFiles, new() { ["text"] = "two", ["replacement"] = "2", ["mask"] = "*.txt" })).GetString());
         Assert.Equal("one 2\n2 three\n", File.ReadAllText(Path.Combine(Folder, "Notes.txt")));
         Assert.Equal("Replaced 1 match in 1 file: Helper.cs",
-            (await Call(client, "replace_in_files", new() { ["text"] = "unused", ["replacement"] = "spare", ["scope"] = "currentFile" })).GetString());
+            (await Call(client, McpTools.ReplaceInFiles, new() { ["text"] = "unused", ["replacement"] = "spare", ["scope"] = "currentFile" })).GetString());
         Assert.Equal(helper.Replace("unused", "spare", StringComparison.Ordinal), File.ReadAllText(Path.Combine(Folder, "Helper.cs")));
 
-        string edited = Text(await Call(client, "edit", new() { ["path"] = "Helper.cs", ["oldText"] = "return value * 2;", ["newText"] = "int twice = value * 2;\n        return twice;" }));
+        string edited = Text(await Call(client, McpTools.Edit, new() { ["path"] = "Helper.cs", ["oldText"] = "return value * 2;", ["newText"] = "int twice = value * 2;\n        return twice;" }));
         Assert.Equal("Changed Helper.cs at line 6, saved:\n     6\t        int twice = value * 2;\n     7\t        return twice;", edited);
         string spare = helper.Replace("unused", "spare", StringComparison.Ordinal);
         Assert.Equal(spare.Replace("return value * 2;", "int twice = value * 2;\n        return twice;", StringComparison.Ordinal), File.ReadAllText(Path.Combine(Folder, "Helper.cs")));
@@ -104,17 +105,17 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
             (new() { ["path"] = "Helper.cs", ["oldText"] = "int ", ["newText"] = "long " }, "Helper.cs has \"int \" 4 times (lines 3, 5, 6), so nothing changed: give more of the text around the one to change, or all true"),
         })
         {
-            CallToolResult refused = await Result(client, "edit", arguments);
+            CallToolResult refused = await Result(client, McpTools.Edit, arguments);
             Assert.True(refused.IsError == true && Text(refused).Contains(said, StringComparison.Ordinal), $"edit {JsonSerializer.Serialize(arguments)} answered: {Text(refused)}");
         }
         Assert.Equal("Changed Helper.cs in 2 places, saved:\n     6\t        int doubled = value * 2;\n     7\t        return doubled;",
-            Text(await Call(client, "edit", new() { ["path"] = "Helper.cs", ["oldText"] = "twice", ["newText"] = "doubled", ["all"] = true })));
+            Text(await Call(client, McpTools.Edit, new() { ["path"] = "Helper.cs", ["oldText"] = "twice", ["newText"] = "doubled", ["all"] = true })));
         Assert.Equal(spare.Replace("return value * 2;", "int doubled = value * 2;\n        return doubled;", StringComparison.Ordinal), File.ReadAllText(Path.Combine(Folder, "Helper.cs")));
 
         // As an agent's own file tools write: the open file must answer with the disk's text at once.
         File.WriteAllText(Path.Combine(Folder, "Helper.cs"), "static class Helper\n{\n    public static int Twice(int value) => value * 3;\n}\n");
         Assert.EndsWith("\t    public static int Twice(int value) => value * 3;",
-            (await Call(client, "editor_text", new() { ["path"] = "Helper.cs", ["from"] = 3, ["to"] = 3 })).GetString(), StringComparison.Ordinal);
+            (await Call(client, McpTools.EditorText, new() { ["path"] = "Helper.cs", ["from"] = 3, ["to"] = 3 })).GetString(), StringComparison.Ordinal);
     }
 
     /// <summary>An agent on the person's window reads their settings and changes them as Settings does: asked first, a number
@@ -133,14 +134,14 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
         McpClient client = Await(Task.Run(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
         try
         {
-            JsonElement read = Await(Task.Run(() => Call(client, "settings")), "the agent reading the settings");
+            JsonElement read = Await(Task.Run(() => Call(client, McpTools.Settings)), "the agent reading the settings");
             Assert.True(read.GetProperty("kept").GetBoolean(), "The person's window's settings were read as kept nowhere");
             JsonElement font = Setting(read, "editorFontSize");
             Assert.Equal((13.0, 6.0, 48.0), (font.GetProperty("value").GetDouble(), font.GetProperty("min").GetDouble(), font.GetProperty("max").GetDouble()));
             Assert.Equal(["Always", "ForWarningsOrErrors", "ForErrors", "Never"],
                 Setting(read, "showBuildResults").GetProperty("choices").EnumerateArray().Select(c => c.GetString()!));
 
-            Task<JsonElement> changing = Task.Run(() => Call(client, "settings_set", new()
+            Task<JsonElement> changing = Task.Run(() => Call(client, McpTools.SettingsSet, new()
             {
                 ["changes"] = new Dictionary<string, object> { ["editorFontSize"] = 99, ["showBuildResults"] = "always" },
             }));
@@ -164,7 +165,7 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
                 (new() { ["agentFolders"] = new[] { Folder } }, "The folders agents join unasked are the person's to change"),
             })
             {
-                CallToolResult refused = Await(Task.Run(() => Result(client, "settings_set", new() { ["changes"] = changes })), "the refused settings change");
+                CallToolResult refused = Await(Task.Run(() => Result(client, McpTools.SettingsSet, new() { ["changes"] = changes })), "the refused settings change");
                 Assert.True(refused.IsError == true && Text(refused).Contains(said, StringComparison.Ordinal), $"settings_set {JsonSerializer.Serialize(changes)} answered: {Text(refused)}");
             }
             Assert.Equal(48, window.Settings.EditorFontSize);
@@ -197,13 +198,13 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
         }, blazor);
         await using McpClient client = await Start(["--mcp", blazor]);
 
-        JsonElement error = Assert.Single((await Call(client, "diagnostics", new() { ["path"] = "Components/Broken.razor" })).EnumerateArray(),
+        JsonElement error = Assert.Single((await Call(client, McpTools.Diagnostics, new() { ["path"] = "Components/Broken.razor" })).EnumerateArray(),
             d => d.GetProperty("severity").GetString() == "error");
         Assert.Equal(("CS0103", 1), (error.GetProperty("code").GetString(), error.GetProperty("line").GetInt32()));
-        string total = (await Call(client, "symbol_info", new() { ["path"] = "Components/Sum.razor", ["line"] = 1, ["column"] = 6 })).GetString()!;
+        string total = (await Call(client, McpTools.SymbolInfo, new() { ["path"] = "Components/Sum.razor", ["line"] = 1, ["column"] = 6 })).GetString()!;
         Assert.True(total.Contains("Total", StringComparison.Ordinal) && total.Contains("int", StringComparison.Ordinal), $"symbol_info on a Razor component's name said: {total}");
-        string[] used = [.. (await Call(client, "usages", new() { ["path"] = "Components/Sum.razor", ["line"] = 6, ["column"] = 25 })).EnumerateArray()
-            .Select(p => $"{p.GetProperty("path").GetString()}:{p.GetProperty("line").GetInt32()}").Order(StringComparer.Ordinal)];
+        string[] used = [.. Used(await Call(client, McpTools.Usages, new() { ["path"] = "Components/Sum.razor", ["line"] = 6, ["column"] = 25 }))
+            .Select(p => $"{p.Path}:{p.Line}").Order(StringComparer.Ordinal)];
         Assert.Equal([Path.Combine("Components", "Sum.razor") + ":4", Path.Combine("Components", "Sum.razor") + ":6"], used);
     }
 
@@ -231,18 +232,18 @@ public sealed class McpIdeProfilingTests : McpRig, IClassFixture<RestoredFolders
             + "long turns = 0;\nwhile (true)\n{\n    turns = Spin.Turn(turns);\n}\n\n"
             + $"/* Pasted:{(char)0x2028}a{(char)0x2029}b{(char)0x85}c\rd */\nstatic class Spin\n{{\n    public static long Turn(long turns) => turns + 1;\n}}\n");
         await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
-        CallToolResult unattached = await Result(client, "profile", new() { ["attach"] = true, ["seconds"] = 1 });
+        CallToolResult unattached = await Result(client, McpTools.Profile, new() { ["attach"] = true, ["seconds"] = 1 });
         Assert.True(unattached.IsError == true, $"Attach Profiler with nothing running answered: {Text(unattached)}");
 
-        Assert.True((await Call(client, "run", new() { ["waitSeconds"] = 0 })).GetProperty("stillRunning").GetBoolean());
+        Assert.True((await Call(client, McpTools.Run, new() { ["waitSeconds"] = 0 })).GetProperty("stillRunning").GetBoolean());
         int spinning = await WrittenId("spin.pid", "the program to start");
-        JsonElement profiled = await Call(client, "profile", new() { ["attach"] = true, ["seconds"] = 2 });
+        JsonElement profiled = await Call(client, McpTools.Profile, new() { ["attach"] = true, ["seconds"] = 2 });
         Assert.True(profiled.GetProperty("samples").GetInt32() > 0, $"Attach Profiler sampled nothing: {profiled.GetRawText()}");
         // The editor's line 11, which the compiler, ending a line at each of the comment's four breaks, numbered 15.
         JsonElement turn = Assert.Single(profiled.GetProperty("hotSpots").EnumerateArray(), h => h.GetProperty("method").GetString()!.Contains("Spin.Turn", StringComparison.Ordinal));
         Assert.True(turn.TryGetProperty("source", out JsonElement source) && source.GetString() == "Program.cs:11", $"Spin.Turn's hot spot is not named at its line: {turn}");
         using Process program = Process.GetProcessById(spinning);
         Assert.False(program.HasExited, "The program an agent attached the profiler to ended with its snapshot");
-        await Call(client, "stop");
+        await Call(client, McpTools.Stop);
     }
 }

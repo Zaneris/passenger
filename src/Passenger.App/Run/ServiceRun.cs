@@ -99,6 +99,10 @@ public abstract class ServiceRun
     /// debugger), which an agent's answer carries too.</summary>
     public List<string> Notes { get; } = [];
 
+    /// <summary>The services that what came to attach to them could not reach as they last started, each with why (its
+    /// program's <see cref="ServiceProgram.WhyNot"/>): they run on without it.</summary>
+    public Dictionary<string, string> Unreached { get; } = new(StringComparer.Ordinal);
+
     /// <summary>Where its services' logs and traces are read (an AppHost's dashboard, a container run's own), null while it
     /// has none.</summary>
     public virtual Telemetry.TelemetrySource? Telemetry => null;

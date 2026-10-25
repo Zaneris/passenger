@@ -49,8 +49,8 @@ public sealed class AspireInteractionDialog : Window
         Primary = new Button { IsDefault = true, Classes = { "primary" } };
         Secondary = new Button { IsCancel = true };
         Problem = new TextBlock { TextWrapping = TextWrapping.Wrap };
-        Primary.Click += async (_, _) => await RunActionAsync(SubmitAsync);
-        Secondary.Click += async (_, _) => await RunActionAsync(() => AnswerAsync(false));
+        Primary.Click += (_, _) => IdeErrors.Observe(RunActionAsync(SubmitAsync));
+        Secondary.Click += (_, _) => IdeErrors.Observe(RunActionAsync(() => AnswerAsync(false)));
         Opened += (_, _) => controls.Values.FirstOrDefault(control => control.IsEnabled)?.Focus();
         Closing += (_, e) =>
         {
@@ -62,15 +62,15 @@ public sealed class AspireInteractionDialog : Window
             e.Cancel = e.CloseReason is not (WindowCloseReason.OwnerWindowClosing or WindowCloseReason.ApplicationShutdown or WindowCloseReason.OSShutdown);
             if (this.interaction.PromptTerminal is not null)
             {
-                _ = RunActionAsync(() => AnswerAsync(false));
+                IdeErrors.Observe(RunActionAsync(() => AnswerAsync(false)));
             }
             else if (this.interaction.ShowDismiss)
             {
-                _ = RunActionAsync(() => respond(new WatchInteractionsRequestUpdate
+                IdeErrors.Observe(RunActionAsync(() => respond(new WatchInteractionsRequestUpdate
                 {
                     InteractionId = InteractionId,
                     Complete = new InteractionComplete(),
-                }));
+                })));
             }
         };
         Content = DialogFooter.Page(new ScrollViewer
@@ -174,7 +174,7 @@ public sealed class AspireInteractionDialog : Window
             if (update.Notification is { LinkUrl.Length: > 0 } notification)
             {
                 Button link = new() { Content = string.IsNullOrEmpty(notification.LinkText) ? "Open link" : notification.LinkText };
-                link.Click += async (_, _) => await RunActionAsync(() =>
+                link.Click += (_, _) => IdeErrors.Observe(RunActionAsync(() =>
                 {
                     if (!Uri.TryCreate(notification.LinkUrl, UriKind.Absolute, out Uri? uri) || uri.Scheme is not ("https" or "http"))
                     {
@@ -186,7 +186,7 @@ public sealed class AspireInteractionDialog : Window
                     }
                     window.Browse(uri);
                     return Task.CompletedTask;
-                });
+                }));
                 fields.Children.Add(link);
             }
             Problem.Text = string.Join(Environment.NewLine, inputs.Values.SelectMany(input => input.ValidationErrors));
@@ -292,7 +292,7 @@ public sealed class AspireInteractionDialog : Window
                 break;
             case InputType.File:
                 Button file = new() { Content = input.Value.Length == 0 ? "Choose file…" : "Replace uploaded file…" };
-                file.Click += async (_, _) => await RunActionAsync(async () =>
+                file.Click += (_, _) => IdeErrors.Observe(RunActionAsync(async () =>
                 {
                     int version = inputGeneration;
                     if (!ReferenceEquals(CurrentUploadInput(input.Name, version), input))
@@ -306,7 +306,7 @@ public sealed class AspireInteractionDialog : Window
                     {
                         await UploadFilesCoreAsync(input.Name, selected, version);
                     }
-                });
+                }));
                 control = file;
                 break;
             default:
@@ -389,7 +389,7 @@ public sealed class AspireInteractionDialog : Window
             changesPending = true;
             if (!sendingChanges)
             {
-                _ = SendChangesAsync();
+                IdeErrors.Observe(SendChangesAsync());
             }
         }
     }

@@ -59,18 +59,20 @@ public sealed class EditingSessionTests
     public void A_long_session_of_keys_with_soft_wrap_on_edits_as_the_model_says_moves_by_rows_and_wraps_as_a_fresh_editor_would(int seed) =>
         Session(seed, wrapped: true);
 
-    /// <summary>The keys the model leaves out, at several carets, in folds and in wrapped rows: selections, word and
-    /// text moves, Tab, the line and comment commands, case, cut, copy and paste (CRLF text into an LF file), folding,
-    /// Undo and Redo. Checked by what holds whatever a key does: no key fails, no caret leaves the text, the line index
-    /// reads its lines, an undo or redo gives a text the session had, the rows are a fresh editor's, the folds in runs
-    /// are those carried one by one, and the file undoes to itself and redoes to the last text.</summary>
+    /// <summary>The keys the model leaves out, at several carets, in folds and wrapped rows, in LF and CRLF files: selections,
+    /// word and text moves, Tab, line and comment commands, case, cut, copy, paste (of either break), folding, Undo, Redo.
+    /// Whatever a key does: no key fails, no caret leaves the text, every break stays the file's, the line index reads its
+    /// lines, an undo gives back the text before its step and a redo the text after it, the rows are a fresh editor's, the
+    /// folds in runs are those carried one by one, and the file undoes to itself and redoes to the last text.</summary>
     [AvaloniaTheory]
-    [InlineData(3)]
-    [InlineData(8)]
-    public void A_session_of_every_editing_key_at_several_carets_and_in_folds_never_fails_a_key_and_undoes_to_the_file_as_opened(int seed)
+    [InlineData(3, "\n")]
+    [InlineData(8, "\n")]
+    [InlineData(3, "\r\n")]
+    [InlineData(8, "\r\n")]
+    public void A_session_of_every_editing_key_at_several_carets_and_in_folds_never_fails_a_key_and_undoes_to_the_file_as_opened(int seed, string ending)
     {
         Random random = new(seed);
-        string initial = StartingText(random, lines: 400);
+        string initial = StartingText(random, lines: 400).Replace("\n", ending, StringComparison.Ordinal);
         EditorRig rig = new(initial);
         // Carried through each edit as the open file carries them, the editor told of them, and kept as the editor folds them.
         CarriedFolds folds = new();
@@ -86,19 +88,41 @@ public sealed class EditingSessionTests
         rig.Window.Width = WrappedWidth;
         rig.Editor.SoftWrap = true;
         Ui.Settle();
-        HashSet<string> had = [initial];
+        // The text before each undo step began and after it was last undone, by the step, as the document keeps it.
+        Dictionary<object, string> beforeStep = new(ReferenceEqualityComparer.Instance);
+        Dictionary<object, string> afterStep = new(ReferenceEqualityComparer.Instance);
+        string said = ending == "\n" ? "LF" : "CRLF";
         for (int step = 0; step < 1500; step++)
         {
-            string key = AnyKey(random, rig, folds);
-            string where = $"seed {seed}, step {step}, after {key}";
+            string was = rig.Text;
+            object? undone = rig.Document.NextUndo;
+            object? redone = rig.Document.NextRedo;
+            string key = AnyKey(random, rig, folds, ending);
+            string where = $"seed {seed}, {said}, step {step}, after {key}";
             folds.Check(where);
             string text = rig.Text;
             Assert.All(rig.Editor.Selections.Items, s => Assert.True(Math.Max(s.Anchor, s.Caret) <= text.Length, $"A caret was left past the text's end ({where})"));
-            Assert.True(key is not ("Undo" or "Redo") || had.Contains(text), $"{key} gave a text the session never had ({where})");
-            had.Add(text);
+            int? stray = StrayBreak(text, ending);
+            Assert.True(stray is null, $"A break other than the file's {said} is at {stray} ({where})");
+            if (key == "Undo")
+            {
+                Assert.True(undone is null ? text == was : text == beforeStep[undone], $"Undo did not give back the text before the step it undid ({where})");
+                if (undone is not null)
+                {
+                    afterStep[undone] = was;
+                }
+            }
+            else if (key == "Redo")
+            {
+                Assert.True(redone is null ? text == was : text == afterStep[redone], $"Redo did not give back the text the step it redid had made ({where})");
+            }
+            else if (rig.Document.NextUndo is { } begun && !ReferenceEquals(begun, undone))
+            {
+                beforeStep[begun] = was;
+            }
             if (step % 50 == 0)
             {
-                AssertLinesMatch(rig.Document.Snapshot, text, random, where);
+                AssertLinesMatch(rig.Document.Snapshot, text, random, where, ending);
                 AssertRowsMatchAFreshEditor(rig, random, where);
             }
         }
@@ -120,8 +144,9 @@ public sealed class EditingSessionTests
         Assert.True(final == rig.Text, $"Redoing everything did not give back the session's last text (seed {seed}).");
     }
 
-    /// <summary>One key, a click, a caret added, a paste of text with CRLF breaks, or folds set; what it was.</summary>
-    private static string AnyKey(Random random, EditorRig rig, CarriedFolds folds)
+    /// <summary>One key, a click, a caret added, a paste of text with breaks of either kind, or folds set; what it was. No
+    /// click lands between a CRLF's halves, where a person's cannot.</summary>
+    private static string AnyKey(Random random, EditorRig rig, CarriedFolds folds, string ending)
     {
         string text = rig.Text;
         int roll = random.Next(100);
@@ -133,13 +158,13 @@ public sealed class EditingSessionTests
         }
         if (roll < 40)
         {
-            int offset = random.Next(text.Length + 1);
+            int offset = Placed(text, random.Next(text.Length + 1));
             rig.PlaceCaret(offset);
             return $"a click at {offset}";
         }
         if (roll < 43)
         {
-            int offset = random.Next(text.Length + 1);
+            int offset = Placed(text, random.Next(text.Length + 1));
             if (!rig.Editor.Selections.Items.Any(s => s.Start <= offset && offset <= s.End))
             {
                 rig.AddCaret(offset);
@@ -154,7 +179,7 @@ public sealed class EditingSessionTests
             rig.Press("meta V");
             Ui.Settle();
             string said = pasted.Replace("\r", "\\r", StringComparison.Ordinal).Replace("\n", "\\n", StringComparison.Ordinal);
-            Assert.True(!rig.Text.Contains('\r', StringComparison.Ordinal), $"Pasting '{said}' left a carriage return in a file of LF breaks");
+            Assert.True(StrayBreak(rig.Text, ending) is null, $"Pasting '{said}' left a break other than the file's in it");
             return $"a paste of '{said}'";
         }
         if (roll < 50)
@@ -167,6 +192,27 @@ public sealed class EditingSessionTests
         rig.Press(keys);
         Ui.Settle();
         return name;
+    }
+
+    /// <summary>An offset moved off the middle of a CRLF, to its end.</summary>
+    private static int Placed(string text, int offset) =>
+        offset > 0 && offset < text.Length && text[offset - 1] == '\r' && text[offset] == '\n' ? offset + 1 : offset;
+
+    /// <summary>Where the first break other than the file's own is in a text (a lone CR or LF in a CRLF file, a CR in an LF
+    /// one), or null.</summary>
+    private static int? StrayBreak(string text, string ending)
+    {
+        for (int i = 0; i < text.Length; i++)
+        {
+            bool stray = ending == "\n"
+                ? text[i] == '\r'
+                : text[i] == '\r' ? i + 1 >= text.Length || text[i + 1] != '\n' : text[i] == '\n' && (i == 0 || text[i - 1] != '\r');
+            if (stray)
+            {
+                return i;
+            }
+        }
+        return null;
     }
 
     /// <summary>Regions of a few lines here and there, some inside others, about half of them folded.</summary>
@@ -504,9 +550,9 @@ public sealed class EditingSessionTests
         Assert.True(at < 0, $"The text differs from the model from offset {at} ({where}).");
     }
 
-    private static void AssertLinesMatch(TextSnapshot snapshot, string text, Random random, string where)
+    private static void AssertLinesMatch(TextSnapshot snapshot, string text, Random random, string where, string ending = "\n")
     {
-        string[] lines = text.Split('\n');
+        string[] lines = text.Split(ending);
         Assert.True(lines.Length == snapshot.LineCount, $"The editor counts {snapshot.LineCount} lines, the text has {lines.Length} ({where}).");
         for (int i = 0; i < 10; i++)
         {

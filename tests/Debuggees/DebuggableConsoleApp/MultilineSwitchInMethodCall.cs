@@ -4,7 +4,7 @@ public static class MultilineSwitchInMethodCall
 {
 	public static void Test()
 	{
-		var result = DoOperation();
+		Result result = DoOperation();
 
 		HandleOperationResult(result switch
 		{
@@ -17,7 +17,7 @@ public static class MultilineSwitchInMethodCall
 
 		Result DoOperation()
 		{
-			var success = true;
+			bool success = true;
 			return success ? new Success() : new Failure();
 		}
 

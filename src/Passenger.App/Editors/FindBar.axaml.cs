@@ -183,7 +183,7 @@ public partial class FindBar : UserControl
         if (grid is not null)
         {
             editor.SetHighlights([], -1);
-            _ = SearchCells(grid, jump);
+            IdeErrors.Observe(SearchCells(grid, jump));
             return;
         }
         TextSnapshot text = editor.Document.Snapshot;
@@ -326,9 +326,9 @@ public partial class FindBar : UserControl
             : count == 0 ? "0 results"
             : $"{current + 1}/{count}{(truncated ? "+" : string.Empty)}");
 
-    /// <summary>The text changed under an open bar: its matches move with the edit, and the text as it stands is searched
-    /// off the UI thread, since a search reads the whole file and a key should cost what it changed. A table's are searched
-    /// as its own change says.</summary>
+    /// <summary>The text changed under an open bar: its matches move with the edit (the editor's highlights are carried by
+    /// the text), and the text as it stands is searched off the UI thread, since a search reads the whole file and a key
+    /// should cost what it changed. A table's are searched as its own change says.</summary>
     private void OnDocumentChanged(object? sender, DocumentChangedEventArgs e)
     {
         if (!IsVisible || editor is null)
@@ -340,17 +340,13 @@ public partial class FindBar : UserControl
             Search(jump: false);
             return;
         }
-        if (editor.Highlights.Count > 0)
-        {
-            editor.SetHighlights([.. editor.Highlights.Select(match => TextEditing.MapRange(match, e.Edits))], editor.CurrentHighlight);
-        }
         if (finding)
         {
             findAgain = true;
             return;
         }
         finding = true;
-        _ = FindAgainAsync();
+        IdeErrors.Observe(FindAgainAsync());
     }
 
     /// <summary>Searches the text as it stands off the UI thread, again while it changed meanwhile, one search at a time;

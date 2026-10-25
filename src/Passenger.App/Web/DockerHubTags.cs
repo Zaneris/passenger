@@ -6,6 +6,7 @@ namespace Passenger.App.Web;
 /// place: a window's stand-in, else the one the IDE's own <c>PASSENGER_DOCKER_HUB</c> names.</summary>
 public static class DockerHubTags
 {
+    [IdentifierHome]
     public const string Variable = "PASSENGER_DOCKER_HUB";
 
     /// <summary>The preload, carried beside the web language servers.</summary>

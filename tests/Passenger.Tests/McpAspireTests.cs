@@ -36,24 +36,24 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
         await using McpClient client = await Start(["--mcp", Folder]);
         IList<McpClientTool> tools = await Exchange("Listing Aspire tools", TimeSpan.FromMinutes(1),
             cancel => client.ListToolsAsync(cancellationToken: cancel).AsTask());
-        foreach (string name in new[] { "run", "debug_start", "debug_attach", "profile", "stop", "telemetry" })
+        foreach (string name in new[] { McpTools.Run, McpTools.DebugStart, McpTools.DebugAttach, McpTools.Profile, McpTools.Stop, McpTools.Telemetry })
         {
             McpClientTool tool = Assert.Single(tools, tool => tool.Name == name);
             Assert.True(tool.ProtocolTool.InputSchema.GetProperty("properties").TryGetProperty("resource", out _));
         }
         Assert.DoesNotContain(tools, tool => tool.Name.StartsWith("aspire_", StringComparison.Ordinal));
 
-        foreach (string name in new[] { "stop", "debug_attach", "telemetry" })
+        foreach (string name in new[] { McpTools.Stop, McpTools.DebugAttach, McpTools.Telemetry })
         {
             CallToolResult unowned = await Result(client, name,
                 new() { ["resource"] = Path.Combine(Folder, "Sum.csproj") + "::missing" });
             Assert.True(unowned.IsError == true && Text(unowned).Contains("No owned Aspire resource", StringComparison.Ordinal),
                 $"{name} accepted an unowned resource: {Text(unowned)}");
         }
-        CallToolResult ordinary = await Result(client, "run", new() { ["resource"] = "missing" });
+        CallToolResult ordinary = await Result(client, McpTools.Run, new() { ["resource"] = "missing" });
         Assert.True(ordinary.IsError == true, $"An ordinary configuration accepted an Aspire target: {Text(ordinary)}");
-        Assert.Equal("Stopped", (await Call(client, "stop")).GetString());
-        JsonElement workspace = await Call(client, "workspace");
+        Assert.Equal("Stopped", (await Call(client, McpTools.Stop)).GetString());
+        JsonElement workspace = await Call(client, McpTools.Workspace);
         Assert.Equal(PathNames.Canonical(Folder), workspace.GetProperty("folder").GetString());
         Assert.Empty(workspace.GetProperty("aspireApps").EnumerateArray());
     }
@@ -79,7 +79,7 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             WaitFor(() => window.Configurations.Any(configuration => configuration.Name == StandInAppHost.Configuration), "the stand-in AppHost's Aspire configuration");
-            Task<JsonElement> running = Task.Run(() => Call(client, "run", new() { ["configuration"] = StandInAppHost.Configuration, ["waitSeconds"] = 0 }));
+            Task<JsonElement> running = Task.Run(() => Call(client, McpTools.Run, new() { ["configuration"] = StandInAppHost.Configuration, ["waitSeconds"] = 0 }));
             Press(Admission(window, "the window to ask whether the agent may work there"), AgentAdmissionDialog.Allow);
             Press(Question(window, "the question for the agent's run"), "Allow");
             WaitFor(() => running.IsCompleted || window.CertificateQuestion is not null, "the agent's run", TimeSpan.FromMinutes(2));
@@ -126,7 +126,7 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
             backend.PushResource(project.Refused());
             WaitFor(() => window.Aspire.ResourceSnapshots.Any(resource => resource.Name == "apiservice" && resource.State == "FailedToStart"), "DCP's word of the refused start");
             client = Await(Task.Run(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
-            Task<JsonElement> asked = Task.Run(() => Call(client, "workspace"));
+            Task<JsonElement> asked = Task.Run(() => Call(client, McpTools.Workspace));
             WaitFor(() => asked.IsCompleted, "the agent's workspace");
             JsonElement api = Assert.Single(Assert.Single(asked.GetAwaiter().GetResult().GetProperty("aspireApps").EnumerateArray())
                 .GetProperty("resources").EnumerateArray(), resource => resource.GetProperty("name").GetString() == "apiservice");
@@ -156,15 +156,15 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
         string second = $"Aspire: {AspireApp.CompanionName}.AppHost: http";
         Assert.True(await Waiting.UntilAsync(async () =>
         {
-            string?[] names = (await Call(client, "workspace")).GetProperty("runConfigurations").EnumerateArray().Select(item => item.GetString()).ToArray();
+            string?[] names = (await Call(client, McpTools.Workspace)).GetProperty("runConfigurations").EnumerateArray().Select(item => item.GetString()).ToArray();
             return names.Contains(first) && names.Contains(second);
         }, TimeSpan.FromMinutes(2), Cancel), $"Both official AppHosts were not discovered.{Said()}");
-        await Call(client, "run", new() { ["configuration"] = first, ["resource"] = project.Host + "::apiservice" });
-        await Call(client, "run", new() { ["configuration"] = second, ["resource"] = project.CompanionHost + "::apiservice" });
+        await Call(client, McpTools.Run, new() { ["configuration"] = first, ["resource"] = project.Host + "::apiservice" });
+        await Call(client, McpTools.Run, new() { ["configuration"] = second, ["resource"] = project.CompanionHost + "::apiservice" });
         JsonElement[] apps = [];
         Assert.True(await Waiting.UntilAsync(async () =>
         {
-            apps = (await Call(client, "workspace")).GetProperty("aspireApps").EnumerateArray().ToArray();
+            apps = (await Call(client, McpTools.Workspace)).GetProperty("aspireApps").EnumerateArray().ToArray();
             return apps.Length == 2 && apps.All(app => app.GetProperty("resources").EnumerateArray().Count(resource =>
                 resource.GetProperty("displayName").GetString() == "apiservice" && resource.GetProperty("state").GetString() == "Running") == 1);
         }, TimeSpan.FromMinutes(1), Cancel), $"Both owned API resources did not reach Running.{Said()}");
@@ -173,7 +173,7 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
             && resource.GetProperty("state").GetString() == "Running")).ToArray();
         Assert.Equal(resources[0].GetProperty("displayName").GetString(), resources[1].GetProperty("displayName").GetString());
         Assert.NotEqual(resources[0].GetProperty("target").GetString(), resources[1].GetProperty("target").GetString());
-        foreach (string tool in new[] { "stop", "debug_attach", "telemetry" })
+        foreach (string tool in new[] { McpTools.Stop, McpTools.DebugAttach, McpTools.Telemetry })
         {
             CallToolResult refused = await Result(client, tool, new() { ["resource"] = "apiservice" });
             Assert.True(refused.IsError == true && Text(refused).Contains("ambiguous", StringComparison.Ordinal),
@@ -187,10 +187,10 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
             Assert.Equal(app.GetProperty("appHostPath").GetString() + "::" + resource.GetProperty("name").GetString(), target);
             if (resource.GetProperty("name").GetString() != "apiservice")
             {
-                CallToolResult refused = await Result(client, "telemetry", new() { ["resource"] = app.GetProperty("appHostPath").GetString() + "::apiservice" });
+                CallToolResult refused = await Result(client, McpTools.Telemetry, new() { ["resource"] = app.GetProperty("appHostPath").GetString() + "::apiservice" });
                 Assert.True(refused.IsError == true, "A running qualified target accepted the cold declaration alias");
             }
-            JsonElement logs = await Call(client, "telemetry", new() { ["resource"] = target, ["limit"] = 1 });
+            JsonElement logs = await Call(client, McpTools.Telemetry, new() { ["resource"] = target, ["limit"] = 1 });
             Assert.InRange(logs.GetProperty("logs").GetArrayLength(), 0, 1);
         }
     }
@@ -216,7 +216,7 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
             Ui.WaitFor(() => window.Configurations.Any(configuration => configuration.Aspire), "the explicit Aspire run configuration");
             string configuration = window.Configurations.First(candidate => candidate.Aspire).Name;
             using CancellationTokenSource giveUp = CancellationTokenSource.CreateLinkedTokenSource(Cancel);
-            Task<CallToolResult> starting = Task.Run(() => CallGivingUp(client, "run",
+            Task<CallToolResult> starting = Task.Run(() => CallGivingUp(client, McpTools.Run,
                 new() { ["configuration"] = configuration }, giveUp.Token));
             Window permission = Question(window, "permission for the Aspire startup");
             // Not settled: the start the answer lets go holds background work until it is given up.
@@ -228,7 +228,7 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
             ProcessRunner runner = Assert.Single(window.AspireRuntime.Apps).Runner;
             Ui.PumpUntil(() => runner.Shown().ToString().Contains("starting", StringComparison.Ordinal), "the AppHost's startup console marker");
             int port = new Uri("http://" + File.ReadAllText(endpointFile)).Port;
-            Task<string?> reading = Task.Run(async () => (await Call(client, "output")).GetString());
+            Task<string?> reading = Task.Run(async () => (await Call(client, McpTools.Output)).GetString());
             Ui.PumpUntil(() => reading.IsCompleted, "reading the starting AppHost's console");
             Assert.Contains("starting", reading.GetAwaiter().GetResult(), StringComparison.Ordinal);
 
@@ -287,18 +287,18 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
         });
         string configuration = $"Aspire: {AspireApp.Name}.AppHost: http";
         Assert.True(await Waiting.UntilAsync(async () =>
-            (await Call(client, "workspace")).GetProperty("runConfigurations").EnumerateArray().Any(item => item.GetString() == configuration),
+            (await Call(client, McpTools.Workspace)).GetProperty("runConfigurations").EnumerateArray().Any(item => item.GetString() == configuration),
             TimeSpan.FromMinutes(2), Cancel), $"The official starter's HTTP configuration was not discovered.{Said()}");
         // The run answers once the resource is up: no waiting after it.
-        string up = (await Call(client, "run", new() { ["configuration"] = configuration, ["resource"] = "apiservice" })).GetProperty("status").GetString()!;
+        string up = (await Call(client, McpTools.Run, new() { ["configuration"] = configuration, ["resource"] = "apiservice" })).GetProperty("status").GetString()!;
         Assert.True(up.StartsWith("apiservice", StringComparison.Ordinal) && up.Contains(" is up\n", StringComparison.Ordinal),
             $"The agent's run answered before its resource was up: {up}");
-        Assert.Contains((await Call(client, "workspace")).GetProperty("aspireApps")[0].GetProperty("resources").EnumerateArray(),
+        Assert.Contains((await Call(client, McpTools.Workspace)).GetProperty("aspireApps")[0].GetProperty("resources").EnumerateArray(),
             resource => resource.GetProperty("displayName").GetString() == "apiservice" && resource.GetProperty("state").GetString() == "Running");
         JsonElement app = default;
         Assert.True(await Waiting.UntilAsync(async () =>
         {
-            app = Assert.Single((await Call(client, "workspace")).GetProperty("aspireApps").EnumerateArray());
+            app = Assert.Single((await Call(client, McpTools.Workspace)).GetProperty("aspireApps").EnumerateArray());
             return new[] { "apiservice", "webfrontend" }.All(name => app.GetProperty("resources").EnumerateArray().Count(resource =>
                 resource.GetProperty("displayName").GetString() == name && resource.GetProperty("state").GetString() == "Running") == 1);
         }, TimeSpan.FromMinutes(1), Cancel), $"The official starter services did not reach Running.{Said()}");
@@ -317,32 +317,32 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
 
         foreach (string missing in new[] { "not-a-resource", hostProject + "::not-a-resource" })
         {
-            ModelContextProtocol.Protocol.CallToolResult refused = await Result(client, "stop", new() { ["resource"] = missing });
+            ModelContextProtocol.Protocol.CallToolResult refused = await Result(client, McpTools.Stop, new() { ["resource"] = missing });
             Assert.True(refused.IsError == true && Text(refused).Contains("No owned Aspire resource", StringComparison.Ordinal));
         }
-        JsonElement attached = await Call(client, "debug_attach", new() { ["resource"] = target, ["waitSeconds"] = 1 });
+        JsonElement attached = await Call(client, McpTools.DebugAttach, new() { ["resource"] = target, ["waitSeconds"] = 1 });
         Assert.True(attached.GetProperty("state").GetString() is "running" or "paused", attached.ToString());
         Assert.Equal(apiId, await Processes.WrittenIdAsync(apiPid, "the attached API PID"));
         Assert.True(Processes.IsRunning(hostId) && Processes.IsRunning(webId));
 
-        JsonElement rerun = await Call(client, "run", new() { ["resource"] = target });
+        JsonElement rerun = await Call(client, McpTools.Run, new() { ["resource"] = target });
         Assert.True(rerun.GetProperty("stillRunning").GetBoolean() && rerun.GetProperty("status").GetString()!.Contains(" is up\n", StringComparison.Ordinal),
             $"Run Without Debugger answered before the API was up again: {rerun}");
         await Until(() => !Processes.IsRunning(apiId) && ReadPid(apiPid) != apiId, "Run Without Debugger to restart only the API");
         apiId = await Processes.WrittenIdAsync(apiPid, "the run API PID");
         Assert.True(Processes.IsRunning(hostId) && Processes.IsRunning(webId));
-        JsonElement restarted = await Call(client, "debug_start", new() { ["resource"] = target, ["waitSeconds"] = 1 });
+        JsonElement restarted = await Call(client, McpTools.DebugStart, new() { ["resource"] = target, ["waitSeconds"] = 1 });
         Assert.True(restarted.GetProperty("state").GetString() is "running" or "paused", restarted.ToString());
         await Until(() => !Processes.IsRunning(apiId) && ReadPid(apiPid) != apiId, "Debug to restart only the API");
         apiId = await Processes.WrittenIdAsync(apiPid, "the debug API PID");
         Assert.True(Processes.IsRunning(hostId) && Processes.IsRunning(webId));
 
-        JsonElement profile = await Call(client, "profile", new() { ["resource"] = target, ["seconds"] = 1 });
+        JsonElement profile = await Call(client, McpTools.Profile, new() { ["resource"] = target, ["seconds"] = 1 });
         Assert.True(profile.GetProperty("durationMs").GetDouble() > 0, profile.ToString());
         Assert.Equal(apiId, await Processes.WrittenIdAsync(apiPid, "the profiled API PID"));
         Assert.True(Processes.IsRunning(hostId) && Processes.IsRunning(webId));
 
-        api = Assert.Single(Assert.Single((await Call(client, "workspace")).GetProperty("aspireApps").EnumerateArray())
+        api = Assert.Single(Assert.Single((await Call(client, McpTools.Workspace)).GetProperty("aspireApps").EnumerateArray())
             .GetProperty("resources").EnumerateArray(), resource => resource.GetProperty("displayName").GetString() == "apiservice");
         Uri apiUrl = new(Assert.Single(api.GetProperty("urls").EnumerateArray(), url => url.GetProperty("url").GetString()!.StartsWith("http:", StringComparison.Ordinal))
             .GetProperty("url").GetString()!);
@@ -352,17 +352,17 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
         }
         Assert.True(await Waiting.UntilAsync(async () =>
         {
-            JsonElement logs = await Call(client, "telemetry", new() { ["resource"] = target, ["limit"] = 1 });
+            JsonElement logs = await Call(client, McpTools.Telemetry, new() { ["resource"] = target, ["limit"] = 1 });
             Assert.InRange(logs.GetProperty("logs").GetArrayLength(), 0, 1);
             return logs.GetProperty("logs").GetArrayLength() == 1;
         }, TimeSpan.FromMinutes(1), Cancel), "Native HTTP telemetry did not return a bounded log snapshot");
-        JsonElement traces = await Call(client, "telemetry", new() { ["resource"] = target, ["kind"] = "traces", ["limit"] = 1 });
+        JsonElement traces = await Call(client, McpTools.Telemetry, new() { ["resource"] = target, ["kind"] = "traces", ["limit"] = 1 });
         Assert.InRange(traces.GetProperty("traces").GetArrayLength(), 0, 1);
 
-        await Call(client, "stop", new() { ["resource"] = target });
+        await Call(client, McpTools.Stop, new() { ["resource"] = target });
         await Until(() => !Processes.IsRunning(apiId), "resource Stop to end only the API");
         Assert.True(Processes.IsRunning(hostId) && Processes.IsRunning(webId));
-        await Call(client, "run", new() { ["resource"] = target });
+        await Call(client, McpTools.Run, new() { ["resource"] = target });
         await Until(() => ReadPid(apiPid) != apiId, "the API to restart before testing EOF cleanup");
         apiId = await Processes.WrittenIdAsync(apiPid, "the restarted API PID");
         await Until(() => File.Exists(endpointFile) && new FileInfo(endpointFile).Length > 0, "the owned DCP endpoint written by the real AppHost");
@@ -428,9 +428,9 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
             McpClient client = await Start(["--mcp", starter], languageServer: false);
             string configuration = $"Aspire: {AspireApp.Name}.AppHost: http";
             Assert.True(await Waiting.UntilAsync(async () =>
-                (await Call(client, "workspace")).GetProperty("runConfigurations").EnumerateArray().Any(item => item.GetString() == configuration),
+                (await Call(client, McpTools.Workspace)).GetProperty("runConfigurations").EnumerateArray().Any(item => item.GetString() == configuration),
                 TimeSpan.FromMinutes(2), Cancel), $"The starter's HTTP configuration was not discovered.{Said()}");
-            await Call(client, "run", new() { ["configuration"] = configuration });
+            await Call(client, McpTools.Run, new() { ["configuration"] = configuration });
             string session = await AspireContainersTests.RunningAsync(AspireContainersTests.Session);
             string kept = await AspireContainersTests.RunningAsync(AspireContainersTests.Kept);
             // What the next start reads of the containers this one made.
@@ -439,7 +439,7 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
             Assert.DoesNotContain(kept, Ui.Shared(record), StringComparison.Ordinal);
 
             Process passenger = LastPassenger();
-            int host = Assert.Single((await Call(client, "workspace")).GetProperty("aspireApps").EnumerateArray()).GetProperty("processId").GetInt32();
+            int host = Assert.Single((await Call(client, McpTools.Workspace)).GetProperty("aspireApps").EnumerateArray()).GetProperty("processId").GetInt32();
             int[] orchestrator = [.. Processes.Listed().Where(process => process.Value.Contains("dcp start-apiserver", StringComparison.Ordinal)
                 && process.Value.Contains($"--monitor {host.ToString(CultureInfo.InvariantCulture)} ", StringComparison.Ordinal)).Select(process => process.Key)];
             Assert.NotEmpty(orchestrator);
@@ -495,16 +495,16 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
             McpClient client = await Start(["--mcp", starter], languageServer: false);
             string configuration = $"Aspire: {AspireApp.Name}.AppHost: http";
             Assert.True(await Waiting.UntilAsync(async () =>
-                (await Call(client, "workspace")).GetProperty("runConfigurations").EnumerateArray().Any(item => item.GetString() == configuration),
+                (await Call(client, McpTools.Workspace)).GetProperty("runConfigurations").EnumerateArray().Any(item => item.GetString() == configuration),
                 TimeSpan.FromMinutes(2), Cancel), $"The starter's HTTP configuration was not discovered.{Said()}");
-            await Call(client, "run", new() { ["configuration"] = configuration });
+            await Call(client, McpTools.Run, new() { ["configuration"] = configuration });
             string session = await AspireContainersTests.RunningAsync(AspireContainersTests.Session);
             string kept = await AspireContainersTests.RunningAsync(AspireContainersTests.Kept);
             string record = Path.Combine(OwnState, "aspire-containers", "ownership.json");
             await Until(() => File.Exists(record) && Ui.Shared(record).Contains(session, StringComparison.Ordinal), "the session container recorded as it was made");
 
             Process passenger = LastPassenger();
-            int host = Assert.Single((await Call(client, "workspace")).GetProperty("aspireApps").EnumerateArray()).GetProperty("processId").GetInt32();
+            int host = Assert.Single((await Call(client, McpTools.Workspace)).GetProperty("aspireApps").EnumerateArray()).GetProperty("processId").GetInt32();
             int[] orchestrator = [.. Processes.Listed().Where(process => process.Value.Contains("dcp start-apiserver", StringComparison.Ordinal)
                 && process.Value.Contains($"--monitor {host.ToString(CultureInfo.InvariantCulture)} ", StringComparison.Ordinal)).Select(process => process.Key)];
             Assert.NotEmpty(orchestrator);

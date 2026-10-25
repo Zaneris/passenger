@@ -115,7 +115,7 @@ public sealed partial class CodeEditor
         TextSnapshot text = document.Snapshot;
         int offset = OffsetAt(point.Position, out bool beforeWrap);
         KeyModifiers mods = e.KeyModifiers;
-        KeyModifiers command = OperatingSystem.IsMacOS() ? KeyModifiers.Meta : KeyModifiers.Control;
+        KeyModifiers command = Keystroke.Command;
 
         int pressed = LineAtY(point.Position.Y);
         if (ExecutionPointDragged is not null && IsInMarkColumn(point.Position) && LineMarks.Any(m => m.Kind == LineMarkKind.ExecutionPoint && m.Line == pressed))
@@ -280,7 +280,7 @@ public sealed partial class CodeEditor
         hoverTimer.Stop();
         EndHover();
         HideFoldPreview();
-        HoveredLink = null;
+        hovered.Release();
     }
 
     /// <summary>Whether Ctrl+wheel (Cmd+wheel on macOS) asks for a bigger or smaller font rather than scrolling.</summary>
@@ -296,8 +296,7 @@ public sealed partial class CodeEditor
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
     {
         base.OnPointerWheelChanged(e);
-        KeyModifiers zoom = OperatingSystem.IsMacOS() ? KeyModifiers.Meta : KeyModifiers.Control;
-        if (ZoomsWithWheel && e.KeyModifiers.HasFlag(zoom))
+        if (ZoomsWithWheel && e.KeyModifiers.HasFlag(Keystroke.Command))
         {
             wheelZoom += e.Delta.Y;
             int points = (int)Math.Truncate(wheelZoom);

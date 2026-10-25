@@ -143,7 +143,7 @@ public sealed class ErrorStripeTests
     }
 
     private static Color Warning(ThemeVariant theme) =>
-        Application.Current!.TryFindResource("Passenger.Editor.Warning", theme, out object? brush) && brush is ISolidColorBrush solid
+        Application.Current!.TryFindResource(TokenKeys.Editor_Warning, theme, out object? brush) && brush is ISolidColorBrush solid
             ? solid.Color
             : throw new InvalidOperationException($"The {theme} theme has no warning colour");
 }

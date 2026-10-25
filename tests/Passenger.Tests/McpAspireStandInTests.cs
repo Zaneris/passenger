@@ -1,6 +1,7 @@
 using System.Text.Json;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using Passenger.App.Mcp;
 using Passenger.Core;
 
 namespace Passenger.Tests;
@@ -31,7 +32,7 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
         foreach (Dictionary<string, object?> asked in (Dictionary<string, object?>[])[new() { ["appHost"] = host, ["limit"] = 1 }, new() { ["resource"] = api, ["limit"] = 1 }])
         {
             int before = dashboard.Requests.Length;
-            JsonElement answer = await Call(client, "telemetry", asked);
+            JsonElement answer = await Call(client, McpTools.Telemetry, asked);
             JsonElement log = Assert.Single(answer.GetProperty("logs").EnumerateArray());
             Assert.Equal("api-owned-instance", log.GetProperty("resourceName").GetString());
             Assert.Equal("42", log.GetProperty("attributes").GetProperty("code.line.number").GetString());
@@ -71,7 +72,7 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
             {
                 asked["traceId"] = traceId;
             }
-            CallToolResult answer = await Result(client, "telemetry", asked);
+            CallToolResult answer = await Result(client, McpTools.Telemetry, asked);
             if (empty)
             {
                 Assert.True(answer.IsError != true, $"{said}: {Text(answer)}");
@@ -90,10 +91,10 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
 
         // An answer from the dashboard that cannot be read is the dashboard's to say, in the Telemetry view's words.
         dashboard.Answer = _ => (200, "text/plain", "not telemetry");
-        CallToolResult unread = await Result(client, "telemetry", new() { ["appHost"] = host, ["limit"] = 1 });
+        CallToolResult unread = await Result(client, McpTools.Telemetry, new() { ["appHost"] = host, ["limit"] = 1 });
         Assert.True(unread.IsError == true && Text(unread).Contains("dashboard's logs and traces could not be read", StringComparison.Ordinal)
             && !Text(unread).Contains(Passenger.App.Mcp.PassengerTools.Faulted, StringComparison.Ordinal), $"A dashboard's unreadable answer: {Text(unread)}");
-        Assert.Equal("Stopped", (await Call(client, "stop")).GetString());
+        Assert.Equal("Stopped", (await Call(client, McpTools.Stop)).GetString());
         Assert.Empty(resources.Errors);
     }
 
@@ -111,11 +112,11 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
             await using McpClient client = await Start(["--mcp", project.Folder], languageServer: false);
             string host = PathNames.Canonical(project.ProjectFile);
             await Running(client, host);
-            CallToolResult refused = await Result(client, "telemetry", new() { ["appHost"] = host });
+            CallToolResult refused = await Result(client, McpTools.Telemetry, new() { ["appHost"] = host });
             Assert.True(refused.IsError == true && Text(refused).Contains("loopback", StringComparison.Ordinal), $"{elsewhere}: {Text(refused)}");
             Assert.DoesNotContain(File.ReadAllText(project.DashboardKeyFile), Text(refused), StringComparison.Ordinal);
             Assert.Empty(dashboard.Requests);
-            Assert.Equal("Stopped", (await Call(client, "stop")).GetString());
+            Assert.Equal("Stopped", (await Call(client, McpTools.Stop)).GetString());
             Assert.Empty(resources.Errors);
         }
     }
@@ -136,14 +137,14 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
         JsonElement workspace = default;
         Assert.True(await Waiting.UntilAsync(async () =>
         {
-            workspace = await Call(client, "workspace");
+            workspace = await Call(client, McpTools.Workspace);
             return workspace.GetProperty("aspireApps").EnumerateArray().Any(app => app.GetProperty("state").GetString() != "Running");
         }, TimeSpan.FromSeconds(30), Cancel), $"The agent was not told the AppHost's connection ended: {workspace}");
         JsonElement ended = Assert.Single(workspace.GetProperty("aspireApps").EnumerateArray());
         Assert.True(ended.GetProperty("state").GetString()!.Contains("failed", StringComparison.Ordinal), $"The agent was not told why: {ended}");
         Assert.Equal(0, ended.GetProperty("resources").GetArrayLength());
         Assert.Contains(workspace.GetProperty("runConfigurations").EnumerateArray(), item => item.GetString() == StandInAppHost.Configuration);
-        Assert.Equal("Stopped", (await Call(client, "stop")).GetString());
+        Assert.Equal("Stopped", (await Call(client, McpTools.Stop)).GetString());
         Assert.Empty(resources.Errors);
     }
 
@@ -174,14 +175,14 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
         string host = PathNames.Canonical(project.ProjectFile);
         await Running(client, host);
 
-        JsonElement app = Assert.Single((await Call(client, "workspace")).GetProperty("aspireApps").EnumerateArray());
+        JsonElement app = Assert.Single((await Call(client, McpTools.Workspace)).GetProperty("aspireApps").EnumerateArray());
         Assert.Equal("run", app.GetProperty("how").GetString());
         JsonElement listed = Assert.Single(app.GetProperty("resources").EnumerateArray());
         Assert.Equal(["resource-restart", "passenger-ping", "passenger-seed"], listed.GetProperty("commands").EnumerateArray().Select(c => c.GetString()));
         string target = listed.GetProperty("target").GetString()!;
 
-        Assert.Equal("api-owned-instance: resource-restart Succeeded", Text(await Call(client, "container_action", new() { ["container"] = "api", ["action"] = "restart" })));
-        Assert.Equal("api-owned-instance: passenger-ping Succeeded", Text(await Call(client, "container_action", new() { ["container"] = target, ["action"] = "passenger-ping" })));
+        Assert.Equal("api-owned-instance: resource-restart Succeeded", Text(await Call(client, McpTools.ContainerAction, new() { ["container"] = "api", ["action"] = "restart" })));
+        Assert.Equal("api-owned-instance: passenger-ping Succeeded", Text(await Call(client, McpTools.ContainerAction, new() { ["container"] = target, ["action"] = "passenger-ping" })));
         Assert.Equal(["resource-restart", "passenger-ping"], resources.Commands.Select(command => command.CommandName));
         Assert.All(resources.Commands, command => Assert.Equal("api-owned-instance", command.ResourceName));
 
@@ -190,7 +191,7 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
             ("start", "resource-start is not enabled now"),
             ("passenger-seed", "asks for input the person gives")])
         {
-            CallToolResult refused = await Result(client, "container_action", new() { ["container"] = target, ["action"] = action });
+            CallToolResult refused = await Result(client, McpTools.ContainerAction, new() { ["container"] = target, ["action"] = action });
             Assert.True(refused.IsError == true && Text(refused).Contains(why, StringComparison.Ordinal), $"container_action {action} on the resource answered: {Text(refused)}");
         }
         Assert.Equal(2, resources.Commands.Length);
@@ -200,15 +201,15 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
         cache.Commands.Add(new Passenger.App.Aspire.Protocol.ResourceCommand { Name = "resource-restart", DisplayName = "Restart", State = Passenger.App.Aspire.Protocol.ResourceCommandState.Enabled });
         resources.PushResource(cache);
         // Named once workspace lists it, as an agent learns of a resource its AppHost adds as it runs.
-        Assert.True(await Waiting.UntilAsync(async () => (await Call(client, "workspace")).GetProperty("aspireApps").EnumerateArray()
+        Assert.True(await Waiting.UntilAsync(async () => (await Call(client, McpTools.Workspace)).GetProperty("aspireApps").EnumerateArray()
             .Any(app => app.GetProperty("resources").EnumerateArray().Any(resource => resource.GetProperty("name").GetString() == "cache")),
             TimeSpan.FromSeconds(30), Cancel), $"workspace never listed the cache the AppHost added.{Said()}");
-        JsonElement ran = await Call(client, "run", new() { ["resource"] = "cache", ["waitSeconds"] = 10 });
+        JsonElement ran = await Call(client, McpTools.Run, new() { ["resource"] = "cache", ["waitSeconds"] = 10 });
         string status = ran.GetProperty("status").GetString()!;
         Assert.True(ran.GetProperty("stillRunning").GetBoolean() && status.StartsWith($"cache of {StandInAppHost.Configuration} is up\nResources of {StandInAppHost.Configuration}:\n", StringComparison.Ordinal)
             && status.Contains("\n  api-owned-instance: Running", StringComparison.Ordinal) && status.Contains("\n  cache: Running", StringComparison.Ordinal), $"run of the cache answered: {ran}");
         Assert.Equal(2, resources.Commands.Length);
-        Assert.Equal("Stopped", (await Call(client, "stop")).GetString());
+        Assert.Equal("Stopped", (await Call(client, McpTools.Stop)).GetString());
         Assert.Empty(resources.Errors);
     }
 
@@ -216,12 +217,12 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
     /// up: its Passenger lists it with its resource from the stand-in resource service, running, as the answer comes.</summary>
     private async Task Running(McpClient client, string host)
     {
-        Assert.True(await Waiting.UntilAsync(async () => (await Call(client, "workspace")).GetProperty("runConfigurations").EnumerateArray()
+        Assert.True(await Waiting.UntilAsync(async () => (await Call(client, McpTools.Workspace)).GetProperty("runConfigurations").EnumerateArray()
             .Any(item => item.GetString() == StandInAppHost.Configuration), TimeSpan.FromMinutes(2), Cancel),
             $"The stand-in AppHost's Aspire configuration was not found.{Said()}");
-        JsonElement ran = await Call(client, "run", new() { ["configuration"] = StandInAppHost.Configuration });
+        JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = StandInAppHost.Configuration });
         Assert.True(ran.GetProperty("stillRunning").GetBoolean(), $"run of the stand-in AppHost answered: {ran}");
-        JsonElement workspace = await Call(client, "workspace");
+        JsonElement workspace = await Call(client, McpTools.Workspace);
         Assert.True(workspace.GetProperty("aspireApps").EnumerateArray().Any(app => PathNames.Same(app.GetProperty("appHostPath").GetString()!, host)
             && app.GetProperty("resources").EnumerateArray().Any(resource => resource.GetProperty("name").GetString() == "api-owned-instance")),
             $"run of the stand-in AppHost answered before the AppHost was up with its resource: {workspace}{Said()}");

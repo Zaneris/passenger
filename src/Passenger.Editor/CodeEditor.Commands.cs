@@ -347,7 +347,7 @@ public sealed partial class CodeEditor
         lineCopy = wholeLines ? copied : null;
         if (TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
         {
-            _ = clipboard.SetTextAsync(copied);
+            UnawaitedWork.Observe(clipboard.SetTextAsync(copied));
         }
     }
 

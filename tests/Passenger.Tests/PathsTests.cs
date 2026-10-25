@@ -9,6 +9,7 @@ using Passenger.App.Vcs;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
+using Passenger.Vcs;
 
 namespace Passenger.Tests;
 
@@ -40,19 +41,16 @@ public sealed class PathsTests : IDisposable
         Assert.SkipWhen(spelling == Spelling.LowerCase && PathNames.Comparison == StringComparison.Ordinal, CaseTold);
         // A name with a space, which Windows gives an 8.3 name of its own.
         string repository = Path.Combine(root, "Shop Repository");
-        Write(repository, ".gitignore", "bin/\nobj/\n");
-        Write(repository, "Shop.csproj",
+        TestFolders.Write(repository, ".gitignore", "bin/\nobj/\n");
+        TestFolders.Write(repository, "Shop.csproj",
             TestProjects.Console("<ImplicitUsings>enable</ImplicitUsings>"));
-        string program = Write(repository, "Program.cs", "int total = 0;\nfor (int i = 1; i <= 3; i++)\n{\n    total += i;\n}\nConsole.WriteLine(total);\n");
+        string program = TestFolders.Write(repository, "Program.cs", "int total = 0;\nfor (int i = 1; i <= 3; i++)\n{\n    total += i;\n}\nConsole.WriteLine(total);\n");
         TestGit.Init(repository);
         File.WriteAllText(program, "int total = 10;\nfor (int i = 1; i <= 3; i++)\n{\n    total += i;\n}\nConsole.WriteLine(total);\n");
         Restore.Run(repository);
 
-        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
-        window.Show();
         string spelled = Spelled(repository, spelling);
-        window.OpenFolder(spelled);
-        Ui.Settle();
+        MainWindow window = Ui.OpenFolder(spelled, languageServer: false);
 
         Ui.WaitFor(() => window.Vcs.Changes.Any(c => c.Name == "Program.cs" && c.Kind == ChangeKind.Modified), "Git to list Program.cs as changed");
         ExplorerNode row = Assert.Single(window.ExplorerView.Tree.Rows, r => r.Name == "Program.cs");
@@ -112,15 +110,6 @@ public sealed class PathsTests : IDisposable
         return spelled;
     }
 
-    internal static string Write(string folder, string relative, string text)
-    {
-        // The full path's separators are the system's, as the IDE's own paths are.
-        string path = Path.GetFullPath(Path.Combine(folder, relative));
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, text);
-        return path;
-    }
-
     private static string Git(string folder, params string[] arguments) => TestGit.Run(folder, arguments);
 
     [DllImport("kernel32.dll", EntryPoint = "GetShortPathNameW", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -141,10 +130,10 @@ public sealed class ProjectPathsTests : IDisposable
         Assert.SkipWhen(PathNames.Comparison == StringComparison.Ordinal, PathsTests.CaseTold);
         string folder = Path.Combine(root, "Store");
         // The solution has the project's folder in lower case, which builds alike where case is ignored.
-        PathsTests.Write(folder, "Store.slnx", "<Solution>\n  <Project Path=\"src/shop/Shop.csproj\" />\n</Solution>\n");
-        PathsTests.Write(folder, "src/Shop/Shop.csproj",
+        TestFolders.Write(folder, "Store.slnx", "<Solution>\n  <Project Path=\"src/shop/Shop.csproj\" />\n</Solution>\n");
+        TestFolders.Write(folder, "src/Shop/Shop.csproj",
             TestProjects.Console("<ImplicitUsings>enable</ImplicitUsings>"));
-        string program = PathsTests.Write(folder, "src/Shop/Program.cs", "Console.WriteLine(\"Shop\");\n");
+        string program = TestFolders.Write(folder, "src/Shop/Program.cs", "Console.WriteLine(\"Shop\");\n");
         string models = Path.Combine(folder, "src", "Shop", "Models");
         Directory.CreateDirectory(models);
         Restore.Run(Path.Combine(folder, "Store.slnx"));
@@ -169,8 +158,8 @@ public sealed class ProjectPathsTests : IDisposable
     public void A_file_in_a_sibling_folder_whose_name_begins_with_the_open_folders_is_not_shown_as_inside_it()
     {
         string app = Path.Combine(root, "app");
-        string inside = PathsTests.Write(app, "Inside.cs", "class Inside { }\n");
-        string outside = PathsTests.Write(Path.Combine(root, "app2"), "Outside.cs", "class Outside { }\n");
+        string inside = TestFolders.Write(app, "Inside.cs", "class Inside { }\n");
+        string outside = TestFolders.Write(Path.Combine(root, "app2"), "Outside.cs", "class Outside { }\n");
         MainWindow window = Ui.OpenFolder(app);
         window.OpenFile(outside);
         window.OpenFile(inside);

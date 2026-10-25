@@ -37,8 +37,8 @@ public sealed class BreakpointProperties : UserControl
         Grid.SetColumn(hitCountProblem, 1);
         fields.Children.Add(hitCountProblem);
         AddRow(fields, 3, "Log message:", log);
-        hitCountProblem.Bind(TextBlock.ForegroundProperty, hitCountProblem.GetResourceObservable("Passenger.Error"));
-        inactive.Bind(TextBlock.ForegroundProperty, inactive.GetResourceObservable("Passenger.Error"));
+        hitCountProblem.Bind(TextBlock.ForegroundProperty, hitCountProblem.GetResourceObservable(TokenKeys.Error));
+        inactive.Bind(TextBlock.ForegroundProperty, inactive.GetResourceObservable(TokenKeys.Error));
         hitCount.TextChanged += (_, _) => CheckHitCount();
 
         // The "Suspend If" panel: the exception breakpoint stops when one of each row holds.
@@ -267,7 +267,7 @@ public sealed class BreakpointsWindow : UserControl
     private readonly TextBlock title = new() { Classes = { "popupTitle" } };
     private readonly Button remove = new() { Content = "Remove" };
     private readonly Button goTo = new() { Content = "Go to Source" };
-    private readonly Button removeTool = ToolButtons.Of("Icon.Minimize", "Remove");
+    private readonly Button removeTool = ToolButtons.Of(IconKeys.Minimize, "Remove");
     private readonly StackPanel chosenPane;
     private readonly StackPanel addPane;
     private readonly TextBox typed = new() { Classes = { "search" }, PlaceholderText = "An exception type: InvalidOperationException" };
@@ -278,7 +278,7 @@ public sealed class BreakpointsWindow : UserControl
     {
         this.store = store;
         this.exceptionTypes = exceptionTypes;
-        Button add = ToolButtons.Of("Icon.Add", "Add CLR Exception Breakpoints");
+        Button add = ToolButtons.Of(IconKeys.Add, "Add CLR Exception Breakpoints");
         Button done = new() { Content = "Done", Classes = { "primary" } };
         add.Click += (_, _) => ShowAdd();
         removeTool.Click += (_, _) => RemoveChosen();
@@ -403,7 +403,7 @@ public sealed class BreakpointsWindow : UserControl
         addPane.IsVisible = true;
         typed.Text = string.Empty;
         ShowFound();
-        _ = LoadTypes();
+        IdeErrors.Observe(LoadTypes());
         Avalonia.Threading.Dispatcher.UIThread.Post(() => typed.Focus(), Avalonia.Threading.DispatcherPriority.Loaded);
     }
 
@@ -563,7 +563,7 @@ public sealed class BreakpointsWindow : UserControl
     {
         TextBlock text = new() { Text = name, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 4, 0, 0) };
         // Disabled, so neither a click nor the arrow keys choose it, but in the list's own colour rather than greyed.
-        text.Bind(TextBlock.ForegroundProperty, text.GetResourceObservable("Passenger.Text"));
+        text.Bind(TextBlock.ForegroundProperty, text.GetResourceObservable(TokenKeys.Text));
         return new ListBoxItem { IsEnabled = false, Content = text };
     }
 

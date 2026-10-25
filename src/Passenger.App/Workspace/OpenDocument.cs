@@ -2,10 +2,12 @@ using System.Text;
 using Avalonia;
 using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Languages;
 using Passenger.Languages.CSharp;
 using Passenger.Languages.Markup;
 using Passenger.Lsp;
 using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.App.Workspace;
 
@@ -21,6 +23,10 @@ public sealed class OpenDocument : Observable
     private IReadOnlyList<LineMark> lineMarks = [];
     private IReadOnlyList<LineAnnotation> lineAnnotations = [];
     private IReadOnlyList<LineAnnotation> liveValues = [];
+
+    /// <summary>The line of each of <see cref="lineAnnotations"/> and of <see cref="liveValues"/>, carried by the text.</summary>
+    private AnchoredLine[] annotationLines = [];
+    private AnchoredLine[] liveLines = [];
     private IReadOnlyList<InlayHint> inlayHints = [];
     private IReadOnlyList<TestMark> testMarks = [];
     private IReadOnlyList<ColourMark> colourMarks = [];
@@ -217,6 +223,14 @@ public sealed class OpenDocument : Observable
             {
                 // The same way: each editor has carried its own already, which this draws alike, so none wraps a line again.
                 InlayHints = HintList.Of(inlayHints).Through(change.Edits);
+            }
+            if (lineAnnotations.Count > 0)
+            {
+                Set(ref lineAnnotations, Carried(lineAnnotations, annotationLines), nameof(LineAnnotations));
+            }
+            if (liveValues.Count > 0)
+            {
+                Set(ref liveValues, Carried(liveValues, liveLines), nameof(LiveValues));
             }
             FollowHeld(change.Edits);
             Raise(nameof(IsModified));
@@ -455,11 +469,16 @@ public sealed class OpenDocument : Observable
         set => Set(ref inlayHints, HintList.Of(value));
     }
 
-    /// <summary>The debugger's text after lines: inline values, the exception it stopped on.</summary>
+    /// <summary>The debugger's text after lines: inline values, the exception it stopped on. Each goes with its line as
+    /// the text is edited.</summary>
     public IReadOnlyList<LineAnnotation> LineAnnotations
     {
         get => lineAnnotations;
-        set => Set(ref lineAnnotations, value);
+        set
+        {
+            annotationLines = Anchored(value, annotationLines);
+            Set(ref lineAnnotations, value);
+        }
     }
 
     /// <summary>A debugged Avalonia app's values after an .axaml file's lines: each binding's value on the control it is read
@@ -467,7 +486,42 @@ public sealed class OpenDocument : Observable
     public IReadOnlyList<LineAnnotation> LiveValues
     {
         get => liveValues;
-        set => Set(ref liveValues, value);
+        set
+        {
+            liveLines = Anchored(value, liveLines);
+            Set(ref liveValues, value);
+        }
+    }
+
+    /// <summary>The lines of annotations, anchored in the text, those of the ones they replace let go.</summary>
+    private AnchoredLine[] Anchored(IReadOnlyList<LineAnnotation> annotations, AnchoredLine[] replaced)
+    {
+        foreach (AnchoredLine line in replaced)
+        {
+            line.Detach();
+        }
+        AnchoredLine[] lines = new AnchoredLine[annotations.Count];
+        for (int i = 0; i < lines.Length; i++)
+        {
+            lines[i] = new AnchoredLine(annotations[i].Line);
+            lines[i].Attach(Text);
+        }
+        return lines;
+    }
+
+    /// <summary>Annotations with the lines their anchors carried them to; the same list when none moved.</summary>
+    private static IReadOnlyList<LineAnnotation> Carried(IReadOnlyList<LineAnnotation> annotations, AnchoredLine[] lines)
+    {
+        LineAnnotation[]? moved = null;
+        for (int i = 0; i < lines.Length; i++)
+        {
+            if (lines[i].Follow())
+            {
+                moved ??= [.. annotations];
+                moved[i] = moved[i] with { Line = lines[i].Line };
+            }
+        }
+        return moved ?? annotations;
     }
 
     /// <summary>What its editors show after its lines: the debugger's annotations, then the app's live values.</summary>
@@ -805,29 +859,22 @@ public sealed class OpenDocument : Observable
     /// grammar); null for a language with neither.</summary>
     private IHighlighter? Parser()
     {
-        if (Language.Name != "C#")
+        IHighlighter? colours = Highlighters.For(Language, Text);
+        if (colours is CSharpHighlighter csharp)
         {
-            IHighlighter? colours = Languages.Highlighters.For(Language.Name, Text);
-            if (colours is Languages.TextMate.TextMateHighlighter grammar)
-            {
-                grammar.Failed += (_, error) => IdeErrors.Report(error);
-            }
-            return colours;
+            csharp.Parsed += (_, parsed) => Parsed?.Invoke(this, parsed);
         }
-        CSharpHighlighter csharp = new(Text);
-        csharp.Parsed += (_, parsed) => Parsed?.Invoke(this, parsed);
-        return csharp;
+        else if (colours is Languages.TextMate.TextMateHighlighter grammar)
+        {
+            grammar.Failed += (_, error) => IdeErrors.Report(error);
+        }
+        return colours;
     }
 
     /// <summary>What finds the file's folds: C#'s parse, XML's and JSON's scan; none for another language.</summary>
     private IFoldFinder? Finder()
     {
-        IFoldFinder? found = parser as IFoldFinder ?? Language.Name switch
-        {
-            "XML" => FoldScan.Xml(Text),
-            "JSON" => FoldScan.Json(Text),
-            _ => null,
-        };
+        IFoldFinder? found = Highlighters.FoldsFor(Language, Text, parser);
         if (found is not null)
         {
             found.FoldsChanged += (_, _) =>
@@ -1209,80 +1256,6 @@ public sealed class OpenDocument : Observable
 
 /// <summary>A link the editor's banner offers after its notice: its words and what it does.</summary>
 public sealed record NoticeAction(string Text, Action Run);
-
-/// <summary>What the editor needs to know about a file's language before any language server answers: its name (which
-/// <see cref="Languages.Highlighters"/> colours it by), its comments and how it indents. A language with no line
-/// comment of its own comments a line with its block comment (<c>&lt;!-- --&gt;</c> in XML).</summary>
-public sealed record Language(string Name, string? LineComment, int IndentSize = 4, string? BlockStart = null, string? BlockEnd = null)
-{
-    public static readonly Language PlainText = new("Text", null);
-
-    /// <summary>What an image's or a font's preview is, as the status bar and the tools name it: no text, so no comments.</summary>
-    public static readonly Language Image = new("Image", null);
-    public static readonly Language Font = new("Font", null);
-
-    /// <summary>How a file of the language indents when neither an .editorconfig nor its own lines say.</summary>
-    public IndentOptions Indent => new(IndentSize);
-
-    /// <summary>The block comment's two ends, or null for a language with none.</summary>
-    public (string Start, string End)? BlockComment => BlockStart is { } start && BlockEnd is { } end ? (start, end) : null;
-
-    /// <summary>Whether a pasted block takes the file's indentation: not where indentation is the text's own (Markdown's
-    /// code blocks, plain text).</summary>
-    public bool ReindentsPaste => Name is not ("Text" or "Markdown");
-
-    /// <summary>Which markup the language is, whose tags indentation follows: XML's (XAML, MSBuild) or HTML's.</summary>
-    public MarkupKind Markup => Name switch
-    {
-        "XML" => MarkupKind.Xml,
-        "HTML" => MarkupKind.Html,
-        _ => MarkupKind.None,
-    };
-
-    /// <summary>The indentation a file's own lines show, read as tags where the language is markup.</summary>
-    public IndentOptions? Detect(ReadOnlySpan<char> text) =>
-        Passenger.Text.Indentation.Detect(text, Indent.TabWidth, markup: Markup != MarkupKind.None);
-
-    private static readonly Language Xml = new("XML", null, 2, "<!--", "-->");
-
-    public static Language ForPath(string path)
-    {
-        string name = System.IO.Path.GetFileName(path);
-        // By name before extension: Dockerfile.dev, Containerfile.prod, .env.local.
-        if (Web.WebLanguages.IsDockerfile(name))
-        {
-            return new Language("Dockerfile", "#");
-        }
-        if (name.Equals(".env", StringComparison.OrdinalIgnoreCase) || name.StartsWith(".env.", StringComparison.OrdinalIgnoreCase)
-            || name.EndsWith(".env", StringComparison.OrdinalIgnoreCase))
-        {
-            return new Language("Dotenv", "#");
-        }
-        return System.IO.Path.GetExtension(path).ToLowerInvariant() switch
-        {
-            ".cs" or ".csx" => new Language("C#", "//", 4, "/*", "*/"),
-            ".razor" or ".cshtml" => new Language("Razor", null, 4, "@*", "*@"),
-            ".csproj" or ".fsproj" or ".vbproj" or ".proj" or ".props" or ".targets" or ".xml" or ".axaml" or ".paml" or ".xaml" or ".slnx"
-                or ".resx" or ".config" or ".nuspec" or ".manifest" or ".runsettings" or ".xsd" or ".xslt" or ".xsl" or ".svg"
-                or ".plist" or ".storyboard" => Xml,
-            ".json" or ".jsonc" => new Language("JSON", "//", 2, "/*", "*/"),
-            ".yml" or ".yaml" => new Language("YAML", "#", 2),
-            ".md" or ".markdown" => new Language("Markdown", null, 2, "<!--", "-->"),
-            ".html" or ".htm" => new Language("HTML", null, 4, "<!--", "-->"),
-            ".css" => new Language("CSS", null, 4, "/*", "*/"),
-            ".scss" => new Language("SCSS", "//", 4, "/*", "*/"),
-            ".less" => new Language("Less", "//", 4, "/*", "*/"),
-            ".js" or ".mjs" or ".cjs" or ".jsx" => new Language("JavaScript", "//", 4, "/*", "*/"),
-            ".ts" or ".mts" or ".cts" or ".tsx" => new Language("TypeScript", "//", 4, "/*", "*/"),
-            ".sh" or ".bash" or ".zsh" => new Language("Shell", "#"),
-            ".dockerignore" => new Language("Ignore", "#"),
-            ".rs" or ".go" or ".java" or ".kt" or ".swift" or ".c" or ".h" or ".cpp" => new Language("Code", "//", 4, "/*", "*/"),
-            ".py" or ".toml" or ".ps1" or ".rb" => new Language("Script", "#"),
-            _ when name.Equals("justfile", StringComparison.OrdinalIgnoreCase) => new Language("Script", "#"),
-            _ => PlainText,
-        };
-    }
-}
 
 /// <summary>A file's length and last write time on disk, and when they were found.</summary>
 public readonly record struct DiskStamp(long Length, DateTime Written, DateTime Found)

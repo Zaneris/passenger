@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- NuGet with no UI: the folder's package sources as NuGet reads them, their feeds over HTTP with credential providers,
+       the audit's known vulnerabilities and nuget.config's editing. No Avalonia, so the boundary is the project's own. -->
+  <PropertyGroup>
+    <RootNamespace>Passenger.Packages</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The folder's nuget.config files as NuGet reads them: the NuGet window's feeds, credentials and source mapping. -->
+    <PackageReference Include="NuGet.Configuration" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Passenger.Core/Passenger.Core.csproj" />
+    <ProjectReference Include="../Passenger.Text/Passenger.Text.csproj" />
+    <ProjectReference Include="../Passenger.Workspace/Passenger.Workspace.csproj" />
+  </ItemGroup>
+</Project>

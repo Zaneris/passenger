@@ -1,6 +1,5 @@
 using Passenger.App.Aspire;
 using Passenger.App.Run;
-using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Roslyn.Extension;
 

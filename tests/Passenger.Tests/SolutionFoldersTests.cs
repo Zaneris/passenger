@@ -73,15 +73,15 @@ public sealed class SolutionFoldersTests : IDisposable
         MainWindow window = Open();
         ExplorerTree tree = window.ExplorerView.Tree;
         ExplorerNode items = Row(window, NodeKind.SolutionFolder, "Solution Items");
-        Assert.True(ReferenceEquals(Resource("Icon.SolutionFolder"), items.Icon), "A closed solution folder is drawn as a folder on disk is, so it passes for one");
-        Assert.NotSame(Resource("Passenger.File.Folder"), items.IconBrush);
-        Assert.Same(Resource("Passenger.File.SolutionFolder"), items.IconBrush);
+        Assert.True(ReferenceEquals(Resource(IconKeys.SolutionFolder), items.Icon), "A closed solution folder is drawn as a folder on disk is, so it passes for one");
+        Assert.NotSame(Resource(TokenKeys.File_Folder), items.IconBrush);
+        Assert.Same(Resource(TokenKeys.File_SolutionFolder), items.IconBrush);
 
         Ui.ClickRow(window, items);
         Ui.Press(window, "RIGHT");
         Ui.ClickRow(window, Row(window, NodeKind.SolutionFolder, "src"));
         Ui.Press(window, "RIGHT");
-        Assert.True(ReferenceEquals(Resource("Icon.SolutionFolderOpen"), items.Icon), "An open solution folder still shows the closed one's icon");
+        Assert.True(ReferenceEquals(Resource(IconKeys.SolutionFolderOpen), items.Icon), "An open solution folder still shows the closed one's icon");
         // The solution declares the project first and README.md before .editorconfig: the view sorts by kind, then name.
         Assert.Equal(
             ["Shop", "  Solution Items", "    .editorconfig", "    README.md", "  src", "    Shop.Core", "  Shop.Web"],
@@ -483,10 +483,5 @@ public sealed class SolutionFoldersTests : IDisposable
         Assert.False(window.IsPopupOpen, $"The name {name} was refused: {(window.Popup as Passenger.App.Vcs.NamePopup)?.Problem}");
     }
 
-    private void Write(string relative, string text)
-    {
-        string path = Path.Combine(folder, relative);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, text);
-    }
+    private void Write(string relative, string text) => TestFolders.Write(folder, relative, text);
 }

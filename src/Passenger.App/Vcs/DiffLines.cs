@@ -61,8 +61,8 @@ public static class DiffLines
             VerticalAlignment = VerticalAlignment.Center,
         };
         start.Children.AddRange(tools);
-        start.Children.Add(ToolButtons.Of("Icon.ArrowUp", $"Previous Difference ({Keys("Shift+F7")})", () => step(-1)));
-        start.Children.Add(ToolButtons.Of("Icon.ArrowDown", $"Next Difference ({Keys("F7")})", () => step(1)));
+        start.Children.Add(ToolButtons.Of(IconKeys.ArrowUp, $"Previous Difference ({Keys("Shift+F7")})", () => step(-1)));
+        start.Children.Add(ToolButtons.Of(IconKeys.ArrowDown, $"Next Difference ({Keys("F7")})", () => step(1)));
         start.Children.Add(new TextBlock { Text = name, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) });
         status.VerticalAlignment = VerticalAlignment.Center;
         status.Margin = new Thickness(12, 0);
@@ -80,7 +80,7 @@ public static class DiffLines
         row.Children.Add(start);
         // A tool window's ground over the editors', told apart by shade.
         Border bar = new() { [DockPanel.DockProperty] = Dock.Top, Height = 34, Child = row };
-        bar.Bind(Border.BackgroundProperty, bar.GetResourceObservable("Passenger.Panel"));
+        bar.Bind(Border.BackgroundProperty, bar.GetResourceObservable(TokenKeys.Panel));
         return bar;
 
         static string Keys(string shown) => OperatingSystem.IsMacOS() ? shown : $"{shown}, {shown.Replace("F7", "F8", StringComparison.Ordinal)}";

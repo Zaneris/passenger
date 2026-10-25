@@ -331,10 +331,10 @@ public sealed class FileColoursTests : FileColoursFolder
             foreach ((string file, string text, string token, TokenKind kind) in shown)
             {
                 CodeEditor editor = Open(window, file, text);
-                string named = kind == TokenKind.Text ? "Passenger.Editor.Text" : $"Passenger.Syntax.{kind}";
+                string named = kind == TokenKind.Text ? TokenKeys.Editor_Text : $"Passenger.Syntax.{kind}";
                 Color expected = Token(theme, named);
                 Color ink = Ink(window, editor, text.IndexOf(token, StringComparison.Ordinal), token.TrimEnd('<', '/').Length);
-                Color plain = Token(theme, "Passenger.Editor.Text");
+                Color plain = Token(theme, TokenKeys.Editor_Text);
                 Assert.True(kind == TokenKind.Text || Distance(ink, expected) < Distance(ink, plain),
                     $"In the {theme} theme {token} in {file} is drawn {ink}, nearer the text's {plain} than its {kind}'s {expected}");
                 Assert.True(Distance(ink, expected) < 90, $"In the {theme} theme {token} in {file} is drawn {ink}, not its {kind}'s {expected}");
@@ -357,16 +357,16 @@ public sealed class FileColoursTests : FileColoursFolder
             foreach (Look look in (Look[])[Look.Passenger, Look.Harbour])
             {
                 window.ApplySettings(window.Settings with { Look = look, ColourScheme = ColourScheme.Theme });
-                Color own = Token(theme, "Passenger.Syntax.Tag");
-                Color ground = Token(theme, "Passenger.Editor.Background");
+                Color own = Token(theme, TokenKeys.Syntax_Tag);
+                Color ground = Token(theme, TokenKeys.Editor_Background);
                 Assert.True(Distance(Ink(window, editor, tag, "PropertyGroup".Length), own) < 90, $"Under {look}'s own scheme a tag is not drawn in its {own}");
 
                 window.ApplySettings(window.Settings with { ColourScheme = ColourScheme.Rider });
-                Color rider = Token(theme, "Passenger.Syntax.Tag");
+                Color rider = Token(theme, TokenKeys.Syntax_Tag);
                 Color ink = Ink(window, editor, tag, "PropertyGroup".Length);
                 Assert.True(Distance(ink, rider) < Distance(ink, own) && Distance(ink, rider) < 90,
                     $"Under {look} with Rider's colour scheme a tag is drawn {ink}, not Rider's {rider} (the theme's own is {own})");
-                Assert.True(Token(theme, "Passenger.Editor.Background") == ground && Ui.Pixel(window, editor.TranslatePoint(new Point(editor.Bounds.Width - 40, editor.Bounds.Height - 20), window)!.Value) == ground,
+                Assert.True(Token(theme, TokenKeys.Editor_Background) == ground && Ui.Pixel(window, editor.TranslatePoint(new Point(editor.Bounds.Width - 40, editor.Bounds.Height - 20), window)!.Value) == ground,
                     $"Under {look} with Rider's colour scheme the editor is not on the theme's ground {ground}");
             }
         }
@@ -494,7 +494,7 @@ public sealed class FileColoursTests : FileColoursFolder
         Assert.Equal((start, end), PairAt(editor, start));
         Assert.Equal((end, start), PairAt(editor, end + "ItemGroup".Length));
         Assert.Equal("ItemGroup", editor.Document.Snapshot.GetText(editor.MatchedBraces!.Value.Matching));
-        Color lit = Token(window.ActualThemeVariant, "Passenger.Editor.MatchedBrace");
+        Color lit = Token(window.ActualThemeVariant, TokenKeys.Editor_MatchedBrace);
         Assert.Equal(lit, Ui.Pixel(window, InBox(window, editor, start + 1)));
         Assert.Equal(lit, Ui.Pixel(window, InBox(window, editor, end + 1)));
 
@@ -918,7 +918,7 @@ public abstract class FileColoursFolder : IDisposable
     protected static Color Ink(MainWindow window, CodeEditor editor, int start, int length)
     {
         Ui.Settle();
-        Color background = Token(window.ActualThemeVariant, "Passenger.Editor.Background");
+        Color background = Token(window.ActualThemeVariant, TokenKeys.Editor_Background);
         Point from = editor.TranslatePoint(editor.PointOf(start), window)!.Value;
         Point to = editor.TranslatePoint(editor.PointOf(start + length), window)!.Value;
         using Avalonia.Media.Imaging.WriteableBitmap frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("The window has drawn no frame.");

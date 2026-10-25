@@ -1,8 +1,8 @@
 using Avalonia;
 using Avalonia.Controls;
 using Passenger.App.Discord;
-using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Workspace;
 
 namespace Passenger.App;
 
@@ -87,7 +87,7 @@ public static class PassengerApp
         {
             if (already.WorkspaceModel?.OpenedAs is not { } opened || !PathNames.Same(opened, full))
             {
-                already.OpenFolder(full, opened: then is null ? null : () => then(already));
+                IdeErrors.Observe(already.OpenFolder(full, opened: then is null ? null : () => then(already)));
             }
             else
             {
@@ -97,7 +97,7 @@ public static class PassengerApp
             return already;
         }
         MainWindow into = target == OpenTarget.NewWindow && from.FolderHeld is { } open && !PathNames.Same(open, folder) ? NewWindow(from) : from;
-        into.OpenFolder(full, opened: then is null ? null : () => then(into));
+        IdeErrors.Observe(into.OpenFolder(full, opened: then is null ? null : () => then(into)));
         if (into != from)
         {
             BringForward(into);

@@ -26,7 +26,7 @@ public sealed partial class PassengerTools
 
     // Settings
 
-    [McpServerTool(Name = "settings", Title = "The IDE's settings", ReadOnly = true), Description(
+    [McpServerTool(Name = McpTools.Settings, Title = "The IDE's settings", ReadOnly = true), Description(
         "Every setting the Settings dialog has, by its settings.json name (editorFontSize, theme...), with its value, kind, " +
         "choices and range; kept is false for an --mcp Passenger's own defaults, kept nowhere.")]
     public Task<SettingsInfo> GetSettings(CancellationToken cancel = default) => OnUi(cancel, () =>
@@ -41,7 +41,7 @@ public sealed partial class PassengerTools
         })]));
     });
 
-    [McpServerTool(Name = "settings_set", Title = "Change settings", Destructive = true), Description(
+    [McpServerTool(Name = McpTools.SettingsSet, Title = "Change settings", Destructive = true), Description(
         "Changes settings as the Settings dialog's OK does: changes maps each name settings lists to a JSON value of its kind " +
         "({\"editorFontSize\": 15, \"theme\": \"Dark\"}): a number brought into its range, text (null for none), a choice by " +
         "name, an object's members to change. Anything Settings lacks is refused, changing nothing. On a person's window the " +
@@ -168,7 +168,7 @@ public sealed partial class PassengerTools
 
     // Find in Files
 
-    [McpServerTool(Name = "find_in_files", Title = "Find in Files", ReadOnly = true), Description(
+    [McpServerTool(Name = McpTools.FindInFiles, Title = "Find in Files", ReadOnly = true), Description(
         "Every match of text in the folder's files, as Find in Files finds them: an open file as the editor has it, every " +
         "other text file on disk (build output, version control, binary and very large files left out), each with its line's " +
         "text, at most limit (1000; capped says so). scope: solution (the default), project (project's name or .csproj), " +
@@ -190,7 +190,7 @@ public sealed partial class PassengerTools
             [.. found.Take(Math.Clamp(limit, 1, FileSearch.MostMatches)).Select(m => new Place(Relative(m.Path), m.Line + 1, m.Column + 1, m.LineText.Trim()))]);
     });
 
-    [McpServerTool(Name = "replace_in_files", Title = "Replace in Files", Destructive = true), Description(
+    [McpServerTool(Name = McpTools.ReplaceInFiles, Title = "Replace in Files", Destructive = true), Description(
         "Replaces every match find_in_files finds (its text, options, scope and mask) with replacement, as Replace All does: an " +
         "open file's as one undoable step, saved; a closed one's in its own encoding (UTF-8 where that cannot hold the " +
         "replacement, as the answer says). A regex's replacement takes its groups ($1, ${name}). Returns how many matches in " +
@@ -238,7 +238,7 @@ public sealed partial class PassengerTools
         return said.Count == 0 ? replaced : $"{replaced}; {string.Join("; ", said)}";
     });
 
-    [McpServerTool(Name = "edit", Title = "Edit a file", Destructive = true), Description(
+    [McpServerTool(Name = McpTools.Edit, Title = "Edit a file", Destructive = true), Description(
         "Replaces text in one file as the editor does: oldText exactly as the file has it (case, spaces and indentation; lines " +
         "joined by \\n), found once (every time with all), becomes newText (empty deletes it), as one Undo step, kept by Local " +
         "History, and saved. Returns where it changed and those lines as they are now, numbered as editor_text's. Text not " +
@@ -343,7 +343,7 @@ public sealed partial class PassengerTools
 
     // Local History
 
-    [McpServerTool(Name = "local_history", Title = "Local History", ReadOnly = true), Description(
+    [McpServerTool(Name = McpTools.LocalHistory, Title = "Local History", ReadOnly = true), Description(
         "The Local History of a file or folder (the open folder by default), as its window lists it, 5 days of activity: each " +
         "change set that touched it, newest first, with its number, time, title (Change, Create, Rename, External change, a " +
         "refactoring's, a Git operation's, a label's...) and files. With set, what was there before it, which " +
@@ -384,7 +384,7 @@ public sealed partial class PassengerTools
             r.Title, r.IsLabel, [.. r.Files.Select(Relative)]);
     });
 
-    [McpServerTool(Name = "local_history_revert", Title = "Revert to a Local History version", Destructive = true), Description(
+    [McpServerTool(Name = McpTools.LocalHistoryRevert, Title = "Revert to a Local History version", Destructive = true), Description(
         "Puts a file or folder back as it was before Local History's change set set, as Revert Selected and Later Changes " +
         "does: an open file's text as one Undo step, saved; a closed one's bytes; a file that did not exist then deleted. The " +
         "revert is kept in the history too.")]
@@ -401,7 +401,7 @@ public sealed partial class PassengerTools
         return $"{Relative(full)} is as it was before change set {set}";
     });
 
-    [McpServerTool(Name = "local_history_label", Title = "Put a Local History label", Destructive = false), Description(
+    [McpServerTool(Name = McpTools.LocalHistoryLabel, Title = "Put a Local History label", Destructive = false), Description(
         "Puts a label across the folder's Local History now, as Put Label does: a point local_history lists by its name, to go " +
         "back to with local_history_revert.")]
     public Task<string> LocalHistoryLabel(string name, CancellationToken cancel = default) => OnUi(cancel, async () =>

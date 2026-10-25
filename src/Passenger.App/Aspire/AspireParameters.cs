@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Passenger.App.Workspace;
+using Passenger.Workspace;
 
 namespace Passenger.App.Aspire;
 

@@ -105,10 +105,10 @@ public partial class MainWindow
             ShowStop();
         };
         AddEditing();
-        Add(A.Open, "Open…", "IDE", context => _ = PickWorkspace(), menu: ("File", 0, 0));
+        Add(A.Open, "Open…", "IDE", context => IdeErrors.Observe(PickWorkspace()), menu: ("File", 0, 0));
         actions.Add(new IdeAction(A.RecentFiles, "Recent Files", "IDE", _ => ShowRecentFiles()) { Menus = [new("File", 0, 4), new("View", 2, 0)] });
-        Add(A.Save, "Save", "IDE", context => _ = SaveExplicitly(all: false), Refusals.NeedsFile, ("File", 1, 0));
-        Add(A.SaveAll, "Save All", "IDE", context => _ = SaveExplicitly(all: true), _ => Editors.Documents.Any(d => d.IsModified) ? null : "Every file is saved", ("File", 1, 1));
+        Add(A.Save, "Save", "IDE", context => IdeErrors.Observe(SaveExplicitly(all: false)), Refusals.NeedsFile, ("File", 1, 0));
+        Add(A.SaveAll, "Save All", "IDE", context => IdeErrors.Observe(SaveExplicitly(all: true)), _ => Editors.Documents.Any(d => d.IsModified) ? null : "Every file is saved", ("File", 1, 1));
         // Quit is the application menu's on macOS; either closes every window.
         Add(A.Exit, "Exit", "IDE", _ => PassengerApp.Quit(), menu: OperatingSystem.IsMacOS() ? null : ("File", 4, 0));
         Add(A.FindAction, "Find Action…", "IDE", _ => ShowFindAction(), menu: ("Help", 0, 0));
@@ -284,12 +284,12 @@ public partial class MainWindow
             }
             else
             {
-                _ = RerunAsync();
+                IdeErrors.Observe(RerunAsync());
             }
         }, _ => session.Debug.Session is { } debugged && debugged == attachSession ? null : Unconfigured("run"), ("Run", 0, 6));
         Add(A.Stop, "Stop", "Run", _ => buildRun.Stop(), _ => buildRun.WhyNotStop(), ("Run", 0, 7));
         // Every program debugged, where Stop ends the one chosen in the Debug window.
-        Add(A.StopAll, "Stop All", "Run", context => _ = buildRun.StopAllAsync(), _ => buildRun.WhyNotStop(), ("Run", 0, 7));
+        Add(A.StopAll, "Stop All", "Run", context => IdeErrors.Observe(buildRun.StopAllAsync()), _ => buildRun.WhyNotStop(), ("Run", 0, 7));
         Add(A.EditBreakpoint, "Edit Breakpoint…", "Debug", c =>
         {
             int line = c.Caret.Line;

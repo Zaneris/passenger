@@ -4,8 +4,8 @@ using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
-using Passenger.App.Workspace;
 using Passenger.Roslyn.Extension;
+using Passenger.Workspace;
 
 namespace Passenger.App.Run;
 
@@ -70,9 +70,9 @@ public sealed class RunConfigurationsDialog : Window
         MinHeight = 440;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
-        AddButton = ToolButtons.Of("Icon.Add", "Add New Configuration");
-        CopyButton = ToolButtons.Of("Icon.Copy", "Copy Configuration");
-        RemoveButton = ToolButtons.Of("Icon.Minimize", "Remove Configuration");
+        AddButton = ToolButtons.Of(IconKeys.Add, "Add New Configuration");
+        CopyButton = ToolButtons.Of(IconKeys.Copy, "Copy Configuration");
+        RemoveButton = ToolButtons.Of(IconKeys.Minimize, "Remove Configuration");
         AddButton.Click += (_, _) => ChooseKind();
         CopyButton.Click += (_, _) => Copy();
         RemoveButton.Click += (_, _) => Remove();
@@ -109,7 +109,7 @@ public sealed class RunConfigurationsDialog : Window
         BrowserUrlBox = Field();
         AddVariableButton = new Button
         {
-            Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { Glyph("Icon.Add"), new TextBlock { Text = "Add variable" } } },
+            Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { Glyph(IconKeys.Add), new TextBlock { Text = "Add variable" } } },
         };
         NameBox.TextChanged += (_, _) => Edit(c => c with { Name = NameBox.Text?.Trim() ?? string.Empty });
         ProjectBox.SelectionChanged += (_, _) => Edit(c => ProjectBox.SelectedItem switch
@@ -176,7 +176,7 @@ public sealed class RunConfigurationsDialog : Window
         OkButton.Click += (_, _) => Ok();
         cancel.Click += (_, _) => Close(false);
         applyButton.Click += (_, _) => Apply();
-        problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable("Passenger.Error"));
+        problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable(TokenKeys.Error));
 
         StackPanel tools = new() { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(8, 6), Children = { AddButton, RemoveButton, CopyButton } };
         DockPanel left = new() { Width = 270 };
@@ -184,7 +184,7 @@ public sealed class RunConfigurationsDialog : Window
         left.Children.Add(tools);
         left.Children.Add(list);
         Border leftPane = new() { BorderThickness = new Thickness(0, 0, 1, 0), Child = left };
-        leftPane.Bind(Border.BorderBrushProperty, leftPane.GetResourceObservable("Passenger.Divider"));
+        leftPane.Bind(Border.BorderBrushProperty, leftPane.GetResourceObservable(TokenKeys.Divider));
 
         // Each kind's page is the rows it takes; each row names the fields it shows, which a change from the source marks.
         Control projectRow = Row("Project", ProjectBox);
@@ -324,7 +324,7 @@ public sealed class RunConfigurationsDialog : Window
             return;
         }
         AspireTable.Say("Reading the AppHost's resources…");
-        _ = Read();
+        IdeErrors.Observe(Read());
 
         async Task Read()
         {
@@ -430,7 +430,7 @@ public sealed class RunConfigurationsDialog : Window
         }
         ServicesTable.Say("Reading its services from Compose…");
         int mine = ++reading;
-        _ = Fill();
+        IdeErrors.Observe(Fill());
 
         async Task Fill()
         {
@@ -993,7 +993,7 @@ public sealed class RunConfigurationsDialog : Window
         TextBox valueBox = Field("Value");
         nameBox.Text = name;
         valueBox.Text = value;
-        Button remove = ToolButtons.Of("Icon.Close", "Remove Variable");
+        Button remove = ToolButtons.Of(IconKeys.Close, "Remove Variable");
         Grid row = new() { ColumnDefinitions = new ColumnDefinitions("240,8,*,4,Auto") };
         Grid.SetColumn(valueBox, 2);
         Grid.SetColumn(remove, 4);
@@ -1068,11 +1068,11 @@ public sealed class RunConfigurationsDialog : Window
             string from = row.Kind switch
             {
                 RunKind.Project when row.Aspire => "Aspire",
-                RunKind.Compose when Containers.ContainerConfigurations.IsComposeProject(row.Project) => row.LaunchProfile.Length > 0 ? "launchSettings.json" : ".dcproj",
+                RunKind.Compose when Containers.ContainerConfigurations.IsComposeProject(row.Project) => row.LaunchProfile.Length > 0 ? LaunchProfile.SettingsFile : ".dcproj",
                 RunKind.Compose => "compose file",
                 RunKind.Dockerfile when row.LaunchProfile.Length == 0 => "Dockerfile",
                 RunKind.SdkContainer when row.LaunchProfile.Length == 0 => "SDK container",
-                _ => row.LaunchProfile.Length > 0 ? "launchSettings.json" : "project",
+                _ => row.LaunchProfile.Length > 0 ? LaunchProfile.SettingsFile : "project",
             };
             line.Children.Add(new TextBlock { Text = from, Classes = { "muted" }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) });
         }

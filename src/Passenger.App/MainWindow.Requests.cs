@@ -49,12 +49,12 @@ public partial class MainWindow
     private void AddRequests()
     {
         requestLog = new RequestLog(RouteReached);
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Requests, "Requests", "Icon.Endpoints", MakeRequests, Docking.ToolAnchor.BottomRight)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Requests, "Requests", IconKeys.Endpoints, MakeRequests, Docking.ToolAnchor.BottomRight)
         {
             Action = AppActions.ShowRequests,
             Menus = [new MenuPlace("Tools", 0, 4)],
         });
-        Closed += (_, _) => _ = LetGoOfRequestsAsync();
+        Closed += (_, _) => IdeErrors.Observe(LetGoOfRequestsAsync());
     }
 
     /// <summary>The Requests window's view over the log, as it is first shown or asked for.</summary>
@@ -68,7 +68,7 @@ public partial class MainWindow
             {
                 WantRoutes();
             }
-            _ = FollowRequestsAsync();
+            IdeErrors.Observe(FollowRequestsAsync());
         };
         view.RequestOpened += (_, request) => OpenRequest(request);
         view.CommandOpened += (_, command) => OpenCommand(command);
@@ -85,24 +85,24 @@ public partial class MainWindow
         {
             if (session == next)
             {
-                _ = FollowRequestsAsync();
+                IdeErrors.Observe(FollowRequestsAsync());
             }
         };
         next.Debug.StateChanged += (_, _) =>
         {
             if (session == next)
             {
-                _ = FollowRequestsAsync();
+                IdeErrors.Observe(FollowRequestsAsync());
             }
         };
         next.ProfiledChanged += (_, _) =>
         {
             if (session == next)
             {
-                _ = FollowRequestsAsync();
+                IdeErrors.Observe(FollowRequestsAsync());
             }
         };
-        _ = FollowRequestsAsync();
+        IdeErrors.Observe(FollowRequestsAsync());
     }
 
     /// <summary>The programs whose requests are followed now: what the folder runs (<see cref="ProjectSession.Running"/>) on
@@ -122,7 +122,7 @@ public partial class MainWindow
                 else if (program.Starting is { } started && waitedStarts.Add(started))
                 {
                     // Its program is followed once the debugger says it has started.
-                    _ = started.ContinueWith(_ => UiThread.Post(() => _ = FollowRequestsAsync()), TaskScheduler.Default);
+                    IdeErrors.Observe(started.ContinueWith(_ => UiThread.Post(() => IdeErrors.Observe(FollowRequestsAsync())), TaskScheduler.Default));
                 }
                 continue;
             }
@@ -201,14 +201,14 @@ public partial class MainWindow
                     ? await LiveRequests.AttachAsync(target.Process, place, told => log.Hear(told, target.Name, target.Project))
                     : await LiveRequests.AttachAsync(target.Process, told => log.Hear(told, target.Name, target.Project));
                 followedRequests[target.Key] = (target, live);
-                _ = live.Ended.ContinueWith(_ => UiThread.Post(() =>
+                IdeErrors.Observe(live.Ended.ContinueWith(_ => UiThread.Post(() =>
                 {
                     if (followedRequests.TryGetValue(target.Key, out (RequestTarget Target, LiveRequests Live) now) && now.Live == live)
                     {
                         followedRequests.Remove(target.Key);
                         SayFollowed($"{target.Name} ended");
                     }
-                }), TaskScheduler.Default);
+                }), TaskScheduler.Default));
                 return;
             }
             catch (ProfilingException failed)

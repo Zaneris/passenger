@@ -209,7 +209,12 @@ internal static class DesignTimeBuilds
             FileGlobs[] globs = [.. outer.GetAllGlobs().Select(g => new FileGlobs([.. g.IncludeGlobs.Select(Full)], [.. g.Excludes.Select(Full)], [.. g.Removes.Select(Full)]))];
             List<RoslynProjectFileInfo> infos = [];
             List<BuildDiagnostic> said = [];
-            HashSet<string> assets = new(PathNames.Comparer);
+            // A restore arriving during a build must invalidate it, rather than look like an input it read.
+            IReadOnlyList<Stamp> restored = [.. each
+                .Select(p => p.GetPropertyValue("ProjectAssetsFile") is { Length: > 0 } asset ? Path.GetFullPath(asset, p.DirectoryPath) : null)
+                .OfType<string>()
+                .Distinct(PathNames.Comparer)
+                .Select(Stamps.File)];
             foreach (Project project in each)
             {
                 (ProjectInstance instance, IReadOnlyList<BuildDiagnostic> logged) = await BuildAsync(project, diagnostics, cancel).ConfigureAwait(false);
@@ -220,12 +225,8 @@ internal static class DesignTimeBuilds
                     return new BuiltProject(path, "[]", [file], $"{Path.GetFileName(path)}{(info.TargetFramework is { } framework ? $" ({framework})" : string.Empty)}: its design-time build gave no compiler command line");
                 }
                 infos.Add(info);
-                if (info.ProjectAssetsFilePath is { Length: > 0 } asset)
-                {
-                    assets.Add(asset);
-                }
             }
-            IReadOnlyList<Stamp> inputs = Evaluation.Inputs(file, loaded, Evaluation.OutsideRoots(outer), [.. assets.Select(Stamps.File), .. looked]);
+            IReadOnlyList<Stamp> inputs = Evaluation.Inputs(file, loaded, Evaluation.OutsideRoots(outer), [.. restored, .. looked]);
             IReadOnlyList<Stamp> walked = Evaluation.Folders(path, folders, infos.SelectMany(i => i.Documents.Concat(i.AdditionalDocuments)).Select(d => d.FilePath));
             return new BuiltProject(path, JsonSerializer.Serialize(infos, Written), [.. inputs, .. walked], null, said);
         }

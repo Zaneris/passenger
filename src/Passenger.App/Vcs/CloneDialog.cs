@@ -7,6 +7,7 @@ using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Passenger.Core;
+using Passenger.Vcs;
 
 namespace Passenger.App.Vcs;
 
@@ -40,17 +41,17 @@ public sealed partial class CloneDialog : Window
         url.TextChanged += (_, _) => ShowDestination();
         parent.TextChanged += (_, _) => ShowDestination();
         browse = new Button { Content = "Browse…", Margin = new Thickness(8, 0, 0, 0) };
-        browse.Click += (_, _) => _ = BrowseAsync();
+        browse.Click += (_, _) => IdeErrors.Observe(BrowseAsync());
         into = new TextBlock { Classes = { "muted" }, FontSize = 12, TextTrimming = TextTrimming.PathSegmentEllipsis, Margin = new Thickness(0, 6, 0, 0) };
         bar = new ProgressBar { IsIndeterminate = true, Minimum = 0, Maximum = 100, Height = 4, MinHeight = 4 };
         progress = new TextBlock { Classes = { "muted" }, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
         working = new StackPanel { Spacing = 6, IsVisible = false, Children = { bar, progress } };
         problem = new TextBlock { TextWrapping = TextWrapping.Wrap, IsVisible = false };
-        problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable("Passenger.Error"));
+        problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable(TokenKeys.Error));
 
         clone = new Button { Content = "Clone", IsDefault = true, Classes = { "primary" } };
         Button cancel = new() { Content = "Cancel", IsCancel = true };
-        clone.Click += (_, _) => _ = CloneAsync();
+        clone.Click += (_, _) => IdeErrors.Observe(CloneAsync());
         cancel.Click += (_, _) => Cancel();
         Closing += (_, _) => cloning?.Cancel();
 

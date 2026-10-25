@@ -21,10 +21,10 @@ public sealed partial class PassengerTools
     /// <summary>How long a tool waits for an app launched a moment ago to show its UI.</summary>
     private static readonly TimeSpan AppUiLimit = TimeSpan.FromSeconds(60);
 
-    [McpServerTool(Name = "app_windows", Title = "The app's windows", ReadOnly = true), Description(
+    [McpServerTool(Name = McpTools.AppWindows, Title = "The app's windows", ReadOnly = true), Description(
         "The windows of the app (an Avalonia 12 app Run or Debug started, a WPF one on Windows; one starting is waited for): " +
         "each one's @N, type, title, size in units, pixels a unit, whether active and shown, and a popup's owner. Every app_ " +
-        "tool's app is run, debug, a debugged program's name, or ide for Passenger's own windows, by default the one running; " +
+        "tool's app is run, debug, profile, a debugged program's or an AppHost service's name, or ide for Passenger's own windows, by default the one running; " +
         "its window @N, type or \"title\", by default the first.")]
     public Task<AppWindows> AppWindowsList(string? app = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
@@ -34,7 +34,7 @@ public sealed partial class PassengerTools
             Id(w.Id), w.Type, w.Name, w.Title, Math.Round(w.Width, 2), Math.Round(w.Height, 2), w.Scaling, w.Active, w.Visible, w.Owner is long owner ? Id(owner) : null))]);
     });
 
-    [McpServerTool(Name = "app_screenshot", Title = "A picture of the app", ReadOnly = true), Description(
+    [McpServerTool(Name = McpTools.AppScreenshot, Title = "A picture of the app", ReadOnly = true), Description(
         "A PNG of an app window (its popups drawn over it) as the app draws it, hidden, off-screen or headless alike; or of " +
         "control's part of it, or an area (x, y, width, height in its units). At the window's scaling up to 1600 pixels a side, " +
         "or scale pixels a unit (8 at most). Its text maps its pixels to the window's units, which app_click takes.")]
@@ -62,7 +62,7 @@ public sealed partial class PassengerTools
         return new CallToolResult { Content = [ImageContentBlock.FromBytes(picture.Png, "image/png"), new TextContentBlock { Text = text }] };
     });
 
-    [McpServerTool(Name = "app_tree", Title = "The app's visual tree", ReadOnly = true), Description(
+    [McpServerTool(Name = McpTools.AppTree, Title = "The app's visual tree", ReadOnly = true), Description(
         "The app's visual tree (the Live Visual Tree's), a level a line: each element's type, #name, .classes, \"text\" it " +
         "shows, @id, box in its window's units (x,y widthxheight), and [hidden], [out of view], [disabled], [focused]; with " +
         "properties (IsEnabled, Grid.Row), their values ({Name=value}). A template's parts are left out (what they hold comes " +
@@ -106,7 +106,7 @@ public sealed partial class PassengerTools
         return AppQuery.Write(roots, depth, templates, hidden);
     });
 
-    [McpServerTool(Name = "app_details", Title = "An element's properties and styles", ReadOnly = true), Description(
+    [McpServerTool(Name = McpTools.AppDetails, Title = "An element's properties and styles", ReadOnly = true), Description(
         "One element (control) looked at closely, as the Live Visual Tree's details show it: its type, classes and " +
         "pseudo-classes, XAML place (or why none), templated parent and layout (bounds, desired size, margin, border, padding, " +
         "alignment); each property not at its default (every one with defaults) whose name contains properties, with its " +
@@ -163,7 +163,7 @@ public sealed partial class PassengerTools
         return place.Line > 0 ? string.Create(CultureInfo.InvariantCulture, $"{file}:{place.Line}:{place.Column}") : file;
     }
 
-    [McpServerTool(Name = "app_click", Title = "Click in the app", Destructive = true), Description(
+    [McpServerTool(Name = McpTools.AppClick, Title = "Click in the app", Destructive = true), Description(
         "Clicks as a mouse would (button left, right or middle; count 2 a double click), through the window's own input, " +
         "handlers, commands and focus all running: at control's centre (or x,y from its top left), or x,y in the window, " +
         "neither bringing it forward nor moving the real pointer, modifiers held as app_key names them. One hidden, disabled, " +
@@ -203,7 +203,7 @@ public sealed partial class PassengerTools
         return $"{clicked} {Aimed(element, done)}{Took(element, done, "click")}{Said(done)}";
     });
 
-    [McpServerTool(Name = "app_type", Title = "Type into the app", Destructive = true), Description(
+    [McpServerTool(Name = McpTools.AppType, Title = "Type into the app", Destructive = true), Description(
         "Types text as a keyboard would, a key at a time (a newline Enter, a tab Tab): into control, given the focus first (a " +
         "text box at its end), else into what has the focus; with replace, Select All first. Says what it shows now. With app " +
         "ide, Passenger's editor types at the caret open put it at, leaving the file unsaved.")]
@@ -230,7 +230,7 @@ public sealed partial class PassengerTools
         return $"Typed {Plural.Of(text.Length, "character")} into {done.TargetName ?? "the window, nothing having the focus"}{Said(done)}";
     });
 
-    [McpServerTool(Name = "app_key", Title = "Press keys in the app", Destructive = true), Description(
+    [McpServerTool(Name = McpTools.AppKey, Title = "Press keys in the app", Destructive = true), Description(
         "Presses keys as a keyboard would, chords split by spaces, a chord's keys joined by + (\"Enter\", \"Tab Tab Space\", " +
         "\"ctrl+A Delete\", \"primary+S\"), into control, given the focus first, else what has it. Keys by Avalonia's names, " +
         "which WPF shares (Escape, Back, PageDown, F5, A, D1 or 1); modifiers ctrl, shift, alt, cmd (meta), primary (Cmd on " +
@@ -257,7 +257,7 @@ public sealed partial class PassengerTools
         return $"Pressed {keys.Trim()} in {done.TargetName ?? "the window, nothing having the focus"}{Said(done)}";
     });
 
-    [McpServerTool(Name = "app_scroll", Title = "Scroll in the app", Destructive = true), Description(
+    [McpServerTool(Name = McpTools.AppScroll, Title = "Scroll in the app", Destructive = true), Description(
         "Turns the mouse wheel over control's centre or at x,y in the window, as a person scrolls: dy notches down, dx right, " +
         "negative up or left (3 down by default), modifiers held as app_key names them. Says where the scroll viewer under it " +
         "is now.")]
@@ -298,7 +298,7 @@ public sealed partial class PassengerTools
             : string.Create(CultureInfo.InvariantCulture, $"{Math.Abs(notches):0.#} notch{(Math.Abs(notches) == 1 ? "" : "es")} {(notches < 0 ? back : ahead)}");
     });
 
-    [McpServerTool(Name = "app_binding_errors", Title = "The app's failed bindings", ReadOnly = true), Description(
+    [McpServerTool(Name = McpTools.AppBindingErrors, Title = "The app's failed bindings", ReadOnly = true), Description(
         "The failed bindings of the apps Run and Debug started last and an AppHost's services (or app's), each once: control, property, path, the " +
         "framework's message (with the nearest members when the source lacks the one named), XAML place and count. An ended " +
         "app's stay until the next of its kind starts; past an app's first 1000, a last entry of level Untold counts the rest.")]
@@ -307,7 +307,7 @@ public sealed partial class PassengerTools
         IEnumerable<LiveApp> apps = app switch
         {
             null => Session.InspectedApps,
-            "run" => [Session.RunApp ?? throw new InvalidOperationException("Run has started no Avalonia or WPF app in this folder")],
+            "run" => [RunApp() ?? throw new InvalidOperationException("Run has started no Avalonia or WPF app in this folder")],
             "debug" => [DebugApp() ?? throw new InvalidOperationException("Debug has started no Avalonia or WPF app in this folder")],
             "ide" => [LiveApp.Own()],
             _ => [NamedApp(app)],
@@ -319,13 +319,7 @@ public sealed partial class PassengerTools
         }
         return Task.FromResult<IReadOnlyList<AppBindingError>>([.. chosen.SelectMany(live =>
         {
-            string which = Session.Inspecting.FirstOrDefault(a => a.App == live) switch
-            {
-                { Kind: RunningKind.Run } => "run",
-                { Tab: { } tab } => AppName(tab),
-                { } inspected => inspected.Name,
-                null => "ide",
-            };
+            string which = Session.Inspecting.FirstOrDefault(a => a.App == live) is { } inspected ? AppName(inspected) : "ide";
             IEnumerable<AppBindingError> listed = live.Bindings.Select(failure =>
             {
                 BindingProblem placed = Builds.Placed(live, failure);
@@ -338,17 +332,18 @@ public sealed partial class PassengerTools
         })]);
     });
 
-    /// <summary>The app a tool acts on, once its UI is up: the one named, or the one running (Run's or Debug's), refusing in
-    /// words that say what to do when none is, two are, it is paused, refused by the inspector, or ended.</summary>
+    /// <summary>The app a tool acts on, once its UI is up: the one named, or the one running of those the folder inspects
+    /// (<see cref="ProjectSession.Inspecting"/>), refusing in words that say what to do when none is, two are, it is paused,
+    /// refused by the inspector, or ended.</summary>
     private async Task<LiveApp> InspectedAsync(string? app, CancellationToken cancel)
     {
         LiveApp chosen = app switch
         {
             null => Running(),
-            "run" => Session.RunApp ?? throw new InvalidOperationException(Builds.IsRunning
+            "run" => RunApp() ?? throw new InvalidOperationException(Runs(RunningKind.Run)
                 ? $"What Run started is not {Inspectable}, or Hot Reload runs it"
                 : "Run has started no Avalonia or WPF app; run starts one"),
-            "debug" => DebugApp() ?? throw new InvalidOperationException(Session.Debug.IsDebugging
+            "debug" => DebugApp() ?? throw new InvalidOperationException(Runs(RunningKind.Debug)
                 ? $"What is being debugged is not {Inspectable}"
                 : "Debug has started no Avalonia or WPF app; debug_start starts one"),
             "ide" => LiveApp.Own(),
@@ -368,62 +363,84 @@ public sealed partial class PassengerTools
         };
     }
 
+    /// <summary>Whether the folder runs a program of that kind now (<see cref="ProjectSession.Running"/>).</summary>
+    private bool Runs(RunningKind kind) => Session.Running.Any(p => p.Kind == kind);
+
+    /// <summary>The app Run started last, inspected; null when it started none.</summary>
+    private LiveApp? RunApp() => Session.Inspecting.FirstOrDefault(a => a.Kind == RunningKind.Run)?.App;
+
     /// <summary>The app Debug started that a tool means by debug: the chosen Debug tab's while it is debugged (a stop chooses
     /// its tab), else the only one debugged, else the chosen tab's, ended; null when no tab has one.</summary>
     private LiveApp? DebugApp()
     {
-        List<(ToolWindows.DebugTab Tab, LiveApp App)> apps = [.. Session.Debug.Apps];
-        return apps.FirstOrDefault(a => a.Tab == Session.Debug.Chosen && a.Tab.IsLive).App
-            ?? (apps.Where(a => a.Tab.IsLive).ToList() is [var only] ? only.App : null)
+        List<InspectedApp> apps = [.. Session.Inspecting.Where(a => a.Tab is not null)];
+        return apps.FirstOrDefault(a => a.Tab is { IsLive: true } tab && tab == Session.Debug.Chosen)?.App
+            ?? (apps.Where(a => a.Tab is { IsLive: true }).ToList() is [var only] ? only.App : null)
             ?? Session.LiveApp;
     }
 
-    /// <summary>The app of the Debug tab a name gives (debug_state's sessions), refusing a name no tab has or a program that is
-    /// not an inspected app.</summary>
+    /// <summary>The app a name gives: a Debug tab's (debug_state's sessions), else another the folder inspects by the name
+    /// an answer gives it (profile, an AppHost's service), refusing a name none has or a program that is not an inspected app.</summary>
     private LiveApp NamedApp(string name)
     {
         ToolWindows.DebugTab? tab = Session.Debug.Tabs.FirstOrDefault(t => t.Name == name)
             ?? Session.Debug.Tabs.FirstOrDefault(t => t.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
-        return tab is null
-            ? throw new ArgumentException($"No app '{name}': name run, debug, ide or a debugged program{(Session.Debug.Tabs.Count == 0 ? string.Empty : $" ({string.Join(", ", Session.Debug.Tabs.Select(t => t.Name))})")}")
-            : tab.App ?? throw new InvalidOperationException($"{tab.Name} is debugged, and is not {Inspectable}");
+        if (tab is not null)
+        {
+            return tab.App ?? throw new InvalidOperationException($"{tab.Name} is debugged, and is not {Inspectable}");
+        }
+        IReadOnlyList<InspectedApp> others = [.. Session.Inspecting.Where(a => a.Tab is null && a.Kind != RunningKind.Run)];
+        return (others.FirstOrDefault(a => a.Name == name) ?? others.FirstOrDefault(a => a.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))?.App
+            ?? throw new ArgumentException($"No app '{name}': name run, debug, ide or an app the folder runs{Listed()}");
+
+        string Listed() => Session.Inspecting.Where(a => a.Kind != RunningKind.Run).Select(a => a.Tab?.Name ?? a.Name).ToList() is { Count: > 0 } names
+            ? $" ({string.Join(", ", names)})"
+            : string.Empty;
     }
 
     /// <summary>How an answer names a Debug tab's app: debug, or with several debugged its tab's name.</summary>
     private string AppName(ToolWindows.DebugTab tab) => Session.Debug.Apps.Skip(1).Any() ? tab.Name : "debug";
 
-    /// <summary>The app running, Run's or Debug's, when it is one.</summary>
+    /// <summary>How an answer names an inspected app, as app takes it back.</summary>
+    private string AppName(InspectedApp app) => app.Tab is { } tab ? AppName(tab) : app.Name;
+
+    /// <summary>The app running of those the folder inspects, when it is one; with several debugged, the chosen Debug tab's
+    /// stands for Debug's.</summary>
     private LiveApp Running()
     {
-        List<LiveApp> live = [.. new[] { Session.RunApp, DebugApp() }.OfType<LiveApp>().Where(a => a.State is LiveAppState.Waiting or LiveAppState.Connected)];
+        List<InspectedApp> live = [.. Session.Inspecting.Where(a => a.App.State is LiveAppState.Waiting or LiveAppState.Connected)];
+        if (live.FirstOrDefault(a => a.Tab is { } tab && tab == Session.Debug.Chosen) is { } chosen)
+        {
+            live.RemoveAll(a => a.Tab is not null && a != chosen);
+        }
         return live switch
         {
-            [LiveApp only] => only,
-            [LiveApp run, LiveApp debug] => throw new ArgumentException($"Run's {run.Name} and Debug's {debug.Name} are both running: name one with app (run or debug)"),
-            _ => throw new InvalidOperationException(WhyNoneRuns()),
+            [InspectedApp only] => only.App,
+            [] => throw new InvalidOperationException(WhyNoneRuns()),
+            _ => throw new ArgumentException($"{string.Join(" and ", live.Select(a => $"{a.App.Name} ({AppName(a)})"))} are running: name one with app"),
         };
     }
 
-    /// <summary>Why no app is there to inspect. The app of a Run or Debug still winding down has ended once its inspector
-    /// has gone, though its runner has not yet heard the process end (on Windows the socket closes first).</summary>
+    /// <summary>Why no app is there to inspect. The app of a program still winding down has ended once its inspector has
+    /// gone, though its runner has not yet heard the process end (on Windows the socket closes first).</summary>
     private string WhyNoneRuns()
     {
-        LiveApp[] apps = [.. new[] { DebugApp(), Session.RunApp }.OfType<LiveApp>()];
-        if (apps.FirstOrDefault(a => a.State == LiveAppState.Refused) is { } refused)
+        IReadOnlyList<InspectedApp> apps = Session.Inspecting;
+        if (apps.FirstOrDefault(a => a.App.State == LiveAppState.Refused) is { } refused)
         {
-            return refused.Problem ?? $"{refused.Name} cannot be inspected";
+            return refused.App.Problem ?? $"{refused.App.Name} cannot be inspected";
         }
-        LiveApp? launched = (Session.Debug.IsDebugging ? DebugApp() : null) ?? (Builds.IsRunning ? Session.RunApp : null);
-        if (launched is { State: LiveAppState.Ended })
+        IReadOnlyList<RunningProgram> running = Session.Running;
+        if (running.Select(p => p.App).FirstOrDefault(a => a is { State: LiveAppState.Ended }) is { } launched)
         {
             return Ended(launched);
         }
-        if (Builds.IsRunning || Session.Debug.IsDebugging)
+        if (running.Count > 0)
         {
             return $"What is running is not {Inspectable}, or Hot Reload runs it";
         }
         return apps.FirstOrDefault() is { } ended
-            ? Ended(ended)
+            ? Ended(ended.App)
             : "No Avalonia or WPF app is running: run or debug_start one (Avalonia 12, or WPF on Windows), or name app ide for Passenger's own windows";
 
         static string Ended(LiveApp app) => $"{app.Name} has ended: run or debug_start starts it again, or name app ide for Passenger's own windows";
@@ -595,8 +612,8 @@ public sealed record AppWindows(string App, string Framework, string? Avalonia, 
 
 public sealed record AppWindowInfo(string Id, string Type, string? Name, string? Title, double Width, double Height, double Scaling, bool Active, bool Visible, string? Owner);
 
-/// <summary>A failed binding as an agent reads it: the app (run, debug or, with several debugged, its Debug tab's name, or
-/// ide), Avalonia's level, the control, its property and the binding's path, the message, its place in the XAML
+/// <summary>A failed binding as an agent reads it: the app (run, debug or, with several debugged, its Debug tab's name, an
+/// AppHost service's name, or ide), Avalonia's level, the control, its property and the binding's path, the message, its place in the XAML
 /// (path:line:column), how many times, and the nearest members.</summary>
 public sealed record AppBindingError(string App, string Level, string Control, string Property, string Path, string Message, string? Place, int Count,
     IReadOnlyList<string> Nearest);

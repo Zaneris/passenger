@@ -639,7 +639,7 @@ public static class XamlCompletion
     }
 
     /// <summary>Assets a value names: <c>avares://</c> paths of this project's and referenced projects' embedded files, or
-    /// paths from its folder; only XAML files where the element merges one in.</summary>
+    /// paths from its folder; only files of the dialect's XAML where the element merges one in.</summary>
     private static XamlCompletionList Assets(XamlFile file, XmlAttribute attribute, int offset, bool xamlOnly)
     {
         string typed = file.Text[attribute.ValueStart..offset];
@@ -650,7 +650,7 @@ public static class XamlCompletion
         string folder = Path.GetDirectoryName(file.Path) ?? project.Folder;
         foreach (string asset in own)
         {
-            if (xamlOnly && !IsXaml(asset))
+            if (xamlOnly && !file.Dialect.Extensions.Contains(Path.GetExtension(asset).ToLowerInvariant()))
             {
                 continue;
             }
@@ -679,8 +679,6 @@ public static class XamlCompletion
             }
         }
         return new XamlCompletionList(attribute.ValueStart, items, "/:.-#,");
-
-        static bool IsXaml(string path) => Path.GetExtension(path).ToLowerInvariant() is ".axaml" or ".xaml" or ".paml";
     }
 
     private static XamlCompletionList? Extension(XamlFile file, XmlAttribute attribute, int offset)

@@ -77,11 +77,11 @@ public sealed class FolderContainers(string? folder, ContainerEngine engine)
         if (coming)
         {
             // Not waited for by the folder's end, nor held: the IDE's own end removes what its process made should it go first.
-            _ = ended.ContinueWith(async _ =>
+            IdeErrors.Observe(ended.ContinueWith(async _ =>
             {
                 await Task.Delay(TimeSpan.FromSeconds(2));
                 await Task.WhenAll(downing.Select(project => TakeDownAsync(Engine, project, folder, "as the folder closed")));
-            }, TaskScheduler.Default).Unwrap();
+            }, TaskScheduler.Default).Unwrap());
         }
         return ended;
     }

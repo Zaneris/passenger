@@ -13,48 +13,10 @@ namespace Passenger.Languages.TextMate;
 
 /// <summary>A language's TextMate grammar (VS Code's, or Razor's and C#'s from dotnet/roslyn, carried in this assembly
 /// under <c>TextMate/Grammars</c>) with the grammars it embeds, in a registry of its own: TextMateSharp compiles rules as
-/// it meets them and keeps no lock, so everything done with one language's rules holds <see cref="Gate"/>, and two
-/// languages never share any.</summary>
+/// it meets them and keeps no lock, so everything done with one grammar's rules holds <see cref="Gate"/>, and two
+/// grammars never share any.</summary>
 internal sealed partial class Grammar
 {
-    /// <summary>Each scope a grammar here names, by its file. SCSS's includes SassDoc's (its <c>///</c> comments' tags),
-    /// which is not carried: those stay comments.</summary>
-    private static readonly Dictionary<string, string> Files = new(StringComparer.Ordinal)
-    {
-        ["text.xml"] = "xml.tmLanguage.json",
-        ["source.json"] = "JSON.tmLanguage.json",
-        ["source.yaml"] = "yaml.tmLanguage.json",
-        ["text.html.markdown"] = "markdown.tmLanguage.json",
-        ["text.html.basic"] = "html.tmLanguage.json",
-        ["source.css"] = "css.tmLanguage.json",
-        ["source.css.scss"] = "scss.tmLanguage.json",
-        ["source.css.less"] = "less.tmLanguage.json",
-        ["source.js"] = "JavaScript.tmLanguage.json",
-        ["source.ts"] = "TypeScript.tmLanguage.json",
-        ["source.shell"] = "shell-unix-bash.tmLanguage.json",
-        ["source.dockerfile"] = "docker.tmLanguage.json",
-        ["text.aspnetcorerazor"] = "aspnetcorerazor.tmLanguage.json",
-        ["source.cs"] = "csharp.tmLanguage.json",
-    };
-
-    /// <summary>The grammar each language the IDE names is coloured by, and whether its tags pair.</summary>
-    private static readonly Dictionary<string, (string Scope, Tags Tags)> Languages = new(StringComparer.Ordinal)
-    {
-        ["XML"] = ("text.xml", Tags.Xml),
-        ["JSON"] = ("source.json", Tags.None),
-        ["YAML"] = ("source.yaml", Tags.None),
-        ["Markdown"] = ("text.html.markdown", Tags.None),
-        ["HTML"] = ("text.html.basic", Tags.Html),
-        ["CSS"] = ("source.css", Tags.None),
-        ["SCSS"] = ("source.css.scss", Tags.None),
-        ["Less"] = ("source.css.less", Tags.None),
-        ["JavaScript"] = ("source.js", Tags.None),
-        ["TypeScript"] = ("source.ts", Tags.None),
-        ["Shell"] = ("source.shell", Tags.None),
-        ["Dockerfile"] = ("source.dockerfile", Tags.None),
-        ["Razor"] = ("text.aspnetcorerazor", Tags.Html),
-    };
-
     private static readonly Dictionary<string, Lazy<Grammar>> Loaded = [];
 
     /// <summary>The theme every registry shares: each rule's foreground is the kind it colours, as #0000NN.</summary>
@@ -69,18 +31,14 @@ internal sealed partial class Grammar
         rules = new Lazy<IGrammar>(() => Load(scope), LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
-    /// <summary>The language's grammar, made once and shared by every file in it; null for a language with none.</summary>
-    public static Grammar? For(string language)
+    /// <summary>A language's grammar, made once and shared by every file of every language it colours.</summary>
+    public static Grammar For(GrammarFile file)
     {
-        if (!Languages.TryGetValue(language, out (string Scope, Tags Tags) named))
-        {
-            return null;
-        }
         lock (Loaded)
         {
-            if (!Loaded.TryGetValue(language, out Lazy<Grammar>? grammar))
+            if (!Loaded.TryGetValue(file.Scope, out Lazy<Grammar>? grammar))
             {
-                Loaded[language] = grammar = new Lazy<Grammar>(() => new Grammar(named.Scope, named.Tags));
+                Loaded[file.Scope] = grammar = new Lazy<Grammar>(() => new Grammar(file.Scope, file.Tags));
             }
             return grammar.Value;
         }
@@ -139,7 +97,7 @@ internal sealed partial class Grammar
 
         public IRawGrammar GetGrammar(string scopeName)
         {
-            if (!Files.TryGetValue(scopeName, out string? file))
+            if (Language.GrammarFileOf(scopeName) is not { } file)
             {
                 return null!;
             }
@@ -225,6 +183,9 @@ internal sealed partial class Grammar
         }
     }
 }
+
+/// <summary>A grammar carried here: the scope it names, its file under <c>TextMate/Grammars</c>, and how its tags pair.</summary>
+internal sealed record GrammarFile(string Scope, string File, Tags Tags = Tags.None);
 
 /// <summary>Whether a language's tags pair, and how: HTML's void elements (<c>br</c>, <c>img</c>) never close.</summary>
 internal enum Tags

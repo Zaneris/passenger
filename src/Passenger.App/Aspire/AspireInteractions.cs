@@ -185,7 +185,7 @@ public sealed partial class AspireInteractions : IDisposable, IAsyncDisposable
             }
             else
             {
-                _ = dialog.ShowDialog(owner);
+                IdeErrors.Observe(dialog.ShowDialog(owner));
             }
         }
         catch
@@ -362,7 +362,7 @@ public sealed partial class AspireInteractions : IDisposable, IAsyncDisposable
                     return false;
                 }
                 dialog.Closed += (_, _) => result.TrySetResult(false);
-                _ = dialog.ShowDialog(owner);
+                IdeErrors.Observe(dialog.ShowDialog(owner));
                 return true;
             }).WaitAsync(cancel).ConfigureAwait(false);
             return await result.Task.WaitAsync(cancel).ConfigureAwait(false);
@@ -442,8 +442,8 @@ public sealed partial class AspireInteractions : IDisposable, IAsyncDisposable
         {
             UiThread.Post(CloseDialogs);
         }
-        _ = Task.WhenAll(listening, resourceListening).ContinueWith(_ => lifetime.Dispose(), CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        IdeErrors.Observe(Task.WhenAll(listening, resourceListening).ContinueWith(_ => lifetime.Dispose(), CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default));
     }
 
     public async ValueTask DisposeAsync()

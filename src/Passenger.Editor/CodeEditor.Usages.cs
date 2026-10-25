@@ -13,8 +13,11 @@ public sealed partial class CodeEditor
     /// <summary>The pair at the primary caret and what it was found in, found again only when one of those changed.</summary>
     private (TextSnapshot? Text, int Caret, IHighlighter? By, BracePair? Pair) braces;
 
+    /// <summary>The uses of the symbol at the caret, carried with the text while they are kept.</summary>
+    private readonly AnchoredList<UsageHighlight> usages = new(u => u.Range, (u, range) => u with { Range = range });
+
     /// <summary>The uses of the symbol at the caret (sorted), from the host.</summary>
-    public IReadOnlyList<UsageHighlight> UsageHighlights { get; private set; } = [];
+    public IReadOnlyList<UsageHighlight> UsageHighlights => usages.Items;
 
     /// <summary>Whether the uses shown were asked to stay (Highlight Usages in File): they move with edits rather than go,
     /// until Escape or the host takes them away.</summary>
@@ -22,13 +25,13 @@ public sealed partial class CodeEditor
 
     public void SetUsageHighlights(IReadOnlyList<UsageHighlight> uses, bool keep = false)
     {
-        if (uses.Count == 0 && UsageHighlights.Count == 0)
+        if (uses.Count == 0 && usages.Count == 0)
         {
             // None for none: the stripe's marks are worked out again only for a change.
             UsagesKept = false;
             return;
         }
-        UsageHighlights = [.. uses.OrderBy(u => u.Range.Start)];
+        usages.Set(document, [.. uses.OrderBy(u => u.Range.Start)]);
         UsagesKept = keep && uses.Count > 0;
         InvalidateVisual();
     }
@@ -78,15 +81,13 @@ public sealed partial class CodeEditor
         return MatchedBraces != before;
     }
 
-    /// <summary>The uses carried through an edit when kept, else gone with it.</summary>
-    private void FollowUsages(IReadOnlyList<TextEdit> edits)
+    /// <summary>The uses go with an edit unless kept, which their ranges carry through it.</summary>
+    private void FollowUsages()
     {
-        if (UsageHighlights.Count == 0)
+        if (usages.Count > 0 && !UsagesKept)
         {
-            return;
+            usages.Clear();
         }
-        UsageHighlights = UsagesKept ? [.. UsageHighlights.Select(u => u with { Range = TextEditing.MapRange(u.Range, edits) })] : [];
-        UsagesKept = UsageHighlights.Count > 0;
     }
 
     /// <summary>Move Caret to Matching Brace: each caret at a bracket (the one after it, else the one before) goes

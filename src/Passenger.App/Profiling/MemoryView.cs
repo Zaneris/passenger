@@ -83,7 +83,7 @@ public sealed class MemoryView : DockPanel
             }
         };
         Border left = new() { [DockProperty] = Dock.Left, Width = 230, Child = snapshotList, BorderThickness = new Thickness(0, 0, 1, 0) };
-        left.Bind(Border.BorderBrushProperty, left.GetResourceObservable("Passenger.Divider"));
+        left.Bind(Border.BorderBrushProperty, left.GetResourceObservable(TokenKeys.Divider));
         Children.Add(left);
 
         crumbs = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, VerticalAlignment = VerticalAlignment.Center };
@@ -311,7 +311,7 @@ public sealed class MemoryView : DockPanel
         foreach (MemorySnapshot other in snapshots.Where(s => s != snapshot))
         {
             MenuItem item = new() { Header = $"{other.Name} ({other.Taken:HH:mm:ss})" };
-            item.Click += (_, _) => _ = CompareWithAsync(other);
+            item.Click += (_, _) => IdeErrors.Observe(CompareWithAsync(other));
             menu.Items.Add(item);
         }
         CompareMenu = menu;
@@ -330,7 +330,7 @@ public sealed class MemoryView : DockPanel
     {
         if (Current is SnapshotPage { Snapshot: var snapshot } && types.SelectedItem is HeapType type)
         {
-            _ = OpenSetAsync(() => snapshot.ObjectsOf(type), 0);
+            IdeErrors.Observe(OpenSetAsync(() => snapshot.ObjectsOf(type), 0));
         }
     }
 
@@ -338,12 +338,12 @@ public sealed class MemoryView : DockPanel
     {
         if (Current is ComparisonPage { Comparison: var comparison } && deltas.SelectedItem is TypeDelta type)
         {
-            _ = OpenSetAsync(kind switch
+            IdeErrors.Observe(OpenSetAsync(kind switch
             {
                 Kind.New => () => comparison.NewObjectsOf(type),
                 Kind.Dead => () => comparison.DeadObjectsOf(type),
                 _ => () => comparison.SurvivedObjectsOf(type),
-            }, 0);
+            }, 0));
         }
     }
 
@@ -351,7 +351,7 @@ public sealed class MemoryView : DockPanel
     {
         if (Current is SetPage { Set: var set } && objects.SelectedItem is HeapObject item)
         {
-            _ = OpenSetAsync(() => set.Snapshot.ObjectAt(item.Address)!, 1);
+            IdeErrors.Observe(OpenSetAsync(() => set.Snapshot.ObjectAt(item.Address)!, 1));
         }
     }
 
@@ -516,14 +516,14 @@ public sealed class MemoryView : DockPanel
     private static DockPanel Framed(Control header, ListBox list)
     {
         Border band = new() { [DockProperty] = Dock.Top, BorderThickness = new Thickness(0, 0, 0, 1), Child = header, Padding = new Thickness(0, 0, 0, 3) };
-        band.Bind(Border.BorderBrushProperty, band.GetResourceObservable("Passenger.Divider"));
+        band.Bind(Border.BorderBrushProperty, band.GetResourceObservable(TokenKeys.Divider));
         return new DockPanel { Children = { band, list } };
     }
 
     private Control PathStep(RetentionRow row)
     {
         PathIcon chevron = new() { Classes = { "chevron" }, IsVisible = row.Node.Children.Count > 0, RenderTransformOrigin = RelativePoint.Center };
-        chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable("Icon.ChevronRight"));
+        chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(IconKeys.ChevronRight));
         chevron.RenderTransform = new RotateTransform(row.IsExpanded ? 90 : 0);
         row.FollowWhileShown(chevron, (_, _) => chevron.RenderTransform = new RotateTransform(row.IsExpanded ? 90 : 0));
         Border toggle = new() { Width = 18, Height = ListRow.Height, Background = Brushes.Transparent, Child = chevron };
@@ -572,7 +572,7 @@ public sealed class MemoryView : DockPanel
     {
         TextBlock block = Cell(item.Type);
         Avalonia.Controls.Documents.Run address = new($"  0x{item.Address:x}") { FontFamily = CSharp.Fonts.Mono, FontSize = 12 };
-        address.Bind(Avalonia.Controls.Documents.TextElement.ForegroundProperty, block.GetResourceObservable("Passenger.TextMuted"));
+        address.Bind(Avalonia.Controls.Documents.TextElement.ForegroundProperty, block.GetResourceObservable(TokenKeys.TextMuted));
         block.Text = null;
         block.Inlines = new Avalonia.Controls.Documents.InlineCollection { new Avalonia.Controls.Documents.Run(item.Type), address };
         return block;

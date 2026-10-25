@@ -2,6 +2,7 @@ namespace Passenger.Editor;
 
 /// <summary>The editor's actions, by the name a keymap binds. Movements extend the selection when
 /// pressed with Shift (<see cref="IsMovement"/>).</summary>
+[IdentifierHome]
 public static class EditorActions
 {
     public const string Left = "editor.left";

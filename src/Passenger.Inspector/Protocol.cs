@@ -18,14 +18,21 @@ public static class Wire
     public const int Version = 8;
 
     /// <summary>The app's environment: the socket's path, where it connects.</summary>
+    [IdentifierHome]
     public const string SocketVariable = "PASSENGER_INSPECTOR";
 
     /// <summary>The app's environment: Avalonia's renderer debug overlays its windows show from the launch on, as
     /// <see cref="Request.Overlays"/> names them, joined by commas.</summary>
+    [IdentifierHome]
     public const string OverlaysVariable = "PASSENGER_INSPECTOR_OVERLAYS";
 
     /// <summary>A WPF app's environment: the launched project's folder, where its XAML is when its build's symbols do not say.</summary>
+    [IdentifierHome]
     public const string ProjectVariable = "PASSENGER_INSPECTOR_PROJECT";
+
+    /// <summary>The app's environment: a file the inspector traces its start and its answers to.</summary>
+    [IdentifierHome]
+    public const string TraceVariable = "PASSENGER_INSPECTOR_TRACE";
 
     public const string Tree = "tree";
     public const string Details = "details";

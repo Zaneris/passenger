@@ -73,7 +73,7 @@ internal static class Serving
         InspectorTrace.Step("said hello");
         while (connection.Read() is { } request)
         {
-            _ = AnswerAsync(app, connection, request);
+            InspectorTrace.Observe(AnswerAsync(app, connection, request));
         }
         InspectorTrace.Step("Passenger has gone");
         app.Close();
@@ -274,17 +274,21 @@ internal static class ElementIds<T> where T : class
     public static T? Find(long? id) => id is long known && ById.TryGetValue(known, out WeakReference<T>? held) && held.TryGetTarget(out T? element) ? element : null;
 }
 
-/// <summary>A file in the app's environment, PASSENGER_INSPECTOR_TRACE=FILE: the inspector adds each step of its start and
+/// <summary>A file the app's environment names (<see cref="Wire.TraceVariable"/>): the inspector adds each step of its start and
 /// what it answers to it, for an inspector that never says hello or answers wrongly.</summary>
 internal static class InspectorTrace
 {
-    public const string Variable = "PASSENGER_INSPECTOR_TRACE";
-
-    private static readonly string? TraceFile = Environment.GetEnvironmentVariable(Variable) is { Length: > 0 } file ? file : null;
+    private static readonly string? TraceFile = Environment.GetEnvironmentVariable(Wire.TraceVariable) is { Length: > 0 } file ? file : null;
 
     private static readonly object Tracer = new();
 
-    /// <summary>A step of the inspector's to the trace file, while <see cref="Variable"/> names one.</summary>
+    /// <summary>Work the inspector starts and nothing awaits: its fault goes to the trace as it faults, never to the
+    /// app's own handler of unobserved tasks once the task is collected.</summary>
+    public static void Observe(Task work) =>
+        _ = work.ContinueWith(static faulted => Step($"unawaited work failed: {faulted.Exception}"), CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+
+    /// <summary>A step of the inspector's to the trace file, while <see cref="Wire.TraceVariable"/> names one.</summary>
     public static void Step(string step)
     {
         if (TraceFile is not { } file)

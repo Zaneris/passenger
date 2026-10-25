@@ -178,6 +178,42 @@ public sealed class KeymapChoiceTests : IDisposable
         }
     }
 
+    /// <summary>The Debug window's evaluate box names the keys that add a watch there in the keymap in force: Complete
+    /// Statement's in Visual Studio's, Start New Line Before's in VS Code's (Ctrl+Shift+Enter in each, Cmd on the Mac),
+    /// Add to Watches' own once the person sets some, and none once they take them all away.</summary>
+    [AvaloniaFact]
+    public void The_evaluate_box_names_the_keys_that_add_a_watch_in_the_keymap_in_force()
+    {
+        MainWindow window = Open();
+        try
+        {
+            window.Perform(AppActions.ShowDebug);
+            Ui.Settle();
+            string Said() => window.DebugWindow.GetVisualDescendants().OfType<TextBox>()
+                .Single(t => t.PlaceholderText?.StartsWith("Evaluate expression", StringComparison.Ordinal) == true).PlaceholderText!;
+            string enter = Shortcut.Parse("ENTER").Display();
+            string watch = $"Evaluate expression ({enter}) or add a watch ({Shortcut.Parse($"{Cmd} shift ENTER").Display()})";
+            Assert.Equal(watch, Said());
+
+            window.ApplySettings(window.Settings with { Keymap = KeymapPreset.VSCode });
+            Ui.Settle();
+            Assert.Equal(watch, Said());
+
+            window.ApplySettings(window.Settings with { VSCodeShortcuts = new() { [AppActions.AddToWatches] = [$"{Cmd} alt W"] } });
+            Ui.Settle();
+            Assert.Equal($"Evaluate expression ({enter}) or add a watch ({Shortcut.Parse($"{Cmd} alt W").Display()})", Said());
+
+            window.ApplySettings(window.Settings with { VSCodeShortcuts = new() { [AppActions.AddToWatches] = [] } });
+            Ui.Settle();
+            Assert.Equal($"Evaluate expression ({enter})", Said());
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void No_key_of_either_keymap_is_shown_on_two_actions_or_begins_a_chord_another_action_has()
     {

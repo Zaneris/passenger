@@ -440,9 +440,7 @@ public sealed class EditingBehaviourTests
     {
         string folder = TestFolders.Create("colours-");
         File.WriteAllText(Path.Combine(folder, "Numbers.cs"), source);
-        Passenger.App.MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
+        Passenger.App.MainWindow window = Ui.OpenFolder(folder);
         window.OpenFile("Numbers.cs");
         Ui.Settle();
         window.EditorArea.CodeEditor.Focus();

@@ -138,7 +138,7 @@ string ReadTo(char last)
 
 /// <summary>The console as a program drawing in a terminal sets it: UTF-8 and VT sequences both ways on Windows, and a raw
 /// mode (no echo, no line editing, no signals from keys) while it reads keys itself, put back after.</summary>
-static class Terminal
+internal static class Terminal
 {
     private const int StdInput = -10;
     private const int StdOutput = -11;

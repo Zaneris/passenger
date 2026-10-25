@@ -73,8 +73,8 @@ public sealed class HierarchyView : DockPanel
         title = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0), FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
         first = Toggle();
         second = Toggle();
-        first.Click += (_, _) => _ = ChooseAsync(first: true);
-        second.Click += (_, _) => _ = ChooseAsync(first: false);
+        first.Click += (_, _) => IdeErrors.Observe(ChooseAsync(first: true));
+        second.Click += (_, _) => IdeErrors.Observe(ChooseAsync(first: false));
         DockPanel top = new();
         StackPanel toggles = new() { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(8, 0), VerticalAlignment = VerticalAlignment.Center, Children = { first, second } };
         DockPanel.SetDock(toggles, Dock.Right);
@@ -189,7 +189,7 @@ public sealed class HierarchyView : DockPanel
         }
         else
         {
-            _ = ExpandAsync(row);
+            IdeErrors.Observe(ExpandAsync(row));
         }
     }
 
@@ -210,7 +210,7 @@ public sealed class HierarchyView : DockPanel
         row.FollowWhileShown(chevron, (_, _) =>
         {
             chevron.IsVisible = row.Expands;
-            chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(row.IsExpanded ? "Icon.ChevronDown" : "Icon.ChevronRight"));
+            chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(row.IsExpanded ? IconKeys.ChevronDown : IconKeys.ChevronRight));
         });
         chevron.PointerPressed += (_, e) =>
         {

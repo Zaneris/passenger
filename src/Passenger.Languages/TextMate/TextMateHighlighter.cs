@@ -53,9 +53,8 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
 
     public event EventHandler? Changed;
 
-    /// <summary>A highlighter for a language a grammar here colours, by the name the IDE gives it; else null.</summary>
-    public static TextMateHighlighter? For(string language, TextDocument document) =>
-        Grammar.For(language) is { } grammar ? new TextMateHighlighter(document, grammar) : null;
+    /// <summary>A highlighter of a file by a grammar carried here.</summary>
+    internal static TextMateHighlighter For(GrammarFile grammar, TextDocument document) => new(document, Grammar.For(grammar));
 
     /// <summary>What colouring this file has cost off the UI thread: the lines the grammar read, the passes, and the time
     /// they took.</summary>
@@ -141,7 +140,7 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
             tail = Math.Min(tail, batch.Tail);
         }
         BackgroundWork.Begin();
-        Task.Run(() => Pass(old, text, first, tail, passVersion)).ContinueWith(done => OnUi(() =>
+        UnawaitedWork.Observe(Task.Run(() => Pass(old, text, first, tail, passVersion)).ContinueWith(done => OnUi(() =>
         {
             try
             {
@@ -163,7 +162,7 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
             {
                 BackgroundWork.End();
             }
-        }), TaskScheduler.Default);
+        }), TaskScheduler.Default));
     }
 
     /// <summary>Reads the lines of <paramref name="text"/> from <paramref name="first"/> on, with the state the line above

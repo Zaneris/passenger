@@ -7,8 +7,10 @@ namespace Passenger.Tests.Debugging;
 [Collection(DebugSession.Collection)]
 public class LambdaVariablesTests(ITestOutputHelper testOutputHelper)
 {
+    private static readonly int InnerReturn = Debuggees.Line("DebuggableConsoleApp", "Lambdas/MyLambdaClass.cs", "// set breakpoint here");
+
     [Fact]
-    public async Task SharpDbgCli_InLambda_VariablesRequest_Returns_InScopeVariables()
+    public async Task A_stop_in_a_lambda_lists_the_variables_in_its_scope()
     {
         bool startSuspended = true;
         using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
@@ -18,14 +20,14 @@ public class LambdaVariablesTests(ITestOutputHelper testOutputHelper)
             .WithAttachRequest(p2.Id)
             .WaitForInitializedEvent();
         debugProtocolHost
-            .WithBreakpointsRequest([28], Debuggees.Source("DebuggableConsoleApp", "Lambdas", "MyLambdaClass.cs"))
+            .WithBreakpointsRequest([InnerReturn], Debuggees.Source("DebuggableConsoleApp", "Lambdas", "MyLambdaClass.cs"))
             .WithConfigurationDoneRequest()
             .WithOptionalResumeRuntime(p2.Id, startSuspended);
 
         StoppedEvent stoppedEvent = await debugProtocolHost.WaitForStoppedEvent();
         (string filePath, int line, int column) stopInfo = stoppedEvent.ReadStopInfo();
         Assert.EndsWith("MyLambdaClass.cs", stopInfo.filePath);
-        Assert.Equal(28, stopInfo.line);
+        Assert.Equal(InnerReturn, stopInfo.line);
 
         debugProtocolHost
             .WithStackTraceRequest(stoppedEvent.ThreadId!.Value, out StackTraceResponse? stackTraceResponse)

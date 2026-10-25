@@ -53,10 +53,10 @@ public sealed class LiveTreeController
     public LiveTreeController(LiveTreeParts parts)
     {
         this.parts = parts;
-        window = new ToolWindow(ToolWindowIds.LiveTree, "Live Visual Tree", "Icon.LiveTree", Make, ToolAnchor.RightTop) { Action = AppActions.ShowLiveTree };
+        window = new ToolWindow(ToolWindowIds.LiveTree, "Live Visual Tree", IconKeys.LiveTree, Make, ToolAnchor.RightTop) { Action = AppActions.ShowLiveTree };
         parts.Dock.Add(window);
         window.PropertyChanged += OnWindowChanged;
-        parts.Actions.Add(new IdeAction(AppActions.SelectElement, "Select Element", "Debug", context => _ = PickAsync(!picking))
+        parts.Actions.Add(new IdeAction(AppActions.SelectElement, "Select Element", "Debug", context => IdeErrors.Observe(PickAsync(!picking)))
         {
             WhyNot = _ => WhyNotAsk(),
         });
@@ -70,9 +70,9 @@ public sealed class LiveTreeController
     private LiveTreeView Make()
     {
         LiveTreeView made = view = new LiveTreeView();
-        made.ElementChosen += (_, id) => _ = ChooseAsync(id);
-        made.PickRequested += (_, on) => _ = PickAsync(on);
-        made.RefreshRequested += (_, _) => _ = RefreshAsync();
+        made.ElementChosen += (_, id) => IdeErrors.Observe(ChooseAsync(id));
+        made.PickRequested += (_, on) => IdeErrors.Observe(PickAsync(on));
+        made.RefreshRequested += (_, _) => IdeErrors.Observe(RefreshAsync());
         made.GoToRequested += (_, place) => GoTo(place);
         made.BreakRequested += (_, value) => ToggleBreak(value);
         made.Watched = value => details.Details is { } shown && Debugged() is { } debugged && session!.Debug.Breakpoints.FindProperty(debugged, shown.Id, value.Name) is not null;
@@ -187,7 +187,7 @@ public sealed class LiveTreeController
     {
         UiThread.Check();
         ShowWatched();
-        _ = SyncWatchesAsync();
+        IdeErrors.Observe(SyncWatchesAsync());
     }
 
     /// <summary>Break When Value Changes on a property of the chosen element: a property breakpoint set, or the one there
@@ -405,8 +405,8 @@ public sealed class LiveTreeController
         if (app!.State == LiveAppState.Connected)
         {
             parts.Dock.Show(window.Id);
-            _ = RefreshAsync();
-            _ = SyncWatchesAsync();
+            IdeErrors.Observe(RefreshAsync());
+            IdeErrors.Observe(SyncWatchesAsync());
         }
     }
 
@@ -414,7 +414,7 @@ public sealed class LiveTreeController
     {
         if (sender == app)
         {
-            _ = RefreshAsync();
+            IdeErrors.Observe(RefreshAsync());
         }
     }
 
@@ -426,12 +426,12 @@ public sealed class LiveTreeController
         }
         if (window.IsShown && stale)
         {
-            _ = RefreshAsync();
+            IdeErrors.Observe(RefreshAsync());
         }
         else if (!window.IsShown && WhyNotAsk() is null)
         {
             // Nothing outlined in the app while the window that chose it is away.
-            _ = Unoutline(app!);
+            IdeErrors.Observe(Unoutline(app!));
         }
     }
 
@@ -453,12 +453,12 @@ public sealed class LiveTreeController
         ShowBanner(paused ? $"{app!.Name} is paused: its tree and values are as it last ran, and are asked again once it runs." : null);
         if (!paused && stale)
         {
-            _ = RefreshAsync();
+            IdeErrors.Observe(RefreshAsync());
         }
         // Any app's session may have run on since its watches changed, the one followed or another.
         if (watchesStale)
         {
-            _ = SyncWatchesAsync();
+            IdeErrors.Observe(SyncWatchesAsync());
         }
     }
 
@@ -617,7 +617,7 @@ public sealed class LiveTreeController
         }
         Choose(id);
         parts.Dock.Show(window.Id);
-        _ = RefreshAsync();
+        IdeErrors.Observe(RefreshAsync());
         return true;
     }
 
@@ -633,7 +633,7 @@ public sealed class LiveTreeController
         {
             Choose(element);
             parts.Dock.Show(window.Id);
-            _ = RefreshAsync();
+            IdeErrors.Observe(RefreshAsync());
         }
     }
 

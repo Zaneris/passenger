@@ -1,5 +1,5 @@
-using Passenger.App.Packages;
 using Passenger.App.Workspace;
+using Passenger.Packages;
 
 namespace Passenger.App;
 
@@ -14,7 +14,7 @@ public partial class MainWindow
 
     private void AddPackages()
     {
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.NuGet, "NuGet", "Icon.Package", () =>
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.NuGet, "NuGet", IconKeys.Package, () =>
         {
             ToolWindows.NuGetView view = nuget = new ToolWindows.NuGetView(session.Packages);
             view.LinkClicked += (_, link) => Browse(link);
@@ -52,7 +52,7 @@ public partial class MainWindow
         if (session.Packages.Sources != PackageSourceSet.None
             && changes.Paths.Any(p => Path.GetFileName(p).Equals("nuget.config", StringComparison.OrdinalIgnoreCase)))
         {
-            _ = nuget is { } view ? view.ReloadSourcesAsync() : session.Packages.ReloadSourcesAsync();
+            IdeErrors.Observe(nuget is { } view ? view.ReloadSourcesAsync() : session.Packages.ReloadSourcesAsync());
         }
     }
 }

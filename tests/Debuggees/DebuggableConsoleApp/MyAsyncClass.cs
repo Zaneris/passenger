@@ -6,22 +6,22 @@ public class MyAsyncClass
 {
 	public async Task<int> MyMethodAsync(int myParam)
 	{
-		var intVar = 10;
+		int intVar = 10;
 		intVar = 10;
-		var result = await AnotherClass.AnotherMethodAsync();
-		var result2 = await AnotherClass.AnotherMethodAsync();
-		var result3 = await AnotherClass.AnotherMethodAsync();
+		int result = await AnotherClass.AnotherMethodAsync();
+		int result2 = await AnotherClass.AnotherMethodAsync();
+		int result3 = await AnotherClass.AnotherMethodAsync();
 		AnotherClass.AsyncVoidMethod();
 		return result;
 	}
 
 	public async Task<int> MyAsyncMethodWithNoAwaits()
 	{
-		var intVar = 10;
-		var result = AnotherClass.AnotherMethodAsync().GetAwaiter().GetResult();
-		var myString = "Hello";
-		var result2 = AnotherClass.AnotherMethodAsync().Result;
-		var result3 = AnotherClass.AnotherMethodAsync().GetAwaiter().GetResult();
+		int intVar = 10;
+		int result = AnotherClass.AnotherMethodAsync().GetAwaiter().GetResult();
+		string myString = "Hello";
+		int result2 = AnotherClass.AnotherMethodAsync().Result;
+		int result3 = AnotherClass.AnotherMethodAsync().GetAwaiter().GetResult();
 		return result;
 	}
 

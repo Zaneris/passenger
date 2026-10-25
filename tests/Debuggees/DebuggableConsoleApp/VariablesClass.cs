@@ -146,7 +146,7 @@ public class VariablesClass
 
 		DateTime localDateTime = new(2026, 6, 13, 5, 42, 39);
 		Guid localGuid = new Guid("27de5b68-af24-4e59-a785-dde52e2ea7af");
-		var localCompositeValues = new CompositeValueFixtures();
+		CompositeValueFixtures localCompositeValues = new CompositeValueFixtures();
 		;
 	}
 }

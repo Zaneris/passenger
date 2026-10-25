@@ -192,9 +192,7 @@ public sealed class TablesTests : IDisposable
 
     private MainWindow Open(string path)
     {
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder);
         window.OpenFile(path);
         Ui.WaitFor(() => window.EditorArea.ActiveGroup.Table?.Table is not null, $"{Path.GetFileName(path)}'s table to be read");
         return window;

@@ -5,6 +5,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Passenger.App;
 using Passenger.App.Mcp;
+using Passenger.App.State;
 using Passenger.Core;
 
 namespace Passenger.Tests;
@@ -17,9 +18,13 @@ namespace Passenger.Tests;
 /// runs out or fails ends the test naming it and quoting what Passenger said meanwhile.</summary>
 public abstract class McpRig : IDisposable
 {
-    /// <summary>The build's, beside the tests, or an installed copy that PASSENGER_EXECUTABLE names: CI's installer job
-    /// has an agent debug through the Passenger its Windows installer installed.</summary>
-    private static readonly string Passenger = Environment.GetEnvironmentVariable("PASSENGER_EXECUTABLE") is { Length: > 0 } installed
+    /// <summary>What names an installed Passenger for the agents to start in place of the build's.</summary>
+    [IdentifierHome]
+    public const string ExecutableVariable = "PASSENGER_EXECUTABLE";
+
+    /// <summary>The build's, beside the tests, or an installed copy that <see cref="ExecutableVariable"/> names: CI's
+    /// installer job has an agent debug through the Passenger its Windows installer installed.</summary>
+    private static readonly string Passenger = Environment.GetEnvironmentVariable(ExecutableVariable) is { Length: > 0 } installed
         ? installed
         : Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "Passenger.exe" : "Passenger");
 
@@ -115,7 +120,7 @@ public abstract class McpRig : IDisposable
         string? executable = null)
     {
         ProcessStartInfo start = ChildProcesses.Command(executable ?? Passenger, arguments, workingDirectory);
-        start.Environment["PASSENGER_SETTINGS"] = arguments.Contains("--mcp-attach") ? TestRun.Settings : OwnState;
+        start.Environment[StateStore.Variable] = arguments.Contains("--mcp-attach") ? TestRun.Settings : OwnState;
         start.Environment[global::Passenger.Dap.AdapterEnvironment.EngineLogVariable] = EngineLog;
         if (!languageServer)
         {
@@ -155,10 +160,17 @@ public abstract class McpRig : IDisposable
     }
 
     /// <summary>An agent's client to a Passenger this test started, over its standard input and output, asking for the
-    /// protocol version given (the SDK's latest else).</summary>
+    /// protocol version given (the SDK's latest else). Its probe of the latest waits as long as the start may, since one given
+    /// up while the server answers it leaves the initialize it falls back to refused.</summary>
     protected Task<McpClient> Connect(Process passenger, IList<string> arguments, string? protocol = null) =>
         Exchange($"Starting passenger {string.Join(' ', arguments)}", TimeSpan.FromMinutes(1),
-            cancel => McpClient.CreateAsync(new PassengerTransport(passenger), new McpClientOptions { ClientInfo = Agent, ProtocolVersion = protocol }, cancellationToken: cancel));
+            cancel => McpClient.CreateAsync(new PassengerTransport(passenger), new McpClientOptions
+            {
+                ClientInfo = Agent,
+                ProtocolVersion = protocol,
+                InitializationTimeout = TimeSpan.FromMinutes(1).Scaled(),
+                DiscoverProbeTimeout = Timeout.InfiniteTimeSpan,
+            }, cancellationToken: cancel));
 
     /// <summary>The agent as its client names itself, which a window asking to let it in shows the person.</summary>
     private static readonly Implementation Agent = new() { Name = "test-agent", Title = "Test Agent", Version = "1.0" };
@@ -206,10 +218,7 @@ public abstract class McpRig : IDisposable
     /// asks nothing of C# code.</summary>
     protected static MainWindow AgentsWindow(string at, bool languageServer = true)
     {
-        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = languageServer };
-        window.Show();
-        window.OpenFolder(at);
-        Ui.Settle();
+        MainWindow window = Ui.OpenFolder(at, languageServer: languageServer);
         window.ApplySettings(window.Settings with { McpServer = true });
         Assert.True(window.AgentSocket is not null, $"The window does not listen for agents: {window.Status}");
         return window;
@@ -270,7 +279,7 @@ public abstract class McpRig : IDisposable
 
     /// <summary>An agent's call the window first asks the person about, its question naming the tool and what it would do;
     /// allowed, the call's answer.</summary>
-    protected JsonElement Asked(MainWindow window, McpClient client, string tool, string what, Dictionary<string, object?>? arguments = null)
+    protected JsonElement Asked(MainWindow window, McpClient client, [IdentifierOf(typeof(McpTools))] string tool, string what, Dictionary<string, object?>? arguments = null)
     {
         Task<JsonElement> calling = Task.Run(() => Call(client, tool, arguments));
         ConfirmDialog asked = Question(window, $"the question for the agent's {tool}");
@@ -282,7 +291,7 @@ public abstract class McpRig : IDisposable
     }
 
     /// <summary>An agent's call answered without a question to the person.</summary>
-    protected JsonElement Unasked(MainWindow window, McpClient client, string tool, Dictionary<string, object?>? arguments = null)
+    protected JsonElement Unasked(MainWindow window, McpClient client, [IdentifierOf(typeof(McpTools))] string tool, Dictionary<string, object?>? arguments = null)
     {
         Task<JsonElement> calling = Task.Run(() => Call(client, tool, arguments));
         WaitFor(() => calling.IsCompleted || window.OwnedWindows.OfType<ConfirmDialog>().Any(), $"the agent's {tool}", AgentLimit);
@@ -301,7 +310,7 @@ public abstract class McpRig : IDisposable
 
     /// <summary>A tool's answer, read as the JSON it is; a tool's error fails the test with its words and
     /// what Passenger said meanwhile.</summary>
-    protected async Task<JsonElement> Call(McpClient client, string tool, Dictionary<string, object?>? arguments = null)
+    protected async Task<JsonElement> Call(McpClient client, [IdentifierOf(typeof(McpTools))] string tool, Dictionary<string, object?>? arguments = null)
     {
         CallToolResult result = await Result(client, tool, arguments);
         string text = Text(result);
@@ -327,7 +336,7 @@ public abstract class McpRig : IDisposable
 
     /// <summary>A tool's whole result, an error's included, within the time the tool may take, or until the test gives up
     /// on it; with <paramref name="heard"/>, the call asks for progress and keeps what it is told.</summary>
-    protected Task<CallToolResult> Result(McpClient client, string tool, Dictionary<string, object?>? arguments = null, CancellationTokenSource? giveUp = null, Heard? heard = null) =>
+    protected Task<CallToolResult> Result(McpClient client, [IdentifierOf(typeof(McpTools))] string tool, Dictionary<string, object?>? arguments = null, CancellationTokenSource? giveUp = null, Heard? heard = null) =>
         Exchange($"The {tool} call", Limit(tool), cancel => client.CallToolAsync(tool, arguments, heard, cancellationToken: cancel).AsTask(), giveUp);
 
     /// <summary>The progress an agent's call was told, as the SDK hands it over, on any thread.</summary>
@@ -361,7 +370,7 @@ public abstract class McpRig : IDisposable
     /// <summary>A tool call the agent gives up on as the protocol has it: sent under an id of its own, and on giving up a
     /// "cancelled" notification naming that id. The SDK's own call can drop that notification (1 in 200 under load), leaving
     /// the window waiting.</summary>
-    protected static async Task<CallToolResult> CallGivingUp(McpClient client, string tool, Dictionary<string, object?> arguments, CancellationToken giveUp)
+    protected static async Task<CallToolResult> CallGivingUp(McpClient client, [IdentifierOf(typeof(McpTools))] string tool, Dictionary<string, object?> arguments, CancellationToken giveUp)
     {
         RequestId id = new($"given-up-{Guid.NewGuid():N}");
         CallToolRequestParams call = new()
@@ -385,11 +394,11 @@ public abstract class McpRig : IDisposable
     /// <summary>How long a tool may take before the test calls it hung: minutes for one that builds first; for one that asks
     /// the language server, longer than the 120 s Passenger waits for it to load the folder, so its own words come back;
     /// a minute for any other.</summary>
-    protected static TimeSpan Limit(string tool) => tool switch
+    protected static TimeSpan Limit([IdentifierOf(typeof(McpTools))] string tool) => tool switch
     {
-        "build" or "debug_start" or "run" or "tests_run" or "profile" or "nuget_install" => TimeSpan.FromMinutes(5),
-        "diagnostics" or "symbol_info" or "definition" or "usages" or "hierarchy" or "rename" or "code_actions"
-            or "apply_code_action" or "format" or "find_symbol" or "outline" or "refactor" => TimeSpan.FromMinutes(3),
+        McpTools.Build or McpTools.DebugStart or McpTools.Run or McpTools.TestsRun or McpTools.Profile or McpTools.NugetInstall => TimeSpan.FromMinutes(5),
+        McpTools.Diagnostics or McpTools.SymbolInfo or McpTools.Definition or McpTools.Usages or McpTools.Hierarchy or McpTools.Rename or McpTools.CodeActions
+            or McpTools.ApplyCodeAction or McpTools.Format or McpTools.FindSymbol or McpTools.Outline or McpTools.Refactor => TimeSpan.FromMinutes(3),
         _ => TimeSpan.FromMinutes(1),
     };
 
@@ -448,7 +457,7 @@ public abstract class McpRig : IDisposable
             ? local.GetProperty("value").GetString()
             : null;
 
-    protected void Write(string relative, string text) => File.WriteAllText(Path.Combine(Folder, relative), text);
+    protected void Write(string relative, string text) => TestFolders.Write(Folder, relative, text);
 
     /// <summary>A working tree under a folder (work), one commit in and Notes.txt changed since, whose origin is a bare
     /// repository beside it (remote.git) that refuses every push when <paramref name="refusing"/>, its pre-receive hook
@@ -512,6 +521,17 @@ public abstract class McpRig : IDisposable
     protected static string Text(JsonElement answer) => answer.ValueKind == JsonValueKind.String ? answer.GetString()! : answer.GetRawText();
 
     protected static string Text(CallToolResult result) => string.Concat(result.Content.OfType<TextContentBlock>().Select(t => t.Text));
+
+    /// <summary>usages' places, each file's "line:column text" read apart, in the answer's order.</summary>
+    protected static IReadOnlyList<(string Path, int Line, int Column, string Text)> Used(JsonElement usages) =>
+        [.. usages.GetProperty("files").EnumerateArray().SelectMany(file => file.GetProperty("places").EnumerateArray().Select(place =>
+        {
+            string said = place.GetString()!;
+            int space = said.IndexOf(' ', StringComparison.Ordinal);
+            string[] at = (space < 0 ? said : said[..space]).Split(':');
+            return (file.GetProperty("path").GetString()!, int.Parse(at[0], System.Globalization.CultureInfo.InvariantCulture),
+                int.Parse(at[1], System.Globalization.CultureInfo.InvariantCulture), space < 0 ? string.Empty : said[(space + 1)..]);
+        }))];
 
     /// <summary>A PNG's width and height, from its header.</summary>
     protected static (int Width, int Height) PngSize(byte[] png)

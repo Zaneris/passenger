@@ -3,7 +3,7 @@ internal class Program
 {
 	public static async Task Main(string[] args)
 	{
-		var test = 4;
+		int test = 4;
 		await Task.Delay(10);
 		Console.WriteLine(test);
 	}

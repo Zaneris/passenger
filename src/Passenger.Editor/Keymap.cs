@@ -36,6 +36,9 @@ public readonly record struct Keystroke(Key Key, KeyModifiers Modifiers)
 
     public static Keystroke From(KeyEventArgs e) => new(e.Key, e.KeyModifiers);
 
+    /// <summary>The modifier the platform's commands take: Cmd on macOS, Ctrl elsewhere.</summary>
+    public static KeyModifiers Command => OperatingSystem.IsMacOS() ? KeyModifiers.Meta : KeyModifiers.Control;
+
     /// <summary>Whether the key is on the numeric keypad (its operators, decimal point and digits), a key of its own
     /// beside the one that types the same character.</summary>
     public bool IsOnKeypad => Keypad(Key) is not null;

@@ -1,6 +1,4 @@
 using System.Globalization;
-using System.Net;
-using System.Net.Sockets;
 using System.Text;
 using Avalonia;
 using Avalonia.Controls;
@@ -10,6 +8,7 @@ using Avalonia.Input;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Endpoints;
+using Passenger.App.State;
 
 namespace Passenger.Tests;
 
@@ -256,13 +255,13 @@ public sealed class EndpointsTests : IDisposable
         window.ShowToolWindow(ToolWindowIds.Endpoints);
         Ui.WaitFor(() => window.Endpoints.Requests.Count == 4, "the requests");
         EndpointRequest whoami = window.Endpoints.Requests.Single(r => r.Name == "Who am I");
-        string set = System.Environment.GetEnvironmentVariable("PASSENGER_SETTINGS")!;
+        string set = System.Environment.GetEnvironmentVariable(StateStore.Variable)!;
 
         // The env file's token hides a $processEnv the .http file never shows; the question names it, and one not set.
         Ui.Click(RowButton(window, whoami, "endpointTest"));
         EndpointQuestionDialog question = DialogButtonsTests.Check(window.Endpoints.Question ?? throw new Xunit.Sdk.XunitException("A request reading the person's environment was sent unasked"));
         Assert.Contains($"127.0.0.1:{api.Port}", question.Title);
-        Assert.Equal([new EndpointRead(false, "PASSENGER_ENDPOINTS_UNSET", Missing: true), new EndpointRead(false, "PASSENGER_SETTINGS")], question.Reads);
+        Assert.Equal([new EndpointRead(false, "PASSENGER_ENDPOINTS_UNSET", Missing: true), new EndpointRead(false, StateStore.Variable)], question.Reads);
         Assert.Contains(question.GetVisualDescendants().OfType<TextBlock>(), t => t.Text?.Contains("PASSENGER_ENDPOINTS_UNSET, which is not set", StringComparison.Ordinal) == true);
         Ui.Click(question.DontAllowButton);
         Assert.Null(window.Endpoints.Question);
@@ -447,7 +446,7 @@ public sealed class EndpointsTests : IDisposable
         Ui.Click(RowButton(window, window.Endpoints.Requests.Single(r => r.Name == "Other port"), "endpointTest"));
         EndpointQuestionDialog question = window.Endpoints.Question ?? throw new Xunit.Sdk.XunitException("A request reading the person's environment was sent unasked");
         Ui.Click(question.AllowButton);
-        Assert.Equal(System.Environment.GetEnvironmentVariable("PASSENGER_SETTINGS"), Assert.Single(api.Received).Header("X-Secret"));
+        Assert.Equal(System.Environment.GetEnvironmentVariable(StateStore.Variable), Assert.Single(api.Received).Header("X-Secret"));
         StandInApi.Request redirected = Assert.Single(other.Received);
         Assert.Equal("GET /items", redirected.Line);
         Assert.True(redirected.Header("X-Secret") is null, "What the request read was allowed to one port of the host and sent to another");
@@ -478,7 +477,7 @@ public sealed class EndpointsTests : IDisposable
             Ui.Click(RowButton(window, window.Endpoints.Requests.Single(r => r.Name == "Other port"), "endpointTest"));
             EndpointQuestionDialog question = Assert.IsType<EndpointQuestionDialog>(window.Endpoints.Question);
             Ui.Click(question.AllowButton);
-            Assert.Equal(Environment.GetEnvironmentVariable("PASSENGER_SETTINGS"), Assert.Single(api.Received).Header("X-Secret"));
+            Assert.Equal(Environment.GetEnvironmentVariable(StateStore.Variable), Assert.Single(api.Received).Header("X-Secret"));
             Assert.Null(Assert.Single(other.Received).Header("X-Secret"));
             Assert.Equal(200, window.Endpoints.Response.Response!.Status);
             Assert.Equal([$"Redirected to {other.Root}, another origin, without the request's headers"], window.Endpoints.Response.Response.Notes);
@@ -615,31 +614,23 @@ public sealed class EndpointsTests : IDisposable
             public string? Header(string name) => Headers.TryGetValue(name, out string? value) ? value : null;
         }
 
-        private readonly TcpListener listener = new(IPAddress.Loopback, 0);
+        private readonly StandInHttp http;
         private readonly List<Request> received = [];
         private readonly TaskCompletionSource held = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private int connections;
-        private int open;
 
-        public StandInApi()
-        {
-            listener.Start();
-            Port = ((IPEndPoint)listener.LocalEndpoint).Port;
-            Root = $"http://127.0.0.1:{Port}";
-            _ = Task.Run(AcceptAsync);
-        }
+        public StandInApi() => http = new StandInHttp(AnswerAsync, keepAlive: true);
 
         /// <summary>Its port, which GET /elsewhere sends the client to under another host's name, localhost.</summary>
-        public int Port { get; }
+        public int Port => http.Port;
 
-        public string Root { get; }
+        public string Root => http.Root;
 
         /// <summary>Where GET and POST /other-port send the client: another stand-in's root, at another port of this host.</summary>
         public string? RedirectRoot { get; set; }
 
-        public int Connections => Volatile.Read(ref connections);
+        public int Connections => http.Connections;
 
-        public int Open => Volatile.Read(ref open);
+        public int Open => http.Open;
 
         public IReadOnlyList<Request> Received
         {
@@ -655,106 +646,41 @@ public sealed class EndpointsTests : IDisposable
         public void Dispose()
         {
             held.TrySetResult();
-            listener.Stop();
+            http.Dispose();
         }
 
-        private async Task AcceptAsync()
+        private async Task AnswerAsync(StandInHttp.Exchange exchange)
         {
-            while (true)
+            Request request = new(exchange.Connection, exchange.Line, exchange.Headers, Encoding.UTF8.GetString(exchange.Body));
+            lock (received)
             {
-                TcpClient client;
-                try
-                {
-                    client = await listener.AcceptTcpClientAsync();
-                }
-                catch (Exception error) when (error is SocketException or ObjectDisposedException)
-                {
-                    return;
-                }
-                int id = Interlocked.Increment(ref connections);
-                Interlocked.Increment(ref open);
-                _ = Task.Run(() => ServeAsync(client, id));
+                received.Add(request);
             }
+            if (request.Line == "GET /slow")
+            {
+                // Held until the test is done with it, as a server that never answers.
+                await held.Task.WaitAsync(exchange.Ending);
+            }
+            string? location = request.Line switch
+            {
+                "GET /moved" => "/items",
+                "GET /elsewhere" => $"http://localhost:{Port}/items",
+                "GET /other-port" or "POST /other-port" => $"{RedirectRoot}/items",
+                _ => null,
+            };
+            (int status, string body) = Answer(request);
+            await exchange.ReplyAsync(status, "application/json; charset=utf-8", body, location is null ? string.Empty : $"Location: {location}\r\n");
         }
 
-        private async Task ServeAsync(TcpClient client, int id)
+        private static (int, string) Answer(Request request) => request.Line switch
         {
-            try
-            {
-                using (client)
-                {
-                    NetworkStream stream = client.GetStream();
-                    // Keep-alive: requests are read until the client closes, so a client used twice would be seen.
-                    while (await ReadAsync(stream, id) is { } request)
-                    {
-                        lock (received)
-                        {
-                            received.Add(request);
-                        }
-                        if (request.Line == "GET /slow")
-                        {
-                            // Held until the test is done with it, as a server that never answers.
-                            await held.Task.WaitAsync(TimeSpan.FromMinutes(2));
-                        }
-                        (int status, string reason, string body) = Answer(request);
-                        byte[] content = Encoding.UTF8.GetBytes(body);
-                        string? location = request.Line switch
-                        {
-                            "GET /moved" => "/items",
-                            "GET /elsewhere" => $"http://localhost:{Port}/items",
-                            "GET /other-port" or "POST /other-port" => $"{RedirectRoot}/items",
-                            _ => null,
-                        };
-                        string head = $"HTTP/1.1 {status} {reason}\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: {content.Length}\r\n"
-                            + (location is null ? string.Empty : $"Location: {location}\r\n") + "\r\n";
-                        await stream.WriteAsync(Encoding.ASCII.GetBytes(head));
-                        await stream.WriteAsync(content);
-                    }
-                }
-            }
-            catch (Exception error) when (error is IOException or TimeoutException)
-            {
-            }
-            finally
-            {
-                Interlocked.Decrement(ref open);
-            }
-        }
-
-        private static (int, string, string) Answer(Request request) => request.Line switch
-        {
-            "GET /items" => (200, "OK", """{"items":[{"id":1,"name":"Ada"}]}"""),
-            "GET /moved" or "GET /elsewhere" or "GET /other-port" => (302, "Found", string.Empty),
-            "POST /other-port" => (307, "Temporary Redirect", string.Empty),
-            "GET /slow" => (200, "OK", "{}"),
-            "GET /huge" => (200, "OK", string.Concat(Enumerable.Repeat(new string('a', 99) + "\n", (EndpointClient.MostRead / 100) + 10_000))),
-            "POST /items" or "PUT /items" => (201, "Created", request.Body),
-            _ => (404, "Not Found", """{"error":"not found"}"""),
+            "GET /items" => (200, """{"items":[{"id":1,"name":"Ada"}]}"""),
+            "GET /moved" or "GET /elsewhere" or "GET /other-port" => (302, string.Empty),
+            "POST /other-port" => (307, string.Empty),
+            "GET /slow" => (200, "{}"),
+            "GET /huge" => (200, string.Concat(Enumerable.Repeat(new string('a', 99) + "\n", (EndpointClient.MostRead / 100) + 10_000))),
+            "POST /items" or "PUT /items" => (201, request.Body),
+            _ => (404, """{"error":"not found"}"""),
         };
-
-        private static async Task<Request?> ReadAsync(NetworkStream stream, int id)
-        {
-            List<byte> head = [];
-            byte[] one = new byte[1];
-            while (!(head.Count >= 4 && head[^4] == '\r' && head[^3] == '\n' && head[^2] == '\r' && head[^1] == '\n'))
-            {
-                if (await stream.ReadAsync(one) == 0)
-                {
-                    return null;
-                }
-                head.Add(one[0]);
-            }
-            string[] lines = Encoding.ASCII.GetString([.. head]).Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
-            Dictionary<string, string> headers = new(StringComparer.OrdinalIgnoreCase);
-            foreach (string line in lines.Skip(1))
-            {
-                int colon = line.IndexOf(':');
-                headers[line[..colon]] = line[(colon + 1)..].Trim();
-            }
-            byte[] body = new byte[headers.TryGetValue("Content-Length", out string? length) ? int.Parse(length) : 0];
-            await stream.ReadExactlyAsync(body);
-            string[] request = lines[0].Split(' ');
-            return new Request(id, $"{request[0]} {request[1]}", headers, Encoding.UTF8.GetString(body));
-        }
     }
 }

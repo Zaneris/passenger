@@ -270,9 +270,7 @@ public sealed class DataBreakpointTests : IClassFixture<RestoredFolders>, IDispo
     /// <summary>A window on the program with its file open, with no C# language server, which debugging asks nothing of.</summary>
     private MainWindow Open()
     {
-        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
-        window.Show();
-        window.OpenFolder(folder);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         window.OpenFile(program);
         Ui.Settle();
         return window;

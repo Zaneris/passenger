@@ -7,10 +7,12 @@ namespace Passenger.Dap;
 public static class AdapterEnvironment
 {
     /// <summary>The variable that gives <see cref="EvaluationTimeout"/> in milliseconds.</summary>
+    [IdentifierHome]
     public const string EvaluationTimeoutVariable = "PASSENGER_EVAL_TIMEOUT_MS";
 
     /// <summary>The variable naming a file the engine's own log of every session is kept in, for a stop or an end that
     /// goes wrong.</summary>
+    [IdentifierHome]
     public const string EngineLogVariable = "PASSENGER_ENGINE_LOG";
 
     /// <summary>How long an evaluation runs when nothing says otherwise.</summary>

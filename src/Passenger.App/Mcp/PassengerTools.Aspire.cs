@@ -5,7 +5,6 @@ using ModelContextProtocol.Server;
 using Passenger.App.Aspire;
 using Passenger.App.Debugging;
 using Passenger.App.Run;
-using Passenger.App.Workspace;
 
 namespace Passenger.App.Mcp;
 

@@ -147,12 +147,7 @@ public sealed class HeadlessTestsFolder : IDisposable
         }
         """;
 
-    private void Write(string relative, string text)
-    {
-        string path = Path.Combine(Folder, relative);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, text);
-    }
+    private void Write(string relative, string text) => TestFolders.Write(Folder, relative, text);
 }
 
 /// <summary>A failing Avalonia headless test shows what its windows looked like as it failed: run from the Unit Tests
@@ -290,9 +285,7 @@ public sealed class TestFramesTests(HeadlessTestsFolder project) : IClassFixture
 
     private MainWindow Open()
     {
-        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
-        window.Show();
-        window.OpenFolder(project.Folder);
+        MainWindow window = Ui.OpenFolder(project.Folder, languageServer: false);
         window.Perform(AppActions.ShowTests);
         Ui.Settle();
         Ui.WaitFor(() => Methods(window, "The_box_is_where_it_was_put").Count == 2, "both projects' tests read from the code");

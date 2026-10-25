@@ -83,7 +83,7 @@ Children.Run();
 // Code of the user's own that says it is not theirs: Just My Code passes over it, and a catch in it
 // leaves an exception unhandled by the user.
 [DebuggerNonUserCode]
-static class Wrapper
+internal static class Wrapper
 {
 	public static void CallWithCatch(Action callback)
 	{
@@ -91,20 +91,20 @@ static class Wrapper
 	}
 }
 
-static class Attributed
+internal static class Attributed
 {
 	[DebuggerStepThrough] public static void StepThrough() => Console.WriteLine("1");
 	[DebuggerNonUserCode] public static void NonUser() => Console.WriteLine("2");
 	[DebuggerHidden] public static void Hidden() => Console.WriteLine("3");
 }
 
-static class Slow
+internal static class Slow
 {
 	// A getter that never returns: the debugger must stop evaluating it, and go on.
 	public static int Forever { get { while (true) { } } }
 }
 
-static class Captures
+internal static class Captures
 {
 	public static void Outer(int captured)
 	{
@@ -113,7 +113,7 @@ static class Captures
 	}
 }
 
-static class Nested
+internal static class Nested
 {
 	public static void Throw()
 	{
@@ -127,7 +127,7 @@ static class Nested
 }
 
 // [DebuggerDisplay] as upstream's #51 and #53 spell out what it should show.
-static class Displays
+internal static class Displays
 {
 	public static void Show()
 	{
@@ -150,61 +150,61 @@ static class Displays
 }
 
 [DebuggerDisplay("{Amount} {Currency,nq}")]
-sealed class Money { public decimal Amount; public string Currency = ""; }
+internal sealed class Money { public decimal Amount; public string Currency = ""; }
 
 [DebuggerDisplay("{Amount} {Currency}")]
-sealed class QuotedMoney { public decimal Amount; public string Currency = ""; }
+internal sealed class QuotedMoney { public decimal Amount; public string Currency = ""; }
 
 [DebuggerDisplay("\\{{Value}\\}")]
-sealed class Braced { public int Value = 3; }
+internal sealed class Braced { public int Value = 3; }
 
 [DebuggerDisplay("Value={Value} Bad={NoSuchMember}")]
-sealed class Missing { public int Value = 2; }
+internal sealed class Missing { public int Value = 2; }
 
 [DebuggerDisplay("{_name,nq} -> {Next._name,nq}")]
-sealed class Link(string name, Link? next) { string _name = name; public Link? Next = next; }
+internal sealed class Link(string name, Link? next) { private string _name = name; public Link? Next = next; }
 
 [DebuggerDisplay("{Value}", Name = "renamed", Type = "RetypedThing")]
-sealed class Labelled { public int Value = 11; }
+internal sealed class Labelled { public int Value = 11; }
 
-sealed class Holder { public Labelled Item = new(); }
+internal sealed class Holder { public Labelled Item = new(); }
 
 [DebuggerDisplay("base {Tag,nq}")]
-class Base { public string Tag = "b"; }
-sealed class Derived : Base { public int Extra = 9; }
+internal class Base { public string Tag = "b"; }
+internal sealed class Derived : Base { public int Extra = 9; }
 
 [DebuggerDisplay("({X}, {Y})")]
-readonly struct Point(int x, int y) { public int X { get; } = x; public int Y { get; } = y; }
+internal readonly struct Point(int x, int y) { public int X { get; } = x; public int Y { get; } = y; }
 
 [DebuggerDisplay("box of {Value}")]
-sealed class Box<T> { public T? Value; }
+internal sealed class Box<T> { public T? Value; }
 
-sealed class LiftedObject
+internal sealed class LiftedObject
 {
 	[DebuggerBrowsable(DebuggerBrowsableState.RootHidden)]
 	public Inner Part = new();
 }
 
-sealed class Inner { public int A = 1; public string B = "b"; }
+internal sealed class Inner { public int A = 1; public string B = "b"; }
 
 [DebuggerTypeProxy(typeof(AngryProxy))]
-sealed class Angry { public int Real = 1; }
+internal sealed class Angry { public int Real = 1; }
 
-sealed class AngryProxy
+internal sealed class AngryProxy
 {
 	public AngryProxy(Angry target) => throw new InvalidOperationException("no");
 	public int Doubled => 2;
 }
 
 // A ToString that throws, as one under debugging may: the value is still there to open.
-sealed class Unprintable
+internal sealed class Unprintable
 {
 	public int Kept = 5;
 	public override string ToString() => throw new InvalidOperationException("no text");
 }
 
 // What the debugger's IL interpreter must get right (upstream #30).
-static class Interpreter
+internal static class Interpreter
 {
 	public static void Run()
 	{
@@ -224,14 +224,14 @@ static class Interpreter
 	}
 }
 
-enum SignedEnum : sbyte { MinusOne = -1 }
-enum WideEnum : ushort { Max = 65535 }
-struct Pair<T> { public T Value; }
-struct Counter { public int Count; public void Increment() => Count++; }
-interface IBump { void Bump(); }
-struct Bumped : IBump { public int N; public void Bump() => N++; }
+internal enum SignedEnum : sbyte { MinusOne = -1 }
+internal enum WideEnum : ushort { Max = 65535 }
+internal struct Pair<T> { public T Value; }
+internal struct Counter { public int Count; public void Increment() => Count++; }
+internal interface IBump { void Bump(); }
+internal struct Bumped : IBump { public int N; public void Bump() => N++; }
 
-static class Bumper
+internal static class Bumper
 {
 	public static void Work<T>(T item) where T : IBump
 	{
@@ -240,10 +240,10 @@ static class Bumper
 }
 
 // Upstream's #59: two workers waiting while Main stops.
-static class Threads
+internal static class Threads
 {
-	static readonly ManualResetEventSlim Gate = new(false);
-	static readonly CountdownEvent Started = new(2);
+	private static readonly ManualResetEventSlim Gate = new(false);
+	private static readonly CountdownEvent Started = new(2);
 
 	public static void Run()
 	{
@@ -258,7 +258,7 @@ static class Threads
 		unnamed.Join();
 	}
 
-	static void Wait()
+	private static void Wait()
 	{
 		Started.Signal();
 		Gate.Wait();
@@ -266,7 +266,7 @@ static class Threads
 }
 
 // Set Next Statement's case: three additions to skip over or go back to.
-static class Jumps
+internal static class Jumps
 {
 	public static void Run()
 	{
@@ -279,7 +279,7 @@ static class Jumps
 }
 
 // A program being debugged that starts a .NET program of its own, which must run as it would undebugged.
-static class Children
+internal static class Children
 {
 	public static void Run()
 	{
@@ -318,7 +318,7 @@ public static class Emitted
 
 // A getter blocked in a read of input, outside the runtime: an evaluation of it cannot be stopped until the program has a
 // line. A worker passes a line of its own meanwhile.
-static class Reads
+internal static class Reads
 {
 	public static string Input => Console.ReadLine() ?? "none";
 
@@ -338,7 +338,7 @@ static class Reads
 }
 
 // The profiler's case: a method that keeps the thread busy, so its samples stand out.
-static class Busy
+internal static class Busy
 {
 	public static double Spin(TimeSpan time)
 	{
@@ -371,7 +371,7 @@ static class Busy
 
 // Code of the user's that CoreLib calls back: the frame below it is CoreLib's, which ships without symbols, so the
 // debugger decompiles it (the largest assembly a program loads) to show it with source.
-static class CoreLibCalls
+internal static class CoreLibCalls
 {
 	public static void Run()
 	{
@@ -385,7 +385,7 @@ static class CoreLibCalls
 
 // A stop whose values are slow to read: a getter that says it runs and never returns, and one that counts its evaluations,
 // which a stop the program has left must never run.
-static class Leaves
+internal static class Leaves
 {
 	public static int Counted;
 
@@ -412,7 +412,7 @@ static class Leaves
 
 // A program let go a moment after a read of its stop began an evaluation: the let-go waits for that evaluation's end, and
 // the program runs on to its own.
-static class LetsGo
+internal static class LetsGo
 {
 	public static string Slow
 	{
@@ -438,12 +438,12 @@ static class LetsGo
 // and cannot end until the program goes on and the holder lets it go, once the evaluation has waited 5 s, longer than the
 // tests give an evaluation. Then the lock is every thread's to take again: another thread's evaluation takes it, and so
 // does that thread.
-static class Locks
+internal static class Locks
 {
-	static readonly object Gate = new();
-	static readonly ManualResetEventSlim Holding = new();
-	static long waitingSince;
-	static int turns;
+	private static readonly object Gate = new();
+	private static readonly ManualResetEventSlim Holding = new();
+	private static long waitingSince;
+	private static int turns;
 
 	// Works a while inside the lock, where an abort left on its thread would find it holding the lock.
 	public static int Taken
@@ -460,7 +460,7 @@ static class Locks
 		}
 	}
 
-	static bool WaitedLongEnough() => Volatile.Read(ref waitingSince) is var since && since != 0 && Stopwatch.GetElapsedTime(since) > TimeSpan.FromSeconds(5);
+	private static bool WaitedLongEnough() => Volatile.Read(ref waitingSince) is var since && since != 0 && Stopwatch.GetElapsedTime(since) > TimeSpan.FromSeconds(5);
 
 	public static void Run()
 	{
@@ -497,11 +497,11 @@ static class Locks
 // it has spun 5 s, longer than the tests give an evaluation: the runtime puts an abort off until the block is left, by
 // then after the program has gone on. That thread is in its loop by the stop, past the initialization of every type the
 // evaluation uses (Finally's statics, Stopwatch): paused inside one, it would hold the evaluation short of its finally.
-static class Finally
+internal static class Finally
 {
-	static readonly ManualResetEventSlim Looping = new();
-	static long spinningSince;
-	static int letOut;
+	private static readonly ManualResetEventSlim Looping = new();
+	private static long spinningSince;
+	private static int letOut;
 	public static int Turns;
 
 	public static int Spins
@@ -522,7 +522,7 @@ static class Finally
 		}
 	}
 
-	static bool SpunLongEnough() => Volatile.Read(ref spinningSince) is var since && since != 0 && Stopwatch.GetElapsedTime(since) > TimeSpan.FromSeconds(5);
+	private static bool SpunLongEnough() => Volatile.Read(ref spinningSince) is var since && since != 0 && Stopwatch.GetElapsedTime(since) > TimeSpan.FromSeconds(5);
 
 	public static void Run()
 	{

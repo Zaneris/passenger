@@ -12,6 +12,7 @@ using Passenger.Dap;
 using Passenger.Editor;
 using Passenger.Lsp;
 using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.App.Mcp;
 
@@ -42,7 +43,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     // Workspace and editor
 
-    [McpServerTool(Name = "open", Title = "Open a folder, solution, project or file", Destructive = false), Description(
+    [McpServerTool(Name = McpTools.Open, Title = "Open a folder, solution, project or file", Destructive = false), Description(
         "Opens a folder, solution or project (a directory, .sln, .slnx or .csproj) as the workspace, or a file in the editor " +
         "(its folder first if none is open; with line, a project or solution file too), its caret at line and column if given, " +
         "before that column's character. Returns the workspace.")]
@@ -99,7 +100,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         return await RunsWorkspace(Snapshot(), cancel);
     });
 
-    [McpServerTool(Name = "workspace", Title = "The workspace", ReadOnly = true), Description(
+    [McpServerTool(Name = McpTools.Workspace, Title = "The workspace", ReadOnly = true), Description(
         "The open folder and solution, its projects (output type, frameworks), run configurations (the chosen one marked), the " +
         "language server's state, the open files (unsaved marked) and the active one with its caret, and the Aspire AppHosts and " +
         "container run under way, each resource with its state, hold, debug session and target. routes adds the web projects' " +
@@ -136,7 +137,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
     }
 
-    [McpServerTool(Name = "editor_text", Title = "A file's text in the editor", ReadOnly = true), Description(
+    [McpServerTool(Name = McpTools.EditorText, Title = "A file's text in the editor", ReadOnly = true), Description(
         "A file's text as the editor holds it, unsaved changes included, its lines numbered; opened if it is not.")]
     public Task<string> EditorText(string path, int? from = null, int? to = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
@@ -147,7 +148,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     });
 
     // Not ide_action's app.saveAll: never asked on a person's window (#278), and its answer names what was left unsaved.
-    [McpServerTool(Name = "save_all", Title = "Save every file", Destructive = false), Description("Saves every open file with unsaved changes.")]
+    [McpServerTool(Name = McpTools.SaveAll, Title = "Save every file", Destructive = false), Description("Saves every open file with unsaved changes.")]
     public Task<string> SaveAll(CancellationToken cancel = default) => OnUi(cancel, () =>
     {
         int unsaved = Editors.Documents.Count(d => d.IsModified);
@@ -165,7 +166,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     // Code: the language server's
 
     // The Problems window's lists are this tool's with no path: a tool of their own cost every session's list more.
-    [McpServerTool(Name = "diagnostics", Title = "Errors and warnings", ReadOnly = true), Description(
+    [McpServerTool(Name = McpTools.Diagnostics, Title = "Errors and warnings", ReadOnly = true), Description(
         "A file's errors and warnings as the editor marks them, fresh: C#'s from the language server (its messages too), any " +
         "other's once its checks have run (XAML's, an MSBuild file's evaluation and NuGet advisories, a web language's server " +
         "and ESLint). With no path, what the Problems window lists beyond a file's: toolset (each project's load warnings and " +
@@ -176,14 +177,14 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     private Task<IReadOnlyList<Finding>> FileDiagnostics(string path, CancellationToken cancel) => OnUi(cancel, async () =>
     {
-        if (await DocumentAsync(path, cancel) is { Language.Name: not ("C#" or "Razor") } marked)
+        if (await DocumentAsync(path, cancel) is { Language.Service: not Languages.LanguageService.CSharp } marked)
         {
             // Its own checks only; the rest of the IDE's work (a build, a test run, a busy console) is not waited for.
             await When(() => !marked.IsChecking, MarkersLimit, cancel, On(h => marked.Checked += h, h => marked.Checked -= h));
             List<Finding> missing = [];
             if (Session.Web is { } web && web.For(marked) is { Lsp: null })
             {
-                if (!WebLanguages.IsDockerfile(Path.GetFileName(marked.Path)) && !ComposeDeclarations.IsCompose(marked.Path))
+                if (Languages.Language.ForPath(marked.Path) != Languages.Language.Dockerfile && !ComposeDeclarations.IsCompose(marked.Path))
                 {
                     // A web file whose server cannot start has no checks: none found would read as none there.
                     throw new InvalidOperationException(web.Unready("Its diagnostics", marked));
@@ -214,7 +215,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         })];
     });
 
-    [McpServerTool(Name = "symbol_info", Title = "What a symbol is", ReadOnly = true), Description(
+    [McpServerTool(Name = McpTools.SymbolInfo, Title = "What a symbol is", ReadOnly = true), Description(
         "What the symbol at a position is, as the hover card says: its declaration and documentation (a JSON property's " +
         "schema), in C# its documentation id too, by symbol every symbol the name names; in XAML the type, property, event, resource or element a name is; in an MSBuild file what the evaluation " +
         "makes of a name (a property's value and where it was set, an item's items, a target, an import's files).")]
@@ -244,11 +245,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             return "Nothing is known about this position";
         }
-        string said = Shapes.Text(hover.Contents).Trim();
-        return served.Document.Language.Name == "C#" && await server.Lsp.SymbolAtAsync(offset) is { Id: { } id } ? $"{said}\n\nDocumentation id: {id}" : said;
+        string said = HoverText(hover);
+        return served.Document.Language == Languages.Language.CSharp && await server.Lsp.SymbolAtAsync(offset) is { Id: { } id } ? $"{said}\n\nDocumentation id: {id}" : said;
     });
 
-    [McpServerTool(Name = "definition", Title = "Go to definition", ReadOnly = true), Description(
+    [McpServerTool(Name = McpTools.Definition, Title = "Go to definition", ReadOnly = true), Description(
         "Where the symbol at a position is declared, as Go to Declaration goes (a C# symbol of a package or the framework has " +
         "no source, and says so). Beyond the language servers': from XAML, the C# or XAML declaring a type, property, event, " +
         "resource or element, a library's type decompiled, a theme's XAML by Source Link; package.json's dependencies and npm " +
@@ -285,19 +286,21 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         return await Places(await server.Lsp.DefinitionAsync(await SymbolOffset(server, at.Line, at.Column, offset)), cancel);
     });
 
-    [McpServerTool(Name = "usages", Title = "Find usages", ReadOnly = true), Description(
-        "Every place the symbol at a position is used, its declaration included, each with its line's text, as Find Usages " +
-        "finds them; in XAML, an element's name in its file and code-behind, or a resource's key across the project. JSON and " +
-        "MSBuild files have none.")]
-    public Task<IReadOnlyList<Place>> Usages(string? path = null, int? line = null, int? column = null, string? symbol = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
+    [McpServerTool(Name = McpTools.Usages, Title = "Find usages", ReadOnly = true), Description(
+        "Every place the symbol at a position is used, its declaration included, as Find Usages finds them, by file, each as " +
+        "line:column and its line's text, after the C# symbol the place took; in XAML, an element's name in its file and " +
+        "code-behind, or a resource's key across the project. JSON and MSBuild files have none.")]
+    public Task<UsagesFound> Usages(string? path = null, int? line = null, int? column = null, string? symbol = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         CodePlace at = await AskedAt(path, line, column, symbol, cancel);
         Served served = await Serve(at.Path, cancel);
         int offset = Offset(served.Document, at.Line, at.Column);
+        string place = $"{Relative(served.Document.Path)}:{at.Line}:{at.Column}";
         switch (served)
         {
             case XamlServed xaml:
-                return Sorted(await XamlUsages(xaml, offset, cancel));
+                return ByFile(null, await XamlUsages(xaml, offset, cancel) is { Count: > 0 } uses ? uses
+                    : throw new InvalidOperationException($"No name or resource key at {place}: {XamlAssist.XamlUsesWhat}"));
             case MSBuildServed:
                 throw Lacks(served, "Find Usages", MSBuildHas);
             case ServerServed unfound when !unfound.Provides("referencesProvider"):
@@ -308,12 +311,23 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         // A symbol's usages hold its declaration, so none says no symbol is there.
         if (found.Count == 0 && server.Web is null)
         {
-            found = await server.Lsp.ReferencesAsync(await DeclaredOn(server, at.Line, at.Column));
+            found = await server.Lsp.ReferencesAsync(offset = await DeclaredOn(server, at.Line, at.Column));
         }
-        return Sorted(await Places(found, cancel));
+        if (found.Count == 0)
+        {
+            throw new InvalidOperationException($"No symbol at {place}: {server.Language}'s language server finds no usages there");
+        }
+        // Passenger's extension reads a C# file's symbols, not a Razor file's.
+        string? taken = served.Document.Language == Languages.Language.CSharp && await server.Lsp.SymbolAtAsync(offset, cancel) is { } named ? $"{named.Shown} ({named.Kind})" : null;
+        return ByFile(taken, await Places(found, cancel));
     });
 
-    [McpServerTool(Name = "hierarchy", Title = "Call or type hierarchy", ReadOnly = true), Description(
+    /// <summary>usages' answer: its places in order (<see cref="Sorted"/>), each file named once.</summary>
+    private static UsagesFound ByFile(string? symbol, IReadOnlyList<Place> places) =>
+        new(symbol, places.Count, [.. Sorted(places).GroupBy(p => p.Path, StringComparer.Ordinal)
+            .Select(file => new FilePlaces(file.Key, [.. file.Select(p => p.Text.Length == 0 ? $"{p.Line}:{p.Column}" : $"{p.Line}:{p.Column} {p.Text}")]))]);
+
+    [McpServerTool(Name = McpTools.Hierarchy, Title = "Call or type hierarchy", ReadOnly = true), Description(
         "One level of the hierarchy of the symbol at a position, as the Hierarchy window: direction callers (each at its " +
         "call), callees, supertypes, subtypes, or implementations (Go to Implementation's).")]
     public Task<IReadOnlyList<HierarchyEntry>> Hierarchy(string? path = null, int? line = null, int? column = null, string direction = "callers", string? symbol = null,
@@ -345,7 +359,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         return [.. found.Select((f, i) => new HierarchyEntry(f.Item.Name, f.Item.Detail, places[i].Path, places[i].Line, places[i].Column, places[i].Text))];
     });
 
-    [McpServerTool(Name = "rename", Title = "Rename a symbol", Destructive = true), Description(
+    [McpServerTool(Name = McpTools.Rename, Title = "Rename a symbol", Destructive = true), Description(
         "Renames the symbol at a position everywhere it is used, as Rename does, and saves the files: a type's files named " +
         "after it too (Foo.cs, Foo.Designer.cs) unless renameFiles is false; an Aspire resource's name where its AppHost " +
         "declares it and its services read it; a XAML element's name with its code-behind's uses; a JSON property (in " +
@@ -358,9 +372,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         Served served = await Serve(at.Path, cancel);
         int offset = Offset(served.Document, at.Line, at.Column);
         if (served is ServerServed { Web.Kind: WebServerKind.Yaml } yaml && ComposeDeclarations.IsCompose(yaml.Document.Path)
-            && await CodeAssist.ComposeRenamingAsync(yaml.Lsp, yaml.Document, offset) is { } composed)
+            && await ComposeAssist.ComposeRenamingAsync(yaml.Lsp, yaml.Document, offset) is { } composed)
         {
-            RefactorOutcome compose = await window.Assist.RenameComposeAsync(yaml.Document, offset, composed.Name, newName);
+            RefactorOutcome compose = await window.Assist.Languages.Compose.RenameComposeAsync(yaml.Document, offset, composed.Name, newName);
             if (compose.Problem is { } refused)
             {
                 throw new InvalidOperationException(refused);
@@ -380,9 +394,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         ServerServed server = (ServerServed)served;
         LspDocument lsp = server.Lsp;
         if (server.Web is null && Session.AspireFiles.RoleOf(served.Document.Path) != Aspire.AspireRole.None
-            && await CodeAssist.AspireResourceAtAsync(lsp, offset) is { } resource)
+            && await CSharpAssist.AspireResourceAtAsync(lsp, offset) is { } resource)
         {
-            RefactorOutcome made = await window.Assist.RenameResourceAsync(served.Document, offset, resource, newName, patience);
+            RefactorOutcome made = await window.Assist.Languages.CSharp.RenameResourceAsync(served.Document, offset, resource, newName, patience);
             if (made.Problem is { } problem)
             {
                 throw new InvalidOperationException(problem);
@@ -392,7 +406,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         (string Type, IReadOnlyList<string> Files)? named = renameFiles && server.Web is null && Session.CSharp?.Session?.Folder is { } folder
             ? await TypeRename.NamedAsync(Editors, folder, lsp, offset) : null;
-        RefactorOutcome renaming = await window.Assist.RenameSymbolAsync(served.Document, offset, newName, named?.Files ?? [], patience);
+        RefactorOutcome renaming = await window.Assist.Actions.RenameSymbolAsync(served.Document, offset, newName, named?.Files ?? [], patience);
         if (renaming.Problem is { } notRenamed)
         {
             throw new InvalidOperationException(notRenamed);
@@ -409,34 +423,46 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         return $"Renamed in {Plural.Of(changed.Count, "file")}: {string.Join(", ", changed)}{renamed}{unrenamed}";
     }, cancel));
 
-    [McpServerTool(Name = "code_actions", Title = "Fixes and refactorings", ReadOnly = true), Description(
+    [McpServerTool(Name = McpTools.CodeActions, Title = "Fixes and refactorings", ReadOnly = true), Description(
         "The fixes and refactorings offered at a position (Alt+Enter), or over a selection to endLine:endColumn (Extract " +
         "Method, Introduce Variable), as 'title [kind]' with the choices each offers (nested actions, a Fix All's scopes, where " +
         "a XAML resource goes), which apply_code_action takes: Passenger's own fixes first, then ESLint's, then the language " +
         "server's; in XAML, the line's problems' fixes (a binding's missing property or command, a missing converter), Extract " +
-        "Resource and Extract Style.")]
-    public Task<IReadOnlyList<string>> CodeActions(string path, int line, int column, int? endLine = null, int? endColumn = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
+        "Resource and Extract Style. A Suppress or Configure action's choices are counted, and listed when title names it.")]
+    public Task<IReadOnlyList<string>> CodeActions(string path, int line, int column, int? endLine = null, int? endColumn = null, string? title = null,
+        CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         Served served = await Serve(path, cancel);
+        IReadOnlyList<(string Title, string Shown)> listed;
         switch (served)
         {
             case XamlServed xaml:
-                return (IReadOnlyList<string>)[.. (await XamlActions(xaml, Offset(xaml.Document, line, column)))
-                    .Select(a => a.Choices.Count == 0 ? $"{a.Title} [{a.Kind}]" : $"{a.Title} [{a.Kind}], choices: {string.Join("; ", a.Choices)}")];
+                listed = [.. (await XamlActions(xaml, Offset(xaml.Document, line, column)))
+                    .Select(a => (a.Title, a.Choices.Count == 0 ? $"{a.Title} [{a.Kind}]" : $"{a.Title} [{a.Kind}], choices: {string.Join("; ", a.Choices)}"))];
+                break;
             case MSBuildServed when window.Assist.OwnFixes(served.Document, Offset(served.Document, line, column)) is { Count: > 0 } own:
-                return (IReadOnlyList<string>)[.. own.Select(f => $"{f.Title} [quickfix]")];
+                listed = [.. own.Select(f => (f.Title, $"{f.Title} [quickfix]"))];
+                break;
             case MSBuildServed:
                 throw Lacks(served, "fixes or refactorings", MSBuildHas);
+            default:
+                int offset = Offset(served.Document, line, column);
+                await AspireMarked(served, cancel);
+                IReadOnlyList<EslintFix> linted = await LintFixes(served, offset);
+                listed = [.. window.Assist.OwnFixes(served.Document, offset).Select(f => (f.Title, $"{f.Title} [quickfix]")),
+                    .. linted.Select(f => (f.Title, f.Action.Kind is { Length: > 0 } kind ? $"{f.Title} [{kind}]" : f.Title)),
+                    .. (await Actions((ServerServed)served, line, column, endLine, endColumn)).Select(a => (a.Title, Described(a, all: title is not null)))];
+                break;
         }
-        int offset = Offset(served.Document, line, column);
-        await AspireMarked(served, cancel);
-        IReadOnlyList<EslintFix> linted = await LintFixes(served, offset);
-        return (IReadOnlyList<string>)[.. window.Assist.OwnFixes(served.Document, offset).Select(f => $"{f.Title} [quickfix]"),
-            .. linted.Select(f => f.Action.Kind is { Length: > 0 } kind ? $"{f.Title} [{kind}]" : f.Title),
-            .. (await Actions((ServerServed)served, line, column, endLine, endColumn)).Select(Described)];
+        if (title is null)
+        {
+            return (IReadOnlyList<string>)[.. listed.Select(a => a.Shown)];
+        }
+        return listed.Where(a => a.Title == title).Select(a => a.Shown).ToList() is { Count: > 0 } named ? named
+            : throw new InvalidOperationException($"No action '{title}' here; there are: {string.Join("; ", listed.Select(a => a.Title))}");
     });
 
-    [McpServerTool(Name = "apply_code_action", Title = "Apply a fix or refactoring", Destructive = true), Description(
+    [McpServerTool(Name = McpTools.ApplyCodeAction, Title = "Apply a fix or refactoring", Destructive = true), Description(
         "Applies the action titled as code_actions lists it there, as Alt+Enter does, choice naming one of its choices, and " +
         "saves the files. name is XAML's Extract Resource or Extract Style's new key or style (else their dialog's), which " +
         "replace every use of the value, or an Aspire parameter's Set… value.")]
@@ -503,15 +529,19 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         return $"Applied {what} to {Plural.Of(files, "file")}{unrun}{(dropped.Count > 0 ? $", but not to {string.Join(", ", dropped)}, edited meanwhile" : string.Empty)}";
     }, cancel));
 
-    /// <summary>A code action as code_actions lists it: its title, its kind, and the choices it offers.</summary>
-    private static string Described(CodeAction action)
+    /// <summary>A code action as code_actions lists it: its title, its kind, and the choices it offers, a Suppress or
+    /// Configure action's (dozens: each scope, each severity) only counted unless <paramref name="all"/>.</summary>
+    private static string Described(CodeAction action, bool all)
     {
         string described = action.Kind is { Length: > 0 } kind ? $"{action.Title} [{kind}]" : action.Title;
         IReadOnlyList<ActionChoice> choices = ClientCommands.Choices(action);
-        return choices.Count == 0 ? described : $"{described}, choices: {string.Join("; ", choices.Select(c => c.Text))}";
+        return choices.Count == 0 ? described
+            : !all && (action.Title.StartsWith("Suppress", StringComparison.Ordinal) || action.Title.StartsWith("Configure", StringComparison.Ordinal))
+                ? $"{described}, {Plural.Of(choices.Count, "choice")}: title lists them"
+                : $"{described}, choices: {string.Join("; ", choices.Select(c => c.Text))}";
     }
 
-    [McpServerTool(Name = "format", Title = "Reformat a file", Destructive = true), Description(
+    [McpServerTool(Name = McpTools.Format, Title = "Reformat a file", Destructive = true), Description(
         "Reformats a file as Reformat Code does, and saves it: XAML by its .editorconfig, a web language by the project's " +
         "Prettier where it formats it, else the language server. MSBuild files have none.")]
     public Task<string> Format(string path, CancellationToken cancel = default) => OnUi(cancel, async () =>
@@ -529,23 +559,23 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             (document, lsp) = (served.Document, served.Lsp);
         }
         window.OpenFile(document.Path);
-        CodeAssist.Reformatted done = await window.Assist.ReformatAsync(document, null, () => lsp)
+        CSharp.CodeActions.Reformatted done = await window.Assist.Actions.ReformatAsync(document, null, () => lsp)
             ?? throw new InvalidOperationException($"Reformat Code was not applied: {Relative(document.Path)} was closed as it was reformatted");
         return Saved(done, document);
     });
 
     /// <summary>A XAML file reformatted as the window's Reformat Code and Code Cleanup reformat it, then saved.</summary>
-    private async Task<CodeAssist.Reformatted> FormatXamlAsync(OpenDocument markup, string what)
+    private async Task<CSharp.CodeActions.Reformatted> FormatXamlAsync(OpenDocument markup, string what)
     {
         window.OpenFile(markup.Path);
-        CodeAssist.Reformatted done = await window.Assist.ReformatXamlAsync(markup, null, what);
+        CSharp.CodeActions.Reformatted done = await window.Assist.Languages.Xaml.ReformatXamlAsync(markup, null, what);
         _ = Saved(done, markup);
         return done;
     }
 
     /// <summary>What a reformat came to, as an agent is told it, the file saved once it is applied and the file holds
     /// what is not saved; one not applied refused, saying why.</summary>
-    private static string Saved(CodeAssist.Reformatted done, OpenDocument document)
+    private static string Saved(CSharp.CodeActions.Reformatted done, OpenDocument document)
     {
         if (!done.Applied)
         {
@@ -558,9 +588,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         return done.Said;
     }
 
-    [McpServerTool(Name = "find_symbol", Title = "Go to symbol", ReadOnly = true), Description(
+    [McpServerTool(Name = McpTools.FindSymbol, Title = "Go to symbol", ReadOnly = true), Description(
         "The solution's own C# and Razor symbols (not packages') whose names match query by substring, initials or camel " +
-        "humps (\"GH\" finds GetHashCode), as Go to Symbol finds them. Other files' names are in their outline.")]
+        "humps (\"GH\" finds GetHashCode), as Go to Symbol finds them, the name itself first, then names starting with it, " +
+        "types before members; an indexer by this[] or Item. Other files' names are in their outline.")]
     public Task<IReadOnlyList<SymbolFound>> FindSymbol(
         string query,
         [Description("class, interface, struct, enum, method, property, field, event, constructor...")] string? kind = null,
@@ -569,19 +600,28 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         RoslynSession session = await Server(cancel);
-        if (exact)
+        // Go to Symbol finds an indexer by neither of its names, this[] or its metadata's Item: the exact find does.
+        bool indexer = query.StartsWith("this[", StringComparison.Ordinal);
+        if (exact || indexer)
         {
-            return (IReadOnlyList<SymbolFound>)[.. (await NamedAsync(session, query, kind, limit, cancel)).Symbols.Select(n =>
-                new SymbolFound(n.Name, n.Kind, n.Container, n.Path, n.Line, n.Column) { Id = n.Id })];
+            return (IReadOnlyList<SymbolFound>)[.. (await NamedAsync(session, query, kind, limit, cancel)).Symbols.Select(Found)];
         }
+        IReadOnlyList<SymbolFound> indexers = query == "Item" && kind is null or "property"
+            ? [.. (await NamedAsync(session, "this[]", "property", limit, cancel, noneRefused: false)).Symbols.Select(Found)]
+            : [];
         IReadOnlyList<SymbolInformation> found = await session.SymbolsAsync(query);
-        // The server's order is not by how well a name matches: the query's own name first, so a limit never cuts it.
+        // Each target framework finds a symbol again; the server's order is not by match, so the name itself first, which no limit cuts.
         List<SymbolInformation> kept = [.. found
             .Where(s => DocumentUris.GeneratedName(s.Location.Uri) is null && (kind is null || SymbolKinds.Name(s.Kind).Equals(kind, StringComparison.OrdinalIgnoreCase)))
+            .DistinctBy(s => (s.Name, s.Kind, s.Location.Uri, s.Location.Range.Start.Line, s.Location.Range.Start.Character))
             .OrderBy(s => NameMatch(s.Name, query))
-            .Take(limit)];
+            .ThenBy(s => SymbolKinds.Name(s.Kind) is "class" or "interface" or "struct" or "enum" ? 0 : 1)
+            .Take(Math.Max(0, limit - indexers.Count))];
         IReadOnlyList<Place> places = await Places([.. kept.Select(s => s.Location)], cancel);
-        return (IReadOnlyList<SymbolFound>)[.. kept.Select((s, i) => new SymbolFound(s.Name, SymbolKinds.Name(s.Kind), s.ContainerName, places[i].Path, places[i].Line, places[i].Column))];
+        return (IReadOnlyList<SymbolFound>)[.. indexers,
+            .. kept.Select((s, i) => new SymbolFound(s.Name, SymbolKinds.Name(s.Kind), ContainerOf(s.ContainerName), places[i].Path, places[i].Line, places[i].Column))];
+
+        static SymbolFound Found(NamedPlace n) => new(n.Name, n.Kind, n.Container, n.Path, n.Line, n.Column) { Id = n.Id };
     });
 
     /// <summary>How well a symbol's name matches a query: the name itself, then in another letter case, then one that starts
@@ -592,6 +632,20 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         : name.StartsWith(query, StringComparison.OrdinalIgnoreCase) ? 2
         : name.Contains(query, StringComparison.OrdinalIgnoreCase) ? 3
         : 4;
+
+    /// <summary>The type a symbol Go to Symbol found is in, as an exact find names it: its "in Type (project P (tfm))" without
+    /// the project, which its path says, and none for a type's own "project P (tfm)".</summary>
+    private static string? ContainerOf(string? container)
+    {
+        if (container is null)
+        {
+            return null;
+        }
+        int project = container.LastIndexOf(" (project ", StringComparison.Ordinal);
+        string within = project >= 0 ? container[..project] : container.StartsWith("project ", StringComparison.Ordinal) ? string.Empty : container;
+        within = within.StartsWith("in ", StringComparison.Ordinal) ? within[3..] : within;
+        return within.Length == 0 ? null : within;
+    }
 
     /// <summary>What a code tool asks about: a place an agent gave, or the one C# symbol it named (<see cref="NamedAsync"/>).</summary>
     private sealed record CodePlace(string Path, int Line, int Column);
@@ -625,12 +679,12 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     private sealed record SymbolsNamed(IReadOnlyList<NamedPlace> Symbols, int More);
 
     /// <summary>The solution's own C# symbols a name names exactly, of a kind when one is given, at most limit; none is
-    /// refused, saying how to find a name like it.</summary>
-    private async Task<SymbolsNamed> NamedAsync(RoslynSession session, string name, string? kind, int limit, CancellationToken cancel)
+    /// refused, saying how to find a name like it, unless <paramref name="noneRefused"/> is false.</summary>
+    private async Task<SymbolsNamed> NamedAsync(RoslynSession session, string name, string? kind, int limit, CancellationToken cancel, bool noneRefused = true)
     {
         Roslyn.Extension.SymbolsFound found = await session.SymbolsNamedAsync(name, kind is null ? limit : 1000, cancel);
         List<Roslyn.Extension.NamedSymbol> kept = [.. found.Symbols.Where(s => kind is null || s.Kind.Equals(kind, StringComparison.OrdinalIgnoreCase))];
-        if (kept.Count == 0)
+        if (kept.Count == 0 && noneRefused)
         {
             throw new InvalidOperationException($"No {kind ?? "symbol"} of the solution's own code is named {name}: find_symbol finds names like it");
         }
@@ -649,10 +703,74 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             (OpenDocument document, LspDocument lsp) = await Code(place.Path, cancel);
             Hover? hover = await lsp.HoverAsync(Offset(document, place.Line, place.Column));
-            each.Add($"{place}\n{(hover is null ? string.Empty : Shapes.Text(hover.Contents).Trim())}".TrimEnd());
+            each.Add($"{place}\n{(hover is null ? string.Empty : HoverText(hover))}".TrimEnd());
         }
         return string.Join("\n\n", each) + (named.More > 0 ? $"\n\nAnd {named.More} more: name one by its container, its parameters' types or its documentation id" : string.Empty);
     }
+
+    /// <summary>A hover card's words as an agent reads them: Markdown made plain text, its code fences, backslash escapes,
+    /// entities and line-break spaces taken out, the code in it kept as written.</summary>
+    private static string HoverText(Hover hover) =>
+        hover.Contents is { ValueKind: System.Text.Json.JsonValueKind.Object } content && content.TryGetProperty("kind", out System.Text.Json.JsonElement kind)
+            && kind.ValueKind == System.Text.Json.JsonValueKind.String && kind.GetString() == "plaintext"
+            ? Shapes.Text(hover.Contents).Trim()
+            : Plain(Shapes.Text(hover.Contents));
+
+    /// <summary>Markdown as plain text, a run of blank lines kept as one (<see cref="HoverText"/>).</summary>
+    private static string Plain(string markdown)
+    {
+        System.Text.StringBuilder text = new();
+        bool fenced = false;
+        bool gap = false;
+        foreach (string raw in markdown.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
+        {
+            string line = raw.TrimEnd();
+            if (line.TrimStart().StartsWith("```", StringComparison.Ordinal))
+            {
+                fenced = !fenced;
+                continue;
+            }
+            string plain = fenced ? line : Unescaped(line);
+            if (plain.Trim().Length == 0)
+            {
+                gap = text.Length > 0;
+                continue;
+            }
+            text.Append(gap ? "\n" : string.Empty).Append(plain).Append('\n');
+            gap = false;
+        }
+        return text.ToString().TrimEnd();
+
+        // Outside a code span, a backslash before punctuation and an entity are Markdown's, not the text's.
+        static string Unescaped(string line)
+        {
+            System.Text.StringBuilder plain = new(line.Length);
+            bool code = false;
+            for (int i = 0; i < line.Length; i++)
+            {
+                char c = line[i];
+                if (c == '`')
+                {
+                    code = !code;
+                }
+                else if (!code && c == '\\' && i + 1 < line.Length && char.IsAscii(line[i + 1]) && (char.IsPunctuation(line[i + 1]) || char.IsSymbol(line[i + 1])))
+                {
+                    plain.Append(line[++i]);
+                    continue;
+                }
+                else if (!code && c == '&' && Entities.FirstOrDefault(e => string.CompareOrdinal(line, i, e.Written, 0, e.Written.Length) == 0) is { Written: { } written } entity)
+                {
+                    plain.Append(entity.Meant);
+                    i += written.Length - 1;
+                    continue;
+                }
+                plain.Append(c);
+            }
+            return plain.ToString();
+        }
+    }
+
+    private static readonly (string Written, char Meant)[] Entities = [("&nbsp;", ' '), ("&lt;", '<'), ("&gt;", '>'), ("&amp;", '&'), ("&quot;", '"'), ("&#39;", '\'')];
 
     /// <summary>Usages in the order an agent reads them: by file, then line and column, a source generator's files last.</summary>
     private static IReadOnlyList<Place> Sorted(IReadOnlyList<Place> places) =>
@@ -693,7 +811,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
     }
 
-    [McpServerTool(Name = "outline", Title = "A file's structure", ReadOnly = true), Description(
+    [McpServerTool(Name = McpTools.Outline, Title = "A file's structure", ReadOnly = true), Description(
         "A file's structure, indented, each part with its line: C#'s types and members, a web language's symbols, XAML's " +
         "elements with what names them (x:Class, x:Name, x:Key, a style's selector), an MSBuild file's properties with their " +
         "values, items, targets and imports.")]
@@ -732,7 +850,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     // Build and run
 
     // Publish is build's, as the Build window's: a tool of its own cost every session's list more than the budget has.
-    [McpServerTool(Name = "build", Title = "Build", Destructive = true), Description(
+    [McpServerTool(Name = McpTools.Build, Title = "Build", Destructive = true), Description(
         "Builds the solution (or the folder's project); with publish (a project), publishes it with profile, else its last. " +
         "Returns whether it succeeded, how it ended, every error and warning, the folder published to, and MSBuild's last " +
         "lines when it failed (output of build has them all).")]
@@ -753,7 +871,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             built.Succeeded ? null : string.Join('\n', built.Output)) { Folder = built.Published };
     });
 
-    [McpServerTool(Name = "run", Title = "Run a configuration", Destructive = true), Description(
+    [McpServerTool(Name = McpTools.Run, Title = "Run a configuration", Destructive = true), Description(
         "Runs a configuration as Run does, built first when it says so, and waits for it to end, an Avalonia or WPF app's " +
         "UI or an AppHost's resources to be up. Returns its output so far and its exit code once it has one; a run refused (one " +
         "running, a failed build with its errors) is an error. A terminal configuration runs in a Terminal tab (terminal_run " +
@@ -830,7 +948,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         return new RunResult(code is null, code, status, output);
     });
 
-    [McpServerTool(Name = "output", Title = "A console's last lines", ReadOnly = true), Description(
+    [McpServerTool(Name = McpTools.Output, Title = "A console's last lines", ReadOnly = true), Description(
         "The last lines of a console. of run (the default): what Run's program wrote (under Hot Reload, dotnet watch's words " +
         "too) or a terminal configuration's tab; with resource, that one's own; with requests, the running web apps' requests " +
         "and their SQL. of debug (the default with session): the debugged program's. of build: the last build's MSBuild " +
@@ -891,7 +1009,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
     }
 
-    [McpServerTool(Name = "stop", Title = "Stop", Destructive = false), Description("Stops whatever runs or is debugged, as Stop All does, a " +
+    [McpServerTool(Name = McpTools.Stop, Title = "Stop", Destructive = false), Description("Stops whatever runs or is debugged, as Stop All does, a " +
         "container run's containers taken down; with session or resource, that one alone. With detach, lets go of the program " +
         "the debugger attached to instead, as Detach does: its breakpoints are taken out and it runs on.")]
     public Task<string> Stop(string? session = null, string? resource = null, bool detach = false, CancellationToken cancel = default) => detach
@@ -932,7 +1050,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     // Unit tests
 
-    [McpServerTool(Name = "tests_run", Title = "Run unit tests", Destructive = true), Description(
+    [McpServerTool(Name = McpTools.TestsRun, Title = "Run unit tests", Destructive = true), Description(
         "Builds and runs the unit tests, or those whose full name contains filter, as the Unit Tests window does, each project " +
         "by the runner its build asks for (Microsoft Testing Platform for xUnit v3, MSTest's runner and TUnit; VSTest for the " +
         "rest). With debug, under the debugger: a stop in a test comes back, and debug_continue goes on. Returns the tally and " +
@@ -977,7 +1095,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         return TestInfo(tests);
     });
 
-    [McpServerTool(Name = "tests_list", Title = "The unit tests", ReadOnly = true), Description(
+    [McpServerTool(Name = McpTools.TestsList, Title = "The unit tests", ReadOnly = true), Description(
         "The tests the Unit Tests window shows (from code, and their runner once built), each with its full name, state from " +
         "the last run and file:line: those whose full name contains filter and whose state is state, at most limit.")]
     public Task<IReadOnlyList<TestInfoRow>> TestsList(
@@ -1023,7 +1141,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     // The debugger
 
-    [McpServerTool(Name = "breakpoint_set", Title = "Set a breakpoint", Destructive = true), Description(
+    [McpServerTool(Name = McpTools.BreakpointSet, Title = "Set a breakpoint", Destructive = true), Description(
         "Sets, changes or with remove takes away a breakpoint: on a line (path, line; in .axaml where the line's first element " +
         "or attribute is made or set, or attribute's property, as written); on an exception type (its full name, or \"Any " +
         "exception\", which remove only turns off), in its scenarios (all by default); XAML Binding Errors (bindingErrors: a " +
@@ -1199,7 +1317,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     private Task<IReadOnlyList<BreakpointInfo>> ListBreakpoints(CancellationToken cancel) =>
         OnUi(cancel, () => Task.FromResult<IReadOnlyList<BreakpointInfo>>([.. Breakpoints(null), .. DataBreakpoints(), .. ExceptionBreakpoints()]));
 
-    [McpServerTool(Name = "debug_start", Title = "Debug a configuration", Destructive = true), Description(
+    [McpServerTool(Name = McpTools.DebugStart, Title = "Debug a configuration", Destructive = true), Description(
         "Builds and launches a configuration under the debugger, as Debug does, and waits for a stop, its end or an Avalonia " +
         "or WPF app's UI. Returns where it is. With resource, that one alone, restarted.")]
     public Task<DebugSnapshot> DebugStart(
@@ -1301,7 +1419,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         (IReadOnlyList<ProcessInfo>)[.. (await window.AttachableAsync()).Where(p => p.WhyNot is null)
             .Select(p => new ProcessInfo(p.Id, p.Name, p.Program, p.User, p.CommandLine, p.Container))]);
 
-    [McpServerTool(Name = "debug_attach", Title = "Attach to a running program", Destructive = true), Description(
+    [McpServerTool(Name = McpTools.DebugAttach, Title = "Attach to a running program", Destructive = true), Description(
         "Attaches the debugger to a running .NET program, as Attach to Process does: processId, or program when one has that " +
         "name, in container when it runs in one (debug_state of processes lists them), or resource. Waits for a stop or its end and " +
         "returns where it is; stop with detach lets it go on, stop ends it.")]
@@ -1343,7 +1461,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     // A value's members, the breakpoints and the programs to attach to are this tool's too: tools of their own cost every
     // session's list more.
-    [McpServerTool(Name = "debug_state", Title = "Where the debugger is", ReadOnly = true), Description(
+    [McpServerTool(Name = McpTools.DebugState, Title = "Where the debugger is", ReadOnly = true), Description(
         "The debugger's state and, while paused, the stop: its reason, the thread's frames and the chosen frame's variables, " +
         "and in an Avalonia app the binding values of the .axaml files open in the editor. With several programs debugged, " +
         "sessions names them. With reference (a variable's, debug_evaluate's or an earlier answer's), the members, elements " +
@@ -1362,7 +1480,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         _ => throw new ModelContextProtocol.McpException("A reference's members are the stop's: give reference or of, not both"),
     };
 
-    [McpServerTool(Name = "debug_continue", Title = "Resume", Destructive = false), Description(
+    [McpServerTool(Name = McpTools.DebugContinue, Title = "Resume", Destructive = false), Description(
         "Resumes the program and waits for it to stop again or end; with path and line, runs to that line as Run to Cursor " +
         "does, stopping sooner at a breakpoint. A debugged test run that ends answers its tally and failures too (tests).")]
     public Task<DebugSnapshot> DebugContinue(int waitSeconds = 30, string? session = null, string? path = null, int? line = null, CancellationToken cancel = default) =>
@@ -1373,7 +1491,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             _ => throw new ModelContextProtocol.McpException("Run to a line takes both path and line"),
         };
 
-    [McpServerTool(Name = "debug_step", Title = "Step", Destructive = false), Description("Steps (kind) over, into or out of the current line, and waits for the step to stop.")]
+    [McpServerTool(Name = McpTools.DebugStep, Title = "Step", Destructive = false), Description("Steps (kind) over, into or out of the current line, and waits for the step to stop.")]
     public Task<DebugSnapshot> DebugStep(string kind = "over", int waitSeconds = 30, string? session = null,
         CancellationToken cancel = default) => Resume(kind switch
     {
@@ -1383,7 +1501,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         _ => throw new ArgumentException($"A step is over, into or out, not '{kind}'"),
     }, waitSeconds, session, cancel);
 
-    [McpServerTool(Name = "debug_pause", Title = "Pause", Destructive = false), Description("Pauses the running program wherever it is.")]
+    [McpServerTool(Name = McpTools.DebugPause, Title = "Pause", Destructive = false), Description("Pauses the running program wherever it is.")]
     public Task<DebugSnapshot> DebugPause(int waitSeconds = 10, string? session = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         DebugSession debugged = await Debugged(session);
@@ -1392,7 +1510,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         return await DebugSnapshotAsync(debugged);
     });
 
-    [McpServerTool(Name = "debug_set_next_statement", Title = "Set Next Statement", Destructive = false), Description(
+    [McpServerTool(Name = McpTools.DebugSetNextStatement, Title = "Set Next Statement", Destructive = false), Description(
         "Moves where the paused program goes on to another line of its method, as Set Next Statement does, skipping or " +
         "repeating the lines between; nothing runs. Returns the new stop.")]
     public Task<DebugSnapshot> DebugSetNextStatement(string path, int line, string? session = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
@@ -1406,7 +1524,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         return await DebugSnapshotAsync(paused);
     });
 
-    [McpServerTool(Name = "debug_input", Title = "Type into the program's console", Destructive = true), Description(
+    [McpServerTool(Name = McpTools.DebugInput, Title = "Type into the program's console", Destructive = true), Description(
         "Sends a line to the debugged program's standard input, as the Debug window's console does, or types it into a " +
         "terminal configuration's tab, Enter for the newline.")]
     public Task<string> DebugInput(string text, bool newline = true, string? session = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
@@ -1421,7 +1539,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         return "Sent";
     });
 
-    [McpServerTool(Name = "debug_evaluate", Title = "Evaluate an expression", Destructive = true), Description(
+    [McpServerTool(Name = McpTools.DebugEvaluate, Title = "Evaluate an expression", Destructive = true), Description(
         "Evaluates a C# expression, which may call the program's methods, in a frame of the stopped thread (0, the top, by " +
         "default), as the Debug window's evaluate box does; a result with members has a reference debug_state opens. With " +
         "value, a C# expression, assigns it to expression (a local, member or element) as Set Value does, answering what it " +
@@ -1457,7 +1575,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     // The IDE itself
 
-    [McpServerTool(Name = "ide_action", Title = "Run an IDE action", Destructive = true), Description(
+    [McpServerTool(Name = McpTools.IdeAction, Title = "Run an IDE action", Destructive = true), Description(
         "Runs an IDE action by its id (app.build, app.debug.stepOver...; ide_actions lists them) as its shortcut would, or " +
         "says why it cannot. input: app.migrations.add's name, updateTo's target.")]
     public Task<string> IdeAction(string action, string? input = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
@@ -1465,7 +1583,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         : input is not null ? throw new InvalidOperationException($"{action} takes no input")
         : window.Actions.Run(action) is { } why ? throw new InvalidOperationException($"{action} did not run: {why}") : $"Ran {action}");
 
-    [McpServerTool(Name = "ide_actions", Title = "The IDE's actions", ReadOnly = true), Description(
+    [McpServerTool(Name = McpTools.IdeActions, Title = "The IDE's actions", ReadOnly = true), Description(
         "Every action ide_action runs (those with no shortcut too), as id: name [group] (shortcut on this platform), " +
         "and why one cannot run here now.")]
     public Task<IReadOnlyList<string>> IdeActions(CancellationToken cancel = default) => OnUi(cancel, () =>
@@ -1842,7 +1960,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             throw new InvalidOperationException(Refusals.NoCSharp);
         }
         // The server is never given another language's file, so waiting for it to load one would wait out the limit.
-        if (document.Language.Name is not ("C#" or "Razor"))
+        if (document.Language.Service != Languages.LanguageService.CSharp)
         {
             throw new InvalidOperationException($"This is the C# language server's, which answers for C# and Razor files, not {LanguageOf(document)} ones such as {Path.GetFileName(document.Path)}");
         }
@@ -2007,7 +2125,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     /// <summary>A task whose end may make a wait's condition hold, however it ends.</summary>
     private static Wake Ends(Task task) => look =>
     {
-        _ = task.ContinueWith(_ => UiThread.Post(look), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+        IdeErrors.Observe(task.ContinueWith(_ => UiThread.Post(look), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default));
         return () => { };
     };
 
@@ -2084,6 +2202,12 @@ public sealed record ProjectInfo(string Name, string Path, string? OutputType, I
 public sealed record Finding(string Severity, string? Code, string Message, string? Path, int Line, int Column);
 
 public sealed record Place(string Path, int Line, int Column, string Text);
+
+/// <summary>usages' answer: the C# symbol the place took, as its card names it, how many places, and each file's places as
+/// "line:column text".</summary>
+public sealed record UsagesFound(string? Symbol, int Count, IReadOnlyList<FilePlaces> Files);
+
+public sealed record FilePlaces(string Path, IReadOnlyList<string> Places);
 
 public sealed record HierarchyEntry(string? Name, string? Detail, string Path, int Line, int Column, string Text);
 

@@ -7,7 +7,7 @@ using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Packages;
 using Passenger.App.ToolWindows;
-using Passenger.App.Workspace;
+using Passenger.Packages;
 
 namespace Passenger.Tests;
 
@@ -286,10 +286,7 @@ public abstract class NuGetFeedsFolder : IDisposable
     /// the C# language server, which nothing here asks of, so none starts and restores the project from the feeds.</summary>
     protected MainWindow Open()
     {
-        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
-        window.Show();
-        window.OpenFolder(folder);
-        Ui.Settle();
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         window.Perform(AppActions.ShowNuGet);
         Ui.Landed(() => window.NuGet.PackageSources.Feeds.Count > 0, "the folder's package sources read");
         return window;

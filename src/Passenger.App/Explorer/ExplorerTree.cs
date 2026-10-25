@@ -1,8 +1,10 @@
 using Avalonia;
 using Avalonia.Media;
-using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Host;
+using Passenger.Text;
+using Passenger.Vcs;
+using Passenger.Workspace;
 
 namespace Passenger.App.Explorer;
 
@@ -31,12 +33,12 @@ public sealed class ExplorerTree
     /// (<see cref="IgnoredFolders"/>).</summary>
     private const string GitStore = ".git";
 
-    private IReadOnlyDictionary<string, Vcs.ChangeKind> changes = new Dictionary<string, Vcs.ChangeKind>();
+    private IReadOnlyDictionary<string, ChangeKind> changes = new Dictionary<string, ChangeKind>();
 
     public TreeRows<ExplorerNode> Rows { get; } = [];
 
     /// <summary>Colours the files version control says changed.</summary>
-    public void SetChanges(IReadOnlyDictionary<string, Vcs.ChangeKind> changed)
+    public void SetChanges(IReadOnlyDictionary<string, ChangeKind> changed)
     {
         changes = changed;
         foreach (ExplorerNode row in Rows)
@@ -47,7 +49,7 @@ public sealed class ExplorerTree
 
     private void Mark(ExplorerNode node)
     {
-        node.Change = node.IsFile && node.Path is { } path && changes.TryGetValue(path, out Vcs.ChangeKind kind) ? kind : null;
+        node.Change = node.IsFile && node.Path is { } path && changes.TryGetValue(path, out ChangeKind kind) ? kind : null;
         node.IsCut = cut.Count > 0 && node.Kind is NodeKind.File or NodeKind.Folder && node.Path is { } at && IsCut(at);
     }
 
@@ -734,7 +736,7 @@ public sealed class ExplorerNode : Observable, ITreeRow
     }
 
     /// <summary>How version control says the file changed, or null when it did not.</summary>
-    public Vcs.ChangeKind? Change
+    public ChangeKind? Change
     {
         get => change;
         set
@@ -749,12 +751,12 @@ public sealed class ExplorerNode : Observable, ITreeRow
         }
     }
 
-    private Vcs.ChangeKind? change;
+    private ChangeKind? change;
 
-    public bool IsVcsModified => change is Vcs.ChangeKind.Modified or Vcs.ChangeKind.Renamed;
-    public bool IsVcsAdded => change is Vcs.ChangeKind.Added;
-    public bool IsVcsUnversioned => change is Vcs.ChangeKind.Unversioned;
-    public bool IsVcsConflicted => change is Vcs.ChangeKind.Conflicted;
+    public bool IsVcsModified => change is ChangeKind.Modified or ChangeKind.Renamed;
+    public bool IsVcsAdded => change is ChangeKind.Added;
+    public bool IsVcsUnversioned => change is ChangeKind.Unversioned;
+    public bool IsVcsConflicted => change is ChangeKind.Conflicted;
 
     public Thickness Indent => new(Depth * 16, 0, 0, 0);
     public double ChevronAngle => IsExpanded ? 90 : 0;

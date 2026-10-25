@@ -857,8 +857,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Passenger.App.Mcp.PassengerTools tools = new(window);
         Passenger.App.Mcp.Place declared = Assert.Single(Await(tools.Definition("Separated.cs", 14, 39), "the declaration an agent asks for"));
         Assert.Equal(("Separators.cs", 4, 23, "public static int Value()"), (declared.Path, declared.Line, declared.Column, declared.Text));
-        Assert.Contains(Await(tools.Usages("Separators.cs", 4, 23), "the usages an agent asks for"),
-            p => p is { Path: "Separated.cs", Line: 14, Column: 38, Text: "public int Value() => Separators.Value();" });
+        Assert.Contains("14:38 public int Value() => Separators.Value();",
+            Assert.Single(Await(tools.Usages("Separators.cs", 4, 23), "the usages an agent asks for").Files, f => f.Path == "Separated.cs").Places);
         Assert.Contains(Await(tools.FindSymbol("FirstSeparated"), "the symbol an agent looks for"), s => s.Line == 7);
         Assert.Contains("FirstSeparated (class, line 7)", Await(tools.Outline("Separated.cs"), "the outline an agent asks for"), StringComparison.Ordinal);
 
@@ -905,10 +905,17 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    /// <summary>How many requests' and popups' trackers follow a document's edits.</summary>
-    private static int Trackers(TextDocument document) =>
-        (typeof(TextDocument).GetField(nameof(TextDocument.Changed), System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)?.GetValue(document) as Delegate)?
-            .GetInvocationList().Count(d => d.Target is ChangeTracker) ?? 0;
+    /// <summary>How many requests' and popups' trackers follow a document's edits: those among the handlers of its
+    /// <see cref="TextDocument.Changed"/>.</summary>
+    private static int Trackers(TextDocument document)
+    {
+        const System.Reflection.BindingFlags Own = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+        object handlers = typeof(TextDocument).GetField("changed", Own)?.GetValue(document)
+            ?? throw new MissingFieldException("TextDocument no longer keeps the handlers of Changed in a field named changed");
+        Delegate[] heard = handlers.GetType().GetField("handlers", Own)?.GetValue(handlers) as Delegate[]
+            ?? throw new MissingFieldException("A document's change handlers are no longer an array named handlers");
+        return heard.Count(d => d.Target is ChangeTracker);
+    }
 
     /// <summary>Go to Declaration opens the other file at the method, and Forward after Back goes there again when the caret
     /// moved in between; Back lands on the call it left after a line is added above it; and Go to Declaration on a library
@@ -1836,9 +1843,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     {
         string bare = project.PathOf("Bare.cs");
         string used = project.PathOf("Used.cs");
-        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false };
-        window.Show();
-        window.OpenFolder(project.Folder);
+        MainWindow window = Ui.OpenFolder(project.Folder, autosaves: false);
         window.OpenFile(bare);
         Ui.Settle();
         Assert.True(window.CSharpService?.IsReady, window.CSharpService?.State);
@@ -1897,9 +1902,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     [AvaloniaFact]
     public void Typing_into_a_completion_list_narrows_it_off_the_UI_thread_in_the_rows_it_shows()
     {
-        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false };
-        window.Show();
-        window.OpenFolder(project.Folder);
+        MainWindow window = Ui.OpenFolder(project.Folder, autosaves: false);
         window.OpenFile(project.PathOf("Bare.cs"));
         Ui.Settle();
         Assert.True(window.CSharpService?.IsReady, window.CSharpService?.State);

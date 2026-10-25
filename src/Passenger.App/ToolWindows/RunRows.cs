@@ -176,10 +176,10 @@ public static class RunRows
     /// <summary>The state dot's colour: running green, unhealthy or failed red, between states amber, the rest muted.</summary>
     public static string Colour(RunState state) => state switch
     {
-        RunState.Running => "Passenger.Test.Passed",
-        RunState.Unhealthy or RunState.Failed => "Passenger.Error",
-        RunState.Between => "Passenger.Warning",
-        _ => "Passenger.TextMuted",
+        RunState.Running => TokenKeys.Test_Passed,
+        RunState.Unhealthy or RunState.Failed => TokenKeys.Error,
+        RunState.Between => TokenKeys.Warning,
+        _ => TokenKeys.TextMuted,
     };
 
     internal static TextBlock Words(string text, bool muted, Dock? dock)
@@ -227,7 +227,7 @@ public sealed class RunRowView : DockPanel
             Width = 12, Height = 12, Margin = new Thickness(0, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center,
             Background = Brushes.Transparent, Name = "rowChevron",
         };
-        chevron.Bind(PathIcon.ForegroundProperty, chevron.GetResourceObservable("Passenger.TextMuted"));
+        chevron.Bind(PathIcon.ForegroundProperty, chevron.GetResourceObservable(TokenKeys.TextMuted));
         chevron.PointerPressed += (_, e) =>
         {
             // The press's capture let go first, or rows moved under the pointer would take the next press from the chevron.
@@ -263,7 +263,7 @@ public sealed class RunRowView : DockPanel
         chevron.IsVisible = row.Expands;
         if (was is null || was.Expanded != row.Expanded)
         {
-            chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(row.Expanded ? "Icon.ChevronDown" : "Icon.ChevronRight"));
+            chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(row.Expanded ? IconKeys.ChevronDown : IconKeys.ChevronRight));
         }
         dot.IsVisible = !row.Heading && row.State != RunState.None;
         if (was is null || was.State != row.State)

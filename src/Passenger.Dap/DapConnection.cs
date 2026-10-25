@@ -354,7 +354,7 @@ public sealed class DapConnection : IAsyncDisposable
                 {
                     case "request":
                         // Started in order and left to finish: the next request may start at a handler's first wait.
-                        _ = AnswerAsync(message);
+                        UnawaitedWork.Observe(AnswerAsync(message));
                         break;
                     case "event":
                         string name = Text(message, "event") ?? string.Empty;

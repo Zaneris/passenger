@@ -67,19 +67,19 @@ public sealed class ProfilerCommands
     public ProfilerCommands(ProfilerParts parts)
     {
         this.parts = parts;
-        window = new ToolWindow(ToolWindowIds.Profiler, "Performance Profiler", "Icon.Profile", Make, ToolAnchor.BottomLeft)
+        window = new ToolWindow(ToolWindowIds.Profiler, "Performance Profiler", IconKeys.Profile, Make, ToolAnchor.BottomLeft)
         {
             Action = AppActions.ShowProfiler,
             Menus = [new MenuPlace("Tools", 0, 1)],
         };
         parts.Dock.Add(window);
-        parts.Actions.Add(new IdeAction(AppActions.Profile, "Profile", "Run", context => _ = ProfileReportingAsync())
+        parts.Actions.Add(new IdeAction(AppActions.Profile, "Profile", "Run", context => IdeErrors.Observe(ProfileReportingAsync()))
         {
             WhyNot = _ => WhyNotProfile(Session) ?? (Session.Configurations.Chosen is null ? "Nothing to profile: no executable project" : null),
             Menus = [new MenuPlace("Run", 0, 2)],
         });
         // Nothing of the folder's running, it offers the programs of the engine's running containers to choose from.
-        parts.Actions.Add(new IdeAction(AppActions.AttachProfiler, "Attach Profiler to Running Program", "Run", context => _ = AttachReportingAsync())
+        parts.Actions.Add(new IdeAction(AppActions.AttachProfiler, "Attach Profiler to Running Program", "Run", context => IdeErrors.Observe(AttachReportingAsync()))
         {
             WhyNot = _ => Busy(Session),
             Menus = [new MenuPlace("Run", 3, 0)],
@@ -93,7 +93,7 @@ public sealed class ProfilerCommands
     private ProfilerView Make()
     {
         ProfilerView made = view = new ProfilerView();
-        made.StopRequested += (_, _) => _ = SnapshotAsync();
+        made.StopRequested += (_, _) => IdeErrors.Observe(SnapshotAsync());
         made.KillRequested += (_, _) =>
         {
             if (starting is { } start)
@@ -105,16 +105,16 @@ public sealed class ProfilerCommands
                 Session.Profiled?.Run.Kill();
             }
         };
-        made.OpenRequested += (_, method) => _ = OpenMethodAsync(method);
+        made.OpenRequested += (_, method) => IdeErrors.Observe(OpenMethodAsync(method));
         made.FramesPage.ControlOpened += (_, control) => OpenControl(control);
-        made.OpenSnapshotRequested += (_, _) => _ = PickSnapshotAsync();
-        made.OpenKeptRequested += (_, path) => _ = OpenSnapshotAsync(path);
+        made.OpenSnapshotRequested += (_, _) => IdeErrors.Observe(PickSnapshotAsync());
+        made.OpenKeptRequested += (_, path) => IdeErrors.Observe(OpenSnapshotAsync(path));
         made.RevealSnapshotsRequested += (_, _) =>
         {
             Directory.CreateDirectory(SnapshotFolder);
             parts.ShowInFileManager(SnapshotFolder);
         };
-        made.MemoryRequested += (_, _) => _ = MemorySnapshotAsync();
+        made.MemoryRequested += (_, _) => IdeErrors.Observe(MemorySnapshotAsync());
         if (listed is ({ } folder, { } files))
         {
             made.ShowKept(folder, files);
@@ -301,7 +301,7 @@ public sealed class ProfilerCommands
             profiled.Profiled = program;
             ConsoleInput? input = running.Input is { } writer ? ProgramInput.Of(writer) : null;
             // Only its end puts the run away, however that comes: a snapshot leaves the program running.
-            _ = running.ExitedAsync().ContinueWith(_ => UiThread.Post(() => Ended(profiled, program, inspected, input, landed)), TaskScheduler.Default);
+            IdeErrors.Observe(running.ExitedAsync().ContinueWith(_ => UiThread.Post(() => Ended(profiled, program, inspected, input, landed)), TaskScheduler.Default));
             if (profiled.IsEnded)
             {
                 // Its folder was left as it started: it ends with the folder's other programs.
@@ -391,13 +391,19 @@ public sealed class ProfilerCommands
         }
         // A start that failed once recording had begun read its snapshot as it took its containers down, which the window shows.
         bool recorded = profiled.ContainerRun?.Profiled is not null;
-        string? why = failed ?? (recorded ? null : $"{chosen.Name} started no .NET service to profile");
+        string? why = failed ?? (recorded ? null : NoneProfiled(chosen.Name, profiled.ContainerRun));
         if (why is not null && !recorded)
         {
             View.Stopped(why);
         }
         return why;
     }
+
+    /// <summary>Why a container configuration's Profile recorded nothing: each service it held for the profiler that the
+    /// profiler could not reach, with why, else that it started none.</summary>
+    private static string NoneProfiled(string name, ContainerRun? run) => run?.Unreached is { Count: > 0 } unreached
+        ? $"{name} started no .NET service the profiler can reach ({string.Join("; ", unreached.Select(u => $"{u.Key}: {u.Value}"))})"
+        : $"{name} started no .NET service to profile";
 
     /// <summary>A run handed over to the window: the session's, the profiler window following it, and its snapshot read at its
     /// program's end (or its recording's, in a container) unless Get Snapshot read it first.</summary>
@@ -408,18 +414,18 @@ public sealed class ProfilerCommands
         View.Running(name, () => running.Elapsed, killable);
         parts.Dock.Show(ToolWindowIds.Profiler);
         parts.Say($"Profiling {name} from now: Get Snapshot when it has done what is to be measured");
-        _ = running.ExitedAsync().ContinueWith(_ => UiThread.Post(() =>
+        IdeErrors.Observe(running.ExitedAsync().ContinueWith(_ => UiThread.Post(() =>
         {
             if (profiled.Profiling == running && profiled == Session)
             {
-                _ = SnapshotAsync();
+                IdeErrors.Observe(SnapshotAsync());
             }
             else if (profiled.IsEnded)
             {
                 // Its folder's end let go of the run, read by no one.
                 BackgroundWork.Track(running.DisposeAsync().AsTask());
             }
-        }), TaskScheduler.Default);
+        }), TaskScheduler.Default));
     }
 
     /// <summary>A program Profile started has ended (by itself, killed, or with its folder) and the Run console has the last
@@ -443,7 +449,7 @@ public sealed class ProfilerCommands
             if (profiled.Profiling == program.Run && profiled == Session)
             {
                 // Read, then put away.
-                _ = SnapshotAsync();
+                IdeErrors.Observe(SnapshotAsync());
                 return;
             }
             BackgroundWork.Track(program.Run.DisposeAsync().AsTask());
@@ -673,55 +679,58 @@ public sealed class ProfilerCommands
         }
     }
 
-    /// <summary>The program Attach Profiler profiles: the selected Aspire service, else the one being debugged (in its
-    /// container, too), else the one Profile started that goes on after its snapshot, else the one Run runs, in the Run
-    /// console or the terminal (an Avalonia app by the process its inspector said it is; under Hot Reload, the app dotnet
-    /// watch started, found as the attach begins).</summary>
+    /// <summary>The program Attach Profiler profiles, of those the folder runs (<see cref="ProjectSession.Running"/>): the
+    /// selected Aspire service, else the chosen Debug tab's (in its container, too), else the container run's service Profile
+    /// records, else the one Profile started that goes on after its snapshot, else the one Run runs, in the Run console or the
+    /// terminal (an Avalonia app by the process its inspector said it is; under Hot Reload, the app dotnet watch started,
+    /// found as the attach begins).</summary>
     private AttachTarget? Attachable(out string? problem)
     {
         ProjectSession current = Session;
+        IReadOnlyList<RunningProgram> running = current.Running;
         problem = null;
         if (current.Aspire.SelectedService is { } selected)
         {
             if (selected.ProcessId is not > 0 || selected.Stopping.IsCancellationRequested
-                || current.Aspire.Apps.FirstOrDefault(app => !app.Stopping && app.Services.Contains(selected)) is not { } app)
+                || running.FirstOrDefault(p => p.Service == selected)?.Services is not { } app)
             {
                 problem = $"The selected Aspire service {selected.Plan.Name} is no longer available to profile";
                 return null;
             }
             return new(selected.ProcessId.Value, ((IRunService)selected).Name, FileName(selected.Plan.ProgramName)) { Run = app };
         }
-        // A container's program, by its id there, recorded there through the debugger's own map of its paths.
-        if (current.Debug.Session is { State: not Debugging.DebugState.Ended, Elsewhere: true, Place: { } place, ProcessStarted.IsCompletedSuccessfully: true } remote)
+        if (running.FirstOrDefault(p => p.Tab is { } tab && tab == current.Debug.Chosen) is { Tab.Session: { } debugging } debugged)
         {
-            string name = current.Debug.TabOf(remote)?.Name ?? $"process {remote.ProcessStarted.Result} in {place.Where}";
-            string program = place.Program ?? $"process {remote.ProcessStarted.Result}";
-            DotnetProcess there = new(remote.ProcessStarted.Result, program, string.Empty, string.Empty, true) { Container = place.Where };
-            return new AttachTarget(there.Id, name, FileName(Path.GetFileNameWithoutExtension(program))) { Elsewhere = there, Paths = place.Paths };
-        }
-        // The chosen session's, when its program is on this machine: a container's process id names none of this one's.
-        if (current.Debug.Session is { State: not Debugging.DebugState.Ended, IsLocal: true, ProcessStarted.IsCompletedSuccessfully: true } debugging)
-        {
-            int process = debugging.ProcessStarted.Result;
-            LiveApp? app = current.Debug.TabOf(debugging)?.App is { ProcessId: int inspected } live && inspected == process ? live : null;
-            string program = app?.Plan?.Built ?? debugging.Program;
-            return new(process, app?.Name ?? Path.GetFileNameWithoutExtension(program), FileName(Path.GetFileNameWithoutExtension(program)));
+            // A container's program, by its id there, recorded there through the debugger's own map of its paths.
+            if (debugging is { Elsewhere: true, Place: { } place, ProcessStarted.IsCompletedSuccessfully: true })
+            {
+                string program = place.Program ?? $"process {debugging.ProcessStarted.Result}";
+                DotnetProcess there = new(debugging.ProcessStarted.Result, program, string.Empty, string.Empty, true) { Container = place.Where };
+                return new AttachTarget(there.Id, debugged.Name, FileName(Path.GetFileNameWithoutExtension(program))) { Elsewhere = there, Paths = place.Paths };
+            }
+            // Its process on this machine: a container's process id names none of this one's.
+            if (debugged.Process is int process)
+            {
+                LiveApp? app = debugged.App is { ProcessId: int inspected } live && inspected == process ? live : null;
+                string program = app?.Plan?.Built ?? debugging.Program;
+                return new(process, app?.Name ?? Path.GetFileNameWithoutExtension(program), FileName(Path.GetFileNameWithoutExtension(program)));
+            }
         }
         // A container run's service as it runs (Run's log is the CLI's, no program of this machine's): the one Profile records.
-        if (current.ContainerRun is { IsStopped: false } containers && containers.Plan.Profiled() is { } service)
+        if (current.ServiceRuns.OfType<ContainerRun>().FirstOrDefault() is { } containers && containers.Plan.Profiled() is { } service)
         {
             return new(0, service.Service, FileName(service.Service)) { Run = containers };
         }
-        if (current.Profiled is { } profiled)
+        if (running.FirstOrDefault(p => p.Kind == RunningKind.Profile) is { Process: int profiling } profile && current.Profiled is { } profiled)
         {
-            return new(profiled.Run.ProcessId, profiled.Name, profiled.File);
+            return new(profiling, profile.Name, profiled.File);
         }
-        if (current.Running.FirstOrDefault(p => p.Kind == RunningKind.Run) is { Plan: { } plan } ran && (ran.App?.ProcessId ?? ran.Process) is int running)
+        if (running.FirstOrDefault(p => p.Kind == RunningKind.Run) is { Plan: { } plan } ran && (ran.App?.ProcessId ?? ran.Process) is int run)
         {
             string name = ran.App?.Name ?? plan.Name;
             string program = ran.App?.Plan?.Built is { } built ? Path.GetFileNameWithoutExtension(built) : plan.ProgramName;
             // Under Hot Reload the process Run started is dotnet watch's own, and the app one it started in turn.
-            return new(running, name, FileName(program), parts.Builds().WatchesHotReload ? program : null);
+            return new(run, name, FileName(program), parts.Builds().WatchesHotReload ? program : null);
         }
         return null;
     }
