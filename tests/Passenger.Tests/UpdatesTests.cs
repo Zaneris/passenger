@@ -527,6 +527,9 @@ public sealed class UpdatesTests : IClassFixture<UpdatesTests.DiskImages>, IDisp
         // Another Passenger runs from the same app, as `open -n` starts one: a program at its executable's path.
         string executable = Path.Combine(copy.Bundle, "Contents", "MacOS", "Passenger");
         File.Copy("/bin/sleep", executable, overwrite: true);
+        // Signed again, as Make signs the app: a bundle whose seal no longer holds starts with macOS's "damaged" dialog.
+        Tool("/usr/bin/codesign", "--force", "--options", "runtime", "--sign", "-", copy.Bundle);
+        Assert.True(copy.SignatureHolds(), $"{copy.Bundle}'s signature does not hold once its executable was replaced and signed again");
         using System.Diagnostics.Process other = ChildProcesses.Start(ChildProcesses.Command(executable, ["120"]));
         try
         {
