@@ -82,6 +82,95 @@ public sealed class EditingBehaviourTests
         Assert.Equal("one\ntwo\nthree", rig.Text);
     }
 
+    /// <summary>A word typed undoes and redoes as one change, so whatever follows the text (the anchors, folds, colours,
+    /// the language server) hears of it once rather than once a key; the typing help's closer and the step over it go
+    /// with the word.</summary>
+    [AvaloniaFact]
+    public void Undoing_a_typed_word_takes_it_back_in_one_change_and_redoing_makes_it_again_in_one()
+    {
+        EditorRig rig = new("first\n");
+        rig.PlaceCaret(5);
+        rig.Type(" Call(x)");
+        Assert.Equal("first Call(x)\n", rig.Text);
+        int changes = 0;
+        rig.Document.Changed += (_, _) => changes++;
+
+        rig.Press("meta Z");
+        Assert.True(changes == 1, $"Undoing the word typed raised {changes} changes, one a key, so every handler of a change ran that often");
+        Assert.Equal("first\n", rig.Text);
+        Assert.Equal(5, rig.Caret);
+        Assert.False(rig.Document.IsModified, "Undoing the only word typed left the text marked as changed from what was loaded");
+
+        changes = 0;
+        rig.Press("meta shift Z");
+        Assert.True(changes == 1, $"Redoing the word typed raised {changes} changes, one a key");
+        Assert.Equal("first Call(x)\n", rig.Text);
+        Assert.Equal(13, rig.Caret);
+    }
+
+    /// <summary>Thousands of keys keep an undo history no larger than its bound, however many more are typed: no version
+    /// of the text a key made stays held for its undo, and the newest steps, thousands of them, still undo one at a time
+    /// back to the text the oldest kept began from and redo to the last.</summary>
+    [AvaloniaFact]
+    public void Thousands_of_keys_keep_an_undo_history_within_its_bound_that_still_undoes_their_newest_thousands_of_steps()
+    {
+        StringBuilder lines = new();
+        for (int i = 0; i < 1500; i++)
+        {
+            lines.Append("    int value").Append(i).Append(" = Compute(").Append(i).Append(");\n");
+        }
+        string initial = lines.ToString();
+        EditorRig rig = new(initial);
+        rig.Window.Width = 300;
+        rig.Window.Height = 120;
+        int caret = initial.Length / 2;
+        rig.PlaceCaret(caret);
+        Ui.Settle();
+        // Each version of the text a key leaves behind, held weakly: one the history keeps for its undo stays alive.
+        List<WeakReference<TextSnapshot>> versions = [];
+        rig.Document.Changed += (_, change) => versions.Add(new WeakReference<TextSnapshot>(change.Before));
+
+        // A word and a space a step: a step for each two keys, the most steps a run of typing makes.
+        const int Keys = 8000;
+        string typed = string.Concat(Enumerable.Repeat("x ", Keys / 2));
+        long[] kept = new long[Keys / 1000];
+        for (int chunk = 0; chunk < kept.Length; chunk++)
+        {
+            rig.Type(typed.Substring(chunk * 1000, 1000));
+            kept[chunk] = rig.Document.HistoryBytes;
+        }
+        Assert.True(rig.Text == initial[..caret] + typed + initial[caret..], "The keys did not type what they were");
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        int alive = versions.Count(v => v.TryGetTarget(out _));
+        Assert.True(alive <= 10, $"{alive} of the {versions.Count} versions of the text the keys left behind are still held, each with the pieces of text it was made of");
+        string grew = string.Join(", ", kept.Select((bytes, i) => $"{(i + 1) * 1000} keys: {bytes / 1024} KB"));
+        Assert.True(kept.All(bytes => bytes <= TextDocument.KeptBytes),
+            $"The undo history kept more than its bound of {TextDocument.KeptBytes / 1024} KB as the keys went on ({grew})");
+        Assert.True(kept[^1] > TextDocument.KeptBytes * 3 / 4 && kept[^2] > TextDocument.KeptBytes * 3 / 4,
+            $"The keys never brought the undo history near its bound, so it was never held to it ({grew})");
+
+        int steps = 0;
+        while (rig.Document.CanUndo)
+        {
+            rig.Editor.TryExecute(EditorActions.Undo);
+            steps++;
+        }
+        string start = rig.Text;
+        Assert.True(steps >= 3000, $"Only the newest {steps} of the keys' {Keys / 2} steps undo, where the bound holds thousands");
+        int dropped = start.Length - initial.Length;
+        Assert.True(dropped > 0 && start == initial[..caret] + typed[..dropped] + initial[caret..],
+            $"Undoing every step kept did not give back the text as the oldest step kept began from it ({dropped} characters typed before it)");
+        Assert.Equal(caret + dropped, rig.Caret);
+        while (rig.Document.CanRedo)
+        {
+            rig.Editor.TryExecute(EditorActions.Redo);
+        }
+        Assert.True(rig.Text == initial[..caret] + typed + initial[caret..], "Redoing every step did not give back the text the keys left");
+    }
+
     [AvaloniaFact]
     public void Select_next_occurrence_picks_the_word_then_each_copy_and_typing_replaces_them_all()
     {
