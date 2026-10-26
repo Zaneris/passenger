@@ -176,31 +176,39 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>The popup's Replace All, once confirmed: the matches it lists replaced, said in the status bar, and the
-    /// popup's search run again over what is left.</summary>
-    private async Task ReplaceAllAsync(Navigation.FindInFilesPopup popup, (SearchQuery Query, string Replacement, IReadOnlyList<SearchMatch> Matches) asked)
+    /// <summary>The popup's Replace All, once confirmed: the matches it lists replaced, but in a file a regex ran too long
+    /// in, said in the status bar, and the popup's search run again over what is left.</summary>
+    private async Task ReplaceAllAsync(Navigation.FindInFilesPopup popup, (SearchQuery Query, string Replacement, FilesFound Found) asked)
     {
-        string what = FilesReplaced.Count(asked.Matches);
-        if (await Confirm("Replace in Files", $"Replace {what} with '{asked.Replacement}'? An open file's change can be undone there; a closed file is written.", "Replace All"))
+        if (asked.Found.Replaceable.Count == 0)
         {
-            FilesReplaced done = await ReplaceInFilesAsync(asked.Query, asked.Replacement, [.. asked.Matches.Select(m => m.Path).Distinct()]);
-            IReadOnlyList<SearchMatch> replaced = done.Replaced(asked.Matches);
+            status.Text = $"Nothing replaced: {asked.Found.StoppedIn(Path.GetFileName)}";
+            return;
+        }
+        string what = FilesReplaced.Count(asked.Found.Replaceable);
+        string leaving = asked.Found.Stopped.Count == 0 ? string.Empty
+            : $" Not replaced in {string.Join(", ", asked.Found.Stopped.Select(Path.GetFileName))}: {FileSearch.StoppedWhy}.";
+        if (await Confirm("Replace in Files", $"Replace {what} with '{asked.Replacement}'? An open file's change can be undone there; a closed file is written.{leaving}", "Replace All"))
+        {
+            FilesReplaced done = await ReplaceInFilesAsync(asked.Query, asked.Replacement, asked.Found);
+            IReadOnlyList<SearchMatch> replaced = done.Replaced(asked.Found.Matches);
             string? refused = done.NotReplaced(Path.GetFileName);
             status.Text = string.Join("; ", [replaced.Count > 0 ? $"Replaced {FilesReplaced.Count(replaced)}" : "Nothing replaced", .. done.Converted, .. refused is null ? [] : new[] { refused }]);
             await popup.SearchAsync();
         }
     }
 
-    /// <summary>Replaces a query's matches in these files, each searched off the UI thread first: an open one as one
-    /// undoable step changing only its matches, so its carets, folds and breakpoints stay put; a closed one written in its
-    /// own encoding, or as UTF-8 when that cannot hold the replacement, said of each such file. A file the system refuses
-    /// (read-only, access denied, held), one a regex ran too long in, or an open one edited while it was searched is left
-    /// as it was and named with why, and the rest are replaced all the same.</summary>
-    public async Task<FilesReplaced> ReplaceInFilesAsync(SearchQuery query, string replacement, IReadOnlyList<string> paths)
+    /// <summary>Replaces a query's matches in the files Find in Files found them in, each searched off the UI thread first:
+    /// an open one as one undoable step changing only its matches, so its carets, folds and breakpoints stay put; a closed
+    /// one written in its own encoding, or as UTF-8 when that cannot hold the replacement, said of each. A file the system
+    /// refuses (read-only, access denied, held), one a regex ran too long in, or an open one edited while it was searched
+    /// is left as it was and named with why, and the rest are replaced all the same.</summary>
+    public async Task<FilesReplaced> ReplaceInFilesAsync(SearchQuery query, string replacement, FilesFound found)
     {
         SearchPattern pattern = SearchPattern.For(query, TextSearch.Apart);
         List<(string Path, TextSnapshot? Open)> files = [];
-        foreach (string path in paths)
+        List<(string Path, string Why)> refused = [.. found.Stopped.Select(path => (path, FileSearch.StoppedWhy))];
+        foreach (string path in found.Replaceable.Select(m => m.Path).Distinct())
         {
             OpenDocument? open = Editors.Find(path);
             if (open is { HoldsText: false })
@@ -212,7 +220,6 @@ public partial class MainWindow
         }
         List<FileSearch.Replacing> planned = await BackgroundWork.Run(() => files.Select(f => FileSearch.Plan(f.Path, f.Open, pattern, replacement)).ToList());
         List<string> converted = [];
-        List<(string Path, string Why)> refused = [];
         foreach (FileSearch.Replacing plan in planned)
         {
             if (plan.Why is { } why)
@@ -280,10 +287,10 @@ public partial class MainWindow
     }
 
     /// <summary>Find in Files for an agent: a query's matches in a scope under its mask, as the popup searches them.</summary>
-    public Task<IReadOnlyList<SearchMatch>> FindInFilesAsync(SearchQuery query, SearchScope scope, CancellationToken cancellation) =>
+    public Task<FilesFound> FindInFilesAsync(SearchQuery query, SearchScope scope, CancellationToken cancellation) =>
         SearchFiles(query, scope, cancellation);
 
-    private Task<IReadOnlyList<SearchMatch>> SearchFiles(SearchQuery query, SearchScope scope, CancellationToken cancellation)
+    private Task<FilesFound> SearchFiles(SearchQuery query, SearchScope scope, CancellationToken cancellation)
     {
         return FileSearch.FindAsync(session.Index.Root ?? Folder!, session.Index.Files, Place(scope), query, Editors.Texts(), cancellation);
     }

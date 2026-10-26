@@ -271,6 +271,33 @@ public sealed class FindInFilesTests : IDisposable
     }
 
     [AvaloniaFact]
+    public void A_regex_backtracking_without_end_in_a_file_is_said_to_stop_there_to_the_popup_and_an_agent_and_replace_all_leaves_that_file()
+    {
+        string runs = Path.Combine(folder, "Runs.txt");
+        string text = "ab\n" + new string('a', 3000) + "\n";
+        File.WriteAllText(runs, text);
+        MainWindow window = Open();
+        FindInFilesPopup popup = window.ShowFindInFiles(replace: true)!;
+        popup.Regex = true;
+        Search(popup, "(a+)+b|count");
+        Assert.True(popup.Status == "4 matches in 3 files; the regex took too long and stopped in Runs.txt", $"The popup says '{popup.Status}' of a regex that never ends in Runs.txt");
+        Assert.Contains(popup.Matches, m => m is { Name: "Runs.txt", Line: 0, Column: 0, Length: 2 });
+
+        Task<Passenger.App.Mcp.FindInFilesResult> asking = new Passenger.App.Mcp.PassengerTools(window).FindInFiles("(a+)+b|count", regex: true);
+        Passenger.App.Mcp.FindInFilesResult answer = Ui.Await(asking, "find_in_files' answer");
+        Assert.True(answer is { Count: 4, Stopped: ["Runs.txt"] }, $"find_in_files told an agent of {answer.Count} matches, stopped in {string.Join(", ", answer.Stopped ?? [])}");
+
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+        popup.Replacement = "x";
+        popup.RequestReplace();
+        Ui.WaitFor(() => window.Status?.StartsWith("Replaced", StringComparison.Ordinal) == true, () => $"the replacement; the status says '{window.Status}'");
+        Assert.Equal("Replaced 3 matches in 2 files; not replaced: Runs.txt (the regex took too long there)", window.Status);
+        Assert.True(File.ReadAllText(runs) == text, "Replace All replaced the match found in Runs.txt before its search stopped");
+        Assert.Equal("class Alpha\n{\n    int x;\n}\n", File.ReadAllText(Path.Combine(folder, "Alpha.cs")));
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void Replace_all_over_an_open_file_keeps_its_caret_folds_and_breakpoints()
     {
         const string Source = "class Gamma\n{\n    int Count()\n    {\n        int count = 0;\n        return count;\n    }\n\n"

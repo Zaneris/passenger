@@ -11,6 +11,20 @@ public sealed record SearchMatch(string Path, int Line, int Column, int Length, 
     public string Name => System.IO.Path.GetFileName(Path);
 }
 
+/// <summary>What Find in Files found: the matches, and the files a regex ran too long in, whose search stopped there (the
+/// matches found before the stop listed).</summary>
+public sealed record FilesFound(IReadOnlyList<SearchMatch> Matches, IReadOnlyList<string> Stopped)
+{
+    public static readonly FilesFound None = new([], []);
+
+    /// <summary>The matches Replace in Files replaces: those in the files whose search ended.</summary>
+    public IReadOnlyList<SearchMatch> Replaceable => Stopped.Count == 0 ? Matches : [.. Matches.Where(m => !Stopped.Contains(m.Path))];
+
+    /// <summary>Where the search stopped, each file named as <paramref name="name"/> gives it; null when it stopped nowhere.</summary>
+    public string? StoppedIn(Func<string, string> name) =>
+        Stopped.Count == 0 ? null : $"the regex took too long and stopped in {string.Join(", ", Stopped.Select(name))}";
+}
+
 /// <summary>What Replace in Files did beyond the matches: the files written as UTF-8 since their encoding could not hold
 /// the replacement, and those left as they were since the system refused the write (read-only, access denied, held),
 /// each with why.</summary>
@@ -61,14 +75,16 @@ public static class FileSearch
     }
 
     /// <summary>The matches in the files of a place (every file the index has, or those a scope and a mask leave), file
-    /// by file in the index's order, at most <see cref="MostMatches"/>; a regex has <see cref="TextSearch.Apart"/> in each.</summary>
-    public static Task<IReadOnlyList<SearchMatch>> FindAsync(string root, IReadOnlyList<string> files, SearchPlace place, SearchQuery query,
+    /// by file in the index's order, at most <see cref="MostMatches"/>; a regex has <see cref="TextSearch.Apart"/> in each,
+    /// and the files it ran too long in are named.</summary>
+    public static Task<FilesFound> FindAsync(string root, IReadOnlyList<string> files, SearchPlace place, SearchQuery query,
         Editors.OpenTexts open, CancellationToken cancellation) => BackgroundWork.Run(() =>
     {
         List<SearchMatch> found = [];
+        List<string> stopped = [];
         if (query.IsEmpty || Problem(query) is not null)
         {
-            return (IReadOnlyList<SearchMatch>)found;
+            return FilesFound.None;
         }
         SearchPattern pattern = SearchPattern.For(query, TextSearch.Apart);
         MatchFilter? filter = MatchFilter.For(query);
@@ -88,18 +104,23 @@ public static class FileSearch
             {
                 continue;
             }
-            foreach (TextRange match in TextSearch.FindAll(text, pattern, MostMatches - found.Count).Matches)
+            SearchResult searched = TextSearch.FindAll(text, pattern, MostMatches - found.Count);
+            foreach (TextRange match in searched.Matches)
             {
                 TextPosition at = text.GetPosition(match.Start);
                 string line = text.GetLineText(at.Line);
                 found.Add(new SearchMatch(path, at.Line, at.Column, Math.Min(match.Length, Math.Max(0, line.Length - at.Column)), line));
+            }
+            if (searched.Stopped)
+            {
+                stopped.Add(path);
             }
             if (found.Count >= MostMatches)
             {
                 break;
             }
         }
-        return (IReadOnlyList<SearchMatch>)found;
+        return new FilesFound(found, stopped);
     }, cancellation);
 
     /// <summary>A closed file's text as the editor reads it (<see cref="Editors.EditorArea.Read"/>); null for one that is

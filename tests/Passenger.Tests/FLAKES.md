@@ -24,6 +24,13 @@ that fixed it, in one of the forms below. A failure not yet understood goes in o
   have not moved for 250 ms (`ProblemsPause`), a delay on the clock, so keys typed that far apart, as a loaded machine's
   are, end a pause between them; not seen again under 15 or 40 burners (keys 10 to 180 ms apart). Neither race: **the
   test** counts only keys that came within the pause of the one before, typing on until eight did (04c7ae79).
+- `FindInFilesTests`' `The_options_narrow_the_matches_and_an_open_files_unsaved_text_is_searched` and
+  `Replace_in_files_fills_a_regexs_groups_…`, under load (#539): `c\w+t\(` found no match where it finds 1, and `cat|dog`
+  with Words none where 2. Every regex had 250 ms a match by the wall clock, and a search of microseconds at rest took up
+  to 309 ms beside 30 CPU burners here (2 of 6.5 million of these searches stopped short); Find in Files dropped the stop
+  without a word. **A limit in the IDE** a busy machine outran: plain text has none (a literal never backtracks), a regex
+  5 s off the UI thread, where the UI thread hands one it gives up on (52efb6f1); a search that stops now names the file.
+
 - `McpAvaloniaAppTests`' `An_agent_debugging_an_avalonia_app_…`, the Mac with several agents' runs at once: "paused on a
   binding error the debugger could not describe" (#532). An agent's answer at a stop waited 5 s for the Debug window to
   read it, and a binding error's stop is read by three of the adapter's answers (its frame, `$bindingError`, its words),

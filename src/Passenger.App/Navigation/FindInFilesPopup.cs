@@ -38,7 +38,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         (SearchScopeKind.Scope, "Scope", Key.S),
     ];
 
-    private readonly Func<SearchQuery, SearchScope, CancellationToken, Task<IReadOnlyList<SearchMatch>>> search;
+    private readonly Func<SearchQuery, SearchScope, CancellationToken, Task<FilesFound>> search;
     private readonly Func<string, TextSnapshot?> textOf;
     private readonly TextBox query;
     private readonly TextBox? replacement;
@@ -60,7 +60,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
     private readonly Debounce typing;
     private SearchScopeKind kind;
     private CancellationTokenSource? asking;
-    private IReadOnlyList<SearchMatch> matches = [];
+    private FilesFound found = FilesFound.None;
 
     /// <summary>The query and scope the matches shown were found for.</summary>
     private (SearchQuery Query, SearchScope Scope)? shownFor;
@@ -68,7 +68,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
     private Task? searching;
 
     /// <param name="ligatures">Settings' Enable ligatures, which the matched lines and the preview follow.</param>
-    public FindInFilesPopup(Func<SearchQuery, SearchScope, CancellationToken, Task<IReadOnlyList<SearchMatch>>> search, Func<string, TextSnapshot?> textOf,
+    public FindInFilesPopup(Func<SearchQuery, SearchScope, CancellationToken, Task<FilesFound>> search, Func<string, TextSnapshot?> textOf,
         bool replace, string? initial, FindChoices choices, bool ligatures)
     {
         this.search = search;
@@ -203,12 +203,12 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
     public event EventHandler<SearchMatch?>? Done;
 
     /// <summary>Replace All pressed: the query, its replacement, and the files it matched in.</summary>
-    public event EventHandler<(SearchQuery Query, string Replacement, IReadOnlyList<SearchMatch> Matches)>? ReplaceRequested;
+    public event EventHandler<(SearchQuery Query, string Replacement, FilesFound Found)>? ReplaceRequested;
 
     /// <summary>The scope or the mask changed, for the window to keep.</summary>
     public event EventHandler<SearchScope>? ScopeChanged;
 
-    public IReadOnlyList<SearchMatch> Matches => matches;
+    public IReadOnlyList<SearchMatch> Matches => found.Matches;
 
     public string Status => status.Text ?? string.Empty;
 
@@ -337,9 +337,9 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         {
             await SearchAsync();
         }
-        if (matches.Count > 0 && shownFor == (Query, Scope))
+        if (found.Matches.Count > 0 && shownFor == (Query, Scope))
         {
-            ReplaceRequested?.Invoke(this, (Query, Replacement, matches));
+            ReplaceRequested?.Invoke(this, (Query, Replacement, found));
         }
     }
 
@@ -356,7 +356,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
     {
         asking?.Cancel();
         SearchQuery asked = Query;
-        Show([], asked.Text.Length == 0 ? string.Empty : FileSearch.Problem(asked) ?? Scope.Problem() ?? "Searching…", null);
+        Show(FilesFound.None, asked.Text.Length == 0 ? string.Empty : FileSearch.Problem(asked) ?? Scope.Problem() ?? "Searching…", null);
         typing.Restart();
     }
 
@@ -413,36 +413,38 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         SearchScope where = Scope;
         if (asked.Text.Length == 0)
         {
-            Show([], string.Empty, (asked, where));
+            Show(FilesFound.None, string.Empty, (asked, where));
             return;
         }
         if ((FileSearch.Problem(asked) ?? where.Problem()) is { } problem)
         {
-            Show([], problem, (asked, where));
+            Show(FilesFound.None, problem, (asked, where));
             return;
         }
-        Show([], "Searching…", null);
+        Show(FilesFound.None, "Searching…", null);
         try
         {
-            IReadOnlyList<SearchMatch> found = await search(asked, where, cancel.Token);
+            FilesFound searched = await search(asked, where, cancel.Token);
             if (cancel.IsCancellationRequested)
             {
                 return;
             }
-            int files = found.Select(m => m.Path).Distinct().Count();
-            Show(found, found.Count == 0 ? "Nothing found" : $"{Count(found.Count)} in {Plural.Of(files, "file")}", (asked, where));
+            IReadOnlyList<SearchMatch> each = searched.Matches;
+            int files = each.Select(m => m.Path).Distinct().Count();
+            string said = each.Count == 0 ? "Nothing found" : $"{Count(each.Count)} in {Plural.Of(files, "file")}";
+            Show(searched, searched.StoppedIn(System.IO.Path.GetFileName) is { } stopped ? $"{said}; {stopped}" : said, (asked, where));
         }
         catch (OperationCanceledException)
         {
         }
     }
 
-    private void Show(IReadOnlyList<SearchMatch> found, string said, (SearchQuery Query, SearchScope Scope)? of)
+    private void Show(FilesFound shown, string said, (SearchQuery Query, SearchScope Scope)? of)
     {
-        matches = found;
+        found = shown;
         shownFor = of;
-        results.ItemsSource = found;
-        results.SelectedIndex = found.Count > 0 ? 0 : -1;
+        results.ItemsSource = shown.Matches;
+        results.SelectedIndex = shown.Matches.Count > 0 ? 0 : -1;
         status.Text = said;
         ShowPreview();
     }
