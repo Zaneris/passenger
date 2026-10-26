@@ -115,7 +115,7 @@ public sealed class LiveRequestsTests
                 Assert.Equal("Ada: 0, Grace: 0, Linus: 0", Get(client, $"http://127.0.0.1:{port.Port}/orders"));
                 Assert.Equal("out", Get(client, $"http://127.0.0.1:{port.Port}/sign-in/ada"));
                 Assert.Equal("signed up", Get(client, $"http://127.0.0.1:{port.Port}/sign-up/ada"));
-                HttpResponseMessage failed = Task.Run(() => client.GetAsync($"http://127.0.0.1:{port.Port}/boom")).GetAwaiter().GetResult();
+                HttpResponseMessage failed = Asked(() => client.GetAsync($"http://127.0.0.1:{port.Port}/boom"), "the shop's answer at /boom");
                 Assert.Equal(500, (int)failed.StatusCode);
             }
             try
@@ -235,7 +235,7 @@ public sealed class LiveRequestsTests
         {
             try
             {
-                return Task.Run(() => client.GetAsync(url)).GetAwaiter().GetResult().IsSuccessStatusCode;
+                return Asked(() => client.GetAsync(url), $"the shop's answer at {url}").IsSuccessStatusCode;
             }
             catch (HttpRequestException)
             {
@@ -375,7 +375,14 @@ public sealed class LiveRequestsTests
         TestFolders.Write(folder, "Program.cs", Program);
     }
 
-    internal static string Get(HttpClient client, string url) => Task.Run(() => client.GetStringAsync(url)).GetAwaiter().GetResult();
+    /// <summary>The app's answer at the address, asked from the UI thread with the window's loop running meanwhile, never
+    /// waiting for the window's work to land; a test with no window awaits the client itself.</summary>
+    internal static string Get(HttpClient client, string url) => Asked(() => client.GetStringAsync(url), $"the shop's answer at {url}");
+
+    /// <summary>A request of the test's own, sent on the thread pool and waited for on the UI thread for as long as the client
+    /// gives it and a moment more, so the client's own timeout fails it first.</summary>
+    private static T Asked<T>(Func<Task<T>> request, string what) =>
+        Ui.AwaitPumped(Waiting.Apart(request), what, TimeSpan.FromSeconds(100) + TestFolders.Spare);
 
     private static int LineOf(string text) => Array.FindIndex(Program.Split('\n'), l => l.Contains(text, StringComparison.Ordinal));
 }

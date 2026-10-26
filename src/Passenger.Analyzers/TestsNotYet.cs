@@ -14,7 +14,6 @@ internal static class TestsNotYet
         "AspireExternalDataTests",
         "AspireStandInTests",
         "AspireTests",
-        "CodeAssistTests",
         "ContainerDebuggingTests",
         "ContainerPrograms",
         "ContainerRunDebuggingTests",
@@ -28,13 +27,7 @@ internal static class TestsNotYet
         "Docker",
         "DockerFilesTests",
         "EngineChecksTests",
-        "LiveRequestsTests",
-        "LongFileAssistTests",
-        "LongListsTests",
-        "StandInAppHost",
-        "StandInHttp",
-        "UpdatesTests",
-        "WpfPreviewTests");
+        "StandInAppHost");
 
     /// <summary>Whether the symbol is in one of those classes.</summary>
     public static bool Contains(ISymbol? symbol)

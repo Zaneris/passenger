@@ -7,9 +7,13 @@ namespace Passenger.Tests;
 /// <summary>An HTTP/1.1 server on a loopback port of its own, for a test that must reach no real host: each request is read
 /// whole (its head however long, then the body its Content-Length gives) and handed to the test's handler, which answers it.
 /// A connection takes one request and closes, unless the server keeps connections alive, when it takes each one the client
-/// sends until the client closes. Disposed, it stops listening, cancels the answers under way and waits for them.</summary>
-public sealed class StandInHttp : IDisposable
+/// sends until the client closes. Disposed, it stops listening, cancels the answers under way and waits for them: on the
+/// UI thread with the window's loop running, or awaited (<see cref="DisposeAsync"/>).</summary>
+public sealed class StandInHttp : IDisposable, IAsyncDisposable
 {
+    /// <summary>The longest its end waits for the answers under way to stop.</summary>
+    private static readonly TimeSpan Stopping = TimeSpan.FromSeconds(10);
+
     private static readonly byte[] HeadEnd = "\r\n\r\n"u8.ToArray();
 
     private readonly TcpListener listener = new(IPAddress.Loopback, 0);
@@ -27,7 +31,7 @@ public sealed class StandInHttp : IDisposable
         listener.Start();
         Port = ((IPEndPoint)listener.LocalEndpoint).Port;
         Root = $"http://127.0.0.1:{Port}";
-        accepting = Task.Run(AcceptAsync);
+        accepting = Waiting.Apart(() => AcceptAsync());
     }
 
     public int Port { get; }
@@ -45,8 +49,25 @@ public sealed class StandInHttp : IDisposable
     {
         end.Cancel();
         listener.Stop();
-        accepting.Wait(TimeSpan.FromSeconds(10));
+        bool stopped = Ui.Pumped(() => accepting.IsCompleted, Stopping, scaled: false);
         end.Dispose();
+        if (stopped && accepting.IsCompleted)
+        {
+            // An answer that failed fails the test.
+            accepting.GetAwaiter().GetResult();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        end.Cancel();
+        listener.Stop();
+        bool stopped = await Waiting.Within(accepting, Stopping, scaled: false);
+        end.Dispose();
+        if (stopped)
+        {
+            await accepting;
+        }
     }
 
     /// <summary>A status's reason phrase, the one table every answer takes it from.</summary>
@@ -72,7 +93,7 @@ public sealed class StandInHttp : IDisposable
                 TcpClient client = await listener.AcceptTcpClientAsync(end.Token);
                 int connection = Interlocked.Increment(ref connections);
                 Interlocked.Increment(ref open);
-                answering.Add(Task.Run(() => ServeAsync(client, connection)));
+                answering.Add(Waiting.Apart(() => ServeAsync(client, connection)));
             }
         }
         catch (Exception stopped) when (stopped is OperationCanceledException or SocketException or ObjectDisposedException or InvalidOperationException)

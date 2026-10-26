@@ -123,9 +123,8 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
         int near = document.Text.Snapshot.ToString().IndexOf("value0 * 3", StringComparison.Ordinal);
         int far = document.Text.Snapshot.ToString().LastIndexOf("value98 * 3", StringComparison.Ordinal);
         Ui.WaitFor(() => KindAt(near) == TokenKind.Local && KindAt(far) == TokenKind.Local, "the server's colours on the locals");
-        Task<(Passenger.Lsp.SemanticTokens? Tokens, int Version)> asking = csharp.Lsp!.SemanticTokensAsync();
-        Ui.WaitFor(() => asking.IsCompleted, "the whole file's tokens");
-        long decoded = asking.Result.Tokens!.Data.Length / 5 * System.Runtime.CompilerServices.Unsafe.SizeOf<SyntaxSpan>();
+        (Passenger.Lsp.SemanticTokens? Tokens, int Version) asked = Ui.Await(csharp.Lsp!.SemanticTokensAsync(), "the whole file's tokens");
+        long decoded = asked.Tokens!.Data.Length / 5 * System.Runtime.CompilerServices.Unsafe.SizeOf<SyntaxSpan>();
         Assert.True(decoded > 1_000_000, $"The file's tokens decode to only {decoded / 1024} KB");
 
         // Keys that open no completion, before the first statement's end: everything after them moves.
@@ -373,13 +372,16 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
         Passenger.Lsp.LspDocument lsp = window.CSharpService!.For(document)!.Lsp!;
         int declared = document.Text.Snapshot.ToString().IndexOf(declaration, StringComparison.Ordinal) + "int ".Length;
         long read = GC.GetTotalAllocatedBytes(precise: true);
-        int usages = Task.Run(() => lsp.ReferencesAsync(declared)).GetAwaiter().GetResult().Count;
+        int usages = Ui.Idle(Waiting.Apart(() => lsp.ReferencesAsync(declared)), $"the usages in {document.Name} asked from the thread pool").Count;
         read = GC.GetTotalAllocatedBytes(precise: true) - read;
         // What the wait above put off, done before the frames are counted.
         Ui.Settle();
         Task<IReadOnlyList<Passenger.Lsp.LspLocation>> asking = lsp.ReferencesAsync(declared);
         long landing = Frames(() => asking.IsCompleted, int.MaxValue);
-        Assert.True(asking.IsCompletedSuccessfully, $"The usages in {document.Name} never came");
+        if (!asking.IsCompletedSuccessfully)
+        {
+            throw new Xunit.Sdk.XunitException($"The usages in {document.Name} never came");
+        }
         Assert.Equal(usages, asking.Result.Count);
         return (usages, landing, read);
     }

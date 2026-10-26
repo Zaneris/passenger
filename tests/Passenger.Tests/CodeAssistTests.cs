@@ -1482,11 +1482,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    private static T Await<T>(Task<T> task, string what)
-    {
-        Ui.WaitFor(() => task.IsCompleted, what, TimeSpan.FromSeconds(30));
-        return task.Result;
-    }
+    private static T Await<T>(Task<T> task, string what) => Ui.Await(task, what, TimeSpan.FromSeconds(30));
 
     /// <summary>Chooses an item of the open list of choices by its words, with the keys a person would press.</summary>
     private static void Choose(MainWindow window, string item)
@@ -1829,9 +1825,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         MainWindow window = project.Open("Helper.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
         Ui.PlaceAfter(editor, "static int Tw");
-        Task<string?> calls = window.ShowCallHierarchyAsync();
-        Ui.WaitFor(() => calls.IsCompleted, "the call hierarchy");
-        Assert.Null(calls.Result);
+        Assert.Null(Ui.Await(window.ShowCallHierarchyAsync(), "the call hierarchy"));
         Assert.True(window.DockHost.IsShown(ToolWindowIds.Hierarchy));
         Assert.Equal(2, window.Hierarchy.Rows.Count);
         Assert.Contains("Twice", window.Hierarchy.Rows[0].Node.Item.Name, StringComparison.Ordinal);
@@ -1903,7 +1897,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         for (int i = 0; i < 3; i++)
         {
             long before = GC.GetTotalAllocatedBytes(precise: true);
-            Passenger.Lsp.CompletionList? list = Task.Run(() => lsp.CompletionAsync(caret, null)).GetAwaiter().GetResult().List;
+            Passenger.Lsp.CompletionList? list = Ui.Idle(Waiting.Apart(() => lsp.CompletionAsync(caret, null)), "the statement's completion asked from the thread pool").List;
             read = Math.Min(read, GC.GetTotalAllocatedBytes(precise: true) - before);
             items = list?.Items.Count ?? 0;
         }
@@ -1957,7 +1951,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Settle();
         Passenger.Lsp.LspDocument lsp = window.CSharpService!.For(window.EditorArea.Active!)!.Lsp!;
         int caret = editor.Selections.Primary.Caret;
-        int items = Task.Run(() => lsp.CompletionAsync(caret, null)).GetAwaiter().GetResult().List?.Items.Count ?? 0;
+        int items = Ui.Await(Waiting.Apart(() => lsp.CompletionAsync(caret, null)), "the statement's completion").List?.Items.Count ?? 0;
         window.KeyTextInput("S");
         Ui.WaitFor(() => window.Assist.CompletionNarrowedBy == "S", $"a statement's list in {Path.GetFileName(path)}");
         string typed = "S";

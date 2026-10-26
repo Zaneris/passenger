@@ -499,7 +499,7 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
         public override async ValueTask DisposeAsync()
         {
             await base.DisposeAsync();
-            feed.Dispose();
+            await feed.DisposeAsync();
         }
 
         private void Put(string relative, string text)

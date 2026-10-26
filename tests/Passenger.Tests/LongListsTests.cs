@@ -268,8 +268,8 @@ public sealed class LongListsTests : IDisposable
         {
             stream.Append(CultureInfo.InvariantCulture, $"reset refs/heads/branch{branch:0000}\nfrom refs/heads/main\n\n");
         }
-        ChildResult imported = Task.Run(() => ChildProcesses.RunAsync(ChildProcesses.Command("git", ["fast-import", "--quiet"], root), stream.ToString(), TimeSpan.FromMinutes(1).Scaled()))
-            .GetAwaiter().GetResult();
+        ChildResult imported = Ui.AwaitPumped(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command("git", ["fast-import", "--quiet"], root), stream.ToString(),
+            TimeSpan.FromMinutes(1).Scaled())), "git fast-import", TimeSpan.FromMinutes(1) + TestFolders.Spare);
         Assert.True(imported.Succeeded, $"git fast-import made no repository of {commits} commits: {imported.Error}");
         TestGit.Run(root, "reset", "-q", "--hard");
         return root;

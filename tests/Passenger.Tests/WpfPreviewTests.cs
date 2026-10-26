@@ -263,9 +263,9 @@ public sealed class WpfPreviewTests : IClassFixture<WpfPreviewTests.Gallery>
         Task<AppTree>? asked = null;
         Ui.WaitFor(() =>
         {
-            if (asked is { IsCompleted: true })
+            if (asked is { IsCompleted: true } answered)
             {
-                shown = asked.IsCompletedSuccessfully ? Named(asked.Result.Roots, name)?.Text : null;
+                shown = answered.IsCompletedSuccessfully ? Named(answered.Result.Roots, name)?.Text : null;
                 asked = null;
             }
             if (shown is null)

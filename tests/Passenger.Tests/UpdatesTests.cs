@@ -298,7 +298,7 @@ public sealed class UpdatesTests : IClassFixture<UpdatesTests.DiskImages>, IDisp
         Assert.True(copy.Downloaded().Count == 0, $"The refused download left {string.Join(", ", copy.Downloaded())} behind");
         Assert.Equal("No update is downloaded and ready to install", window.Actions.WhyNot(AppActions.RestartToUpdate, window.Actions.Context()));
         window.Close();
-        window.Ended?.Wait();
+        Ended(window);
         window.InstallUpdate();
         Assert.True(copy.InstalledVersion is null || copy.InstalledVersion == Product.Version, $"The refused update was installed, as {copy.InstalledVersion}");
     }
@@ -331,7 +331,7 @@ public sealed class UpdatesTests : IClassFixture<UpdatesTests.DiskImages>, IDisp
         Assert.True(Notice(window) == $"Passenger {newer} available", $"With the download dropped, the status bar still shows '{Notice(window)}'");
         Assert.Null(window.UpdateReady);
         window.Close();
-        window.Ended?.Wait();
+        Ended(window);
         window.InstallUpdate();
         Assert.True(copy.InstalledVersion is null || copy.InstalledVersion == Product.Version,
             $"An update dropped as the setting went off was installed, as {copy.InstalledVersion}");
@@ -382,7 +382,7 @@ public sealed class UpdatesTests : IClassFixture<UpdatesTests.DiskImages>, IDisp
         Ui.Click(window.FindControl<Button>("UpdateButton")!, settle: false);
         Ui.Settle();
         Assert.False(window.IsVisible, "Restart to Update did not close the window");
-        window.Ended?.Wait();
+        Ended(window);
         window.InstallUpdate();
         Assert.True(copy.InstalledVersion == newer, $"Restart to Update left {copy.Bundle} at {copy.InstalledVersion}, not {newer}");
         Assert.True(copy.SignatureHolds(), $"The app put in place at {copy.Bundle} is not whole: its signature does not hold");
@@ -398,7 +398,7 @@ public sealed class UpdatesTests : IClassFixture<UpdatesTests.DiskImages>, IDisp
         window.WatchForUpdates();
         Ui.WaitFor(() => Notice(window) == $"Restart to update to Passenger {later}", $"the status bar to offer Restart to Update to v{later}");
         window.Close();
-        window.Ended?.Wait();
+        Ended(window);
         window.InstallUpdate();
         Assert.True(copy.InstalledVersion == later, $"Passenger closed with v{later} ready left {copy.Bundle} at {copy.InstalledVersion}");
         Assert.True(Ui.Shared(copy.Started) == $"started {newer}\n", "Closing Passenger started the version it installed, which only Restart to Update does");
@@ -429,7 +429,7 @@ public sealed class UpdatesTests : IClassFixture<UpdatesTests.DiskImages>, IDisp
             window.Close();
             Ui.ClickButton(Unsaved(window), "Close Without Saving");
             Ui.WaitFor(() => !window.IsVisible, "the window to close without the read-only file's changes");
-            window.Ended?.Wait();
+            Ended(window);
             window.InstallUpdate();
             Assert.True(copy.InstalledVersion == newer, $"Passenger closed with v{newer} ready left {copy.Bundle} at {copy.InstalledVersion}");
             Assert.True(Ui.Shared(copy.Started) == string.Empty, $"Restart to Update, given up, still started the new version: '{Ui.Shared(copy.Started)}'");
@@ -439,7 +439,7 @@ public sealed class UpdatesTests : IClassFixture<UpdatesTests.DiskImages>, IDisp
             Ui.Click(window.FindControl<Button>("UpdateButton")!, settle: false);
             Ui.ClickButton(Unsaved(window), "Close Without Saving");
             Ui.WaitFor(() => !window.IsVisible, "Restart to Update to close the window once the read-only file's question was answered");
-            window.Ended?.Wait();
+            Ended(window);
             window.InstallUpdate();
             Assert.True(copy.InstalledVersion == later, $"Restart to Update left {copy.Bundle} at {copy.InstalledVersion}, not {later}");
             Assert.True(Ui.Shared(copy.Started) == $"started {later}\n",
@@ -490,7 +490,7 @@ public sealed class UpdatesTests : IClassFixture<UpdatesTests.DiskImages>, IDisp
         try
         {
             window.Close();
-            window.Ended?.Wait();
+            Ended(window);
             window.InstallUpdate();
         }
         finally
@@ -535,7 +535,7 @@ public sealed class UpdatesTests : IClassFixture<UpdatesTests.DiskImages>, IDisp
             Assert.Equal($"Another Passenger is open from {copy.Bundle}: close it, then restart to update", window.Status);
 
             window.Close();
-            window.Ended?.Wait();
+            Ended(window);
             window.InstallUpdate();
             Assert.True(copy.InstalledVersion == Product.Version, $"The app another Passenger runs from was replaced by {copy.InstalledVersion}");
             Assert.True(copy.Holds(newer), $"v{newer} is no longer ready once Passenger closed without installing it");
@@ -571,7 +571,7 @@ public sealed class UpdatesTests : IClassFixture<UpdatesTests.DiskImages>, IDisp
             window.WatchForUpdates();
             Ui.WaitFor(() => Notice(window) == $"Restart to update to Passenger {newer}", $"the status bar to offer Restart to Update to v{newer}");
             window.Close();
-            window.Ended?.Wait();
+            Ended(window);
             window.InstallUpdate();
             string said = string.Join('\n', Ui.IdeLog().Split('\n').Where(l => l.Contains("Updates:", StringComparison.Ordinal)).TakeLast(3));
             Assert.True(copy.InstalledVersion == newer, $"Passenger on another volume closed with v{newer} ready, and is {copy.InstalledVersion}: {said}");
@@ -593,12 +593,12 @@ public sealed class UpdatesTests : IClassFixture<UpdatesTests.DiskImages>, IDisp
     private static void Detach(string volume)
     {
         ChildResult detached = null!;
-        if (Waiting.Until(() => (detached = Task.Run(() => ChildProcesses.RunAsync(ChildProcesses.Command("/usr/bin/hdiutil", ["detach", volume, "-force", "-quiet"]),
-            limit: TimeSpan.FromMinutes(1).Scaled())).GetAwaiter().GetResult()).Succeeded, TimeSpan.FromSeconds(10), every: TimeSpan.FromSeconds(1)))
+        if (Waiting.Until(() => (detached = Ran("/usr/bin/hdiutil", ["detach", volume, "-force", "-quiet"], TimeSpan.FromMinutes(1).Scaled())).Succeeded,
+            TimeSpan.FromSeconds(10), every: TimeSpan.FromSeconds(1)))
         {
             return;
         }
-        ChildResult holders = Task.Run(() => ChildProcesses.RunAsync(ChildProcesses.Command("/usr/sbin/lsof", ["+D", volume]), limit: TimeSpan.FromMinutes(1))).GetAwaiter().GetResult();
+        ChildResult holders = Ran("/usr/sbin/lsof", ["+D", volume], TimeSpan.FromMinutes(1));
         Assert.Fail($"The test's volume {volume} could not be detached (hdiutil exited with code {detached.ExitCode}: {detached.Error.Trim()}); what has files open on it:\n{holders.Output}");
     }
 
@@ -705,10 +705,21 @@ public sealed class UpdatesTests : IClassFixture<UpdatesTests.DiskImages>, IDisp
     /// <summary>A system tool the fixtures run, as the IDE runs its own, failing the test naming it when it fails.</summary>
     private static ChildResult Tool(string tool, params string[] arguments)
     {
-        ChildResult result = Task.Run(() => ChildProcesses.RunAsync(ChildProcesses.Command(tool, arguments), limit: TimeSpan.FromMinutes(2))).GetAwaiter().GetResult();
+        ChildResult result = Ran(tool, arguments, TimeSpan.FromMinutes(2));
         Assert.True(result.Succeeded, $"The test's installed copy is not as it was to be made: {tool} {string.Join(' ', arguments)} exited with code {result.ExitCode}:\n{result.Error}{result.Output}");
         return result;
     }
+
+    /// <summary>A system tool run on the thread pool and waited for on the UI thread, where the tests and their fixtures'
+    /// copies ask for it, with the window's loop running, never for its work to land; its own limit fails it first.</summary>
+    private static ChildResult Ran(string tool, IReadOnlyList<string> arguments, TimeSpan limit) =>
+        Ui.AwaitPumped(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command(tool, arguments), limit: limit)), $"{tool} {string.Join(' ', arguments)}",
+            limit + TestFolders.Spare);
+
+    /// <summary>Waits for what a closed window started to end, as the IDE's process waits for it before installing an
+    /// update, the loop running meanwhile; it ends within <see cref="MainWindow.EndLimit"/> of the close.</summary>
+    private static void Ended(MainWindow window) =>
+        Ui.AwaitPumped(window.Ended ?? Task.CompletedTask, "what the closed window started to end", MainWindow.EndLimit + TimeSpan.FromSeconds(5));
 
     /// <summary>A Passenger installed in a test folder as this system's disk image or installer puts it, at the running
     /// version, and the files a newer release carries for its update.</summary>
@@ -813,8 +824,7 @@ public sealed class UpdatesTests : IClassFixture<UpdatesTests.DiskImages>, IDisp
         }
 
         /// <summary>Whether the installed app's signature holds, as Gatekeeper checks it.</summary>
-        public bool SignatureHolds() =>
-            Task.Run(() => ChildProcesses.RunAsync(ChildProcesses.Command("/usr/bin/codesign", ["--verify", "--deep", "--strict", Bundle]))).GetAwaiter().GetResult().Succeeded;
+        public bool SignatureHolds() => Ran("/usr/bin/codesign", ["--verify", "--deep", "--strict", Bundle], TimeSpan.FromMinutes(2)).Succeeded;
 
         /// <summary>The app of a version at a bundle's path, signed; its start is written down in the folder above the one it
         /// is put in, so one disk image serves every test's folder.</summary>

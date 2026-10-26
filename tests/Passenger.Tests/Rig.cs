@@ -1124,6 +1124,20 @@ public static class Ui
     /// the IDE does while its window falls behind.</summary>
     public static void Stall(TimeSpan time, string why) => Waiting.For(time, why);
 
+    /// <summary>A task of the test's own on the thread pool waited for with the window's thread running nothing, as
+    /// <see cref="Stall"/> keeps it: for a measure of what the task alone allocates, which the window's own frames would
+    /// add to. Its answer, read once it has ended; fails naming it once the limit (scaled) has passed.</summary>
+    public static T Idle<T>(Task<T> task, string what, TimeSpan? limit = null)
+    {
+        TimeSpan within = (limit ?? SettleLimit).Scaled();
+        Waiting.Until(() => task.IsCompleted, within, scaled: false);
+        if (!task.IsCompleted)
+        {
+            throw new TimeoutException($"Waited {within.TotalSeconds} s for {what}, the window's thread idle");
+        }
+        return task.GetAwaiter().GetResult();
+    }
+
     /// <summary>A click as a person's mouse makes it, pressed and let go at the control's centre (or a point in it) in the
     /// window or popup showing it, once that is drawn; fails unless the control is shown, enabled and what the pointer finds
     /// there, since a click it would miss does nothing for a person. Then lets what it ran land, unless told not to (a
