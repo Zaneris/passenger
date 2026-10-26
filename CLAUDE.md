@@ -256,8 +256,8 @@ site-shots` retakes its images.
   only at the frame's version (`Points`, `DebugOf`, `MethodIL`).
 - **Hot Reload** drives the server's `EditAndContinueService` from the extension; a session takes edits only for the
   projects of modules its program has loaded (others frozen), and `StaleCallers` blocks an update that leaves loaded code
-  calling a deleted body. The runtime offers a frame left in old code a remap at every statement, unstoppable: a running program is
-  held through an update so Roslyn maps its frames, which move only at a statement's start (`RemapTarget`).
+  calling a deleted body. The runtime offers a frame left in old code a remap at every statement, unstoppable: a running
+  program is held through an update so Roslyn maps its frames, which move only at a statement's start (`RemapTarget`).
 - **The inspector** never touches `Dispatcher.UIThread` before the app makes it, never waits on Passenger, and readies its
   wire's types before the app's Main (System.Text.Json's lock against a thread the debugger stopped).
 - **MCP's tool list** is paid for by every agent session (45.6 KB, held under 62 KB by McpDebuggingTests): say each thing
