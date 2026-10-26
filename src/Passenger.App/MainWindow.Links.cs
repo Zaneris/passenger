@@ -39,10 +39,12 @@ public partial class MainWindow
     }
 
     /// <summary>The terminal's links: web addresses and stack frames as the consoles find them, and any path to a file,
-    /// a relative one under the folder the shell said it is in, then the open folder's.</summary>
+    /// a relative one under the folder the shell said it is in, then the open folder's. A line's links are given as the
+    /// view takes them once for each time they are found, so a frame drawing the line again makes nothing.</summary>
     private void AddTerminalLinks(ToolWindows.TerminalPanel terminal)
     {
         ConsoleLinks links = new() { FilePaths = true };
+        System.Runtime.CompilerServices.ConditionalWeakTable<FoundLink[], (int Start, int Length, object Target, bool Hidden)[]> given = [];
         string? shellFolder = null;
         links.Folders = () => LinkFolders(shellFolder);
         terminal.View.Links = text =>
@@ -53,7 +55,21 @@ public partial class MainWindow
                 shellFolder = at;
                 links.Forget();
             }
-            return [.. links.In(text).Select(link => (link.Start, link.Length, (object)link.Target, link.Hidden))];
+            FoundLink[] found = links.In(text);
+            if (found.Length == 0)
+            {
+                return [];
+            }
+            if (!given.TryGetValue(found, out (int Start, int Length, object Target, bool Hidden)[]? each))
+            {
+                each = new (int, int, object, bool)[found.Length];
+                for (int i = 0; i < found.Length; i++)
+                {
+                    each[i] = (found[i].Start, found[i].Length, found[i].Target, found[i].Hidden);
+                }
+                given.Add(found, each);
+            }
+            return each;
         };
         terminal.View.LinkClicked += (_, target) => OpenLink((LinkTarget)target);
     }

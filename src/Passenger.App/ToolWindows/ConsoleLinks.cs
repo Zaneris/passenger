@@ -42,6 +42,11 @@ public sealed partial class ConsoleLinks : IHighlighter
     private readonly Dictionary<string, FoundLink[]> lines = [];
     private readonly Dictionary<string, string?> files = new(PathNames.Comparer);
 
+    /// <summary><see cref="lines"/> read by a line's characters, so a line kept is found with no string made of it.</summary>
+    private readonly Dictionary<string, FoundLink[]>.AlternateLookup<ReadOnlySpan<char>> kept;
+
+    public ConsoleLinks() => kept = lines.GetAlternateLookup<ReadOnlySpan<char>>();
+
     public event EventHandler? Changed;
 
     /// <summary>Where a relative path is looked for, in order: the project the output came from first.</summary>
@@ -100,6 +105,17 @@ public sealed partial class ConsoleLinks : IHighlighter
             links[i] = new TextLink(new TextRange(span.Start + found[i].Start, found[i].Length), found[i].Target);
         }
         return links;
+    }
+
+    /// <summary>The links in one line of text given by its characters (a terminal's row), as <see cref="In(string)"/>
+    /// finds them; a string is made of the line only when it is not kept.</summary>
+    public FoundLink[] In(ReadOnlySpan<char> line)
+    {
+        if (line.Length == 0 || line.Length > LongestLine)
+        {
+            return [];
+        }
+        return kept.TryGetValue(line, out FoundLink[]? links) ? links : In(line.ToString());
     }
 
     /// <summary>The links in one line of text, in order and apart.</summary>

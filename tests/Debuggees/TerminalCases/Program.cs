@@ -124,6 +124,32 @@ switch (args)
         Console.ReadLine();
         Write("\e[?1049l");
         break;
+    case ["colours", string mode, string rows]:
+        // A build's log in colour on the alternate screen, its lines numbered, a step each time the test makes the file
+        // next-N: "scroll" fills the screen and brings one line more up its foot, "redraw" fills it and writes it all
+        // again, its first line numbered on, as a full-screen program draws, and "row" writes one line at the top of an
+        // empty screen and writes it again there, numbered on; until the test makes done, which gives the shell's screen back.
+        int height = int.Parse(rows);
+        string Screen(int first) => string.Join("\r\n", Enumerable.Range(2, height - 1).Select(Coloured).Prepend(Coloured(first)));
+        Write("\e[?1049h\e[H\e[2J");
+        int number = mode == "scroll" ? height : 1;
+        Write(mode == "row" ? Coloured(number) : mode == "scroll" ? string.Join("\r\n", Enumerable.Range(1, height).Select(Coloured)) : Screen(number));
+        for (int step = 1; ; step++)
+        {
+            string next = $"next-{step}";
+            while (!File.Exists(next) && !File.Exists("done"))
+            {
+                Thread.Sleep(2);
+            }
+            if (!File.Exists(next))
+            {
+                break;
+            }
+            number++;
+            Write(mode == "row" ? $"\e[1;1H{Coloured(number)}\e[K" : mode == "scroll" ? $"\r\n{Coloured(number)}" : $"\e[H{Screen(number)}");
+        }
+        Write("\e[?1049l");
+        break;
     case ["log", string file, string count]:
         // A build's log of plain lines, once the test has made the file, then a last line saying it is done.
         while (!File.Exists(file))
@@ -170,6 +196,11 @@ void Lines(long from, long to)
     }
     Write(lines.ToString());
 }
+
+// A line of a build's log as a compiler colours it, thirteen runs in eight styles, its number first.
+static string Coloured(int number) =>
+    $"\e[2m{number:D4}\e[0m \e[1;32mCompiling\e[0m terminal \e[2m(\e[0;36msrc/Terminal\e[0;2m)\e[0m \e[1;33mwarning\e[0m: "
+    + $"\e[4munused\e[24m \e[38;5;208mvariable\e[0m \e[38;2;120;160;255m`x{number}`\e[0m";
 
 string ReadTo(char last)
 {

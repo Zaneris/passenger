@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
@@ -17,17 +18,25 @@ public sealed class TerminalSession : IAsyncDisposable
     private const int MostHeld = 256 * 1024;
 
     /// <summary>How much the screen takes between looks at the clock.</summary>
-    private const int Piece = 4096;
+    private const int PieceSize = 4096;
 
     /// <summary>The longest the window's thread parses output in one go before it takes keys and draws again.</summary>
     private static readonly TimeSpan Slice = TimeSpan.FromMilliseconds(10);
 
-    private readonly ConcurrentQueue<byte[]> arrived = new();
+    private readonly ConcurrentQueue<Piece> arrived = new();
     private readonly SemaphoreSlim room = new(0);
     private readonly BlockingCollection<byte[]> outgoing = new(new ConcurrentQueue<byte[]>());
     private IPtyConnection? pty;
-    private byte[]? feeding;
+
+    /// <summary>The piece the screen is taking, and how much of it it has taken.</summary>
+    private Piece feeding;
     private int fed;
+
+    /// <summary>What takes the next slice of output once the window has drawn and taken its keys.</summary>
+    private DispatcherTimer? next;
+
+    /// <summary><see cref="TakeOutput"/>, made once for every post of it.</summary>
+    private readonly Action take;
     private int held;
     private int posted;
     private volatile bool closed;
@@ -50,6 +59,7 @@ public sealed class TerminalSession : IAsyncDisposable
     {
         Screen = new TerminalScreen(columns, rows);
         Screen.Reply += Write;
+        take = TakeOutput;
     }
 
     public TerminalScreen Screen { get; }
@@ -287,17 +297,19 @@ public sealed class TerminalSession : IAsyncDisposable
             return;
         }
         int taken = 0;
-        if (feeding is not null && fed < feeding.Length)
+        if (feeding.Bytes is not null)
         {
-            Screen.Feed(feeding.AsSpan(fed));
+            Screen.Feed(feeding.Bytes.AsSpan(fed, feeding.Length - fed));
             taken += feeding.Length - fed;
+            ArrayPool<byte>.Shared.Return(feeding.Bytes);
         }
-        feeding = null;
+        feeding = default;
         fed = 0;
-        while (arrived.TryDequeue(out byte[]? piece))
+        while (arrived.TryDequeue(out Piece piece))
         {
-            Screen.Feed(piece);
+            Screen.Feed(piece.Bytes.AsSpan(0, piece.Length));
             taken += piece.Length;
+            ArrayPool<byte>.Shared.Return(piece.Bytes);
         }
         if (taken > 0)
         {
@@ -309,8 +321,8 @@ public sealed class TerminalSession : IAsyncDisposable
         }
     }
 
-    /// <summary>Reads the shell's output as it comes and hands it to the window's thread, waiting while the screen has
-    /// <see cref="MostHeld"/> still to take.</summary>
+    /// <summary>Reads the shell's output as it comes and hands it to the window's thread, each read in an array of the
+    /// pool's about its size, waiting while the screen has <see cref="MostHeld"/> still to take.</summary>
     private void Read(Stream reader)
     {
         byte[] buffer = new byte[64 * 1024];
@@ -324,11 +336,13 @@ public sealed class TerminalSession : IAsyncDisposable
                     break;
                 }
                 Interlocked.Exchange(ref lastRead, Stopwatch.GetTimestamp());
-                arrived.Enqueue(buffer[..read]);
+                byte[] piece = ArrayPool<byte>.Shared.Rent(read);
+                buffer.AsSpan(0, read).CopyTo(piece);
+                arrived.Enqueue(new Piece(piece, read));
                 Interlocked.Add(ref held, read);
                 if (Interlocked.Exchange(ref posted, 1) == 0)
                 {
-                    Dispatcher.UIThread.Post(TakeOutput, DispatcherPriority.Input);
+                    Dispatcher.UIThread.Post(take, DispatcherPriority.Input);
                 }
                 while (Volatile.Read(ref held) >= MostHeld && !closed)
                 {
@@ -376,7 +390,7 @@ public sealed class TerminalSession : IAsyncDisposable
         int taken = 0;
         while (Stopwatch.GetElapsedTime(started) < Slice)
         {
-            if (feeding is null || fed == feeding.Length)
+            if (feeding.Bytes is null)
             {
                 if (!arrived.TryDequeue(out feeding))
                 {
@@ -384,10 +398,15 @@ public sealed class TerminalSession : IAsyncDisposable
                 }
                 fed = 0;
             }
-            int piece = Math.Min(Piece, feeding.Length - fed);
-            Screen.Feed(feeding.AsSpan(fed, piece));
+            int piece = Math.Min(PieceSize, feeding.Length - fed);
+            Screen.Feed(feeding.Bytes.AsSpan(fed, piece));
             fed += piece;
             taken += piece;
+            if (fed == feeding.Length)
+            {
+                ArrayPool<byte>.Shared.Return(feeding.Bytes);
+                feeding = default;
+            }
         }
         if (taken > 0)
         {
@@ -398,14 +417,26 @@ public sealed class TerminalSession : IAsyncDisposable
             }
             Output?.Invoke(this, EventArgs.Empty);
             // Even when this slice emptied the queue, the reader's next post would run straight after it.
-            DispatcherTimer.RunOnce(TakeOutput, TimeSpan.FromMilliseconds(1), DispatcherPriority.Input);
+            if (next is null)
+            {
+                next = new DispatcherTimer(DispatcherPriority.Input) { Interval = TimeSpan.FromMilliseconds(1) };
+                next.Tick += (_, _) =>
+                {
+                    next.Stop();
+                    TakeOutput();
+                };
+            }
+            next.Start();
             return;
         }
         Interlocked.Exchange(ref posted, 0);
         // Output that came after the queue was found empty, whose reader saw this still posted.
         if (!arrived.IsEmpty && Interlocked.Exchange(ref posted, 1) == 0)
         {
-            Dispatcher.UIThread.Post(TakeOutput, DispatcherPriority.Input);
+            Dispatcher.UIThread.Post(take, DispatcherPriority.Input);
         }
     }
+
+    /// <summary>Output as read: an array of the pool's, and how much of it the read filled.</summary>
+    private readonly record struct Piece(byte[] Bytes, int Length);
 }

@@ -510,6 +510,86 @@ public sealed class TerminalTests
         }
     }
 
+    /// <summary>A log in colour streaming up a full screen costs a frame on the UI thread what a frame with one row of an
+    /// empty screen written again costs, and what drawing each other row as it was shaped records, under 2 KB a row where
+    /// shaping one of these takes tens; so does a full-screen program drawing its whole screen again with one row changed.</summary>
+    [AvaloniaFact]
+    public void A_log_in_colour_streaming_up_the_screen_costs_a_frame_what_one_changed_row_does()
+    {
+        string folder = TestFolders.Create("terminal-");
+        try
+        {
+            (MainWindow window, TerminalSession shell) = Open(folder);
+            window.Perform(AppActions.MaximizeToolWindow);
+            WaitForScreen(window, shell, s => s.Rows >= 24 && s.Columns >= 80, "the terminal to take the frame");
+            int rows = shell.Screen.Rows;
+            long row = UiBytesForLines(window, shell, "row", rows);
+            long log = UiBytesForLines(window, shell, "scroll", rows);
+            long redrawn = UiBytesForLines(window, shell, "redraw", rows);
+            TestContext.Current.TestOutputHelper?.WriteLine($"A frame allocated {row / 1024.0:N1} KB on the UI thread for one row of an empty screen written again, "
+                + $"{log / 1024.0:N1} KB for a line streaming up a full screen of {rows} rows, {redrawn / 1024.0:N1} KB for that screen drawn again with one row changed.");
+            long most = row + (rows * 2048);
+            Assert.True(log < most,
+                $"Each frame of a log in colour streaming up {rows} rows allocated {log / 1024.0:N1} KB on the UI thread, where one with a row of an empty screen written again allocated {row / 1024.0:N1} KB: every row was shaped again");
+            Assert.True(redrawn < most,
+                $"Each frame of a screen of {rows} rows in colour drawn again with one row changed allocated {redrawn / 1024.0:N1} KB on the UI thread, where one with a row of an empty screen written again allocated {row / 1024.0:N1} KB: every row written was shaped again");
+            window.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(folder);
+        }
+    }
+
+    /// <summary>What a frame of the colours case allocates on the UI thread, the least of twenty, each drawing a line
+    /// the program brought once the test made its file.</summary>
+    private static long UiBytesForLines(MainWindow window, TerminalSession shell, string mode, int rows)
+    {
+        string folder = window.Folder!;
+        int at = mode == "scroll" ? rows - 1 : 0;
+        int number = mode == "scroll" ? rows : 1;
+        RunCase(window, "colours", mode, rows.ToString(CultureInfo.InvariantCulture));
+        WaitForScreen(window, shell, s => s.IsAlternate && Numbered(s.Lines[at], number), $"the {mode} case's first lines");
+        string[] next = [.. Enumerable.Range(1, 23).Select(i => Path.Combine(folder, $"next-{i}"))];
+        long least = long.MaxValue;
+        for (int step = 0; step < next.Length; step++)
+        {
+            Ui.Settle();
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            File.WriteAllBytes(next[step], []);
+            number++;
+            Ui.PumpUntil(() => Numbered(shell.Screen.Lines[at], number), "the case's next line");
+            Ui.Draw();
+            // The first lines are the first of everything they draw.
+            if (step >= 3)
+            {
+                least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
+            }
+        }
+        File.WriteAllBytes(Path.Combine(folder, "done"), []);
+        WaitForScreen(window, shell, s => !s.IsAlternate, "the shell's screen back after the case");
+        foreach (string made in next)
+        {
+            File.Delete(made);
+        }
+        File.Delete(Path.Combine(folder, "done"));
+        return least;
+    }
+
+    /// <summary>Whether a row begins with a line's four-digit number, read from its cells, so a look allocates nothing.</summary>
+    private static bool Numbered(TerminalLine line, int number)
+    {
+        Cell[] cells = line.Cells;
+        for (int i = 3; i >= 0; i--, number /= 10)
+        {
+            if (cells[i].Rune != '0' + (number % 10))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /// <summary>A run configuration that uses the terminal runs its program in a tab of the Terminal window named for it, a
     /// real terminal: the program clears the screen and writes in colour where it puts the cursor, reads a key and then a line
     /// typed into the view, and its tab, kept once it ends, says so with its exit code; the toolbar's Stop shows while it
