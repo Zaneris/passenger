@@ -412,3 +412,11 @@ that fixed it, in one of the forms below. A failure not yet understood goes in o
   where the window builds through the disk's spelling. Neither race: **the test** builds with the person's NuGet settings in
   nodes of its own, checks the restore's files unchanged, and fails first, saying why, on a checkout restored through
   another spelling (8c4fb07e).
+- `CodeAssistTests`' `The_path_a_hover_card_file_structure_and_go_to_symbol_name_the_code_and_go_to_it`, the Mac under load
+  (#532): "Waited 135 s for the member the caret is in", the IDE quiet. The path and File Structure asked for the
+  outline as the file was shown and as the C# service's state changed; one asked before the server had the file found
+  nothing. On the class's warm server the service is ready at once, before the folder's open files are opened in it, so
+  a file shown while its folder was still being read (its 400 ms pause over first, as under load) was opened in the
+  server with no state change after it, and the path named no member until the next edit. Opening Program.cs alone and
+  then its folder fails so every time. **A race in the IDE**: the service tells when it opens a file in the server
+  (`Connected`), and both ask then (ffe7fb51).
