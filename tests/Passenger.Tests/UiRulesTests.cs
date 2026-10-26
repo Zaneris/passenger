@@ -1373,8 +1373,6 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
     [
         "src/Passenger.App/Aspire/AspireServiceDialog.cs: FuncDataTemplate<AspireSelection>",
         "src/Passenger.App/Aspire/AspireView.cs: ItemTemplate = RunRows.Template<AspireRow>",
-        "src/Passenger.App/CSharp/AssistPopups.cs: FuncDataTemplate<Choice>",
-        "src/Passenger.App/CSharp/AssistPopups.cs: FuncDataTemplate<CompletionSlot>",
         "src/Passenger.App/Containers/ContainerFilesPane.cs: FuncDataTemplate<ContainerFile>",
         "src/Passenger.App/Containers/ContainersView.cs: ItemTemplate = RunRows.Template<ContainerRow>",
         "src/Passenger.App/Debugging/AttachToProcessDialog.cs: FuncDataTemplate<AttachRow>",

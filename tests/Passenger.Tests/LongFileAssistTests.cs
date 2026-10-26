@@ -477,6 +477,59 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
             $"A wheel step down the Structure window allocated {manyStep / 1024} KB on the UI thread over Calls.cs's members, against {fewStep / 1024} KB over Long.cs's: a step costs the list's length");
     }
 
+    /// <summary>Typing through completion over a type of four thousand members (the best 200 listed), Down a row at a time
+    /// past its first screen and on into the list a letter narrows, hands the rows on screen the members they come to, none
+    /// made again.</summary>
+    [AvaloniaFact]
+    public void Typing_through_completion_over_four_thousand_members_hands_its_rows_other_members_never_making_one_again()
+    {
+        MainWindow window = project.Open("Program.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "    static void Main()\n    {");
+        editor.Focus();
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("Calls");
+        Ui.Settle();
+        Ui.Press(window, "ESCAPE");
+        window.KeyTextInput(".");
+        Ui.WaitFor(() => window.Assist.IsCompletionOpen && window.Assist.CompletionLabels.Count(l => l.StartsWith("Call", StringComparison.Ordinal)) > 100,
+            () => $"Calls's members, where the list shows [{string.Join(", ", window.Assist.CompletionLabels.Take(5))}] of {window.Assist.CompletionLabels.Count}");
+        HashSet<Avalonia.Controls.Control> containers = [];
+        HashSet<Avalonia.Controls.Control> rows = [];
+        void Seen()
+        {
+            foreach (Avalonia.Controls.Control row in window.Assist.CompletionRowControls)
+            {
+                rows.Add(row);
+                containers.Add(row.FindAncestorOfType<Avalonia.Controls.ListBoxItem>() ?? throw new Xunit.Sdk.XunitException("A completion row is in no container of the list"));
+            }
+        }
+        Seen();
+        for (int i = 0; i < 30; i++)
+        {
+            Ui.Press(window, "DOWN");
+            Seen();
+        }
+        foreach (char letter in "Call1")
+        {
+            window.KeyTextInput(letter.ToString());
+            Ui.Settle();
+            Seen();
+        }
+        Assert.True(window.Assist.IsCompletionOpen && window.Assist.CompletionLabels.All(l => l.StartsWith("Call1", StringComparison.Ordinal)),
+            $"Narrowed by Call1 the list shows {string.Join(", ", window.Assist.CompletionLabels.Take(5))}");
+        for (int i = 0; i < 30; i++)
+        {
+            Ui.Press(window, "DOWN");
+            Seen();
+        }
+        Assert.False(window.Assist.CompletionRowControls.Count == 0, "No row of the list is on screen after the keys");
+        Assert.True(rows.Count == containers.Count,
+            $"Typing through the completion list made {rows.Count - containers.Count} rows again for its {containers.Count} containers, where each row is kept and handed another: every member scrolled into view was built and styled anew");
+        Ui.Press(window, "ESCAPE");
+        window.Close();
+    }
+
     /// <summary>The least the UI thread allocated for a wheel step down the Structure window over a file's members, and
     /// how many rows a scroll past those first shown made again.</summary>
     private (long Least, int Made) StructureScrolled(string file, int members)
