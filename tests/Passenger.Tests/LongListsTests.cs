@@ -179,6 +179,25 @@ public sealed class LongListsTests : IDisposable
         });
     }
 
+    [AvaloniaFact]
+    public void A_scroll_step_down_a_thousand_tests_of_the_unit_tests_window_hands_the_rows_other_tests_never_making_one_again()
+    {
+        Holds("The Unit Tests window", "tests", 100, 1000, tests =>
+        {
+            string root = Folder();
+            TestFolders.Write(root, "Sums.Tests.csproj",
+                $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n"
+                + "  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"18.10.1\" />\n    <PackageReference Include=\"xunit\" Version=\"2.9.3\" />\n"
+                + "    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"3.1.5\" />\n  </ItemGroup>\n</Project>\n");
+            TestFolders.Write(root, "SumTests.cs", "using Xunit;\n\nnamespace Sums.Tests;\n\npublic class SumTests\n{\n"
+                + string.Concat(Enumerable.Range(0, tests).Select(i => $"    [Fact]\n    public void Sum{i:0000}() {{ }}\n\n")) + "}\n");
+            MainWindow window = Ui.OpenFolder(root, languageServer: false);
+            window.Perform(AppActions.ShowTests);
+            Ui.Landed(() => window.Tests.Tree.Rows.Count(r => r.Kind == Passenger.App.Testing.TestNodeKind.Method) == tests, $"the {tests} tests found in the code");
+            return (window, window.BottomPanel.Tests.GetVisualDescendants().OfType<ListBox>().Single(l => ReferenceEquals(l.ItemsSource, window.Tests.Tree.Rows)));
+        });
+    }
+
     /// <summary>Holds a list of many items to what one of few costs a wheel step, and both to make no row again.</summary>
     private static void Holds(string list, string items, int few, int many, Func<int, (MainWindow Window, ListBox List)> open)
     {
