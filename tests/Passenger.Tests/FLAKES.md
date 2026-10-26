@@ -10,6 +10,14 @@ that fixed it, in one of the forms below. A failure not yet understood goes in o
 
 ## 2026-10-26
 
+- `ProblemsTests`' `Keys_typed_in_a_burst_have_solution_wide_analysis_ask_the_server_again_once_typing_pauses`, the Mac
+  beside DebugSessionsTests (#532): "asked the server again while 10 keys were typed in a burst … HotReloadDiagnostics 1
+  then 0". Roslyn's `workspace/diagnostic/refresh`, sent again about 2 s after solution-wide analysis is turned on, came
+  mid-burst: the open file's pull went at once instead of waiting out typing's pause, ended between two keys, and every
+  analysis source was asked again. The analysis's step from a file pull's end to its next ask also went through the
+  thread pool unheld, so `Ui.Settle` could end before it. **A race in the IDE**: a pull for now leaves the work to a
+  pull waiting out the pause, and that step is held and looks again. The test's warm-up `Press("SPACE")` typed nothing,
+  so its BACK_SPACE broke the caller before the burst; it now types a real space (22e3551d).
 - `AspireStandInTests`' `Rerun_runs_an_AppHost_whose_own_code_changed_again_once_stopped_and_leaves_one_unchanged_running`,
   CI Windows, run 40312082824 (c33d9f4d): "Waited 450 s for Rerun to run the changed AppHost again", the IDE quiet. The
   stand-in resource service read the key the stand-in AppHost renames into place sharing reads alone, which Windows
