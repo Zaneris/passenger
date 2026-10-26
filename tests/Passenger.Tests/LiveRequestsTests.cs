@@ -244,6 +244,61 @@ public sealed class LiveRequestsTests
         }
     }
 
+    /// <summary>A web app Run runs answers a thousand requests, the window listing as many as it keeps, and the list
+    /// scrolled with the wheel as <see cref="LongListsTests"/> scrolls the IDE's own: a step down it allocates what one
+    /// down fifty requests does, and its rows are handed other requests, none made again.</summary>
+    [AvaloniaFact]
+    public void A_scroll_step_down_a_thousand_requests_a_running_app_answered_hands_the_rows_other_requests_never_making_one_again()
+    {
+        using HeldPort port = new();
+        string folder = TestFolders.Create("requests-many-");
+        TestFolders.Write(folder, "Counter.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>"));
+        TestFolders.Write(folder, "Properties/launchSettings.json",
+            $"{{\n  \"profiles\": {{\n    \"http\": {{ \"commandName\": \"Project\", \"applicationUrl\": \"http://127.0.0.1:{port.Port}\" }}\n  }}\n}}\n");
+        TestFolders.Write(folder, "Program.cs", "WebApplication app = WebApplication.Create(args);\napp.MapGet(\"/items/{id:int}\", (int id) => id);\napp.Run();\n");
+        Restore.Run(folder);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.ShowToolWindow(ToolWindowIds.Requests);
+            port.LetGo(Path.Combine(folder, "gate"));
+            Assert.True(window.SelectConfiguration("Counter: http"), $"No configuration Counter: http among {string.Join(", ", window.Configurations.Select(c => c.Name))}");
+            Ui.Launched(window, window.RunAsync(), "the app to start", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => window.BottomPanel.Run.Document.Snapshot.ToString().Contains("Now listening on:", StringComparison.Ordinal), "the app to listen", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => window.RequestLog.Following.StartsWith("Following", StringComparison.Ordinal) && window.RequestLog.Following.Contains("process", StringComparison.Ordinal),
+                () => $"the Requests window to follow the app; it says: {window.RequestLog.Following}", TimeSpan.FromMinutes(1));
+            Avalonia.Controls.ListBox list = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window.Requests).OfType<Avalonia.Controls.ListBox>().Single();
+            using HttpClient client = new();
+            int sent = 0;
+            LongListsTests.Holds("The Requests window", "requests", 50, 1000, count =>
+            {
+                int from = sent;
+                Ui.AwaitPumped(Waiting.Apart(() => Send(client, port.Port, from, count)), $"the app's answers to requests {from} to {count - 1}", TimeSpan.FromMinutes(2));
+                sent = count;
+                int listed = Math.Min(count, RequestLog.Most);
+                Ui.WaitFor(() => window.RequestLog.Requests.Count(r => r.Status is not null) == listed && window.RequestLog.Requests.Any(r => r.Path == $"/items/{count - 1}"),
+                    () => $"the last {listed} of {count} requests listed, where the window lists {window.RequestLog.Requests.Count}: {window.RequestLog.Following}", TimeSpan.FromSeconds(30));
+                Ui.Settle();
+                return (list, () => { });
+            });
+        }
+        finally
+        {
+            window.Perform(AppActions.Stop);
+            Ui.WaitFor(() => !window.Runner.IsRunning, "the app to stop");
+            window.Close();
+        }
+
+        // Requests to the app's one route, twenty at a time.
+        static async Task Send(HttpClient client, int port, int from, int to)
+        {
+            for (int at = from; at < to; at += 20)
+            {
+                await Task.WhenAll(Enumerable.Range(at, Math.Min(20, to - at)).Select(n => client.GetStringAsync(new Uri($"http://127.0.0.1:{port}/items/{n}"))));
+            }
+        }
+    }
+
     /// <summary>A request heard with the list full costs the window what one costs with a few listed: its rows go in at
     /// the top, the oldest's come out, and every other row keeps its control. The app's diagnostic events are stood in
     /// for by the events the profiler's reader gives the window; an N+1 of many commands is counted by its
