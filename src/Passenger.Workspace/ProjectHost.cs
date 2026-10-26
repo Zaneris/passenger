@@ -8,9 +8,13 @@ namespace Passenger.Workspace;
 /// <summary>The project host could not answer: it would not start (no SDK for the folder, no runtime that runs it), it
 /// ended while a request waited, or the request failed in it. The one failure a caller of <see cref="ProjectHost"/>
 /// catches.</summary>
-public sealed class ProjectHostFailed(string reason, Exception? inner = null) : Exception(reason, inner)
+public sealed class ProjectHostFailed(string reason, Exception? inner = null, bool hostEnded = false) : Exception(reason, inner)
 {
     public string Reason { get; } = reason;
+
+    /// <summary>The host's process ended by itself under the request (it crashed, or was killed): a host started anew
+    /// (<see cref="ProjectHosts.ForAsync"/>) may answer it.</summary>
+    public bool HostEnded { get; } = hostEnded;
 }
 
 /// <summary>One project host (Passenger.Host, carried under <c>host/</c>): MSBuild's evaluation in a process of its
@@ -30,6 +34,11 @@ public sealed class ProjectHost : IAsyncDisposable
     private readonly HashSet<int> spoiled = [];
 
     private volatile bool gone;
+
+    private int building;
+
+    /// <summary>The first line of what the runtime wrote as the host crashed, for the words of its end.</summary>
+    private volatile string? crashed;
 
     /// <summary>The folder the host was started for, with the global.json over it as it stood (<see cref="Dotnet.GlobalJsonOver"/>).</summary>
     private readonly (string Folder, string GlobalJson) startedFor;
@@ -98,11 +107,16 @@ public sealed class ProjectHost : IAsyncDisposable
         {
             throw new ProjectHostFailed($"the project host could not start: {error.Message}", error);
         }
+        ProjectHost? started = null;
         process.ErrorDataReceived += (_, e) =>
         {
             if (e.Data is { Length: > 0 } line)
             {
                 PassengerLog.Write($"Project host (process {process.Id}): {line}");
+                if (started is { crashed: null } host && line.StartsWith("Unhandled exception.", StringComparison.Ordinal))
+                {
+                    host.crashed = line.Length > 300 ? line[..300] + "…" : line;
+                }
             }
         };
         process.BeginErrorReadLine();
@@ -117,7 +131,7 @@ public sealed class ProjectHost : IAsyncDisposable
                 throw new ProjectHostFailed(error);
             }
             HostReady ready = reply.Result?.Deserialize<HostReady>(HostJson.Options) ?? throw new ProjectHostFailed("the project host did not say which SDK it loaded");
-            ProjectHost host = new(process, ready, folder, globalJson);
+            ProjectHost host = started = new(process, ready, folder, globalJson);
             // Not held: it reads the host's answers for as long as the host lives.
             UnawaitedWork.Observe(BackgroundWork.Unheld(host.ReadAsync));
             return host;
@@ -157,10 +171,23 @@ public sealed class ProjectHost : IAsyncDisposable
 
     /// <summary>Builds projects at design time, handing each over as its builds end, on the reader's thread; done once
     /// every one has been.</summary>
-    public async Task<BuildDone> BuildAsync(IReadOnlyList<string> projects, IReadOnlyDictionary<string, string> properties, Action<BuiltProject> built, CancellationToken cancel = default) =>
-        (await AskAsync(HostMethods.Build, new BuildParams(projects, properties),
-            partial => built(partial.Deserialize<BuiltProject>(HostJson.Options)!), cancel)).Deserialize<BuildDone>(HostJson.Options)
-            ?? throw new ProjectHostFailed("the project host gave no answer for its builds");
+    public async Task<BuildDone> BuildAsync(IReadOnlyList<string> projects, IReadOnlyDictionary<string, string> properties, Action<BuiltProject> built, CancellationToken cancel = default)
+    {
+        Interlocked.Increment(ref building);
+        try
+        {
+            return (await AskAsync(HostMethods.Build, new BuildParams(projects, properties),
+                partial => built(partial.Deserialize<BuiltProject>(HostJson.Options)!), cancel)).Deserialize<BuildDone>(HostJson.Options)
+                ?? throw new ProjectHostFailed("the project host gave no answer for its builds");
+        }
+        finally
+        {
+            Interlocked.Decrement(ref building);
+        }
+    }
+
+    /// <summary>The rounds of design-time builds asked and not yet done: the host builds one round at a time.</summary>
+    public int Building => Volatile.Read(ref building);
 
     /// <summary>Evaluates one project for the code help in its MSBuild files, the open files' unsaved texts read in
     /// place of the disk's.</summary>
@@ -271,7 +298,7 @@ public sealed class ProjectHost : IAsyncDisposable
     /// good: the host is ended, every request fails, and the next is asked of a host started anew.</summary>
     private async Task ReadAsync()
     {
-        string why = "the project host ended";
+        string? why = null;
         try
         {
             // Taken once: a disposed process gives no reader, where the reader taken says it was closed.
@@ -312,20 +339,45 @@ public sealed class ProjectHost : IAsyncDisposable
             PassengerLog.Write($"Project host (process {ProcessId}) was ended: {why}: {error}");
             ChildProcesses.Kill(process);
         }
-        Fail(why);
+        if (why is not null)
+        {
+            Fail(why, ended: false);
+        }
+        else
+        {
+            Fail(gone ? "the project host has ended" : await EndedAsync().ConfigureAwait(false));
+        }
+    }
+
+    /// <summary>How the host's process ended by itself: its exit code, and the first line of what it wrote as it crashed.</summary>
+    private async Task<string> EndedAsync()
+    {
+        string how;
+        try
+        {
+            // Its error stream read to its end too, which holds what it wrote as it crashed.
+            using CancellationTokenSource limit = new(TimeSpan.FromSeconds(2));
+            await process.WaitForExitAsync(limit.Token).ConfigureAwait(false);
+            how = $"exit code {process.ExitCode}";
+        }
+        catch (Exception error) when (error is OperationCanceledException or InvalidOperationException)
+        {
+            how = "its output closed while it ran";
+        }
+        return crashed is { } said ? $"the project host ended ({how}): {said}" : $"the project host ended ({how})";
     }
 
     /// <summary>Fails every request waiting, and each asked from now on.</summary>
-    private void Fail(string why)
+    private void Fail(string why, bool ended = true)
     {
         gone = true;
-        pending.End(_ => new ProjectHostFailed(why));
+        pending.End(_ => new ProjectHostFailed(why, hostEnded: ended));
     }
 
     /// <summary>Closes the host's input, which ends it, and ends it outright if it has not gone a moment later.</summary>
     public async ValueTask DisposeAsync()
     {
-        Fail("the project host has ended");
+        Fail("the project host has ended", ended: false);
         ChildProcesses.Ending(process);
         try
         {

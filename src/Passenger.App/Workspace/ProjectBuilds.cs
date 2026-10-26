@@ -60,6 +60,9 @@ public sealed class ProjectBuilds
     /// builds none as it opens.</summary>
     public int Builds { get; private set; }
 
+    /// <summary>How many projects the language server is waiting for the builds of.</summary>
+    public int Awaited { get; private set; }
+
     /// <summary>Takes up a folder, with the store's cache of its builds when the window keeps one, read off the UI thread
     /// as the folder opens.</summary>
     public void Open(string opened, StateDocument<ProjectBuildCache>? cache)
@@ -231,7 +234,16 @@ public sealed class ProjectBuilds
         {
             return new ProjectInfoResult(held.Read(), null, Said(held.Diagnostics));
         }
-        BuiltProject built = await Built(path);
+        BuiltProject built;
+        Awaited++;
+        try
+        {
+            built = await Built(path);
+        }
+        finally
+        {
+            Awaited--;
+        }
         return built.Problem is { } problem ? new ProjectInfoResult(null, problem) : new ProjectInfoResult(built.Infos, null, Said(built.Diagnostics));
     }
 
@@ -307,10 +319,23 @@ public sealed class ProjectBuilds
     private async Task RoundAsync(int mine, string following, List<string> round, Dictionary<string, string> properties, CancellationToken cancel)
     {
         long began = Stopwatch.GetTimestamp();
+        HashSet<string> landed = new(StringComparer.Ordinal);
         try
         {
             ProjectHost host = await BackgroundWork.Run(() => ProjectHosts.ForAsync(following));
-            BuildDone done = await host.BuildAsync(round, properties, built => UiThread.Post(() => Land(mine, built)), cancel);
+            BuildDone done;
+            try
+            {
+                done = await BuildAsync(host, round);
+            }
+            catch (ProjectHostFailed ended) when (ended.HostEnded && !cancel.IsCancellationRequested)
+            {
+                // Every window shares the host, which another folder's build may have ended: a host started anew builds the rest once.
+                List<string> left = Left();
+                IdeErrors.Write($"Project host (process {host.ProcessId}) building the projects of {following} at design time: {ended.Reason}. The {left.Count} not yet built are asked of a host started anew");
+                host = await BackgroundWork.Run(() => ProjectHosts.ForAsync(following));
+                done = await BuildAsync(host, left);
+            }
             if (mine == generation)
             {
                 IdeErrors.Write($"Project host (process {host.ProcessId}) built {done.Built} projects of {following} at design time in {done.Seconds:0.00} s, {Stopwatch.GetElapsedTime(began).TotalSeconds:0.00} s after they were asked for");
@@ -327,7 +352,7 @@ public sealed class ProjectBuilds
             {
                 string why = error is ProjectHostFailed failed ? failed.Reason : error.Message;
                 IdeErrors.Write($"The project host could not build the projects of {following}: {why}");
-                foreach (string path in round)
+                foreach (string path in Left())
                 {
                     Land(mine, new BuiltProject(path, "[]", [], why));
                 }
@@ -339,6 +364,23 @@ public sealed class ProjectBuilds
             {
                 building = false;
                 Pump();
+            }
+        }
+
+        Task<BuildDone> BuildAsync(ProjectHost asked, List<string> projects) => asked.BuildAsync(projects, properties, built =>
+        {
+            lock (landed)
+            {
+                landed.Add(built.Path);
+            }
+            UiThread.Post(() => Land(mine, built));
+        }, cancel);
+
+        List<string> Left()
+        {
+            lock (landed)
+            {
+                return [.. round.Where(p => !landed.Contains(p))];
             }
         }
     }

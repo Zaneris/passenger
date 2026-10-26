@@ -242,6 +242,7 @@ public sealed class ProjectModels
         CancellationToken cancel)
     {
         long began = Stopwatch.GetTimestamp();
+        HashSet<string> evaluated = new(StringComparer.Ordinal);
         try
         {
             List<string> stale = await BackgroundWork.Run(() => projects.Where(p => !before.TryGetValue(p, out EvaluatedProject? e) || !Holds(e)).ToList());
@@ -261,14 +262,23 @@ public sealed class ProjectModels
             {
                 return;
             }
-            EvaluateDone done = await host.EvaluateAsync(stale, properties, evaluated =>
+            EvaluateDone done;
+            try
             {
-                landed.Enqueue((mine, evaluated));
-                if (Interlocked.Exchange(ref posting, 1) == 0)
+                done = await EvaluateAsync(host, stale);
+            }
+            catch (ProjectHostFailed ended) when (ended.HostEnded && !cancel.IsCancellationRequested)
+            {
+                // Every window shares the host, which another folder's build may have ended: a host started anew evaluates the rest once.
+                List<string> left;
+                lock (evaluated)
                 {
-                    UiThread.Post(Land);
+                    left = [.. stale.Where(p => !evaluated.Contains(p))];
                 }
-            }, cancel);
+                IdeErrors.Write($"Project host (process {host.ProcessId}) evaluating the projects of {following}: {ended.Reason}. The {left.Count} not yet evaluated are asked of a host started anew");
+                host = await BackgroundWork.Run(() => ProjectHosts.ForAsync(following));
+                done = await EvaluateAsync(host, left);
+            }
             if (mine == generation)
             {
                 Keep(projects);
@@ -298,6 +308,22 @@ public sealed class ProjectModels
             }
             BackgroundWork.End();
         }
+
+        Task<EvaluateDone> EvaluateAsync(ProjectHost asked, List<string> projects) => asked.EvaluateAsync(projects, properties, project =>
+        {
+            if (project.Complete)
+            {
+                lock (evaluated)
+                {
+                    evaluated.Add(project.Path);
+                }
+            }
+            landed.Enqueue((mine, project));
+            if (Interlocked.Exchange(ref posting, 1) == 0)
+            {
+                UiThread.Post(Land);
+            }
+        }, cancel);
     }
 
     /// <summary>The evaluations landed since the last batch, taken in (those for a folder let go, dropped).</summary>

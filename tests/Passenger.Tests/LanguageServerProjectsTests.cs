@@ -10,6 +10,7 @@ using Passenger.App;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Workspace;
 
 namespace Passenger.Tests;
 
@@ -17,7 +18,7 @@ namespace Passenger.Tests;
 /// time, as its own build host would have built them, so it answers across a project reference; a folder opened again
 /// has them loaded from those builds as kept, none built again while nothing they read changed. A file of a
 /// multi-targeted project is answered for in the target framework chosen in the editor's switcher.</summary>
-public sealed class LanguageServerProjectsTests : IClassFixture<RestoredFolders>, IDisposable
+public sealed partial class LanguageServerProjectsTests : IClassFixture<RestoredFolders>, IDisposable
 {
     private readonly string folder;
     private readonly string settings = TestFolders.Create("settings-");
@@ -280,6 +281,67 @@ public sealed class LanguageServerProjectsTests : IClassFixture<RestoredFolders>
             TestFolders.Delete(quick);
         }
     }
+
+    /// <summary>A folder deleted while the project host builds its project at design time ends the host, which every
+    /// window shares, as its window closes; another window's round, waiting in that host behind the first, is built by a
+    /// host started anew and its project loads. Windows will not delete a folder a process works in.</summary>
+    [AvaloniaFact]
+    public void A_folder_deleted_under_its_design_time_build_leaves_another_windows_project_to_be_built_and_loaded()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows will not delete a folder a process works in");
+        string gone = PathNames.Canonical(TestFolders.Create("gone-"));
+        string kept = PathNames.Canonical(TestFolders.Create("kept-"));
+        MainWindow? first = null;
+        MainWindow? second = null;
+        try
+        {
+            const string project = "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net11.0</TargetFramework>\n  </PropertyGroup>\n</Project>\n";
+            Write(gone, "Gone/Gone.csproj", project);
+            Write(gone, "Gone/Gone.cs", "class Gone\n{\n}\n");
+            Write(gone, "Directory.Build.targets", """
+                <Project>
+                  <Target Name="Hold" BeforeTargets="CoreCompile" Condition="'$(DesignTimeBuild)' == 'true'">
+                    <Exec Command="echo held &gt; held; while [ -f held ]; do sleep 0.1; done" />
+                  </Target>
+                </Project>
+                """);
+            Write(kept, "Kept/Kept.csproj", project);
+            Write(kept, "Kept/Kept.cs", "class Kept\n{\n}\n");
+            Restore.Run(Path.Combine(gone, "Gone", "Gone.csproj"));
+            Restore.Run(Path.Combine(kept, "Kept", "Kept.csproj"));
+
+            first = new() { Width = 1200, Height = 800 };
+            first.Show();
+            first.OpenFolder(gone);
+            // Pumped, not settled: the language server's load waits for the design-time build.
+            Ui.PumpUntil(() => File.Exists(Path.Combine(gone, "Gone", "held")), "the design-time build of the folder to be deleted to begin", TimeSpan.FromMinutes(2));
+            ProjectHost host = Ui.AwaitPumped(Waiting.Apart(() => ProjectHosts.ForAsync(gone)), "the folder's project host");
+            second = new() { Width = 1200, Height = 800 };
+            second.Show();
+            second.OpenFolder(kept);
+            MainWindow other = second;
+            Ui.PumpUntil(() => host.Building == 2 && other.Session.DesignTimeBuilds.Awaited == 1,
+                "the other window's language server to wait for its project's builds, their round waiting in the host behind the first", TimeSpan.FromMinutes(2));
+
+            TestFolders.Delete(gone);
+            first.Close();
+            Assert.True(Ui.Pumped(() => other.Session.DesignTimeBuilds.Builds == 1, TimeSpan.FromMinutes(1)),
+                $"The other window's project was not built at design time once the host its round waited in had ended:\n{string.Join('\n', Ui.IdeLog().Split('\n').Where(l => l.Contains("project host", StringComparison.OrdinalIgnoreCase) && !HostSaid().IsMatch(l)).TakeLast(6))}");
+            Ui.WaitFor(() => other.CSharpService?.Session is { IsLoaded: true }, "the other window's language server to load its project");
+            Assert.DoesNotContain("problems loading", Ui.ServerLogTail(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            second?.Close();
+            first?.Close();
+            TestFolders.Delete(gone);
+            TestFolders.Delete(kept);
+        }
+    }
+
+    /// <summary>A line the project host wrote to its error stream, as the IDE's log copies it.</summary>
+    [System.Text.RegularExpressions.GeneratedRegex(@"Project host \(process \d+\): ")]
+    private static partial System.Text.RegularExpressions.Regex HostSaid();
 
     private static bool Missing(MainWindow window, OpenDocument document) =>
         window.CSharpService?.For(document)?.Diagnostics.Any(d => d.Code?.ToString() == "CS0103" && d.Message.Contains("Missing", StringComparison.Ordinal)) == true;
