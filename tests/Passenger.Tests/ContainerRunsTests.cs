@@ -477,6 +477,67 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         }
     }
 
+    /// <summary>A Compose run's output costs the same small amount for each line however many come: 10,000 lines of its image's
+    /// build through the Run console, its secrets masked as they come, and 10,000 of its service's log after it, allocate no
+    /// more for each line off the window's thread, where they are read and masked, than <see cref="AspireStandInTests.PumpBytes"/>
+    /// over what 1,000 do.</summary>
+    [AvaloniaFact]
+    public void A_compose_runs_build_and_log_cost_a_small_constant_for_each_line_however_many_come()
+    {
+        Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
+        string folder = TestFolders.Create("ctr-lines-");
+        string project = ProjectNamed("lines");
+        // 20 steps 0.2 s apart however many lines, so runs last alike; a build clips what it ran past 200 KiB a second.
+        TestFolders.Write(folder, "lines.sh", """
+            [ "$1" = build ] && { echo 'connecting with DB_PASSWORD=hunter2-not-shown'; echo 'sent Authorization: Bearer abc.def-not-shown'; }
+            n=$(cat /lines)
+            step=$((n / 20))
+            [ "$step" -gt 0 ] || step=1
+            i=0
+            while [ "$i" -lt "$n" ]; do
+                awk -v from="$i" -v n="$n" -v step="$step" 'BEGIN { for (j = from + 1; j <= from + step && j <= n; j++) printf "info: request %06d served in 4 ms by worker %d\n", j, j % 8 }'
+                i=$((i + step))
+                sleep 0.2
+            done
+            echo "wrote $n lines"
+
+            """);
+        TestFolders.Write(folder, "Dockerfile", $"FROM {Docker.Image}\nCOPY lines lines.sh /\nRUN sh /lines.sh build\n");
+        TestFolders.Write(folder, "compose.yaml", $"name: {project}\nservices:\n  lines:\n    build: {{ context: ., no_cache: true }}\n    pull_policy: build\n"
+            + "    init: true\n    command: [\"sh\", \"-c\", \"sh /lines.sh; sleep 600\"]\n");
+        TestFolders.Write(folder, "lines", "1");
+        MainWindow window = Open(folder);
+        Assert.True(window.SelectConfiguration("Compose: compose.yaml"));
+        try
+        {
+            (long, long) Ran(int count)
+            {
+                File.WriteAllText(Path.Combine(folder, "lines"), count.ToString(CultureInfo.InvariantCulture));
+                Task<string?> running = Task.FromResult<string?>(null);
+                (long, long) allocated = AspireStandInTests.Streamed(window.BottomPanel.Run, [$"wrote {count} lines\n", $"wrote {count} lines\n"], () => running = window.RunAsync());
+                string? refused = Ui.Await(running, "the service to come up", TimeSpan.FromMinutes(5));
+                Assert.True(refused is null, $"{refused}\n{Run(window)}");
+                // The console keeps the last megabyte of what came, which after 10,000 lines of each is past the build's first lines.
+                string shown = Run(window);
+                Assert.True((count > 1_000 || (shown.Contains("DB_PASSWORD=" + ContainerSecrets.Masked, StringComparison.Ordinal)
+                    && shown.Contains("Authorization: " + ContainerSecrets.Masked, StringComparison.Ordinal))) && !shown.Contains("not-shown", StringComparison.Ordinal),
+                    $"The build's secrets were not masked as they came:\n{string.Join('\n', shown.Split('\n').Where(line => line.Contains("DB_PASSWORD", StringComparison.Ordinal) || line.Contains("Authorization", StringComparison.Ordinal)))}");
+                Docker.Stopped(window, project, "Stop to take the service down");
+                Ui.WaitFor(() => !window.IsRunning, "the log to stop being followed");
+                return allocated;
+            }
+            AspireStandInTests.LineCost each = AspireStandInTests.PerLine(Ran, 2);
+            TestContext.Current.TestOutputHelper?.WriteLine($"For each line more: {each}");
+            Assert.True(each.Pumps < AspireStandInTests.PumpBytes,
+                $"A Compose run's build and log allocated {each.Pumps:N0} bytes off the window's thread for each line of 10,000 more than of 1,000, as if each read or line were copied again to be masked");
+        }
+        finally
+        {
+            Docker.Stopped(window, project, "Stop to take the service down");
+            window.Close();
+        }
+    }
+
     /// <summary>A service that serves HTTPS serves the development certificate exported for it, as PEM with its key and no
     /// password (a certificate made for the test, which dev-certs' stand-in writes, the machine's store never read), with the
     /// project's user secrets mounted; no command line the run started names a password.</summary>

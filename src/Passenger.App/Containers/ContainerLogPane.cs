@@ -1,15 +1,18 @@
+using System.Diagnostics;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Passenger.App.Run;
 using Passenger.App.ToolWindows;
+using Passenger.Core;
 
 namespace Passenger.App.Containers;
 
-/// <summary>A container's log, or a Compose project's or service's with every service's lines merged, or an AppHost's with
-/// its containers' merged: <c>docker logs -f</c> (<c>docker compose logs -f</c>; one per container of an AppHost) streamed
-/// into a console (<see cref="MergedLog"/>) through a <see cref="ProcessRunner"/>. Timestamps are shown on demand, and a
-/// project's services and an AppHost's containers each have a toggle; changing either streams the log again.</summary>
+/// <summary>A container's log, or a Compose project's or service's with every service's lines merged, or an AppHost's
+/// with its containers' merged: <c>docker logs -f</c> (<c>docker compose logs -f</c>) streamed into a console (<see
+/// cref="MergedLog"/>) through a <see cref="ProcessRunner"/>, an AppHost's one per container read straight into it.
+/// Timestamps are shown on demand, and a project's services and an AppHost's containers each have a toggle; changing
+/// either streams the log again.</summary>
 public sealed class ContainerLogPane : DockPanel
 {
     /// <summary>How many lines of what came before a stream begins with.</summary>
@@ -20,8 +23,8 @@ public sealed class ContainerLogPane : DockPanel
     private readonly MergedLog log;
     private ProcessRunner? runner;
 
-    /// <summary>An AppHost's containers' logs as they are merged (<see cref="Merge"/>), a runner each.</summary>
-    private readonly List<ProcessRunner> merged = [];
+    /// <summary>An AppHost's containers' logs as they are merged (<see cref="Merge"/>), a stream each.</summary>
+    private readonly List<MergedStream> merged = [];
     private ContainerRow? row;
     private string? streaming;
 
@@ -104,24 +107,23 @@ public sealed class ContainerLogPane : DockPanel
             runner.Dispose();
             runner = null;
         }
-        foreach (ProcessRunner each in merged)
+        foreach (MergedStream each in merged)
         {
             each.Stop();
-            each.Dispose();
         }
         merged.Clear();
     }
 
-    /// <summary>An AppHost's containers' logs merged, as Compose merges a project's: <c>docker logs -f</c> of each container
-    /// whose toggle is on, each line under its container's name, read through a runner of its own (the engine has no
-    /// command that follows several containers' logs that Compose did not make).</summary>
+    /// <summary>An AppHost's containers' logs merged, as Compose merges a project's: <c>docker logs -f</c> of each
+    /// container whose toggle is on, each line under its container's name, read straight into the log (the engine has
+    /// no command that follows several containers' logs that Compose did not make).</summary>
     private void Merge(ContainerRow shown, IReadOnlyList<string> options)
     {
         List<string> said = [];
         foreach (ContainerInfo container in shown.Containers.Where(c => log.Shows(c.Name)))
         {
             string[] words = ["logs", .. options, container.Id];
-            System.Diagnostics.ProcessStartInfo start;
+            ProcessStartInfo start;
             try
             {
                 start = engine().Command(words);
@@ -131,34 +133,80 @@ public sealed class ContainerLogPane : DockPanel
                 Console.Append($"{missing.Message}\n", error: true);
                 return;
             }
-            ProcessRunner each = new(new OutputView(toolbar: false));
-            System.Text.StringBuilder[] partial = [new(), new()];
-            each.OutputReceived += (_, output) =>
-            {
-                System.Text.StringBuilder line = partial[output.IsError ? 1 : 0];
-                line.Append(output.Text);
-                string text = line.ToString();
-                int end = text.LastIndexOf('\n');
-                if (end < 0 || !merged.Contains(each))
-                {
-                    return;
-                }
-                foreach (string whole in text[..end].Split('\n'))
-                {
-                    Console.Sink.Write($"[{container.Name}] {whole.TrimEnd('\r')}\n", output.IsError ? ConsoleStream.Error : ConsoleStream.Output);
-                }
-                line.Clear().Append(text, end + 1, text.Length - end - 1);
-            };
-            merged.Add(each);
             Dictionary<string, string> environment = start.Environment.Where(v => v.Value is not null).ToDictionary(v => v.Key, v => v.Value!);
-            if (each.Start(start.FileName, words, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), environment) is { } problem)
+            ProcessStartInfo followed = ChildProcesses.Command(start.FileName, words, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+            foreach ((string key, string value) in environment)
             {
-                Console.Append($"{container.Name}: {problem}\n", error: true);
+                followed.Environment[key] = value;
+            }
+            try
+            {
+                merged.Add(MergedStream.Start(followed, $"[{container.Name}] ", Console.Sink));
+            }
+            catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+            {
+                Console.Append($"{container.Name}: {ProcessRunner.WhyNotStarted(followed, error)}\n", error: true);
                 continue;
             }
             said.Add(ContainerEngine.Words(words));
         }
         streaming = said.Count == 0 ? null : string.Join("; ", said);
+    }
+
+    /// <summary>One container's log followed into the merged log, its output and errors read straight into the log's
+    /// sink (<see cref="ConsoleSink.PumpAsync"/>), each whole line under the container's name; <see cref="Stop"/> ends
+    /// it with all it started, and what it says after is dropped.</summary>
+    private sealed class MergedStream
+    {
+        private readonly Process process;
+        private readonly CancellationTokenSource letGo = new();
+
+        private MergedStream(Process process) => this.process = process;
+
+        /// <summary>From its start until its program has ended and what it wrote is read; UI thread.</summary>
+        public bool IsRunning { get; private set; } = true;
+
+        /// <summary>The log followed; throws what its program's start throws.</summary>
+        public static MergedStream Start(ProcessStartInfo start, string prefix, ConsoleSink sink)
+        {
+            start.RedirectStandardOutput = true;
+            start.RedirectStandardError = true;
+            Process started = ChildProcesses.Start(start);
+            MergedStream stream = new(started);
+            Task read = Task.WhenAll(sink.PumpAsync(started.StandardOutput, ConsoleStream.Output, stream.letGo.Token, prefix: prefix),
+                sink.PumpAsync(started.StandardError, ConsoleStream.Error, stream.letGo.Token, prefix: prefix));
+            IdeErrors.Observe(stream.EndedAsync(read));
+            return stream;
+        }
+
+        /// <summary>Ends it and all it started; from here on what it says is nobody's.</summary>
+        public void Stop()
+        {
+            UiThread.Check();
+            letGo.Cancel();
+            ChildProcesses.Kill(process);
+        }
+
+        /// <summary>Its program's end, once what it wrote is read (a job it left holding its output ended after
+        /// ChildProcesses' grace, one out of the kill's reach let go): background work from the end until it no longer
+        /// runs, so a test finds the log's last lines and the stream ended. A program still running holds
+        /// nothing.</summary>
+        private async Task EndedAsync(Task read)
+        {
+            // Off the UI thread from here on, whose dispatcher may end first.
+            await process.WaitForExitAsync().ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
+            IDisposable held = BackgroundWork.Scope();
+            Task ended = read.ContinueWith(_ => { }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            if (!await ChildProcesses.OutputEndsAsync(process, ended).ConfigureAwait(false))
+            {
+                letGo.Cancel();
+            }
+            UiThread.Post(() =>
+            {
+                IsRunning = false;
+                held.Dispose();
+            }, held.Dispose);
+        }
     }
 
     /// <summary>The containers a row's log was read from, and which of them ran.</summary>

@@ -85,6 +85,9 @@ public sealed partial class BuildRunController
     /// message, so a message of several lines is one problem, listed once however often MSBuild repeats it.</summary>
     private Problem? reading;
 
+    /// <summary>The files the build's problems name, each as the disk spells it, found once a build.</summary>
+    private readonly Dictionary<string, string> builtPaths = new(StringComparer.Ordinal);
+
     /// <summary>The texts of the files the build's problems are in, each read once a build: a compiler's line in a file
     /// Roslyn or a XAML compiler compiles is read there as the editor counts it (<see cref="ServerPlaces"/>).</summary>
     private Func<string, TextSnapshot?>? builtTexts;
@@ -123,15 +126,12 @@ public sealed partial class BuildRunController
         session.InspectedChanged += (_, _) => ShowBindings();
         session.Builder.Line += (_, line) =>
         {
-            if (reading is not null && BuildOutput.Continuing(reading, line) is { } longer)
-            {
-                reading = longer;
-            }
-            else
+            (Problem? next, bool continued) = BuildOutput.Next(reading, line, builtPaths);
+            if (!continued)
             {
                 ReadProblem();
-                reading = BuildOutput.Parse(line);
             }
+            reading = next;
             builtLines.Enqueue(line);
             if (builtLines.Count > BuiltLinesKept)
             {
@@ -328,6 +328,7 @@ public sealed partial class BuildRunController
         session.Problems.Clear();
         reading = null;
         builtTexts = null;
+        builtPaths.Clear();
         builtLines.Clear();
         parts.Views.Build.Clear();
         parts.Views.Build.SetRunning(true);

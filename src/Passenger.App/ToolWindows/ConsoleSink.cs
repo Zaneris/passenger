@@ -17,6 +17,10 @@ public enum ConsoleStream
 /// <summary>A stretch of a batch of console text and the stream it came from.</summary>
 public readonly record struct ConsoleRun(int Start, int Length, ConsoleStream Stream);
 
+/// <summary>What one read of a program's stream brought, as it came: the reader's own buffer, which its next read
+/// writes over.</summary>
+public delegate void ConsoleRead(ReadOnlySpan<char> text);
+
 /// <summary>What a person types into a console goes to the program through these: a line at a time with its line break,
 /// then the end of its input (Ctrl+D). Called on the UI thread; neither may wait on the program.</summary>
 public sealed record ConsoleInput(Action<string> Send, Action Close);
@@ -34,6 +38,9 @@ public sealed class ConsoleSink
 
     /// <summary>The longest line a pump tells its reader of whole: a longer one is told in pieces of this length.</summary>
     private const int LongestLine = 16 * 1024;
+
+    /// <summary>The most room, in characters, what waits keeps from one batch to the next.</summary>
+    private const int KeptRoom = 64 * 1024;
 
     private readonly object gate = new();
     private readonly Action take;
@@ -67,11 +74,16 @@ public sealed class ConsoleSink
     /// <summary>Adds what a stream wrote; from any thread.</summary>
     public void Write(ReadOnlySpan<char> text, ConsoleStream stream = ConsoleStream.Output) => Write(text, stream, streams[(int)stream]);
 
-    private void Write(ReadOnlySpan<char> text, ConsoleStream stream, ControlCodes codes)
+    private void Write(ReadOnlySpan<char> text, ConsoleStream stream, ControlCodes codes, CancellationToken letGo = default)
     {
         bool post;
         lock (gate)
         {
+            // Read under the gate, so nothing let go of lands after a Drop that follows.
+            if (letGo.IsCancellationRequested)
+            {
+                return;
+            }
             int before = waiting.Length;
             codes.Strip(text, waiting);
             post = Added(before, stream);
@@ -105,16 +117,17 @@ public sealed class ConsoleSink
     }
 
     /// <summary>Reads a program's stream into the console as it comes, a read at a time (a prompt with no line end too),
-    /// with colour-code state of its own so two streams never break each other's sequences, and ends it there however it
-    /// ends, a '\r' held back let go. Each line read is told to <paramref name="lines"/> when given. Once
-    /// <paramref name="letGo"/> is cancelled what comes is dropped, the console being another's; <paramref name="shown"/>
-    /// writes its text as shown (secrets masked), whole lines at a time. From any thread; never throws.</summary>
+    /// with colour-code state of its own, and ends it there however it ends, a '\r' held back let go. Each line read is
+    /// told to <paramref name="lines"/>, each read to <paramref name="chunks"/>. Once <paramref name="letGo"/> is cancelled
+    /// what comes is dropped; <paramref name="shown"/> writes its text as shown (secrets masked), whole lines at a time, and
+    /// <paramref name="prefix"/> each whole line under it (<see cref="Prefixed"/>). Any thread; never throws.</summary>
     public async Task PumpAsync(TextReader reader, ConsoleStream stream, CancellationToken letGo = default, Action<string>? lines = null,
-        Action<string>? chunks = null, Func<string, string>? shown = null)
+        ConsoleRead? chunks = null, Func<string, string>? shown = null, string? prefix = null)
     {
         ControlCodes codes = new();
         LineSplitter? split = lines is null ? null : new LineSplitter(lines);
-        StringBuilder? held = shown is null ? null : new();
+        Held? held = shown is null ? null : new Held();
+        Prefixed? prefixed = prefix is null ? null : new Prefixed(prefix);
         char[] buffer = new char[8192];
         try
         {
@@ -125,23 +138,25 @@ public sealed class ConsoleSink
                 {
                     return;
                 }
-                if (held is null)
+                ReadOnlySpan<char> came = buffer.AsSpan(0, read);
+                if (prefixed is not null)
                 {
-                    Write(buffer.AsSpan(0, read), stream, codes);
-                }
-                else
-                {
-                    held.Append(buffer, 0, read);
-                    int end = held.ToString().LastIndexOfAny(['\n', '\r']);
-                    if (end >= 0 || held.Length >= LongestLine)
+                    // Whole lines, each under the prefix, through the console's own state for the stream, as a merged log's.
+                    if (prefixed.Lines(came) is { Length: > 0 } whole)
                     {
-                        int whole = end >= 0 ? end + 1 : held.Length;
-                        Write(shown!(held.ToString(0, whole)), stream, codes);
-                        held.Remove(0, whole);
+                        Write(whole, stream, streams[(int)stream], letGo);
                     }
                 }
-                split?.Add(buffer.AsSpan(0, read));
-                chunks?.Invoke(new string(buffer, 0, read));
+                else if (held is null)
+                {
+                    Write(came, stream, codes, letGo);
+                }
+                else if (held.Whole(came) is { } whole)
+                {
+                    Write(shown!(whole), stream, codes, letGo);
+                }
+                split?.Add(came);
+                chunks?.Invoke(came);
             }
         }
         catch (OperationCanceledException) when (letGo.IsCancellationRequested)
@@ -152,12 +167,105 @@ public sealed class ConsoleSink
         {
             // Its pipe broken as its program was killed, or its reader put away: the stream has ended all the same.
         }
-        if (held is { Length: > 0 })
+        if (prefixed is not null)
         {
-            Write(shown!(held.ToString()), stream, codes);
+            return;
+        }
+        if (held?.Rest() is { } rest)
+        {
+            Write(shown!(rest), stream, codes, letGo);
         }
         End(stream, codes);
         split?.End();
+    }
+
+    /// <summary>A masked stream's text after its last line break, until a read ends a line or it reaches
+    /// <see cref="LongestLine"/>; the lines a read ends are made one string with what waited, for the mask.</summary>
+    private sealed class Held
+    {
+        private char[] text = new char[256];
+        private int length;
+
+        /// <summary>What waited and the whole lines a read ends (all it holds past <see cref="LongestLine"/>), or null
+        /// when it ends none; what follows the read's last break waits.</summary>
+        public string? Whole(ReadOnlySpan<char> came)
+        {
+            int last = came.LastIndexOfAny('\n', '\r');
+            if (last < 0 && length + came.Length < LongestLine)
+            {
+                Keep(came);
+                return null;
+            }
+            ReadOnlySpan<char> taken = last < 0 ? came : came[..(last + 1)];
+            string whole = string.Concat(text.AsSpan(0, length), taken);
+            length = 0;
+            Keep(came[taken.Length..]);
+            return whole;
+        }
+
+        /// <summary>What still waits at the stream's end, or null.</summary>
+        public string? Rest()
+        {
+            string? rest = length > 0 ? new string(text, 0, length) : null;
+            length = 0;
+            return rest;
+        }
+
+        private void Keep(ReadOnlySpan<char> more)
+        {
+            if (length + more.Length > text.Length)
+            {
+                Array.Resize(ref text, Math.Max(2 * text.Length, length + more.Length));
+            }
+            more.CopyTo(text.AsSpan(length));
+            length += more.Length;
+        }
+    }
+
+    /// <summary>A stream's whole lines, each ending at its '\n', written under a prefix with the '\r's before that
+    /// dropped (a container's in a merged log); what follows a read's last '\n' waits for the next, and is dropped at
+    /// the end.</summary>
+    private sealed class Prefixed(string prefix)
+    {
+        private char[] line = new char[256];
+        private int length;
+        private char[] written = new char[1024];
+
+        /// <summary>The lines a read ends, with what waited before the first, each under the prefix; empty when it ends
+        /// none.</summary>
+        public ReadOnlySpan<char> Lines(ReadOnlySpan<char> came)
+        {
+            int count = 0;
+            for (int end = came.IndexOf('\n'); end >= 0; end = came.IndexOf('\n'))
+            {
+                int needed = count + prefix.Length + length + end + 1;
+                if (needed > written.Length)
+                {
+                    Array.Resize(ref written, Math.Max(2 * written.Length, needed));
+                }
+                prefix.CopyTo(written.AsSpan(count));
+                count += prefix.Length;
+                int start = count;
+                line.AsSpan(0, length).CopyTo(written.AsSpan(count));
+                count += length;
+                came[..end].CopyTo(written.AsSpan(count));
+                count += end;
+                while (count > start && written[count - 1] == '\r')
+                {
+                    count--;
+                }
+                written[count++] = '\n';
+                length = 0;
+                came = came[(end + 1)..];
+            }
+            if (length + came.Length > line.Length)
+            {
+                Array.Resize(ref line, Math.Max(2 * line.Length, length + came.Length));
+            }
+            came.CopyTo(line.AsSpan(length));
+            length += came.Length;
+            return written.AsSpan(0, count);
+        }
     }
 
     /// <summary>A stream's text told a line at a time as a reader's ReadLine ends them, at '\r', '\n' or "\r\n" (one split
@@ -224,7 +332,15 @@ public sealed class ConsoleSink
             }
             string text = waiting.ToString();
             List<ConsoleRun> taken = runs;
-            waiting = new StringBuilder();
+            // Its room kept for the next batch, unless a flood made it larger than a batch should need.
+            if (waiting.Capacity > KeptRoom)
+            {
+                waiting = new StringBuilder();
+            }
+            else
+            {
+                waiting.Clear();
+            }
             runs = [];
             return (text, taken);
         }

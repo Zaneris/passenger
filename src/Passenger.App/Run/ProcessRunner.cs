@@ -258,10 +258,16 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
     /// <summary>Why a program could not start, said in the console.</summary>
     private string Refused(ProcessStartInfo start, Exception error)
     {
-        string file = Path.GetFileName(start.FileName);
-        string problem = Directory.Exists(start.WorkingDirectory) ? $"Could not start {file}: {error.Message}" : $"Could not start {file}: the folder {start.WorkingDirectory} is gone";
+        string problem = WhyNotStarted(start, error);
         console.Append($"{problem}\n", error: true);
         return problem;
+    }
+
+    /// <summary>Why a program could not start, from what its start threw: its working folder gone, or the error's words.</summary>
+    public static string WhyNotStarted(ProcessStartInfo start, Exception error)
+    {
+        string file = Path.GetFileName(start.FileName);
+        return Directory.Exists(start.WorkingDirectory) ? $"Could not start {file}: {error.Message}" : $"Could not start {file}: the folder {start.WorkingDirectory} is gone";
     }
 
     /// <summary>A program started in this console: its output read into it, its input the console's, its end landed.</summary>
@@ -463,7 +469,8 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
 
     /// <summary>Reads a stream into the sink as it comes, a read at a time, and ends the stream's state at its end; once let
     /// go of (its program ended, and what holds the stream is out of the kill's reach), what still comes is nobody's,
-    /// since the console may be another program's by then.</summary>
+    /// since the console may be another program's by then. A read is copied for <see cref="OutputReceived"/> only while
+    /// someone listens.</summary>
     private Task Pump(StreamReader reader, ConsoleSink sink, ConsoleStream stream, CancellationToken letGo)
         => sink.PumpAsync(reader, stream, letGo, chunks: text =>
         {
@@ -471,7 +478,7 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
             {
                 return;
             }
-            ProcessOutput output = new(text, stream == ConsoleStream.Error);
+            ProcessOutput output = new(new string(text), stream == ConsoleStream.Error);
             UiThread.Post(() => OutputReceived?.Invoke(this, output));
         });
 

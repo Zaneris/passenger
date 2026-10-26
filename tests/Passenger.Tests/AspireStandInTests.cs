@@ -1967,6 +1967,192 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
+    /// <summary>A program's output costs the same small amount for each line however many come: 10,000 of the AppHost's own
+    /// lines through its console allocate no more for each line off the window's thread, where they are read, than
+    /// <see cref="PumpBytes"/> over what 1,000 do; and 10,000 from each of its two containers through the Containers
+    /// window's merged log, each under its container's name, no more on every thread than <see cref="LineBytes"/>. A
+    /// stand-in engine echoes the containers' lines.</summary>
+    [AvaloniaFact]
+    public void An_AppHosts_console_and_its_containers_merged_log_cost_a_small_constant_for_each_line_however_many_come()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
+        project.Reset();
+        string program = project.PathOf($"{StandInAppHost.Name}/Program.cs");
+        File.WriteAllText(program, File.ReadAllText(program).Replace("Thread.Sleep(Timeout.Infinite);", """
+            string asked = keyFile + ".lines";
+            while (true)
+            {
+                if (File.Exists(asked))
+                {
+                    int count = int.Parse(File.ReadAllText(asked));
+                    File.Delete(asked);
+                    for (int i = 1; i <= count; i++)
+                    {
+                        Console.WriteLine($"info: StandIn.AppHost[0] request {i:D6} served in 4 ms by worker {i % 8}");
+                    }
+                    Console.WriteLine($"wrote {count} lines");
+                }
+                Thread.Sleep(50);
+            }
+            """, StringComparison.Ordinal));
+        const string Cache = "5a5d0c0ffee6";
+        const string Queue = "5a5d0c0ffee7";
+        static string Listed(string id, string name) =>
+            $$"""{"ID":"{{id}}","Names":"{{name}}","Image":"redis:7","State":"running","Status":"Up 1 minute","Ports":"","Labels":"com.microsoft.developer.usvc-dev.uid=x"}""";
+        string engine = TestFolders.Create("aspire-host-lines-");
+        File.WriteAllText(Path.Combine(engine, "lines"), "1");
+        (string cli, _) = ContainersTests.StandInEngine(engine, up: true,
+            logs: """for word in "$@"; do last=$word; done; awk -v n="$(cat "$here/lines")" -v who="$last" 'BEGIN { for (i = 1; i <= n; i++) printf "%s info: request %06d served in 4 ms\n", substr(who, 1, 12), i; printf "%s wrote %d lines\n", substr(who, 1, 12), n }'; sleep 600""",
+            more: [Listed(Cache, "cache-abc"), Listed(Queue, "queue-def")]);
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        foreach ((string name, string id) in (ReadOnlySpan<(string, string)>)[("cache-abc", Cache), ("queue-def", Queue)])
+        {
+            backend.PushResource(new Resource
+            {
+                Name = name, DisplayName = name[..name.IndexOf('-')], Uid = name, ResourceType = "Container", State = "Running",
+                Properties =
+                {
+                    new ResourceProperty { Name = "container.id", Value = Google.Protobuf.WellKnownTypes.Value.ForString(id + new string('0', 52)) },
+                    new ResourceProperty { Name = "container.lifetime", Value = Google.Protobuf.WellKnownTypes.Value.ForString("Persistent") },
+                },
+            });
+        }
+        project.Serve(backend);
+        MainWindow window = new()
+        {
+            Width = 1200, Height = 800, Autosaves = false, WarmServer = project.Server, StartsLanguageServer = false,
+            Engine = new Passenger.App.Containers.ContainerEngine(cli: cli),
+        };
+        window.Show();
+        window.OpenFolder(project.Folder);
+        Ui.Settle();
+        try
+        {
+            Ui.WaitFor(() => window.Configurations.Any(configuration => configuration.Name == StandInAppHost.Configuration), "the stand-in AppHost's Aspire configuration");
+            Assert.True(window.SelectConfiguration(StandInAppHost.Configuration));
+            Ui.Run(window, AppActions.RunProgram);
+            Ui.WaitFor(() => backend.Connected.Task.IsCompleted && window.AspireRuntime.Apps.Count == 1, $"the stand-in AppHost's start ({window.Status})");
+            AspireAppRun app = window.AspireRuntime.Apps[0];
+            (long, long) AppHost(int count) => Streamed(app.Console, [$"wrote {count} lines\n"], () =>
+            {
+                File.WriteAllText(project.KeyFile + ".lines.part", count.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                File.Move(project.KeyFile + ".lines.part", project.KeyFile + ".lines");
+            });
+            LineCost host = PerLine(AppHost, 1);
+
+            window.ShowToolWindow(ToolWindowIds.Containers);
+            Ui.Settle();
+            Passenger.App.Containers.ContainersView view = window.ContainersWindow;
+            Ui.WaitFor(() => view.Rows.Any(row => row.Kind == Passenger.App.Containers.ContainerRowKind.AppHost && row.Containers.Count == 2),
+                $"the AppHost's row over its two containers, not [{string.Join(", ", view.Rows.Select(row => $"{row.Kind} {row.Label}"))}]");
+            Ui.Click(view.GetVisualDescendants().OfType<Passenger.App.ToolWindows.RunRowView>().Single(row => row.Shown?.Label == StandInAppHost.Configuration)
+                .GetVisualDescendants().OfType<TextBlock>().First(text => text.Text == StandInAppHost.Configuration));
+            Assert.Equal("Log", view.ShownTab);
+            Avalonia.Controls.Primitives.ToggleButton timestamps = view.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().Single(button => button.Name == "containerTimestamps");
+            // Each streams the containers' logs again from their start, which the stand-in engine echoes as many lines as asked.
+            (long, long) Merged(int count) => Streamed(view.Log.Console,
+                [$"[cache-abc] {Cache} info: request {count:D6} served in 4 ms\n[", $"[cache-abc] {Cache} wrote {count} lines\n",
+                    $"[queue-def] {Queue} info: request {count:D6} served in 4 ms\n[", $"[queue-def] {Queue} wrote {count} lines\n"], () =>
+            {
+                File.WriteAllText(Path.Combine(engine, "lines"), count.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                Ui.Click(timestamps, settle: false);
+            });
+            LineCost merged = PerLine(Merged, 2);
+            TestContext.Current.TestOutputHelper?.WriteLine($"For each line more: the AppHost's console {host}; the merged log {merged}");
+            Assert.True(host.Pumps < PumpBytes,
+                $"The AppHost's console allocated {host.Pumps:N0} bytes off the window's thread for each line of 10,000 more than of 1,000, as if each read were copied for no one");
+            Assert.True(merged.All < LineBytes,
+                $"The containers' merged log allocated {merged.All:N0} bytes for each line of 10,000 more than of 1,000, as if each container's lines filled a console of their own");
+        }
+        finally
+        {
+            window.Close();
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+            TestFolders.Delete(engine);
+        }
+    }
+
+    /// <summary>What a line of 60 to 70 characters of a program's output may allocate on its way into a console, on every
+    /// thread: its text kept there, with the batches it crosses in.</summary>
+    internal const int LineBytes = 800;
+
+    /// <summary>What such a line may allocate off the window's thread, where a program's output is read: its share of
+    /// what waits for the console, and of what a mask is given.</summary>
+    internal const int PumpBytes = 220;
+
+    /// <summary>What streaming each line of a program's output costs, in bytes: on every thread, and on every thread but
+    /// the window's.</summary>
+    internal readonly record struct LineCost(double All, double Pumps)
+    {
+        public override string ToString() => $"{All:N0} bytes, {Pumps:N0} off the window's thread";
+    }
+
+    /// <summary>What each line of 10,000 allocates more than each of 1,000, from <paramref name="streams"/> streams at once:
+    /// of two streams of each, the one that allocated least.</summary>
+    internal static LineCost PerLine(Func<int, (long All, long Window)> streamed, int streams)
+    {
+        (long All, long Window) few = Least(streamed(1_000), streamed(1_000));
+        (long All, long Window) many = Least(streamed(10_000), streamed(10_000));
+        return new LineCost((double)(many.All - few.All) / (streams * 9_000),
+            (double)(many.All - many.Window - (few.All - few.Window)) / (streams * 9_000));
+
+        static (long All, long Window) Least((long All, long Window) one, (long All, long Window) other) => one.All <= other.All ? one : other;
+    }
+
+    /// <summary>What the process allocated, on every thread and on the window's, from <paramref name="start"/> until a console
+    /// has taken in each of <paramref name="lines"/>, as often as it is listed (read as its batches come, one split between
+    /// two batches too), and the window is quiet again.</summary>
+    internal static (long All, long Window) Streamed(Passenger.App.ToolWindows.OutputView console, IReadOnlyList<string> lines, Action start)
+    {
+        Ui.Settle();
+        Dictionary<string, int> wanted = new(StringComparer.Ordinal);
+        foreach (string line in lines)
+        {
+            wanted[line] = wanted.GetValueOrDefault(line) + 1;
+        }
+        Dictionary<string, int> seen = wanted.Keys.ToDictionary(line => line, _ => 0, StringComparer.Ordinal);
+        int unseen = lines.Count;
+        int kept = lines.Max(line => line.Length) - 1;
+        string carry = string.Empty;
+        void Heard(object? sender, string batch)
+        {
+            foreach ((string line, int times) in wanted)
+            {
+                // Those begun in the batches before and ended in this one, then those inside it.
+                string across = carry[Math.Max(0, carry.Length - (line.Length - 1))..] + batch[..Math.Min(batch.Length, line.Length - 1)];
+                int found = Count(across, line) + Count(batch, line);
+                unseen -= Math.Max(0, Math.Min(found, times - seen[line]));
+                seen[line] += found;
+            }
+            string last = carry + batch[Math.Max(0, batch.Length - kept)..];
+            carry = last[Math.Max(0, last.Length - kept)..];
+        }
+        static int Count(string text, string line)
+        {
+            int found = 0;
+            for (int at = text.IndexOf(line, StringComparison.Ordinal); at >= 0; at = text.IndexOf(line, at + 1, StringComparison.Ordinal))
+            {
+                found++;
+            }
+            return found;
+        }
+        console.Written += Heard;
+        try
+        {
+            long before = GC.GetTotalAllocatedBytes(precise: true);
+            long window = GC.GetAllocatedBytesForCurrentThread();
+            start();
+            Ui.WaitFor(() => unseen == 0, () => "the console to take in, as its batches came, "
+                + string.Join(", ", wanted.Where(line => seen[line.Key] < line.Value).Select(line => $"\"{line.Key.TrimEnd('[', '\n')}\" {line.Value} times, not {seen[line.Key]}")));
+            Ui.Settle();
+            return (GC.GetTotalAllocatedBytes(precise: true) - before, GC.GetAllocatedBytesForCurrentThread() - window);
+        }
+        finally
+        {
+            console.Written -= Heard;
+        }
+    }
+
     /// <summary>A window on the stand-in AppHost, run from its Aspire configuration as a person runs it, once the
     /// window has connected to the stand-in resource service its launch profile names; no C# language server, which
     /// nothing here asks.</summary>

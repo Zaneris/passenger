@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Text.RegularExpressions;
 using Passenger.Core;
 using Passenger.Text;
@@ -153,17 +154,52 @@ public static partial class BuildOutput
         return false;
     }
 
-    public static Problem? Parse(string line)
+    /// <summary>The words one of which every line naming a problem has (<see cref="Diagnostic"/>'s severity): any other
+    /// line is passed over before the expression reads it.</summary>
+    private static readonly SearchValues<string> Severities = SearchValues.Create(["error", "warning"], StringComparison.Ordinal);
+
+    /// <summary>The problem a build's line names, or null.</summary>
+    public static Problem? Parse(string line) => Matched(line) is { } match ? Read(match, null) : null;
+
+    /// <summary>A build's line read after the problem the line before it began (null for none): that problem with this
+    /// line's text added when the line goes on with its message (<see cref="Continued"/>), else the problem the line
+    /// names, or null; each file a problem names made canonical once in <paramref name="canonical"/>, a build's.</summary>
+    public static (Problem? Problem, bool Continued) Next(Problem? before, string line, Dictionary<string, string> canonical)
     {
-        Match match = Diagnostic().Match(line);
-        if (!match.Success)
+        if (Matched(line) is not { } match)
         {
-            return null;
+            return (null, false);
         }
+        Problem problem = Read(match, canonical);
+        return before is not null && Continued(before, match, problem) is { } longer ? (longer, true) : (problem, false);
+    }
+
+    /// <summary>The expression's match of a line naming a problem, or null.</summary>
+    private static Match? Matched(string line) =>
+        line.AsSpan().ContainsAny(Severities) && Diagnostic().Match(line) is { Success: true } match ? match : null;
+
+    /// <summary>The problem a line's match names, its file made canonical (through <paramref name="canonical"/>, once a
+    /// build, when given).</summary>
+    private static Problem Read(Match match, Dictionary<string, string>? canonical)
+    {
         ProblemSeverity severity = match.Groups["severity"].Value == "error" ? ProblemSeverity.Error : ProblemSeverity.Warning;
         string? path = match.Groups["file"].Value.Trim() is { Length: > 0 } file && !file.StartsWith("MSBUILD", StringComparison.Ordinal) ? file : null;
         // MSBuild names a file as the project or solution it came through spelled it, which may not be the disk's case.
-        path = path is not null && System.IO.Path.IsPathFullyQualified(path) ? PathNames.Canonical(path) : path;
+        if (path is not null && System.IO.Path.IsPathFullyQualified(path))
+        {
+            if (canonical is null)
+            {
+                path = PathNames.Canonical(path);
+            }
+            else if (canonical.TryGetValue(path, out string? known))
+            {
+                path = known;
+            }
+            else
+            {
+                path = canonical[path] = PathNames.Canonical(path);
+            }
+        }
         int lineNumber = int.TryParse(match.Groups["line"].Value, out int l) ? l - 1 : 0;
         int column = int.TryParse(match.Groups["column"].Value, out int c) ? c - 1 : 0;
         string? project = match.Groups["project"].Success ? System.IO.Path.GetFileNameWithoutExtension(match.Groups["project"].Value) : null;
@@ -198,14 +234,13 @@ public static partial class BuildOutput
     [GeneratedRegex(@"\b(?<word>Line) (?<line>\d{1,9})(?<between>,? [Pp]osition )(?<column>\d{1,9})\b")]
     private static partial Regex RepeatedPlace();
 
-    /// <summary>The problem before with this line's text added, when the line goes on with its message: MSBuild writes each
-    /// further line of one (an XAML compiler's stack trace, NuGet's dependency chains) with the same place, code and project,
-    /// its text indented past the code. Null when the line is a problem of its own, or none.</summary>
-    public static Problem? Continuing(Problem before, string line)
+    /// <summary>The problem before with this line's text added, when the line goes on with its message: MSBuild writes
+    /// each further line of one (an XAML compiler's stack trace, NuGet's dependency chains) with the same place, code
+    /// and project, its text indented past the code. Null when the line (its match, and the problem it names) is a
+    /// problem of its own.</summary>
+    private static Problem? Continued(Problem before, Match match, Problem more)
     {
-        if (Diagnostic().Match(line) is not { Success: true } match || Parse(line) is not { } more
-            || more with { Message = before.Message, Link = before.Link } != before
-            || (match.Groups["gap"].Length < 2 && more.Message.Length > 0))
+        if (more with { Message = before.Message, Link = before.Link } != before || (match.Groups["gap"].Length < 2 && more.Message.Length > 0))
         {
             return null;
         }
