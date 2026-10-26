@@ -1,4 +1,7 @@
+using System.Buffers;
+using System.Buffers.Binary;
 using System.Diagnostics;
+using System.Security.Cryptography;
 using System.Text;
 using Passenger.Core;
 using Passenger.Text;
@@ -428,12 +431,20 @@ public sealed class Git
     public Task<GitResult> ContinueRebaseAsync() =>
         RunAsync(Root, ["rebase", "--continue"], environment: new Dictionary<string, string> { ["GIT_EDITOR"] = "true" });
 
-    /// <summary>The branches, remotes and tags the log shows and the commit each names: with HEAD's commit, what changes
-    /// when the history does (a commit, a checkout, a fetch), and not when a file is saved or stashed.</summary>
-    public async Task<string> RefsAsync()
+    /// <summary>The branches, remotes and tags the log shows and the commit each names, as a hash of git's bytes for them
+    /// read off the caller's thread: with HEAD's commit, what changes when the history does (a commit, a checkout, a
+    /// fetch), and not when a file is saved or stashed.</summary>
+    public Task<UInt128> RefsAsync() => BackgroundWork.Run(async () =>
     {
-        GitResult refs = await RunAsync(Root, ["for-each-ref", "--format=%(objectname) %(refname)", "refs/heads", "refs/remotes", "refs/tags"]);
-        return refs.Output;
+        using GitOutput refs = await OutputOfAsync(Root, ["for-each-ref", "--format=%(objectname) %(refname)", "refs/heads", "refs/remotes", "refs/tags"]);
+        return Hash(refs.Bytes);
+    });
+
+    private static UInt128 Hash(ReadOnlySpan<byte> bytes)
+    {
+        Span<byte> hash = stackalloc byte[SHA256.HashSizeInBytes];
+        SHA256.HashData(bytes, hash);
+        return BinaryPrimitives.ReadUInt128LittleEndian(hash);
     }
 
     /// <summary>The branch checked out, or null on a detached head.</summary>
@@ -521,21 +532,25 @@ public sealed class Git
     /// <summary>The history of every branch, remote and tag and of HEAD, newest first with a branch's commits together, at
     /// most this many; or, given <paramref name="revisions"/>, theirs alone (a branch the log is filtered to,
     /// "main..feature" for the commits of feature main lacks). Not --all, which takes in the stash's own commits (and
-    /// notes').</summary>
-    public async Task<IReadOnlyList<CommitInfo>> LogAsync(int most = 2000, IReadOnlyList<string>? revisions = null)
+    /// notes'). Read and parsed off the caller's thread.</summary>
+    public Task<IReadOnlyList<CommitInfo>> LogAsync(int most = 2000, IReadOnlyList<string>? revisions = null)
     {
         // An unborn HEAD (a new repository, an orphan branch) is left out rather than failing the whole log.
         string[] which = revisions is null ? ["--branches", "--remotes", "--tags", "--ignore-missing", "HEAD"] : ["--end-of-options", .. revisions];
-        GitResult log = await RunAsync(Root, ["log", "--topo-order", $"--max-count={most}", CommitFormat, .. which, "--"]);
-        // A branch with no commits yet has no history to read.
-        return log.Succeeded ? Commits(log.Output) : [];
+        string[] arguments = ["log", "--topo-order", $"--max-count={most}", CommitFormat, .. which, "--"];
+        return BackgroundWork.Run<IReadOnlyList<CommitInfo>>(async () =>
+        {
+            using GitOutput log = await OutputOfAsync(Root, arguments);
+            // A branch with no commits yet has no history to read.
+            return log.Succeeded ? Commits(log.Bytes) : [];
+        });
     }
 
     /// <summary>The commit HEAD names, as the log reads it, or null before the first commit.</summary>
     public async Task<CommitInfo?> HeadAsync()
     {
         GitResult log = await RunAsync(Root, ["log", "-1", CommitFormat, "HEAD", "--"], answers: [NotThere]);
-        return log.Succeeded ? Commits(log.Output).FirstOrDefault() : null;
+        return log.Succeeded ? Commits(Encoding.UTF8.GetBytes(log.Output)).FirstOrDefault() : null;
     }
 
     private const string CommitFormat = "--format=%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%D%x1f%s%x1e";
@@ -543,28 +558,118 @@ public sealed class Git
     /// <summary>A history's commits: each begins a record, and what follows its last field is what it did there.</summary>
     private const string HistoryFormat = "--format=%x1e%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%D%x1f%s%x1f";
 
-    private static List<CommitInfo> Commits(string output)
+    /// <summary>What ends each record of <see cref="CommitFormat"/> and <see cref="HistoryFormat"/>, and each field.</summary>
+    private const byte RecordEnd = 0x1e;
+    private const byte FieldEnd = 0x1f;
+
+    /// <summary>A log's commits from git's bytes, each record's fields found in place and only those kept made strings.</summary>
+    private static List<CommitInfo> Commits(ReadOnlySpan<byte> output)
     {
         List<CommitInfo> commits = [];
-        foreach (string record in output.Split('\x1e'))
+        Hashes hashes = new();
+        Span<Range> fields = stackalloc Range[8];
+        while (!output.IsEmpty)
         {
-            string[] field = record.Trim('\n').Split('\x1f');
-            if (field.Length >= 7)
+            // A log writes a line break after each record's end.
+            ReadOnlySpan<byte> record = Record(ref output).Trim((byte)'\n');
+            if (Fields(record, fields) >= 7)
             {
-                commits.Add(Commit(field));
+                commits.Add(Commit(record, fields, hashes));
             }
         }
         return commits;
     }
 
-    private static CommitInfo Commit(string[] field) => new(
-        field[0],
-        field[1].Split(' ', StringSplitOptions.RemoveEmptyEntries),
-        field[2],
-        field[3],
-        DateTimeOffset.FromUnixTimeSeconds(long.Parse(field[4], System.Globalization.CultureInfo.InvariantCulture)),
-        [.. field[5].Split(", ", StringSplitOptions.RemoveEmptyEntries).Select(r => r.StartsWith("HEAD -> ", StringComparison.Ordinal) ? r[8..] : r)],
-        field[6]);
+    /// <summary>The bytes up to the next record's end, which <paramref name="output"/> is moved past.</summary>
+    private static ReadOnlySpan<byte> Record(ref ReadOnlySpan<byte> output)
+    {
+        int end = output.IndexOf(RecordEnd);
+        ReadOnlySpan<byte> record = end < 0 ? output : output[..end];
+        output = end < 0 ? [] : output[(end + 1)..];
+        return record;
+    }
+
+    /// <summary>A record's fields between 0x1F bytes, at most as many as <paramref name="fields"/> holds, the last
+    /// running to the record's end; how many there are.</summary>
+    private static int Fields(ReadOnlySpan<byte> record, Span<Range> fields)
+    {
+        int count = 0;
+        int start = 0;
+        while (count < fields.Length - 1 && record[start..].IndexOf(FieldEnd) is int at and >= 0)
+        {
+            fields[count++] = new Range(start, start + at);
+            start += at + 1;
+        }
+        fields[count++] = new Range(start, record.Length);
+        return count;
+    }
+
+    private static CommitInfo Commit(ReadOnlySpan<byte> record, ReadOnlySpan<Range> field, Hashes hashes) => new(
+        hashes.Of(record[field[0]]),
+        Parts(record[field[1]], " "u8, hashes),
+        Text(record[field[2]]),
+        Text(record[field[3]]),
+        DateTimeOffset.FromUnixTimeSeconds(long.Parse(record[field[4]], System.Globalization.CultureInfo.InvariantCulture)),
+        Parts(record[field[5]], ", "u8, null),
+        Text(record[field[6]]));
+
+    private static string Text(ReadOnlySpan<byte> utf8) => Encoding.UTF8.GetString(utf8);
+
+    /// <summary>A field's parts between separators, empty ones passed over: hashes, each made once by
+    /// <paramref name="hashes"/>, or with none the branches and tags at a commit, HEAD's arrow taken off the one it names.</summary>
+    private static string[] Parts(ReadOnlySpan<byte> field, ReadOnlySpan<byte> separator, Hashes? hashes)
+    {
+        int count = 0;
+        for (ReadOnlySpan<byte> rest = field; !rest.IsEmpty;)
+        {
+            int at = rest.IndexOf(separator);
+            count += at == 0 ? 0 : 1;
+            rest = at < 0 ? [] : rest[(at + separator.Length)..];
+        }
+        if (count == 0)
+        {
+            return [];
+        }
+        string[] parts = new string[count];
+        count = 0;
+        for (ReadOnlySpan<byte> rest = field; !rest.IsEmpty;)
+        {
+            int at = rest.IndexOf(separator);
+            ReadOnlySpan<byte> part = at < 0 ? rest : rest[..at];
+            if (!part.IsEmpty)
+            {
+                parts[count++] = hashes is not null ? hashes.Of(part) : Text(part.StartsWith("HEAD -> "u8) ? part[8..] : part);
+            }
+            rest = at < 0 ? [] : rest[(at + separator.Length)..];
+        }
+        return parts;
+    }
+
+    /// <summary>Each hash a log names made a string once, however many of its commits name it (as their own or a parent).</summary>
+    private sealed class Hashes
+    {
+        private readonly Dictionary<string, string> made = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, string>.AlternateLookup<ReadOnlySpan<char>> lookup;
+
+        public Hashes() => lookup = made.GetAlternateLookup<ReadOnlySpan<char>>();
+
+        public string Of(ReadOnlySpan<byte> hash)
+        {
+            // Never more characters than bytes; a SHA-256 hash is 64.
+            Span<char> chars = stackalloc char[64];
+            if (hash.Length > chars.Length)
+            {
+                return Text(hash);
+            }
+            ReadOnlySpan<char> text = chars[..Encoding.UTF8.GetChars(hash, chars)];
+            if (!lookup.TryGetValue(text, out string? known))
+            {
+                known = new string(text);
+                made.Add(known, known);
+            }
+            return known;
+        }
+    }
 
     /// <summary>Show History's commits from HEAD, newest first, at most this many, each with what it did there: a file's
     /// followed through its renames (--follow), a folder's, or those that changed a file's lines (-L), renames followed
@@ -576,25 +681,33 @@ public sealed class Git
         if (scope.IsLines)
         {
             // -L takes no pathspec: its file is whatever follows the range. The prefixes are set, whatever diff.noprefix says.
-            GitResult lines = await RunAsync(Root, ["-c", "core.quotePath=false", "log", $"-L{scope.FirstLine + 1},{scope.LastLine + 1}:{relative}",
-                "--no-color", "--src-prefix=a/", "--dst-prefix=b/", HistoryFormat, count, "HEAD"]);
-            return lines.Succeeded ? Histories(lines.Output, PatchFile) : [];
+            return await HistoriesAsync(["-c", "core.quotePath=false", "log", $"-L{scope.FirstLine + 1},{scope.LastLine + 1}:{relative}",
+                "--no-color", "--src-prefix=a/", "--dst-prefix=b/", HistoryFormat, count, "HEAD"], PatchFile);
         }
         // Literal: a name with brackets or a star is that file alone, never a pattern.
-        GitResult log = await RunAsync(Root, ["--literal-pathspecs", "log", .. scope.IsFolder ? Array.Empty<string>() : ["--follow"],
-            "--name-status", "-z", "-M", HistoryFormat, count, "HEAD", "--", relative]);
-        return log.Succeeded ? Histories(log.Output, NameStatus) : [];
+        return await HistoriesAsync(["--literal-pathspecs", "log", .. scope.IsFolder ? Array.Empty<string>() : ["--follow"],
+            "--name-status", "-z", "-M", HistoryFormat, count, "HEAD", "--", relative], NameStatus);
     }
 
-    private static List<HistoryCommit> Histories(string output, Func<string, List<FileChange>> changes)
+    /// <summary>A history's commits as git lists them, read and parsed off the caller's thread; none when git fails.</summary>
+    private Task<IReadOnlyList<HistoryCommit>> HistoriesAsync(string[] arguments, Func<string, List<FileChange>> changes) =>
+        BackgroundWork.Run<IReadOnlyList<HistoryCommit>>(async () =>
+        {
+            using GitOutput log = await OutputOfAsync(Root, arguments);
+            return log.Succeeded ? Histories(log.Bytes, changes) : [];
+        });
+
+    private static List<HistoryCommit> Histories(ReadOnlySpan<byte> output, Func<string, List<FileChange>> changes)
     {
         List<HistoryCommit> commits = [];
-        foreach (string record in output.Split('\x1e'))
+        Hashes hashes = new();
+        Span<Range> fields = stackalloc Range[8];
+        while (!output.IsEmpty)
         {
-            string[] field = record.Split('\x1f', 8);
-            if (field.Length == 8)
+            ReadOnlySpan<byte> record = Record(ref output);
+            if (Fields(record, fields) == 8)
             {
-                commits.Add(new HistoryCommit(Commit(field), changes(field[7])));
+                commits.Add(new HistoryCommit(Commit(record, fields, hashes), changes(Text(record[fields[7]]))));
             }
         }
         return commits;
@@ -1146,6 +1259,76 @@ public sealed class Git
         catch (System.ComponentModel.Win32Exception missing)
         {
             return new GitResult(127, string.Empty, $"git is not installed: {missing.Message}");
+        }
+    }
+
+    /// <summary>What git writes, read into a buffer of the pool's as it comes, and how it exited: 127 and nothing when git
+    /// is not there.</summary>
+    private static async Task<GitOutput> OutputOfAsync(string folder, IReadOnlyList<string> arguments)
+    {
+        using IDisposable held = BackgroundWork.Scope();
+        if (Start(folder, arguments) is not { } start)
+        {
+            return new GitOutput(127, [], 0);
+        }
+        start.RedirectStandardOutput = true;
+        start.RedirectStandardError = true;
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(64 * 1024);
+        try
+        {
+            using Process process = await ChildProcesses.StartAsync(start);
+            Task<string> error = process.StandardError.ReadToEndAsync();
+            Stream output = process.StandardOutput.BaseStream;
+            int length = 0;
+            int read;
+            while ((read = await output.ReadAsync(buffer.AsMemory(length))) > 0)
+            {
+                length += read;
+                if (length == buffer.Length)
+                {
+                    byte[] larger = ArrayPool<byte>.Shared.Rent(buffer.Length * 2);
+                    buffer.AsSpan(0, length).CopyTo(larger);
+                    ArrayPool<byte>.Shared.Return(buffer);
+                    buffer = larger;
+                }
+            }
+            await process.WaitForExitAsync();
+            await error;
+            GitOutput written = new(process.ExitCode, buffer, length);
+            buffer = [];
+            return written;
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            return new GitOutput(127, [], 0);
+        }
+        finally
+        {
+            if (buffer.Length > 0)
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
+        }
+    }
+
+    /// <summary>What a git command wrote and how it exited, its bytes in a buffer of the pool's until disposed.</summary>
+    private sealed class GitOutput(int code, byte[] buffer, int length) : IDisposable
+    {
+        private byte[] buffer = buffer;
+        private int length = length;
+
+        public bool Succeeded => code == 0;
+
+        public ReadOnlySpan<byte> Bytes => buffer.AsSpan(0, length);
+
+        public void Dispose()
+        {
+            if (buffer.Length > 0)
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
+            buffer = [];
+            length = 0;
         }
     }
 

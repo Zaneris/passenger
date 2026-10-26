@@ -96,7 +96,12 @@ public sealed class VcsController : IDisposable
     /// when it did, never for a save.</summary>
     public event EventHandler? HistoryChanged;
 
-    private string? knownHistory;
+    /// <summary>The refs' hash and HEAD's commit as the history was last read.</summary>
+    private (UInt128 Refs, string? Head)? knownHistory;
+
+    /// <summary>Whether the folder watcher hears Git's own state move: the open folder is the working tree's top and Git's
+    /// folder its .git, so files changed alone leave the history unread.</summary>
+    private bool historyHeard;
 
     /// <summary>What happened, for the status bar: what is under way (a push), and each operation's outcome in the words
     /// it returns them in (a commit made, a push refused and git's reason).</summary>
@@ -143,6 +148,7 @@ public sealed class VcsController : IDisposable
                 return;
             }
             git = found;
+            historyHeard = found is not null && PathNames.Same(found.GitDir, Path.Join(folder, ".git"));
             heads.Clear();
             textsOf = null;
             textsRead = false;
@@ -200,6 +206,15 @@ public sealed class VcsController : IDisposable
     {
         UiThread.Check();
         historyAsked = true;
+        return ReadAsync();
+    }
+
+    /// <summary>Another program changed the folder's files, or Git's own state with <paramref name="gitMoved"/>: the status
+    /// read again, and the history too where Git's state moved or the folder watcher cannot hear it move.</summary>
+    public Task FolderChangedAsync(bool gitMoved)
+    {
+        UiThread.Check();
+        historyAsked |= gitMoved || !historyHeard;
         return ReadAsync();
     }
 
@@ -270,7 +285,7 @@ public sealed class VcsController : IDisposable
         }
         GitStatus? status = null;
         MergeState? merge = null;
-        string? refs = null;
+        UInt128? refs = null;
         string? failure = null;
         try
         {
@@ -313,10 +328,9 @@ public sealed class VcsController : IDisposable
             return;
         }
         Refreshed?.Invoke(this, EventArgs.Empty);
-        string? now = status is not null && refs is not null ? refs + status.Head : null;
-        if (now is not null && now != knownHistory)
+        if (status is not null && refs is { } read && (read, status.Head) != knownHistory)
         {
-            knownHistory = now;
+            knownHistory = (read, status.Head);
             HistoryChanged?.Invoke(this, EventArgs.Empty);
         }
     }

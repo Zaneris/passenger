@@ -11,7 +11,7 @@ public sealed record GraphRow(CommitInfo Commit, int Lane, IReadOnlyList<string?
 
 /// <summary>Lays out the log's graph: each commit takes the lane that waits for it (a new one when
 /// none does), hands that lane to its first parent and opens lanes for the others, and lanes that waited for the same
-/// commit join at its dot.</summary>
+/// commit join at its dot. A row's lanes below are the next row's above, one list for both.</summary>
 public static class CommitGraph
 {
     public static IReadOnlyList<GraphRow> Layout(IReadOnlyList<CommitInfo> commits) => Layout(commits, c => c.Parents);
@@ -31,11 +31,12 @@ public static class CommitGraph
     private static IReadOnlyList<GraphRow> Layout(IReadOnlyList<CommitInfo> commits, Func<CommitInfo, IReadOnlyList<string>> parentsOf)
     {
         List<string?> lanes = [];
-        List<GraphRow> rows = [];
-        foreach (CommitInfo commit in commits)
+        List<GraphRow> rows = new(commits.Count);
+        IReadOnlyList<string?> above = [];
+        for (int row = 0; row < commits.Count; row++)
         {
+            CommitInfo commit = commits[row];
             IReadOnlyList<string> parents = parentsOf(commit);
-            string?[] above = [.. lanes];
             int lane = lanes.IndexOf(commit.Hash);
             if (lane < 0)
             {
@@ -54,8 +55,9 @@ public static class CommitGraph
                 }
             }
             lanes[lane] = parents.Count > 0 ? parents[0] : null;
-            foreach (string parent in parents.Skip(1))
+            for (int other = 1; other < parents.Count; other++)
             {
+                string parent = parents[other];
                 if (lanes.Contains(parent))
                 {
                     continue;
@@ -74,7 +76,9 @@ public static class CommitGraph
             {
                 lanes.RemoveAt(lanes.Count - 1);
             }
-            rows.Add(new GraphRow(commit, lane, above, [.. lanes], parents));
+            string?[] below = [.. lanes];
+            rows.Add(new GraphRow(commit, lane, above, below, parents));
+            above = below;
         }
         return rows;
     }

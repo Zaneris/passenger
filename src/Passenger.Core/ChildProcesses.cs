@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -319,35 +320,43 @@ public static class ChildProcesses
             }
         }
 
+        /// <summary>Reads through a buffer of the pool's, given back once the reading ends however it ends.</summary>
         private async Task ReadAsync(StreamReader reader)
         {
-            char[] buffer = new char[16 * 1024];
-            int read;
-            while ((read = await reader.ReadAsync(buffer.AsMemory(), CancellationToken.None)) > 0)
+            char[] buffer = ArrayPool<char>.Shared.Rent(16 * 1024);
+            try
             {
-                lock (text)
+                int read;
+                while ((read = await reader.ReadAsync(buffer.AsMemory(), CancellationToken.None)) > 0)
                 {
-                    if (text.Length + read > most)
+                    lock (text)
                     {
-                        Overran = true;
+                        if (text.Length + read > most)
+                        {
+                            Overran = true;
+                        }
+                        else
+                        {
+                            text.Append(buffer, 0, read);
+                        }
                     }
-                    else
+                    if (Overran)
                     {
-                        text.Append(buffer, 0, read);
+                        try
+                        {
+                            ending?.Cancel();
+                        }
+                        catch (ObjectDisposedException)
+                        {
+                            // The run was over already.
+                        }
+                        return;
                     }
                 }
-                if (Overran)
-                {
-                    try
-                    {
-                        ending?.Cancel();
-                    }
-                    catch (ObjectDisposedException)
-                    {
-                        // The run was over already.
-                    }
-                    return;
-                }
+            }
+            finally
+            {
+                ArrayPool<char>.Shared.Return(buffer);
             }
         }
     }

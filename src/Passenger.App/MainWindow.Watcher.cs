@@ -97,7 +97,7 @@ public partial class MainWindow
         FollowOpenFiles(changes.Paths, every: changes.Lost);
         if (changes.Paths.Count > 0 || changes.Git)
         {
-            IdeErrors.Observe(session.Vcs.RefreshAsync());
+            IdeErrors.Observe(session.Vcs.FolderChangedAsync(changes.Git || changes.Lost));
         }
     }
 

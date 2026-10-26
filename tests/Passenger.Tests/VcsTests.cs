@@ -1154,6 +1154,106 @@ public sealed class VcsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A save among 5,000 tags costs the UI thread what one among 5 does, the least of three saves each: Git's
+    /// refs are not read for a save, which leaves the history where it was.</summary>
+    [AvaloniaFact]
+    public void A_save_among_five_thousand_tags_allocates_on_the_ui_thread_what_one_among_five_does_and_reads_no_ref()
+    {
+        string many = PathNames.Canonical(TestFolders.Create("git-tags-"));
+        try
+        {
+            TestFolders.Prepare(() =>
+            {
+                File.WriteAllText(Path.Combine(many, "Shop.cs"), Original);
+                TestGit.Init(many);
+            }, many);
+            (long few, int fewReads) = Saves(PathNames.Canonical(folder), 5);
+            (long lots, int lotsReads) = Saves(many, 5000);
+            TestContext.Current.TestOutputHelper?.WriteLine($"A save allocated {few / 1024:N0} KB on the UI thread among 5 tags, {lots / 1024:N0} KB among 5,000");
+            Assert.True(fewReads == 0 && lotsReads == 0, $"Three saves read Git's refs {fewReads} times among 5 tags and {lotsReads} among 5,000, where a save leaves the history as it was");
+            Assert.True(lots - few < 32 * 1024,
+                $"A save among 5,000 tags allocated {lots / 1024:N0} KB on the UI thread against {few / 1024:N0} KB among 5: a save costs the window the repository's refs");
+        }
+        finally
+        {
+            TestFolders.Delete(many);
+        }
+
+        // The least a save of Shop.cs allocates on the UI thread from the key to its last read landed, and how often Git's
+        // refs were read meanwhile.
+        static (long Least, int Reads) Saves(string root, int tags)
+        {
+            string head = TestGit.Run(root, "rev-parse", "HEAD").Trim();
+            string stream = string.Concat(Enumerable.Range(0, tags).Select(i => $"reset refs/tags/tag{i:0000}\nfrom {head}\n\n"));
+            ChildResult made = Ui.AwaitPumped(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command("git", ["fast-import", "--quiet"], root), stream,
+                TimeSpan.FromMinutes(1).Scaled())), "git fast-import", TimeSpan.FromMinutes(1) + TestFolders.Spare);
+            Assert.True(made.Succeeded, $"git fast-import made no {tags} tags: {made.Error}");
+            MainWindow window = Ui.OpenFolder(root, languageServer: false);
+            window.OpenFile(Path.Combine(root, "Shop.cs"));
+            window.Perform(AppActions.ShowGit);
+            Ui.Settle();
+            bool heard = false;
+            window.FolderWatcher!.Changed += (_, changes) => heard |= changes.Paths.Any(p => Path.GetFileName(p) == "Shop.cs");
+            int reads = 0;
+            void Started(object? sender, ChildStart start)
+            {
+                if (start.Command.Contains("for-each-ref", StringComparison.Ordinal))
+                {
+                    Interlocked.Increment(ref reads);
+                }
+            }
+            long least = long.MaxValue;
+            ChildProcesses.Started += Started;
+            try
+            {
+                for (int save = 0; save < 3; save++)
+                {
+                    Ui.Settle();
+                    heard = false;
+                    long before = GC.GetAllocatedBytesForCurrentThread();
+                    window.EditorArea.CodeEditor.Selections = SelectionSet.Single(0);
+                    window.KeyTextInput("// ");
+                    window.Perform(AppActions.Save);
+                    Ui.WaitFor(() => heard, "the folder watcher to hear of the save");
+                    Ui.Settle();
+                    least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
+                }
+            }
+            finally
+            {
+                ChildProcesses.Started -= Started;
+            }
+            Assert.Equal(tags, TestGit.Run(root, "tag", "--list").Split('\n', StringSplitOptions.RemoveEmptyEntries).Length);
+            window.Close();
+            return (least, reads);
+        }
+    }
+
+    /// <summary>A commit another program makes reaches the log with the window left as it is: the working tree's top open,
+    /// as Git's own folder is heard changing; a folder in it open, whose watcher hears nothing of Git's folder, as the
+    /// next file is changed there.</summary>
+    [AvaloniaFact]
+    public void A_commit_made_elsewhere_reaches_the_log_of_the_working_trees_top_and_of_a_folder_in_it()
+    {
+        Directory.CreateDirectory(Path.Combine(folder, "App"));
+        File.WriteAllText(Path.Combine(folder, "App", "App.cs"), "class App { }\n");
+        Git("add", "-A");
+        Git("commit", "-q", "-m", "App");
+        foreach ((string open, string what) in new[] { (folder, "the working tree's top"), (Path.Combine(folder, "App"), "a folder in it") })
+        {
+            MainWindow window = Ui.OpenFolder(open, languageServer: false);
+            window.Perform(AppActions.ShowGit);
+            int listed = int.Parse(Git("rev-list", "--count", "HEAD").Trim(), System.Globalization.CultureInfo.InvariantCulture);
+            Ui.Landed(() => window.GitLog.Rows.Count == listed, $"the log of {what}");
+            string subject = $"Made elsewhere with {what} open";
+            Git("commit", "-q", "--allow-empty", "-m", subject);
+            File.WriteAllText(Path.Combine(open, "Notes.txt"), $"{subject}\n");
+            Ui.WaitFor(() => window.GitLog.Rows.Any(r => r.Commit.Subject == subject),
+                () => $"the commit made elsewhere in the log of {what}, which lists {string.Join(", ", window.GitLog.Rows.Select(r => r.Commit.Subject))}");
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void A_file_chosen_in_the_commit_window_stays_chosen_through_a_refresh_and_rollback_names_and_rolls_back_it_alone()
     {
