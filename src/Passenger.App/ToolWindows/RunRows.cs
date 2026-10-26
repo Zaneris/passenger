@@ -57,7 +57,7 @@ public sealed record RunRow(int Depth, string Label)
 /// <summary>A row of a list of what runs as the list holds it, kept by its key while the list is read again (a resource's
 /// health streaming in, an engine's event): the same item, so its control, a press under way on it and the list's choice of
 /// it stay, told what it stands for now.</summary>
-public sealed class RunItem<T>(string key, T data)
+public sealed class RunItem<T>(string key, T data) : System.ComponentModel.INotifyPropertyChanged
     where T : class
 {
     public string Key { get; } = key;
@@ -67,6 +67,9 @@ public sealed class RunItem<T>(string key, T data)
 
     /// <summary>What it stands for changed: its control shows it anew in place.</summary>
     public event EventHandler? Changed;
+
+    /// <summary>What it stands for changed (<see cref="Data"/>), for a row made once that shows it.</summary>
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
 
     /// <summary>What it stands for read again: its control drawn anew only when that differs from what it drew (an AppHost's
     /// update keeps each resource it did not change, whose row then costs nothing).</summary>
@@ -78,6 +81,7 @@ public sealed class RunItem<T>(string key, T data)
         }
         Data = data;
         Changed?.Invoke(this, EventArgs.Empty);
+        PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(Data)));
     }
 
     public override string ToString() => Key;

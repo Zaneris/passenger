@@ -1393,7 +1393,6 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
         "src/Passenger.App/SearchPopup.cs: FuncDataTemplate<T>",
         "src/Passenger.App/Settings/LiveTemplatesPane.cs: FuncDataTemplate<LiveTemplate>",
         "src/Passenger.App/Settings/PostfixTemplatesPane.cs: FuncDataTemplate<PostfixTemplate?>",
-        "src/Passenger.App/Telemetry/TelemetryView.cs: FuncDataTemplate<RunItem<T>>",
         "src/Passenger.App/Templates/NewProjectDialog.cs: FuncDataTemplate<ProjectTemplate?>",
         "src/Passenger.App/Templates/NewProjectDialog.cs: FuncDataTemplate<TemplateFamily?>",
         "src/Passenger.App/ToolWindows/BookmarksView.cs: FuncDataTemplate<Bookmark>",

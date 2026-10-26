@@ -4,7 +4,6 @@ using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
-using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Passenger.App.Aspire;
 using Passenger.App.Containers;
@@ -623,26 +622,19 @@ public sealed class TelemetryView : IDisposable
         {
             Classes = { "tree" },
             ItemsSource = items,
-            ItemTemplate = new FuncDataTemplate<RunItem<T>>((item, _) => item is null ? null : Row(item, text), supportsRecycling: false),
         };
+        ReusedRows.Use(list, () => Row(text));
         AutomationProperties.SetName(list, name);
         return list;
     }
 
-    /// <summary>A record's row, its words shown anew in place as its item changes (a trace's late spans).</summary>
-    private static Control Row<T>(RunItem<T> item, Func<T, string> text)
+    /// <summary>A row for whichever record the list hands its container, its words shown anew in place as its item changes
+    /// (a trace's late spans).</summary>
+    private static Control Row<T>(Func<T, string> text)
         where T : class
     {
-        TextBlock words = new() { Text = text(item.Data), VerticalAlignment = VerticalAlignment.Center };
-        void Changed(object? sender, EventArgs e) => words.Text = text(item.Data);
-        words.AttachedToVisualTree += (_, _) =>
-        {
-            item.Changed -= Changed;
-            item.Changed += Changed;
-            words.Text = text(item.Data);
-        };
-        words.DetachedFromVisualTree += (_, _) => item.Changed -= Changed;
-        return new ShrinkingRow { Height = ListRow.Height, Children = { words } };
+        TextBlock words = new() { VerticalAlignment = VerticalAlignment.Center };
+        return new ShrinkingRow { Height = ListRow.Height, Children = { words } }.Showing<RunItem<T>>(item => words.Text = text(item.Data));
     }
 
     /// <summary>Each record with its key, a key that recurs numbered after its first, as <see cref="RunRows.Put"/> takes them.</summary>
