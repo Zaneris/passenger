@@ -285,7 +285,8 @@ site-shots` retakes its images.
 - **Avalonia 12's lists** re-attach, and so re-style, every recycled container and never reuse a `DataTemplate`'s
   content: a list's, combo box's or tab strip's rows go through `ReusedRows`, made once with their containers (UiRulesTests).
 - **EventPipe from a program's start**: .NET 10's LoggingEventSource misreads the `FilterSpecs` it is made with, so a
-  category takes no `:Level` there or none of its logs come (`LiveRequests.LogsSpec`).
+  category takes no `:Level` there or none of its logs come (`LiveRequests.LogsSpec`). Its sampler takes a thread only
+  where it can stop it, so a test program's method that must own its samples spins in a loop that calls nothing.
 
 ## Tests
 
@@ -394,8 +395,8 @@ size. Each checks a tool's answer, leaving the window's steps to the window's te
   `ToolButtons.Of`/`Toggle` (never focusable); muted words `MutedText`; list keys `ListKeys.Move`; counts `Plural.Of`;
   rounded borders `Border.kindBadge`, `tag` or `box`, never a literal radius; lists of what runs `RunRows`, Details tabs
   `DetailsTables`, merged consoles `MergedLog`; a toolbar down a side `ToolColumn`; scrollbars `ControlThemes.axaml`; the
-  focus ring `FocusRing`; a list's rows `ReusedRows` (`Use`, `Showing`), their icons `RowIcon`, drawn as `PathIcon` draws
-  but for a fraction of its cost. A row hears its item only while shown
-  (`Observable.FollowWhileShown`).
+  focus ring `FocusRing`; a list's rows `ReusedRows` (`Use`, `Showing`), their icons `RowIcon` (a tree row's chevron and
+  icon `RowGlyphs`), drawn as `PathIcon` draws for a fraction of its cost, never `PathIcon` (UiRulesTests). A row hears
+  its item only while shown (`Observable.FollowWhileShown`).
 - `MainWindow.SmallestWidth` is 640: the layout works at half a 1366-wide screen, and new windows fit the screen's
   working area (`FitToScreen`).
