@@ -654,9 +654,15 @@ public sealed class CSharpService : IAsyncDisposable
         List<OpenDocument>? connected = null;
         foreach ((OpenDocument open, CSharpDocument features) in documents)
         {
-            if ((started.IsLoaded || HolderOf(open.Path) is not { } project || (reported.Server == started.Server && reported.Projects.Contains(project)))
+            string? holder = started.IsLoaded ? null : HolderOf(open.Path);
+            if ((started.IsLoaded || holder is null || (reported.Server == started.Server && reported.Projects.Contains(holder)))
                 && features.Connect(started))
             {
+                if (!started.IsLoaded && holder is null)
+                {
+                    // Said so the next one the server makes a Miscellaneous File of says why it was given early (#559).
+                    IdeLog.Write(IdeLog.Ide, $"C#: {open.Path} given to the server as its projects load: none of the {workspace?.Projects.Count ?? 0} projects read holds it");
+                }
                 (connected ??= []).Add(open);
             }
         }
