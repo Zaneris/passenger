@@ -77,7 +77,7 @@ public sealed class SelfDebuggingTests : IDisposable
         string[] rewritten = [.. restore.Where(r => !File.Exists(r.Key) || !File.ReadAllBytes(r.Key).AsSpan().SequenceEqual(r.Value))
             .Select(r => Path.GetFileName(Path.GetDirectoryName(r.Key)!)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
         Assert.True(rewritten.Length == 0, $"Building Passenger rewrote the checkout's restore of {Plural.Of(rewritten.Length, "project")} "
-            + $"({string.Join(", ", rewritten)}), which the person's next build restores again");
+            + $"({string.Join(", ", rewritten)}), which the person's next build restores again; {FirstChange(restore)}");
         DebugSession session = window.Debugger.Session!;
         Ui.WaitFor(() => session.State == DebugState.Paused || !window.Debugger.IsDebugging, "the inner Passenger to stop at the breakpoint in its key's action", TimeSpan.FromMinutes(3));
         Assert.True(session.State == DebugState.Paused, $"The inner Passenger ended without stopping: {window.Status}\n{Console(window)}");
@@ -129,6 +129,32 @@ public sealed class SelfDebuggingTests : IDisposable
 
     /// <summary>Each file of the checkout's restore (each project's project.assets.json, dgspec, nuget.g.props and the rest
     /// beside them under artifacts/obj) with its bytes.</summary>
+    /// <summary>The first line a restore file kept before the build reads otherwise after it, as a failure says it.</summary>
+    private static string FirstChange(Dictionary<string, byte[]> restore)
+    {
+        foreach ((string path, byte[] before) in restore.OrderBy(r => r.Key, StringComparer.Ordinal))
+        {
+            if (!File.Exists(path))
+            {
+                return $"{path} is gone";
+            }
+            byte[] after = File.ReadAllBytes(path);
+            if (after.AsSpan().SequenceEqual(before))
+            {
+                continue;
+            }
+            string[] was = System.Text.Encoding.UTF8.GetString(before).Split('\n');
+            string[] now = System.Text.Encoding.UTF8.GetString(after).Split('\n');
+            int at = Enumerable.Range(0, Math.Min(was.Length, now.Length)).FirstOrDefault(i => was[i] != now[i], -1);
+            if (at >= 0 || was.Length != now.Length)
+            {
+                at = at >= 0 ? at : Math.Min(was.Length, now.Length);
+                return $"{path}, line {at + 1}, read \"{(at < was.Length ? was[at].Trim() : "")}\" and now reads \"{(at < now.Length ? now[at].Trim() : "")}\"";
+            }
+        }
+        return "none of them reads otherwise";
+    }
+
     private static Dictionary<string, byte[]> RestoreFiles(string repository) =>
         Directory.EnumerateDirectories(Path.Combine(repository, "artifacts", "obj")).SelectMany(d => Directory.EnumerateFiles(d)).ToDictionary(f => f, File.ReadAllBytes);
 
