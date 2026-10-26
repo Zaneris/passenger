@@ -2,7 +2,6 @@ using System.Collections.ObjectModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -65,10 +64,7 @@ public sealed class RunItem<T>(string key, T data) : System.ComponentModel.INoti
     /// <summary>What it stands for as last read.</summary>
     public T Data { get; private set; } = data;
 
-    /// <summary>What it stands for changed: its control shows it anew in place.</summary>
-    public event EventHandler? Changed;
-
-    /// <summary>What it stands for changed (<see cref="Data"/>), for a row made once that shows it.</summary>
+    /// <summary>What it stands for changed (<see cref="Data"/>): the row made once that shows it shows it anew in place.</summary>
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
 
     /// <summary>What it stands for read again: its control drawn anew only when that differs from what it drew (an AppHost's
@@ -80,7 +76,6 @@ public sealed class RunItem<T>(string key, T data) : System.ComponentModel.INoti
             return;
         }
         Data = data;
-        Changed?.Invoke(this, EventArgs.Empty);
         PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(Data)));
     }
 
@@ -138,30 +133,23 @@ public static class RunRows
         }
     }
 
-    /// <summary>A list's rows: each item drawn by <paramref name="draw"/> as a <see cref="RunRowView"/>, shown anew in place
-    /// as its item changes; <paramref name="toggle"/> runs on a chevron's press and <paramref name="browse"/> on a link's
-    /// click, each link named <paramref name="linkName"/>.</summary>
-    public static FuncDataTemplate<RunItem<T>> Template<T>(Func<T, RunRow> draw, Action<T> toggle, Action<Uri> browse, string linkName)
+    /// <summary>A list's rows: each a <see cref="RunRowView"/> made once with its container, showing the item it is handed
+    /// as <paramref name="draw"/> draws it and anew in place as the item changes; <paramref name="toggle"/> runs on a
+    /// chevron's press and <paramref name="browse"/> on a link's click, each link named <paramref name="linkName"/>.</summary>
+    public static void Use<T>(ListBox list, Func<T, RunRow> draw, Action<T> toggle, Action<Uri> browse, string linkName)
         where T : class =>
-        new((item, _) =>
+        ReusedRows.Use(list, () =>
         {
-            if (item is null)
+            RunRowView? view = null;
+            view = new RunRowView(() =>
             {
-                return new Panel();
-            }
-            RunRowView view = new(() => toggle(item.Data), browse, linkName);
-            void Show(object? sender, EventArgs e) => view.Show(draw(item.Data));
-            view.Show(draw(item.Data));
-            // Followed while shown: a row scrolled away or taken out holds no handler on its item.
-            view.AttachedToVisualTree += (_, _) =>
-            {
-                item.Changed -= Show;
-                item.Changed += Show;
-                view.Show(draw(item.Data));
-            };
-            view.DetachedFromVisualTree += (_, _) => item.Changed -= Show;
-            return view;
-        }, supportsRecycling: false);
+                if (view?.DataContext is RunItem<T> item)
+                {
+                    toggle(item.Data);
+                }
+            }, browse, linkName);
+            return view.Showing<RunItem<T>>(item => view.Show(draw(item.Data)));
+        });
 
     /// <summary>A list of such rows opens and closes a row by a double click, and takes a tree's keys (<see cref="TreeKeys"/>).</summary>
     public static void Toggles<T>(ListBox list, Action<T> toggle)

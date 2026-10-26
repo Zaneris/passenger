@@ -77,8 +77,8 @@ public sealed class MigrationsView : DockPanel
         list = new ListBox
         {
             Name = "MigrationsList",
-            ItemTemplate = new FuncDataTemplate<MigrationRow?>((row, _) => row is null ? new TextBlock() : Row(row), supportsRecycling: false),
         };
+        ReusedRows.Use(list, Row);
         ListMenus.Attach(list, () => list.SelectedItem is not MigrationRow chosen ? [] :
         [
             ListMenus.Item($"Update Database to {chosen.Name}", null, () => ActionRequested?.Invoke(this, AppActions.UpdateDatabaseTo)),
@@ -171,25 +171,30 @@ public sealed class MigrationsView : DockPanel
         return row;
     }
 
-    private static Control Row(MigrationRow row)
+    /// <summary>A migration's row: its name, when it was made, and whether the database has it at the right (Pending
+    /// alone not muted).</summary>
+    private static Control Row()
     {
-        // Its id's timestamp (yyyyMMddHHmmss, UTC as dotnet ef writes it), said as a date.
-        string stamp = row.Id.Length > 15 && row.Id[14] == '_' && DateTime.TryParseExact(row.Id[..14], "yyyyMMddHHmmss", System.Globalization.CultureInfo.InvariantCulture,
-            System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out DateTime made)
-            ? made.ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture) : string.Empty;
-        TextBlock state = row.Applied switch
-        {
-            true => MutedText.Of("Applied"),
-            false => new TextBlock { Text = "Pending", VerticalAlignment = VerticalAlignment.Center },
-            null => MutedText.Of("Not read"),
-        };
+        TextBlock state = MutedText.Of(string.Empty);
         state.Margin = new Thickness(12, 0, 8, 0);
-        TextBlock when = MutedText.Of(stamp);
+        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
+        TextBlock when = MutedText.Of(string.Empty);
         when.Margin = new Thickness(8, 0, 0, 0);
-        DockPanel line = new() { Height = ListRow.Height, Children = { state, new TextBlock { Text = row.Name, VerticalAlignment = VerticalAlignment.Center }, when } };
+        DockPanel line = new() { Height = ListRow.Height, Children = { state, name, when } };
         SetDock(state, Dock.Right);
-        DockPanel.SetDock(line.Children[1], Dock.Left);
-        return line;
+        DockPanel.SetDock(name, Dock.Left);
+        return line.Showing<MigrationRow>(row =>
+        {
+            // Its id's timestamp (yyyyMMddHHmmss, UTC as dotnet ef writes it), said as a date.
+            string stamp = row.Id.Length > 15 && row.Id[14] == '_' && DateTime.TryParseExact(row.Id[..14], "yyyyMMddHHmmss", System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out DateTime made)
+                ? made.ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture) : string.Empty;
+            state.Text = row.Applied switch { true => "Applied", false => "Pending", null => "Not read" };
+            state.Classes.Set("muted", row.Applied != false);
+            state.TextTrimming = row.Applied == false ? TextTrimming.None : TextTrimming.CharacterEllipsis;
+            name.Text = row.Name;
+            when.Text = stamp;
+        });
     }
 
     private static ComboBox Chooser(string name, string tip)

@@ -2,7 +2,6 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Shapes;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -98,8 +97,8 @@ public sealed class ContainersView : DockPanel
         {
             Classes = { "tree" },
             ItemsSource = items,
-            ItemTemplate = RunRows.Template<ContainerRow>(Row, Toggle, parts.Browse, "containerPort"),
         };
+        RunRows.Use<ContainerRow>(list, Row, Toggle, parts.Browse, "containerPort");
         list.SelectionChanged += (_, _) =>
         {
             if (!filling)

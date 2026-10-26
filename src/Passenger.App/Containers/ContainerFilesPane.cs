@@ -2,7 +2,6 @@ using System.Diagnostics;
 using System.Formats.Tar;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -36,8 +35,8 @@ public sealed class ContainerFilesPane : DockPanel
         list = new ListBox
         {
             Classes = { "tree" },
-            ItemTemplate = new FuncDataTemplate<ContainerFile>((file, _) => file is null ? new Panel() : Row(file), supportsRecycling: false),
         };
+        ReusedRows.Use(list, Row);
         list.DoubleTapped += (_, _) => IdeErrors.Observe(ActivateAsync(list.SelectedItem as ContainerFile));
         list.KeyDown += (_, e) =>
         {
@@ -337,13 +336,21 @@ public sealed class ContainerFilesPane : DockPanel
         return safe.TrimEnd('.', ' ').Length == 0 ? $"_{safe}" : safe;
     }
 
-    private Control Row(ContainerFile file)
+    /// <summary>A file's or folder's row, indented by its depth: its icon (a folder's open or closed) and its name, its
+    /// path on hover.</summary>
+    private Control Row()
     {
         PathIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(0, 0, 6, 0) };
-        icon.Bind(PathIcon.DataProperty, icon.GetResourceObservable(file.IsFolder ? open.Contains(file.Path) ? IconKeys.FolderOpen : IconKeys.Explorer : IconKeys.DocumentText));
         icon.Bind(PathIcon.ForegroundProperty, icon.GetResourceObservable(TokenKeys.TextMuted));
-        TextBlock name = new() { Text = file.Name, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        ToolTip.SetTip(name, file.Path);
-        return new StackPanel { Orientation = Orientation.Horizontal, Height = ListRow.Height, Margin = new Thickness(8 + (file.Depth * 16), 0, 8, 0), Children = { icon, name } };
+        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        StackPanel row = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { icon, name } };
+        string? iconKey = null;
+        return row.Showing<ContainerFile>(file =>
+        {
+            icon.Resource(PathIcon.DataProperty, ref iconKey, file.IsFolder ? open.Contains(file.Path) ? IconKeys.FolderOpen : IconKeys.Explorer : IconKeys.DocumentText);
+            name.Text = file.Name;
+            ToolTip.SetTip(name, file.Path);
+            row.Margin = new Thickness(8 + (file.Depth * 16), 0, 8, 0);
+        });
     }
 }

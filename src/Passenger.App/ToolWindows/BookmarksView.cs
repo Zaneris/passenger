@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -24,8 +23,8 @@ public sealed class BookmarksView : DockPanel
         list = new ListBox
         {
             Classes = { "tree" },
-            ItemTemplate = new FuncDataTemplate<Bookmark>((bookmark, _) => bookmark is null ? new TextBlock() : Row(bookmark), supportsRecycling: false),
         };
+        ReusedRows.Use(list, Row);
         list.DoubleTapped += (_, _) => Go();
         list.KeyDown += (_, e) =>
         {
@@ -81,13 +80,19 @@ public sealed class BookmarksView : DockPanel
         }
     }
 
-    private Control Row(Bookmark bookmark)
+    /// <summary>A bookmark's row: its file and line, then the line's code, muted.</summary>
+    private Control Row()
     {
-        TextBlock where = new() { Text = $"{bookmark.Name}:{bookmark.Line + 1}", Width = 200, VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeight.SemiBold };
-        TextBlock text = new() { Text = lineText(bookmark.Path, bookmark.Line).Trim(), VerticalAlignment = VerticalAlignment.Center, FontFamily = CSharp.Fonts.Mono, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock where = new() { Width = 200, VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeight.SemiBold };
+        TextBlock text = new() { VerticalAlignment = VerticalAlignment.Center, FontFamily = CSharp.Fonts.Mono, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
         text.Classes.Add("muted");
         // The line takes what the row leaves, so a narrow window ends it in an ellipsis rather than cutting it off.
         DockPanel.SetDock(where, Dock.Left);
-        return new DockPanel { Height = ListRow.Height, Margin = new Thickness(8, 0), Children = { where, text } };
+        DockPanel row = new() { Height = ListRow.Height, Margin = new Thickness(8, 0), Children = { where, text } };
+        return row.Showing<Bookmark>(bookmark =>
+        {
+            where.Text = $"{bookmark.Name}:{bookmark.Line + 1}";
+            text.Text = lineText(bookmark.Path, bookmark.Line).Trim();
+        });
     }
 }

@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -71,8 +70,8 @@ public sealed class WelcomeView : UserControl
         list = new ListBox
         {
             Classes = { "tree", "welcomeList" },
-            ItemTemplate = new FuncDataTemplate<RecentRow?>((row, _) => row is null ? new Panel() : Row(row), supportsRecycling: false),
         };
+        ReusedRows.Use(list, Row);
         list.DoubleTapped += (_, _) => OpenChosen();
         list.KeyDown += OnListKeyDown;
         ListMenus.Attach(list, () => list.SelectedItem is not RecentRow chosen ? [] :
@@ -247,32 +246,36 @@ public sealed class WelcomeView : UserControl
 
     /// <summary>A row: the badge with its initials, the name over where it is, what it opens as (a solution, a project or a
     /// folder), and Missing for one gone.</summary>
-    private static Control Row(RecentRow row)
+    /// <summary>A recent solution's row: its initials' badge, its name over where it is, its kind, and Missing for one no
+    /// longer on disk, its name and badge muted.</summary>
+    private static Control Row()
     {
-        TextBlock letters = new() { Classes = { "welcomeBadgeText" }, Text = MainWindow.Initials(row.Name), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock letters = new() { Classes = { "welcomeBadgeText" }, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         Border badge = new() { Classes = { "welcomeBadge" }, Child = letters, VerticalAlignment = VerticalAlignment.Center };
-        badge.Classes.Set("missing", row.Missing);
-        TextBlock name = new() { Classes = { "welcomeRowName" }, Text = row.Name, TextTrimming = TextTrimming.CharacterEllipsis };
-        if (row.Missing)
-        {
-            name.Classes.Add("muted");
-        }
-        TextBlock where = new() { Classes = { "muted", "welcomeRowPath" }, Text = row.Shown, TextTrimming = TextTrimming.PathSegmentEllipsis };
+        TextBlock name = new() { Classes = { "welcomeRowName" }, TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock where = new() { Classes = { "muted", "welcomeRowPath" }, TextTrimming = TextTrimming.PathSegmentEllipsis };
         DockPanel line = new() { Classes = { "welcomeRow" } };
         DockPanel.SetDock(badge, Dock.Left);
         line.Children.Add(badge);
-        if (row.Missing)
-        {
-            TextBlock gone = new() { Text = "Missing", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 4, 0) };
-            gone.Bind(TextBlock.ForegroundProperty, gone.GetResourceObservable(TokenKeys.Warning));
-            DockPanel.SetDock(gone, Dock.Right);
-            line.Children.Add(gone);
-        }
-        Border kind = new() { Classes = { "welcomeKind" }, Child = new TextBlock { Classes = { "welcomeKindText" }, Text = Kind(row.Path) }, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock gone = new() { Text = "Missing", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 4, 0) };
+        gone.Bind(TextBlock.ForegroundProperty, gone.GetResourceObservable(TokenKeys.Warning));
+        DockPanel.SetDock(gone, Dock.Right);
+        line.Children.Add(gone);
+        TextBlock kindText = new() { Classes = { "welcomeKindText" } };
+        Border kind = new() { Classes = { "welcomeKind" }, Child = kindText, VerticalAlignment = VerticalAlignment.Center };
         DockPanel.SetDock(kind, Dock.Right);
         line.Children.Add(kind);
         line.Children.Add(new StackPanel { VerticalAlignment = VerticalAlignment.Center, Spacing = 2, Children = { name, where } });
-        return line;
+        return line.Showing<RecentRow>(row =>
+        {
+            letters.Text = MainWindow.Initials(row.Name);
+            badge.Classes.Set("missing", row.Missing);
+            name.Text = row.Name;
+            name.Classes.Set("muted", row.Missing);
+            where.Text = row.Shown;
+            gone.IsVisible = row.Missing;
+            kindText.Text = Kind(row.Path);
+        });
     }
 
     /// <summary>What a recent path opens as: a solution file, a project opened alone, or a folder.</summary>

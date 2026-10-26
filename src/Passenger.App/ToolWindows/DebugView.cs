@@ -67,8 +67,8 @@ public sealed class DebugView : DockPanel, IOwnKeys
         {
             Classes = { "tree" },
             ItemsSource = model.Frames,
-            ItemTemplate = new FuncDataTemplate<DapStackFrame>((frame, _) => FrameRow(frame), supportsRecycling: false),
         };
+        ReusedRows.Use(frames, FrameRow);
         frames.SelectionChanged += (_, _) =>
         {
             if (!showingFrames && frames.SelectedItem is DapStackFrame frame)
@@ -325,39 +325,34 @@ public sealed class DebugView : DockPanel, IOwnKeys
         }
     }
 
-    private Control FrameRow(DapStackFrame? frame)
+    /// <summary>A frame's row: its method, then its place (its module where it has no source) muted, a frame the
+    /// adapter calls subtle faded.</summary>
+    private Control FrameRow()
     {
-        if (frame is null)
-        {
-            return new TextBlock();
-        }
-        // A frame shows as its method, its module after: the module tells user code from the framework's.
-        string name = frame.Name;
-        string module = string.Empty;
-        if (name.IndexOf('!', StringComparison.Ordinal) is int bang and > 0)
-        {
-            module = name[..bang];
-            name = name[(bang + 1)..];
-        }
+        TextBlock method = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock where = new()
         {
-            Tag = frame,
-            Text = frame.Source?.Name is { } file ? $"{file}:{model.LineOf(frame)}" : module,
             FontSize = 12,
             Margin = new Thickness(8, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
         };
         where.Classes.Add("muted");
         // Its place gives way first, then its name, each ending in an ellipsis.
-        return new ShrinkingRow
+        ShrinkingRow row = new() { Height = ListRow.Height, Children = { method, where } };
+        return row.Showing<DapStackFrame>(frame =>
         {
-            Height = ListRow.Height,
-            Opacity = frame.PresentationHint == "subtle" ? 0.55 : 1,
-            Children =
+            // A frame shows as its method, its module after: the module tells user code from the framework's.
+            string name = frame.Name;
+            string module = string.Empty;
+            if (name.IndexOf('!', StringComparison.Ordinal) is int bang and > 0)
             {
-                new TextBlock { Text = name, VerticalAlignment = VerticalAlignment.Center },
-                where,
-            },
-        };
+                module = name[..bang];
+                name = name[(bang + 1)..];
+            }
+            method.Text = name;
+            where.Tag = frame;
+            where.Text = frame.Source?.Name is { } file ? $"{file}:{model.LineOf(frame)}" : module;
+            row.Opacity = frame.PresentationHint == "subtle" ? 0.55 : 1;
+        });
     }
 }

@@ -137,6 +137,24 @@ public sealed class LongListsTests : IDisposable
     }
 
     [AvaloniaFact]
+    public void A_scroll_step_down_a_thousand_packages_a_feed_found_hands_the_rows_other_packages_never_making_one_again()
+    {
+        Holds("NuGet's packages", "packages", 100, 1000, packages =>
+        {
+            string root = Folder();
+            TestFolders.Write(root, "Lib.csproj", TestProjects.Library());
+            MainWindow window = Ui.OpenFolder(root, languageServer: false, width: 1300, height: 900);
+            NuGetView nuget = window.NuGet;
+            nuget.Feed = new ManyPackages(packages);
+            window.Perform(AppActions.ShowNuGet);
+            Ui.Settle();
+            nuget.Query = "Many";
+            Ui.Landed(() => nuget.Rows.Count == packages, $"the feed's {packages} packages for Many");
+            return (window, nuget.GetVisualDescendants().OfType<ListBox>().Single(l => ReferenceEquals(l.ItemsSource, nuget.Rows)));
+        });
+    }
+
+    [AvaloniaFact]
     public void A_scroll_step_down_a_files_thousand_saves_in_local_history_hands_the_rows_other_saves_never_making_one_again()
     {
         Holds("Local History", "saves", 100, 1000, saves =>
@@ -255,6 +273,18 @@ public sealed class LongListsTests : IDisposable
         Assert.True(imported.Succeeded, $"git fast-import made no repository of {commits} commits: {imported.Error}");
         TestGit.Run(root, "reset", "-q", "--hard");
         return root;
+    }
+
+    /// <summary>A feed whose every search finds the same packages, as many as it is made with.</summary>
+    private sealed class ManyPackages(int count) : Passenger.Packages.IPackageFeed
+    {
+        public string Name => "Many";
+
+        public Task<IReadOnlyList<Passenger.Packages.PackageSummary>> SearchAsync(string query, bool prerelease, CancellationToken cancel) =>
+            Task.FromResult<IReadOnlyList<Passenger.Packages.PackageSummary>>(
+                [.. Enumerable.Range(0, count).Select(i => new Passenger.Packages.PackageSummary($"Many.Package{i:0000}", "1.0.0", $"Package {i}", "Passenger Tests", count - i))]);
+
+        public Task<IReadOnlyList<string>> VersionsAsync(string id, bool prerelease, CancellationToken cancel) => Task.FromResult<IReadOnlyList<string>>(["1.0.0"]);
     }
 
     /// <summary>The window on a repository with its Git window shown.</summary>

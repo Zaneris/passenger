@@ -1372,16 +1372,10 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
     private static readonly string[] NotYetReused =
     [
         "src/Passenger.App/Aspire/AspireServiceDialog.cs: FuncDataTemplate<AspireSelection>",
-        "src/Passenger.App/Aspire/AspireView.cs: ItemTemplate = RunRows.Template<AspireRow>",
-        "src/Passenger.App/Containers/ContainerFilesPane.cs: FuncDataTemplate<ContainerFile>",
-        "src/Passenger.App/Containers/ContainersView.cs: ItemTemplate = RunRows.Template<ContainerRow>",
         "src/Passenger.App/Debugging/AttachToProcessDialog.cs: FuncDataTemplate<AttachRow>",
         "src/Passenger.App/Editors/EditorGroup.cs: FuncDataTemplate<EditorTab>",
-        "src/Passenger.App/Endpoints/EndpointsView.cs: FuncDataTemplate<object>",
-        "src/Passenger.App/ErrorsPopup.cs: FuncDataTemplate<IdeError>",
         "src/Passenger.App/Explorer/AddReferenceDialog.cs: FuncDataTemplate<ReferenceChoice>",
         "src/Passenger.App/Explorer/DockerDialogs.cs: FuncDataTemplate<ComposeChoice>",
-        "src/Passenger.App/Migrations/MigrationsView.cs: FuncDataTemplate<MigrationRow?>",
         "src/Passenger.App/Migrations/MigrationsView.cs: FuncDataTemplate<object>",
         "src/Passenger.App/Navigation/FindInFilesPopup.cs: FuncDataTemplate<ProjectModel>",
         "src/Passenger.App/Run/RunConfigurationsDialog.cs: FuncDataTemplate<Entry>",
@@ -1390,16 +1384,11 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
         "src/Passenger.App/Settings/PostfixTemplatesPane.cs: FuncDataTemplate<PostfixTemplate?>",
         "src/Passenger.App/Templates/NewProjectDialog.cs: FuncDataTemplate<ProjectTemplate?>",
         "src/Passenger.App/Templates/NewProjectDialog.cs: FuncDataTemplate<TemplateFamily?>",
-        "src/Passenger.App/ToolWindows/BookmarksView.cs: FuncDataTemplate<Bookmark>",
-        "src/Passenger.App/ToolWindows/DebugView.cs: FuncDataTemplate<DapStackFrame>",
         "src/Passenger.App/ToolWindows/DebugView.cs: FuncDataTemplate<DapThread>",
         "src/Passenger.App/ToolWindows/DebugView.cs: FuncDataTemplate<DebugTab>",
         "src/Passenger.App/ToolWindows/NuGetSourcesView.cs: FuncDataTemplate<ConfigFile>",
-        "src/Passenger.App/ToolWindows/NuGetView.cs: FuncDataTemplate<PackageRow>",
-        "src/Passenger.App/ToolWindows/RunRows.cs: FuncDataTemplate<RunItem<T>>",
         "src/Passenger.App/ToolWindows/TerminalPanel.cs: FuncDataTemplate<TerminalTab>",
         "src/Passenger.App/Vcs/ConflictsDialog.cs: FuncDataTemplate<ConflictRow>",
-        "src/Passenger.App/Welcome/WelcomeView.cs: FuncDataTemplate<RecentRow?>",
     ];
 
     /// <summary>Muted words are made one way, by the muted class (MutedText, or the class on a TextBlock of its own), so a
