@@ -429,6 +429,30 @@ public sealed class VcsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A diff's scrollbar takes its own presses over the change marked down it: 400 lines put in at the top of a
+    /// file are one change down most of its side's track, and the thumb over it drags, the track beside its strip pages,
+    /// and a click on the strip still goes to the change.</summary>
+    [AvaloniaFact]
+    public void A_diffs_scrollbar_drags_and_pages_over_a_change_marked_down_its_track_and_the_changes_strip_still_goes_to_it()
+    {
+        TestFolders.Write(folder, "Shop.cs", string.Concat(Enumerable.Range(0, 400).Select(i => $"// Note {i}\n")) + Original);
+        MainWindow window = Open();
+        Task<DiffWindow?> opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
+        DiffWindow diff = Ui.Landed(opening, "the diff open")!;
+        CodeEditor side = diff.View.Right;
+        Assert.Equal([new DiffHunk(0, 0, 0, 400)], diff.View.Hunks);
+        CodeEditor.StripeMark change = Assert.Single(side.StripeMarks, m => m.Kind == StripeMarkKind.Change);
+
+        ErrorStripeTests.CheckBarTakesItsPresses(side);
+
+        side.GoTo(new TextPosition(403, 0));
+        Ui.Settle();
+        Ui.Click(side, side.StripePoint(change));
+        Assert.True(side.CaretPosition.Line == 0, $"A click on the change's strip on the diff's scrollbar left the caret on line {side.CaretPosition.Line + 1}, not at the change");
+        diff.Close();
+        window.Close();
+    }
+
     /// <summary>The diff's side of the open file takes the file's colours as they change: opened before the language server
     /// answered, the server's once it does; and once the server starts again, the new one's, which follow the text.</summary>
     [AvaloniaFact]

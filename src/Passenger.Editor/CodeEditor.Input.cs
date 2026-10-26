@@ -1,8 +1,10 @@
 using Avalonia;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Input.TextInput;
 using Avalonia.Media;
 using Avalonia.Media.TextFormatting;
+using Avalonia.VisualTree;
 using Passenger.Text;
 
 namespace Passenger.Editor;
@@ -68,6 +70,12 @@ public sealed partial class CodeEditor
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
+        // A press on a scrollbar that its thumb and track leave (beside the thumb) is the bar's, not the text's under it.
+        if ((e.Source as Visual)?.FindAncestorOfType<ScrollBar>(includeSelf: true) is { } bar && (bar == vertical || bar == horizontal))
+        {
+            e.Handled = true;
+            return;
+        }
         PointerPoint point = e.GetCurrentPoint(this);
         if (point.Properties.IsRightButtonPressed && point.Position.X < GutterWidth && GutterClicked is not null && ShowLineNumbers)
         {

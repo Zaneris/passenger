@@ -1,10 +1,13 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Styling;
+using Avalonia.VisualTree;
 using Passenger.Editor;
 using Passenger.Text;
 
@@ -151,6 +154,78 @@ public sealed class ErrorStripeTests
         }
         return allocated / Keys;
     }
+
+    /// <summary>A warning on each line on screen and a change down the whole file, as Git marks a new one: a click on the
+    /// thumb over a warning goes to it, a drag from there drags the thumb, the track beside the change pages, and a
+    /// warning's tick and the change's strip off the thumb take the caret to their lines.</summary>
+    [AvaloniaFact]
+    public void The_scrollbars_thumb_drags_from_over_the_marks_its_track_pages_beside_a_change_and_a_click_on_a_mark_goes_to_its_line()
+    {
+        const int Lines = 400;
+        EditorRig rig = new(string.Concat(Enumerable.Range(0, Lines).Select(i => $"        int value{i} = {i};\n")));
+        CodeEditor editor = rig.Editor;
+        TextSnapshot text = rig.Document.Snapshot;
+        editor.SetMarkers([.. Enumerable.Range(0, 30).Select(i => new Marker(new TextRange(text.GetLineStart(i) + 12, 5), MarkerKind.Warning, Unused))]);
+        editor.SetChangeMarks([new ChangeMark(0, Lines, ChangeMarkKind.Added)]);
+        Ui.Settle();
+        Thumb thumb = ThumbOf(editor);
+        Point grip = Centre(thumb, editor);
+        Assert.Contains(editor.StripeMarks, m => m.Kind == StripeMarkKind.Warning && Math.Abs(editor.StripePoint(m).Y - grip.Y) <= 2);
+        Ui.Click(editor, grip);
+        int line = editor.CaretPosition.Line;
+        Assert.True(line < 30 && editor.Selections.Primary.Caret == text.GetLineStart(line) + 12,
+            $"A click on the thumb over the warnings left the caret at {editor.CaretPosition}, not at a warning");
+
+        CheckBarTakesItsPresses(editor);
+
+        // The last warning, drawn over its neighbours' ticks.
+        Ui.Click(editor, editor.StripePoint(editor.StripeMarks.Last(m => m.Kind == StripeMarkKind.Warning)));
+        Assert.True(editor.Selections.Primary.Caret == text.GetLineStart(29) + 12,
+            $"A click on line 30's warning on the stripe left the caret on line {editor.CaretPosition.Line + 1}, not at the warning");
+        editor.GoTo(new TextPosition(Lines - 1, 0));
+        Ui.Settle();
+        Ui.Click(editor, editor.StripePoint(Assert.Single(editor.StripeMarks, m => m.Kind == StripeMarkKind.Change)));
+        Assert.True(editor.CaretPosition.Line == 0, $"A click on the change's strip left the caret on line {editor.CaretPosition.Line + 1}, not at the change's first line");
+    }
+
+    /// <summary>Holds an editor's scrollbar to taking its own presses under the stripe's marks: its thumb, pressed at its
+    /// middle, drags the text down 100 px of track, a drag from beside it chooses no text, and the track below it, pressed
+    /// at its middle beside a change's strip, pages it down, the caret staying where it was through all three.</summary>
+    internal static void CheckBarTakesItsPresses(CodeEditor editor)
+    {
+        TopLevel window = TopLevel.GetTopLevel(editor)!;
+        Thumb thumb = ThumbOf(editor);
+        int caret = editor.Selections.Primary.Caret;
+        double scrolled = editor.ScrollOffset.Y;
+        Point grip = Centre(thumb, window);
+        Ui.Drag(window, grip, grip + new Point(0, 100));
+        double moved = Centre(thumb, window).Y - grip.Y;
+        Assert.True(Math.Abs(moved - 100) <= 2,
+            $"The thumb dragged 100 px down from over the stripe's marks moved {moved:0} px: the press on it was taken by a mark under it");
+        Assert.True(editor.ScrollOffset.Y > scrolled, "Dragging the thumb from over the stripe's marks left the text where it was");
+        Assert.True(editor.Selections.Primary.Caret == caret, $"Dragging the thumb took the caret to line {editor.CaretPosition.Line + 1}, a mark's under the thumb");
+
+        ScrollBar bar = thumb.FindAncestorOfType<ScrollBar>()!;
+        Point beside = new(Bounds(bar, window).Right - 1.5, Centre(thumb, window).Y);
+        Ui.Drag(window, beside, beside + new Point(-300, 60));
+        Assert.True(editor.Selections.Primary.Caret == caret && editor.Selections.Primary.IsEmpty,
+            $"A drag from the bar beside its thumb chose {editor.Selections.Primary.Length} characters of the text under the bar, to line {editor.CaretPosition.Line + 1}");
+
+        RepeatButton below = bar.GetVisualDescendants().OfType<RepeatButton>().Single(b => b.Name == "PART_PageDownButton");
+        scrolled = editor.ScrollOffset.Y;
+        Ui.Click(below, new Point(below.Bounds.Width / 2, 20));
+        double paged = editor.ScrollOffset.Y - scrolled;
+        Assert.True(paged > editor.Bounds.Height / 2, $"A click on the track below the thumb, beside a change's strip, scrolled {paged:0} px, not a page");
+        Assert.True(editor.Selections.Primary.Caret == caret, $"A click on the track took the caret to line {editor.CaretPosition.Line + 1}, a mark's beside it");
+    }
+
+    private static Thumb ThumbOf(CodeEditor editor) =>
+        editor.GetVisualDescendants().OfType<ScrollBar>().First(b => b.Orientation == Orientation.Vertical).GetVisualDescendants().OfType<Thumb>().First();
+
+    private static Point Centre(Control control, Visual within) => Bounds(control, within).Center;
+
+    private static Rect Bounds(Control control, Visual within) =>
+        new(control.TranslatePoint(default, within) ?? throw new Xunit.Sdk.XunitException($"{control.GetType().Name} is not laid out"), control.Bounds.Size);
 
     [AvaloniaFact]
     public void The_stripes_marks_take_the_new_themes_colours_when_the_theme_changes()

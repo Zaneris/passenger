@@ -55,12 +55,11 @@ public sealed partial class CodeEditor
     /// <summary>The counts' errors and warnings, as their widget shows them, counted when the markers are set.</summary>
     public (int Errors, int Warnings) ProblemCount => decorations.Problems;
 
-    /// <summary>Where a stripe mark is drawn, in this control's coordinates: what a click on it hits.</summary>
+    /// <summary>The middle of where a stripe mark is drawn, in this control's coordinates: what a click on it hits.</summary>
     public Point StripePoint(StripeMark mark)
     {
         Rect track = TrackRect();
-        (double top, double height) = ErrorStripe.Span(mark, track, RowCount);
-        return new Point(track.Center.X, top + (height / 2));
+        return ErrorStripe.Drawn(mark, ErrorStripe.Span(mark, track, RowCount), track).Center;
     }
 
     /// <summary>Goes to the next error or warning after the caret, wrapping, as the counts' click does.</summary>
@@ -229,12 +228,14 @@ public sealed partial class CodeEditor
     private Rect TrackRect()
     {
         Rect bar = vertical.Bounds;
-        if (vertical.GetVisualDescendants().OfType<Track>().FirstOrDefault() is { } track && track.TranslatePoint(default, this) is { } origin)
+        if (BarTrack() is { } track && track.TranslatePoint(default, this) is { } origin)
         {
             return new Rect(bar.X, origin.Y, bar.Width, track.Bounds.Height);
         }
         return bar;
     }
+
+    private Track? BarTrack() => vertical.GetVisualDescendants().OfType<Track>().FirstOrDefault();
 
     private StripeBuild? stripeBuild;
     private (StripeBuild? Marks, int CaretRow, (int, int) Counts) stripeDrawn;
@@ -297,8 +298,9 @@ public sealed partial class CodeEditor
             && ReferenceEquals(Rows, rows) && ReferenceEquals(Bookmarks, bookmarks) && ReferenceEquals(Changes, changes);
     }
 
-    /// <summary>The marks drawn over the scrollbar's track; hit only where a mark is, so the thumb and the track take every
-    /// other press.</summary>
+    /// <summary>The marks drawn over the scrollbar's track; hit only where a mark is drawn, so the thumb and the track take
+    /// every other press, beside a change's strip too. A press on a mark goes to its line, but over the thumb one that
+    /// moves drags the thumb instead.</summary>
     private sealed class ErrorStripe(CodeEditor editor) : Control, ICustomHitTest
     {
         private const double Reach = 3;
@@ -335,36 +337,96 @@ public sealed partial class CodeEditor
 
         private static void Draw(DrawingContext context, Palette palette, StripeMark mark, (double Top, double Height) span, Rect track)
         {
-            (IBrush brush, double left, double width) = mark.Kind switch
+            IBrush brush = mark.Kind switch
             {
-                StripeMarkKind.Error => (palette.Error, 2.0, track.Width - 4),
-                StripeMarkKind.Warning => (palette.Warning, 2.0, track.Width - 4),
-                StripeMarkKind.Info => (palette.Info, 5.0, track.Width - 10),
-                StripeMarkKind.SearchMatch => (palette.SearchCurrent, 3.0, track.Width - 6),
-                StripeMarkKind.Usage => (palette.UsageReadMark, 3.0, track.Width - 6),
-                StripeMarkKind.WriteUsage => (palette.UsageWriteMark, 3.0, track.Width - 6),
-                StripeMarkKind.Bookmark => (palette.Bookmark, track.Width - 4, 3.0),
-                StripeMarkKind.Change => (mark.Change switch { ChangeMarkKind.Added => palette.ChangeAdded, ChangeMarkKind.Deleted => palette.ChangeDeleted, ChangeMarkKind.Conflict => palette.ChangeConflict, _ => palette.ChangeModified }, 0.0, 2.0),
-                _ => (palette.LineNumberCurrent, 1.0, track.Width - 2),
+                StripeMarkKind.Error => palette.Error,
+                StripeMarkKind.Warning => palette.Warning,
+                StripeMarkKind.Info => palette.Info,
+                StripeMarkKind.SearchMatch => palette.SearchCurrent,
+                StripeMarkKind.Usage => palette.UsageReadMark,
+                StripeMarkKind.WriteUsage => palette.UsageWriteMark,
+                StripeMarkKind.Bookmark => palette.Bookmark,
+                StripeMarkKind.Change => mark.Change switch { ChangeMarkKind.Added => palette.ChangeAdded, ChangeMarkKind.Deleted => palette.ChangeDeleted, ChangeMarkKind.Conflict => palette.ChangeConflict, _ => palette.ChangeModified },
+                _ => palette.LineNumberCurrent,
             };
-            context.FillRectangle(brush, new Rect(track.X + left, span.Top, Math.Max(1, width), span.Height));
+            context.FillRectangle(brush, Drawn(mark, span, track));
         }
+
+        /// <summary>What a mark fills across the track at its span: a problem, a match or a use most of its breadth, a
+        /// bookmark a dot at its right, a change a strip down its left edge.</summary>
+        public static Rect Drawn(StripeMark mark, (double Top, double Height) span, Rect track)
+        {
+            (double left, double width) = mark.Kind switch
+            {
+                StripeMarkKind.Error or StripeMarkKind.Warning => (2.0, track.Width - 4),
+                StripeMarkKind.Info => (5.0, track.Width - 10),
+                StripeMarkKind.SearchMatch or StripeMarkKind.Usage or StripeMarkKind.WriteUsage => (3.0, track.Width - 6),
+                StripeMarkKind.Bookmark => (track.Width - 4, 3.0),
+                StripeMarkKind.Change => (0.0, 2.0),
+                _ => (1.0, track.Width - 2),
+            };
+            return new Rect(track.X + left, span.Top, Math.Max(1, width), span.Height);
+        }
+
+        /// <summary>A left press on a mark over the thumb, with where it went down and the bar's value then: a click on the
+        /// mark until the pointer moves past <see cref="Reach"/>, and from then the thumb's drag.</summary>
+        private (StripeMark Mark, double Y, double Value, bool Dragging)? held;
 
         protected override void OnPointerMoved(PointerEventArgs e)
         {
             base.OnPointerMoved(e);
-            ToolTip.SetTip(this, At(e.GetPosition(this)) is { } mark ? mark.Message : null);
+            Point point = e.GetPosition(this);
+            if (held is not { } press)
+            {
+                ToolTip.SetTip(this, At(point) is { } mark ? mark.Message : null);
+                return;
+            }
+            if ((press.Dragging || Math.Abs(point.Y - press.Y) > Reach) && editor.BarTrack() is { } track)
+            {
+                held = press with { Dragging = true };
+                ScrollBar bar = editor.vertical;
+                bar.Value = Math.Clamp(press.Value + track.ValueFromDistance(0, point.Y - press.Y), bar.Minimum, bar.Maximum);
+            }
         }
 
         protected override void OnPointerPressed(PointerPressedEventArgs e)
         {
             base.OnPointerPressed(e);
-            if (At(e.GetPosition(this)) is { } mark)
+            Point point = e.GetPosition(this);
+            if (At(point) is not { } mark)
             {
-                editor.GoTo(editor.document.Snapshot.GetPosition(editor.OffsetOf(mark)));
-                editor.Focus();
-                e.Handled = true;
+                return;
             }
+            e.Handled = true;
+            if (OnThumb(point) && e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            {
+                ToolTip.SetTip(this, null);
+                held = (mark, point.Y, editor.vertical.Value, false);
+                return;
+            }
+            GoTo(mark);
+        }
+
+        protected override void OnPointerReleased(PointerReleasedEventArgs e)
+        {
+            base.OnPointerReleased(e);
+            if (held is { Dragging: false } press)
+            {
+                GoTo(press.Mark);
+            }
+            held = null;
+        }
+
+        protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
+        {
+            base.OnPointerCaptureLost(e);
+            held = null;
+        }
+
+        private void GoTo(StripeMark mark)
+        {
+            editor.GoTo(editor.document.Snapshot.GetPosition(editor.OffsetOf(mark)));
+            editor.Focus();
         }
 
         /// <summary>Where a mark is drawn on the track: its row's place in the file, a tick three pixels high (a suggestion's
@@ -383,25 +445,29 @@ public sealed partial class CodeEditor
             return (top, height);
         }
 
-        /// <summary>The mark under a point, the one drawn over the others first; the caret's is not one to take. A custom
-        /// hit test is asked beyond the control's bounds, so a point beside the stripe (the gutter's change bar at a
-        /// mark's height) is none of its.</summary>
+        /// <summary>The mark drawn under a point, give or take <see cref="Reach"/>, the one drawn over the others first; the
+        /// caret's is not one to take. A custom hit test is asked beyond the control's bounds, so a point beside the stripe
+        /// (the gutter's change bar at a mark's height) is none of its.</summary>
         private StripeMark? At(Point point)
         {
             if (!IsVisible || point.X < 0 || point.X >= Bounds.Width)
             {
                 return null;
             }
-            (StripeBuild built, _, (double Top, double Height)[] spans) = Placed();
+            (StripeBuild built, Rect track, (double Top, double Height)[] spans) = Placed();
             for (int i = spans.Length - 1; i >= 0; i--)
             {
-                if (point.Y >= spans[i].Top - Reach && point.Y <= spans[i].Top + spans[i].Height + Reach)
+                if (Drawn(built.Marks[i], spans[i], track).Inflate(Reach).Contains(point))
                 {
                     return built.Marks[i];
                 }
             }
             return null;
         }
+
+        private bool OnThumb(Point point) =>
+            editor.BarTrack()?.Thumb is { IsEffectivelyVisible: true } thumb && thumb.TranslatePoint(default, this) is { } origin
+            && new Rect(origin, thumb.Bounds.Size).Contains(point);
     }
 
     /// <summary>The file's error and warning counts, or a green tick with none, over the stripe's top.</summary>
