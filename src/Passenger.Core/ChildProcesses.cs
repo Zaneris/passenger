@@ -6,11 +6,12 @@ using System.Text;
 namespace Passenger.Core;
 
 /// <summary>Every program Passenger starts is started here, one way: no shell and no window, an input of its own (never
-/// the IDE's), UTF-8 streams, none of a git hook's repository variables, and a line in the log when it fails or takes a
-/// while, or for every one with the debug log on (<see cref="Started"/>, <see cref="Ended"/>): one the IDE ended itself
-/// (<see cref="Kill"/>, <see cref="Ending"/>) did not fail, nor did a question whose exit code is its answer. None outlives
-/// the IDE, however the IDE ends (<see cref="Lifeline"/>). A program run in the terminal is taken on (<see cref="Adopt"/>),
-/// and one that must outlive the IDE starts apart (<see cref="StartApart"/>).</summary>
+/// the IDE's), UTF-8 streams, none of a git hook's repository variables, its folder's PWD as the disk names it, and a
+/// line in the log when it fails or takes a while, or for every one with the debug log on (<see cref="Started"/>,
+/// <see cref="Ended"/>): one the IDE ended itself (<see cref="Kill"/>, <see cref="Ending"/>) did not fail, nor did a
+/// question whose exit code is its answer. None outlives the IDE, however the IDE ends (<see cref="Lifeline"/>). A program
+/// run in the terminal is taken on (<see cref="Adopt"/>), and one that must outlive the IDE starts apart
+/// (<see cref="StartApart"/>).</summary>
 public static class ChildProcesses
 {
     private static readonly UTF8Encoding Utf8 = new(encoderShouldEmitUTF8Identifier: false);
@@ -40,7 +41,8 @@ public static class ChildProcesses
     /// its mask for secrets as it starts, so no program's secret reaches the log or a window.</summary>
     public static Func<ProcessStartInfo, string> Shown { get; set; } = Display;
 
-    /// <summary>A program and its arguments, to run in a folder (the IDE's own when none is given).</summary>
+    /// <summary>A program and its arguments, to run in a folder (the IDE's own when none is given), its PWD that folder as
+    /// the disk names it (<see cref="NameFolder"/>).</summary>
     public static ProcessStartInfo Command(string program, IEnumerable<string> arguments, string? folder = null)
     {
         ProcessStartInfo start = new(program, arguments);
@@ -52,7 +54,28 @@ public static class ChildProcesses
         {
             start.Environment.Remove(variable);
         }
+        NameFolder(start, folder);
         return start;
+    }
+
+    /// <summary>Gives a child the PWD of its folder as <see cref="PathNames.Canonical"/> names it, never the one the IDE's
+    /// own start inherited, which may name that folder through a link or in other letter case (<c>cd ~/documents/app</c>):
+    /// a program taking its PWD as its folder's name, as a shell or a build does, would name every path it makes so.</summary>
+    private static void NameFolder(ProcessStartInfo start, string? folder)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+        try
+        {
+            start.Environment["PWD"] = PathNames.Canonical(folder ?? Environment.CurrentDirectory);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            // The IDE's own folder is gone or shut: no name the child could check against its folder.
+            start.Environment.Remove("PWD");
+        }
     }
 
     /// <summary>The .NET command line (<see cref="Dotnet.Host"/>) with these arguments, in English (the IDE reads what it

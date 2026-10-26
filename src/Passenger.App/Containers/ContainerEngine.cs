@@ -141,11 +141,6 @@ public sealed class ContainerEngine
     {
         string cli = Cli ?? throw new FileNotFoundException(NoCliProblem);
         ProcessStartInfo start = ChildProcesses.Command(cli, arguments, folder);
-        if (folder is not null)
-        {
-            // Compose reads $PWD from the PWD it inherits, which is wherever Passenger was started, not its working folder.
-            start.Environment["PWD"] = folder;
-        }
         // What the CLI says the IDE reads; no colours, nor a prompt to sign in.
         start.Environment["NO_COLOR"] = "1";
         start.Environment["DOCKER_CLI_HINTS"] = "false";

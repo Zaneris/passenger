@@ -126,9 +126,22 @@ def send(connection, message):
     connection.sendall(json.dumps(message).encode() + b"\n")
 
 
+def on_disk(path):
+    """A folder's path as the disk names it, links resolved, so one keeper serves it however it was spelled: Python's
+    realpath keeps the letter case it is given, where the name of a descriptor opened only to ask is the disk's."""
+    path = os.path.realpath(path)
+    if sys.platform == "darwin" and os.path.isdir(path):
+        descriptor = os.open(path, os.O_EVTONLY)
+        try:
+            path = fcntl.fcntl(descriptor, fcntl.F_GETPATH, bytes(1024)).split(b"\0", 1)[0].decode()
+        finally:
+            os.close(descriptor)
+    return path
+
+
 def call(start, folder, tool, text):
     """The client: one request to the folder's keeper, its answer printed. Exit 1 on the tool's error, 2 on a failed call."""
-    folder = os.path.realpath(os.path.join(start, folder))
+    folder = on_disk(os.path.join(start, folder))
     if not os.path.isdir(folder):
         sys.exit(f"mcp-call: no folder at {folder}")
     serving = serving_checkout()

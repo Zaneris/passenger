@@ -7,6 +7,9 @@ app := "src/Passenger.App"
 # Avalonia's build task sends usage data from every build of an Avalonia project unless this is in the environment.
 export AVALONIA_TELEMETRY_OPTOUT := "1"
 
+# The checkout as the disk names it, for recipes' shells and dotnet, which take a PWD naming their folder as its path.
+export PWD := justfile_directory()
+
 # Build everything (Debug). Warnings are errors.
 build:
     dotnet build

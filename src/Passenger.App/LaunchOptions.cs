@@ -1,6 +1,7 @@
 using System.Globalization;
 using Avalonia;
 using Avalonia.Input;
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
 using Passenger.Workspace;
@@ -51,8 +52,9 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
 
     public static LaunchOptions Empty { get; } = new(null, [], null, null, null);
 
-    /// <summary>The options the arguments ask for, the files among them full paths that exist; anything malformed,
-    /// out of range or not for the chosen mode is a <see cref="FormatException"/> whose message names it.</summary>
+    /// <summary>The options the arguments ask for, the folder and files among them paths that exist, as the disk names
+    /// them; anything malformed, out of range or not for the chosen mode is a <see cref="FormatException"/> whose message
+    /// names it.</summary>
     public static LaunchOptions Parse(IReadOnlyList<string> args)
     {
         // Every flag and path as given, in order, so the first one the mode does not take is the one named.
@@ -178,7 +180,7 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
                     string opened = Value(args, ref i, flag);
                     // As File, Open takes it: a solution, project or folder as the workspace, any other file in a tab.
                     steps.Add(new ScriptStep.Open(Directory.Exists(opened) || File.Exists(opened)
-                        ? Path.GetFullPath(opened)
+                        ? PathNames.Canonical(opened)
                         : throw new FormatException($"--open takes a file or folder that is there, not '{opened}'")));
                     break;
                 case "--agent":
@@ -265,9 +267,9 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
         }
     }
 
-    /// <summary>The folder, workspace and files that the path and the <c>--file</c>s name, as full paths, each refused
-    /// unless it exists as what it is named for. A solution or a C# project is the workspace over its folder, not a
-    /// file to edit.</summary>
+    /// <summary>The folder, workspace and files that the path and the <c>--file</c>s name, as the disk names them
+    /// (<see cref="PathNames.Canonical"/>) however the command line spelled them, each refused unless it exists as what it
+    /// is named for. A solution or a C# project is the workspace over its folder, not a file to edit.</summary>
     private static (string? Folder, string? Workspace, List<string> Files) Opened(string? path, List<string> named)
     {
         string? folder = null;
@@ -277,11 +279,11 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
         {
             if (Directory.Exists(path))
             {
-                folder = Path.GetFullPath(path);
+                folder = PathNames.Canonical(path);
             }
             else if (File.Exists(path))
             {
-                string full = Path.GetFullPath(path);
+                string full = PathNames.Canonical(path);
                 folder = Path.GetDirectoryName(full);
                 if (WorkspaceModel.Opens(full))
                 {
@@ -300,7 +302,7 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
         foreach (string file in named)
         {
             // The window opens a relative path as its folder's, so that is where it is looked for.
-            string full = Path.GetFullPath(file, folder ?? Environment.CurrentDirectory);
+            string full = PathNames.Canonical(Path.GetFullPath(file, folder ?? Environment.CurrentDirectory));
             if (!File.Exists(full))
             {
                 throw new FormatException(Directory.Exists(full)

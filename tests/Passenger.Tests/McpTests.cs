@@ -14,7 +14,8 @@ using Passenger.Editor;
 namespace Passenger.Tests;
 
 /// <summary>Passenger as an agent's IDE with no window (<c>--mcp</c>), over the Model Context Protocol with the SDK's own
-/// client: a project worked through it (its tests, packages, actions, publish, Git and the terminal).</summary>
+/// client: a project worked through it (its tests, packages, actions, publish, Git and the terminal), and a folder given
+/// it in other letter case.</summary>
 public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
 {
     public McpTests(RestoredFolders folders)
@@ -307,6 +308,27 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Contains("cannot run: No Avalonia or WPF app is being debugged", selectElement, StringComparison.Ordinal);
 
         Assert.Equal($"Ran {AppActions.ShowLiveTree}", (await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.ShowLiveTree })).GetString());
+    }
+
+    /// <summary>An agent's Passenger started on its folder in lower case, from a working folder and a PWD spelling it so (an
+    /// agent started in <c>~/documents/app</c>): its workspace answer and the restore and build it makes name the folder as
+    /// the disk does, so no build through the disk's spelling restores, compiles or deletes what this one wrote.</summary>
+    [Fact]
+    public async Task An_agents_passenger_given_its_folder_in_other_letter_case_answers_restores_and_builds_it_as_the_disk_names_it()
+    {
+        Assert.SkipWhen(PathNames.Comparison == StringComparison.Ordinal, PathsTests.CaseTold);
+        string root = PathNames.Canonical(TestFolders.Create("mcp-case-"));
+        DeleteAtEnd(root);
+        string folder = Path.Combine(root, "Shop Front");
+        string project = DiskSpelled.Write(folder);
+        string spelled = folder.ToLowerInvariant();
+        await using McpClient client = await Start(["--mcp", spelled], spelled, new() { ["PWD"] = spelled }, languageServer: false);
+        JsonElement workspace = await Call(client, McpTools.Workspace);
+        Assert.True(workspace.GetProperty("folder").GetString() == folder && workspace.GetProperty("solution").GetString() == Path.Combine(folder, "Shop.slnx"),
+            $"Started on {spelled}, Passenger answered the workspace: {workspace}");
+        JsonElement built = await Call(client, McpTools.Build);
+        Assert.True(built.GetProperty("succeeded").GetBoolean(), $"The build ended: {built}");
+        DiskSpelled.Check(spelled, folder, project);
     }
 
     /// <summary>An agent's publish, build's with a project to publish: the project to a folder, answered with where it landed
