@@ -1,7 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -101,8 +100,8 @@ public sealed class ProfilerView : DockPanel
         {
             Classes = { "tree" },
             ItemsSource = rows,
-            ItemTemplate = new FuncDataTemplate<CallRow>((row, _) => row is null ? new TextBlock() : Row(row), supportsRecycling: false),
         };
+        ReusedRows.Use(tree, Row);
         tree.DoubleTapped += (_, _) =>
         {
             if (tree.SelectedItem is CallRow row)
@@ -114,8 +113,8 @@ public sealed class ProfilerView : DockPanel
         spots = new ListBox
         {
             Classes = { "tree" },
-            ItemTemplate = new FuncDataTemplate<HotSpot>((spot, _) => spot is null ? new TextBlock() : Spot(spot), supportsRecycling: false),
         };
+        ReusedRows.Use(spots, Spot);
         spots.DoubleTapped += (_, _) =>
         {
             if (spots.SelectedItem is HotSpot spot)
@@ -126,15 +125,15 @@ public sealed class ProfilerView : DockPanel
         types = new ListBox
         {
             Classes = { "tree" },
-            ItemTemplate = new FuncDataTemplate<AllocatedType>((type, _) => type is null ? new TextBlock() : Allocated(type), supportsRecycling: false),
         };
+        ReusedRows.Use(types, Allocated);
         types.SelectionChanged += (_, _) => ShowBackTraces();
         backTraces = new ListBox
         {
             Classes = { "tree" },
             ItemsSource = traces,
-            ItemTemplate = new FuncDataTemplate<CallRow>((row, _) => row is null ? new TextBlock() : Row(row), supportsRecycling: false),
         };
+        ReusedRows.Use(backTraces, Row);
         TreeKeys.Attach<CallRow>(backTraces, Toggle, OpenRow);
         backTraces.DoubleTapped += (_, _) =>
         {
@@ -153,8 +152,8 @@ public sealed class ProfilerView : DockPanel
         collections = new ListBox
         {
             Classes = { "tree" },
-            ItemTemplate = new FuncDataTemplate<Collection>((gc, _) => gc is null ? new TextBlock() : CollectionRow(gc), supportsRecycling: false),
         };
+        ReusedRows.Use(collections, CollectionRow);
         garbage = new DockPanel();
         DockPanel.SetDock(collectionsSummary, Dock.Top);
         garbage.Children.Add(collectionsSummary);
@@ -166,8 +165,8 @@ public sealed class ProfilerView : DockPanel
         kept = new ListBox
         {
             Classes = { "tree" },
-            ItemTemplate = new FuncDataTemplate<SnapshotFile>((file, _) => file is null ? new TextBlock() : KeptRow(file), supportsRecycling: false),
         };
+        ReusedRows.Use(kept, KeptRow);
         kept.DoubleTapped += (_, _) => OpenKept();
         kept.KeyDown += (_, e) =>
         {
@@ -305,22 +304,20 @@ public sealed class ProfilerView : DockPanel
         }
     }
 
-    private static Control KeptRow(SnapshotFile file)
+    /// <summary>A row for whichever kept snapshot the list hands its container: when it ran, its size and its program.</summary>
+    private static Control KeptRow()
     {
-        TextBlock when = Muted(file.Written.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.CurrentCulture), 160);
-        when.FontFamily = CSharp.Fonts.Mono;
-        when.FontSize = 12;
-        TextBlock size = Muted($"{file.Bytes / 1048576.0,7:N1} MB", 100);
-        size.FontFamily = CSharp.Fonts.Mono;
-        size.FontSize = 12;
-        // Named for its program and when it ran, which the row says already.
-        string program = System.Text.RegularExpressions.Regex.Replace(file.Name, @"-\d{8}-\d{6}(-\d+)?$", string.Empty);
-        return new ShrinkingRow
+        TextBlock when = Mono(Muted(string.Empty, 160));
+        TextBlock size = Mono(Muted(string.Empty, 100));
+        TextBlock program = new() { VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeight.SemiBold };
+        ShrinkingRow row = new() { Height = ListRow.Height, Margin = new Thickness(6, 0), Children = { when, size, program } };
+        return row.Showing<SnapshotFile>(file =>
         {
-            Height = ListRow.Height,
-            Margin = new Thickness(6, 0),
-            Children = { when, size, new TextBlock { Text = program, VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeight.SemiBold } },
-        };
+            when.Text = file.Written.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.CurrentCulture);
+            size.Text = $"{file.Bytes / 1048576.0,7:N1} MB";
+            // Named for its program and when it ran, which the row says already.
+            program.Text = System.Text.RegularExpressions.Regex.Replace(file.Name, @"-\d{8}-\d{6}(-\d+)?$", string.Empty);
+        });
     }
 
     /// <summary>Open Snapshot pressed: a .nettrace file to read.</summary>
@@ -523,27 +520,35 @@ public sealed class ProfilerView : DockPanel
         }
     }
 
-    private Control Allocated(AllocatedType type)
+    /// <summary>A row for whichever allocated type the list hands its container: its share and size, and its name.</summary>
+    private Control Allocated()
     {
-        long whole = Snapshot?.Allocations.Sum(a => a.Bytes) ?? 0;
-        TextBlock size = Muted($"{(whole > 0 ? 100.0 * type.Bytes / whole : 0),5:0.0}%  {type.Bytes / 1048576.0,8:N1} MB", 170);
-        size.FontFamily = CSharp.Fonts.Mono;
-        size.FontSize = 12;
-        return new ShrinkingRow
+        TextBlock size = Mono(Muted(string.Empty, 170));
+        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeight.SemiBold };
+        ShrinkingRow row = new() { Height = ListRow.Height, Margin = new Thickness(6, 0), Children = { size, name } };
+        return row.Showing<AllocatedType>(type =>
         {
-            Height = ListRow.Height,
-            Margin = new Thickness(6, 0),
-            Children = { size, new TextBlock { Text = type.Name, VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeight.SemiBold } },
-        };
+            long whole = Snapshot?.Allocations.Sum(a => a.Bytes) ?? 0;
+            size.Text = $"{(whole > 0 ? 100.0 * type.Bytes / whole : 0),5:0.0}%  {type.Bytes / 1048576.0,8:N1} MB";
+            name.Text = type.Name;
+        });
     }
 
-    private static Control CollectionRow(Collection gc)
+    /// <summary>A row for whichever collection the list hands its container: its generation, when, its pause and why.</summary>
+    private static Control CollectionRow()
     {
-        TextBlock what = new() { Text = $"#{gc.Number}  generation {gc.Generation}", Width = 170, VerticalAlignment = VerticalAlignment.Center };
-        TextBlock when = Muted($"at {gc.AtMs:N0} ms", 110);
-        TextBlock pause = Muted($"paused {gc.PauseMs:0.00} ms", 140);
-        TextBlock why = Muted(gc.Reason, double.NaN);
-        return new ShrinkingRow { Height = ListRow.Height, Margin = new Thickness(6, 0), Children = { what, when, pause, why } };
+        TextBlock what = new() { Width = 170, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock when = Muted(string.Empty, 110);
+        TextBlock pause = Muted(string.Empty, 140);
+        TextBlock why = Muted(string.Empty, double.NaN);
+        ShrinkingRow row = new() { Height = ListRow.Height, Margin = new Thickness(6, 0), Children = { what, when, pause, why } };
+        return row.Showing<Collection>(gc =>
+        {
+            what.Text = $"#{gc.Number}  generation {gc.Generation}";
+            when.Text = $"at {gc.AtMs:N0} ms";
+            pause.Text = $"paused {gc.PauseMs:0.00} ms";
+            why.Text = gc.Reason;
+        });
     }
 
     public void Toggle(CallRow row)
@@ -619,57 +624,87 @@ public sealed class ProfilerView : DockPanel
 
     private string Share(int samples) => Snapshot is { Samples: > 0 } shot ? $"{100.0 * samples / shot.Samples,5:0.0}%" : "";
 
-    private Control Row(CallRow row)
+    /// <summary>A row for whichever call the list hands its container: its chevron, its share and weight, and its method.</summary>
+    private Control Row()
     {
-        PathIcon chevron = new() { Classes = { "chevron" }, IsVisible = row.Node.Children.Count > 0, RenderTransformOrigin = RelativePoint.Center };
+        RotateTransform turned = new();
+        PathIcon chevron = new() { Classes = { "chevron" }, RenderTransformOrigin = RelativePoint.Center, RenderTransform = turned };
         chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(IconKeys.ChevronRight));
-        chevron.RenderTransform = new RotateTransform(row.IsExpanded ? 90 : 0);
-        row.FollowWhileShown(chevron, (_, _) => chevron.RenderTransform = new RotateTransform(row.IsExpanded ? 90 : 0));
         Border toggle = new() { Width = 18, Height = ListRow.Height, Background = Brushes.Transparent, Child = chevron };
+        TextBlock share = Mono(Muted(string.Empty, 170));
+        MethodName method = new();
+        ShrinkingRow line = new() { Height = ListRow.Height, Children = { toggle, share, method.Row } };
         toggle.PointerPressed += (_, e) =>
         {
-            Toggle(row);
-            e.Handled = true;
+            if (line.DataContext is CallRow row)
+            {
+                Toggle(row);
+                e.Handled = true;
+            }
         };
-        string percent = row.Whole > 0 ? $"{100.0 * row.Node.Total / row.Whole,5:0.0}%" : string.Empty;
-        TextBlock share = Muted($"{percent}  {row.Node.Total * row.Scale,7:N0} {row.Unit}", 170);
-        share.FontFamily = CSharp.Fonts.Mono;
-        share.FontSize = 12;
-        return new ShrinkingRow
+        return line.Showing<CallRow>(row =>
         {
-            Height = ListRow.Height,
-            Margin = new Thickness(row.Depth * 14, 0, 0, 0),
-            Children = { toggle, share, MethodName(row.Node.Name, row.Depth == 0) },
-        };
+            line.Margin = new Thickness(row.Depth * 14, 0, 0, 0);
+            chevron.IsVisible = row.Node.Children.Count > 0;
+            turned.Angle = row.IsExpanded ? 90 : 0;
+            string percent = row.Whole > 0 ? $"{100.0 * row.Node.Total / row.Whole,5:0.0}%" : string.Empty;
+            share.Text = $"{percent}  {row.Node.Total * row.Scale,7:N0} {row.Unit}";
+            method.Show(row.Node.Name, row.Depth == 0);
+        });
     }
 
-    private Control Spot(HotSpot spot)
+    /// <summary>A row for whichever hot spot the list hands its container: its own time and share, its time in all, and its method.</summary>
+    private Control Spot()
     {
-        double sampleMs = Snapshot?.SampleMs ?? 1;
-        TextBlock own = Muted($"{Share(spot.Self)}  {spot.Self * sampleMs,7:N0} ms", 170);
-        own.FontFamily = CSharp.Fonts.Mono;
-        own.FontSize = 12;
-        TextBlock total = Muted($"{spot.Total * sampleMs,7:N0} ms in all", 110);
+        TextBlock own = Mono(Muted(string.Empty, 170));
+        TextBlock total = Muted(string.Empty, 110);
         total.FontSize = 12;
-        return new ShrinkingRow { Height = ListRow.Height, Margin = new Thickness(6, 0), Children = { own, total, MethodName(spot.Name, false) } };
+        MethodName method = new();
+        ShrinkingRow row = new() { Height = ListRow.Height, Margin = new Thickness(6, 0), Children = { own, total, method.Row } };
+        return row.Showing<HotSpot>(spot =>
+        {
+            double sampleMs = Snapshot?.SampleMs ?? 1;
+            own.Text = $"{Share(spot.Self)}  {spot.Self * sampleMs,7:N0} ms";
+            total.Text = $"{spot.Total * sampleMs,7:N0} ms in all";
+            method.Show(spot.Name, false);
+        });
     }
 
-    /// <summary>A method's name: its own strong, its type's and namespace's muted before it.</summary>
-    private static Control MethodName(string name, bool thread)
+    /// <summary>A method's name: its own strong, its type's and namespace's muted before it; a thread's, strong, alone.</summary>
+    private sealed class MethodName
     {
-        if (thread || name.StartsWith('['))
+        private readonly TextBlock before = Muted(string.Empty, double.NaN);
+        private readonly TextBlock own = new() { VerticalAlignment = VerticalAlignment.Center };
+
+        public MethodName() => Row = new ShrinkingRow { Children = { before, own } };
+
+        public ShrinkingRow Row { get; }
+
+        public void Show(string name, bool thread)
         {
-            return new TextBlock { Text = name, VerticalAlignment = VerticalAlignment.Center, FontWeight = thread ? FontWeight.SemiBold : FontWeight.Normal };
+            if (thread || name.StartsWith('['))
+            {
+                before.IsVisible = false;
+                own.Text = name;
+                own.FontWeight = thread ? FontWeight.SemiBold : FontWeight.Normal;
+                return;
+            }
+            string bare = name.Split('(')[0];
+            int dot = bare.LastIndexOf('.');
+            string owner = dot > 0 ? bare[..(dot + 1)] : string.Empty;
+            before.IsVisible = true;
+            before.Text = owner;
+            own.Text = name[owner.Length..];
+            own.FontWeight = FontWeight.SemiBold;
         }
-        string bare = name.Split('(')[0];
-        int dot = bare.LastIndexOf('.');
-        string owner = dot > 0 ? bare[..(dot + 1)] : string.Empty;
-        string method = name[owner.Length..];
-        TextBlock before = Muted(owner, double.NaN);
-        return new ShrinkingRow
-        {
-            Children = { before, new TextBlock { Text = method, VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeight.SemiBold } },
-        };
+    }
+
+    /// <summary>Words in the code font, at the size of a row's numbers.</summary>
+    private static TextBlock Mono(TextBlock block)
+    {
+        block.FontFamily = CSharp.Fonts.Mono;
+        block.FontSize = 12;
+        return block;
     }
 
     private static TextBlock Muted(string text, double width)
