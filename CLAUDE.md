@@ -281,7 +281,8 @@ site-shots` retakes its images.
   shell or MSBuild takes an inherited PWD for its folder's path, #413, #537), and a reused node carries a project's
   earlier spelling and NuGet home into the next build. It keeps no idle node unless the process's nice value is 0.
 - **The terminal reuses a line** once it leaves the screen and a full scrollback (`TerminalLine.Reuse`): nothing keeps a
-  `TerminalLine` past its line number.
+  `TerminalLine` past its line number. A line's cells are written only through `TerminalLine.Writing()`: the view draws a
+  line as it kept it while its `Writes` stand.
 - **Avalonia 12's lists** re-attach, and so re-style, every recycled container and never reuse a `DataTemplate`'s
   content: a list's, combo box's or tab strip's rows go through `ReusedRows`, made once with their containers (UiRulesTests).
 - **EventPipe from a program's start**: .NET 10's LoggingEventSource misreads the `FilterSpecs` it is made with, so a
