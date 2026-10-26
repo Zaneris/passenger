@@ -12,10 +12,26 @@ namespace Passenger.Debugger;
 public partial class ManagedDebugger
 {
     /// <summary>Why an abort asked now of a thread running an evaluation, the program held, would not take as the thread goes
-    /// on: it waits, runs outside the runtime or where the runtime cannot stop it, or runs a catch or finally block. Null
-    /// when it would.</summary>
+    /// on: it runs a catch or finally block, whatever it does inside it (a call, a wait, native code); it waits; or it runs
+    /// outside the runtime or where the runtime cannot stop it. Null when it would.</summary>
     private string? WhyNoAbortTakes(ICorDebugThread thread)
     {
+        // A handler on any of its frames holds the abort off until it is left, wherever the thread is above it.
+        try
+        {
+            foreach (ICorDebugILFrame frame in EvaluationFrames(thread))
+            {
+                if (frame.TryGetIP(out uint offset, out _) is Cor.S_OK && FindModule(frame.Function.Module) is { } module
+                    && module.MetadataReader.InHandler(frame.Function.Token, (int)offset, ModuleMetadataReader.VersionOf(frame)))
+                {
+                    return "it runs a catch or finally block";
+                }
+            }
+        }
+        catch (Exception error) when (Failures.OfRuntime(error))
+        {
+            return "its frames could not be read";
+        }
         if (thread.TryGetUserState(out CorDebugUserState state) is not Cor.S_OK)
         {
             return "its state could not be read";
@@ -28,14 +44,6 @@ public partial class ManagedDebugger
         if ((state & CorDebugUserState.USER_UNSAFE_POINT) != 0 || thread.TryGetActiveFrame(out ICorDebugFrame? leaf) is not Cor.S_OK || leaf is not ICorDebugILFrame)
         {
             return "it runs outside managed code";
-        }
-        foreach (ICorDebugILFrame frame in EvaluationFrames(thread))
-        {
-            if (frame.TryGetIP(out uint offset, out _) is Cor.S_OK && FindModule(frame.Function.Module) is { } module
-                && module.MetadataReader.InHandler(frame.Function.Token, (int)offset, ModuleMetadataReader.VersionOf(frame)))
-            {
-                return "it runs a catch or finally block";
-            }
         }
         return null;
     }

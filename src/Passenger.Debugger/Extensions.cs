@@ -285,8 +285,9 @@ public static class Extensions
                         ended = true;
                         break;
                     }
-                    if (process.TryStop(0) is not Cor.S_OK)
+                    if (process.TryStop(0) is var held and not Cor.S_OK)
                     {
+                        evalStatus.Log?.Invoke($"The program could not be held to look at the evaluation on thread {thread.Id}: 0x{held:X8}");
                         break;
                     }
                     string? why = asked ? null : evalStatus.WhyNoAbortTakes(thread);
@@ -338,7 +339,7 @@ public static class Extensions
                 {
                     throw new ManagedDebugger.EvalException(aborted
                         ? $"The evaluation took longer than {EvaluationTimeout.TotalSeconds:0.#} s and was stopped: it may wait on another thread, which stays paused while it runs"
-                        : $"The evaluation took longer than {EvaluationTimeout.TotalSeconds:0.#} s and could not be stopped, as {lastWhy ?? "the abort asked of it has not taken"}: it runs on in the program until it returns, the program paused meanwhile");
+                        : $"The evaluation took longer than {EvaluationTimeout.TotalSeconds:0.#} s and could not be stopped, as {(asked ? "the abort asked of it has not taken" : lastWhy ?? "the program could not be held to look at it")}: it runs on in the program until it returns, the program paused meanwhile");
                 }
                 // It ended of itself as it was looked at: its value is read as any other's.
             }

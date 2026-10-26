@@ -493,14 +493,15 @@ internal static class Locks
 	}
 }
 
-// A stop at which an evaluation spins in a finally block until another thread, paused with the program, lets it out once
-// it has spun 5 s, longer than the tests give an evaluation: the runtime puts an abort off until the block is left, by
-// then after the program has gone on. That thread is in its loop by the stop, past the initialization of every type the
-// evaluation uses (Finally's statics, Stopwatch): paused inside one, it would hold the evaluation short of its finally.
+// A stop at which an evaluation spins, or sleeps, in a finally block until another thread, paused with the program, lets
+// it out once it has been in the block 5 s, longer than the tests give an evaluation: the runtime puts an abort off until
+// the block is left, by then after the program has gone on. That thread is in its loop by the stop, past the
+// initialization of every type the evaluation uses (Finally's statics, Stopwatch, Thread): paused inside one, it would
+// hold the evaluation short of its finally.
 internal static class Finally
 {
 	private static readonly ManualResetEventSlim Looping = new();
-	private static long spinningSince;
+	private static long heldSince;
 	private static int letOut;
 	public static int Turns;
 
@@ -510,7 +511,7 @@ internal static class Finally
 		{
 			try
 			{
-				Interlocked.CompareExchange(ref spinningSince, Stopwatch.GetTimestamp(), 0);
+				Interlocked.CompareExchange(ref heldSince, Stopwatch.GetTimestamp(), 0);
 			}
 			finally
 			{
@@ -522,14 +523,33 @@ internal static class Finally
 		}
 	}
 
-	private static bool SpunLongEnough() => Volatile.Read(ref spinningSince) is var since && since != 0 && Stopwatch.GetElapsedTime(since) > TimeSpan.FromSeconds(5);
+	public static int Sleeps
+	{
+		get
+		{
+			try
+			{
+				Interlocked.CompareExchange(ref heldSince, Stopwatch.GetTimestamp(), 0);
+			}
+			finally
+			{
+				while (Volatile.Read(ref letOut) == 0)
+				{
+					Thread.Sleep(10);
+				}
+			}
+			return ++Turns;
+		}
+	}
+
+	private static bool HeldLongEnough() => Volatile.Read(ref heldSince) is var since && since != 0 && Stopwatch.GetElapsedTime(since) > TimeSpan.FromSeconds(5);
 
 	public static void Run()
 	{
 		Thread freer = new(() =>
 		{
 			Stopwatch waited = Stopwatch.StartNew();
-			while (!SpunLongEnough() && waited.Elapsed < TimeSpan.FromSeconds(60))
+			while (!HeldLongEnough() && waited.Elapsed < TimeSpan.FromSeconds(60))
 			{
 				Looping.Set();
 				Thread.Sleep(20);
@@ -538,7 +558,7 @@ internal static class Finally
 		});
 		freer.Start();
 		Looping.Wait();
-		Console.WriteLine("a finally next"); // stop before an evaluation spins in a finally block
+		Console.WriteLine("a finally next"); // stop before an evaluation spins or sleeps in a finally block
 		freer.Join();
 		Console.WriteLine($"let out, {Turns} turns"); // stop once the evaluation has been let out
 	}

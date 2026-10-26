@@ -194,16 +194,20 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
         await TheLockIsFreeOnceTheFirstEvaluationRanToItsEnd(host);
     }
 
-    /// <summary>An evaluation that spins in a finally block past its time is not aborted there: it runs to its end once
-    /// another thread lets it out, past the code after the block.</summary>
-    [Fact]
-    public async Task An_evaluation_spinning_in_a_finally_block_runs_to_its_end_once_let_out()
+    /// <summary>An evaluation that spins, or sleeps, in a finally block past its time is not aborted there and is said to
+    /// run the block, wherever within it the debugger finds it: it runs to its end once another thread lets it out, past
+    /// the code after the block.</summary>
+    [Theory]
+    [InlineData("Finally.Spins")]
+    [InlineData("Finally.Sleeps")]
+    public async Task An_evaluation_spinning_or_sleeping_in_a_finally_block_is_said_to_run_it_and_runs_to_its_end_once_let_out(string getter)
     {
         string after = "Console.WriteLine($\"let out, {Turns} turns\");";
         await using DebugSession host = await LaunchCase("finally", "Console.WriteLine(\"a finally next\");", after);
         StoppedEvent stop = await host.WaitForStoppedEvent();
-        EvaluateResponse spins = await host.EvaluateAsync((await host.TopFrameAsync(stop.ThreadId!.Value)).Id, "Finally.Spins");
-        Assert.Contains("could not be stopped, as it runs a catch or finally block", spins.Result, StringComparison.Ordinal);
+        EvaluateResponse held = await host.EvaluateAsync((await host.TopFrameAsync(stop.ThreadId!.Value)).Id, getter);
+        Assert.True(held.Result.Contains("could not be stopped, as it runs a catch or finally block", StringComparison.Ordinal),
+            $"The evaluation held in its finally block was given another reason it could not be stopped: {held.Result}");
 
         await host.ContinueAsync();
         StoppedEvent letOut = await host.WaitForStoppedEvent();
