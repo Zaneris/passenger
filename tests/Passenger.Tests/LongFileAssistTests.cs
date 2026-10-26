@@ -571,7 +571,6 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
             File.WriteAllText(PathOf("Dotted.cs"), Dotted);
             File.WriteAllText(PathOf("Calls.cs"), Calls);
             File.WriteAllText(PathOf("Few.cs"), Few);
-            Prepare();
         }
 
         /// <summary>A method of two parameters and members calling it, each in one of its own, the first

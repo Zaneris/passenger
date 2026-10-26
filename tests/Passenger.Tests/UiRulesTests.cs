@@ -25,15 +25,19 @@ namespace Passenger.Tests;
 /// once (ReusedRows); and the window at half a 1366-wide screen with nothing cut, a stripe putting what has no room behind
 /// More. Each rule that a look could break is held under both looks in one window, the look switched in place as Settings
 /// switches it.</summary>
-public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
+public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLifetime
 {
     private readonly Project project;
 
     public UiRulesTests(Project project)
     {
         this.project = project;
-        project.Reset();
     }
+
+    /// <summary>The project as written for the test, on whichever thread it runs (a window test's, or one of its own).</summary>
+    public ValueTask InitializeAsync() => new(project.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     /// <summary>The looks a window's rules are held under, in the order a window wears them: Passenger's and Harbour's, whose
     /// shapes are every other theme's (tools/themes.py gives each one or the other's), the rest's colours held by the rules
@@ -1813,14 +1817,19 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
             File.WriteAllText(PathOf("Notes.txt"), "one\ntwo\n");
             Directory.CreateDirectory(Path.GetDirectoryName(PathOf(Deep))!);
             File.WriteAllText(PathOf(Deep), "class RefundCalculator\n{\n}\n");
-            TestFolders.Prepare(() =>
+        }
+
+        /// <summary>A repository with a branch and a tag beside main; never restored, since no window of the class starts a
+        /// language server or builds, and the rules are the window's.</summary>
+        public override async ValueTask InitializeAsync()
+        {
+            await TestFolders.PrepareAsync(async () =>
             {
-                TestGit.Init(Folder);
-                TestGit.Run(Folder, "branch", "other");
-                TestGit.Run(Folder, "tag", "v1.0");
+                await TestGit.InitAsync(Folder);
+                await TestGit.RunAsync(Folder, "branch", "other");
+                await TestGit.RunAsync(Folder, "tag", "v1.0");
             }, Folder);
-            // Never restored: no window of the class starts a language server or builds, and the rules are the window's.
-            Prepare(restore: false);
+            await PrepareAsync(restore: false);
         }
     }
 }

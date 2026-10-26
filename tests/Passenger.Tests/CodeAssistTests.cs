@@ -2046,7 +2046,6 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
                 + "using System.Threading;\nusing System.Threading.Tasks;\n" + Statement.Replace("Statement", "Used", StringComparison.Ordinal));
             // The first build makes bin, which a reset would take for a file the test added: made now, the folder stays as reset.
             Directory.CreateDirectory(PathOf("bin"));
-            Prepare();
         }
 
         /// <summary>Whether restore downloaded .NET's reference pack, as it does when no installed SDK has the version the

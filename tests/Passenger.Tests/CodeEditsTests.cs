@@ -476,7 +476,6 @@ public sealed class CodeEditsTests : IClassFixture<CodeEditsTests.Project>
             File.WriteAllText(PathOf("Prices.cs"), "static class Prices\n{\n    public static int Total(int price, int count)\n    {\n        return price * count + price * count / 10;\n    }\n}\n");
             File.WriteAllText(PathOf("Inlined.cs"), "static class Inlined\n{\n    public static int Area(int width, int height)\n    {\n        int area = width * height;\n"
                 + "        return area + 1;\n    }\n\n    private static int Half(int value) => value / 2;\n\n    public static int Quarter(int value) => Half(value) + 1;\n}\n");
-            Prepare();
         }
     }
 }

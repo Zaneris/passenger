@@ -19,13 +19,13 @@ public sealed class McpWpfAppTests : McpRig
         Assert.SkipUnless(OperatingSystem.IsWindows(), "WPF runs on Windows alone");
         string wpf = PathNames.Canonical(TestFolders.Create("mcpwpf-"));
         DeleteAtEnd(wpf);
-        TestFolders.Prepare(() =>
+        await TestFolders.PrepareAsync(async () =>
         {
             foreach (string file in Directory.GetFiles(Debuggees.Source("WpfTreeApp")))
             {
                 File.Copy(file, Path.Combine(wpf, Path.GetFileName(file)));
             }
-            Restore.Run(WpfApp.Project(wpf, "WpfTreeApp"));
+            await Restore.RunAsync(WpfApp.Project(wpf, "WpfTreeApp"));
         }, wpf);
         // The inspector traces to a file a failure quotes: the variable is the started Passenger's, never this process's.
         string trace = Path.Combine(wpf, "inspector.log");

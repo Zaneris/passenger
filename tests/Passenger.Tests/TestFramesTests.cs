@@ -19,33 +19,38 @@ namespace Passenger.Tests;
 /// VSTest, each with a test whose window (a red box on white, a yellow popup over it) fails while a file says to, a test
 /// that attaches a frame of its own and passes, and one that passes having caught an exception. Written and restored once
 /// for the class, from the packages the tests' own restore brought and no feed but the run's own.</summary>
-public sealed class HeadlessTestsFolder : IDisposable
+public sealed class HeadlessTestsFolder : IAsyncLifetime
 {
     public HeadlessTestsFolder()
     {
         Folder = PathNames.Canonical(TestFolders.Create("frames-"));
         Failing = Path.Combine(Folder, "fail.txt");
-        TestFolders.Prepare(() =>
-        {
-            string xunit = typeof(FactAttribute).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion.Split('+')[0];
-            string avalonia = string.Concat(new[] { "Avalonia.Headless.XUnit", "Avalonia.Skia", "Avalonia.Themes.Fluent" }
-                .Select(p => $"    <PackageReference Include=\"{p}\" Version=\"{AvaloniaApp.Version}\" />\n"));
-            Write("Boxes.Tests/Boxes.Tests.csproj", Project(xunit, avalonia, vsTest: false));
-            Write("Boxes.Tests/BoxTests.cs", Tests("Boxes.Tests"));
-            Write("Boxes.VsTests/Boxes.VsTests.csproj", Project(xunit, avalonia, vsTest: true));
-            Write("Boxes.VsTests/BoxTests.cs", Tests("Boxes.VsTests"));
-            Write("Boxes.slnx", "<Solution>\n  <Project Path=\"Boxes.Tests/Boxes.Tests.csproj\" />\n  <Project Path=\"Boxes.VsTests/Boxes.VsTests.csproj\" />\n</Solution>\n");
-            AvaloniaApp.UseFeed(Folder);
-            Restore.Run(Path.Combine(Folder, "Boxes.slnx"));
-        }, Folder);
     }
+
+    public ValueTask InitializeAsync() => new(TestFolders.PrepareAsync(async () =>
+    {
+        string xunit = typeof(FactAttribute).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion.Split('+')[0];
+        string avalonia = string.Concat(new[] { "Avalonia.Headless.XUnit", "Avalonia.Skia", "Avalonia.Themes.Fluent" }
+            .Select(p => $"    <PackageReference Include=\"{p}\" Version=\"{AvaloniaApp.Version}\" />\n"));
+        Write("Boxes.Tests/Boxes.Tests.csproj", Project(xunit, avalonia, vsTest: false));
+        Write("Boxes.Tests/BoxTests.cs", Tests("Boxes.Tests"));
+        Write("Boxes.VsTests/Boxes.VsTests.csproj", Project(xunit, avalonia, vsTest: true));
+        Write("Boxes.VsTests/BoxTests.cs", Tests("Boxes.VsTests"));
+        Write("Boxes.slnx", "<Solution>\n  <Project Path=\"Boxes.Tests/Boxes.Tests.csproj\" />\n  <Project Path=\"Boxes.VsTests/Boxes.VsTests.csproj\" />\n</Solution>\n");
+        AvaloniaApp.UseFeed(Folder);
+        await Restore.RunAsync(Path.Combine(Folder, "Boxes.slnx"));
+    }, Folder));
 
     public string Folder { get; }
 
     /// <summary>While this file is there, the box test fails.</summary>
     public string Failing { get; }
 
-    public void Dispose() => TestFolders.Delete(Folder);
+    public ValueTask DisposeAsync()
+    {
+        TestFolders.Delete(Folder);
+        return ValueTask.CompletedTask;
+    }
 
     /// <summary>xunit v3 on the platform alone, or on VSTest (no platform application, VSTest's SDK and xunit's adapter).</summary>
     private static string Project(string xunit, string avalonia, bool vsTest) =>

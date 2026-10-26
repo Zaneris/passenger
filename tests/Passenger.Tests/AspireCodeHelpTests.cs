@@ -623,8 +623,9 @@ public sealed class AspireCodeHelpTests : IClassFixture<AspireCodeHelpTests.Proj
             WriteTo(Folder, SecretsId);
             // The AppHosts' graph is the starter's, in the package cache the test project's restore filled: never nuget.org.
             AspireApp.UseFeed(Folder);
-            Prepare(byRealPath: true);
         }
+
+        public override ValueTask InitializeAsync() => new(PrepareAsync(byRealPath: true));
 
         /// <summary>The solution's files written into a folder, the Host's user secrets kept under <paramref name="secretsId"/>:
         /// this class's and an agent's test of the same code help (McpLanguagesTests).</summary>

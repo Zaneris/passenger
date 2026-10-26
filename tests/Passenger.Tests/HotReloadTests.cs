@@ -341,7 +341,6 @@ public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IC
             File.WriteAllText(PathOf("Greeter.cs"), Greeter);
             // The first build makes bin, which a reset would take for a file the test added: made now, the folder stays as reset.
             Directory.CreateDirectory(PathOf("bin"));
-            Prepare();
         }
     }
 
@@ -391,9 +390,10 @@ public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IC
                 "public static class Speaker\n{\n    public static void Speak(int i)\n    {\n        Console.WriteLine($\"Plugin {i}\");\n    }\n}\n");
             Directory.CreateDirectory(PathOf(Path.Combine("App", "bin")));
             Directory.CreateDirectory(PathOf(Path.Combine("Plugin", "bin")));
-            // App's reference reaches Plugin by its real path, which the solution's restore would reach by the folder's too.
-            Prepare(byRealPath: true);
         }
+
+        /// <summary>Restored by the real path, by which App's reference reaches Plugin and the solution's restore would not.</summary>
+        public override ValueTask InitializeAsync() => new(PrepareAsync(byRealPath: true));
     }
 }
 

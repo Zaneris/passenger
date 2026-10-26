@@ -17,12 +17,17 @@ internal static class WpfApp
     /// <summary>The target the app is made for, the test project's own.</summary>
     private static string Framework => AvaloniaApp.Metadata("TargetFramework");
 
+    /// <summary><see cref="CreateAsync"/> from the UI thread (a window test's body), run on the thread pool and waited for
+    /// with the window's loop running (<see cref="Ui.AwaitPumped{T}"/>), never for its work to land.</summary>
+    public static void Create(string folder, string name) =>
+        Ui.AwaitPumped(Waiting.Apart(() => CreateAsync(folder, name)), $"dotnet new wpf to make {name}", Limit + TestFolders.Spare);
+
     /// <summary>Makes the app in a folder, its project and namespace named <paramref name="name"/>, without restoring it;
     /// off Windows its folder says EnableWindowsTargeting unless it is to be as dotnet new makes it.</summary>
-    public static void Create(string folder, string name, bool asMade = false) => Make("wpf", folder, name, asMade);
+    public static Task CreateAsync(string folder, string name, bool asMade = false) => Make("wpf", folder, name, asMade);
 
     /// <summary>A Windows Forms app as dotnet new winforms makes it, without restoring it, on the same reference pack.</summary>
-    public static void CreateWindowsForms(string folder, string name) => Make("winforms", folder, name, asMade: true);
+    public static Task CreateWindowsFormsAsync(string folder, string name) => Make("winforms", folder, name, asMade: true);
 
     /// <summary>The project file of a WPF app of tests/Debuggees (WpfTreeApp), which has none of its own, written into its
     /// folder: a Windows app for the test project's own target, restoring from the run's local feed alone. Its path.</summary>
@@ -57,10 +62,10 @@ internal static class WpfApp
         return pinned;
     }
 
-    private static void Make(string template, string folder, string name, bool asMade)
+    private static async Task Make(string template, string folder, string name, bool asMade)
     {
         string pinned = Pinned();
-        ChildResult made = Run(["new", template, "--output", folder, "--name", name, "--framework", Framework, "--no-restore", "--no-update-check",
+        ChildResult made = await Run(["new", template, "--output", folder, "--name", name, "--framework", Framework, "--no-restore", "--no-update-check",
             "--debug:custom-hive", Hive.Value]);
         Assert.True(made.Succeeded, $"dotnet new {template} did not make the test's app (exit code {made.ExitCode}):\n{made.Output}{made.Error}");
         AddToFeed(pinned);
@@ -98,6 +103,9 @@ internal static class WpfApp
 
     private static readonly Lock FeedGate = new();
 
-    private static ChildResult Run(IReadOnlyList<string> arguments) =>
-        Task.Run(() => ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(arguments), limit: TimeSpan.FromMinutes(3))).GetAwaiter().GetResult();
+    /// <summary>The longest dotnet new may take.</summary>
+    private static readonly TimeSpan Limit = TimeSpan.FromMinutes(3);
+
+    private static Task<ChildResult> Run(IReadOnlyList<string> arguments) =>
+        ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(arguments), limit: Limit);
 }

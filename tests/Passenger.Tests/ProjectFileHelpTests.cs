@@ -494,12 +494,11 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
             Put("Core/Core.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <ItemGroup>\n    <Compile Include=\"../Shared/*.cs\" />\n  </ItemGroup>\n</Project>\n");
             Put("Core/Store.cs", "class Store\n{\n}\n");
             Put("Shared/Price.cs", "class Price\n{\n}\n");
-            Prepare();
         }
 
-        public override void Dispose()
+        public override async ValueTask DisposeAsync()
         {
-            base.Dispose();
+            await base.DisposeAsync();
             feed.Dispose();
         }
 

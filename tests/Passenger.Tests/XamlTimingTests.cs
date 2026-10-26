@@ -106,40 +106,45 @@ public sealed class XamlTimingTests : IClassFixture<XamlTimingTests.LongView>
 
     /// <summary>The template's app with a view of more than five thousand lines: a thousand bordered rows of text and
     /// buttons, a marker in the middle where completion is asked for.</summary>
-    public sealed class LongView : IDisposable
+    public sealed class LongView : IAsyncLifetime
     {
         public LongView()
         {
             Folder = TestFolders.Create("xaml-long-");
-            TestFolders.Prepare(() =>
-            {
-                AvaloniaApp.Create(Folder, "Long");
-                StringBuilder view = new();
-                view.Append("<UserControl xmlns=\"https://github.com/avaloniaui\"\n             xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\"\n             x:Class=\"Long.LongView\">\n    <StackPanel>\n");
-                for (int i = 0; i < 1000; i++)
-                {
-                    view.Append($"        <Border Name=\"Row{i}\" Padding=\"4\" Background=\"#20{i % 256:X2}40FF\" CornerRadius=\"2\">\n")
-                        .Append("            <StackPanel Orientation=\"Horizontal\" Spacing=\"6\">\n")
-                        .Append($"                <TextBlock Text=\"Row {i}\" FontWeight=\"Bold\" VerticalAlignment=\"Center\" />\n")
-                        .Append($"                <Button Content=\"Open {i}\" HorizontalAlignment=\"Right\" />\n")
-                        .Append("            </StackPanel>\n")
-                        .Append("        </Border>\n");
-                    if (i == 500)
-                    {
-                        view.Append("        <!-- middle -->\n");
-                    }
-                }
-                view.Append("    </StackPanel>\n</UserControl>\n");
-                File.WriteAllText(PathOf("LongView.axaml"), view.ToString());
-                File.WriteAllText(PathOf("LongView.axaml.cs"), "using Avalonia.Controls;\n\nnamespace Long;\n\npublic partial class LongView : UserControl\n{\n    public LongView()\n    {\n        InitializeComponent();\n    }\n}\n");
-                Restore.Run(Folder);
-            }, Folder);
         }
+
+        public ValueTask InitializeAsync() => new(TestFolders.PrepareAsync(async () =>
+        {
+            await AvaloniaApp.CreateAsync(Folder, "Long");
+            StringBuilder view = new();
+            view.Append("<UserControl xmlns=\"https://github.com/avaloniaui\"\n             xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\"\n             x:Class=\"Long.LongView\">\n    <StackPanel>\n");
+            for (int i = 0; i < 1000; i++)
+            {
+                view.Append($"        <Border Name=\"Row{i}\" Padding=\"4\" Background=\"#20{i % 256:X2}40FF\" CornerRadius=\"2\">\n")
+                    .Append("            <StackPanel Orientation=\"Horizontal\" Spacing=\"6\">\n")
+                    .Append($"                <TextBlock Text=\"Row {i}\" FontWeight=\"Bold\" VerticalAlignment=\"Center\" />\n")
+                    .Append($"                <Button Content=\"Open {i}\" HorizontalAlignment=\"Right\" />\n")
+                    .Append("            </StackPanel>\n")
+                    .Append("        </Border>\n");
+                if (i == 500)
+                {
+                    view.Append("        <!-- middle -->\n");
+                }
+            }
+            view.Append("    </StackPanel>\n</UserControl>\n");
+            File.WriteAllText(PathOf("LongView.axaml"), view.ToString());
+            File.WriteAllText(PathOf("LongView.axaml.cs"), "using Avalonia.Controls;\n\nnamespace Long;\n\npublic partial class LongView : UserControl\n{\n    public LongView()\n    {\n        InitializeComponent();\n    }\n}\n");
+            await Restore.RunAsync(Folder);
+        }, Folder));
 
         public string Folder { get; }
 
         public string PathOf(string name) => Path.Combine(Folder, name);
 
-        public void Dispose() => TestFolders.Delete(Folder);
+        public ValueTask DisposeAsync()
+        {
+            TestFolders.Delete(Folder);
+            return ValueTask.CompletedTask;
+        }
     }
 }

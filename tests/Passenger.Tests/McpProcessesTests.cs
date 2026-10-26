@@ -161,6 +161,7 @@ public sealed class McpProcessesTests : McpRig, IClassFixture<RestoredFolders>
     [Fact]
     public async Task A_Passenger_killed_while_it_loads_runs_profiles_debugs_and_builds_a_project_leaves_none_of_it_running()
     {
+        await TakeFolderAsync();
         Write("Program.cs", $"File.WriteAllText(Path.Combine(@\"{Folder}\", args[0] + \".pid\"), Environment.ProcessId.ToString());\nThread.Sleep(Timeout.Infinite);\n");
         Directory.CreateDirectory(Path.Combine(Folder, "Properties"));
         Write("Properties/launchSettings.json", "{\n  \"profiles\": {\n    \"Ran\": { \"commandName\": \"Project\" },\n    \"Debugged\": { \"commandName\": \"Project\" }\n  }\n}\n");
@@ -263,6 +264,7 @@ public sealed class McpBuildNodesTests : McpRig, IClassFixture<RestoredFolders>
     public async Task The_msbuild_nodes_a_build_leaves_for_the_next_end_with_passenger(bool killed)
     {
         Nice.SkipUnlessMSBuildKeepsNodes();
+        await TakeFolderAsync();
         string two = Path.Combine(Folder, "two");
         Directory.CreateDirectory(Path.Combine(two, "A"));
         Directory.CreateDirectory(Path.Combine(two, "B"));

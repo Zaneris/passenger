@@ -528,6 +528,10 @@ public static class TestFolders
         return path;
     }
 
+    /// <summary>What a wait for a program the tests run adds to the program's own limit, so the program's own timeout,
+    /// which names it, fires first.</summary>
+    public static readonly TimeSpan Spare = TimeSpan.FromSeconds(30);
+
     /// <summary>Gets a test class's folders ready (a restore, a repository), removing them if that fails: a class whose
     /// constructor throws is never disposed.</summary>
     public static void Prepare(Action prepare, params string[] paths)
@@ -535,6 +539,23 @@ public static class TestFolders
         try
         {
             prepare();
+        }
+        catch
+        {
+            foreach (string path in paths)
+            {
+                Delete(path);
+            }
+            throw;
+        }
+    }
+
+    /// <summary><see cref="Prepare"/> for work that is awaited (a fixture's InitializeAsync).</summary>
+    public static async Task PrepareAsync(Func<Task> prepare, params string[] paths)
+    {
+        try
+        {
+            await prepare();
         }
         catch
         {
@@ -561,7 +582,8 @@ public static class TestFolders
     }
 
     /// <summary>A symlink to a folder; where Windows lets this user make none (no Developer Mode), a junction, which any
-    /// user may make and which a walk of the folders goes through as it goes through a symlink.</summary>
+    /// user may make and which a walk of the folders goes through as it goes through a symlink: made by mklink, waited
+    /// for on the UI thread with the window's loop running (<see cref="Ui.AwaitPumped{T}"/>).</summary>
     public static void LinkFolder(string path, string target)
     {
         try
@@ -570,8 +592,9 @@ public static class TestFolders
         }
         catch (Exception refused) when (OperatingSystem.IsWindows() && refused is IOException or UnauthorizedAccessException)
         {
-            Passenger.Core.ChildResult made = Task.Run(() => Passenger.Core.ChildProcesses.RunAsync(
-                Passenger.Core.ChildProcesses.Command("cmd.exe", ["/c", "mklink", "/J", path, target]), limit: TimeSpan.FromMinutes(1).Scaled())).GetAwaiter().GetResult();
+            TimeSpan limit = TimeSpan.FromMinutes(1);
+            Passenger.Core.ChildResult made = Ui.AwaitPumped(Waiting.Apart(() => Passenger.Core.ChildProcesses.RunAsync(
+                Passenger.Core.ChildProcesses.Command("cmd.exe", ["/c", "mklink", "/J", path, target]), limit: limit.Scaled())), $"mklink to make a junction at {path}", limit + Spare);
             Assert.True(made.Succeeded, $"Windows made neither a symlink ({refused.Message}) nor a junction at {path}: {made.Output}{made.Error}");
         }
     }
@@ -1746,8 +1769,11 @@ public static class Restore
         return restored;
     }
 
-    /// <summary>The restore, waited for off the UI thread, whose continuations would otherwise wait on it.</summary>
-    public static Passenger.Core.ChildResult Run(string target) => Task.Run(() => RunAsync(target)).GetAwaiter().GetResult();
+    /// <summary>The restore from the UI thread (a window test's constructor or body), run on the thread pool and waited
+    /// for with the window's loop running (<see cref="Ui.AwaitPumped{T}"/>), never for its work to land; elsewhere a
+    /// test awaits <see cref="RunAsync"/>.</summary>
+    public static Passenger.Core.ChildResult Run(string target) =>
+        Ui.AwaitPumped(Waiting.Apart(() => RunAsync(target)), $"dotnet restore {target}", Limit + TestFolders.Spare);
 }
 
 /// <summary>A test class's folders, each made as its constructor would make it and restored at its own path, a few at a
@@ -1764,11 +1790,17 @@ public sealed class RestoredFolders : IDisposable
     /// <summary>The tests that have taken a folder, by id.</summary>
     private readonly HashSet<string> takers = new(StringComparer.Ordinal);
 
+    /// <summary><see cref="TakeAsync"/> from the UI thread (a window test's constructor or body), waited for with the
+    /// window's loop running (<see cref="Ui.AwaitPumped{T}"/>), never for its work to land.</summary>
+    public string Take(string name, Func<string, string> write) =>
+        Ui.AwaitPumped(TakeAsync(name, write), $"the restore of the folders starting {name}", Restore.Limit + TestFolders.Spare);
+
     /// <summary>A folder whose name starts with <paramref name="name"/>, written by <paramref name="write"/> (which gives what
-    /// to restore in it) and restored; from a test class's constructor or its test, since those made with it for later
-    /// tests are none of this test's own (<see cref="TestFolders.Unowned"/>). A batch is as many as the class has tests yet
-    /// to take one (<see cref="StillToTake"/>), four at most, so a class of three tests restores three.</summary>
-    public string Take(string name, Func<string, string> write)
+    /// to restore in it) on the caller's thread and restored on the thread pool; from a test class's constructor or its
+    /// test, since those made with it for later tests are none of this test's own (<see cref="TestFolders.Unowned"/>). A
+    /// batch is as many as the class has tests yet to take one (<see cref="StillToTake"/>), four at most, so a class of
+    /// three tests restores three.</summary>
+    public async Task<string> TakeAsync(string name, Func<string, string> write)
     {
         int left = StillToTake();
         if (TestContext.Current.Test?.UniqueID is { } test)
@@ -1787,7 +1819,7 @@ public sealed class RestoredFolders : IDisposable
                     made.Add(folder);
                     targets.Add(write(folder));
                 }
-                Task.Run(() => Task.WhenAll(targets.Select(Restore.RunAsync))).GetAwaiter().GetResult();
+                await Waiting.Apart(() => Task.WhenAll(targets.Select(Restore.RunAsync)));
             }
             catch
             {
@@ -1834,12 +1866,17 @@ public static class TestGit
 {
     private static readonly TimeSpan Limit = TimeSpan.FromMinutes(1);
 
-    public static string Run(string folder, params string[] arguments)
+    /// <summary><see cref="RunAsync"/> from the UI thread (a window test's constructor or body), run on the thread pool and
+    /// waited for with the window's loop running (<see cref="Ui.AwaitPumped{T}"/>), never for its work to land.</summary>
+    public static string Run(string folder, params string[] arguments) =>
+        Ui.AwaitPumped(Waiting.Apart(() => RunAsync(folder, arguments)), $"git {string.Join(' ', arguments)} in {folder}", Limit + TestFolders.Spare);
+
+    public static async Task<string> RunAsync(string folder, params string[] arguments)
     {
         Passenger.Core.ChildResult result;
         try
         {
-            result = Task.Run(() => Passenger.Core.ChildProcesses.RunAsync(Passenger.Core.ChildProcesses.Command("git", arguments, folder), limit: Limit.Scaled())).GetAwaiter().GetResult();
+            result = await Passenger.Core.ChildProcesses.RunAsync(Passenger.Core.ChildProcesses.Command("git", arguments, folder), limit: Limit.Scaled());
         }
         catch (TimeoutException hung)
         {
@@ -1850,16 +1887,20 @@ public static class TestGit
         return result.Output;
     }
 
+    /// <summary><see cref="InitAsync"/> from the UI thread, as <see cref="Run"/> runs git there.</summary>
+    public static void Init(string folder) =>
+        Ui.AwaitPumped(Waiting.Apart(() => InitAsync(folder)), $"a repository made in {folder}", (Limit * 6) + TestFolders.Spare);
+
     /// <summary>A new repository on main, with an author of its own, its files kept as written (not as Git for Windows'
     /// autocrlf would convert them) and its first commit of what the folder holds.</summary>
-    public static void Init(string folder)
+    public static async Task InitAsync(string folder)
     {
-        Run(folder, "init", "-q", "-b", "main");
-        Run(folder, "config", "user.email", "tests@passenger.invalid");
-        Run(folder, "config", "user.name", "Passenger Tests");
-        Run(folder, "config", "core.autocrlf", "false");
-        Run(folder, "add", "-A");
-        Run(folder, "commit", "-q", "-m", "First");
+        await RunAsync(folder, "init", "-q", "-b", "main");
+        await RunAsync(folder, "config", "user.email", "tests@passenger.invalid");
+        await RunAsync(folder, "config", "user.name", "Passenger Tests");
+        await RunAsync(folder, "config", "core.autocrlf", "false");
+        await RunAsync(folder, "add", "-A");
+        await RunAsync(folder, "commit", "-q", "-m", "First");
     }
 }
 
@@ -2114,22 +2155,34 @@ public static partial class NativeStacks
         string file = Path.Combine(TestRun.Root, $"sample-{Guid.NewGuid():N}.txt");
         try
         {
-            using System.Diagnostics.Process sample = System.Diagnostics.Process.Start(new ProcessStartInfo("/usr/bin/sample", [processId.ToString(System.Globalization.CultureInfo.InvariantCulture), "1", "-file", file])
+            using System.Diagnostics.Process sample = new()
             {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-            })!;
-            Task<string> said = sample.StandardOutput.ReadToEndAsync();
-            Task<string> complained = sample.StandardError.ReadToEndAsync();
+                StartInfo = new ProcessStartInfo("/usr/bin/sample", [processId.ToString(System.Globalization.CultureInfo.InvariantCulture), "1", "-file", file])
+                {
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                },
+            };
+            System.Text.StringBuilder said = new();
+            sample.OutputDataReceived += (_, e) => Heard(said, e.Data);
+            sample.ErrorDataReceived += (_, e) => Heard(said, e.Data);
+            sample.Start();
+            sample.BeginOutputReadLine();
+            sample.BeginErrorReadLine();
             if (!sample.WaitForExit(TimeSpan.FromMinutes(1)))
             {
                 sample.Kill();
                 return $"\n{what}: sample did not finish in a minute";
             }
+            // Once it has ended, until the last of what it wrote has been heard.
+            sample.WaitForExit();
             if (!File.Exists(file))
             {
-                return $"\n{what}: sample could not look ({said.Result.Trim()} {complained.Result.Trim()})";
+                lock (said)
+                {
+                    return $"\n{what}: sample could not look ({said.ToString().Trim()})";
+                }
             }
             List<string> threads = [];
             string? thread = null;
@@ -2173,6 +2226,17 @@ public static partial class NativeStacks
             }
             catch (IOException)
             {
+            }
+        }
+    }
+
+    private static void Heard(System.Text.StringBuilder said, string? line)
+    {
+        if (line is not null)
+        {
+            lock (said)
+            {
+                said.Append(line).Append(' ');
             }
         }
     }

@@ -33,6 +33,7 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
     [Fact]
     public async Task Aspire_tools_are_discoverable_and_refuse_to_control_an_unowned_app()
     {
+        await TakeFolderAsync();
         await using McpClient client = await Start(["--mcp", Folder]);
         IList<McpClientTool> tools = await Exchange("Listing Aspire tools", TimeSpan.FromMinutes(1),
             cancel => client.ListToolsAsync(cancellationToken: cancel).AsTask());
@@ -68,7 +69,9 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in dev-certs is a shell script");
         string standIn = TestFolders.Create("devcerts-");
         File.WriteAllText(Path.Combine(standIn, "check"), "7");
-        using StandInAppHost project = new();
+        // The test's own, made as it runs, so its folder goes with it; its windows take no warm server of it.
+        StandInAppHost project = new();
+        Ui.AwaitPumped(Waiting.Apart(() => project.InitializeAsync().AsTask()), "the stand-in AppHost's restore", Restore.Limit + TestFolders.Spare);
         AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
         project.Serve(backend, "https://localhost:7312");
         MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = false, DevCertificates = DevCerts.In(standIn) };
@@ -107,7 +110,9 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
     [AvaloniaFact]
     public void An_agents_workspace_says_a_service_marked_Dont_start_is_Not_started()
     {
-        using StandInAppHost project = new();
+        // The test's own, made as it runs, so its folder goes with it; its windows take no warm server of it.
+        StandInAppHost project = new();
+        Ui.AwaitPumped(Waiting.Apart(() => project.InitializeAsync().AsTask()), "the stand-in AppHost's restore", Restore.Limit + TestFolders.Spare);
         project.BuildApi();
         AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
         project.Serve(backend);
@@ -150,7 +155,8 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
     [Fact(Skip = AspireApp.AppHostSkipped, SkipType = typeof(AspireApp), SkipWhen = nameof(AspireApp.IsUnavailable))]
     public async Task An_agent_must_qualify_duplicate_official_starter_resource_names_with_the_owned_AppHost()
     {
-        using AspireApp project = new();
+        await using AspireApp project = new();
+        await project.InitializeAsync();
         await using McpClient client = await Start(["--mcp", project.Folder]);
         string first = $"Aspire: {AspireApp.Name}.AppHost: http";
         string second = $"Aspire: {AspireApp.CompanionName}.AppHost: http";
@@ -267,9 +273,9 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
         string apiPid = Path.Combine(starter, "api.pid");
         string webPid = Path.Combine(starter, "web.pid");
         string endpointFile = Path.Combine(starter, "execution-endpoint.txt");
-        TestFolders.Prepare(() =>
+        await TestFolders.PrepareAsync(async () =>
         {
-            AspireApp.Create(starter, AspireApp.Name);
+            await AspireApp.CreateAsync(starter, AspireApp.Name);
             RecordPid("AppHost", "AppHost.cs", hostPid);
             RecordPid("ApiService", "Program.cs", apiPid);
             RecordPid("Web", "Program.cs", webPid);
@@ -277,7 +283,7 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
             string text = File.ReadAllText(host);
             File.WriteAllText(host, $"File.WriteAllText({JsonSerializer.Serialize(endpointFile)}, Environment.GetEnvironmentVariable(\"DEBUG_SESSION_PORT\") ?? string.Empty);\n" + text);
             // By its real path, as the AppHost names its projects: two spellings of one project restored at once collide.
-            Restore.Run(PathNames.Canonical(starter));
+            await Restore.RunAsync(PathNames.Canonical(starter));
         }, starter);
 
         await using McpClient client = await Start(["--mcp", starter], environment: new()
@@ -412,15 +418,15 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
         Assert.SkipWhen(AspireContainersTests.WhyNot is not null, AspireContainersTests.WhyNot ?? string.Empty);
         string starter = TestFolders.Create("mcp-aspire-crash-");
         DeleteAtEnd(starter);
-        TestFolders.Prepare(() =>
+        await TestFolders.PrepareAsync(async () =>
         {
-            AspireApp.Create(starter, AspireApp.Name);
+            await AspireApp.CreateAsync(starter, AspireApp.Name);
             AspireContainersTests.WithContainers(Path.Combine(starter, AspireApp.Name + ".AppHost"), (path, text) =>
             {
                 File.WriteAllText(path, text);
                 return path;
             });
-            Restore.Run(PathNames.Canonical(starter));
+            await Restore.RunAsync(PathNames.Canonical(starter));
         }, starter);
         try
         {
@@ -478,15 +484,15 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
         Assert.SkipWhen(AspireContainersTests.WhyNot is not null, AspireContainersTests.WhyNot ?? string.Empty);
         string starter = TestFolders.Create("mcp-aspire-watchdog-");
         DeleteAtEnd(starter);
-        TestFolders.Prepare(() =>
+        await TestFolders.PrepareAsync(async () =>
         {
-            AspireApp.Create(starter, AspireApp.Name);
+            await AspireApp.CreateAsync(starter, AspireApp.Name);
             AspireContainersTests.WithContainers(Path.Combine(starter, AspireApp.Name + ".AppHost"), (path, text) =>
             {
                 File.WriteAllText(path, text);
                 return path;
             });
-            Restore.Run(PathNames.Canonical(starter));
+            await Restore.RunAsync(PathNames.Canonical(starter));
         }, starter);
         int[] held = [];
         try

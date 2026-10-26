@@ -45,18 +45,25 @@ public abstract class McpRig : IDisposable
     protected string OwnState { get; } = TestFolders.Create("agents-");
 
     /// <summary>The test's own Sum project, restored, taken as a test first names it: most of the tests work in folders of
-    /// their own and take none.</summary>
-    protected string Folder => sum ??= (folders ?? throw new InvalidOperationException($"{GetType().Name} takes no Sum project: its fixture is not RestoredFolders"))
-        .Take("mcp-", project =>
-        {
-            File.WriteAllText(Path.Combine(project, "Sum.csproj"),
-                TestProjects.Console("<ImplicitUsings>enable</ImplicitUsings>"));
-            File.WriteAllText(Path.Combine(project, "Program.cs"),
-                "int total = 0;\nfor (int i = 1; i <= 3; i++)\n{\n    total += Helper.Twice(i);\n}\nConsole.WriteLine($\"total {total}\");\nthrow new InvalidOperationException(\"the end\");\n");
-            File.WriteAllText(Path.Combine(project, "Helper.cs"),
-                "static class Helper\n{\n    public static int Twice(int value)\n    {\n        int unused = 1;\n        return value * 2;\n    }\n}\n");
-            return project;
-        });
+    /// their own and take none. A window test takes it here, on the UI thread; a test with no window takes it first
+    /// (<see cref="TakeFolderAsync"/>).</summary>
+    protected string Folder => sum ??= Folders.Take("mcp-", WriteSum);
+
+    /// <summary>Takes the test's own Sum project (<see cref="Folder"/>) for a test with no window, off the UI thread.</summary>
+    protected async Task<string> TakeFolderAsync() => sum ??= await Folders.TakeAsync("mcp-", WriteSum);
+
+    private RestoredFolders Folders => folders ?? throw new InvalidOperationException($"{GetType().Name} takes no Sum project: its fixture is not RestoredFolders");
+
+    private static string WriteSum(string project)
+    {
+        File.WriteAllText(Path.Combine(project, "Sum.csproj"),
+            TestProjects.Console("<ImplicitUsings>enable</ImplicitUsings>"));
+        File.WriteAllText(Path.Combine(project, "Program.cs"),
+            "int total = 0;\nfor (int i = 1; i <= 3; i++)\n{\n    total += Helper.Twice(i);\n}\nConsole.WriteLine($\"total {total}\");\nthrow new InvalidOperationException(\"the end\");\n");
+        File.WriteAllText(Path.Combine(project, "Helper.cs"),
+            "static class Helper\n{\n    public static int Twice(int value)\n    {\n        int unused = 1;\n        return value * 2;\n    }\n}\n");
+        return project;
+    }
 
     /// <summary>A folder a test made for itself, removed with the test once the Passengers that worked in it have gone.</summary>
     protected void DeleteAtEnd(string folder) => made.Add(folder);
@@ -471,12 +478,12 @@ public abstract class McpRig : IDisposable
     /// <summary>A working tree under a folder (work), one commit in and Notes.txt changed since, whose origin is a bare
     /// repository beside it (remote.git) that refuses every push when <paramref name="refusing"/>, its pre-receive hook
     /// saying why.</summary>
-    protected static string Repository(string root, bool refusing)
+    protected static async Task<string> RepositoryAsync(string root, bool refusing)
     {
         string remote = Path.Combine(root, "remote.git");
         string work = Path.Combine(root, "work");
         Directory.CreateDirectory(work);
-        TestGit.Run(root, "init", "-q", "--bare", remote);
+        await TestGit.RunAsync(root, "init", "-q", "--bare", remote);
         if (refusing)
         {
             string hook = Path.Combine(remote, "hooks", "pre-receive");
@@ -487,11 +494,16 @@ public abstract class McpRig : IDisposable
             }
         }
         File.WriteAllText(Path.Combine(work, "Notes.txt"), "one\ntwo\nthree\n");
-        TestGit.Init(work);
-        TestGit.Run(work, "remote", "add", "origin", remote);
+        await TestGit.InitAsync(work);
+        await TestGit.RunAsync(work, "remote", "add", "origin", remote);
         File.WriteAllText(Path.Combine(work, "Notes.txt"), "one\n2\nthree\n");
         return work;
     }
+
+    /// <summary><see cref="RepositoryAsync"/> from the UI thread (a window test's body), git run on the thread pool and
+    /// waited for with the window's loop running, never for its work to land.</summary>
+    protected static string Repository(string root, bool refusing) =>
+        Ui.AwaitPumped(Waiting.Apart(() => RepositoryAsync(root, refusing)), $"the repositories made under {root}", TimeSpan.FromMinutes(5));
 
     /// <summary>A folder of the test's own with one text file, which opens with no language server to wait for.</summary>
     protected string Plain(string name)

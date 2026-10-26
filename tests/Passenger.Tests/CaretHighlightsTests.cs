@@ -233,7 +233,6 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
                 $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <OutputType>Library</OutputType>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n</Project>\n");
             File.WriteAllText(PathOf("Totals.cs"), Totals);
             File.WriteAllText(PathOf("Braces.cs"), Braces);
-            Prepare();
         }
     }
 }

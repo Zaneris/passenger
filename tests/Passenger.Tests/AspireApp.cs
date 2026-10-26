@@ -12,7 +12,7 @@ namespace Passenger.Tests;
 /// <summary>Two official, container-free starters, restored together and shared by the window tests.</summary>
 public sealed class AspireApp : SharedProject
 {
-    private static readonly Lazy<string> Hive = new(Install, LazyThreadSafetyMode.ExecutionAndPublication);
+    private static readonly Lazy<Task<string>> Hive = new(InstallAsync, LazyThreadSafetyMode.ExecutionAndPublication);
     public static string TemplatesVersion => AvaloniaApp.Metadata("AspireTemplatesVersion");
     public const string Name = "PassengerAspire";
     public const string CompanionName = "CompanionAspire";
@@ -26,22 +26,24 @@ public sealed class AspireApp : SharedProject
     /// no CLI of the run's own (<see cref="AspireCli.Program"/>); the person's is never run.</summary>
     public const string CliSkipped = "Runs the aspire CLI, the run's own, which the build downloads with Aspire's dashboard and orchestrator (PassengerAspireRuntime=true) on macOS and Linux; the person's is never run";
 
-    public AspireApp() : base("aspire-")
+    public AspireApp() : base("aspire-") => WhyNot = Unavailable;
+
+    /// <summary>The two starters made by Aspire's templates and restored together, unless the machine cannot run them.</summary>
+    public override async ValueTask InitializeAsync()
     {
-        WhyNot = Unavailable;
         if (WhyNot is not null)
         {
             return;
         }
         AvaloniaApp.UseFeed(Folder);
-        Create(PathOf("First"), Name);
-        Create(PathOf("Second"), CompanionName);
+        await CreateAsync(PathOf("First"), Name);
+        await CreateAsync(PathOf("Second"), CompanionName);
         AskedOfTheStarter();
         File.WriteAllText(PathOf("AspireTests.slnx"), "<Solution>\n" + string.Concat(
             new[] { ("First", Name), ("Second", CompanionName) }.SelectMany(app =>
                 new[] { "AppHost", "ApiService", "Web", "ServiceDefaults" }.Select(project =>
                     $"  <Project Path=\"{app.Item1}/{app.Item2}.{project}/{app.Item2}.{project}.csproj\" />\n"))) + "</Solution>\n");
-        Prepare(byRealPath: true);
+        await PrepareAsync(byRealPath: true);
         using JsonDocument assets = JsonDocument.Parse(File.ReadAllText(Path.Combine(Path.GetDirectoryName(Host)!, "obj", "project.assets.json")));
         Assert.True(assets.RootElement.GetProperty("libraries").TryGetProperty("MessagePack/2.5.307", out _),
             $"The {TemplatesVersion} AppHost must restore the fixed MessagePack dependency.");
@@ -151,10 +153,11 @@ public sealed class AspireApp : SharedProject
     }
 
     /// <summary>Generates the pinned upstream starter, without restore or changes to the person's template hive.</summary>
-    public static void Create(string folder, string name)
+    public static async Task CreateAsync(string folder, string name)
     {
-        ChildResult made = Run(["new", "aspire-starter", "--output", folder, "--name", name, "--framework", TestProjects.Framework,
-            "--use-redis-cache", "false", "--skipRestore", "--no-update-check", "--debug:custom-hive", Hive.Value], Path.GetDirectoryName(Hive.Value));
+        string hive = await Hive.Value;
+        ChildResult made = await Run(["new", "aspire-starter", "--output", folder, "--name", name, "--framework", TestProjects.Framework,
+            "--use-redis-cache", "false", "--skipRestore", "--no-update-check", "--debug:custom-hive", hive], Path.GetDirectoryName(hive));
         Assert.True(made.Succeeded, $"The official Aspire starter did not generate:\n{made.Output}{made.Error}");
         AvaloniaApp.UseFeed(folder);
         string hostFolder = Path.Combine(folder, name + ".AppHost");
@@ -311,7 +314,7 @@ public sealed class AspireApp : SharedProject
         File.WriteAllText(FileService, $"File.WriteAllText({JsonSerializer.Serialize(FileServiceRan)}, \"executed\");\n");
     }
 
-    private static string Install()
+    private static async Task<string> InstallAsync()
     {
         string folder = Directory.CreateDirectory(Path.Combine(TestRun.Root, "aspire-templates")).FullName;
         string hive = Path.Combine(folder, "hive");
@@ -325,13 +328,13 @@ public sealed class AspireApp : SharedProject
         Assert.True(File.Exists(sdk), $"Aspire.AppHost.Sdk {TemplatesVersion} is missing at {sdk}; restore the test project first");
         File.Copy(sdk, Path.Combine(AvaloniaApp.Feed, Path.GetFileName(sdk)), overwrite: true);
         AvaloniaApp.UseFeed(folder);
-        ChildResult installed = Run(["new", "install", localPackage, "--debug:custom-hive", hive], folder);
+        ChildResult installed = await Run(["new", "install", localPackage, "--debug:custom-hive", hive], folder);
         Assert.True(installed.Succeeded, $"Aspire templates did not install into the private hive:\n{installed.Output}{installed.Error}");
         return hive;
     }
 
-    private static ChildResult Run(IReadOnlyList<string> arguments, string? folder) => Task.Run(() =>
-        ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(arguments, folder), limit: TimeSpan.FromMinutes(3).Scaled())).GetAwaiter().GetResult();
+    private static Task<ChildResult> Run(IReadOnlyList<string> arguments, string? folder) =>
+        ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(arguments, folder), limit: TimeSpan.FromMinutes(3).Scaled());
 }
 
 /// <summary>The run's own aspire CLI, and the home it and the tests' AppHosts take in place of the person's, since both

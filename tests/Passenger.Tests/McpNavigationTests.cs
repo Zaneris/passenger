@@ -28,6 +28,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     [Fact]
     public async Task An_agent_finds_the_solutions_own_symbols_reads_usages_in_order_and_hears_when_no_symbol_is_where_it_asked()
     {
+        await TakeFolderAsync();
         Write("Words.cs", Words);
         Write("Aaa.cs", Tally);
         await using McpClient client = await Start(["--mcp", Folder]);
@@ -61,6 +62,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     [Fact]
     public async Task An_agent_names_a_symbol_in_place_of_its_place_finds_names_exactly_and_tells_overloads_apart_by_their_documentation_ids()
     {
+        await TakeFolderAsync();
         Write("Words.cs", Words);
         Write("Aaa.cs", Tally);
         await using McpClient client = await Start(["--mcp", Folder]);
@@ -99,6 +101,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     [Fact]
     public async Task An_agent_finds_a_name_itself_first_an_indexer_by_name_reads_a_card_as_plain_text_and_a_fixs_suppressions_counted()
     {
+        await TakeFolderAsync();
         Write("Words.cs", Words);
         Write("Aaa.cs", Tally);
         Write("Shelf.cs", Shelf);

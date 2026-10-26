@@ -55,6 +55,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
     [Fact]
     public async Task An_agents_run_refused_for_anything_but_its_own_failed_build_names_no_build_errors()
     {
+        await TakeFolderAsync();
         Write("Program.cs", "int count = \"three\";\nConsole.WriteLine(count);\n");
         Directory.CreateDirectory(Path.Combine(Folder, "Properties"));
         File.WriteAllText(Path.Combine(Folder, "Properties", "launchSettings.json"), "{\n  \"profiles\": {\n    \"Jobs\": { \"commandName\": \"RetryFailed\" }\n  }\n}\n");
@@ -128,7 +129,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             File.WriteAllText(Path.Combine(repository, "Notes.txt"), "one\ntwo\nthree\n");
-            TestGit.Init(repository);
+            await TestGit.InitAsync(repository);
             File.WriteAllText(Path.Combine(repository, "Notes.txt"), "one\n2\nthree\n");
             File.WriteAllText(Path.Combine(repository, "New.txt"), "new\n");
 
@@ -159,12 +160,12 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             Assert.Equal("main", (await Call(client, McpTools.VcsStatus)).GetProperty("branch").GetString());
 
             string notes = Path.Combine(repository, "Notes.txt");
-            TestGit.Run(repository, "switch", "-q", "-c", "feature");
+            await TestGit.RunAsync(repository, "switch", "-q", "-c", "feature");
             File.WriteAllText(notes, "one\nTWO\nthree\n");
-            TestGit.Run(repository, "commit", "-q", "-am", "Two in capitals");
-            TestGit.Run(repository, "switch", "-q", "main");
+            await TestGit.RunAsync(repository, "commit", "-q", "-am", "Two in capitals");
+            await TestGit.RunAsync(repository, "switch", "-q", "main");
             File.WriteAllText(notes, "one\nII\nthree\n");
-            TestGit.Run(repository, "commit", "-q", "-am", "Two in Roman");
+            await TestGit.RunAsync(repository, "commit", "-q", "-am", "Two in Roman");
             ChildResult merging = await ChildProcesses.RunAsync(ChildProcesses.Command("git", ["merge", "feature"], repository), limit: TimeSpan.FromMinutes(1), cancel: Cancel);
             Assert.False(merging.Succeeded, $"The merge was to stop for its conflict: {merging.Output}");
             JsonElement conflicts = (await Call(client, McpTools.VcsStatus)).GetProperty("conflicts");
@@ -179,8 +180,8 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             JsonElement resolved = await Call(client, McpTools.VcsStatus);
             Assert.True(!resolved.TryGetProperty("conflicts", out JsonElement left) || left.ValueKind == JsonValueKind.Null, $"vcs_status still lists conflicts: {left}");
             await Call(client, McpTools.VcsCommit, new() { ["message"] = "Merge feature" });
-            Assert.Equal(3, TestGit.Run(repository, "rev-list", "--parents", "-n", "1", "HEAD").Split(' ', StringSplitOptions.RemoveEmptyEntries).Length);
-            Assert.Equal("one\nTWO\nthree\n", TestGit.Run(repository, "show", "HEAD:Notes.txt"));
+            Assert.Equal(3, (await TestGit.RunAsync(repository, "rev-list", "--parents", "-n", "1", "HEAD")).Split(' ', StringSplitOptions.RemoveEmptyEntries).Length);
+            Assert.Equal("one\nTWO\nthree\n", await TestGit.RunAsync(repository, "show", "HEAD:Notes.txt"));
 
             // Windows' own PowerShell (5.1, where pwsh is not installed) has no &&, and sh has no PowerShell subexpressions.
             string command = OperatingSystem.IsWindows() ? "echo (6*7); ls" : "echo $((6*7)) && ls";
@@ -219,15 +220,15 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         string root = TestFolders.Create("mcp-push-");
         try
         {
-            string work = Repository(root, refusing: true);
+            string work = await RepositoryAsync(root, refusing: true);
             await using McpClient client = await Start(["--mcp", work]);
             CallToolResult refused = await Result(client, McpTools.VcsCommit, new() { ["message"] = "Two as a number", ["push"] = true });
             string said = Text(refused);
             Assert.True(refused.IsError == true, $"A push the remote refused was answered as done: {said}");
             Assert.Contains("pre-receive hook declined", said, StringComparison.Ordinal);
             Assert.Contains("pushes are closed here", said, StringComparison.Ordinal);
-            Assert.Equal("Two as a number", TestGit.Run(work, "log", "-1", "--format=%s").Trim());
-            Assert.True(TestGit.Run(Path.Combine(root, "remote.git"), "for-each-ref", "refs/heads").Trim().Length == 0, "The remote took the push it refused");
+            Assert.Equal("Two as a number", (await TestGit.RunAsync(work, "log", "-1", "--format=%s")).Trim());
+            Assert.True((await TestGit.RunAsync(Path.Combine(root, "remote.git"), "for-each-ref", "refs/heads")).Trim().Length == 0, "The remote took the push it refused");
         }
         finally
         {
@@ -251,7 +252,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         {
             // As `some-daemon &` in a profile: the job keeps the shell's output open long after the shell has ended.
             string used = ProfileGit(home, "sleep 300 &\n");
-            TestGit.Run(repository, "init", "-q");
+            await TestGit.RunAsync(repository, "init", "-q");
             await using McpClient client = await Start(["--mcp", repository], environment: Launchd(home));
             await Call(client, McpTools.VcsStatus);
             Assert.True(File.Exists(used), "With a job its profile left running, Passenger never took the login shell's PATH, and ran a git other than the one it finds");
@@ -291,6 +292,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
     [Fact]
     public async Task An_agent_lists_every_action_the_ide_declares_and_one_it_runs_says_why_when_it_cannot()
     {
+        await TakeFolderAsync();
         await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
         string[] listed = [.. (await Call(client, McpTools.IdeActions)).EnumerateArray().Select(a => a.GetString()!)];
         HashSet<string> ids = [.. listed.Select(line => line[..line.IndexOf(": ", StringComparison.Ordinal)])];
@@ -336,6 +338,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
     [Fact]
     public async Task An_agent_publishes_a_project_and_is_told_the_folder_it_landed_in_or_why_not()
     {
+        await TakeFolderAsync();
         await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
         JsonElement published = await Call(client, McpTools.Build, new() { ["publish"] = "Sum" });
         Assert.True(published.GetProperty("succeeded").GetBoolean(), $"The publish ended: {published}");

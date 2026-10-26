@@ -1272,14 +1272,18 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         public Gallery()
             : base("xaml-")
         {
-            TestFolders.Prepare(() => Make(Folder), Folder);
-            Prepare();
+        }
+
+        public override async ValueTask InitializeAsync()
+        {
+            await TestFolders.PrepareAsync(() => MakeAsync(Folder), Folder);
+            await PrepareAsync();
         }
 
         /// <summary>Makes the app in a folder, not yet restored.</summary>
-        internal static void Make(string folder)
+        internal static async Task MakeAsync(string folder)
         {
-            AvaloniaApp.Create(folder, "Gallery");
+            await AvaloniaApp.CreateAsync(folder, "Gallery");
             Directory.CreateDirectory(Path.Combine(folder, "ViewModels"));
             Directory.CreateDirectory(Path.Combine(folder, "Styles"));
             Directory.CreateDirectory(Path.Combine(folder, "Assets"));

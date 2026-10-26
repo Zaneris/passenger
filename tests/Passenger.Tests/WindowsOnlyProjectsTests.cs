@@ -134,17 +134,18 @@ public sealed class WindowsOnlyProjectsTests : IClassFixture<WindowsOnlyProjects
 
     /// <summary>The two apps as dotnet new made them, in a solution, with the run's local feed and no restore: each with a
     /// probe that makes one of its framework's controls and says one #warning.</summary>
-    public sealed class Apps : IDisposable
+    public sealed class Apps : IAsyncLifetime
     {
         private readonly Dictionary<string, string> made = new(StringComparer.Ordinal);
 
-        public Apps()
+        public Apps() => Folder = TestFolders.Create("windows-only-");
+
+        public async ValueTask InitializeAsync()
         {
-            Folder = TestFolders.Create("windows-only-");
-            TestFolders.Prepare(() =>
+            await TestFolders.PrepareAsync(async () =>
             {
-                WpfApp.Create(PathOf("Gallery"), "Gallery", asMade: true);
-                WpfApp.CreateWindowsForms(PathOf("Forms"), "Forms");
+                await WpfApp.CreateAsync(PathOf("Gallery"), "Gallery", asMade: true);
+                await WpfApp.CreateWindowsFormsAsync(PathOf("Forms"), "Forms");
                 AvaloniaApp.UseFeed(Folder);
                 File.WriteAllText(PathOf("Desktop.slnx"), "<Solution>\n  <Project Path=\"Gallery/Gallery.csproj\" />\n  <Project Path=\"Forms/Forms.csproj\" />\n</Solution>\n");
                 foreach (string file in Directory.EnumerateFiles(Folder, "*", SearchOption.AllDirectories))
@@ -178,6 +179,10 @@ public sealed class WindowsOnlyProjectsTests : IClassFixture<WindowsOnlyProjects
             Assert.True(props.Length == 0, $"Passenger wrote {string.Join(", ", props)} into the solution");
         }
 
-        public void Dispose() => TestFolders.Delete(Folder);
+        public ValueTask DisposeAsync()
+        {
+            TestFolders.Delete(Folder);
+            return ValueTask.CompletedTask;
+        }
     }
 }

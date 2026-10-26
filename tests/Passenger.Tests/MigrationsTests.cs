@@ -401,9 +401,25 @@ internal static class ShopApp
 
     /// <summary>The app in a folder of its own: the Design package or not, the local tool at a version or none, the stand-in
     /// provider at a version (its versions in a feed of the test's own, each with the range of EF Core it supports), and a
-    /// Program.cs of the test's in place of the shop's.</summary>
+    /// Program.cs of the test's in place of the shop's; restored from the UI thread (a window test's body), the window's
+    /// loop running meanwhile.</summary>
     public static string Make(bool design, string? tool, string? provider = null, IReadOnlyList<(string Version, string Range)>? providers = null, string? program = null,
         string? ef = null)
+    {
+        string folder = Write(design, tool, provider, providers, program, ef);
+        Restore.Run(Path.Combine(folder, "Shop.csproj"));
+        return folder;
+    }
+
+    /// <inheritdoc cref="Make"/>
+    public static async Task<string> MakeAsync(bool design, string? tool)
+    {
+        string folder = Write(design, tool, null, null, null, null);
+        await Restore.RunAsync(Path.Combine(folder, "Shop.csproj"));
+        return folder;
+    }
+
+    private static string Write(bool design, string? tool, string? provider, IReadOnlyList<(string Version, string Range)>? providers, string? program, string? ef)
     {
         ef ??= Version;
         string folder = TestFolders.Create("shop");
@@ -465,7 +481,6 @@ internal static class ShopApp
 
                 """);
         }
-        Restore.Run(Path.Combine(folder, "Shop.csproj"));
         return folder;
     }
 

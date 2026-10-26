@@ -501,7 +501,6 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
             {
                 Directory.CreateDirectory(Path.Combine(made, "bin"));
             }
-            Prepare();
         }
     }
 

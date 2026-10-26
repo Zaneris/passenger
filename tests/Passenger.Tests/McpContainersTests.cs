@@ -24,6 +24,7 @@ public sealed class McpContainersTests : McpRig, IClassFixture<RestoredFolders>
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         string name = Docker.Container("agent", "echo agent-hello; trap 'exit 0' TERM; while true; do sleep 1; done");
+        await TakeFolderAsync();
         await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
 
         JsonElement listed = await Call(client, McpTools.Containers);

@@ -15,7 +15,7 @@ public sealed class McpRequestsTests : McpRig
         using HeldPort port = new();
         string shop = TestFolders.Create("mcprequests-");
         DeleteAtEnd(shop);
-        LiveRequestsTests.WriteShop(shop, port.Port);
+        await LiveRequestsTests.WriteShopAsync(shop, port.Port);
         await using McpClient client = await Start(["--mcp", shop]);
         port.LetGo(Path.Combine(shop, "gate"));
         await Call(client, McpTools.Run, new() { ["configuration"] = "Shop: http", ["waitSeconds"] = 5 });

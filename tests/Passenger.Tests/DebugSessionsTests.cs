@@ -581,7 +581,6 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
             // The first builds make bin, which a reset would take for a file the test added: made now, the folder stays as reset.
             Directory.CreateDirectory(PathOf(Path.Combine("First", "bin")));
             Directory.CreateDirectory(PathOf(Path.Combine("Second", "bin")));
-            Prepare();
         }
 
         public static void WriteTo(string folder)

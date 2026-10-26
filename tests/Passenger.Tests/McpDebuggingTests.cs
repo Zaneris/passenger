@@ -21,6 +21,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
     [Fact]
     public async Task An_agent_with_a_windowless_Passenger_finds_code_reads_its_warnings_and_debugs_it()
     {
+        await TakeFolderAsync();
         // A name that has the one asked for in it, in a file the server reads before Helper.cs.
         Write("Aaa.cs", "static class Aaa\n{\n    public static int TwiceMore(int value) => value;\n}\n");
         await using McpClient client = await Start(["--mcp", Folder]);
@@ -150,7 +151,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
     {
         string tests = PathNames.Canonical(TestFolders.Create("mcp-debug-tests-"));
         DeleteAtEnd(tests);
-        TestFolders.Prepare(() =>
+        await TestFolders.PrepareAsync(async () =>
         {
             File.WriteAllText(Path.Combine(tests, "Sums.Tests.csproj"),
                 $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n    <ImplicitUsings>enable</ImplicitUsings>\n  </PropertyGroup>\n" +
@@ -159,7 +160,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
             File.WriteAllText(Path.Combine(tests, "SumTests.cs"),
                 "using Xunit;\n\nnamespace Sums.Tests;\n\npublic class SumTests\n{\n    [Fact]\n    public void Two_and_two_make_four()\n    {\n        int sum = 2 + 2;\n" +
                 "        Assert.Equal(4, sum);\n    }\n\n    [Fact]\n    public void Two_and_two_make_five() => Assert.Equal(5, 2 + 2);\n}\n");
-            Restore.Run(tests);
+            await Restore.RunAsync(tests);
         }, tests);
         await using McpClient client = await Start(["--mcp", tests], languageServer: false);
         await Call(client, McpTools.BreakpointSet, new() { ["path"] = "SumTests.cs", ["line"] = 10 });
@@ -187,6 +188,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
     public async Task An_agents_stop_ends_a_debug_session_whose_program_is_still_starting()
     {
         using Debugging.Helpers.StartHold hold = new();
+        await TakeFolderAsync();
         Directory.CreateDirectory(Path.Combine(Folder, "Properties"));
         File.WriteAllText(Path.Combine(Folder, "Properties", "launchSettings.json"), JsonSerializer.Serialize(new Dictionary<string, object>
         {
@@ -225,6 +227,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
     [Fact]
     public async Task A_call_that_takes_a_while_tells_its_agent_what_it_is_doing_and_nothing_reaches_standard_error()
     {
+        await TakeFolderAsync();
         Write("Program.cs", "Console.WriteLine(\"waiting\");\nThread.Sleep(Timeout.Infinite);\n");
         await using McpClient client = await Start(["--mcp", Folder]);
         Heard heard = new();

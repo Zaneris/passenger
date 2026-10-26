@@ -23,6 +23,7 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
     [Fact]
     public async Task An_agent_finds_text_in_the_windows_scopes_reverts_a_file_through_local_history_and_reads_problems_and_the_build_window()
     {
+        await TakeFolderAsync();
         const string helper = "static class Helper\n{\n    public static int Twice(int value)\n    {\n        int unused = 1;\n        return value * 2;\n    }\n}\n";
         Write("Bad.cs", "class Bad\n{\n    public int Count = \"none\";\n}\n");
         Write("Notes.txt", "one two\ntwo three\n");
@@ -188,13 +189,13 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
     {
         string blazor = PathNames.Canonical(TestFolders.Create("mcp-razor-"));
         DeleteAtEnd(blazor);
-        TestFolders.Prepare(() =>
+        await TestFolders.PrepareAsync(async () =>
         {
-            BlazorApp.Create(blazor);
+            await BlazorApp.CreateAsync(blazor);
             File.WriteAllText(Path.Combine(blazor, "Components", "Sum.razor"),
                 "<p>@Total</p>\n\n@code {\n    private int Total => Twice(21);\n\n    private static int Twice(int value) => value * 2;\n}\n");
             File.WriteAllText(Path.Combine(blazor, "Components", "Broken.razor"), "<p>@Missing</p>\n");
-            Restore.Run(blazor);
+            await Restore.RunAsync(blazor);
         }, blazor);
         await using McpClient client = await Start(["--mcp", blazor]);
 
@@ -228,6 +229,7 @@ public sealed class McpIdeProfilingTests : McpRig, IClassFixture<RestoredFolders
     [Fact]
     public async Task An_agent_profiles_a_program_already_running_and_leaves_it_running()
     {
+        await TakeFolderAsync();
         Write("Program.cs", $"File.WriteAllText(Path.Combine(@\"{Folder}\", \"spin.pid\"), Environment.ProcessId.ToString());\n"
             + "long turns = 0;\nwhile (true)\n{\n    turns = Spin.Turn(turns);\n}\n\n"
             + $"/* Pasted:{(char)0x2028}a{(char)0x2029}b{(char)0x85}c\rd */\nstatic class Spin\n{{\n    public static long Turn(long turns) => turns + 1;\n}}\n");

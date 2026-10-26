@@ -199,6 +199,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
     [Fact]
     public async Task An_agent_that_writes_a_file_and_at_once_changes_a_signature_or_renames_what_it_calls_has_the_change_made_in_what_it_wrote()
     {
+        await TakeFolderAsync();
         Shop(("Calc.cs", Calc), ("Till.cs", Till), ("Report.cs", Report));
         await using McpClient client = await Start(["--mcp", Folder]);
         // Described first, so the server has read the files as the agent found them.

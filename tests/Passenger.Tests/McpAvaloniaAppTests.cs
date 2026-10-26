@@ -19,23 +19,28 @@ namespace Passenger.Tests;
 /// the tests' own Avalonia and restored. Headless, so nothing of it shows on the screen. Its window's tag holds a lone '\r',
 /// which XamlIl counts as a line's end and the editor does not, so every place below it the app reports is a line on from
 /// the editor's, and an agent is told the editor's.</summary>
-public sealed class AgentAppFolder : IDisposable
+public sealed class AgentAppFolder : IAsyncLifetime
 {
     public AgentAppFolder()
     {
         Folder = PathNames.Canonical(TestFolders.Create("agentapp-"));
-        TestFolders.Prepare(() =>
-        {
-            AvaloniaApp.Debuggee(Folder, "AgentApp");
-            string xaml = Path.Combine(Folder, "MainWindow.axaml");
-            File.WriteAllText(xaml, File.ReadAllText(xaml).Replace("Title=\"Agent App\" Width", "Title=\"Agent App\"\r        Width", StringComparison.Ordinal));
-            Restore.Run(Folder);
-        }, Folder);
     }
+
+    public ValueTask InitializeAsync() => new(TestFolders.PrepareAsync(async () =>
+    {
+        AvaloniaApp.Debuggee(Folder, "AgentApp");
+        string xaml = Path.Combine(Folder, "MainWindow.axaml");
+        File.WriteAllText(xaml, File.ReadAllText(xaml).Replace("Title=\"Agent App\" Width", "Title=\"Agent App\"\r        Width", StringComparison.Ordinal));
+        await Restore.RunAsync(Folder);
+    }, Folder));
 
     public string Folder { get; }
 
-    public void Dispose() => TestFolders.Delete(Folder);
+    public ValueTask DisposeAsync()
+    {
+        TestFolders.Delete(Folder);
+        return ValueTask.CompletedTask;
+    }
 }
 
 /// <summary>Agents testing the Avalonia app Passenger runs as a person would: they look at it through the pictures it draws

@@ -23,7 +23,7 @@ namespace Passenger.Tests;
 /// language server unless the test's edits go into the program debugged (Hot Reload works them out in the server), the
 /// debugger and the file's own parse answering the rest. Debugged, and the console's answers timed, so run alone.</summary>
 [Collection(Alone.Name)]
-public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixture<DebuggerTests.Sleeper>, IClassFixture<RestoredFolders>, IDisposable
+public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixture<DebuggerTests.Sleeper>, IClassFixture<RestoredFolders>, IAsyncLifetime
 {
     private readonly Sum sum;
     private readonly Sleeper sleeper;
@@ -37,16 +37,22 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         this.sum = sum;
         this.sleeper = sleeper;
         this.folders = folders;
-        sum.Reset();
-        sleeper.Reset();
     }
 
-    public void Dispose()
+    /// <summary>The shared projects as written for the test, on whichever thread it runs (a window test's, or one of its own).</summary>
+    public async ValueTask InitializeAsync()
+    {
+        await sum.ResetAsync();
+        await sleeper.ResetAsync();
+    }
+
+    public ValueTask DisposeAsync()
     {
         if (fresh is not null)
         {
             TestFolders.Delete(fresh);
         }
+        return ValueTask.CompletedTask;
     }
 
     /// <summary>The folder the test debugs: its own once it has taken one, else the class's Sum.</summary>
@@ -2062,7 +2068,6 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             File.WriteAllText(PathOf("Program.cs"), "File.WriteAllText(args[0], Environment.ProcessId.ToString());\nConsole.WriteLine(\"stopped here\");\nThread.Sleep(Timeout.Infinite);\n");
             // The first build makes bin, which a reset would take for a file the test added: made now, the folder stays as reset.
             Directory.CreateDirectory(PathOf("bin"));
-            Prepare();
         }
     }
 
@@ -2075,7 +2080,6 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             WriteTo(Folder);
             // The first build makes bin, which a reset would take for a file the test added: made now, the folder stays as reset.
             Directory.CreateDirectory(PathOf("bin"));
-            Prepare();
         }
 
         public static void WriteTo(string folder)

@@ -565,12 +565,17 @@ public sealed class WpfPreviewTests : IClassFixture<WpfPreviewTests.Gallery>
         public Gallery()
             : base("wpfpreview-")
         {
+        }
+
+        /// <summary>WPF's gallery, made and restored on Windows alone, where its previewer runs.</summary>
+        public override async ValueTask InitializeAsync()
+        {
             if (!OperatingSystem.IsWindows())
             {
                 return;
             }
-            TestFolders.Prepare(() => WpfXamlTests.Gallery.Make(Folder), Folder);
-            Prepare();
+            await TestFolders.PrepareAsync(() => WpfXamlTests.Gallery.MakeAsync(Folder), Folder);
+            await PrepareAsync();
         }
     }
 }

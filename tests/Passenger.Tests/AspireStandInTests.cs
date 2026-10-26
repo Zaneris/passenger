@@ -2088,7 +2088,6 @@ public sealed class StandInAppHost : SharedProject
 
             """);
         TestFolders.Write(Folder, "StandIn.slnx", $"<Solution>\n  <Project Path=\"{Name}/{Name}.csproj\" />\n  <Project Path=\"{Api}/{Api}.csproj\" />\n</Solution>\n");
-        Prepare();
     }
 
     public string ProjectFile => PathOf($"{Name}/{Name}.csproj");

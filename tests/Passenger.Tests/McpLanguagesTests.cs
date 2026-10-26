@@ -352,14 +352,14 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         {
             if (folders.Count == 0)
             {
-                (string Name, Action<string> Write)[] kinds = [("mcpaxaml-", Avalonia), ("mcpaspire-", Aspire), ("mcpwxaml-", Wpf), ("mcproutes-", Routes)];
+                (string Name, Func<string, Task> Write)[] kinds = [("mcpaxaml-", Avalonia), ("mcpaspire-", Aspire), ("mcpwxaml-", Wpf), ("mcproutes-", Routes)];
                 try
                 {
-                    foreach ((string kind, Action<string> write) in kinds)
+                    foreach ((string kind, Func<string, Task> write) in kinds)
                     {
                         string folder = PathNames.Canonical(TestFolders.Unowned(kind));
                         folders[kind] = folder;
-                        write(folder);
+                        await write(folder);
                     }
                     await Task.WhenAll(folders.Values.Select(Restore.RunAsync));
                 }
@@ -388,7 +388,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
             }
         }
 
-        private static void Avalonia(string made)
+        private static Task Avalonia(string made)
         {
             File.WriteAllText(Path.Combine(made, "Gallery.csproj"), AvaloniaApp.HeadlessProject());
             Directory.CreateDirectory(Path.Combine(made, "ViewModels"));
@@ -403,24 +403,24 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
             File.WriteAllText(Path.Combine(made, "MainWindow.axaml"), XamlTests.Gallery.Window.Replace(
                 "<TextBlock Text=\"{Binding #Go.Content}\" />", "<TextBlock Text=\"{Binding #Go.Content}\" />\n        <TextBlock Text=\"{Binding Subtitle}\" />", StringComparison.Ordinal));
             File.WriteAllText(Path.Combine(made, "MainWindow.axaml.cs"), XamlTests.Gallery.CodeBehind);
+            return Task.CompletedTask;
         }
 
-        private static void Aspire(string made)
+        private static Task Aspire(string made)
         {
             AspireCodeHelpTests.Project.WriteTo(made, AspireSecretsId);
             File.WriteAllText(Path.Combine(made, "Host", "Program.cs"), AspireCodeHelpTests.Project.Host.Replace("builder.Build().Run();",
                 "var password = builder.AddParameter(\"password\", secret: true);\nbuilder.Build().Run();", StringComparison.Ordinal));
             AspireApp.UseFeed(made);
+            return Task.CompletedTask;
         }
 
-        private static void Wpf(string made)
-        {
-            WpfXamlTests.Gallery.Make(made);
-        }
+        private static Task Wpf(string made) => WpfXamlTests.Gallery.MakeAsync(made);
 
-        private static void Routes(string made)
+        private static Task Routes(string made)
         {
             WebRoutesTests.WriteShop(made, 5557);
+            return Task.CompletedTask;
         }
     }
 

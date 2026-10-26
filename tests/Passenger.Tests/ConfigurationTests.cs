@@ -376,7 +376,6 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
                 }
 
                 """);
-            Prepare();
         }
     }
 }

@@ -350,8 +350,22 @@ public sealed class LiveRequestsTests
     }
 
     /// <summary>The shop written into a folder and restored from the run's local feed, its launch profile serving at the port
-    /// given: this class's and an agent's test of the requests (McpRequestsTests).</summary>
+    /// given: this class's and an agent's test of the requests (McpRequestsTests); restored from the UI thread, the
+    /// window's loop running meanwhile.</summary>
     internal static void WriteShop(string folder, int port)
+    {
+        Write(folder, port);
+        Restore.Run(folder);
+    }
+
+    /// <inheritdoc cref="WriteShop"/>
+    internal static Task WriteShopAsync(string folder, int port)
+    {
+        Write(folder, port);
+        return Restore.RunAsync(folder);
+    }
+
+    private static void Write(string folder, int port)
     {
         AvaloniaApp.UseFeed(folder);
         TestFolders.Write(folder, "Shop.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>", "<Nullable>enable</Nullable>")
@@ -359,7 +373,6 @@ public sealed class LiveRequestsTests
         TestFolders.Write(folder, "Properties/launchSettings.json",
             $"{{\n  \"profiles\": {{\n    \"http\": {{ \"commandName\": \"Project\", \"applicationUrl\": \"http://127.0.0.1:{port}\" }}\n  }}\n}}\n");
         TestFolders.Write(folder, "Program.cs", Program);
-        Restore.Run(folder);
     }
 
     internal static string Get(HttpClient client, string url) => Task.Run(() => client.GetStringAsync(url)).GetAwaiter().GetResult();

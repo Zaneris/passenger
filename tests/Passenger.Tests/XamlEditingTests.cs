@@ -700,9 +700,13 @@ public sealed class XamlEditingTests : IClassFixture<XamlEditingTests.AvaloniaGa
         public AvaloniaGallery()
             : base("xaml-editing-")
         {
-            TestFolders.Prepare(() =>
+        }
+
+        public override async ValueTask InitializeAsync()
+        {
+            await TestFolders.PrepareAsync(async () =>
             {
-                XamlTests.Gallery.Make(Folder);
+                await XamlTests.Gallery.MakeAsync(Folder);
                 File.WriteAllText(PathOf("ViewModels/ShopViewModel.cs"), ShopViewModel);
                 File.WriteAllText(PathOf("ViewModels/TillViewModel.cs"), TillViewModel);
                 File.WriteAllText(PathOf("Mvvm.cs"), Mvvm);
@@ -734,7 +738,7 @@ public sealed class XamlEditingTests : IClassFixture<XamlEditingTests.AvaloniaGa
                 File.WriteAllText(PathOf("ShopView.axaml.cs"), "using Avalonia.Controls;\n\nnamespace Gallery;\n\npublic partial class ShopView : UserControl\n{\n}\n");
                 Localize(this, "Avalonia");
             }, Folder);
-            Prepare();
+            await PrepareAsync();
         }
     }
 
@@ -745,9 +749,13 @@ public sealed class XamlEditingTests : IClassFixture<XamlEditingTests.AvaloniaGa
         public WpfGallery()
             : base("wpf-editing-")
         {
-            TestFolders.Prepare(() =>
+        }
+
+        public override async ValueTask InitializeAsync()
+        {
+            await TestFolders.PrepareAsync(async () =>
             {
-                WpfXamlTests.Gallery.Make(Folder);
+                await WpfXamlTests.Gallery.MakeAsync(Folder);
                 File.WriteAllText(PathOf("ViewModels/ShopViewModel.cs"), ShopViewModel);
                 File.WriteAllText(PathOf("Mvvm.cs"), Mvvm);
                 File.WriteAllText(PathOf("ShopView.xaml"), """
@@ -768,7 +776,7 @@ public sealed class XamlEditingTests : IClassFixture<XamlEditingTests.AvaloniaGa
                 File.WriteAllText(PathOf("ShopView.xaml.cs"), "using System.Windows.Controls;\n\nnamespace Gallery;\n\npublic partial class ShopView : UserControl\n{\n}\n");
                 Localize(this, "WPF");
             }, Folder);
-            Prepare();
+            await PrepareAsync();
         }
     }
 }

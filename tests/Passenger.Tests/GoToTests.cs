@@ -281,7 +281,6 @@ public sealed class GoToTests : IClassFixture<GoToTests.Project>
                 TestProjects.Console());
             File.WriteAllText(PathOf("Shapes.cs"), Shapes);
             File.WriteAllText(PathOf("Program.cs"), Program);
-            Prepare();
         }
 
         /// <summary>A window on the project with a file open and its editor focused, once C# is ready.</summary>

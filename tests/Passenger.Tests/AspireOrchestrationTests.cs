@@ -260,7 +260,6 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
     {
         public Project() : base("aspire-orchestration-")
         {
-            InstallTemplates();
             Put("Directory.Build.props", "<Project><PropertyGroup><AspireUseCliBundle>false</AspireUseCliBundle></PropertyGroup></Project>");
             Put("Shop.slnx", "<Solution><Project Path=\"Api/Api.csproj\" /><Project Path=\"Plain/Plain.csproj\" /><Project Path=\"Host/Host.csproj\" /><Project Path=\"Defaults/Defaults.csproj\" /><Project Path=\"WindowsDefaults/WindowsDefaults.csproj\" /></Solution>");
             foreach (string name in (string[])["Api", "Plain"])
@@ -276,27 +275,33 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
                 </Project>
                 """);
             Put("Host/Program.cs", "using Aspire.Hosting;\nvar builder = DistributedApplication.CreateBuilder(args);\nvar api = builder.AddProject(projectPath: \"../Api/Api.csproj\", name: \"api\");\nbuilder.Build().Run();\n");
+        }
+
+        /// <summary>The pinned Aspire templates installed, the ServiceDefaults projects made by them, and the solution restored.</summary>
+        public override async ValueTask InitializeAsync()
+        {
+            await InstallTemplates();
             foreach ((string name, string framework) in new[] { ("Defaults", TestProjects.Framework), ("WindowsDefaults", TestProjects.Framework + "-windows") })
             {
-                ChildResult made = Task.Run(() => ChildProcesses.RunAsync(ProjectTemplates.NewCommand(
+                ChildResult made = await ChildProcesses.RunAsync(ProjectTemplates.NewCommand(
                     ["aspire-servicedefaults", "--name", name, "--output", PathOf(name), "--framework", TestProjects.Framework, "--no-restore", "--no-update-check"], Folder),
-                    limit: TimeSpan.FromMinutes(3))).GetAwaiter().GetResult();
+                    limit: TimeSpan.FromMinutes(3));
                 Assert.True(made.Succeeded, $"Could not create real ServiceDefaults fixture: {made.Output}{made.Error}");
                 string path = PathOf($"{name}/{name}.csproj");
                 string text = File.ReadAllText(path);
                 File.WriteAllText(path, text.Replace($">{TestProjects.Framework}<", $">{framework}<", StringComparison.Ordinal));
             }
             AspireApp.UseFeed(Folder);
-            Prepare(byRealPath: true);
+            await PrepareAsync(byRealPath: true);
         }
 
-        private void InstallTemplates()
+        private async Task InstallTemplates()
         {
             string version = AvaloniaApp.Metadata("AspireTemplatesVersion").ToLowerInvariant();
             string package = Path.Combine(AvaloniaApp.Metadata("NuGetPackageRoot"), "aspire.projecttemplates", version, $"aspire.projecttemplates.{version}.nupkg");
             Assert.True(File.Exists(package), $"Restore the test project first: pinned Aspire templates are missing at {package}");
-            ChildResult installed = Task.Run(() => ChildProcesses.RunAsync(ProjectTemplates.NewCommand(
-                ["install", package, "--force"], Folder), limit: TimeSpan.FromMinutes(3))).GetAwaiter().GetResult();
+            ChildResult installed = await ChildProcesses.RunAsync(ProjectTemplates.NewCommand(
+                ["install", package, "--force"], Folder), limit: TimeSpan.FromMinutes(3));
             Assert.True(installed.Succeeded, $"Could not install pinned Aspire templates in the test sandbox: {installed.Output}{installed.Error}");
             ProjectTemplates.Forget();
         }

@@ -393,7 +393,6 @@ public sealed class LocalizationTests : IClassFixture<LocalizationTests.Project>
             TestFolders.Write(Folder, "Shop/Strings.cs", Strings);
             TestFolders.Write(Folder, "Shop/Strings.resx", Resx(oneLine: false, ("Farewell", "Farewell"), ("Hello", "Hello there"), ("Later", "See you later")));
             TestFolders.Write(Folder, "Shop/xlf/Strings.fr.xlf", Xliff);
-            Prepare();
         }
 
         internal static string Resx(bool oneLine, params (string Name, string Value)[] entries) =>

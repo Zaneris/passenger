@@ -349,9 +349,10 @@ public sealed class FindInFilesScopeTests : IClassFixture<FindInFilesScopeTests.
             Put("Lib/Money.cs", "record Money(decimal Total);\n");
             Put("Lib/Money.g.cs", "// generated: total\n");
             Put("docs/total.md", "total\n");
-            // Never restored: no window of the class starts a language server, and the scopes are the projects as evaluated.
-            Prepare(restore: false);
         }
+
+        /// <summary>Never restored: no window of the class starts a language server, and the scopes are the projects as evaluated.</summary>
+        public override ValueTask InitializeAsync() => new(PrepareAsync(restore: false));
 
         private void Put(string relative, string text)
         {
