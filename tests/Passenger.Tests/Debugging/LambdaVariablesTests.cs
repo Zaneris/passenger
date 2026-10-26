@@ -13,25 +13,24 @@ public class LambdaVariablesTests(ITestOutputHelper testOutputHelper)
     public async Task A_stop_in_a_lambda_lists_the_variables_in_its_scope()
     {
         bool startSuspended = true;
-        using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
+        await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
 
         await debugProtocolHost
-            .WithInitializeRequest()
-            .WithAttachRequest(p2.Id)
+            .InitializeAsync()
+            .AttachAsync(p2.Id)
             .WaitForInitializedEvent();
-        debugProtocolHost
-            .WithBreakpointsRequest([InnerReturn], Debuggees.Source("DebuggableConsoleApp", "Lambdas", "MyLambdaClass.cs"))
-            .WithConfigurationDoneRequest()
-            .WithOptionalResumeRuntime(p2.Id, startSuspended);
+        await debugProtocolHost
+            .BreakpointsAsync([InnerReturn], Debuggees.Source("DebuggableConsoleApp", "Lambdas", "MyLambdaClass.cs"))
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(p2.Id, startSuspended);
 
         StoppedEvent stoppedEvent = await debugProtocolHost.WaitForStoppedEvent();
         (string filePath, int line, int column) stopInfo = stoppedEvent.ReadStopInfo();
         Assert.EndsWith("MyLambdaClass.cs", stopInfo.filePath);
         Assert.Equal(InnerReturn, stopInfo.line);
 
-        debugProtocolHost
-            .WithStackTraceRequest(stoppedEvent.ThreadId!.Value, out StackTraceResponse? stackTraceResponse)
-            .WithScopesRequest(stackTraceResponse.StackFrames!.First().Id, out ScopesResponse? scopesResponse);
+        StackTraceResponse? stackTraceResponse = await debugProtocolHost.StackTraceAsync(stoppedEvent.ThreadId!.Value);
+        ScopesResponse? scopesResponse = await debugProtocolHost.ScopesAsync(stackTraceResponse.StackFrames!.First().Id);
 
         Assert.Single(scopesResponse.Scopes);
         DapScope scope = scopesResponse.Scopes.Single();
@@ -52,7 +51,7 @@ public class LambdaVariablesTests(ITestOutputHelper testOutputHelper)
 
         ];
 
-        debugProtocolHost.WithVariablesRequest(scope.VariablesReference, out List<DapVariable>? variables);
+        List<DapVariable>? variables = await debugProtocolHost.VariablesAsync(scope.VariablesReference);
 
         Assert.Equal(11, variables.Count);
         variables.ShouldBeEquivalentToDebuggerVariables(expectedVariables);

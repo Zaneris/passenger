@@ -15,35 +15,35 @@ public class Variables2Tests(ITestOutputHelper testOutputHelper)
     [Fact]
     public async Task A_float_and_a_double_read_as_CSharp_writes_them_under_a_German_culture_and_take_back_the_text_shown()
     {
-        using DebugSession host = DebugSession.ForLaunch(testOutputHelper, environment: new Dictionary<string, string> { ["LANG"] = "de_DE.UTF-8", ["LC_ALL"] = "de_DE.UTF-8" });
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper, environment: new Dictionary<string, string> { ["LANG"] = "de_DE.UTF-8", ["LC_ALL"] = "de_DE.UTF-8" });
         await host
-            .WithInitializeRequest()
-            .WithLaunchRequest(Debuggees.Program("DebuggableConsoleApp"), stopAtEntry: false, justMyCode: true)
+            .InitializeAsync()
+            .LaunchAsync(Debuggees.Program("DebuggableConsoleApp"), stopAtEntry: false, justMyCode: true)
             .WaitForInitializedEvent();
-        host.WithBreakpointsRequest(TestEnd, Debuggees.Source("DebuggableConsoleApp", "VariablesClass.cs"))
-            .WithConfigurationDoneRequest();
+        await host.BreakpointsAsync(TestEnd, Debuggees.Source("DebuggableConsoleApp", "VariablesClass.cs"))
+            .ConfigurationDoneAsync();
         StoppedEvent stopped = await host.WaitForStoppedEvent();
-        host.WithStackTraceRequest(stopped.ThreadId!.Value, out StackTraceResponse? frames)
-            .WithScopesRequest(frames.StackFrames.First().Id, out ScopesResponse? scopes)
-            .WithVariablesRequest(scopes.Scopes.Single().VariablesReference, out List<DapVariable>? locals);
+        StackTraceResponse? frames = await host.StackTraceAsync(stopped.ThreadId!.Value);
+        ScopesResponse? scopes = await host.ScopesAsync(frames.StackFrames.First().Id);
+        List<DapVariable>? locals = await host.VariablesAsync(scopes.Scopes.Single().VariablesReference);
         int frame = frames.StackFrames.First().Id;
 
         Assert.Equal(("1.5", "2.5", "3.5"), (Shown("localFloat"), Shown("localDouble"), Shown("localDecimal")));
-        Assert.Equal("3.14", Set("localDouble", "3.14"));
-        Assert.Equal("3.14", Set("localFloat", "3.14f"));
+        Assert.Equal("3.14", await Set("localDouble", "3.14"));
+        Assert.Equal("3.14", await Set("localFloat", "3.14f"));
         // C# writes neither a float's nor a decimal's literal as shown, but Set Value takes the text shown.
-        string pi = Set("localDouble", "Math.PI");
+        string pi = await Set("localDouble", "Math.PI");
         Assert.Equal("3.141592653589793", pi);
-        Assert.Equal("0", Set("localDouble", "0"));
-        Assert.Equal(pi, Set("localDouble", pi));
-        string third = Set("localFloat", "1f / 3");
+        Assert.Equal("0", await Set("localDouble", "0"));
+        Assert.Equal(pi, await Set("localDouble", pi));
+        string third = await Set("localFloat", "1f / 3");
         Assert.Equal("0.33333334", third);
-        Assert.Equal("0", Set("localFloat", "0"));
-        Assert.Equal(third, Set("localFloat", third));
-        Assert.Equal("2.75", Set("localDecimal", "2.75"));
-        Assert.Equal("-1E+20", Set("localDouble", "-1E+20"));
+        Assert.Equal("0", await Set("localFloat", "0"));
+        Assert.Equal(third, await Set("localFloat", third));
+        Assert.Equal("2.75", await Set("localDecimal", "2.75"));
+        Assert.Equal("-1E+20", await Set("localDouble", "-1E+20"));
 
-        string Set(string name, string value) => host.Request<SetExpressionResponse>(DapCommands.SetExpression, new SetExpressionArguments(name, value, frame)).Value;
+        async Task<string> Set(string name, string value) => (await host.RequestAsync<SetExpressionResponse>(DapCommands.SetExpression, new SetExpressionArguments(name, value, frame))).Value;
 
         string? Shown(string name) => locals.FirstOrDefault(v => v.Name == name)?.Value;
     }
@@ -53,23 +53,22 @@ public class Variables2Tests(ITestOutputHelper testOutputHelper)
     {
         bool startSuspended = true;
 
-        using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
+        await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
 
         await debugProtocolHost
-            .WithInitializeRequest()
-            .WithAttachRequest(p2.Id)
+            .InitializeAsync()
+            .AttachAsync(p2.Id)
             .WaitForInitializedEvent();
         string breakpointedFilePath = Debuggees.Source("DebuggableConsoleApp", "VariablesClass.cs");
-        debugProtocolHost
-            .WithBreakpointsRequest([TestEnd], breakpointedFilePath)
-            .WithConfigurationDoneRequest()
-            .WithOptionalResumeRuntime(p2.Id, startSuspended);
+        await debugProtocolHost
+            .BreakpointsAsync([TestEnd], breakpointedFilePath)
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(p2.Id, startSuspended);
 
         StoppedEvent stoppedEvent = await debugProtocolHost.WaitForStoppedEvent();
         Assert.Equal((breakpointedFilePath, TestEnd, 3), stoppedEvent.ReadStopInfo());
-        debugProtocolHost
-            .WithStackTraceRequest(stoppedEvent.ThreadId!.Value, out StackTraceResponse? stackTraceResponse)
-            .WithScopesRequest(stackTraceResponse.StackFrames!.First().Id, out ScopesResponse? scopesResponse);
+        StackTraceResponse? stackTraceResponse = await debugProtocolHost.StackTraceAsync(stoppedEvent.ThreadId!.Value);
+        ScopesResponse? scopesResponse = await debugProtocolHost.ScopesAsync(stackTraceResponse.StackFrames!.First().Id);
 
         Assert.Single(scopesResponse.Scopes);
         DapScope scope = scopesResponse.Scopes.Single();
@@ -118,12 +117,12 @@ public class Variables2Tests(ITestOutputHelper testOutputHelper)
             new() { VariablesReference = 18, Name = "localCompositeValues", EvaluateName = "localCompositeValues", Value = "{DebuggableConsoleApp.CompositeValueFixtures}", Type = "DebuggableConsoleApp.CompositeValueFixtures" },
         ];
 
-        debugProtocolHost.WithVariablesRequest(scope.VariablesReference, out List<DapVariable>? variables);
+        List<DapVariable>? variables = await debugProtocolHost.VariablesAsync(scope.VariablesReference);
 
         Assert.Equal(39, variables.Count);
         variables.ShouldBeEquivalentToDebuggerVariables(expectedVariables);
-        debugProtocolHost.AssertInstanceThisInstanceVariables(variables.Single(s => s.Name == "this").VariablesReference, breakpointedFilePath);
-        debugProtocolHost.AssertCompositeValueVariables(variables.Single(s => s.Name == "localCompositeValues").VariablesReference);
+        await debugProtocolHost.AssertInstanceThisInstanceVariables(variables.Single(s => s.Name == "this").VariablesReference, breakpointedFilePath);
+        await debugProtocolHost.AssertCompositeValueVariables(variables.Single(s => s.Name == "localCompositeValues").VariablesReference);
     }
 }
 
@@ -131,7 +130,7 @@ file static class TestExtensions
 {
     private static readonly int Throwing = Debuggees.Line("DebuggableConsoleApp", "VariablesClass.cs", "private int ThrowingProperty =>");
 
-    public static void AssertInstanceThisInstanceVariables(this DebugSession debugProtocolHost, int variablesReference, string breakpointedFilePath)
+    public static async Task AssertInstanceThisInstanceVariables(this DebugSession debugProtocolHost, int variablesReference, string breakpointedFilePath)
     {
         string expectedDateTimeField = new DateTime(2026, 6, 15, 10, 5, 8).ToString();
         string expectedDateOnlyField = new DateOnly(2026, 6, 15).ToString();
@@ -201,23 +200,23 @@ file static class TestExtensions
 			new() { VariablesReference = 46,  Name = "ThrowingProperty",            EvaluateName = "ThrowingProperty",            Value = expectedThrowingPropertyValue,                               Type = "System.InvalidOperationException" },
             new() { VariablesReference = 47,  Name = "Static members",              EvaluateName = "Static members",              Value = "",                                                          Type = "", PresentationHint = new DapPresentationHint("class") },
         ];
-        debugProtocolHost.WithVariablesRequest(variablesReference, out List<DapVariable>? thisInstanceVariables);
+        List<DapVariable>? thisInstanceVariables = await debugProtocolHost.VariablesAsync(variablesReference);
         Assert.Equal(expectedVariables.Count, thisInstanceVariables.Count);
         thisInstanceVariables.ShouldBeEquivalentToDebuggerVariables(expectedVariables);
-        debugProtocolHost.AssertStaticFieldsOnGenericType(thisInstanceVariables.Single(s => s.Name == "_genericTypeWithStaticField").VariablesReference);
-        debugProtocolHost.AssertInstanceThisStaticVariables(thisInstanceVariables.Single(s => s.Name == "Static members").VariablesReference);
-        debugProtocolHost.AssertMultiDimArrayVariables(thisInstanceVariables.Single(s => s.Name == "MultiDimArrayField").VariablesReference);
+        await debugProtocolHost.AssertStaticFieldsOnGenericType(thisInstanceVariables.Single(s => s.Name == "_genericTypeWithStaticField").VariablesReference);
+        await debugProtocolHost.AssertInstanceThisStaticVariables(thisInstanceVariables.Single(s => s.Name == "Static members").VariablesReference);
+        await debugProtocolHost.AssertMultiDimArrayVariables(thisInstanceVariables.Single(s => s.Name == "MultiDimArrayField").VariablesReference);
     }
 
     private static readonly DapPresentationHint _multiDimArrayRowPresentationHint = new("class");
-    private static void AssertMultiDimArrayVariables(this DebugSession debugProtocolHost, int variablesReference)
+    private static async Task AssertMultiDimArrayVariables(this DebugSession debugProtocolHost, int variablesReference)
     {
         List<DapVariable> expectedVariables =
         [
             new() { VariablesReference =  53, Name = "[0, ...]",    EvaluateName = "[0, ...]",    Value = "",    Type = "", PresentationHint = _multiDimArrayRowPresentationHint },
             new() { VariablesReference =  54, Name = "[1, ...]",    EvaluateName = "[1, ...]",    Value = "",    Type = "", PresentationHint = _multiDimArrayRowPresentationHint },
         ];
-        debugProtocolHost.WithVariablesRequest(variablesReference, out List<DapVariable>? multiDimArrayVariables);
+        List<DapVariable>? multiDimArrayVariables = await debugProtocolHost.VariablesAsync(variablesReference);
         Assert.Equal(expectedVariables.Count, multiDimArrayVariables.Count);
         multiDimArrayVariables.ShouldBeEquivalentToDebuggerVariables(expectedVariables);
 
@@ -230,14 +229,14 @@ file static class TestExtensions
             new() { VariablesReference =  0, Name = "[0, 4]",    EvaluateName = "[0, 4]",    Value = "5",    Type = "int", PresentationHint = _arrayElementPresentationHint },
         ];
 
-        debugProtocolHost.WithVariablesRequest(multiDimArrayVariables[0].VariablesReference, out List<DapVariable>? multiDimArrayRankVariables);
+        List<DapVariable>? multiDimArrayRankVariables = await debugProtocolHost.VariablesAsync(multiDimArrayVariables[0].VariablesReference);
         Assert.Equal(expectedVariables2.Count, multiDimArrayRankVariables.Count);
         multiDimArrayRankVariables.ShouldBeEquivalentToDebuggerVariables(expectedVariables2);
     }
 
-    private static void AssertStaticFieldsOnGenericType(this DebugSession debugProtocolHost, int variablesReference)
+    private static async Task AssertStaticFieldsOnGenericType(this DebugSession debugProtocolHost, int variablesReference)
     {
-        debugProtocolHost.WithVariablesRequest(variablesReference, out List<DapVariable>? classVariables);
+        List<DapVariable>? classVariables = await debugProtocolHost.VariablesAsync(variablesReference);
         int staticMembersVariablesReference = classVariables.Single().VariablesReference;
         List<DapVariable> expectedVariables =
         [
@@ -245,14 +244,14 @@ file static class TestExtensions
             new() { VariablesReference =  0, Name = "Value",       EvaluateName = "Value",       Value = "null", Type = "string" },
             new() { VariablesReference =  0, Name = "IntProperty", EvaluateName = "IntProperty", Value = "5",    Type = "int" },
         ];
-        debugProtocolHost.WithVariablesRequest(staticMembersVariablesReference, out List<DapVariable>? staticFieldsOnGenericType);
+        List<DapVariable>? staticFieldsOnGenericType = await debugProtocolHost.VariablesAsync(staticMembersVariablesReference);
         Assert.Equal(expectedVariables.Count, staticFieldsOnGenericType.Count);
         staticFieldsOnGenericType.ShouldBeEquivalentToDebuggerVariables(expectedVariables);
     }
 
-    private static void AssertInstanceThisStaticVariables(this DebugSession debugProtocolHost, int variablesReference)
+    private static async Task AssertInstanceThisStaticVariables(this DebugSession debugProtocolHost, int variablesReference)
     {
-        debugProtocolHost.WithVariablesRequest(variablesReference, out List<DapVariable>? staticMemberVariables);
+        List<DapVariable>? staticMemberVariables = await debugProtocolHost.VariablesAsync(variablesReference);
         List<DapVariable> expectedVariables =
         [
             new() { VariablesReference =  0, Name = "StaticField", EvaluateName = "StaticField", Value = "999", Type = "int" },
@@ -268,13 +267,13 @@ file static class TestExtensions
         ];
         Assert.Equal(expectedVariables.Count, staticMemberVariables.Count);
         staticMemberVariables.ShouldBeEquivalentToDebuggerVariables(expectedVariables);
-        debugProtocolHost.AssertIEnumerableMembers(staticMemberVariables.Single(s => s.Name == "StaticEnumerableField").VariablesReference);
+        await debugProtocolHost.AssertIEnumerableMembers(staticMemberVariables.Single(s => s.Name == "StaticEnumerableField").VariablesReference);
     }
 
     private static readonly DapPresentationHint _arrayElementPresentationHint = new("data");
-    private static void AssertIEnumerableMembers(this DebugSession debugProtocolHost, int variablesReference)
+    private static async Task AssertIEnumerableMembers(this DebugSession debugProtocolHost, int variablesReference)
     {
-        debugProtocolHost.WithVariablesRequest(variablesReference, out List<DapVariable>? enumerableMembers);
+        List<DapVariable>? enumerableMembers = await debugProtocolHost.VariablesAsync(variablesReference);
         List<DapVariable> expectedVariables =
         [
             new() { VariablesReference = 51, Name = "Raw View", EvaluateName = "Raw View", Value = "", Type = "", PresentationHint = new DapPresentationHint("class") },
@@ -291,12 +290,12 @@ file static class TestExtensions
             new() { VariablesReference =  0, Name = "[3]", EvaluateName = "[3]", Value = "4", Type = "int", PresentationHint = _arrayElementPresentationHint },
         ];
 
-        debugProtocolHost.WithVariablesRequest(enumerableMembers.Single(s => s.Name == "Results").VariablesReference, out List<DapVariable>? enumerableResultsMembers);
+        List<DapVariable>? enumerableResultsMembers = await debugProtocolHost.VariablesAsync(enumerableMembers.Single(s => s.Name == "Results").VariablesReference);
         Assert.Equal(expectedVariables2.Count, enumerableResultsMembers.Count);
         enumerableResultsMembers.ShouldBeEquivalentToDebuggerVariables(expectedVariables2);
     }
 
-    public static void AssertCompositeValueVariables(this DebugSession debugProtocolHost, int variablesReference)
+    public static async Task AssertCompositeValueVariables(this DebugSession debugProtocolHost, int variablesReference)
     {
         List<DapVariable> expectedVariables =
         [
@@ -313,7 +312,7 @@ file static class TestExtensions
             new() { VariablesReference = 64, Name = "NullableDebuggerDisplay", EvaluateName = "NullableDebuggerDisplay", Value = "display: 5", Type = "DebuggableConsoleApp.NullableDebuggerDisplay?" },
             new() { VariablesReference = 65, Name = "NullableToString",    EvaluateName = "NullableToString",    Value = "to-string: 6", Type = "DebuggableConsoleApp.NullableToString?" },
         ];
-        debugProtocolHost.WithVariablesRequest(variablesReference, out List<DapVariable>? compositeVariables);
+        List<DapVariable>? compositeVariables = await debugProtocolHost.VariablesAsync(variablesReference);
         Assert.Equal(expectedVariables.Count, compositeVariables.Count);
         compositeVariables.ShouldBeEquivalentToDebuggerVariables(expectedVariables);
     }

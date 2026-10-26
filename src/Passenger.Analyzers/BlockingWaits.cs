@@ -9,7 +9,7 @@ namespace Passenger.Analyzers;
 /// <summary>PSG0004: a thread held waiting on a task: a Task's or ValueTask's Result, Task's Wait, WaitAll and WaitAny, and
 /// an awaiter's GetResult. A read of a task known to have ended waits for nothing and is passed over (<see cref="Ended"/>):
 /// the task is one the member cannot swap for another (<see cref="Held"/>), and the read sits where its having ended is
-/// certain, as ending is for good. Not looked at yet: the test classes <see cref="TestsNotYet"/> names.</summary>
+/// certain, as ending is for good.</summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class BlockingWaits : DiagnosticAnalyzer
 {
@@ -36,7 +36,7 @@ public sealed class BlockingWaits : DiagnosticAnalyzer
     {
         IPropertyReferenceOperation read = (IPropertyReferenceOperation)context.Operation;
         if (read.Property.Name == "Result" && tasks.IsTask(read.Property.ContainingType) && !InNameOf(read)
-            && !TestsNotYet.Contains(context.ContainingSymbol) && !Ended(read.Instance, read, tasks))
+            && !Ended(read.Instance, read, tasks))
         {
             context.ReportDiagnostic(Diagnostic.Create(Rules.BlockingWait, read.Syntax.GetLocation(), "Result"));
         }
@@ -53,7 +53,7 @@ public sealed class BlockingWaits : DiagnosticAnalyzer
             "GetResult" when Tasks.IsAwaiter(method.ContainingType) => ("GetResult", Awaited(call.Instance)),
             _ => (null, null),
         };
-        if (said is not null && !TestsNotYet.Contains(context.ContainingSymbol) && !Ended(task, call, tasks))
+        if (said is not null && !Ended(task, call, tasks))
         {
             context.ReportDiagnostic(Diagnostic.Create(Rules.BlockingWait, call.Syntax.GetLocation(), said));
         }

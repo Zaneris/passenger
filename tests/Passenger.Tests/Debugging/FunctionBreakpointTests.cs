@@ -11,24 +11,24 @@ public class FunctionBreakpointTests(ITestOutputHelper testOutputHelper)
     public async Task A_function_breakpoint_by_a_bare_method_name_stops_in_every_method_of_that_name()
     {
         bool startSuspended = true;
-        using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
+        await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
 
         await debugProtocolHost
-            .WithInitializeRequest()
-            .WithAttachRequest(p2.Id)
+            .InitializeAsync()
+            .AttachAsync(p2.Id)
             .WaitForInitializedEvent();
 
-        SetBreakpointsResponse result = debugProtocolHost.Request<SetBreakpointsResponse>(DapCommands.SetFunctionBreakpoints, new SetFunctionBreakpointsArguments([new DapFunctionBreakpoint("SameNamedClass.Test")]));
+        SetBreakpointsResponse result = await debugProtocolHost.RequestAsync<SetBreakpointsResponse>(DapCommands.SetFunctionBreakpoints, new SetFunctionBreakpointsArguments([new DapFunctionBreakpoint("SameNamedClass.Test")]));
         int breakpointId = result.Breakpoints.Single().Id!.Value;
 
-        debugProtocolHost
-            .WithConfigurationDoneRequest()
-            .WithOptionalResumeRuntime(p2.Id, startSuspended);
+        await debugProtocolHost
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(p2.Id, startSuspended);
 
         BreakpointEvent breakpointEvent = await debugProtocolHost.WaitForEvent<BreakpointEvent>(s => s.Breakpoint.Verified && s.Breakpoint.Id == breakpointId);
 
         StoppedEvent stoppedEvent = await debugProtocolHost.WaitForStoppedEvent();
-        debugProtocolHost.WithStackTraceRequest(stoppedEvent.ThreadId!.Value, out StackTraceResponse? stackTraceResponse);
+        StackTraceResponse? stackTraceResponse = await debugProtocolHost.StackTraceAsync(stoppedEvent.ThreadId!.Value);
         DapStackFrame topFrame = stackTraceResponse.StackFrames.Single();
 
         Assert.EndsWith("SameNamedClass.cs", topFrame.Source?.Path);
@@ -36,8 +36,8 @@ public class FunctionBreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.Equal(2, topFrame.Column);
         Assert.Equal(3, topFrame.EndColumn);
 
-        StoppedEvent stoppedEvent2 = await debugProtocolHost.WithContinueRequest().WaitForStoppedEvent();
-        debugProtocolHost.WithStackTraceRequest(stoppedEvent2.ThreadId!.Value, out StackTraceResponse? stackTraceResponse2);
+        StoppedEvent stoppedEvent2 = await debugProtocolHost.ContinueAsync().WaitForStoppedEvent();
+        StackTraceResponse? stackTraceResponse2 = await debugProtocolHost.StackTraceAsync(stoppedEvent2.ThreadId!.Value);
         DapStackFrame topFrame2 = stackTraceResponse2.StackFrames.Single();
 
         Assert.EndsWith("SameNamedClass2.cs", topFrame2.Source?.Path);
@@ -50,24 +50,24 @@ public class FunctionBreakpointTests(ITestOutputHelper testOutputHelper)
     public async Task A_function_breakpoint_by_a_full_name_stops_in_that_method_alone()
     {
         bool startSuspended = true;
-        using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
+        await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
 
         await debugProtocolHost
-            .WithInitializeRequest()
-            .WithAttachRequest(p2.Id)
+            .InitializeAsync()
+            .AttachAsync(p2.Id)
             .WaitForInitializedEvent();
 
-        SetBreakpointsResponse result = debugProtocolHost.Request<SetBreakpointsResponse>(DapCommands.SetFunctionBreakpoints, new SetFunctionBreakpointsArguments([new DapFunctionBreakpoint("DebuggableConsoleApp.MyClass.MyMethod")]));
+        SetBreakpointsResponse result = await debugProtocolHost.RequestAsync<SetBreakpointsResponse>(DapCommands.SetFunctionBreakpoints, new SetFunctionBreakpointsArguments([new DapFunctionBreakpoint("DebuggableConsoleApp.MyClass.MyMethod")]));
         int breakpointId = result.Breakpoints.Single().Id!.Value;
 
-        debugProtocolHost
-            .WithConfigurationDoneRequest()
-            .WithOptionalResumeRuntime(p2.Id, startSuspended);
+        await debugProtocolHost
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(p2.Id, startSuspended);
 
         BreakpointEvent breakpointEvent = await debugProtocolHost.WaitForEvent<BreakpointEvent>(s => s.Breakpoint.Verified && s.Breakpoint.Id == breakpointId);
 
         StoppedEvent stoppedEvent = await debugProtocolHost.WaitForStoppedEvent();
-        debugProtocolHost.WithStackTraceRequest(stoppedEvent.ThreadId!.Value, out StackTraceResponse? stackTraceResponse);
+        StackTraceResponse? stackTraceResponse = await debugProtocolHost.StackTraceAsync(stoppedEvent.ThreadId!.Value);
         DapStackFrame topFrame = stackTraceResponse.StackFrames.Single();
         topFrame.ShouldBeAtSourceLocation("MyClass.cs", "public void MyMethod(long myParam, int myIntParam)", 2, 3);
     }
@@ -76,24 +76,24 @@ public class FunctionBreakpointTests(ITestOutputHelper testOutputHelper)
     public async Task A_function_breakpoint_on_a_generic_classs_method_stops_in_it()
     {
         bool startSuspended = true;
-        using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
+        await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
 
         await debugProtocolHost
-            .WithInitializeRequest()
-            .WithAttachRequest(p2.Id)
+            .InitializeAsync()
+            .AttachAsync(p2.Id)
             .WaitForInitializedEvent();
 
-        SetBreakpointsResponse result = debugProtocolHost.Request<SetBreakpointsResponse>(DapCommands.SetFunctionBreakpoints, new SetFunctionBreakpointsArguments([new DapFunctionBreakpoint("DebuggableConsoleApp.MyGenericClassContainingAnotherGenericClass<T, U>.MyNestedGenericClass<T, U>.Test")]));
+        SetBreakpointsResponse result = await debugProtocolHost.RequestAsync<SetBreakpointsResponse>(DapCommands.SetFunctionBreakpoints, new SetFunctionBreakpointsArguments([new DapFunctionBreakpoint("DebuggableConsoleApp.MyGenericClassContainingAnotherGenericClass<T, U>.MyNestedGenericClass<T, U>.Test")]));
         int breakpointId = result.Breakpoints.Single().Id!.Value;
 
-        debugProtocolHost
-            .WithConfigurationDoneRequest()
-            .WithOptionalResumeRuntime(p2.Id, startSuspended);
+        await debugProtocolHost
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(p2.Id, startSuspended);
 
         BreakpointEvent breakpointEvent = await debugProtocolHost.WaitForEvent<BreakpointEvent>(s => s.Breakpoint.Verified && s.Breakpoint.Id == breakpointId);
 
         StoppedEvent stoppedEvent = await debugProtocolHost.WaitForStoppedEvent();
-        debugProtocolHost.WithStackTraceRequest(stoppedEvent.ThreadId!.Value, out StackTraceResponse? stackTraceResponse);
+        StackTraceResponse? stackTraceResponse = await debugProtocolHost.StackTraceAsync(stoppedEvent.ThreadId!.Value);
         DapStackFrame topFrame = stackTraceResponse.StackFrames.Single();
         topFrame.ShouldBeAtSourceLocation("MyClassContainingAnotherClass.cs", "public static void Test()", 3, 4);
     }
@@ -102,27 +102,27 @@ public class FunctionBreakpointTests(ITestOutputHelper testOutputHelper)
     public async Task A_function_breakpoints_hit_count_goes_on_when_another_is_set_beside_it_and_it_stops_on_its_third_hit()
     {
         // As the IDE sends XAML Binding Errors again with a property breakpoint added between its hits.
-        using DebugSession host = DebugSession.ForAttach(testOutputHelper, startSuspended: true, out Process program);
+        await using DebugSession host = DebugSession.ForAttach(testOutputHelper, startSuspended: true, out Process program);
         await host
-            .WithInitializeRequest()
-            .WithAttachRequest(program.Id)
+            .InitializeAsync()
+            .AttachAsync(program.Id)
             .WaitForInitializedEvent();
         DapFunctionBreakpoint third = new("DebuggableConsoleApp.HitConditionClass.Test", HitCondition: "==3");
         DapFunctionBreakpoint everyPass = new("DebuggableConsoleApp.MyClassNoMembers.MyMethod");
-        SetBreakpointsResponse before = host.Request<SetBreakpointsResponse>(DapCommands.SetFunctionBreakpoints, new SetFunctionBreakpointsArguments([third, everyPass]));
-        host.WithConfigurationDoneRequest();
+        SetBreakpointsResponse before = await host.RequestAsync<SetBreakpointsResponse>(DapCommands.SetFunctionBreakpoints, new SetFunctionBreakpointsArguments([third, everyPass]));
+        await host.ConfigurationDoneAsync();
 
         // Each pass of the program's loop stops in MyMethod first, then calls Test, whose hit count counts on.
         Assert.EndsWith("MyClassNoMembers.cs", (await host.WaitForStoppedEvent()).Source?.Path);
-        Assert.EndsWith("MyClassNoMembers.cs", (await host.WithContinueRequest().WaitForStoppedEvent()).Source?.Path);
-        SetBreakpointsResponse after = host.Request<SetBreakpointsResponse>(DapCommands.SetFunctionBreakpoints,
+        Assert.EndsWith("MyClassNoMembers.cs", (await host.ContinueAsync().WaitForStoppedEvent()).Source?.Path);
+        SetBreakpointsResponse after = await host.RequestAsync<SetBreakpointsResponse>(DapCommands.SetFunctionBreakpoints,
             new SetFunctionBreakpointsArguments([third, everyPass, new DapFunctionBreakpoint("DebuggableConsoleApp.Nowhere.Nothing")]));
-        Assert.EndsWith("MyClassNoMembers.cs", (await host.WithContinueRequest().WaitForStoppedEvent()).Source?.Path);
+        Assert.EndsWith("MyClassNoMembers.cs", (await host.ContinueAsync().WaitForStoppedEvent()).Source?.Path);
 
-        StoppedEvent hit = await host.WithContinueRequest().WaitForStoppedEvent();
+        StoppedEvent hit = await host.ContinueAsync().WaitForStoppedEvent();
         Assert.True(hit.Source?.Path?.EndsWith("HitConditionClass.cs", StringComparison.Ordinal) == true,
             $"The third pass through Test did not stop it, its hit count started again by the breakpoint set beside it: the program stopped in {hit.Source?.Path}:{hit.Line}");
-        host.WithEvaluateRequest(host.GetTopStackFrame(hit.ThreadId!.Value).Id, "_count", out EvaluateResponse passes);
+        EvaluateResponse passes = await host.EvaluateAsync((await host.TopFrameAsync(hit.ThreadId!.Value)).Id, "_count");
         Assert.Equal("2", passes.Result);
         Assert.True(before.Breakpoints.Select(b => b.Id).SequenceEqual(after.Breakpoints.Take(2).Select(b => b.Id)),
             "The function breakpoints asked for again just as they were were made anew, with new ids");
@@ -132,27 +132,27 @@ public class FunctionBreakpointTests(ITestOutputHelper testOutputHelper)
     public async Task A_function_breakpoint_naming_no_parameters_stops_in_every_overload()
     {
         bool startSuspended = true;
-        using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
+        await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
 
         await debugProtocolHost
-            .WithInitializeRequest()
-            .WithAttachRequest(p2.Id)
+            .InitializeAsync()
+            .AttachAsync(p2.Id)
             .WaitForInitializedEvent();
 
-        SetBreakpointsResponse result = debugProtocolHost.Request<SetBreakpointsResponse>(DapCommands.SetFunctionBreakpoints, new SetFunctionBreakpointsArguments([new DapFunctionBreakpoint("DebuggableConsoleApp.OverloadedMethodsClass.OverloadedMethod")]));
+        SetBreakpointsResponse result = await debugProtocolHost.RequestAsync<SetBreakpointsResponse>(DapCommands.SetFunctionBreakpoints, new SetFunctionBreakpointsArguments([new DapFunctionBreakpoint("DebuggableConsoleApp.OverloadedMethodsClass.OverloadedMethod")]));
         int breakpointId = result.Breakpoints.Single().Id!.Value;
 
-        debugProtocolHost
-            .WithConfigurationDoneRequest()
-            .WithOptionalResumeRuntime(p2.Id, startSuspended);
+        await debugProtocolHost
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(p2.Id, startSuspended);
 
         BreakpointEvent breakpointEvent = await debugProtocolHost.WaitForEvent<BreakpointEvent>(s => s.Breakpoint.Verified && s.Breakpoint.Id == breakpointId);
 
         await AssertBreakpointsHit();
 
         // Also test that classless method resolution works
-        SetBreakpointsResponse result2 = debugProtocolHost.Request<SetBreakpointsResponse>(DapCommands.SetFunctionBreakpoints, new SetFunctionBreakpointsArguments([new DapFunctionBreakpoint("OverloadedMethod")]));
-        debugProtocolHost.WithContinueRequest();
+        SetBreakpointsResponse result2 = await debugProtocolHost.RequestAsync<SetBreakpointsResponse>(DapCommands.SetFunctionBreakpoints, new SetFunctionBreakpointsArguments([new DapFunctionBreakpoint("OverloadedMethod")]));
+        await debugProtocolHost.ContinueAsync();
 
         await AssertBreakpointsHit();
 
@@ -161,27 +161,27 @@ public class FunctionBreakpointTests(ITestOutputHelper testOutputHelper)
         async Task AssertBreakpointsHit()
         {
             StoppedEvent stoppedEvent = await debugProtocolHost.WaitForStoppedEvent();
-            debugProtocolHost.WithStackTraceRequest(stoppedEvent.ThreadId!.Value, out StackTraceResponse? stackTraceResponse);
+            StackTraceResponse? stackTraceResponse = await debugProtocolHost.StackTraceAsync(stoppedEvent.ThreadId!.Value);
             DapStackFrame topFrame = stackTraceResponse.StackFrames.Single();
             topFrame.ShouldBeAtSourceLocation("OverloadedMethodsClass.cs", "public static void OverloadedMethod()", 2, 3);
 
-            StoppedEvent stoppedEvent2 = await debugProtocolHost.WithContinueRequest().WaitForStoppedEvent();
-            debugProtocolHost.WithStackTraceRequest(stoppedEvent2.ThreadId!.Value, out StackTraceResponse? stackTraceResponse2);
+            StoppedEvent stoppedEvent2 = await debugProtocolHost.ContinueAsync().WaitForStoppedEvent();
+            StackTraceResponse? stackTraceResponse2 = await debugProtocolHost.StackTraceAsync(stoppedEvent2.ThreadId!.Value);
             DapStackFrame topFrame2 = stackTraceResponse2.StackFrames.Single();
             topFrame2.ShouldBeAtSourceLocation("OverloadedMethodsClass.cs", "public static void OverloadedMethod(int intParam)", 2, 3);
 
-            StoppedEvent stoppedEvent3 = await debugProtocolHost.WithContinueRequest().WaitForStoppedEvent();
-            debugProtocolHost.WithStackTraceRequest(stoppedEvent3.ThreadId!.Value, out StackTraceResponse? stackTraceResponse3);
+            StoppedEvent stoppedEvent3 = await debugProtocolHost.ContinueAsync().WaitForStoppedEvent();
+            StackTraceResponse? stackTraceResponse3 = await debugProtocolHost.StackTraceAsync(stoppedEvent3.ThreadId!.Value);
             DapStackFrame topFrame3 = stackTraceResponse3.StackFrames.Single();
             topFrame3.ShouldBeAtSourceLocation("OverloadedMethodsClass.cs", "public static void OverloadedMethod(double doubleParam)", 2, 3);
 
-            StoppedEvent stoppedEvent4 = await debugProtocolHost.WithContinueRequest().WaitForStoppedEvent();
-            debugProtocolHost.WithStackTraceRequest(stoppedEvent4.ThreadId!.Value, out StackTraceResponse? stackTraceResponse4);
+            StoppedEvent stoppedEvent4 = await debugProtocolHost.ContinueAsync().WaitForStoppedEvent();
+            StackTraceResponse? stackTraceResponse4 = await debugProtocolHost.StackTraceAsync(stoppedEvent4.ThreadId!.Value);
             DapStackFrame topFrame4 = stackTraceResponse4.StackFrames.Single();
             topFrame4.ShouldBeAtSourceLocation("OverloadedMethodsClass.cs", "public static void OverloadedMethod(MyClass? myClass)", 2, 3);
 
-            StoppedEvent stoppedEvent5 = await debugProtocolHost.WithContinueRequest().WaitForStoppedEvent();
-            debugProtocolHost.WithStackTraceRequest(stoppedEvent5.ThreadId!.Value, out StackTraceResponse? stackTraceResponse5);
+            StoppedEvent stoppedEvent5 = await debugProtocolHost.ContinueAsync().WaitForStoppedEvent();
+            StackTraceResponse? stackTraceResponse5 = await debugProtocolHost.StackTraceAsync(stoppedEvent5.ThreadId!.Value);
             DapStackFrame topFrame5 = stackTraceResponse5.StackFrames.Single();
             topFrame5.ShouldBeAtSourceLocation("OverloadedMethodsClass.cs", "public static void OverloadedMethod(int intParam, MyClass? myClass)", 2, 3);
         }
@@ -191,30 +191,30 @@ public class FunctionBreakpointTests(ITestOutputHelper testOutputHelper)
     public async Task A_function_breakpoint_naming_its_parameters_stops_in_that_overload_alone()
     {
         bool startSuspended = true;
-        using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
+        await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
 
         await debugProtocolHost
-            .WithInitializeRequest()
-            .WithAttachRequest(p2.Id)
+            .InitializeAsync()
+            .AttachAsync(p2.Id)
             .WaitForInitializedEvent();
 
-        SetBreakpointsResponse result = debugProtocolHost.Request<SetBreakpointsResponse>(DapCommands.SetFunctionBreakpoints, new SetFunctionBreakpointsArguments([new DapFunctionBreakpoint("DebuggableConsoleApp.OverloadedMethodsClass.OverloadedMethod(int, MyClass)")]));
+        SetBreakpointsResponse result = await debugProtocolHost.RequestAsync<SetBreakpointsResponse>(DapCommands.SetFunctionBreakpoints, new SetFunctionBreakpointsArguments([new DapFunctionBreakpoint("DebuggableConsoleApp.OverloadedMethodsClass.OverloadedMethod(int, MyClass)")]));
         int breakpointId = result.Breakpoints.Single().Id!.Value;
 
-        debugProtocolHost
-            .WithConfigurationDoneRequest()
-            .WithOptionalResumeRuntime(p2.Id, startSuspended);
+        await debugProtocolHost
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(p2.Id, startSuspended);
 
         BreakpointEvent breakpointEvent = await debugProtocolHost.WaitForEvent<BreakpointEvent>(s => s.Breakpoint.Verified && s.Breakpoint.Id == breakpointId);
 
         StoppedEvent stoppedEvent = await debugProtocolHost.WaitForStoppedEvent();
-        debugProtocolHost.WithStackTraceRequest(stoppedEvent.ThreadId!.Value, out StackTraceResponse? stackTraceResponse);
+        StackTraceResponse? stackTraceResponse = await debugProtocolHost.StackTraceAsync(stoppedEvent.ThreadId!.Value);
         DapStackFrame topFrame = stackTraceResponse.StackFrames.Single();
         topFrame.ShouldBeAtSourceLocation("OverloadedMethodsClass.cs", "public static void OverloadedMethod(int intParam, MyClass? myClass)", 2, 3);
 
         // Continuing lands us at the same breakpoint, since we only break on the single matching overload
-        StoppedEvent stoppedEvent2 = await debugProtocolHost.WithContinueRequest().WaitForStoppedEvent();
-        debugProtocolHost.WithStackTraceRequest(stoppedEvent2.ThreadId!.Value, out StackTraceResponse? stackTraceResponse2);
+        StoppedEvent stoppedEvent2 = await debugProtocolHost.ContinueAsync().WaitForStoppedEvent();
+        StackTraceResponse? stackTraceResponse2 = await debugProtocolHost.StackTraceAsync(stoppedEvent2.ThreadId!.Value);
         DapStackFrame topFrame2 = stackTraceResponse2.StackFrames.Single();
         topFrame2.ShouldBeAtSourceLocation("OverloadedMethodsClass.cs", "public static void OverloadedMethod(int intParam, MyClass? myClass)", 2, 3);
     }

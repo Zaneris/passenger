@@ -21,41 +21,41 @@ public class JustMyCodeTests(ITestOutputHelper testOutputHelper)
     {
         int marked = Line("[DebuggerStepThrough] public static void StepThrough()");
         int end = Line("Console.WriteLine(\"end\");");
-        using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await host
-            .WithInitializeRequest()
-            .WithLaunchRequest(Debuggees.Program("PassengerCases"), stopAtEntry: false, justMyCode: true)
+            .InitializeAsync()
+            .LaunchAsync(Debuggees.Program("PassengerCases"), stopAtEntry: false, justMyCode: true)
             .WaitForInitializedEvent();
-        host.Request(DapCommands.SetExceptionBreakpoints, new SetExceptionBreakpointsArguments([DapExceptionFilters.UserUnhandled]));
-        host.WithBreakpointsRequest(Source, [new DapSourceBreakpoint(marked), new DapSourceBreakpoint(end)]).WithConfigurationDoneRequest();
+        await host.RequestAsync(DapCommands.SetExceptionBreakpoints, new SetExceptionBreakpointsArguments([DapExceptionFilters.UserUnhandled]));
+        await host.BreakpointsAsync(Source, [new DapSourceBreakpoint(marked), new DapSourceBreakpoint(end)]).ConfigurationDoneAsync();
 
         StoppedEvent stop = await host.WaitForStoppedEvent();
         Assert.Equal((StopReasons.Exception, Line("Wrapper.CallWithCatch(")), (stop.Reason, stop.ReadStopInfo().line));
         int thread = stop.ThreadId!.Value;
-        ExceptionInfoResponse exception = host.Request<ExceptionInfoResponse>(DapCommands.ExceptionInfo, new ThreadArguments(thread));
+        ExceptionInfoResponse exception = await host.RequestAsync<ExceptionInfoResponse>(DapCommands.ExceptionInfo, new ThreadArguments(thread));
         Assert.Equal("userUnhandled", exception.BreakMode);
         Assert.Equal("System.InvalidOperationException", exception.Details?.FullTypeName);
 
-        stop = await host.WithStepOverRequest(thread).WaitForStoppedEvent();
+        stop = await host.StepOverAsync(thread).WaitForStoppedEvent();
         Assert.True(stop.Reason == StopReasons.Step, $"The step from the exception ran on to the {stop.Reason} at line {stop.Line}");
         Assert.Equal(Line("Wrapper.CallWithCatch("), stop.ReadStopInfo().line);
-        stop = await host.WithStepOverRequest(thread).WaitForStoppedEvent();
+        stop = await host.StepOverAsync(thread).WaitForStoppedEvent();
         Assert.Equal((StopReasons.Step, Line("Attributed.StepThrough();")), (stop.Reason, stop.ReadStopInfo().line));
 
-        stop = await host.WithStepInRequest(thread).WaitForStoppedEvent();
+        stop = await host.StepInAsync(thread).WaitForStoppedEvent();
         Assert.Equal((Source, Line("Attributed.NonUser();")), (stop.ReadStopInfo().filePath, stop.ReadStopInfo().line));
-        stop = await host.WithStepInRequest(thread).WaitForStoppedEvent();
+        stop = await host.StepInAsync(thread).WaitForStoppedEvent();
         Assert.Equal((Source, Line("Attributed.Hidden();")), (stop.ReadStopInfo().filePath, stop.ReadStopInfo().line));
 
-        int frame = host.GetTopStackFrame(thread).Id;
-        host.WithEvaluateRequest(frame, "Slow.Forever", out EvaluateResponse timedOut);
+        int frame = (await host.TopFrameAsync(thread)).Id;
+        EvaluateResponse timedOut = await host.EvaluateAsync(frame, "Slow.Forever");
         Assert.Contains("was stopped", timedOut.Result, StringComparison.Ordinal);
-        host.WithEvaluateRequest(frame, "1 + 1", out EvaluateResponse after);
+        EvaluateResponse after = await host.EvaluateAsync(frame, "1 + 1");
         Assert.Equal("2", after.Result);
-        stop = await host.WithStepInRequest(thread).WaitForStoppedEvent();
+        stop = await host.StepInAsync(thread).WaitForStoppedEvent();
         Assert.Equal((Source, end), (stop.ReadStopInfo().filePath, stop.ReadStopInfo().line));
 
-        SetBreakpointsResponse again = host.Request<SetBreakpointsResponse>(DapCommands.SetBreakpoints,
+        SetBreakpointsResponse again = await host.RequestAsync<SetBreakpointsResponse>(DapCommands.SetBreakpoints,
             new SetBreakpointsArguments(new DapSource { Path = Source }, [new DapSourceBreakpoint(marked)]));
         DapBreakpoint unbound = Assert.Single(again.Breakpoints);
         Assert.False(unbound.Verified);
@@ -69,31 +69,31 @@ public class JustMyCodeTests(ITestOutputHelper testOutputHelper)
     {
         string thrown = "try { throw new Exception(\"Message1\"); }";
         string waiting = "Console.WriteLine(\"both workers are waiting\");";
-        using DebugSession host = await Launch(breakpointLine: Line(waiting), exceptionFilters: [DapExceptionFilters.All]);
+        await using DebugSession host = await Launch(breakpointLine: Line(waiting), exceptionFilters: [DapExceptionFilters.All]);
         StoppedEvent stop = await host.WaitForStoppedEvent();
         Assert.Equal((StopReasons.Exception, Line("Wrapper.CallWithCatch(")), (stop.Reason, stop.ReadStopInfo().line));
-        stop = await host.WithStepOverRequest(stop.ThreadId!.Value).WaitForStoppedEvent();
+        stop = await host.StepOverAsync(stop.ThreadId!.Value).WaitForStoppedEvent();
         Assert.True(stop.Reason == StopReasons.Step, $"The step from the throw ran on to the {stop.Reason} at line {stop.Line}");
         Assert.Equal(Line("Wrapper.CallWithCatch("), stop.ReadStopInfo().line);
 
         // No filter until the throw in the user's own try, where it stops; the step from it stops in their catch.
-        host.Request(DapCommands.SetExceptionBreakpoints, new SetExceptionBreakpointsArguments([]));
-        host.WithBreakpointsRequest([Line(thrown), Line(waiting)], Source);
-        stop = await host.WithContinueRequest().WaitForStoppedEvent();
+        await host.RequestAsync(DapCommands.SetExceptionBreakpoints, new SetExceptionBreakpointsArguments([]));
+        await host.BreakpointsAsync([Line(thrown), Line(waiting)], Source);
+        stop = await host.ContinueAsync().WaitForStoppedEvent();
         Assert.Equal((StopReasons.Breakpoint, Line(thrown)), (stop.Reason, stop.ReadStopInfo().line));
-        host.Request(DapCommands.SetExceptionBreakpoints, new SetExceptionBreakpointsArguments([DapExceptionFilters.All]));
-        stop = await host.WithContinueRequest().WaitForStoppedEvent();
+        await host.RequestAsync(DapCommands.SetExceptionBreakpoints, new SetExceptionBreakpointsArguments([DapExceptionFilters.All]));
+        stop = await host.ContinueAsync().WaitForStoppedEvent();
         Assert.Equal((StopReasons.Exception, Line(thrown)), (stop.Reason, stop.ReadStopInfo().line));
-        stop = await host.WithStepOverRequest(stop.ThreadId!.Value).WaitForStoppedEvent();
+        stop = await host.StepOverAsync(stop.ThreadId!.Value).WaitForStoppedEvent();
         Assert.Equal((StopReasons.Step, Line("catch (Exception e1)")), (stop.Reason, stop.ReadStopInfo().line));
 
-        host.Request(DapCommands.SetExceptionBreakpoints, new SetExceptionBreakpointsArguments([]));
-        stop = await host.WithContinueRequest().WaitForStoppedEvent();
+        await host.RequestAsync(DapCommands.SetExceptionBreakpoints, new SetExceptionBreakpointsArguments([]));
+        stop = await host.ContinueAsync().WaitForStoppedEvent();
         Assert.Equal((StopReasons.Breakpoint, Line(waiting)), (stop.Reason, stop.ReadStopInfo().line));
-        IReadOnlyList<DapThread> threads = host.Request<ThreadsResponse>(DapCommands.Threads).Threads;
+        IReadOnlyList<DapThread> threads = (await host.RequestAsync<ThreadsResponse>(DapCommands.Threads)).Threads;
         Assert.Equal("Main Thread", Assert.Single(threads, t => t.Id == stop.ThreadId).Name);
         Assert.Single(threads, t => t.Name == "worker-named");
-        Assert.All(threads, t => Assert.NotEmpty(host.Request<StackTraceResponse>(DapCommands.StackTrace, new StackTraceArguments(t.Id)).StackFrames));
+        await Assert.AllAsync(threads, async t => Assert.NotEmpty((await host.RequestAsync<StackTraceResponse>(DapCommands.StackTrace, new StackTraceArguments(t.Id))).StackFrames));
     }
 
     [Fact]
@@ -101,16 +101,16 @@ public class JustMyCodeTests(ITestOutputHelper testOutputHelper)
     {
         // At the call, not in the lambda on the same line that throws.
         int call = Line("Wrapper.CallWithCatch(");
-        using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await host
-            .WithInitializeRequest()
-            .WithLaunchRequest(Debuggees.Program("PassengerCases"), stopAtEntry: false, justMyCode: true)
+            .InitializeAsync()
+            .LaunchAsync(Debuggees.Program("PassengerCases"), stopAtEntry: false, justMyCode: true)
             .WaitForInitializedEvent();
-        host.WithBreakpointsRequest(Source, [new DapSourceBreakpoint(call, Column: 1)]).WithConfigurationDoneRequest();
+        await host.BreakpointsAsync(Source, [new DapSourceBreakpoint(call, Column: 1)]).ConfigurationDoneAsync();
         StoppedEvent stop = await host.WaitForStoppedEvent();
         Assert.Equal(1, stop.ReadStopInfo().column);
 
-        stop = await host.WithStepOverRequest(stop.ThreadId!.Value).WaitForStoppedEvent();
+        stop = await host.StepOverAsync(stop.ThreadId!.Value).WaitForStoppedEvent();
         Assert.Equal((StopReasons.Step, Line("Attributed.StepThrough();")), (stop.Reason, stop.ReadStopInfo().line));
     }
 
@@ -119,16 +119,16 @@ public class JustMyCodeTests(ITestOutputHelper testOutputHelper)
     [Fact]
     public async Task The_thread_running_Main_is_marked_as_Mains_under_the_name_the_program_gave_it()
     {
-        using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await host
-            .WithInitializeRequest()
-            .WithLaunchRequest(Debuggees.Program("PassengerCases"), stopAtEntry: false, justMyCode: true, arguments: ["named main"])
+            .InitializeAsync()
+            .LaunchAsync(Debuggees.Program("PassengerCases"), stopAtEntry: false, justMyCode: true, arguments: ["named main"])
             .WaitForInitializedEvent();
-        host.WithBreakpointsRequest(Line("Console.WriteLine(\"both workers are waiting\");"), Source)
-            .WithConfigurationDoneRequest();
+        await host.BreakpointsAsync(Line("Console.WriteLine(\"both workers are waiting\");"), Source)
+            .ConfigurationDoneAsync();
         StoppedEvent stop = await host.WaitForStoppedEvent();
 
-        IReadOnlyList<DapThread> threads = host.Request<ThreadsResponse>(DapCommands.Threads).Threads;
+        IReadOnlyList<DapThread> threads = (await host.RequestAsync<ThreadsResponse>(DapCommands.Threads)).Threads;
         DapThread main = Assert.Single(threads, t => t.IsMain == true);
         Assert.True(main.Id == stop.ThreadId && main.Name == "UI",
             $"Main's thread, named UI, was to be the one marked; the threads are {string.Join(", ", threads.Select(t => $"{t.Id} {t.Name}{(t.IsMain == true ? " (main)" : "")}"))}, stopped on {stop.ThreadId}");

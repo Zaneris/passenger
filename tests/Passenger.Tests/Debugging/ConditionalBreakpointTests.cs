@@ -16,17 +16,15 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
     public async Task A_condition_with_a_lambda_is_refused_saying_why()
     {
         bool startSuspended = true;
-        using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
+        await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
 
         await debugProtocolHost
-            .WithInitializeRequest()
-            .WithAttachRequest(p2.Id)
+            .InitializeAsync()
+            .AttachAsync(p2.Id)
             .WaitForInitializedEvent();
 
-        debugProtocolHost.WithBreakpointsRequest(
-            Debuggees.Source("DebuggableConsoleApp", "MyClass.cs"),
-            [new DapSourceBreakpoint(LogWritten, Condition: "_intList.Any(value => value == 4)")],
-            out SetBreakpointsResponse? response);
+        SetBreakpointsResponse? response = await debugProtocolHost.SetBreakpointsAsync(Debuggees.Source("DebuggableConsoleApp", "MyClass.cs"),
+            [new DapSourceBreakpoint(LogWritten, Condition: "_intList.Any(value => value == 4)")]);
 
         DapBreakpoint breakpoint = Assert.Single(response.Breakpoints);
         Assert.False(breakpoint.Verified);
@@ -37,19 +35,19 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
     public async Task A_tracepoint_writes_its_message_with_the_values_in_it_and_never_stops()
     {
         bool startSuspended = true;
-        using DebugSession host = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process debuggee);
+        await using DebugSession host = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process debuggee);
         await host
-            .WithInitializeRequest()
-            .WithAttachRequest(debuggee.Id)
+            .InitializeAsync()
+            .AttachAsync(debuggee.Id)
             .WaitForInitializedEvent();
-        host
-            .WithBreakpointsRequest(Debuggees.Source("DebuggableConsoleApp", "MyClass.cs"),
+        await host
+            .BreakpointsAsync(Debuggees.Source("DebuggableConsoleApp", "MyClass.cs"),
             [
                 new DapSourceBreakpoint(LogWritten, LogMessage: "myInt is {myInt}, and the list has {_intList.Count} \\{literally\\}"),
                 new DapSourceBreakpoint(Debuggees.MyMethodEnd),
             ])
-            .WithConfigurationDoneRequest()
-            .WithOptionalResumeRuntime(debuggee.Id, startSuspended);
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(debuggee.Id, startSuspended);
 
         OutputEvent logged = await host.WaitForEvent<OutputEvent>(o => o.Output.StartsWith("myInt is", StringComparison.Ordinal));
         Assert.Equal("myInt is 4, and the list has 4 {literally}\n", logged.Output);
@@ -63,17 +61,17 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
     {
         bool startSuspended = true;
 
-        using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
+        await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
 
         await debugProtocolHost
-            .WithInitializeRequest()
-            .WithAttachRequest(p2.Id)
+            .InitializeAsync()
+            .AttachAsync(p2.Id)
             .WaitForInitializedEvent();
 
-        debugProtocolHost
-            .WithBreakpointsRequest(Debuggees.Source("DebuggableConsoleApp", "MyClass.cs"), [new DapSourceBreakpoint(LogWritten, Condition: "myInt == 4")])
-            .WithConfigurationDoneRequest()
-            .WithOptionalResumeRuntime(p2.Id, startSuspended);
+        await debugProtocolHost
+            .BreakpointsAsync(Debuggees.Source("DebuggableConsoleApp", "MyClass.cs"), [new DapSourceBreakpoint(LogWritten, Condition: "myInt == 4")])
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(p2.Id, startSuspended);
 
         StoppedEvent stoppedEvent = await debugProtocolHost.WaitForStoppedEvent();
         (string filePath, int line, int column) stopInfo = stoppedEvent.ReadStopInfo();
@@ -88,21 +86,21 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
     {
         bool startSuspended = true;
 
-        using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
+        await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
 
         await debugProtocolHost
-            .WithInitializeRequest()
-            .WithAttachRequest(p2.Id)
+            .InitializeAsync()
+            .AttachAsync(p2.Id)
             .WaitForInitializedEvent();
 
-        debugProtocolHost
-            .WithBreakpointsRequest(Debuggees.Source("DebuggableConsoleApp", "MyClass.cs"),
+        SetBreakpointsResponse response = await debugProtocolHost.SetBreakpointsAsync(Debuggees.Source("DebuggableConsoleApp", "MyClass.cs"),
                 [
                     new DapSourceBreakpoint(LogWritten, Condition: condition),
                     new DapSourceBreakpoint(Debuggees.MyMethodEnd)
-                ], out SetBreakpointsResponse response)
-            .WithConfigurationDoneRequest()
-            .WithOptionalResumeRuntime(p2.Id, startSuspended);
+                ]);
+        await debugProtocolHost
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(p2.Id, startSuspended);
 
         // An unknown name, or a condition that is not a bool, stops rather than going missing unseen.
         int id = response.Breakpoints[0].Id!.Value;
@@ -118,21 +116,21 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
     {
         bool startSuspended = true;
 
-        using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
+        await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
 
         await debugProtocolHost
-            .WithInitializeRequest()
-            .WithAttachRequest(p2.Id)
+            .InitializeAsync()
+            .AttachAsync(p2.Id)
             .WaitForInitializedEvent();
 
-        debugProtocolHost
-            .WithBreakpointsRequest(Debuggees.Source("DebuggableConsoleApp", "MyClass.cs"),
+        await debugProtocolHost
+            .BreakpointsAsync(Debuggees.Source("DebuggableConsoleApp", "MyClass.cs"),
                 [
                     new DapSourceBreakpoint(LogWritten, Condition: "myInt == 999"),
                     new DapSourceBreakpoint(Debuggees.MyMethodEnd)
                 ])
-            .WithConfigurationDoneRequest()
-            .WithOptionalResumeRuntime(p2.Id, startSuspended);
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(p2.Id, startSuspended);
 
         // Should skip the conditional breakpoint (false condition) and hit the unconditional one after it
         StoppedEvent stoppedEvent = await debugProtocolHost.WaitForStoppedEvent();
@@ -151,17 +149,17 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         bool startSuspended = true;
         string hitConditionFilePath = Debuggees.Source("DebuggableConsoleApp", "HitConditionClass.cs");
 
-        using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
+        await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
 
         await debugProtocolHost
-            .WithInitializeRequest()
-            .WithAttachRequest(p2.Id)
+            .InitializeAsync()
+            .AttachAsync(p2.Id)
             .WaitForInitializedEvent();
 
-        debugProtocolHost
-            .WithBreakpointsRequest(hitConditionFilePath, [new DapSourceBreakpoint(AfterCount, HitCondition: hitCondition)])
-            .WithConfigurationDoneRequest()
-            .WithOptionalResumeRuntime(p2.Id, startSuspended);
+        await debugProtocolHost
+            .BreakpointsAsync(hitConditionFilePath, [new DapSourceBreakpoint(AfterCount, HitCondition: hitCondition)])
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(p2.Id, startSuspended);
 
         // Should stop on 2nd hit, not 1st
         StoppedEvent stoppedEvent = await debugProtocolHost.WaitForStoppedEvent();
@@ -169,9 +167,9 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.EndsWith("HitConditionClass.cs", stopInfo.filePath);
         Assert.Equal(AfterCount, stopInfo.line);
 
-        debugProtocolHost.WithStackTraceRequest(stoppedEvent.ThreadId!.Value, out StackTraceResponse? stackTraceResponse);
+        StackTraceResponse? stackTraceResponse = await debugProtocolHost.StackTraceAsync(stoppedEvent.ThreadId!.Value);
         int stackFrameId = stackTraceResponse.StackFrames!.First().Id;
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "_count", out EvaluateResponse? evaluateResponse);
+        EvaluateResponse? evaluateResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "_count");
         Assert.Equal("2", evaluateResponse.Result);
     }
 
@@ -180,33 +178,32 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
     {
         bool startSuspended = true;
         string file = Debuggees.Source("DebuggableConsoleApp", "HitConditionClass.cs");
-        using DebugSession host = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process debuggee);
+        await using DebugSession host = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process debuggee);
         await host
-            .WithInitializeRequest()
-            .WithAttachRequest(debuggee.Id)
+            .InitializeAsync()
+            .AttachAsync(debuggee.Id)
             .WaitForInitializedEvent();
-        host
-            .WithBreakpointsRequest(file, [new DapSourceBreakpoint(CountUp, HitCondition: "==3"), new DapSourceBreakpoint(AfterCount, HitCondition: "==5")], out SetBreakpointsResponse first)
-            .WithConfigurationDoneRequest()
-            .WithOptionalResumeRuntime(debuggee.Id, startSuspended);
+        SetBreakpointsResponse first = await host.SetBreakpointsAsync(file, [new DapSourceBreakpoint(CountUp, HitCondition: "==3"), new DapSourceBreakpoint(AfterCount, HitCondition: "==5")]);
+        await host
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(debuggee.Id, startSuspended);
 
         // The third pass stops at the count, with the breakpoint after it two of its five hits in.
         StoppedEvent third = await host.WaitForStoppedEvent();
         Assert.Equal(CountUp, third.ReadStopInfo().line);
-        Assert.Equal("2", Count(host, third));
+        Assert.Equal("2", await Count(host, third));
 
         // A breakpoint set in the file, as a click in the gutter or Run to Cursor does, then taken away again with the count's.
-        host.WithBreakpointsRequest(file,
-            [new DapSourceBreakpoint(CountUp, HitCondition: "==3"), new DapSourceBreakpoint(AfterCount, HitCondition: "==5"), new DapSourceBreakpoint(TestEnd)],
-            out SetBreakpointsResponse added);
-        StoppedEvent after = await host.WithContinueRequest().WaitForStoppedEvent();
+        SetBreakpointsResponse added = await host.SetBreakpointsAsync(file,
+            [new DapSourceBreakpoint(CountUp, HitCondition: "==3"), new DapSourceBreakpoint(AfterCount, HitCondition: "==5"), new DapSourceBreakpoint(TestEnd)]);
+        StoppedEvent after = await host.ContinueAsync().WaitForStoppedEvent();
         Assert.Equal(TestEnd, after.ReadStopInfo().line);
-        host.WithBreakpointsRequest(file, [new DapSourceBreakpoint(AfterCount, HitCondition: "==5")], out SetBreakpointsResponse removed);
+        SetBreakpointsResponse removed = await host.SetBreakpointsAsync(file, [new DapSourceBreakpoint(AfterCount, HitCondition: "==5")]);
 
         // The one after the count counted on through both: it stops on the fifth pass, not five passes after the last of them.
-        StoppedEvent fifth = await host.WithContinueRequest().WaitForStoppedEvent();
+        StoppedEvent fifth = await host.ContinueAsync().WaitForStoppedEvent();
         Assert.Equal(AfterCount, fifth.ReadStopInfo().line);
-        Assert.Equal("5", Count(host, fifth));
+        Assert.Equal("5", await Count(host, fifth));
         Assert.Equal(first.Breakpoints[1].Id, added.Breakpoints[1].Id);
         Assert.Equal(first.Breakpoints[1].Id, removed.Breakpoints[0].Id);
         Assert.Equal(first.Breakpoints[0].Id, added.Breakpoints[0].Id);
@@ -219,22 +216,21 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
     public async Task A_hit_count_the_debugger_cannot_read_is_refused_saying_why()
     {
         bool startSuspended = true;
-        using DebugSession host = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process debuggee);
+        await using DebugSession host = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process debuggee);
         await host
-            .WithInitializeRequest()
-            .WithAttachRequest(debuggee.Id)
+            .InitializeAsync()
+            .AttachAsync(debuggee.Id)
             .WaitForInitializedEvent();
-        host
-            .WithBreakpointsRequest(Debuggees.Source("DebuggableConsoleApp", "MyClass.cs"), [new DapSourceBreakpoint(Debuggees.MyMethodEnd)])
-            .WithConfigurationDoneRequest()
-            .WithOptionalResumeRuntime(debuggee.Id, startSuspended);
+        await host
+            .BreakpointsAsync(Debuggees.Source("DebuggableConsoleApp", "MyClass.cs"), [new DapSourceBreakpoint(Debuggees.MyMethodEnd)])
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(debuggee.Id, startSuspended);
         Assert.Equal(Debuggees.MyMethodEnd, (await host.WaitForStoppedEvent()).ReadStopInfo().line);
 
         foreach (string hitCondition in new[] { "3 times", "abc", "%0", "==" })
         {
-            host.WithBreakpointsRequest(Debuggees.Source("DebuggableConsoleApp", "HitConditionClass.cs"),
-                [new DapSourceBreakpoint(AfterCount, HitCondition: hitCondition), new DapSourceBreakpoint(CountUp)],
-                out SetBreakpointsResponse response);
+            SetBreakpointsResponse response = await host.SetBreakpointsAsync(Debuggees.Source("DebuggableConsoleApp", "HitConditionClass.cs"),
+                [new DapSourceBreakpoint(AfterCount, HitCondition: hitCondition), new DapSourceBreakpoint(CountUp)]);
             DapBreakpoint refused = response.Breakpoints[0];
             Assert.False(refused.Verified, $"The hit count \"{hitCondition}\" was taken");
             Assert.Equal("failed", refused.Reason);
@@ -243,17 +239,17 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         }
 
         // It never stops: from the count the program runs on round its loop to MyMethod's end.
-        Assert.Equal(CountUp, (await host.WithContinueRequest().WaitForStoppedEvent()).ReadStopInfo().line);
-        StoppedEvent next = await host.WithContinueRequest().WaitForStoppedEvent();
+        Assert.Equal(CountUp, (await host.ContinueAsync().WaitForStoppedEvent()).ReadStopInfo().line);
+        StoppedEvent next = await host.ContinueAsync().WaitForStoppedEvent();
         Assert.EndsWith("MyClass.cs", next.ReadStopInfo().filePath, StringComparison.Ordinal);
         Assert.Equal(Debuggees.MyMethodEnd, next.ReadStopInfo().line);
     }
 
     /// <summary>HitConditionClass's count of its passes, where the program stopped.</summary>
-    private static string Count(DebugSession host, StoppedEvent stop)
+    private static async Task<string> Count(DebugSession host, StoppedEvent stop)
     {
-        host.WithStackTraceRequest(stop.ThreadId!.Value, out StackTraceResponse stack);
-        host.WithEvaluateRequest(stack.StackFrames!.First().Id, "_count", out EvaluateResponse value);
+        StackTraceResponse stack = await host.StackTraceAsync(stop.ThreadId!.Value);
+        EvaluateResponse value = await host.EvaluateAsync(stack.StackFrames!.First().Id, "_count");
         return value.Result;
     }
 
@@ -263,17 +259,17 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         bool startSuspended = true;
         string hitConditionFilePath = Debuggees.Source("DebuggableConsoleApp", "HitConditionClass.cs");
 
-        using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
+        await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
 
         await debugProtocolHost
-            .WithInitializeRequest()
-            .WithAttachRequest(p2.Id)
+            .InitializeAsync()
+            .AttachAsync(p2.Id)
             .WaitForInitializedEvent();
 
-        debugProtocolHost
-            .WithBreakpointsRequest(hitConditionFilePath, [new DapSourceBreakpoint(AfterCount, HitCondition: ">=2")])
-            .WithConfigurationDoneRequest()
-            .WithOptionalResumeRuntime(p2.Id, startSuspended);
+        await debugProtocolHost
+            .BreakpointsAsync(hitConditionFilePath, [new DapSourceBreakpoint(AfterCount, HitCondition: ">=2")])
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(p2.Id, startSuspended);
 
         // First stop should be on 2nd iteration (hit count >= 2)
         StoppedEvent stoppedEvent = await debugProtocolHost.WaitForStoppedEvent();
@@ -281,20 +277,20 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.EndsWith("HitConditionClass.cs", stopInfo.filePath);
         Assert.Equal(AfterCount, stopInfo.line);
 
-        debugProtocolHost.WithStackTraceRequest(stoppedEvent.ThreadId!.Value, out StackTraceResponse? stackTraceResponse);
+        StackTraceResponse? stackTraceResponse = await debugProtocolHost.StackTraceAsync(stoppedEvent.ThreadId!.Value);
         int stackFrameId = stackTraceResponse.StackFrames!.First().Id;
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "_count", out EvaluateResponse? evaluateResponse);
+        EvaluateResponse? evaluateResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "_count");
         Assert.Equal("2", evaluateResponse.Result);
 
         // Continue - should stop again on 3rd iteration
-        StoppedEvent stoppedEvent2 = await debugProtocolHost.WithContinueRequest().WaitForStoppedEvent();
+        StoppedEvent stoppedEvent2 = await debugProtocolHost.ContinueAsync().WaitForStoppedEvent();
         (string filePath, int line, int column) stopInfo2 = stoppedEvent2.ReadStopInfo();
         Assert.EndsWith("HitConditionClass.cs", stopInfo2.filePath);
         Assert.Equal(AfterCount, stopInfo2.line);
 
-        debugProtocolHost.WithStackTraceRequest(stoppedEvent2.ThreadId!.Value, out StackTraceResponse? stackTraceResponse2);
+        StackTraceResponse? stackTraceResponse2 = await debugProtocolHost.StackTraceAsync(stoppedEvent2.ThreadId!.Value);
         int stackFrameId2 = stackTraceResponse2.StackFrames!.First().Id;
-        debugProtocolHost.WithEvaluateRequest(stackFrameId2, "_count", out EvaluateResponse? evaluateResponse2);
+        EvaluateResponse? evaluateResponse2 = await debugProtocolHost.EvaluateAsync(stackFrameId2, "_count");
         Assert.Equal("3", evaluateResponse2.Result);
     }
 
@@ -304,17 +300,17 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         bool startSuspended = true;
         string hitConditionFilePath = Debuggees.Source("DebuggableConsoleApp", "HitConditionClass.cs");
 
-        using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
+        await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
 
         await debugProtocolHost
-            .WithInitializeRequest()
-            .WithAttachRequest(p2.Id)
+            .InitializeAsync()
+            .AttachAsync(p2.Id)
             .WaitForInitializedEvent();
 
-        debugProtocolHost
-            .WithBreakpointsRequest(hitConditionFilePath, [new DapSourceBreakpoint(AfterCount, HitCondition: "%2")])
-            .WithConfigurationDoneRequest()
-            .WithOptionalResumeRuntime(p2.Id, startSuspended);
+        await debugProtocolHost
+            .BreakpointsAsync(hitConditionFilePath, [new DapSourceBreakpoint(AfterCount, HitCondition: "%2")])
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(p2.Id, startSuspended);
 
         // First stop should be on 2nd iteration (2 % 2 == 0)
         StoppedEvent stoppedEvent = await debugProtocolHost.WaitForStoppedEvent();
@@ -322,20 +318,20 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.EndsWith("HitConditionClass.cs", stopInfo.filePath);
         Assert.Equal(AfterCount, stopInfo.line);
 
-        debugProtocolHost.WithStackTraceRequest(stoppedEvent.ThreadId!.Value, out StackTraceResponse? stackTraceResponse);
+        StackTraceResponse? stackTraceResponse = await debugProtocolHost.StackTraceAsync(stoppedEvent.ThreadId!.Value);
         int stackFrameId = stackTraceResponse.StackFrames!.First().Id;
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "_count", out EvaluateResponse? evaluateResponse);
+        EvaluateResponse? evaluateResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "_count");
         Assert.Equal("2", evaluateResponse.Result);
 
         // Continue - should skip 3rd, stop on 4th (4 % 2 == 0)
-        StoppedEvent stoppedEvent2 = await debugProtocolHost.WithContinueRequest().WaitForStoppedEvent();
+        StoppedEvent stoppedEvent2 = await debugProtocolHost.ContinueAsync().WaitForStoppedEvent();
         (string filePath, int line, int column) stopInfo2 = stoppedEvent2.ReadStopInfo();
         Assert.EndsWith("HitConditionClass.cs", stopInfo2.filePath);
         Assert.Equal(AfterCount, stopInfo2.line);
 
-        debugProtocolHost.WithStackTraceRequest(stoppedEvent2.ThreadId!.Value, out StackTraceResponse? stackTraceResponse2);
+        StackTraceResponse? stackTraceResponse2 = await debugProtocolHost.StackTraceAsync(stoppedEvent2.ThreadId!.Value);
         int stackFrameId2 = stackTraceResponse2.StackFrames!.First().Id;
-        debugProtocolHost.WithEvaluateRequest(stackFrameId2, "_count", out EvaluateResponse? evaluateResponse2);
+        EvaluateResponse? evaluateResponse2 = await debugProtocolHost.EvaluateAsync(stackFrameId2, "_count");
         Assert.Equal("4", evaluateResponse2.Result);
     }
 }

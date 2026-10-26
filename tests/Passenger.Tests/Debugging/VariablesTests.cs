@@ -12,21 +12,20 @@ public class VariablesTests(ITestOutputHelper testOutputHelper)
     {
         bool startSuspended = true;
 
-        using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
+        await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
 
         await debugProtocolHost
-            .WithInitializeRequest()
-            .WithAttachRequest(p2.Id)
+            .InitializeAsync()
+            .AttachAsync(p2.Id)
             .WaitForInitializedEvent();
-        debugProtocolHost
-            .WithBreakpointsRequest()
-            .WithConfigurationDoneRequest()
-            .WithOptionalResumeRuntime(p2.Id, startSuspended);
+        await debugProtocolHost
+            .BreakpointsAsync()
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(p2.Id, startSuspended);
 
         StoppedEvent stoppedEvent = await debugProtocolHost.WaitForStoppedEvent();
-        debugProtocolHost
-            .WithStackTraceRequest(stoppedEvent.ThreadId!.Value, out StackTraceResponse? stackTraceResponse)
-            .WithScopesRequest(stackTraceResponse.StackFrames!.First().Id, out ScopesResponse? scopesResponse);
+        StackTraceResponse? stackTraceResponse = await debugProtocolHost.StackTraceAsync(stoppedEvent.ThreadId!.Value);
+        ScopesResponse? scopesResponse = await debugProtocolHost.ScopesAsync(stackTraceResponse.StackFrames!.First().Id);
 
         Assert.Single(scopesResponse.Scopes);
         DapScope scope = scopesResponse.Scopes.Single();
@@ -46,12 +45,12 @@ public class VariablesTests(ITestOutputHelper testOutputHelper)
             new() { VariablesReference = 0, Name = "anotherVar",            EvaluateName = "anotherVar",            Value = "\"asdf\"",                         Type = "string" },
         ];
 
-        debugProtocolHost.WithVariablesRequest(scope.VariablesReference, out List<DapVariable>? variables);
+        List<DapVariable>? variables = await debugProtocolHost.VariablesAsync(scope.VariablesReference);
 
         Assert.Equal(11, variables.Count);
         variables.ShouldBeEquivalentToDebuggerVariables(expectedVariables);
-        debugProtocolHost.AssertStructMemberVariables(variables.Single(s => s.Name == "structVar").VariablesReference);
-        debugProtocolHost.AssertInstanceThisInstanceVariables(variables.Single(s => s.Name == "this").VariablesReference);
+        await debugProtocolHost.AssertStructMemberVariables(variables.Single(s => s.Name == "structVar").VariablesReference);
+        await debugProtocolHost.AssertInstanceThisInstanceVariables(variables.Single(s => s.Name == "this").VariablesReference);
 
         List<DapVariable> expectedEnumVariables =
         [
@@ -59,7 +58,7 @@ public class VariablesTests(ITestOutputHelper testOutputHelper)
             new() {Name = "value__", Value = "1", Type = "int", EvaluateName = "value__" },
         ];
 
-        debugProtocolHost.WithVariablesRequest(variables.Single(s => s.Name == "enumVar").VariablesReference, out List<DapVariable>? enumNestedVariables);
+        List<DapVariable>? enumNestedVariables = await debugProtocolHost.VariablesAsync(variables.Single(s => s.Name == "enumVar").VariablesReference);
         enumNestedVariables.ShouldBeEquivalentToDebuggerVariables(expectedEnumVariables);
 
         List<DapVariable> expectedEnumStaticMemberVariables =
@@ -69,17 +68,16 @@ public class VariablesTests(ITestOutputHelper testOutputHelper)
             new() { Name = "ThirdValue", Value = "ThirdValue", Type = "DebuggableConsoleApp.MyEnum", EvaluateName = "ThirdValue" },
         ];
 
-        debugProtocolHost.WithVariablesRequest(enumNestedVariables.Single(s => s.Name == "Static members").VariablesReference, out List<DapVariable>? enumStaticVariables);
+        List<DapVariable>? enumStaticVariables = await debugProtocolHost.VariablesAsync(enumNestedVariables.Single(s => s.Name == "Static members").VariablesReference);
         enumStaticVariables.ShouldBeEquivalentToDebuggerVariables(expectedEnumStaticMemberVariables);
         // TODO: Assert that none of the variable references are the same (other than 0)
 
         StoppedEvent stoppedEvent2 = await debugProtocolHost
-            .WithContinueRequest()
+            .ContinueAsync()
             .WaitForStoppedEvent();
-        debugProtocolHost
-            .WithStackTraceRequest(stoppedEvent2.ThreadId!.Value, out StackTraceResponse? stackTraceResponse2)
-            .WithScopesRequest(stackTraceResponse2.StackFrames!.First().Id, out ScopesResponse? scopesResponse2)
-            .WithVariablesRequest(scopesResponse2.Scopes.Single().VariablesReference, out List<DapVariable>? variables2);
+        StackTraceResponse? stackTraceResponse2 = await debugProtocolHost.StackTraceAsync(stoppedEvent2.ThreadId!.Value);
+        ScopesResponse? scopesResponse2 = await debugProtocolHost.ScopesAsync(stackTraceResponse2.StackFrames!.First().Id);
+        List<DapVariable>? variables2 = await debugProtocolHost.VariablesAsync(scopesResponse2.Scopes.Single().VariablesReference);
         // The code is in a loop, so the same variables after a continue mean the references were numbered afresh.
         variables2.ShouldBeEquivalentToDebuggerVariables(expectedVariables);
     }
@@ -87,17 +85,17 @@ public class VariablesTests(ITestOutputHelper testOutputHelper)
 
 file static class TestExtensions
 {
-    public static void AssertStructMemberVariables(this DebugSession debugProtocolHost, int variablesReference)
+    public static async Task AssertStructMemberVariables(this DebugSession debugProtocolHost, int variablesReference)
     {
         List<DapVariable> expectedVariables =
         [
             new() { Name = "Id", EvaluateName = "Id", Value = "5", Type = "int" },
             new() { Name = "Name", EvaluateName = "Name", Value = "\"StructName\"", Type = "string" },
         ];
-        debugProtocolHost.WithVariablesRequest(variablesReference, out List<DapVariable>? structMemberVariables);
+        List<DapVariable>? structMemberVariables = await debugProtocolHost.VariablesAsync(variablesReference);
         structMemberVariables.ShouldBeEquivalentToDebuggerVariables(expectedVariables);
     }
-    public static void AssertInstanceThisInstanceVariables(this DebugSession debugProtocolHost, int variablesReference)
+    public static async Task AssertInstanceThisInstanceVariables(this DebugSession debugProtocolHost, int variablesReference)
     {
         List<DapVariable> expectedVariables =
         [
@@ -121,20 +119,20 @@ file static class TestExtensions
             new() { Name = "_doubler", EvaluateName = "_doubler", Value = "{System.Func<int, int>}", Type = "System.Func<int, int>", VariablesReference = 16 },
             new() { Name = "Static members", Value = "", Type = "", EvaluateName = "Static members", VariablesReference = 19, PresentationHint = new DapPresentationHint("class")},
         ];
-        debugProtocolHost.WithVariablesRequest(variablesReference, out List<DapVariable>? thisInstanceVariables);
+        List<DapVariable>? thisInstanceVariables = await debugProtocolHost.VariablesAsync(variablesReference);
         thisInstanceVariables.ShouldBeEquivalentToDebuggerVariables(expectedVariables);
-        debugProtocolHost.AssertIntArrayVariables(thisInstanceVariables.Single(s => s.Name == "_intArray").VariablesReference);
-        debugProtocolHost.AssertInstanceThisStaticVariables(thisInstanceVariables.Single(s => s.Name == "Static members").VariablesReference);
-        debugProtocolHost.AssertClassWithDebuggerTypeProxyVariables(thisInstanceVariables.Single(s => s.Name == "_classWithDebugDisplay").VariablesReference);
-        debugProtocolHost.AssertGenericClassVariables(thisInstanceVariables.Single(s => s.Name == "_myClassWithGeneric").VariablesReference);
-        debugProtocolHost.AssertIntListVariables(thisInstanceVariables.Single(s => s.Name == "_intList").VariablesReference);
-        debugProtocolHost.AssertDictionaryVariables(thisInstanceVariables.Single(s => s.Name == "_intDictionary").VariablesReference);
-        debugProtocolHost.AssertClassWithFieldOfNestedClassType_Variables(thisInstanceVariables.Single(s => s.Name == "_classField").VariablesReference);
-        debugProtocolHost.AssertPropertyStoredClass_Variables(thisInstanceVariables.Single(s => s.Name == "ClassProperty").VariablesReference);
-        debugProtocolHost.AssertRecord_Variables(thisInstanceVariables.Single(s => s.Name == "_recordField").VariablesReference);
+        await debugProtocolHost.AssertIntArrayVariables(thisInstanceVariables.Single(s => s.Name == "_intArray").VariablesReference);
+        await debugProtocolHost.AssertInstanceThisStaticVariables(thisInstanceVariables.Single(s => s.Name == "Static members").VariablesReference);
+        await debugProtocolHost.AssertClassWithDebuggerTypeProxyVariables(thisInstanceVariables.Single(s => s.Name == "_classWithDebugDisplay").VariablesReference);
+        await debugProtocolHost.AssertGenericClassVariables(thisInstanceVariables.Single(s => s.Name == "_myClassWithGeneric").VariablesReference);
+        await debugProtocolHost.AssertIntListVariables(thisInstanceVariables.Single(s => s.Name == "_intList").VariablesReference);
+        await debugProtocolHost.AssertDictionaryVariables(thisInstanceVariables.Single(s => s.Name == "_intDictionary").VariablesReference);
+        await debugProtocolHost.AssertClassWithFieldOfNestedClassType_Variables(thisInstanceVariables.Single(s => s.Name == "_classField").VariablesReference);
+        await debugProtocolHost.AssertPropertyStoredClass_Variables(thisInstanceVariables.Single(s => s.Name == "ClassProperty").VariablesReference);
+        await debugProtocolHost.AssertRecord_Variables(thisInstanceVariables.Single(s => s.Name == "_recordField").VariablesReference);
     }
 
-    private static void AssertInstanceThisStaticVariables(this DebugSession debugProtocolHost, int variablesReference)
+    private static async Task AssertInstanceThisStaticVariables(this DebugSession debugProtocolHost, int variablesReference)
     {
         string expectedDateTime = new DateTime(2026, 6, 13, 7, 18, 38).ToString();
         List<DapVariable> expectedVariables =
@@ -150,12 +148,12 @@ file static class TestExtensions
             new() { Name = "_instanceStaticField", EvaluateName = "_instanceStaticField", Value = "6", Type = "int" },
             new() { Name = "StaticFieldFromBase", EvaluateName = "StaticFieldFromBase", Value = "168", Type = "int" },
         ];
-        debugProtocolHost.WithVariablesRequest(variablesReference, out List<DapVariable>? instanceThisStaticVariables);
+        List<DapVariable>? instanceThisStaticVariables = await debugProtocolHost.VariablesAsync(variablesReference);
         instanceThisStaticVariables.ShouldBeEquivalentToDebuggerVariables(expectedVariables);
     }
 
     private static readonly DapPresentationHint _arrayElementPresentationHint = new("data");
-    public static void AssertIntArrayVariables(this DebugSession debugProtocolHost, int variablesReference)
+    public static async Task AssertIntArrayVariables(this DebugSession debugProtocolHost, int variablesReference)
     {
         List<DapVariable> expectedVariables =
         [
@@ -164,22 +162,22 @@ file static class TestExtensions
             new() { Name = "[2]", EvaluateName = "[2]", Value = "5", Type = "int", PresentationHint = _arrayElementPresentationHint },
             new() { Name = "[3]", EvaluateName = "[3]", Value = "7", Type = "int", PresentationHint = _arrayElementPresentationHint },
         ];
-        debugProtocolHost.WithVariablesRequest(variablesReference, out List<DapVariable>? intArrayVariables);
+        List<DapVariable>? intArrayVariables = await debugProtocolHost.VariablesAsync(variablesReference);
         intArrayVariables.ShouldBeEquivalentToDebuggerVariables(expectedVariables);
     }
 
-    public static void AssertGenericClassVariables(this DebugSession debugProtocolHost, int variablesReference)
+    public static async Task AssertGenericClassVariables(this DebugSession debugProtocolHost, int variablesReference)
     {
         List<DapVariable> expectedVariables =
         [
             new() { Name = "GenericItemsField", EvaluateName = "GenericItemsField", Value = "int[1]", Type = "int[]", VariablesReference = 27 },
             new() { Name = "GenericItems", EvaluateName = "GenericItems", Value = "int[1]", Type = "int[]", VariablesReference = 28 },
         ];
-        debugProtocolHost.WithVariablesRequest(variablesReference, out List<DapVariable>? genericClassVariables);
+        List<DapVariable>? genericClassVariables = await debugProtocolHost.VariablesAsync(variablesReference);
         genericClassVariables.ShouldBeEquivalentToDebuggerVariables(expectedVariables);
     }
 
-    public static void AssertIntListVariables(this DebugSession debugProtocolHost, int variablesReference)
+    public static async Task AssertIntListVariables(this DebugSession debugProtocolHost, int variablesReference)
     {
         List<DapVariable> expectedVariables =
         [
@@ -189,12 +187,12 @@ file static class TestExtensions
             new() { Name = "[3]", EvaluateName = "[3]", Value = "25", Type = "int", PresentationHint = _arrayElementPresentationHint },
             new() { Name = "Raw View", EvaluateName = "Raw View", Value = "", Type = "", VariablesReference = 29, PresentationHint = new DapPresentationHint("class") },
         ];
-        debugProtocolHost.WithVariablesRequest(variablesReference, out List<DapVariable>? intListVariables);
+        List<DapVariable>? intListVariables = await debugProtocolHost.VariablesAsync(variablesReference);
         intListVariables.ShouldBeEquivalentToDebuggerVariables(expectedVariables);
     }
 
     // An entry is named by its key and shows its value, as its [DebuggerDisplay("{Value}", Name = "[{Key}]")] asks.
-    public static void AssertDictionaryVariables(this DebugSession debugProtocolHost, int variablesReference)
+    public static async Task AssertDictionaryVariables(this DebugSession debugProtocolHost, int variablesReference)
     {
         List<DapVariable> expectedVariables =
         [
@@ -203,11 +201,11 @@ file static class TestExtensions
             new() { Name = "[15]", EvaluateName = "[15]", Value = "150", Type = "System.Collections.Generic.DebugViewDictionaryItem<int, int>", VariablesReference = 32, PresentationHint = _arrayElementPresentationHint },
             new() { Name = "Raw View", EvaluateName = "Raw View", Value = "", Type = "", VariablesReference = 33, PresentationHint = new DapPresentationHint("class") },
         ];
-        debugProtocolHost.WithVariablesRequest(variablesReference, out List<DapVariable>? dictionaryVariables);
+        List<DapVariable>? dictionaryVariables = await debugProtocolHost.VariablesAsync(variablesReference);
         dictionaryVariables.ShouldBeEquivalentToDebuggerVariables(expectedVariables);
     }
 
-    public static void AssertClassWithFieldOfNestedClassType_Variables(this DebugSession debugProtocolHost, int variablesReference)
+    public static async Task AssertClassWithFieldOfNestedClassType_Variables(this DebugSession debugProtocolHost, int variablesReference)
     {
         List<DapVariable> expectedVariables =
         [
@@ -217,11 +215,11 @@ file static class TestExtensions
             new() { Name = "NestedClassProperty", EvaluateName = "NestedClassProperty", Value = "{DebuggableConsoleApp.MyClassContainingAnotherClass.MyNestedClass}", Type = "DebuggableConsoleApp.MyClassContainingAnotherClass.MyNestedClass", VariablesReference = 34 },
             new() { Name = "NestedGenericClassProperty", EvaluateName = "NestedGenericClassProperty", Value = "{DebuggableConsoleApp.MyGenericClassContainingAnotherGenericClass<string, int>.MyNestedGenericClass<long, float>}", Type = "DebuggableConsoleApp.MyGenericClassContainingAnotherGenericClass<string, int>.MyNestedGenericClass<long, float>", VariablesReference = 35 },
         ];
-        debugProtocolHost.WithVariablesRequest(variablesReference, out List<DapVariable>? classWithNestedClassFieldVariables);
+        List<DapVariable>? classWithNestedClassFieldVariables = await debugProtocolHost.VariablesAsync(variablesReference);
         classWithNestedClassFieldVariables.ShouldBeEquivalentToDebuggerVariables(expectedVariables);
     }
 
-    public static void AssertPropertyStoredClass_Variables(this DebugSession debugProtocolHost, int variablesReference)
+    public static async Task AssertPropertyStoredClass_Variables(this DebugSession debugProtocolHost, int variablesReference)
     {
         List<DapVariable> expectedVariables =
         [
@@ -229,11 +227,11 @@ file static class TestExtensions
             new() { Name = "IntProperty", EvaluateName = "IntProperty", Value = "6", Type = "int" },
             new() { Name = "MyProperty", EvaluateName = "MyProperty", Value = "\"Hello\"", Type = "string" },
         ];
-        debugProtocolHost.WithVariablesRequest(variablesReference, out List<DapVariable>? classWithNestedClassFieldVariables);
+        List<DapVariable>? classWithNestedClassFieldVariables = await debugProtocolHost.VariablesAsync(variablesReference);
         classWithNestedClassFieldVariables.ShouldBeEquivalentToDebuggerVariables(expectedVariables);
     }
 
-    public static void AssertClassWithDebuggerTypeProxyVariables(this DebugSession debugProtocolHost, int variablesReference)
+    public static async Task AssertClassWithDebuggerTypeProxyVariables(this DebugSession debugProtocolHost, int variablesReference)
     {
         List<DapVariable> expectedVariables =
         [
@@ -244,11 +242,11 @@ file static class TestExtensions
             new() { Name = "[3]", EvaluateName = "[3]", Value = "7", Type = "int", PresentationHint = _arrayElementPresentationHint },
             new() { Name = "Raw View", EvaluateName = "Raw View", Value = "", Type = "", VariablesReference = 26, PresentationHint = new DapPresentationHint("class") },
         ];
-        debugProtocolHost.WithVariablesRequest(variablesReference, out List<DapVariable>? classWithDebuggerTypeProxyVariables);
+        List<DapVariable>? classWithDebuggerTypeProxyVariables = await debugProtocolHost.VariablesAsync(variablesReference);
         classWithDebuggerTypeProxyVariables.ShouldBeEquivalentToDebuggerVariables(expectedVariables);
     }
 
-    private static void AssertRecord_Variables(this DebugSession debugProtocolHost, int variablesReference)
+    private static async Task AssertRecord_Variables(this DebugSession debugProtocolHost, int variablesReference)
     {
         List<DapVariable> expectedVariables =
         [
@@ -256,9 +254,9 @@ file static class TestExtensions
             new() { Name = "X", EvaluateName = "X", Value = "1", Type = "int" },
             new() { Name = "Y", EvaluateName = "Y", Value = "2", Type = "int" },
         ];
-        debugProtocolHost.WithVariablesRequest(variablesReference, out List<DapVariable>? recordVariables);
+        List<DapVariable>? recordVariables = await debugProtocolHost.VariablesAsync(variablesReference);
         recordVariables.ShouldBeEquivalentToDebuggerVariables(expectedVariables);
 
-        debugProtocolHost.WithVariablesRequest(recordVariables.Single(s => s.Name == "EqualityContract").VariablesReference, out List<DapVariable>? recordEqualityContractVariables);
+        List<DapVariable>? recordEqualityContractVariables = await debugProtocolHost.VariablesAsync(recordVariables.Single(s => s.Name == "EqualityContract").VariablesReference);
     }
 }

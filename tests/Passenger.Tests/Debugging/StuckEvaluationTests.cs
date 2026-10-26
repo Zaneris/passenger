@@ -20,21 +20,21 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
     public async Task A_continue_runs_every_thread_of_the_program_and_the_evaluations_late_end_is_let_go()
     {
         string worker = "Console.WriteLine(\"worker ran\");";
-        using DebugSession host = await LaunchToBreakpoints(Stop, worker);
+        await using DebugSession host = await LaunchToBreakpoints(Stop, worker);
         StoppedEvent stop = await host.WaitForStoppedEvent();
         int thread = stop.ThreadId!.Value;
-        host.WithEvaluateRequest(host.GetTopStackFrame(thread).Id, "Reads.Input", out EvaluateResponse stuck);
+        EvaluateResponse stuck = await host.EvaluateAsync((await host.TopFrameAsync(thread)).Id, "Reads.Input");
         Assert.Contains("could not be stopped", stuck.Result, StringComparison.Ordinal);
 
-        host.WithContinueRequest();
+        await host.ContinueAsync();
         StoppedEvent workerStop = await host.WaitForStoppedEvent();
         Assert.True(workerStop.Reason == StopReasons.Breakpoint && workerStop.ReadStopInfo().line == Line(worker),
             $"The continue left the program's other threads suspended: the worker's breakpoint did not stop it ({workerStop.Reason} at line {workerStop.Line})");
         Assert.NotEqual(thread, workerStop.ThreadId);
 
         // The read the evaluation waits on has its line, and the program's own the end of its input.
-        host.Request(DapCommands.Input, new InputArguments("typed\n", Close: true));
-        host.WithContinueRequest();
+        await host.RequestAsync(DapCommands.Input, new InputArguments("typed\n", Close: true));
+        await host.ContinueAsync();
         (string output, int? exitCode) = await host.WaitForEnd();
         Assert.Contains("before 1", output, StringComparison.Ordinal);
         Assert.Contains("read none", output, StringComparison.Ordinal);
@@ -44,18 +44,18 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
     [Fact]
     public async Task An_exception_stop_is_still_described_once_an_evaluation_there_could_not_be_stopped()
     {
-        using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, "PassengerCases", Line("Console.WriteLine(\"end\");"), [DapExceptionFilters.All]);
+        await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, "PassengerCases", Line("Console.WriteLine(\"end\");"), [DapExceptionFilters.All]);
         StoppedEvent stop = await host.WaitForStoppedEvent();
         Assert.Equal(StopReasons.Exception, stop.Reason);
         int thread = stop.ThreadId!.Value;
-        host.WithEvaluateRequest(host.GetTopStackFrame(thread).Id, "Reads.Input", out EvaluateResponse stuck);
+        EvaluateResponse stuck = await host.EvaluateAsync((await host.TopFrameAsync(thread)).Id, "Reads.Input");
         Assert.Contains("could not be stopped", stuck.Result, StringComparison.Ordinal);
 
         // No code runs on the thread while the evaluation does.
-        ExceptionInfoResponse info = host.Request<ExceptionInfoResponse>(DapCommands.ExceptionInfo, new ThreadArguments(thread));
+        ExceptionInfoResponse info = await host.RequestAsync<ExceptionInfoResponse>(DapCommands.ExceptionInfo, new ThreadArguments(thread));
         Assert.Equal(("System.InvalidOperationException", "thrown in user code"), (info.Details?.FullTypeName, info.Details?.Message));
         Assert.Contains("Implicit evaluation is disabled", info.Description, StringComparison.Ordinal);
-        Assert.Single(host.Locals(stop), v => v.Name == "$exception");
+        Assert.Single(await host.LocalsAsync(stop), v => v.Name == "$exception");
     }
 
     /// <summary>A continue sent while the stop's values are still being read (here by an evaluation that never returns) is
@@ -64,10 +64,10 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
     [Fact]
     public async Task A_continue_goes_ahead_of_the_stops_reads_and_leaves_the_evaluation_under_way_to_the_program()
     {
-        using DebugSession host = await LaunchCase("leaves", "Console.WriteLine($\"turn {turn}\");");
+        await using DebugSession host = await LaunchCase("leaves", "Console.WriteLine($\"turn {turn}\");");
         StoppedEvent stop = await host.WaitForStoppedEvent();
         int thread = stop.ThreadId!.Value;
-        int frame = host.GetTopStackFrame(thread).Id;
+        int frame = (await host.TopFrameAsync(thread)).Id;
         Task<EvaluateResponse> endless = host.Send<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments("Leaves.Endless", frame, "watch"));
         await host.WaitForEvent<OutputEvent>(o => o.Output.Contains("evaluating", StringComparison.Ordinal));
         Task<EvaluateResponse> counted = host.Send<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments("Leaves.Count", frame, "watch"));
@@ -110,19 +110,19 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
             }
         };
         program.BeginOutputReadLine();
-        using DebugSession host = DebugSession.ForAttach(testOutputHelper, program);
+        await using DebugSession host = DebugSession.ForAttach(testOutputHelper, program);
         await host
-            .WithInitializeRequest()
-            .WithAttachRequest(program.Id)
+            .InitializeAsync()
+            .AttachAsync(program.Id)
             .WaitForInitializedEvent();
-        host.WithBreakpointsRequest([Line("Thread.Sleep(10); // each turn of the program let go")], Source).WithConfigurationDoneRequest();
+        await host.BreakpointsAsync([Line("Thread.Sleep(10); // each turn of the program let go")], Source).ConfigurationDoneAsync();
         StoppedEvent stop = await host.WaitForStoppedEvent();
-        int frame = host.GetTopStackFrame(stop.ThreadId!.Value).Id;
+        int frame = (await host.TopFrameAsync(stop.ThreadId!.Value)).Id;
         Task<EvaluateResponse> slow = host.Send<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments("LetsGo.Slow", frame, "watch"));
         await evaluating.Task.WaitAsync(DebugSession.RequestLimit, TestContext.Current.CancellationToken);
 
         Stopwatch asked = Stopwatch.StartNew();
-        Assert.True(host.Disconnect(DebugSession.RequestLimit), "The detach was not answered");
+        Assert.True(await host.DisconnectAsync(DebugSession.RequestLimit), "The detach was not answered");
         Assert.True(asked.Elapsed < TimeSpan.FromSeconds(1.5).Scaled(),
             $"The detach was answered {asked.Elapsed.TotalSeconds:0.0} s after it was asked, where the evaluation it waited for took 0.5 s");
         Assert.Contains("went on", (await slow).Result, StringComparison.Ordinal);
@@ -147,18 +147,18 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
         start.RedirectStandardOutput = true;
         using Process program = Passenger.Core.ChildProcesses.Start(start);
         program.BeginOutputReadLine();
-        using DebugSession host = DebugSession.ForAttach(testOutputHelper, program);
+        await using DebugSession host = DebugSession.ForAttach(testOutputHelper, program);
         await host
-            .WithInitializeRequest()
-            .WithAttachRequest(program.Id)
+            .InitializeAsync()
+            .AttachAsync(program.Id)
             .WaitForInitializedEvent();
-        host.WithBreakpointsRequest([Line(Stop)], Source).WithConfigurationDoneRequest();
+        await host.BreakpointsAsync([Line(Stop)], Source).ConfigurationDoneAsync();
         StoppedEvent stop = await host.WaitForStoppedEvent();
-        host.WithEvaluateRequest(host.GetTopStackFrame(stop.ThreadId!.Value).Id, "Reads.Input", out EvaluateResponse stuck);
+        EvaluateResponse stuck = await host.EvaluateAsync((await host.TopFrameAsync(stop.ThreadId!.Value)).Id, "Reads.Input");
         Assert.Contains("could not be stopped", stuck.Result, StringComparison.Ordinal);
 
         Stopwatch asked = Stopwatch.StartNew();
-        Assert.True(host.Disconnect(DebugSession.RequestLimit), "The detach was not answered");
+        Assert.True(await host.DisconnectAsync(DebugSession.RequestLimit), "The detach was not answered");
         Assert.True(asked.Elapsed < TimeSpan.FromSeconds(1.5).Scaled(),
             $"The detach was answered {asked.Elapsed.TotalSeconds:0.0} s after it was asked: it waited again for an evaluation that had had its time");
     }
@@ -169,12 +169,12 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
     [Fact]
     public async Task An_evaluation_waiting_on_a_lock_a_paused_thread_holds_leaves_the_lock_free_once_the_program_goes_on()
     {
-        using DebugSession host = await LaunchCase("locks", Held, Later);
+        await using DebugSession host = await LaunchCase("locks", Held, Later);
         StoppedEvent stop = await host.WaitForStoppedEvent();
-        host.WithEvaluateRequest(host.GetTopStackFrame(stop.ThreadId!.Value).Id, "Locks.Taken", out EvaluateResponse waits);
+        EvaluateResponse waits = await host.EvaluateAsync((await host.TopFrameAsync(stop.ThreadId!.Value)).Id, "Locks.Taken");
         Assert.Contains("could not be stopped", waits.Result, StringComparison.Ordinal);
 
-        host.WithContinueRequest();
+        await host.ContinueAsync();
         await TheLockIsFreeOnceTheFirstEvaluationRanToItsEnd(host);
     }
 
@@ -183,10 +183,10 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
     [Fact]
     public async Task An_evaluation_a_continue_leaves_waiting_on_a_lock_past_its_time_runs_to_its_end_once_the_lock_is_free()
     {
-        using DebugSession host = await LaunchCase("locks", Held, Later);
+        await using DebugSession host = await LaunchCase("locks", Held, Later);
         StoppedEvent stop = await host.WaitForStoppedEvent();
         int thread = stop.ThreadId!.Value;
-        Task<EvaluateResponse> waits = host.Send<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments("Locks.Taken", host.GetTopStackFrame(thread).Id, "watch"));
+        Task<EvaluateResponse> waits = host.Send<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments("Locks.Taken", (await host.TopFrameAsync(thread)).Id, "watch"));
         await host.WaitForEvent<OutputEvent>(o => o.Output.Contains("taking the lock", StringComparison.Ordinal));
 
         await host.Send<ContinueResponse>(DapCommands.Continue, new ThreadArguments(thread)).WaitAsync(DebugSession.RequestLimit, TestContext.Current.CancellationToken);
@@ -200,18 +200,18 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
     public async Task An_evaluation_spinning_in_a_finally_block_runs_to_its_end_once_let_out()
     {
         string after = "Console.WriteLine($\"let out, {Turns} turns\");";
-        using DebugSession host = await LaunchCase("finally", "Console.WriteLine(\"a finally next\");", after);
+        await using DebugSession host = await LaunchCase("finally", "Console.WriteLine(\"a finally next\");", after);
         StoppedEvent stop = await host.WaitForStoppedEvent();
-        host.WithEvaluateRequest(host.GetTopStackFrame(stop.ThreadId!.Value).Id, "Finally.Spins", out EvaluateResponse spins);
+        EvaluateResponse spins = await host.EvaluateAsync((await host.TopFrameAsync(stop.ThreadId!.Value)).Id, "Finally.Spins");
         Assert.Contains("could not be stopped, as it runs a catch or finally block", spins.Result, StringComparison.Ordinal);
 
-        host.WithContinueRequest();
+        await host.ContinueAsync();
         StoppedEvent letOut = await host.WaitForStoppedEvent();
         Assert.True(letOut.Reason == StopReasons.Breakpoint && letOut.ReadStopInfo().line == Line(after),
             $"The program did not go on past the evaluation's end ({letOut.Reason} at line {letOut.Line})");
-        host.WithEvaluateRequest(host.GetTopStackFrame(letOut.ThreadId!.Value).Id, "Finally.Turns", out EvaluateResponse turns);
+        EvaluateResponse turns = await host.EvaluateAsync((await host.TopFrameAsync(letOut.ThreadId!.Value)).Id, "Finally.Turns");
         Assert.True(turns.Result == "1", $"The evaluation let out of its finally block counted {turns.Result} turns: an abort left on it took as it left the block");
-        host.WithContinueRequest();
+        await host.ContinueAsync();
         (string output, int? exitCode) = await host.WaitForEnd();
         Assert.Contains("let out, 1 turns", output, StringComparison.Ordinal);
         Assert.Equal(0, exitCode);
@@ -229,11 +229,11 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
         StoppedEvent laterStop = await host.WaitForStoppedEvent();
         Assert.True(laterStop.Reason == StopReasons.Breakpoint && laterStop.ReadStopInfo().line == Line(Later),
             $"The program did not go on to the later thread's breakpoint ({laterStop.Reason} at line {laterStop.Line})");
-        host.WithEvaluateRequest(host.GetTopStackFrame(laterStop.ThreadId!.Value).Id, "Locks.Taken", out EvaluateResponse taken);
+        EvaluateResponse taken = await host.EvaluateAsync((await host.TopFrameAsync(laterStop.ThreadId!.Value)).Id, "Locks.Taken");
         Assert.True(taken.Result == "2",
             $"Another thread's evaluation of a getter that takes the lock gave {taken.Result}: the first evaluation never let the lock go, or was aborted before its end");
 
-        host.WithContinueRequest();
+        await host.ContinueAsync();
         (string output, int? exitCode) = await host.WaitForEnd();
         Assert.True(output.Contains("taken again, 3 turns", StringComparison.Ordinal), $"The later thread never had the lock: the program said {output}");
         Assert.Equal(0, exitCode);
@@ -247,10 +247,10 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
     {
         DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await host
-            .WithInitializeRequest()
-            .WithLaunchRequest(Debuggees.Program("PassengerCases"), stopAtEntry: false, justMyCode: true, arguments: [run])
+            .InitializeAsync()
+            .LaunchAsync(Debuggees.Program("PassengerCases"), stopAtEntry: false, justMyCode: true, arguments: [run])
             .WaitForInitializedEvent();
-        host.WithBreakpointsRequest([.. code.Select(Line)], Source).WithConfigurationDoneRequest();
+        await host.BreakpointsAsync([.. code.Select(Line)], Source).ConfigurationDoneAsync();
         return host;
     }
 }

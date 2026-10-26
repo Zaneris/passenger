@@ -15,21 +15,20 @@ public class AsyncVariablesTests(ITestOutputHelper testOutputHelper)
     {
         bool startSuspended = true;
 
-        using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
+        await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
 
         await debugProtocolHost
-            .WithInitializeRequest()
-            .WithAttachRequest(p2.Id)
+            .InitializeAsync()
+            .AttachAsync(p2.Id)
             .WaitForInitializedEvent();
-        debugProtocolHost
-            .WithBreakpointsRequest(FirstAwait, Debuggees.Source("DebuggableConsoleApp", "MyAsyncClass.cs"))
-            .WithConfigurationDoneRequest()
-            .WithOptionalResumeRuntime(p2.Id, startSuspended);
+        await debugProtocolHost
+            .BreakpointsAsync(FirstAwait, Debuggees.Source("DebuggableConsoleApp", "MyAsyncClass.cs"))
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(p2.Id, startSuspended);
 
         StoppedEvent stoppedEvent = await debugProtocolHost.WaitForStoppedEvent();
-        debugProtocolHost
-            .WithStackTraceRequest(stoppedEvent.ThreadId!.Value, out StackTraceResponse? stackTraceResponse)
-            .WithScopesRequest(stackTraceResponse.StackFrames!.First().Id, out ScopesResponse? scopesResponse);
+        StackTraceResponse? stackTraceResponse = await debugProtocolHost.StackTraceAsync(stoppedEvent.ThreadId!.Value);
+        ScopesResponse? scopesResponse = await debugProtocolHost.ScopesAsync(stackTraceResponse.StackFrames!.First().Id);
 
         Assert.Single(scopesResponse.Scopes);
         DapScope scope = scopesResponse.Scopes.Single();
@@ -45,20 +44,19 @@ public class AsyncVariablesTests(ITestOutputHelper testOutputHelper)
 
         ];
 
-        debugProtocolHost.WithVariablesRequest(scope.VariablesReference, out List<DapVariable>? variables);
+        List<DapVariable>? variables = await debugProtocolHost.VariablesAsync(scope.VariablesReference);
 
         Assert.Equal(6, variables.Count);
         variables.ShouldBeEquivalentToDebuggerVariables(expectedVariables);
 
-        StoppedEvent stoppedEvent2 = await debugProtocolHost.WithStepInRequest(stoppedEvent.ThreadId!.Value).WaitForStoppedEvent();
+        StoppedEvent stoppedEvent2 = await debugProtocolHost.StepInAsync(stoppedEvent.ThreadId!.Value).WaitForStoppedEvent();
         (string filePath, int line, int column) stopInfo = stoppedEvent2.ReadStopInfo();
         Assert.EndsWith("AnotherClass.cs", stopInfo.filePath);
         Assert.Equal(AnotherMethodOpened, stopInfo.line);
 
-        debugProtocolHost
-            .WithStackTraceRequest(stoppedEvent.ThreadId!.Value, out StackTraceResponse? stackTraceResponse2)
-            .WithScopesRequest(stackTraceResponse2.StackFrames!.First().Id, out ScopesResponse? scopesResponse2)
-            .WithVariablesRequest(scopesResponse2.Scopes.Single().VariablesReference, out List<DapVariable>? variables2);
+        StackTraceResponse? stackTraceResponse2 = await debugProtocolHost.StackTraceAsync(stoppedEvent.ThreadId!.Value);
+        ScopesResponse? scopesResponse2 = await debugProtocolHost.ScopesAsync(stackTraceResponse2.StackFrames!.First().Id);
+        List<DapVariable>? variables2 = await debugProtocolHost.VariablesAsync(scopesResponse2.Scopes.Single().VariablesReference);
 
         List<DapVariable> staticAsyncMethodExpectedVariables =
         [
@@ -68,12 +66,11 @@ public class AsyncVariablesTests(ITestOutputHelper testOutputHelper)
         variables2.ShouldBeEquivalentToDebuggerVariables(staticAsyncMethodExpectedVariables);
 
         StoppedEvent stoppedEvent3 = await debugProtocolHost
-            .WithContinueRequest()
+            .ContinueAsync()
             .WaitForStoppedEvent();
-        debugProtocolHost
-            .WithStackTraceRequest(stoppedEvent3.ThreadId!.Value, out StackTraceResponse? stackTraceResponse3)
-            .WithScopesRequest(stackTraceResponse3.StackFrames!.First().Id, out ScopesResponse? scopesResponse3)
-            .WithVariablesRequest(scopesResponse3.Scopes.Single().VariablesReference, out List<DapVariable>? variables3);
+        StackTraceResponse? stackTraceResponse3 = await debugProtocolHost.StackTraceAsync(stoppedEvent3.ThreadId!.Value);
+        ScopesResponse? scopesResponse3 = await debugProtocolHost.ScopesAsync(stackTraceResponse3.StackFrames!.First().Id);
+        List<DapVariable>? variables3 = await debugProtocolHost.VariablesAsync(scopesResponse3.Scopes.Single().VariablesReference);
         // The same variables as the first time round the loop: their references reset on continue.
         variables3.ShouldBeEquivalentToDebuggerVariables(expectedVariables);
     }

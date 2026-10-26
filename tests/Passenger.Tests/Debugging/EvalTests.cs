@@ -15,21 +15,20 @@ public class EvalTests(ITestOutputHelper testOutputHelper)
     {
         bool startSuspended = true;
 
-        using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
+        await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
 
         await debugProtocolHost
-            .WithInitializeRequest()
-            .WithAttachRequest(p2.Id)
+            .InitializeAsync()
+            .AttachAsync(p2.Id)
             .WaitForInitializedEvent();
-        debugProtocolHost
-            .WithBreakpointsRequest(Debuggees.MyMethodEnd, Debuggees.Source("DebuggableConsoleApp", "MyClass.cs"))
-            .WithConfigurationDoneRequest()
-            .WithOptionalResumeRuntime(p2.Id, startSuspended);
+        await debugProtocolHost
+            .BreakpointsAsync(Debuggees.MyMethodEnd, Debuggees.Source("DebuggableConsoleApp", "MyClass.cs"))
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(p2.Id, startSuspended);
 
         StoppedEvent stoppedEvent = await debugProtocolHost.WaitForStoppedEvent();
-        debugProtocolHost
-            .WithStackTraceRequest(stoppedEvent.ThreadId!.Value, out StackTraceResponse? stackTraceResponse)
-            .WithScopesRequest(stackTraceResponse.StackFrames!.First().Id, out ScopesResponse? scopesResponse);
+        StackTraceResponse? stackTraceResponse = await debugProtocolHost.StackTraceAsync(stoppedEvent.ThreadId!.Value);
+        ScopesResponse? scopesResponse = await debugProtocolHost.ScopesAsync(stackTraceResponse.StackFrames!.First().Id);
 
         Assert.Single(scopesResponse.Scopes);
         DapScope scope = scopesResponse.Scopes.Single();
@@ -49,420 +48,420 @@ public class EvalTests(ITestOutputHelper testOutputHelper)
             new() {Name = "anotherVar", Value = "\"asdf\"", Type = "string", EvaluateName = "anotherVar" },
         ];
 
-        debugProtocolHost.WithVariablesRequest(scope.VariablesReference, out List<DapVariable>? variables);
+        List<DapVariable>? variables = await debugProtocolHost.VariablesAsync(scope.VariablesReference);
 
         variables.ShouldBeEquivalentToDebuggerVariables(expectedVariables);
 
         int stackFrameId = stackTraceResponse.StackFrames!.First().Id;
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "myInt + 10", out EvaluateResponse? evaluateResponse);
+        EvaluateResponse? evaluateResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "myInt + 10");
         Assert.Equal("14", evaluateResponse.Result);
         Assert.Equal(0, evaluateResponse.VariablesReference);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "myInt + myInt", out EvaluateResponse? evaluateResponse2);
+        EvaluateResponse? evaluateResponse2 = await debugProtocolHost.EvaluateAsync(stackFrameId, "myInt + myInt");
         Assert.Equal("8", evaluateResponse2.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "myIntParam + 4", out EvaluateResponse? evaluateResponse3);
+        EvaluateResponse? evaluateResponse3 = await debugProtocolHost.EvaluateAsync(stackFrameId, "myIntParam + 4");
         Assert.Equal("10", evaluateResponse3.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "_instanceField + 4", out EvaluateResponse? evaluateResponse4);
+        EvaluateResponse? evaluateResponse4 = await debugProtocolHost.EvaluateAsync(stackFrameId, "_instanceField + 4");
         Assert.Equal("9", evaluateResponse4.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "_instanceStaticField + 4", out EvaluateResponse? evaluateResponse5);
+        EvaluateResponse? evaluateResponse5 = await debugProtocolHost.EvaluateAsync(stackFrameId, "_instanceStaticField + 4");
         Assert.Equal("10", evaluateResponse5.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "_instanceStaticField = _instanceStaticField + 4", out EvaluateResponse? evaluateResponse6);
+        EvaluateResponse? evaluateResponse6 = await debugProtocolHost.EvaluateAsync(stackFrameId, "_instanceStaticField = _instanceStaticField + 4");
         Assert.Equal("10", evaluateResponse6.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "_instanceStaticField", out EvaluateResponse? evaluateResponse7);
+        EvaluateResponse? evaluateResponse7 = await debugProtocolHost.EvaluateAsync(stackFrameId, "_instanceStaticField");
         Assert.Equal("10", evaluateResponse7.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "IntProperty + 4", out EvaluateResponse? evaluateResponse8);
+        EvaluateResponse? evaluateResponse8 = await debugProtocolHost.EvaluateAsync(stackFrameId, "IntProperty + 4");
         Assert.Equal("14", evaluateResponse8.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "IntStaticProperty + 4", out EvaluateResponse? evaluateResponse9);
+        EvaluateResponse? evaluateResponse9 = await debugProtocolHost.EvaluateAsync(stackFrameId, "IntStaticProperty + 4");
         Assert.Equal("14", evaluateResponse9.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "ClassProperty.IntField + 4", out EvaluateResponse? evaluateResponse10);
+        EvaluateResponse? evaluateResponse10 = await debugProtocolHost.EvaluateAsync(stackFrameId, "ClassProperty.IntField + 4");
         Assert.Equal("10", evaluateResponse10.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "this.Get14() + 4", out EvaluateResponse? evaluateResponse11);
+        EvaluateResponse? evaluateResponse11 = await debugProtocolHost.EvaluateAsync(stackFrameId, "this.Get14() + 4");
         Assert.Equal("18", evaluateResponse11.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "MyClass.IntStaticProperty + 4", out EvaluateResponse? evaluateResponse12);
+        EvaluateResponse? evaluateResponse12 = await debugProtocolHost.EvaluateAsync(stackFrameId, "MyClass.IntStaticProperty + 4");
         Assert.Equal("14", evaluateResponse12.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "DebuggableConsoleApp.MyClass.IntStaticProperty + 4", out EvaluateResponse? evaluateResponse13);
+        EvaluateResponse? evaluateResponse13 = await debugProtocolHost.EvaluateAsync(stackFrameId, "DebuggableConsoleApp.MyClass.IntStaticProperty + 4");
         Assert.Equal("14", evaluateResponse13.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "Namespace1.AnotherClass.IntStaticProperty + 4", out EvaluateResponse? evaluateResponse14);
+        EvaluateResponse? evaluateResponse14 = await debugProtocolHost.EvaluateAsync(stackFrameId, "Namespace1.AnotherClass.IntStaticProperty + 4");
         Assert.Equal("14", evaluateResponse14.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "this.DoubleNumber(4)", out EvaluateResponse? evaluateResponse15);
+        EvaluateResponse? evaluateResponse15 = await debugProtocolHost.EvaluateAsync(stackFrameId, "this.DoubleNumber(4)");
         Assert.Equal("8", evaluateResponse15.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "this.DoubleNumber(4f)", out EvaluateResponse? evaluateResponse16);
+        EvaluateResponse? evaluateResponse16 = await debugProtocolHost.EvaluateAsync(stackFrameId, "this.DoubleNumber(4f)");
         Assert.Equal("8", evaluateResponse16.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "Get14()", out EvaluateResponse? evaluateResponse17);
+        EvaluateResponse? evaluateResponse17 = await debugProtocolHost.EvaluateAsync(stackFrameId, "Get14()");
         Assert.Equal("14", evaluateResponse17.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "GetObject().IntProperty", out EvaluateResponse? chainedFuncEvalResponse);
+        EvaluateResponse? chainedFuncEvalResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "GetObject().IntProperty");
         Assert.Equal("6", chainedFuncEvalResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "ReadObjectIn(GetObject())", out EvaluateResponse? referenceInTemporaryResponse);
+        EvaluateResponse? referenceInTemporaryResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "ReadObjectIn(GetObject())");
         Assert.Equal("6", referenceInTemporaryResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "GetObjectByReference().IntProperty", out EvaluateResponse? referenceReturnResponse);
+        EvaluateResponse? referenceReturnResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "GetObjectByReference().IntProperty");
         Assert.Equal("6", referenceReturnResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "_classField.AddToIntField(ClearClassFieldAndCollect())", out EvaluateResponse? referenceAcrossFuncEvalResponse);
+        EvaluateResponse? referenceAcrossFuncEvalResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "_classField.AddToIntField(ClearClassFieldAndCollect())");
         Assert.Equal("6", referenceAcrossFuncEvalResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "WasClearedClassFieldReleased()", out EvaluateResponse? releasedEvaluationHandleResponse);
+        EvaluateResponse? releasedEvaluationHandleResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "WasClearedClassFieldReleased()");
         Assert.Equal("true", releasedEvaluationHandleResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "new MyClass2().IntProperty", out EvaluateResponse? chainedFuncEvalResponse2);
+        EvaluateResponse? chainedFuncEvalResponse2 = await debugProtocolHost.EvaluateAsync(stackFrameId, "new MyClass2().IntProperty");
         Assert.Equal("6", chainedFuncEvalResponse2.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "IntProperty.ToString()", out EvaluateResponse? evaluateResponse18);
+        EvaluateResponse? evaluateResponse18 = await debugProtocolHost.EvaluateAsync(stackFrameId, "IntProperty.ToString()");
         Assert.Equal("\"10\"", evaluateResponse18.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "this.TestMethod(4, \"asdf\")", out EvaluateResponse? evaluateResponse19);
+        EvaluateResponse? evaluateResponse19 = await debugProtocolHost.EvaluateAsync(stackFrameId, "this.TestMethod(4, \"asdf\")");
         Assert.Equal("8", evaluateResponse19.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "$\"Count = {IntProperty}\"", out EvaluateResponse? evaluateResponse20);
+        EvaluateResponse? evaluateResponse20 = await debugProtocolHost.EvaluateAsync(stackFrameId, "$\"Count = {IntProperty}\"");
         Assert.Equal("\"Count = 10\"", evaluateResponse20.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "this._classWithDebugDisplay", out EvaluateResponse? evaluateResponse21);
+        EvaluateResponse? evaluateResponse21 = await debugProtocolHost.EvaluateAsync(stackFrameId, "this._classWithDebugDisplay");
         Assert.Equal("IntProperty = 14", evaluateResponse21.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "_classWithDebugDisplay", out EvaluateResponse? evaluateResponse22);
+        EvaluateResponse? evaluateResponse22 = await debugProtocolHost.EvaluateAsync(stackFrameId, "_classWithDebugDisplay");
         Assert.Equal("IntProperty = 14", evaluateResponse22.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "$\"{_instanceField}\"", out EvaluateResponse? evaluateResponse23);
+        EvaluateResponse? evaluateResponse23 = await debugProtocolHost.EvaluateAsync(stackFrameId, "$\"{_instanceField}\"");
         Assert.Equal("\"5\"", evaluateResponse23.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "_intList", out EvaluateResponse? evaluateResponse24);
+        EvaluateResponse? evaluateResponse24 = await debugProtocolHost.EvaluateAsync(stackFrameId, "_intList");
         Assert.Equal("Count = 4", evaluateResponse24.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "$\"Count = {_intList.Count}\"", out EvaluateResponse? evaluateResponse25);
+        EvaluateResponse? evaluateResponse25 = await debugProtocolHost.EvaluateAsync(stackFrameId, "$\"Count = {_intList.Count}\"");
         Assert.Equal("\"Count = 4\"", evaluateResponse25.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "_classWithDebugDisplay2", out EvaluateResponse? evaluateResponse26);
+        EvaluateResponse? evaluateResponse26 = await debugProtocolHost.EvaluateAsync(stackFrameId, "_classWithDebugDisplay2");
         Assert.Equal("Test = stringValue1", evaluateResponse26.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "_classWithDebugDisplay3", out EvaluateResponse? evaluateResponse27);
+        EvaluateResponse? evaluateResponse27 = await debugProtocolHost.EvaluateAsync(stackFrameId, "_classWithDebugDisplay3");
         Assert.Equal("Test = stringValue2", evaluateResponse27.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "myInt = 5", out EvaluateResponse? evaluateResponse28);
+        EvaluateResponse? evaluateResponse28 = await debugProtocolHost.EvaluateAsync(stackFrameId, "myInt = 5");
         Assert.Equal("5", evaluateResponse28.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "myInt * 2", out EvaluateResponse? evaluateResponse29);
+        EvaluateResponse? evaluateResponse29 = await debugProtocolHost.EvaluateAsync(stackFrameId, "myInt * 2");
         Assert.Equal("10", evaluateResponse29.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "enumVar", out EvaluateResponse? evaluateResponse30);
+        EvaluateResponse? evaluateResponse30 = await debugProtocolHost.EvaluateAsync(stackFrameId, "enumVar");
         Assert.Equal("SecondValue", evaluateResponse30.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "enumVar = MyEnum.ThirdValue", out EvaluateResponse? evaluateResponse31);
+        EvaluateResponse? evaluateResponse31 = await debugProtocolHost.EvaluateAsync(stackFrameId, "enumVar = MyEnum.ThirdValue");
         Assert.Equal("ThirdValue", evaluateResponse31.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "GenericTypeWithStaticField<string>.IntValue", out EvaluateResponse? evaluateResponse32);
+        EvaluateResponse? evaluateResponse32 = await debugProtocolHost.EvaluateAsync(stackFrameId, "GenericTypeWithStaticField<string>.IntValue");
         Assert.Equal("4", evaluateResponse32.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "GenericTypeWithStaticField<string>.IntProperty", out EvaluateResponse? evaluateResponse33);
+        EvaluateResponse? evaluateResponse33 = await debugProtocolHost.EvaluateAsync(stackFrameId, "GenericTypeWithStaticField<string>.IntProperty");
         Assert.Equal("5", evaluateResponse33.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "IntProperty = 16", out EvaluateResponse? evaluateResponse34);
+        EvaluateResponse? evaluateResponse34 = await debugProtocolHost.EvaluateAsync(stackFrameId, "IntProperty = 16");
         Assert.Equal("16", evaluateResponse34.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "IntProperty", out EvaluateResponse? evaluateResponse35);
+        EvaluateResponse? evaluateResponse35 = await debugProtocolHost.EvaluateAsync(stackFrameId, "IntProperty");
         Assert.Equal("16", evaluateResponse35.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "Namespace1.AnotherClass.MyStaticMethod()", out EvaluateResponse? evaluateResponse36);
+        EvaluateResponse? evaluateResponse36 = await debugProtocolHost.EvaluateAsync(stackFrameId, "Namespace1.AnotherClass.MyStaticMethod()");
         Assert.Equal("Count = 1", evaluateResponse36.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "Namespace1.AnotherClass.IntStaticProperty = 17", out EvaluateResponse? evaluateResponse37);
+        EvaluateResponse? evaluateResponse37 = await debugProtocolHost.EvaluateAsync(stackFrameId, "Namespace1.AnotherClass.IntStaticProperty = 17");
         Assert.Equal("17", evaluateResponse37.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "Namespace1.AnotherClass.IntStaticProperty", out EvaluateResponse? evaluateResponse38);
+        EvaluateResponse? evaluateResponse38 = await debugProtocolHost.EvaluateAsync(stackFrameId, "Namespace1.AnotherClass.IntStaticProperty");
         Assert.Equal("17", evaluateResponse38.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "ClassProperty", out EvaluateResponse? evaluateResponse39);
+        EvaluateResponse? evaluateResponse39 = await debugProtocolHost.EvaluateAsync(stackFrameId, "ClassProperty");
         Assert.Equal("{DebuggableConsoleApp.MyClass2}", evaluateResponse39.Result);
         Assert.True(evaluateResponse39.VariablesReference > 0);
-        debugProtocolHost.WithVariablesRequest(evaluateResponse39.VariablesReference, out List<DapVariable>? variablesResponse39);
+        List<DapVariable>? variablesResponse39 = await debugProtocolHost.VariablesAsync(evaluateResponse39.VariablesReference);
         Assert.Equal(3, variablesResponse39.Count);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "structVar.ExtensionMethod()", out EvaluateResponse? evaluateResponse40);
+        EvaluateResponse? evaluateResponse40 = await debugProtocolHost.EvaluateAsync(stackFrameId, "structVar.ExtensionMethod()");
         Assert.Equal("5", evaluateResponse40.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "myInt == 5 && myInt < 10", out EvaluateResponse? evaluateResponse41);
+        EvaluateResponse? evaluateResponse41 = await debugProtocolHost.EvaluateAsync(stackFrameId, "myInt == 5 && myInt < 10");
         Assert.Equal("true", evaluateResponse41.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "myInt == 4 && myInt < 10", out EvaluateResponse? evaluateResponse42);
+        EvaluateResponse? evaluateResponse42 = await debugProtocolHost.EvaluateAsync(stackFrameId, "myInt == 4 && myInt < 10");
         Assert.Equal("false", evaluateResponse42.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "myInt == 4 || myInt < 10", out EvaluateResponse? evaluateResponse43);
+        EvaluateResponse? evaluateResponse43 = await debugProtocolHost.EvaluateAsync(stackFrameId, "myInt == 4 || myInt < 10");
         Assert.Equal("true", evaluateResponse43.Result);
         // Short-circuit: the RHS would throw a NullReferenceException if it were evaluated
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "myInt == 4 && nullableRefType.GetHashCode() > 0", out EvaluateResponse? evaluateResponse44);
+        EvaluateResponse? evaluateResponse44 = await debugProtocolHost.EvaluateAsync(stackFrameId, "myInt == 4 && nullableRefType.GetHashCode() > 0");
         Assert.Equal("false", evaluateResponse44.Result);
 
         // Conversions must produce correctly-typed runtime values
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "enumVar = (MyEnum)2", out EvaluateResponse? evaluateResponse45);
+        EvaluateResponse? evaluateResponse45 = await debugProtocolHost.EvaluateAsync(stackFrameId, "enumVar = (MyEnum)2");
         Assert.Equal("ThirdValue", evaluateResponse45.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "myParam = 5", out EvaluateResponse? evaluateResponse46);
+        EvaluateResponse? evaluateResponse46 = await debugProtocolHost.EvaluateAsync(stackFrameId, "myParam = 5");
         Assert.Equal("5", evaluateResponse46.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "(int)nullableIntWithVal + 1", out EvaluateResponse? evaluateResponse47);
+        EvaluateResponse? evaluateResponse47 = await debugProtocolHost.EvaluateAsync(stackFrameId, "(int)nullableIntWithVal + 1");
         Assert.Equal("5", evaluateResponse47.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "(int)5.5", out EvaluateResponse? evaluateResponse48);
+        EvaluateResponse? evaluateResponse48 = await debugProtocolHost.EvaluateAsync(stackFrameId, "(int)5.5");
         Assert.Equal("5", evaluateResponse48.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "(int)enumVar", out EvaluateResponse? evaluateResponse49);
+        EvaluateResponse? evaluateResponse49 = await debugProtocolHost.EvaluateAsync(stackFrameId, "(int)enumVar");
         Assert.Equal("2", evaluateResponse49.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "nullableInt ?? 5", out EvaluateResponse? evaluateResponse50);
+        EvaluateResponse? evaluateResponse50 = await debugProtocolHost.EvaluateAsync(stackFrameId, "nullableInt ?? 5");
         Assert.Equal("5", evaluateResponse50.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "nullableIntWithVal ?? 10", out EvaluateResponse? evaluateResponse51);
+        EvaluateResponse? evaluateResponse51 = await debugProtocolHost.EvaluateAsync(stackFrameId, "nullableIntWithVal ?? 10");
         Assert.Equal("4", evaluateResponse51.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "(myInt > 3) == true", out EvaluateResponse? evaluateResponse52);
+        EvaluateResponse? evaluateResponse52 = await debugProtocolHost.EvaluateAsync(stackFrameId, "(myInt > 3) == true");
         Assert.Equal("true", evaluateResponse52.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "(myInt > 5) == true", out EvaluateResponse? evaluateResponse53);
+        EvaluateResponse? evaluateResponse53 = await debugProtocolHost.EvaluateAsync(stackFrameId, "(myInt > 5) == true");
         Assert.Equal("false", evaluateResponse53.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "myInt += 2", out EvaluateResponse? evaluateResponse54);
+        EvaluateResponse? evaluateResponse54 = await debugProtocolHost.EvaluateAsync(stackFrameId, "myInt += 2");
         Assert.Equal("7", evaluateResponse54.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "GenericTypeWithStaticField<int[]>.IntValue", out EvaluateResponse? evaluateResponse55);
+        EvaluateResponse? evaluateResponse55 = await debugProtocolHost.EvaluateAsync(stackFrameId, "GenericTypeWithStaticField<int[]>.IntValue");
         Assert.Equal("4", evaluateResponse55.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "GenericTypeWithStaticField<DateTime>.IntValue", out EvaluateResponse? corelibValueTypeGenericResponse);
+        EvaluateResponse? corelibValueTypeGenericResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "GenericTypeWithStaticField<DateTime>.IntValue");
         Assert.Equal("4", corelibValueTypeGenericResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "Array.Empty<DateTime>().Length", out EvaluateResponse? corelibValueTypeGenericMethodResponse);
+        EvaluateResponse? corelibValueTypeGenericMethodResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "Array.Empty<DateTime>().Length");
         Assert.Equal("0", corelibValueTypeGenericMethodResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "new int[2].Length", out EvaluateResponse? intArrayResponse);
+        EvaluateResponse? intArrayResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "new int[2].Length");
         Assert.Equal("2", intArrayResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "new MyClass[2].Length", out EvaluateResponse? classArrayResponse);
+        EvaluateResponse? classArrayResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "new MyClass[2].Length");
         Assert.Equal("2", classArrayResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "new MyClass[0].Length", out EvaluateResponse? classZeroLengthArrayResponse);
+        EvaluateResponse? classZeroLengthArrayResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "new MyClass[0].Length");
         Assert.Equal("0", classZeroLengthArrayResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "new DateTime[0].Length", out EvaluateResponse? corelibValueTypeZeroLengthArrayResponse);
+        EvaluateResponse? corelibValueTypeZeroLengthArrayResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "new DateTime[0].Length");
         Assert.Equal("0", corelibValueTypeZeroLengthArrayResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "new DateTime[2].Length", out EvaluateResponse? corelibValueTypeArrayResponse);
+        EvaluateResponse? corelibValueTypeArrayResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "new DateTime[2].Length");
         Assert.Equal("2", corelibValueTypeArrayResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "default(int)", out EvaluateResponse? evaluateResponse56);
+        EvaluateResponse? evaluateResponse56 = await debugProtocolHost.EvaluateAsync(stackFrameId, "default(int)");
         Assert.Equal("0", evaluateResponse56.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "default(string)", out EvaluateResponse? defaultStringResponse);
+        EvaluateResponse? defaultStringResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "default(string)");
         Assert.Equal("null", defaultStringResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "default(MyClass)", out EvaluateResponse? defaultRefTypeResponse);
+        EvaluateResponse? defaultRefTypeResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "default(MyClass)");
         Assert.Equal("null", defaultRefTypeResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "default(int[])", out EvaluateResponse? defaultArrayResponse);
+        EvaluateResponse? defaultArrayResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "default(int[])");
         Assert.Equal("null", defaultArrayResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "typeof(MyClass).ToString()", out EvaluateResponse? evaluateResponse57);
+        EvaluateResponse? evaluateResponse57 = await debugProtocolHost.EvaluateAsync(stackFrameId, "typeof(MyClass).ToString()");
         Assert.Equal("\"DebuggableConsoleApp.MyClass\"", evaluateResponse57.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "IncrementByRef(ref myInt)", out EvaluateResponse? evaluateResponse58);
+        EvaluateResponse? evaluateResponse58 = await debugProtocolHost.EvaluateAsync(stackFrameId, "IncrementByRef(ref myInt)");
         Assert.Equal("10", evaluateResponse58.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "myInt", out EvaluateResponse? evaluateResponse59);
+        EvaluateResponse? evaluateResponse59 = await debugProtocolHost.EvaluateAsync(stackFrameId, "myInt");
         Assert.Equal("10", evaluateResponse59.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "AssignOut(out myInt)", out EvaluateResponse? evaluateResponse60);
+        EvaluateResponse? evaluateResponse60 = await debugProtocolHost.EvaluateAsync(stackFrameId, "AssignOut(out myInt)");
         Assert.Equal("42", evaluateResponse60.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "myInt", out EvaluateResponse? evaluateResponse61);
+        EvaluateResponse? evaluateResponse61 = await debugProtocolHost.EvaluateAsync(stackFrameId, "myInt");
         Assert.Equal("42", evaluateResponse61.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "AddOneIn(in myInt)", out EvaluateResponse? evaluateResponse62);
+        EvaluateResponse? evaluateResponse62 = await debugProtocolHost.EvaluateAsync(stackFrameId, "AddOneIn(in myInt)");
         Assert.Equal("43", evaluateResponse62.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "_doubler(4)", out EvaluateResponse? evaluateResponse63);
+        EvaluateResponse? evaluateResponse63 = await debugProtocolHost.EvaluateAsync(stackFrameId, "_doubler(4)");
         Assert.Equal("8", evaluateResponse63.Result);
 
         // Operators resolved from Roslyn's bound tree: value-type operands, one declared on the right operand's type.
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "(structVar + structVar).Id", out EvaluateResponse? evaluateResponse64);
+        EvaluateResponse? evaluateResponse64 = await debugProtocolHost.EvaluateAsync(stackFrameId, "(structVar + structVar).Id");
         Assert.Equal("10", evaluateResponse64.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "(5 + structVar).Id", out EvaluateResponse? evaluateResponse65);
+        EvaluateResponse? evaluateResponse65 = await debugProtocolHost.EvaluateAsync(stackFrameId, "(5 + structVar).Id");
         Assert.Equal("10", evaluateResponse65.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "(-structVar).Id", out EvaluateResponse? evaluateResponse66);
+        EvaluateResponse? evaluateResponse66 = await debugProtocolHost.EvaluateAsync(stackFrameId, "(-structVar).Id");
         Assert.Equal("-5", evaluateResponse66.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "structVar == structVar", out EvaluateResponse? evaluateResponse67);
+        EvaluateResponse? evaluateResponse67 = await debugProtocolHost.EvaluateAsync(stackFrameId, "structVar == structVar");
         Assert.Equal("true", evaluateResponse67.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "this.DoubleNumber(myInt)", out EvaluateResponse? evaluateResponse68);
+        EvaluateResponse? evaluateResponse68 = await debugProtocolHost.EvaluateAsync(stackFrameId, "this.DoubleNumber(myInt)");
         Assert.Equal("84", evaluateResponse68.Result);
 
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "_intList.Where(s => s == 4).ToList()", out EvaluateResponse? evaluateResponse69);
+        EvaluateResponse? evaluateResponse69 = await debugProtocolHost.EvaluateAsync(stackFrameId, "_intList.Where(s => s == 4).ToList()");
         Assert.Equal("Count = 1", evaluateResponse69.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "_intList.Where(s => s == myInt).ToList()", out EvaluateResponse? evaluateResponse70);
+        EvaluateResponse? evaluateResponse70 = await debugProtocolHost.EvaluateAsync(stackFrameId, "_intList.Where(s => s == myInt).ToList()");
         Assert.Equal("Count = 0", evaluateResponse70.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "_intList.Where(s => s == myInt).Select(s => s).ToList()", out EvaluateResponse? evaluateResponse71);
+        EvaluateResponse? evaluateResponse71 = await debugProtocolHost.EvaluateAsync(stackFrameId, "_intList.Where(s => s == myInt).Select(s => s).ToList()");
         Assert.Equal("Count = 0", evaluateResponse71.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "((Func<int, int>)(value => value + 1))(4)", out EvaluateResponse? inlineLambdaInvocationResponse);
+        EvaluateResponse? inlineLambdaInvocationResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "((Func<int, int>)(value => value + 1))(4)");
         Assert.Equal("5", inlineLambdaInvocationResponse.Result);
 
         // Lambdas retain the stopped frame's lexical context, including this and non-public members and types.
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "_intList.Where(value => value == _instanceField).ToList()", out EvaluateResponse? instanceCaptureLambdaResponse);
+        EvaluateResponse? instanceCaptureLambdaResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "_intList.Where(value => value == _instanceField).ToList()");
         Assert.Equal("Count = 0", instanceCaptureLambdaResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "new[] { this }.Where(value => value == this).Count()", out EvaluateResponse? thisCaptureLambdaResponse);
+        EvaluateResponse? thisCaptureLambdaResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "new[] { this }.Where(value => value == this).Count()");
         Assert.Equal("1", thisCaptureLambdaResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "_intList.Select(value => DoubleNumber(value)).Last()", out EvaluateResponse? privateMethodLambdaResponse);
+        EvaluateResponse? privateMethodLambdaResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "_intList.Select(value => DoubleNumber(value)).Last()");
         Assert.Equal("50", privateMethodLambdaResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "new[] { 1 }.Select(value => typeof(EvaluationLifetimeTracker).Name).Single()", out EvaluateResponse? internalTypeLambdaResponse);
+        EvaluateResponse? internalTypeLambdaResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "new[] { 1 }.Select(value => typeof(EvaluationLifetimeTracker).Name).Single()");
         Assert.Equal("\"EvaluationLifetimeTracker\"", internalTypeLambdaResponse.Result);
 
         // Nested lambdas and method groups retain their generated targets and methods.
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "new[] { 1, 2 }.Where(value => new[] { value }.Any(inner => inner == value)).Count()", out EvaluateResponse? nestedLambdaResponse);
+        EvaluateResponse? nestedLambdaResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "new[] { 1, 2 }.Where(value => new[] { value }.Any(inner => inner == value)).Count()");
         Assert.Equal("2", nestedLambdaResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "new[] { -1 }.Where(value => value < 0).Select(Math.Abs).Single()", out EvaluateResponse? lambdaAndMethodGroupResponse);
+        EvaluateResponse? lambdaAndMethodGroupResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "new[] { -1 }.Where(value => value < 0).Select(Math.Abs).Single()");
         Assert.Equal("1", lambdaAndMethodGroupResponse.Result);
 
         // All delegates in one expression share the same closure, including captures that are only written.
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "_intList.Select(value => myInt = value).Last()", out EvaluateResponse? writeOnlyCaptureLambdaResponse);
+        EvaluateResponse? writeOnlyCaptureLambdaResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "_intList.Select(value => myInt = value).Last()");
         Assert.Equal("25", writeOnlyCaptureLambdaResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "myInt", out EvaluateResponse? writeOnlyCaptureValueResponse);
+        EvaluateResponse? writeOnlyCaptureValueResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "myInt");
         Assert.Equal("25", writeOnlyCaptureValueResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "myInt = 42", out EvaluateResponse? resetMyIntBeforeSharedClosureResponse);
+        EvaluateResponse? resetMyIntBeforeSharedClosureResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "myInt = 42");
         Assert.Equal("42", resetMyIntBeforeSharedClosureResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "_intList.Select(value => myInt++).Select(value => myInt).ToList().Last()", out EvaluateResponse? sharedClosureLambdaResponse);
+        EvaluateResponse? sharedClosureLambdaResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "_intList.Select(value => myInt++).Select(value => myInt).ToList().Last()");
         Assert.Equal("46", sharedClosureLambdaResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "myInt", out EvaluateResponse? sharedClosureValueResponse);
+        EvaluateResponse? sharedClosureValueResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "myInt");
         Assert.Equal("46", sharedClosureValueResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "myInt = 42", out EvaluateResponse? resetMyIntBeforeSameExpressionResponse);
+        EvaluateResponse? resetMyIntBeforeSameExpressionResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "myInt = 42");
         Assert.Equal("42", resetMyIntBeforeSameExpressionResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "_intList.Select(value => myInt++).Last() + myInt", out EvaluateResponse? sameExpressionCaptureResponse);
+        EvaluateResponse? sameExpressionCaptureResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "_intList.Select(value => myInt++).Last() + myInt");
         Assert.Equal("85", sameExpressionCaptureResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "myInt", out EvaluateResponse? sameExpressionCaptureValueResponse);
+        EvaluateResponse? sameExpressionCaptureValueResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "myInt");
         Assert.Equal("43", sameExpressionCaptureValueResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "myInt = 42", out EvaluateResponse? restoreMyIntAfterLambdaResponse);
+        EvaluateResponse? restoreMyIntAfterLambdaResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "myInt = 42");
         Assert.Equal("42", restoreMyIntAfterLambdaResponse.Result);
 
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "nullableRefType == null", out EvaluateResponse? nullEqualityResponse);
+        EvaluateResponse? nullEqualityResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "nullableRefType == null");
         Assert.Equal("true", nullEqualityResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "this == this", out EvaluateResponse? referenceEqualityResponse);
+        EvaluateResponse? referenceEqualityResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "this == this");
         Assert.Equal("true", referenceEqualityResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "anotherVar == \"asdf\"", out EvaluateResponse? stringEqualityResponse);
+        EvaluateResponse? stringEqualityResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "anotherVar == \"asdf\"");
         Assert.Equal("true", stringEqualityResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "nullableIntWithVal.HasValue == true", out EvaluateResponse? booleanEqualityResponse);
+        EvaluateResponse? booleanEqualityResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "nullableIntWithVal.HasValue == true");
         Assert.Equal("true", booleanEqualityResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "enumVar == MyEnum.ThirdValue", out EvaluateResponse? equalEnumResponse);
+        EvaluateResponse? equalEnumResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "enumVar == MyEnum.ThirdValue");
         Assert.Equal("true", equalEnumResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "enumVar == MyEnum.SecondValue", out EvaluateResponse? unequalEnumResponse);
+        EvaluateResponse? unequalEnumResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "enumVar == MyEnum.SecondValue");
         Assert.Equal("false", unequalEnumResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "Convert.ToByte(myInt) == myInt", out EvaluateResponse? smallIntegralEqualityResponse);
+        EvaluateResponse? smallIntegralEqualityResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "Convert.ToByte(myInt) == myInt");
         Assert.Equal("true", smallIntegralEqualityResponse.Result);
 
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "(int?)myInt", out EvaluateResponse? nullableConversionResponse);
+        EvaluateResponse? nullableConversionResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "(int?)myInt");
         Assert.Equal("42", nullableConversionResponse.Result);
         Assert.Equal("int?", nullableConversionResponse.Type);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "(MyEnum)(myInt - 40)", out EvaluateResponse? enumConversionResponse);
+        EvaluateResponse? enumConversionResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "(MyEnum)(myInt - 40)");
         Assert.Equal("ThirdValue", enumConversionResponse.Result);
         Assert.Equal("DebuggableConsoleApp.MyEnum", enumConversionResponse.Type);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "enumWithFlagsVar | MyEnumWithFlags.FlagValue2", out EvaluateResponse? enumOperatorResponse);
+        EvaluateResponse? enumOperatorResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "enumWithFlagsVar | MyEnumWithFlags.FlagValue2");
         Assert.Equal("FlagValue1 | FlagValue2 | FlagValue3", enumOperatorResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "(int)this.DoubleNumber(4f)", out EvaluateResponse? runtimeFloatToIntResponse);
+        EvaluateResponse? runtimeFloatToIntResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "(int)this.DoubleNumber(4f)");
         Assert.Equal("8", runtimeFloatToIntResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "(double)this.DoubleNumber(4f)", out EvaluateResponse? runtimeFloatToDoubleResponse);
+        EvaluateResponse? runtimeFloatToDoubleResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "(double)this.DoubleNumber(4f)");
         Assert.Equal("8", runtimeFloatToDoubleResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "this.DoubleNumber(this.DoubleNumber(4f) + 1f)", out EvaluateResponse? computedFloatArgumentResponse);
+        EvaluateResponse? computedFloatArgumentResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "this.DoubleNumber(this.DoubleNumber(4f) + 1f)");
         Assert.Equal("18", computedFloatArgumentResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "unchecked((ulong)(uint)(myInt - 43))", out EvaluateResponse? unsignedWideningResponse);
+        EvaluateResponse? unsignedWideningResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "unchecked((ulong)(uint)(myInt - 43))");
         Assert.Equal("4294967295", unsignedWideningResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "this as object as string", out EvaluateResponse? incompatibleAsResponse);
+        EvaluateResponse? incompatibleAsResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "this as object as string");
         Assert.Equal("null", incompatibleAsResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "((string)(object)this).Length", out EvaluateResponse? incompatibleCastResponse);
+        EvaluateResponse? incompatibleCastResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "((string)(object)this).Length");
         Assert.Contains("InvalidCastException", incompatibleCastResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "(object)myInt != null", out EvaluateResponse? boxingResponse);
+        EvaluateResponse? boxingResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "(object)myInt != null");
         Assert.Equal("true", boxingResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "(int)(object)myInt", out EvaluateResponse? unboxingResponse);
+        EvaluateResponse? unboxingResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "(int)(object)myInt");
         Assert.Equal("42", unboxingResponse.Result);
         // unbox.any must reject a box whose runtime type does not match the target type
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "(long)(object)myInt", out EvaluateResponse? incompatibleUnboxResponse);
+        EvaluateResponse? incompatibleUnboxResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "(long)(object)myInt");
         Assert.Contains("InvalidCastException", incompatibleUnboxResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "(int)(object)myParam", out EvaluateResponse? incompatibleUnboxResponse2);
+        EvaluateResponse? incompatibleUnboxResponse2 = await debugProtocolHost.EvaluateAsync(stackFrameId, "(int)(object)myParam");
         Assert.Contains("InvalidCastException", incompatibleUnboxResponse2.Result);
         // reference type -> object is an identity conversion (no box), and must return the reference unchanged
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "(object)anotherVar", out EvaluateResponse? boxReferenceResponse);
+        EvaluateResponse? boxReferenceResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "(object)anotherVar");
         Assert.Equal("\"asdf\"", boxReferenceResponse.Result);
         // box/unbox round-trip of an exact enum type
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "(MyEnum)(object)enumVar", out EvaluateResponse? enumBoxResponse);
+        EvaluateResponse? enumBoxResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "(MyEnum)(object)enumVar");
         Assert.Equal("ThirdValue", enumBoxResponse.Result);
         // This is technically not correct behaviour, ie doesn't match behaviour of actual code, but no other debugger handles it. Assert it.
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "(MyEnum)(object)2", out EvaluateResponse? enumBoxResponse2);
+        EvaluateResponse? enumBoxResponse2 = await debugProtocolHost.EvaluateAsync(stackFrameId, "(MyEnum)(object)2");
         Assert.Contains("InvalidCastException", enumBoxResponse2.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "Array.Empty<int>().Length", out EvaluateResponse? genericMethodResponse);
+        EvaluateResponse? genericMethodResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "Array.Empty<int>().Length");
         Assert.Equal("0", genericMethodResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "int.Parse(anotherVar)", out EvaluateResponse? throwingMethodResponse);
+        EvaluateResponse? throwingMethodResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "int.Parse(anotherVar)");
         Assert.Contains("FormatException", throwingMethodResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "checked(myInt + int.MaxValue)", out EvaluateResponse? checkedArithmeticResponse);
+        EvaluateResponse? checkedArithmeticResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "checked(myInt + int.MaxValue)");
         Assert.Contains("OverflowException", checkedArithmeticResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "myInt << (myInt - 10)", out EvaluateResponse? intShiftResponse);
+        EvaluateResponse? intShiftResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "myInt << (myInt - 10)");
         Assert.Equal("42", intShiftResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "-1 >>> (myInt - 41)", out EvaluateResponse? unsignedShiftResponse);
+        EvaluateResponse? unsignedShiftResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "-1 >>> (myInt - 41)");
         Assert.Equal("2147483647", unsignedShiftResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "ulong.MaxValue / (ulong)(myInt - 40)", out EvaluateResponse? ulongDivisionResponse);
+        EvaluateResponse? ulongDivisionResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "ulong.MaxValue / (ulong)(myInt - 40)");
         Assert.Equal("9223372036854775807", ulongDivisionResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "0.0 / (myInt - myInt) == double.NaN", out EvaluateResponse? nanEqualityResponse);
+        EvaluateResponse? nanEqualityResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "0.0 / (myInt - myInt) == double.NaN");
         Assert.Equal("false", nanEqualityResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "TestMethod(myString: \"asdf\", myInt: 4)", out EvaluateResponse? namedArgumentsResponse);
+        EvaluateResponse? namedArgumentsResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "TestMethod(myString: \"asdf\", myInt: 4)");
         Assert.Equal("8", namedArgumentsResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "_intArray[0]", out EvaluateResponse? arrayIndexResponse);
+        EvaluateResponse? arrayIndexResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "_intArray[0]");
         Assert.Equal("2", arrayIndexResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "_intList[0]", out EvaluateResponse? indexerResponse);
+        EvaluateResponse? indexerResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "_intList[0]");
         Assert.Equal("1", indexerResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "nullableRefType?.GetHashCode()", out EvaluateResponse? conditionalAccessResponse);
+        EvaluateResponse? conditionalAccessResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "nullableRefType?.GetHashCode()");
         Assert.Equal("null", conditionalAccessResponse.Result);
 
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "$\"{myInt:D5}\"", out EvaluateResponse? interpolationFormatResponse);
+        EvaluateResponse? interpolationFormatResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "$\"{myInt:D5}\"");
         Assert.Equal("\"00042\"", interpolationFormatResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "$\"{myInt,5}\"", out EvaluateResponse? interpolationAlignmentResponse);
+        EvaluateResponse? interpolationAlignmentResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "$\"{myInt,5}\"");
         Assert.Equal("\"   42\"", interpolationAlignmentResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "$\"x{nullableRefType}y\"", out EvaluateResponse? nullInterpolationResponse);
+        EvaluateResponse? nullInterpolationResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "$\"x{nullableRefType}y\"");
         Assert.Equal("\"xy\"", nullInterpolationResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "$\"{ClassProperty}\"", out EvaluateResponse? objectInterpolationResponse);
+        EvaluateResponse? objectInterpolationResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "$\"{ClassProperty}\"");
         Assert.Equal("\"DebuggableConsoleApp.MyClass2\"", objectInterpolationResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "$\"{enumVar}\"", out EvaluateResponse? enumInterpolationResponse);
+        EvaluateResponse? enumInterpolationResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "$\"{enumVar}\"");
         Assert.Equal("\"ThirdValue\"", enumInterpolationResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "$\"{structVar}\"", out EvaluateResponse? structInterpolationResponse);
+        EvaluateResponse? structInterpolationResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "$\"{structVar}\"");
         Assert.Equal("\"DebuggableConsoleApp.MyStruct\"", structInterpolationResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "anotherVar + nullableRefType", out EvaluateResponse? nullConcatenationResponse);
+        EvaluateResponse? nullConcatenationResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "anotherVar + nullableRefType");
         Assert.Equal("\"asdf\"", nullConcatenationResponse.Result);
 
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "structVar.Id", out EvaluateResponse? structFieldReadResponse);
+        EvaluateResponse? structFieldReadResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "structVar.Id");
         Assert.Equal("5", structFieldReadResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "structVar.Id = 6", out EvaluateResponse? structFieldWriteResponse);
+        EvaluateResponse? structFieldWriteResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "structVar.Id = 6");
         Assert.Equal("6", structFieldWriteResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "structVar.Id", out EvaluateResponse? structFieldReadAfterWriteResponse);
+        EvaluateResponse? structFieldReadAfterWriteResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "structVar.Id");
         Assert.Equal("6", structFieldReadAfterWriteResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "structVar = default(MyStruct)", out EvaluateResponse? structAssignmentResponse);
+        EvaluateResponse? structAssignmentResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "structVar = default(MyStruct)");
         Assert.Equal("{DebuggableConsoleApp.MyStruct}", structAssignmentResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "structVar.Id", out EvaluateResponse? structFieldReadAfterAssignmentResponse);
+        EvaluateResponse? structFieldReadAfterAssignmentResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "structVar.Id");
         Assert.Equal("0", structFieldReadAfterAssignmentResponse.Result);
 
         // stobj: assigning a struct value to a field (stfld)
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "structVar.Id = 5", out EvaluateResponse? structResetIdResponse);
+        EvaluateResponse? structResetIdResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "structVar.Id = 5");
         Assert.Equal("5", structResetIdResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "_structField = structVar", out EvaluateResponse? structToFieldAssignmentResponse);
+        EvaluateResponse? structToFieldAssignmentResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "_structField = structVar");
         Assert.Equal("{DebuggableConsoleApp.MyStruct}", structToFieldAssignmentResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "_structField.Id", out EvaluateResponse? structFieldValueReadBackResponse);
+        EvaluateResponse? structFieldValueReadBackResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "_structField.Id");
         Assert.Equal("5", structFieldValueReadBackResponse.Result);
 
         // stobj: struct value copied out of a field back into a local
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "structVar = _structField", out EvaluateResponse? structFromFieldAssignmentResponse);
+        EvaluateResponse? structFromFieldAssignmentResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "structVar = _structField");
         Assert.Equal("{DebuggableConsoleApp.MyStruct}", structFromFieldAssignmentResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "structVar.Id", out EvaluateResponse? structLocalValueAfterFieldCopyResponse);
+        EvaluateResponse? structLocalValueAfterFieldCopyResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "structVar.Id");
         Assert.Equal("5", structLocalValueAfterFieldCopyResponse.Result);
 
         // ldobj: struct value loaded through a ref-return (call + ldobj + stloc)
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "structVar = GetStructByRef()", out EvaluateResponse? structViaRefReturnResponse);
+        EvaluateResponse? structViaRefReturnResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "structVar = GetStructByRef()");
         Assert.Equal("{DebuggableConsoleApp.MyStruct}", structViaRefReturnResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "structVar.Id", out EvaluateResponse? structIdViaRefReturnResponse);
+        EvaluateResponse? structIdViaRefReturnResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "structVar.Id");
         Assert.Equal("5", structIdViaRefReturnResponse.Result);
 
         // stobj: struct value stored through a ref-return (call + ldloc + stobj)
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "GetStructByRef() = structVar", out EvaluateResponse? structStoreViaRefReturnResponse);
+        EvaluateResponse? structStoreViaRefReturnResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "GetStructByRef() = structVar");
         Assert.Equal("{DebuggableConsoleApp.MyStruct}", structStoreViaRefReturnResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "GetStructByRef().Id", out EvaluateResponse? structFieldIdAfterRefStoreResponse);
+        EvaluateResponse? structFieldIdAfterRefStoreResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "GetStructByRef().Id");
         Assert.Equal("5", structFieldIdAfterRefStoreResponse.Result);
 
         // unboxing conversion: cast-to-struct used as the receiver of an instance method call
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "((MyStruct)(object)structVar).GetId()", out EvaluateResponse? unboxReceiverResponse);
+        EvaluateResponse? unboxReceiverResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "((MyStruct)(object)structVar).GetId()");
         Assert.Equal("5", unboxReceiverResponse.Result);
 
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "default(MyStruct).Id", out EvaluateResponse? structDefaultResponse);
+        EvaluateResponse? structDefaultResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "default(MyStruct).Id");
         Assert.Equal("0", structDefaultResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "sizeof(int)", out EvaluateResponse? sizeOfResponse);
+        EvaluateResponse? sizeOfResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "sizeof(int)");
         Assert.Equal("4", sizeOfResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "typeof(int[]).ToString()", out EvaluateResponse? arrayTypeOfResponse);
+        EvaluateResponse? arrayTypeOfResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "typeof(int[]).ToString()");
         Assert.Equal("\"System.Int32[]\"", arrayTypeOfResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "typeof(System.Collections.Generic.List<int>).ToString()", out EvaluateResponse? genericTypeOfResponse);
+        EvaluateResponse? genericTypeOfResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "typeof(System.Collections.Generic.List<int>).ToString()");
         Assert.Equal("\"System.Collections.Generic.List`1[System.Int32]\"", genericTypeOfResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "typeof(MyClassContainingAnotherClass.MyNestedClass).ToString()", out EvaluateResponse? nestedTypeOfResponse);
+        EvaluateResponse? nestedTypeOfResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "typeof(MyClassContainingAnotherClass.MyNestedClass).ToString()");
         Assert.Equal("\"DebuggableConsoleApp.MyClassContainingAnotherClass+MyNestedClass\"", nestedTypeOfResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "TryGetObject(out var objectResult) ? objectResult.IntProperty : 0", out EvaluateResponse? outVarResponse);
+        EvaluateResponse? outVarResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "TryGetObject(out var objectResult) ? objectResult.IntProperty : 0");
         Assert.Equal("6", outVarResponse.Result);
 
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "new OverloadResolutionGeneric<int>().Pick(\"hello\")", out EvaluateResponse? genericTypeOverloadResponse);
+        EvaluateResponse? genericTypeOverloadResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "new OverloadResolutionGeneric<int>().Pick(\"hello\")");
         Assert.Equal("5", genericTypeOverloadResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "myInt = 42", out EvaluateResponse? myIntResetResponse);
+        EvaluateResponse? myIntResetResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "myInt = 42");
         Assert.Equal("42", myIntResetResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "OverloadResolutionByRef.Pick(ref myInt)", out EvaluateResponse? byRefOverloadResponse);
+        EvaluateResponse? byRefOverloadResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "OverloadResolutionByRef.Pick(ref myInt)");
         Assert.Equal("42", byRefOverloadResponse.Result);
 
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "anotherVar = \"updated\"", out EvaluateResponse? referenceStringAssignmentResponse);
+        EvaluateResponse? referenceStringAssignmentResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "anotherVar = \"updated\"");
         Assert.Equal("\"updated\"", referenceStringAssignmentResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "anotherVar", out EvaluateResponse? referenceStringReadBackResponse);
+        EvaluateResponse? referenceStringReadBackResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "anotherVar");
         Assert.Equal("\"updated\"", referenceStringReadBackResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "anotherVar == \"updated\"", out EvaluateResponse? referenceStringEqualityResponse);
+        EvaluateResponse? referenceStringEqualityResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "anotherVar == \"updated\"");
         Assert.Equal("true", referenceStringEqualityResponse.Result);
 
         // A string read from the debuggee keeps its reference, so identity comparisons and assignments alias.
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "IsSameString(anotherVar, anotherVar)", out EvaluateResponse? stringIdentityResponse);
+        EvaluateResponse? stringIdentityResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "IsSameString(anotherVar, anotherVar)");
         Assert.Equal("true", stringIdentityResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "object.ReferenceEquals(anotherVar, anotherVar)", out EvaluateResponse? stringReferenceEqualsResponse);
+        EvaluateResponse? stringReferenceEqualsResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "object.ReferenceEquals(anotherVar, anotherVar)");
         Assert.Equal("true", stringReferenceEqualsResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "anotherVar = _name", out EvaluateResponse? stringAliasAssignmentResponse);
+        EvaluateResponse? stringAliasAssignmentResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "anotherVar = _name");
         Assert.Equal("\"TestName\"", stringAliasAssignmentResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "IsSameString(anotherVar, _name)", out EvaluateResponse? stringAliasIdentityResponse);
+        EvaluateResponse? stringAliasIdentityResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "IsSameString(anotherVar, _name)");
         Assert.Equal("true", stringAliasIdentityResponse.Result);
 
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "nullableRefType = new MyClass()", out EvaluateResponse? referenceObjectAssignmentResponse);
+        EvaluateResponse? referenceObjectAssignmentResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "nullableRefType = new MyClass()");
         Assert.Equal("{DebuggableConsoleApp.MyClass}", referenceObjectAssignmentResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "nullableRefType == null", out EvaluateResponse? referenceObjectNotNullResponse);
+        EvaluateResponse? referenceObjectNotNullResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "nullableRefType == null");
         Assert.Equal("false", referenceObjectNotNullResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "nullableRefType = null", out EvaluateResponse? referenceNullAssignmentResponse);
+        EvaluateResponse? referenceNullAssignmentResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "nullableRefType = null");
         Assert.Equal("null", referenceNullAssignmentResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "nullableRefType == null", out EvaluateResponse? referenceNullReadBackResponse);
+        EvaluateResponse? referenceNullReadBackResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "nullableRefType == null");
         Assert.Equal("true", referenceNullReadBackResponse.Result);
 
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "_classField = null", out EvaluateResponse? referenceFieldNullAssignmentResponse);
+        EvaluateResponse? referenceFieldNullAssignmentResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "_classField = null");
         Assert.Equal("null", referenceFieldNullAssignmentResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "_classField == null", out EvaluateResponse? referenceFieldNullReadBackResponse);
+        EvaluateResponse? referenceFieldNullReadBackResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "_classField == null");
         Assert.Equal("true", referenceFieldNullReadBackResponse.Result);
 
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "(new string[1])[0] = \"array-string\"", out EvaluateResponse? arrayStringAssignmentResponse);
+        EvaluateResponse? arrayStringAssignmentResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "(new string[1])[0] = \"array-string\"");
         Assert.Equal("\"array-string\"", arrayStringAssignmentResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "(new MyClass2[1])[0] = null", out EvaluateResponse? arrayNullAssignmentResponse);
+        EvaluateResponse? arrayNullAssignmentResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "(new MyClass2[1])[0] = null");
         Assert.Equal("null", arrayNullAssignmentResponse.Result);
     }
 
@@ -472,27 +471,26 @@ public class EvalTests(ITestOutputHelper testOutputHelper)
     {
         bool startSuspended = true;
 
-        using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
+        await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
 
         await debugProtocolHost
-            .WithInitializeRequest()
-            .WithAttachRequest(p2.Id)
+            .InitializeAsync()
+            .AttachAsync(p2.Id)
             .WaitForInitializedEvent();
-        debugProtocolHost
-            .WithBreakpointsRequest(Debuggees.Line("DebuggableConsoleApp", "Lambdas/MyLambdaClass.cs", "return value + outerLocal;"),
+        await debugProtocolHost
+            .BreakpointsAsync(Debuggees.Line("DebuggableConsoleApp", "Lambdas/MyLambdaClass.cs", "return value + outerLocal;"),
                 Debuggees.Source("DebuggableConsoleApp", "Lambdas", "MyLambdaClass.cs"))
-            .WithConfigurationDoneRequest()
-            .WithOptionalResumeRuntime(p2.Id, startSuspended);
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(p2.Id, startSuspended);
 
         StoppedEvent stoppedEvent = await debugProtocolHost.WaitForStoppedEvent();
-        debugProtocolHost
-            .WithStackTraceRequest(stoppedEvent.ThreadId!.Value, out StackTraceResponse? stackTraceResponse)
-            .WithScopesRequest(stackTraceResponse.StackFrames!.First().Id, out ScopesResponse? scopesResponse);
+        StackTraceResponse? stackTraceResponse = await debugProtocolHost.StackTraceAsync(stoppedEvent.ThreadId!.Value);
+        ScopesResponse? scopesResponse = await debugProtocolHost.ScopesAsync(stackTraceResponse.StackFrames!.First().Id);
 
         int stackFrameId = stackTraceResponse.StackFrames!.First().Id;
 
         // 'value' must resolve to the innermost lambda's parameter (200), not the hoisted method-local 'value' (100)
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "value", out EvaluateResponse? evaluateResponse);
+        EvaluateResponse? evaluateResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "value");
         Assert.Equal("200", evaluateResponse.Result);
     }
 
@@ -503,30 +501,29 @@ public class EvalTests(ITestOutputHelper testOutputHelper)
     {
         bool startSuspended = true;
 
-        using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
+        await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
 
         await debugProtocolHost
-            .WithInitializeRequest()
-            .WithAttachRequest(p2.Id)
+            .InitializeAsync()
+            .AttachAsync(p2.Id)
             .WaitForInitializedEvent();
-        debugProtocolHost
-            .WithBreakpointsRequest(Debuggees.Line("DebuggableConsoleApp", "MyClassWithGenericMethod.cs", "return arg;"),
+        await debugProtocolHost
+            .BreakpointsAsync(Debuggees.Line("DebuggableConsoleApp", "MyClassWithGenericMethod.cs", "return arg;"),
                 Debuggees.Source("DebuggableConsoleApp", "MyClassWithGenericMethod.cs"))
-            .WithConfigurationDoneRequest()
-            .WithOptionalResumeRuntime(p2.Id, startSuspended);
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(p2.Id, startSuspended);
 
         StoppedEvent stoppedEvent = await debugProtocolHost.WaitForStoppedEvent();
-        debugProtocolHost
-            .WithStackTraceRequest(stoppedEvent.ThreadId!.Value, out StackTraceResponse? stackTraceResponse)
-            .WithScopesRequest(stackTraceResponse.StackFrames!.First().Id, out ScopesResponse? scopesResponse);
+        StackTraceResponse? stackTraceResponse = await debugProtocolHost.StackTraceAsync(stoppedEvent.ThreadId!.Value);
+        ScopesResponse? scopesResponse = await debugProtocolHost.ScopesAsync(stackTraceResponse.StackFrames!.First().Id);
 
         int stackFrameId = stackTraceResponse.StackFrames!.First().Id;
 
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "default(T)", out EvaluateResponse? evaluateResponse);
+        EvaluateResponse? evaluateResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "default(T)");
         Assert.Equal("0", evaluateResponse.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "arg", out EvaluateResponse? evaluateResponse3);
+        EvaluateResponse? evaluateResponse3 = await debugProtocolHost.EvaluateAsync(stackFrameId, "arg");
         Assert.Equal("4", evaluateResponse3.Result);
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "typeof(T)", out EvaluateResponse? evaluateResponse4);
+        EvaluateResponse? evaluateResponse4 = await debugProtocolHost.EvaluateAsync(stackFrameId, "typeof(T)");
         Assert.Equal("System.Int32", evaluateResponse4.Result);
     }
 
@@ -534,18 +531,18 @@ public class EvalTests(ITestOutputHelper testOutputHelper)
     public async Task A_LINQ_watch_evaluates_in_a_program_that_has_called_no_LINQ_method_yet()
     {
         // At the entry of a program that has loaded no System.Linq, which the expression loads.
-        using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await host
-            .WithInitializeRequest()
-            .WithLaunchRequest(Debuggees.Program("TopLevelStatementsConsoleApp"), stopAtEntry: true, justMyCode: true)
+            .InitializeAsync()
+            .LaunchAsync(Debuggees.Program("TopLevelStatementsConsoleApp"), stopAtEntry: true, justMyCode: true)
             .WaitForInitializedEvent();
-        host.WithConfigurationDoneRequest();
+        await host.ConfigurationDoneAsync();
         StoppedEvent stoppedEvent = await host.WaitForStoppedEvent();
-        DapStackFrame topFrame = host.GetTopStackFrame(stoppedEvent.ThreadId!.Value);
+        DapStackFrame topFrame = await host.TopFrameAsync(stoppedEvent.ThreadId!.Value);
 
-        host.WithEvaluateRequest(topFrame.Id, "new[] { test, 7 }.Where(x => x > 3).Count()", out EvaluateResponse? linq);
+        EvaluateResponse? linq = await host.EvaluateAsync(topFrame.Id, "new[] { test, 7 }.Where(x => x > 3).Count()");
         Assert.Equal("1", linq.Result);
-        host.WithEvaluateRequest(topFrame.Id, "System.Linq.Enumerable.Range(1, 3).Sum()", out EvaluateResponse? named);
+        EvaluateResponse? named = await host.EvaluateAsync(topFrame.Id, "System.Linq.Enumerable.Range(1, 3).Sum()");
         Assert.Equal("6", named.Result);
     }
 
@@ -555,25 +552,24 @@ public class EvalTests(ITestOutputHelper testOutputHelper)
     {
         bool startSuspended = true;
 
-        using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
+        await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
 
         await debugProtocolHost
-            .WithInitializeRequest()
-            .WithAttachRequest(p2.Id)
+            .InitializeAsync()
+            .AttachAsync(p2.Id)
             .WaitForInitializedEvent();
-        debugProtocolHost
-            .WithBreakpointsRequest([Debuggees.Line("DebuggableConsoleApp", "MyStaticClass.cs", "int test = 4;")], Debuggees.Source("DebuggableConsoleApp", "MyStaticClass.cs"))
-            .WithConfigurationDoneRequest()
-            .WithOptionalResumeRuntime(p2.Id, startSuspended);
+        await debugProtocolHost
+            .BreakpointsAsync([Debuggees.Line("DebuggableConsoleApp", "MyStaticClass.cs", "int test = 4;")], Debuggees.Source("DebuggableConsoleApp", "MyStaticClass.cs"))
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(p2.Id, startSuspended);
 
         StoppedEvent stoppedEvent = await debugProtocolHost.WaitForStoppedEvent();
-        debugProtocolHost
-            .WithStackTraceRequest(stoppedEvent.ThreadId!.Value, out StackTraceResponse? stackTraceResponse)
-            .WithScopesRequest(stackTraceResponse.StackFrames!.First().Id, out ScopesResponse? scopesResponse);
+        StackTraceResponse? stackTraceResponse = await debugProtocolHost.StackTraceAsync(stoppedEvent.ThreadId!.Value);
+        ScopesResponse? scopesResponse = await debugProtocolHost.ScopesAsync(stackTraceResponse.StackFrames!.First().Id);
 
         int stackFrameId = stackTraceResponse.StackFrames!.First().Id;
 
-        debugProtocolHost.WithEvaluateRequest(stackFrameId, "_testInt", out EvaluateResponse? evaluateResponse);
+        EvaluateResponse? evaluateResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "_testInt");
         Assert.Equal("4", evaluateResponse.Result);
     }
 
@@ -582,19 +578,19 @@ public class EvalTests(ITestOutputHelper testOutputHelper)
     [Fact]
     public async Task An_evaluation_calls_a_method_that_takes_a_nested_type()
     {
-        using DebugSession host = DebugSession.ForAttach(testOutputHelper, true, out Process program);
+        await using DebugSession host = DebugSession.ForAttach(testOutputHelper, true, out Process program);
         await host
-            .WithInitializeRequest()
-            .WithAttachRequest(program.Id)
+            .InitializeAsync()
+            .AttachAsync(program.Id)
             .WaitForInitializedEvent();
-        host
-            .WithBreakpointsRequest(Debuggees.MyMethodEnd, Debuggees.Source("DebuggableConsoleApp", "MyClass.cs"))
-            .WithConfigurationDoneRequest()
-            .WithOptionalResumeRuntime(program.Id, true);
+        await host
+            .BreakpointsAsync(Debuggees.MyMethodEnd, Debuggees.Source("DebuggableConsoleApp", "MyClass.cs"))
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(program.Id, true);
 
         StoppedEvent stopped = await host.WaitForStoppedEvent();
-        host.WithStackTraceRequest(stopped.ThreadId!.Value, out StackTraceResponse stack)
-            .WithEvaluateRequest(stack.StackFrames[0].Id, "NestedTypeCalls.ValueOf(NestedTypeCalls.Nested(5))", out EvaluateResponse called);
+        StackTraceResponse stack = await host.StackTraceAsync(stopped.ThreadId!.Value);
+        EvaluateResponse called = await host.EvaluateAsync(stack.StackFrames[0].Id, "NestedTypeCalls.ValueOf(NestedTypeCalls.Nested(5))");
         Assert.True(called.Result == "5", $"A call taking MyClassContainingAnotherClass.MyNestedClass evaluated to {called.Result}, not the 5 it was given");
     }
 }

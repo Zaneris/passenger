@@ -11,19 +11,19 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
     [Fact]
     public async Task Stop_at_entry_stops_in_Main_saying_so()
     {
-        using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         string program = Debuggees.Program("DebuggableConsoleApp");
 
         await host
-            .WithInitializeRequest()
-            .WithLaunchRequest(program, stopAtEntry: true, justMyCode: true)
+            .InitializeAsync()
+            .LaunchAsync(program, stopAtEntry: true, justMyCode: true)
             .WaitForInitializedEvent();
-        host.WithConfigurationDoneRequest();
+        await host.ConfigurationDoneAsync();
 
         StoppedEvent stoppedEvent = await host.WaitForStoppedEvent();
         Assert.Equal(StopReasons.Entry, stoppedEvent.Reason);
         Assert.NotNull(stoppedEvent.ThreadId);
-        DapStackFrame topFrame = host.GetTopStackFrame(stoppedEvent.ThreadId!.Value);
+        DapStackFrame topFrame = await host.TopFrameAsync(stoppedEvent.ThreadId!.Value);
         Assert.Contains("Main", topFrame.Name);
         Assert.EndsWith("Program.cs", topFrame.Source?.Path);
     }
@@ -31,75 +31,72 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
     [Fact]
     public async Task Stop_at_entry_in_top_level_statements_stops_at_their_first_saying_so()
     {
-        using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         string program = Debuggees.Program("TopLevelStatementsConsoleApp");
 
         await host
-            .WithInitializeRequest()
-            .WithLaunchRequest(program, stopAtEntry: true, justMyCode: true)
+            .InitializeAsync()
+            .LaunchAsync(program, stopAtEntry: true, justMyCode: true)
             .WaitForInitializedEvent();
-        host.WithConfigurationDoneRequest();
+        await host.ConfigurationDoneAsync();
 
         StoppedEvent stoppedEvent = await host.WaitForStoppedEvent();
         Assert.Equal(StopReasons.Entry, stoppedEvent.Reason);
         Assert.NotNull(stoppedEvent.ThreadId);
-        DapStackFrame topFrame = host.GetTopStackFrame(stoppedEvent.ThreadId!.Value);
+        DapStackFrame topFrame = await host.TopFrameAsync(stoppedEvent.ThreadId!.Value);
         Assert.Contains("Main", topFrame.Name);
         Assert.EndsWith("Program.cs", topFrame.Source?.Path);
         Assert.Equal(Debuggees.Line("TopLevelStatementsConsoleApp", "int test = 4;"), topFrame.Line);
-        host
-            .WithScopesRequest(topFrame.Id, out ScopesResponse? scopesResponse)
-            .WithVariablesRequest(scopesResponse.Scopes.Single().VariablesReference, out List<DapVariable>? variables);
+        ScopesResponse? scopesResponse = await host.ScopesAsync(topFrame.Id);
+        List<DapVariable>? variables = await host.VariablesAsync(scopesResponse.Scopes.Single().VariablesReference);
         Assert.Contains(variables, variable => variable.Name == "test");
     }
 
     [Fact]
     public async Task Stop_at_entry_in_an_async_Main_stops_at_its_start_saying_so()
     {
-        using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         string program = Debuggees.Program("AsyncEntryConsoleApp");
 
         await host
-            .WithInitializeRequest()
-            .WithLaunchRequest(program, stopAtEntry: true, justMyCode: true)
+            .InitializeAsync()
+            .LaunchAsync(program, stopAtEntry: true, justMyCode: true)
             .WaitForInitializedEvent();
-        host.WithConfigurationDoneRequest();
+        await host.ConfigurationDoneAsync();
 
         StoppedEvent stoppedEvent = await host.WaitForStoppedEvent();
         Assert.Equal(StopReasons.Entry, stoppedEvent.Reason);
         Assert.NotNull(stoppedEvent.ThreadId);
-        DapStackFrame topFrame = host.GetTopStackFrame(stoppedEvent.ThreadId!.Value);
+        DapStackFrame topFrame = await host.TopFrameAsync(stoppedEvent.ThreadId!.Value);
         Assert.Contains("Main", topFrame.Name);
         Assert.EndsWith("Program.cs", topFrame.Source?.Path);
         Assert.Equal(Debuggees.Line("AsyncEntryConsoleApp", "static async Task Main(") + 1, topFrame.Line);
-        host
-            .WithScopesRequest(topFrame.Id, out ScopesResponse? scopesResponse)
-            .WithVariablesRequest(scopesResponse.Scopes.Single().VariablesReference, out List<DapVariable>? variables);
+        ScopesResponse? scopesResponse = await host.ScopesAsync(topFrame.Id);
+        List<DapVariable>? variables = await host.VariablesAsync(scopesResponse.Scopes.Single().VariablesReference);
         Assert.Contains(variables, variable => variable.Name == "test");
     }
 
     [Fact]
     public async Task Stop_at_entry_in_async_top_level_statements_stops_at_their_first_saying_so()
     {
-        using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         string program = Debuggees.Program("AsyncTopLevelStatementsConsoleApp");
 
         await host
-            .WithInitializeRequest()
-            .WithLaunchRequest(program, stopAtEntry: true, justMyCode: true)
+            .InitializeAsync()
+            .LaunchAsync(program, stopAtEntry: true, justMyCode: true)
             .WaitForInitializedEvent();
-        host.WithConfigurationDoneRequest();
+        await host.ConfigurationDoneAsync();
 
         StoppedEvent stoppedEvent = await host.WaitForStoppedEvent();
         Assert.Equal(StopReasons.Entry, stoppedEvent.Reason);
         Assert.NotNull(stoppedEvent.ThreadId);
-        DapStackFrame topFrame = host.GetTopStackFrame(stoppedEvent.ThreadId!.Value);
+        DapStackFrame topFrame = await host.TopFrameAsync(stoppedEvent.ThreadId!.Value);
         Assert.Contains("Main", topFrame.Name);
         Assert.EndsWith("Program.cs", topFrame.Source?.Path);
         Assert.Equal(Debuggees.Line("AsyncTopLevelStatementsConsoleApp", "int test = 4;"), topFrame.Line);
-        host
-            .WithScopesRequest(topFrame.Id, out ScopesResponse? scopesResponse)
-            .WithVariablesRequest(scopesResponse.Scopes.Single().VariablesReference, out List<DapVariable>? variables);
+        ScopesResponse? scopesResponse = await host.ScopesAsync(topFrame.Id);
+        List<DapVariable>? variables = await host.VariablesAsync(scopesResponse.Scopes.Single().VariablesReference);
         Assert.Contains(variables, variable => variable.Name == "test");
     }
 
@@ -107,24 +104,24 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
     public async Task A_launched_program_reads_its_own_input_never_the_adapters()
     {
         int written = Debuggees.Line("ReadsInputConsoleApp", "Console.WriteLine($\"read:");
-        using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         string source = Debuggees.Source("ReadsInputConsoleApp", "Program.cs");
 
         await host
-            .WithInitializeRequest()
-            .WithLaunchRequest(Debuggees.Program("ReadsInputConsoleApp"), stopAtEntry: false, justMyCode: true)
+            .InitializeAsync()
+            .LaunchAsync(Debuggees.Program("ReadsInputConsoleApp"), stopAtEntry: false, justMyCode: true)
             .WaitForInitializedEvent();
-        host
-            .WithBreakpointsRequest(written, source)
-            .WithConfigurationDoneRequest();
+        await host
+            .BreakpointsAsync(written, source)
+            .ConfigurationDoneAsync();
         // While it waits on its console, every request still reaches the debugger.
-        host.Request(DapCommands.SetExceptionBreakpoints, new SetExceptionBreakpointsArguments([]));
-        host.Request(DapCommands.Input, new InputArguments("hello\n"));
+        await host.RequestAsync(DapCommands.SetExceptionBreakpoints, new SetExceptionBreakpointsArguments([]));
+        await host.RequestAsync(DapCommands.Input, new InputArguments("hello\n"));
 
         StoppedEvent stopped = await host.WaitForStoppedEvent();
         Assert.Equal(written, stopped.ReadStopInfo().line);
-        host.WithStackTraceRequest(stopped.ThreadId!.Value, out StackTraceResponse stack)
-            .WithEvaluateRequest(stack.StackFrames[0].Id, "line", out EvaluateResponse line);
+        StackTraceResponse stack = await host.StackTraceAsync(stopped.ThreadId!.Value);
+        EvaluateResponse line = await host.EvaluateAsync(stack.StackFrames[0].Id, "line");
         Assert.Equal("\"hello\"", line.Result);
     }
 
@@ -132,12 +129,12 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
     public async Task A_dotnet_program_the_debugged_one_starts_runs_as_it_would_undebugged()
     {
         // Nothing that holds the debugged program at its start may reach the programs it starts in turn.
-        using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, "PassengerCases",
+        await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, "PassengerCases",
             Debuggees.Line("PassengerCases", "Console.WriteLine($\"child said: {said}\");"), []);
         StoppedEvent stopped = await host.WaitForStoppedEvent();
-        host.WithStackTraceRequest(stopped.ThreadId!.Value, out StackTraceResponse stack)
-            .WithEvaluateRequest(stack.StackFrames[0].Id, "said", out EvaluateResponse said)
-            .WithEvaluateRequest(stack.StackFrames[0].Id, "Environment.GetEnvironmentVariable(\"DOTNET_DefaultDiagnosticPortSuspend\")", out EvaluateResponse hold);
+        StackTraceResponse stack = await host.StackTraceAsync(stopped.ThreadId!.Value);
+        EvaluateResponse said = await host.EvaluateAsync(stack.StackFrames[0].Id, "said");
+        EvaluateResponse hold = await host.EvaluateAsync(stack.StackFrames[0].Id, "Environment.GetEnvironmentVariable(\"DOTNET_DefaultDiagnosticPortSuspend\")");
         Assert.Equal("\"child ran\"", said.Result);
         Assert.True(hold.Result == "null", $"The program was held at its start by DOTNET_DefaultDiagnosticPortSuspend, which is still in its environment ({hold.Result}) for every .NET program it starts");
     }
@@ -145,12 +142,12 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
     [Fact]
     public async Task A_program_writing_64_KB_runs_to_its_end_with_all_it_wrote_and_its_own_exit_code()
     {
-        using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await host
-            .WithInitializeRequest()
-            .WithLaunchRequest(Debuggees.Program("PassengerCases"), stopAtEntry: false, justMyCode: true, arguments: ["flood"])
+            .InitializeAsync()
+            .LaunchAsync(Debuggees.Program("PassengerCases"), stopAtEntry: false, justMyCode: true, arguments: ["flood"])
             .WaitForInitializedEvent();
-        host.WithConfigurationDoneRequest();
+        await host.ConfigurationDoneAsync();
 
         (string output, int? exitCode) = await host.WaitForEnd();
         string expected = string.Concat(Enumerable.Range(0, 1024).Select(i => $"{i:D5} {new string((char)('a' + i % 26), 57)}\n"));
@@ -161,16 +158,16 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
     [Fact]
     public async Task The_thread_running_Main_is_the_one_named_Main_Thread()
     {
-        using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
 
         await host
-            .WithInitializeRequest()
-            .WithLaunchRequest(Debuggees.Program("TopLevelStatementsConsoleApp"), stopAtEntry: true, justMyCode: true)
+            .InitializeAsync()
+            .LaunchAsync(Debuggees.Program("TopLevelStatementsConsoleApp"), stopAtEntry: true, justMyCode: true)
             .WaitForInitializedEvent();
-        host.WithConfigurationDoneRequest();
+        await host.ConfigurationDoneAsync();
 
         StoppedEvent stopped = await host.WaitForStoppedEvent();
-        IReadOnlyList<DapThread> threads = host.Request<ThreadsResponse>(DapCommands.Threads).Threads;
+        IReadOnlyList<DapThread> threads = (await host.RequestAsync<ThreadsResponse>(DapCommands.Threads)).Threads;
         Assert.Equal("Main Thread", Assert.Single(threads, t => t.Id == stopped.ThreadId).Name);
         Assert.Single(threads, t => t.Name == "Main Thread");
         Assert.Equal(stopped.ThreadId, Assert.Single(threads, t => t.IsMain == true).Id);
@@ -185,18 +182,18 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
         int first = Debuggees.Line("TerminalConsoleApp", "// Main's first line");
         for (int launch = 1; launch <= 5; launch++)
         {
-            using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+            await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
             using Terminal terminal = new(host);
             await host
-                .WithInitializeRequest()
-                .WithLaunchRequest(Debuggees.Program("TerminalConsoleApp"), stopAtEntry: false, justMyCode: true, console: "integratedTerminal")
+                .InitializeAsync()
+                .LaunchAsync(Debuggees.Program("TerminalConsoleApp"), stopAtEntry: false, justMyCode: true, console: "integratedTerminal")
                 .WaitForInitializedEvent();
-            host.WithBreakpointsRequest(first, source).WithConfigurationDoneRequest();
+            await host.BreakpointsAsync(first, source).ConfigurationDoneAsync();
 
             StoppedEvent stopped = await host.WaitForStoppedEvent();
             Assert.True((stopped.Reason, stopped.Line) == (StopReasons.Breakpoint, first),
                 $"Launch {launch} in the terminal stopped for {stopped.Reason} at line {stopped.Line}, not at the breakpoint on Main's first line ({first})");
-            Assert.True(terminal.Program is { HasExited: false } program && host.GetTopStackFrame(stopped.ThreadId!.Value).Name.Contains("Main", StringComparison.Ordinal),
+            Assert.True(terminal.Program is { HasExited: false } program && (await host.TopFrameAsync(stopped.ThreadId!.Value)).Name.Contains("Main", StringComparison.Ordinal),
                 $"Launch {launch} stopped somewhere other than in the program the terminal started");
         }
     }
@@ -206,17 +203,17 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
     [Fact]
     public async Task A_client_that_cannot_start_the_program_in_its_terminal_fails_the_launch_saying_why()
     {
-        using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         host.Connection.Handle<RunInTerminalArguments, RunInTerminalResponse>(DapCommands.RunInTerminal,
             _ => Task.FromException<RunInTerminalResponse>(new InvalidOperationException("no terminal here")));
         await host
-            .WithInitializeRequest()
-            .WithLaunchRequest(Debuggees.Program("TerminalConsoleApp"), stopAtEntry: false, justMyCode: true, console: "integratedTerminal")
+            .InitializeAsync()
+            .LaunchAsync(Debuggees.Program("TerminalConsoleApp"), stopAtEntry: false, justMyCode: true, console: "integratedTerminal")
             .WaitForInitializedEvent();
 
-        DapException refused = Assert.Throws<DapException>(() => host.Request(DapCommands.ConfigurationDone));
+        DapException refused = await Assert.ThrowsAsync<DapException>(() => host.RequestAsync(DapCommands.ConfigurationDone));
         Assert.Contains("could not start TerminalConsoleApp.dll in its terminal: no terminal here", refused.Reason, StringComparison.Ordinal);
-        Assert.Empty(host.Request<ThreadsResponse>(DapCommands.Threads, limit: TimeSpan.FromSeconds(10)).Threads);
+        Assert.Empty((await host.RequestAsync<ThreadsResponse>(DapCommands.Threads, limit: TimeSpan.FromSeconds(10))).Threads);
     }
 
     /// <summary>A program whose runtime is slow to start (its first start on a machine reads it from a cold disk) is
@@ -225,12 +222,12 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
     public async Task A_program_whose_runtime_starts_late_is_still_debugged()
     {
         using StartHold hold = new();
-        using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await host
-            .WithInitializeRequest()
-            .WithLaunchRequest(Debuggees.Program("DebuggableConsoleApp"), stopAtEntry: false, justMyCode: true, environment: hold.Environment)
+            .InitializeAsync()
+            .LaunchAsync(Debuggees.Program("DebuggableConsoleApp"), stopAtEntry: false, justMyCode: true, environment: hold.Environment)
             .WaitForInitializedEvent();
-        host.WithBreakpointsRequest();
+        await host.BreakpointsAsync();
         Task configured = host.Send(DapCommands.ConfigurationDone);
         await hold.Held();
 
@@ -248,15 +245,15 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
     public async Task A_launch_stopped_while_its_runtime_starts_ends_at_once_with_its_program()
     {
         using StartHold hold = new();
-        using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await host
-            .WithInitializeRequest()
-            .WithLaunchRequest(Debuggees.Program("DebuggableConsoleApp"), stopAtEntry: false, justMyCode: true, environment: hold.Environment)
+            .InitializeAsync()
+            .LaunchAsync(Debuggees.Program("DebuggableConsoleApp"), stopAtEntry: false, justMyCode: true, environment: hold.Environment)
             .WaitForInitializedEvent();
         Task configured = host.Send(DapCommands.ConfigurationDone);
         int program = await hold.Held();
 
-        Assert.True(host.Disconnect(TimeSpan.FromSeconds(10)), "The disconnect went unanswered 10 s while the program's runtime was starting");
+        Assert.True(await host.DisconnectAsync(TimeSpan.FromSeconds(10)), "The disconnect went unanswered 10 s while the program's runtime was starting");
         DapException failed = await Assert.ThrowsAsync<DapException>(() => configured);
         Assert.Contains("the session ended before its runtime told the debugger it had started", failed.Reason, StringComparison.Ordinal);
         await Waiting.UntilAsync(() => !Processes.IsRunning(program), TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken, TimeSpan.FromMilliseconds(100));
@@ -269,13 +266,13 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
     public async Task A_program_that_ends_before_its_runtime_starts_fails_configurationDone_saying_how_it_ended()
     {
         (string program, string[] arguments) = OperatingSystem.IsWindows() ? ("cmd", (string[])["/c", "exit 3"]) : ("/bin/sh", ["-c", "exit 3"]);
-        using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await host
-            .WithInitializeRequest()
-            .WithLaunchRequest(program, stopAtEntry: false, justMyCode: true, arguments)
+            .InitializeAsync()
+            .LaunchAsync(program, stopAtEntry: false, justMyCode: true, arguments)
             .WaitForInitializedEvent();
 
-        DapException failed = Assert.Throws<DapException>(() => host.WithConfigurationDoneRequest());
+        DapException failed = await Assert.ThrowsAsync<DapException>(() => host.ConfigurationDoneAsync());
         Assert.Contains("it ended before its runtime told the debugger it had started (the program had ended, with exit code 3)", failed.Reason, StringComparison.Ordinal);
     }
 

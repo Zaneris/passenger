@@ -21,19 +21,19 @@ public class StackTraceTests(ITestOutputHelper testOutputHelper)
     public async Task A_stop_lists_its_frames_down_to_Main_the_librarys_subtle_and_an_async_methods_by_its_own_name()
     {
         bool startSuspended = true;
-        using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
+        await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
 
 
         await debugProtocolHost
-            .WithInitializeRequest()
-            .WithAttachRequest(p2.Id, justMyCode: true)
+            .InitializeAsync()
+            .AttachAsync(p2.Id, justMyCode: true)
             .WaitForInitializedEvent();
-        debugProtocolHost.Request(DapCommands.SetExceptionBreakpoints, new SetExceptionBreakpointsArguments([], [new(DapExceptionFilters.All), new(DapExceptionFilters.UserUnhandled)]));
+        await debugProtocolHost.RequestAsync(DapCommands.SetExceptionBreakpoints, new SetExceptionBreakpointsArguments([], [new(DapExceptionFilters.All), new(DapExceptionFilters.UserUnhandled)]));
         string breakpointedFilePath = Debuggees.Source("DebuggableConsoleApp", "ClassWithBclCall.cs");
-        debugProtocolHost
-            .WithBreakpointsRequest([Selected], breakpointedFilePath)
-            .WithConfigurationDoneRequest()
-            .WithOptionalResumeRuntime(p2.Id, startSuspended);
+        await debugProtocolHost
+            .BreakpointsAsync([Selected], breakpointedFilePath)
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(p2.Id, startSuspended);
 
         StoppedEvent stoppedEvent = await debugProtocolHost.WaitForStoppedEvent();
         (string filePath, int line, int column) stopInfo = stoppedEvent.ReadStopInfo();
@@ -51,7 +51,7 @@ public class StackTraceTests(ITestOutputHelper testOutputHelper)
 			// TODO: Return internal frames (thread.ActiveInternalFrames), such as a subtle "[Native to Managed Transition]".
 		];
 
-        debugProtocolHost.WithStackTraceRequest(stoppedEvent.ThreadId!.Value, out StackTraceResponse? stackTraceResponse, null);
+        StackTraceResponse? stackTraceResponse = await debugProtocolHost.StackTraceAsync(stoppedEvent.ThreadId!.Value, null);
         Assert.Equal(expectedStackFrames.Count, stackTraceResponse.StackFrames.Count);
         Assert.Equal(expectedStackFrames, stackTraceResponse.StackFrames.WithoutResolution());
         Assert.Equal([true, false, false, true, true], stackTraceResponse.StackFrames.Select(f => f.IsResolved));
@@ -60,9 +60,9 @@ public class StackTraceTests(ITestOutputHelper testOutputHelper)
 
         string breakpointedFilePath2 = Debuggees.Source("DebuggableConsoleApp", "MyClassContainingAnotherClass.cs");
         StoppedEvent stoppedEvent2 = await debugProtocolHost
-            .WithBreakpointsRequest([], breakpointedFilePath)
-            .WithBreakpointsRequest([NestedGenericBody], breakpointedFilePath2)
-            .WithContinueRequest()
+            .BreakpointsAsync([], breakpointedFilePath)
+            .BreakpointsAsync([NestedGenericBody], breakpointedFilePath2)
+            .ContinueAsync()
             .WaitForStoppedEvent();
 
         (string filePath, int line, int column) stopInfo2 = stoppedEvent2.ReadStopInfo();
@@ -76,22 +76,22 @@ public class StackTraceTests(ITestOutputHelper testOutputHelper)
             new() { Id = 7, Column = 4, EndColumn = 103, Line = NestedGenericCalled, EndLine = NestedGenericCalled, Name = "DebuggableConsoleApp.dll!DebuggableConsoleApp.Program.Main(string[] args)", Source = new DapSource { Name = "Program.cs", SourceReference = 0, Path = Debuggees.Source("DebuggableConsoleApp", "Program.cs") } },
         ];
 
-        debugProtocolHost.WithStackTraceRequest(stoppedEvent2.ThreadId!.Value, out StackTraceResponse? stackTraceResponse2, null);
+        StackTraceResponse? stackTraceResponse2 = await debugProtocolHost.StackTraceAsync(stoppedEvent2.ThreadId!.Value, null);
         Assert.Equal(expectedStackFrames2.Count, stackTraceResponse2.StackFrames.Count);
         Assert.Equal(expectedStackFrames2, stackTraceResponse2.StackFrames.WithoutResolution());
 
         string breakpointedFilePath3 = Debuggees.Source("DebuggableConsoleApp", "Namespace1", "AnotherClass.cs");
         StoppedEvent stoppedEvent3 = await debugProtocolHost
-            .WithBreakpointsRequest([], breakpointedFilePath2)
-            .WithBreakpointsRequest([AnotherMethodAwaits], breakpointedFilePath3)
-            .WithContinueRequest()
+            .BreakpointsAsync([], breakpointedFilePath2)
+            .BreakpointsAsync([AnotherMethodAwaits], breakpointedFilePath3)
+            .ContinueAsync()
             .WaitForStoppedEvent();
 
         (string filePath, int line, int column) stopInfo3 = stoppedEvent3.ReadStopInfo();
         Assert.EndsWith("AnotherClass.cs", stopInfo3.filePath);
         Assert.Equal(AnotherMethodAwaits, stopInfo3.line);
 
-        debugProtocolHost.WithStackTraceRequest(stoppedEvent3.ThreadId!.Value, out StackTraceResponse? stackTraceResponse3, null);
+        StackTraceResponse? stackTraceResponse3 = await debugProtocolHost.StackTraceAsync(stoppedEvent3.ThreadId!.Value, null);
         List<string> userFrameNames = stackTraceResponse3.StackFrames
             .Select(frame => frame.Name)
             .Where(name => name.StartsWith("DebuggableConsoleApp.dll!"))
@@ -106,20 +106,20 @@ public class StackTraceTests(ITestOutputHelper testOutputHelper)
     public async Task A_stop_in_an_awaited_method_lists_the_async_methods_awaiting_it_with_their_locals()
     {
         bool startSuspended = true;
-        using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process process);
+        await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process process);
 
         await debugProtocolHost
-            .WithInitializeRequest()
-            .WithAttachRequest(process.Id, justMyCode: true)
+            .InitializeAsync()
+            .AttachAsync(process.Id, justMyCode: true)
             .WaitForInitializedEvent();
         string filePath = Debuggees.Source("DebuggableConsoleApp", "AsyncStackTraceClass.cs");
-        debugProtocolHost
-            .WithBreakpointsRequest([InnerAwaited], filePath)
-            .WithConfigurationDoneRequest()
-            .WithOptionalResumeRuntime(process.Id, startSuspended);
+        await debugProtocolHost
+            .BreakpointsAsync([InnerAwaited], filePath)
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(process.Id, startSuspended);
 
         StoppedEvent stoppedEvent = await debugProtocolHost.WaitForStoppedEvent();
-        debugProtocolHost.WithStackTraceRequest(stoppedEvent.ThreadId!.Value, out StackTraceResponse? stackTraceResponse, null);
+        StackTraceResponse? stackTraceResponse = await debugProtocolHost.StackTraceAsync(stoppedEvent.ThreadId!.Value, null);
 
         Assert.Equal(
             ["DebuggableConsoleApp.dll!DebuggableConsoleApp.AsyncStackTraceClass.MiddleAsync()",
@@ -128,8 +128,8 @@ public class StackTraceTests(ITestOutputHelper testOutputHelper)
         Assert.Equal([MiddleAwaits, TestAwaits], stackTraceResponse.StackFrames.TakeLast(2).Select(frame => frame.Line));
 
         DapStackFrame syntheticMiddleFrame = stackTraceResponse.StackFrames[^2];
-        debugProtocolHost.WithScopesRequest(syntheticMiddleFrame.Id, out ScopesResponse? scopesResponse);
-        debugProtocolHost.WithVariablesRequest(scopesResponse.Scopes.Single().VariablesReference, out List<DapVariable>? variables);
+        ScopesResponse? scopesResponse = await debugProtocolHost.ScopesAsync(syntheticMiddleFrame.Id);
+        List<DapVariable>? variables = await debugProtocolHost.VariablesAsync(scopesResponse.Scopes.Single().VariablesReference);
         Assert.Contains(variables, variable => variable.Name == "middleValue" && variable.Value == "17");
     }
 
@@ -137,25 +137,25 @@ public class StackTraceTests(ITestOutputHelper testOutputHelper)
     public async Task A_library_frame_without_source_is_decompiled_when_it_is_resolved()
     {
         bool startSuspended = true;
-        using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process process);
+        await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process process);
 
         await debugProtocolHost
-            .WithInitializeRequest()
-            .WithAttachRequest(process.Id, justMyCode: false)
+            .InitializeAsync()
+            .AttachAsync(process.Id, justMyCode: false)
             .WaitForInitializedEvent();
         string breakpointedFilePath = Debuggees.Source("DebuggableConsoleApp", "ClassWithBclCall.cs");
-        debugProtocolHost
-            .WithBreakpointsRequest([Selected], breakpointedFilePath)
-            .WithConfigurationDoneRequest()
-            .WithOptionalResumeRuntime(process.Id, startSuspended);
+        await debugProtocolHost
+            .BreakpointsAsync([Selected], breakpointedFilePath)
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(process.Id, startSuspended);
 
         StoppedEvent stoppedEvent = await debugProtocolHost.WaitForStoppedEvent();
-        debugProtocolHost.WithStackTraceRequest(stoppedEvent.ThreadId!.Value, out StackTraceResponse? stackTraceResponse, null);
+        StackTraceResponse? stackTraceResponse = await debugProtocolHost.StackTraceAsync(stoppedEvent.ThreadId!.Value, null);
         DapStackFrame unresolvedFrame = stackTraceResponse.StackFrames.First(frame => frame.Name.StartsWith("System.Linq.dll!"));
         Assert.False(unresolvedFrame.IsResolved);
         Assert.Null(unresolvedFrame.DecompiledSourceInfo);
 
-        ResolveStackFrameResponse response = debugProtocolHost.Request<ResolveStackFrameResponse>(DapCommands.ResolveStackFrame, new ResolveStackFrameArguments(unresolvedFrame.Id));
+        ResolveStackFrameResponse response = await debugProtocolHost.RequestAsync<ResolveStackFrameResponse>(DapCommands.ResolveStackFrame, new ResolveStackFrameArguments(unresolvedFrame.Id));
 
         Assert.Equal(unresolvedFrame.Id, response.StackFrame.Id);
         Assert.True(response.StackFrame.IsResolved);
@@ -174,16 +174,16 @@ public class StackTraceTests(ITestOutputHelper testOutputHelper)
     {
         // System.Reflection.Emit's module has no file and no image in memory.
         int calledBack = Debuggees.Line("PassengerCases", "Console.WriteLine($\"called back with {value}\");");
-        using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await host
-            .WithInitializeRequest()
-            .WithLaunchRequest(Debuggees.Program("PassengerCases"), stopAtEntry: false, justMyCode: true, arguments: ["emitted"])
+            .InitializeAsync()
+            .LaunchAsync(Debuggees.Program("PassengerCases"), stopAtEntry: false, justMyCode: true, arguments: ["emitted"])
             .WaitForInitializedEvent();
-        host.WithBreakpointsRequest(calledBack, Debuggees.Source("PassengerCases", "Program.cs")).WithConfigurationDoneRequest();
+        await host.BreakpointsAsync(calledBack, Debuggees.Source("PassengerCases", "Program.cs")).ConfigurationDoneAsync();
 
         StoppedEvent stop = await host.WaitForStoppedEvent();
         int thread = stop.ThreadId!.Value;
-        host.WithStackTraceRequest(thread, out StackTraceResponse stack, levels: null);
+        StackTraceResponse stack = await host.StackTraceAsync(thread, levels: null);
         List<string> names = [.. stack.StackFrames.Select(frame => frame.Name)];
         Assert.True(names.Contains("PassengerCases.dll!Program.<Main>$(string[] args)"), $"The stack ended before Main: {string.Join(" < ", names)}");
         Assert.Equal("PassengerCases.dll!Emitted.CalledBack(int value)", names[0]);
@@ -191,10 +191,10 @@ public class StackTraceTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("PassengerCases.dll!Emitted.Run()", names[2]);
 
         // The emitted frame's argument, emitted without a name, is there by its place.
-        host.WithScopesRequest(stack.StackFrames[1].Id, out ScopesResponse scopes);
-        host.WithVariablesRequest(Assert.Single(scopes.Scopes).VariablesReference, out List<DapVariable> arguments);
+        ScopesResponse scopes = await host.ScopesAsync(stack.StackFrames[1].Id);
+        List<DapVariable> arguments = await host.VariablesAsync(Assert.Single(scopes.Scopes).VariablesReference);
         Assert.Equal(("arg_0", "7"), (Assert.Single(arguments).Name, arguments[0].Value));
-        StoppedEvent stepped = await host.WithStepOutRequest(thread).WaitForStoppedEvent();
+        StoppedEvent stepped = await host.StepOutAsync(thread).WaitForStoppedEvent();
         Assert.Equal((StopReasons.Step, Debuggees.Line("PassengerCases", "callBack(7);")), (stepped.Reason, stepped.ReadStopInfo().line));
     }
 }

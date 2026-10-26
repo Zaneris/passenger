@@ -34,17 +34,17 @@ public class ProtocolTests(ITestOutputHelper testOutputHelper)
     }
 
     [Fact]
-    public void A_request_the_adapter_does_not_support_is_refused_naming_it_and_the_next_is_still_answered()
+    public async Task A_request_the_adapter_does_not_support_is_refused_naming_it_and_the_next_is_still_answered()
     {
-        using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
 
-        DapException unimplementedError = Assert.Throws<DapException>(() => host.Request("setVariable", new { variablesReference = 0, name = "value", value = "1" }));
+        DapException unimplementedError = await Assert.ThrowsAsync<DapException>(() => host.RequestAsync("setVariable", new { variablesReference = 0, name = "value", value = "1" }));
         Assert.Equal("Request 'setVariable' is not supported.", unimplementedError.Reason);
 
-        DapException unknownError = Assert.Throws<DapException>(() => host.Request("unknownRequest"));
+        DapException unknownError = await Assert.ThrowsAsync<DapException>(() => host.RequestAsync("unknownRequest"));
         Assert.Equal("Request 'unknownRequest' is not supported.", unknownError.Reason);
 
-        DapCapabilities capabilities = host.Request<DapCapabilities>(DapCommands.Initialize, DebugSession.InitializeArguments);
+        DapCapabilities capabilities = await host.RequestAsync<DapCapabilities>(DapCommands.Initialize, DebugSession.InitializeArguments);
         Assert.True(capabilities.SupportsConfigurationDoneRequest);
     }
 
@@ -55,9 +55,9 @@ public class ProtocolTests(ITestOutputHelper testOutputHelper)
     [InlineData("header")]
     [InlineData("268435457")]
     [InlineData("99999999999999999999")]
-    public void A_message_too_large_to_read_ends_the_conversation_saying_so(string sent)
+    public async Task A_message_too_large_to_read_ends_the_conversation_saying_so(string sent)
     {
-        using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         bool whole = host.SendRaw(Encoding.ASCII.GetBytes(sent == "header"
             ? string.Concat(Enumerable.Repeat($"X-Filler: {new string('x', 1000)}\r\n", 80))
             : $"Content-Length: {sent}\r\n\r\n"));
