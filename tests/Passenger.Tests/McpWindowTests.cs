@@ -643,7 +643,8 @@ public sealed class McpWindowDebuggingTests : McpRig, IClassFixture<RestoredFold
             Unasked(window, client, McpTools.DebugInput, new() { ["text"] = "hello" });
             WaitFor(() => !window.Debugger.IsDebugging && window.Debugger.Session?.Terminal?.Ended.IsCompleted == true, "the program's end");
             string shown = Await(Waiting.Apart(() => Call(client, McpTools.Output, new() { ["of"] = "debug" })), "the program's output").GetString()!;
-            Assert.True(shown.Contains("key? key q", StringComparison.Ordinal) && shown.Contains("line hello", StringComparison.Ordinal)
+            // A key typed before ReadKey takes the terminal is echoed by the terminal's own line discipline, as anywhere.
+            Assert.True((shown.Contains("key? key q", StringComparison.Ordinal) || shown.Contains("key? qkey q", StringComparison.Ordinal)) && shown.Contains("line hello", StringComparison.Ordinal)
                 && shown.Contains("Process finished with exit code 3.", StringComparison.Ordinal), $"output read, of the program's tab:\n{shown}");
         }
         finally

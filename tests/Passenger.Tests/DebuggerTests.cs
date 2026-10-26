@@ -1761,7 +1761,8 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Ui.Press(window, "ENTER");
         Ui.WaitFor(() => going.State == DebugState.Ended && program.Ended.IsCompleted, "the program's end");
         string shown = TerminalText(program);
-        Assert.True(shown.Contains("key? key q", StringComparison.Ordinal) && shown.Contains("line hello", StringComparison.Ordinal)
+        // A key typed before ReadKey takes the terminal is echoed by the terminal's own line discipline, as anywhere.
+        Assert.True((shown.Contains("key? key q", StringComparison.Ordinal) || shown.Contains("key? qkey q", StringComparison.Ordinal)) && shown.Contains("line hello", StringComparison.Ordinal)
             && shown.Contains("Process finished with exit code 3.", StringComparison.Ordinal), $"The program's tab shows:\n{shown}");
         Assert.Equal(3, going.ExitCode);
         Ui.WaitFor(() => window.Status == "Debugging Sum in the terminal ended with exit code 3", $"the status bar to say how it ended, not \"{window.Status}\"");
