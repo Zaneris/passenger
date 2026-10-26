@@ -10,6 +10,20 @@ that fixed it, in one of the forms below. A failure not yet understood goes in o
 
 ## 2026-10-26
 
+- `AspireStandInTests`' `Rerun_runs_an_AppHost_whose_own_code_changed_again_once_stopped_and_leaves_one_unchanged_running`,
+  CI Windows, run 40312082824 (c33d9f4d): "Waited 450 s for Rerun to run the changed AppHost again", the IDE quiet. The
+  stand-in resource service read the key the stand-in AppHost renames into place sharing reads alone, which Windows
+  refuses while the rename still holds the file with delete access, so it answered the IDE's first call 500 and the
+  start failed, leaving nothing running (once in four class runs on the Windows VM; a reader polling against a rename
+  met 228 to 370 sharing violations in 20 s, none sharing delete). **The test's stand-in** reads the key sharing delete,
+  and the wait names the status, AppHosts, consoles, Build window and programs started (a94088da).
+- `BuildRunTests`' `A_build_goes_on_through_the_language_server_starting_again_while_it_runs`, CI Linux, runs
+  40204484945 and 40312082824: "the language server's restore left no MSBuild node", its server's load failing with
+  "the project host ended". The WPF design-time hold test before it deleted its folder as its window closed while the
+  project host every window shares was building it there; MSBuild in the host, its working folder gone, failed as its
+  build session ended (MSB0001, exit 134), and the next test's round waiting in that host failed, its projects left
+  unloaded. **A race in the IDE**, which a person deleting a folder under its build meets too: a round whose host ended
+  is asked once of a host started anew, and the host's end says its exit code and what it wrote (e8c58f00).
 - `ProgramListsTests`' `A_scroll_step_down_a_profiles_thousand_methods_and_types_hands_the_rows_others_never_making_one_again`,
   CI Linux, run 40312082824 (c33d9f4d): "a wheel step down the profiler's call tree allocated 227 KB on the UI thread
   over 1000 methods, against 143 KB over 100". The short list's step was the odd one, a row's restyle below every other

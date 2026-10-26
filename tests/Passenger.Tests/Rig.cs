@@ -152,6 +152,8 @@ public sealed class TestRun : IAsyncDisposable
         Environment.SetEnvironmentVariable("npm_config_fund", "false");
         // Nor the person's application data, where a Testing Platform app writes its first-run sentinel unless opted out.
         Environment.SetEnvironmentVariable("TESTINGPLATFORM_TELEMETRY_OPTOUT", "1");
+        // Nor Avalonia's build telemetry, whose collector a build starts lingers in the project's folder for half a minute.
+        Environment.SetEnvironmentVariable("AVALONIA_TELEMETRY_OPTOUT", "1");
         // Nor Aspire's: an aspire CLI or AppHost the run starts keeps its settings and first-run sentinel in the run's home.
         Environment.SetEnvironmentVariable("ASPIRE_HOME", Path.Combine(Root, "aspire-home"));
         Environment.SetEnvironmentVariable("ASPIRE_CLI_TELEMETRY_OPTOUT", "1");
