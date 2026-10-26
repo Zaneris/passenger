@@ -198,8 +198,18 @@ public sealed class LongListsTests : IDisposable
         });
     }
 
-    /// <summary>Holds a list of many items to what one of few costs a wheel step, and both to make no row again.</summary>
-    private static void Holds(string list, string items, int few, int many, Func<int, (MainWindow Window, ListBox List)> open)
+    /// <summary>Holds a list of many items to what one of few costs a wheel step, and both to make no row again, each in a
+    /// window of its own, closed once scrolled.</summary>
+    private static void Holds(string list, string items, int few, int many, Func<int, (MainWindow Window, ListBox List)> open) =>
+        Holds(list, items, few, many, count =>
+        {
+            (MainWindow window, ListBox shown) = open(count);
+            return (shown, window.Close);
+        });
+
+    /// <summary>Holds a list of many items to what one of few costs a wheel step, and both to make no row again: each shown
+    /// by <paramref name="open"/>, whose Done is called once it is scrolled.</summary>
+    internal static void Holds(string list, string items, int few, int many, Func<int, (ListBox List, Action Done)> open)
     {
         (long fewStep, int fewMade) = Scrolls(few);
         (long manyStep, int manyMade) = Scrolls(many);
@@ -213,9 +223,9 @@ public sealed class LongListsTests : IDisposable
 
         (long Least, int Made) Scrolls(int count)
         {
-            (MainWindow window, ListBox shown) = open(count);
+            (ListBox shown, Action done) = open(count);
             (long Least, int Made) scrolled = Scrolled(shown);
-            window.Close();
+            done();
             return scrolled;
         }
     }
