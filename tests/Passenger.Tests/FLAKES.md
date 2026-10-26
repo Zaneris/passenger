@@ -8,6 +8,16 @@ pattern shows. A **race in the IDE** is fixed in the IDE; waiting longer or tryi
 To add one: a line under its date, newest first, naming the test, the run, the cause in a sentence and the commit
 that fixed it, in one of the forms below. A failure not yet understood goes in only once it is.
 
+## 2026-10-26
+
+- `ProgramListsTests`' `A_scroll_step_down_a_profiles_thousand_methods_and_types_hands_the_rows_others_never_making_one_again`,
+  CI Linux, run 40312082824 (c33d9f4d): "a wheel step down the profiler's call tree allocated 227 KB on the UI thread
+  over 1000 methods, against 143 KB over 100". The short list's step was the odd one, a row's restyle below every other
+  system's. Its profile had sampled the finalizer thread too, so the timeline above the tree grew a row and the tree
+  opened shorter than first laid out. The list kept a row past its new foot realized until it scrolled, so the first
+  step brought in one row where every later step brings two. Neither race: **the test** takes one step before the five
+  it measures (04f883f6).
+
 ## 2026-10-25
 
 - `ProblemsTests`' `A_typing_pause_lists_again_only_the_open_files_problems_however_many_the_solution_has`, the Mac under 15
