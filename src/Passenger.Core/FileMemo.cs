@@ -21,9 +21,10 @@ public sealed class FileMemo<T> where T : class
         }
         long written = file.LastWriteTimeUtc.Ticks;
         long length = file.Length;
-        (long Written, long Length, Lazy<T?> Parsed) entry = kept.AddOrUpdate(path,
-            _ => (written, length, new Lazy<T?>(() => parse(path))),
-            (_, held) => held.Written == written && held.Length == length ? held : (written, length, new Lazy<T?>(() => parse(path))));
+        (long Written, long Length, Lazy<T?> Parsed) entry = kept.TryGetValue(path, out (long Written, long Length, Lazy<T?> Parsed) held)
+            && held.Written == written && held.Length == length ? held
+            : kept.AddOrUpdate(path, static (_, made) => made,
+                static (_, held, made) => held.Written == made.Written && held.Length == made.Length ? held : made, (Written: written, Length: length, Parsed: Parsing(path, parse)));
         try
         {
             return entry.Parsed.Value;
@@ -34,6 +35,9 @@ public sealed class FileMemo<T> where T : class
             return null;
         }
     }
+
+    /// <summary>A file's parse made once however many ask for it, made apart so a parse kept costs no closure.</summary>
+    private static Lazy<T?> Parsing(string path, Func<string, T?> parse) => new(() => parse(path));
 
     /// <summary>The parse last kept for a file, whether or not it still stands; null for none.</summary>
     public T? Kept(string path)

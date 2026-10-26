@@ -23,8 +23,12 @@ public static class IgnoredFolders
     private static readonly TimeSpan Settling = TimeSpan.FromSeconds(2);
 
     /// <summary>The names passed over wherever they are, whatever they hold.</summary>
-    public static IReadOnlySet<string> Names { get; } =
-        new HashSet<string>([".git", ".hg", ".svn", "bin", "obj", "artifacts", "node_modules", ".vs", ".idea", "TestResults"]);
+    public static IReadOnlySet<string> Names => Named;
+
+    private static readonly HashSet<string> Named = [".git", ".hg", ".svn", "bin", "obj", "artifacts", "node_modules", ".vs", ".idea", "TestResults"];
+
+    /// <summary><see cref="Names"/> asked of a name inside a path, which takes no string of it.</summary>
+    private static readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> NamedIn = Named.GetAlternateLookup<ReadOnlySpan<char>>();
 
     /// <summary>What each packages folder was found to be, as of its last change: a check costs a look at its time, not a
     /// read, as each of the watcher's changes in a monorepo's packages is checked.</summary>
@@ -38,16 +42,34 @@ public static class IgnoredFolders
         return Names.Contains(name) || name == Packages && IsRestoreFolder(folder);
     }
 
-    /// <summary>Whether any of the folders named is passed over, the first a folder in <paramref name="root"/>, each next
-    /// one in the one before.</summary>
-    public static bool AnyOf(string root, ReadOnlySpan<string> names)
+    /// <summary>Whether any of the names along a path from <paramref name="root"/> ("src/obj/Debug") is passed over, each
+    /// read in place.</summary>
+    public static bool AnyIn(string root, ReadOnlySpan<char> relative)
     {
-        for (int at = 0; at < names.Length; at++)
+        for (int start = 0; start <= relative.Length;)
         {
-            if (Names.Contains(names[at]) || names[at] == Packages && IsRestoreFolder(Path.Join(root, Path.Join(names[..(at + 1)]))))
+            int end = relative[start..].IndexOfAny(PathNames.Separators) is >= 0 and int at ? start + at : relative.Length;
+            ReadOnlySpan<char> name = relative[start..end];
+            if (NamedIn.Contains(name) || name.SequenceEqual(Packages) && IsRestoreFolder(Path.Join(root, relative[..end])))
             {
                 return true;
             }
+            start = end + 1;
+        }
+        return false;
+    }
+
+    /// <summary>Whether any of the names along a path from a folder (<see cref="AnyIn"/>'s) is hidden, beginning with a dot.</summary>
+    public static bool AnyHidden(ReadOnlySpan<char> relative)
+    {
+        for (int start = 0; start < relative.Length;)
+        {
+            if (relative[start] == '.')
+            {
+                return true;
+            }
+            int at = relative[start..].IndexOfAny(PathNames.Separators);
+            start = at < 0 ? relative.Length : start + at + 1;
         }
         return false;
     }

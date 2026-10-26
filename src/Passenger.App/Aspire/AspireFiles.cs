@@ -71,6 +71,30 @@ public sealed class AspireFiles(ProjectSession session)
         });
     }
 
+    /// <summary>Files the index put in and took out after a walk, by their paths from the folder: the C# files gone
+    /// forgotten, those come read unless the watcher had them read already.</summary>
+    public void CameAndWent(string root, IReadOnlyList<string> came, IReadOnlyList<string> gone)
+    {
+        UiThread.Check();
+        Then(walk: false, () =>
+        {
+            foreach (string relative in gone)
+            {
+                if (IsSource(root, relative))
+                {
+                    read.Remove(Path.Join(root, relative));
+                }
+            }
+            foreach (string relative in came)
+            {
+                if (IsSource(root, relative) && Path.Join(root, relative) is { } path && !read.ContainsKey(path))
+                {
+                    read[path] = IsAppHost(path) ?? false;
+                }
+            }
+        });
+    }
+
     /// <summary>Files the folder watcher saw change: each C# file among them read again, as it may have gained or lost the
     /// AppHost SDK's line; with <paramref name="every"/> (the system lost changes) every one, as the walk that follows lists it.</summary>
     public void Changed(IEnumerable<string> paths, bool every = false)
@@ -80,7 +104,7 @@ public sealed class AspireFiles(ProjectSession session)
         {
             return;
         }
-        string[] sources = [.. paths.Where(path => IsSource(root, Path.GetRelativePath(root, path)))];
+        string[] sources = [.. paths.Where(path => IsSource(root, PathNames.Below(path, root)))];
         if (sources.Length == 0 && !every)
         {
             return;
@@ -171,14 +195,14 @@ public sealed class AspireFiles(ProjectSession session)
 
     /// <summary>Whether a file, by its path from the folder, is a C# file a single-file AppHost may be: not under a hidden
     /// folder or one every walk passes over.</summary>
-    private static bool IsSource(string root, string relative)
+    private static bool IsSource(string root, ReadOnlySpan<char> relative)
     {
         if (!relative.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) || Path.IsPathRooted(relative))
         {
             return false;
         }
-        string[] names = relative.Split(Path.DirectorySeparatorChar);
-        return names[..^1].All(name => !name.StartsWith('.')) && !IgnoredFolders.AnyOf(root, names.AsSpan(..^1));
+        ReadOnlySpan<char> folders = relative[..Math.Max(0, relative.LastIndexOfAny(PathNames.Separators))];
+        return !IgnoredFolders.AnyHidden(folders) && !IgnoredFolders.AnyIn(root, folders);
     }
 
     /// <summary>Whether a file is a single-file AppHost; null when it could not be read, which keeps what was read before.</summary>

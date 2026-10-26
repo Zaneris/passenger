@@ -27,18 +27,37 @@ public static class FolderWalk
     }
 
     /// <summary>The same files folder by folder, for a walk that reads no more than so many folders.</summary>
-    public static IEnumerable<(string Folder, IEnumerable<string> Files)> Folders(string top, bool built = false, Func<string, bool>? enters = null)
+    public static IEnumerable<(string Folder, IReadOnlyList<string> Files)> Folders(string top, bool built = false, Func<string, bool>? enters = null)
     {
         string root = PathNames.Canonical(top);
-        return PathNames.FilesUnder(root, folder => Enters(root, folder, built) && enters?.Invoke(folder) != false)
-            .Select(f => (f.Folder, f.Files.Where(file => !FileText.IsSaving(file))));
+        return PathNames.FilesUnder(root, folder => Enters(root, folder, built) && enters?.Invoke(folder) != false, Joined);
     }
+
+    /// <summary>The files of the walk of the open folder <paramref name="root"/> (canonical) under one of its folders
+    /// (<paramref name="from"/>, the whole when none), by their paths from the open folder ("src/App/App.cs"), each made
+    /// once from the system's entry. A folder under it is entered or passed over as the walk of the whole one does.</summary>
+    public static IEnumerable<string> Below(string root, string? from = null) =>
+        PathNames.FilesUnder(from ?? root, folder => Enters(root, folder, built: false), (folder, name) => Relative(root, folder, name)).SelectMany(f => f.Files);
+
+    private static string? Joined(string folder, ReadOnlySpan<char> name) => FileText.IsSaving(name) ? null : Path.Join(folder, name);
+
+    private static string? Relative(string root, string folder, ReadOnlySpan<char> name)
+    {
+        if (FileText.IsSaving(name))
+        {
+            return null;
+        }
+        ReadOnlySpan<char> below = PathNames.Below(folder, root);
+        return below.IsEmpty ? name.ToString() : string.Concat(below, Separator, name);
+    }
+
+    private static readonly string Separator = Path.DirectorySeparatorChar.ToString();
 
     /// <summary>Whether the walk from <paramref name="root"/> enters a folder under it: none of the names between them is one
     /// passed over, though a link led to it.</summary>
     private static bool Enters(string root, string folder, bool built)
     {
-        string[] names = Path.GetRelativePath(root, folder).Split(Path.DirectorySeparatorChar);
-        return !IgnoredFolders.AnyOf(root, names) && !(built && names.Any(name => name.StartsWith('.')));
+        ReadOnlySpan<char> names = PathNames.Below(folder, root);
+        return !IgnoredFolders.AnyIn(root, names) && !(built && IgnoredFolders.AnyHidden(names));
     }
 }

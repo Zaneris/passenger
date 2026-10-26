@@ -163,7 +163,10 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
     /// <summary>Whether a path is a save's temporary file, there beside its file for the moment the save writes: what
     /// reads the folder meanwhile (the folder watcher, Git's status, Go to File's index, the Explorer) passes it over
     /// rather than take it for a new file.</summary>
-    public static bool IsSaving(string path) => path.EndsWith(SaveSuffix, StringComparison.Ordinal);
+    public static bool IsSaving(string path) => IsSaving(path.AsSpan());
+
+    /// <inheritdoc cref="IsSaving(string)"/>
+    public static bool IsSaving(ReadOnlySpan<char> path) => path.EndsWith(SaveSuffix, StringComparison.Ordinal);
 
     /// <summary>Writes through a temporary file beside the target, so a failed write never leaves a half-written one; a
     /// symlink is written through to its target, the file keeps what it was (<see cref="Over"/>), one deleted since it

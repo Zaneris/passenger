@@ -131,16 +131,39 @@ public sealed class TestFinder
         }
     }
 
-    /// <summary>Files changed on disk: the test projects holding them are listed and read again where they changed. An
-    /// open file's own parse follows it.</summary>
+    /// <summary>Files changed on disk: the test projects holding them are listed and read again where they changed, or
+    /// when nothing came or went, only the C# files changed among those listed are read again. An open file's own parse
+    /// follows it.</summary>
     public void FolderChanged(FolderChanges changes)
     {
         UiThread.Check();
         List<string> paths = [.. changes.Paths.Where(p => !open.ContainsKey(p))];
         List<ProjectModel> touched = [.. Projects.Where(project => paths.Any(path => PathNames.Within(path, project.Folder) || PathNames.Within(project.Folder, path)))];
-        if (touched.Count > 0)
+        if (touched.Count == 0)
+        {
+            return;
+        }
+        if (changes.Structure || touched.Any(project => !listed.ContainsKey(project.Path)))
         {
             Read(touched, timed: false);
+            return;
+        }
+        string[] changed = [.. paths.Where(path => touched.Any(project => listed[project.Path].Contains(path)))];
+        if (changed.Length > 0)
+        {
+            ReadAgain(touched, changed);
+        }
+    }
+
+    /// <summary>Reads files of projects already listed again on a worker, then tells what changed.</summary>
+    private void ReadAgain(IReadOnlyList<ProjectModel> projects, string[] changed)
+    {
+        IdeErrors.Observe(ReadAsync());
+
+        async Task ReadAsync()
+        {
+            await BackgroundWork.Run(() => Parallel.ForEach(changed, ReadFile));
+            Tell([.. projects.Where(Projects.Contains)]);
         }
     }
 

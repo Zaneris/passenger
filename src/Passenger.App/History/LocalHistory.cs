@@ -310,8 +310,8 @@ public sealed class LocalHistory
     /// <summary>Whether the history keeps a path: a file under the folder, outside the folders every walk passes over and
     /// outside the state store, and neither a save's temporary file nor the system's own.</summary>
     public bool Keeps(string path) =>
-        PathNames.IsUnder(path, Folder) && !PathNames.Within(path, stateFolder) && !FileText.IsSaving(path) && !PathNames.IsSystemFile(Path.GetFileName(path))
-        && !IgnoredFolders.AnyOf(Folder, Path.GetRelativePath(Folder, path).Split(Path.DirectorySeparatorChar));
+        PathNames.IsUnder(path, Folder) && !PathNames.Within(path, stateFolder) && !FileText.IsSaving(path) && !PathNames.IsSystemFile(Path.GetFileName(path.AsSpan()))
+        && !IgnoredFolders.AnyIn(Folder, PathNames.Below(path, Folder));
 
     /// <summary>The set and name a save is kept under: the activity under way, else a set of its own.</summary>
     private (long Set, string? Name) Named()

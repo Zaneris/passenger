@@ -58,11 +58,15 @@ public partial class MainWindow
             // A restore writes the props and targets a project imports beside its assets.
             session.Evaluate();
         }
-        // A C# file written may have gained or lost the AppHost SDK's line; one come or gone is the index's walk's to find.
+        // A C# file written may have gained or lost the AppHost SDK's line; one come or gone is the index's to find.
         session.AspireFiles.Changed(changes.Paths, every: changes.Lost);
-        if (changes.Structure)
+        if (changes.Lost)
         {
             session.Index.Build(folder);
+        }
+        else if (changes.Structure)
+        {
+            session.Index.Apply(folder, changes.ComeOrGone);
         }
         // An .editorconfig written, made or deleted: each open file follows what the ones over it say now.
         if (changes.Paths.Any(p => Path.GetFileName(p) == EditorConfig.FileName))

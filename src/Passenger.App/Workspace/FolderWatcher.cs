@@ -12,6 +12,10 @@ public sealed record FolderChanges(IReadOnlySet<string> Paths, bool Structure, b
 {
     public IReadOnlySet<string> Restored { get; init; } = new HashSet<string>();
 
+    /// <summary>The files and folders among <see cref="Paths"/> that came or went (created, deleted or renamed), each also
+    /// as a walk names it, its folder's canonical path and its own name: what Go to File's index puts in or takes out.</summary>
+    public IReadOnlySet<string> ComeOrGone { get; init; } = new HashSet<string>();
+
     /// <summary>Whether the system lost changes (too many at once, as a large checkout makes) or a watch failed: what they
     /// were is not known, so everything shown from the folder is read again (the open files, the Explorer, the solution,
     /// Go to File's index). <see cref="Paths"/> then holds the folder itself.</summary>
@@ -41,6 +45,7 @@ public sealed class FolderWatcher : IDisposable
     private readonly Dictionary<string, FileSystemWatcher> watches = new(StringComparer.Ordinal);
     private readonly HashSet<string> paths = new(StringComparer.Ordinal);
     private readonly HashSet<string> restored = new(StringComparer.Ordinal);
+    private readonly HashSet<string> comeOrGone = new(StringComparer.Ordinal);
     private readonly Dictionary<string, DateTime> ownWrites = new(StringComparer.Ordinal);
 
     /// <summary>The changes to which folders are watched, made one at a time in the order they were seen.</summary>
@@ -350,24 +355,28 @@ public sealed class FolderWatcher : IDisposable
     /// the folders a restore writes its assets in (<see cref="HoldsRestores"/>).</summary>
     private bool Kept(string path)
     {
-        string[]? parts = Parts(path);
-        return parts is null ? path == folder
-            : parts[0] == ".git" ? parts.Length == 1 || parts[1] == "refs"
-            : !IgnoredFolders.AnyOf(folder, parts) || HoldsRestores(parts);
+        ReadOnlySpan<char> parts = PathNames.Below(path, folder);
+        if (parts.IsEmpty)
+        {
+            return path == folder;
+        }
+        ReadOnlySpan<char> first = First(parts, out ReadOnlySpan<char> rest);
+        return first.SequenceEqual(".git") ? First(parts, out _).Length == parts.Length || First(rest, out _).SequenceEqual("refs")
+            : !IgnoredFolders.AnyIn(folder, parts) || HoldsRestores(parts);
     }
 
     /// <summary>Whether a folder of build output is where a restore writes its assets, or above it to see that made: a
     /// project's obj itself, and UseArtifactsOutput's artifacts, artifacts/obj and artifacts/obj/Project.</summary>
-    private bool HoldsRestores(string[] parts)
+    private bool HoldsRestores(ReadOnlySpan<char> parts)
     {
-        int output = parts switch
-        {
-            [.., "artifacts", "obj", _] => 3,
-            [.., "artifacts", "obj"] => 2,
-            [.., "artifacts"] or [.., "obj"] => 1,
-            _ => 0,
-        };
-        return output > 0 && !IgnoredFolders.AnyOf(folder, parts.AsSpan(..^output));
+        bool two = Last(parts, out ReadOnlySpan<char> above, out ReadOnlySpan<char> last);
+        bool three = Last(above, out ReadOnlySpan<char> aboveSecond, out ReadOnlySpan<char> second);
+        Last(aboveSecond, out ReadOnlySpan<char> aboveThird, out ReadOnlySpan<char> third);
+        int output = three && second.SequenceEqual("obj") && third.SequenceEqual("artifacts") ? 3
+            : two && last.SequenceEqual("obj") && second.SequenceEqual("artifacts") ? 2
+            : last.SequenceEqual("artifacts") || last.SequenceEqual("obj") ? 1
+            : 0;
+        return output > 0 && !IgnoredFolders.AnyIn(folder, output switch { 3 => aboveThird, 2 => aboveSecond, _ => above });
     }
 
     /// <summary>The restore assets in a folder just made, or in the build output folders that hold them under it.</summary>
@@ -379,7 +388,7 @@ public sealed class FolderWatcher : IDisposable
         {
             string at = folders.Pop();
             string assets = Path.Combine(at, Assets);
-            if (Parts(assets) is { } named && IsRestore(named) && File.Exists(assets))
+            if (PathNames.IsUnder(assets, folder) && IsRestore(PathNames.Below(assets, folder)) && File.Exists(assets))
             {
                 found.Add(assets);
             }
@@ -387,7 +396,7 @@ public sealed class FolderWatcher : IDisposable
             {
                 foreach (DirectoryInfo child in new DirectoryInfo(at).EnumerateDirectories())
                 {
-                    if (child.LinkTarget is null && Parts(child.FullName) is { } parts && HoldsRestores(parts))
+                    if (child.LinkTarget is null && PathNames.IsUnder(child.FullName, folder) && HoldsRestores(PathNames.Below(child.FullName, folder)))
                     {
                         folders.Push(child.FullName);
                     }
@@ -400,32 +409,59 @@ public sealed class FolderWatcher : IDisposable
         return found;
     }
 
-    /// <summary>Whether a path is a restore's assets, which the rest of build output's files are not.</summary>
-    private static bool IsRestore(string[] parts) =>
-        parts.Length >= 2 && parts[^1] == Assets && (parts[^2] == "obj" || parts.Length >= 3 && parts[^3] == "obj");
+    /// <summary>Whether a path, by its names from the open folder, is a restore's assets, which the rest of build output's
+    /// files are not.</summary>
+    private static bool IsRestore(ReadOnlySpan<char> parts)
+    {
+        if (!Last(parts, out ReadOnlySpan<char> above, out ReadOnlySpan<char> last) || !last.SequenceEqual(Assets))
+        {
+            return false;
+        }
+        bool three = Last(above, out ReadOnlySpan<char> aboveSecond, out ReadOnlySpan<char> second);
+        Last(aboveSecond, out _, out ReadOnlySpan<char> third);
+        return second.SequenceEqual("obj") || three && third.SequenceEqual("obj");
+    }
 
-    /// <summary>A path's names from the open folder down; null for the folder itself or a path outside it.</summary>
-    private string[]? Parts(string path) =>
-        PathNames.IsUnder(path, folder) ? Path.GetRelativePath(folder, path).Split(Path.DirectorySeparatorChar) : null;
+    /// <summary>A path's first name and the names after it.</summary>
+    private static ReadOnlySpan<char> First(ReadOnlySpan<char> parts, out ReadOnlySpan<char> rest)
+    {
+        int at = parts.IndexOfAny(PathNames.Separators);
+        rest = at < 0 ? [] : parts[(at + 1)..];
+        return at < 0 ? parts : parts[..at];
+    }
 
+    /// <summary>A path's last name and the names before it; false when it has one name alone.</summary>
+    private static bool Last(ReadOnlySpan<char> parts, out ReadOnlySpan<char> above, out ReadOnlySpan<char> last)
+    {
+        int at = parts.LastIndexOfAny(PathNames.Separators);
+        above = at < 0 ? [] : parts[..at];
+        last = at < 0 ? parts : parts[(at + 1)..];
+        return at >= 0;
+    }
+
+    /// <summary>Takes in what the system saw at a path, by its names from the open folder read in place, so the events of
+    /// what is passed over (build output, dependencies, Git's objects) cost no string; only those kept are made canonical.</summary>
     private void Note(string path, bool created)
     {
         if (FileText.IsSaving(path))
         {
             return;
         }
-        string[] parts = Parts(path) ?? ["."];
-        bool inGit = parts[0] == ".git";
-        if (inGit && !(parts.Length >= 2 && parts[1] is "HEAD" or "index" or "refs" or "packed-refs"))
+        ReadOnlySpan<char> parts = PathNames.Below(path, folder);
+        bool inGit = First(parts, out ReadOnlySpan<char> rest).SequenceEqual(".git");
+        if (inGit && !(First(rest, out _) is "HEAD" or "index" or "refs" or "packed-refs"))
         {
             return;
         }
         bool restore = !inGit && IsRestore(parts);
         // A passed-over folder itself, come or gone, is its parent changing; what changes in it is never followed.
-        if (!inGit && !restore && IgnoredFolders.AnyOf(folder, parts) && !(created && !IgnoredFolders.AnyOf(folder, parts.AsSpan(..^1))))
+        if (!inGit && !restore && IgnoredFolders.AnyIn(folder, parts) && !(created && !IgnoredFolders.AnyIn(folder, Above(parts))))
         {
             return;
         }
+        string? canonical = inGit ? null : PathNames.Canonical(path);
+        // As a walk names it: its own name in its folder, which a link's canonical path is not.
+        string? named = inGit || restore || !created || Path.GetDirectoryName(path) is not { } parent ? null : Path.Join(PathNames.Canonical(parent), Path.GetFileName(path.AsSpan()));
         lock (gate)
         {
             if (disposed)
@@ -438,17 +474,23 @@ public sealed class FolderWatcher : IDisposable
             }
             else if (restore)
             {
-                restored.Add(PathNames.Canonical(path));
+                restored.Add(canonical!);
             }
             else
             {
-                string canonical = PathNames.Canonical(path);
-                paths.Add(canonical);
+                paths.Add(canonical!);
                 // A save moves its temporary file over the file: a change, not a file come or gone.
-                bool saved = ownWrites.TryGetValue(canonical, out DateTime at) && DateTime.UtcNow - at < OwnWriteHeard;
-                structure |= created && !saved;
-                projects |= ProjectExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase)
-                    || Path.GetFileName(path).Equals(Run.LaunchProfile.SettingsFile, StringComparison.OrdinalIgnoreCase);
+                bool saved = ownWrites.TryGetValue(canonical!, out DateTime at) && DateTime.UtcNow - at < OwnWriteHeard;
+                if (created && !saved)
+                {
+                    structure = true;
+                    comeOrGone.Add(canonical!);
+                    if (named is not null)
+                    {
+                        comeOrGone.Add(named);
+                    }
+                }
+                projects |= IsProjectFile(path);
             }
             if (pending)
             {
@@ -456,13 +498,41 @@ public sealed class FolderWatcher : IDisposable
             }
             pending = true;
         }
-        // Held while the changes gather, then by the crossing, which lets go of what it can never deliver.
+        DeliverLater();
+    }
+
+    /// <summary>Hands the changes over once they have gathered, held while they gather, then by the crossing, which lets go
+    /// of what it can never deliver; a method of its own, so its closure is made only as a batch begins.</summary>
+    private void DeliverLater()
+    {
         IDisposable held = BackgroundWork.Scope();
         IdeErrors.Observe(Task.Delay(Gather).ContinueWith(_ =>
         {
             UiThread.Post(Deliver);
             held.Dispose();
         }, TaskScheduler.Default));
+    }
+
+    /// <summary>A path's names but its last.</summary>
+    private static ReadOnlySpan<char> Above(ReadOnlySpan<char> parts)
+    {
+        Last(parts, out ReadOnlySpan<char> above, out _);
+        return above;
+    }
+
+    /// <summary>Whether a file is a solution, project, props or targets file or the launch profiles, which the solution is
+    /// read again for.</summary>
+    private static bool IsProjectFile(string path)
+    {
+        ReadOnlySpan<char> extension = Path.GetExtension(path.AsSpan());
+        foreach (string project in ProjectExtensions)
+        {
+            if (extension.Equals(project, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return Path.GetFileName(path.AsSpan()).Equals(Run.LaunchProfile.SettingsFile, StringComparison.OrdinalIgnoreCase);
     }
 
     private void Deliver()
@@ -474,10 +544,12 @@ public sealed class FolderWatcher : IDisposable
             changes = new FolderChanges(new HashSet<string>(paths, StringComparer.Ordinal), structure, projects, git)
             {
                 Restored = new HashSet<string>(restored, StringComparer.Ordinal),
+                ComeOrGone = new HashSet<string>(comeOrGone, StringComparer.Ordinal),
                 Lost = lost,
             };
             paths.Clear();
             restored.Clear();
+            comeOrGone.Clear();
             structure = projects = git = lost = pending = false;
             live = !disposed;
         }

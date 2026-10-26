@@ -484,6 +484,160 @@ public sealed class FolderWatchTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A file made in the folder joins Go to File, and one deleted leaves it, without a walk of the folder: over
+    /// 20,000 files each batch allocates (on every thread, the least of three) under 8 bytes for each file more than over
+    /// 2,000, where walking the folder again cost hundreds; and Go to File then lists what a walk lists, in its order.</summary>
+    [AvaloniaFact]
+    public void A_file_made_or_deleted_among_twenty_thousand_costs_go_to_file_what_it_does_among_two_thousand()
+    {
+        string few = PathNames.Canonical(TestFolders.Create("watch-few-"));
+        string many = PathNames.Canonical(TestFolders.Create("watch-many-"));
+        try
+        {
+            Areas(few, 10);
+            Areas(many, 100);
+            (long Made, long Deleted, TimeSpan Took) small = Batches(few, 2000);
+            (long Made, long Deleted, TimeSpan Took) large = Batches(many, 20_000);
+            TestContext.Current.TestOutputHelper?.WriteLine($"A file made: {small.Made / 1024:N0} KB over 2,000 files, {large.Made / 1024:N0} KB over 20,000; "
+                + $"deleted: {small.Deleted / 1024:N0} KB and {large.Deleted / 1024:N0} KB; the quickest batch {small.Took.TotalMilliseconds:N0} ms and {large.Took.TotalMilliseconds:N0} ms");
+            Assert.True(large.Made - small.Made < 8 * 18_000,
+                $"A file made among 20,000 allocated {large.Made / 1024:N0} KB on its way into Go to File, against {small.Made / 1024:N0} KB among 2,000: 8 bytes or more for each file more, as if the folder were walked again");
+            Assert.True(large.Deleted - small.Deleted < 8 * 18_000,
+                $"A file deleted among 20,000 allocated {large.Deleted / 1024:N0} KB on its way out of Go to File, against {small.Deleted / 1024:N0} KB among 2,000: 8 bytes or more for each file more");
+        }
+        finally
+        {
+            TestFolders.Delete(few);
+            TestFolders.Delete(many);
+        }
+
+        // Areas of 200 empty files each.
+        static void Areas(string root, int areas)
+        {
+            for (int area = 0; area < areas; area++)
+            {
+                string dir = Path.Combine(root, $"Area{area}", "Features");
+                Directory.CreateDirectory(dir);
+                for (int i = 0; i < 200; i++)
+                {
+                    File.WriteAllText(Path.Combine(dir, $"Feature{area}x{i}.cs"), string.Empty);
+                }
+            }
+        }
+    }
+
+    /// <summary>What a file made and a file deleted in a folder allocate from the change to the IDE quiet again, the least of
+    /// three of each, and the quickest of them; each checked in Go to File, which then lists what a window opened on the
+    /// folder afresh lists.</summary>
+    private static (long Made, long Deleted, TimeSpan Took) Batches(string root, int files)
+    {
+        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
+        window.Show();
+        window.OpenFolder(root);
+        Ui.WaitFor(() => window.FileIndex.Count >= files && !window.FileIndex.IsWalking, $"the folder's {files} files indexed");
+        bool heard = false;
+        window.FolderWatcher!.Changed += (_, changes) => heard |= changes.Structure;
+        long made = long.MaxValue;
+        long deleted = long.MaxValue;
+        TimeSpan took = TimeSpan.MaxValue;
+        for (int time = 0; time < 3; time++)
+        {
+            string relative = Path.Combine("Area0", "Features", $"Made{time}.cs");
+            string file = Path.Combine(root, relative);
+            made = Math.Min(made, Batch(() => File.WriteAllText(file, "class Made { }\n")));
+            Assert.True(window.FileIndex.Files.Contains(relative), $"{relative} made is not in Go to File");
+            if (time < 2)
+            {
+                deleted = Math.Min(deleted, Batch(() => File.Delete(file)));
+                Assert.False(window.FileIndex.Files.Contains(relative), $"{relative} deleted is still in Go to File");
+            }
+        }
+        deleted = Math.Min(deleted, Batch(() => File.Delete(Path.Combine(root, "Area1", "Features", "Feature1x0.cs"))));
+        Assert.Equal(files, window.FileIndex.Count);
+        Assert.Equal(Walked(root), window.FileIndex.Files);
+        window.Close();
+        return (made, deleted, took);
+
+        long Batch(Action change)
+        {
+            Ui.Settle();
+            heard = false;
+            long before = GC.GetTotalAllocatedBytes(precise: true);
+            long began = Stopwatch.GetTimestamp();
+            change();
+            Ui.WaitFor(() => heard, "the folder watcher to hear of the change");
+            Ui.Settle();
+            took = TimeSpan.FromTicks(Math.Min(took.Ticks, Stopwatch.GetElapsedTime(began).Ticks));
+            return GC.GetTotalAllocatedBytes(precise: true) - before;
+        }
+    }
+
+    /// <summary>Go to File follows what another program makes, moves, renames and deletes, files and folders, a link, a
+    /// letter's case and a save's temporary file among them, to list after each what a window opened on the folder afresh
+    /// lists, in the same order (which Find in Files searches in).</summary>
+    [AvaloniaFact]
+    public void Go_to_file_follows_files_and_folders_come_and_gone_to_list_what_a_walk_of_the_folder_lists()
+    {
+        Write("App/App.cs", "class App { }\n");
+        Write("App/Sub/Deep.cs", "class Deep { }\n");
+        Write("a-b/c.cs", "// a dash sorts before a slash\n");
+        Write("a/c.cs", "// and a name before a longer one\n");
+        MainWindow window = Open(languageServer: false);
+        (string What, Action Change)[] changes =
+        [
+            ("a file made", () => Write("App/New.cs", "class New { }\n")),
+            ("a folder made with folders and files in it", () =>
+            {
+                Write("Made/One.cs", "class One { }\n");
+                Write("Made/Inner/Two.cs", "class Two { }\n");
+                Write("Made/Inner/obj/built.cs", "// build output\n");
+                Write("Made/.hidden/Three.cs", "class Three { }\n");
+            }),
+            ("a folder renamed", () => Directory.Move(Path.Combine(folder, "Made"), Path.Combine(folder, "Moved"))),
+            ("a file renamed", () => File.Move(Path.Combine(folder, "App", "New.cs"), Path.Combine(folder, "App", "Renamed.cs"))),
+            ("a file's case changed", () => File.Move(Path.Combine(folder, "App", "Renamed.cs"), Path.Combine(folder, "App", "renamed.cs"))),
+            ("a folder's case changed", () => Directory.Move(Path.Combine(folder, "Moved", "Inner"), Path.Combine(folder, "Moved", "inner"))),
+            ("a link to a folder made", () => TestFolders.LinkFolder(Path.Combine(folder, "Alias"), Path.Combine(folder, "App"))),
+            ("a save's temporary file and the system's own", () =>
+            {
+                Write("App/Sub/Deep.cs" + FileText.SaveSuffix, "class Deep { int saving; }\n");
+                Write("Moved/.DS_Store", "the system's own\n");
+            }),
+            ("a folder deleted", () => Directory.Delete(Path.Combine(folder, "Moved"), recursive: true)),
+            ("a file deleted and a folder made in its place", () =>
+            {
+                File.Delete(Path.Combine(folder, "a", "c.cs"));
+                Write("a/c.cs/d.cs", "// a file's name is a folder's now\n");
+            }),
+            ("build output made", () => Write("App/bin/Debug/App.dll", string.Empty)),
+        ];
+        bool heard = false;
+        window.FolderWatcher!.Changed += (_, changed) => heard |= changed.Structure;
+        foreach ((string what, Action change) in changes)
+        {
+            heard = false;
+            change();
+            Ui.WaitFor(() => heard, $"the folder watcher to hear of {what}");
+            Ui.Settle();
+            string[] walked = Walked(folder);
+            Ui.WaitFor(() => walked.SequenceEqual(window.FileIndex.Files),
+                () => $"Go to File after {what} to list [{string.Join(", ", walked)}], not [{string.Join(", ", window.FileIndex.Files)}]");
+        }
+        window.Close();
+    }
+
+    /// <summary>The files a window opened on a folder afresh lists for Go to File, in their order.</summary>
+    private static string[] Walked(string root)
+    {
+        MainWindow fresh = new() { Width = 800, Height = 600, StartsLanguageServer = false };
+        fresh.Show();
+        fresh.OpenFolder(root);
+        Ui.WaitFor(() => !fresh.FileIndex.IsWalking, "a fresh window's walk of the folder");
+        string[] listed = [.. fresh.FileIndex.Files];
+        fresh.Close();
+        return listed;
+    }
+
     private static IOException OutOfWatches() =>
         new("The configured user limit (8192) on the number of inotify watches has been reached, or the operating system failed to allocate a required resource.", 28);
 

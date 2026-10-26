@@ -160,6 +160,7 @@ public sealed class ProjectSession : IAsyncDisposable
         session.Configurations.Configure(session.Projects);
         // The single-file AppHosts are found among the files the index's walk lists, never by a walk of their own.
         session.Index.Walked += (_, _) => session.AspireFiles.Walked(folder, session.Index.Files);
+        session.Index.Changed += (_, change) => session.AspireFiles.CameAndWent(folder, change.Came, change.Gone);
         session.Index.Build(folder);
         session.Watcher = new FolderWatcher(folder, setup.Watching);
         session.Web = new Web.WebLanguages(folder, setup.Settings, setup.Engine) { DockerHub = setup.DockerHub };
