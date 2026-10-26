@@ -329,8 +329,9 @@ them run only the debug adapter's protocol tests (`DebugSession.Collection`) and
 process shares changed, nothing held to a time). A class with a test held to a time, or that debugs through the window,
 is `[Collection(Alone.Name)]`, run last with nothing beside it. A class sharing one project derives from `SharedProject`:
 one warm language server, the files put back before each test (with times that keep MSBuild honest), a new file through
-`project.Write` (which ends the server), `Prepare(restore: false)` where nothing reads a restore, `Prepare(byRealPath:
-true)` where projects name each other by real path. Fresh restored folders come from `RestoredFolders`. A test asking
+`project.Write` (which ends the server), `InitializeAsync` overridden with `PrepareAsync(restore: false)` where nothing
+reads a restore, `PrepareAsync(byRealPath: true)` where projects name each other by real path. A class fixture is made
+off the UI thread, a window test's class on it, and xunit v3 calls only `DisposeAsync` on a class with both. Fresh restored folders come from `RestoredFolders`. A test asking
 nothing of C# opens without the language server (`Ui.OpenFolder(folder, languageServer: false)`, `McpRig.Start(…,
 languageServer: false)`).
 
@@ -348,7 +349,9 @@ pointer leaves, which open in the window headless as the window redraws under a 
 s). Consoles: `Ui.TypeLine` (`TypeToRun`, `TypeToDebugged`); the caret: `Ui.PlaceAfter`; a run: `Ui.Launched` and its
 status `Ui.Said`, both naming a failed build's errors. Projects: `TestProjects.Console`, `Library`, `Web` (`.With`) on
 `TestProjects.Framework`; files: `TestFolders.Write`; a loopback HTTP server: `StandInHttp`. Multi-line edits:
-`Typing.Replace` (`KeyTextInput` drops `\n`). Read a log the IDE may be writing with `Ui.Shared`. A dialog is held to
+`Typing.Replace` (`KeyTextInput` drops `\n`). A helper that runs a program (`TestGit`, `Restore`, `RestoredFolders`, the
+app makers, `SharedProject.Reset`) waits on the UI thread with its loop running and refuses any other; a fixture or a
+windowless test awaits its `…Async` form. Read a log the IDE may be writing with `Ui.Shared`. A dialog is held to
 `DialogButtonsTests.Check`, the window to `UiRulesTests`. A stand-in leaves files a target writes as it found them (a
 new one makes MSBuild skip the target). Containers: `Docker.Stopped`/`TakenDown`; MCP: `McpRig.Text`, `Gone`; an agent
 that gives up sends "cancelled" itself (`CallGivingUp`). A headless click runs the window's queued work and draws frames
