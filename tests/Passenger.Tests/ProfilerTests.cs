@@ -168,11 +168,12 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
     /// <summary>Opening a profile costs a stack what keeping it takes, not a name made again for each frame: from a thousand
     /// stacks about seventy frames deep to ten thousand, under 12 KB a stack more (on every thread, the least of three). Over
     /// the larger, a drag's pointer move across the timeline costs the UI thread no more 2,400 wide than 800 wide, and under
-    /// 16 KB more than a pointer passing over it; a frame of the flame graph, under 400 bytes a bar more whole than zoomed.</summary>
+    /// 16 KB more than a pointer passing over it; a frame of the flame graph, under 400 bytes a bar more whole than zoomed
+    /// into a leaf, and under 400 too where every bar is labelled.</summary>
     [AvaloniaFact]
     public void A_profile_of_ten_thousand_stacks_reads_drags_and_draws_in_what_its_stacks_and_bars_keep()
     {
-        // Each count forty calls deep, then a path of its own down a binary tree of calls, to a large array: an allocation tick each.
+        // Each count forty calls deep, then a path of its own down a binary tree of calls, to a spin the sampler catches it in and a large array (an allocation tick).
         string project = Project("Stacks", """
             using System.Runtime.CompilerServices;
             int count = int.Parse(args[0]);
@@ -200,8 +201,10 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
                 [MethodImpl(MethodImplOptions.NoInlining)]
                 private static int Leaf()
                 {
+                    int spun = 0;
+                    for (int i = 0; i < 10_000; i++) { spun = (spun * 31) + i; }
                     Kept = new byte[110_000];
-                    return Kept.Length & 1;
+                    return (Kept.Length + spun) & 1;
                 }
             }
             """);
@@ -240,24 +243,33 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
             Assert.True(wideMove.Drag <= wideMove.Hover + (16 * 1024),
                 $"A pointer move of a drag across the timeline allocated {wideMove.Drag:N0} bytes on the UI thread, one passing over it {wideMove.Hover:N0}: the rows' words were laid out again for the stretch");
 
-            // The flame graph whole, and zoomed into a leaf below its callers' bars: few bars of the same kinds.
+            // The flame graph whole; zoomed where every bar is wide enough for its label, the most bars so; and into a leaf.
             window.Width = 1200;
             view.ShowPage(Passenger.App.Profiling.ProfilerPage.FlameGraph);
             Passenger.App.Profiling.FlameGraph flame = view.Flame;
             (long Bytes, int Bars) whole = Frame();
+            (CallNode? Node, int Bars) narrow = Narrowest(flame.Root!, 0, (int)(flame.Bounds.Width / 25));
             CallNode leaf = flame.Root!;
             while (leaf.Ordered.Count > 0)
             {
                 leaf = leaf.Ordered[0];
             }
+            flame.ZoomTo(narrow.Node ?? leaf);
+            (long Bytes, int Bars) labelled = Frame();
             flame.ZoomTo(leaf);
             (long Bytes, int Bars) zoomed = Frame();
             long eachBar = (whole.Bytes - zoomed.Bytes) / Math.Max(1, whole.Bars - zoomed.Bars);
+            long eachLabelled = (labelled.Bytes - zoomed.Bytes) / Math.Max(1, labelled.Bars - zoomed.Bars);
             TestContext.Current.TestOutputHelper?.WriteLine(
-                $"A frame of the flame graph allocated {whole.Bytes / 1024:N0} KB on the UI thread for {whole.Bars:N0} bars, {zoomed.Bytes / 1024:N0} KB for {zoomed.Bars:N0}: {eachBar:N0} bytes a bar");
-            Assert.True(whole.Bars > zoomed.Bars + 500, $"The flame graph drew {whole.Bars} bars whole and {zoomed.Bars} zoomed into a leaf");
+                $"A frame of the flame graph allocated {whole.Bytes / 1024:N0} KB on the UI thread for {whole.Bars:N0} bars, {zoomed.Bytes / 1024:N0} KB for {zoomed.Bars:N0}: {eachBar:N0} bytes a bar; "
+                + $"{labelled.Bytes / 1024:N0} KB for {labelled.Bars:N0} bars each labelled: {eachLabelled:N0} bytes a bar");
+            Assert.True(whole.Bars > zoomed.Bars + 500, $"The flame graph drew {whole.Bars} bars whole and {zoomed.Bars} zoomed into a leaf, of {flame.Root!.Total} samples");
+            Assert.True(labelled.Bars > zoomed.Bars + 200,
+                $"The flame graph drew {labelled.Bars} bars zoomed into {narrow.Node?.Total} of its {flame.Root!.Total} samples, each with room for a label, and {zoomed.Bars} zoomed into a leaf");
             Assert.True(eachBar < 400,
                 $"A frame of the flame graph allocated {whole.Bytes / 1024:N0} KB on the UI thread for {whole.Bars:N0} bars, {zoomed.Bytes / 1024:N0} KB for {zoomed.Bars:N0}: {eachBar:N0} bytes for each bar more, its colour and label worked out again");
+            Assert.True(eachLabelled < 400,
+                $"A frame of the flame graph allocated {labelled.Bytes / 1024:N0} KB on the UI thread for {labelled.Bars:N0} bars each labelled, {zoomed.Bytes / 1024:N0} KB for {zoomed.Bars:N0}: {eachLabelled:N0} bytes for each bar more, its label clipped or drawn as more than one glyph run");
         }
         finally
         {
@@ -341,6 +353,24 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
             }
             return (least, flame.BarsDrawn);
         }
+
+        // Of the nodes of so few samples that zoomed into, each bar has room for a label, the one drawing the most bars.
+        static (CallNode? Node, int Bars) Narrowest(CallNode node, int callers, int samples)
+        {
+            if (node.Total <= samples)
+            {
+                return (node, callers + Bars(node));
+            }
+            (CallNode? Node, int Bars) most = (null, 0);
+            foreach (CallNode callee in node.Ordered)
+            {
+                (CallNode? Node, int Bars) below = Narrowest(callee, callers + 1, samples);
+                most = below.Bars > most.Bars ? below : most;
+            }
+            return most;
+        }
+
+        static int Bars(CallNode node) => 1 + node.Ordered.Sum(Bars);
     }
 
     /// <summary>A profiled program that has not reached the profiler (its diagnostics off, so it never comes to the

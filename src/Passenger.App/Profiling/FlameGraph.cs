@@ -12,7 +12,7 @@ namespace Passenger.App.Profiling;
 /// bar as wide as its share of the samples, coloured by its namespace. A click zooms into a bar so it fills the width;
 /// a click on the top bar, or Escape, steps back out. The pointer's bar is named in a tooltip with its time. A bar's
 /// colour and label are worked out once for its node, its text laid out again only when its width changes, so a frame
-/// draws each bar as its rectangle and label alone.</summary>
+/// draws each bar as its rectangle and its label's one glyph run alone.</summary>
 public sealed class FlameGraph : Control
 {
     private const double RowHeight = 20;
@@ -51,7 +51,7 @@ public sealed class FlameGraph : Control
             tipped = Stale;
             foreach (BarLook look in looks.Values)
             {
-                look.Text?.Dispose();
+                look.Forget();
             }
             looks.Clear();
             InvalidateMeasure();
@@ -155,15 +155,19 @@ public sealed class FlameGraph : Control
             return;
         }
         double room = Math.Max(1, bar.Width - 8);
-        if (look.Text is null || look.Room != room)
+        TextLayout text = look.Text is { } laid && look.Room == room ? laid : look.LayOut(colours.Text, room);
+        // Trimmed to its room, the label stays inside the bar's 4 pixels each side without a clip.
+        Point at = new(bar.X + 4, bar.Y + ((RowHeight - 1 - text.Height) / 2));
+        if (look.Run is { } run)
         {
-            look.Text?.Dispose();
-            look.Text = Labels.Of(look.Label, Face, 11, colours.Text, room);
-            look.Room = room;
+            using (context.PushTransform(Matrix.CreateTranslation(at.X, at.Y)))
+            {
+                context.DrawGlyphRun(colours.Text, run);
+            }
         }
-        using (context.PushClip(bar))
+        else
         {
-            look.Text.Draw(context, new Point(bar.X + 4, bar.Y + ((RowHeight - 1 - look.Text.Height) / 2)));
+            text.Draw(context, at);
         }
     }
 
@@ -218,8 +222,7 @@ public sealed class FlameGraph : Control
         palette = null;
         foreach (BarLook look in looks.Values)
         {
-            look.Text?.Dispose();
-            look.Text = null;
+            look.Forget();
         }
         InvalidateVisual();
     }
@@ -286,13 +289,33 @@ public sealed class FlameGraph : Control
     /// <summary>A method's name up to its parameters.</summary>
     private static ReadOnlySpan<char> Bare(string name) => name.IndexOf('(') is var open and >= 0 ? name.AsSpan(0, open) : name;
 
-    /// <summary>A node's bar as worked out once: its colour, its label, and the label laid out for the room it last had.</summary>
+    /// <summary>A node's bar as worked out once: its colour, its label, and the label laid out for the room it last had,
+    /// with its glyphs as one run where they can be (<see cref="Labels.Run"/>).</summary>
     private sealed class BarLook(int colour, string label)
     {
         public int Colour { get; } = colour;
         public string Label { get; } = label;
-        public TextLayout? Text { get; set; }
-        public double Room { get; set; }
+        public TextLayout? Text { get; private set; }
+        public GlyphRun? Run { get; private set; }
+        public double Room { get; private set; }
+
+        public TextLayout LayOut(IBrush brush, double room)
+        {
+            Forget();
+            TextLayout text = Labels.Of(Label, Face, 11, brush, room);
+            Text = text;
+            Run = Labels.Run(text);
+            Room = room;
+            return text;
+        }
+
+        public void Forget()
+        {
+            Run?.Dispose();
+            Text?.Dispose();
+            Run = null;
+            Text = null;
+        }
     }
 
     /// <summary>The theme's brushes a frame draws with, each graph colour also faded as a bar is, where its brush is a
