@@ -47,7 +47,7 @@ jobs:
             time_scale: 2.5
           - system: Linux
             name: Linux (x64)
-            os: ubuntu-24.04
+            os: ubuntu-26.04
             shards: 4
             time_scale: 2
     runs-on: ${{ matrix.os }}

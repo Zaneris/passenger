@@ -170,7 +170,7 @@ jobs:
   # checked: the desktop entry as desktops read it, and the file types it opens among them.
   archive:
     name: Linux archive (x64)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 60
     steps:
       # The whole history: tools/package-linux.sh names the version by the commit's tags.
