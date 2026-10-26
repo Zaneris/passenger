@@ -188,16 +188,8 @@ public sealed class FindInFilesTests : IDisposable
         // Files of code that hold no match, a hundred to a folder, and beside them a match in each encoding.
         static void Files(string root, int count)
         {
-            System.Text.StringBuilder code = new();
-            for (int i = 0; i < count; i++)
-            {
-                code.Clear().Append(System.Globalization.CultureInfo.InvariantCulture, $"class Filler{i}\n{{\n");
-                for (int j = 0; j < 80; j++)
-                {
-                    code.Append(System.Globalization.CultureInfo.InvariantCulture, $"    int field{j} = {j} * {i}; // a sum of the parts\n");
-                }
-                TestFolders.Write(root, $"src/Area{i / 100}/Filler{i}.cs", code.Append("}\n").ToString());
-            }
+            TestFolders.WriteAll(root, Enumerable.Range(0, count).Select(i => ($"src/Area{i / 100}/Filler{i}.cs",
+                $"class Filler{i}\n{{\n" + string.Concat(Enumerable.Range(0, 80).Select(j => $"    int field{j} = {j} * {i}; // a sum of the parts\n")) + "}\n")));
             File.WriteAllText(Path.Combine(root, "Found.cs"), "// the Needle is here\nclass Found { }\n");
             File.WriteAllText(Path.Combine(root, "Bom.cs"), "// a needle after a BOM\n", new System.Text.UTF8Encoding(true));
             File.WriteAllText(Path.Combine(root, "Wide.cs"), "// a needle in UTF-16\n", System.Text.Encoding.Unicode);

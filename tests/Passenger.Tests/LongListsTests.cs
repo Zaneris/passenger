@@ -36,10 +36,7 @@ public sealed class LongListsTests : IDisposable
         Holds("Find in Files", "matches", 100, FileSearch.MostMatches, matches =>
         {
             string root = Folder();
-            for (int file = 0; file < matches / 10; file++)
-            {
-                TestFolders.Write(root, $"Lines{file:000}.cs", string.Concat(Enumerable.Range(0, 10).Select(i => $"int count{i} = {file};\n")));
-            }
+            TestFolders.WriteAll(root, Enumerable.Range(0, matches / 10).Select(file => ($"Lines{file:000}.cs", string.Concat(Enumerable.Range(0, 10).Select(i => $"int count{i} = {file};\n")))));
             MainWindow window = Ui.OpenFolder(root, languageServer: false);
             Ui.WaitFor(() => window.FileIndex.Count > 0 && !window.FileIndex.IsWalking, "the folder's files indexed");
             FindInFilesPopup popup = window.ShowFindInFiles(replace: false)!;
@@ -121,10 +118,7 @@ public sealed class LongListsTests : IDisposable
         Holds("Go to File", "files", 100, 1000, files =>
         {
             string root = Folder();
-            for (int file = 0; file < files; file++)
-            {
-                TestFolders.Write(root, $"Area{file / 100}/Lines{file:0000}.cs", $"class Lines{file} {{ }}\n");
-            }
+            TestFolders.WriteAll(root, Enumerable.Range(0, files).Select(file => ($"Area{file / 100}/Lines{file:0000}.cs", $"class Lines{file} {{ }}\n")));
             MainWindow window = Ui.OpenFolder(root, languageServer: false);
             Ui.WaitFor(() => window.FileIndex.Count == files && !window.FileIndex.IsWalking, $"the folder's {files} files indexed");
             Ui.Run(window, AppActions.GoToFile);
