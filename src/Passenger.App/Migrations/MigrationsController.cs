@@ -139,26 +139,72 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         Project = null;
         Startup = null;
         Context = null;
+        projectChosen = false;
+        startupChosen = false;
+        defaults = null;
         Forget();
         Follow();
     }
 
+    /// <summary>The defaults EF Core 11's dotnet ef reads in the folder open, as last read; null with none.</summary>
+    private EfDefaults? defaults;
+
+    /// <summary>Whether the person chose the project, or the startup project, in the window, which the defaults give way to.</summary>
+    private bool projectChosen;
+
+    private bool startupChosen;
+
     /// <summary>The folder's projects read again (an evaluation landed, a package changed), the choices kept where they still
-    /// stand, and the gaps found again.</summary>
+    /// stand, else those the tool's defaults name, and the gaps found again.</summary>
     public void Follow()
     {
         UiThread.Check();
         IReadOnlyList<ProjectModel> all = bound?.Projects ?? [];
+        ProjectModel? wasProject = Project;
+        ProjectModel? wasStartup = Startup;
         Projects = [.. all.Where(UsesEf)];
-        Project = Projects.FirstOrDefault(p => Project is { } was && PathNames.Same(p.Path, was.Path)) ?? Projects.FirstOrDefault();
+        Project = Chosen(Projects, wasProject, projectChosen, defaults?.Project);
         Startups = Project is null ? [] : StartupsOf(Project, all);
-        Startup = Startups.FirstOrDefault(p => Startup is { } was && PathNames.Same(p.Path, was.Path)) ?? Startups.FirstOrDefault();
+        Startup = Chosen(Startups, wasStartup, startupChosen, defaults?.StartupProject);
+        if (!PathNames.Same(Project?.Path ?? string.Empty, wasProject?.Path ?? string.Empty))
+        {
+            Context = null;
+            Forget();
+        }
+        else if (!PathNames.Same(Startup?.Path ?? string.Empty, wasStartup?.Path ?? string.Empty))
+        {
+            Forget();
+        }
+        if (bound?.Folder is { } folder)
+        {
+            BackgroundWork.Track(ReadDefaultsAsync(bound, folder));
+        }
         FindGaps();
         if (Project is { } project)
         {
             BackgroundWork.Track(FindDeclaredAsync(project));
         }
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Of projects, the one chosen before while it is still there if the person chose it, else the one the tool's
+    /// defaults name, else the one before, else the first.</summary>
+    private static ProjectModel? Chosen(IReadOnlyList<ProjectModel> projects, ProjectModel? before, bool chosen, string? named)
+    {
+        ProjectModel? kept = before is null ? null : projects.FirstOrDefault(p => PathNames.Same(p.Path, before.Path));
+        return (chosen ? kept : null) ?? projects.FirstOrDefault(p => EfDefaults.Names(named, p)) ?? kept ?? projects.FirstOrDefault();
+    }
+
+    /// <summary>The tool's defaults in the folder read off the UI thread (the tool found, the file looked for up from the
+    /// folder), and the choices made again from them when they changed while the session is still the one bound.</summary>
+    private async Task ReadDefaultsAsync(ProjectSession session, string folder)
+    {
+        EfDefaults? read = await BackgroundWork.Run(() => EfDefaults.Find(folder, EfTools.Find(folder)));
+        if (bound == session && read != defaults)
+        {
+            defaults = read;
+            Follow();
+        }
     }
 
     /// <summary>The project's contexts' declarations read off the UI thread, kept while it is still the one chosen.</summary>
@@ -212,6 +258,8 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         Project = chosen;
         Startup = null;
         Context = null;
+        projectChosen = true;
+        startupChosen = false;
         Forget();
         Follow();
     }
@@ -223,6 +271,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             return;
         }
         Startup = chosen;
+        startupChosen = true;
         Forget();
         Follow();
     }
@@ -396,18 +445,21 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             return Done($"Added migration {name} to {setting.Context ?? setting.Project.Name}");
         }, Relist.Built | Relist.Listed);
 
-    /// <summary>Removes the chosen context's last migration (once the person agrees), then lists again.</summary>
+    /// <summary>Removes the chosen context's last migration (once the person agrees), then lists again: with EF Core 11's
+    /// tool, one the database was not read to have is removed offline, never reaching the database.</summary>
     public async Task<EfDone> RemoveLastAsync(string action, CancellationToken cancel = default)
     {
         if (Listed && Migrations.LastOrDefault() is { } last && !parts.AsksNoOne() && Mcp.AgentCall.Current is null
-            && await parts.Choose("Remove Last Migration", $"Remove {last.Name}? Its files are deleted and the model snapshot goes back to the migration before it.",
+            && await parts.Choose("Remove Last Migration", $"Remove {last.Name}? Its files are deleted and the model snapshot goes back to the migration before it."
+                + (last.Applied is null ? " The database could not be read, so whether it has the migration is not known." : string.Empty),
                 ["Remove"], null) is null)
         {
             return new EfDone(false, "Remove cancelled");
         }
         return await CommandAsync(action, "Removing the last migration", asks: true, cancel, async (setting, work) =>
         {
-            EfOutcome removed = await RunAsync(setting, ["migrations", "remove", "--json"], work);
+            bool offline = EfDefaults.ReadsDefaults(setting.Tool) && Listed && setting.Context == Context && Migrations.LastOrDefault() is { Applied: not true };
+            EfOutcome removed = await RunAsync(setting, ["migrations", "remove", "--json", .. offline ? (string[])["--offline"] : []], work);
             if (!removed.Succeeded)
             {
                 return Failed(setting, removed);
@@ -1097,14 +1149,16 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         RunConfigurations configurations = session.Configurations;
         RunConfiguration? runs = configurations.Chosen is { Kind: RunKind.Project } chosen && PathNames.Same(chosen.Project, startup.Path) ? chosen
             : configurations.All.FirstOrDefault(c => c.Kind == RunKind.Project && c.Program.Length == 0 && PathNames.Same(c.Project, startup.Path));
+        // The framework the tool's defaults name, where the startup project targets it, as dotnet ef takes it.
+        string? named = defaults?.Framework is { } given && startup.TargetFrameworks.Contains(given, StringComparer.OrdinalIgnoreCase) ? given : null;
         if (runs is null)
         {
-            return (framework, startup.Folder, new Dictionary<string, string>());
+            return (named ?? framework, startup.Folder, new Dictionary<string, string>());
         }
         work.Say($"Reading how {runs.Name} runs…");
         (LaunchPlan? plan, _) = await parts.Builds().ResolvePlanAsync(runs, null, work.Stopping);
-        return plan is null ? (framework, startup.Folder, runs.Environment)
-            : (plan.Framework ?? framework, Directory.Exists(plan.WorkingDirectory) ? plan.WorkingDirectory : startup.Folder, plan.Environment);
+        return plan is null ? (named ?? framework, startup.Folder, runs.Environment)
+            : (named ?? plan.Framework ?? framework, Directory.Exists(plan.WorkingDirectory) ? plan.WorkingDirectory : startup.Folder, plan.Environment);
     }
 
     /// <summary>Runs dotnet ef with the setting's projects, framework and context, never building (its ef.dll alone where
@@ -1232,8 +1286,8 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         return null;
     }
 
-    /// <summary>The contexts dotnet ef listed taken as the project's, the chosen one kept while it is among them; null once
-    /// taken, else the failure.</summary>
+    /// <summary>The contexts dotnet ef listed taken as the project's, the chosen one kept while it is among them, else the
+    /// one the tool's defaults name, else the first; null once taken, else the failure.</summary>
     private EfDone? Named(EfSetting setting, EfOutcome named, string? read)
     {
         if (!named.Succeeded)
@@ -1244,7 +1298,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         contextsRead = read;
         if (Context is null || !Contexts.Any(c => c.Name == Context || c.FullName == Context))
         {
-            Context = Contexts.FirstOrDefault()?.Name;
+            Context = Contexts.FirstOrDefault(c => defaults?.Context is { } named && (c.Name == named || c.FullName == named))?.Name ?? Contexts.FirstOrDefault()?.Name;
         }
         return null;
     }

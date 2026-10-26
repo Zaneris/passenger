@@ -23,6 +23,9 @@
          version, and at the one before for a tool that does not match and a stand-in provider that trails it. -->
     <EfCoreVersion>10.0.14</EfCoreVersion>
     <EfCoreOlderVersion>10.0.13</EfCoreOlderVersion>
+    <!-- EF Core 11 and its dotnet-ef, whose options' defaults .config/dotnet-ef.json gives, for the Migrations window's
+         test of them, downloaded for the tests' local feed: a release candidate until EF Core 11 ships. -->
+    <EfCore11Version>11.0.0-rc.3.26522.148</EfCore11Version>
     <!-- Npgsql's provider of EF Core, at a version whose range holds EfCoreVersion, for the test of a compose run's
          Postgres. -->
     <NpgsqlEfVersion>10.0.3</NpgsqlEfVersion>

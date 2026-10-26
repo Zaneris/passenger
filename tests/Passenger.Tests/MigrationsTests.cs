@@ -349,6 +349,48 @@ public sealed class MigrationsTests
             + $"open: {open}; active: {active ?? "none"}; the keys with: {focused ?? "nothing"}; the status bar said {window.Status}){(opened is null ? "" : $"\n{opened()}")}");
     }
 
+    /// <summary>EF Core 11's dotnet ef takes its options' defaults from .config/dotnet-ef.json: of a library's two apps that
+    /// can start its contexts, the window lists and adds migrations through the startup project the file names and the
+    /// context it names, never the first app (which lacks the Design package dotnet ef needs) nor the first context; and
+    /// with the database out of reach, Remove Last Migration removes the migration offline, never asking the database.</summary>
+    [AvaloniaFact]
+    public void With_EF_Core_11_the_window_takes_what_dotnet_ef_json_names_and_removes_a_migration_offline()
+    {
+        string folder = ShopApp.MakeEf11();
+        string data = Path.Combine(folder, "Data");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        // Each dotnet ef command line the Build window shows, which the build before the next command clears.
+        List<string> commands = [];
+        window.BottomPanel.Build.Document.Changed += (_, _) => commands.AddRange(window.BottomPanel.Build.Document.Snapshot.ToString().Split('\n')
+            .Where(l => l.Contains("--startup-project", StringComparison.Ordinal) && !commands.Contains(l)));
+        try
+        {
+            window.ShowToolWindow(ToolWindowIds.Migrations);
+            Ui.WaitFor(() => window.Migrations.Listed, () => $"the migrations listed (status: {window.Status}; gaps: {Gaps(window)})", Slow);
+            Assert.Equal(("Data", "Web", "SalesContext"), (window.Migrations.Project?.Name, window.Migrations.Startup?.Name, window.Migrations.Context));
+
+            Add(window, "Initial");
+            Assert.True(File.Exists(Path.Combine(data, "Migrations", "SalesContextModelSnapshot.cs")),
+                $"Add Migration made no snapshot of SalesContext: [{string.Join(", ", Directory.GetFiles(Path.Combine(data, "Migrations")).Select(Path.GetFileName))}]");
+            Assert.Equal([("Initial", (bool?)null)], Rows(window));
+
+            Tool(window, AppActions.RemoveLastMigration);
+            ChoiceDialog remove = Asked<ChoiceDialog>(window, "Remove Last's question");
+            Assert.Contains("could not be read", string.Join(' ', remove.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text)), StringComparison.Ordinal);
+            Ui.ClickButton(remove, "Remove");
+            Ui.WaitFor(() => window.Migrations.Busy is null && Rows(window).Count == 0, () => $"Initial removed with the database out of reach ({window.Status})", Slow);
+            Assert.Empty(Directory.GetFiles(Path.Combine(data, "Migrations"), "*_Initial*.cs"));
+
+            Assert.True(commands.Count > 0 && commands.All(c => c.Contains("Web.csproj", StringComparison.Ordinal) && !c.Contains("Api.csproj", StringComparison.Ordinal)),
+                $"dotnet ef was not run through Web alone:\n{string.Join("\n", commands)}");
+            Assert.Contains(commands, c => c.Contains("migrations remove", StringComparison.Ordinal) && c.Contains("--offline", StringComparison.Ordinal));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     private static string Gaps(MainWindow window) => string.Join(" | ", window.MigrationsView.GapsShown);
 
     private static IReadOnlyList<(string Name, bool? Applied)> Rows(MainWindow window) => [.. window.Migrations.Migrations.Select(m => (m.Name, m.Applied))];
@@ -484,6 +526,77 @@ internal static class ShopApp
         return folder;
     }
 
+    public static string Ef11 { get; } = AvaloniaApp.Metadata("EfCore11Version");
+
+    /// <summary>A library with two SQLite contexts on EF Core 11 and the two apps that reference it, Api (first, without the
+    /// Design package) and Web, with the local dotnet-ef 11 and a .config/dotnet-ef.json naming the library, Web and the
+    /// second context; the database a file that is none, out of reach. Restored from the run's local feed and the
+    /// package cache (tests/EfGraphs), from the UI thread.</summary>
+    public static string MakeEf11()
+    {
+        string folder = TestFolders.Create("shop11");
+        Copy(("dotnet-ef", Ef11));
+        AvaloniaApp.UseFeed(folder);
+        string Ef(string package, bool design = false) =>
+            $"    <PackageReference Include=\"Microsoft.EntityFrameworkCore.{package}\" Version=\"{Ef11}\"{(design ? " PrivateAssets=\"all\"" : string.Empty)} />\n";
+        string App(string packages) =>
+            $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <OutputType>Exe</OutputType>\n    <TargetFramework>net11.0</TargetFramework>\n  </PropertyGroup>\n"
+            + $"  <ItemGroup>\n    <ProjectReference Include=\"../Data/Data.csproj\" />\n{packages}  </ItemGroup>\n</Project>\n";
+        TestFolders.Write(folder, "Shop.slnx", "<Solution>\n  <Project Path=\"Api/Api.csproj\" />\n  <Project Path=\"Data/Data.csproj\" />\n  <Project Path=\"Web/Web.csproj\" />\n</Solution>\n");
+        TestFolders.Write(folder, "Data/Data.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net11.0</TargetFramework>\n    <Nullable>enable</Nullable>\n"
+            + $"  </PropertyGroup>\n  <ItemGroup>\n{Ef("Sqlite")}  </ItemGroup>\n</Project>\n");
+        // A file of the database's name that is no database: the tool finds it there and cannot read it.
+        string database = Path.Combine(folder, "sales.db");
+        TestFolders.Write(folder, "sales.db", "not a database\n");
+        TestFolders.Write(folder, "Data/Contexts.cs", $$"""
+            using Microsoft.EntityFrameworkCore;
+
+            namespace Data;
+
+            public sealed class Product
+            {
+                public int Id { get; set; }
+                public string Name { get; set; } = "";
+            }
+
+            public sealed class ShopContext : DbContext
+            {
+                public DbSet<Product> Products => Set<Product>();
+
+                protected override void OnConfiguring(DbContextOptionsBuilder options) => options.UseSqlite(@"Data Source={{database}}");
+            }
+
+            public sealed class SalesContext : DbContext
+            {
+                public DbSet<Product> Sold => Set<Product>();
+
+                protected override void OnConfiguring(DbContextOptionsBuilder options) => options.UseSqlite(@"Data Source={{database}}");
+            }
+
+            """);
+        TestFolders.Write(folder, "Api/Api.csproj", App(string.Empty));
+        TestFolders.Write(folder, "Api/Program.cs", "System.Console.WriteLine(\"Api\");\n");
+        TestFolders.Write(folder, "Web/Web.csproj", App(Ef("Design", design: true)));
+        TestFolders.Write(folder, "Web/Program.cs", "System.Console.WriteLine(\"Web\");\n");
+        TestFolders.Write(folder, ".config/dotnet-ef.json", "{\n  \"project\": \"Data\",\n  \"startupProject\": \"Web/Web.csproj\",\n  \"context\": \"SalesContext\"\n}\n");
+        TestFolders.Write(folder, "dotnet-tools.json", $$"""
+            {
+              "version": 1,
+              "isRoot": true,
+              "tools": {
+                "dotnet-ef": {
+                  "version": "{{Ef11}}",
+                  "commands": [ "dotnet-ef" ],
+                  "rollForward": false
+                }
+              }
+            }
+
+            """);
+        Restore.Run(Path.Combine(folder, "Shop.slnx"));
+        return folder;
+    }
+
     /// <summary>The model changed: a product has a price, which no migration covers yet.</summary>
     public static void AddPrice(string folder)
     {
@@ -517,15 +630,16 @@ internal static class ShopApp
 
     /// <summary>The tool at both versions, the Design package and EF Core at both versions, copied from the package cache into
     /// the run's local feed, whose metadata the window reads for the versions that fit.</summary>
-    internal static void Feed()
+    internal static void Feed() => Copy(
+        ("dotnet-ef", Version), ("dotnet-ef", Older), ("microsoft.entityframeworkcore.design", Version),
+        ("microsoft.entityframeworkcore", Version), ("microsoft.entityframeworkcore", Older),
+        ("microsoft.entityframeworkcore.sqlite", Version), ("microsoft.entityframeworkcore.sqlite", Older));
+
+    /// <summary>Packages copied from the package cache into the run's local feed.</summary>
+    private static void Copy(params (string Id, string Version)[] packages)
     {
         string cache = AvaloniaApp.Metadata("NuGetPackageRoot");
-        foreach ((string id, string version) in new[]
-        {
-            ("dotnet-ef", Version), ("dotnet-ef", Older), ("microsoft.entityframeworkcore.design", Version),
-            ("microsoft.entityframeworkcore", Version), ("microsoft.entityframeworkcore", Older),
-            ("microsoft.entityframeworkcore.sqlite", Version), ("microsoft.entityframeworkcore.sqlite", Older),
-        })
+        foreach ((string id, string version) in packages)
         {
             string package = Path.Combine(cache, id, version, $"{id}.{version}.nupkg");
             Assert.True(File.Exists(package), $"{id} {version} is not in the package cache at {package}: restore the tests first");
