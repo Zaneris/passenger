@@ -75,7 +75,7 @@ public sealed class FileIconsTests : IDisposable
             ];
             foreach ((string name, string shape, string? colour) in expected)
             {
-                RowIcon icon = Drawn(window, name);
+                (Geometry? Data, IBrush? Foreground) icon = Drawn(window, name);
                 Assert.True(ReferenceEquals(Resource($"FileIcon.{shape}"), icon.Data), $"The Explorer does not draw {name} as its {shape}");
                 Assert.True(ReferenceEquals(Resource(colour is null ? TokenKeys.File_Plain : $"Passenger.FileIcon.{colour}"), icon.Foreground),
                     $"The Explorer does not draw {name} in the {colour ?? "plain"} file colour");
@@ -97,7 +97,8 @@ public sealed class FileIconsTests : IDisposable
 
     /// <summary>A row draws its icons with RowIcon, one control where a PathIcon is five: every icon of the theme and every
     /// file icon, at 16 and 14 and as a 10-square chevron turned and not, draws pixel for pixel as a PathIcon in its place
-    /// draws it, at scale 1, 1.5 and 2, dark and light, in the theme's icon colour and in a brush given.</summary>
+    /// draws it, at scale 1, 1.5 and 2, dark and light, in the theme's icon colour and in a brush given; and the Explorer's
+    /// RowGlyphs as its chevron's column and icon did, each a PathIcon.</summary>
     [AvaloniaFact]
     public void A_rows_icon_draws_every_icon_of_the_theme_pixel_for_pixel_as_a_PathIcon_draws_it()
     {
@@ -118,11 +119,11 @@ public sealed class FileIconsTests : IDisposable
             foreach (ThemeVariant theme in new[] { ThemeVariant.Dark, ThemeVariant.Light })
             {
                 // Each icon in the five Ways along its line, each way's PathIcon and RowIcon in one place, shown in turn.
-                Canvas canvas = new() { Width = (5 * Cell) + 4, Height = icons.Count * Cell };
+                Canvas canvas = new() { Width = (7 * Cell) + 8, Height = icons.Count * Cell };
                 List<(Control Path, Control Row)> drawn = [];
                 for (int i = 0; i < icons.Count; i++)
                 {
-                    for (int way = 0; way < 5; way++)
+                    for (int way = 0; way < Ways.Length; way++)
                     {
                         Point at = Where(i, way);
                         drawn.Add((Place(Pathed(icons[i].Icon, way, given), at), Place(Rowed(icons[i].Icon, way, given), at)));
@@ -131,7 +132,7 @@ public sealed class FileIconsTests : IDisposable
                     }
                 }
                 ScrollViewer scroller = new() { Content = canvas };
-                Window window = new() { Width = (5 * Cell) + 60, Height = 20 * Cell, Content = scroller, RequestedThemeVariant = theme };
+                Window window = new() { Width = (7 * Cell) + 60, Height = 20 * Cell, Content = scroller, RequestedThemeVariant = theme };
                 window.Show();
                 window.SetRenderScaling(scale);
                 for (int first = 0; first < icons.Count; first += 20)
@@ -145,7 +146,7 @@ public sealed class FileIconsTests : IDisposable
                         int most = paths[cell].Zip(rows[cell], (a, b) => Math.Abs(a - b)).Max();
                         if (most > 0)
                         {
-                            (int i, int way) = Math.DivRem((first * 5) + cell, 5);
+                            (int i, int way) = Math.DivRem((first * Ways.Length) + cell, Ways.Length);
                             differ.Add($"{icons[i].Key} ({Ways[way]}) at scale {scale}, {theme}: {paths[cell].Zip(rows[cell]).Count(p => p.First != p.Second)} bytes differ, by up to {most}");
                         }
                     }
@@ -170,10 +171,10 @@ public sealed class FileIconsTests : IDisposable
                     List<byte[]> cells = [];
                     for (int i = first; i < last; i++)
                     {
-                        for (int way = 0; way < 5; way++)
+                        for (int way = 0; way < Ways.Length; way++)
                         {
                             Point at = canvas.TranslatePoint(Where(i, way), window) ?? throw new InvalidOperationException("The icons are not laid out");
-                            cells.Add(Pixels(frame, at, scale));
+                            cells.Add(Pixels(frame, at, scale, way == 5 ? 2 * Cell : Cell));
                         }
                     }
                     return cells;
@@ -182,7 +183,7 @@ public sealed class FileIconsTests : IDisposable
         }
         Assert.True(differ.Count == 0, $"{differ.Count} icons a row draws differ from the PathIcon they stand for:\n{string.Join("\n", differ.Take(40))}");
 
-        static Point Where(int icon, int way) => new((way * Cell) + (way == 4 ? 0.5 : 0) + 2, icon * Cell);
+        static Point Where(int icon, int way) => new((way * Cell) + (way == 4 ? 0.5 : 0) + (way == 5 ? 4 : 2), icon * Cell);
 
         static Control Place(Control icon, Point at)
         {
@@ -191,8 +192,19 @@ public sealed class FileIconsTests : IDisposable
             return icon;
         }
 
-        static PathIcon Pathed(Geometry icon, int way, IBrush given)
+        static Control Pathed(Geometry icon, int way, IBrush given)
         {
+            if (way == 5)
+            {
+                PathIcon chevron = new() { Classes = { "chevron" }, RenderTransformOrigin = RelativePoint.Center, RenderTransform = new RotateTransform(icon.Bounds.Width > 15 ? 90 : 0) };
+                chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(IconKeys.ChevronRight));
+                return new StackPanel
+                {
+                    Orientation = Avalonia.Layout.Orientation.Horizontal,
+                    Height = 24,
+                    Children = { new Border { Width = 18, Height = 24, Background = Brushes.Transparent, Child = chevron }, new PathIcon { Data = icon, Margin = new Thickness(0, 0, 6, 0) } },
+                };
+            }
             PathIcon drawn = way is 2 or 3 ? new() { Classes = { "chevron" } } : new();
             drawn.Data = icon;
             if (way == 1)
@@ -208,8 +220,12 @@ public sealed class FileIconsTests : IDisposable
             return drawn;
         }
 
-        static RowIcon Rowed(Geometry icon, int way, IBrush given)
+        static Control Rowed(Geometry icon, int way, IBrush given)
         {
+            if (way == 5)
+            {
+                return new RowGlyphs { HasChevron = true, Turned = icon.Bounds.Width > 15, Icon = icon };
+            }
             RowIcon drawn = way is 2 or 3 ? RowIcon.Chevron() : new();
             drawn.Data = icon;
             if (way == 1)
@@ -222,9 +238,9 @@ public sealed class FileIconsTests : IDisposable
         }
     }
 
-    /// <summary>How each icon is drawn: 16 in the icon colour, 14 in a brush given, a chevron, a chevron turned down, and 16
-    /// half a unit along.</summary>
-    private static readonly string[] Ways = ["16", "14 in a brush given", "chevron", "chevron turned", "16 at half a unit"];
+    /// <summary>How each icon is drawn: 16 in the icon colour, 14 in a brush given, a chevron, a chevron turned down, 16 half
+    /// a unit along, and after a tree row's chevron (turned for the wider icons).</summary>
+    private static readonly string[] Ways = ["16", "14 in a brush given", "chevron", "chevron turned", "16 at half a unit", "in a tree row"];
 
     /// <summary>The keys of the file icons the theme holds.</summary>
     private static IEnumerable<string> FileIconKeys(IResourceDictionary resources) =>
@@ -233,9 +249,9 @@ public sealed class FileIconsTests : IDisposable
             .Concat(resources.MergedDictionaries.OfType<Avalonia.Markup.Xaml.Styling.ResourceInclude>().Select(i => i.Loaded).OfType<IResourceDictionary>().SelectMany(FileIconKeys));
 
     /// <summary>A cell's pixels at a place in logical units.</summary>
-    private static byte[] Pixels(WriteableBitmap frame, Point at, double scale)
+    private static byte[] Pixels(WriteableBitmap frame, Point at, double scale, double width)
     {
-        PixelRect area = new(PixelPoint.FromPoint(at, scale), PixelSize.FromSize(new Size(Cell, Cell), scale));
+        PixelRect area = new(PixelPoint.FromPoint(at, scale), PixelSize.FromSize(new Size(width, Cell), scale));
         byte[] pixels = new byte[area.Width * area.Height * 4];
         System.Runtime.InteropServices.GCHandle pinned = System.Runtime.InteropServices.GCHandle.Alloc(pixels, System.Runtime.InteropServices.GCHandleType.Pinned);
         try
@@ -253,13 +269,14 @@ public sealed class FileIconsTests : IDisposable
 
     private static IEnumerable<RowIcon> Icons(Visual area) => area.GetVisualDescendants().OfType<RowIcon>();
 
-    /// <summary>The icon the Explorer draws on a row.</summary>
-    private static RowIcon Drawn(MainWindow window, string name)
+    /// <summary>The icon the Explorer draws on a row, and its brush.</summary>
+    private static (Geometry? Data, IBrush? Foreground) Drawn(MainWindow window, string name)
     {
         ExplorerNode row = window.ExplorerView.Tree.Rows.FirstOrDefault(r => r.Name == name)
             ?? throw new InvalidOperationException($"The Explorer shows no {name}: [{string.Join(", ", window.ExplorerView.Tree.Rows.Select(r => r.Name))}]");
-        return Icons(window.ExplorerView).FirstOrDefault(i => ReferenceEquals(i.DataContext, row) && i.DataKey is null)
+        RowGlyphs glyphs = window.ExplorerView.GetVisualDescendants().OfType<RowGlyphs>().FirstOrDefault(i => ReferenceEquals(i.DataContext, row))
             ?? throw new InvalidOperationException($"The Explorer draws no icon on {name}'s row");
+        return (glyphs.Icon, glyphs.IconBrush);
     }
 
     private static object Resource(string key)

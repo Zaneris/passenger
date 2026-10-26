@@ -347,22 +347,20 @@ public partial class ExplorerView : UserControl
     /// <summary>A row for whichever file or folder the list hands its container: its chevron, icon, name and detail.</summary>
     private Control Row()
     {
-        RowIcon chevron = RowIcon.Chevron();
-        Border toggle = new() { Width = 18, Height = ListRow.Height, Background = Brushes.Transparent, Child = chevron };
-        toggle.PointerPressed += OnChevronPressed;
-        RowIcon icon = new() { Margin = new Thickness(0, 0, 6, 0) };
+        RowGlyphs glyphs = new();
+        glyphs.ChevronPressed += OnChevronPressed;
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock detail = new() { Classes = { "muted" }, FontSize = 12, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-        StackPanel row = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { toggle, icon, name, detail } };
+        StackPanel row = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { glyphs, name, detail } };
         return row.Showing<ExplorerNode>(node =>
         {
             row.Margin = node.Indent;
             row.Opacity = node.Opacity;
             ToolTip.SetTip(row, node.Tip);
-            chevron.IsVisible = node.HasChildren;
-            chevron.Turned = node.IsExpanded;
-            icon.Data = node.Icon;
-            icon.Foreground = node.IconBrush;
+            glyphs.HasChevron = node.HasChildren;
+            glyphs.Turned = node.IsExpanded;
+            glyphs.Icon = node.Icon;
+            glyphs.IconBrush = node.IconBrush;
             name.Text = node.Name;
             name.Classes.Set("vcsModified", node.IsVcsModified);
             name.Classes.Set("vcsAdded", node.IsVcsAdded);
