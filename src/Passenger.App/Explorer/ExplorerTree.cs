@@ -736,7 +736,6 @@ public sealed class ExplorerNode : Observable, ITreeRow
             if (Set(ref isExpanded, value))
             {
                 Raise(nameof(Icon));
-                Raise(nameof(ChevronAngle));
             }
         }
     }
@@ -765,7 +764,6 @@ public sealed class ExplorerNode : Observable, ITreeRow
     public bool IsVcsConflicted => change is ChangeKind.Conflicted;
 
     public Thickness Indent => new(Depth * 16, 0, 0, 0);
-    public double ChevronAngle => IsExpanded ? 90 : 0;
     public double Opacity => IsDimmed || IsCut ? 0.55 : 1;
     public Geometry Icon => FileIcons.For(this);
     public IBrush IconBrush => FileIcons.BrushFor(this);

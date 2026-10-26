@@ -347,12 +347,10 @@ public partial class ExplorerView : UserControl
     /// <summary>A row for whichever file or folder the list hands its container: its chevron, icon, name and detail.</summary>
     private Control Row()
     {
-        RotateTransform turn = new();
-        PathIcon chevron = new() { Classes = { "chevron" }, RenderTransformOrigin = RelativePoint.Center, RenderTransform = turn };
-        chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(IconKeys.ChevronRight));
+        RowIcon chevron = RowIcon.Chevron();
         Border toggle = new() { Width = 18, Height = ListRow.Height, Background = Brushes.Transparent, Child = chevron };
         toggle.PointerPressed += OnChevronPressed;
-        PathIcon icon = new() { Margin = new Thickness(0, 0, 6, 0) };
+        RowIcon icon = new() { Margin = new Thickness(0, 0, 6, 0) };
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock detail = new() { Classes = { "muted" }, FontSize = 12, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         StackPanel row = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { toggle, icon, name, detail } };
@@ -362,7 +360,7 @@ public partial class ExplorerView : UserControl
             row.Opacity = node.Opacity;
             ToolTip.SetTip(row, node.Tip);
             chevron.IsVisible = node.HasChildren;
-            turn.Angle = node.ChevronAngle;
+            chevron.Turned = node.IsExpanded;
             icon.Data = node.Icon;
             icon.Foreground = node.IconBrush;
             name.Text = node.Name;
