@@ -223,10 +223,12 @@ public sealed class FindInFilesTests : IDisposable
             long least = long.MaxValue;
             for (int time = 0; time < 3; time++)
             {
+                // The box tells of a new text after the frame, which puts the search off until a pause: told before searching now.
                 popup.Text = string.Empty;
-                Ui.Settle();
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
                 long before = GC.GetTotalAllocatedBytes(precise: true);
                 popup.Text = text;
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
                 Task searching = popup.SearchAsync();
                 Ui.WaitFor(() => searching.IsCompleted, $"the search for {text}");
                 least = Math.Min(least, GC.GetTotalAllocatedBytes(precise: true) - before);
@@ -639,11 +641,12 @@ public sealed class FindInFilesTests : IDisposable
         return drawn.Contains(font.CharacterToGlyphMap['=']) && drawn.Contains(font.CharacterToGlyphMap['>']);
     }
 
-    /// <summary>Searches for a text and waits for the search in force to show its matches: a change to what is asked
-    /// that lands meanwhile searches again, cancelling the one this began.</summary>
+    /// <summary>Searches for a text and waits for the search in force to show its matches: the box tells of its new text
+    /// after the frame, before the search begins; another change that lands meanwhile searches again, cancelling this one.</summary>
     private static void Search(FindInFilesPopup popup, string text)
     {
         popup.Text = text;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Task searching = popup.SearchAsync();
         Ui.WaitFor(() => searching.IsCompleted && popup.Searching.IsCompleted && popup.Status != "Searching…", $"the search for {text}");
     }

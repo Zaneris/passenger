@@ -26,10 +26,19 @@ public static class TextSearch
     /// waits on one long: a search that stops there is run again off the UI thread under <see cref="Apart"/>.</summary>
     public static readonly TimeSpan AtOnce = TimeSpan.FromMilliseconds(250);
 
+    /// <summary>The variable that gives <see cref="Apart"/> in milliseconds.</summary>
+    [IdentifierHome]
+    public const string ApartVariable = "PASSENGER_REGEX_TIMEOUT_MS";
+
     /// <summary>How long a regex's search of a text may run off the UI thread, its matches together: far past the few
     /// hundred milliseconds a busy machine keeps a quick search waiting, so only a regex backtracking without end
-    /// (`(a+)+b` over a long run of a's) stops.</summary>
-    public static readonly TimeSpan Apart = TimeSpan.FromSeconds(5);
+    /// (`(a+)+b` over a long run of a's) stops. 5 s, or what <see cref="ApartVariable"/> gives; a value there that is no
+    /// whole number of milliseconds above 0 is fatal.</summary>
+    public static TimeSpan Apart => Environment.GetEnvironmentVariable(ApartVariable) is { Length: > 0 } given
+        ? int.TryParse(given, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int milliseconds) && milliseconds > 0
+            ? TimeSpan.FromMilliseconds(milliseconds)
+            : throw new FormatException($"{ApartVariable} takes a whole number of milliseconds above 0, not '{given}'")
+        : TimeSpan.FromSeconds(5);
 
     /// <summary>Every match of a query, a regex's search stopping past <paramref name="within"/> (<see cref="AtOnce"/> on
     /// the UI thread, <see cref="Apart"/> off it).</summary>
