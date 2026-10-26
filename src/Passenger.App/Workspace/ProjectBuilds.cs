@@ -43,6 +43,10 @@ public sealed class ProjectBuilds
     /// <summary>The hold on the host's design-time builds that a build of the IDE's own has until it ends.</summary>
     private CancellationTokenSource? holding;
 
+    /// <summary>The host building the folder's round while it builds, and the projects asked of it whose folders going
+    /// would hold it (<see cref="FolderChanged"/>).</summary>
+    private (ProjectHost Host, List<string> Projects)? inHost;
+
     /// <param name="projects">The open workspace's projects to load, those of the file shown (and those it references)
     /// apart, asked on the UI thread as the server is ready for them.</param>
     /// <param name="solution">The global properties the open solution gives its projects, as a build of it would.</param>
@@ -112,6 +116,7 @@ public sealed class ProjectBuilds
         known.Clear();
         queued.Clear();
         building = false;
+        inHost = null;
         foreach (TaskCompletionSource<BuiltProject> waiter in waiting.Values)
         {
             waiter.TrySetResult(new BuiltProject(string.Empty, "[]", [], "the folder was closed"));
@@ -294,6 +299,28 @@ public sealed class ProjectBuilds
         }
     }
 
+    /// <summary>Ends the host building the folder's round once the folder of a project in it is seen to go (deleted from
+    /// outside the IDE): MSBuild in the host never ends a build whose working folder was deleted under it, and every
+    /// window's design-time builds wait behind it. Each round it held is asked of a host started anew.</summary>
+    public void FolderChanged(FolderChanges changes)
+    {
+        UiThread.Check();
+        if (inHost is not ({ HasExited: false } host, List<string> asked) || !(changes.Structure || changes.Lost))
+        {
+            return;
+        }
+        foreach (string project in asked.Where(waiting.ContainsKey))
+        {
+            // Named by these changes too: a project missing all along fails at once in the host, holding nothing.
+            if (Path.GetDirectoryName(project) is { } place && !Directory.Exists(place)
+                && (changes.Lost || changes.Paths.Any(p => PathNames.Within(p, place) || PathNames.IsUnder(place, p))))
+            {
+                host.End($"the folder of {project} was deleted under its design-time build");
+                return;
+            }
+        }
+    }
+
     /// <summary>Has the host build what is queued, all of it at once, the next round once this one ends.</summary>
     private void Pump()
     {
@@ -326,15 +353,17 @@ public sealed class ProjectBuilds
             BuildDone done;
             try
             {
-                done = await BuildAsync(host, round);
+                done = await BuildAsync(host, round, round);
             }
             catch (ProjectHostFailed ended) when (ended.HostEnded && !cancel.IsCancellationRequested)
             {
                 // Every window shares the host, which another folder's build may have ended: a host started anew builds the rest once.
                 List<string> left = Left();
                 IdeErrors.Write($"Project host (process {host.ProcessId}) building the projects of {following} at design time: {ended.Reason}. The {left.Count} not yet built are asked of a host started anew");
-                host = await BackgroundWork.Run(() => ProjectHosts.ForAsync(following));
-                done = await BuildAsync(host, left);
+                // A project whose folder has gone holds no host: it finds no project file there, and fails at once.
+                (host, List<string> standing) = await BackgroundWork.Run(async () =>
+                    (await ProjectHosts.ForAsync(following), left.Where(p => Directory.Exists(Path.GetDirectoryName(p))).ToList()));
+                done = await BuildAsync(host, left, standing);
             }
             if (mine == generation)
             {
@@ -363,18 +392,26 @@ public sealed class ProjectBuilds
             if (mine == generation)
             {
                 building = false;
+                inHost = null;
                 Pump();
             }
         }
 
-        Task<BuildDone> BuildAsync(ProjectHost asked, List<string> projects) => asked.BuildAsync(projects, properties, built =>
+        Task<BuildDone> BuildAsync(ProjectHost asked, List<string> projects, List<string> watched)
         {
-            lock (landed)
+            if (mine == generation)
             {
-                landed.Add(built.Path);
+                inHost = (asked, watched);
             }
-            UiThread.Post(() => Land(mine, built));
-        }, cancel);
+            return asked.BuildAsync(projects, properties, built =>
+            {
+                lock (landed)
+                {
+                    landed.Add(built.Path);
+                }
+                UiThread.Post(() => Land(mine, built));
+            }, cancel);
+        }
 
         List<string> Left()
         {

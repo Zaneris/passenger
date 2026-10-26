@@ -32,7 +32,16 @@ public static class Dotnet
 
     private static async Task<string> AskSdkAsync(string folder)
     {
-        ChildResult version = await ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["--version"], folder), limit: TimeSpan.FromMinutes(1)).ConfigureAwait(false);
+        ChildResult version;
+        try
+        {
+            version = await ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["--version"], folder), limit: TimeSpan.FromMinutes(1)).ConfigureAwait(false);
+        }
+        catch (System.ComponentModel.Win32Exception unstarted)
+        {
+            // Not started (its folder deleted since, say): it names no SDK.
+            throw new InvalidOperationException($"dotnet --version could not start: {unstarted.Message}", unstarted);
+        }
         string sdk = version.Output.Trim();
         return version.Succeeded && sdk.Length > 0 ? sdk : throw new InvalidOperationException($"dotnet --version failed: {version.Said}");
     }

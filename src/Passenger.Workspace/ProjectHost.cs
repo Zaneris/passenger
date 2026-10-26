@@ -12,8 +12,9 @@ public sealed class ProjectHostFailed(string reason, Exception? inner = null, bo
 {
     public string Reason { get; } = reason;
 
-    /// <summary>The host's process ended by itself under the request (it crashed, or was killed): a host started anew
-    /// (<see cref="ProjectHosts.ForAsync"/>) may answer it.</summary>
+    /// <summary>The host's process ended under the request, by itself (it crashed, or was killed) or for a build in it
+    /// that could never end (<see cref="ProjectHost.End"/>): a host started anew (<see cref="ProjectHosts.ForAsync"/>)
+    /// may answer it.</summary>
     public bool HostEnded { get; } = hostEnded;
 }
 
@@ -367,6 +368,15 @@ public sealed class ProjectHost : IAsyncDisposable
         return crashed is { } said ? $"the project host ended ({how}): {said}" : $"the project host ended ({how})";
     }
 
+    /// <summary>Ends the host now, for a build in it that can never end: every request waiting fails as at the host's own
+    /// end (<see cref="ProjectHostFailed.HostEnded"/>), so a host started anew may answer it.</summary>
+    public void End(string why)
+    {
+        PassengerLog.Write($"Project host (process {ProcessId}) was ended: {why}");
+        Fail($"the project host was ended: {why}");
+        ChildProcesses.Kill(process);
+    }
+
     /// <summary>Fails every request waiting, and each asked from now on.</summary>
     private void Fail(string why, bool ended = true)
     {
@@ -401,7 +411,8 @@ public static class ProjectHosts
     private static readonly SemaphoreSlim Gate = new(1, 1);
     private static readonly List<ProjectHost> Running = [];
 
-    /// <summary>The host for a folder's SDK: one running already, else one started for it.</summary>
+    /// <summary>The host for a folder's SDK: one running already, else one started for it, which a folder deleted since
+    /// is refused (<see cref="ProjectHostFailed"/>).</summary>
     public static async Task<ProjectHost> ForAsync(string folder, CancellationToken cancel = default)
     {
         await Gate.WaitAsync(cancel).ConfigureAwait(false);
@@ -411,6 +422,10 @@ public static class ProjectHosts
             if (Running.FirstOrDefault(h => h.StartedFor(folder)) is { } own)
             {
                 return own;
+            }
+            if (!Directory.Exists(folder))
+            {
+                throw new ProjectHostFailed($"{folder} has been deleted");
             }
             if (Running.Count > 0)
             {

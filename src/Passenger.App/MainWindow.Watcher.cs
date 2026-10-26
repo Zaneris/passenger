@@ -6,8 +6,9 @@ using Passenger.Workspace;
 namespace Passenger.App;
 
 /// <summary>Changes made outside the IDE, seen at once: the Explorer, Go to File, Git and the open files follow what
-/// another program does in the folder, a project or solution changed on disk is read again, and an open file with
-/// unsaved edits that changed on disk asks which to keep (File Cache Conflict).</summary>
+/// another program does in the folder, a project or solution changed on disk is read again, an open file with unsaved
+/// edits that changed on disk asks which to keep (File Cache Conflict), and a project's folder deleted while the project
+/// host builds it ends that host.</summary>
 public partial class MainWindow
 {
     /// <summary>How long an open file found gone has to come back before it is taken for deleted: Git's checkout and
@@ -40,6 +41,7 @@ public partial class MainWindow
             return;
         }
         session.LocalHistory?.Noticed(changes.Paths);
+        session.DesignTimeBuilds.FolderChanged(changes);
         if (changes.Projects || changes.Lost)
         {
             // Lost changes may have been a project's or the solution's: read again, which shows the whole Explorer anew.

@@ -289,6 +289,42 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
     public void A_folder_deleted_under_its_design_time_build_leaves_another_windows_project_to_be_built_and_loaded()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows will not delete a folder a process works in");
+        BehindAHeldBuild((gone, first, other) =>
+        {
+            TestFolders.Delete(gone);
+            first.Close();
+            Assert.True(Ui.Pumped(() => other.Session.DesignTimeBuilds.Builds == 1, TimeSpan.FromMinutes(1)),
+                $"The other window's project was not built at design time once the host its round waited in had ended:\n{HostLines()}");
+            Ui.WaitFor(() => other.CSharpService?.Session is { IsLoaded: true }, "the other window's language server to load its project");
+            Assert.DoesNotContain("problems loading", Ui.ServerLogTail(), StringComparison.Ordinal);
+        });
+    }
+
+    /// <summary>A folder deleted while the project host builds its project at design time, its window left open: the
+    /// window sees the folder go and ends the host, which every window shares, so another window's round, waiting in that
+    /// host behind the first, is built by a host started anew and its project loads. Windows will not delete a folder a
+    /// process works in.</summary>
+    [AvaloniaFact]
+    public void A_folder_deleted_under_its_design_time_build_never_holds_another_windows_project_while_its_window_stays_open()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows will not delete a folder a process works in");
+        BehindAHeldBuild((gone, first, other) =>
+        {
+            TestFolders.Delete(gone);
+            Assert.True(Ui.Pumped(() => other.Session.DesignTimeBuilds.Builds == 1, TimeSpan.FromMinutes(1)),
+                $"The other window's project was not built at design time while the window whose folder was deleted under its build stayed open:\n{HostLines()}");
+            Ui.WaitFor(() => other.CSharpService?.Session is { IsLoaded: true }, "the other window's language server to load its project");
+            Assert.True(first.Session.Folder == gone, $"The window whose folder was deleted no longer has it open, but {first.Session.Folder ?? "none"}");
+            Assert.DoesNotContain("problems loading", Ui.ServerLogTail(), StringComparison.Ordinal);
+        });
+    }
+
+    /// <summary>Two windows on folders of one project each, sharing a project host: the first's project held in its
+    /// design-time build until a file the build wrote in its folder goes, the second's round waiting in the host behind
+    /// it; then what <paramref name="then"/> does (given the first's folder), both windows closed and the folders deleted
+    /// after.</summary>
+    private static void BehindAHeldBuild(Action<string, MainWindow, MainWindow> then)
+    {
         string gone = PathNames.Canonical(TestFolders.Create("gone-"));
         string kept = PathNames.Canonical(TestFolders.Create("kept-"));
         MainWindow? first = null;
@@ -322,13 +358,7 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
             MainWindow other = second;
             Ui.PumpUntil(() => host.Building == 2 && other.Session.DesignTimeBuilds.Awaited == 1,
                 "the other window's language server to wait for its project's builds, their round waiting in the host behind the first", TimeSpan.FromMinutes(2));
-
-            TestFolders.Delete(gone);
-            first.Close();
-            Assert.True(Ui.Pumped(() => other.Session.DesignTimeBuilds.Builds == 1, TimeSpan.FromMinutes(1)),
-                $"The other window's project was not built at design time once the host its round waited in had ended:\n{string.Join('\n', Ui.IdeLog().Split('\n').Where(l => l.Contains("project host", StringComparison.OrdinalIgnoreCase) && !HostSaid().IsMatch(l)).TakeLast(6))}");
-            Ui.WaitFor(() => other.CSharpService?.Session is { IsLoaded: true }, "the other window's language server to load its project");
-            Assert.DoesNotContain("problems loading", Ui.ServerLogTail(), StringComparison.Ordinal);
+            then(gone, first, second);
         }
         finally
         {
@@ -338,6 +368,10 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
             TestFolders.Delete(kept);
         }
     }
+
+    /// <summary>The IDE's last words on the project hosts, but for what a host wrote itself.</summary>
+    private static string HostLines() =>
+        string.Join('\n', Ui.IdeLog().Split('\n').Where(l => l.Contains("project host", StringComparison.OrdinalIgnoreCase) && !HostSaid().IsMatch(l)).TakeLast(6));
 
     /// <summary>A line the project host wrote to its error stream, as the IDE's log copies it.</summary>
     [System.Text.RegularExpressions.GeneratedRegex(@"Project host \(process \d+\): ")]
