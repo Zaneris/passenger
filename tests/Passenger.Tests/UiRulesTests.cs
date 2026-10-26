@@ -1416,7 +1416,6 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
         "src/Passenger.App/ToolWindows/DebugView.cs: FuncDataTemplate<DebugTab>",
         "src/Passenger.App/ToolWindows/NuGetSourcesView.cs: FuncDataTemplate<ConfigFile>",
         "src/Passenger.App/ToolWindows/NuGetView.cs: FuncDataTemplate<PackageRow>",
-        "src/Passenger.App/ToolWindows/ProblemsView.cs: FuncDataTemplate<ProblemRow>",
         "src/Passenger.App/ToolWindows/RunRows.cs: FuncDataTemplate<RunItem<T>>",
         "src/Passenger.App/ToolWindows/StructureView.cs: FuncDataTemplate<SymbolRow>",
         "src/Passenger.App/ToolWindows/TerminalPanel.cs: FuncDataTemplate<TerminalTab>",

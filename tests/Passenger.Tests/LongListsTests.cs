@@ -90,6 +90,30 @@ public sealed class LongListsTests : IDisposable
         });
     }
 
+    [AvaloniaFact]
+    public void A_scroll_step_down_a_builds_thousand_problems_hands_the_rows_other_problems_never_making_one_again()
+    {
+        Holds("Problems", "problems", 100, 1000, warnings =>
+        {
+            string root = Folder();
+            TestFolders.Write(root, "Warned.csproj", TestProjects.Console());
+            StringBuilder program = new("class Program\n{\n    static void Main()\n    {\n");
+            for (int i = 0; i < warnings; i++)
+            {
+                program.Append(CultureInfo.InvariantCulture, $"        int unused{i};\n");
+            }
+            TestFolders.Write(root, "Program.cs", program.Append("    }\n}\n").ToString());
+            MainWindow window = Ui.OpenFolder(root, languageServer: false, width: 1300, height: 900);
+            ProblemsModel problems = window.BottomPanel.Problems;
+            window.Perform(AppActions.Build);
+            Ui.WaitFor(() => problems.Problems.Count == warnings, () => $"the build's {warnings} warnings, where it has {problems.Problems.Count}: {window.Status}", TimeSpan.FromMinutes(3));
+            window.Perform(AppActions.ShowProblems);
+            problems.Shown = ProblemsTab.Build;
+            Ui.Settle();
+            return (window, window.GetVisualDescendants().OfType<ListBox>().Single(l => ReferenceEquals(l.ItemsSource, problems.Rows)));
+        });
+    }
+
     /// <summary>Holds a list of many items to what one of few costs a wheel step, and both to make no row again.</summary>
     private static void Holds(string list, string items, int few, int many, Func<int, (MainWindow Window, ListBox List)> open)
     {
