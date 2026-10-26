@@ -99,7 +99,7 @@ public partial class ExplorerView : UserControl
     /// <summary>Reads the folder again, keeping the folders that were open open and the chosen row chosen.</summary>
     public void Refresh()
     {
-        static string Key(ExplorerNode row) => (row.Kind == NodeKind.SolutionFolder ? row.SolutionPath : row.Path) ?? $"{row.Depth}/{row.Kind}/{row.Name}";
+        static string Key(ExplorerNode row) => (row.Kind == NodeKind.SolutionFolder ? row.SolutionPath : row.Path) ?? $"{row.Owner}/{row.Depth}/{row.Kind}/{row.Name}";
         HashSet<string> open = new(Tree.Rows.Where(r => r.IsExpanded).Select(Key), StringComparer.Ordinal);
         string? chosen = Selected is { } selected ? Key(selected) : null;
         ExplorerNode? again = null;

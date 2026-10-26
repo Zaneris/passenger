@@ -624,6 +624,30 @@ public sealed class SolutionViewTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A file added (a refresh of the Explorer) leaves open the Dependencies that were open, Shop.Core's, and
+    /// closed Shop.App's above it, which a key by the row's depth, kind and name alone took for it.</summary>
+    [AvaloniaFact]
+    public void A_file_added_keeps_the_open_dependencies_open_and_opens_no_other_projects()
+    {
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        Dependencies(window, "Shop.App");
+        ExplorerNode core = Dependencies(window, "Shop.Core");
+        Ui.ClickRow(window, core);
+        Ui.Press(window, "RIGHT");
+        Assert.True(core.IsExpanded, "Shop.Core's Dependencies did not open");
+
+        Ui.ChooseFromRowMenu(window, Show(window, Path.Combine(folder, "Shop.Core", "Catalog")), "Add", "New File…");
+        Assert.IsType<NamePopup>(window.Popup);
+        window.KeyTextInput("Notes.txt");
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => File.Exists(Path.Combine(folder, "Shop.Core", "Catalog", "Notes.txt")), "Notes.txt to be made");
+        string Opened(string project) =>
+            window.ExplorerView.Tree.Rows.First(r => r.Kind == NodeKind.Dependencies && r.Owner == Row(window, NodeKind.Project, project).Path).IsExpanded ? "open" : "closed";
+        Assert.True((Opened("Shop.App"), Opened("Shop.Core")) == ("closed", "open"),
+            $"After a file was added, Shop.App's Dependencies are {Opened("Shop.App")} and Shop.Core's {Opened("Shop.Core")}, where only Shop.Core's were open");
+        window.Close();
+    }
+
     private MainWindow Open() => Ui.OpenFolder(folder);
 
     /// <summary>Opens the Explorer's folders down to a file or folder, as a person does to get to it, and gives its row.</summary>
