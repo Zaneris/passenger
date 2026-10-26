@@ -613,11 +613,13 @@ public sealed class FindInFilesTests : IDisposable
         return drawn.Contains(font.CharacterToGlyphMap['=']) && drawn.Contains(font.CharacterToGlyphMap['>']);
     }
 
+    /// <summary>Searches for a text and waits for the search in force to show its matches: a change to what is asked
+    /// that lands meanwhile searches again, cancelling the one this began.</summary>
     private static void Search(FindInFilesPopup popup, string text)
     {
         popup.Text = text;
         Task searching = popup.SearchAsync();
-        Ui.WaitFor(() => searching.IsCompleted, $"the search for {text}");
+        Ui.WaitFor(() => searching.IsCompleted && popup.Searching.IsCompleted && popup.Status != "Searching…", $"the search for {text}");
     }
 
     private MainWindow Open() => Ui.OpenFolder(folder);
