@@ -1,6 +1,7 @@
 using System.Text;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -458,6 +459,36 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
         }
         Assert.Equal(2 * calls, editor.InlayHints.Count);
         return (2 * calls, bytes / Keys, wrapped / Keys);
+    }
+
+    /// <summary>The Structure window over a file of four thousand members is scrolled with the wheel as a person scrolls
+    /// it: its rows are handed other members, none made again, and a step costs the UI thread what one down a file of two
+    /// hundred does.</summary>
+    [AvaloniaFact]
+    public void A_scroll_step_down_the_structure_of_four_thousand_members_hands_the_rows_other_members_never_making_one_again()
+    {
+        (long fewStep, int fewMade) = StructureScrolled("Long.cs", 200);
+        (long manyStep, int manyMade) = StructureScrolled("Calls.cs", 4000);
+        TestContext.Current.TestOutputHelper?.WriteLine(
+            $"Structure: a wheel step allocated {fewStep / 1024} KB on the UI thread over Long.cs's members, {manyStep / 1024} KB over Calls.cs's; a scroll past the rows shown made {fewMade} and {manyMade} again");
+        Assert.True(fewMade == 0 && manyMade == 0,
+            $"Scrolling the Structure window made {fewMade} rows of Long.cs's members and {manyMade} of Calls.cs's again, where each row is kept and handed another: every member scrolled into view was built and styled anew");
+        Assert.True(manyStep <= fewStep + (64 * 1024),
+            $"A wheel step down the Structure window allocated {manyStep / 1024} KB on the UI thread over Calls.cs's members, against {fewStep / 1024} KB over Long.cs's: a step costs the list's length");
+    }
+
+    /// <summary>The least the UI thread allocated for a wheel step down the Structure window over a file's members, and
+    /// how many rows a scroll past those first shown made again.</summary>
+    private (long Least, int Made) StructureScrolled(string file, int members)
+    {
+        MainWindow window = project.Open(file);
+        window.Perform(AppActions.ShowStructure);
+        Passenger.App.ToolWindows.StructureView structure = window.StructureView;
+        Ui.WaitFor(() => structure.Rows.Count > members, () => $"{file}'s {members} members in Structure, where it lists {structure.Rows.Count}");
+        Ui.Settle();
+        (long, int) scrolled = LongListsTests.Scrolled(structure.GetVisualDescendants().OfType<Avalonia.Controls.ListBox>().Single());
+        window.Close();
+        return scrolled;
     }
 
     /// <summary>A small console project on disk with two files of 20,000 lines and two of calls, restored once for every

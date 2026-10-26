@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Passenger.App.Navigation;
@@ -36,8 +35,8 @@ public sealed class StructureView : DockPanel
         list = new ListBox
         {
             Classes = { "tree" },
-            ItemTemplate = new FuncDataTemplate<SymbolRow>((row, _) => SymbolPopup.Row(row), supportsRecycling: false),
         };
+        ReusedRows.Use(list, SymbolPopup.ReusedRow);
         list.SelectionChanged += (_, _) =>
         {
             if (!choosing && list.SelectedItem is SymbolRow row && list.IsKeyboardFocusWithin)

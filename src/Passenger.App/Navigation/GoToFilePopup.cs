@@ -51,20 +51,20 @@ public sealed partial class GoToFilePopup : SearchPopup<FileHit>
         Show([.. paths.Select(p => new FileHit(Path.Combine(root, p), p))], query.Trim().Length == 0 ? "No recent files" : "Nothing matches");
     }
 
-    protected override Control Draw(FileHit hit)
+    /// <summary>A file's row: its icon, its name and its folder, muted.</summary>
+    protected override Control Row()
     {
-        return new StackPanel
+        PathIcon icon = new() { VerticalAlignment = VerticalAlignment.Center };
+        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
+        TextBlock folder = MutedText.Of(string.Empty);
+        StackPanel row = new() { Orientation = Orientation.Horizontal, Spacing = 8, Height = ListRow.Height, Children = { icon, name, folder } };
+        return row.Showing<FileHit>(hit =>
         {
-            Orientation = Orientation.Horizontal,
-            Spacing = 8,
-            Height = ListRow.Height,
-            Children =
-            {
-                new PathIcon { Data = hit.Icon, Foreground = hit.IconBrush, VerticalAlignment = VerticalAlignment.Center },
-                new TextBlock { Text = hit.Name, VerticalAlignment = VerticalAlignment.Center },
-                MutedText.Of(hit.Folder),
-            },
-        };
+            icon.Data = hit.Icon;
+            icon.Foreground = hit.IconBrush;
+            name.Text = hit.Name;
+            folder.Text = hit.Folder;
+        });
     }
 }
 

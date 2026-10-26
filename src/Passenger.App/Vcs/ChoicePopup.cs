@@ -30,14 +30,20 @@ public sealed class ChoicePopup : SearchPopup<Choice>
         Show([.. choices.Where(c => words.All(w => c.Label.Contains(w, StringComparison.OrdinalIgnoreCase) || c.Detail.Contains(w, StringComparison.OrdinalIgnoreCase)))], nothing);
     }
 
-    protected override Control Draw(Choice choice)
+    /// <summary>A choice's row: its label, and what it says beside that at the right, muted.</summary>
+    protected override Control Row()
     {
-        TextBlock detail = new() { Text = choice.Detail, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 4, 0) };
+        TextBlock detail = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 4, 0) };
         detail.Classes.Add("muted");
+        TextBlock label = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         DockPanel row = new() { Height = ListRow.Height, Margin = new Thickness(4, 0) };
         DockPanel.SetDock(detail, Dock.Right);
         row.Children.Add(detail);
-        row.Children.Add(new TextBlock { Text = choice.Label, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis });
-        return row;
+        row.Children.Add(label);
+        return row.Showing<Choice>(choice =>
+        {
+            detail.Text = choice.Detail;
+            label.Text = choice.Label;
+        });
     }
 }

@@ -64,7 +64,7 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
         IdeErrors.Observe(Refresh());
     }
 
-    protected override Control Draw(SymbolRow row) => Row(row);
+    protected override Control Row() => ReusedRow();
 
     private async Task Refresh()
     {
@@ -96,75 +96,87 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
         }
     }
 
-    /// <summary>A symbol's row as every symbol list draws it: its badge, its name and type, where it is.</summary>
-    public static Control Row(SymbolRow? row)
+    /// <summary>A symbol's row as every symbol list draws it, made once for a list's container and showing each symbol it
+    /// is handed: its badge (a file's icon for a file), its name and type, where it is.</summary>
+    public static Control ReusedRow()
     {
-        if (row is null)
-        {
-            return new TextBlock();
-        }
-        Control badge;
-        if (row.Kind == SymbolRow.FileKind)
-        {
-            badge = new PathIcon { Data = Explorer.FileIcons.ForFile(row.Path), Foreground = Explorer.FileIcons.BrushForFile(row.Path), Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
-        }
-        else
-        {
-            (string letter, string brush) = Badge(row.Kind);
-            badge = KindBadge(letter, brush);
-            badge.Margin = new Thickness(0, 0, 8, 0);
-        }
+        PathIcon icon = new() { Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
+        TextBlock letter = BadgeLetter();
+        Border badge = BadgeOf(letter);
+        badge.Margin = new Thickness(0, 0, 8, 0);
         TextBlock where = new()
         {
             [DockPanel.DockProperty] = Dock.Right,
-            Text = row.Where ?? string.Empty,
-            Foreground = InfoCard.Brush(TokenKeys.TextMuted),
             FontSize = 12,
             Margin = new Thickness(12, 0, 8, 0),
             TextTrimming = TextTrimming.CharacterEllipsis,
             MaxWidth = 260,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        StackPanel name = new()
+        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
+        // A member's type follows its name close, as "Sum(int): decimal"; a container stands apart.
+        TextBlock detail = new()
         {
-            Orientation = Orientation.Horizontal,
-            Spacing = 8,
-            Children =
-            {
-                new TextBlock { Text = row.Name, VerticalAlignment = VerticalAlignment.Center },
-                // A member's type follows its name close, as "Sum(int): decimal"; a container stands apart.
-                new TextBlock
-                {
-                    Text = row.Detail ?? string.Empty,
-                    Foreground = InfoCard.Brush(TokenKeys.TextMuted),
-                    FontSize = 12,
-                    Margin = new Thickness(row.Detail?.StartsWith(':') == true ? -8 : 0, 0, 0, 0),
-                    VerticalAlignment = VerticalAlignment.Center,
-                    TextTrimming = TextTrimming.CharacterEllipsis,
-                    MaxWidth = 300,
-                },
-            },
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            MaxWidth = 300,
         };
-        return new DockPanel { Height = ListRow.Height, Margin = new Thickness(row.Depth * 16, 0, 0, 0), Children = { where, badge, name } };
+        StackPanel named = new() { Orientation = Orientation.Horizontal, Spacing = 8, Children = { name, detail } };
+        DockPanel row = new() { Height = ListRow.Height, Children = { where, icon, badge, named } };
+        return row.Showing<SymbolRow>(symbol =>
+        {
+            bool file = symbol.Kind == SymbolRow.FileKind;
+            icon.IsVisible = file;
+            badge.IsVisible = !file;
+            if (file)
+            {
+                icon.Data = Explorer.FileIcons.ForFile(symbol.Path);
+                icon.Foreground = Explorer.FileIcons.BrushForFile(symbol.Path);
+            }
+            else
+            {
+                (string kind, string brush) = Badge(symbol.Kind);
+                letter.Text = kind;
+                letter.Foreground = InfoCard.Brush(TokenKeys.BadgeText);
+                badge.Background = InfoCard.Brush(brush);
+            }
+            where.Text = symbol.Where ?? string.Empty;
+            where.Foreground = InfoCard.Brush(TokenKeys.TextMuted);
+            name.Text = symbol.Name;
+            detail.Text = symbol.Detail ?? string.Empty;
+            detail.Foreground = InfoCard.Brush(TokenKeys.TextMuted);
+            detail.Margin = new Thickness(symbol.Detail?.StartsWith(':') == true ? -8 : 0, 0, 0, 0);
+            row.Margin = new Thickness(symbol.Depth * 16, 0, 0, 0);
+        });
     }
 
     /// <summary>A kind's letter on its colour, marking a symbol or a kind of type.</summary>
-    public static Control KindBadge(string letter, string brush) => new Border
+    public static Control KindBadge(string letter, string brush)
+    {
+        TextBlock shown = BadgeLetter();
+        shown.Text = letter;
+        shown.Foreground = InfoCard.Brush(TokenKeys.BadgeText);
+        Border badge = BadgeOf(shown);
+        badge.Background = InfoCard.Brush(brush);
+        return badge;
+    }
+
+    private static TextBlock BadgeLetter() => new()
+    {
+        FontSize = 10,
+        FontWeight = FontWeight.Bold,
+        HorizontalAlignment = HorizontalAlignment.Center,
+        VerticalAlignment = VerticalAlignment.Center,
+    };
+
+    private static Border BadgeOf(TextBlock letter) => new()
     {
         Width = 16,
         Height = 16,
         Classes = { "kindBadge" },
-        Background = InfoCard.Brush(brush),
         VerticalAlignment = VerticalAlignment.Center,
-        Child = new TextBlock
-        {
-            Text = letter,
-            FontSize = 10,
-            FontWeight = FontWeight.Bold,
-            Foreground = InfoCard.Brush(TokenKeys.BadgeText),
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-        },
+        Child = letter,
     };
 
     /// <summary>The letter and colour of a symbol of each kind (the protocol's SymbolKind).</summary>

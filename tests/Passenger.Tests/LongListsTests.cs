@@ -114,6 +114,27 @@ public sealed class LongListsTests : IDisposable
         });
     }
 
+    [AvaloniaFact]
+    public void A_scroll_step_down_go_to_files_answer_over_a_thousand_files_hands_the_rows_other_files_never_making_one_again()
+    {
+        Holds("Go to File", "files", 100, 1000, files =>
+        {
+            string root = Folder();
+            for (int file = 0; file < files; file++)
+            {
+                TestFolders.Write(root, $"Area{file / 100}/Lines{file:0000}.cs", $"class Lines{file} {{ }}\n");
+            }
+            MainWindow window = Ui.OpenFolder(root, languageServer: false);
+            Ui.WaitFor(() => window.FileIndex.Count == files && !window.FileIndex.IsWalking, $"the folder's {files} files indexed");
+            Ui.Run(window, AppActions.GoToFile);
+            GoToFilePopup popup = Assert.IsType<GoToFilePopup>(window.Popup);
+            window.KeyTextInput("Lines");
+            Ui.Settle();
+            Assert.True(popup.Rows.Count > 40, $"Go to File found {popup.Rows.Count} of {files} files for Lines");
+            return (window, popup.GetVisualDescendants().OfType<ListBox>().Single());
+        });
+    }
+
     /// <summary>Holds a list of many items to what one of few costs a wheel step, and both to make no row again.</summary>
     private static void Holds(string list, string items, int few, int many, Func<int, (MainWindow Window, ListBox List)> open)
     {
@@ -138,7 +159,7 @@ public sealed class LongListsTests : IDisposable
 
     /// <summary>The least the UI thread allocated for a wheel step down a list, of five, and how many rows a scroll past
     /// every row first shown made again: rows shown beyond one to each container the list had.</summary>
-    private static (long Least, int Made) Scrolled(ListBox list)
+    internal static (long Least, int Made) Scrolled(ListBox list)
     {
         TopLevel top = TopLevel.GetTopLevel(list) ?? throw new Xunit.Sdk.XunitException("The list is not shown");
         Point middle = list.TranslatePoint(new Point(list.Bounds.Width / 2, list.Bounds.Height / 2), top)

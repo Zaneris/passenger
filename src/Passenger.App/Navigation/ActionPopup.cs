@@ -33,17 +33,13 @@ public sealed class ActionPopup : SearchPopup<IdeAction>
         Show(found, "No actions match");
     }
 
-    protected override Control Draw(IdeAction action)
+    /// <summary>An action's row: its title, greyed where it cannot run, its group, and its shortcut at the right.</summary>
+    protected override Control Row()
     {
-        TextBlock title = new() { Text = action.Title, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        if (!action.CanRun(context))
-        {
-            // Listed, so it can be found, but greyed: it cannot run here.
-            title.Classes.Add("muted");
-        }
-        TextBlock group = new() { Text = action.Group, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0) };
+        TextBlock title = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock group = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0) };
         group.Classes.Add("muted");
-        TextBlock keys = new() { Text = actions.Shortcut(action.Id) ?? string.Empty, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 4, 0) };
+        TextBlock keys = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 4, 0) };
         keys.Classes.Add("muted");
         DockPanel row = new() { Height = ListRow.Height, Margin = new Thickness(4, 0) };
         DockPanel.SetDock(keys, Dock.Right);
@@ -53,6 +49,13 @@ public sealed class ActionPopup : SearchPopup<IdeAction>
             Orientation = Orientation.Horizontal,
             Children = { title, group },
         });
-        return row;
+        return row.Showing<IdeAction>(action =>
+        {
+            title.Text = action.Title;
+            // Listed, so it can be found, but greyed: it cannot run here.
+            title.Classes.Set("muted", !action.CanRun(context));
+            group.Text = action.Group;
+            keys.Text = actions.Shortcut(action.Id) ?? string.Empty;
+        });
     }
 }
