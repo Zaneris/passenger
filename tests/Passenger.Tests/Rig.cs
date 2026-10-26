@@ -896,7 +896,7 @@ public static class Ui
 
     /// <summary>Runs what the window has queued (its layout among it) and draws until what that laid out is drawn
     /// (<see cref="Drawn"/>): at most three frames, since an animation always has a next one, and three always do.</summary>
-    private static void Draw()
+    public static void Draw()
     {
         Dispatcher.UIThread.RunJobs();
         for (int frame = 0; frame < 3 && !Drawn(); frame++)

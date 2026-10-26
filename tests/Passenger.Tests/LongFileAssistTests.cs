@@ -228,7 +228,8 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
     public void Until_the_parse_catches_up_a_key_classifies_again_only_the_line_it_changed()
     {
         string source = Project.Long;
-        MainWindow window = project.Open("Long.cs");
+        // The file's own parse alone, which the server's colours would only lay over.
+        MainWindow window = project.Open("Long.cs", languageServer: false);
         OpenDocument document = window.EditorArea.Active!;
         Passenger.Languages.CSharp.CSharpHighlighter syntax = document.Syntax!;
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -507,9 +508,11 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
             }
         }
         Seen();
+        // Each row looked at as the key's frame draws it, the next key coming before the chosen member's card would.
         for (int i = 0; i < 30; i++)
         {
-            Ui.Press(window, "DOWN");
+            Ui.Press(window, "DOWN", settle: false);
+            Ui.Draw();
             Seen();
         }
         foreach (char letter in "Call1")
@@ -522,7 +525,8 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
             $"Narrowed by Call1 the list shows {string.Join(", ", window.Assist.CompletionLabels.Take(5))}");
         for (int i = 0; i < 30; i++)
         {
-            Ui.Press(window, "DOWN");
+            Ui.Press(window, "DOWN", settle: false);
+            Ui.Draw();
             Seen();
         }
         Assert.False(window.Assist.CompletionRowControls.Count == 0, "No row of the list is on screen after the keys");
@@ -573,6 +577,8 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
             File.WriteAllText(PathOf("Dotted.cs"), Dotted);
             File.WriteAllText(PathOf("Calls.cs"), Calls);
             File.WriteAllText(PathOf("Few.cs"), Few);
+            // The server's first load makes bin, which a reset would take for a file the test added: made now, the folder stays as reset.
+            Directory.CreateDirectory(PathOf("bin"));
         }
 
         /// <summary>A method of two parameters and members calling it, each in one of its own, the first
