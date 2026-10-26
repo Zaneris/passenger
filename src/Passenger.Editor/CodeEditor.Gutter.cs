@@ -97,15 +97,15 @@ public sealed partial class CodeEditor
                 return (x, width);
             }
         }
-        x = NumbersRight;
-        for (int i = 0; i < rightColumns.Count; i++)
+        x = NumbersRight + columnRoom.Right;
+        for (int i = rightColumns.Count - 1; i >= 0; i--)
         {
             double width = rightColumns[i].Width(font);
+            x -= width;
             if (rightColumns[i] == target)
             {
                 return (x, width);
             }
-            x += width;
         }
         return (0, 0);
     }

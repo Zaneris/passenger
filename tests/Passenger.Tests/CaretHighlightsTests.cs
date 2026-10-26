@@ -139,6 +139,11 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
         Assert.True(editor.UsagesKept);
         Assert.Equal(["total", "total", "total"], editor.UsageHighlights.Select(u => TextOf(editor, u.Range)));
         Assert.Equal([5, 8, 10], editor.UsageHighlights.Select(u => editor.Document.Snapshot.GetLineFromOffset(u.Range.Start)));
+        editor.ApplyEdits([new TextEdit(editor.UsageHighlights[1].Range.Start, 0, "x")]);
+        Ui.Settle();
+        Assert.True(editor.UsagesKept);
+        Assert.True(editor.UsageHighlights.All(u => TextOf(editor, u.Range) == "total"),
+            $"Text typed at a kept use's start was taken into it: {string.Join(", ", editor.UsageHighlights.Select(u => TextOf(editor, u.Range)))}");
 
         Ui.Press(window, "ESCAPE");
         Assert.Empty(editor.UsageHighlights);
