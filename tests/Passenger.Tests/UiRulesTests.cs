@@ -1391,8 +1391,6 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
         "src/Passenger.App/Migrations/MigrationsView.cs: FuncDataTemplate<MigrationRow?>",
         "src/Passenger.App/Migrations/MigrationsView.cs: FuncDataTemplate<object>",
         "src/Passenger.App/Navigation/FindInFilesPopup.cs: FuncDataTemplate<ProjectModel>",
-        "src/Passenger.App/Profiling/MemoryView.cs: FuncDataTemplate<MemorySnapshot>",
-        "src/Passenger.App/Profiling/MemoryView.cs: FuncDataTemplate<T>",
         "src/Passenger.App/Run/RunConfigurationsDialog.cs: FuncDataTemplate<Entry>",
         "src/Passenger.App/Run/RunConfigurationsDialog.cs: FuncDataTemplate<object>",
         "src/Passenger.App/SearchPopup.cs: FuncDataTemplate<T>",

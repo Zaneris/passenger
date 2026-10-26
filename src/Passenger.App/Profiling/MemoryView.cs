@@ -2,7 +2,6 @@ using System.Collections.ObjectModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -73,8 +72,8 @@ public sealed class MemoryView : DockPanel
         {
             Classes = { "tree" },
             ItemsSource = snapshots,
-            ItemTemplate = new FuncDataTemplate<MemorySnapshot>((snapshot, _) => snapshot is null ? new TextBlock() : SnapshotRow(snapshot), supportsRecycling: false),
         };
+        ReusedRows.Use(snapshotList, SnapshotRow);
         snapshotList.SelectionChanged += (_, _) =>
         {
             if (snapshotList.SelectedItem is MemorySnapshot snapshot && (trail.Count == 0 || trail[0] is not SnapshotPage { Snapshot: var shown } || shown != snapshot))
@@ -97,30 +96,74 @@ public sealed class MemoryView : DockPanel
         StackPanel top = new() { [DockProperty] = Dock.Top, Children = { head, summary } };
 
         Table typeTable = new(("Type", 0), ("Objects", NumberWidth), ("Bytes", NumberWidth), ("Retained bytes", NumberWidth + 16));
-        types = List<HeapType>(type => typeTable.Row(Cell(type.Name), Number($"{type.Count:N0}"), Number(Size(type.Bytes)), Number(Size(type.RetainedBytes))));
+        types = List(() =>
+        {
+            (TextBlock name, TextBlock[] numbers) = (Cell(), Numbers(3));
+            return typeTable.Row([name, .. numbers]).Showing<HeapType>(type =>
+            {
+                Named(name, type.Name);
+                Put(numbers, $"{type.Count:N0}", Size(type.Bytes), Size(type.RetainedBytes));
+            });
+        });
         OnEnter(types, OpenType);
         typePage = Framed(typeTable.Header(SortTypes), types);
 
         Table deltaTable = new(("Type", 0), ("Objects delta", NumberWidth), ("Bytes delta", NumberWidth), ("New objects", NumberWidth),
             ("New bytes", NumberWidth), ("Dead objects", NumberWidth), ("Dead bytes", NumberWidth), ("Survived objects", NumberWidth + 16));
-        deltas = List<TypeDelta>(type => deltaTable.Row(Cell(type.Name), Number(Signed(type.ObjectsDelta, n => $"{n:N0}")), Number(Signed(type.BytesDelta, Size)),
-            Number($"{type.NewObjects:N0}"), Number(Size(type.NewBytes)), Number($"{type.DeadObjects:N0}"), Number(Size(type.DeadBytes)), Number($"{type.SurvivedObjects:N0}")));
+        deltas = List(() =>
+        {
+            (TextBlock name, TextBlock[] numbers) = (Cell(), Numbers(7));
+            return deltaTable.Row([name, .. numbers]).Showing<TypeDelta>(type =>
+            {
+                Named(name, type.Name);
+                Put(numbers, Signed(type.ObjectsDelta, n => $"{n:N0}"), Signed(type.BytesDelta, Size), $"{type.NewObjects:N0}", Size(type.NewBytes),
+                    $"{type.DeadObjects:N0}", Size(type.DeadBytes), $"{type.SurvivedObjects:N0}");
+            });
+        });
         OnEnter(deltas, () => OpenDelta(Kind.New));
         deltaPage = Framed(deltaTable.Header(SortDeltas), deltas);
 
         Table objectTable = new(("Object", 0), ("Bytes", NumberWidth), ("Retained bytes", NumberWidth + 16));
-        objects = List<HeapObject>(item => objectTable.Row(ObjectCell(item), Number(Size(item.Bytes)), Number(Size(item.RetainedBytes))));
+        objects = List(() =>
+        {
+            Avalonia.Controls.Documents.Run type = new();
+            Avalonia.Controls.Documents.Run address = new() { FontFamily = CSharp.Fonts.Mono, FontSize = 12 };
+            TextBlock name = Cell();
+            address.Bind(Avalonia.Controls.Documents.TextElement.ForegroundProperty, name.GetResourceObservable(TokenKeys.TextMuted));
+            // An object: its type, then its address in the code font, muted.
+            name.Inlines = [type, address];
+            TextBlock[] numbers = Numbers(2);
+            return objectTable.Row([name, .. numbers]).Showing<HeapObject>(item =>
+            {
+                type.Text = item.Type;
+                address.Text = $"  0x{item.Address:x}";
+                ToolTip.SetTip(name, item.Type);
+                Put(numbers, Size(item.Bytes), Size(item.RetainedBytes));
+            });
+        });
         OnEnter(objects, OpenObject);
         objectsPage = Framed(objectTable.Header(null), objects);
 
         Table pathTable = new(("Path", 0), ("Objects", NumberWidth), ("Retained bytes", NumberWidth + 16));
-        paths = List<RetentionRow>(row => pathTable.Row(PathStep(row), Number($"{row.Node.Objects:N0}"), Number(Size(row.Node.RetainedBytes))));
+        paths = List(() =>
+        {
+            TextBlock[] numbers = Numbers(2);
+            return pathTable.Row([PathStep(), .. numbers]).Showing<RetentionRow>(row => Put(numbers, $"{row.Node.Objects:N0}", Size(row.Node.RetainedBytes)));
+        });
         paths.ItemsSource = pathRows;
         TreeKeys.Attach<RetentionRow>(paths, Toggle);
         pathsPage = Framed(pathTable.Header(null), paths);
 
         Table keyTable = new(("Key retention path", 0), ("Objects", NumberWidth), ("Retained bytes", NumberWidth + 16));
-        keyPaths = List<RetentionPath>(path => keyTable.Row(Cell(path.Text), Number($"{path.Objects:N0}"), Number(Size(path.RetainedBytes))));
+        keyPaths = List(() =>
+        {
+            (TextBlock name, TextBlock[] numbers) = (Cell(), Numbers(2));
+            return keyTable.Row([name, .. numbers]).Showing<RetentionPath>(path =>
+            {
+                Named(name, path.Text);
+                Put(numbers, $"{path.Objects:N0}", Size(path.RetainedBytes));
+            });
+        });
         keyPathsPage = Framed(keyTable.Header(null), keyPaths);
 
         setTabs = [Tab("Objects", 0), Tab("Shortest Paths to Roots", 1), Tab("Key Retention Paths", 2)];
@@ -498,13 +541,10 @@ public sealed class MemoryView : DockPanel
         return button;
     }
 
-    private static ListBox List<T>(Func<T, Control> row)
+    private static ListBox List(Func<Control> row)
     {
-        ListBox list = new()
-        {
-            Classes = { "tree" },
-            ItemTemplate = new FuncDataTemplate<T>((item, _) => item is null ? new TextBlock() : row(item), supportsRecycling: false),
-        };
+        ListBox list = new() { Classes = { "tree" } };
+        ReusedRows.Use(list, row);
         // Rows fill the list's width, so their columns line up under the header's.
         list.Styles.Add(new Style(x => x.OfType<ListBoxItem>())
         {
@@ -520,72 +560,85 @@ public sealed class MemoryView : DockPanel
         return new DockPanel { Children = { band, list } };
     }
 
-    private Control PathStep(RetentionRow row)
+    /// <summary>A step of the paths for whichever row the list hands its container: its chevron, and what it is (a root's
+    /// kind strong before its name).</summary>
+    private Control PathStep()
     {
-        PathIcon chevron = new() { Classes = { "chevron" }, IsVisible = row.Node.Children.Count > 0, RenderTransformOrigin = RelativePoint.Center };
+        RotateTransform turned = new();
+        PathIcon chevron = new() { Classes = { "chevron" }, RenderTransformOrigin = RelativePoint.Center, RenderTransform = turned };
         chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(IconKeys.ChevronRight));
-        chevron.RenderTransform = new RotateTransform(row.IsExpanded ? 90 : 0);
-        row.FollowWhileShown(chevron, (_, _) => chevron.RenderTransform = new RotateTransform(row.IsExpanded ? 90 : 0));
         Border toggle = new() { Width = 18, Height = ListRow.Height, Background = Brushes.Transparent, Child = chevron };
+        TextBlock text = Cell();
+        Avalonia.Controls.Documents.Run kind = new() { FontWeight = FontWeight.SemiBold };
+        Avalonia.Controls.Documents.Run named = new();
+        TextBlock root = Cell();
+        root.Inlines = [kind, named];
+        StackPanel step = new() { Orientation = Orientation.Horizontal, Children = { toggle, text, root } };
         toggle.PointerPressed += (_, e) =>
         {
-            Toggle(row);
-            e.Handled = true;
-        };
-        TextBlock text = Cell(row.Node.Text);
-        if (row.Node.Root is { } root)
-        {
-            text.Text = null;
-            text.Inlines = new Avalonia.Controls.Documents.InlineCollection { new Avalonia.Controls.Documents.Run(root.KindName) { FontWeight = FontWeight.SemiBold } };
-            if (root.Name.Length > 0)
+            if (step.DataContext is RetentionRow row)
             {
-                text.Inlines.Add(new Avalonia.Controls.Documents.Run($": {root.Name}"));
+                Toggle(row);
+                e.Handled = true;
             }
-        }
-        else if (row.Depth == 0)
+        };
+        return step.Showing<RetentionRow>(row =>
         {
-            text.FontWeight = FontWeight.SemiBold;
-        }
-        return new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(row.Depth * 14, 0, 0, 0), Children = { toggle, text } };
+            step.Margin = new Thickness(row.Depth * 14, 0, 0, 0);
+            chevron.IsVisible = row.Node.Children.Count > 0;
+            turned.Angle = row.IsExpanded ? 90 : 0;
+            text.IsVisible = row.Node.Root is null;
+            root.IsVisible = row.Node.Root is not null;
+            Named(row.Node.Root is null ? text : root, row.Node.Text);
+            text.FontWeight = row.Depth == 0 ? FontWeight.SemiBold : FontWeight.Normal;
+            kind.Text = row.Node.Root?.KindName;
+            named.Text = row.Node.Root is { Name.Length: > 0 } rooted ? $": {rooted.Name}" : null;
+        });
     }
 
-    private static Control SnapshotRow(MemorySnapshot snapshot) => new StackPanel
+    /// <summary>A row for whichever snapshot the list hands its container: its name, and when it was taken and what it holds.</summary>
+    private static Control SnapshotRow()
     {
-        Margin = new Thickness(2, 4),
-        Children =
+        TextBlock name = new() { FontWeight = FontWeight.SemiBold };
+        TextBlock said = Muted(string.Empty);
+        return new StackPanel { Margin = new Thickness(2, 4), Children = { name, said } }.Showing<MemorySnapshot>(snapshot =>
         {
-            new TextBlock { Text = snapshot.Name, FontWeight = FontWeight.SemiBold },
-            Muted($"{snapshot.Taken:HH:mm:ss} · {snapshot.Objects:N0} objects · {Size(snapshot.Bytes)}"),
-        },
-    };
-
-    /// <summary>A name, cut short with an ellipsis where its column ends, and whole in its tooltip.</summary>
-    private static TextBlock Cell(string text)
-    {
-        TextBlock block = new() { Text = text, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        ToolTip.SetTip(block, text);
-        return block;
+            name.Text = snapshot.Name;
+            said.Text = $"{snapshot.Taken:HH:mm:ss} · {snapshot.Objects:N0} objects · {Size(snapshot.Bytes)}";
+        });
     }
 
-    /// <summary>An object: its type, then its address in the code font, muted.</summary>
-    private static TextBlock ObjectCell(HeapObject item)
-    {
-        TextBlock block = Cell(item.Type);
-        Avalonia.Controls.Documents.Run address = new($"  0x{item.Address:x}") { FontFamily = CSharp.Fonts.Mono, FontSize = 12 };
-        address.Bind(Avalonia.Controls.Documents.TextElement.ForegroundProperty, block.GetResourceObservable(TokenKeys.TextMuted));
-        block.Text = null;
-        block.Inlines = new Avalonia.Controls.Documents.InlineCollection { new Avalonia.Controls.Documents.Run(item.Type), address };
-        return block;
-    }
+    /// <summary>A name's cell, cut short with an ellipsis where its column ends.</summary>
+    private static TextBlock Cell() => new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
 
-    private static TextBlock Number(string text)
+    /// <summary>A name in its cell, whole in its tooltip.</summary>
+    private static void Named(TextBlock cell, string text)
     {
-        TextBlock block = new() { Text = text, FontFamily = CSharp.Fonts.Mono, FontSize = 12, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
-        if (text is "0" or "0 B")
+        if (cell.Inlines is not { Count: > 0 })
         {
-            block.Classes.Add("muted");
+            cell.Text = text;
         }
-        return block;
+        ToolTip.SetTip(cell, text);
+    }
+
+    private static TextBlock[] Numbers(int count)
+    {
+        TextBlock[] cells = new TextBlock[count];
+        for (int i = 0; i < count; i++)
+        {
+            cells[i] = new TextBlock { FontFamily = CSharp.Fonts.Mono, FontSize = 12, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+        }
+        return cells;
+    }
+
+    /// <summary>Numbers in their cells, each muted where it is nothing.</summary>
+    private static void Put(TextBlock[] cells, params string[] texts)
+    {
+        for (int i = 0; i < cells.Length; i++)
+        {
+            cells[i].Text = texts[i];
+            cells[i].Classes.Set("muted", texts[i] is "0" or "0 B");
+        }
     }
 
     private static TextBlock Muted(string text)
