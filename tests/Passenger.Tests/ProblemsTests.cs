@@ -223,11 +223,11 @@ public sealed class ProblemsTests : IClassFixture<RestoredFolders>, IDisposable
     [AvaloniaFact]
     public void A_typing_pause_lists_again_only_the_open_files_problems_however_many_the_solution_has()
     {
-        (long few, int fewListed, int fewBlinked, long fewBlink) = UiBytesPerPause(warnings: 1);
-        (long many, int manyListed, int manyBlinked, long manyBlink) = UiBytesPerPause(warnings: 200);
+        (long few, int fewListed, string fewTaken) = UiBytesPerPause(warnings: 1);
+        (long many, int manyListed, string manyTaken) = UiBytesPerPause(warnings: 200);
         int more = manyListed - fewListed;
         long each = (many - few) / more;
-        string blinks = $"less the caret's {manyBlinked} and {fewBlinked} blinks in each case's {PauseKeys} pauses, {manyBlink:N0} and {fewBlink:N0} bytes each";
+        string blinks = $"less what their time cost the window at rest: {manyTaken}, and {fewTaken}";
         TestContext.Current.TestOutputHelper?.WriteLine(
             $"A typing pause allocated {many:N0} bytes on the UI thread with {manyListed} problems in the solution, {few:N0} with {fewListed} ({blinks}): {each} bytes a problem.");
         Assert.True(each < 8,
@@ -237,12 +237,51 @@ public sealed class ProblemsTests : IClassFixture<RestoredFolders>, IDisposable
     /// <summary>The keys each case of a typing pause's cost types.</summary>
     private const int PauseKeys = 5;
 
-    /// <summary>What a key typed in an open file and its pause allocate on the UI thread, less what the caret's blinks drew
-    /// in it (<see cref="Ui.BlinkBytes"/>: the larger solution's server answers later, so its pauses outlast more blinks),
-    /// the least of a few, with solution-wide analysis on, the Solution tab shown and twenty files nobody has open each with
-    /// <paramref name="warnings"/> warnings; how many problems the solution has, how many blinks were taken out, and what
-    /// each cost.</summary>
-    private (long Bytes, int Listed, int Blinked, long Blink) UiBytesPerPause(int warnings)
+    /// <summary>What a key typed in an open file and its pause allocate on the UI thread, less what the pause's time cost the
+    /// window as it costs at rest, measured in each case: the caret's blinks it drew (<see cref="Ui.BlinkBytes"/>) and each
+    /// millisecond of the wait (<see cref="Ui.RestBytesPerMs"/>), since the larger solution's server answers later. The least
+    /// of a few, with solution-wide analysis on, the Solution tab shown and twenty files nobody has open each with
+    /// <paramref name="warnings"/> warnings; how many problems the solution has, and what was taken out.</summary>
+    private (long Bytes, int Listed, string Taken) UiBytesPerPause(int warnings)
+    {
+        (MainWindow window, string typed, int listed) = Warned(warnings);
+        ProblemsModel problems = window.BottomPanel.Problems;
+        Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
+        long blink = Ui.BlinkBytes(editor);
+        double perMs = Ui.RestBytesPerMs(editor, blink, TimeSpan.FromSeconds(2));
+
+        long least = long.MaxValue;
+        int blinked = 0;
+        double waited = 0;
+        for (int i = 1; i <= PauseKeys; i++)
+        {
+            long blinks = editor.Blinks;
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            long started = System.Diagnostics.Stopwatch.GetTimestamp();
+            window.KeyTextInput("1");
+            Ui.Settle();
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            double ms = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            int drew = (int)(editor.Blinks - blinks);
+            blinked += drew;
+            waited += ms;
+            least = Math.Min(least, allocated - (drew * blink) - (long)(ms * perMs));
+            Problem moved = Assert.Single(problems.SolutionProblems!, p => p.Path == typed);
+            Assert.True(moved.Position == new TextPosition(4, 27 + i), $"After {i} keys the open file's warning is listed at {moved.Where}, not Typed.cs:5:{28 + i}");
+            Assert.Equal($"Typed.cs:5:{28 + i}", Assert.Single(problems.Rows, r => r.Problem?.Path == typed).Detail);
+        }
+        Assert.Equal(listed, problems.SolutionProblems!.Count);
+        window.Close();
+        return (least, listed, $"{blinked} blinks at {blink:N0} bytes and {waited / 1000:0.0} s at {perMs:0.0} bytes a ms in {PauseKeys} pauses with {listed}");
+    }
+
+    /// <summary>The file open in a typing pause's tests.</summary>
+    private const string Typed = "static class Typed\n{\n    static int Count()\n    {\n        int value = 1; int unused;\n        return value;\n    }\n}\n";
+
+    /// <summary>A window on twenty files nobody has open, each with <paramref name="warnings"/> warnings, and Typed.cs open with
+    /// the caret after its 1, solution-wide analysis on and the Solution tab shown once it lists them all; the open file's
+    /// path and how many problems the solution has.</summary>
+    private (MainWindow Window, string Typed, int Listed) Warned(int warnings)
     {
         const int Files = 20;
         for (int i = 0; i < Files; i++)
@@ -254,7 +293,6 @@ public sealed class ProblemsTests : IClassFixture<RestoredFolders>, IDisposable
             }
             Write($"Warned{i}.cs", warned.Append("    }\n}\n").ToString());
         }
-        const string Typed = "static class Typed\n{\n    static int Count()\n    {\n        int value = 1; int unused;\n        return value;\n    }\n}\n";
         Write("Typed.cs", Typed);
         string typed = Passenger.Core.PathNames.Canonical(Path.Combine(folder, "Typed.cs"));
         MainWindow window = Ui.OpenFolder(folder);
@@ -272,27 +310,7 @@ public sealed class ProblemsTests : IClassFixture<RestoredFolders>, IDisposable
         Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
         editor.Selections = SelectionSet.Single(Typed.IndexOf("= 1", StringComparison.Ordinal) + 3);
         editor.Focus();
-        long blink = Ui.BlinkBytes(editor);
-
-        long least = long.MaxValue;
-        int blinked = 0;
-        for (int i = 1; i <= PauseKeys; i++)
-        {
-            long blinks = editor.Blinks;
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            window.KeyTextInput("1");
-            Ui.Settle();
-            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-            int drew = (int)(editor.Blinks - blinks);
-            blinked += drew;
-            least = Math.Min(least, allocated - (drew * blink));
-            Problem moved = Assert.Single(problems.SolutionProblems!, p => p.Path == typed);
-            Assert.True(moved.Position == new TextPosition(4, 27 + i), $"After {i} keys the open file's warning is listed at {moved.Where}, not Typed.cs:5:{28 + i}");
-            Assert.Equal($"Typed.cs:5:{28 + i}", Assert.Single(problems.Rows, r => r.Problem?.Path == typed).Detail);
-        }
-        Assert.Equal(listed, problems.SolutionProblems!.Count);
-        window.Close();
-        return (least, listed, blinked, blink);
+        return (window, typed, listed);
     }
 
     /// <summary>Roslyn's compiler ends a line at each break in Separated.cs's comment, as its language server does, where the
