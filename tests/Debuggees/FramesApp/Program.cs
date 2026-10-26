@@ -13,14 +13,25 @@ public static class Program
     /// <summary>Slow layouts asked for by the command line ("--frames N"), after which the app ends by itself.</summary>
     public static int Frames { get; private set; }
 
+    /// <summary>Whether the command line asked for long lists ("--lists"): a panel of a hundred borders and one of a
+    /// thousand text blocks in the window.</summary>
+    public static bool Lists { get; private set; }
+
     /// <summary>Headless, so a test's run puts nothing on the screen. Its window's SlowPanel spins in its measure; "slow N"
     /// typed into its console measures it again N times, a frame each, "stall MS" measures it once for MS milliseconds,
     /// "listened" says whether anything listens to Avalonia's layout activities and meters, and "quit" ends it.</summary>
     public static int Main(string[] args)
     {
-        if (args is ["--frames", string count])
+        for (int i = 0; i < args.Length; i++)
         {
-            Frames = int.Parse(count, CultureInfo.InvariantCulture);
+            if (args[i] == "--frames" && i + 1 < args.Length)
+            {
+                Frames = int.Parse(args[++i], CultureInfo.InvariantCulture);
+            }
+            else if (args[i] == "--lists")
+            {
+                Lists = true;
+            }
         }
         Thread input = new(Read) { IsBackground = true, Name = "Input" };
         input.Start();
