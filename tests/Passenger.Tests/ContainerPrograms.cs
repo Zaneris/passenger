@@ -30,9 +30,10 @@ internal static class ContainerPrograms
         ChildResult published = await Published.GetOrAdd(rid, _ => new Lazy<Task<ChildResult>>(() => Waiting.Apart(async () =>
         {
             using FileStream held = await PublishingAsync(tools);
-            // The person's checkout: their NuGet settings, or its restore of each project the tools reference is rewritten.
+            // The person's checkout, as the recipe publishes: their NuGet settings, and an artifacts root apart from their build's.
             return await Dotnet(["publish", Path.Combine(Debugging.Helpers.Debuggees.Root, "src", "Passenger.ContainerTools"),
-                "-c", "Release", "-r", rid, "--self-contained", "-o", output, "-nologo", "-v:q"], Debugging.Helpers.Debuggees.Root, persons: true);
+                "-c", "Release", "-r", rid, "--self-contained", "--artifacts-path", Path.Combine(tools, "build"), "-o", output, "-nologo", "-v:q"],
+                Debugging.Helpers.Debuggees.Root, persons: true);
         }), LazyThreadSafetyMode.ExecutionAndPublication)).Value;
         Assert.True(published.Succeeded, $"Passenger's container tools for {rid} did not publish: {published.Output}{published.Error}");
     }
