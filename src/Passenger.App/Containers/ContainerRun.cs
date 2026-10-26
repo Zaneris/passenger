@@ -58,6 +58,14 @@ public sealed record ContainerPlan(string Name, string Folder, string ProjectNam
     public Func<IReadOnlyList<DotnetService>, IReadOnlyCollection<string>, IReadOnlyCollection<string>, DevelopmentCertificate.Exported?, CancellationToken, Task> Writer { get; init; } =
         (_, _, _, _, _) => Task.CompletedTask;
 
+    /// <summary>Writes the override again as it was last written, with the ports chosen since (<see cref="ChosenPorts.Again"/>),
+    /// building no image again.</summary>
+    public Func<CancellationToken, Task> WriteOverrideAgain { get; init; } = _ => Task.CompletedTask;
+
+    /// <summary>The host ports Passenger chose for the published ports the files leave to the engine; null where it chooses
+    /// none, Compose being too old to put a service's ports in place of its files'.</summary>
+    public ChosenPorts? Ports { get; init; }
+
     /// <summary>The plan with .NET services it left unstarted (marked Don't start) started from now, run from Passenger's build
     /// as the rest are: the override gives them fast mode's stage and mounts, Rerun builds and restarts them, Stop takes them.</summary>
     public ContainerPlan StartingLater(IReadOnlyCollection<string> later) => this with
@@ -264,24 +272,34 @@ public static class ContainerPlans
         // Rootless Podman maps a container's users onto the person's subordinate ids: keep-id makes the person's own theirs.
         bool keepId = engineState is { IsPodman: true, Rootless: true };
         // Each port Passenger pins is chosen once for the plan: every override it writes after (a hold, a restart) keeps it.
-        Dictionary<(string Service, int Port), int> pinned = [];
+        ChosenPorts? pinned = pin ? new ChosenPorts(model.Services) : null;
+        (IReadOnlyList<DotnetService> Now, IReadOnlyCollection<string> Held, IReadOnlyCollection<string> Modifiable, DevelopmentCertificate.Exported? Certificate,
+            Dictionary<string, IReadOnlyDictionary<string, string>> Images)? last = null;
         async Task WriteOverride(IReadOnlyList<DotnetService> now, IReadOnlyCollection<string> held, IReadOnlyCollection<string> modifiable, DevelopmentCertificate.Exported? certificate,
             CancellationToken stop)
         {
-            Dictionary<string, IReadOnlyDictionary<string, string>> images = [];
-            WriteJson(overrideFile, await OverrideAsync(model, projectName, now, mode, labels, projects, state, pin ? pinned : null, held, modifiable, certificate, keepId, telemetry,
-                images, stop), overriding: true);
+            last = (now, held, modifiable, certificate, []);
+            await WriteAgain(stop);
             // A hold is its image's to refuse too, read as the override just written builds it: one its image turns off goes unheld.
             List<ComposeService> holding = [.. model.Services.Where(s => held.Contains(s.Name) && now.Any(d => d.Service == s.Name && d.Starts))];
             if (holding.Count == 0)
             {
                 return;
             }
-            images = await ImageEnvironmentsAsync(engine, compose, runsIn, holding, projectName, mode, stop);
+            Dictionary<string, IReadOnlyDictionary<string, string>> images = await ImageEnvironmentsAsync(engine, compose, runsIn, holding, projectName, mode, stop);
             if (holding.Any(s => HeldStart.DebuggerOff(Started(s, images)) is not null))
             {
-                WriteJson(overrideFile, await OverrideAsync(model, projectName, now, mode, labels, projects, state, pin ? pinned : null, held, modifiable, certificate, keepId,
-                    telemetry, images, stop), overriding: true);
+                last = (now, held, modifiable, certificate, images);
+                await WriteAgain(stop);
+            }
+        }
+        // As last written, its images' environments as read then: an image built again would leave a container kept naming one gone.
+        async Task WriteAgain(CancellationToken stop)
+        {
+            if (last is { } was)
+            {
+                WriteJson(overrideFile, await OverrideAsync(model, projectName, was.Now, mode, labels, projects, state, pinned, was.Held, was.Modifiable, was.Certificate, keepId,
+                    telemetry, was.Images, stop), overriding: true);
             }
         }
         if (mode == ContainerMode.Images || dotnet.Count == 0)
@@ -301,6 +319,8 @@ public static class ContainerPlans
             configuration.LaunchBrowser && configuration.BrowserUrl.Length > 0 ? configuration.BrowserUrl : null, launchService, launchPort, all)
         {
             Writer = WriteOverride,
+            WriteOverrideAgain = WriteAgain,
+            Ports = pinned,
             Publish = publish,
             State = state,
             Https = [.. model.Services.Where(s => dotnet.Any(d => d.Service == s.Name) && Serves(s)).Select(s => s.Name)],
@@ -523,7 +543,7 @@ public static class ContainerPlans
     /// mode a Debug build where its Dockerfile takes BUILD_CONFIGURATION; the development certificate and user secrets where
     /// they serve; a service held for the debugger started held (its debugger on), its code open to Hot Reload. JSON, read as YAML.</summary>
     private static async Task<JsonObject> OverrideAsync(ComposeModel model, string project, IReadOnlyList<DotnetService> dotnet, ContainerMode mode, IReadOnlyList<string> labels,
-        IReadOnlyList<ProjectModel> projects, string state, Dictionary<(string Service, int Port), int>? pinned, IReadOnlyCollection<string> held,
+        IReadOnlyList<ProjectModel> projects, string state, ChosenPorts? pinned, IReadOnlyCollection<string> held,
         IReadOnlyCollection<string> modifiable, DevelopmentCertificate.Exported? certificate, bool keepId, ContainerTelemetry? telemetry,
         IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> images, CancellationToken cancel)
     {
@@ -568,7 +588,7 @@ public static class ContainerPlans
                     if (pinned is not null && service.Ports.Any(p => ComposeModel.HostPort(p.Published) is null))
                     {
                         entry["ports"] = new JsonArray([.. service.Ports.Select((p, i) =>
-                            (JsonNode)Port(p, ComposeModel.HostPort(p.Published) is null ? Pinned(pinned, service.Name, i, p.HostIp) : null))]);
+                            (JsonNode)Port(p, ComposeModel.HostPort(p.Published) is null ? pinned.Of(service.Name, i, p) : null))]);
                     }
                     volumes.Add(new JsonObject { ["type"] = "bind", ["source"] = built.Output, ["target"] = AppFolder, ["read_only"] = true });
                     if (!service.Environment.ContainsKey("ASPNETCORE_ENVIRONMENT") && !service.Environment.ContainsKey("DOTNET_ENVIRONMENT"))
@@ -808,20 +828,6 @@ public static class ContainerPlans
             }
         }
         return labels;
-    }
-
-    /// <summary>A port nothing on this machine listens on now (at the host's address it is published on), for a service's
-    /// published port Passenger chooses: chosen once for the plan, the same one after.</summary>
-    private static int Pinned(Dictionary<(string Service, int Port), int> pinned, string service, int index, string? hostIp)
-    {
-        if (!pinned.TryGetValue((service, index), out int port))
-        {
-            System.Net.IPAddress at = hostIp is { Length: > 0 } given && System.Net.IPAddress.TryParse(given, out System.Net.IPAddress? parsed) ? parsed : System.Net.IPAddress.Loopback;
-            using System.Net.Sockets.TcpListener listener = new(at, 0);
-            listener.Start();
-            pinned[(service, index)] = port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
-        }
-        return port;
     }
 
     /// <summary>A port in Compose's long syntax as its model had it (the host's address, mode, name and application protocol
@@ -1189,10 +1195,11 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
         }
     }
 
-    /// <summary>Brings it up as <c>docker compose up --detach --wait</c> (images built as Compose says in images mode), its
-    /// words in the console as they come: null once every service is up (healthy where it has a check), else what went
-    /// wrong. <paramref name="alongside"/> runs while it comes up (the debugger attaching to the services held at their start,
-    /// which no wait would see healthy before it lets them go): its problem ends the command. Canceled, the command is ended.</summary>
+    /// <summary>Brings it up as <c>docker compose up --detach --wait</c> (images built as Compose says in images mode, run again
+    /// with new ports where a port Passenger chose was taken), its words in the console as they come: null once every service
+    /// is up (healthy where it has a check), else what went wrong. <paramref name="alongside"/> runs while it comes up (the
+    /// debugger attaching to the services held at their start, which no wait would see healthy before it lets them go): its
+    /// problem ends the command. Canceled, the command is ended.</summary>
     public async Task<string?> UpAsync(CancellationToken cancel, Func<Task, CancellationToken, Task<string?>>? alongside = null)
     {
         Stamp();
@@ -1209,7 +1216,7 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
             upEnded.TrySetResult();
             throw new OperationCanceledException(ending.Token);
         }
-        Task<ChildResult> coming = StreamAsync(words, upEnding.Token);
+        Task<ChildResult> coming = UpCommandAsync(words, upEnding.Token);
         ChildResult up;
         try
         {
@@ -1267,6 +1274,40 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
         }
         return null;
     }
+
+    /// <summary>An <c>up</c> run into the console, run again while it fails naming a port Passenger chose, which something on
+    /// this machine bound after it was chosen: each such port chosen again (<see cref="ChosenPorts.Again"/>), said in the
+    /// console, and the override written again, so <c>up</c> makes those services anew on their new ports and leaves the rest
+    /// as it made them, their images as it built them. Tried <see cref="UpTries"/> times at most, the last one's failure the run's.</summary>
+    private async Task<ChildResult> UpCommandAsync(IReadOnlyList<string> words, CancellationToken cancel)
+    {
+        for (int tried = 1; ; tried++)
+        {
+            ChildResult up = await StreamAsync(tried == 1 ? words : [.. words.Take(Plan.Compose.Count + 1), "--no-build", .. words.Skip(Plan.Compose.Count + 1).Where(w => w != "--build")],
+                cancel);
+            if (up.Succeeded || tried == UpTries || Plan.Ports?.Again(up.Output) is not { Count: > 0 } again)
+            {
+                return up;
+            }
+            foreach ((string service, int was, int now) in again)
+            {
+                console.Write($"{service}'s port {was.ToString(CultureInfo.InvariantCulture)} was taken before the engine could publish it: "
+                    + $"published on {now.ToString(CultureInfo.InvariantCulture)} instead\n");
+            }
+            try
+            {
+                await Plan.WriteOverrideAgain(cancel);
+            }
+            catch (Exception unwritten) when (unwritten is IOException or UnauthorizedAccessException)
+            {
+                console.Write($"Passenger's override could not be written again: {unwritten.Message}\n", ConsoleStream.Error);
+                return up;
+            }
+        }
+    }
+
+    /// <summary>How many times an <c>up</c> is run while the ports Passenger chose are found taken.</summary>
+    private const int UpTries = 4;
 
     private TelemetrySource? telemetry;
 
@@ -1447,16 +1488,16 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
 
         async Task<string?> RestartEachAsync(CancellationToken stop)
         {
-            foreach ((List<string> named, IReadOnlyList<string> words) in ((List<string>, IReadOnlyList<string>)[])[
-                (kept, [.. Plan.Compose, "restart", "--", .. kept]),
+            foreach ((List<string> named, IReadOnlyList<string> words, bool up) in ((List<string>, IReadOnlyList<string>, bool)[])[
+                (kept, [.. Plan.Compose, "restart", "--", .. kept], false),
                 // As deployed, a service's image is built again from its Dockerfile and its container made anew from it.
-                (made, [.. Plan.Compose, "up", "--detach", .. Plan.Mode == ContainerMode.Images ? (string[])["--build"] : [], "--no-deps", "--force-recreate", "--", .. made])])
+                (made, [.. Plan.Compose, "up", "--detach", .. Plan.Mode == ContainerMode.Images ? (string[])["--build"] : [], "--no-deps", "--force-recreate", "--", .. made], true)])
             {
                 if (named.Count == 0)
                 {
                     continue;
                 }
-                ChildResult restarted = await StreamAsync(words, stop);
+                ChildResult restarted = up ? await UpCommandAsync(words, stop) : await StreamAsync(words, stop);
                 if (!restarted.Succeeded)
                 {
                     return $"{Plan.Name}'s services did not restart: docker compose {words[Plan.Compose.Count]} ended with exit code {restarted.ExitCode}";

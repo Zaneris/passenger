@@ -315,6 +315,56 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
         }
     }
 
+    /// <summary>A port Passenger chose for a service that something else on the machine takes before the engine publishes it
+    /// (a listener the test opens there on IPv6's and IPv4's every address, while Debug's up is held) is chosen again: it comes up
+    /// published on another port, held and attached there (a request to it stops at a breakpoint), the browser opened at it,
+    /// and the run's console says which port was taken. Without the choice made again, the run fails with the engine's
+    /// "address already in use".</summary>
+    [AvaloniaFact]
+    public void A_port_Passenger_chose_that_is_taken_before_up_is_chosen_again_and_the_service_comes_up_debugged_on_another()
+    {
+        Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
+        (string folder, string project) = Shop("taken");
+        MainWindow window = ContainerRunsTests.Open(folder);
+        window.Debugger.Breakpoints.Toggle(Source(folder, "Api"), InRequest);
+        Assert.True(window.SelectConfiguration("Compose: compose.yaml"));
+        TaskCompletionSource taken = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task held = window.Builds.HoldNextUp(taken.Task);
+        System.Net.Sockets.TcpListener? holder = null;
+        try
+        {
+            Task<string?> debugging = window.DebugAsync();
+            Ui.PumpUntil(() => held.IsCompleted || debugging.IsCompleted, "Debug to choose its ports and come to its up", TimeSpan.FromMinutes(5));
+            Assert.False(debugging.IsCompleted, $"Debug ended before its up: {(debugging.IsCompleted ? debugging.Result : null)}");
+            // api is the configuration's browser's: the port chosen for it, taken at [::] too, where Docker Desktop binds it.
+            int chosen = window.Builds.Containers!.Plan.Ports!.Of("api").Single();
+            holder = System.Net.Sockets.TcpListener.Create(chosen);
+            holder.Start();
+            taken.SetResult();
+            string? refused = Ui.Await(debugging, "Debug to come up with api on another port", TimeSpan.FromMinutes(5));
+            Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{ContainerRunsTests.Run(window)}");
+            int now = ContainerRunsTests.Published(project, "api");
+            Assert.NotEqual(chosen, now);
+            Assert.Equal([now], window.Builds.Containers!.Plan.Ports!.Of("api"));
+            Assert.Contains($"api's port {chosen} was taken before the engine could publish it: published on {now} instead", ContainerRunsTests.Run(window),
+                StringComparison.Ordinal);
+            Ui.WaitFor(() => window.Browsed.Any(u => u.Port == now), $"the browser to open at api's new port {now}", TimeSpan.FromMinutes(1));
+
+            DebugTab api = Tab(window, "api");
+            Task<string> answer = Get(now);
+            StoppedAt(window, api, Source(folder, "Api"), InRequest, "api's request on its new port to stop in its handler");
+            Resume(window, api);
+            Assert.Equal("api 1", Ui.Await(answer, "api's answer on its new port", TimeSpan.FromMinutes(1)));
+        }
+        finally
+        {
+            taken.TrySetResult();
+            holder?.Dispose();
+            Docker.Stopped(window, project, "Stop to take the services down");
+            window.Close();
+        }
+    }
+
     /// <summary>ContainerRunsTests' Compose solution, each service's Program.cs and Message.cs as these tests stop in them.</summary>
     private static (string Folder, string Project) Shop(string name)
     {
