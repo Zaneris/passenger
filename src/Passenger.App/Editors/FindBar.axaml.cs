@@ -333,13 +333,18 @@ public partial class FindBar : UserControl
             IdeErrors.Observe(ReplaceAllApartAsync(editor, text, query, replacement));
             return;
         }
-        Replace(editor, found, replacement);
+        Replace(editor, found.Replacements(replacement));
     }
 
     private async Task ReplaceAllApartAsync(CodeEditor shown, TextSnapshot text, SearchQuery query, string replacement)
     {
         Count.Text = Searching;
-        SearchResult found = await BackgroundWork.Run(() => TextSearch.FindAll(text, query, TextSearch.Apart, int.MaxValue));
+        // Each match's groups are found again where it stood, as long as the search took: off the UI thread too.
+        (SearchResult found, IReadOnlyList<TextEdit> edits) = await BackgroundWork.Run(() =>
+        {
+            SearchResult searched = TextSearch.FindAll(text, query, TextSearch.Apart, int.MaxValue);
+            return (searched, searched.Stopped ? [] : searched.Replacements(replacement));
+        });
         if (editor != shown || !IsVisible || grid is not null)
         {
             return;
@@ -355,12 +360,11 @@ public partial class FindBar : UserControl
             Count.Text = $"{found.Problem} Nothing was replaced.";
             return;
         }
-        Replace(shown, found, replacement);
+        Replace(shown, edits);
     }
 
-    private void Replace(CodeEditor shown, SearchResult found, string replacement)
+    private void Replace(CodeEditor shown, IReadOnlyList<TextEdit> edits)
     {
-        IReadOnlyList<TextEdit> edits = found.Replacements(replacement);
         shown.ApplyEdits(edits);
         Count.Text = $"Replaced {edits.Count}";
     }

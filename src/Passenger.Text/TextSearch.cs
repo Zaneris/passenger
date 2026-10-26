@@ -60,26 +60,113 @@ public static class TextSearch
         return FindAll(snapshot, pattern, limit);
     }
 
-    /// <summary>Every match of a pattern read once for a search of many texts.</summary>
+    /// <summary>Every match of a pattern read once for a search of many texts: plain text a block at a time where it lies,
+    /// a regex over the text read as lines once while the snapshot stands (<see cref="Lines"/>).</summary>
     public static SearchResult FindAll(TextSnapshot snapshot, SearchPattern pattern, int limit = MaxMatches)
     {
-        (string text, List<int> returns) = AsLines(snapshot.ToString());
-        List<TextRange> matches = [];
-        // Kept whole, so a replacement's groups come from the match where it stood, its lookarounds and anchors held.
-        List<Match>? found = pattern.Groups ? [] : null;
         bool crlf = snapshot.LineCount > 1 && snapshot.GetLine(0).BreakLength == 2;
+        if (pattern.Literal)
+        {
+            return Blocks(snapshot, pattern, limit, crlf);
+        }
+        Lines lines = Lines.Of(snapshot);
+        try
+        {
+            return Found(lines.Text, lines.Returns, pattern, limit, pattern.Groups ? new FoundText(pattern, snapshot, null) : null, crlf);
+        }
+        finally
+        {
+            Lines.Keep(lines);
+        }
+    }
+
+    /// <summary>Every match of a pattern in a text no document holds (a closed file's, read once), searched where it lies
+    /// but by a regex in a text of "\r\n" breaks, which reads it as lines.</summary>
+    public static SearchResult FindAll(string text, SearchPattern pattern, int limit = MaxMatches)
+    {
+        int newline = text.IndexOf('\n', StringComparison.Ordinal);
+        bool crlf = newline > 0 && text[newline - 1] == '\r';
+        FoundText? found = pattern.Groups ? new FoundText(pattern, null, text) : null;
+        if (pattern.Literal || !text.Contains("\r\n", StringComparison.Ordinal))
+        {
+            return Found(text, [], pattern, limit, found, crlf);
+        }
+        Lines lines = Lines.Of(text);
+        try
+        {
+            return Found(lines.Text, lines.Returns, pattern, limit, found, crlf);
+        }
+        finally
+        {
+            Lines.Keep(lines);
+        }
+    }
+
+    /// <summary>A plain query's matches, each as long as its text, found a block at a time in a window from the shared pool
+    /// that holds a character either side of the block's (all Words' lookarounds read) and its last match's end: one a
+    /// block's end cuts, or one the window's end took for a word's, is found again whole in the next.</summary>
+    private static SearchResult Blocks(TextSnapshot snapshot, SearchPattern pattern, int limit, bool crlf)
+    {
+        int length = snapshot.Length;
+        int needle = pattern.Length;
+        List<TextRange> matches = [];
+        char[] window = ArrayPool<char>.Shared.Rent(Math.Min(length, Math.Max(1 << 14, 2 * (needle + 1))));
+        // As much as the window holds beside a match cut at its end and the character after it.
+        int block = Math.Max(1, window.Length - needle - 1);
+        try
+        {
+            int next = 0;
+            for (int start = 0; start < length; start += block)
+            {
+                int end = Math.Min(start + block, length);
+                if (next >= end)
+                {
+                    continue;
+                }
+                int from = Math.Max(start - 1, 0);
+                Span<char> read = window.AsSpan(0, Math.Min(end + needle, length) - from);
+                snapshot.CopyTo(from, read);
+                foreach (ValueMatch match in pattern.Regex.EnumerateMatches(read, Math.Max(start, next) - from))
+                {
+                    int at = from + match.Index;
+                    if (at >= end)
+                    {
+                        break;
+                    }
+                    if (matches.Count == limit)
+                    {
+                        return new SearchResult(matches, true, null) { Crlf = crlf };
+                    }
+                    matches.Add(new TextRange(at, match.Length));
+                    next = at + match.Length;
+                }
+            }
+        }
+        finally
+        {
+            ArrayPool<char>.Shared.Return(window);
+        }
+        return new SearchResult(matches, false, null) { Crlf = crlf };
+    }
+
+    /// <summary>Every match of a pattern in a text read as lines, each placed in the text itself past the '\r's
+    /// <paramref name="returns"/> says were left out before it; a regex's search stopping past its time.</summary>
+    private static SearchResult Found(ReadOnlySpan<char> text, ReadOnlySpan<int> returns, SearchPattern pattern, int limit, FoundText? found, bool crlf)
+    {
+        List<TextRange> matches = [];
+        int passed = 0;
         long started = Stopwatch.GetTimestamp();
         try
         {
-            // An empty match counts (`^` is a line's start), and NextMatch steps on past it.
-            for (Match match = pattern.Regex.Match(text); match.Success; match = match.NextMatch())
+            // An empty match counts (`^` is a line's start), and the next is looked for past it.
+            foreach (ValueMatch match in pattern.Regex.EnumerateMatches(text))
             {
                 if (matches.Count == limit)
                 {
                     return new SearchResult(matches, true, null) { Found = found, Crlf = crlf };
                 }
-                matches.Add(TextRange.FromBounds(Original(match.Index, returns), Original(match.Index + match.Length, returns)));
-                found?.Add(match);
+                int start = Original(match.Index, returns, ref passed);
+                matches.Add(TextRange.FromBounds(start, Original(match.Index + match.Length, returns, ref passed)));
                 // The regex gives each match its time, and the matches together have no more.
                 if (pattern.Within is { } within && Stopwatch.GetElapsedTime(started) > within)
                 {
@@ -94,33 +181,115 @@ public static class TextSearch
         return new SearchResult(matches, false, null) { Found = found, Crlf = crlf };
     }
 
-    /// <summary>The text with each "\r\n" read as "\n", and where each '\r' left out was, in offsets of the text read.</summary>
-    private static (string Text, List<int> Returns) AsLines(string text)
+    /// <summary>An offset of the text read as lines in the text itself: past every '\r' left out before it, so a match
+    /// that ends at a line's end ends before its whole break and one that takes the break takes both halves. Offsets come
+    /// in order, <paramref name="passed"/> counting the '\r's before the last.</summary>
+    private static int Original(int offset, ReadOnlySpan<int> returns, ref int passed)
     {
-        List<int> returns = [];
-        if (!text.Contains("\r\n", StringComparison.Ordinal))
+        while (passed < returns.Length && returns[passed] < offset)
         {
-            return (text, returns);
+            passed++;
         }
-        StringBuilder read = new(text.Length);
-        for (int i = 0; i < text.Length; i++)
-        {
-            if (text[i] == '\r' && i + 1 < text.Length && text[i + 1] == '\n')
-            {
-                returns.Add(read.Length);
-                continue;
-            }
-            read.Append(text[i]);
-        }
-        return (read.ToString(), returns);
+        return offset + passed;
     }
 
-    /// <summary>An offset of the text read as lines in the text itself: past every '\r' left out before it, so a match
-    /// that ends at a line's end ends before its whole break and one that takes the break takes both halves.</summary>
-    private static int Original(int offset, List<int> returns)
+    /// <summary>A text read as lines, each "\r\n" as "\n", into arrays from the shared pool, with where each '\r' left
+    /// out was in offsets of the text read. One is kept for the next search, which reads a snapshot again only once it is
+    /// another, so a regex typed over a file copies it once; a search takes it for itself until it gives it back.</summary>
+    internal sealed class Lines
     {
-        int index = returns.BinarySearch(offset);
-        return offset + (index >= 0 ? index : ~index);
+        private static Lines? kept;
+        private readonly WeakReference<TextSnapshot?> read = new(null);
+        private char[] chars = [];
+        private int[] returns = [];
+        private int length;
+        private int count;
+
+        public ReadOnlySpan<char> Text => chars.AsSpan(0, length);
+
+        /// <summary>Where each '\r' left out was, as offsets of <see cref="Text"/>: where its '\n' stands.</summary>
+        public ReadOnlySpan<int> Returns => returns.AsSpan(0, count);
+
+        public static Lines Of(TextSnapshot snapshot)
+        {
+            Lines lines = Interlocked.Exchange(ref kept, null) ?? new Lines();
+            if (!lines.read.TryGetTarget(out TextSnapshot? was) || !ReferenceEquals(was, snapshot))
+            {
+                lines.Hold(snapshot.Length);
+                snapshot.CopyTo(0, lines.chars.AsSpan(0, snapshot.Length));
+                lines.Fold(snapshot.Length, snapshot.LineCount - 1);
+                lines.read.SetTarget(snapshot);
+            }
+            return lines;
+        }
+
+        public static Lines Of(string text)
+        {
+            Lines lines = Interlocked.Exchange(ref kept, null) ?? new Lines();
+            lines.read.SetTarget(null);
+            lines.Hold(text.Length);
+            text.CopyTo(lines.chars);
+            lines.Fold(text.Length, text.AsSpan().Count('\n'));
+            return lines;
+        }
+
+        /// <summary>Gives the lines back for the next search; the arrays of any given back meanwhile go back to the pool.</summary>
+        public static void Keep(Lines lines) => Interlocked.Exchange(ref kept, lines)?.Release();
+
+        private void Hold(int size)
+        {
+            if (chars.Length < size)
+            {
+                Give(chars);
+                chars = ArrayPool<char>.Shared.Rent(size);
+            }
+        }
+
+        /// <summary>Moves the text after each "\r\n"'s '\r' back over it, a run between two breaks at a time.</summary>
+        private void Fold(int size, int breaks)
+        {
+            Span<char> text = chars.AsSpan(0, size);
+            count = 0;
+            int at = text.IndexOf("\r\n");
+            if (at < 0)
+            {
+                length = size;
+                return;
+            }
+            if (returns.Length < breaks)
+            {
+                Give(returns);
+                returns = ArrayPool<int>.Shared.Rent(breaks);
+            }
+            int write = at;
+            while (at >= 0)
+            {
+                returns[count++] = write;
+                int next = text[(at + 2)..].IndexOf("\r\n");
+                int end = next < 0 ? size : at + 2 + next;
+                text[(at + 1)..end].CopyTo(text[write..]);
+                write += end - at - 1;
+                at = next < 0 ? -1 : end;
+            }
+            length = write;
+        }
+
+        private void Release()
+        {
+            Give(chars);
+            Give(returns);
+            chars = [];
+            returns = [];
+            read.SetTarget(null);
+        }
+
+        private static void Give<T>(T[] array)
+        {
+            if (array.Length > 0)
+            {
+                ArrayPool<T>.Shared.Return(array);
+            }
+        }
     }
 
     /// <summary>The regex a query finds with; a pattern that does not parse throws an <see cref="ArgumentException"/> whose
@@ -200,14 +369,27 @@ public static class TextSearch
 }
 
 /// <summary>A query read once for a search of many texts (a folder's files, a table's cells): its regex, and how long a
-/// regex's search of each text may run.</summary>
+/// regex's search of each text may run. The patterns of the last few queries are kept, so a query searched again, as each
+/// key typed in a file searches it, is read once.</summary>
 public sealed class SearchPattern
 {
-    private SearchPattern(Regex regex, bool groups, TimeSpan? within)
+    private static readonly Lock gate = new();
+    private static readonly SearchPattern?[] recent = new SearchPattern?[4];
+
+    private readonly SearchQuery query;
+    private readonly TimeSpan made;
+    private Regex? untimed;
+
+    private SearchPattern(SearchQuery query, TimeSpan within)
     {
-        Regex = regex;
-        Groups = groups;
-        Within = within;
+        Regex = TextSearch.Build(query, within);
+        Groups = query.Regex;
+        Within = query.Regex ? within : null;
+        Literal = !query.Regex && query.Text.AsSpan().IndexOfAny('\r', '\n') < 0;
+        Length = query.Text.Length;
+        Walks = query.Regex && Regex.ToString().Contains(@"\G", StringComparison.Ordinal);
+        this.query = query;
+        made = within;
     }
 
     internal Regex Regex { get; }
@@ -218,13 +400,121 @@ public sealed class SearchPattern
     /// <summary>How long a search of one text may run, its matches together; null for plain text, which has no limit.</summary>
     internal TimeSpan? Within { get; }
 
+    /// <summary>Whether each match is the query's text in a line, as long as it (<see cref="Length"/>): plain text without
+    /// a line break, which reads the same in a text's "\r\n" lines as in its "\n" ones.</summary>
+    internal bool Literal { get; }
+
+    /// <summary>The query's length, a <see cref="Literal"/> match's.</summary>
+    internal int Length { get; }
+
+    /// <summary>Whether a match is found again only by walking the matches before it: the regex has \G, which holds where
+    /// the last match ended.</summary>
+    internal bool Walks { get; }
+
+    /// <summary>The regex with no time limit, finding again matches it found within it.</summary>
+    internal Regex Untimed
+    {
+        get
+        {
+            Regex? regex = untimed;
+            if (regex is null)
+            {
+                regex = new Regex(Regex.ToString(), Regex.Options, Regex.InfiniteMatchTimeout);
+                regex = Interlocked.CompareExchange(ref untimed, regex, null) ?? regex;
+            }
+            return regex;
+        }
+    }
+
     /// <summary>The pattern a query finds with, a regex's search of a text stopping past <paramref name="within"/>; a
     /// regex that does not parse throws an <see cref="ArgumentException"/> whose message says why.</summary>
-    public static SearchPattern For(SearchQuery query, TimeSpan within) =>
-        new(TextSearch.Build(query, within), query.Regex, query.Regex ? within : null);
+    public static SearchPattern For(SearchQuery query, TimeSpan within)
+    {
+        lock (gate)
+        {
+            for (int i = 0; i < recent.Length; i++)
+            {
+                if (recent[i] is { } kept && kept.query == query && kept.made == within)
+                {
+                    Recent(kept, i);
+                    return kept;
+                }
+            }
+        }
+        SearchPattern read = new(query, within);
+        lock (gate)
+        {
+            Recent(read, recent.Length - 1);
+        }
+        return read;
+    }
+
+    /// <summary>Puts a pattern first among those kept, those before <paramref name="at"/> moving down one.</summary>
+    private static void Recent(SearchPattern pattern, int at)
+    {
+        for (int i = at; i > 0; i--)
+        {
+            recent[i] = recent[i - 1];
+        }
+        recent[0] = pattern;
+    }
 
     /// <summary>Whether a text holds a match; a regex running past its time throws a <see cref="RegexMatchTimeoutException"/>.</summary>
     public bool IsMatch(string text) => Regex.IsMatch(text);
+}
+
+/// <summary>The text a regex's matches were found in, for the groups a replacement fills in: read as lines into a string,
+/// and each match found again where it stood, its lookarounds, anchors and \b as they held, once a replacement asks for
+/// one. Read on one thread at a time.</summary>
+internal sealed class FoundText(SearchPattern pattern, TextSnapshot? snapshot, string? text)
+{
+    private string? lines;
+
+    /// <summary>Where each '\r' left out of <see cref="lines"/> was in the text itself, in order.</summary>
+    private int[] returns = [];
+
+    /// <summary>Every match in order up to the last asked for, for a pattern that <see cref="SearchPattern.Walks"/>.</summary>
+    private List<Match>? walked;
+
+    /// <summary>Match <paramref name="index"/>, found at <paramref name="found"/> in the text itself.</summary>
+    public Match Match(int index, TextRange found)
+    {
+        string read = lines ??= Read();
+        if (pattern.Walks)
+        {
+            walked ??= [];
+            while (walked.Count <= index)
+            {
+                walked.Add(walked.Count == 0 ? pattern.Untimed.Match(read) : walked[^1].NextMatch());
+            }
+            return walked[index];
+        }
+        int before = Array.BinarySearch(returns, found.Start);
+        return pattern.Untimed.Match(read, found.Start - (before >= 0 ? before : ~before));
+    }
+
+    private string Read()
+    {
+        if (text is not null && !text.Contains("\r\n", StringComparison.Ordinal))
+        {
+            return text;
+        }
+        TextSearch.Lines read = text is { } whole ? TextSearch.Lines.Of(whole) : TextSearch.Lines.Of(snapshot ?? TextSnapshot.Empty);
+        try
+        {
+            ReadOnlySpan<int> left = read.Returns;
+            returns = new int[left.Length];
+            for (int i = 0; i < left.Length; i++)
+            {
+                returns[i] = left[i] + i;
+            }
+            return new string(read.Text);
+        }
+        finally
+        {
+            TextSearch.Lines.Keep(read);
+        }
+    }
 }
 
 /// <summary>A look at a file's bytes, before it is read as text, for what every match of a query holds in a row: its
@@ -544,12 +834,12 @@ public sealed record SearchResult(IReadOnlyList<TextRange> Matches, bool Truncat
     /// <summary>Whether a regex ran past its time and the search stopped, its matches only those found before.</summary>
     public bool Stopped { get; private init; }
 
-    internal static SearchResult TimedOut(List<TextRange> matches, List<Match>? found, bool crlf) =>
+    internal static SearchResult TimedOut(List<TextRange> matches, FoundText? found, bool crlf) =>
         new(matches, true, TookTooLong) { Found = found, Crlf = crlf, Stopped = true };
 
-    /// <summary>A regex's matches as found in the whole text, one for each of <see cref="Matches"/>; null for plain
-    /// text, which is replaced as typed.</summary>
-    internal IReadOnlyList<Match>? Found { get; init; }
+    /// <summary>Where a regex's matches were found, each found again there for its groups; null for plain text, which is
+    /// replaced as typed.</summary>
+    internal FoundText? Found { get; init; }
 
     /// <summary>Whether the text's breaks are "\r\n", as a break a group carries over is then written.</summary>
     internal bool Crlf { get; init; }
@@ -562,7 +852,8 @@ public sealed record SearchResult(IReadOnlyList<TextRange> Matches, bool Truncat
         {
             return replacement;
         }
-        string replaced = Found[index].Result(replacement);
+        // Only a '$' asks for what the match holds; a replacement without one is its own result.
+        string replaced = replacement.Contains('$', StringComparison.Ordinal) ? Found.Match(index, Matches[index]).Result(replacement) : replacement;
         // A break a group carried over is the file's own, as the text it replaces had.
         return Crlf && replaced.Contains('\n', StringComparison.Ordinal)
             ? replaced.Replace("\r\n", "\n", StringComparison.Ordinal).Replace("\n", "\r\n", StringComparison.Ordinal)
@@ -570,8 +861,16 @@ public sealed record SearchResult(IReadOnlyList<TextRange> Matches, bool Truncat
     }
 
     /// <summary>Every match's replacement, as edits of the text searched.</summary>
-    public IReadOnlyList<TextEdit> Replacements(string replacement) =>
-        [.. Matches.Select((match, i) => new TextEdit(match.Start, match.Length, Replacement(i, replacement)))];
+    public IReadOnlyList<TextEdit> Replacements(string replacement)
+    {
+        TextEdit[] edits = new TextEdit[Matches.Count];
+        for (int i = 0; i < edits.Length; i++)
+        {
+            TextRange match = Matches[i];
+            edits[i] = new TextEdit(match.Start, match.Length, Replacement(i, replacement));
+        }
+        return edits;
+    }
 
     /// <summary>The first match at or after <paramref name="offset"/>, wrapping to the first.</summary>
     public int NextFrom(int offset)

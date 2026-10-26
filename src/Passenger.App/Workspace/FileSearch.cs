@@ -93,23 +93,31 @@ public static class FileSearch
         {
             cancellation.ThrowIfCancellationRequested();
             // A preview's or a workbook's tab holds no text, so its file is searched as a closed one is, and passed over as binary.
-            TextSnapshot? text = open.Open(path);
-            if (text is null && filter is not null && !(ReadBytes(path, ref bytes) is int length && filter.MayMatch(bytes.AsSpan(0, length))))
+            TextSnapshot? shown = open.Open(path);
+            if (shown is null && filter is not null && !(ReadBytes(path, ref bytes) is int length && filter.MayMatch(bytes.AsSpan(0, length))))
             {
                 // A closed file whose bytes hold no match is never read as text.
                 continue;
             }
-            text ??= Read(path);
-            if (text is null)
+            SearchResult searched;
+            if (shown is not null)
+            {
+                searched = TextSearch.FindAll(shown, pattern, MostMatches - found.Count);
+                foreach (TextRange match in searched.Matches)
+                {
+                    TextPosition at = shown.GetPosition(match.Start);
+                    string line = shown.GetLineText(at.Line);
+                    found.Add(new SearchMatch(path, at.Line, at.Column, Math.Min(match.Length, Math.Max(0, line.Length - at.Column)), line));
+                }
+            }
+            else if (Read(path) is { } text)
+            {
+                searched = TextSearch.FindAll(text, pattern, MostMatches - found.Count);
+                AddMatches(found, path, text, searched.Matches);
+            }
+            else
             {
                 continue;
-            }
-            SearchResult searched = TextSearch.FindAll(text, pattern, MostMatches - found.Count);
-            foreach (TextRange match in searched.Matches)
-            {
-                TextPosition at = text.GetPosition(match.Start);
-                string line = text.GetLineText(at.Line);
-                found.Add(new SearchMatch(path, at.Line, at.Column, Math.Min(match.Length, Math.Max(0, line.Length - at.Column)), line));
             }
             if (searched.Stopped)
             {
@@ -123,9 +131,33 @@ public static class FileSearch
         return new FilesFound(found, stopped);
     }, cancellation);
 
-    /// <summary>A closed file's text as the editor reads it (<see cref="Editors.EditorArea.Read"/>); null for one that is
-    /// binary (<see cref="FileText.LooksBinary"/>), too large or unreadable.</summary>
-    private static TextSnapshot? Read(string path) => new FileInfo(path) is { Exists: true, Length: <= LargestFile } ? Editors.EditorArea.Read(path) : null;
+    /// <summary>A closed file's text as the editor reads it (<see cref="Editors.EditorArea.ReadText"/>); null for one that
+    /// is binary (<see cref="FileText.LooksBinary"/>), too large or unreadable.</summary>
+    private static string? Read(string path) => new FileInfo(path) is { Exists: true, Length: <= LargestFile } ? Editors.EditorArea.ReadText(path) : null;
+
+    /// <summary>Adds the matches in a closed file's text, each on its line as the editor's lines are read (to a '\n', a
+    /// '\r' before it the break's), its column at most the line's length; the lines are walked once, in the matches' order.</summary>
+    private static void AddMatches(List<SearchMatch> found, string path, string text, IReadOnlyList<TextRange> matches)
+    {
+        int line = 0;
+        int start = 0;
+        int next = text.IndexOf('\n', StringComparison.Ordinal) + 1;
+        string? shown = null;
+        foreach (TextRange match in matches)
+        {
+            while (next > 0 && next <= match.Start)
+            {
+                line++;
+                start = next;
+                next = text.IndexOf('\n', start) + 1;
+                shown = null;
+            }
+            int end = next == 0 ? text.Length : next - 1 > start && text[next - 2] == '\r' ? next - 2 : next - 1;
+            shown ??= text[start..end];
+            int column = Math.Min(match.Start - start, end - start);
+            found.Add(new SearchMatch(path, line, column, Math.Min(match.Length, Math.Max(0, shown.Length - column)), shown));
+        }
+    }
 
     /// <summary>A closed file's bytes read into the search's buffer, grown as one needs, sharing writes and deletes as
     /// <see cref="FileText.Read"/> does: how many there are, or null for a file not there, too large or unreadable.</summary>
@@ -181,7 +213,7 @@ public static class FileSearch
             {
                 return new Replacing(path, null, [], null, null, null);
             }
-            SearchResult found = TextSearch.FindAll(TextSnapshot.From(file.Text), pattern, int.MaxValue);
+            SearchResult found = TextSearch.FindAll(file.Text, pattern, int.MaxValue);
             return found.Stopped ? new Replacing(path, null, [], null, null, StoppedWhy)
                 : new Replacing(path, null, [], file, Applied(file.Text, found.Replacements(replacement)), null);
         }
