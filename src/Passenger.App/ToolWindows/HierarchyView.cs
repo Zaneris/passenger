@@ -206,7 +206,7 @@ public sealed class HierarchyView : DockPanel
     /// <summary>A row for whichever symbol the list hands its container: its chevron, name, and what and where it is.</summary>
     private Control Row()
     {
-        PathIcon chevron = new() { Width = 10, Height = 10, Margin = new Thickness(0, 0, 4, 0) };
+        RowIcon chevron = new() { Width = 10, Height = 10, Margin = new Thickness(0, 0, 4, 0) };
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock detail = new()
         {
@@ -225,12 +225,11 @@ public sealed class HierarchyView : DockPanel
                 e.Handled = true;
             }
         };
-        string? chevronKey = null;
         return line.Showing<HierarchyRow>(row =>
         {
             line.Margin = new Thickness(8 + (row.Depth * 16), 0, 8, 0);
             chevron.IsVisible = row.Expands;
-            chevron.Resource(PathIcon.DataProperty, ref chevronKey, row.IsExpanded ? IconKeys.ChevronDown : IconKeys.ChevronRight);
+            chevron.DataKey = row.IsExpanded ? IconKeys.ChevronDown : IconKeys.ChevronRight;
             name.Text = row.Node.Item.Name;
             name.FontWeight = row.Depth == 0 ? FontWeight.SemiBold : FontWeight.Normal;
             detail.Text = $"{row.Node.Item.Detail}  {System.IO.Path.GetFileName(row.Node.Path)}:{row.Node.Where.Line + 1}";

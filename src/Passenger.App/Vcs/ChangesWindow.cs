@@ -78,7 +78,7 @@ public sealed class ChangesWindow : Window
     /// <summary>A file's row: its icon, its name in its change's colour, and its folder from the repository's top.</summary>
     private static Control Row(Git repository)
     {
-        PathIcon icon = new()
+        RowIcon icon = new()
         {
             Width = 14,
             Height = 14,

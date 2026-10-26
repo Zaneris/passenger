@@ -80,25 +80,35 @@ public sealed class RowIcon : Control
         context.FillRectangle(Brushes.Transparent, new Rect(Bounds.Size));
         Geometry? data = Data ?? (DataKey is { } key ? Resource(key) as Geometry : null);
         IBrush? brush = Foreground ?? Resource(ForegroundKey ?? TokenKeys.Icon) as IBrush;
-        Rect bounds = data?.Bounds ?? default;
-        if (data is null || bounds.Width <= 0 || bounds.Height <= 0)
+        if (data is null)
         {
             return;
         }
-        double scale = LayoutHelper.GetLayoutScale(this);
+        Draw(context, data, brush, Bounds.Size, LayoutHelper.ApplyLayoutConstraints(this, Bounds.Size), Turned, LayoutHelper.GetLayoutScale(this));
+    }
+
+    /// <summary>Draws a geometry as a PathIcon arranged at <paramref name="bounds"/>, of size <paramref name="box"/>, draws
+    /// it, turned a quarter about its middle as one under a RotateTransform of 90 about its centre is.</summary>
+    internal static void Draw(DrawingContext context, Geometry data, IBrush? brush, Size bounds, Size box, bool turned, double scale)
+    {
+        Rect extent = data.Bounds;
+        if (extent.Width <= 0 || extent.Height <= 0)
+        {
+            return;
+        }
         // The path's measure (its geometry's size) rounded up by the path and again by the Viewbox's container.
-        Size path = LayoutHelper.RoundLayoutSizeUp(LayoutHelper.RoundLayoutSizeUp(bounds.Size, scale), scale);
+        Size path = LayoutHelper.RoundLayoutSizeUp(LayoutHelper.RoundLayoutSizeUp(extent.Size, scale), scale);
         // The Viewbox: the icon's size, the path scaled to fit it and centred, its own bounds the fit.
-        Size available = LayoutHelper.RoundLayoutSizeUp(Bounds.Size, scale);
-        Size box = LayoutHelper.RoundLayoutSizeUp(LayoutHelper.ApplyLayoutConstraints(this, available), scale);
+        Size available = LayoutHelper.RoundLayoutSizeUp(bounds, scale);
+        box = LayoutHelper.RoundLayoutSizeUp(box, scale);
         Vector fit = Stretch.Uniform.CalculateScaling(box, path, StretchDirection.Both);
         Size shown = new Size(path.Width * fit.X, path.Height * fit.Y).Constrain(box);
         Point at = LayoutHelper.RoundLayoutPoint(new Point((available.Width - shown.Width) / 2, (available.Height - shown.Height) / 2), scale);
         // The path arranged at its measure, rounded up, its geometry stretched to fill it.
         Size arranged = LayoutHelper.RoundLayoutSizeUp(LayoutHelper.RoundLayoutSizeUp(path, scale), scale);
-        double stretch = Math.Min(arranged.Width / bounds.Width, arranged.Height / bounds.Height);
-        Geometry drawn = StretchedOf(data, Matrix.CreateTranslation(-(Vector)bounds.Position) * Matrix.CreateScale(stretch, stretch));
-        Matrix turn = Turned ? Turn(Bounds.Size) : Matrix.Identity;
+        double stretch = Math.Min(arranged.Width / extent.Width, arranged.Height / extent.Height);
+        Geometry drawn = StretchedOf(data, Matrix.CreateTranslation(-(Vector)extent.Position) * Matrix.CreateScale(stretch, stretch));
+        Matrix turn = turned ? Turn(bounds) : Matrix.Identity;
         // The clip pushed before the turn, so it stands square to the device's pixels.
         using (context.PushClip(Whole(new Rect(shown).TransformToAABB(Matrix.CreateTranslation(at.X, at.Y) * turn), scale)))
         using (context.PushTransform(turn))

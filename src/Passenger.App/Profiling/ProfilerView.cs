@@ -627,9 +627,7 @@ public sealed class ProfilerView : DockPanel
     /// <summary>A row for whichever call the list hands its container: its chevron, its share and weight, and its method.</summary>
     private Control Row()
     {
-        RotateTransform turned = new();
-        PathIcon chevron = new() { Classes = { "chevron" }, RenderTransformOrigin = RelativePoint.Center, RenderTransform = turned };
-        chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(IconKeys.ChevronRight));
+        RowIcon chevron = RowIcon.Chevron();
         Border toggle = new() { Width = 18, Height = ListRow.Height, Background = Brushes.Transparent, Child = chevron };
         TextBlock share = Mono(Muted(string.Empty, 170));
         MethodName method = new();
@@ -646,7 +644,7 @@ public sealed class ProfilerView : DockPanel
         {
             line.Margin = new Thickness(row.Depth * 14, 0, 0, 0);
             chevron.IsVisible = row.Node.Children.Count > 0;
-            turned.Angle = row.IsExpanded ? 90 : 0;
+            chevron.Turned = row.IsExpanded;
             string percent = row.Whole > 0 ? $"{100.0 * row.Node.Total / row.Whole,5:0.0}%" : string.Empty;
             share.Text = $"{percent}  {row.Node.Total * row.Scale,7:N0} {row.Unit}";
             method.Show(row.Node.Name, row.Depth == 0);

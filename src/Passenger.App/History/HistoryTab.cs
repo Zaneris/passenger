@@ -391,19 +391,17 @@ public sealed class HistoryTab : DockPanel
         TextBlock time = MutedText.Of(string.Empty);
         time[DockProperty] = Dock.Right;
         time.Margin = new Thickness(8, 0, 4, 0);
-        PathIcon tag = new() { Width = 12, Height = 12, Margin = new Thickness(0, 0, 6, 0), [DockProperty] = Dock.Left };
+        RowIcon tag = new() { Width = 12, Height = 12, Margin = new Thickness(0, 0, 6, 0), [DockProperty] = Dock.Left };
         TextBlock title = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         line.Children.Add(time);
         line.Children.Add(tag);
         line.Children.Add(title);
-        string? tagIcon = null;
-        string? tagColour = null;
         return line.Showing<HistoryRow>(row =>
         {
             time.Text = GitLogView.When(row.Time);
             tag.IsVisible = row.IsLabel;
-            tag.Resource(PathIcon.DataProperty, ref tagIcon, row.IsLabel ? IconKeys.Label : null);
-            tag.Resource(PathIcon.ForegroundProperty, ref tagColour, !row.IsLabel ? null : row.System ? TokenKeys.TextMuted : TokenKeys.Accent);
+            tag.DataKey = row.IsLabel ? IconKeys.Label : null;
+            tag.ForegroundKey = !row.IsLabel ? null : row.System ? TokenKeys.TextMuted : TokenKeys.Accent;
             title.Text = row.Title;
             title.FontWeight = row.IsLabel ? FontWeight.SemiBold : FontWeight.Normal;
         });
@@ -413,7 +411,7 @@ public sealed class HistoryTab : DockPanel
     /// folder under the folder whose history this is.</summary>
     private Control FileRow()
     {
-        PathIcon icon = new()
+        RowIcon icon = new()
         {
             Width = 14,
             Height = 14,

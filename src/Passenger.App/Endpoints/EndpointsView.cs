@@ -395,7 +395,7 @@ public sealed class EndpointsView : DockPanel
     /// muted); a route's method, template, what declares it (muted) and Send where a request can reach it.</summary>
     private Control Row()
     {
-        PathIcon headingIcon = new() { Width = 14, Height = 14, Margin = new Thickness(0, 0, 6, 0) };
+        RowIcon headingIcon = new() { Width = 14, Height = 14, Margin = new Thickness(0, 0, 6, 0) };
         TextBlock headingName = new() { FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         StackPanel heading = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Margin = new Thickness(8, 0), IsHitTestVisible = false, Children = { headingIcon, headingName } };
         Panel row = new();
@@ -404,7 +404,6 @@ public sealed class EndpointsView : DockPanel
         row.Children.Add(heading);
         row.Children.Add(request);
         row.Children.Add(route);
-        string? headingKey = null;
         return row.Showing<object>(item =>
         {
             heading.IsVisible = item is FileRow or ProjectRow;
@@ -413,12 +412,12 @@ public sealed class EndpointsView : DockPanel
             switch (item)
             {
                 case FileRow file:
-                    headingIcon.Resource(PathIcon.DataProperty, ref headingKey, IconKeys.DocumentText);
+                    headingIcon.DataKey = IconKeys.DocumentText;
                     headingName.Text = file.Name;
                     ToolTip.SetTip(headingName, file.Path);
                     break;
                 case ProjectRow project:
-                    headingIcon.Resource(PathIcon.DataProperty, ref headingKey, IconKeys.Endpoints);
+                    headingIcon.DataKey = IconKeys.Endpoints;
                     headingName.Text = project.Name;
                     ToolTip.SetTip(headingName, project.Path);
                     break;
@@ -454,7 +453,7 @@ public sealed class EndpointsView : DockPanel
         interactive.Name = "endpointInteractive";
         StackPanel buttons = new() { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center, Children = { test, interactive } };
         DockPanel.SetDock(buttons, Dock.Right);
-        PathIcon outcome = new() { Width = 12, Height = 12, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
+        RowIcon outcome = new() { Width = 12, Height = 12, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
         DockPanel.SetDock(outcome, Dock.Left);
         Border method = MethodTag(string.Empty);
         DockPanel.SetDock(method, Dock.Left);
@@ -464,14 +463,12 @@ public sealed class EndpointsView : DockPanel
         url.Classes.Add("muted");
         // The title takes what the row leaves, so a narrow window ends it in an ellipsis and keeps the buttons.
         DockPanel line = new() { Height = ListRow.Height, Margin = new Thickness(22, 0, 4, 0), Children = { buttons, outcome, method, title, url } };
-        string? outcomeIcon = null;
-        string? outcomeColour = null;
         string? methodColour = MethodColour(string.Empty);
         return (line, request =>
         {
             bool? passed = Outcome(request);
-            outcome.Resource(PathIcon.DataProperty, ref outcomeIcon, passed is not { } done ? null : done ? IconKeys.TestPassed : IconKeys.TestFailed);
-            outcome.Resource(PathIcon.ForegroundProperty, ref outcomeColour, passed is not { } ran ? null : ran ? TokenKeys.Test_Passed : TokenKeys.Test_Failed);
+            outcome.DataKey = passed is not { } done ? null : done ? IconKeys.TestPassed : IconKeys.TestFailed;
+            outcome.ForegroundKey = passed is not { } ran ? null : ran ? TokenKeys.Test_Passed : TokenKeys.Test_Failed;
             ShowMethod(method, ref methodColour, request.Method);
             title.Text = request.Title;
             ToolTip.SetTip(line, $"{request.Method} {request.Url}");

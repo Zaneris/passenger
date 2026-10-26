@@ -500,7 +500,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
     /// colour, and folder.</summary>
     private Control FileRow()
     {
-        PathIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(8, 0, 6, 0) };
+        RowIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(8, 0, 6, 0) };
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock folder = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0), FontSize = 12 };
         folder.Classes.Add("muted");

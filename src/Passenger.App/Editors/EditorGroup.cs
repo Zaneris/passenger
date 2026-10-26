@@ -612,15 +612,13 @@ public sealed class EditorGroup : DockPanel
     /// strip, so a tab closed or moved to another group is held by nothing it showed.</summary>
     private Control Tab()
     {
-        PathIcon icon = new();
+        RowIcon icon = new();
         TextBlock name = new() { Classes = { "tabName" }, VerticalAlignment = VerticalAlignment.Center };
         Ellipse modified = new() { Classes = { "modified" }, Width = 7, Height = 7 };
-        PathIcon closeGlyph = new() { Classes = { "small" } };
-        closeGlyph.Bind(PathIcon.DataProperty, closeGlyph.GetResourceObservable(IconKeys.Close));
+        RowIcon closeGlyph = new() { Width = 10, Height = 10, DataKey = IconKeys.Close };
         Button close = new() { Classes = { "tabClose" }, Content = closeGlyph };
         ToolTip.SetTip(close, "Close");
-        PathIcon pinGlyph = new() { Classes = { "small" } };
-        pinGlyph.Bind(PathIcon.DataProperty, pinGlyph.GetResourceObservable(IconKeys.Pin));
+        RowIcon pinGlyph = new() { Width = 10, Height = 10, DataKey = IconKeys.Pin };
         Button pin = new() { Classes = { "tabPin" }, Content = pinGlyph };
         ToolTip.SetTip(pin, "Unpin Tab");
         Border border = new()

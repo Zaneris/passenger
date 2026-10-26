@@ -169,7 +169,7 @@ public sealed class DebuggerHoverTests : IClassFixture<DebuggerHoverTests.People
         values.ScrollIntoView(row);
         Ui.Settle();
         Control shown = values.ContainerFromItem(row) ?? throw new InvalidOperationException($"The card does not show {row.Name}");
-        PathIcon chevron = shown.GetVisualDescendants().OfType<PathIcon>().First(i => i.Classes.Contains("chevron"));
+        RowIcon chevron = shown.GetVisualDescendants().OfType<RowIcon>().First(i => i.DataKey == IconKeys.ChevronRight);
         Click(window, (Control)chevron.Parent!);
     }
 

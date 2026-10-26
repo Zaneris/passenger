@@ -1292,8 +1292,8 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     internal static TextBlock Words(Control row, string words) => row.GetVisualDescendants().OfType<TextBlock>().First(text => text.Text == words);
 
     /// <summary>A row's chevron, which opens and closes it.</summary>
-    internal static PathIcon Chevron(MainWindow window, string name) =>
-        Row(window, name).GetVisualDescendants().OfType<PathIcon>().Single(icon => icon.Name == "rowChevron");
+    internal static RowIcon Chevron(MainWindow window, string name) =>
+        Row(window, name).GetVisualDescendants().OfType<RowIcon>().Single(icon => icon.Name == "rowChevron");
 
     /// <summary>A tab of the Aspire window's pages.</summary>
     internal static Avalonia.Controls.Primitives.ToggleButton Tab(MainWindow window, string page) => window.AspireWindow.GetVisualDescendants()

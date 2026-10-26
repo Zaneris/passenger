@@ -90,7 +90,7 @@ public sealed class RecentLocationsPopup : SearchPopup<RecentLocation>
     /// the place's own line marked.</summary>
     protected override Control Row()
     {
-        PathIcon icon = new()
+        RowIcon icon = new()
         {
             Width = 14,
             Height = 14,

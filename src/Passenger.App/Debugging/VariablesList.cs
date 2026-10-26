@@ -223,11 +223,9 @@ public sealed class VariablesList : ListBox
     /// field its value is typed over in (Set Value).</summary>
     private Control Row()
     {
-        RotateTransform turned = new();
-        PathIcon chevron = new() { Classes = { "chevron" }, RenderTransformOrigin = RelativePoint.Center, RenderTransform = turned };
-        chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(IconKeys.ChevronRight));
+        RowIcon chevron = RowIcon.Chevron();
         Border toggle = new() { Width = 18, Height = ListRow.Height, Background = Brushes.Transparent, Child = chevron };
-        PathIcon icon = new() { Margin = new Thickness(0, 0, 6, 0) };
+        RowIcon icon = new() { Margin = new Thickness(0, 0, 6, 0) };
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock type = new() { VerticalAlignment = VerticalAlignment.Center };
         type.Classes.Add("muted");
@@ -276,7 +274,6 @@ public sealed class VariablesList : ListBox
         };
         VariableNode? drawn = null;
         bool editing = false;
-        string? iconKey = null;
         string? valueColour = null;
         return row.Showing<VariableNode>(node =>
         {
@@ -286,7 +283,7 @@ public sealed class VariablesList : ListBox
                 editing = false;
                 Draw(node);
             }
-            turned.Angle = node.ChevronAngle;
+            chevron.Turned = node.IsExpanded;
             if (node.IsEditing != editing)
             {
                 editing = node.IsEditing;
@@ -310,14 +307,14 @@ public sealed class VariablesList : ListBox
             row.Margin = node.Indent;
             chevron.IsVisible = node.HasChildren;
             // Marks for what the debugger adds to a frame's values: a call's value, the exception stopped at, a query's SQL.
-            icon.Resource(PathIcon.DataProperty, ref iconKey, node switch
+            icon.DataKey = node switch
             {
                 { Role: VariableRole.Watch } => IconKeys.Evaluate,
                 { IsReturnValue: true } => IconKeys.StepOut,
                 { IsException: true } => IconKeys.Error,
                 { IsQuerySql: true } => IconKeys.Database,
                 _ => IconKeys.Variable,
-            });
+            };
             name.Text = node.Name;
             type.Text = node.TypeLabel;
             value.Text = node.Shown;

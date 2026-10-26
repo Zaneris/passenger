@@ -295,8 +295,8 @@ public sealed class FindView : DockPanel
         FontFamily mono = new("avares://Passenger.Editor/Fonts#JetBrains Mono");
         TextBlock number = new() { MinWidth = 36, FontFamily = mono, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
         number.Classes.Add("muted");
-        PathIcon chevron = new() { Width = 10, Height = 10, Margin = new Thickness(0, 0, 6, 0) };
-        PathIcon icon = new() { Margin = new Thickness(0, 0, 6, 0) };
+        RowIcon chevron = new() { Width = 10, Height = 10, Margin = new Thickness(0, 0, 6, 0) };
+        RowIcon icon = new() { Margin = new Thickness(0, 0, 6, 0) };
         TextBlock label = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock count = new() { FontSize = 12, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         count.Classes.Add("muted");
@@ -309,7 +309,6 @@ public sealed class FindView : DockPanel
                 e.Handled = true;
             }
         };
-        string? chevronKey = null;
         return panel.Showing<FindRow>(row =>
         {
             panel.Margin = new Thickness(8 + (row.Depth * 16), 0, 8, 0);
@@ -317,7 +316,7 @@ public sealed class FindView : DockPanel
             number.IsVisible = usage;
             number.Text = usage ? row.Detail : null;
             chevron.IsVisible = !usage;
-            chevron.Resource(PathIcon.DataProperty, ref chevronKey, row.IsExpanded ? IconKeys.ChevronDown : IconKeys.ChevronRight);
+            chevron.DataKey = row.IsExpanded ? IconKeys.ChevronDown : IconKeys.ChevronRight;
             FindRow? file = !usage && row.Depth == 2 && row.Children.FirstOrDefault()?.Usage is not null ? row.Children[0] : null;
             icon.IsVisible = file is not null;
             icon.Data = file is { Usage: { } first } ? Explorer.FileIcons.ForFile(first.Path) : null;

@@ -267,8 +267,8 @@ public sealed class NuGetSourcesView : Grid
     /// applies (the solution, the folder, the user or the machine), its path in its tip.</summary>
     private static Control FileRow()
     {
-        PathIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(6, 0, 6, 0) };
-        icon.Bind(PathIcon.DataProperty, icon.GetResourceObservable(IconKeys.DocumentText));
+        RowIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(6, 0, 6, 0) };
+        icon.DataKey = IconKeys.DocumentText;
         TextBlock place = new() { Classes = { "muted" }, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 8, 0) };
         // Its name, then its folder, which gives way first in a narrow pane so the name stays whole.
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };

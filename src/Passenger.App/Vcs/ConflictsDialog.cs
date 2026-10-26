@@ -205,7 +205,7 @@ public sealed class ConflictsDialog : Window
     /// colour, its folder, and what yours and theirs did to it.</summary>
     private static Control Row()
     {
-        PathIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(0, 0, 6, 0) };
+        RowIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(0, 0, 6, 0) };
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
         name.Bind(TextBlock.ForegroundProperty, name.GetResourceObservable(TokenKeys.Vcs_File_Conflicted));
         TextBlock folder = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0), FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };

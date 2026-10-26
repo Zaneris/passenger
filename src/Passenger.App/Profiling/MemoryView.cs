@@ -564,9 +564,7 @@ public sealed class MemoryView : DockPanel
     /// kind strong before its name).</summary>
     private Control PathStep()
     {
-        RotateTransform turned = new();
-        PathIcon chevron = new() { Classes = { "chevron" }, RenderTransformOrigin = RelativePoint.Center, RenderTransform = turned };
-        chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(IconKeys.ChevronRight));
+        RowIcon chevron = RowIcon.Chevron();
         Border toggle = new() { Width = 18, Height = ListRow.Height, Background = Brushes.Transparent, Child = chevron };
         TextBlock text = Cell();
         Avalonia.Controls.Documents.Run kind = new() { FontWeight = FontWeight.SemiBold };
@@ -586,7 +584,7 @@ public sealed class MemoryView : DockPanel
         {
             step.Margin = new Thickness(row.Depth * 14, 0, 0, 0);
             chevron.IsVisible = row.Node.Children.Count > 0;
-            turned.Angle = row.IsExpanded ? 90 : 0;
+            chevron.Turned = row.IsExpanded;
             text.IsVisible = row.Node.Root is null;
             root.IsVisible = row.Node.Root is not null;
             Named(row.Node.Root is null ? text : root, row.Node.Text);

@@ -17,8 +17,7 @@ public static class ToolTabs
         {
             return new ToggleButton { Classes = { "panelTab" }, IsChecked = open, Content = name };
         }
-        PathIcon glyph = new() { Classes = { "small" } };
-        glyph.Bind(PathIcon.DataProperty, glyph.GetResourceObservable(IconKeys.Close));
+        RowIcon glyph = new() { Width = 10, Height = 10, DataKey = IconKeys.Close };
         Button button = new() { Classes = { "tabClose" }, Content = glyph, Margin = new Thickness(6, 0, 0, 0), [DockPanel.DockProperty] = Dock.Right };
         ToolTip.SetTip(button, closeTip);
         button.Click += (_, e) =>

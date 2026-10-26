@@ -1361,6 +1361,73 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             + $"give each a row made once through ReusedRows.Use, showing its DataContext (Showing):\n{string.Join("\n", found)}");
     }
 
+    /// <summary>A row a list reuses draws its icons with RowIcon, one control where a PathIcon is five that the list styles
+    /// again whole each time it brings the row back into view: a PathIcon made in a row's factory (the body that hands back
+    /// the row Showing its item) or in a row's own class fails here, naming its line; a button's glyph is the button's.</summary>
+    [Fact]
+    public void A_reused_rows_icons_are_RowIcons_never_PathIcons()
+    {
+        Regex rowClass = new(@"\bclass \w*Row\w*\s*:\s*(?:StackPanel|DockPanel|Grid|Panel|ShrinkingRow)\b");
+        List<string> found = [];
+        int rows = 0;
+        foreach ((string path, string text) in UiFiles().Where(f => f.Path.EndsWith(".cs", StringComparison.Ordinal)))
+        {
+            HashSet<int> seen = [];
+            IEnumerable<int> starts = Regex.Matches(text, @"\.Showing<").Select(m => Enclosing(text, m.Index))
+                .Concat(rowClass.Matches(text).Select(m => text.IndexOf('{', m.Index)));
+            foreach (int open in starts.Where(o => o >= 0 && seen.Add(o)))
+            {
+                rows++;
+                int close = Closing(text, open);
+                foreach (Match icon in Regex.Matches(text[open..close], @"\bPathIcon\b"))
+                {
+                    int at = open + icon.Index;
+                    int lineStart = text.LastIndexOf('\n', at) + 1;
+                    int lineEnd = text.IndexOf('\n', at);
+                    if (!text[lineStart..(lineEnd < 0 ? text.Length : lineEnd)].Contains(".Content", StringComparison.Ordinal))
+                    {
+                        found.Add($"{path}:{text.AsSpan(0, at).Count('\n') + 1}");
+                    }
+                }
+            }
+        }
+        Assert.True(rows > 40, $"Only {rows} rows a list reuses were found: the search no longer reads them");
+        Assert.True(found.Count == 0, $"{found.Count} PathIcons are made in rows a list reuses, each five controls styled again as its row comes back into view: "
+            + $"draw each with RowIcon:\n{string.Join("\n", found.Distinct())}");
+
+        // The opening brace of the innermost block holding a place, or -1.
+        static int Enclosing(string text, int at)
+        {
+            int depth = 0;
+            for (int i = at - 1; i >= 0; i--)
+            {
+                if (text[i] == '}')
+                {
+                    depth++;
+                }
+                else if (text[i] == '{' && depth-- == 0)
+                {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        static int Closing(string text, int open)
+        {
+            int depth = 0;
+            for (int i = open; i < text.Length; i++)
+            {
+                depth += text[i] switch { '{' => 1, '}' => -1, _ => 0 };
+                if (depth == 0)
+                {
+                    return i;
+                }
+            }
+            return text.Length;
+        }
+    }
+
     /// <summary>Muted words are made one way, by the muted class (MutedText, or the class on a TextBlock of its own), so a
     /// change to how muted words look is made once: a TextBlock's foreground bound by hand to the muted colour fails here.</summary>
     [Fact]

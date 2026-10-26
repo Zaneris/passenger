@@ -486,7 +486,7 @@ public sealed class LiveTreeView : DockPanel
     /// the element is hidden.</summary>
     private Control Row()
     {
-        PathIcon chevron = new() { Width = 10, Height = 10, Margin = new Thickness(0, 0, 4, 0) };
+        RowIcon chevron = new() { Width = 10, Height = 10, Margin = new Thickness(0, 0, 4, 0) };
         TextBlock type = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock name = Colored(new TextBlock { Margin = new Thickness(5, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center }, TokenKeys.Syntax_Field);
         TextBlock classes = new() { Classes = { "muted" }, Margin = new Thickness(6, 0, 0, 0), FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
@@ -499,12 +499,11 @@ public sealed class LiveTreeView : DockPanel
                 e.Handled = true;
             }
         };
-        string? chevronKey = null;
         return line.Showing<LiveTreeRow>(row =>
         {
             Element element = row.Element;
             chevron.Opacity = row.Expands ? 1 : 0;
-            chevron.Resource(PathIcon.DataProperty, ref chevronKey, row.IsExpanded ? IconKeys.ChevronDown : IconKeys.ChevronRight);
+            chevron.DataKey = row.IsExpanded ? IconKeys.ChevronDown : IconKeys.ChevronRight;
             type.Text = element.Type;
             type.Classes.Set("muted", element.FromTemplate);
             line.Margin = new Thickness(6 + (row.Depth * 12), 0, 8, 0);

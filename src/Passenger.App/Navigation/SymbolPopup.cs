@@ -100,7 +100,7 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
     /// is handed: its badge (a file's icon for a file), its name and type, where it is.</summary>
     public static Control ReusedRow()
     {
-        PathIcon icon = new() { Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
+        RowIcon icon = new() { Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
         TextBlock letter = BadgeLetter();
         Border badge = BadgeOf(letter);
         badge.Margin = new Thickness(0, 0, 8, 0);

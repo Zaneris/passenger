@@ -227,9 +227,7 @@ public sealed class FramesView : DockPanel
     /// time and counts in their columns.</summary>
     private Control RowOf((string Title, double Width)[] columns)
     {
-        RotateTransform turned = new();
-        PathIcon chevron = new() { Classes = { "chevron" }, RenderTransformOrigin = RelativePoint.Center, RenderTransform = turned };
-        chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(IconKeys.ChevronRight));
+        RowIcon chevron = RowIcon.Chevron();
         Border toggle = new() { Width = 18, Height = ListRow.Height, Background = Brushes.Transparent, Child = chevron };
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         StackPanel named = new() { Orientation = Orientation.Horizontal, Children = { toggle, name } };
@@ -246,7 +244,7 @@ public sealed class FramesView : DockPanel
         return row.Showing<LayoutRow>(shown =>
         {
             chevron.IsVisible = shown.Cost.Controls.Count > 0;
-            turned.Angle = shown.IsExpanded ? 90 : 0;
+            chevron.Turned = shown.IsExpanded;
             name.Text = shown.Cost.Name;
             name.FontWeight = shown.Depth == 0 ? FontWeight.SemiBold : FontWeight.Normal;
             ToolTip.SetTip(name, shown.Cost.Control is { } control

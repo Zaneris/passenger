@@ -371,37 +371,6 @@
         <Setter Property="Foreground" Value="{DynamicResource Passenger.Error}" />
     </Style>
 
-    <!-- A test's mark in the Unit Tests window: grey ring not run, blue dot running, green tick passed, red cross failed,
-         grey dash skipped. -->
-    <Style Selector="PathIcon.testState">
-        <Setter Property="Width" Value="10" />
-        <Setter Property="Height" Value="10" />
-        <Setter Property="Margin" Value="3,0,9,0" />
-        <Setter Property="Data" Value="{DynamicResource Icon.TestNotRun}" />
-        <Setter Property="Foreground" Value="{DynamicResource Passenger.Test.NotRun}" />
-    </Style>
-    <Style Selector="PathIcon.testState.running">
-        <Setter Property="Width" Value="9" />
-        <Setter Property="Height" Value="9" />
-        <Setter Property="Margin" Value="3.5,0,9.5,0" />
-        <Setter Property="Data" Value="{DynamicResource Icon.TestRunning}" />
-        <Setter Property="Foreground" Value="{DynamicResource Passenger.Test.Running}" />
-    </Style>
-    <Style Selector="PathIcon.testState.passed">
-        <Setter Property="Width" Value="12" />
-        <Setter Property="Height" Value="12" />
-        <Setter Property="Margin" Value="2,0,8,0" />
-        <Setter Property="Data" Value="{DynamicResource Icon.TestPassed}" />
-        <Setter Property="Foreground" Value="{DynamicResource Passenger.Test.Passed}" />
-    </Style>
-    <Style Selector="PathIcon.testState.failed">
-        <Setter Property="Data" Value="{DynamicResource Icon.TestFailed}" />
-        <Setter Property="Foreground" Value="{DynamicResource Passenger.Test.Failed}" />
-    </Style>
-    <Style Selector="PathIcon.testState.skipped">
-        <Setter Property="Data" Value="{DynamicResource Icon.TestSkipped}" />
-        <Setter Property="Foreground" Value="{DynamicResource Passenger.Test.Skipped}" />
-    </Style>
 
     <!-- An outcome filter on the Unit Tests window's toolbar: the outcome's mark and how many tests have it, the ones
          chosen on a raised band. -->

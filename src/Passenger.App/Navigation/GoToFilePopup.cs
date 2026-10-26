@@ -54,7 +54,7 @@ public sealed partial class GoToFilePopup : SearchPopup<FileHit>
     /// <summary>A file's row: its icon, its name and its folder, muted.</summary>
     protected override Control Row()
     {
-        PathIcon icon = new() { VerticalAlignment = VerticalAlignment.Center };
+        RowIcon icon = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock folder = MutedText.Of(string.Empty);
         StackPanel row = new() { Orientation = Orientation.Horizontal, Spacing = 8, Height = ListRow.Height, Children = { icon, name, folder } };

@@ -523,10 +523,10 @@ public sealed class BranchesPanel : DockPanel
     /// tag's mark (a favourite's star, the current branch's in the accent), its name, and where a local branch pushes.</summary>
     private Control Row()
     {
-        PathIcon chevron = new() { Classes = { "chevron" }, Width = 10, Height = 10, Margin = new Thickness(4, 0, 4, 0) };
+        RowIcon chevron = new() { Width = 10, Height = 10, Margin = new Thickness(4, 0, 4, 0) };
         Border hit = new() { Background = Brushes.Transparent, Child = chevron, VerticalAlignment = VerticalAlignment.Center };
         Border gap = new() { Width = 18 };
-        PathIcon mark = new() { Width = 13, Height = 13, Margin = new Thickness(0, 0, 6, 0) };
+        RowIcon mark = new() { Width = 13, Height = 13, Margin = new Thickness(0, 0, 6, 0) };
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
         // Where it pushes and pulls, muted after its name.
         TextBlock tracked = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
@@ -540,19 +540,15 @@ public sealed class BranchesPanel : DockPanel
                 e.Handled = true;
             }
         };
-        string? chevronKey = null;
-        string? markKey = null;
-        string? markBrush = null;
         return row.Showing<BranchNode>(node =>
         {
             row.Margin = new Thickness(node.Depth * 16, 0, 0, 0);
             hit.IsVisible = node.IsGroup;
             gap.IsVisible = !node.IsGroup;
-            chevron.Resource(PathIcon.DataProperty, ref chevronKey, node.IsExpanded ? IconKeys.ChevronDown : IconKeys.ChevronRight);
+            chevron.DataKey = node.IsExpanded ? IconKeys.ChevronDown : IconKeys.ChevronRight;
             mark.IsVisible = node.Kind is BranchNodeKind.Ref or BranchNodeKind.Head;
-            mark.Resource(PathIcon.DataProperty, ref markKey, node.Branch?.Kind == RefKind.Tag ? IconKeys.Label : node.IsFavorite ? IconKeys.StarFilled : IconKeys.Branch);
-            mark.Resource(PathIcon.ForegroundProperty, ref markBrush,
-                node.IsFavorite ? TokenKeys.Vcs_Favorite : node.Branch?.IsCurrent == true || node.Kind == BranchNodeKind.Head ? TokenKeys.Accent : null);
+            mark.DataKey = node.Branch?.Kind == RefKind.Tag ? IconKeys.Label : node.IsFavorite ? IconKeys.StarFilled : IconKeys.Branch;
+            mark.ForegroundKey = node.IsFavorite ? TokenKeys.Vcs_Favorite : node.Branch?.IsCurrent == true || node.Kind == BranchNodeKind.Head ? TokenKeys.Accent : null;
             name.Text = node.Title;
             name.FontWeight = node.Kind is BranchNodeKind.Group ? FontWeight.SemiBold : FontWeight.Normal;
             tracked.IsVisible = node.Branch is { Kind: RefKind.Local, Upstream: not null };

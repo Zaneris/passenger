@@ -197,7 +197,7 @@ public sealed class RunRowView : DockPanel
 {
     private readonly Action<Uri> browse;
     private readonly string linkName;
-    private readonly PathIcon chevron;
+    private readonly RowIcon chevron;
     private readonly Ellipse dot = new() { Width = 8, Height = 8, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
     private readonly StackPanel right = new() { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
     private readonly StackPanel links = new() { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
@@ -214,12 +214,11 @@ public sealed class RunRowView : DockPanel
         this.linkName = linkName;
         Height = ListRow.Height;
         // Its whole box takes a press, not only the glyph's thin strokes.
-        chevron = new PathIcon
+        chevron = new RowIcon
         {
             Width = 12, Height = 12, Margin = new Thickness(0, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center,
-            Background = Brushes.Transparent, Name = "rowChevron",
+            ForegroundKey = TokenKeys.TextMuted, Name = "rowChevron",
         };
-        chevron.Bind(PathIcon.ForegroundProperty, chevron.GetResourceObservable(TokenKeys.TextMuted));
         chevron.PointerPressed += (_, e) =>
         {
             // The press's capture let go first, or rows moved under the pointer would take the next press from the chevron.
@@ -253,10 +252,7 @@ public sealed class RunRowView : DockPanel
         shown = row;
         Margin = new Thickness(6 + (row.Depth * 16), 0, 6, 0);
         chevron.IsVisible = row.Expands;
-        if (was is null || was.Expanded != row.Expanded)
-        {
-            chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(row.Expanded ? IconKeys.ChevronDown : IconKeys.ChevronRight));
-        }
+        chevron.DataKey = row.Expanded ? IconKeys.ChevronDown : IconKeys.ChevronRight;
         dot.IsVisible = !row.Heading && row.State != RunState.None;
         if (was is null || was.State != row.State)
         {

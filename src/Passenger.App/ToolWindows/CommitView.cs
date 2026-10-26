@@ -462,7 +462,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
         resolve.Click += (_, _) => ResolveRequested?.Invoke(this, EventArgs.Empty);
         StackPanel groupLine = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { groupBox, groupName, count, resolve } };
         CheckBox fileBox = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(22, 0, 2, 0) };
-        (DockPanel fileLine, PathIcon icon, TextBlock name, TextBlock folder) = FileLineParts();
+        (DockPanel fileLine, RowIcon icon, TextBlock name, TextBlock folder) = FileLineParts();
         DockPanel.SetDock(fileBox, Dock.Left);
         fileLine.Children.Insert(0, fileBox);
         Panel row = new() { Children = { groupLine, fileLine } };
@@ -536,16 +536,16 @@ public sealed class CommitView : DockPanel, IOwnKeys
     /// deleted) and its folder from the repository's top.</summary>
     private static DockPanel FileLine(FileChange change, Git? repository)
     {
-        (DockPanel line, PathIcon icon, TextBlock name, TextBlock folder) = FileLineParts();
+        (DockPanel line, RowIcon icon, TextBlock name, TextBlock folder) = FileLineParts();
         string? colour = null;
         ShowFile(line, icon, name, folder, ref colour, change, repository);
         return line;
     }
 
     /// <summary>A file's line with nothing in it yet, for <see cref="ShowFile"/> to show a file in.</summary>
-    private static (DockPanel Line, PathIcon Icon, TextBlock Name, TextBlock Folder) FileLineParts()
+    private static (DockPanel Line, RowIcon Icon, TextBlock Name, TextBlock Folder) FileLineParts()
     {
-        PathIcon icon = new()
+        RowIcon icon = new()
         {
             Width = 14,
             Height = 14,
@@ -562,7 +562,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
     }
 
     /// <summary>Shows a changed file in a line's parts, its name's colour bound anew only for another kind of change.</summary>
-    private static void ShowFile(DockPanel line, PathIcon icon, TextBlock name, TextBlock folder, ref string? colour, FileChange change, Git? repository)
+    private static void ShowFile(DockPanel line, RowIcon icon, TextBlock name, TextBlock folder, ref string? colour, FileChange change, Git? repository)
     {
         icon.Data = Explorer.FileIcons.ForFile(change.Path);
         icon.Foreground = Explorer.FileIcons.BrushForFile(change.Path);

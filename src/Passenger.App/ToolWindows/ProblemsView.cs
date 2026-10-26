@@ -121,7 +121,7 @@ public sealed class ProblemsView : DockPanel
     /// icon, its message's first line (a long one cut, all of it on hover) with its link, and where it is.</summary>
     private Control Row()
     {
-        PathIcon icon = new() { Margin = new Thickness(0, 0, 8, 0) };
+        RowIcon icon = new() { Margin = new Thickness(0, 0, 8, 0) };
         TextBlock text = new() { VerticalAlignment = VerticalAlignment.Center };
         Button open = new() { Classes = { "link" }, VerticalAlignment = VerticalAlignment.Center };
         TextBlock after = new() { VerticalAlignment = VerticalAlignment.Center };
@@ -137,8 +137,6 @@ public sealed class ProblemsView : DockPanel
             }
         };
         ProblemRow? drawn = null;
-        string? iconKey = null;
-        string? colourKey = null;
         return panel.Showing<ProblemRow>(row =>
         {
             if (row != drawn)
@@ -154,8 +152,8 @@ public sealed class ProblemsView : DockPanel
             panel.Margin = new Thickness(8 + (row.Depth * 16), 0, 8, 0);
             Problem? problem = row.Problem;
             icon.IsVisible = problem is not null;
-            icon.Resource(PathIcon.DataProperty, ref iconKey, problem is null ? null : problem.Severity == ProblemSeverity.Error ? IconKeys.Error : IconKeys.Problems);
-            icon.Resource(PathIcon.ForegroundProperty, ref colourKey, problem is null ? null : problem.Severity == ProblemSeverity.Error ? TokenKeys.Error : TokenKeys.Warning);
+            icon.DataKey = problem is null ? null : problem.Severity == ProblemSeverity.Error ? IconKeys.Error : IconKeys.Problems;
+            icon.ForegroundKey = problem is null ? null : problem.Severity == ProblemSeverity.Error ? TokenKeys.Error : TokenKeys.Warning;
             ToolTip.SetTip(panel, problem is null ? null : row.Label);
             text.FontWeight = problem is null && row.Depth == 0 ? FontWeight.SemiBold : FontWeight.Normal;
             text.TextTrimming = problem is null ? TextTrimming.None : TextTrimming.CharacterEllipsis;

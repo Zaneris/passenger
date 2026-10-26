@@ -340,14 +340,13 @@ public sealed class ContainerFilesPane : DockPanel
     /// path on hover.</summary>
     private Control Row()
     {
-        PathIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(0, 0, 6, 0) };
-        icon.Bind(PathIcon.ForegroundProperty, icon.GetResourceObservable(TokenKeys.TextMuted));
+        RowIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(0, 0, 6, 0) };
+        icon.ForegroundKey = TokenKeys.TextMuted;
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         StackPanel row = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { icon, name } };
-        string? iconKey = null;
         return row.Showing<ContainerFile>(file =>
         {
-            icon.Resource(PathIcon.DataProperty, ref iconKey, file.IsFolder ? open.Contains(file.Path) ? IconKeys.FolderOpen : IconKeys.Explorer : IconKeys.DocumentText);
+            icon.DataKey = file.IsFolder ? open.Contains(file.Path) ? IconKeys.FolderOpen : IconKeys.Explorer : IconKeys.DocumentText;
             name.Text = file.Name;
             ToolTip.SetTip(name, file.Path);
             row.Margin = new Thickness(8 + (file.Depth * 16), 0, 8, 0);

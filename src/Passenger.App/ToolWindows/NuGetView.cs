@@ -656,10 +656,10 @@ public sealed class NuGetView : DockPanel
     {
         TextBlock version = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
         version.Classes.Add("muted");
-        PathIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(6, 0, 6, 0) };
-        icon.Bind(PathIcon.DataProperty, icon.GetResourceObservable(IconKeys.Package));
+        RowIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(6, 0, 6, 0) };
+        icon.DataKey = IconKeys.Package;
         TextBlock id = new() { VerticalAlignment = VerticalAlignment.Center };
-        PathIcon warning = Warning(string.Empty);
+        RowIcon warning = Warning(string.Empty);
         warning.Margin = new Thickness(6, 0, 0, 0);
         StackPanel line = new()
         {
@@ -679,11 +679,11 @@ public sealed class NuGetView : DockPanel
     }
 
     /// <summary>The warning a vulnerable version is marked with, saying what it is.</summary>
-    private static PathIcon Warning(string tip)
+    private static RowIcon Warning(string tip)
     {
-        PathIcon warning = new() { Width = 12, Height = 12, VerticalAlignment = VerticalAlignment.Center };
-        warning.Bind(PathIcon.DataProperty, warning.GetResourceObservable(IconKeys.Problems));
-        warning.Bind(PathIcon.ForegroundProperty, warning.GetResourceObservable(TokenKeys.Warning));
+        RowIcon warning = new() { Width = 12, Height = 12, VerticalAlignment = VerticalAlignment.Center };
+        warning.DataKey = IconKeys.Problems;
+        warning.ForegroundKey = TokenKeys.Warning;
         ToolTip.SetTip(warning, tip);
         return warning;
     }

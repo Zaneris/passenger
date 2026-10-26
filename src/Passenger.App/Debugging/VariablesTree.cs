@@ -126,19 +126,12 @@ public sealed class VariableNode(string name, string value, string? type, int re
     public string TypeLabel => Type is { Length: > 0 } t && Value != t && !Value.StartsWith(t, StringComparison.Ordinal) ? $"{{{t}}} " : string.Empty;
 
     public Thickness Indent => new(Depth * 16, 0, 0, 0);
-    public double ChevronAngle => IsExpanded ? 90 : 0;
     public List<VariableNode>? Children { get; set; }
 
     public bool IsExpanded
     {
         get => isExpanded;
-        set
-        {
-            if (Set(ref isExpanded, value))
-            {
-                Raise(nameof(ChevronAngle));
-            }
-        }
+        set => Set(ref isExpanded, value);
     }
 
     public static VariableNode From(DapVariable variable, int depth, VariableNode? parent = null) =>

@@ -251,14 +251,14 @@ public sealed class FileIconsTests : IDisposable
 
     private const double Cell = 24;
 
-    private static IEnumerable<PathIcon> Icons(Visual area) => area.GetVisualDescendants().OfType<PathIcon>();
+    private static IEnumerable<RowIcon> Icons(Visual area) => area.GetVisualDescendants().OfType<RowIcon>();
 
     /// <summary>The icon the Explorer draws on a row.</summary>
     private static RowIcon Drawn(MainWindow window, string name)
     {
         ExplorerNode row = window.ExplorerView.Tree.Rows.FirstOrDefault(r => r.Name == name)
             ?? throw new InvalidOperationException($"The Explorer shows no {name}: [{string.Join(", ", window.ExplorerView.Tree.Rows.Select(r => r.Name))}]");
-        return window.ExplorerView.GetVisualDescendants().OfType<RowIcon>().FirstOrDefault(i => ReferenceEquals(i.DataContext, row) && i.DataKey is null)
+        return Icons(window.ExplorerView).FirstOrDefault(i => ReferenceEquals(i.DataContext, row) && i.DataKey is null)
             ?? throw new InvalidOperationException($"The Explorer draws no icon on {name}'s row");
     }
 
