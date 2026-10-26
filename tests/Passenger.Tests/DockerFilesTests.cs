@@ -1172,10 +1172,27 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
             WebLanguagesTests.SkipWithoutNode();
             if (yaml)
             {
-                Passenger.App.Web.NodeRuntime node = Task.Run(() => Passenger.App.Web.NodeRuntime.FindAsync(null)).GetAwaiter().GetResult();
-                string? old = node.Problem ?? node.TooOldFor(Path.Combine(Passenger.App.Web.WebLanguages.Modules, "yaml-language-server", "package.json"), "the YAML language server");
+                string? old = Ui.Await(Waiting.Apart(() => TooOldAsync()), "the PATH's Node.js to say its version");
                 Assert.SkipWhen(old is not null, $"The YAML language server cannot run here: {old}");
             }
+        }
+
+        /// <inheritdoc cref="SkipWithoutNode"/>
+        public static async Task SkipWithoutNodeAsync(bool yaml = false)
+        {
+            await WebLanguagesTests.SkipWithoutNodeAsync();
+            if (yaml)
+            {
+                string? old = await TooOldAsync();
+                Assert.SkipWhen(old is not null, $"The YAML language server cannot run here: {old}");
+            }
+        }
+
+        /// <summary>Why the PATH's Node.js cannot run the YAML server, or null when it can.</summary>
+        private static async Task<string?> TooOldAsync()
+        {
+            Passenger.App.Web.NodeRuntime node = await Passenger.App.Web.NodeRuntime.FindAsync(null);
+            return node.Problem ?? node.TooOldFor(Path.Combine(Passenger.App.Web.WebLanguages.Modules, "yaml-language-server", "package.json"), "the YAML language server");
         }
 
         public void Dispose() => TestFolders.Delete(Folder);

@@ -138,13 +138,9 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
             Assert.True(Processes.IsRunning(first.ProcessId) && Processes.IsRunning(second.ProcessId));
             Assert.Same(second.Tab, window.Debugger.Chosen);
 
-            Task choosing = window.Debugger.ChooseAsync(first.Tab);
-            Ui.WaitFor(() => choosing.IsCompleted, "choosing the first same-name program");
-            choosing.GetAwaiter().GetResult();
+            Ui.Await(window.Debugger.ChooseAsync(first.Tab), "choosing the first same-name program");
             Assert.Same(first.Tab.Console, window.BottomPanel.Debug.Console);
-            Task stopping = window.Debugger.StopAsync(second.Tab);
-            Ui.WaitFor(() => stopping.IsCompleted, "stopping only the second same-name program");
-            stopping.GetAwaiter().GetResult();
+            Ui.Await(window.Debugger.StopAsync(second.Tab), "stopping only the second same-name program");
             Ui.WaitFor(() => !second.Tab.IsLive && !Processes.IsRunning(second.ProcessId), "the second program's exit");
             Assert.True(first.Tab.IsLive && Processes.IsRunning(first.ProcessId));
             Assert.Same(first.Tab, window.Debugger.Chosen);
@@ -187,8 +183,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
                     cancel.Cancel();
                 }
             });
-            Ui.WaitFor(() => starting.IsCompleted, "the canceled additional launch's cleanup");
-            Assert.ThrowsAny<OperationCanceledException>(() => starting.GetAwaiter().GetResult());
+            Assert.ThrowsAny<OperationCanceledException>(() => Ui.Await(starting, "the canceled additional launch's cleanup"));
             Assert.NotNull(canceled);
             Assert.False(canceled.IsLive);
             if (duringAdapterStart)
@@ -264,13 +259,10 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
             Arguments = ["sleep"],
             WorkingDirectory = Path.GetDirectoryName(Debugging.Helpers.Debuggees.Program("LoopingConsoleApp"))!,
         };
-        Task<string?> starting = window.Debugger.StartAsync(plan, elsewhere);
-        Ui.WaitFor(() => starting.IsCompleted, $"{name}'s session to start");
-        Assert.Null(starting.Result);
+        Assert.Null(Ui.Await(window.Debugger.StartAsync(plan, elsewhere), $"{name}'s session to start"));
         DebugSession session = window.Debugger.SessionNamed(name)!;
         Assert.True(session.IsLocal != elsewhere, $"{name}'s session took its program for {(session.IsLocal ? "one of this machine's" : "another machine's")}");
-        Ui.WaitFor(() => session.ProcessStarted.IsCompleted, $"{name}'s adapter to say which process it started");
-        int program = session.ProcessStarted.Result;
+        int program = Ui.Await(session.ProcessStarted, $"{name}'s adapter to say which process it started");
         int adapter = session.AdapterProcessId;
         // In its loop, it writes no more: on Windows its output is a pipe of the adapter's, which a write would find broken.
         Ui.WaitFor(() => window.Debugger.Output(session).ToString().Contains("looping", StringComparison.Ordinal), $"{name}'s program to say it loops");
@@ -302,9 +294,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
             start.RedirectStandardOutput = true;
             program = ChildProcesses.Start(start);
             Task<string> output = program.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
-            Task<string?> attaching = window.Debugger.AttachAsync(program.Id, "First", hotReload: true);
-            Ui.WaitFor(() => attaching.IsCompleted, "the debugger to attach");
-            Assert.Null(attaching.Result);
+            Assert.Null(Ui.Await(window.Debugger.AttachAsync(program.Id, "First", hotReload: true), "the debugger to attach"));
             Ui.WaitFor(() => window.Debugger.Session is { State: DebugState.Paused } && window.Debugger.Stop is not null, "the program to stop at the breakpoint");
             // What a program attached to writes goes where it always went, as its tab's console says.
             Assert.Contains(DebugController.AttachedConsole, window.Debugger.Output(window.Debugger.Session).ToString(), StringComparison.Ordinal);
@@ -317,7 +307,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
             Ui.WaitFor(() => !window.Debugger.IsDebugging, "the program to run on to its end");
             Assert.True(window.Debugger.LastApplied?.Result == HotReloadResult.Applied, $"The edit was not applied as the program resumed: {window.Debugger.LastApplied?.Said}");
             Assert.True(program.WaitForExit(TimeSpan.FromSeconds(30).Scaled()), "The program attached to did not end");
-            Assert.Equal("first 6", Debugging.Helpers.Debuggees.HeldWrote(output.Result));
+            Assert.Equal("first 6", Debugging.Helpers.Debuggees.HeldWrote(Ui.Await(output, "the program's output to its end")));
         }
         finally
         {

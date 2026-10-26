@@ -108,7 +108,7 @@ public sealed class SelfDebuggingTests : IDisposable
         string opened = $"Opened {PathNames.Canonical(folder)}";
         Assert.Contains(opened, Ui.Shared(Path.Combine(sandbox, "logs", "passenger.log")), StringComparison.Ordinal);
         Assert.DoesNotContain(opened, Ui.IdeLog(), StringComparison.Ordinal);
-        int inner = session.ProcessStarted.Result;
+        int inner = Ui.Await(session.ProcessStarted, "the adapter to say which process it started");
         IReadOnlyList<int> children = Processes.Descendants(inner);
         int[] servers = [.. Directory.GetFiles(Path.Combine(sandbox, "logs", "roslyn"), "server-*.log").Select(ServerProcess)];
         Assert.True(servers.Length > 0 && servers.All(children.Contains),

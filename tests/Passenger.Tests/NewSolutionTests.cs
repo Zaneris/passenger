@@ -325,8 +325,8 @@ public sealed class NewSolutionTests : IDisposable
         string said = string.Empty;
         foreach (string type in (string[])["project", "solution"])
         {
-            ChildResult listed = Task.Run(() => ChildProcesses.RunAsync(ProjectTemplates.NewCommand(["list", "--type", type, "--columns-all"], home), limit: TimeSpan.FromMinutes(3)))
-                .GetAwaiter().GetResult();
+            ChildResult listed = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ProjectTemplates.NewCommand(["list", "--type", type, "--columns-all"], home), limit: TimeSpan.FromMinutes(3))),
+                $"dotnet new list --type {type}", TimeSpan.FromMinutes(3) + TestFolders.Spare);
             // 103: none of the type is installed.
             Assert.True(listed.Succeeded || (type == "solution" && listed.ExitCode == 103), $"dotnet new list failed:\n{listed.Output}{listed.Error}");
             // WPF and Windows Forms build on Windows alone, so only there are they listed.

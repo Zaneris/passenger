@@ -342,7 +342,7 @@ public sealed class RazorDebuggingTests : IDisposable
         Ui.Run(window, AppActions.Debug);
         Ui.WaitFor(() => window.Browsed.Count > 0, "the app to listen at its launch profile's address", TimeSpan.FromMinutes(4));
         using HttpClient client = new() { Timeout = TimeSpan.FromMinutes(3) };
-        Task<string> page = Task.Run(() => client.GetStringAsync($"http://localhost:{port}/visits"));
+        Task<string> page = Waiting.Apart(() => client.GetStringAsync($"http://localhost:{port}/visits"));
         Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused, "the app to stop at the breakpoint in @code as the page is asked for");
         Ui.WaitFor(() => editor.LineMarks.Contains(new LineMark(9, LineMarkKind.ExecutionPoint)), "the stop shown on the breakpoint's line");
         Assert.Contains(new LineMark(9, LineMarkKind.BreakpointBound), editor.LineMarks);
@@ -361,7 +361,7 @@ public sealed class RazorDebuggingTests : IDisposable
         string html = Ui.Await(page, "the page once the app goes on");
         Assert.Contains("Visits: 42", html, StringComparison.Ordinal);
 
-        Task<string> tally = Task.Run(() => client.GetStringAsync($"http://localhost:{port}/tally"));
+        Task<string> tally = Waiting.Apart(() => client.GetStringAsync($"http://localhost:{port}/tally"));
         Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && window.EditorArea.Active?.Path == code,
             "the app to stop at the breakpoint in the code-behind as the page is asked for");
         Ui.WaitFor(() => window.EditorArea.CodeEditor.LineMarks.Contains(new LineMark(18, LineMarkKind.ExecutionPoint)), "the stop shown on the code-behind's line");

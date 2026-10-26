@@ -109,7 +109,7 @@ public sealed class MemorySnapshotsTests : IDisposable
         Ui.ClickButton(memory, "Open Survived Objects");
         Ui.WaitFor(() => memory.Set is not null, "the survived objects");
         Assert.Equal("Survived objects of the type Survivor", memory.Set!.Title);
-        HashSet<ulong> before = [.. Ui.Await(Task.Run(() => first.ObjectsOf(first.Types.Single(t => t.Name == "Survivor")).Objects.Select(o => o.Address).ToList()), "the first snapshot's survivors")];
+        HashSet<ulong> before = [.. Ui.Await(Waiting.Apart(() => first.ObjectsOf(first.Types.Single(t => t.Name == "Survivor")).Objects.Select(o => o.Address).ToList()), "the first snapshot's survivors")];
         int moved = memory.ObjectRows.Count(o => !before.Contains(o.Address));
         Assert.Equal(500, memory.ObjectRows.Count);
         Assert.True(moved > 250, $"Only {moved} of the 500 survivors moved: the compacting collection was to move them, so their being survived proves nothing");

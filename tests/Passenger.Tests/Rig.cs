@@ -1000,6 +1000,23 @@ public static class Ui
         task.GetAwaiter().GetResult();
     }
 
+    /// <summary>Whether what a closed window started ended within its limit and a moment more, as the IDE's process waits for
+    /// it before it goes (<see cref="Passenger.App.MainWindow.EndLimit"/>), the loop running meanwhile; its fault thrown.</summary>
+    public static bool Ended(Passenger.App.MainWindow window)
+    {
+        if (window.Ended is not { } ended)
+        {
+            return false;
+        }
+        Pumped(() => ended.IsCompleted, Passenger.App.MainWindow.EndLimit + TimeSpan.FromSeconds(5), scaled: false);
+        if (!ended.IsCompleted)
+        {
+            return false;
+        }
+        ended.GetAwaiter().GetResult();
+        return true;
+    }
+
     /// <summary>What a wait that came back with its task not ended throws, which its own limit makes it never do.</summary>
     private static InvalidOperationException NotEnded(string what) => new($"The wait for {what} came back before it ended");
 

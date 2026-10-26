@@ -1407,7 +1407,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             window.Close();
 
             // The IDE's process waits for these before it ends, a few seconds at most.
-            Assert.True(window.Ended?.Wait(MainWindow.EndLimit + TimeSpan.FromSeconds(5)), "The window closed without ending what it started within its limit, so the IDE's process would not end");
+            Assert.True(Ui.Ended(window), "The window closed without ending what it started within its limit, so the IDE's process would not end");
             Assert.True(Processes.Gone(debuggee), "After the window closed, the program being debugged went on running");
             Assert.True(Processes.Gone(adapter), "After the window closed, the debugger went on running");
             Assert.True(Processes.Gone(server), "After the window closed, the language server went on running until the IDE's own end");
@@ -1508,9 +1508,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         {
             MainWindow window = Open();
             Task<bool> attached = window.Tests.AttachDebugger!(host.Id);
-            Ui.WaitFor(() => attached.IsCompleted, "the attach to give up", TimeSpan.FromSeconds(30));
-
-            Assert.False(attached.Result, "The IDE told VSTest the debugger had hold of a test host it could not attach to");
+            Assert.False(Ui.Await(attached, "the attach to give up", TimeSpan.FromSeconds(30)), "The IDE told VSTest the debugger had hold of a test host it could not attach to");
             Assert.False(window.Debugger.IsDebugging, "The session went on after its attach failed, saying the tests run");
             Assert.Contains($"Could not debug Tests: Could not attach to process {host.Id}", window.Status, StringComparison.Ordinal);
             Assert.Contains("not a .NET program", window.Status, StringComparison.Ordinal);
@@ -1584,7 +1582,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
                 Assert.Fail($"The program let go of at its breakpoint ended with exit code 0x{program.ExitCode:X8}; its copy built with CetCompat=false, let go the same way, {unshadowed}");
             }
             Assert.Equal(0, program.ExitCode);
-            Assert.Equal("read: hello", output.Result.Trim());
+            Assert.Equal("read: hello", Ui.Await(output, "the program's output to its end").Trim());
             Assert.DoesNotContain(editor.LineMarks, m => m.Kind == LineMarkKind.ExecutionPoint);
             window.Close();
         }
@@ -1667,7 +1665,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             adapter = window.Debugger.Session!.AdapterProcessId;
             window.Close();
 
-            Assert.True(window.Ended?.Wait(MainWindow.EndLimit + TimeSpan.FromSeconds(5)), "The window closed without letting go of what it attached to within its limit");
+            Assert.True(Ui.Ended(window), "The window closed without letting go of what it attached to within its limit");
             Assert.True(Processes.Gone(adapter), "After the window closed, the debugger went on running");
             Assert.False(looping.WaitForExit(TimeSpan.FromSeconds(2)), "Closing the window ended a program it had only attached to");
         }
@@ -1701,7 +1699,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             Assert.True(window.Perform(AppActions.Detach), $"Detach could not run on {debuggee}");
             Ui.WaitFor(() => !window.Debugger.IsDebugging, $"the debugger to let go of {debuggee}");
             return program.WaitForExit(TimeSpan.FromSeconds(30))
-                ? $"ended with exit code 0x{program.ExitCode:X8}, having written '{output.Result.Trim()}'"
+                ? $"ended with exit code 0x{program.ExitCode:X8}, having written '{Ui.Await(output, $"{debuggee}'s output to its end").Trim()}'"
                 : "never ran on to its end";
         }
         finally
@@ -1824,8 +1822,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         {
             // Not settled: the start holds the window's background work for as long as the debugger waits for the program.
             Assert.True(window.Perform(AppActions.Debug), $"Debug did not start: {Ui.Said(window)}");
-            Ui.PumpUntil(() => held.IsCompleted, "the build, then the program's runtime to come to the hold", TimeSpan.FromMinutes(3));
-            program = held.Result;
+            program = Ui.AwaitPumped(held, "the build, then the program's runtime to come to the hold", TimeSpan.FromMinutes(3));
             DebugSession starting = window.Debugger.Session ?? throw new InvalidOperationException($"No session while the program was held: {window.Status}");
             adapter = starting.AdapterProcessId;
             Assert.Equal(DebugState.Starting, starting.State);
@@ -1874,8 +1871,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         {
             // Not settled: the start holds the window's background work for as long as the debugger waits for the program.
             Assert.True(window.Perform(AppActions.Debug), $"Debug did not start: {Ui.Said(window)}");
-            Ui.PumpUntil(() => held.IsCompleted, "the build, then the program's runtime to come to the hold", TimeSpan.FromMinutes(3));
-            program = held.Result;
+            program = Ui.AwaitPumped(held, "the build, then the program's runtime to come to the hold", TimeSpan.FromMinutes(3));
             Assert.True(window.Debugger.Session is not null, $"The debugger waited for the program to start with no session for Stop to end: the status bar said \"{window.Status}\"");
             DebugSession starting = window.Debugger.Session!;
             adapter = starting.AdapterProcessId;
@@ -1929,7 +1925,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         StartDebugging(window);
         WaitDebugging(window, () => window.Debugger.Session?.State == DebugState.Paused, "the debugged program to stop at the breakpoint");
         DebugSession debugged = window.Debugger.Session!;
-        int program = debugged.ProcessStarted.Result;
+        int program = Ui.Await(debugged.ProcessStarted, "the adapter to say which process it started");
         try
         {
             window.SetConfigurations(configurations, "Ran");

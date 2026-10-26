@@ -290,7 +290,7 @@ public sealed class PublishTests : IClassFixture<RestoredFolders>, IDisposable
             Assert.Equal("Building Hello (FolderProfile)…", window.Actions.Work.Of(AppActions.Publish)?.Stage);
             window.Perform(AppActions.Stop);
             Ui.WaitFor(() => window.LastPublish is { IsCompleted: true }, "the stopped publish to end", TimeSpan.FromSeconds(30));
-            BuildOutcome ended = window.LastPublish!.Result;
+            BuildOutcome ended = Ui.Await(window.LastPublish!, "the stopped publish's outcome");
             Assert.Equal((BuildStatus.Stopped, "Publish stopped"), (ended.Status, window.Status));
             Assert.False(window.IsBuilding, "The publish was stopped but the window still says it builds");
         }
@@ -405,16 +405,12 @@ public sealed class PublishTests : IClassFixture<RestoredFolders>, IDisposable
     private static BuildOutcome Publish(MainWindow window, Func<Task<string?>> start)
     {
         Task<string?> asked = start();
-        Ui.WaitFor(() => window.LastPublish is { IsCompleted: true } || asked is { IsCompleted: true, Result: not null }, "the publish to end", TimeSpan.FromMinutes(4));
+        Ui.WaitFor(() => window.LastPublish is { IsCompleted: true } || (asked.IsCompleted && asked.Result is not null), "the publish to end", TimeSpan.FromMinutes(4));
         Assert.True(window.LastPublish is not null, $"The publish did not start: {(asked.IsCompleted ? asked.Result : "still asking")}; the status bar says {window.Status}");
-        return window.LastPublish.Result;
+        return Ui.Await(window.LastPublish, "the publish's outcome", TimeSpan.FromMinutes(4));
     }
 
-    private static string? Done(Task<string?> task, string what)
-    {
-        Ui.WaitFor(() => task.IsCompleted, what, TimeSpan.FromMinutes(1));
-        return task.Result;
-    }
+    private static string? Done(Task<string?> task, string what) => Ui.Await(task, what, TimeSpan.FromMinutes(1));
 
     private static System.Diagnostics.ProcessStartInfo Dotnet(IReadOnlyList<string> arguments, string at) => ChildProcesses.DotnetCommand(arguments, at);
 
@@ -423,7 +419,8 @@ public sealed class PublishTests : IClassFixture<RestoredFolders>, IDisposable
 
     private static ChildResult Run(System.Diagnostics.ProcessStartInfo start, bool check)
     {
-        ChildResult result = Task.Run(() => ChildProcesses.RunAsync(start, limit: TimeSpan.FromMinutes(4).Scaled())).GetAwaiter().GetResult();
+        TimeSpan limit = TimeSpan.FromMinutes(4);
+        ChildResult result = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(start, limit: limit.Scaled())), ChildProcesses.Display(start), limit + TestFolders.Spare);
         Assert.True(!check || result.Succeeded, $"{ChildProcesses.Display(start)} exited with code {result.ExitCode}:\n{result.Output}{result.Error}");
         return result;
     }

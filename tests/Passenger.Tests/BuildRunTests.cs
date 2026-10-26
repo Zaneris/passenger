@@ -56,8 +56,8 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         Write("src/Hello/Hello.csproj",
             "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <OutputType>Exe</OutputType>\n    <ImplicitUsings>enable</ImplicitUsings>\n  </PropertyGroup>\n</Project>\n");
         string project = Path.Combine(Folder, "src", "Hello");
-        Passenger.Core.ChildResult built = Task.Run(() => Passenger.Core.ChildProcesses.RunAsync(
-            Passenger.Core.ChildProcesses.DotnetCommand(["build", Path.Combine(project, "Hello.csproj"), "-nologo"]), limit: Restore.Limit)).GetAwaiter().GetResult();
+        Passenger.Core.ChildResult built = Ui.Await(Waiting.Apart(() => Passenger.Core.ChildProcesses.RunAsync(
+            Passenger.Core.ChildProcesses.DotnetCommand(["build", Path.Combine(project, "Hello.csproj"), "-nologo"]), limit: Restore.Limit)), "the program's build before the test", Restore.Limit + TestFolders.Spare);
         Assert.True(built.Succeeded, $"The program did not build before the test:\n{built.Output}{built.Error}");
         string apphost = Path.Combine(project, "obj", "Debug", TestProjects.Framework, OperatingSystem.IsWindows() ? "apphost.exe" : "apphost");
         Assert.True(File.Exists(apphost), $"The build made no apphost at {apphost}");
@@ -824,7 +824,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             Assert.Equal($"http://127.0.0.1:{browse.Port}/orders", opened.AbsoluteUri);
             using (System.Net.Http.HttpClient client = new())
             {
-                Assert.Equal("Orders", client.GetStringAsync(opened).GetAwaiter().GetResult());
+                Assert.Equal("Orders", Ui.Await(Waiting.Apart(() => client.GetStringAsync(opened)), "the site's answer at its launch URL"));
             }
             window.Perform(AppActions.Stop);
             Ui.WaitFor(() => !window.Runner.IsRunning, "the site to stop");
@@ -887,10 +887,8 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             window.ReloadSolution();
             Assert.Empty(window.Configurations);
             Task<BuildOutcome> built = window.BuildAsync();
-            // Settle fails if the build left background work held.
-            Ui.Settle();
-            Assert.True(built.IsCompleted, "The build's caller never heard how it ended");
-            Assert.Equal(BuildStatus.NotStarted, built.Result.Status);
+            // Landing fails if the build left background work held.
+            Assert.Equal(BuildStatus.NotStarted, Ui.Landed(built, "the build's outcome, told to its caller").Status);
             Assert.False(window.IsBuilding);
             Assert.Contains("is gone", window.Status, StringComparison.Ordinal);
             Assert.Contains("is gone", window.BottomPanel.Build.Document.Snapshot.ToString(), StringComparison.Ordinal);
@@ -1042,7 +1040,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             process = Processes.WrittenId(idFile, $"{what} to start");
             int command = window.Runner.IsRunning ? window.Runner.ProcessId ?? 0 : 0;
             window.Close();
-            Assert.True(window.Ended?.Wait(MainWindow.EndLimit + TimeSpan.FromSeconds(5)), "The window closed without ending what it started within its limit, so the IDE's process would not end");
+            Assert.True(Ui.Ended(window), "The window closed without ending what it started within its limit, so the IDE's process would not end");
             Assert.True(Processes.Gone(process), $"After the window closed, {what} went on running, holding what it held for the next run");
             Assert.True(Processes.Gone(command), $"After the window closed, the dotnet command that started {what} went on running (dotnet watch would start it again on a save)");
         }

@@ -400,7 +400,7 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
     /// needs the TypeScript server (<paramref name="typescript"/>), one older than it needs.</summary>
     internal static void SkipWithoutNode(bool typescript = false)
     {
-        Assert.SkipWhen(Programs.Node() is null, "Node.js is not on the PATH, and the web language servers run on it");
+        Assert.SkipWhen(Programs.Node() is null, NoNode);
         if (typescript)
         {
             string? old = TooOld();
@@ -408,10 +408,26 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
         }
     }
 
-    /// <summary>Why the PATH's Node.js cannot run the TypeScript server, or null when it can.</summary>
-    private static string? TooOld()
+    /// <inheritdoc cref="SkipWithoutNode"/>
+    internal static async Task SkipWithoutNodeAsync(bool typescript = false)
     {
-        Passenger.App.Web.NodeRuntime node = Task.Run(() => Passenger.App.Web.NodeRuntime.FindAsync(null)).GetAwaiter().GetResult();
+        Assert.SkipWhen(Programs.Node() is null, NoNode);
+        if (typescript)
+        {
+            string? old = await TooOldAsync();
+            Assert.SkipWhen(old is not null, $"The TypeScript language server cannot run here: {old}");
+        }
+    }
+
+    private const string NoNode = "Node.js is not on the PATH, and the web language servers run on it";
+
+    /// <summary><see cref="TooOldAsync"/> from the UI thread, the window's loop running meanwhile.</summary>
+    private static string? TooOld() => Ui.Await(Waiting.Apart(() => TooOldAsync()), "the PATH's Node.js to say its version");
+
+    /// <summary>Why the PATH's Node.js cannot run the TypeScript server, or null when it can.</summary>
+    private static async Task<string?> TooOldAsync()
+    {
+        Passenger.App.Web.NodeRuntime node = await Passenger.App.Web.NodeRuntime.FindAsync(null);
         return node.Problem ?? node.TooOldFor(Path.Combine(Passenger.App.Web.WebLanguages.Modules, "typescript-language-server", "package.json"), "the TypeScript language server");
     }
 }

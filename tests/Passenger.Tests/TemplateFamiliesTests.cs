@@ -232,7 +232,8 @@ public sealed class TemplateFamiliesTests : IDisposable
     /// <summary>dotnet new with these arguments in the run's own template home, as a terminal runs it.</summary>
     private void DotnetNew(string[] arguments)
     {
-        ChildResult ran = Task.Run(() => ChildProcesses.RunAsync(ProjectTemplates.NewCommand(arguments, place), limit: TimeSpan.FromMinutes(2))).GetAwaiter().GetResult();
+        ChildResult ran = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ProjectTemplates.NewCommand(arguments, place), limit: TimeSpan.FromMinutes(2))),
+            $"dotnet new {string.Join(' ', arguments)}", TimeSpan.FromMinutes(2) + TestFolders.Spare);
         Assert.True(ran.Succeeded, $"dotnet new {string.Join(' ', arguments)} failed:\n{ran.Output}{ran.Error}");
     }
 
@@ -240,8 +241,8 @@ public sealed class TemplateFamiliesTests : IDisposable
     /// tag), asked apart from Passenger's reading: it exits 103 when none matches.</summary>
     private bool Lists(string classification)
     {
-        ChildResult ran = Task.Run(() => ChildProcesses.RunAsync(ProjectTemplates.NewCommand(["list", "--tag", classification, "--type", "project"], place),
-            limit: TimeSpan.FromMinutes(2))).GetAwaiter().GetResult();
+        ChildResult ran = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ProjectTemplates.NewCommand(["list", "--tag", classification, "--type", "project"], place),
+            limit: TimeSpan.FromMinutes(2))), $"dotnet new list --tag {classification}", TimeSpan.FromMinutes(2) + TestFolders.Spare);
         Assert.True(ran.Succeeded || ran.ExitCode == 103, $"dotnet new list --tag {classification} failed:\n{ran.Output}{ran.Error}");
         return ran.Succeeded;
     }

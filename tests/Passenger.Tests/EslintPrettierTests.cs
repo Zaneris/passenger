@@ -107,7 +107,7 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
         Project.SkipWithoutNode();
         project.AddFolder("future", ("app.js", "let total = 1;\nconsole.log(total);\n"));
         project.AddFolder("future/node_modules/eslint", ("package.json", "{ \"name\": \"eslint\", \"version\": \"99.0.0\", \"engines\": { \"node\": \">=99\" } }\n"));
-        NodeRuntime node = Task.Run(() => NodeRuntime.FindAsync(null)).GetAwaiter().GetResult();
+        NodeRuntime node = Ui.Await(Waiting.Apart(() => NodeRuntime.FindAsync(null)), "the PATH's Node.js");
         MainWindow window = project.Open("future/app.js");
         try
         {
@@ -622,10 +622,26 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
         /// needs.</summary>
         public static void SkipWithoutNode()
         {
-            Assert.SkipWhen(Programs.Node() is null, "Node.js is not on the PATH, and ESLint and Prettier run on it");
-            NodeRuntime node = Task.Run(() => NodeRuntime.FindAsync(null)).GetAwaiter().GetResult();
-            string? old = node.Problem ?? node.TooOldFor(Path.Combine(AppContext.BaseDirectory, "node-packages", "node_modules", "eslint", "package.json"), "ESLint");
+            Assert.SkipWhen(Programs.Node() is null, NoNode);
+            string? old = Ui.Await(Waiting.Apart(() => TooOldAsync()), "the PATH's Node.js to say its version");
             Assert.SkipWhen(old is not null, $"ESLint cannot run here: {old}");
+        }
+
+        /// <inheritdoc cref="SkipWithoutNode"/>
+        public static async Task SkipWithoutNodeAsync()
+        {
+            Assert.SkipWhen(Programs.Node() is null, NoNode);
+            string? old = await TooOldAsync();
+            Assert.SkipWhen(old is not null, $"ESLint cannot run here: {old}");
+        }
+
+        private const string NoNode = "Node.js is not on the PATH, and ESLint and Prettier run on it";
+
+        /// <summary>Why the PATH's Node.js cannot run the tests' ESLint, or null when it can.</summary>
+        private static async Task<string?> TooOldAsync()
+        {
+            NodeRuntime node = await NodeRuntime.FindAsync(null);
+            return node.Problem ?? node.TooOldFor(Path.Combine(AppContext.BaseDirectory, "node-packages", "node_modules", "eslint", "package.json"), "ESLint");
         }
 
         private static void CopyFolder(string from, string to)

@@ -95,7 +95,7 @@ public sealed class ProjectEvaluationTests : IDisposable
     {
         MainWindow window = Open();
         Assert.Contains("Serilog", Children(window, "Dependencies"));
-        ProjectHost spoiled = Task.Run(() => ProjectHosts.ForAsync(folder)).GetAwaiter().GetResult();
+        ProjectHost spoiled = Ui.Await(Waiting.Apart(() => ProjectHosts.ForAsync(folder)), "the folder's project host");
         spoiled.SpoilNext(HostMethods.Evaluate);
         Write("App/App.csproj", Project.Replace("""<Compile Remove="Legacy/**" />""", """<Compile Remove="Legacy/Old.cs" />"""));
         Ui.WaitFor(() => spoiled.HasExited, "the host whose answer did not read to be ended");
@@ -106,7 +106,7 @@ public sealed class ProjectEvaluationTests : IDisposable
         Write("App/App.csproj", Project.Replace("""'$(ShopLogs)' == 'true'""", """'$(ShopLogs)' == 'false'"""));
         Ui.WaitFor(() => !window.ExplorerView.Tree.Rows.Any(r => r.Name == "Serilog"), "the next change's evaluation to drop the package its condition now leaves out");
         Assert.Null(window.Session.Models.Problem);
-        int now = Task.Run(() => ProjectHosts.ForAsync(folder)).GetAwaiter().GetResult().ProcessId;
+        int now = Ui.Await(Waiting.Apart(() => ProjectHosts.ForAsync(folder)), "the folder's project host now").ProcessId;
         Assert.True(now != spoiled.ProcessId, "The next evaluation was asked of the host whose answer did not read");
         window.Close();
     }

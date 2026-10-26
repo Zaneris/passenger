@@ -184,54 +184,52 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
             Ui.PumpUntil(() => Programs().Count > 0, "the program to run as the profiler waits for it", TimeSpan.FromMinutes(2));
             Assert.Equal("Already under way: Starting Starting: Undiagnosed under the profiler…", window.Actions.WhyNot(AppActions.Profile, window.Actions.Context()));
 
-            again = window.ProfileAsync();
-            Assert.True(Ui.Pumped(() => again.IsCompleted, TimeSpan.FromSeconds(10)), $"A second Profile while the first program started went on to start it again ({Programs().Count} programs)");
-            Assert.Equal("A run is already being profiled", again.Result);
+            Task<string?> second = window.ProfileAsync();
+            again = second;
+            Assert.True(Ui.Pumped(() => second.IsCompleted, TimeSpan.FromSeconds(10)), $"A second Profile while the first program started went on to start it again ({Programs().Count} programs)");
+            Assert.Equal("A run is already being profiled", Ui.AwaitPumped(second, "the second Profile's refusal"));
             Assert.Single(Programs());
-            Assert.False(started.IsCompleted, $"The first profile's start ended: {(started.IsCompleted ? started.Result : null)}");
+            Assert.False(started.IsCompleted, $"The first profile's start ended: {(started.IsCompleted ? Ui.AwaitPumped(started, "the first profile's start") : null)}");
 
             Passenger.App.Profiling.ProfilerView view = window.ProfilerView;
             Avalonia.Controls.Button kill = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(view).OfType<Avalonia.Controls.Button>()
                 .Single(b => b.Content as string == "Kill");
             Assert.True(kill.IsVisible, "The profiler window had no Kill while the program it started had not reached it");
             Ui.Click(kill, settle: false);
-            Ui.PumpUntil(() => started.IsCompleted, "Kill to end the profile's start", TimeSpan.FromSeconds(10));
-            Assert.Equal("Profiling Starting: Undiagnosed was stopped as it started", started.Result);
+            string? killed = Ui.AwaitPumped(started, "Kill to end the profile's start", TimeSpan.FromSeconds(10));
+            Assert.Equal("Profiling Starting: Undiagnosed was stopped as it started", killed);
             Assert.True(Processes.Gone(Programs()[0]), $"Kill left the program running: {Processes.Describe(Programs()[0])}");
             Assert.Null(window.Profiling);
-            Assert.Equal(started.Result, view.Status);
+            Assert.Equal(killed, view.Status);
             Assert.False(kill.IsVisible, "Kill stayed once the start was ended");
             Assert.Equal(before, Ports());
             Assert.Null(window.Actions.WhyNot(AppActions.Profile, window.Actions.Context()));
 
             Configure(window, "Elsewhere", pids, workingDirectory: "gone");
-            started = window.ProfileAsync();
-            Ui.WaitFor(() => started.IsCompleted, "the build and the start", TimeSpan.FromMinutes(3));
+            string? refused = Ui.Await(window.ProfileAsync(), "the build and the start", TimeSpan.FromMinutes(3));
             string gone = Path.Combine(window.Folder!, "gone");
-            Assert.Equal($"Could not profile Waits: its working folder {gone} does not exist", started.Result);
+            Assert.Equal($"Could not profile Waits: its working folder {gone} does not exist", refused);
             Assert.Null(window.Profiling);
             Assert.True(window.DockHost.IsShown(ToolWindowIds.Profiler));
-            Assert.Equal(started.Result, view.Status);
-            Assert.Equal(started.Result, view.Placeholder);
+            Assert.Equal(refused, view.Status);
+            Assert.Equal(refused, view.Placeholder);
             Assert.Equal(before, Ports());
 
             // A program that ends at once, its diagnostics off as a program that is not .NET never comes.
             Configure(window, "Ends first", pids: null, undiagnosed: true);
-            started = window.ProfileAsync();
-            Ui.WaitFor(() => started.IsCompleted, "the build and the start", TimeSpan.FromMinutes(3));
-            Assert.StartsWith("Waits never reached the profiler: it ended first, with exit code ", started.Result, StringComparison.Ordinal);
+            string? ended = Ui.Await(window.ProfileAsync(), "the build and the start", TimeSpan.FromMinutes(3));
+            Assert.StartsWith("Waits never reached the profiler: it ended first, with exit code ", ended, StringComparison.Ordinal);
             Assert.Null(window.Profiling);
-            Assert.Equal(started.Result, view.Status);
+            Assert.Equal(ended, view.Status);
             Assert.Equal(before, Ports());
 
             string closing = TestFolders.Create("pids-");
             Configure(window, "Closed: Undiagnosed", closing, undiagnosed: true);
-            started = window.ProfileAsync();
+            Task<string?> waiting = window.ProfileAsync();
             closed = Started(closing, "the program to run as the profiler waits for it");
-            Assert.False(started.IsCompleted, $"The profiler gave up on the program before the folder was closed: {(started.IsCompleted ? started.Result : null)}");
+            Assert.False(waiting.IsCompleted, $"The profiler gave up on the program before the folder was closed: {(waiting.IsCompleted ? Ui.AwaitPumped(waiting, "the profile's start") : null)}");
             Assert.Null(window.CloseSolution());
-            Ui.PumpUntil(() => started.IsCompleted, "the profile's start to end with its folder", TimeSpan.FromSeconds(10));
-            Assert.Equal(Refusals.SolutionClosed, started.Result);
+            Assert.Equal(Refusals.SolutionClosed, Ui.AwaitPumped(waiting, "the profile's start to end with its folder", TimeSpan.FromSeconds(10)));
             Assert.True(Processes.Gone(closed), $"Closing the folder left the program being profiled running: {Processes.Describe(closed)}");
             Assert.Equal(before, Ports());
             window.Close();
@@ -530,9 +528,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
     {
         // A snapshot of an Avalonia app's two frames, of 10 and 30 ms, as its inspector tells them.
         string trace = Path.Combine(folder, "TwoFrames.nettrace");
-        Task recording = Task.Run(() => RecordFrames(trace, [10, 30]));
-        Ui.WaitFor(() => recording.IsCompleted, "the two frames' trace");
-        recording.GetAwaiter().GetResult();
+        Ui.Await(Waiting.Apart(() => RecordFrames(trace, [10, 30])), "the two frames' trace");
         MainWindow window = new() { Width = 1300, Height = 900 };
         window.Show();
         try
@@ -553,12 +549,12 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
 
     /// <summary>Frames of these times on the UI thread, told by this process as the Live Visual Tree's inspector tells an
     /// app's, recorded by an EventPipe session of its own into a .nettrace.</summary>
-    private static void RecordFrames(string trace, double[] times)
+    private static async Task RecordFrames(string trace, double[] times)
     {
         Microsoft.Diagnostics.NETCore.Client.DiagnosticsClient client = new(Environment.ProcessId);
         using Microsoft.Diagnostics.NETCore.Client.EventPipeSession session = client.StartEventPipeSession(
             [new Microsoft.Diagnostics.NETCore.Client.EventPipeProvider(UiFrames.Provider, System.Diagnostics.Tracing.EventLevel.Informational)], requestRundown: false);
-        Task copying = Task.Run(() =>
+        Task copying = Waiting.Apart(() =>
         {
             using FileStream file = File.Create(trace);
             session.EventStream.CopyTo(file);
@@ -573,7 +569,8 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
             }
         }
         session.Stop();
-        Assert.True(copying.Wait(TimeSpan.FromSeconds(30)), "The EventPipe session's trace never ended");
+        Assert.True(await Waiting.Within(copying, TimeSpan.FromSeconds(30), scaled: false), "The EventPipe session's trace never ended");
+        await copying;
     }
 
     /// <summary>The inspector's frame event (Passenger.Inspector's FrameEvents), by the number and names the profiler reads.</summary>

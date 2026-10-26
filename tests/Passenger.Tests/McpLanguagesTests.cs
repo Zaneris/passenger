@@ -179,8 +179,8 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
     [Fact]
     public async Task An_agent_reads_navigates_renames_fixes_and_formats_the_web_languages_through_their_servers_eslint_and_prettier()
     {
-        WebLanguagesTests.SkipWithoutNode(typescript: true);
-        EslintPrettierTests.Project.SkipWithoutNode();
+        await WebLanguagesTests.SkipWithoutNodeAsync(typescript: true);
+        await EslintPrettierTests.Project.SkipWithoutNodeAsync();
         string web = Made("mcpweb-", made =>
         {
             string packages = Path.Combine(AppContext.BaseDirectory, "node-packages", "node_modules");
@@ -444,7 +444,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
     [Fact]
     public async Task An_agent_reads_a_compose_files_declarations_and_problems_renames_a_service_and_formats_it_through_the_yaml_server()
     {
-        DockerFilesTests.Shop.SkipWithoutNode(yaml: true);
+        await DockerFilesTests.Shop.SkipWithoutNodeAsync(yaml: true);
         const string Compose = "services:\n  web:\n    image:   nginx:1.27\n    ports: [ \"8080:80\" ]\n    depends_on:   [api]\n  api:\n    build: .\n";
         string compose = Made("mcpcompose-", made =>
         {
