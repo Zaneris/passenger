@@ -191,8 +191,9 @@ Projects in `src/`; `find_symbol` finds the rest:
 - `tools/`: the notices, the web servers without Node.js, the test runner and shard scripts, packaging, site shots.
 
 `src/Passenger.App`, by area:
-- **Shell.** `PassengerApp` (every open goes through `OpenProject`), `ProjectSession` (one folder's services made and
-  ended together; a handler acts only while its session is bound, `Bind`), `StatusBar` (`StatusPlace` makes its words a
+- **Shell.** `PassengerApp` (every open goes through `OpenProject`; a `.slnf` is `SolutionFilter`, the projects it leaves
+  out unloaded but never saved as the person's own), `ProjectSession` (one folder's services made and ended together; a
+  handler acts only while its session is bound, `Bind`), `StatusBar` (`StatusPlace` makes its words a
   link), `IdeKeys` (the one keymap in every window but a dialog; a part with keys of its own is an `IOwnKeys`). The
   toolbar is the title bar: anything new on it goes inside `ToolbarStart` or `ToolbarEnd`, or Windows takes a press on
   it for the caption's. Logs are `logs/` under the state root (`IdeLog`; Settings › Diagnostics turns on protocol traces).
