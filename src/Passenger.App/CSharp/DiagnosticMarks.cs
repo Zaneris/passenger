@@ -92,7 +92,8 @@ internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
     /// (<see cref="DiagnosticPull.ProjectWide"/>), which answers after the file's own.</summary>
     private int late;
 
-    /// <summary>The markers last given, each on the range that carries it.</summary>
+    /// <summary>The markers last given, each on the range that carries it, in the order of their starts, which the ranges
+    /// keep through every edit.</summary>
     private (AnchoredRange Range, Marker Marker)[] shown = [];
 
     /// <summary>The diagnostics placed on the server's lines of the text as it stands, made when first asked for after an
@@ -125,7 +126,7 @@ internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
     public void Adopt(IReadOnlyList<Marker> markers)
     {
         Release();
-        shown = [.. markers.Select(m => (Anchored(m.Range), m))];
+        shown = [.. markers.OrderBy(m => m.Range.Start).Select(m => (Anchored(m.Range), m))];
     }
 
     /// <summary>Takes diagnostics reported for the text as it stands, the last <paramref name="late"/> of them a project-wide
@@ -161,7 +162,8 @@ internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
         return Show(marker);
     }
 
-    /// <summary>The markers the diagnostics draw as, on their ranges as they stand.</summary>
+    /// <summary>The markers the diagnostics draw as, on their ranges as they stand, put in order once here (the server's
+    /// sources and Passenger's own each give theirs apart) so a key carries them in order.</summary>
     private IReadOnlyList<Marker> Show(Func<Diagnostic, TextRange, Marker?> marker)
     {
         List<(AnchoredRange, Marker)> drawn = [];
@@ -172,21 +174,23 @@ internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
                 drawn.Add((ranges[i], made));
             }
         }
-        shown = [.. drawn];
+        shown = [.. drawn.OrderBy(d => d.Item2.Range.Start)];
         return [.. shown.Select(s => s.Marker)];
     }
 
     /// <summary>A range of the text, carried as a squiggle is: what is typed at its end goes inside it while it holds text.</summary>
     private AnchoredRange Anchored(TextRange range) => document.Text.RangeAt(range, AnchorGravity.Before, AnchorGravity.After, empty: AnchorGravity.Before);
 
-    /// <summary>Lets every range go, the text no longer carrying them.</summary>
+    /// <summary>Lets every range go, the text no longer carrying them, and the diagnostics they carried.</summary>
     private void Release()
     {
         foreach (AnchoredRange range in ranges.Concat(shown.Select(s => s.Range)))
         {
             range.Remove();
         }
+        found = [];
         ranges = [];
+        placed = [];
         shown = [];
         late = 0;
     }

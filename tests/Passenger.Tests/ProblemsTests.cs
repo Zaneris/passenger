@@ -162,6 +162,34 @@ public sealed class ProblemsTests : IClassFixture<RestoredFolders>, IDisposable
         window.Close();
     }
 
+    /// <summary>A file's markers are put in order once, as its diagnostics are taken, however its server's sources gave them
+    /// (a syntax error each side of a type error, reported by two): the keys typed in it, and the pulls after each, never
+    /// have them sorted again.</summary>
+    [AvaloniaFact]
+    public void A_files_markers_are_put_in_order_as_they_come_and_never_sorted_again_for_a_key()
+    {
+        Write("Two.cs", "class Two\n{\n    void A() { int a = 1 }\n    int Count = \"none\";\n    void B() { int b = 2 }\n}\n");
+        MainWindow window = Ui.OpenFolder(folder);
+        window.OpenFile("Two.cs");
+        Passenger.App.Workspace.OpenDocument open = window.EditorArea.Active!;
+        Ui.WaitFor(() => open.Markers.Count(m => m.Kind == Passenger.Editor.MarkerKind.Error) == 3, "the file's three errors");
+        Ui.Settle();
+        int sorted = open.Decorations.MarkersSorted;
+        Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.GoTo(new TextPosition(0, 0));
+        editor.Focus();
+        const int Keys = 4;
+        for (int i = 0; i < Keys; i++)
+        {
+            Ui.Press(window, "ENTER");
+        }
+        Assert.True(open.Decorations.MarkersSorted == sorted,
+            $"The file's markers were sorted again {open.Decorations.MarkersSorted - sorted} times for {Keys} keys and the pulls after them");
+        Assert.Equal([2 + Keys, 3 + Keys, 4 + Keys], open.Markers.Where(m => m.Kind == Passenger.Editor.MarkerKind.Error)
+            .Select(m => open.Text.Snapshot.GetLineFromOffset(m.Range.Start)));
+        window.Close();
+    }
+
     /// <summary>The open file's word typed over, as a person selecting it and typing does.</summary>
     private static void Rename(MainWindow window, string from, string to)
     {

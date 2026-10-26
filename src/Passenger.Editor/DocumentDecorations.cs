@@ -72,6 +72,9 @@ public sealed class DocumentDecorations
 
     public LineOrdered<int> BookmarksByLine { get; private set; } = NoBookmarks;
 
+    /// <summary>How many times markers were given out of order and sorted here: what a host that gives them so costs a key.</summary>
+    public int MarkersSorted { get; private set; }
+
     /// <summary>Sets the markers, taken as given when they are in order already, as a host carrying them through a key gives
     /// them: thousands sorted again at every key cost it.</summary>
     public void SetMarkers(IReadOnlyList<Marker> markers)
@@ -80,7 +83,9 @@ public sealed class DocumentDecorations
         {
             return;
         }
-        Markers = InOrder(markers, static m => m.Range.Start) ? markers : [.. markers.OrderBy(m => m.Range.Start)];
+        bool ordered = InOrder(markers, static m => m.Range.Start);
+        MarkersSorted += ordered ? 0 : 1;
+        Markers = ordered ? markers : [.. markers.OrderBy(m => m.Range.Start)];
         if (MarkerReach.Length != Markers.Count)
         {
             MarkerReach = new int[Markers.Count];
