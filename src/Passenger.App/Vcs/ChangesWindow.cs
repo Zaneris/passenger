@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -28,8 +27,8 @@ public sealed class ChangesWindow : Window
         {
             Classes = { "tree" },
             ItemsSource = files,
-            ItemTemplate = new FuncDataTemplate<FileChange>((change, _) => change is null ? new TextBlock() : Row(change, repository), supportsRecycling: false),
         };
+        ReusedRows.Use(list, () => Row(repository));
         list.DoubleTapped += (_, _) => Open();
         list.KeyDown += (_, e) =>
         {
@@ -76,26 +75,32 @@ public sealed class ChangesWindow : Window
 
     public void Select(FileChange change) => list.SelectedItem = change;
 
-    private static Control Row(FileChange change, Git repository)
+    /// <summary>A file's row: its icon, its name in its change's colour, and its folder from the repository's top.</summary>
+    private static Control Row(Git repository)
     {
         PathIcon icon = new()
         {
-            Data = Explorer.FileIcons.ForFile(change.Path),
-            Foreground = Explorer.FileIcons.BrushForFile(change.Path),
             Width = 14,
             Height = 14,
             Margin = new Thickness(8, 0, 6, 0),
         };
-        TextBlock name = new() { Text = change.Name, VerticalAlignment = VerticalAlignment.Center };
-        name.Bind(TextBlock.ForegroundProperty, name.GetResourceObservable(ToolWindows.CommitView.KindToken(change.Kind)));
+        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock folder = new()
         {
-            Text = Path.GetDirectoryName(repository.Relative(change.Path))?.Replace('\\', '/') ?? string.Empty,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(8, 0, 0, 0),
             FontSize = 12,
         };
         folder.Classes.Add("muted");
-        return new StackPanel { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { icon, name, folder } };
+        string? colour = null;
+        StackPanel row = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { icon, name, folder } };
+        return row.Showing<FileChange>(change =>
+        {
+            icon.Data = Explorer.FileIcons.ForFile(change.Path);
+            icon.Foreground = Explorer.FileIcons.BrushForFile(change.Path);
+            name.Text = change.Name;
+            name.Resource(TextBlock.ForegroundProperty, ref colour, ToolWindows.CommitView.KindToken(change.Kind));
+            folder.Text = Path.GetDirectoryName(repository.Relative(change.Path))?.Replace('\\', '/') ?? string.Empty;
+        });
     }
 }

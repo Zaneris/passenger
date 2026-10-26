@@ -10,6 +10,7 @@ using Passenger.App.Navigation;
 using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Editor;
 using Passenger.Vcs;
 
 namespace Passenger.Tests;
@@ -132,6 +133,31 @@ public sealed class LongListsTests : IDisposable
             Ui.Settle();
             Assert.True(popup.Rows.Count > 40, $"Go to File found {popup.Rows.Count} of {files} files for Lines");
             return (window, popup.GetVisualDescendants().OfType<ListBox>().Single());
+        });
+    }
+
+    [AvaloniaFact]
+    public void A_scroll_step_down_a_files_thousand_saves_in_local_history_hands_the_rows_other_saves_never_making_one_again()
+    {
+        Holds("Local History", "saves", 100, 1000, saves =>
+        {
+            string root = Folder();
+            TestFolders.Write(root, "Saved.cs", "class Saved\n{\n}\n");
+            MainWindow window = Ui.OpenFolder(root, languageServer: false, width: 1300, height: 900);
+            window.OpenFile(Path.Combine(root, "Saved.cs"));
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            editor.Focus();
+            editor.GoTo(new Passenger.Text.TextPosition(1, 1));
+            for (int save = 0; save < saves; save++)
+            {
+                window.KeyTextInput("x");
+                Ui.Run(window, AppActions.Save);
+            }
+            Ui.Settle();
+            window.Perform(AppActions.ShowLocalHistory);
+            Passenger.App.History.HistoryTab history = window.LocalHistoryWindow.Shown ?? throw new Xunit.Sdk.XunitException($"Show History showed no history: {window.Status}");
+            Ui.Landed(() => history.Rows.Count >= saves, $"the file's {saves} saves, where its history lists {history.Rows.Count}");
+            return (window, history.GetVisualDescendants().OfType<ListBox>().Single(l => l.ItemsSource is IEnumerable<Passenger.App.History.HistoryRow>));
         });
     }
 

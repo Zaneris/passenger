@@ -1,7 +1,6 @@
 using System.Collections.ObjectModel;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -80,13 +79,8 @@ public sealed class CommitView : DockPanel, IOwnKeys
             Classes = { "tree" },
             ItemsSource = rows,
             SelectionMode = SelectionMode.Multiple,
-            ItemTemplate = new FuncDataTemplate<object>((item, _) => item switch
-            {
-                CommitGroup group => GroupRow(group),
-                CommitRow row => FileRow(row),
-                _ => new TextBlock(),
-            }, supportsRecycling: false),
         };
+        ReusedRows.Use(list, Row);
         ListMenus.Attach(list, () => list.SelectedItem is not CommitRow chosen ? [] : chosen.Change.Kind is ChangeKind.Conflicted ?
         [
             ListMenus.Item("Merge…", "Enter", () => MergeRequested?.Invoke(this, chosen.Change.Path)),
@@ -450,56 +444,15 @@ public sealed class CommitView : DockPanel, IOwnKeys
 
     private const string MergeConflicts = "Merge Conflicts";
 
-    private Control GroupRow(CommitGroup group)
+    /// <summary>A row for whichever group or file the list hands its container: a group's box, name and count (Merge
+    /// Conflicts' with its Resolve link and no box), or a file's box and line (a conflicted file's with no box: it is
+    /// resolved first). A box follows its item while shown, and a click on it chooses the item it shows.</summary>
+    private Control Row()
     {
-        if (group.Name == MergeConflicts)
-        {
-            return ConflictsRow(group);
-        }
-        CheckBox box = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 2, 0) };
-        bool setting = false;
-        Follow(box, group, () =>
-        {
-            setting = true;
-            box.IsChecked = group.IsChosen;
-            setting = false;
-        });
-        box.IsCheckedChanged += (_, _) =>
-        {
-            if (setting)
-            {
-                return;
-            }
-            bool to = box.IsChecked != false;
-            foreach (CommitRow row in group.Rows)
-            {
-                row.IsChosen = to;
-            }
-        };
+        CheckBox groupBox = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 2, 0) };
+        TextBlock groupName = new() { FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center };
         TextBlock count = new()
         {
-            Text = Core.Plural.Of(group.Rows.Count, "file"),
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(8, 0, 0, 0),
-            FontSize = 12,
-        };
-        count.Classes.Add("muted");
-        return new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Height = ListRow.Height,
-            Children = { box, new TextBlock { Text = group.Name, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center }, count },
-        };
-    }
-
-    /// <summary>The Merge Conflicts node: its name, its count, and the Resolve link to the Conflicts dialog.</summary>
-    private Control ConflictsRow(CommitGroup group)
-    {
-        TextBlock name = new() { Text = group.Name, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(26, 0, 0, 0) };
-        name.Bind(TextBlock.ForegroundProperty, name.GetResourceObservable(TokenKeys.Vcs_File_Conflicted));
-        TextBlock count = new()
-        {
-            Text = Core.Plural.Of(group.Rows.Count, "file"),
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(8, 0, 0, 0),
             FontSize = 12,
@@ -507,25 +460,60 @@ public sealed class CommitView : DockPanel, IOwnKeys
         count.Classes.Add("muted");
         Button resolve = new() { Classes = { "link" }, Content = "Resolve", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0) };
         resolve.Click += (_, _) => ResolveRequested?.Invoke(this, EventArgs.Empty);
-        return new StackPanel { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { name, count, resolve } };
-    }
-
-    private Control FileRow(CommitRow row)
-    {
-        if (row.Change.Kind is ChangeKind.Conflicted)
+        StackPanel groupLine = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { groupBox, groupName, count, resolve } };
+        CheckBox fileBox = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(22, 0, 2, 0) };
+        (DockPanel fileLine, PathIcon icon, TextBlock name, TextBlock folder) = FileLineParts();
+        DockPanel.SetDock(fileBox, Dock.Left);
+        fileLine.Children.Insert(0, fileBox);
+        Panel row = new() { Children = { groupLine, fileLine } };
+        bool setting = false;
+        string? nameColour = null;
+        string? groupColour = null;
+        groupBox.IsCheckedChanged += (_, _) =>
         {
-            // Nothing to choose: a conflicted file is resolved first.
-            DockPanel conflicted = FileLine(row.Change, vcs.Repository);
-            conflicted.Margin = new Thickness(44, 0, 0, 0);
-            return conflicted;
-        }
-        CheckBox box = new() { IsChecked = row.IsChosen, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(22, 0, 2, 0) };
-        box.IsCheckedChanged += (_, _) => row.IsChosen = box.IsChecked == true;
-        Follow(box, row, () => box.IsChecked = row.IsChosen);
-        DockPanel line = FileLine(row.Change, vcs.Repository);
-        DockPanel.SetDock(box, Dock.Left);
-        line.Children.Insert(0, box);
-        return line;
+            if (setting || row.DataContext is not CommitGroup group)
+            {
+                return;
+            }
+            bool to = groupBox.IsChecked != false;
+            foreach (CommitRow file in group.Rows)
+            {
+                file.IsChosen = to;
+            }
+        };
+        fileBox.IsCheckedChanged += (_, _) =>
+        {
+            if (!setting && row.DataContext is CommitRow file)
+            {
+                file.IsChosen = fileBox.IsChecked == true;
+            }
+        };
+        return row.Showing<object>(item =>
+        {
+            setting = true;
+            groupLine.IsVisible = item is CommitGroup;
+            fileLine.IsVisible = item is CommitRow;
+            if (item is CommitGroup group)
+            {
+                bool conflicts = group.Name == MergeConflicts;
+                groupBox.IsVisible = !conflicts;
+                groupBox.IsChecked = group.IsChosen;
+                groupName.Text = group.Name;
+                groupName.Margin = new Thickness(conflicts ? 26 : 0, 0, 0, 0);
+                groupName.Resource(TextBlock.ForegroundProperty, ref groupColour, conflicts ? TokenKeys.Vcs_File_Conflicted : null);
+                count.Text = Core.Plural.Of(group.Rows.Count, "file");
+                resolve.IsVisible = conflicts;
+            }
+            else if (item is CommitRow file)
+            {
+                bool conflicted = file.Change.Kind is ChangeKind.Conflicted;
+                fileBox.IsVisible = !conflicted;
+                fileBox.IsChecked = file.IsChosen;
+                fileLine.Margin = new Thickness(conflicted ? 44 : 0, 0, 0, 0);
+                ShowFile(fileLine, icon, name, folder, ref nameColour, file.Change, vcs.Repository);
+            }
+            setting = false;
+        });
     }
 
     /// <summary>The files as this window lists them, without their boxes, for Rollback's question to name.</summary>
@@ -544,41 +532,45 @@ public sealed class CommitView : DockPanel, IOwnKeys
         };
     }
 
-    /// <summary>Shows an item's state now and as it changes while the control is on screen, so a control the list's
-    /// scrolling let go of is not kept by a row, which lives through refreshes.</summary>
-    private static void Follow(Control control, Observable item, Action show)
-    {
-        show();
-        item.FollowWhileShown(control, (_, _) => show());
-    }
-
     /// <summary>A changed file as the window shows it: its icon, its name in its change's colour (struck through when
     /// deleted) and its folder from the repository's top.</summary>
     private static DockPanel FileLine(FileChange change, Git? repository)
     {
+        (DockPanel line, PathIcon icon, TextBlock name, TextBlock folder) = FileLineParts();
+        string? colour = null;
+        ShowFile(line, icon, name, folder, ref colour, change, repository);
+        return line;
+    }
+
+    /// <summary>A file's line with nothing in it yet, for <see cref="ShowFile"/> to show a file in.</summary>
+    private static (DockPanel Line, PathIcon Icon, TextBlock Name, TextBlock Folder) FileLineParts()
+    {
         PathIcon icon = new()
         {
-            Data = Explorer.FileIcons.ForFile(change.Path),
-            Foreground = Explorer.FileIcons.BrushForFile(change.Path),
             Width = 14,
             Height = 14,
             Margin = new Thickness(0, 0, 6, 0),
         };
-        TextBlock name = new() { Text = change.Name, VerticalAlignment = VerticalAlignment.Center };
-        name.Bind(TextBlock.ForegroundProperty, name.GetResourceObservable(KindToken(change.Kind)));
-        if (change.Kind is ChangeKind.Deleted)
-        {
-            name.TextDecorations = TextDecorations.Strikethrough;
-        }
-        string where = repository is not null ? Path.GetDirectoryName(repository.Relative(change.Path))?.Replace('\\', '/') ?? string.Empty : string.Empty;
-        TextBlock folder = new() { Text = where, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0), FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
+        TextBlock folder = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0), FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
         folder.Classes.Add("muted");
         // The folder takes what the row leaves, ending in an ellipsis in a narrow window rather than cut mid-letter.
         DockPanel.SetDock(icon, Dock.Left);
         DockPanel.SetDock(name, Dock.Left);
         DockPanel line = new() { Height = ListRow.Height, Children = { icon, name, folder } };
+        return (line, icon, name, folder);
+    }
+
+    /// <summary>Shows a changed file in a line's parts, its name's colour bound anew only for another kind of change.</summary>
+    private static void ShowFile(DockPanel line, PathIcon icon, TextBlock name, TextBlock folder, ref string? colour, FileChange change, Git? repository)
+    {
+        icon.Data = Explorer.FileIcons.ForFile(change.Path);
+        icon.Foreground = Explorer.FileIcons.BrushForFile(change.Path);
+        name.Text = change.Name;
+        name.Resource(TextBlock.ForegroundProperty, ref colour, KindToken(change.Kind));
+        name.TextDecorations = change.Kind is ChangeKind.Deleted ? TextDecorations.Strikethrough : null;
+        folder.Text = repository is not null ? Path.GetDirectoryName(repository.Relative(change.Path))?.Replace('\\', '/') ?? string.Empty : string.Empty;
         ToolTip.SetTip(line, change.From is { } from ? $"{change.Kind}: {from} -> {change.Path}" : $"{change.Kind}: {change.Path}");
-        return line;
     }
 
     /// <summary>A changed file's colour by how it changed (modified, added, deleted, new).</summary>

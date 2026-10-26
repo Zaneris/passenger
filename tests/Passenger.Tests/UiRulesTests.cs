@@ -1381,8 +1381,6 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
         "src/Passenger.App/ErrorsPopup.cs: FuncDataTemplate<IdeError>",
         "src/Passenger.App/Explorer/AddReferenceDialog.cs: FuncDataTemplate<ReferenceChoice>",
         "src/Passenger.App/Explorer/DockerDialogs.cs: FuncDataTemplate<ComposeChoice>",
-        "src/Passenger.App/History/HistoryTab.cs: FuncDataTemplate<HistoryDifference>",
-        "src/Passenger.App/History/HistoryTab.cs: FuncDataTemplate<HistoryRow>",
         "src/Passenger.App/Migrations/MigrationsView.cs: FuncDataTemplate<MigrationRow?>",
         "src/Passenger.App/Migrations/MigrationsView.cs: FuncDataTemplate<object>",
         "src/Passenger.App/Navigation/FindInFilesPopup.cs: FuncDataTemplate<ProjectModel>",
@@ -1393,7 +1391,6 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
         "src/Passenger.App/Templates/NewProjectDialog.cs: FuncDataTemplate<ProjectTemplate?>",
         "src/Passenger.App/Templates/NewProjectDialog.cs: FuncDataTemplate<TemplateFamily?>",
         "src/Passenger.App/ToolWindows/BookmarksView.cs: FuncDataTemplate<Bookmark>",
-        "src/Passenger.App/ToolWindows/CommitView.cs: FuncDataTemplate<object>",
         "src/Passenger.App/ToolWindows/DebugView.cs: FuncDataTemplate<DapStackFrame>",
         "src/Passenger.App/ToolWindows/DebugView.cs: FuncDataTemplate<DapThread>",
         "src/Passenger.App/ToolWindows/DebugView.cs: FuncDataTemplate<DebugTab>",
@@ -1401,9 +1398,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
         "src/Passenger.App/ToolWindows/NuGetView.cs: FuncDataTemplate<PackageRow>",
         "src/Passenger.App/ToolWindows/RunRows.cs: FuncDataTemplate<RunItem<T>>",
         "src/Passenger.App/ToolWindows/TerminalPanel.cs: FuncDataTemplate<TerminalTab>",
-        "src/Passenger.App/Vcs/ChangesWindow.cs: FuncDataTemplate<FileChange>",
         "src/Passenger.App/Vcs/ConflictsDialog.cs: FuncDataTemplate<ConflictRow>",
-        "src/Passenger.App/Vcs/UnstashPopup.cs: FuncDataTemplate<StashInfo>",
         "src/Passenger.App/Welcome/WelcomeView.cs: FuncDataTemplate<RecentRow?>",
     ];
 
