@@ -425,8 +425,8 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
         Process? looping = null;
         try
         {
-            // An attach to a process that is no more fails, and its output followed meanwhile is ended with it.
-            using Process gone = ChildProcesses.Start(ChildProcesses.DotnetCommand(["--version"]));
+            // An attach to a process that is no more (the muxer's own answer, no SDK started) fails, ending the output it followed.
+            using Process gone = ChildProcesses.Start(ChildProcesses.DotnetCommand(["--list-runtimes"]));
             gone.WaitForExit();
             string? failed = Ui.Await(window.Debugger.AttachAsync(gone.Id, "Gone", place: Here(follow: true)), "the attach that cannot be done");
             Assert.NotNull(failed);

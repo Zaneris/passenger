@@ -9,30 +9,22 @@ using Passenger.Text;
 namespace Passenger.Tests;
 
 /// <summary>Problems without a build: the current file's as they are typed, and with solution-wide analysis on, every
-/// file's, a file nobody has open included, grouped by project and file.</summary>
-public sealed class ProblemsTests : IClassFixture<RestoredFolders>, IDisposable
+/// file's, a file nobody has open included, grouped by project and file. The class's windows share one project, restored
+/// once (<see cref="SharedProject"/>); a test's own files are written to it for its window and gone before the next.</summary>
+public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
 {
-    private readonly string folder;
+    private readonly Project project;
 
-    /// <summary>Each test's own folder, restored a few at a time with the next tests' rather than each in its turn.</summary>
-    public ProblemsTests(RestoredFolders folders) => folder = folders.Take("problems-", made =>
+    public ProblemsTests(Project project)
     {
-        TestFolders.Write(made, "Sample.csproj", TestProjects.Console());
-        TestFolders.Write(made, "Program.cs", "class Program\n{\n    static void Main()\n    {\n    }\n}\n");
-        TestFolders.Write(made, "Helper.cs", "static class Helper\n{\n    public static int Twice(int value) => value * 2;\n}\n");
-        TestFolders.Write(made, "Caller.cs", "static class Caller\n{\n    public static int Four() => Helper.Twice(2);\n}\n");
-        TestFolders.Write(made, "Bad.cs", "class Bad\n{\n    public int Count = \"none\";\n}\n");
-        return made;
-    });
-
-    public void Dispose() => TestFolders.Delete(folder);
+        this.project = project;
+        project.Reset();
+    }
 
     [AvaloniaFact]
     public void Solution_wide_analysis_lists_every_files_errors_and_follows_an_edit_that_breaks_a_file_nobody_has_open()
     {
-        MainWindow window = Ui.OpenFolder(folder);
-        window.OpenFile("Helper.cs");
-        Ui.Settle();
+        MainWindow window = project.Open("Helper.cs");
         ProblemsModel problems = window.BottomPanel.Problems;
         Assert.Null(problems.SolutionProblems);
 
@@ -102,9 +94,7 @@ public sealed class ProblemsTests : IClassFixture<RestoredFolders>, IDisposable
     [AvaloniaFact]
     public void Solution_wide_analysis_goes_on_following_edits_after_the_server_refuses_a_pull()
     {
-        MainWindow window = Ui.OpenFolder(folder);
-        window.OpenFile("Helper.cs");
-        Ui.Settle();
+        MainWindow window = project.Open("Helper.cs");
         ProblemsModel problems = window.BottomPanel.Problems;
         window.Perform(AppActions.ToggleSolutionAnalysis);
         Ui.WaitFor(() => problems.SolutionProblems?.Any(p => p.Code == "CS0029") == true, "the closed file's error");
@@ -130,8 +120,7 @@ public sealed class ProblemsTests : IClassFixture<RestoredFolders>, IDisposable
     [AvaloniaFact]
     public void Keys_typed_in_a_burst_have_solution_wide_analysis_ask_the_server_again_once_typing_pauses()
     {
-        MainWindow window = Ui.OpenFolder(folder);
-        window.OpenFile("Helper.cs");
+        MainWindow window = project.Open("Helper.cs");
         ProblemsModel problems = window.BottomPanel.Problems;
         window.Perform(AppActions.ToggleSolutionAnalysis);
         Ui.WaitFor(() => problems.SolutionProblems?.Any(p => p.Code == "CS0029") == true, "the closed file's error");
@@ -169,8 +158,7 @@ public sealed class ProblemsTests : IClassFixture<RestoredFolders>, IDisposable
     public void A_files_markers_are_put_in_order_as_they_come_and_never_sorted_again_for_a_key()
     {
         Write("Two.cs", "class Two\n{\n    void A() { int a = 1 }\n    int Count = \"none\";\n    void B() { int b = 2 }\n}\n");
-        MainWindow window = Ui.OpenFolder(folder);
-        window.OpenFile("Two.cs");
+        MainWindow window = project.Open("Two.cs");
         Passenger.App.Workspace.OpenDocument open = window.EditorArea.Active!;
         Ui.WaitFor(() => open.Markers.Count(m => m.Kind == Passenger.Editor.MarkerKind.Error) == 3, "the file's three errors");
         Ui.Settle();
@@ -206,10 +194,7 @@ public sealed class ProblemsTests : IClassFixture<RestoredFolders>, IDisposable
     public void Lines_typed_above_a_files_problems_move_their_rows_without_making_the_list_again()
     {
         Write("Several.cs", "class Several\n{\n    int First = \"one\";\n    int Second = \"two\";\n    string Third = 3;\n}\n");
-        MainWindow window = Ui.OpenFolder(folder);
-        window.OpenFile("Several.cs");
-        window.Perform(AppActions.ShowProblems);
-        Ui.Settle();
+        MainWindow window = project.Open("Several.cs", w => w.Perform(AppActions.ShowProblems));
         ProblemsModel problems = window.BottomPanel.Problems;
         Assert.Equal(ProblemsTab.File, problems.Shown);
         Ui.WaitFor(() => problems.FileProblems.Count(p => p.Severity == ProblemSeverity.Error) == 3, "the file's three errors");
@@ -252,9 +237,7 @@ public sealed class ProblemsTests : IClassFixture<RestoredFolders>, IDisposable
             warned.Append(System.Globalization.CultureInfo.InvariantCulture, $"        int unused{i};\n");
         }
         Write("Warned.cs", warned.Append("    }\n}\n").ToString());
-        MainWindow window = Ui.OpenFolder(folder);
-        window.OpenFile("Warned.cs");
-        window.Perform(AppActions.ShowProblems);
+        MainWindow window = project.Open("Warned.cs", w => w.Perform(AppActions.ShowProblems));
         ProblemsModel problems = window.BottomPanel.Problems;
         Ui.WaitFor(() => problems.FileProblems.Count == 3000, "the file's 3,000 warnings", TimeSpan.FromMinutes(2));
         Assert.Equal(new TextPosition(4, 12), problems.FileProblems[0].Position);
@@ -372,12 +355,9 @@ public sealed class ProblemsTests : IClassFixture<RestoredFolders>, IDisposable
             Write($"Warned{i}.cs", warned.Append("    }\n}\n").ToString());
         }
         Write("Typed.cs", Typed);
-        string typed = Passenger.Core.PathNames.Canonical(Path.Combine(folder, "Typed.cs"));
-        MainWindow window = Ui.OpenFolder(folder);
-        window.OpenFile("Typed.cs");
-        window.Perform(AppActions.ShowProblems);
+        string typed = Passenger.Core.PathNames.Canonical(Path.Combine(project.Folder, "Typed.cs"));
+        MainWindow window = project.Open("Typed.cs", w => w.Perform(AppActions.ShowProblems));
         ProblemsModel problems = window.BottomPanel.Problems;
-        Ui.Settle();
         window.Perform(AppActions.ToggleSolutionAnalysis);
         Assert.True(window.Settings.SolutionWideAnalysis);
         // Each file's warnings, Bad.cs's error and the open file's warning.
@@ -429,10 +409,8 @@ public sealed class ProblemsTests : IClassFixture<RestoredFolders>, IDisposable
     public void A_problem_below_line_breaks_only_roslyn_counts_is_listed_and_gone_to_at_its_own_line()
     {
         Write("Separated.cs", $"class Separated\n{{\n    /* Pasted:{(char)0x2028}a{(char)0x2029}b{(char)0x85}c\rd */\n    public int Below = \"none\";\n}}\n");
-        string separated = Passenger.Core.PathNames.Canonical(Path.Combine(folder, "Separated.cs"));
-        MainWindow window = Ui.OpenFolder(folder);
-        window.OpenFile("Program.cs");
-        Ui.Settle();
+        string separated = Passenger.Core.PathNames.Canonical(Path.Combine(project.Folder, "Separated.cs"));
+        MainWindow window = project.Open("Program.cs");
         ProblemsModel problems = window.BottomPanel.Problems;
         Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
 
@@ -479,5 +457,21 @@ public sealed class ProblemsTests : IClassFixture<RestoredFolders>, IDisposable
         Ui.ChooseFromMenu(rows, "Go to");
     }
 
-    private void Write(string name, string text) => TestFolders.Write(folder, name, text);
+    private void Write(string name, string text) => project.Write(name, text);
+
+    /// <summary>A console project of a program, a helper, its caller and a file with an error, restored once for every test.</summary>
+    public sealed class Project : SharedProject
+    {
+        public Project()
+            : base("problems-")
+        {
+            TestFolders.Write(Folder, "Sample.csproj", TestProjects.Console());
+            TestFolders.Write(Folder, "Program.cs", "class Program\n{\n    static void Main()\n    {\n    }\n}\n");
+            TestFolders.Write(Folder, "Helper.cs", "static class Helper\n{\n    public static int Twice(int value) => value * 2;\n}\n");
+            TestFolders.Write(Folder, "Caller.cs", "static class Caller\n{\n    public static int Four() => Helper.Twice(2);\n}\n");
+            TestFolders.Write(Folder, "Bad.cs", "class Bad\n{\n    public int Count = \"none\";\n}\n");
+            // The server's first load makes bin, which a reset would take for a file the test added: made now, the folder stays as reset.
+            Directory.CreateDirectory(PathOf("bin"));
+        }
+    }
 }
