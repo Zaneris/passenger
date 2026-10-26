@@ -1,7 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -89,8 +88,8 @@ public sealed class FramesView : DockPanel
         {
             Classes = { "tree" },
             ItemsSource = rows,
-            ItemTemplate = new FuncDataTemplate<LayoutRow>((row, _) => row is null ? new TextBlock() : RowOf(row, columns), supportsRecycling: false),
         };
+        ReusedRows.Use(table, () => RowOf(columns));
         table.Styles.Add(new Style(x => x.OfType<ListBoxItem>())
         {
             Setters = { new Setter(ContentControl.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch) },
@@ -224,38 +223,43 @@ public sealed class FramesView : DockPanel
         return true;
     }
 
-    private Control RowOf(LayoutRow row, (string Title, double Width)[] columns)
+    /// <summary>A row for whichever control or type the list hands its container: its chevron and name, and its layout's
+    /// time and counts in their columns.</summary>
+    private Control RowOf((string Title, double Width)[] columns)
     {
-        PathIcon chevron = new() { Classes = { "chevron" }, IsVisible = row.Cost.Controls.Count > 0, RenderTransformOrigin = RelativePoint.Center };
+        RotateTransform turned = new();
+        PathIcon chevron = new() { Classes = { "chevron" }, RenderTransformOrigin = RelativePoint.Center, RenderTransform = turned };
         chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(IconKeys.ChevronRight));
-        chevron.RenderTransform = new RotateTransform(row.IsExpanded ? 90 : 0);
-        row.FollowWhileShown(chevron, (_, _) => chevron.RenderTransform = new RotateTransform(row.IsExpanded ? 90 : 0));
         Border toggle = new() { Width = 18, Height = ListRow.Height, Background = Brushes.Transparent, Child = chevron };
+        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        StackPanel named = new() { Orientation = Orientation.Horizontal, Children = { toggle, name } };
+        TextBlock[] numbers = [Number(), Number(), Number(), Number(), Number()];
+        Grid row = Row(columns, [named, .. numbers]);
         toggle.PointerPressed += (_, e) =>
         {
-            Toggle(row);
-            e.Handled = true;
+            if (row.DataContext is LayoutRow shown)
+            {
+                Toggle(shown);
+                e.Handled = true;
+            }
         };
-        TextBlock name = new()
+        return row.Showing<LayoutRow>(shown =>
         {
-            Text = row.Cost.Name,
-            VerticalAlignment = VerticalAlignment.Center,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            FontWeight = row.Depth == 0 ? FontWeight.SemiBold : FontWeight.Normal,
-        };
-        ToolTip.SetTip(name, row.Cost.Control is { } control
-            ? $"{control.FullType}{(control.File is { } file ? $"\n{Path.GetFileName(file)}:{LineOf?.Invoke(control) ?? control.Line}" : string.Empty)}"
-            : Plural.Of(row.Cost.Controls.Count, "control"));
-        LayoutWork work = row.Cost.Work;
-        return Row(columns,
-        [
-            new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(row.Depth * 14, 0, 0, 0), Children = { toggle, name } },
-            Number($"{work.SelfMs:N1} ms"),
-            Number($"{work.Measures:N0}"),
-            Number($"{work.MeasureMs:N1} ms"),
-            Number($"{work.Arranges:N0}"),
-            Number($"{work.ArrangeMs:N1} ms"),
-        ]);
+            chevron.IsVisible = shown.Cost.Controls.Count > 0;
+            turned.Angle = shown.IsExpanded ? 90 : 0;
+            name.Text = shown.Cost.Name;
+            name.FontWeight = shown.Depth == 0 ? FontWeight.SemiBold : FontWeight.Normal;
+            ToolTip.SetTip(name, shown.Cost.Control is { } control
+                ? $"{control.FullType}{(control.File is { } file ? $"\n{Path.GetFileName(file)}:{LineOf?.Invoke(control) ?? control.Line}" : string.Empty)}"
+                : Plural.Of(shown.Cost.Controls.Count, "control"));
+            named.Margin = new Thickness(shown.Depth * 14, 0, 0, 0);
+            LayoutWork work = shown.Cost.Work;
+            Put(numbers[0], $"{work.SelfMs:N1} ms");
+            Put(numbers[1], $"{work.Measures:N0}");
+            Put(numbers[2], $"{work.MeasureMs:N1} ms");
+            Put(numbers[3], $"{work.Arranges:N0}");
+            Put(numbers[4], $"{work.ArrangeMs:N1} ms");
+        });
     }
 
     private static Grid Row((string Title, double Width)[] columns, Control[] cells)
@@ -277,14 +281,14 @@ public sealed class FramesView : DockPanel
         return title;
     }
 
-    private static TextBlock Number(string text)
+    private static TextBlock Number() =>
+        new() { FontFamily = CSharp.Fonts.Mono, FontSize = 12, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+
+    /// <summary>A number in its cell, muted where it is nothing.</summary>
+    private static void Put(TextBlock cell, string text)
     {
-        TextBlock block = new() { Text = text, FontFamily = CSharp.Fonts.Mono, FontSize = 12, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
-        if (text is "0" or "0.0 ms")
-        {
-            block.Classes.Add("muted");
-        }
-        return block;
+        cell.Text = text;
+        cell.Classes.Set("muted", text is "0" or "0.0 ms");
     }
 
     private static TextBlock Muted(string text)
