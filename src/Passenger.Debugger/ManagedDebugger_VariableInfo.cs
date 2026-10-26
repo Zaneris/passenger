@@ -208,8 +208,18 @@ public partial class ManagedDebugger
         }
     }
 
+    /// <summary>The reference a value's row opens by, 0 for one that opens to nothing: a union opens to the value it
+    /// holds.</summary>
     private int GetVariablesReference(ICorDebugValue corDebugValue, string friendlyTypeName, ThreadId threadId, FrameStackDepth stackDepth, ICorDebugValue? debuggerProxyInstance)
     {
+        if (TryGetUnionValue(corDebugValue, out _, out ICorDebugValue? held))
+        {
+            if (held is null)
+            {
+                return 0;
+            }
+            corDebugValue = held;
+        }
         ICorDebugValue unwrappedDebugValue = corDebugValue.UnwrapDebugValue();
         if (unwrappedDebugValue is ICorDebugArrayValue arrayValue)
         {

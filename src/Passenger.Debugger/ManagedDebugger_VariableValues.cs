@@ -309,12 +309,43 @@ public partial class ManagedDebugger
 
     private readonly record struct ResolvedCorDebugValue(ICorDebugValue? Value, string? FriendlyTypeNameOverride);
 
+    /// <summary>A value as it is shown: a nullable's underlying value under its own type's name, and a union's (C# 15)
+    /// the value it holds, as that value's type; either holding none, null.</summary>
     private static ResolvedCorDebugValue ResolveCorDebugValue(ICorDebugValue corDebugValue)
     {
-        return TryGetNullableUnderlyingValue(corDebugValue, out string? nullableTypeName, out ICorDebugValue? underlyingValue)
-            ? new(underlyingValue, nullableTypeName)
+        if (TryGetNullableUnderlyingValue(corDebugValue, out string? nullableTypeName, out ICorDebugValue? underlyingValue))
+        {
+            return new(underlyingValue, nullableTypeName);
+        }
+        return TryGetUnionValue(corDebugValue, out string? unionTypeName, out ICorDebugValue? held)
+            ? new(held, held is null ? unionTypeName : null)
             : new(corDebugValue, null);
     }
+
+    /// <summary>Whether a value is a union the compiler made ([Union], its value in an auto-property's field), with the
+    /// union's type name and the value it holds, null when none.</summary>
+    private static bool TryGetUnionValue(ICorDebugValue corDebugValue, out string unionTypeName, out ICorDebugValue? held)
+    {
+        unionTypeName = "";
+        held = null;
+        if (corDebugValue.UnwrapDebugValue() is not ICorDebugObjectValue objectValue || objectValue.Type is CorElementType.STRING)
+        {
+            return false;
+        }
+        IMetaDataImport metadata = objectValue.Class.Module.GetMetaDataInterface<IMetaDataImport>();
+        if (metadata.TryGetCustomAttributeByName(objectValue.Class.Token, "System.Runtime.CompilerServices.UnionAttribute", out _, out _) is not Cor.S_OK
+            || metadata.EnumFieldsWithName(objectValue.Class.Token, UnionValueField).SingleOrDefault() is not { IsNil: false } field)
+        {
+            return false;
+        }
+        unionTypeName = GetCorDebugTypeFriendlyName(objectValue.ExactType);
+        ICorDebugValue value = objectValue.GetFieldValue(objectValue.Class, field);
+        held = value is ICorDebugReferenceValue { IsNull: true } ? null : value;
+        return true;
+    }
+
+    /// <summary>The field a compiler-made union keeps its value in, its Value property's.</summary>
+    private const string UnionValueField = "<Value>k__BackingField";
 
     public static CorDebugValueValueResult GetCorDebugReferenceValue_Value_AsString(ICorDebugReferenceValue corDebugReferenceValue, bool escapeStringValue)
     {

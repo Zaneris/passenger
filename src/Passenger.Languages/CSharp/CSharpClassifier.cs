@@ -317,6 +317,8 @@ internal static class CSharpClassifier
         StructDeclarationSyntax => TokenKind.Struct,
         InterfaceDeclarationSyntax => TokenKind.Interface,
         EnumDeclarationSyntax => TokenKind.Enum,
+        // A union (C# 15), a struct holding one of its cases, told by its keyword: its syntax is still Roslyn's experiment.
+        TypeDeclarationSyntax { Keyword.ValueText: "union" } => TokenKind.Struct,
         DelegateDeclarationSyntax => TokenKind.Delegate,
         TypeParameterSyntax => TokenKind.TypeParameter,
         MethodDeclarationSyntax or LocalFunctionStatementSyntax => TokenKind.Method,

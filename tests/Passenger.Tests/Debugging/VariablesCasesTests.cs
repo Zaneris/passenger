@@ -42,6 +42,32 @@ public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
         Assert.Contains("Innermost exception: System.Exception", info.Description, StringComparison.Ordinal);
     }
 
+    /// <summary>A C# 15 union shows the value it holds as that value's type, by its row and by evaluation, and opens to that
+    /// value's members, one holding none showing null.</summary>
+    [Fact]
+    public async Task A_union_shows_the_value_it_holds_as_that_values_type_opening_to_its_members()
+    {
+        int line = Debuggees.Line("PassengerCases", "Console.WriteLine($\"unions");
+        await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, "PassengerCases", line, []);
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        Assert.Equal(line, stop.ReadStopInfo().line);
+        List<DapVariable> locals = await host.LocalsAsync(stop);
+        DapVariable Local(string name) => Assert.Single(locals, v => v.Name == name);
+        int frame = (await host.TopFrameAsync(stop.ThreadId!.Value)).Id;
+        foreach ((string name, string type, string held) in new[] { ("cat", "Cat", "Tom"), ("dog", "Dog", "Rex"), ("bird", "Bird", "Tweety") })
+        {
+            DapVariable pet = Local(name);
+            string shown = $"{type} {{ Name = {held} }}";
+            Assert.True((pet.Type, pet.Value) == (type, shown), $"The Pet holding a {type} shows as {pet.Value} ({pet.Type}), not the {type} it holds");
+            List<DapVariable> members = await host.VariablesAsync(pet.VariablesReference);
+            Assert.Equal($"\"{held}\"", Assert.Single(members, m => m.Name == "Name").Value);
+            EvaluateResponse evaluated = await host.EvaluateAsync(frame, name);
+            Assert.Equal((shown, type), (evaluated.Result, evaluated.Type));
+        }
+        DapVariable none = Local("none");
+        Assert.Equal(("null", "Pet", 0), (none.Value, none.Type, none.VariablesReference));
+    }
+
     [Fact]
     public async Task DebuggerDisplay_renders_as_Visual_Studio_does()
     {

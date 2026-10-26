@@ -45,6 +45,7 @@ public static class SafeDeletion
             {
                 InterfaceDeclarationSyntax => "interface",
                 StructDeclarationSyntax => "struct",
+                TypeDeclarationSyntax { Keyword.ValueText: "union" } => "union",
                 RecordDeclarationSyntax => "record",
                 EnumDeclarationSyntax => "enum",
                 _ => "class",

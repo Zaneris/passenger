@@ -74,6 +74,7 @@ Console.WriteLine("end");
 Captures.Outer(41);
 Nested.Throw();
 Displays.Show();
+Unions.Show();
 Interpreter.Run();
 Jumps.Run();
 Threads.Run();
@@ -148,6 +149,24 @@ internal static class Displays
 		Console.WriteLine("displays");
 	}
 }
+
+// C# 15's unions, each case held and none, as Variables shows them.
+internal static class Unions
+{
+	public static void Show()
+	{
+		Pet cat = new Cat("Tom");
+		Pet dog = new Dog("Rex");
+		Pet bird = new Bird("Tweety");
+		Pet none = default;
+		Console.WriteLine($"unions {cat.Value} {dog.Value} {bird.Value} {none.Value}");
+	}
+}
+
+internal sealed record Cat(string Name);
+internal sealed record Dog(string Name);
+internal sealed record Bird(string Name);
+internal union Pet(Cat, Dog, Bird);
 
 [DebuggerDisplay("{Amount} {Currency,nq}")]
 internal sealed class Money { public decimal Amount; public string Currency = ""; }
@@ -562,4 +581,16 @@ internal static class Finally
 		freer.Join();
 		Console.WriteLine($"let out, {Turns} turns"); // stop once the evaluation has been let out
 	}
+}
+
+namespace System.Runtime.CompilerServices
+{
+	// What .NET 11 gives C# 15's unions, which this .NET 10 program declares itself.
+	public interface IUnion
+	{
+		object? Value { get; }
+	}
+
+	[AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, AllowMultiple = false, Inherited = false)]
+	public sealed class UnionAttribute : Attribute;
 }
