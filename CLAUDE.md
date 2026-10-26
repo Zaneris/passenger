@@ -350,7 +350,8 @@ pointer leaves, which open in the window headless as the window redraws under a 
 s). Consoles: `Ui.TypeLine` (`TypeToRun`, `TypeToDebugged`); the caret: `Ui.PlaceAfter`; a run: `Ui.Launched` and its
 status `Ui.Said`, both naming a failed build's errors. Projects: `TestProjects.Console`, `Library`, `Web` (`.With`) on
 `TestProjects.Framework`; files: `TestFolders.Write`; a loopback HTTP server: `StandInHttp`. Multi-line edits:
-`Typing.Replace` (`KeyTextInput` drops `\n`). A helper that runs a program (`TestGit`, `Restore`, `RestoredFolders`, the
+`Typing.Replace` (`KeyTextInput` drops `\n`). A server's request held unsent: `LanguageServer.HoldNext`; its answer held:
+`HoldNextAnswer`. A helper that runs a program (`TestGit`, `Restore`, `RestoredFolders`, the
 app makers, `SharedProject.Reset`) waits on the UI thread with its loop running and refuses any other; a fixture or a
 windowless test awaits its `…Async` form. Read a log the IDE may be writing with `Ui.Shared`. A dialog is held to
 `DialogButtonsTests.Check`, the window to `UiRulesTests`. A stand-in leaves files a target writes as it found them (a
