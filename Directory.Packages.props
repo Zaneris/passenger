@@ -3,9 +3,9 @@
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <!-- Roslyn's language server, a package per system downloaded rather than referenced (RoslynServer.targets), so its
-         version is a property. Held at 5.11.0, its newest stable release: later builds start Visual Studio Telemetry's
-         session even with telemetry off, loading an assembly left out of roslyn/, so the server ends as it starts
-         (dotnet/roslyn#86130's fix is in none yet). -->
+         version is a property. Held at 5.11.0 until a published build carries dotnet/roslyn#86130 (merged
+         2026-10-20): the builds since start Visual Studio Telemetry's session even with telemetry off, loading an
+         assembly left out of roslyn/, so the server ends as it starts. -->
     <RoslynServerVersion>5.11.0</RoslynServerVersion>
     <!-- Avalonia's dotnet new templates at the Avalonia version below, downloaded for the tests' local feed so no test
          reaches nuget.org for them. -->
@@ -14,15 +14,15 @@
     <AvaloniaOlderVersion>11.3.22</AvaloniaOlderVersion>
     <!-- Aspire's templates, AppHost SDK and package, dashboard, orchestrator and CLI at one version, downloaded for the
          tests' local feed. -->
-    <AspireTemplatesVersion>13.6.3</AspireTemplatesVersion>
+    <AspireTemplatesVersion>13.6.4</AspireTemplatesVersion>
     <!-- WPF's reference pack at the version global.json's SDK gives its own WPF (its TargetingPackVersion), downloaded
          for the tests' local feed so the WPF app they make restores off Windows; another SDK's fails WpfXamlTests naming
          the version to pin. A release candidate until .NET 11 ships (then 11.0.0, with the SDK at 11.0.100). -->
     <WindowsDesktopRefVersion>11.0.0-rc.3.26522.148</WindowsDesktopRefVersion>
     <!-- EF Core and the dotnet-ef tool for the Migrations window's tests, downloaded for the tests' local feed: at its
          version, and at the one before for a tool that does not match and a stand-in provider that trails it. -->
-    <EfCoreVersion>10.0.13</EfCoreVersion>
-    <EfCoreOlderVersion>10.0.12</EfCoreOlderVersion>
+    <EfCoreVersion>10.0.14</EfCoreVersion>
+    <EfCoreOlderVersion>10.0.13</EfCoreOlderVersion>
     <!-- Npgsql's provider of EF Core, at a version whose range holds EfCoreVersion, for the test of a compose run's
          Postgres. -->
     <NpgsqlEfVersion>10.0.3</NpgsqlEfVersion>

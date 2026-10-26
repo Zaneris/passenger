@@ -169,7 +169,8 @@ Projects in `src/`; `find_symbol` finds the rest:
   platform (`RoslynServer.targets`), `LspDocument` (answers that grow with the solution decoded off the UI thread; never
   a change between a "\r\n"'s halves), and the web servers under
   `web/`, pinned in `WebServers/package.json` and its lock (to move a pin: edit it, `npm install --package-lock-only
-  --ignore-scripts`, update the notices' "Inside web/" table).
+  --ignore-scripts`, update the notices' "Inside web/" table). `typescript` stays on 6.x: 7's package is native and
+  carries no `tsserver`, which typescript-language-server runs.
 - `Passenger.Roslyn.Extension`: Passenger's handlers inside Roslyn's server, compiled against its publicized assemblies
   (`src/Publicize.targets`). A handler reads the solution, never changes it.
 - `Passenger.Host`: MSBuild in a process of its own per SDK and global.json (`ProjectHosts`), over JSON lines, its
@@ -239,8 +240,8 @@ site-shots` retakes its images.
 
 ## Traps
 
-- **Roslyn's server** stays at the latest *stable* build, 5.11.0 (owner's rule): later builds start Visual Studio
-  Telemetry's session even with telemetry off (dotnet/roslyn#86122, fixed by #86130 in no package yet; #234). After
+- **Roslyn's server** stays at 5.11.0 until a published build carries dotnet/roslyn#86130 (merged 2026-10-20): the
+  builds since start Visual Studio Telemetry's session even with telemetry off (dotnet/roslyn#86122; #234). After
   lowering it, delete `artifacts/bin/*/debug/roslyn*`, or the copy leaves a mixed server that won't start.
 - **Roslyn's server makes a C# file opened before its project loads a Miscellaneous File** and restores a project of its
   own for it, so `CSharpService` opens a loading project's files only once the server says that project loaded.
