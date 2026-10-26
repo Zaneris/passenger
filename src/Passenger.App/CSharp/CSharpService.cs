@@ -245,6 +245,36 @@ public sealed class CSharpService : IAsyncDisposable
         }
     }
 
+    private (bool Parameters, bool Types) hints = (true, true);
+
+    /// <summary>The inlay hints the editors show, parameter names and types (Settings' two kinds): the server is told to
+    /// make those alone, no file asks for any while neither is shown, and a change has every open file ask again at once.</summary>
+    public (bool Parameters, bool Types) Hints
+    {
+        get => hints;
+        set
+        {
+            UiThread.Check();
+            if (hints == value)
+            {
+                return;
+            }
+            hints = value;
+            session?.Server.SetOptions(HintSettings(value));
+            Each(document => document.RefreshHints());
+        }
+    }
+
+    /// <summary>Whether a file's pull asks the server for its inlay hints: while the editors show either kind.</summary>
+    internal bool AsksHints => hints.Parameters || hints.Types;
+
+    /// <summary>Roslyn's switches for each kind of inlay hint, by the names it asks for them under.</summary>
+    private static Dictionary<string, object?> HintSettings((bool Parameters, bool Types) shown) => new()
+    {
+        ["dotnet_enable_inlay_hints_for_parameters"] = shown.Parameters,
+        ["csharp_enable_inlay_hints_for_types"] = shown.Types,
+    };
+
     /// <summary>The indentation Roslyn was told to write where no .editorconfig gives one; its own default at first.</summary>
     private IndentOptions told = new();
 
@@ -715,8 +745,13 @@ public sealed class CSharpService : IAsyncDisposable
             string[] projects = [.. opening.Projects.Select(p => p.Path)];
             string logs = LogFolder;
             IndentOptions startedWith = told;
+            (bool, bool) hintedWith = hints;
             Dictionary<string, object?> options = new(IndentSettings(startedWith));
             foreach ((string name, object? value) in solutionWide ? FullSolution : new Dictionary<string, object?>())
+            {
+                options[name] = value;
+            }
+            foreach ((string name, object? value) in HintSettings(hintedWith))
             {
                 options[name] = value;
             }
@@ -806,6 +841,10 @@ public sealed class CSharpService : IAsyncDisposable
             if (told != startedWith)
             {
                 started.Server.SetOptions(IndentSettings(told));
+            }
+            if (hints != hintedWith)
+            {
+                started.Server.SetOptions(HintSettings(hints));
             }
             SetState(started.Solution is { } opened ? $"Loading {Path.GetFileName(opened)}…" : "Loading projects…");
             ConnectLoaded(started);

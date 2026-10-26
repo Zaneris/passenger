@@ -900,9 +900,11 @@ public sealed class ProjectSession : IAsyncDisposable
         CSharp = null;
         if (!IsEnded && setup.StartsLanguageServer && Workspace is { } opening && (opening.Solution is not null || opening.Projects.Count > 0))
         {
+            Settings.AppSettings shown = setup.Settings();
             CSharp = new CSharpService(setup.WarmServer)
             {
                 SolutionWide = setup.SolutionWide(),
+                Hints = (shown.ParameterHints, shown.TypeHints),
                 FirstProjects = ActiveProjectsAsync,
                 Feed = DesignTimeBuilds.Feed,
                 // Razor's HTML is the HTML server's to answer.

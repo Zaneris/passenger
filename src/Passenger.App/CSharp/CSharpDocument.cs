@@ -213,19 +213,34 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
         diagnostics.Pull(delay, cancel => PullAsync(lsp, cancel), service.FilePulling());
     }
 
+    /// <summary>The file's inlay hints asked for again with its diagnostics: the kinds the editors show changed.</summary>
+    public void RefreshHints() => Pull(TimeSpan.Zero);
+
     /// <summary>The file's diagnostics, with Aspire's for a service's file (<see cref="AspireDiagnosticsAsync"/>) and an
-    /// AppHost's (<see cref="AspireUnsetParametersAsync"/>), then its inlay hints, then what the project's whole analysis
-    /// reports in it, each for the text as it stands. A later pull (an AppHost's edit, the server's refresh) cancels this one.</summary>
+    /// AppHost's (<see cref="AspireUnsetParametersAsync"/>), then its inlay hints (<see cref="ShowHintsAsync"/>), then what
+    /// the project's whole analysis reports in it, each for the text as it stands. A later pull (an AppHost's edit, the
+    /// server's refresh) cancels this one.</summary>
     private async Task PullAsync(LspDocument lsp, CancellationToken cancel)
     {
-        if (await ShowPulledAsync(lsp, cancel) is not { } own)
+        if (await ShowPulledAsync(lsp, cancel) is { } own && await ShowHintsAsync(lsp, cancel))
         {
-            return;
+            await ShowProjectWideAsync(lsp, own, cancel);
+        }
+    }
+
+    /// <summary>The file's inlay hints of the kinds the editors show, for the text as it stands, none asked for while they
+    /// show neither; whether the hints shown answer the text.</summary>
+    private async Task<bool> ShowHintsAsync(LspDocument lsp, CancellationToken cancel)
+    {
+        if (!service.AsksHints)
+        {
+            document.InlayHints = HintList.Empty;
+            return true;
         }
         (IReadOnlyList<LspInlayHint> hints, int hinted) = await lsp.InlayHintsAsync(cancel);
         if (cancel.IsCancellationRequested || hinted != document.Text.Version)
         {
-            return;
+            return false;
         }
         // Placed on the thread pool, in the text and syntax they were asked for: a file of thousands of calls has as many.
         TextSnapshot text = document.Text.Snapshot;
@@ -234,10 +249,10 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
         HintList shown = await BackgroundWork.Run(() => Shown(text, syntax, razor, hints), cancel);
         if (cancel.IsCancellationRequested || hinted != document.Text.Version)
         {
-            return;
+            return false;
         }
         document.InlayHints = shown;
-        await ShowProjectWideAsync(lsp, own, cancel);
+        return true;
     }
 
     /// <summary>The server's diagnostics from the file's own sources, Aspire's and the open compose files' shown for the text

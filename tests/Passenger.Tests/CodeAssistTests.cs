@@ -1649,6 +1649,75 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    /// <summary>With Settings showing neither kind of hint, typing with pauses asks the server for none, though each pause
+    /// still pulls the file's diagnostics; turning parameter name hints on brings them at once, the server asked for that
+    /// kind alone, and turning type name hints on brings those too. Counted in the protocol's own trace.</summary>
+    [AvaloniaFact]
+    public void With_both_kinds_of_hint_off_no_hints_are_asked_for_and_turning_one_on_brings_its_hints_at_once()
+    {
+        MainWindow window = project.Open("Inferred.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        string code = editor.Document.Snapshot.ToString();
+        int name = code.IndexOf("var total", StringComparison.Ordinal) + "var total".Length;
+        Ui.WaitFor(() => editor.InlayHints.Any(h => h.Kind == InlayHintKind.Type), "the type name hints");
+        int server = window.CSharpService!.Session!.Server.ProcessId;
+        int hintsAsked = 0;
+        int pulls = 0;
+        void Count() => Passenger.Lsp.LanguageServer.Trace = (from, message) =>
+        {
+            if (from == server && message.StartsWith("-->", StringComparison.Ordinal))
+            {
+                if (message.Contains($"\"{Passenger.Lsp.LspMethods.InlayHint}\"", StringComparison.Ordinal))
+                {
+                    Interlocked.Increment(ref hintsAsked);
+                }
+                else if (message.Contains($"\"{Passenger.Lsp.LspMethods.DocumentDiagnostic}\"", StringComparison.Ordinal))
+                {
+                    Interlocked.Increment(ref pulls);
+                }
+            }
+        };
+        void Change(Func<AppSettings, AppSettings> change)
+        {
+            window.ApplySettings(change(window.Settings));
+            // A change puts the settings' own protocol trace in force, which is none: counted again after it.
+            Count();
+        }
+        try
+        {
+            Change(s => s with { ParameterHints = false, TypeHints = false });
+            Ui.Settle();
+            Assert.True(editor.InlayHints.Count == 0, $"With both kinds of hint off the file still holds {editor.InlayHints.Count} hints");
+
+            Ui.PlaceAfter(editor, "var total = Area.Of(3, 4);");
+            editor.Focus();
+            for (int i = 0; i < 3; i++)
+            {
+                int pulled = Volatile.Read(ref pulls);
+                window.KeyTextInput($" total += Area.Of({i}, 2);");
+                Ui.Settle();
+                Assert.True(Volatile.Read(ref pulls) > pulled, $"The pause after statement {i + 1} pulled no diagnostics");
+            }
+            Assert.True(Volatile.Read(ref hintsAsked) == 0, $"With both kinds of hint off, three pauses in typing asked the server for hints {hintsAsked} times");
+            Assert.True(editor.InlayHints.Count == 0, $"With both kinds of hint off the file holds {editor.InlayHints.Count} hints");
+
+            Change(s => s with { ParameterHints = true });
+            Ui.WaitFor(() => editor.InlayHints.Count(h => h.Label == "width:") == 4, "the four calls' parameter name hints, once they were turned on");
+            Assert.True(Volatile.Read(ref hintsAsked) > 0, "Parameter name hints came without the server being asked for them");
+            Assert.True(editor.InlayHints.All(h => h.Kind == InlayHintKind.Parameter),
+                $"With type name hints off the server still made {string.Join(", ", editor.InlayHints.Where(h => h.Kind != InlayHintKind.Parameter).Select(h => h.Label))}");
+
+            Change(s => s with { TypeHints = true });
+            Ui.WaitFor(() => editor.InlayHints.Any(h => h.Kind == InlayHintKind.Type && h.Offset == name && h.Label == ":int"),
+                "the type name hint after 'total', once they were turned on");
+        }
+        finally
+        {
+            Passenger.Lsp.LanguageServer.Trace = null;
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void Extend_selection_grows_through_the_code_around_the_caret_and_shrink_takes_it_back()
     {
