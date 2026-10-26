@@ -1677,15 +1677,11 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
                 }
             }
         };
-        void Change(Func<AppSettings, AppSettings> change)
-        {
-            window.ApplySettings(change(window.Settings));
-            // A change puts the settings' own protocol trace in force, which is none: counted again after it.
-            Count();
-        }
+        void Change(Func<AppSettings, AppSettings> change) => window.ApplySettings(change(window.Settings));
         try
         {
             Change(s => s with { ParameterHints = false, TypeHints = false });
+            Count();
             Ui.Settle();
             Assert.True(editor.InlayHints.Count == 0, $"With both kinds of hint off the file still holds {editor.InlayHints.Count} hints");
 

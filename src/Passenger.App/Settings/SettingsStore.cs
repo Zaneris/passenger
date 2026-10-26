@@ -145,7 +145,10 @@ public sealed class SettingsStore : IDisposable
         {
             AppActions.Choose(after.Keymap, after.OwnShortcuts());
         }
-        IdeLog.Traces = after.TraceProtocols;
+        if (before is null || before.TraceProtocols != after.TraceProtocols)
+        {
+            IdeLog.Traces = after.TraceProtocols;
+        }
         IdeLog.Programs = after.LogEveryProgram;
     }
 
