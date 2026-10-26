@@ -148,13 +148,30 @@ internal sealed class AspireInteractionHost : IAsyncDisposable
         }
     }
 
+    /// <summary>The key the stand-in AppHost wrote, or null while it has written none, read sharing delete: the AppHost's
+    /// rename of it into place holds it with delete access a moment after its name appears, and Windows refuses a reader
+    /// that shares less.</summary>
+    private async Task<string?> KeyAsync(CancellationToken cancel)
+    {
+        try
+        {
+            await using FileStream stream = new(KeyFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 4096, useAsync: true);
+            using StreamReader reader = new(stream);
+            return await reader.ReadToEndAsync(cancel);
+        }
+        catch (FileNotFoundException)
+        {
+            return null;
+        }
+    }
+
     private RequestDelegate Guard(RequestDelegate handle) => async context =>
     {
         context.Response.ContentType = "application/grpc";
         context.Response.DeclareTrailer("grpc-status");
         // The IDE asks as soon as it has started the AppHost, which may not have written its key yet.
-        string? key = await Waiting.UntilAsync(() => File.Exists(KeyFile), TimeSpan.FromSeconds(30), context.RequestAborted)
-            ? await File.ReadAllTextAsync(KeyFile, context.RequestAborted) : null;
+        string? key = null;
+        await Waiting.UntilAsync(async () => (key = await KeyAsync(context.RequestAborted)) is not null, TimeSpan.FromSeconds(30), context.RequestAborted);
         if (key is not { Length: > 0 } || context.Request.Headers["x-resource-service-api-key"] != key)
         {
             await context.Response.StartAsync(context.RequestAborted);

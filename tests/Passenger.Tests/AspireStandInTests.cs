@@ -175,19 +175,14 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
         project.Serve(backend);
         string folder = PathNames.Canonical(project.Folder);
-        List<string> onWindow = [];
-        int started = 0;
+        List<(string Command, bool OnWindow)> heard = [];
         void Heard(object? sender, ChildStart start)
         {
             if (start.Folder.Length > 0 && PathNames.Within(PathNames.Canonical(start.Folder), folder))
             {
-                Interlocked.Increment(ref started);
-                if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+                lock (heard)
                 {
-                    lock (onWindow)
-                    {
-                        onWindow.Add(start.Command);
-                    }
+                    heard.Add((start.Command, Avalonia.Threading.Dispatcher.UIThread.CheckAccess()));
                 }
             }
         }
@@ -207,12 +202,13 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             File.WriteAllText(project.Program, File.ReadAllText(project.Program).Replace("The stand-in AppHost is up\"", "The stand-in AppHost is up again\"", StringComparison.Ordinal));
             Ui.Run(window, AppActions.Rerun);
             Ui.WaitFor(() => window.AspireRuntime.Apps is [{ ProcessId: int again } app] && again != first && Said(app).Contains("The stand-in AppHost is up again", StringComparison.Ordinal),
-                "Rerun to run the changed AppHost again", TimeSpan.FromMinutes(3));
+                () => $"Rerun to run the changed AppHost again, the first as process {first}{Seen(window)}", TimeSpan.FromMinutes(3));
             Assert.False(Processes.IsRunning(first), "The AppHost that ran before Rerun still runs");
-            Assert.True(started >= 3, $"Only {started} programs were heard starting in the AppHost's folder: its two builds and runs were not");
-            lock (onWindow)
+            lock (heard)
             {
-                Assert.True(onWindow.Count == 0, $"{onWindow.Count} of the {started} programs started in the AppHost's folder started on the window's thread: {string.Join("; ", onWindow.Distinct())}");
+                Assert.True(heard.Count >= 3, $"Only {heard.Count} programs were heard starting in the AppHost's folder: its two builds and runs were not");
+                string[] onWindow = [.. heard.Where(start => start.OnWindow).Select(start => start.Command)];
+                Assert.True(onWindow.Length == 0, $"{onWindow.Length} of the {heard.Count} programs started in the AppHost's folder started on the window's thread: {string.Join("; ", onWindow.Distinct())}");
             }
         }
         finally
@@ -227,6 +223,24 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             app.Console.Flush();
             return app.Console.Document.Snapshot.ToString();
         }
+
+        // What a Rerun that never ran the change left, as the wait gives up.
+        string Seen(MainWindow window)
+        {
+            string apps = string.Join(string.Empty, window.AspireRuntime.Apps.Select(app =>
+                $"\nAn AppHost as process {app.ProcessId?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "none"}, "
+                + $"{(app.Runner.IsRunning ? "running" : "not running")}{(app.IsStopped ? ", stopping" : string.Empty)}, its console ending:\n{Tail(Said(app), 10)}"));
+            string programs;
+            lock (heard)
+            {
+                programs = string.Join(string.Empty, heard.Select(start => $"\n  {start.Command}"));
+            }
+            return $"\nThe status bar says: {window.Status}{(apps.Length == 0 ? "\nNo AppHost is listed" : apps)}"
+                + $"\nThe Build window ends:\n{Tail(window.BottomPanel.Build.Document.Snapshot.ToString(), 15)}"
+                + $"\nThe programs heard starting in the AppHost's folder:{(programs.Length == 0 ? " none" : programs)}";
+        }
+
+        static string Tail(string text, int lines) => string.Join('\n', text.Split('\n', StringSplitOptions.RemoveEmptyEntries).TakeLast(lines));
     }
 
     /// <summary>The question a start asked of its certificate, held to the dialogs' rules.</summary>
