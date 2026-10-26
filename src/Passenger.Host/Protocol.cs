@@ -52,6 +52,10 @@ public static class HostMethods
     /// with those properties would see them.</summary>
     public const string Properties = "properties";
 
+    /// <summary><see cref="ProgramParams"/>: a file-based program's project as the SDK made it, which the host evaluates and
+    /// builds in place of a project file whenever a request names the program's C# file; answered true once taken.</summary>
+    public const string Program = "program";
+
     /// <summary><see cref="InputsParams"/> to <see cref="BuildInputs"/>: what a build of one project with the global properties
     /// given reads (stamped) and makes, its references' too, or why a build of it reads more than its evaluations say.</summary>
     public const string Inputs = "inputs";
@@ -208,8 +212,9 @@ public sealed record HoldParams;
 public sealed record HoldState(IReadOnlyList<string> Running, bool Held);
 
 /// <summary>A file's last write (UTC ticks) and length, 0 and -1 for one not there; for a folder, the hash of its names and
-/// how many (<see cref="Stamps.Folder"/>).</summary>
-public sealed record Stamp(string Path, long Ticks, long Length, bool Folder = false);
+/// how many (<see cref="Stamps.Folder"/>); for a program's C# file, the hash of its head's directives and how many
+/// (<see cref="Stamps.Head"/>).</summary>
+public sealed record Stamp(string Path, long Ticks, long Length, bool Folder = false, bool Head = false);
 
 /// <summary>A project to evaluate for code help, with the global properties (the solution's) and the text of the open
 /// MSBuild files that differ from what is on disk, by path, which its evaluation reads instead.</summary>
@@ -269,6 +274,10 @@ public sealed record PropertiesParams(string Project, IReadOnlyDictionary<string
 
 /// <summary>Each property asked for that has a value, as evaluated, or why the project did not evaluate.</summary>
 public sealed record PropertiesAnswer(IReadOnlyDictionary<string, string> Values, string? Problem);
+
+/// <summary>A file-based program's C# file, with the project the SDK makes of it (<c>dotnet run-api</c>): where that project
+/// would be (app.cs.csproj beside app.cs) and its XML; or why the SDK made none (a directive it does not read).</summary>
+public sealed record ProgramParams(string Path, string? Project, string? Content, string? Problem);
 
 /// <summary>A project a build is about to build, with the global properties the build gives it (its framework among them).</summary>
 public sealed record InputsParams(string Project, IReadOnlyDictionary<string, string> Properties);

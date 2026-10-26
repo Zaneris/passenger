@@ -18,9 +18,16 @@ public static class FolderWalk
 
     /// <summary>A project's own files (those of <paramref name="extension"/> when one is given, as ".cs"): under its folder,
     /// passing over what a project builds or holds passes over, and a project nested in its folder, whose files are its
-    /// own. Paths are canonical, as the projects' are.</summary>
+    /// own; a file-based program's, its C# file and those its evaluation found it includes. Paths are canonical, as the
+    /// projects' are.</summary>
     public static IEnumerable<string> ProjectFiles(ProjectModel project, IEnumerable<ProjectModel> projects, string? extension = null)
     {
+        if (project.IsProgram)
+        {
+            return ((string[])[project.Path, .. project.Evaluated?.Items.Select(i => i.Path) ?? []])
+                .Distinct(PathNames.Comparer)
+                .Where(file => (extension is null || file.EndsWith(extension, PathNames.Comparison)) && File.Exists(file));
+        }
         HashSet<string> nested = new(projects.Where(p => PathNames.IsUnder(p.Folder, project.Folder)).Select(p => p.Folder), PathNames.Comparer);
         return Files(project.Folder, built: true, enters: folder => !nested.Contains(folder))
             .Where(file => extension is null || file.EndsWith(extension, PathNames.Comparison));

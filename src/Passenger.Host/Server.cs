@@ -44,6 +44,7 @@ public sealed class Server(TextWriter protocol, HostReady ready)
                 HostMethods.Hold => await Hold(request.Id, cancel.Token),
                 HostMethods.Properties => Properties.Run(Read<PropertiesParams>(request)),
                 HostMethods.Inputs => BuildReads.Run(Read<InputsParams>(request), cancel.Token),
+                HostMethods.Program => VirtualProjects.Take(Read<ProgramParams>(request)),
                 _ => throw new InvalidOperationException($"the host has no method {request.Method}"),
             };
             Write(new HostReply { Id = request.Id, Result = JsonSerializer.SerializeToElement(result, result.GetType(), HostJson.Options) });

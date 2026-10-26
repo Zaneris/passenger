@@ -42,7 +42,8 @@ public partial class MainWindow
         }
         session.LocalHistory?.Noticed(changes.Paths);
         session.DesignTimeBuilds.FolderChanged(changes);
-        if (changes.Projects || changes.Lost)
+        (bool programsMade, bool programsWritten) = ProgramsChanged(changes.Paths);
+        if (changes.Projects || changes.Lost || programsMade)
         {
             // Lost changes may have been a project's or the solution's: read again, which shows the whole Explorer anew.
             ReloadSolution();
@@ -53,9 +54,9 @@ public partial class MainWindow
             // A file come or gone may be one a project's wildcards take in: its folder's stamp says which.
             session.Evaluate();
         }
-        else if (changes.Restored.Count > 0)
+        else if (changes.Restored.Count > 0 || programsWritten)
         {
-            // A restore writes the props and targets a project imports beside its assets.
+            // A restore writes the props and targets a project imports beside its assets; a program's directives make its project.
             session.Evaluate();
         }
         if (changes.LaunchProfiles && !(changes.Projects || changes.Lost))
@@ -103,6 +104,34 @@ public partial class MainWindow
         {
             IdeErrors.Observe(session.Vcs.FolderChangedAsync(changes.Git || changes.Lost));
         }
+    }
+
+    /// <summary>What the C# files written, come or gone change of a folder's file-based programs, where the folder is read
+    /// for them (no solution or project opened): one that is a program now and was not, or the reverse, has the folder read
+    /// again; one a program compiles (its own file, or one it includes) has the projects evaluated again, its directives
+    /// being its project's.</summary>
+    private (bool Made, bool Written) ProgramsChanged(IEnumerable<string> paths)
+    {
+        if (session.Workspace is not { Solution: null, ProjectFile: null })
+        {
+            return (false, false);
+        }
+        IReadOnlyList<ProjectModel> projects = Projects;
+        bool written = false;
+        foreach (string path in paths.Where(Passenger.Host.ProgramFiles.IsProgram))
+        {
+            bool known = projects.Any(p => p.IsProgram && PathNames.Same(p.Path, path));
+            bool now = File.Exists(path)
+                && !projects.Any(p => p.IsProgram ? !PathNames.Same(p.Path, path) && p.Holds(path) : PathNames.Within(path, p.Folder))
+                && (WorkspaceModel.IsProgram(path, Passenger.Host.ProgramFiles.Head(path))
+                    || projects.Any(p => p.IsProgram && p.ProjectReferences.Contains(path, PathNames.Comparer)));
+            if (known != now)
+            {
+                return (true, false);
+            }
+            written |= projects.Any(p => p.IsProgram && p.Holds(path));
+        }
+        return (false, written);
     }
 
     /// <summary>The open files a change names, or names a folder over (a folder moved, renamed or trashed is seen as that

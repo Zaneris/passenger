@@ -21,8 +21,8 @@ public sealed record FolderChanges(IReadOnlySet<string> Paths, bool Structure, b
     /// Go to File's index). <see cref="Paths"/> then holds the folder itself.</summary>
     public bool Lost { get; init; }
 
-    /// <summary>Whether a project's launch profiles (its <c>launchSettings.json</c>) were among the files: the run
-    /// configurations are made of them, and nothing the solution or the Explorer shows is.</summary>
+    /// <summary>Whether a project's launch profiles (its <c>launchSettings.json</c>, a file-based program's <c>.run.json</c>)
+    /// were among the files: the run configurations are made of them, and nothing the solution or the Explorer shows is.</summary>
     public bool LaunchProfiles { get; init; }
 }
 
@@ -496,7 +496,8 @@ public sealed class FolderWatcher : IDisposable
                     }
                 }
                 projects |= IsProjectFile(path);
-                launchProfiles |= Path.GetFileName(path.AsSpan()).Equals(Run.LaunchProfile.SettingsFile, StringComparison.OrdinalIgnoreCase);
+                launchProfiles |= Path.GetFileName(path.AsSpan()).Equals(Run.LaunchProfile.SettingsFile, StringComparison.OrdinalIgnoreCase)
+                    || path.EndsWith(".run.json", StringComparison.OrdinalIgnoreCase);
             }
             if (pending)
             {

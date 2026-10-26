@@ -1,8 +1,12 @@
+using Passenger.Core;
+using Passenger.Host;
+
 namespace Passenger.Workspace;
 
 /// <summary>The open folder's solution and projects, decided here alone for the Explorer, the language server, Build,
 /// Run, NuGet and the test runner: the solution or project opened by name while it is there, else the solution at the
-/// folder's top; with none, the projects anywhere under the folder but its build output, dependencies and hidden folders.
+/// folder's top; with none, the projects anywhere under the folder but its build output, dependencies and hidden folders,
+/// and beside them its file-based programs (<see cref="IsProgram"/>), each a project of its own named by its C# file.
 /// Read when the folder opens and again when the folder watcher sees a solution or project change, never on each use.</summary>
 public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IReadOnlyList<ProjectModel> Projects)
 {
@@ -83,8 +87,72 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
     public bool LoadsAs(WorkspaceModel other) =>
         Solution?.Path == other.Solution?.Path && Projects.Select(p => p.Path).SequenceEqual(other.Projects.Select(p => p.Path));
 
-    /// <summary>The project files under a folder, those nearer the top first, as a walk for what projects build finds them
-    /// (<see cref="FolderWalk"/>): hidden folders are version control's, IDEs' and tools' own (a worktree's copy of them).</summary>
-    private static List<string> ProjectsUnder(string folder) =>
-        [.. FolderWalk.Folders(folder, built: true).Take(FolderLimit).SelectMany(f => f.Files).Where(IsProject).Take(ProjectLimit)];
+    /// <summary>The project files and programs under a folder, those nearer the top first, as a walk for what projects build
+    /// finds them (<see cref="FolderWalk"/>): hidden folders are version control's, IDEs' and tools' own (a worktree's copy
+    /// of them). A program is looked for only outside every project's folder.</summary>
+    private static List<string> ProjectsUnder(string folder)
+    {
+        List<string> found = [];
+        List<string> projectFolders = [];
+        foreach ((string at, IReadOnlyList<string> files) in FolderWalk.Folders(folder, built: true).Take(FolderLimit))
+        {
+            List<string> projects = [.. files.Where(IsProject)];
+            if (projects.Count > 0)
+            {
+                projectFolders.Add(at);
+                found.AddRange(projects);
+            }
+            else if (!projectFolders.Any(p => PathNames.IsUnder(at, p)))
+            {
+                found.AddRange(ProgramsAmong(files));
+            }
+            if (found.Count >= ProjectLimit)
+            {
+                break;
+            }
+        }
+        // A program another references (#:ref lib.cs) is one, its project the SDK's, whatever its head says.
+        for (int i = 0; i < found.Count; i++)
+        {
+            foreach (string referenced in ProgramFiles.IsProgram(found[i]) ? Named(found[i], "ref").ToList() : [])
+            {
+                if (File.Exists(referenced) && !found.Contains(referenced, PathNames.Comparer))
+                {
+                    found.Add(referenced);
+                }
+            }
+        }
+        return [.. found.Take(ProjectLimit)];
+    }
+
+    /// <summary>The C# files a program's directives of a kind name by a path of their own (no wildcard nor property in it).</summary>
+    private static IEnumerable<string> Named(string program, string kind)
+    {
+        foreach (string directive in ProgramFiles.Head(program))
+        {
+            if (ProgramFiles.Parse(directive) is ({ } named, { Length: > 0 } value) && named == kind && value.IndexOfAny(['*', '?', '$']) < 0
+                && ProgramFiles.IsProgram(value))
+            {
+                yield return PathNames.Canonical(Path.GetFullPath(value, Path.GetDirectoryName(program)!));
+            }
+        }
+    }
+
+    /// <summary>Whether a C# file's head makes it a file-based program, as <c>dotnet run</c> runs it: a <c>#!</c> line or a
+    /// <c>#:</c> directive, unless it is a single-file Aspire AppHost, which Aspire runs. A folder's walk takes one only
+    /// outside every project's folder, whose files are the project's.</summary>
+    public static bool IsProgram(string path, IReadOnlyList<string> head) =>
+        ProgramFiles.IsProgram(path) && head.Count > 0 && !head.Any(IsAspireSdk);
+
+    /// <summary>The programs among one folder's files, those another of them includes (<c>#:include helper.cs</c>, which is
+    /// the including program's code) left out.</summary>
+    private static IEnumerable<string> ProgramsAmong(IReadOnlyList<string> files)
+    {
+        List<string> programs = [.. files.Where(f => IsProgram(f, ProgramFiles.Head(f)))];
+        HashSet<string> included = new(programs.SelectMany(p => Named(p, "include")), PathNames.Comparer);
+        return programs.Where(p => !included.Contains(p));
+    }
+
+    private static bool IsAspireSdk(string directive) =>
+        ProgramFiles.Parse(directive) is ("sdk", { } sdk) && sdk.Split('@')[0].Trim().Equals("Aspire.AppHost.Sdk", StringComparison.OrdinalIgnoreCase);
 }

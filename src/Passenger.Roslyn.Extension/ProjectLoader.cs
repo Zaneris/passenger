@@ -23,11 +23,15 @@ internal sealed class PassengerProjectLoader : LanguageServerProjectLoader, ILsp
     /// the server's parallel loads rather than done one after another in the notification.</summary>
     private readonly ConcurrentDictionary<string, (string Infos, IReadOnlyList<ProjectDiagnostic>? Logged)> given = new(StringComparer.Ordinal);
     private readonly IClientLanguageServerManager client;
+    private readonly LspServices services;
 
     public PassengerProjectLoader(LspServices services, IGlobalOptionService options, ILoggerFactory loggers, IAsynchronousOperationListenerProvider listeners,
         ServerConfigurationFactory configuration, IBinLogPathProvider binaryLogs, DotnetCliHelper dotnet)
-        : base(services, options, loggers, listeners, configuration, binaryLogs, dotnet) =>
+        : base(services, options, loggers, listeners, configuration, binaryLogs, dotnet)
+    {
         client = services.GetRequiredService<IClientLanguageServerManager>();
+        this.services = services;
+    }
 
     /// <summary>Loads projects, again for those loaded already, and says the load is complete once each has loaded.</summary>
     public async Task Load(LoadProjectsParams request, IProgress<global::Roslyn.LanguageServer.Protocol.WorkDoneProgress> progress)
@@ -42,6 +46,12 @@ internal sealed class PassengerProjectLoader : LanguageServerProjectLoader, ILsp
             if (project.Infos is { } infos)
             {
                 given[project.Path] = (infos, project.Diagnostics);
+            }
+            // A program found in the folder as the server started, before it was told not to look, is this loader's alone.
+            if (project.Path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)
+                && services.GetService<ILspMiscellaneousFilesWorkspaceProvider>() is Microsoft.CodeAnalysis.LanguageServer.FileBasedPrograms.FileBasedProgramsProjectSystem own)
+            {
+                await own.TryUnloadProjectAsync(project.Path).ConfigureAwait(false);
             }
             await BeginLoadingProjectAsync(project.Path, null, tracker).ConfigureAwait(false);
             // One loaded already loads again with what it was given; one just begun is the same work, done once.
@@ -99,9 +109,10 @@ internal sealed class PassengerProjectLoader : LanguageServerProjectLoader, ILsp
         DiagnosticLogItems = ImmutableArray.Create(problems),
         ProjectRestorePath = projectPath,
         ProjectFactory = _workspaceFactory.HostProjectFactory,
-        IsFileBasedProgram = false,
+        // A file-based program's project is named by its C# file.
+        IsFileBasedProgram = projectPath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase),
         IsMiscellaneousFile = false,
-        HasFileBasedAppDirectives = false,
+        HasFileBasedAppDirectives = projectPath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase),
         HasAllInformation = true,
         PreferredBuildHostKind = BuildHostProcessKind.NetCore,
         ActualBuildHostKind = BuildHostProcessKind.NetCore,

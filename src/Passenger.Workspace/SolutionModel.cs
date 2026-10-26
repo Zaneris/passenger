@@ -314,10 +314,36 @@ public sealed record ProjectModel(
         };
     }
 
-    /// <summary>The project a file or folder belongs to: of the projects whose folders hold it, the one nearest it, as a
-    /// nested project's files are its own; null when none does. Paths are canonical, as the projects' are.</summary>
-    public static ProjectModel? Owning(IEnumerable<ProjectModel> projects, string path) =>
-        projects.Where(p => PathNames.Within(path, p.Folder)).MaxBy(p => p.Folder.Length);
+    /// <summary>The project a file or folder belongs to: a file-based program whose files it is (<see cref="Holds"/>), else
+    /// of the projects whose folders hold it, the one nearest it, as a nested project's files are its own; null when none
+    /// does. Paths are canonical, as the projects' are.</summary>
+    public static ProjectModel? Owning(IEnumerable<ProjectModel> projects, string path)
+    {
+        ProjectModel? owner = null;
+        foreach (ProjectModel project in projects)
+        {
+            if (project.IsProgram)
+            {
+                if (project.Holds(path))
+                {
+                    return project;
+                }
+            }
+            else if (PathNames.Within(path, project.Folder) && (owner is null || project.Folder.Length > owner.Folder.Length))
+            {
+                owner = project;
+            }
+        }
+        return owner;
+    }
+
+    /// <summary>Whether it is a file-based program, named by its C# file rather than a project file.</summary>
+    public bool IsProgram => Host.ProgramFiles.IsProgram(Path);
+
+    /// <summary>Whether a program compiles a file: its own C# file, or one its directives include as its evaluation found
+    /// them; for a project, whether its folder holds it.</summary>
+    public bool Holds(string path) => !IsProgram ? PathNames.Within(path, Folder)
+        : PathNames.Same(path, Path) || (Evaluated?.Items.Any(i => i.Type == "Compile" && PathNames.Same(i.Path, path)) ?? false);
 
     /// <summary>The files of the project that depend on another, as its evaluated DependentUpon says (relative to the
     /// file's own folder, as MSBuild has it), each with that file's path; none before the project is evaluated. Made on

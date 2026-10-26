@@ -1,0 +1,101 @@
+using System.Text.Json;
+using System.Xml.Linq;
+using Passenger.Core;
+using Passenger.Host;
+
+namespace Passenger.Workspace;
+
+/// <summary>A file-based program's project as the .NET SDK makes it (<c>dotnet run-api</c>, run in the program's folder, so
+/// the SDK its global.json picks makes it), for the project host, with the heads it was made from (the program's and each
+/// C# file it includes, whose directives are its project's too) and the programs it references.</summary>
+public static class ProgramProjects
+{
+    /// <summary>The program's project, or why the SDK made none: its errors for the directives it does not read, each at
+    /// its line ("app.cs(3): Unrecognized directive 'packag'.").</summary>
+    public static async Task<(ProgramParams Program, IReadOnlyList<Stamp> Heads, IReadOnlyList<string> Referenced)> ReadAsync(string path, CancellationToken cancel)
+    {
+        Stamp head = Stamps.Head(path);
+        string folder = Path.GetDirectoryName(path)!;
+        string asked = JsonSerializer.Serialize(new Dictionary<string, string> { ["$type"] = "GetProject", ["EntryPointFileFullPath"] = path });
+        ChildResult answer = await ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["run-api"], folder), asked, cancel: cancel).ConfigureAwait(false);
+        string name = Path.GetFileName(path);
+        // Its answer is its last line: the SDK's first run in a new home writes its welcome before it.
+        string? line = answer.Output.Split('\n').Select(l => l.Trim()).LastOrDefault(l => l.StartsWith('{'));
+        if (line is null)
+        {
+            return (new ProgramParams(path, null, null, $"{name}: the .NET SDK made no project for it: {answer.Said}"), [head], []);
+        }
+        try
+        {
+            using JsonDocument read = JsonDocument.Parse(line);
+            JsonElement root = read.RootElement;
+            if (root.TryGetProperty("$type", out JsonElement type) && type.GetString() == "Error")
+            {
+                return (new ProgramParams(path, null, null, $"{name}: {Text(root, "Message") ?? "the .NET SDK made no project for it"}"), [head], []);
+            }
+            List<string> problems = [];
+            if (root.TryGetProperty("Diagnostics", out JsonElement diagnostics) && diagnostics.ValueKind == JsonValueKind.Array)
+            {
+                foreach (JsonElement diagnostic in diagnostics.EnumerateArray())
+                {
+                    problems.Add($"{At(diagnostic, name)}: {Text(diagnostic, "Message")}");
+                }
+            }
+            string? content = Text(root, "Content");
+            string? project = Text(root, "ProjectPath");
+            (List<string> included, List<string> referenced) = Named(content);
+            IReadOnlyList<Stamp> heads = [head, .. included.Where(f => !PathNames.Same(f, path)).Select(Stamps.Head)];
+            return (new ProgramParams(path, project, content, problems.Count > 0 ? string.Join(" ", problems) : null), heads, referenced);
+        }
+        catch (JsonException error)
+        {
+            return (new ProgramParams(path, null, null, $"{name}: the .NET SDK's answer does not read: {error.Message}"), [head], []);
+        }
+    }
+
+    private static string? Text(JsonElement element, string property) =>
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out JsonElement value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+
+    /// <summary>Where a diagnostic of the SDK's is, as a build names a place: its file and line from 1.</summary>
+    private static string At(JsonElement diagnostic, string name)
+    {
+        if (diagnostic.TryGetProperty("Location", out JsonElement location) && location.ValueKind == JsonValueKind.Object)
+        {
+            string file = Text(location, "Path") is { } path ? Path.GetFileName(path) : name;
+            if (location.TryGetProperty("Span", out JsonElement span) && span.TryGetProperty("Start", out JsonElement start)
+                && start.TryGetProperty("Line", out JsonElement line) && line.TryGetInt32(out int number))
+            {
+                return $"{file}({number + 1})";
+            }
+            return file;
+        }
+        return name;
+    }
+
+    /// <summary>The C# files the project compiles that a directive named by its path (no wildcard nor property in it), and
+    /// the programs it references (<c>#:ref</c>), by their C# files.</summary>
+    private static (List<string> Included, List<string> Referenced) Named(string? content)
+    {
+        if (content is null)
+        {
+            return ([], []);
+        }
+        try
+        {
+            XDocument project = XDocument.Parse(content);
+            List<string> included = [.. project.Descendants("Compile")
+                .Select(c => (string?)c.Attribute("Include"))
+                .OfType<string>()
+                .Where(i => i.IndexOfAny(['*', '?', '$', ';']) < 0 && Path.IsPathFullyQualified(i) && ProgramFiles.IsProgram(i))];
+            List<string> referenced = [.. project.Descendants("ProjectReference")
+                .Select(r => (string?)r.Attribute(ProgramFiles.RefMetadata))
+                .OfType<string>()
+                .Where(r => Path.IsPathFullyQualified(r) && ProgramFiles.IsProgram(r))];
+            return (included, referenced);
+        }
+        catch (System.Xml.XmlException)
+        {
+            return ([], []);
+        }
+    }
+}

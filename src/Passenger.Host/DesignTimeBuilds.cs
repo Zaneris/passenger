@@ -183,11 +183,11 @@ internal static class DesignTimeBuilds
     private static async Task<BuiltProject> Build(string path, ProjectCollection collection, EvaluationContext context, Dictionary<string, string> global, DiagnosticLogger diagnostics,
         CancellationToken cancel)
     {
-        Stamp file = Stamps.File(path);
-        IReadOnlyList<Stamp> folders = Evaluation.Walked(Path.GetDirectoryName(path)!);
+        Stamp file = Stamps.Project(path);
+        IReadOnlyList<Stamp> folders = Evaluation.Walked(path);
         string? language = Path.GetExtension(path).ToLowerInvariant() switch
         {
-            ".csproj" => "C#",
+            ".csproj" or ".cs" => "C#",
             ".vbproj" => "Visual Basic",
             _ => null,
         };
@@ -217,7 +217,7 @@ internal static class DesignTimeBuilds
                 .Select(Stamps.File)];
             foreach (Project project in each)
             {
-                (ProjectInstance instance, IReadOnlyList<BuildDiagnostic> logged) = await BuildAsync(project, diagnostics, cancel).ConfigureAwait(false);
+                (ProjectInstance instance, IReadOnlyList<BuildDiagnostic> logged) = await BuildAsync(path, project, diagnostics, cancel).ConfigureAwait(false);
                 said.AddRange(logged.Where(d => !said.Contains(d)));
                 RoslynProjectFileInfo info = Read(language, path, instance, globs);
                 if (info.CommandLineArgs.Length == 0 && !logged.Any(d => d.Error))
@@ -226,7 +226,8 @@ internal static class DesignTimeBuilds
                 }
                 infos.Add(info);
             }
-            IReadOnlyList<Stamp> inputs = Evaluation.Inputs(file, loaded, Evaluation.OutsideRoots(outer), [.. restored, .. looked]);
+            IReadOnlyList<Stamp> heads = [.. Evaluation.IncludedHeads(path, infos.SelectMany(i => i.Documents).Select(d => new EvaluatedItem("Compile", d.FilePath)))];
+            IReadOnlyList<Stamp> inputs = Evaluation.Inputs(file, loaded, Evaluation.OutsideRoots(outer), [.. restored, .. looked, .. heads]);
             IReadOnlyList<Stamp> walked = Evaluation.Folders(path, folders, infos.SelectMany(i => i.Documents.Concat(i.AdditionalDocuments)).Select(d => d.FilePath));
             return new BuiltProject(path, JsonSerializer.Serialize(infos, Written), [.. inputs, .. walked], null, said);
         }
@@ -246,7 +247,7 @@ internal static class DesignTimeBuilds
     /// <summary>Compile and CoreCompile, and XAML's markup compilation where a project has it, with the errors and
     /// warnings the build logged. One that generates XAML's output (<see cref="Generating"/>) takes its turn with the
     /// IDE's own builds (<see cref="HoldAsync"/>).</summary>
-    private static async Task<(ProjectInstance Built, IReadOnlyList<BuildDiagnostic> Logged)> BuildAsync(Project project, DiagnosticLogger diagnostics, CancellationToken cancel)
+    private static async Task<(ProjectInstance Built, IReadOnlyList<BuildDiagnostic> Logged)> BuildAsync(string path, Project project, DiagnosticLogger diagnostics, CancellationToken cancel)
     {
         ProjectInstance instance = project.CreateProjectInstance();
         if (!instance.Targets.ContainsKey("Compile") || !instance.Targets.ContainsKey("CoreCompile"))
@@ -260,7 +261,14 @@ internal static class DesignTimeBuilds
             targets.Add("DesignTimeMarkupCompilation");
         }
         using IDisposable? turn = Generating.Any(instance.Targets.ContainsKey) ? await TurnAsync(project.FullPath, cancel).ConfigureAwait(false) : null;
-        BuildRequestData request = new(instance, [.. targets], null, BuildRequestDataFlags.ProvideProjectStateAfterBuild);
+        // A program's project, and those of the programs it references, are in this process's memory alone: no other node has them.
+        HostServices? inMemory = null;
+        if (ProgramFiles.IsProgram(path))
+        {
+            inMemory = new HostServices();
+            inMemory.SetNodeAffinity(string.Empty, NodeAffinity.InProc);
+        }
+        BuildRequestData request = new(instance, [.. targets], inMemory, BuildRequestDataFlags.ProvideProjectStateAfterBuild);
         TaskCompletionSource<BuildResult> done = new(TaskCreationOptions.RunContinuationsAsynchronously);
         BuildSubmission submission = BuildManager.DefaultBuildManager.PendBuildRequest(request);
         List<BuildDiagnostic> logged = diagnostics.Register(submission.SubmissionId);
@@ -303,7 +311,10 @@ internal static class DesignTimeBuilds
             Documents = [.. instance.GetItems("Compile").Where(i => !Path.GetFileName(i.EvaluatedInclude).StartsWith("TemporaryGeneratedFile_", StringComparison.Ordinal)).Select(i => Document(i, directory))],
             AdditionalDocuments = [.. instance.GetItems("AdditionalFiles").Select(i => Document(i, directory))],
             AnalyzerConfigDocuments = [.. instance.GetItems("EditorConfigFiles").Select(i => Document(i, directory))],
-            ProjectReferences = [.. instance.GetItems("ProjectReference").Select(r => new ProjectFileReference(r.EvaluatedInclude, Aliases(r), !r.GetMetadataValue("ReferenceOutputAssembly").Equals("false", StringComparison.OrdinalIgnoreCase)))],
+            // A program's #:ref is to the other program's project, which the server knows by its C# file.
+            ProjectReferences = [.. instance.GetItems("ProjectReference").Select(r => new ProjectFileReference(
+                r.GetMetadataValue(ProgramFiles.RefMetadata) is { Length: > 0 } program ? program : r.EvaluatedInclude,
+                Aliases(r), !r.GetMetadataValue("ReferenceOutputAssembly").Equals("false", StringComparison.OrdinalIgnoreCase)))],
             PackageReferences = [.. instance.GetItems("PackageReference").Select(p => new PackageReferenceItem(p.EvaluatedInclude, p.GetMetadataValue("Version"))).Distinct()],
             ProjectCapabilities = [.. instance.GetItems("ProjectCapability").Select(c => c.EvaluatedInclude)],
             ContentFilePaths = [.. instance.GetItems("Content").Select(c => c.GetMetadataValue("FullPath"))],

@@ -188,7 +188,15 @@ public sealed record RunConfiguration
             IReadOnlyList<LaunchProfile> profiles = Run.LaunchProfile.Read(project);
             if (!profiles.Any(p => p.Unsupported is null && !p.RunsInContainer))
             {
-                generated.Add(new RunConfiguration { Name = name, Project = project.Path, Aspire = project.IsAspireHost, Generated = true });
+                generated.Add(new RunConfiguration
+                {
+                    Name = name,
+                    Project = project.Path,
+                    Aspire = project.IsAspireHost,
+                    Generated = true,
+                    // A program runs beside its C# file, as dotnet run there runs it: what it builds lies out of sight.
+                    WorkingDirectory = project.IsProgram ? "$(ProjectDir)" : string.Empty,
+                });
             }
             generated.AddRange(profiles.Select(p => From(project, p) with { Name = NameOf(project, p.Name), Generated = true }));
         }

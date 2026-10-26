@@ -17,7 +17,7 @@ internal static class Properties
         Project? project = null;
         try
         {
-            project = WindowsTargeting.Load(given => Project.FromFile(asked.Project, new ProjectOptions
+            project = WindowsTargeting.Load(given => VirtualProjects.Load(asked.Project, new ProjectOptions
             {
                 GlobalProperties = given,
                 ProjectCollection = collection,

@@ -666,8 +666,17 @@ public sealed class CSharpService : IAsyncDisposable
         }
     }
 
-    /// <summary>The project of the folder's that holds a file, by its path; null for none.</summary>
-    private string? HolderOf(string path) => workspace is { } opened ? ProjectModel.Owning(opened.Projects, path)?.Path : null;
+    /// <summary>The project of the folder's that holds a file, by its path; null for none. Before a program beside it has
+    /// been evaluated, which says what it includes, that program, so the file waits for it.</summary>
+    private string? HolderOf(string path)
+    {
+        if (workspace is not { } opened)
+        {
+            return null;
+        }
+        return ProjectModel.Owning(opened.Projects, path)?.Path
+            ?? opened.Projects.FirstOrDefault(p => p.IsProgram && !p.IsEvaluated && PathNames.Same(p.Folder, Path.GetDirectoryName(path)!))?.Path;
+    }
 
     /// <summary>A server has said a project loaded, with problems or none: its files open are opened in it.</summary>
     private void Reported(LanguageServer from, string project)

@@ -773,9 +773,11 @@ public sealed class LanguageServer : IAsyncDisposable
 
     /// <summary>The server's options Passenger sets: parameter name hints before a literal, a null or an indexer's argument,
     /// never where the argument already says the name; type hints on a <c>var</c>, a lambda's parameter and a target-typed
-    /// <c>new</c>, none for a collection expression.</summary>
+    /// <c>new</c>, none for a collection expression; no file-based program found in the folder by the server itself, since
+    /// the client names those it loads (a second project of the same program would answer beside it).</summary>
     private static readonly Dictionary<string, object?> Settings = new(StringComparer.Ordinal)
     {
+        ["dotnet_enable_automatic_discovery"] = false,
         ["dotnet_enable_inlay_hints_for_parameters"] = true,
         ["dotnet_enable_inlay_hints_for_literal_parameters"] = true,
         ["dotnet_enable_inlay_hints_for_indexer_parameters"] = true,

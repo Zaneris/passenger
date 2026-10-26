@@ -49,6 +49,28 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(wrong.IsError == true && Text(wrong).Contains("there are passed, failed, skipped and notRun", StringComparison.Ordinal), $"tests_list in no state answered: {Text(wrong)}");
     }
 
+    /// <summary>A file-based program (<c>dotnet run app.cs</c>) is a project to an agent: workspace lists it by its C# file,
+    /// build builds it and run runs it, the code of the file it includes with it.</summary>
+    [Fact]
+    public async Task An_agent_builds_and_runs_a_file_based_program_as_a_project_of_its_own()
+    {
+        string program = PathNames.Canonical(TestFolders.Create("mcp-program-"));
+        DeleteAtEnd(program);
+        // What it builds lies in its folder, which the test removes, rather than in the SDK's cache of the person's.
+        File.WriteAllText(Path.Combine(program, "Directory.Build.props"), "<Project>\n  <PropertyGroup>\n    <UseArtifactsOutput>true</UseArtifactsOutput>\n  </PropertyGroup>\n</Project>\n");
+        File.WriteAllText(Path.Combine(program, "app.cs"), "#!/usr/bin/env dotnet\n#:property PublishAot=false\n#:include helper.cs\nConsole.WriteLine(Helper.Greet());\n");
+        File.WriteAllText(Path.Combine(program, "helper.cs"), "static class Helper\n{\n    public static string Greet() => \"Hello from helper.cs\";\n}\n");
+        await using McpClient client = await Start(["--mcp", program], languageServer: false);
+        JsonElement workspace = await Call(client, McpTools.Workspace);
+        JsonElement project = Assert.Single(workspace.GetProperty("projects").EnumerateArray());
+        Assert.True(project.GetProperty("path").GetString() == "app.cs" && project.GetProperty("outputType").GetString() == "Exe",
+            $"The folder's program is not a project of its own: {workspace}");
+        JsonElement built = await Call(client, McpTools.Build);
+        Assert.True(built.GetProperty("succeeded").GetBoolean(), $"The program did not build: {built}");
+        JsonElement ran = await Call(client, McpTools.Run, new() { ["waitSeconds"] = 60 });
+        Assert.True(ran.GetProperty("output").GetString()?.Contains("Hello from helper.cs\n", StringComparison.Ordinal) == true, $"The program's run did not print its greeting: {ran}");
+    }
+
     /// <summary>A run refused for a reason of its own (here a launch profile's command named RetryFailed, which Passenger does
     /// not run) is answered with that reason alone, though the last build's errors are still in Problems; a run refused for
     /// the build it ran failing still names them.</summary>

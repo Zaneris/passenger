@@ -165,10 +165,57 @@ public sealed class ProjectHost : IAsyncDisposable
 
     /// <summary>Evaluates projects, handing each over as it is evaluated (a multi-targeted one twice: its outer evaluation,
     /// then complete), on the reader's thread; done once every one has been.</summary>
-    public async Task<EvaluateDone> EvaluateAsync(IReadOnlyList<string> projects, IReadOnlyDictionary<string, string> properties, Action<EvaluatedProject> evaluated, CancellationToken cancel = default) =>
-        (await AskAsync(HostMethods.Evaluate, new EvaluateParams(projects, properties),
+    public async Task<EvaluateDone> EvaluateAsync(IReadOnlyList<string> projects, IReadOnlyDictionary<string, string> properties, Action<EvaluatedProject> evaluated, CancellationToken cancel = default)
+    {
+        await GiveProgramsAsync(projects, cancel).ConfigureAwait(false);
+        return (await AskAsync(HostMethods.Evaluate, new EvaluateParams(projects, properties),
             partial => evaluated(partial.Deserialize<EvaluatedProject>(HostJson.Options)!), cancel)).Deserialize<EvaluateDone>(HostJson.Options)
             ?? throw new ProjectHostFailed("the project host gave no answer for its evaluation");
+    }
+
+    /// <summary>The heads each program's project was last given to the host from, and the programs it references, by its
+    /// C# file.</summary>
+    private readonly Dictionary<string, (IReadOnlyList<Stamp> Heads, IReadOnlyList<string> Referenced)> programs = new(PathNames.Comparer);
+
+    /// <summary>Gives the host the project the SDK makes of each file-based program among <paramref name="projects"/>
+    /// (<see cref="ProgramProjects"/>), and of each program they reference, before it is asked of them, a few read at once:
+    /// again only once the directives it was made from changed.</summary>
+    private async Task GiveProgramsAsync(IEnumerable<string> projects, CancellationToken cancel)
+    {
+        List<string> next = [.. projects.Where(ProgramFiles.IsProgram).Distinct(PathNames.Comparer)];
+        HashSet<string> seen = new(next, PathNames.Comparer);
+        while (next.Count > 0)
+        {
+            List<string> referenced = [];
+            foreach (string[] few in next.Chunk(4))
+            {
+                foreach (IReadOnlyList<string> named in await Task.WhenAll(few.Select(path => GiveProgramAsync(path, cancel))).ConfigureAwait(false))
+                {
+                    referenced.AddRange(named.Where(seen.Add));
+                }
+            }
+            next = referenced;
+        }
+    }
+
+    /// <summary>One program's project given to the host unless the one given still stands; the programs it references.</summary>
+    private async Task<IReadOnlyList<string>> GiveProgramAsync(string path, CancellationToken cancel)
+    {
+        lock (programs)
+        {
+            if (programs.TryGetValue(path, out (IReadOnlyList<Stamp> Heads, IReadOnlyList<string> Referenced) given) && given.Heads.All(Stamps.Holds))
+            {
+                return given.Referenced;
+            }
+        }
+        (ProgramParams program, IReadOnlyList<Stamp> heads, IReadOnlyList<string> referenced) = await ProgramProjects.ReadAsync(path, cancel).ConfigureAwait(false);
+        await AskAsync(HostMethods.Program, program, null, cancel).ConfigureAwait(false);
+        lock (programs)
+        {
+            programs[path] = (heads, referenced);
+        }
+        return referenced;
+    }
 
     /// <summary>Builds projects at design time, handing each over as its builds end, on the reader's thread; done once
     /// every one has been.</summary>
@@ -177,6 +224,7 @@ public sealed class ProjectHost : IAsyncDisposable
         Interlocked.Increment(ref building);
         try
         {
+            await GiveProgramsAsync(projects, cancel).ConfigureAwait(false);
             return (await AskAsync(HostMethods.Build, new BuildParams(projects, properties),
                 partial => built(partial.Deserialize<BuiltProject>(HostJson.Options)!), cancel)).Deserialize<BuildDone>(HostJson.Options)
                 ?? throw new ProjectHostFailed("the project host gave no answer for its builds");
@@ -200,15 +248,21 @@ public sealed class ProjectHost : IAsyncDisposable
     /// <summary>Some properties of one project as a build with these global properties sees them (a publish profile's,
     /// imported by PublishProfile), each that has a value; or why the project did not evaluate.</summary>
     public async Task<PropertiesAnswer> PropertiesAsync(string project, IReadOnlyDictionary<string, string> properties, IReadOnlyList<string> names,
-        CancellationToken cancel = default) =>
-        (await AskAsync(HostMethods.Properties, new PropertiesParams(project, properties, names), null, cancel)).Deserialize<PropertiesAnswer>(HostJson.Options)
+        CancellationToken cancel = default)
+    {
+        await GiveProgramsAsync([project], cancel).ConfigureAwait(false);
+        return (await AskAsync(HostMethods.Properties, new PropertiesParams(project, properties, names), null, cancel)).Deserialize<PropertiesAnswer>(HostJson.Options)
             ?? throw new ProjectHostFailed("the project host gave no answer for the project's properties");
+    }
 
     /// <summary>What a build of one project with these global properties reads and makes, as its evaluations say, or why a
     /// build of it reads more than that.</summary>
-    public async Task<BuildInputs> InputsAsync(string project, IReadOnlyDictionary<string, string> properties, CancellationToken cancel = default) =>
-        (await AskAsync(HostMethods.Inputs, new InputsParams(project, properties), null, cancel)).Deserialize<BuildInputs>(HostJson.Options)
+    public async Task<BuildInputs> InputsAsync(string project, IReadOnlyDictionary<string, string> properties, CancellationToken cancel = default)
+    {
+        await GiveProgramsAsync([project], cancel).ConfigureAwait(false);
+        return (await AskAsync(HostMethods.Inputs, new InputsParams(project, properties), null, cancel)).Deserialize<BuildInputs>(HostJson.Options)
             ?? throw new ProjectHostFailed("the project host gave no answer for what the project's build reads");
+    }
 
     /// <summary>Holds the host's design-time builds of WPF projects off for a build of the IDE's own: done once none runs,
     /// those still running named to <paramref name="waiting"/> first (on the reader's thread), and none starts again until
