@@ -162,7 +162,9 @@ public sealed class HotReload
 
     /// <summary>Applies the edits made since the launch or the last update: Roslyn emits them against the program's code and
     /// the debugger applies them; an edit the runtime cannot take, or code that does not compile, stops it, and nothing is
-    /// applied. On an update applied, the session's built lines are the files' lines now.</summary>
+    /// applied. A running program is held stopped from the reading of its threads' statements to the update's end, so
+    /// Roslyn places every frame in a method the update changes. On an update applied, the session's built lines are the
+    /// files' lines now.</summary>
     public async Task<HotReloadOutcome> ApplyAsync()
     {
         UiThread.Check();
@@ -189,12 +191,40 @@ public sealed class HotReload
         HotReloadStateResponse state;
         try
         {
-            state = await debug.HotReloadStateAsync();
+            state = await debug.HotReloadStateAsync(hold: debug.State == DebugState.Running);
         }
         catch (DapException failed)
         {
             return new HotReloadOutcome(HotReloadResult.Failed, $"The debugger could not say what the program can take: {failed.Reason}");
         }
+        try
+        {
+            return await ApplyAsync(state, session, roslyn, took);
+        }
+        finally
+        {
+            if (state.Held)
+            {
+                await ReleaseAsync();
+            }
+        }
+    }
+
+    /// <summary>Lets the program held for an update go on; a debugger gone meanwhile has let it go already.</summary>
+    private async Task ReleaseAsync()
+    {
+        try
+        {
+            await debug.ReleaseHotReloadAsync();
+        }
+        catch (DapException failed)
+        {
+            IdeLog.Write(IdeLog.Debugger, $"Hot Reload could not let the program go on: {failed.Reason}");
+        }
+    }
+
+    private async Task<HotReloadOutcome> ApplyAsync(HotReloadStateResponse state, int session, RoslynSession roslyn, Stopwatch took)
+    {
         if (state.Capabilities is not { } capabilities)
         {
             return new HotReloadOutcome(HotReloadResult.Failed, state.CapabilitiesUnknown ?? "The program's runtime did not say which edits it can take");
@@ -203,7 +233,7 @@ public sealed class HotReload
         HotReloadEmitted emitted;
         try
         {
-            emitted = await roslyn.ExtensionAsync<HotReloadEmitted>(HotReloadHandlers.Emit, new HotReloadEmit(session, paused, capabilities,
+            emitted = await roslyn.ExtensionAsync<HotReloadEmitted>(HotReloadHandlers.Emit, new HotReloadEmit(session, paused, state.Held, capabilities,
                 [.. state.Modules.Where(m => m.Editable).Select(m => m.Mvid)],
                 [.. state.ActiveStatements.Select(s => new HotReloadActiveStatement(s.Module, s.Token, s.Version, s.ILOffset, s.Document,
                     s.StartLine, s.StartColumn, s.EndLine, s.EndColumn, s.Flags))],
@@ -246,7 +276,8 @@ public sealed class HotReload
             applied = await debug.ApplyChangesAsync([.. emitted.Updates.Select(u => new DapModuleUpdate(u.Module, u.Name, u.Metadata, u.IL, u.Pdb,
                 u.UpdatedMethods, u.UpdatedTypes,
                 [.. u.Lines.Select(l => new DapLineUpdates(l.Document, [.. l.Updates.Select(x => new DapLineUpdate(x.OldLine, x.NewLine))]))],
-                [.. u.ActiveStatements.Select(a => new DapStatementUpdate(a.Token, a.Version, a.ILOffset, a.StartLine, a.StartColumn, a.EndLine, a.EndColumn))]))]);
+                [.. u.ActiveStatements.Select(a => new DapStatementUpdate(a.Token, a.Version, a.ILOffset, a.StartLine, a.StartColumn, a.EndLine, a.EndColumn))],
+                [.. u.FirstChanges.Select(c => new DapFirstChange(c.Document, c.Line))]))]);
         }
         catch (DapException failed)
         {

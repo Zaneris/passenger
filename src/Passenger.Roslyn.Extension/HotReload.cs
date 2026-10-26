@@ -110,10 +110,19 @@ internal static class HotReload
         }
         session.Debugger.Take(message);
         session.Originals.Take(message.Originals);
-        // A new edit session, which reads the active statements again: paused, Edit and Continue; running, Hot Reload.
-        session.Service.BreakStateOrCapabilitiesChanged(session.Id, message.Paused);
+        // A new edit session, which reads the active statements again: paused or held, Edit and Continue; running, Hot Reload.
+        session.Service.BreakStateOrCapabilitiesChanged(session.Id, message.Paused || message.Held);
         EmitSolutionUpdateResults results = await session.Service.EmitSolutionUpdateAsync(session.Id, solution,
             ImmutableDictionary<ProjectId, RunningProjectOptions>.Empty, NoTrackedSpans, cancel).ConfigureAwait(false);
+        if (message.Held && !message.Paused && results.ModuleUpdates.Status == ModuleUpdateStatus.Blocked
+            && results.GetAllDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).All(d => EditAndContinueDiagnosticDescriptors.IsEncDiagnostic(d.Id)))
+        {
+            // An edit Roslyn takes only from a running program (one at a frame's statement) is taken so, its frames left in their code.
+            session.Debugger.Take(message with { Held = false });
+            session.Service.BreakStateOrCapabilitiesChanged(session.Id, false);
+            results = await session.Service.EmitSolutionUpdateAsync(session.Id, solution,
+                ImmutableDictionary<ProjectId, RunningProjectOptions>.Empty, NoTrackedSpans, cancel).ConfigureAwait(false);
+        }
 
         List<HotReloadProblem> problems = [.. results.GetAllDiagnostics().Select(d => Problem(d, results.Solution))];
         IReadOnlyList<string> changed = Changed(session.Committed, results.Solution ?? solution, scope);
@@ -137,11 +146,51 @@ internal static class HotReload
             }
             return new HotReloadEmitted(null, "blocked", [], problems, changed);
         }
+        Solution pending = results.Solution ?? solution;
+        List<HotReloadModuleUpdate> updates = [];
+        foreach (ManagedHotReloadUpdate update in results.ModuleUpdates.Updates)
+        {
+            updates.Add(Update(update, await FirstChangesAsync(session.Committed.GetProject(update.ProjectId), pending.GetProject(update.ProjectId), cancel).ConfigureAwait(false)));
+        }
         lock (session)
         {
-            session.Pending = results.Solution ?? solution;
+            session.Pending = pending;
         }
-        return new HotReloadEmitted(null, "ready", [.. results.ModuleUpdates.Updates.Select(Update)], problems, changed);
+        return new HotReloadEmitted(null, "ready", updates, problems, changed);
+    }
+
+    /// <summary>Each document of a project an update edits, with the first of its lines the edit changed (from zero).</summary>
+    private static async Task<IReadOnlyList<HotReloadFirstChange>> FirstChangesAsync(Project? before, Project? after, CancellationToken cancel)
+    {
+        if (before is null || after is null)
+        {
+            return [];
+        }
+        List<HotReloadFirstChange> changes = [];
+        foreach (DocumentId id in after.GetChanges(before).GetChangedDocuments(onlyGetDocumentsWithTextChanges: true))
+        {
+            if (before.GetDocument(id) is { FilePath: { } path } was && after.GetDocument(id) is { } now)
+            {
+                changes.Add(new HotReloadFirstChange(path, FirstChangedLine(await was.GetTextAsync(cancel).ConfigureAwait(false), await now.GetTextAsync(cancel).ConfigureAwait(false))));
+            }
+        }
+        return changes;
+    }
+
+    /// <summary>The first line (from zero) whose text, line break included, differs between two texts of a document.</summary>
+    private static int FirstChangedLine(SourceText before, SourceText after)
+    {
+        int lines = Math.Min(before.Lines.Count, after.Lines.Count);
+        for (int line = 0; line < lines; line++)
+        {
+            TextSpan was = before.Lines[line].SpanIncludingLineBreak;
+            TextSpan now = after.Lines[line].SpanIncludingLineBreak;
+            if (was.Length != now.Length || before.ToString(was) != after.ToString(now))
+            {
+                return line;
+            }
+        }
+        return lines;
     }
 
     public static HotReloadDone Commit(int id)
@@ -286,7 +335,7 @@ internal static class HotReload
             project);
     }
 
-    private static HotReloadModuleUpdate Update(ManagedHotReloadUpdate update) => new(
+    private static HotReloadModuleUpdate Update(ManagedHotReloadUpdate update, IReadOnlyList<HotReloadFirstChange> firstChanges) => new(
         update.Module,
         update.ModuleName,
         [.. update.MetadataDelta],
@@ -297,7 +346,8 @@ internal static class HotReload
         [.. update.SequencePoints.Select(s => new HotReloadLines(s.FileName, [.. s.LineUpdates.Select(l => new HotReloadLineUpdate(l.OldLine, l.NewLine))]))],
         [.. update.ActiveStatements.Select(a => new HotReloadStatementUpdate(a.Method.Token, a.Method.Version, a.ILOffset,
             a.NewSpan.StartLine, a.NewSpan.StartColumn, a.NewSpan.EndLine, a.NewSpan.EndColumn))],
-        [.. update.RequiredCapabilities]);
+        [.. update.RequiredCapabilities],
+        firstChanges);
 
     private sealed class Session(IEditAndContinueService service, DebuggingSessionId id, Debugger debugger, Originals originals)
     {
@@ -364,7 +414,7 @@ internal static class HotReload
         public ValueTask<ImmutableArray<ManagedActiveStatementDebugInfo>> GetActiveStatementsAsync(CancellationToken cancellation)
         {
             HotReloadEmit? message = said;
-            if (message is null || !message.Paused)
+            if (message is null || !(message.Paused || message.Held))
             {
                 return ValueTask.FromResult(ImmutableArray<ManagedActiveStatementDebugInfo>.Empty);
             }

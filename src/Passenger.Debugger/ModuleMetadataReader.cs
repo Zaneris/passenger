@@ -394,6 +394,9 @@ public partial class ModuleMetadataReader : IDisposable
     /// </summary>
     public bool IsCurrentSequencePointHidden(int methodToken, int ilOffset, int? version = null) => GetSequencePointForOffset(methodToken, ilOffset, version)?.IsHidden is true;
 
+    /// <summary>The statement a method's code at a version is in at an IL offset: its last visible sequence point at or before it.</summary>
+    internal Point? StatementAt(int methodToken, int ilOffset, int version) => GetSequencePointForOffset(methodToken, ilOffset, version, skipHidden: true);
+
     private Point? GetSequencePointForOffset(int methodToken, int ilOffset, int? version, bool skipHidden = false)
     {
         // PDB sequence points are ordered by offset; retain the last eligible point at or before the IP.

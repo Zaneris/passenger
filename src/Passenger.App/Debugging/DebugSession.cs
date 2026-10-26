@@ -744,18 +744,26 @@ public sealed class DebugSession
         connection.RequestAsync<DataBreakpointInfoResponse>(DapCommands.DataBreakpointInfo, new DataBreakpointInfoArguments(name, variablesReference));
 
     /// <summary>What Hot Reload needs of the program: its runtime's capabilities, its modules and, paused, its active
-    /// statements.</summary>
-    public async Task<HotReloadStateResponse> HotReloadStateAsync()
+    /// statements; with <paramref name="hold"/>, a running program is stopped for the update being made (its statements
+    /// read too) until <see cref="ReleaseHotReloadAsync"/>.</summary>
+    public async Task<HotReloadStateResponse> HotReloadStateAsync(bool hold = false)
     {
-        HotReloadStateResponse state = await connection.RequestAsync<HotReloadStateResponse>(DapCommands.HotReloadState, new DapEmpty());
+        HotReloadStateResponse state = await connection.RequestAsync<HotReloadStateResponse>(DapCommands.HotReloadState, new HotReloadStateArguments(hold ? true : null));
         return state with { ActiveStatements = [.. state.ActiveStatements.Select(s => s.Document is { } document ? s with { Document = ToIde(document) } : s)] };
     }
 
-    /// <summary>Applies Edit and Continue's updates to the program, paused or running, each document's lines named as the
-    /// program's PDB names it.</summary>
+    /// <summary>Lets a program held for an update go on.</summary>
+    public Task ReleaseHotReloadAsync() => connection.RequestAsync(DapCommands.HotReloadRelease, new DapEmpty());
+
+    /// <summary>Applies Edit and Continue's updates to the program, paused or running, each document named as the program's
+    /// PDB names it.</summary>
     public Task<ApplyChangesResponse> ApplyChangesAsync(IReadOnlyList<DapModuleUpdate> updates) =>
         connection.RequestAsync<ApplyChangesResponse>(DapCommands.ApplyChanges, new ApplyChangesArguments(
-            [.. updates.Select(u => u with { Lines = [.. u.Lines.Select(l => l with { Document = ToProgram(l.Document) })] })]));
+            [.. updates.Select(u => u with
+            {
+                Lines = [.. u.Lines.Select(l => l with { Document = ToProgram(l.Document) })],
+                FirstChanges = [.. u.FirstChanges.Select(c => c with { Document = ToProgram(c.Document) })],
+            })]));
 
     /// <summary>Sends files' breakpoints again, at their lines now, after an update the program took: the debugger binds
     /// each again in the code it runs now, as the files' built lines are now their lines.</summary>

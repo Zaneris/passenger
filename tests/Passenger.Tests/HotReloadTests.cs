@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
@@ -18,17 +19,20 @@ namespace Passenger.Tests;
 /// (<see cref="Greetings"/>): restored once, its warm language server and the build the last test left, each test's window
 /// never saving what it typed. Debugged, so run alone.</summary>
 [Collection(Alone.Name)]
-public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IClassFixture<HotReloadTests.Plugins>
+public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IClassFixture<HotReloadTests.Plugins>, IClassFixture<HotReloadTests.Spins>
 {
     private readonly Greetings project;
     private readonly Plugins plugins;
+    private readonly Spins spins;
 
-    public HotReloadTests(Greetings project, Plugins plugins)
+    public HotReloadTests(Greetings project, Plugins plugins, Spins spins)
     {
         this.project = project;
         this.plugins = plugins;
+        this.spins = spins;
         project.Reset();
         plugins.Reset();
+        spins.Reset();
     }
 
     /// <summary>Greets once every 100 ms, numbered, until stopped.</summary>
@@ -288,6 +292,66 @@ public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IC
         }
     }
 
+    /// <summary>An edit to a method that spins through a long loop, applied again and again as the program runs, now while
+    /// the loop is under way, now while the program sleeps between spins: every update reaches the program, the next call
+    /// running the new code and a spin under way going on in it at full speed to its end, and the runtime offers that
+    /// spin's frame the new code a few times at most, never at every statement it runs.</summary>
+    [AvaloniaFact]
+    public void An_edit_applied_again_and_again_while_its_method_spins_in_a_loop_reaches_the_loop_and_never_leaves_it_crawling()
+    {
+        const int Applies = 8;
+        string engineLog = Path.Combine(TestFolders.Create("hotreload-engine-"), "engine.log");
+        string? kept = Environment.GetEnvironmentVariable(Passenger.Dap.AdapterEnvironment.EngineLogVariable);
+        Environment.SetEnvironmentVariable(Passenger.Dap.AdapterEnvironment.EngineLogVariable, engineLog);
+        MainWindow window = spins.Open(null);
+        try
+        {
+            Ui.Run(window, AppActions.Debug);
+            Ui.WaitFor(() => Ticks(window).Count >= 2, () => $"the program to spin ({Output(window)})");
+            // A spin and a sleep, as the program takes them under the debugger on this machine.
+            Stopwatch own = Stopwatch.StartNew();
+            int counted = Ticks(window).Count;
+            Ui.WaitFor(() => Ticks(window).Count >= counted + 2, () => $"two more spins ({Output(window)})");
+            TimeSpan tick = own.Elapsed / 2;
+            window.OpenFile(spins.PathOf("Spinner.cs"));
+            for (int adds = 3; adds < 3 + Applies; adds++)
+            {
+                int seen = Ticks(window).Count;
+                Ui.WaitFor(() => Ticks(window).Count > seen, () => $"a spin to end ({Output(window)})");
+                bool spinning = adds % 2 == 1;
+                if (spinning)
+                {
+                    Ui.Hold(TimeSpan.FromMilliseconds(Spins.SleepMs + 100), "the sleep after the spin to end, the next spin under way");
+                }
+                Replace(window, $"+ {adds - 1};", $"+ {adds};");
+                HotReloadOutcome outcome = Ui.Await(window.Debugger.ApplyChangesAsync(), $"Hot Reload to apply + {adds}", TimeSpan.FromMinutes(1));
+                Assert.True(outcome.Result == HotReloadResult.Applied, $"The edit to the spinning method should apply: {outcome.Said}");
+                int before = Ticks(window).Count;
+                Stopwatch since = Stopwatch.StartNew();
+                Ui.WaitFor(() => Ticks(window).Skip(before).Contains(adds),
+                    () => $"the program to go on in the new code (+ {adds}) within three spins of {tick.TotalMilliseconds:0} ms, applied {(spinning ? "mid-spin" : "between spins")} ({string.Join(" | ", Output(window).Split('\n').TakeLast(6))})",
+                    tick * 3 + TimeSpan.FromSeconds(2));
+                TestContext.Current.TestOutputHelper?.WriteLine($"+ {adds} applied {(spinning ? "mid-spin" : "between spins")}: the new code's tick came {since.ElapsedMilliseconds} ms after (a spin and a sleep: {tick.TotalMilliseconds:0} ms)");
+            }
+            string log = Ui.Shared(engineLog);
+            int offered = log.Split('\n').Count(l => l.Contains("Event: FunctionRemapOpportunity", StringComparison.Ordinal));
+            string[] remaps = [.. log.Split('\n').Where(l => l.StartsWith("Remap of", StringComparison.Ordinal) || l.Contains("] Remap of", StringComparison.Ordinal))];
+            TestContext.Current.TestOutputHelper?.WriteLine($"{offered} remap opportunities, {remaps.Length} remaps:\n{string.Join('\n', remaps)}");
+            Assert.True(offered <= 3 * Applies, $"The runtime offered the new code {offered} times for {Applies} updates: a frame left in the old code crawled through it a stop at a time");
+            Assert.True(remaps.Length > 0 && remaps.All(r => r.TrimEnd().EndsWith(": 0x00000000", StringComparison.Ordinal)),
+                $"A spin under way as an update was applied should go on in the new code: {string.Join("; ", remaps)}");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(Passenger.Dap.AdapterEnvironment.EngineLogVariable, kept);
+            End(window);
+        }
+    }
+
+    /// <summary>What each spin the program printed returned, in order.</summary>
+    private static List<int> Ticks(MainWindow window) =>
+        [.. Output(window).Split('\n').Select(l => l.Trim().Split(' ')).Where(w => w is ["tick", _, _, _]).Select(w => int.Parse(w[2], System.Globalization.CultureInfo.InvariantCulture))];
+
     private static ChoiceDialog Asked(MainWindow window)
     {
         Ui.WaitFor(() => window.OwnedWindows.OfType<ChoiceDialog>().Any(), "Hot Reload to ask whether to restart");
@@ -340,6 +404,46 @@ public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IC
             File.WriteAllText(PathOf("Program.cs"), Program);
             File.WriteAllText(PathOf("Greeter.cs"), Greeter);
             // The first build makes bin, which a reset would take for a file the test added: made now, the folder stays as reset.
+            Directory.CreateDirectory(PathOf("bin"));
+        }
+    }
+
+    /// <summary>A program that spins for ever, each spin a loop of millions of iterations, printing what it returns and how
+    /// long it took, then sleeping.</summary>
+    public sealed class Spins : SharedProject
+    {
+        public const int SleepMs = 300;
+
+        public Spins()
+            : base("hotreload-spins-")
+        {
+            File.WriteAllText(PathOf("Spins.csproj"),
+                TestProjects.Console("<ImplicitUsings>enable</ImplicitUsings>", "<Nullable>enable</Nullable>"));
+            File.WriteAllText(PathOf("Program.cs"), $$"""
+                for (int i = 1; ; i++)
+                {
+                    System.Diagnostics.Stopwatch spun = System.Diagnostics.Stopwatch.StartNew();
+                    long value = Spinner.Spin();
+                    Console.WriteLine($"tick {i} {value} {spun.ElapsedMilliseconds}");
+                    Thread.Sleep({{SleepMs}});
+                }
+
+                """);
+            File.WriteAllText(PathOf("Spinner.cs"), """
+                static class Spinner
+                {
+                    public static long Spin()
+                    {
+                        long spin = 0;
+                        for (int k = 0; k < 400_000_000; k++)
+                        {
+                            spin += k % 7;
+                        }
+                        return spin % 1 + 2;
+                    }
+                }
+
+                """);
             Directory.CreateDirectory(PathOf("bin"));
         }
     }
