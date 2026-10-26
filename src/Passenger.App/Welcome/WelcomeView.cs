@@ -244,8 +244,6 @@ public sealed class WelcomeView : UserControl
         }
     }
 
-    /// <summary>A row: the badge with its initials, the name over where it is, what it opens as (a solution, a project or a
-    /// folder), and Missing for one gone.</summary>
     /// <summary>A recent solution's row: its initials' badge, its name over where it is, its kind, and Missing for one no
     /// longer on disk, its name and badge muted.</summary>
     private static Control Row()
