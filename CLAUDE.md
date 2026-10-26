@@ -175,7 +175,8 @@ Projects in `src/`; `find_symbol` finds the rest:
   (`src/Publicize.targets`). A handler reads the solution, never changes it.
 - `Passenger.Host`: MSBuild in a process of its own per SDK and global.json (`ProjectHosts`), over JSON lines, its
   results stamped with what they read; `hold` keeps generating design-time builds off while Passenger builds (Windows
-  lets one writer have a file).
+  lets one writer have a file). A file-based program is a project named by its C# file (`ProgramFiles`), the SDK's project of it
+  (`dotnet run-api`, `ProgramProjects`) evaluated in memory (`VirtualProjects`).
 - `Passenger.Vcs`, `Passenger.Workspace`, `Passenger.Packages`: the App's Git, folder model and NuGet code that needs no
   UI; what belongs to the UI thread stays in the App's folder of the same name.
 - `Passenger.Dap`, `Passenger.Debugger` (+`.Interop`), `Passenger.DebugAdapter`: Passenger's own debugger behind its own
