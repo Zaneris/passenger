@@ -48,11 +48,11 @@ public partial class ManagedDebugger
 
     /// <summary>The process an attach is to take hold of, from the attach request until its runtime has been let go (or was
     /// running already); 0 when there is none. One held at its start (DOTNET_DefaultDiagnosticPortSuspend) waits there for
-    /// the debugger, so an attach that fails, or a session that ends first, lets it go (<see cref="ReleaseHeldTarget"/>).</summary>
+    /// the debugger, so an attach that fails, or a session that ends first, lets it go (<see cref="ReleaseHeldTargetAsync"/>).</summary>
     private int _heldTarget;
 
     /// <summary>Whether the session's program was launched for it (by the adapter, or in the client's terminal) rather than
-    /// attached to: only such a program ends with a client that goes without disconnecting (<see cref="Abandon"/>).</summary>
+    /// attached to: only such a program ends with a client that goes without disconnecting (<see cref="AbandonAsync"/>).</summary>
     private bool _launched;
     private bool _justMyCode;
     private bool _stopAtEntry;
@@ -85,18 +85,18 @@ public partial class ManagedDebugger
     private TaskCompletionSource _exitTold = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     /// <summary>Tells the client the program has ended, once, after the last of its output, and why its exit code is lost
-    /// where it is. A second caller (the runtime's word of the end, after the wait's) returns only once it has been told,
-    /// so the end it tells next comes after.</summary>
-    private void ReportExit(int? exitCode)
+    /// where it is. A second caller (the runtime's word of the end, after the wait's) ends only once it has been told, so
+    /// the end it tells next comes after.</summary>
+    private async Task ReportExitAsync(int? exitCode)
     {
         if (Interlocked.Exchange(ref _exitReported, 1) == 1)
         {
-            _exitTold.Task.Wait(TimeSpan.FromSeconds(15));
+            await Task.WhenAny(_exitTold.Task, Task.Delay(TimeSpan.FromSeconds(15))).ConfigureAwait(false);
             return;
         }
         try
         {
-            WaitForLastOutput();
+            await WaitForLastOutputAsync().ConfigureAwait(false);
             if (exitCode is null && _launch?.CodeLost is { } lost)
             {
                 OnConsole?.Invoke($"The program ended, but its exit code is lost: {lost}.\n");
@@ -111,14 +111,14 @@ public partial class ManagedDebugger
 
     /// <summary>Waits for the launched program's output readers to end, while its output still comes: a program it started
     /// that holds its output open gives up the wait once a second passes with nothing read, and 10 s at the most.</summary>
-    private void WaitForLastOutput()
+    private async Task WaitForLastOutputAsync()
     {
         if (_launchOutput is not { } output)
         {
             return;
         }
         long began = Stopwatch.GetTimestamp();
-        while (!output.Wait(TimeSpan.FromMilliseconds(100)))
+        while (await Task.WhenAny(output, Task.Delay(TimeSpan.FromMilliseconds(100))).ConfigureAwait(false) != output)
         {
             long quietSince = Math.Max(began, Interlocked.Read(ref _lastOutputAt));
             if (Stopwatch.GetElapsedTime(quietSince) >= TimeSpan.FromSeconds(1) || Stopwatch.GetElapsedTime(began) >= TimeSpan.FromSeconds(10))
@@ -130,12 +130,13 @@ public partial class ManagedDebugger
 
     /// <summary>How the program ended, once the runtime has said it has: a launched one's as its wait saw it, an attached
     /// one's as Windows tells it; null where it cannot be known (attached on macOS or Linux, where only a parent learns it).</summary>
-    private int? EndedWith()
+    private async Task<int?> EndedWithAsync()
     {
         // The program's own end follows the runtime's word of it by a moment.
         if (_launchExit is { } ended)
         {
-            return ended.Wait(TimeSpan.FromSeconds(2)) ? ended.Result : null;
+            await Task.WhenAny(ended, Task.Delay(TimeSpan.FromSeconds(2))).ConfigureAwait(false);
+            return ended.IsCompletedSuccessfully ? ended.Result : null;
         }
         try
         {
@@ -416,7 +417,7 @@ public partial class ManagedDebugger
             {
                 case LogMessageCorDebugManagedCallbackEventArgs a: HandleLogMessage(sender, a); break;
                 case CreateProcessCorDebugManagedCallbackEventArgs a: HandleProcessCreated(sender, a); break;
-                case ExitProcessCorDebugManagedCallbackEventArgs a: HandleProcessExited(sender, a); break;
+                case ExitProcessCorDebugManagedCallbackEventArgs a: await HandleProcessExited(a).ConfigureAwait(false); break;
                 case CreateThreadCorDebugManagedCallbackEventArgs a: HandleThreadCreated(sender, a); break;
                 case ExitThreadCorDebugManagedCallbackEventArgs a: HandleThreadExited(sender, a); break;
                 case LoadModuleCorDebugManagedCallbackEventArgs a: HandleModuleLoaded(sender, a); break;
@@ -483,7 +484,7 @@ public partial class ManagedDebugger
             process.Dispose();
             _logger?.Invoke($"Attaching to process {processId} failed: {error}");
             // A program held at its start, which the attach never let go, runs on undebugged rather than wait there for good.
-            ReleaseHeldTarget();
+            await ReleaseHeldTargetAsync().ConfigureAwait(false);
             throw new InvalidOperationException($"Could not attach to process {processId}: {error.Message}", error);
         }
         if (OperatingSystem.IsWindows() && TryHold(process))
@@ -1032,17 +1033,18 @@ public partial class ManagedDebugger
         return currentException;
     }
 
-    // Not intended to implement IDisposable - it is intended that this is called via Disconnect()
-    // letGo: the program runs on after (a detach), so no thread may be left inside the runtime's handling of a stop.
-    private void Dispose(bool letGo = false, TimeSpan? within = null)
+    /// <summary>Lets go of the session's program and all the engine holds of it, as a disconnect or a terminate ends the
+    /// session; <paramref name="letGo"/> when the program runs on after (a detach), so no thread may be left inside the
+    /// runtime's handling of a stop.</summary>
+    private async Task EndAsync(bool letGo = false, TimeSpan? within = null)
     {
         // A decompile under way is given up, its temporary file deleted, whether or not a process was ever held.
         _ending.Cancel();
         // An attach asked for and never made (no configurationDone, or it failed) leaves no program held at its start.
-        ReleaseHeldTarget(within);
+        await ReleaseHeldTargetAsync(within).ConfigureAwait(false);
         if (_process is null)
         {
-            return; // A client may call Terminate, then Disconnect, both of which call Dispose. Dispose only needs to be run once.
+            return; // A client may terminate, then disconnect, each of which ends the session here, which needs doing only once.
         }
         // A process that has exited is the runtime's to tear down: nothing below may call into it.
         bool exited = _exited.IsSet;

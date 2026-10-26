@@ -78,7 +78,7 @@ public sealed partial class DebugAdapter
             }
             using (held)
             {
-                debugger.Abandon();
+                await debugger.AbandonAsync();
             }
         }
         catch (Exception error)
@@ -253,20 +253,13 @@ public sealed partial class DebugAdapter
         connection.Handle<DisconnectArguments>(DapCommands.Disconnect, arguments =>
         {
             debugger.Ending();
-            return Leave(() =>
-            {
-                debugger.Disconnect(arguments.TerminateDebuggee ?? false, arguments.LetGoWithin is int within and > 0 ? TimeSpan.FromMilliseconds(within) : null);
-                return Task.CompletedTask;
-            });
+            return Leave(() => debugger.DisconnectAsync(arguments.TerminateDebuggee ?? false,
+                arguments.LetGoWithin is int within and > 0 ? TimeSpan.FromMilliseconds(within) : null));
         }, then: RequestShutdown);
         connection.Handle<TerminateArguments>(DapCommands.Terminate, _ =>
         {
             debugger.Ending();
-            return Leave(() =>
-            {
-                debugger.Terminate();
-                return Task.CompletedTask;
-            });
+            return Leave(debugger.TerminateAsync);
         });
         connection.Handle<ThreadArguments, ExceptionInfoResponse>(DapCommands.ExceptionInfo, ExceptionInfo);
         // Not under the engine's lock: a program waiting for input may be running, and the write is all.

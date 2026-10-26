@@ -35,8 +35,12 @@ public sealed class SymbolCache
     private readonly UsedCache cache;
     private readonly Action<string>? log;
 
-    /// <summary>The prune begun as the cache was opened, which every read and write waits for.</summary>
+    /// <summary>The prune begun as the cache was opened, which every write waits for.</summary>
     private readonly Task pruned;
+
+    /// <summary>Opened as the prune ends, for every read to wait on: a read comes from the frames' synchronous reads under the
+    /// engine's lock, which cannot await the prune's task.</summary>
+    private readonly ManualResetEventSlim prunedGate = new();
 
     public SymbolCache(string folder, Action<string>? log = null)
     {
@@ -44,7 +48,17 @@ public sealed class SymbolCache
         cache = new UsedCache(folder, UsedEntries.Files(3, ".pdb"), new UsedLimits(UnusedFor, InUse, MostBytes, Abandoned),
             log is null ? null : line => log($"Symbol cache: {line}"));
         // Not held: the cache's own chore, which the first write waits for.
-        pruned = Core.BackgroundWork.Unheld(() => cache.Prune(DateTime.UtcNow));
+        pruned = Core.BackgroundWork.Unheld(() =>
+        {
+            try
+            {
+                cache.Prune(DateTime.UtcNow);
+            }
+            finally
+            {
+                prunedGate.Set();
+            }
+        });
     }
 
     public string Folder => cache.Folder;
@@ -55,7 +69,7 @@ public sealed class SymbolCache
     /// <summary>An assembly version's decompiled PDB, marked as used now, or null when the cache has none.</summary>
     public string? Find(string name, Guid mvid)
     {
-        pruned.Wait();
+        prunedGate.Wait();
         string pdb = PathOf(name, mvid);
         if (!File.Exists(pdb))
         {

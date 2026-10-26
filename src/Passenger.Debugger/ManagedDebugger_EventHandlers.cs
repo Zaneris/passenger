@@ -15,10 +15,10 @@ public partial class ManagedDebugger
         Continue(clearVariables: false);
     }
 
-    private void HandleProcessExited(object? sender, ExitProcessCorDebugManagedCallbackEventArgs exitProcessCorDebugManagedCallbackEventArgs)
+    private async Task HandleProcessExited(ExitProcessCorDebugManagedCallbackEventArgs exitProcessCorDebugManagedCallbackEventArgs)
     {
         _logger?.Invoke($"Process exited");
-        ReportExit(EndedWith());
+        await ReportExitAsync(await EndedWithAsync().ConfigureAwait(false)).ConfigureAwait(false);
         OnTerminated?.Invoke();
     }
 

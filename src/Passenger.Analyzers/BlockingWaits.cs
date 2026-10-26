@@ -9,15 +9,12 @@ namespace Passenger.Analyzers;
 /// <summary>PSG0004: a thread held waiting on a task: a Task's or ValueTask's Result, Task's Wait, WaitAll and WaitAny, and
 /// an awaiter's GetResult. A read of a task known to have ended waits for nothing and is passed over (<see cref="Ended"/>):
 /// the task is one the member cannot swap for another (<see cref="Held"/>), and the read sits where its having ended is
-/// certain, as ending is for good. Not looked at yet (<see cref="NotYet"/>): the debugger's engine, whose waits on the
-/// runtime's callbacks and teardown must block, and the test classes <see cref="TestsNotYet"/> names.</summary>
+/// certain, as ending is for good. Not looked at yet: the test classes <see cref="TestsNotYet"/> names.</summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class BlockingWaits : DiagnosticAnalyzer
 {
     private static readonly ImmutableHashSet<string> EndedProperties =
         ImmutableHashSet.Create(StringComparer.Ordinal, "IsCompleted", "IsCompletedSuccessfully", "IsFaulted", "IsCanceled");
-
-    private static readonly ImmutableHashSet<string> NotYet = ImmutableHashSet.Create(StringComparer.Ordinal, "Passenger.Debugger");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get; } = [Rules.BlockingWait];
 
@@ -27,7 +24,7 @@ public sealed class BlockingWaits : DiagnosticAnalyzer
         context.EnableConcurrentExecution();
         context.RegisterCompilationStartAction(start =>
         {
-            if (!NotYet.Contains(start.Compilation.AssemblyName ?? string.Empty) && Tasks.Of(start.Compilation) is { } tasks)
+            if (Tasks.Of(start.Compilation) is { } tasks)
             {
                 start.RegisterOperationAction(c => CheckRead(c, tasks), OperationKind.PropertyReference);
                 start.RegisterOperationAction(c => CheckCall(c, tasks), OperationKind.Invocation);

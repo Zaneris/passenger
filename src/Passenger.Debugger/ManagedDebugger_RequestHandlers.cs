@@ -125,7 +125,7 @@ public partial class ManagedDebugger
         Task<int?> launchExit = Core.BackgroundWork.Unheld(launch.WaitForExit);
         _launchExit = launchExit;
         // Told as the program goes, not when the runtime's word of it is handled, which mscordbi may lose tearing down.
-        Core.UnawaitedWork.Observe(launchExit.ContinueWith(ended => ReportExit(ended.Result), TaskScheduler.Default));
+        Core.UnawaitedWork.Observe(launchExit.ContinueWith(ended => ReportExitAsync(ended.Result), TaskScheduler.Default).Unwrap());
         int processId = launch.ProcessId;
 
         _logger?.Invoke($"Process created suspended with PID: {processId}");
@@ -238,14 +238,14 @@ public partial class ManagedDebugger
     /// is not coming. A runtime already running takes the word as done; one still starting is waited for, within
     /// <paramref name="within"/> when the client gives a time for the let-go. One that lives on not let go is told in the
     /// console, never left waiting unsaid.</summary>
-    private void ReleaseHeldTarget(TimeSpan? within = null)
+    private async Task ReleaseHeldTargetAsync(TimeSpan? within = null)
     {
         int target = Interlocked.Exchange(ref _heldTarget, 0);
         if (target == 0)
         {
             return;
         }
-        string? why = DiagnosticClientHelper.Resume(target, within);
+        string? why = await DiagnosticClientHelper.ResumeAsync(target, within).ConfigureAwait(false);
         _logger?.Invoke(why is null ? $"Let process {target} go: the debugger did not take hold of it" : $"Process {target}, not taken hold of, was not let go: {why}");
         if (why is not null && Lives(target))
         {
@@ -1069,7 +1069,7 @@ public partial class ManagedDebugger
     }
 
     /// <summary>Ends the program and lets go of it, once the runtime has seen it go.</summary>
-    public void Terminate()
+    public async Task TerminateAsync()
     {
         _logger?.Invoke("Terminate");
         if (_process is not null && !_exited.IsSet)
@@ -1097,18 +1097,18 @@ public partial class ManagedDebugger
                 _logger?.Invoke($"Error terminating process: {ex.Message}");
             }
         }
-        Dispose();
+        await EndAsync().ConfigureAwait(false);
     }
 
     /// <summary>Ends the session: the program ends with it when asked, else it is let go to run on, the let-go kept within
     /// the client's time for it when it gives one (<paramref name="within"/>).</summary>
-    public void Disconnect(bool terminateDebuggee, TimeSpan? within = null)
+    public async Task DisconnectAsync(bool terminateDebuggee, TimeSpan? within = null)
     {
         _logger?.Invoke($"Disconnect (terminate: {terminateDebuggee})");
 
         if (terminateDebuggee)
         {
-            Terminate();
+            await TerminateAsync().ConfigureAwait(false);
         }
         else
         {
@@ -1120,13 +1120,13 @@ public partial class ManagedDebugger
                     _logger?.Invoke($"Error stopping process during disconnect: {hResult}");
                 }
             }
-            Dispose(letGo: true, within);
+            await EndAsync(letGo: true, within).ConfigureAwait(false);
         }
     }
 
     /// <summary>The client went without disconnecting (crashed, or was ended): a program the session launched ends with it,
     /// and one it attached to is let go to run on, as a detach lets it go.</summary>
-    public void Abandon() => Disconnect(terminateDebuggee: _launched);
+    public Task AbandonAsync() => DisconnectAsync(terminateDebuggee: _launched);
 
     public async Task<ExceptionInfo> ExceptionInfo(ThreadId threadId)
     {
