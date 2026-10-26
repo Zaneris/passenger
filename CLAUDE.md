@@ -96,9 +96,8 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
   (`src/Passenger.Analyzers`, every rule's id and words in `Rules.cs`) fails its text written anywhere else, a plain word
   only where a parameter or member marked `[IdentifierOf]` its home takes it.
 - **Async is awaited**: no async void (PSG0002), no async lambda given to a void delegate (PSG0003), no blocking wait on
-  a task (PSG0004; a read where the task has certainly ended passes; the test classes `TestsNotYet` names not looked at
-  yet); a caller that must stay synchronous (Main's end, a library's synchronous callback) goes through
-  `Synchronously.Run`, saying why.
+  a task (PSG0004; a read where the task has certainly ended passes); a caller that must stay synchronous (Main's end, a
+  library's synchronous callback) goes through `Synchronously.Run`, saying why.
 - **Work for the thread pool goes through `BackgroundWork`** (`Run`, and `Debounce` rather than a `DispatcherTimer`), so
   screenshots and tests wait for it; `Unheld`/`UnheldThread` for work that mustn't hold them, saying why (PSG0006; a
   test's own through `Waiting.Apart`). **A catch-all is a boundary** that passes on what it caught (PSG0005); a catch
@@ -284,7 +283,7 @@ site-shots` retakes its images.
 - **The terminal reuses a line** once it leaves the screen and a full scrollback (`TerminalLine.Reuse`): nothing keeps a
   `TerminalLine` past its line number.
 - **Avalonia 12's lists** re-attach, and so re-style, every recycled container and never reuse a `DataTemplate`'s
-  content: a list's rows go through `ReusedRows`, made once with their containers (UiRulesTests names the lists not yet).
+  content: a list's, combo box's or tab strip's rows go through `ReusedRows`, made once with their containers (UiRulesTests).
 - **EventPipe from a program's start**: .NET 10's LoggingEventSource misreads the `FilterSpecs` it is made with, so a
   category takes no `:Level` there or none of its logs come (`LiveRequests.LogsSpec`).
 
@@ -308,7 +307,8 @@ running program, the state store's 0.5 s write delay (flush to read a state file
 delay before the watcher hears a change (wait for its `Changed`). Words describing the window as a wait gave up are a
 `Func<string>`. Wait with `Ui.WaitFor`, `Ui.PumpUntil`/`Pumped` (the loop run, not settled: a held start, an app that
 keeps the window busy) or `Waiting.Until`/`UntilAsync`/`Within` off the UI thread; read a task's answer once it ended
-(`Ui.Await`, `AwaitPumped`, `Landed(task, what)`), and start a test's own work through `Waiting.Apart`. Time that must
+(`Ui.Await`, `AwaitPumped`, `Landed(task, what)`; `Ui.Idle` only where the window must run nothing, as a measure of
+its allocations), and start a test's own work through `Waiting.Apart`. Time that must
 pass is `Ui.Hold(time, why)`, `Ui.Stall` or `Waiting.For`. Every limit is written as a developer machine's time and scaled by
 `TestRun.TimeScale` (`PASSENGER_TEST_TIME_SCALE`; CI 2 on macOS, 2.5 on Windows, 2 on Linux); the IDE's own waits on what
 it started scale by `PASSENGER_WAIT_SCALE`. `FLAKES.md` records each CI failure's cause.
@@ -394,7 +394,8 @@ size. Each checks a tool's answer, leaving the window's steps to the window's te
   `ToolButtons.Of`/`Toggle` (never focusable); muted words `MutedText`; list keys `ListKeys.Move`; counts `Plural.Of`;
   rounded borders `Border.kindBadge`, `tag` or `box`, never a literal radius; lists of what runs `RunRows`, Details tabs
   `DetailsTables`, merged consoles `MergedLog`; a toolbar down a side `ToolColumn`; scrollbars `ControlThemes.axaml`; the
-  focus ring `FocusRing`; a list's rows `ReusedRows` (`Use`, `Showing`). A row hears its item only while shown
+  focus ring `FocusRing`; a list's rows `ReusedRows` (`Use`, `Showing`), their icons `RowIcon`, drawn as `PathIcon` draws
+  but for a fraction of its cost. A row hears its item only while shown
   (`Observable.FollowWhileShown`).
 - `MainWindow.SmallestWidth` is 640: the layout works at half a 1366-wide screen, and new windows fit the screen's
   working area (`FitToScreen`).
