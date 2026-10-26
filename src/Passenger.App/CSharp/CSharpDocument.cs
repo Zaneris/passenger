@@ -210,7 +210,7 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
         {
             return;
         }
-        diagnostics.Pull(delay, cancel => PullAsync(lsp, cancel));
+        diagnostics.Pull(delay, cancel => PullAsync(lsp, cancel), service.FilePulling());
     }
 
     /// <summary>The file's diagnostics, with Aspire's for a service's file (<see cref="AspireDiagnosticsAsync"/>) and an

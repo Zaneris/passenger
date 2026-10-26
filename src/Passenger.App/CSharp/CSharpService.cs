@@ -149,6 +149,61 @@ public sealed class CSharpService : IAsyncDisposable
     private CancellationTokenSource? analysing;
     private bool solutionWide;
 
+    /// <summary>The open files' pulls under way, each from its change until it ends: the analysis asks the server again only
+    /// once none is, so a burst of keys has the solution analysed once, after the open file's own answer, not for every key.</summary>
+    private int filesPulling;
+
+    /// <summary>Done as the last of <see cref="filesPulling"/> ends; null while nothing waits for it.</summary>
+    private TaskCompletionSource? filesPulled;
+
+    /// <summary>The analysis's pulls asked and unanswered, each with whether it may be let go: one the server has reported
+    /// nothing for since it was asked is held open for the next change, which an open file's change lets go.</summary>
+    private readonly Dictionary<CancellationTokenSource, bool> askedPulls = [];
+
+    /// <summary>How many pulls the analysis has asked of each source (none named: the empty name).</summary>
+    private readonly Dictionary<string, int> pullsAsked = new(StringComparer.Ordinal);
+
+    /// <summary>How many pulls solution-wide analysis has asked of a source of <see cref="LanguageServer.WorkspaceDiagnosticSources"/>
+    /// since the service began: what a burst of keys costs the server.</summary>
+    public int PullsAsked(string? source) => pullsAsked.GetValueOrDefault(source ?? string.Empty);
+
+    /// <summary>An open file's pull begun at its change, held until it ends: the analysis's pulls held open are let go, and
+    /// none is asked again until no open file's pull is under way.</summary>
+    internal IDisposable FilePulling()
+    {
+        UiThread.Check();
+        filesPulling++;
+        // Taken apart first: a pull let go may end at once, leaving the list as it does.
+        foreach (CancellationTokenSource held in askedPulls.Where(p => p.Value).Select(p => p.Key).ToList())
+        {
+            held.Cancel();
+        }
+        return new FilePull(this);
+    }
+
+    /// <summary>Done once no open file's pull is under way.</summary>
+    private Task FilesPulled() => filesPulling == 0 ? Task.CompletedTask
+        : (filesPulled ??= new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).Task;
+
+    private sealed class FilePull(CSharpService service) : IDisposable
+    {
+        private bool ended;
+
+        public void Dispose()
+        {
+            if (ended)
+            {
+                return;
+            }
+            ended = true;
+            if (--service.filesPulling == 0 && service.filesPulled is { } waiting)
+            {
+                service.filesPulled = null;
+                waiting.SetResult();
+            }
+        }
+    }
+
     /// <summary>The analysis's sources whose first pull has not been answered.</summary>
     private int unanswered;
 
@@ -363,10 +418,11 @@ public sealed class CSharpService : IAsyncDisposable
         }
     }
 
-    /// <summary>One source's pulls, each asked again as the last answers, until the analysis is turned off or the session
-    /// ends (a server started again is analysed afresh once it has loaded), each pull's reports listed as the server sends
-    /// them rather than as it answers. A pull the server refuses or cuts short (Roslyn cancels one a change made stale) is
-    /// asked again after a pause that grows while it keeps refusing.</summary>
+    /// <summary>One source's pulls, each asked again as the last answers and no open file's pull is under way, until the
+    /// analysis is turned off or the session ends (a server started again is analysed afresh once it has loaded), each pull's
+    /// reports listed as the server sends them rather than as it answers. A pull the server refuses or cuts short (Roslyn
+    /// cancels one a change made stale) is asked again after a pause that grows while it keeps refusing; one held open that
+    /// an open file's change let go, once that file's pull has ended.</summary>
     private async Task AnalyseAsync(RoslynSession running, string? source, CancellationToken cancel)
     {
         bool first = true;
@@ -378,15 +434,24 @@ public sealed class CSharpService : IAsyncDisposable
         {
             while (!cancel.IsCancellationRequested)
             {
+                if (!first)
+                {
+                    await FilesPulled().WaitAsync(cancel);
+                }
                 List<PreviousResultId> previous = [.. solutionReports
                     .Where(r => r.Key.Source == source && r.Value.Previous is not null)
                     .Select(r => r.Value.Previous!)];
                 DateTime asked = DateTime.UtcNow;
                 Channel<IReadOnlyList<WorkspaceDocumentDiagnosticReport>> streamed = Channel.CreateUnbounded<IReadOnlyList<WorkspaceDocumentDiagnosticReport>>(
                     new UnboundedChannelOptions { SingleReader = true });
-                Task<IReadOnlyList<WorkspaceDocumentDiagnosticReport>> pull = running.Server.WorkspaceDiagnosticsAsync(source, previous, reports => streamed.Writer.TryWrite(reports), cancel);
+                using CancellationTokenSource round = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+                // The first round is the analysis's start, never let go however long it takes.
+                askedPulls[round] = !first;
+                pullsAsked[source ?? string.Empty] = PullsAsked(source) + 1;
+                Task<IReadOnlyList<WorkspaceDocumentDiagnosticReport>> pull = running.Server.WorkspaceDiagnosticsAsync(source, previous, reports => streamed.Writer.TryWrite(reports), round.Token);
                 IReadOnlyList<WorkspaceDocumentDiagnosticReport> answered = [];
                 LanguageServerFailed? refused = null;
+                bool letGo = false;
                 int changed = 0;
                 try
                 {
@@ -394,10 +459,15 @@ public sealed class CSharpService : IAsyncDisposable
                     Task<bool> more = streamed.Reader.WaitToReadAsync(CancellationToken.None).AsTask();
                     while (await Task.WhenAny(pull, more) == more)
                     {
+                        askedPulls[round] = false;
                         changed += await TakeAsync(Drain(streamed.Reader));
                         more = streamed.Reader.WaitToReadAsync(CancellationToken.None).AsTask();
                     }
                     answered = await pull;
+                }
+                catch (OperationCanceledException) when (!cancel.IsCancellationRequested)
+                {
+                    letGo = true;
                 }
                 catch (LanguageServerFailed failed) when (!running.Server.HasExited)
                 {
@@ -405,6 +475,7 @@ public sealed class CSharpService : IAsyncDisposable
                 }
                 finally
                 {
+                    askedPulls.Remove(round);
                     streamed.Writer.TryComplete();
                     if (!pull.IsCompleted)
                     {
@@ -415,6 +486,10 @@ public sealed class CSharpService : IAsyncDisposable
                 // What a pull sent before it answered or failed is the server's word as much as its answer.
                 changed += await TakeAsync([.. Drain(streamed.Reader), .. answered]);
                 cancel.ThrowIfCancellationRequested();
+                if (letGo)
+                {
+                    continue;
+                }
                 if (refused is not null)
                 {
                     IdeErrors.Write($"Solution-wide analysis ({source ?? "every source"}) asks again in {pause.TotalSeconds:0} s: {refused.Message}");

@@ -193,14 +193,14 @@ internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
 
     /// <summary>Asks the server again after <paramref name="delay"/>, ending the ask under way: <paramref name="ask"/> pulls
     /// (<see cref="PulledAsync"/>) and shows what answers, a server that fails or a later ask leaving the markers as they
-    /// stand; when it <c>holdsChecks</c>, the file's checks are held until the ask ends.</summary>
-    public void Pull(TimeSpan delay, Func<CancellationToken, Task> ask)
+    /// stand; when it <c>holdsChecks</c>, the file's checks are held until the ask ends, as is <paramref name="held"/>.</summary>
+    public void Pull(TimeSpan delay, Func<CancellationToken, Task> ask, IDisposable? held = null)
     {
         pulling?.Cancel();
         CancellationTokenSource cancel = new();
         pulling = cancel;
         BackgroundWork.Begin();
-        IdeErrors.Observe(PullAsync(delay, ask, cancel.Token, holdsChecks ? document.Checking() : null));
+        IdeErrors.Observe(PullAsync(delay, ask, cancel.Token, holdsChecks ? document.Checking() : null, held));
     }
 
     /// <summary>The server's diagnostics of the file from the sources <paramref name="part"/> names, when they answer the
@@ -218,7 +218,7 @@ internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
         Release();
     }
 
-    private static async Task PullAsync(TimeSpan delay, Func<CancellationToken, Task> ask, CancellationToken cancel, IDisposable? checking)
+    private static async Task PullAsync(TimeSpan delay, Func<CancellationToken, Task> ask, CancellationToken cancel, IDisposable? checking, IDisposable? held)
     {
         try
         {
@@ -241,6 +241,7 @@ internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
             Dispatcher.UIThread.Post(() =>
             {
                 checking?.Dispose();
+                held?.Dispose();
                 BackgroundWork.End();
             });
         }
