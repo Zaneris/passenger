@@ -285,6 +285,8 @@ site-shots` retakes its images.
   line as it kept it while its `Writes` stand.
 - **Avalonia 12's lists** re-attach, and so re-style, every recycled container and never reuse a `DataTemplate`'s
   content: a list's, combo box's or tab strip's rows go through `ReusedRows`, made once with their containers (UiRulesTests).
+- **`FormattedText` lays its lines out again at every draw**: text drawn frame after frame is kept as a `TextLayout` or
+  `TextLine` until what it says or its width changes.
 - **EventPipe from a program's start**: .NET 10's LoggingEventSource misreads the `FilterSpecs` it is made with, so a
   category takes no `:Level` there or none of its logs come (`LiveRequests.LogsSpec`). Its sampler takes a thread only
   where it can stop it, so a test program's method that must own its samples spins in a loop that calls nothing.
