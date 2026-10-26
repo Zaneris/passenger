@@ -4,23 +4,25 @@ using Passenger.Text;
 namespace Passenger.App.Tables;
 
 /// <summary>The cells of a table a query finds, row by row and left to right, each cell's text as the grid shows it
-/// (a workbook's numbers formatted); a regex that does not parse or runs too long says why.</summary>
+/// (a workbook's numbers formatted); a regex that does not parse says why, and one that runs past its time in a cell stops
+/// there and says so.</summary>
 public sealed record TableSearch(IReadOnlyList<(int Row, int Column)> Matches, bool Truncated, string? Problem)
 {
     public static readonly TableSearch None = new([], false, null);
 
-    /// <summary>Every cell holding a match, at most <see cref="TextSearch.MaxMatches"/>; read off the UI thread, so it gives
-    /// up as soon as <paramref name="cancel"/> is, a newer query having replaced it.</summary>
+    /// <summary>Every cell holding a match, at most <see cref="TextSearch.MaxMatches"/>; read off the UI thread (a regex has
+    /// <see cref="TextSearch.Apart"/> in each cell), so it gives up as soon as <paramref name="cancel"/> is, a newer query
+    /// having replaced it.</summary>
     public static TableSearch Find(Table table, SearchQuery query, CancellationToken cancel)
     {
         if (query.IsEmpty)
         {
             return None;
         }
-        Regex pattern;
+        SearchPattern pattern;
         try
         {
-            pattern = TextSearch.Pattern(query);
+            pattern = SearchPattern.For(query, TextSearch.Apart);
         }
         catch (ArgumentException error)
         {
@@ -47,7 +49,7 @@ public sealed record TableSearch(IReadOnlyList<(int Row, int Column)> Matches, b
         }
         catch (RegexMatchTimeoutException)
         {
-            return new TableSearch(matches, true, "The search took too long and stopped.");
+            return new TableSearch(matches, true, SearchResult.TookTooLong);
         }
         return new TableSearch(matches, false, null);
     }

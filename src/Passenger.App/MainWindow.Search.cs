@@ -183,7 +183,7 @@ public partial class MainWindow
         string what = FilesReplaced.Count(asked.Matches);
         if (await Confirm("Replace in Files", $"Replace {what} with '{asked.Replacement}'? An open file's change can be undone there; a closed file is written.", "Replace All"))
         {
-            FilesReplaced done = ReplaceInFiles(asked.Query, asked.Replacement, [.. asked.Matches.Select(m => m.Path).Distinct()]);
+            FilesReplaced done = await ReplaceInFilesAsync(asked.Query, asked.Replacement, [.. asked.Matches.Select(m => m.Path).Distinct()]);
             IReadOnlyList<SearchMatch> replaced = done.Replaced(asked.Matches);
             string? refused = done.NotReplaced(Path.GetFileName);
             status.Text = string.Join("; ", [replaced.Count > 0 ? $"Replaced {FilesReplaced.Count(replaced)}" : "Nothing replaced", .. done.Converted, .. refused is null ? [] : new[] { refused }]);
@@ -191,52 +191,60 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Replaces a query's matches in these files: an open one as one undoable step changing only its matches,
-    /// so its carets, folds and breakpoints stay put; a closed one written in its own encoding, or as UTF-8 when that
-    /// cannot hold the replacement, said of each such file. A closed file the system refuses to write (read-only, access
-    /// denied, held by another program) is left as it was and named with why, and the rest are replaced all the same.</summary>
-    public FilesReplaced ReplaceInFiles(SearchQuery query, string replacement, IReadOnlyList<string> paths)
+    /// <summary>Replaces a query's matches in these files, each searched off the UI thread first: an open one as one
+    /// undoable step changing only its matches, so its carets, folds and breakpoints stay put; a closed one written in its
+    /// own encoding, or as UTF-8 when that cannot hold the replacement, said of each such file. A file the system refuses
+    /// (read-only, access denied, held), one a regex ran too long in, or an open one edited while it was searched is left
+    /// as it was and named with why, and the rest are replaced all the same.</summary>
+    public async Task<FilesReplaced> ReplaceInFilesAsync(SearchQuery query, string replacement, IReadOnlyList<string> paths)
     {
-        List<string> converted = [];
-        List<(string Path, string Why)> refused = [];
+        SearchPattern pattern = SearchPattern.For(query, TextSearch.Apart);
+        List<(string Path, TextSnapshot? Open)> files = [];
         foreach (string path in paths)
         {
-            if (Editors.Find(path) is { } open)
+            OpenDocument? open = Editors.Find(path);
+            if (open is { HoldsText: false })
             {
-                if (!open.HoldsText)
-                {
-                    // A preview's or a workbook's tab holds no text of the file's to replace in, and its bytes are no text.
-                    continue;
-                }
-                IReadOnlyList<TextEdit> edits = FileSearch.Replacements(open.Text.Snapshot, query, replacement);
-                if (edits.Count > 0)
-                {
-                    open.Text.BreakUndoGroup();
-                    open.Text.Edit(edits, open.Selections, TextEditing.MapThrough(open.Selections, edits));
-                    open.Text.BreakUndoGroup();
-                }
+                // A preview's or a workbook's tab holds no text of the file's to replace in, and its bytes are no text.
                 continue;
             }
-            try
+            files.Add((path, open?.Text.Snapshot));
+        }
+        List<FileSearch.Replacing> planned = await BackgroundWork.Run(() => files.Select(f => FileSearch.Plan(f.Path, f.Open, pattern, replacement)).ToList());
+        List<string> converted = [];
+        List<(string Path, string Why)> refused = [];
+        foreach (FileSearch.Replacing plan in planned)
+        {
+            if (plan.Why is { } why)
             {
-                if (FileText.Load(path) is { } file)
+                refused.Add((plan.Path, why));
+            }
+            else if (plan.Searched is { } searched)
+            {
+                if (Editors.Find(plan.Path) is not { HoldsText: true } open || !ReferenceEquals(open.Text.Snapshot, searched))
                 {
-                    string after = FileSearch.ReplaceAll(file.Text, query, replacement);
-                    if (after != file.Text && FileText.Save(path, after, file.Encoding, file.HasBom, file.CrBreaks).Converted is { } note)
+                    refused.Add((plan.Path, "edited while it was searched"));
+                }
+                else if (plan.Edits.Count > 0)
+                {
+                    open.Text.BreakUndoGroup();
+                    open.Text.Edit(plan.Edits, open.Selections, TextEditing.MapThrough(open.Selections, plan.Edits));
+                    open.Text.BreakUndoGroup();
+                }
+            }
+            else if (plan is { Closed: { } file, After: { } after } && after != file.Text)
+            {
+                try
+                {
+                    if (FileText.Save(plan.Path, after, file.Encoding, file.HasBom, file.CrBreaks).Converted is { } note)
                     {
                         converted.Add(note);
                     }
                 }
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-            {
-                refused.Add((path, error switch
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
                 {
-                    ReadOnlyFileException => "read-only",
-                    UnauthorizedAccessException => "access denied",
-                    FileNotFoundException or DirectoryNotFoundException => "gone",
-                    _ => error.Message,
-                }));
+                    refused.Add((plan.Path, FileSearch.Refusal(error)));
+                }
             }
         }
         return new FilesReplaced(converted, refused);

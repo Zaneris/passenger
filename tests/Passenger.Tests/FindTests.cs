@@ -150,6 +150,31 @@ public sealed class FindTests : IDisposable
         window.Close();
     }
 
+    [AvaloniaFact]
+    public void A_regex_that_backtracks_without_end_leaves_the_window_free_stops_saying_so_and_replaces_nothing()
+    {
+        string text = "ab\n" + new string('a', 3000) + "\n";
+        (MainWindow window, CodeEditor editor) = Open(text);
+        Ui.Press(window, Ui.Shortcut(AppActions.Replace));
+        FindBar bar = window.EditorArea.FindBar;
+        bar.FindControl<ToggleButton>("UseRegex")!.IsChecked = true;
+        window.KeyTextInput("(a+)+b");
+        // Back from the key with the regex still running: the UI thread gave it up after its moment.
+        Assert.True(bar.CountText == "Searching…", $"Just after the key the count said '{bar.CountText}', not that the regex is searched off the UI thread");
+        Assert.Equal(new Selection(0, 2), editor.Selections.Primary);
+
+        Ui.WaitFor(() => bar.CountText != "Searching…", () => $"the search off the UI thread to end; the count says '{bar.CountText}'");
+        Assert.True(bar.CountText == SearchResult.TookTooLong, $"The count says '{bar.CountText}' of a regex that never ends");
+        Assert.Equal(new TextRange(0, 2), Assert.Single(editor.Highlights));
+
+        bar.FindControl<TextBox>("ReplaceWith")!.Text = "x";
+        Ui.Click(bar.FindControl<Button>("ReplaceAllButton")!);
+        Ui.WaitFor(() => bar.CountText != "Searching…", () => $"Replace All's search to end; the count says '{bar.CountText}'");
+        Assert.True(bar.CountText.EndsWith("Nothing was replaced.", StringComparison.Ordinal), $"After Replace All the count says '{bar.CountText}'");
+        Assert.True(editor.Document.Snapshot.ToString() == text, "Replace All replaced the matches a regex found before it stopped, not all of them");
+        window.Close();
+    }
+
     /// <summary>Keys typed at the top of a file of 20,000 lines with the find bar open allocate on the UI thread under
     /// twice what they do in one of 200, the match at the end moving with them and still counted.</summary>
     [AvaloniaFact]

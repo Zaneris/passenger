@@ -216,7 +216,7 @@ public sealed partial class PassengerTools
             throw new InvalidOperationException($"More than {FileSearch.MostMatches - 1} matches: narrow the scope or the mask, as Replace in Files lists no more");
         }
         List<string> files = [.. found.Select(m => m.Path).Distinct()];
-        FilesReplaced done = window.ReplaceInFiles(query, replacement, files);
+        FilesReplaced done = await window.ReplaceInFilesAsync(query, replacement, files);
         List<string> said = [.. done.Converted];
         foreach (OpenDocument open in Editors.Documents.Where(d => d.IsModified && files.Contains(d.Path)).ToList())
         {

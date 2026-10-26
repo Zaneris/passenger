@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Text.Unicode;
@@ -11,8 +12,8 @@ public readonly record struct SearchQuery(string Text, bool MatchCase = false, b
     public bool IsEmpty => Text.Length == 0;
 }
 
-/// <summary>Finding every match of a query in a snapshot, and the replacement each one takes. A regex
-/// that does not parse, or one that runs too long, finds nothing and says why instead of throwing. The text is
+/// <summary>Finding every match of a query in a snapshot, and the replacement each one takes. A regex that does not
+/// parse finds nothing and says why instead of throwing, and one that runs past its time stops and says so. The text is
 /// searched with each "\r\n" read as "\n", as the editor's lines are, so `$` finds a CRLF line's end and `\s`
 /// never takes half of its break; `^` is every line's start but the empty end after the last break.</summary>
 public static class TextSearch
@@ -21,32 +22,48 @@ public static class TextSearch
     /// the count says "1000+" past it.</summary>
     public const int MaxMatches = 1000;
 
-    private static readonly TimeSpan RegexLimit = TimeSpan.FromMilliseconds(250);
+    /// <summary>How long a regex's search of a text may run on the UI thread, its matches together, so the window never
+    /// waits on one long: a search that stops there is run again off the UI thread under <see cref="Apart"/>.</summary>
+    public static readonly TimeSpan AtOnce = TimeSpan.FromMilliseconds(250);
 
-    public static SearchResult FindAll(TextSnapshot snapshot, SearchQuery query, int limit = MaxMatches)
+    /// <summary>How long a regex's search of a text may run off the UI thread, its matches together: far past the few
+    /// hundred milliseconds a busy machine keeps a quick search waiting, so only a regex backtracking without end
+    /// (`(a+)+b` over a long run of a's) stops.</summary>
+    public static readonly TimeSpan Apart = TimeSpan.FromSeconds(5);
+
+    /// <summary>Every match of a query, a regex's search stopping past <paramref name="within"/> (<see cref="AtOnce"/> on
+    /// the UI thread, <see cref="Apart"/> off it).</summary>
+    public static SearchResult FindAll(TextSnapshot snapshot, SearchQuery query, TimeSpan within, int limit = MaxMatches)
     {
         if (query.IsEmpty)
         {
             return SearchResult.None;
         }
-        (string text, List<int> returns) = AsLines(snapshot.ToString());
-        Regex? pattern;
+        SearchPattern pattern;
         try
         {
-            pattern = Build(query);
+            pattern = SearchPattern.For(query, within);
         }
         catch (ArgumentException error)
         {
             return new SearchResult([], false, error.Message);
         }
+        return FindAll(snapshot, pattern, limit);
+    }
+
+    /// <summary>Every match of a pattern read once for a search of many texts.</summary>
+    public static SearchResult FindAll(TextSnapshot snapshot, SearchPattern pattern, int limit = MaxMatches)
+    {
+        (string text, List<int> returns) = AsLines(snapshot.ToString());
         List<TextRange> matches = [];
         // Kept whole, so a replacement's groups come from the match where it stood, its lookarounds and anchors held.
-        List<Match>? found = query.Regex ? [] : null;
+        List<Match>? found = pattern.Groups ? [] : null;
         bool crlf = snapshot.LineCount > 1 && snapshot.GetLine(0).BreakLength == 2;
+        long started = Stopwatch.GetTimestamp();
         try
         {
             // An empty match counts (`^` is a line's start), and NextMatch steps on past it.
-            for (Match match = pattern.Match(text); match.Success; match = match.NextMatch())
+            for (Match match = pattern.Regex.Match(text); match.Success; match = match.NextMatch())
             {
                 if (matches.Count == limit)
                 {
@@ -54,11 +71,16 @@ public static class TextSearch
                 }
                 matches.Add(TextRange.FromBounds(Original(match.Index, returns), Original(match.Index + match.Length, returns)));
                 found?.Add(match);
+                // The regex gives each match its time, and the matches together have no more.
+                if (pattern.Within is { } within && Stopwatch.GetElapsedTime(started) > within)
+                {
+                    return SearchResult.TimedOut(matches, found, crlf);
+                }
             }
         }
         catch (RegexMatchTimeoutException)
         {
-            return new SearchResult(matches, true, "The search took too long and stopped.") { Found = found, Crlf = crlf };
+            return SearchResult.TimedOut(matches, found, crlf);
         }
         return new SearchResult(matches, false, null) { Found = found, Crlf = crlf };
     }
@@ -92,11 +114,9 @@ public static class TextSearch
         return offset + (index >= 0 ? index : ~index);
     }
 
-    /// <summary>The regex a query finds with, for text searched piece by piece (a table's cells); a pattern that does not
-    /// parse throws an <see cref="ArgumentException"/> whose message says why.</summary>
-    public static Regex Pattern(SearchQuery query) => Build(query);
-
-    private static Regex Build(SearchQuery query)
+    /// <summary>The regex a query finds with; a pattern that does not parse throws an <see cref="ArgumentException"/> whose
+    /// message says why. Plain text takes no time limit: a literal between one-character lookarounds never backtracks.</summary>
+    internal static Regex Build(SearchQuery query, TimeSpan within)
     {
         RegexOptions options = RegexOptions.CultureInvariant | RegexOptions.Multiline | (query.MatchCase ? RegexOptions.None : RegexOptions.IgnoreCase);
         string pattern = query.Regex ? RiderCarets(query.Text) : System.Text.RegularExpressions.Regex.Escape(query.Text);
@@ -110,7 +130,7 @@ public static class TextSearch
             // Read as typed first, so a problem quotes the person's pattern and a stray ')' cannot close the group above.
             _ = new Regex(query.Text, options);
         }
-        return new Regex(pattern, options, RegexLimit);
+        return new Regex(pattern, options, query.Regex ? within : Regex.InfiniteMatchTimeout);
     }
 
     /// <summary>The pattern with each `^` anchor read as a line's start, but not the empty end after the text's last
@@ -168,6 +188,34 @@ public static class TextSearch
         }
         return read.ToString();
     }
+}
+
+/// <summary>A query read once for a search of many texts (a folder's files, a table's cells): its regex, and how long a
+/// regex's search of each text may run.</summary>
+public sealed class SearchPattern
+{
+    private SearchPattern(Regex regex, bool groups, TimeSpan? within)
+    {
+        Regex = regex;
+        Groups = groups;
+        Within = within;
+    }
+
+    internal Regex Regex { get; }
+
+    /// <summary>Whether a match fills a replacement's groups: the query is a regex.</summary>
+    internal bool Groups { get; }
+
+    /// <summary>How long a search of one text may run, its matches together; null for plain text, which has no limit.</summary>
+    internal TimeSpan? Within { get; }
+
+    /// <summary>The pattern a query finds with, a regex's search of a text stopping past <paramref name="within"/>; a
+    /// regex that does not parse throws an <see cref="ArgumentException"/> whose message says why.</summary>
+    public static SearchPattern For(SearchQuery query, TimeSpan within) =>
+        new(TextSearch.Build(query, within), query.Regex, query.Regex ? within : null);
+
+    /// <summary>Whether a text holds a match; a regex running past its time throws a <see cref="RegexMatchTimeoutException"/>.</summary>
+    public bool IsMatch(string text) => Regex.IsMatch(text);
 }
 
 /// <summary>A look at a file's bytes, before it is read as text, for what every match of a query holds in a row: its
@@ -480,6 +528,15 @@ public sealed class MatchFilter
 public sealed record SearchResult(IReadOnlyList<TextRange> Matches, bool Truncated, string? Problem)
 {
     public static readonly SearchResult None = new([], false, null);
+
+    /// <summary>What a regex's search that ran past its time says, its matches those found before it stopped.</summary>
+    public const string TookTooLong = "The search took too long and stopped.";
+
+    /// <summary>Whether a regex ran past its time and the search stopped, its matches only those found before.</summary>
+    public bool Stopped { get; private init; }
+
+    internal static SearchResult TimedOut(List<TextRange> matches, List<Match>? found, bool crlf) =>
+        new(matches, true, TookTooLong) { Found = found, Crlf = crlf, Stopped = true };
 
     /// <summary>A regex's matches as found in the whole text, one for each of <see cref="Matches"/>; null for plain
     /// text, which is replaced as typed.</summary>

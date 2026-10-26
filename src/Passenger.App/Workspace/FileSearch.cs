@@ -43,10 +43,25 @@ public static class FileSearch
     private const long LargestFile = 4 * 1024 * 1024;
 
     /// <summary>What is wrong with a query (a regex that does not read), or null.</summary>
-    public static string? Problem(SearchQuery query) => query.IsEmpty ? null : TextSearch.FindAll(TextSnapshot.Empty, query).Problem;
+    public static string? Problem(SearchQuery query)
+    {
+        if (query.IsEmpty)
+        {
+            return null;
+        }
+        try
+        {
+            _ = SearchPattern.For(query, TextSearch.Apart);
+            return null;
+        }
+        catch (ArgumentException error)
+        {
+            return error.Message;
+        }
+    }
 
     /// <summary>The matches in the files of a place (every file the index has, or those a scope and a mask leave), file
-    /// by file in the index's order, at most <see cref="MostMatches"/>.</summary>
+    /// by file in the index's order, at most <see cref="MostMatches"/>; a regex has <see cref="TextSearch.Apart"/> in each.</summary>
     public static Task<IReadOnlyList<SearchMatch>> FindAsync(string root, IReadOnlyList<string> files, SearchPlace place, SearchQuery query,
         Editors.OpenTexts open, CancellationToken cancellation) => BackgroundWork.Run(() =>
     {
@@ -55,6 +70,7 @@ public static class FileSearch
         {
             return (IReadOnlyList<SearchMatch>)found;
         }
+        SearchPattern pattern = SearchPattern.For(query, TextSearch.Apart);
         MatchFilter? filter = MatchFilter.For(query);
         byte[] bytes = [];
         foreach (string path in place.Paths(root, files))
@@ -72,7 +88,7 @@ public static class FileSearch
             {
                 continue;
             }
-            foreach (TextRange match in TextSearch.FindAll(text, query, MostMatches - found.Count).Matches)
+            foreach (TextRange match in TextSearch.FindAll(text, pattern, MostMatches - found.Count).Matches)
             {
                 TextPosition at = text.GetPosition(match.Start);
                 string line = text.GetLineText(at.Line);
@@ -124,11 +140,50 @@ public static class FileSearch
         }
     }
 
-    /// <summary>The text with every match replaced, a regex's groups ($1, ${name}) filled in from each match as the
-    /// Find bar's Replace fills them.</summary>
-    public static string ReplaceAll(string text, SearchQuery query, string replacement)
+    /// <summary>What replacing a query's matches in one file comes to, worked out off the UI thread: an open file's edits
+    /// of the text searched, or a closed file as read and its text replaced; or why it is left as it was.</summary>
+    public sealed record Replacing(string Path, TextSnapshot? Searched, IReadOnlyList<TextEdit> Edits, FileText? Closed, string? After, string? Why);
+
+    /// <summary>Replaces every match in a file, an open one's text as the editor has it (<paramref name="open"/>), else
+    /// its own read from disk, a regex's groups ($1, ${name}) filled in from each match as the Find bar's Replace fills
+    /// them; a file whose search a regex ran too long in is left, never replaced in part.</summary>
+    public static Replacing Plan(string path, TextSnapshot? open, SearchPattern pattern, string replacement)
     {
-        IReadOnlyList<TextEdit> edits = Replacements(TextSnapshot.From(text), query, replacement);
+        if (open is not null)
+        {
+            SearchResult found = TextSearch.FindAll(open, pattern, int.MaxValue);
+            return new Replacing(path, open, found.Stopped ? [] : found.Replacements(replacement), null, null, found.Stopped ? StoppedWhy : null);
+        }
+        try
+        {
+            if (FileText.Load(path) is not { } file)
+            {
+                return new Replacing(path, null, [], null, null, null);
+            }
+            SearchResult found = TextSearch.FindAll(TextSnapshot.From(file.Text), pattern, int.MaxValue);
+            return found.Stopped ? new Replacing(path, null, [], null, null, StoppedWhy)
+                : new Replacing(path, null, [], file, Applied(file.Text, found.Replacements(replacement)), null);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return new Replacing(path, null, [], null, null, Refusal(error));
+        }
+    }
+
+    /// <summary>Why a file the system would not let be read or written is left as it was.</summary>
+    public static string Refusal(Exception error) => error switch
+    {
+        ReadOnlyFileException => "read-only",
+        UnauthorizedAccessException => "access denied",
+        FileNotFoundException or DirectoryNotFoundException => "gone",
+        _ => error.Message,
+    };
+
+    /// <summary>Why a file a regex ran too long in is left as it was.</summary>
+    public const string StoppedWhy = "the regex took too long there";
+
+    private static string Applied(string text, IReadOnlyList<TextEdit> edits)
+    {
         if (edits.Count == 0)
         {
             return text;
@@ -144,8 +199,4 @@ public static class FileSearch
         replaced.Append(text, at, text.Length - at);
         return replaced.ToString();
     }
-
-    /// <summary>Every match's replacement as an edit, so an open file changes only where its matches are.</summary>
-    public static IReadOnlyList<TextEdit> Replacements(TextSnapshot text, SearchQuery query, string replacement) =>
-        TextSearch.FindAll(text, query, int.MaxValue).Replacements(replacement);
 }
