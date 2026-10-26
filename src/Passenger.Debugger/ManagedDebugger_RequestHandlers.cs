@@ -969,6 +969,10 @@ public partial class ManagedDebugger
             {
                 result.Add(await ReadQuerySql(variablesReference));
             }
+            else if (variablesReference.ReferenceKind is StoredReferenceKind.Pointer)
+            {
+                await AddPointedAt(variablesReference, result);
+            }
             else if (variablesReference.ReferenceKind is StoredReferenceKind.ArrayRange)
             {
                 ICorDebugArrayValue arrayValue = (ICorDebugArrayValue)variablesReference.ObjectValue!.UnwrapDebugValue();
@@ -1040,7 +1044,7 @@ public partial class ManagedDebugger
         }
         (string? friendlyTypeName, string? value, ICorDebugValue? debuggerProxyInstance, bool resultIsError) = await GetValueForCorDebugValueAsync(result.Value!, threadId, frameStackDepth, true);
         VariablePresentationHint? variablePresentationHint = resultIsError ? new VariablePresentationHint { Attributes = AttributesValue.FailedEvaluation } : null;
-        int variablesReference = GetVariablesReference(result.Value!, friendlyTypeName, threadId, frameStackDepth, debuggerProxyInstance);
+        int variablesReference = GetVariablesReference(result.Value!, friendlyTypeName, threadId, frameStackDepth, debuggerProxyInstance, expression.Trim());
         VariableInfo variableInfo = new VariableInfo
         {
             Name = null!,

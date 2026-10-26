@@ -845,7 +845,9 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         ResolvedCilType? expectedType = null,
         EvaluationMetadataResolver? resolver = null)
     {
-        if (value.CorValue is not null && expectedType?.Primitive is null or PrimitiveTypeCode.String or PrimitiveTypeCode.Object)
+        // A pointer is itself, whatever its pointed-at type reads as.
+        if (value.CorValue is not null && (expectedType?.Primitive is null or PrimitiveTypeCode.String or PrimitiveTypeCode.Object
+            || value.CorValue is ICorDebugReferenceValue { Type: CorElementType.PTR }))
         {
             return value.CorValue;
         }

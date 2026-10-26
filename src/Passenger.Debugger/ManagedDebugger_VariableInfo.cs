@@ -52,7 +52,7 @@ public partial class ManagedDebugger
                     Value = value,
                     Type = friendlyTypeName,
                     PresentationHint = variablePresentationHint,
-                    VariablesReference = GetVariablesReference(localVariableCorDebugValue, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance)
+                    VariablesReference = GetVariablesReference(localVariableCorDebugValue, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance, localVariableName)
                 });
             });
         }
@@ -178,7 +178,7 @@ public partial class ManagedDebugger
                     Value = value,
                     Type = friendlyTypeName,
                     PresentationHint = variablePresentationHint,
-                    VariablesReference = GetVariablesReference(argumentCorDebugValue, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance)
+                    VariablesReference = GetVariablesReference(argumentCorDebugValue, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance, argumentName)
                 });
             });
         }
@@ -208,10 +208,15 @@ public partial class ManagedDebugger
         }
     }
 
-    /// <summary>The reference a value's row opens by, 0 for one that opens to nothing: a union opens to the value it
-    /// holds.</summary>
-    private int GetVariablesReference(ICorDebugValue corDebugValue, string friendlyTypeName, ThreadId threadId, FrameStackDepth stackDepth, ICorDebugValue? debuggerProxyInstance)
+    /// <summary>The reference a value's row opens by, 0 for one that opens to nothing: a union opens to the value it holds,
+    /// and a pointer (<paramref name="name"/> its row's) to the value it points at.</summary>
+    private int GetVariablesReference(ICorDebugValue corDebugValue, string friendlyTypeName, ThreadId threadId, FrameStackDepth stackDepth, ICorDebugValue? debuggerProxyInstance, string? name = null)
     {
+        if (corDebugValue is ICorDebugReferenceValue { Type: CorElementType.PTR } pointer)
+        {
+            return pointer.IsNull || pointer.ExactType.FirstTypeParameter.Type is CorElementType.VOID ? 0
+                : _variableManager.CreateReference(new VariablesReference(StoredReferenceKind.Pointer, pointer, threadId, stackDepth, null, Name: name));
+        }
         if (TryGetUnionValue(corDebugValue, out _, out ICorDebugValue? held))
         {
             if (held is null)
@@ -270,6 +275,25 @@ public partial class ManagedDebugger
             }
         }
         return 0;
+    }
+
+    /// <summary>The one row a pointer opens to: the value it points at, named as C# reads it (*p).</summary>
+    private async Task AddPointedAt(VariablesReference pointer, List<VariableInfo> result)
+    {
+        ICorDebugValue pointedAt = ((ICorDebugReferenceValue)pointer.ObjectValue!).Dereference();
+        string name = pointer.Name is { } named ? (SyntaxFacts.IsValidIdentifier(named) ? $"*{named}" : $"*({named})") : "*";
+        await WithFailureHandling(result, name, async () =>
+        {
+            (string friendlyTypeName, string value, ICorDebugValue? proxy, bool resultIsError) = await GetValueForCorDebugValueAsync(pointedAt, pointer.ThreadId, pointer.FrameStackDepth, true);
+            result.Add(new VariableInfo
+            {
+                Name = name,
+                Value = value,
+                Type = friendlyTypeName,
+                PresentationHint = resultIsError ? new VariablePresentationHint { Attributes = AttributesValue.FailedEvaluation } : null,
+                VariablesReference = GetVariablesReference(pointedAt, friendlyTypeName, pointer.ThreadId, pointer.FrameStackDepth, proxy, name)
+            });
+        });
     }
 
     private int GenerateUniqueVariableReference(ICorDebugValue value, ThreadId threadId, FrameStackDepth stackDepth, ICorDebugValue? debuggerProxyInstance)
@@ -532,7 +556,7 @@ public partial class ManagedDebugger
                     Value = value,
                     Type = friendlyTypeName,
                     PresentationHint = variablePresentationHint,
-                    VariablesReference = GetVariablesReference(fieldCorDebugValue, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance)
+                    VariablesReference = GetVariablesReference(fieldCorDebugValue, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance, fieldName)
                 };
                 result.Add(variableInfo);
             });

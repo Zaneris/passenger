@@ -349,6 +349,11 @@ public partial class ManagedDebugger
 
     public static CorDebugValueValueResult GetCorDebugReferenceValue_Value_AsString(ICorDebugReferenceValue corDebugReferenceValue, bool escapeStringValue)
     {
+        if (corDebugReferenceValue.Type is CorElementType.PTR)
+        {
+            // A pointer is its address, never the value it points at, which it opens to.
+            return new(GetCorDebugTypeFriendlyName(corDebugReferenceValue.ExactType), Address(corDebugReferenceValue), CorDebugValueFormatKind.None, null);
+        }
         if (corDebugReferenceValue.IsNull)
         {
             // Get the type information even though the reference is null
@@ -360,12 +365,20 @@ public partial class ManagedDebugger
         return value;
     }
 
+    /// <summary>A pointer's address, as C# writes one in hexadecimal.</summary>
+    internal static string Address(ICorDebugReferenceValue pointer) =>
+        string.Create(System.Globalization.CultureInfo.InvariantCulture, $"0x{pointer.Value.Value:x16}");
+
     internal static string GetCorDebugTypeFriendlyName(ICorDebugType corDebugType)
     {
         string? primitiveName = GetFriendlyTypeName(corDebugType.Type);
         if (primitiveName is not null)
         {
             return primitiveName;
+        }
+        if (corDebugType.Type is CorElementType.PTR)
+        {
+            return $"{GetCorDebugTypeFriendlyName(corDebugType.FirstTypeParameter)}*";
         }
 
         if (corDebugType.Type is CorElementType.SZARRAY)

@@ -68,6 +68,27 @@ public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
         Assert.Equal(("null", "Pet", 0), (none.Value, none.Type, none.VariablesReference));
     }
 
+    /// <summary>A pointer shows its address as its type (int*), by its row and by evaluation, opens to the value it points
+    /// at, and *pointer evaluates to that value.</summary>
+    [Fact]
+    public async Task A_pointer_shows_its_address_and_type_and_opens_to_what_it_points_at()
+    {
+        int line = Debuggees.Line("PassengerCases", "Console.WriteLine($\"pointers");
+        await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, "PassengerCases", line, []);
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        Assert.Equal(line, stop.ReadStopInfo().line);
+        DapVariable pointer = Assert.Single(await host.LocalsAsync(stop), v => v.Name == "pointer");
+        Assert.True(pointer.Type == "int*" && System.Text.RegularExpressions.Regex.IsMatch(pointer.Value, "^0x[0-9a-f]{16}$"),
+            $"The pointer shows as {pointer.Value} ({pointer.Type}), not an address of type int*");
+        DapVariable pointedAt = Assert.Single(await host.VariablesAsync(pointer.VariablesReference));
+        Assert.Equal(("*pointer", "42", "int"), (pointedAt.Name, pointedAt.Value, pointedAt.Type));
+        int frame = (await host.TopFrameAsync(stop.ThreadId!.Value)).Id;
+        EvaluateResponse address = await host.EvaluateAsync(frame, "pointer");
+        Assert.Equal((pointer.Value, "int*"), (address.Result, address.Type));
+        EvaluateResponse read = await host.EvaluateAsync(frame, "*pointer");
+        Assert.Equal(("42", "int"), (read.Result, read.Type));
+    }
+
     [Fact]
     public async Task DebuggerDisplay_renders_as_Visual_Studio_does()
     {

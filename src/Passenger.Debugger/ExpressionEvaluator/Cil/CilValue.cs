@@ -46,7 +46,10 @@ internal sealed class CilValue
     public string? GetStringText() => Value as string ?? (CorValue?.UnwrapDebugValue() as ICorDebugStringValue)?.String;
 
     public CilValue WithSourceLocation(ICilLocation location) => new(Value, CorValue, Location, location);
-    public CilValue Dereference() => Location?.Read() ?? throw new InvalidOperationException("CIL value is not a managed location");
+    /// <summary>What a managed location holds, or what a pointer points at.</summary>
+    public CilValue Dereference() => Location?.Read()
+        ?? (CorValue is ICorDebugReferenceValue { Type: CorElementType.PTR, IsNull: false } pointer ? FromCorValue(pointer.Dereference()) : null)
+        ?? throw new InvalidOperationException("CIL value is not a managed location");
 
     public int AsInt32() => Value switch
     {
@@ -117,6 +120,11 @@ internal sealed class CilValue
 
     private static object? ReadPrimitive(ICorDebugValue value)
     {
+        if (value is ICorDebugReferenceValue { Type: CorElementType.PTR })
+        {
+            // A pointer stays one, its address, until an indirection reads what it points at.
+            return null;
+        }
         ICorDebugValue unwrapped = value.UnwrapDebugValue();
         if (unwrapped is not ICorDebugGenericValue generic)
         {

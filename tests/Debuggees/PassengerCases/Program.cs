@@ -75,6 +75,7 @@ Captures.Outer(41);
 Nested.Throw();
 Displays.Show();
 Unions.Show();
+Pointers.Show();
 Interpreter.Run();
 Jumps.Run();
 Threads.Run();
@@ -160,6 +161,17 @@ internal static class Unions
 		Pet bird = new Bird("Tweety");
 		Pet none = default;
 		Console.WriteLine($"unions {cat.Value} {dog.Value} {bird.Value} {none.Value}");
+	}
+}
+
+// A pointer, as Variables shows it.
+internal static class Pointers
+{
+	public static unsafe void Show()
+	{
+		int number = 42;
+		int* pointer = &number;
+		Console.WriteLine($"pointers {*pointer}");
 	}
 }
 
