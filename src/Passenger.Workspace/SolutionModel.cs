@@ -402,6 +402,16 @@ internal static class SharedRead
         return XDocument.Load(stream);
     }
 
+    public static System.Text.Json.JsonDocument Json(string path)
+    {
+        using FileStream stream = Open(path);
+        return System.Text.Json.JsonDocument.Parse(stream, new System.Text.Json.JsonDocumentOptions
+        {
+            CommentHandling = System.Text.Json.JsonCommentHandling.Skip,
+            AllowTrailingCommas = true,
+        });
+    }
+
     public static IEnumerable<string> Lines(string path)
     {
         using StreamReader reader = new(Open(path));

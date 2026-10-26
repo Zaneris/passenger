@@ -40,8 +40,8 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
     /// (<c>--no-mcp</c> says never).</summary>
     public bool ListenForAgents { get; init; } = true;
 
-    /// <summary>The solution (.sln, .slnx) or C# project (.csproj) PATH names, the workspace over <see cref="Folder"/>, its
-    /// own folder.</summary>
+    /// <summary>The solution (.sln, .slnx), solution filter (.slnf) or C# project (.csproj) PATH names, the workspace over
+    /// <see cref="Folder"/>, its own folder.</summary>
     public string? Workspace { get; init; }
 
     /// <summary>The theme <c>--look</c> names over the one kept, or null for that one.</summary>

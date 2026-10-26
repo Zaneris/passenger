@@ -682,7 +682,7 @@ public partial class MainWindow : Window
         Editors = Editors.Capture(),
         EditorWindows = Editors.CaptureWindows(),
         RecentFiles = [.. session.RecentFiles],
-        UnloadedProjects = [.. session.Unloaded],
+        UnloadedProjects = [.. session.KeptUnloaded],
         Folds = session.Folds.Capture(Editors.Documents),
     });
 
@@ -778,12 +778,17 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Unload Project: the project shows dimmed with nothing under it, and leaves the run configurations, the
-    /// solution's builds and the test runner until it is reloaded; the folder keeps the choice.</summary>
+    /// solution's builds and the test runner until it is reloaded, which the language server loads it for (one a solution
+    /// filter left out too); the folder keeps the choice.</summary>
     public void SetUnloaded(string project, bool unloaded)
     {
-        if (unloaded ? !session.Unloaded.Add(project) : !session.Unloaded.Remove(project))
+        if (!session.ChooseUnloaded(project, unloaded))
         {
             return;
+        }
+        if (!unloaded)
+        {
+            session.CSharp?.Reload([project]);
         }
         Explorer.Refresh();
         session.Configurations.Configure(Projects);

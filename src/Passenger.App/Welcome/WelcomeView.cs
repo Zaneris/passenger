@@ -276,10 +276,11 @@ public sealed class WelcomeView : UserControl
         });
     }
 
-    /// <summary>What a recent path opens as: a solution file, a project opened alone, or a folder.</summary>
+    /// <summary>What a recent path opens as: a solution file, a solution filter, a project opened alone, or a folder.</summary>
     private static string Kind(string path) => Path.GetExtension(path).ToLowerInvariant() switch
     {
         ".sln" or ".slnx" => "Solution",
+        ".slnf" => "Solution Filter",
         ".csproj" => "Project",
         _ => "Folder",
     };

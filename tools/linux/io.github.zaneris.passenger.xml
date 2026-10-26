@@ -12,6 +12,11 @@
         <sub-class-of type="application/xml"/>
         <glob pattern="*.slnx"/>
     </mime-type>
+    <mime-type type="application/x-ms-slnf">
+        <comment>Visual Studio solution filter</comment>
+        <sub-class-of type="application/json"/>
+        <glob pattern="*.slnf"/>
+    </mime-type>
     <mime-type type="application/x-ms-csproj">
         <comment>C# project</comment>
         <sub-class-of type="application/xml"/>

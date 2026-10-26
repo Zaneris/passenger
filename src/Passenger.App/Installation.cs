@@ -18,6 +18,7 @@ internal static partial class Installation
     [
         (".sln", "Passenger.sln", "Solution File"),
         (".slnx", "Passenger.slnx", "Solution File"),
+        (".slnf", "Passenger.slnf", "Solution Filter File"),
         (".csproj", "Passenger.csproj", "C# Project File"),
     ];
 

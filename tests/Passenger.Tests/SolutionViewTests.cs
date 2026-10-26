@@ -648,6 +648,57 @@ public sealed class SolutionViewTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A solution filter naming one project of the solution, opened: its solution with that project alone loaded,
+    /// the other shown unloaded, Build building the one and the language server loading the one; the filter changed on
+    /// disk to name the other swaps them, and Reload Project loads the one it left out, none of which the folder keeps
+    /// as the person's own unloading.</summary>
+    [AvaloniaFact]
+    public void A_solution_filter_opens_its_solution_with_its_projects_alone_built_and_analysed_and_a_change_to_it_is_followed()
+    {
+        string filter = Path.Combine(folder, "Shop.App.slnf");
+        Write("Shop.App.slnf", "{\n  \"solution\": {\n    \"path\": \"Shop.slnx\",\n    \"projects\": [\n      \"Shop.App\\\\Shop.App.csproj\"\n    ]\n  }\n}\n");
+        Restore.Run(Path.Combine(folder, "Shop.slnx"));
+        string app = PathNames.Canonical(Path.Combine(folder, "Shop.App", "Shop.App.csproj"));
+        string core = PathNames.Canonical(Path.Combine(folder, "Shop.Core", "Shop.Core.csproj"));
+        MainWindow window = Ui.OpenFolder(filter);
+        try
+        {
+            Assert.Equal(("Shop.App", PathNames.Canonical(filter)), (window.Session.Workspace?.Name, window.Session.Workspace?.OpenedAs));
+            string Loaded() => string.Join(", ", window.ExplorerView.Tree.Rows.Where(r => r.Kind == NodeKind.Project).Select(r => $"{r.Name} {(r.IsDimmed ? "unloaded" : "loaded")}"));
+            Assert.Equal("Shop.App loaded, Shop.Core unloaded", Loaded());
+            Assert.Equal("(unloaded)", Row(window, NodeKind.Project, "Shop.Core").Detail);
+
+            Ui.WaitFor(() => window.CSharpService?.Session is { IsLoaded: true }, "the language server to load the filter's project", TimeSpan.FromMinutes(2));
+            int Found(string name) => Ui.Await(window.CSharpService!.Session!.SymbolsNamedAsync(name, 5), $"the language server's symbols named {name}", TimeSpan.FromMinutes(1)).Symbols.Count;
+            Assert.True((window.Session.DesignTimeBuilds.Builds, Found("Order"), Found("Product")) == (1, 1, 0),
+                $"The language server loaded {window.Session.DesignTimeBuilds.Builds} project(s), found {Found("Order")} Order (Shop.App's) and {Found("Product")} Product (Shop.Core's), "
+                + "where it loads Shop.App alone");
+
+            window.Perform(AppActions.Build);
+            Ui.WaitFor(() => !window.IsBuilding, "the filter's build", TimeSpan.FromMinutes(2));
+            Assert.StartsWith("Build succeeded", window.Status, StringComparison.Ordinal);
+            Assert.True(File.Exists(Path.Combine(folder, "Shop.App", "bin", "Debug", TestProjects.Framework, "Shop.App.dll")) && !Directory.Exists(Path.Combine(folder, "Shop.Core", "bin")),
+                $"Build built {(Directory.Exists(Path.Combine(folder, "Shop.Core", "bin")) ? "Shop.Core, which the filter leaves out" : "no Shop.App")}:\n{window.BottomPanel.Build.Document.Snapshot}");
+
+            Heard(window, filter, () => File.WriteAllText(filter, "{\n  \"solution\": {\n    \"path\": \"Shop.slnx\",\n    \"projects\": [ \"Shop.Core/Shop.Core.csproj\" ]\n  }\n}\n"));
+            Ui.WaitFor(() => Loaded() == "Shop.App unloaded, Shop.Core loaded", () => $"the Explorer to follow the filter naming Shop.Core instead ({Loaded()})");
+            Ui.WaitFor(() => window.CSharpService?.Session is { IsLoaded: true } && Found("Product") == 1 && Found("Order") == 0,
+                () => "the language server to load Shop.Core in Shop.App's place", TimeSpan.FromMinutes(2));
+
+            window.SetUnloaded(app, unloaded: false);
+            Assert.Equal("Shop.App loaded, Shop.Core loaded", Loaded());
+            Ui.WaitFor(() => Found("Order") == 1, "the language server to load Shop.App once reloaded", TimeSpan.FromMinutes(2));
+            Assert.Equal(["Shop.App", "Shop.Core"], window.Session.Projects.Select(p => p.Name).Order(StringComparer.Ordinal));
+            Assert.Empty(window.Session.KeptUnloaded);
+            window.SetUnloaded(core, unloaded: true);
+            Assert.Equal([core], window.Session.KeptUnloaded);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     private MainWindow Open() => Ui.OpenFolder(folder);
 
     /// <summary>Opens the Explorer's folders down to a file or folder, as a person does to get to it, and gives its row.</summary>

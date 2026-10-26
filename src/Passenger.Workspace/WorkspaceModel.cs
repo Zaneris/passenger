@@ -4,8 +4,8 @@ using Passenger.Host;
 namespace Passenger.Workspace;
 
 /// <summary>The open folder's solution and projects, decided here alone for the Explorer, the language server, Build,
-/// Run, NuGet and the test runner: the solution or project opened by name while it is there, else the solution at the
-/// folder's top; with none, the projects anywhere under the folder but its build output, dependencies and hidden folders,
+/// Run, NuGet and the test runner: the solution, solution filter or project opened by name while it is there, else the
+/// solution at the folder's top; with none, the projects anywhere under the folder but its build output, dependencies and hidden folders,
 /// and beside them its file-based programs (<see cref="IsProgram"/>), each a project of its own named by its C# file.
 /// Read when the folder opens and again when the folder watcher sees a solution or project change, never on each use.</summary>
 public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IReadOnlyList<ProjectModel> Projects)
@@ -20,19 +20,25 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
     /// holds. Null for a folder or a solution.</summary>
     public string? ProjectFile { get; init; }
 
-    /// <summary>What it was opened as, which Recent Solutions keeps and reopens: the solution, the project, else the
-    /// folder.</summary>
-    public string OpenedAs => Solution?.Path ?? ProjectFile ?? Folder;
+    /// <summary>The solution filter it was opened as: its solution is <see cref="Solution"/>, every project of it is in
+    /// <see cref="Projects"/>, and those the filter leaves out are the session's to unload. Null for any other workspace.</summary>
+    public SolutionFilter? Filter { get; init; }
 
-    /// <summary>Its name as the toolbar, the window's title and Recent Solutions show it: the solution's, the project's,
-    /// else the folder's.</summary>
-    public string Name => Solution?.Name ?? (ProjectFile is { } project ? Path.GetFileNameWithoutExtension(project) : Path.GetFileName(Folder));
+    /// <summary>What it was opened as, which Recent Solutions keeps and reopens: the solution filter, the solution, the
+    /// project, else the folder.</summary>
+    public string OpenedAs => Filter?.Path ?? Solution?.Path ?? ProjectFile ?? Folder;
 
-    /// <summary>Whether a file opens as the workspace rather than in an editor: a solution (.sln, .slnx) or a C#
-    /// project (.csproj).</summary>
+    /// <summary>Its name as the toolbar, the window's title and Recent Solutions show it: the solution filter's, the
+    /// solution's, the project's, else the folder's.</summary>
+    public string Name => Filter is { } filter ? Path.GetFileNameWithoutExtension(filter.Path)
+        : Solution?.Name ?? (ProjectFile is { } project ? Path.GetFileNameWithoutExtension(project) : Path.GetFileName(Folder));
+
+    /// <summary>Whether a file opens as the workspace rather than in an editor: a solution (.sln, .slnx), a solution
+    /// filter (.slnf) or a C# project (.csproj).</summary>
     public static bool Opens(string path) => IsSolution(path) || IsProject(path);
 
-    public static bool IsSolution(string path) => Path.GetExtension(path).ToLowerInvariant() is ".sln" or ".slnx";
+    /// <summary>Whether a file is a solution or a solution filter, either of which opens a solution.</summary>
+    public static bool IsSolution(string path) => Path.GetExtension(path).ToLowerInvariant() is ".sln" or ".slnx" or ".slnf";
 
     public static bool IsProject(string path) => Path.GetExtension(path).Equals(".csproj", StringComparison.OrdinalIgnoreCase);
 
@@ -54,9 +60,14 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
             return new WorkspaceModel(folder, null, [ProjectModel.Unevaluated(named)]) { ProjectFile = named };
         }
         string? path = named is not null && IsSolution(named) && File.Exists(named) ? named : SolutionModel.Find(folder);
+        SolutionFilter? filter = path is not null && SolutionFilter.Is(path) ? SolutionFilter.Read(path) : null;
+        if (path is not null && SolutionFilter.Is(path))
+        {
+            path = filter?.Solution;
+        }
         // A Docker Compose project (.dcproj) is read as XML for its run configurations, never loaded as a project.
         return path is not null && SolutionModel.Load(path) is { } solution
-            ? new WorkspaceModel(folder, solution, [.. solution.Projects.Where(p => !IsComposeProject(p.Path))])
+            ? new WorkspaceModel(folder, solution, [.. solution.Projects.Where(p => !IsComposeProject(p.Path))]) { Filter = filter }
             : null;
     }
 
@@ -82,10 +93,11 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
         : [.. loaded.Select(p => p.Path)];
 
     /// <summary>Whether a language server loaded from one has the other's projects: the same solution listing the same
-    /// projects, or the same projects without one. A server is told its solution or projects once, when it starts, so
-    /// other projects need a new server.</summary>
+    /// projects, through the same filter of them if any, or the same projects without one. A server is told its solution
+    /// or projects once, when it starts, so other projects need a new server.</summary>
     public bool LoadsAs(WorkspaceModel other) =>
-        Solution?.Path == other.Solution?.Path && Projects.Select(p => p.Path).SequenceEqual(other.Projects.Select(p => p.Path));
+        Solution?.Path == other.Solution?.Path && Projects.Select(p => p.Path).SequenceEqual(other.Projects.Select(p => p.Path))
+        && (Filter is null ? other.Filter is null : Filter.Keeps(other.Filter));
 
     /// <summary>The project files and programs under a folder, those nearer the top first, as a walk for what projects build
     /// finds them (<see cref="FolderWalk"/>): hidden folders are version control's, IDEs' and tools' own (a worktree's copy

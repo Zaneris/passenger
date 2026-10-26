@@ -16,7 +16,7 @@ public partial class MainWindow
     private readonly WelcomeView welcome = new();
 
     /// <summary>What Open's panel offers beside All Files, which it lists first since Open takes any file.</summary>
-    private static readonly FilePickerFileType SolutionsAndProjects = new("Solutions and Projects") { Patterns = ["*.sln", "*.slnx", "*.csproj"] };
+    private static readonly FilePickerFileType SolutionsAndProjects = new("Solutions and Projects") { Patterns = ["*.sln", "*.slnx", "*.slnf", "*.csproj"] };
 
     /// <summary>The Welcome screen, which the editor area shows until a folder opens.</summary>
     public WelcomeView Welcome => welcome;

@@ -72,8 +72,8 @@ public static class PassengerApp
         window.Closed += (_, _) => Remove(window);
     }
 
-    /// <summary>Opens a folder, solution (.sln, .slnx) or C# project (.csproj), a path checked already
-    /// (<see cref="MainWindow.Open"/> says why one cannot be), in the window it is opened from or one of its own; a
+    /// <summary>Opens a folder, solution (.sln, .slnx), solution filter (.slnf) or C# project (.csproj), a path checked
+    /// already (<see cref="MainWindow.Open"/> says why one cannot be), in the window it is opened from or one of its own; a
     /// window with nothing open takes it either way. One another window has open (its folder) is brought forward there
     /// instead, taking the solution named. The window it opened in; <paramref name="then"/> is told that window once
     /// the solution's session has begun there, never when it was not opened.</summary>

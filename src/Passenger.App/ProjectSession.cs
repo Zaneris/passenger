@@ -156,6 +156,7 @@ public sealed class ProjectSession : IAsyncDisposable
         session.DesignTimeBuilds.Open(folder, kept?.ProjectBuilds);
         session.openedAt = System.Diagnostics.Stopwatch.GetTimestamp();
         session.Workspace = session.Models.Apply(withSolution ?? new WorkspaceModel(folder, null, []));
+        session.TakeFilter(session.Workspace);
         session.TimeSolutionView();
         session.Configurations.Configure(session.Projects);
         // The single-file AppHosts are found among the files the index's walk lists, never by a walk of their own.
@@ -227,8 +228,51 @@ public sealed class ProjectSession : IAsyncDisposable
 
     public SolutionModel? Solution => Workspace?.Solution;
 
-    /// <summary>The projects unloaded in the Solution view, which the folder keeps.</summary>
+    /// <summary>The projects unloaded in the Solution view: the person's, which the folder keeps, and those the solution
+    /// filter opened leaves out.</summary>
     public ISet<string> Unloaded { get; } = new HashSet<string>(StringComparer.Ordinal);
+
+    /// <summary>The projects the solution filter opened leaves out and the person has not loaded, which are the filter's to
+    /// unload and never kept as the person's.</summary>
+    private readonly HashSet<string> filteredOut = new(StringComparer.Ordinal);
+
+    /// <summary>The solution filter <see cref="filteredOut"/> was taken from, null with none.</summary>
+    private SolutionFilter? filter;
+
+    /// <summary>The projects the person unloaded, which the folder keeps.</summary>
+    public IReadOnlyList<string> KeptUnloaded => [.. Unloaded.Where(p => !filteredOut.Contains(p))];
+
+    /// <summary>Unloads a project, or loads one unloaded by the person or left out by the filter, as the person chose; false
+    /// when it already was.</summary>
+    public bool ChooseUnloaded(string project, bool unloaded)
+    {
+        if (unloaded)
+        {
+            return Unloaded.Add(project);
+        }
+        filteredOut.Remove(project);
+        return Unloaded.Remove(project);
+    }
+
+    /// <summary>Takes the solution filter a read of the folder has: the projects it leaves out are unloaded in place of
+    /// those the one before left out, and those the person loaded since stay loaded while it keeps the same projects.</summary>
+    private void TakeFilter(WorkspaceModel read)
+    {
+        if (read.Filter is { } now ? now.Keeps(filter) : filter is null)
+        {
+            return;
+        }
+        Unloaded.ExceptWith(filteredOut);
+        filteredOut.Clear();
+        filter = read.Filter;
+        foreach (ProjectModel project in filter is { } kept ? read.Projects.Where(p => !kept.Projects.Contains(p.Path)) : [])
+        {
+            if (Unloaded.Add(project.Path))
+            {
+                filteredOut.Add(project.Path);
+            }
+        }
+    }
 
     /// <summary>The workspace's projects, but those unloaded.</summary>
     public IReadOnlyList<ProjectModel> Projects => Workspace is null ? [] : [.. Workspace.Projects.Where(p => !Unloaded.Contains(p.Path))];
@@ -636,15 +680,16 @@ public sealed class ProjectSession : IAsyncDisposable
     }
 
     /// <summary>The project of the file shown and every project it references, through their references, as MSBuild
-    /// evaluated them: what the language server opens before the rest. None when that is every project, or nothing is shown;
-    /// null, asked for <paramref name="evaluated"/> ones only, while one of them is not evaluated yet.</summary>
+    /// evaluated them, those unloaded left out: what the language server opens before the rest. None when that is every
+    /// project, or nothing is shown; null, asked for <paramref name="evaluated"/> ones only, while one is not evaluated yet.</summary>
     private IReadOnlyList<string>? ActiveProjects(bool evaluated = false)
     {
-        if (Workspace is not { } open || setup.Editors.Active?.Path is not { } shown || ProjectModel.Owning(open.Projects, shown) is not { } owner)
+        IReadOnlyList<ProjectModel> loaded = Projects;
+        if (setup.Editors.Active?.Path is not { } shown || ProjectModel.Owning(loaded, shown) is not { } owner)
         {
             return [];
         }
-        Dictionary<string, ProjectModel> byPath = open.Projects.DistinctBy(p => p.Path).ToDictionary(p => p.Path, StringComparer.Ordinal);
+        Dictionary<string, ProjectModel> byPath = loaded.DistinctBy(p => p.Path).ToDictionary(p => p.Path, StringComparer.Ordinal);
         List<string> found = [];
         HashSet<string> seen = new(StringComparer.Ordinal);
         Queue<string> next = new([owner.Path]);
@@ -882,6 +927,7 @@ public sealed class ProjectSession : IAsyncDisposable
     private void Reload(WorkspaceModel read)
     {
         bool loaded = Workspace is not null && Workspace.LoadsAs(read);
+        TakeFilter(read);
         Workspace = Models.Apply(read);
         Configurations.Configure(Projects);
         if (!loaded)

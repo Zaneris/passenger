@@ -38,7 +38,7 @@ public sealed class FolderWatcher : IDisposable
     /// <summary>How long after a save its file's events are taken for the save's own.</summary>
     private static readonly TimeSpan OwnWriteHeard = TimeSpan.FromSeconds(5);
 
-    private static readonly string[] ProjectExtensions = [".sln", ".slnx", ".csproj", ".fsproj", ".vbproj", ".props", ".targets"];
+    private static readonly string[] ProjectExtensions = [".sln", ".slnx", ".slnf", ".csproj", ".fsproj", ".vbproj", ".props", ".targets"];
 
     /// <summary>The file a restore writes in a project's obj (or, with UseArtifactsOutput, in artifacts/obj/Project).</summary>
     private const string Assets = "project.assets.json";
