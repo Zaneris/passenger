@@ -33,7 +33,8 @@ public sealed class InteractiveTestDialog : Window
         MinHeight = 420;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
-        Method = new ComboBox { ItemsSource = HttpFile.Methods, SelectedItem = HttpFile.Methods.Contains(request.Method) ? request.Method : "GET", Width = 110 };
+        // A method of the request's own beyond those offered is offered too, so it goes as written.
+        Method = new ComboBox { ItemsSource = HttpFile.Methods.Contains(request.Method) ? HttpFile.Methods : [.. HttpFile.Methods, request.Method], SelectedItem = request.Method, Width = 110 };
         Url = Mono(request.Url, multiline: false);
         Params = new KeyValueGrid("Key", "Value");
         Params.Set(SplitQuery(request.Url).Pairs.Select(p => (true, p.Key, p.Value)));

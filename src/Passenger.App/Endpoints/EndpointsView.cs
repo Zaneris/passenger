@@ -536,6 +536,7 @@ public sealed class EndpointsView : DockPanel
         "PUT" => TokenKeys.Warning,
         "PATCH" => TokenKeys.Syntax_Number,
         "DELETE" => TokenKeys.Error,
+        "QUERY" => TokenKeys.Syntax_Method,
         _ => TokenKeys.TextMuted,
     };
 }

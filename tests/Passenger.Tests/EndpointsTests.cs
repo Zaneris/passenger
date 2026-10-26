@@ -129,6 +129,56 @@ public sealed class EndpointsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>An .http file's QUERY request (HTTP's safe method with a body) is listed in its own colour and sent as a
+    /// QUERY with its body, by Test and by Interactive Test; a method Passenger offers by no name (PURGE) is sent as
+    /// written, never as a GET.</summary>
+    [AvaloniaFact]
+    public void A_query_request_and_a_method_of_its_own_are_sent_as_written_with_their_bodies()
+    {
+        string folder = Folder();
+        File.WriteAllText(Path.Combine(folder, "search.http"), "QUERY {{base}}/items\nContent-Type: application/json\n\n{ \"name\": \"Ada\" }\n\n###\nPURGE {{base}}/items\n");
+        MainWindow window = Open(folder);
+        window.ShowToolWindow(ToolWindowIds.Endpoints);
+        Ui.WaitFor(() => window.Endpoints.Requests.Count == 5, "the five requests");
+        EndpointRequest[] searches = [.. window.Endpoints.Requests.Where(r => Path.GetFileName(r.File) == "search.http")];
+        EndpointRequest query = searches[0];
+        Assert.True(query is { Method: "QUERY", Url: "{{base}}/items" }, $"search.http's QUERY request was read as {query.Method} {query.Url}");
+        EndpointRequest purge = searches[1];
+        Assert.True(purge is { Method: "PURGE", Url: "{{base}}/items" }, $"search.http's PURGE request was read as {purge.Method} {purge.Url}");
+        Ui.Settle();
+        TextBlock tag = window.Endpoints.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == "QUERY");
+        Assert.True(Application.Current!.TryFindResource(TokenKeys.Syntax_Method, window.ActualThemeVariant, out object? colour) && ReferenceEquals(tag.Foreground, colour),
+            "QUERY's tag is drawn in the muted colour of a method Passenger does not know");
+
+        Ui.Click(RowButton(window, query, "endpointTest"));
+        Ui.WaitFor(() => api.Received.Count == 1 && window.Endpoints.Response.Response is not null, "the QUERY's answer");
+        Assert.Equal(("QUERY /items", "{ \"name\": \"Ada\" }"), (api.Received[0].Line, api.Received[0].Body));
+        Ui.Click(RowButton(window, purge, "endpointTest"));
+        Ui.WaitFor(() => api.Received.Count == 2, "the PURGE");
+        Assert.Equal("PURGE /items", api.Received[1].Line);
+
+        Ui.Click(RowButton(window, query, "endpointInteractive"));
+        InteractiveTestDialog dialog = window.InteractiveTest!;
+        Ui.Settle();
+        Assert.True(dialog.Method.SelectedItem as string == "QUERY", $"Interactive Test opened the QUERY request as a {dialog.Method.SelectedItem}");
+        dialog.Body.Text = """{ "name": "Grace" }""";
+        Ui.Click(dialog.Send);
+        Ui.WaitFor(() => api.Received.Count == 3 && dialog.Response.Response is not null, "the dialog's QUERY");
+        Assert.Equal(("QUERY /items", """{ "name": "Grace" }"""), (api.Received[2].Line, api.Received[2].Body));
+        dialog.Close();
+        Ui.Settle();
+
+        Ui.Click(RowButton(window, purge, "endpointInteractive"));
+        dialog = window.InteractiveTest!;
+        Ui.Settle();
+        Assert.True(dialog.Method.SelectedItem as string == "PURGE", $"Interactive Test opened the PURGE request as a {dialog.Method.SelectedItem}");
+        Ui.Click(dialog.Send);
+        Ui.WaitFor(() => api.Received.Count == 4, "the dialog's PURGE");
+        Assert.Equal("PURGE /items", api.Received[3].Line);
+        dialog.Close();
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void The_urls_query_and_the_params_table_follow_each_other_and_a_param_turned_off_is_not_sent()
     {
@@ -592,7 +642,7 @@ public sealed class EndpointsTests : IDisposable
         return window;
     }
 
-    private static Button RowButton(MainWindow window, EndpointRequest request, string name)
+    internal static Button RowButton(MainWindow window, EndpointRequest request, string name)
     {
         Button? found = null;
         Ui.WaitFor(() => (found = window.Endpoints.GetVisualDescendants().OfType<Button>()
@@ -603,7 +653,7 @@ public sealed class EndpointsTests : IDisposable
     }
 
     /// <summary>A small JSON API on a loopback port: GET /items lists one item, POST and PUT /items answer 201 with the
-    /// body sent, GET /moved redirects to /items and GET /elsewhere to it under the name localhost, GET and POST
+    /// body sent, QUERY /items 200 with it, GET /moved redirects to /items and GET /elsewhere to it under the name localhost, GET and POST
     /// /other-port to <see cref="RedirectRoot"/>'s /items (a 302 and a 307), GET /slow answers only as the test ends,
     /// anything else 404. It keeps every request with the connection it came on, and counts connections made and still
     /// open, so a test sees whether a client was kept.</summary>
@@ -680,6 +730,7 @@ public sealed class EndpointsTests : IDisposable
             "GET /slow" => (200, "{}"),
             "GET /huge" => (200, string.Concat(Enumerable.Repeat(new string('a', 99) + "\n", (EndpointClient.MostRead / 100) + 10_000))),
             "POST /items" or "PUT /items" => (201, request.Body),
+            "QUERY /items" => (200, request.Body),
             _ => (404, """{"error":"not found"}"""),
         };
     }

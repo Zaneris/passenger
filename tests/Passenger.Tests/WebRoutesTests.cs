@@ -199,6 +199,73 @@ public sealed class WebRoutesTests
         }
     }
 
+    /// <summary>An app mapping an HTTP QUERY endpoint (MapMethods) has it listed as QUERY, its Send writing a QUERY with
+    /// its body's sample into the project's .http file and sending it, and Interactive Test opening that request as a
+    /// QUERY: the running app answers each with the method and the body it was sent.</summary>
+    [AvaloniaFact]
+    public void A_query_endpoint_is_sent_a_query_with_its_body_by_its_send_and_by_interactive_test()
+    {
+        using HeldPort port = new();
+        string folder = TestFolders.Create("query-");
+        TestFolders.Write(folder, "Finder.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>", "<Nullable>enable</Nullable>"));
+        TestFolders.Write(folder, "Properties/launchSettings.json",
+            $"{{\n  \"profiles\": {{\n    \"http\": {{ \"commandName\": \"Project\", \"applicationUrl\": \"http://127.0.0.1:{port.Port}\" }}\n  }}\n}}\n");
+        TestFolders.Write(folder, "Program.cs", """
+            WebApplication app = WebApplication.CreateBuilder(args).Build();
+            app.MapMethods("/search", ["QUERY"], (Search search, HttpRequest request) => $"{request.Method} for {search.Text}.");
+            app.Run();
+
+            public record Search(string Text);
+            """);
+        Restore.Run(folder);
+        MainWindow window = Ui.OpenFolder(folder);
+        try
+        {
+            window.ShowToolWindow(ToolWindowIds.Endpoints);
+            Ui.WaitFor(() => Titles(window).Contains("QUERY /search"), () => $"the QUERY route listed; listed: {string.Join(", ", Titles(window))}", TimeSpan.FromMinutes(3));
+            Assert.Equal("Search", Route(window, "QUERY /search").BodyType);
+            window.OpenFile(Path.Combine(folder, "Program.cs"));
+            Ui.Settle();
+            Passenger.App.Workspace.OpenDocument program = window.EditorArea.Active!;
+            int line = Line(program, "app.MapMethods(");
+            Ui.WaitFor(() => program.RouteMarks.Any(m => m.Line == line), "the send icon beside the QUERY's route", TimeSpan.FromMinutes(1));
+
+            port.LetGo(Path.Combine(folder, "gate"));
+            Assert.True(window.SelectConfiguration("Finder: http"), $"No configuration Finder: http among {string.Join(", ", window.Configurations.Select(c => c.Name))}");
+            Ui.Launched(window, window.RunAsync(), "the app to start", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => window.BottomPanel.Run.Document.Snapshot.ToString().Contains("Now listening on:", StringComparison.Ordinal), "the app to listen",
+                TimeSpan.FromMinutes(2));
+
+            MenuItem send = Assert.Single(GutterMenu(window, line));
+            Assert.Equal("Send QUERY /search", send.Header);
+            Ui.Choose(window.RouteMarkMenu!, "Send QUERY /search");
+            Ui.WaitFor(() => window.Endpoints.Response.Response is not null, "the running app's answer", TimeSpan.FromMinutes(1));
+            Assert.True(window.Endpoints.Response.Shown.Contains("QUERY for .", StringComparison.Ordinal),
+                $"The app answered the route's Send with {window.Endpoints.Response.Summary}: {window.Endpoints.Response.Shown}");
+            string http = Path.Combine(folder, "Finder.http");
+            Assert.Contains("QUERY {{Finder_HostAddress}}/search\nAccept: application/json\nContent-Type: application/json\n\n{\n  \"text\": \"\"\n}\n",
+                File.ReadAllText(http), StringComparison.Ordinal);
+
+            Ui.WaitFor(() => window.Endpoints.Requests.Any(r => r.Method == "QUERY"), "the QUERY written into Finder.http, listed");
+            Ui.Click(EndpointsTests.RowButton(window, window.Endpoints.Requests.First(r => r.Method == "QUERY"), "endpointInteractive"));
+            InteractiveTestDialog dialog = window.InteractiveTest!;
+            Ui.Settle();
+            Assert.True(dialog.Method.SelectedItem as string == "QUERY", $"Interactive Test opened the QUERY request as a {dialog.Method.SelectedItem}");
+            dialog.Body.Text = """{ "text": "tea" }""";
+            Ui.Click(dialog.Send);
+            Ui.WaitFor(() => dialog.Response.Response is not null, "the app's answer to the dialog", TimeSpan.FromMinutes(1));
+            Assert.True(dialog.Response.Shown.Contains("QUERY for tea.", StringComparison.Ordinal),
+                $"The app answered Interactive Test's QUERY with {dialog.Response.Summary}: {dialog.Response.Shown}");
+            dialog.Close();
+        }
+        finally
+        {
+            window.Perform(AppActions.Stop);
+            Ui.WaitFor(() => !window.Runner.IsRunning, "the app to stop");
+            window.Close();
+        }
+    }
+
     /// <summary>gRPC's packages at the versions tests/AspireGraphs' AppHost restores into the package cache (Aspire's
     /// dashboard client brings them), so the service restores from there, never from nuget.org.</summary>
     private static readonly (string Id, string Version)[] GrpcPackages = [("Grpc.AspNetCore", "2.83.0"), ("Google.Protobuf", "3.36.1")];

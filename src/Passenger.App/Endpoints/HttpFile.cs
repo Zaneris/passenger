@@ -26,7 +26,14 @@ public sealed record HttpFile(string Path, IReadOnlyDictionary<string, string> V
         System.IO.Path.GetExtension(path) is { } extension
         && (extension.Equals(".http", StringComparison.OrdinalIgnoreCase) || extension.Equals(".rest", StringComparison.OrdinalIgnoreCase));
 
-    public static readonly IReadOnlyList<string> Methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "TRACE", "CONNECT"];
+    /// <summary>The methods offered by name, QUERY (RFC 9110's safe method with a body) among them.</summary>
+    public static readonly IReadOnlyList<string> Methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "QUERY", "HEAD", "OPTIONS", "TRACE", "CONNECT"];
+
+    /// <summary>A request line's first word read as its method: one of <see cref="Methods"/> in any case, as that one is
+    /// named, or another written as a method is (capitals and hyphens: PROPFIND) as written; null for no method.</summary>
+    public static string? MethodOf(string word) =>
+        Methods.FirstOrDefault(m => m.Equals(word, StringComparison.OrdinalIgnoreCase))
+        ?? (word is [>= 'A' and <= 'Z', ..] && word.All(c => char.IsAsciiLetterUpper(c) || c == '-') ? word : null);
 
     public static HttpFile Read(string path) => Parse(path, File.ReadAllText(path));
 
@@ -145,9 +152,9 @@ public sealed record HttpFile(string Path, IReadOnlyDictionary<string, string> V
         string[] parts = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
         int first = 0;
         string method = "GET";
-        if (parts.Length > 1 && Methods.Contains(parts[0].ToUpperInvariant()))
+        if (parts.Length > 1 && MethodOf(parts[0]) is { } written)
         {
-            method = parts[0].ToUpperInvariant();
+            method = written;
             first = 1;
         }
         int last = parts.Length;
