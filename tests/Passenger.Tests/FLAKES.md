@@ -10,6 +10,13 @@ that fixed it, in one of the forms below. A failure not yet understood goes in o
 
 ## 2026-10-26
 
+- `RunConfigurationsTests`' `Save_as_launch_profile_adds_a_configuration_made_here_to_launchSettings_json_which_dotnet_run_runs_and_Undo_takes_it_back`,
+  the Mac's whole run at 39a3600b under load (#532): "The Explorer does not show Hello" at the row click after Undo. The
+  folder watcher took `launchSettings.json` for a project file, so the Undo's write had the solution read again and every
+  Explorer row made anew; that landed after Undo's settle, inside `Ui.Row`'s, so the row just found was gone. The rebuild
+  also took the Explorer's keys. **A race in the IDE**, and more work than the change needed: a launch profile changed
+  makes only the run configurations again (`FolderChanges.LaunchProfiles`), and a rebuild of the Explorer gives the keys
+  back to the chosen row (73991f77).
 - `ProblemsTests`' `Keys_typed_in_a_burst_have_solution_wide_analysis_ask_the_server_again_once_typing_pauses`, the Mac
   beside DebugSessionsTests (#532): "asked the server again while 10 keys were typed in a burst … HotReloadDiagnostics 1
   then 0". Roslyn's `workspace/diagnostic/refresh`, sent again about 2 s after solution-wide analysis is turned on, came
