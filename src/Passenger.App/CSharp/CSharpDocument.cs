@@ -16,7 +16,7 @@ namespace Passenger.App.CSharp;
 public sealed partial class CSharpDocument : IServerDocument, IDisposable
 {
     /// <summary>How long typing must pause before diagnostics are asked for again.</summary>
-    private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(600);
+    public static readonly TimeSpan Pause = TimeSpan.FromMilliseconds(600);
 
     /// <summary>Parameter names that say nothing an argument does not (Console.WriteLine's value, a list's item), whose
     /// hints are left off.</summary>
@@ -194,7 +194,7 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
         {
             document.Markers = diagnostics.Markers;
         }
-        Pull(Settle);
+        Pull(Pause);
         // An AppHost's edit may change what its services are told is missing; any other file's changes only its own.
         if (AspireRole == Aspire.AspireRole.AppHost)
         {
@@ -204,9 +204,12 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
 
     private void OnSaved(object? sender, EventArgs e) => Lsp?.Saved();
 
+    /// <summary>Pulls after <paramref name="delay"/>. An ask for now (the server's refresh, a file the pull reads changed)
+    /// while a pull waits out typing's pause is left to that pull, which then asks for the text as it stands: typing
+    /// that goes on is never answered by a pull between its keys.</summary>
     private void Pull(TimeSpan delay)
     {
-        if (Lsp is not { } lsp || !service.IsReady && delay > TimeSpan.Zero)
+        if (Lsp is not { } lsp || !service.IsReady && delay > TimeSpan.Zero || delay == TimeSpan.Zero && diagnostics.Pausing)
         {
             return;
         }

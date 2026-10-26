@@ -84,6 +84,13 @@ internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
 {
     private CancellationTokenSource? pulling;
 
+    /// <summary>The ask under way while it waits out its delay; null once it asks, or when it had none.</summary>
+    private CancellationTokenSource? pausing;
+
+    /// <summary>Whether the ask under way still waits out its delay (typing's pause), after which it asks for the text as it
+    /// stands then.</summary>
+    public bool Pausing => pausing is { IsCancellationRequested: false } && pausing == pulling;
+
     /// <summary>The diagnostics as reported, and each one's range in the text as it stands, which the text carries.</summary>
     private Diagnostic[] found = [];
     private AnchoredRange[] ranges = [];
@@ -203,8 +210,9 @@ internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
         pulling?.Cancel();
         CancellationTokenSource cancel = new();
         pulling = cancel;
+        pausing = delay > TimeSpan.Zero ? cancel : null;
         BackgroundWork.Begin();
-        IdeErrors.Observe(PullAsync(delay, ask, cancel.Token, holdsChecks ? document.Checking() : null, held));
+        IdeErrors.Observe(PullAsync(delay, ask, cancel, holdsChecks ? document.Checking() : null, held));
     }
 
     /// <summary>The server's diagnostics of the file from the sources <paramref name="part"/> names, when they answer the
@@ -222,15 +230,19 @@ internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
         Release();
     }
 
-    private static async Task PullAsync(TimeSpan delay, Func<CancellationToken, Task> ask, CancellationToken cancel, IDisposable? checking, IDisposable? held)
+    private async Task PullAsync(TimeSpan delay, Func<CancellationToken, Task> ask, CancellationTokenSource cancel, IDisposable? checking, IDisposable? held)
     {
         try
         {
             if (delay > TimeSpan.Zero)
             {
-                await Task.Delay(delay, cancel);
+                await Task.Delay(delay, cancel.Token);
+                if (pausing == cancel)
+                {
+                    pausing = null;
+                }
             }
-            await ask(cancel);
+            await ask(cancel.Token);
         }
         catch (OperationCanceledException)
         {

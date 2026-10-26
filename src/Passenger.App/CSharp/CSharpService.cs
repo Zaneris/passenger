@@ -458,14 +458,18 @@ public sealed class CSharpService : IAsyncDisposable
         bool first = true;
         bool listed = false;
         TimeSpan pause = RefusedPull;
+        // Held from a wait for the open files' pulls until the pull asked after them: the wait ends by way of the thread pool.
+        IDisposable? waiting = null;
         BackgroundWork.Begin();
         unanswered++;
         try
         {
             while (!cancel.IsCancellationRequested)
             {
-                if (!first)
+                // Looked at again as it ends: a key may have begun another pull meanwhile.
+                while (!first && filesPulling > 0)
                 {
+                    waiting ??= BackgroundWork.Scope();
                     await FilesPulled().WaitAsync(cancel);
                 }
                 List<PreviousResultId> previous = [.. solutionReports
@@ -479,6 +483,8 @@ public sealed class CSharpService : IAsyncDisposable
                 askedPulls[round] = !first;
                 pullsAsked[source ?? string.Empty] = PullsAsked(source) + 1;
                 Task<IReadOnlyList<WorkspaceDocumentDiagnosticReport>> pull = running.Server.WorkspaceDiagnosticsAsync(source, previous, reports => streamed.Writer.TryWrite(reports), round.Token);
+                waiting?.Dispose();
+                waiting = null;
                 IReadOnlyList<WorkspaceDocumentDiagnosticReport> answered = [];
                 LanguageServerFailed? refused = null;
                 bool letGo = false;
@@ -556,6 +562,7 @@ public sealed class CSharpService : IAsyncDisposable
         }
         finally
         {
+            waiting?.Dispose();
             if (first)
             {
                 BackgroundWork.End();

@@ -116,7 +116,9 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
 
     /// <summary>Keys typed in a burst have solution-wide analysis ask the server again once typing pauses, not for every key:
     /// its pulls held open for a change are let go as the first key comes and asked again once the open file's own pull has
-    /// answered, and the Solution tab then lists what the keys broke in a file nobody has open.</summary>
+    /// answered, and the Solution tab then lists what the keys broke in a file nobody has open. Only what it asked between a
+    /// key and the next one that came within the open file's pull's pause counts: a loaded machine's keys may come further
+    /// apart, and typing has then paused between them.</summary>
     [AvaloniaFact]
     public void Keys_typed_in_a_burst_have_solution_wide_analysis_ask_the_server_again_once_typing_pauses()
     {
@@ -129,25 +131,40 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         editor.Focus();
         bool CallerBroken() => problems.SolutionProblems?.Any(p => p.Path?.EndsWith("Caller.cs", StringComparison.Ordinal) == true) == true;
         // A key and its undoing first, which the server answers as it does a session's first change.
-        Ui.Press(window, "SPACE");
+        string written = editor.Document.Snapshot.ToString();
+        Ui.Type(window, "SPACE", " ");
         Ui.Press(window, "BACK_SPACE");
-        Ui.Settle();
+        Assert.True(editor.Document.Snapshot.ToString() == written, "A space typed after Twice and taken back left the file changed");
         Passenger.App.CSharp.CSharpService service = window.CSharpService!;
         IReadOnlyList<string?> sources = service.Session!.Server.WorkspaceDiagnosticSources;
-        int[] before = [.. sources.Select(service.PullsAsked)];
+        int[] Asked() => [.. sources.Select(service.PullsAsked)];
+        int[] before = Asked();
 
         const int Keys = 10;
-        for (int i = 0; i < Keys; i++)
+        int[] during = new int[sources.Count];
+        int quick = 0;
+        int typed = 0;
+        while (quick < Keys && typed < Keys * 4)
         {
+            int[] asked = Asked();
+            long pressed = System.Diagnostics.Stopwatch.GetTimestamp();
             window.KeyTextInput("x");
+            typed++;
             Ui.Hold(TimeSpan.FromMilliseconds(150), "the time between a burst's keys, well inside the open file's pull's pause");
+            if (System.Diagnostics.Stopwatch.GetElapsedTime(pressed) < Passenger.App.CSharp.CSharpDocument.Pause)
+            {
+                quick++;
+                during = [.. Asked().Select((now, i) => during[i] + now - asked[i])];
+            }
         }
-        int[] during = [.. sources.Select((source, i) => service.PullsAsked(source) - before[i])];
+        Assert.True(quick == Keys,
+            $"Of {typed} keys typed 150 ms apart only {quick} came within the open file's pull's pause ({Passenger.App.CSharp.CSharpDocument.Pause.TotalMilliseconds} ms) of the next");
         Ui.WaitFor(CallerBroken, "the error the keys made in the caller nobody has open", TimeSpan.FromMinutes(1));
         Ui.Settle();
-        string Asked() => string.Join(", ", sources.Select((source, i) => $"{source ?? "every source"} {during[i]} then {service.PullsAsked(source) - before[i] - during[i]}"));
+        int[] after = Asked();
+        string Said() => string.Join(", ", sources.Select((source, i) => $"{source ?? "every source"} {during[i]} then {after[i] - before[i] - during[i]}"));
         Assert.True(during.All(n => n == 0),
-            $"Solution-wide analysis asked the server again while {Keys} keys were typed in a burst, where it asks only once typing pauses (during the keys, then after: {Asked()})");
+            $"Solution-wide analysis asked the server again while {Keys} keys were typed in a burst, where it asks only once typing pauses (during the keys, then after: {Said()})");
         window.Close();
     }
 
