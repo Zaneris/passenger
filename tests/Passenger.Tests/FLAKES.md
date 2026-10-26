@@ -419,4 +419,4 @@ that fixed it, in one of the forms below. A failure not yet understood goes in o
   a file shown while its folder was still being read (its 400 ms pause over first, as under load) was opened in the
   server with no state change after it, and the path named no member until the next edit. Opening Program.cs alone and
   then its folder fails so every time. **A race in the IDE**: the service tells when it opens a file in the server
-  (`Connected`), and both ask then (ffe7fb51).
+  (`Connected`), and both ask then (5af1fc50).
