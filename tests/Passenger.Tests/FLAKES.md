@@ -10,6 +10,20 @@ that fixed it, in one of the forms below. A failure not yet understood goes in o
 
 ## 2026-10-25
 
+- `ProblemsTests`' `A_typing_pause_lists_again_only_the_open_files_problems_however_many_the_solution_has`, the Mac under 15
+  CPU burners (#532): "9 bytes a problem" (208 KB against 170 KB, 101 and 10 blinks in 8 pauses). Nothing the window did
+  grew with the problems: at equal pause lengths both cases allocated the same. The 4,000-warning solution's pauses were 2
+  to 12 s against 1 to 1.5 s, and a pause's time costs the window more than the blinks the test took out at their cost at
+  rest, which piled up over a long pause. Two causes. **The test** now also takes out each millisecond of the wait at what
+  the window costs at rest, measured in each case (`Ui.RestBytesPerMs`), and still fails at 10 bytes a problem with 8
+  injected (644fa31f). **A wait in the IDE**: the open file's pull asked Roslyn's sources in turn and showed none until all
+  had answered, and with solution-wide analysis its non-local source analyses the whole project (1.1 to 2.6 s a key with
+  4,000 warnings against 75 ms with 22, traced); the file's own are now shown as they answer, the project-wide after.
+- `ProblemsTests`' `Keys_typed_above_thousands_of_problems_list_them_again_once_typing_pauses`, the Mac beside two other
+  test processes (#532): "listed again 6 times for 8 keys". The File tab lists a file's problems again once its markers
+  have not moved for 250 ms (`ProblemsPause`), a delay on the clock, so keys typed that far apart, as a loaded machine's
+  are, end a pause between them; not seen again under 15 or 40 burners (keys 10 to 180 ms apart). Neither race: **the
+  test** counts only keys that came within the pause of the one before, typing on until eight did (3b85a5ff).
 - `McpAvaloniaAppTests`' `An_agent_debugging_an_avalonia_app_…`, the Mac with several agents' runs at once: "paused on a
   binding error the debugger could not describe" (#532). An agent's answer at a stop waited 5 s for the Debug window to
   read it, and a binding error's stop is read by three of the adapter's answers (its frame, `$bindingError`, its words),

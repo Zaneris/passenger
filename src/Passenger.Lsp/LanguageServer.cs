@@ -35,6 +35,7 @@ public sealed class LanguageServer : IAsyncDisposable
     private readonly ServerLog log;
     private readonly Dictionary<long, (string Method, long Since)> waiting = [];
     private readonly Dictionary<string, (int Left, TaskCompletionSource Spent)> refusing = [];
+    private readonly List<(string Method, Func<object, bool> Which, Task Until)> holding = [];
     private readonly Timer watch;
     private long requests;
     private long partialResults;
@@ -500,6 +501,31 @@ public sealed class LanguageServer : IAsyncDisposable
         }
     }
 
+    /// <summary>Holds the next request of a method whose parameters <paramref name="which"/> takes unsent until
+    /// <paramref name="until"/> ends, as a server busy with it holds its answer, for a test of what goes on meanwhile.</summary>
+    public void HoldNext(string method, Func<object, bool> which, Task until)
+    {
+        lock (holding)
+        {
+            holding.Add((method, which, until));
+        }
+    }
+
+    private Task? Held(string method, object parameters)
+    {
+        lock (holding)
+        {
+            int at = holding.FindIndex(h => h.Method == method && h.Which(parameters));
+            if (at < 0)
+            {
+                return null;
+            }
+            Task until = holding[at].Until;
+            holding.RemoveAt(at);
+            return until;
+        }
+    }
+
     private bool Refused(string method)
     {
         lock (refusing)
@@ -525,6 +551,10 @@ public sealed class LanguageServer : IAsyncDisposable
             if (Refused(method))
             {
                 throw new LanguageServerFailed("the language server refused it: as a test asked", method);
+            }
+            if (Held(method, parameters) is { } until)
+            {
+                await until.WaitAsync(cancel).ConfigureAwait(false);
             }
             Task<T?> answer = rpc.InvokeWithParameterObjectAsync<T?>(method, parameters, cancel);
             try

@@ -88,6 +88,10 @@ internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
     private Diagnostic[] found = [];
     private AnchoredRange[] ranges = [];
 
+    /// <summary>How many of the diagnostics, at the end of <see cref="found"/>, a project-wide pull reported
+    /// (<see cref="DiagnosticPull.ProjectWide"/>), which answers after the file's own.</summary>
+    private int late;
+
     /// <summary>The markers last given, each on the range that carries it.</summary>
     private (AnchoredRange Range, Marker Marker)[] shown = [];
 
@@ -97,6 +101,9 @@ internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
 
     /// <summary>The diagnostics last reported, moved with the text since, so their lines are the text's as it is now.</summary>
     public IReadOnlyList<Diagnostic> Placed => placed ??= DiagnosticMarks.Placed(document.Text.Snapshot, found, [.. ranges.Select(r => r.Range)]);
+
+    /// <summary>What the last project-wide pull reported, placed so: carried with the file's own until the next one answers.</summary>
+    public IReadOnlyList<Diagnostic> Late => late == 0 ? [] : [.. Placed.Skip(found.Length - late)];
 
     /// <summary>The diagnostics placed so, each with its range in the text as it stands.</summary>
     public IEnumerable<(Diagnostic Diagnostic, TextRange Range)> PlacedRanges => Placed.Zip(ranges.Select(r => r.Range));
@@ -121,12 +128,14 @@ internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
         shown = [.. markers.Select(m => (Anchored(m.Range), m))];
     }
 
-    /// <summary>Takes diagnostics reported for the text as it stands, and gives the markers they draw as.</summary>
-    public IReadOnlyList<Marker> Take(IReadOnlyList<Diagnostic> diagnostics, Func<Diagnostic, TextRange, Marker?> marker)
+    /// <summary>Takes diagnostics reported for the text as it stands, the last <paramref name="late"/> of them a project-wide
+    /// pull's (<see cref="Late"/>), and gives the markers they draw as.</summary>
+    public IReadOnlyList<Marker> Take(IReadOnlyList<Diagnostic> diagnostics, Func<Diagnostic, TextRange, Marker?> marker, int late = 0)
     {
         ServerLines lines = ServerLines.Of(document.Text.Snapshot);
         Release();
         found = [.. diagnostics];
+        this.late = late;
         ranges = [.. found.Select(d => Anchored(DiagnosticMarks.Offsets(lines, d.Range)))];
         placed = diagnostics;
         return Show(marker);
@@ -141,6 +150,7 @@ internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
             return null;
         }
         int[] kept = [.. Enumerable.Range(0, found.Length).Where(i => !which(found[i]))];
+        late = kept.Count(i => i >= found.Length - late);
         foreach (AnchoredRange dropped in ranges.Except(kept.Select(i => ranges[i])).Concat(shown.Select(s => s.Range).Except(ranges)))
         {
             dropped.Remove();
@@ -178,6 +188,7 @@ internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
         }
         ranges = [];
         shown = [];
+        late = 0;
     }
 
     /// <summary>Asks the server again after <paramref name="delay"/>, ending the ask under way: <paramref name="ask"/> pulls
@@ -192,10 +203,11 @@ internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
         IdeErrors.Observe(PullAsync(delay, ask, cancel.Token, holdsChecks ? document.Checking() : null));
     }
 
-    /// <summary>The server's diagnostics of the file, when they answer the text as it stands and no later ask has begun.</summary>
-    public async Task<IReadOnlyList<Diagnostic>?> PulledAsync(LspDocument lsp, CancellationToken cancel)
+    /// <summary>The server's diagnostics of the file from the sources <paramref name="part"/> names, when they answer the
+    /// text as it stands and no later ask has begun.</summary>
+    public async Task<IReadOnlyList<Diagnostic>?> PulledAsync(LspDocument lsp, CancellationToken cancel, DiagnosticPull part = DiagnosticPull.All)
     {
-        (IReadOnlyList<Diagnostic> diagnostics, int version) = await lsp.DiagnosticsAsync(cancel);
+        (IReadOnlyList<Diagnostic> diagnostics, int version) = await lsp.DiagnosticsAsync(part, cancel);
         return !cancel.IsCancellationRequested && version == document.Text.Version ? diagnostics : null;
     }
 

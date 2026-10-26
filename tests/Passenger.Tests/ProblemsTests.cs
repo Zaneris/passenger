@@ -325,6 +325,37 @@ public sealed class ProblemsTests : IClassFixture<RestoredFolders>, IDisposable
         return (window, typed, listed);
     }
 
+    /// <summary>A key's problems never wait for what the whole project's analysis reports in the open file, which with
+    /// solution-wide analysis on and 4,000 warnings in files nobody has open answers a change seconds after the file's own:
+    /// with that held unanswered, the error a key makes is listed in the File and Solution tabs and marked in the editor.</summary>
+    [AvaloniaFact]
+    public void A_key_in_a_large_solution_lists_the_open_files_problems_without_waiting_for_the_whole_projects_analysis()
+    {
+        (MainWindow window, string typed, _) = Warned(warnings: 200);
+        ProblemsModel problems = window.BottomPanel.Problems;
+        Ui.Settle();
+        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
+        TaskCompletionSource answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        server.HoldNext(Passenger.Lsp.LspMethods.DocumentDiagnostic,
+            p => p is Passenger.Lsp.DocumentDiagnosticParams { Identifier: Passenger.Lsp.LspDocument.ProjectWideSource }, answered.Task);
+        try
+        {
+            window.KeyTextInput(" + missing");
+            Ui.PumpUntil(() => problems.FileProblems.Any(p => p.Severity == ProblemSeverity.Error)
+                && problems.SolutionProblems?.Any(p => p.Path == typed && p.Severity == ProblemSeverity.Error) == true
+                && window.EditorArea.Active!.Markers.Any(m => m.Kind == Passenger.Editor.MarkerKind.Error),
+                "the error the key made listed and marked, with the whole project's analysis of the open file held unanswered", TimeSpan.FromMinutes(1));
+        }
+        finally
+        {
+            answered.SetResult();
+        }
+        Ui.Settle();
+        Problem error = Assert.Single(problems.FileProblems, p => p.Severity == ProblemSeverity.Error);
+        Assert.Equal(new TextPosition(4, 24), error.Position);
+        window.Close();
+    }
+
     /// <summary>Roslyn's compiler ends a line at each break in Separated.cs's comment, as its language server does, where the
     /// editor's lines end only at '\n': the problem below them is listed and gone to at the editor's line 4, not the
     /// compiler's 8, from Problems' Build and Solution tabs, the Build window's link to the message, and an agent's look.</summary>

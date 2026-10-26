@@ -655,21 +655,37 @@ public sealed class LspDocument : IDisposable
         return result.ValueKind == JsonValueKind.Object && result.TryGetProperty("tooltip", out JsonElement tooltip) ? Shapes.Text(tooltip) : string.Empty;
     }
 
+    /// <summary>Roslyn's source of what analyzers report in a document from analysing its whole project, which it has with
+    /// solution-wide analysis on: in a large project it answers a change long after the document's own sources.</summary>
+    [IdentifierHome]
+    public const string ProjectWideSource = "NonLocal";
+
+    /// <summary>Whether the server has a source of the document's diagnostics that answers from its whole project's
+    /// analysis (<see cref="DiagnosticPull.ProjectWide"/>).</summary>
+    public bool PullsProjectWide => !IsRazor && session is RoslynSession && Server.DiagnosticSources.Contains(ProjectWideSource);
+
     /// <summary>Every diagnostic the server has for the document, pulled from each source it
     /// registered (a Razor file's from Razor's one, with its HTML's from the HTML server), and the version they are for;
     /// those it last pushed, from a server that pushes them.</summary>
-    public async Task<(IReadOnlyList<Diagnostic> Diagnostics, int Version)> DiagnosticsAsync(CancellationToken cancel = default)
+    public Task<(IReadOnlyList<Diagnostic> Diagnostics, int Version)> DiagnosticsAsync(CancellationToken cancel = default) =>
+        DiagnosticsAsync(DiagnosticPull.All, cancel);
+
+    /// <summary>The document's diagnostics from the sources <paramref name="part"/> names, as
+    /// <see cref="DiagnosticsAsync(CancellationToken)"/> pulls every one; the project-wide part of a server that pushes them,
+    /// or has no such source, is empty.</summary>
+    public async Task<(IReadOnlyList<Diagnostic> Diagnostics, int Version)> DiagnosticsAsync(DiagnosticPull part, CancellationToken cancel = default)
     {
+        int version = Text.Version;
         if (!session.PullsDiagnostics)
         {
-            return Pushed;
+            return part == DiagnosticPull.ProjectWide ? ([], version) : Pushed;
         }
-        int version = Text.Version;
         TextSnapshot text = Text.Snapshot;
         TextDocumentIdentifier identifier = Identifier;
         long asked = System.Diagnostics.Stopwatch.GetTimestamp();
         List<Diagnostic> all = [];
-        IReadOnlyList<string?> sources = IsRazor || session is not RoslynSession ? [null] : Server.DiagnosticSources;
+        IReadOnlyList<string?> sources = IsRazor || session is not RoslynSession ? (part == DiagnosticPull.ProjectWide ? [] : [null])
+            : [.. Server.DiagnosticSources.Where(s => part == DiagnosticPull.All || (s == ProjectWideSource) == (part == DiagnosticPull.ProjectWide))];
         // Gathered on the thread pool, so a file's thousands of warnings reach the caller as one list.
         foreach (string? source in sources)
         {
@@ -677,7 +693,7 @@ public sealed class LspDocument : IDisposable
                 new DocumentDiagnosticParams(identifier, source), cancel));
             all.AddRange(report?.Items ?? []);
         }
-        if (IsRazor && Server.HtmlServer is not null)
+        if (IsRazor && Server.HtmlServer is not null && part != DiagnosticPull.ProjectWide)
         {
             // Razor makes the file's HTML as a question needs it: a fold's, the cheapest, has the HTML server's copy current.
             await Read(Server.RequestAsync<JsonElement>(LspMethods.FoldingRange, new FoldingRangeParams(new TextDocumentIdentifier(Uri)), cancel));

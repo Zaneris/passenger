@@ -214,11 +214,11 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
     }
 
     /// <summary>The file's diagnostics, with Aspire's for a service's file (<see cref="AspireDiagnosticsAsync"/>) and an
-    /// AppHost's (<see cref="AspireUnsetParametersAsync"/>), then its
-    /// inlay hints, each for the text as it stands. A later pull (an AppHost's edit, the server's refresh) cancels this one.</summary>
+    /// AppHost's (<see cref="AspireUnsetParametersAsync"/>), then its inlay hints, then what the project's whole analysis
+    /// reports in it, each for the text as it stands. A later pull (an AppHost's edit, the server's refresh) cancels this one.</summary>
     private async Task PullAsync(LspDocument lsp, CancellationToken cancel)
     {
-        if (!await ShowPulledAsync(lsp, cancel))
+        if (await ShowPulledAsync(lsp, cancel) is not { } own)
         {
             return;
         }
@@ -232,19 +232,22 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
         ParsedText? syntax = hints.Any(h => h.Kind == Passenger.Lsp.InlayHintKind.Type) ? document.Syntax?.Current : null;
         bool razor = lsp.IsRazor;
         HintList shown = await BackgroundWork.Run(() => Shown(text, syntax, razor, hints), cancel);
-        if (!cancel.IsCancellationRequested && hinted == document.Text.Version)
+        if (cancel.IsCancellationRequested || hinted != document.Text.Version)
         {
-            document.InlayHints = shown;
+            return;
         }
+        document.InlayHints = shown;
+        await ShowProjectWideAsync(lsp, own, cancel);
     }
 
-    /// <summary>The server's diagnostics, Aspire's and the open compose files' shown for the text as it stands; false when they
-    /// no longer answer it.</summary>
-    private async Task<bool> ShowPulledAsync(LspDocument lsp, CancellationToken cancel)
+    /// <summary>The server's diagnostics from the file's own sources, Aspire's and the open compose files' shown for the text
+    /// as it stands, with the project-wide ones carried until theirs answers; what was shown but those, or null when they no
+    /// longer answer it.</summary>
+    private async Task<IReadOnlyList<Diagnostic>?> ShowPulledAsync(LspDocument lsp, CancellationToken cancel)
     {
-        if (await diagnostics.PulledAsync(lsp, cancel) is not { } found)
+        if (await diagnostics.PulledAsync(lsp, cancel, DiagnosticPull.Own) is not { } found)
         {
-            return false;
+            return null;
         }
         int version = document.Text.Version;
         // Read as the findings are asked (AspireFindingsAsync reads it before it awaits): a later change pulls again.
@@ -255,11 +258,27 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
         IReadOnlyList<Diagnostic> localization = await LocalizationFindingsAsync(cancel);
         if (cancel.IsCancellationRequested || version != document.Text.Version || Lsp != lsp)
         {
-            return false;
+            return null;
         }
-        document.Markers = diagnostics.Take([.. found, .. aspire, .. compose, .. configuration, .. localization], DiagnosticMarks.Marker);
+        IReadOnlyList<Diagnostic> own = [.. found, .. aspire, .. compose, .. configuration, .. localization];
+        IReadOnlyList<Diagnostic> carried = lsp.PullsProjectWide ? diagnostics.Late : [];
+        document.Markers = diagnostics.Take([.. own, .. carried], DiagnosticMarks.Marker, carried.Count);
         service.FileProblemsChanged(document);
-        return true;
+        return own;
+    }
+
+    /// <summary>What the project's whole analysis reports in the file, shown with its <paramref name="own"/> diagnostics once
+    /// it answers the text they were shown for: in a large project long after them, so they never wait for it.</summary>
+    private async Task ShowProjectWideAsync(LspDocument lsp, IReadOnlyList<Diagnostic> own, CancellationToken cancel)
+    {
+        int version = document.Text.Version;
+        if (!lsp.PullsProjectWide || await diagnostics.PulledAsync(lsp, cancel, DiagnosticPull.ProjectWide) is not { } late
+            || version != document.Text.Version || Lsp != lsp || late.Count == 0 && diagnostics.Late.Count == 0)
+        {
+            return;
+        }
+        document.Markers = diagnostics.Take([.. own, .. late], DiagnosticMarks.Marker, late.Count);
+        service.FileProblemsChanged(document);
     }
 
     /// <summary>Aspire's own diagnostics of the file for the text as it stands: a service's references its AppHost lacks, an
@@ -284,9 +303,9 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
     /// agent's call that reads Passenger's own fixes, which stand on them.</summary>
     internal async Task PullNowAsync(CancellationToken cancel)
     {
-        if (Lsp is { } lsp)
+        if (Lsp is { } lsp && await ShowPulledAsync(lsp, cancel) is { } own)
         {
-            await ShowPulledAsync(lsp, cancel);
+            await ShowProjectWideAsync(lsp, own, cancel);
         }
     }
 
