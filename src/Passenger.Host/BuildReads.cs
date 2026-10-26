@@ -164,9 +164,8 @@ internal static class BuildReads
                 }
                 continue;
             }
-            // What no build reads: a launch profile (dotnet run's alone, which the IDE writes), the system's own files.
-            if (item.ItemType == "None" && (PathNames.IsSystemFile(Path.GetFileName(item.EvaluatedInclude))
-                || item.EvaluatedInclude.Replace('\\', '/').EndsWith("Properties/launchSettings.json", StringComparison.OrdinalIgnoreCase)))
+            // A None file the build does not copy is none it reads: a launch profile, a database the app writes beside it.
+            if (item.ItemType == "None" && item.GetMetadataValue("CopyToOutputDirectory") is var copy && (copy.Length == 0 || copy.Equals("Never", StringComparison.OrdinalIgnoreCase)))
             {
                 continue;
             }

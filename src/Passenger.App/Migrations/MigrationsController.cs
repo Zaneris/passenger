@@ -61,6 +61,9 @@ internal sealed record EfSetting(ProjectModel Project, ProjectModel Startup, str
     /// <summary>The output folders dotnet ef loads the startup project's and the project's assemblies from, as the build
     /// before the command makes them; null when MSBuild could not say, so every read runs.</summary>
     public IReadOnlyList<string>? Outputs { get; init; }
+
+    /// <summary>ef.dll started as dotnet ef would start it; null where dotnet ef runs.</summary>
+    public EfLaunch? Launch { get; init; }
 }
 
 /// <summary>The Migrations window's model and commands over each session it binds: the folder's EF Core projects, the
@@ -713,18 +716,21 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             environment = new Dictionary<string, string>(environment.Concat(database.Environment).GroupBy(e => e.Key).Select(g => g.Last()));
         }
         Database = database?.Where;
-        IReadOnlyList<string>? outputs = await OutputsAsync(project, startup, framework, parts.Session().Projects, work.Stopping);
-        return (new EfSetting(project, startup, framework, folder, environment, Context, tool, restore.Runtime ?? runtime) { Database = database, Outputs = outputs }, null);
+        (IReadOnlyList<string>? outputs, EfLaunch? launch) = await BuiltAsync(project, startup, framework, tool, folder, parts.Session().Projects, work.Stopping);
+        return (new EfSetting(project, startup, framework, folder, environment, Context, tool, restore.Runtime ?? runtime)
+            { Database = database, Outputs = outputs, Launch = launch }, null);
     }
 
     /// <summary>The folders a build puts the startup project's assembly in, and the project's where the startup project does
     /// not reference it (else its copy is in the startup project's), as MSBuild evaluates them with what a build of each
-    /// is given; null when either cannot be said.</summary>
-    private static async Task<IReadOnlyList<string>?> OutputsAsync(ProjectModel project, ProjectModel startup, string? framework, IReadOnlyList<ProjectModel> all,
-        CancellationToken cancel)
+    /// is given, null when either cannot be said; and ef.dll's launch from the same evaluations (<see cref="EfLaunch"/>),
+    /// null where dotnet ef runs.</summary>
+    private static async Task<(IReadOnlyList<string>? Outputs, EfLaunch? Launch)> BuiltAsync(ProjectModel project, ProjectModel startup, string? framework, EfTool tool,
+        string working, IReadOnlyList<ProjectModel> all, CancellationToken cancel)
     {
         List<string> folders = [];
-        foreach (ProjectModel each in project == startup || References(startup, project, all, []) ? [startup] : new[] { startup, project })
+        Dictionary<ProjectModel, IReadOnlyDictionary<string, string>> evaluated = [];
+        foreach (ProjectModel each in project == startup ? [startup] : new[] { startup, project })
         {
             Dictionary<string, string> globals = global::Passenger.App.Workspace.ProjectModels.Properties(null, each);
             if (framework is not null)
@@ -734,19 +740,24 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             try
             {
                 ProjectHost host = await ProjectHosts.ForAsync(each.Folder, cancel);
-                Host.PropertiesAnswer answer = await host.PropertiesAsync(each.Path, globals, [Host.CarriedProperties.TargetPath], cancel);
+                Host.PropertiesAnswer answer = await host.PropertiesAsync(each.Path, globals, [Host.CarriedProperties.TargetPath, .. EfLaunch.Properties], cancel);
                 if (answer.Values.GetValueOrDefault(Host.CarriedProperties.TargetPath) is not { Length: > 0 } target)
                 {
-                    return null;
+                    return (null, null);
                 }
-                folders.Add(Path.GetDirectoryName(PathNames.Canonical(target))!);
+                evaluated[each] = answer.Values;
+                if (each == startup || !References(startup, project, all, []))
+                {
+                    folders.Add(Path.GetDirectoryName(PathNames.Canonical(target))!);
+                }
             }
             catch (ProjectHostFailed)
             {
-                return null;
+                return (null, null);
             }
         }
-        return folders;
+        EfLaunch? launch = await BackgroundWork.Run(() => EfLaunch.Of(tool, project.Path, evaluated[project], startup.Path, evaluated[startup], working));
+        return (folders, launch);
     }
 
     /// <summary>What dotnet ef reads of a setting's build, which none of its reads answers otherwise while it stands: the
@@ -1096,24 +1107,31 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             : (plan.Framework ?? framework, Directory.Exists(plan.WorkingDirectory) ? plan.WorkingDirectory : startup.Folder, plan.Environment);
     }
 
-    /// <summary>Runs dotnet ef with the setting's projects, framework and context, never building, its lines in the Build
-    /// window as they come; EF's warning that the tool is older than the runtime kept as a gap.</summary>
+    /// <summary>Runs dotnet ef with the setting's projects, framework and context, never building (its ef.dll alone where
+    /// the setting has its launch), its lines in the Build window as they come; EF's warning that the tool is older than the
+    /// runtime kept as a gap.</summary>
     private async Task<EfOutcome> RunAsync(EfSetting setting, IReadOnlyList<string> verb, Working work, bool retried = false)
     {
+        IReadOnlyList<string> context = setting.Context is { } named ? ["--context", named] : [];
         List<string> arguments = [.. verb, "--project", setting.Project.Path, "--startup-project", setting.Startup.Path, "--no-build", "--prefix-output"];
         if (setting.Framework is { } framework)
         {
             arguments.AddRange(["--framework", framework]);
         }
-        if (setting.Context is { } context)
-        {
-            arguments.AddRange(["--context", context]);
-        }
+        arguments.AddRange(context);
         // A run's database goes only in the environment: any process can read a command line.
         System.Diagnostics.ProcessStartInfo start;
         try
         {
-            start = setting.Tool.Command(arguments, setting.Folder);
+            if (setting.Launch is { } launch)
+            {
+                await launch.ReadyAsync();
+                start = launch.Command([.. verb, .. context]);
+            }
+            else
+            {
+                start = setting.Tool.Command(arguments, setting.Folder);
+            }
         }
         catch (FileNotFoundException missing)
         {
@@ -1150,13 +1168,13 @@ public sealed partial class MigrationsController(MigrationsParts parts)
 
     /// <summary>The contexts (with <paramref name="contexts"/>, unless what they were listed from stands), the chosen
     /// context's migrations (with <paramref name="list"/>; with no context chosen, the only one's) and its model's check,
-    /// side by side once a run has left dotnet ef nothing to copy into the output (<see cref="settled"/>), else one by one. What
-    /// the build stands as (<paramref name="read"/>, <see cref="ReadOf"/>) is kept with each answer; <paramref name="fresh"/>
-    /// takes nothing from earlier reads. Null once read, else the failure.</summary>
+    /// side by side where ef.dll starts alone (its build host copied first) or once a run has left dotnet ef nothing to copy
+    /// into the output (<see cref="settled"/>), else one by one. What the build stands as (<paramref name="read"/>,
+    /// <see cref="ReadOf"/>) is kept with each answer; <paramref name="fresh"/> takes nothing from earlier reads.</summary>
     private async Task<EfDone?> ReadAsync(EfSetting setting, string? read, Working work, bool contexts, bool list = true, bool fresh = false)
     {
         string? remembered = fresh ? null : read;
-        bool together = settled;
+        bool together = settled || setting.Launch is not null;
         string? context = Context;
         Task<EfOutcome>? naming = contexts && (remembered is null || remembered != contextsRead) ? RunAsync(setting with { Context = null }, ["dbcontext", "list", "--json"], work) : null;
         if (naming is not null && !together)
@@ -1167,7 +1185,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             }
             naming = null;
             context = Context;
-            together = settled;
+            together = settled || setting.Launch is not null;
         }
         bool none = contexts && naming is null && Context is null;
         Task<EfOutcome>? listing = list && !none ? RunAsync(setting with { Context = context }, ["migrations", "list", "--json"], work) : null;
