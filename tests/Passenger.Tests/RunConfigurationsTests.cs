@@ -538,6 +538,119 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         }
     }
 
+    /// <summary>A file-based program's launch profiles, in its app.run.json, changed on disk reach its run configuration as
+    /// a launchSettings.json's do, the Explorer left as it was.</summary>
+    [AvaloniaFact]
+    public void A_file_based_programs_run_json_changed_on_disk_reaches_its_run_configuration()
+    {
+        TestFolders.Delete(folder);
+        folder = TestFolders.Create("program-");
+        Write("app.cs", "#!/usr/bin/env dotnet\n#:property PublishAot=false\nConsole.WriteLine(Environment.GetEnvironmentVariable(\"GREETING\"));\n");
+        Write("app.run.json", Greet("Hi"));
+        MainWindow window = Keeping();
+        try
+        {
+            Ui.WaitFor(() => window.Configurations is [{ Name: "app: Greet" } greet] && greet.Environment.GetValueOrDefault("GREETING") == "Hi",
+                "app.cs to be a program with its app.run.json profile's configuration", TimeSpan.FromMinutes(1));
+            List<ExplorerNode> rows = [.. window.ExplorerView.Tree.Rows];
+            Write("app.run.json", Greet("Hello"));
+            Ui.WaitFor(() => window.Configurations is [{ Name: "app: Greet" } greet] && greet.Environment.GetValueOrDefault("GREETING") == "Hello",
+                "the profile's new variable, written in app.run.json on disk, to reach the configuration");
+            Assert.True(window.ExplorerView.Tree.Rows.SequenceEqual(rows, ReferenceEqualityComparer.Instance), "app.run.json changed on disk had the Explorer's rows made again");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>In a solution of many projects, every one shown open: Undo of Save as Launch Profile in a project with no
+    /// Properties folder takes that folder's row out and Go to File's launchSettings.json with it, and Redo puts them back,
+    /// every other row the row it was; Undo and Redo of one saved into that launchSettings.json, a command of its text alone,
+    /// leave every row as it was, with no project checked again and the folder never walked.</summary>
+    [AvaloniaFact]
+    public void Undo_and_Redo_of_Save_as_launch_profile_in_a_solution_of_many_projects_make_again_only_the_rows_of_what_they_change()
+    {
+        const int Libraries = 40;
+        for (int i = 0; i < Libraries; i++)
+        {
+            Write($"Lib{i:00}/Lib{i:00}.csproj", TestProjects.Library());
+            Write($"Lib{i:00}/Part{i}.cs", $"public class Part{i} {{ }}\n");
+        }
+        Write("Shop.slnx", $"<Solution>\n{string.Concat(Enumerable.Range(0, Libraries).Select(i => $"  <Project Path=\"Lib{i:00}/Lib{i:00}.csproj\" />\n"))}  <Project Path=\"Hello/Hello.csproj\" />\n</Solution>\n");
+        string properties = Path.Combine(project, "Properties");
+        string settingsFile = Path.Combine(properties, "launchSettings.json");
+        MainWindow window = Keeping();
+        try
+        {
+            ExplorerTree tree = window.ExplorerView.Tree;
+            Ui.WaitFor(() => window.Projects.Count == Libraries + 1 && window.Projects.All(p => p.IsEvaluated), "every project evaluated");
+            foreach (ExplorerNode row in tree.Rows.Where(r => r.Kind == NodeKind.Project).ToList())
+            {
+                tree.Expand(row);
+            }
+            Ui.Settle();
+            int walks = 0;
+            window.FileIndex.Walked += (_, _) => walks++;
+            List<string> asked = [];
+            window.Confirm = (_, question, _) =>
+            {
+                asked.Add(question);
+                return Task.FromResult(true);
+            };
+            Heard(window, settingsFile, () => Save("Greeting"));
+            Ui.WaitFor(() => tree.Rows.Any(r => r.Path == PathNames.Canonical(properties)), "the Properties folder made for launchSettings.json to show");
+
+            List<ExplorerNode> before = [.. tree.Rows];
+            ExplorerNode made = tree.Rows.Single(r => r.Path == PathNames.Canonical(properties));
+            Ui.ClickRow(window, tree.Rows.First(r => r.Kind == NodeKind.Project && r.Name == "Hello"));
+            Heard(window, settingsFile, () => Ui.Run(window, Passenger.Editor.EditorActions.Undo));
+            Assert.False(Directory.Exists(properties), $"Undo left the Properties folder it made: {window.Status} ({string.Join(" | ", asked)})");
+            Ui.WaitFor(() => !tree.Rows.Contains(made), "the Properties folder's row to go");
+            Assert.True(tree.Rows.SequenceEqual(before.Where(r => r != made), ReferenceEqualityComparer.Instance),
+                $"Undo made rows other than the Properties folder's again: [{string.Join(", ", tree.Rows.Where(r => !before.Contains(r, ReferenceEqualityComparer.Instance)).Select(r => r.Name))}] are new");
+            Assert.DoesNotContain(window.FileIndex.Files, f => f.EndsWith("launchSettings.json", StringComparison.Ordinal));
+
+            Ui.Run(window, Passenger.Editor.EditorActions.Redo);
+            Assert.True(File.Exists(settingsFile), $"Redo did not make launchSettings.json again: {window.Status}");
+            Ui.WaitFor(() => tree.Rows.Any(r => r.Path == PathNames.Canonical(properties)), "the Properties folder's row to come back");
+            Ui.Settle();
+            Assert.True(tree.Rows.Where(r => r.Path != PathNames.Canonical(properties)).SequenceEqual(before.Where(r => r != made), ReferenceEqualityComparer.Instance),
+                "Redo made rows other than the Properties folder's again");
+            Assert.Contains(window.FileIndex.Files, f => f.EndsWith("launchSettings.json", StringComparison.Ordinal));
+
+            Heard(window, settingsFile, () => Save("Staging"));
+            before = [.. tree.Rows];
+            int rounds = window.Session.Models.Rounds;
+            string saved = File.ReadAllText(settingsFile);
+            Ui.ClickRow(window, tree.Rows.First(r => r.Kind == NodeKind.Project && r.Name == "Hello"));
+            Heard(window, settingsFile, () => Ui.Run(window, Passenger.Editor.EditorActions.Undo));
+            Assert.DoesNotContain("Staging", File.ReadAllText(settingsFile), StringComparison.Ordinal);
+            Heard(window, settingsFile, () => Ui.Run(window, Passenger.Editor.EditorActions.Redo));
+            Assert.Equal(saved, File.ReadAllText(settingsFile));
+            Assert.True(tree.Rows.SequenceEqual(before, ReferenceEqualityComparer.Instance),
+                $"Undo and Redo of launchSettings.json's text made rows again: [{string.Join(", ", tree.Rows.Where(r => !before.Contains(r, ReferenceEqualityComparer.Instance)).Select(r => r.Name))}] are new");
+            Assert.True(window.Session.Models.Rounds == rounds,
+                $"Undo and Redo of launchSettings.json's text had the {Libraries + 1} projects checked again {window.Session.Models.Rounds - rounds} times");
+            Assert.True(walks == 0, $"Undo and Redo walked the folder for Go to File {walks} times");
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        // A configuration made in Edit Configurations and saved as a launch profile of Hello.
+        void Save(string name)
+        {
+            RunConfigurationsDialog dialog = window.ShowRunConfigurations();
+            Add(dialog);
+            Type(dialog.NameBox, name);
+            Ui.Click(dialog.SaveAsProfileButton);
+            Assert.True(dialog.Problem.Length == 0, $"Save as Launch Profile was refused: {dialog.Problem}");
+            Ui.Click(dialog.OkButton);
+        }
+    }
+
     /// <summary>Reset to Launch Profile puts a generated configuration changed in place back as its profile makes it, and
     /// the folder opened again has no change kept for it.</summary>
     [AvaloniaFact]

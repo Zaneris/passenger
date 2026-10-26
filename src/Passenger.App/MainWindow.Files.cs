@@ -349,8 +349,18 @@ public partial class MainWindow
     private void OnFileMoved(FileMove move)
     {
         session.Moved(move);
-        FilesChanged();
+        if (movesFollowed is { } gathered)
+        {
+            gathered.Add(move.From);
+            gathered.Add(move.To);
+            return;
+        }
+        CameOrWent([move.From, move.To]);
     }
+
+    /// <summary>While an Undo or Redo of a command runs, the ends of the moves it makes, followed with the rest of what it
+    /// changed once it is done.</summary>
+    private List<string>? movesFollowed;
 
     /// <summary>Delete on a project: it leaves the solution and its files stay. Moving its folder to the Trash is a
     /// second question, never asked of the open folder, a folder above it, or one holding the solution or another of
@@ -437,7 +447,7 @@ public partial class MainWindow
         {
             Editors.CloseDeleted(document);
         }
-        FilesChanged();
+        CameOrWent([path]);
         status.Text = $"Moved {what} to the Trash";
         return true;
     }
@@ -452,6 +462,23 @@ public partial class MainWindow
         if (Folder is { } folder)
         {
             session.Index.Build(folder);
+        }
+        IdeErrors.Observe(session.Vcs.RefreshAsync());
+    }
+
+    /// <summary>Files or folders the IDE itself made, moved or deleted, followed at once rather than when the folder watcher
+    /// hears of them: the Explorer reads again only the folders that held or hold them, keeping the rows still there, Go to
+    /// File's index takes them in or out in place, the projects are checked for what their wildcards take in, and Git's
+    /// colours follow.</summary>
+    private void CameOrWent(IReadOnlyCollection<string> paths)
+    {
+        HashSet<string> named = new(paths.Select(PathNames.Canonical), StringComparer.Ordinal);
+        Explorer.RefreshFolders(named.Select(Path.GetDirectoryName).OfType<string>());
+        session.Evaluate();
+        session.MSBuild.FilesCameOrWent();
+        if (Folder is { } folder)
+        {
+            session.Index.Apply(folder, named);
         }
         IdeErrors.Observe(session.Vcs.RefreshAsync());
     }

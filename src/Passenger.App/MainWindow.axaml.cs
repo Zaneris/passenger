@@ -790,7 +790,7 @@ public partial class MainWindow : Window
         {
             session.CSharp?.Reload([project]);
         }
-        Explorer.Refresh();
+        Explorer.ShowProjectAgain(project);
         session.Configurations.Configure(Projects);
         status.Text = $"{Path.GetFileNameWithoutExtension(project)} {(unloaded ? "unloaded" : "reloaded")}";
         FindTests();

@@ -186,6 +186,27 @@ public partial class ExplorerView : UserControl
     /// <summary>Reads again only the folders that changed on disk, the rows open and chosen kept.</summary>
     public void RefreshFolders(IEnumerable<string> folders) => Tree.RefreshFolders(folders);
 
+    /// <summary>A project unloaded or loaded again: its row made anew, chosen again if it was, the keys kept here, and every
+    /// other row as it was.</summary>
+    public void ShowProjectAgain(string project)
+    {
+        bool keys = Rows.IsKeyboardFocusWithin;
+        bool chosen = Selected is { Kind: NodeKind.Project, Path: { } path } && path == project;
+        if (!Tree.ShowProjectsAgain([project]))
+        {
+            Refresh();
+            return;
+        }
+        if (chosen && Tree.Rows.FirstOrDefault(r => r.Kind == NodeKind.Project && r.Path == project) is { } again)
+        {
+            Rows.SelectedItem = again;
+        }
+        if (keys && Rows.SelectedIndex >= 0 && !Rows.IsKeyboardFocusWithin)
+        {
+            FocusRows();
+        }
+    }
+
     /// <summary>The folder's solution read again (a project added or changed on disk), the rows open kept.</summary>
     public void Reload(WorkspaceModel workspace)
     {

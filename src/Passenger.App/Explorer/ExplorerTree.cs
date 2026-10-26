@@ -247,6 +247,31 @@ public sealed class ExplorerTree
         ShowAgain(reloaded);
     }
 
+    /// <summary>Projects unloaded or loaded again: each one's row made anew in its place, every other row kept as it was;
+    /// false where one is the root, the project opened alone, which only showing the tree again remakes.</summary>
+    public bool ShowProjectsAgain(IReadOnlyCollection<string> paths)
+    {
+        if (Root is null)
+        {
+            return true;
+        }
+        if (Root is { Kind: NodeKind.Project, Path: { } top } && paths.Contains(top))
+        {
+            return false;
+        }
+        bool Picked(ExplorerNode node) => node is { Kind: NodeKind.Project, Path: { } project } && paths.Contains(project);
+        List<ExplorerNode> reloaded = [];
+        foreach (ExplorerNode node in Loaded(Root, n => n.LoadedChildren?.Any(Picked) == true))
+        {
+            if (node.Reload(Picked))
+            {
+                reloaded.Add(node);
+            }
+        }
+        ShowAgain(reloaded);
+        return true;
+    }
+
     /// <summary>The rows under each node read again made anew from it as it now is, where it is shown open: those still
     /// there kept, the rest taken out or put in, and every other row left as it was.</summary>
     private void ShowAgain(List<ExplorerNode> reloaded)
@@ -709,16 +734,16 @@ public sealed class ExplorerNode : Observable, ITreeRow
     /// <summary>The children once read, without reading them.</summary>
     internal List<ExplorerNode>? LoadedChildren => children;
 
-    /// <summary>Reads the children again, keeping each one still there (with what is open under it); whether any came
-    /// or went.</summary>
-    internal bool Reload()
+    /// <summary>Reads the children again, keeping each one still there (with what is open under it) but those
+    /// <paramref name="remade"/> picks, which are made anew; whether any came or went.</summary>
+    internal bool Reload(Func<ExplorerNode, bool>? remade = null)
     {
         if (load is null || children is null)
         {
             return false;
         }
         Dictionary<string, ExplorerNode> before = children.ToDictionary(Identity);
-        List<ExplorerNode> fresh = [.. load(this).Select(c => before.TryGetValue(Identity(c), out ExplorerNode? kept) ? kept : c)];
+        List<ExplorerNode> fresh = [.. load(this).Select(c => before.TryGetValue(Identity(c), out ExplorerNode? kept) && remade?.Invoke(kept) != true ? kept : c)];
         bool same = fresh.Count == children.Count && fresh.SequenceEqual(children);
         children = fresh;
         return !same;

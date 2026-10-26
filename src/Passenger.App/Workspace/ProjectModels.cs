@@ -45,6 +45,10 @@ public sealed class ProjectModels
     /// opens on its cache with nothing changed evaluates none.</summary>
     public int Evaluations { get; private set; }
 
+    /// <summary>How many rounds have begun, each reading again what every project's evaluation read (its files and the
+    /// folders its wildcards walked) to find those to evaluate.</summary>
+    public int Rounds { get; private set; }
+
     /// <summary>Why the host could not evaluate the folder's projects, the last time it was asked; null when it could.</summary>
     public string? Problem { get; private set; }
 
@@ -139,6 +143,17 @@ public sealed class ProjectModels
 
     public WorkspaceModel Apply(WorkspaceModel workspace) => workspace.WithProjects(Apply);
 
+    /// <summary>Whether an evaluation known read one of these files: a project's own, or one it imports.</summary>
+    public bool Read(IReadOnlyCollection<string> paths)
+    {
+        if (paths.Count == 0)
+        {
+            return false;
+        }
+        HashSet<string> asked = new(paths, PathNames.Comparer);
+        return known.Values.Any(e => e.Inputs.Any(i => asked.Contains(i.Path)));
+    }
+
     /// <summary>Checks each project of a workspace against what its evaluation read, off the UI thread, and has those that
     /// changed or were never evaluated evaluated, the one holding <paramref name="active"/> first; the host is asked its SDK
     /// for the folder in any case, and a change of it has every project evaluated again.</summary>
@@ -172,6 +187,7 @@ public sealed class ProjectModels
             idle = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         }
         running = generation;
+        Rounds++;
         List<string> projects = [.. Ordered(next.Workspace, next.Active)];
         Dictionary<string, EvaluatedProject> before = new(StringComparer.Ordinal);
         foreach (string path in projects)

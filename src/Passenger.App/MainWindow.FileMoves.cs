@@ -393,9 +393,36 @@ public partial class MainWindow
         {
             return;
         }
-        // Asked again: a file may have changed while the question was open.
-        string? failed = Editors.Commands.Blocked(command, redo) ?? (redo ? Editors.Commands.Redo(command) : Editors.Commands.Undo(command));
-        FilesChanged();
+        // What may come or go, with the folders over it, as they stand before: a part may make or take away a folder.
+        Dictionary<string, bool> stood = new(PathNames.Comparer);
+        foreach (string path in command.Moves.SelectMany(m => new[] { m.From, m.To }).Concat(command.Created.Select(c => c.Path)))
+        {
+            for (string? at = PathNames.Canonical(path); at is not null && (Folder is not { } folder || PathNames.IsUnder(at, folder)); at = Path.GetDirectoryName(at))
+            {
+                stood.TryAdd(at, File.Exists(at) || Directory.Exists(at));
+            }
+        }
+        List<string> moved = movesFollowed = [];
+        string? failed;
+        try
+        {
+            // Asked again: a file may have changed while the question was open.
+            failed = Editors.Commands.Blocked(command, redo) ?? (redo ? Editors.Commands.Redo(command) : Editors.Commands.Undo(command));
+        }
+        finally
+        {
+            movesFollowed = null;
+        }
+        List<string> cameOrWent = [.. moved, .. stood.Where(s => s.Value != (File.Exists(s.Key) || Directory.Exists(s.Key))).Select(s => s.Key)];
+        if (cameOrWent.Count > 0)
+        {
+            CameOrWent(cameOrWent);
+        }
+        else if (session.Models.Read([.. command.Texts.Select(t => t.Document?.Path ?? (redo ? command.Moved(t.Path) : t.Path))]))
+        {
+            // Only texts changed, a project's or an import's among them: the projects that read it are evaluated again.
+            session.Evaluate();
+        }
         status.Text = failed is null ? $"{(redo ? "Redone" : "Undone")}: {command.Name}" : $"Cannot {verb.ToLowerInvariant()} {command.Name}: {failed}";
     }
 }

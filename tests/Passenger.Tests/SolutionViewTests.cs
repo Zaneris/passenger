@@ -699,6 +699,46 @@ public sealed class SolutionViewTests : IDisposable
         }
     }
 
+    /// <summary>A file deleted takes its own row out, and Unload Project and Reload Project make the project's row again,
+    /// dimmed and then open to open: every other row shown stays the row it was, rather than every row of the tree being
+    /// made again for one.</summary>
+    [AvaloniaFact]
+    public void Delete_unload_and_reload_make_again_only_the_rows_they_touch()
+    {
+        string order = PathNames.Canonical(Path.Combine(folder, "Shop.App", "Models", "Order.cs"));
+        string core = PathNames.Canonical(Path.Combine(folder, "Shop.Core", "Shop.Core.csproj"));
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+        Show(window, order);
+        Show(window, Path.Combine(folder, "Shop.Core", "Catalog", "Product.cs"));
+        TreeRows<ExplorerNode> rows = window.ExplorerView.Tree.Rows;
+        List<ExplorerNode> before = [.. rows];
+
+        Ui.ClickRow(window, Show(window, order));
+        Ui.Press(window, "BACK_SPACE");
+        Ui.WaitFor(() => !File.Exists(order) && !rows.Any(r => r.Path == order), "Order.cs deleted and its row gone");
+        Assert.True(rows.SequenceEqual(before.Where(r => r.Path != order), ReferenceEqualityComparer.Instance),
+            $"Deleting Order.cs made rows other than its own again: [{string.Join(", ", rows.Where(r => !before.Contains(r, ReferenceEqualityComparer.Instance)).Select(r => r.Name))}] are new");
+
+        before = [.. rows];
+        ExplorerNode loaded = Row(window, NodeKind.Project, "Shop.Core");
+        Ui.ChooseFromRowMenu(window, loaded, "Unload Project");
+        ExplorerNode unloaded = Row(window, NodeKind.Project, "Shop.Core");
+        Assert.True(unloaded.IsDimmed && !unloaded.HasChildren, "Unload Project left Shop.Core's row loaded");
+        Assert.True(rows.SequenceEqual(before.Where(r => r == loaded || !PathNames.IsUnder(r.Path ?? r.Owner ?? string.Empty, Path.GetDirectoryName(core)!))
+            .Select(r => r == loaded ? unloaded : r), ReferenceEqualityComparer.Instance),
+            "Unload Project made rows other than the project's own again, or left what was under it");
+        Assert.Same(unloaded, window.ExplorerView.Selected);
+
+        before = [.. rows];
+        Ui.ChooseFromRowMenu(window, unloaded, "Reload Project");
+        ExplorerNode reloaded = Row(window, NodeKind.Project, "Shop.Core");
+        Assert.True(!reloaded.IsDimmed && reloaded.HasChildren, "Reload Project left Shop.Core's row unloaded");
+        Assert.True(rows.SequenceEqual(before.Select(r => r == unloaded ? reloaded : r), ReferenceEqualityComparer.Instance),
+            "Reload Project made rows other than the project's own again");
+        window.Close();
+    }
+
     private MainWindow Open() => Ui.OpenFolder(folder);
 
     /// <summary>Opens the Explorer's folders down to a file or folder, as a person does to get to it, and gives its row.</summary>
