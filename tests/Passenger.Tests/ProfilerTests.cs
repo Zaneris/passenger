@@ -165,6 +165,184 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
         window.Close();
     }
 
+    /// <summary>Opening a profile costs a stack what keeping it takes, not a name made again for each frame: from a thousand
+    /// stacks about seventy frames deep to ten thousand, under 12 KB a stack more (on every thread, the least of three). Over
+    /// the larger, a drag's pointer move across the timeline costs the UI thread no more 2,400 wide than 800 wide, and under
+    /// 16 KB more than a pointer passing over it; a frame of the flame graph, under 400 bytes a bar more whole than zoomed.</summary>
+    [AvaloniaFact]
+    public void A_profile_of_ten_thousand_stacks_reads_drags_and_draws_in_what_its_stacks_and_bars_keep()
+    {
+        // Each count forty calls deep, then a path of its own down a binary tree of calls, to a large array: an allocation tick each.
+        string project = Project("Stacks", """
+            using System.Runtime.CompilerServices;
+            int count = int.Parse(args[0]);
+            int levels = 0;
+            while ((1 << levels) < count) { levels++; }
+            long made = 0;
+            for (int i = 0; i < count; i++) { made += Tree.Down(40, i, levels); }
+            Console.WriteLine($"made {made}");
+            static class Tree
+            {
+                public static byte[]? Kept;
+
+                [MethodImpl(MethodImplOptions.NoInlining)]
+                public static int Down(int depth, int path, int levels) => depth > 0 ? Down(depth - 1, path, levels) + 1 : Branch(path, levels) + 1;
+
+                [MethodImpl(MethodImplOptions.NoInlining)]
+                private static int Branch(int path, int level) => level == 0 ? Leaf() + 1 : (path & 1) == 0 ? Left(path >> 1, level - 1) + 1 : Right(path >> 1, level - 1) + 1;
+
+                [MethodImpl(MethodImplOptions.NoInlining)]
+                private static int Left(int path, int level) => Branch(path, level) + 1;
+
+                [MethodImpl(MethodImplOptions.NoInlining)]
+                private static int Right(int path, int level) => Branch(path, level) + 1;
+
+                [MethodImpl(MethodImplOptions.NoInlining)]
+                private static int Leaf()
+                {
+                    Kept = new byte[110_000];
+                    return Kept.Length & 1;
+                }
+            }
+            """);
+        MainWindow window = new() { Width = 1200, Height = 800, StateFolder = TestFolders.Create("settings-"), StartsLanguageServer = false };
+        window.Show();
+        try
+        {
+            window.OpenFolder(project);
+            Ui.Settle();
+            Passenger.App.Profiling.ProfilerView view = window.ProfilerView;
+            Dictionary<int, string> traces = [];
+            foreach (int count in (int[])[1000, 10000])
+            {
+                string? before = view.Snapshot?.TracePath;
+                Ui.Launched(window, window.ProfileAsync($"{count}"), $"the program of {count} stacks to build and start under the profiler", TimeSpan.FromMinutes(3));
+                Ui.WaitFor(() => view.Snapshot is { } snapshot && snapshot.TracePath != before, () => $"the end of the program of {count} stacks to show its snapshot ({view.Status})",
+                    TimeSpan.FromMinutes(2));
+                traces[count] = view.Snapshot!.TracePath;
+            }
+
+            (long Bytes, int Stacks) few = Read(traces[1000]);
+            (long Bytes, int Stacks) many = Read(traces[10000]);
+            long each = (many.Bytes - few.Bytes) / Math.Max(1, many.Stacks - few.Stacks);
+            TestContext.Current.TestOutputHelper?.WriteLine(
+                $"Opening a profile of {few.Stacks:N0} stacks allocated {few.Bytes / 1024:N0} KB, one of {many.Stacks:N0} {many.Bytes / 1024:N0} KB: {each:N0} bytes for each stack more");
+            Assert.True(few.Stacks >= 1000 && many.Stacks >= 10000, $"The profiles kept {few.Stacks} and {many.Stacks} stacks, where the programs allocated from 1,000 and 10,000");
+            Assert.True(each < 12 * 1024,
+                $"Opening a profile of {many.Stacks:N0} stacks allocated {many.Bytes / 1024:N0} KB, one of {few.Stacks:N0} {few.Bytes / 1024:N0} KB: {each:N0} bytes for each stack more, as if each of its frames were named again");
+
+            (long Drag, long Hover) narrowMove = Moves(800);
+            (long Drag, long Hover) wideMove = Moves(2400);
+            TestContext.Current.TestOutputHelper?.WriteLine(
+                $"A pointer move of a drag across the timeline allocated {narrowMove.Drag:N0} bytes on the UI thread 800 wide, {wideMove.Drag:N0} 2,400 wide; one passing over it {narrowMove.Hover:N0} and {wideMove.Hover:N0}");
+            Assert.True(wideMove.Drag <= narrowMove.Drag + 2048,
+                $"A pointer move of a drag across the timeline allocated {wideMove.Drag:N0} bytes on the UI thread in a window 2,400 wide, {narrowMove.Drag:N0} in one 800 wide: every pixel's column of its rows was drawn again");
+            Assert.True(wideMove.Drag <= wideMove.Hover + (16 * 1024),
+                $"A pointer move of a drag across the timeline allocated {wideMove.Drag:N0} bytes on the UI thread, one passing over it {wideMove.Hover:N0}: the rows' words were laid out again for the stretch");
+
+            // The flame graph whole, and zoomed into a leaf below its callers' bars: few bars of the same kinds.
+            window.Width = 1200;
+            view.ShowPage(Passenger.App.Profiling.ProfilerPage.FlameGraph);
+            Passenger.App.Profiling.FlameGraph flame = view.Flame;
+            (long Bytes, int Bars) whole = Frame();
+            CallNode leaf = flame.Root!;
+            while (leaf.Ordered.Count > 0)
+            {
+                leaf = leaf.Ordered[0];
+            }
+            flame.ZoomTo(leaf);
+            (long Bytes, int Bars) zoomed = Frame();
+            long eachBar = (whole.Bytes - zoomed.Bytes) / Math.Max(1, whole.Bars - zoomed.Bars);
+            TestContext.Current.TestOutputHelper?.WriteLine(
+                $"A frame of the flame graph allocated {whole.Bytes / 1024:N0} KB on the UI thread for {whole.Bars:N0} bars, {zoomed.Bytes / 1024:N0} KB for {zoomed.Bars:N0}: {eachBar:N0} bytes a bar");
+            Assert.True(whole.Bars > zoomed.Bars + 500, $"The flame graph drew {whole.Bars} bars whole and {zoomed.Bars} zoomed into a leaf");
+            Assert.True(eachBar < 400,
+                $"A frame of the flame graph allocated {whole.Bytes / 1024:N0} KB on the UI thread for {whole.Bars:N0} bars, {zoomed.Bytes / 1024:N0} KB for {zoomed.Bars:N0}: {eachBar:N0} bytes for each bar more, its colour and label worked out again");
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        // What opening a profile allocates on every thread to its views shown, the least of three, as a test beside it may allocate meanwhile.
+        (long Bytes, int Stacks) Read(string trace)
+        {
+            long least = long.MaxValue;
+            int stacks = 0;
+            for (int time = 0; time < 3; time++)
+            {
+                Ui.Settle();
+                long before = GC.GetTotalAllocatedBytes(precise: true);
+                Snapshot? opened = Ui.Await(window.OpenSnapshotAsync(trace), $"{Path.GetFileName(trace)} to open");
+                Ui.Settle();
+                least = Math.Min(least, GC.GetTotalAllocatedBytes(precise: true) - before);
+                stacks = opened?.Stacks ?? throw new Xunit.Sdk.XunitException($"{Path.GetFileName(trace)} did not open: {window.Status}");
+            }
+            return (least, stacks);
+        }
+
+        // What a pointer move of a drag across the timeline allocates on the UI thread to its frame drawn, and one passing over it, the least of eight.
+        (long Drag, long Hover) Moves(double width)
+        {
+            window.Width = width;
+            Ui.Settle();
+            Passenger.App.Profiling.Timeline timeline = window.ProfilerView.Timeline;
+            Assert.True(Math.Abs(timeline.Bounds.Width - width) < 100, $"The timeline is {timeline.Bounds.Width} wide in a window {width} wide");
+            Point start = timeline.TranslatePoint(new Point(200, 20), window) ?? throw new Xunit.Sdk.XunitException("The timeline is not shown");
+            window.MouseDown(start, Avalonia.Input.MouseButton.Left);
+            long least = long.MaxValue;
+            for (int step = 1; step <= 10; step++)
+            {
+                Ui.Draw();
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                window.MouseMove(start + new Vector(step * 20, 0), Avalonia.Input.RawInputModifiers.LeftMouseButton);
+                Ui.Draw();
+                if (step > 2)
+                {
+                    least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
+                }
+            }
+            window.MouseUp(start + new Vector(200, 0), Avalonia.Input.MouseButton.Left);
+            Ui.Settle();
+            Assert.NotNull(timeline.Selection);
+            long hover = long.MaxValue;
+            for (int step = 1; step <= 10; step++)
+            {
+                Ui.Draw();
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                window.MouseMove(start + new Vector(step * 20, 4));
+                Ui.Draw();
+                if (step > 2)
+                {
+                    hover = Math.Min(hover, GC.GetAllocatedBytesForCurrentThread() - before);
+                }
+            }
+            timeline.ClearSelection();
+            Ui.Settle();
+            return (least, hover);
+        }
+
+        // What a frame of the flame graph allocates on the UI thread, the least of five, and how many bars it drew.
+        (long Bytes, int Bars) Frame()
+        {
+            Ui.Settle();
+            Passenger.App.Profiling.FlameGraph flame = window.ProfilerView.Flame;
+            long least = long.MaxValue;
+            for (int frame = 0; frame < 6; frame++)
+            {
+                Ui.Draw();
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                flame.InvalidateVisual();
+                Ui.Draw();
+                if (frame > 0)
+                {
+                    least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
+                }
+            }
+            return (least, flame.BarsDrawn);
+        }
+    }
+
     /// <summary>A profiled program that has not reached the profiler (its diagnostics off, so it never comes to the
     /// profiler's port): Profile pressed again starts no second program; Kill ends it at once; a configuration whose working
     /// folder is gone, and one that ends before it reaches the profiler, are said to in the profiler window; and Close

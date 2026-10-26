@@ -1,31 +1,58 @@
+using System.Buffers;
+using System.Runtime.InteropServices;
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Etlx;
 
 namespace Passenger.Profiler;
 
 /// <summary>A node of the call tree: a method called along one path from a thread's first frame, with how many samples
-/// found the thread in it (Total) and in it and no deeper (Self).</summary>
+/// found the thread in it (Total) and in it and no deeper (Self). Most nodes have one callee, which is kept without a
+/// table by name; the callees are listed once, when first asked for, the tree being whole by then.</summary>
 public sealed class CallNode(string name, string module, CallNode? parent)
 {
-    private readonly Dictionary<string, CallNode> children = [];
+    /// <summary>The callee while there is one.</summary>
+    private CallNode? only;
+
+    /// <summary>The callees by name, once there are two.</summary>
+    private Dictionary<string, CallNode>? children;
+
+    /// <summary>The callees as <see cref="Ordered"/> lists them, once asked for.</summary>
+    private CallNode[]? ordered;
 
     public string Name { get; internal set; } = name;
     public string Module { get; } = module;
     public CallNode? Parent { get; } = parent;
     public int Total { get; internal set; }
     public int Self { get; internal set; }
-    public IReadOnlyCollection<CallNode> Children => children.Values;
+    public IReadOnlyCollection<CallNode> Children => children is not null ? children.Values : Ordered;
 
     /// <summary>The children, the heaviest first, as the call tree lists them.</summary>
-    public IReadOnlyList<CallNode> Ordered => [.. children.Values.OrderByDescending(c => c.Total).ThenBy(c => c.Name, StringComparer.Ordinal)];
+    public IReadOnlyList<CallNode> Ordered => ordered ??= children is not null ? Sorted(children) : only is not null ? [only] : [];
 
     internal CallNode Child(string method, string module)
     {
+        if (children is null && (only is null || only.Name == method))
+        {
+            return only ??= new CallNode(method, module, this);
+        }
+        if (children is null)
+        {
+            children = new Dictionary<string, CallNode>(StringComparer.Ordinal) { [only!.Name] = only };
+            only = null;
+        }
         if (!children.TryGetValue(method, out CallNode? child))
         {
             children[method] = child = new CallNode(method, module, this);
+            ordered = null;
         }
         return child;
+    }
+
+    private static CallNode[] Sorted(Dictionary<string, CallNode> children)
+    {
+        CallNode[] sorted = [.. children.Values];
+        Array.Sort(sorted, static (a, b) => a.Total != b.Total ? b.Total.CompareTo(a.Total) : string.CompareOrdinal(a.Name, b.Name));
+        return sorted;
     }
 }
 
@@ -342,7 +369,10 @@ public sealed class Snapshot
         Dictionary<string, (long Bytes, int Ticks, CallNode Root)> allocated = new(StringComparer.Ordinal);
         foreach (AllocationTick tick in taken)
         {
-            (long Bytes, int Ticks, CallNode Root) so = allocated.GetValueOrDefault(tick.Type, (0, 0, new CallNode(tick.Type, string.Empty, null)));
+            if (!allocated.TryGetValue(tick.Type, out (long Bytes, int Ticks, CallNode Root) so))
+            {
+                so = (0, 0, new CallNode(tick.Type, string.Empty, null));
+            }
             int kilobytes = (int)Math.Max(1, tick.Bytes / 1024);
             so.Root.Total += kilobytes;
             CallNode at = so.Root;
@@ -357,40 +387,6 @@ public sealed class Snapshot
         return [.. allocated.Select(a => new AllocatedType(a.Key, a.Value.Bytes, a.Value.Ticks, a.Value.Root)).OrderByDescending(a => a.Bytes)];
     }
 
-    /// <summary>A stack's frames from where it was caught to its thread's first, named and numbered into the table:
-    /// runs of unnamed native frames as one, and the runtime's GC poll at the leaf (where the sampler stops a busy loop)
-    /// left to its caller.</summary>
-    private static int[] Frames(TraceCallStack? stack, Dictionary<(string, string), int> table, List<(string Method, string Module)> named, List<MethodCode?> codes)
-    {
-        List<int> found = [];
-        string? previous = null;
-        for (TraceCallStack? frame = stack; frame is not null; frame = frame.Caller)
-        {
-            TraceCodeAddress address = frame.CodeAddress;
-            string method = address.FullMethodName is { Length: > 0 } full ? Pretty(full) : $"[{(address.ModuleName is { Length: > 0 } module ? module : "native")}]";
-            if (previous == method && method.StartsWith('['))
-            {
-                continue;
-            }
-            if (found.Count == 0 && method.Contains("<PollGC>", StringComparison.Ordinal))
-            {
-                continue;
-            }
-            (string, string) key = (method, address.ModuleName ?? string.Empty);
-            if (!table.TryGetValue(key, out int number))
-            {
-                table[key] = number = named.Count;
-                named.Add(key);
-                codes.Add(address.Method is { MethodToken: not 0 } code && (code.MethodModuleFile?.FilePath ?? address.ModuleFilePath) is { Length: > 0 } file
-                    ? new MethodCode(file, code.MethodToken)
-                    : null);
-            }
-            found.Add(number);
-            previous = method;
-        }
-        return [.. found];
-    }
-
     /// <summary>Whether a program's entry point is among a thread's first frames (below native ones, the runtime's
     /// CallEntryPoint, or a Main, top-level statements' &lt;Main&gt;$ included).</summary>
     private static bool RunsEntryPoint(CallNode node, int depth) =>
@@ -401,7 +397,7 @@ public sealed class Snapshot
             || RunsEntryPoint(c, depth - 1));
 
     /// <summary>A method written with its parameters by their types' own names ("Main(String[])"), not IL's
-    /// ("Main(class System.String[])").</summary>
+    /// ("Main(class System.String[])"), in one string made from a buffer on the stack (or the pool's, for a long one).</summary>
     public static string Pretty(string method)
     {
         int open = method.IndexOf('(', StringComparison.Ordinal);
@@ -409,17 +405,63 @@ public sealed class Snapshot
         {
             return method;
         }
-        string[] parameters = method[(open + 1)..^1].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        IEnumerable<string> types = parameters.Select(p =>
+        // Each parameter only loses characters, and its ", " is a character more than its comma: twice the name holds it.
+        int most = (method.Length * 2) + 2;
+        char[]? rented = most > 512 ? ArrayPool<char>.Shared.Rent(most) : null;
+        Span<char> written = rented is null ? stackalloc char[most] : rented;
+        method.AsSpan(0, open + 1).CopyTo(written);
+        int at = open + 1;
+        bool first = true;
+        ReadOnlySpan<char> parameters = method.AsSpan(open + 1, method.Length - open - 2);
+        foreach (Range range in parameters.Split(','))
         {
-            string type = p.Replace("value class ", string.Empty, StringComparison.Ordinal).Replace("class ", string.Empty, StringComparison.Ordinal);
-            int generic = type.IndexOfAny(['<', '`', '[', '&', '*']);
-            string head = generic < 0 ? type : type[..generic];
-            string tail = generic < 0 ? string.Empty : type[generic..];
-            int dot = head.LastIndexOf('.');
-            return (dot < 0 ? head : head[(dot + 1)..]) + tail;
-        });
-        return $"{method[..open]}({string.Join(", ", types)})";
+            ReadOnlySpan<char> parameter = parameters[range].Trim();
+            if (parameter.IsEmpty)
+            {
+                continue;
+            }
+            if (!first)
+            {
+                written[at++] = ',';
+                written[at++] = ' ';
+            }
+            first = false;
+            Span<char> type = written[at..];
+            parameter.CopyTo(type);
+            int length = Removed(type[..parameter.Length], "value class ");
+            length = Removed(type[..length], "class ");
+            ReadOnlySpan<char> bare = type[..length];
+            int generic = bare.IndexOfAny(TypeSuffixes);
+            int dot = (generic < 0 ? bare : bare[..generic]).LastIndexOf('.');
+            bare[(dot + 1)..].CopyTo(type);
+            at += length - dot - 1;
+        }
+        written[at++] = ')';
+        string pretty = new(written[..at]);
+        if (rented is not null)
+        {
+            ArrayPool<char>.Shared.Return(rented);
+        }
+        return pretty;
+    }
+
+    /// <summary>What starts a type's generic arguments, arity, array, reference or pointer, which keep their namespaces.</summary>
+    private static readonly SearchValues<char> TypeSuffixes = SearchValues.Create("<`[&*");
+
+    /// <summary>Takes every occurrence of a word out of some text in place, found left to right and never overlapping, and
+    /// says how long the text is now.</summary>
+    private static int Removed(Span<char> text, ReadOnlySpan<char> word)
+    {
+        int kept = 0;
+        int read = 0;
+        while (text[read..].IndexOf(word) is var found and >= 0)
+        {
+            text.Slice(read, found).CopyTo(text[kept..]);
+            kept += found;
+            read += found + word.Length;
+        }
+        text[read..].CopyTo(text[kept..]);
+        return kept + text.Length - read;
     }
 
     /// <summary>Reads a .nettrace file EventPipe wrote: the samples' stacks, with the methods named from the run's own
@@ -432,12 +474,12 @@ public sealed class Snapshot
         try
         {
             using TraceLog log = new(etlx);
-            Dictionary<(string, string), int> table = [];
-            List<(string Method, string Module)> named = [];
-            List<MethodCode?> codes = [];
+            FrameNames names = new(log);
             List<int[]> stacks = [];
             Dictionary<int[], int> distinct = new(StackComparer.Instance);
-            Dictionary<CallStackIndex, int> numbered = [];
+            Dictionary<int[], int>.AlternateLookup<ReadOnlySpan<int>> found = distinct.GetAlternateLookup<ReadOnlySpan<int>>();
+            // Per stack the trace numbers, the one kept for it and one more: none until an event caught it.
+            int[] numbered = new int[log.CallStacks.Count];
             // Each thread's runs, the last of which its next sample at the same stack lengthens.
             Dictionary<int, List<SampleRun>> runs = [];
             Dictionary<int, string> threads = [];
@@ -507,23 +549,28 @@ public sealed class Snapshot
             IEnumerable<double> ends = kept.Select(t => t.Runs.Max(r => r.ToMs)).Concat(drawn.Select(f => f.EndMs));
             double first = starts.DefaultIfEmpty(0).Min();
             double end = ends.DefaultIfEmpty(0).Max();
-            return new Snapshot(kept, stacks, named, codes, threads, ticks, collections, drawn, first, end, nettrace, null);
+            return new Snapshot(kept, stacks, names.Named, names.Codes, threads, ticks, collections, drawn, first, end, nettrace, null);
 
             // The event's stack as a number into the table, each the trace numbers named once and each distinct one kept once.
             int Stack(TraceEvent data)
             {
                 CallStackIndex index = data.CallStackIndex();
-                if (numbered.TryGetValue(index, out int number))
+                bool numberable = index != CallStackIndex.Invalid && (int)index < numbered.Length;
+                if (numberable && numbered[(int)index] > 0)
                 {
-                    return number;
+                    return numbered[(int)index] - 1;
                 }
-                int[] caught = Frames(index == CallStackIndex.Invalid ? null : log.CallStacks[index], table, named, codes);
-                if (!distinct.TryGetValue(caught, out number))
+                ReadOnlySpan<int> caught = names.Walk(index);
+                if (!found.TryGetValue(caught, out int number))
                 {
-                    distinct[caught] = number = stacks.Count;
-                    stacks.Add(caught);
+                    int[] stack = caught.ToArray();
+                    distinct[stack] = number = stacks.Count;
+                    stacks.Add(stack);
                 }
-                numbered[index] = number;
+                if (numberable)
+                {
+                    numbered[(int)index] = number + 1;
+                }
                 return number;
             }
         }
@@ -539,18 +586,124 @@ public sealed class Snapshot
         }
     }
 
-    /// <summary>Stacks compared by their frames, so one caught again is the one kept.</summary>
-    private sealed class StackComparer : IEqualityComparer<int[]>
+    /// <summary>Stacks compared by their frames, so one caught again is the one kept, and looked up by a walk's frames
+    /// before an array is made of them.</summary>
+    private sealed class StackComparer : IEqualityComparer<int[]>, IAlternateEqualityComparer<ReadOnlySpan<int>, int[]>
     {
         public static readonly StackComparer Instance = new();
 
         public bool Equals(int[]? x, int[]? y) => x is not null && y is not null ? x.AsSpan().SequenceEqual(y) : x == y;
 
-        public int GetHashCode(int[] stack)
+        public int GetHashCode(int[] stack) => Hash(stack);
+
+        public bool Equals(ReadOnlySpan<int> alternate, int[] other) => alternate.SequenceEqual(other);
+
+        public int GetHashCode(ReadOnlySpan<int> alternate) => Hash(alternate);
+
+        public int[] Create(ReadOnlySpan<int> alternate) => alternate.ToArray();
+
+        private static int Hash(ReadOnlySpan<int> stack)
         {
             HashCode hash = new();
-            hash.AddBytes(System.Runtime.InteropServices.MemoryMarshal.AsBytes(stack.AsSpan()));
+            hash.AddBytes(MemoryMarshal.AsBytes(stack));
             return hash.ToHashCode();
+        }
+    }
+
+    /// <summary>The trace's stacks as numbers into a table of frames, walked down the trace's own table of callers: each
+    /// code address is numbered once, each method's name made once, and a walk's frames are written into a buffer it keeps.
+    /// A frame is a method and its module; runs of unnamed native frames are one, and the runtime's GC poll at the leaf
+    /// (where the sampler stops a busy loop) is left to its caller.</summary>
+    private sealed class FrameNames(TraceLog log)
+    {
+        private readonly TraceCallStacks callStacks = log.CallStacks;
+        private readonly TraceCodeAddresses addresses = log.CodeAddresses;
+        private readonly Dictionary<(string Method, string Module), int> table = [];
+        private readonly Dictionary<string, string> natives = new(StringComparer.Ordinal);
+
+        /// <summary>Per code address, its frame's number and one more: none until a walk came to it.</summary>
+        private int[] byAddress = new int[log.CodeAddresses.Count];
+
+        /// <summary>Per method, its name as shown.</summary>
+        private string?[] byMethod = new string?[log.CodeAddresses.Methods.Count];
+
+        private int[] walked = new int[128];
+
+        public List<(string Method, string Module)> Named { get; } = [];
+
+        /// <summary>Each frame's module file and token, beside <see cref="Named"/>.</summary>
+        public List<MethodCode?> Codes { get; } = [];
+
+        /// <summary>A stack's frames from where it was caught to its thread's first, good until the next walk.</summary>
+        public ReadOnlySpan<int> Walk(CallStackIndex stack)
+        {
+            int count = 0;
+            string? previous = null;
+            for (CallStackIndex at = stack; at != CallStackIndex.Invalid; at = callStacks.Caller(at))
+            {
+                int frame = Frame(callStacks.CodeAddressIndex(at));
+                string method = Named[frame].Method;
+                if ((previous == method && method.StartsWith('[')) || (count == 0 && method.Contains("<PollGC>", StringComparison.Ordinal)))
+                {
+                    continue;
+                }
+                if (count == walked.Length)
+                {
+                    Array.Resize(ref walked, walked.Length * 2);
+                }
+                walked[count++] = frame;
+                previous = method;
+            }
+            return walked.AsSpan(0, count);
+        }
+
+        /// <summary>The number of a code address's frame, named and numbered into the table the first time.</summary>
+        private int Frame(CodeAddressIndex address)
+        {
+            int index = (int)address;
+            if (index >= byAddress.Length)
+            {
+                Array.Resize(ref byAddress, Math.Max(index + 1, byAddress.Length * 2));
+            }
+            if (byAddress[index] > 0)
+            {
+                return byAddress[index] - 1;
+            }
+            MethodIndex methodIndex = addresses.MethodIndex(address);
+            TraceModuleFile? moduleFile = addresses.ModuleFile(address);
+            string module = moduleFile?.Name ?? string.Empty;
+            string method = addresses.Methods.FullMethodName(methodIndex) is { Length: > 0 } full ? Method(methodIndex, full) : Native(module);
+            if (!table.TryGetValue((method, module), out int number))
+            {
+                table[(method, module)] = number = Named.Count;
+                Named.Add((method, module));
+                int token = addresses.Methods.MethodToken(methodIndex);
+                Codes.Add(methodIndex != MethodIndex.Invalid && token != 0
+                    && (addresses.ModuleFiles[addresses.Methods.MethodModuleFileIndex(methodIndex)]?.FilePath ?? (moduleFile is null ? string.Empty : moduleFile.FilePath)) is { Length: > 0 } file
+                    ? new MethodCode(file, token)
+                    : null);
+            }
+            byAddress[index] = number + 1;
+            return number;
+        }
+
+        private string Method(MethodIndex method, string full)
+        {
+            int index = (int)method;
+            if (index >= byMethod.Length)
+            {
+                Array.Resize(ref byMethod, Math.Max(index + 1, byMethod.Length * 2));
+            }
+            return byMethod[index] ??= Pretty(full);
+        }
+
+        private string Native(string module)
+        {
+            if (!natives.TryGetValue(module, out string? name))
+            {
+                natives[module] = name = $"[{(module.Length > 0 ? module : "native")}]";
+            }
+            return name;
         }
     }
 }
