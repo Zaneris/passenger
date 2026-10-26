@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -1170,7 +1171,7 @@ public static class Ui
             top.MouseDown(point, MouseButton.Left);
             top.MouseUp(point, MouseButton.Left);
         }
-        lastClick = (new WeakReference<TopLevel>(top), point, top.PointToScreen(point), DateTime.UtcNow);
+        Clicked(top, point);
         Settle();
     }
 
@@ -1184,7 +1185,7 @@ public static class Ui
             window.MouseMove(from + ((to - from) * (step / 10.0)), RawInputModifiers.LeftMouseButton);
         }
         window.MouseUp(to, MouseButton.Left);
-        lastClick = (new WeakReference<TopLevel>(window), from, window.PointToScreen(from), DateTime.UtcNow);
+        Clicked(window, from);
         Settle();
     }
 
@@ -1205,7 +1206,7 @@ public static class Ui
         }
         string? doubled = count > 1 ? Doubled(top, point, count) : null;
         top.MouseUp(point, button, modifiers);
-        lastClick = (new WeakReference<TopLevel>(top), point, top.PointToScreen(point), DateTime.UtcNow);
+        Clicked(top, point);
         if (doubled is not null)
         {
             throw new InvalidOperationException(doubled);
@@ -1216,35 +1217,35 @@ public static class Ui
         }
     }
 
-    /// <summary>What a click the platform took as the second of a double click (or later) says: where it and the click
-    /// before it went, how far apart in time, and the double-tap time and size the test waited by.</summary>
+    /// <summary>What a click the platform took as the second of a double click (or later) says: where it and the window's
+    /// click before it went, how far apart in time, and the double-tap time and size the test waited by.</summary>
     private static string Doubled(TopLevel top, Point point, int count)
     {
         Avalonia.Platform.IPlatformSettings? platform = Application.Current?.PlatformSettings;
-        string before = lastClick is { } last && last.Top.TryGetTarget(out TopLevel? clicked)
-            ? $"at {last.Point} in {(clicked == top ? "the same window" : clicked.GetType().Name)}, {(DateTime.UtcNow - last.At).TotalMilliseconds:0} ms before"
+        string before = LastClicks.TryGetValue(top, out StrongBox<(Point Point, DateTime At)>? last)
+            ? $"at {last.Value.Point}, {(DateTime.UtcNow - last.Value.At).TotalMilliseconds:0} ms before"
             : "none Ui made";
-        return $"A click at {point} in {top.GetType().Name} was taken as click {count} of a run, not a click of its own; the click before it was {before}. "
+        return $"A click at {point} in {top.GetType().Name} was taken as click {count} of a run, not a click of its own; the window's click before it was {before}. "
             + $"The double-tap time and size waited by: {platform?.GetDoubleTapTime(PointerType.Mouse).TotalMilliseconds.ToString() ?? "none (500)"} ms, {platform?.GetDoubleTapSize(PointerType.Mouse).ToString() ?? "none (4, 4)"}";
     }
 
-    /// <summary>Where and when the last click went down, in its window and on the screen, its window held weakly, so a
-    /// window closed is let go.</summary>
-    private static (WeakReference<TopLevel> Top, Point Point, PixelPoint Screen, DateTime At)? lastClick;
+    /// <summary>Where and when each window's last click went down, the window held weakly, so a window closed is let go.</summary>
+    private static readonly ConditionalWeakTable<TopLevel, StrongBox<(Point Point, DateTime At)>> LastClicks = new();
 
-    /// <summary>Waits out twice the double-click time after a click at the same place on the screen, in any window, so a
-    /// second click there is a click of its own, as two a person makes apart are, never the second of a double click
-    /// (<see cref="DoubleClick"/> makes one): the platform counts clicks by where they are on the screen, across windows,
-    /// and over a time longer than the double-click time it says.</summary>
+    private static void Clicked(TopLevel top, Point point) => LastClicks.AddOrUpdate(top, new StrongBox<(Point Point, DateTime At)>((point, DateTime.UtcNow)));
+
+    /// <summary>Waits out twice the double-click time after the window's last click at the same place, so a second click
+    /// there is a click of its own, as two a person makes apart are, never the second of a double click
+    /// (<see cref="DoubleClick"/> makes one): the platform counts each window's clicks apart from another's, and over a
+    /// time longer than the double-click time it says.</summary>
     private static void Apart(TopLevel top, Point point)
     {
         Avalonia.Platform.IPlatformSettings? platform = Application.Current?.PlatformSettings;
         TimeSpan between = 2 * (platform?.GetDoubleTapTime(PointerType.Mouse) ?? TimeSpan.FromMilliseconds(500));
         Size near = platform?.GetDoubleTapSize(PointerType.Mouse) ?? new Size(4, 4);
-        PixelPoint screen = top.PointToScreen(point);
-        double scale = top.RenderScaling;
-        if (lastClick is { } last && Math.Abs(last.Screen.X - screen.X) <= near.Width * scale && Math.Abs(last.Screen.Y - screen.Y) <= near.Height * scale
-            && DateTime.UtcNow - last.At is { } since && since < between)
+        if (LastClicks.TryGetValue(top, out StrongBox<(Point Point, DateTime At)>? last)
+            && Math.Abs(last.Value.Point.X - point.X) <= near.Width / 2 && Math.Abs(last.Value.Point.Y - point.Y) <= near.Height / 2
+            && DateTime.UtcNow - last.Value.At is { } since && since < between)
         {
             Hold(between - since, "a second click at the same place to be a click of its own, not a double click");
         }
