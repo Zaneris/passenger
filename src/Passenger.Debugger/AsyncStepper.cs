@@ -306,6 +306,8 @@ internal sealed class AsyncStepper
         ICorDebugILFrame? frame = thread.ActiveFrame as ICorDebugILFrame;
         if (frame is null || frame.IP.pnOffset != (atYield ? step.Yield! : step.Resume!).ILOffset)
         {
+            _debugger.Log($"The async step's breakpoint at IL_{(atYield ? step.Yield! : step.Resume!).ILOffset:X4} was met on thread {thread.Id} "
+                + $"at {(frame is null ? "no IL frame" : $"IL_{frame.IP.pnOffset:X4}")}: the async step ends");
             step.Dispose();
             _currentAsyncStep = null;
             return (false, null);
@@ -331,6 +333,8 @@ internal sealed class AsyncStepper
         ICorDebugFunction function = frame.Function;
         step.Run = StateMachineOf(frame) ?? await BuilderRunOf(frame);
         step.Resume = Arm(function.ILCode, function.Module.BaseAddress, function.Token, step.ResumeOffset);
+        _debugger.Log($"Thread {step.ThreadId} leaves the method at the await: the step waits where its run resumes, IL_{step.ResumeOffset:X4}, "
+            + (step.Run is not { } run ? "the run not told" : run.IsStateMachine ? "the run told by its state machine" : "the run told by its builder"));
         return false;
     }
 
@@ -340,6 +344,7 @@ internal sealed class AsyncStepper
     {
         if (!await IsTheStepsRun(step, thread, frame))
         {
+            _debugger.Log($"A run of the method resumes on thread {thread.Id}, not the step's: it runs on");
             return;
         }
         _currentAsyncStep = null;

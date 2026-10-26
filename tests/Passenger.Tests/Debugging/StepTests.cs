@@ -196,7 +196,7 @@ public class StepTests(ITestOutputHelper testOutputHelper)
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await StepOverWhileAnotherThreadPasses(host, "step", "step over the call while another thread passes", "a step lost runs on to here",
             new DapSourceBreakpoint(Debuggees.Line(Looping, "passed by another thread"), Condition: "pass < 0"));
-        AssertStepEnded(await host.WaitForStoppedEvent(), "the call's step ends here");
+        AssertStepEnded(host, await host.WaitForStoppedEvent(), "the call's step ends here");
     }
 
     [Fact]
@@ -206,7 +206,7 @@ public class StepTests(ITestOutputHelper testOutputHelper)
         await StepOverWhileAnotherThreadPasses(host, "step", "step over the call while another thread passes", "a step lost runs on to here",
             new DapSourceBreakpoint(Debuggees.Line(Looping, "passed by another thread"), LogMessage: "pass {pass}"));
         await host.WaitForEvent<OutputEvent>(output => output.Output.StartsWith("pass ", StringComparison.Ordinal));
-        AssertStepEnded(await host.WaitForStoppedEvent(), "the call's step ends here");
+        AssertStepEnded(host, await host.WaitForStoppedEvent(), "the call's step ends here");
     }
 
     [Fact]
@@ -215,7 +215,7 @@ public class StepTests(ITestOutputHelper testOutputHelper)
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await StepOverWhileAnotherThreadPasses(host, "step", "step over the call while another thread passes", "a step lost runs on to here",
             new DapSourceBreakpoint(Debuggees.Line(Looping, "wait for the other thread"), Condition: "times == 0"));
-        AssertStepEnded(await host.WaitForStoppedEvent(), "the call's step ends here");
+        AssertStepEnded(host, await host.WaitForStoppedEvent(), "the call's step ends here");
     }
 
     [Fact]
@@ -224,7 +224,7 @@ public class StepTests(ITestOutputHelper testOutputHelper)
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await StepOverWhileAnotherThreadPasses(host, "await", "step over the await while another thread passes", "a step over the await lost runs on to here",
             new DapSourceBreakpoint(Debuggees.Line(Looping, "passed by another thread"), Condition: "pass < 0"));
-        AssertStepEnded(await host.WaitForStoppedEvent(), "the await's step ends here");
+        AssertStepEnded(host, await host.WaitForStoppedEvent(), "the await's step ends here");
     }
 
     [Fact]
@@ -234,7 +234,7 @@ public class StepTests(ITestOutputHelper testOutputHelper)
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await StepOverWhileAnotherThreadPasses(host, "waiting", "step over the await whose builder waits", "a step over the waiting builder's await lost runs on to here",
             new DapSourceBreakpoint(Debuggees.Line(Looping, "passed by another thread"), Condition: "pass < 0"));
-        AssertStepEnded(await host.WaitForStoppedEvent(), "the waiting builder's step ends here");
+        AssertStepEnded(host, await host.WaitForStoppedEvent(), "the waiting builder's step ends here");
     }
 
     [Fact]
@@ -243,7 +243,7 @@ public class StepTests(ITestOutputHelper testOutputHelper)
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await StepOverWhileAnotherThreadPasses(host, "waiting first", "step over the await whose builder waits", "a step over the waiting builder's await lost runs on to here",
             new DapSourceBreakpoint(Debuggees.Line(Looping, "passed by another thread"), Condition: "pass < 0"));
-        AssertStepEnded(await host.WaitForStoppedEvent(), "the waiting builder's step ends here");
+        AssertStepEnded(host, await host.WaitForStoppedEvent(), "the waiting builder's step ends here");
     }
 
     [Fact]
@@ -254,7 +254,7 @@ public class StepTests(ITestOutputHelper testOutputHelper)
             "a step over the await that goes on elsewhere lost runs on to here",
             new DapSourceBreakpoint(Debuggees.Line(Looping, "passed by another thread"), Condition: "pass < 0"));
         StoppedEvent stepped = await host.WaitForStoppedEvent();
-        AssertStepEnded(stepped, "the step over the await that goes on elsewhere ends here");
+        AssertStepEnded(host, stepped, "the step over the await that goes on elsewhere ends here");
         Assert.True((await host.LocalsAsync(stepped)).Any(v => (v.Name, v.Value) == ("Say() returned", "\"said elsewhere\"")),
             "Variables leaves out what the statement's call after the await returned, on the thread the method went on on");
     }
@@ -373,10 +373,36 @@ public class StepTests(ITestOutputHelper testOutputHelper)
         await host.StepOverAsync(stopped.ThreadId!.Value);
     }
 
-    private static void AssertStepEnded(StoppedEvent stepped, string at)
+    private static void AssertStepEnded(DebugSession host, StoppedEvent stepped, string at)
     {
         int line = Debuggees.Line(Looping, at);
-        Assert.True(stepped.Reason == StopReasons.Step && stepped.Line == line,
-            $"The step was lost to a breakpoint that did not stop, and the program ran on: it stopped for {stepped.Reason} at line {stepped.Line}, where the step would have stopped at line {line}");
+        if (stepped.Reason == StopReasons.Step && stepped.Line == line)
+        {
+            return;
+        }
+        Assert.Fail($"The step was lost to a breakpoint that did not stop, and the program ran on: it stopped for {stepped.Reason} at line {stepped.Line}, where the step would have stopped at line {line}. "
+            + $"The engine's account of the step, the other thread's false conditions left out:\n{StepAccount(host.EngineLog())}");
+    }
+
+    /// <summary>The engine's log from the step's request on, without the breakpoint hits whose condition was false (each an
+    /// event and its verdict), which come by the hundred: what the step's threads, steppers and breakpoints did.</summary>
+    private static string StepAccount(string log)
+    {
+        string[] lines = log.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        int from = Array.FindLastIndex(lines, l => l.Contains("StepOver on thread", StringComparison.Ordinal));
+        List<string> kept = [];
+        foreach (string line in lines[Math.Max(from, 0)..])
+        {
+            if (line.Contains("condition not met", StringComparison.Ordinal))
+            {
+                if (kept.Count > 0 && kept[^1].Contains("Event: Breakpoint", StringComparison.Ordinal))
+                {
+                    kept.RemoveAt(kept.Count - 1);
+                }
+                continue;
+            }
+            kept.Add(line.TrimEnd());
+        }
+        return string.Join("\n", kept.TakeLast(80));
     }
 }

@@ -412,7 +412,7 @@ public partial class ManagedDebugger
             {
                 return;
             }
-            _logger?.Invoke($"Event: {e.GetType().Name}");
+            _logger?.Invoke($"Event: {e.GetType().Name}{(DispatchThread(e) is int thread ? $" on thread {thread}" : "")}");
             switch (e)
             {
                 case LogMessageCorDebugManagedCallbackEventArgs a: HandleLogMessage(sender, a); break;
