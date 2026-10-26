@@ -336,8 +336,13 @@ public sealed class MigrationsTests
         window.ExplorerView.Reveal(path);
         Ui.Settle();
         Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Name.StartsWith(Path.GetFileNameWithoutExtension(path), StringComparison.Ordinal)));
+        string? next = window.EditorArea.Commands.ToUndo(null)?.Name;
+        string open = string.Join(", ", window.EditorArea.Documents.Select(d => Path.GetFileName(d.Path)));
+        string? active = window.EditorArea.Active?.Path is { } shown ? Path.GetFileName(shown) : null;
+        string? focused = window.FocusManager?.GetFocusedElement()?.GetType().Name;
         Ui.Run(window, Passenger.Editor.EditorActions.Undo);
-        Assert.True(asked.Count == 1, $"Undo asked {asked.Count} questions: {string.Join(" | ", asked)}");
+        Assert.True(asked.Count == 1, $"Undo asked {asked.Count} questions: {string.Join(" | ", asked)} (the command to undo was {next ?? "none"}; "
+            + $"open: {open}; active: {active ?? "none"}; the keys with: {focused ?? "nothing"}; the status bar said {window.Status})");
     }
 
     private static string Gaps(MainWindow window) => string.Join(" | ", window.MigrationsView.GapsShown);
