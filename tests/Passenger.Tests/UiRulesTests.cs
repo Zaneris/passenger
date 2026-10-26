@@ -1386,8 +1386,6 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
         "src/Passenger.App/Explorer/DockerDialogs.cs: FuncDataTemplate<ComposeChoice>",
         "src/Passenger.App/History/HistoryTab.cs: FuncDataTemplate<HistoryDifference>",
         "src/Passenger.App/History/HistoryTab.cs: FuncDataTemplate<HistoryRow>",
-        "src/Passenger.App/LiveTree/LiveTreeView.cs: FuncDataTemplate<LiveTreeRow>",
-        "src/Passenger.App/LiveTree/LiveTreeView.cs: FuncDataTemplate<PropertyValue>",
         "src/Passenger.App/Migrations/MigrationsView.cs: FuncDataTemplate<MigrationRow?>",
         "src/Passenger.App/Migrations/MigrationsView.cs: FuncDataTemplate<object>",
         "src/Passenger.App/Navigation/FindInFilesPopup.cs: FuncDataTemplate<ProjectModel>",
