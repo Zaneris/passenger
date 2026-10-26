@@ -2,7 +2,6 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -19,21 +18,12 @@ public sealed class RequestsView : DockPanel
     /// <summary>A command's row, under its request's.</summary>
     public sealed record CommandRow(LiveRequest Request, LiveCommand Command);
 
-    /// <summary>A row listed: a request or a command, its control drawn anew in place as what it shows changes.</summary>
-    private sealed class Row(object data)
+    /// <summary>A row listed: a request or a command, which its row shows anew in place as what it shows changes.</summary>
+    private sealed class Row(object data) : Observable
     {
         public object Data { get; } = data;
 
-        /// <summary>How many times what it shows has changed, so a control shown again after a change draws it.</summary>
-        public int Version { get; private set; }
-
-        public event EventHandler? Redrawn;
-
-        public void Redraw()
-        {
-            Version++;
-            Redrawn?.Invoke(this, EventArgs.Empty);
-        }
+        public void Redraw() => Raise(nameof(Data));
     }
 
     private readonly ListBox list;
@@ -52,8 +42,8 @@ public sealed class RequestsView : DockPanel
         {
             Classes = { "tree" },
             ItemsSource = rows,
-            ItemTemplate = new FuncDataTemplate<Row>((row, _) => row is null ? new Panel() : View(row), supportsRecycling: false),
         };
+        ReusedRows.Use(list, View);
         list.DoubleTapped += (_, _) => Open();
         list.KeyDown += (_, e) =>
         {
@@ -196,95 +186,97 @@ public sealed class RequestsView : DockPanel
         listed[request] = (row, request.Commands.Count);
     }
 
-    /// <summary>A row's control, drawn again in place while it is shown as what it shows changes (and as it is shown again
-    /// after a change), never made anew by the list.</summary>
-    private static Control View(Row row)
+    /// <summary>A row for whichever request or command the list hands its container, shown anew in place as what it shows
+    /// changes.</summary>
+    private static Control View()
     {
-        Decorator view = new() { Child = Draw(row.Data) };
-        int drawn = row.Version;
-        void Show(object? sender, EventArgs e)
+        RequestLine request = new();
+        CommandLine command = new();
+        return new Panel { Children = { request.Line, command.Line } }.Showing<Row>(row =>
         {
-            drawn = row.Version;
-            view.Child = Draw(row.Data);
-        }
-        view.AttachedToVisualTree += (_, _) =>
-        {
-            row.Redrawn -= Show;
-            row.Redrawn += Show;
-            if (drawn != row.Version)
+            request.Line.IsVisible = row.Data is LiveRequest;
+            command.Line.IsVisible = row.Data is CommandRow;
+            if (row.Data is LiveRequest shown)
             {
-                Show(null, EventArgs.Empty);
+                request.Show(shown);
             }
-        };
-        view.DetachedFromVisualTree += (_, _) => row.Redrawn -= Show;
-        return view;
+            else if (row.Data is CommandRow listed)
+            {
+                command.Show(listed.Command);
+            }
+        });
     }
 
-    private static Control Draw(object data) => data switch
+    /// <summary>A request's line: its method, its path, its status and time, and a mark where it ran a command again and again.</summary>
+    private sealed class RequestLine
     {
-        LiveRequest request => RequestRow(request),
-        CommandRow command => CommandLine(command),
-        _ => new TextBlock(),
-    };
+        private readonly Border method = EndpointsView.MethodTag(string.Empty);
+        private readonly TextBlock outcome = Muted(string.Empty);
+        private readonly Border repeated = Marked("N+1", TokenKeys.Warning);
+        private readonly TextBlock path = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        private string? methodColour = EndpointsView.MethodColour(string.Empty);
+        private string? outcomeColour;
 
-    private static Control RequestRow(LiveRequest request)
-    {
-        DockPanel row = new() { Height = ListRow.Height, Margin = new Thickness(8, 0, 4, 0) };
-        Border method = EndpointsView.MethodTag(request.Method);
-        DockPanel.SetDock(method, Dock.Left);
-        row.Children.Add(method);
-        string time = request.Milliseconds is { } ms ? string.Create(CultureInfo.InvariantCulture, $"{ms:0} ms") : "…";
-        TextBlock outcome = Muted($"{(request.Status is { } status ? status.ToString(CultureInfo.InvariantCulture) : "…")}  {time}");
-        if (request.Error is not null || request.Status >= 500)
+        public RequestLine()
         {
-            outcome.Bind(TextBlock.ForegroundProperty, outcome.GetResourceObservable(TokenKeys.Error));
-        }
-        DockPanel.SetDock(outcome, Dock.Right);
-        row.Children.Add(outcome);
-        if (request.HasRepeats)
-        {
-            Border repeated = Marked("N+1", TokenKeys.Warning);
+            DockPanel.SetDock(method, Dock.Left);
+            DockPanel.SetDock(outcome, Dock.Right);
             DockPanel.SetDock(repeated, Dock.Right);
-            row.Children.Add(repeated);
+            Line = new DockPanel { Height = ListRow.Height, Margin = new Thickness(8, 0, 4, 0), Children = { method, outcome, repeated, path } };
         }
-        TextBlock path = new() { Text = request.Path + request.Query, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        row.Children.Add(path);
-        ToolTip.SetTip(row, (request.Route is { } route ? $"{RouteRequests.Title(route)}: {route.Handler}" : $"{request.Method} {request.Path}{request.Query}") + $" ({request.From})");
-        return row;
+
+        public DockPanel Line { get; }
+
+        public void Show(LiveRequest request)
+        {
+            TextBlock verb = (TextBlock)method.Child!;
+            verb.Text = request.Method;
+            verb.Resource(TextBlock.ForegroundProperty, ref methodColour, EndpointsView.MethodColour(request.Method));
+            string time = request.Milliseconds is { } ms ? string.Create(CultureInfo.InvariantCulture, $"{ms:0} ms") : "…";
+            outcome.Text = $"{(request.Status is { } status ? status.ToString(CultureInfo.InvariantCulture) : "…")}  {time}";
+            outcome.Resource(TextBlock.ForegroundProperty, ref outcomeColour, request.Error is not null || request.Status >= 500 ? TokenKeys.Error : null);
+            repeated.IsVisible = request.HasRepeats;
+            path.Text = request.Path + request.Query;
+            ToolTip.SetTip(Line, (request.Route is { } route ? $"{RouteRequests.Title(route)}: {route.Handler}" : $"{request.Method} {request.Path}{request.Query}") + $" ({request.From})");
+        }
     }
 
-    private static Control CommandLine(CommandRow row)
+    /// <summary>A command's line under its request's: its text, its rows or reads and time, and marks where it was slow or
+    /// ran again and again.</summary>
+    private sealed class CommandLine
     {
-        LiveCommand command = row.Command;
-        DockPanel line = new() { Height = ListRow.Height, Margin = new Thickness(30, 0, 4, 0) };
-        string rows = command.Rows is { } count and >= 0 ? $"{count} {(count == 1 ? "row" : "rows")} changed  "
-            : command.Reads is { } reads ? $"{reads} {(reads == 1 ? "read" : "reads")}  " : string.Empty;
-        TextBlock outcome = Muted(command.Error ?? string.Create(CultureInfo.InvariantCulture, $"{rows}{command.Milliseconds:0.#} ms"));
-        DockPanel.SetDock(outcome, Dock.Right);
-        line.Children.Add(outcome);
-        if (command.Slow)
+        private readonly TextBlock outcome = Muted(string.Empty);
+        private readonly Border slow = Marked("slow", TokenKeys.Error);
+        private readonly Border repeated = Marked(string.Empty, TokenKeys.Warning);
+        private readonly TextBlock text = new()
         {
-            Border slow = Marked("slow", TokenKeys.Error);
-            DockPanel.SetDock(slow, Dock.Right);
-            line.Children.Add(slow);
-        }
-        if (command.Repeated)
-        {
-            Border repeated = Marked($"×{command.Runs}", TokenKeys.Warning);
-            DockPanel.SetDock(repeated, Dock.Right);
-            line.Children.Add(repeated);
-        }
-        TextBlock text = new()
-        {
-            Text = string.Join(' ', command.Text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)),
             FontFamily = CSharp.Fonts.Mono,
             FontSize = 12,
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
-        line.Children.Add(text);
-        ToolTip.SetTip(line, command.Parameters is { Length: > 0 } parameters ? command.Text + "\n" + parameters : command.Text);
-        return line;
+
+        public CommandLine()
+        {
+            DockPanel.SetDock(outcome, Dock.Right);
+            DockPanel.SetDock(slow, Dock.Right);
+            DockPanel.SetDock(repeated, Dock.Right);
+            Line = new DockPanel { Height = ListRow.Height, Margin = new Thickness(30, 0, 4, 0), Children = { outcome, slow, repeated, text } };
+        }
+
+        public DockPanel Line { get; }
+
+        public void Show(LiveCommand command)
+        {
+            string rows = command.Rows is { } count and >= 0 ? $"{count} {(count == 1 ? "row" : "rows")} changed  "
+                : command.Reads is { } reads ? $"{reads} {(reads == 1 ? "read" : "reads")}  " : string.Empty;
+            outcome.Text = command.Error ?? string.Create(CultureInfo.InvariantCulture, $"{rows}{command.Milliseconds:0.#} ms");
+            slow.IsVisible = command.Slow;
+            repeated.IsVisible = command.Repeated;
+            ((TextBlock)repeated.Child!).Text = command.Repeated ? $"×{command.Runs}" : string.Empty;
+            text.Text = string.Join(' ', command.Text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+            ToolTip.SetTip(Line, command.Parameters is { Length: > 0 } parameters ? command.Text + "\n" + parameters : command.Text);
+        }
     }
 
     private static TextBlock Muted(string words)

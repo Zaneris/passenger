@@ -481,7 +481,8 @@ public sealed class EndpointsView : DockPanel
         return new Border { Classes = { "tag" }, MinWidth = 52, Padding = new Thickness(4, 1), Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center, Child = text };
     }
 
-    private static string MethodColour(string method) => method switch
+    /// <summary>The colour a method's tag shows its name in.</summary>
+    internal static string MethodColour(string method) => method switch
     {
         "GET" => TokenKeys.Test_Passed,
         "POST" => TokenKeys.Link,
