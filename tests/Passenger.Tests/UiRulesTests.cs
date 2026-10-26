@@ -1378,7 +1378,6 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
         "src/Passenger.App/Containers/ContainerFilesPane.cs: FuncDataTemplate<ContainerFile>",
         "src/Passenger.App/Containers/ContainersView.cs: ItemTemplate = RunRows.Template<ContainerRow>",
         "src/Passenger.App/Debugging/AttachToProcessDialog.cs: FuncDataTemplate<AttachRow>",
-        "src/Passenger.App/Debugging/VariablesList.cs: FuncDataTemplate<VariableNode>",
         "src/Passenger.App/Editors/EditorGroup.cs: FuncDataTemplate<EditorTab>",
         "src/Passenger.App/Endpoints/EndpointsView.cs: FuncDataTemplate<object>",
         "src/Passenger.App/Endpoints/RequestsView.cs: FuncDataTemplate<Row>",
