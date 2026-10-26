@@ -408,7 +408,16 @@ public sealed partial class CodeEditor
             int lastAfter = last + shift + added;
             for (int line = first + shift; line <= lastAfter; line++)
             {
-                made.Add(WrapLine(after, after.GetLine(line), map.Width, measure));
+                LineWrap? wrap = WrapLine(after, after.GetLine(line), map.Width, measure);
+                made.Add(wrap);
+                if (added == 0)
+                {
+                    Rewrapped(map[line - shift], wrap, line);
+                }
+            }
+            if (added != 0)
+            {
+                rowShape++;
             }
             copiedTo = last + 1;
             shift += added;
@@ -439,7 +448,9 @@ public sealed partial class CodeEditor
         foreach (int line in touched)
         {
             made.AddRange(map, copiedTo, line - copiedTo);
-            made.Add(WrapLine(text, text.GetLine(line), map.Width, measure));
+            LineWrap? wrap = WrapLine(text, text.GetLine(line), map.Width, measure);
+            made.Add(wrap);
+            Rewrapped(map[line], wrap, line);
             copiedTo = line + 1;
         }
         made.AddRange(map, copiedTo, map.LineCount - copiedTo);
@@ -450,6 +461,7 @@ public sealed partial class CodeEditor
 
     private WrapMap WrapAll(TextSnapshot text, double width)
     {
+        rowShape++;
         WrapBuilder made = new();
         Advances measure = Measures();
         for (int line = 0; line < text.LineCount; line++)

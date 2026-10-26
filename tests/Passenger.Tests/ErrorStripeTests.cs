@@ -88,6 +88,90 @@ public sealed class ErrorStripeTests
             $"An Enter above 4,000 warnings allocated {manyEnter / 1024:N0} KB on the UI thread, above 40 {fewEnter / 1024:N0} KB: the stripe's marks or their messages were made anew for all of them");
     }
 
+    /// <summary>With soft wrap on, keys typed into a wrapped line above 4,000 warnings on wrapped lines, which leave every line
+    /// on as many rows, keep every mark where it was: the stripe's marks are never worked out again, and a key allocates on
+    /// the UI thread under twice what it does above 40. Edits in wrapped lines whose words are matches, which move their rows,
+    /// leave each mark where it now stands.</summary>
+    [AvaloniaFact]
+    public void Keys_in_a_wrapped_line_above_four_thousand_wrapped_warnings_keep_the_stripe_and_cost_what_they_do_above_forty()
+    {
+        (long few, int fewBuilt) = BytesPerWrappedKey(40);
+        (long many, int manyBuilt) = BytesPerWrappedKey(4000);
+        TestContext.Current.TestOutputHelper?.WriteLine($"Wrapped, a key allocated {few:N0} bytes above 40 warnings, {many:N0} above 4,000.");
+        Assert.True(fewBuilt == 0 && manyBuilt == 0,
+            $"Wrapped, the stripe's marks were worked out {fewBuilt} times for keys above 40 warnings and {manyBuilt} above 4,000, the keys moving no mark's row");
+        Assert.True(many < few * 2,
+            $"Wrapped, a key above 4,000 warnings allocated {many / 1024:N0} KB on the UI thread, above 40 {few / 1024:N0} KB: the stripe's marks were made again for all of them");
+    }
+
+    /// <summary>Long lines that wrap onto several rows at the rig's width, all as long, a warning on each, and a few words
+    /// short of another row.</summary>
+    private static string Wrapped(int lines) =>
+        string.Concat(Enumerable.Range(0, lines).Select(i => $"        int value{i:0000} = {i:0000}; // {string.Concat(Enumerable.Repeat("words ", 40))}end\n"));
+
+    /// <summary>What a key typed at the start of the first of some wrapped lines with a warning each allocates on the UI
+    /// thread, the stripe drawn after each, and how many times the keys had its marks worked out; above 40, with every word
+    /// then a match, edits anywhere in the lines hold each mark to where it stands after each.</summary>
+    private static (long Key, int Built) BytesPerWrappedKey(int lines)
+    {
+        EditorRig rig = new(Wrapped(lines));
+        CodeEditor editor = rig.Editor;
+        editor.SoftWrap = true;
+        TextSnapshot text = rig.Document.Snapshot;
+        editor.SetMarkers([.. Enumerable.Range(0, lines).Select(i => new Marker(new TextRange(text.GetLineStart(i) + 12, 9), MarkerKind.Warning, Unused))]);
+        editor.Focus();
+        Ui.Settle();
+        int[] rows = [.. editor.StripeMarks.Where(m => m.Kind == StripeMarkKind.Warning).Select(m => m.Row)];
+        int each = rows[1] - rows[0];
+        Assert.True(each > 1 && rows.Select((row, line) => row == line * each).All(same => same), $"The lines do not each wrap onto {each} rows: [{string.Join(", ", rows.Take(5))}…]");
+        int built = editor.StripeMarksBuilt;
+        const int Keys = 5;
+        long allocated = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < Keys; i++)
+        {
+            rig.Type("x");
+        }
+        long keys = GC.GetAllocatedBytesForCurrentThread() - allocated;
+        built = editor.StripeMarksBuilt - built;
+        Assert.Equal(rows, editor.StripeMarks.Where(m => m.Kind == StripeMarkKind.Warning).Select(m => m.Row));
+
+        if (lines <= 40)
+        {
+            // Every word a match, which keys anywhere push across their rows' breaks: kept or worked out, each mark is where it stands.
+            string all = rig.Document.Snapshot.ToString();
+            editor.SetHighlights([.. Enumerable.Range(0, all.Length - 5).Where(at => string.CompareOrdinal(all, at, "words", 0, 5) == 0).Select(at => new TextRange(at, 5))], 0);
+            Ui.Settle();
+            Random random = new(561);
+            string[] typed = ["x", " ", "words ", "a long word "];
+            for (int i = 0; i < 200; i++)
+            {
+                LineSpan line = rig.Document.Snapshot.GetLine(random.Next(lines));
+                int at = line.Start + random.Next(line.Length + 1);
+                rig.PlaceCaret(at);
+                if (at > line.Start && random.Next(3) == 0)
+                {
+                    rig.Press("BACK_SPACE");
+                }
+                else
+                {
+                    rig.Type(typed[random.Next(typed.Length)]);
+                }
+                List<string> kept = Shown(editor);
+                editor.SetBookmarks([i % lines]);
+                Ui.Settle();
+                List<string> fresh = Shown(editor);
+                int differs = kept.Zip(fresh).TakeWhile(pair => pair.First == pair.Second).Count();
+                Assert.True(kept.Count == fresh.Count && differs == kept.Count,
+                    $"After {i + 1} edits the stripe's mark {differs} of {kept.Count} stood as {kept.ElementAtOrDefault(differs)}, where worked out afresh, of {fresh.Count}, it is {fresh.ElementAtOrDefault(differs)}");
+            }
+        }
+        return (keys / Keys, built);
+    }
+
+    /// <summary>The stripe's marks but the caret's and the bookmarks', each by its kind and rows.</summary>
+    private static List<string> Shown(CodeEditor editor) =>
+        [.. editor.StripeMarks.Where(m => m.Kind is not (StripeMarkKind.Caret or StripeMarkKind.Bookmark)).Select(m => $"{m.Kind} at row {m.Row}, {m.Rows} high")];
+
     /// <summary>A frame over a file with a warning, an annotation, a change bar and a bookmark on each of 4,000 lines
     /// allocates on the UI thread under twice what it does over 40: what is drawn on the text is read for the lines on
     /// screen.</summary>

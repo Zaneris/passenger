@@ -249,17 +249,17 @@ public sealed class FindTests : IDisposable
 
     /// <summary>Keys typed at the top of a file of 20,000 lines with the find bar open allocate on the UI thread under
     /// twice what they do in one of 200, the match at the end moving with them and still counted; on every thread, the
-    /// search's own included, a key allocates under half the file's size, plain or as a regex over "\r\n" lines, and the
-    /// stripe's marks stand, the search finding the match where the key moved it.</summary>
+    /// search's own included, a key allocates under half the file's size, plain or as a regex over "\r\n" lines, with
+    /// soft wrap on or off, and the stripe's marks stand, the search finding the match where the key moved it.</summary>
     [AvaloniaFact]
     public void Typing_with_the_find_bar_open_costs_a_key_in_twenty_thousand_lines_about_what_it_does_in_two_hundred()
     {
         List<(string What, long Few, long Many, long All, long File, int Built)> measured = [];
-        foreach ((bool regex, string end) in new[] { (false, "\n"), (true, "\r\n") })
+        foreach ((bool regex, string end, bool wrapped) in new[] { (false, "\n", false), (true, "\r\n", false), (false, "\n", true) })
         {
-            string what = regex ? "a regex over \"\\r\\n\" lines" : "plain text";
-            (long few, _, _, _) = KeyWithFindOpen(200, regex, end);
-            (long many, long all, long file, int built) = KeyWithFindOpen(20_000, regex, end);
+            string what = (regex ? "a regex over \"\\r\\n\" lines" : "plain text") + (wrapped ? " in wrapped lines" : string.Empty);
+            (long few, _, _, _) = KeyWithFindOpen(200, regex, end, wrapped);
+            (long many, long all, long file, int built) = KeyWithFindOpen(20_000, regex, end, wrapped);
             TestContext.Current.TestOutputHelper?.WriteLine(
                 $"Finding {what}, a key allocated {few:N0} bytes above 200 lines, {many:N0} above 20,000 ({all:N0} on every thread, the file {file:N0}); the stripe's marks were worked out {built} times.");
             measured.Add((what, few, many, all, file, built));
@@ -335,10 +335,10 @@ public sealed class FindTests : IDisposable
         return text.Append("// the needle").Append(end).ToString();
     }
 
-    /// <summary>What a key typed at the top of a file of some lines, unwrapped, with the find bar open on a word at its end,
-    /// allocates on the UI thread, its search landing included; the least one allocated on every thread; the file's own
+    /// <summary>What a key typed at the top of a file of some lines, wrapped or not, with the find bar open on a word at its
+    /// end, allocates on the UI thread, its search landing included; the least one allocated on every thread; the file's own
     /// bytes; and how many times the keys had the stripe's marks worked out.</summary>
-    private (long Ui, long All, long File, int Built) KeyWithFindOpen(int lines, bool regex, string end)
+    private (long Ui, long All, long File, int Built) KeyWithFindOpen(int lines, bool regex, string end, bool wrapped)
     {
         System.Text.StringBuilder text = new();
         for (int i = 0; i < lines; i++)
@@ -347,10 +347,12 @@ public sealed class FindTests : IDisposable
         }
         string notes = text.Append("the needle").Append(end).ToString();
         (MainWindow window, CodeEditor editor) = Open(notes);
-        // Unwrapped, as a wrapped line's rows are worked out again with each key.
         editor.Focus();
-        Ui.Run(window, AppActions.SoftWrap);
-        Assert.False(window.EditorArea.Active!.SoftWrap);
+        if (!wrapped)
+        {
+            Ui.Run(window, AppActions.SoftWrap);
+        }
+        Assert.Equal(wrapped, window.EditorArea.Active!.SoftWrap);
         Ui.Press(window, Ui.Shortcut(AppActions.Find));
         FindBar bar = window.EditorArea.FindBar;
         bar.FindControl<ToggleButton>("UseRegex")!.IsChecked = regex;

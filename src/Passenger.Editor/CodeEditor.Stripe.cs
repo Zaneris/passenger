@@ -108,10 +108,46 @@ public sealed partial class CodeEditor
         }
     }
 
+    /// <summary>Counts the wraps made such that a line may stand on another row: made anew, or carried through an edit that
+    /// gave a line another number of rows or added or took away lines.</summary>
+    private int rowShape;
+
+    /// <summary>The lines whose wraps an edit moved within them, each still on as many rows, since the stripe's marks were
+    /// last worked out or found standing: a match or a use on one may now be on another of its rows.</summary>
+    private readonly List<int> rebroken = [];
+
+    /// <summary>The most lines <see cref="rebroken"/> keeps before the marks are taken for moved, worked out again.</summary>
+    private const int RebrokenKept = 64;
+
+    /// <summary>A line wrapped again where it stands (an edit or a hint on it): one taking another number of rows moves the
+    /// lines after it; one whose rows break elsewhere moves only what is within it.</summary>
+    private void Rewrapped(LineWrap? was, LineWrap? now, int line)
+    {
+        ReadOnlySpan<int> before = was is null ? [] : was.Starts;
+        ReadOnlySpan<int> after = now is null ? [] : now.Starts;
+        if (before.Length != after.Length)
+        {
+            rowShape++;
+            rebroken.Clear();
+        }
+        else if (!before.SequenceEqual(after) && !rebroken.Contains(line))
+        {
+            if (rebroken.Count < RebrokenKept)
+            {
+                rebroken.Add(line);
+            }
+            else
+            {
+                rowShape++;
+                rebroken.Clear();
+            }
+        }
+    }
+
     /// <summary>The stripe's marks but the caret's, worked out again only when what they come from is replaced, and then
-    /// not when only the text changed and no line came or went, the problems, matches and uses the same ones moved with it
-    /// (as the document carries markers through a key): each mark stands on the line and row it stood on. Worked out in
-    /// one pass over each list into <see cref="stripeMarks"/>, whose length only grows.</summary>
+    /// not when only the text changed and no line came or went or took another number of rows, the problems, matches and
+    /// uses the same ones moved with it (as the document carries markers through a key): each mark stands on the line and
+    /// row it stood on. Worked out in one pass over each list into <see cref="stripeMarks"/>, whose length only grows.</summary>
     private StripeBuild BuiltMarks()
     {
         TextSnapshot text = document.Snapshot;
@@ -124,12 +160,14 @@ public sealed partial class CodeEditor
             return built;
         }
         if (stripeBuild is { } kept && kept.Shape == lineShape && kept.Matched == highlights.Given && kept.Used == usages.Given
-            && ReferenceEquals(kept.Bookmarks, Bookmarks) && ReferenceEquals(kept.Changes, ChangeMarks) && SameRows(kept.Rows, rows)
+            && ReferenceEquals(kept.Bookmarks, Bookmarks) && ReferenceEquals(kept.Changes, ChangeMarks) && SameRows(kept, rows, text, matches, uses)
             && kept.Markers.SameMoved(markers))
         {
+            rebroken.Clear();
             stripeBuild = kept with { Text = text, Markers = markers, Highlights = matches, Usages = uses, Rows = rows };
             return stripeBuild;
         }
+        rebroken.Clear();
         int count = 0;
         foreach (ChangeMark change in ChangeMarks)
         {
@@ -147,11 +185,13 @@ public sealed partial class CodeEditor
             }
         }
         // A match or a use is marked at its own row of a wrapped line, and knows which it is as the text stands.
+        int matchesAt = count;
         for (int i = 0; i < matches.Count; i++)
         {
             int at = matches[i].Start;
             Mark(ref count, new StripeMark(StripeMarkKind.SearchMatch, RowOfOffset(text, Math.Min(at, text.Length), beforeWrap: false).Row, 1, at, "Search result", Item: i));
         }
+        int usesAt = count;
         for (int i = 0; i < uses.Count; i++)
         {
             UsageHighlight use = uses[i];
@@ -161,7 +201,7 @@ public sealed partial class CodeEditor
         MarkProblems(ref count, text, markers);
         StripeMarksBuilt++;
         stripeBuild = new StripeBuild(text, markers, matches, uses, rows, Bookmarks, ChangeMarks, highlights.Given, usages.Given,
-            stripeMarks, count, rows.Count, lineShape, StripeMarksBuilt);
+            stripeMarks, count, rows.Count, lineShape, StripeMarksBuilt, rowShape, matchesAt, usesAt);
         return stripeBuild;
     }
 
@@ -295,10 +335,67 @@ public sealed partial class CodeEditor
         return low;
     }
 
-    /// <summary>Whether two row maps put every line on the same row: no soft wrap, and the same lines folded away.</summary>
-    private static bool SameRows(RowMap kept, RowMap now) =>
-        ReferenceEquals(kept, now)
-        || (kept.Wraps is null && now.Wraps is null && kept.Count == now.Count && kept.Folds.Hidden.AsSpan().SequenceEqual(now.Folds.Hidden));
+    /// <summary>Whether every mark of a build stands on the row it stood on: the same lines folded away and, wrapped, every
+    /// line on as many rows as it was, a match or a use on a line whose rows break elsewhere still on its row.</summary>
+    private bool SameRows(StripeBuild kept, RowMap now, TextSnapshot text, IReadOnlyList<TextRange> matches, IReadOnlyList<UsageHighlight> uses)
+    {
+        RowMap was = kept.Rows;
+        if (ReferenceEquals(was, now))
+        {
+            return true;
+        }
+        if (was.Count != now.Count || (was.Wraps is null) != (now.Wraps is null) || !was.Folds.Hidden.AsSpan().SequenceEqual(now.Folds.Hidden))
+        {
+            return false;
+        }
+        if (now.Wraps is null)
+        {
+            return true;
+        }
+        if (kept.RowShape != rowShape)
+        {
+            return false;
+        }
+        if (rebroken.Count == 0 || (matches.Count == 0 && uses.Count == 0))
+        {
+            return true;
+        }
+        Span<(int Start, int End)> lines = stackalloc (int, int)[rebroken.Count];
+        for (int k = 0; k < rebroken.Count; k++)
+        {
+            LineSpan line = text.GetLine(rebroken[k]);
+            lines[k] = (line.Start, line.End);
+        }
+        for (int i = 0; i < matches.Count; i++)
+        {
+            if (!Stays(text, lines, kept.Marks[kept.MatchesAt + i], matches[i].Start))
+            {
+                return false;
+            }
+        }
+        for (int i = 0; i < uses.Count; i++)
+        {
+            if (!Stays(text, lines, kept.Marks[kept.UsesAt + i], uses[i].Range.Start))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// <summary>Whether a match's or a use's mark still stands on its row: off the lines whose rows break elsewhere, it does.</summary>
+    private bool Stays(TextSnapshot text, ReadOnlySpan<(int Start, int End)> lines, StripeMark mark, int offset)
+    {
+        int at = Math.Min(offset, text.Length);
+        foreach ((int start, int end) in lines)
+        {
+            if (at >= start && at <= end)
+            {
+                return RowOfOffset(text, at, beforeWrap: false).Row == mark.Row;
+            }
+        }
+        return true;
+    }
 
     /// <summary>Where a click on a mark goes in the text as it stands: a problem's mark to the first such problem on its line,
     /// a line's (a change, a bookmark) to the line's start, as a mark kept through keys has the line it stood on; a match's
@@ -406,10 +503,11 @@ public sealed partial class CodeEditor
     /// <summary>The stripe's marks as worked out from one text, its rows (the folds and the wraps) and the lists it shows,
     /// each kept by reference: a snapshot never changes, and the editor's lists and row maps are replaced, never changed in
     /// place; how many times the matches and uses had been given; the first <see cref="Count"/> of <see cref="Marks"/>; the
-    /// count of line-moving changes it was worked out at, and which build it is.</summary>
+    /// counts of line-moving changes and of row-moving wraps it was worked out at, which build it is, and where among its
+    /// marks the matches' and the uses' begin.</summary>
     private sealed record StripeBuild(TextSnapshot Text, MarkerList Markers, IReadOnlyList<TextRange> Highlights,
         IReadOnlyList<UsageHighlight> Usages, RowMap Rows, IReadOnlyList<int> Bookmarks, IReadOnlyList<ChangeMark> Changes, int Matched, int Used,
-        StripeMark[] Marks, int Count, int RowCount, int Shape, int Number)
+        StripeMark[] Marks, int Count, int RowCount, int Shape, int Number, int RowShape, int MatchesAt, int UsesAt)
     {
         public bool Shows(TextSnapshot text, MarkerList markers, IReadOnlyList<TextRange> highlights, IReadOnlyList<UsageHighlight> usages,
             RowMap rows, IReadOnlyList<int> bookmarks, IReadOnlyList<ChangeMark> changes) =>
