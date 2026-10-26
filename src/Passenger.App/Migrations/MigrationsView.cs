@@ -1,7 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
-using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.App.ToolWindows;
@@ -204,11 +203,12 @@ public sealed class MigrationsView : DockPanel
             Name = name,
             MinWidth = 140,
             VerticalAlignment = VerticalAlignment.Center,
-            ItemTemplate = new FuncDataTemplate<object>((item, _) => new TextBlock
-            {
-                Text = item switch { ProjectModel project => project.Name, EfContext context => context.Name, _ => string.Empty },
-            }),
         };
+        ReusedRows.Use(chooser, () =>
+        {
+            TextBlock shown = new();
+            return shown.Showing<object>(item => shown.Text = item switch { ProjectModel project => project.Name, EfContext context => context.Name, _ => string.Empty });
+        });
         ToolTip.SetTip(chooser, tip);
         return chooser;
     }

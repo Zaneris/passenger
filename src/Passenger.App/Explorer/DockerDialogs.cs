@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
 
@@ -129,35 +128,36 @@ public sealed class DockerComposeDialog : Window
 
     private static Border List(IReadOnlyList<ComposeChoice> choices, int row)
     {
-        ListBox list = new()
-        {
-            Classes = { "tree" },
-            ItemsSource = choices,
-            ItemTemplate = new FuncDataTemplate<ComposeChoice>((choice, _) => choice is null ? new Panel() : Row(choice), supportsRecycling: false),
-        };
+        ListBox list = new() { Classes = { "tree" }, ItemsSource = choices };
+        ReusedRows.Use(list, Row);
         Border framed = new() { Classes = { "framed" }, Child = list, MaxHeight = row == 3 ? 140 : double.PositiveInfinity };
         Grid.SetRow(framed, row);
         return framed;
     }
 
-    private static Control Row(ComposeChoice choice)
+    /// <summary>A row for whichever service or file the list hands its container: its box, which follows the choice while
+    /// shown and checks the one it shows, its name and what it is.</summary>
+    private static Control Row()
     {
-        CheckBox check = new() { IsChecked = choice.IsChosen, VerticalAlignment = VerticalAlignment.Center, Focusable = false };
-        check.IsCheckedChanged += (_, _) => choice.IsChosen = check.IsChecked == true;
-        choice.PropertyChanged += (_, e) =>
+        CheckBox check = new() { VerticalAlignment = VerticalAlignment.Center, Focusable = false };
+        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
+        TextBlock detail = new() { Classes = { "muted" }, FontSize = 12, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        StackPanel row = new() { Orientation = Orientation.Horizontal, Height = 28, Margin = new Thickness(6, 0), Children = { check, name, detail } };
+        bool setting = false;
+        check.IsCheckedChanged += (_, _) =>
         {
-            if (e.PropertyName == nameof(ComposeChoice.IsChosen))
+            if (!setting && row.DataContext is ComposeChoice choice)
             {
-                check.IsChecked = choice.IsChosen;
+                choice.IsChosen = check.IsChecked == true;
             }
         };
-        TextBlock detail = new() { Classes = { "muted" }, Text = choice.Detail, FontSize = 12, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        return new StackPanel
+        return row.Showing<ComposeChoice>(choice =>
         {
-            Orientation = Orientation.Horizontal,
-            Height = 28,
-            Margin = new Thickness(6, 0),
-            Children = { check, new TextBlock { Text = choice.Name, VerticalAlignment = VerticalAlignment.Center }, detail },
-        };
+            setting = true;
+            check.IsChecked = choice.IsChosen;
+            setting = false;
+            name.Text = choice.Name;
+            detail.Text = choice.Detail;
+        });
     }
 }

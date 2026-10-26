@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -77,10 +76,7 @@ public sealed class RunConfigurationsDialog : Window
         AddButton.Click += (_, _) => ChooseKind();
         CopyButton.Click += (_, _) => Copy();
         RemoveButton.Click += (_, _) => Remove();
-        list.ItemTemplate = new FuncDataTemplate<Entry>((row, _) => RowView(row?.Configuration, row?.Configuration.WhyNotHere(projects),
-            row is null ? 0 : Math.Max(IsRunning(row.Configuration.Name) ? 1 : 0,
-                runningAppHosts.Count(path => Core.PathNames.Same(path, row.Configuration.Project)
-                    || row.Configuration.LinkedAppHosts.Any(linked => Core.PathNames.Same(linked, path)))), row?.IsChanged == true));
+        ReusedRows.Use(list, RowView);
         list.SelectionChanged += (_, _) =>
         {
             if (!showing)
@@ -97,7 +93,11 @@ public sealed class RunConfigurationsDialog : Window
         SaveAsProfileButton = new Button { Name = "SaveAsProfileButton", IsVisible = false };
         ToolTip.SetShowOnDisabled(SaveAsProfileButton, true);
         SaveAsProfileButton.Click += (_, _) => SaveAsLaunchProfile();
-        ProjectBox.ItemTemplate = new FuncDataTemplate<object>((item, _) => new TextBlock { Text = item is ProjectModel p ? p.Name : item?.ToString() });
+        ReusedRows.Use(ProjectBox, () =>
+        {
+            TextBlock name = new();
+            return name.Showing<object>(item => name.Text = item is ProjectModel p ? p.Name : item.ToString());
+        });
         ProgramBox = Field("The project's own program");
         // Named, as the boxes a screenshot's --click-name reaches.
         ArgumentsBox = Field();
@@ -1125,31 +1125,28 @@ public sealed class RunConfigurationsDialog : Window
     /// <summary>Whether a run of a configuration (by its name) is up, which its row says; given as the rows are made.</summary>
     private Func<string, bool> IsRunning { get; }
 
-    /// <summary>A list row: the configuration's name ("(running)" after it while a run of it is up), greyed when it cannot run
-    /// here (why in its tip), marked as a changed field's row is when it is a generated one changed from its source, and for
-    /// a generated one where it came from, muted beside it; where came from gives way first, then the name, each to an ellipsis.</summary>
-    private static Control RowView(RunConfiguration? row, string? whyNot, int running, bool changed)
+    /// <summary>A list row for whichever configuration the list hands its container: its name ("(running)" after it while a
+    /// run of it is up), greyed when it cannot run here (why in its tip), marked as a changed field's row is when it is a
+    /// generated one changed from its source, and for a generated one where it came from, muted beside it; where it came
+    /// from gives way first, then the name, each to an ellipsis.</summary>
+    private Control RowView()
     {
-        ShrinkingRow line = new();
-        TextBlock name = new()
+        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
+        TextBlock from = new() { Classes = { "muted" }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
+        ShrinkingRow line = new() { Children = { name, from } };
+        return line.Showing<Entry>(entry =>
         {
-            Text = running switch { 0 => row?.Name, 1 => $"{row?.Name} (running)", _ => $"{row?.Name} ({running} apps running)" },
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        if (whyNot is not null)
-        {
-            name.Classes.Add("muted");
-            ToolTip.SetTip(line, $"{row?.Name} cannot run here: {whyNot}");
-        }
-        else if (changed)
-        {
-            name.Classes.Add("changed");
-            ToolTip.SetTip(line, $"{row?.Name} is changed here from what its {SourceName(row!)} gives");
-        }
-        line.Children.Add(name);
-        if (row is { Generated: true })
-        {
-            string from = row.Kind switch
+            RunConfiguration row = entry.Configuration;
+            string? whyNot = row.WhyNotHere(projects);
+            int running = Math.Max(IsRunning(row.Name) ? 1 : 0, runningAppHosts.Count(path => Core.PathNames.Same(path, row.Project)
+                || row.LinkedAppHosts.Any(linked => Core.PathNames.Same(linked, path))));
+            name.Text = running switch { 0 => row.Name, 1 => $"{row.Name} (running)", _ => $"{row.Name} ({running} apps running)" };
+            bool changed = whyNot is null && entry.IsChanged;
+            name.Classes.Set("muted", whyNot is not null);
+            name.Classes.Set("changed", changed);
+            ToolTip.SetTip(line, whyNot is not null ? $"{row.Name} cannot run here: {whyNot}" : changed ? $"{row.Name} is changed here from what its {SourceName(row)} gives" : null);
+            from.IsVisible = row.Generated;
+            from.Text = !row.Generated ? null : row.Kind switch
             {
                 RunKind.Project when row.Aspire => "Aspire",
                 RunKind.Compose when Containers.ContainerConfigurations.IsComposeProject(row.Project) => row.LaunchProfile.Length > 0 ? LaunchProfile.SettingsFile : ".dcproj",
@@ -1158,9 +1155,7 @@ public sealed class RunConfigurationsDialog : Window
                 RunKind.SdkContainer when row.LaunchProfile.Length == 0 => "SDK container",
                 _ => row.LaunchProfile.Length > 0 ? LaunchProfile.SettingsFile : "project",
             };
-            line.Children.Add(new TextBlock { Text = from, Classes = { "muted" }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) });
-        }
-        return line;
+        });
     }
 
     /// <summary>A configuration as the list holds it: the same row while its values change; a generated one's with the

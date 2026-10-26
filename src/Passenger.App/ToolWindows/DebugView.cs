@@ -53,9 +53,13 @@ public sealed class DebugView : DockPanel, IOwnKeys
             [DockProperty] = Dock.Top,
             Margin = new Thickness(6, 6, 6, 4),
             HorizontalAlignment = HorizontalAlignment.Stretch,
-            ItemTemplate = new FuncDataTemplate<DapThread>((thread, _) => new TextBlock { Text = thread is null ? "" : ThreadLabel(thread) }),
             ItemsSource = model.Threads,
         };
+        ReusedRows.Use(threads, () =>
+        {
+            TextBlock label = new();
+            return label.Showing<DapThread>(thread => label.Text = ThreadLabel(thread));
+        });
         threads.SelectionChanged += (_, _) =>
         {
             if (!showingFrames && threads.SelectedItem is DapThread thread)

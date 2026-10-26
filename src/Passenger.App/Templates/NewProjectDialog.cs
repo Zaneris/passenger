@@ -1,7 +1,6 @@
 using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -111,8 +110,8 @@ public sealed class NewProjectDialog : Window
             Classes = { "tree" },
             // The chosen family's band as wide as the search field above, its name where the field's text starts.
             Padding = new Thickness(8, 0),
-            ItemTemplate = new FuncDataTemplate<TemplateFamily?>((row, _) => row is null ? new Panel() : Item(row), supportsRecycling: false),
         };
+        ReusedRows.Use(list, Item);
         list.SelectionChanged += (_, _) =>
         {
             if (!setting && list.SelectedItem is TemplateFamily chosen)
@@ -129,7 +128,7 @@ public sealed class NewProjectDialog : Window
         leftPanel.Children.Add(new Panel { Children = { list, loading } });
         Border left = new() { Width = 260, BorderThickness = new Thickness(0, 0, 1, 0), Child = leftPanel };
         left.Bind(Border.BorderBrushProperty, left.GetResourceObservable(TokenKeys.Divider));
-        typeChooser.ItemTemplate = new FuncDataTemplate<ProjectTemplate?>((type, _) => type is null ? new Panel() : TypeItem(type), supportsRecycling: false);
+        ReusedRows.Use(typeChooser, TypeItem);
         typeChooser.SelectionChanged += (_, _) =>
         {
             if (!setting && typeChooser.SelectedItem is ProjectTemplate chosen)
@@ -1111,33 +1110,43 @@ public sealed class NewProjectDialog : Window
         }
     }
 
-    /// <summary>A family's row: its name, its Types on hover, and "Not installed" for one none of whose Types is.</summary>
-    private static Control Item(TemplateFamily row)
+    /// <summary>A row for whichever family the list hands its container: its name, its Types on hover, and "Not installed"
+    /// for one none of whose Types is.</summary>
+    private static Control Item()
     {
-        Border item = new() { Padding = new Thickness(5, 6) };
-        string types = row.Types.Count > 1 ? $": {string.Join(", ", row.Types.Select(t => t.TypeName))}" : row.Name == row.Types[0].Name ? string.Empty : $": {row.Types[0].Name}";
-        ToolTip.SetTip(item, row.NotInstalled ? $"{row.Name}{types}, from {row.Types[0].Pack!.Id}, which is not installed" : $"{row.Name}{types}");
-        item.Child = Named(row.Name, row.NotInstalled);
-        return item;
+        (DockPanel named, TextBlock name, TextBlock missing) = Named();
+        Border item = new() { Padding = new Thickness(5, 6), Child = named };
+        return item.Showing<TemplateFamily>(row =>
+        {
+            string types = row.Types.Count > 1 ? $": {string.Join(", ", row.Types.Select(t => t.TypeName))}" : row.Name == row.Types[0].Name ? string.Empty : $": {row.Types[0].Name}";
+            ToolTip.SetTip(item, row.NotInstalled ? $"{row.Name}{types}, from {row.Types[0].Pack!.Id}, which is not installed" : $"{row.Name}{types}");
+            name.Text = row.Name;
+            missing.IsVisible = row.NotInstalled;
+        });
     }
 
-    /// <summary>A Type in the chooser: its name, and "Not installed" for one not installed.</summary>
-    private static Control TypeItem(ProjectTemplate type) => Named(type.TypeName, type.Pack is not null);
-
-    /// <summary>A name cut short where it must be, with "Not installed" after it for what dotnet new has not got.</summary>
-    private static Control Named(string text, bool notInstalled)
+    /// <summary>A Type in the chooser, for whichever Type it is handed: its name, and "Not installed" for one not installed.</summary>
+    private static Control TypeItem()
     {
-        TextBlock name = new() { Text = text, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-        if (!notInstalled)
+        (DockPanel named, TextBlock name, TextBlock missing) = Named();
+        return named.Showing<ProjectTemplate>(type =>
         {
-            return name;
-        }
+            name.Text = type.TypeName;
+            missing.IsVisible = type.Pack is not null;
+        });
+    }
+
+    /// <summary>A name cut short where it must be, with "Not installed" after it for what dotnet new has not got, shown
+    /// only then.</summary>
+    private static (DockPanel Named, TextBlock Name, TextBlock Missing) Named()
+    {
+        TextBlock name = new() { TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
         TextBlock missing = new() { Text = "Not installed", Classes = { "muted" }, FontSize = 11, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         DockPanel both = new();
         DockPanel.SetDock(missing, Dock.Right);
         both.Children.Add(missing);
         both.Children.Add(name);
-        return both;
+        return (both, name, missing);
     }
 
     private Control Rule()

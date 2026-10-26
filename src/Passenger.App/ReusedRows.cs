@@ -5,7 +5,9 @@ using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
 using Avalonia.Data;
+using Avalonia.LogicalTree;
 using Avalonia.Styling;
+using Avalonia.VisualTree;
 
 namespace Passenger.App;
 
@@ -15,20 +17,41 @@ namespace Passenger.App;
 /// is, and follows its item's changes only while it is shown (<see cref="Showing{T}"/>).</summary>
 public static class ReusedRows
 {
-    public static void Use(ListBox list, Func<Control> row)
+    public static void Use(ListBox list, Func<Control> row) => Contain<ListBoxItem>(list, row, foreground: false);
+
+    /// <summary>A drop-down's choices as a list's rows, and its choice shown closed in one more row from <paramref
+    /// name="row"/>, kept for the box and handed each choice made; the box shows nothing while none is chosen.</summary>
+    public static void Use(ComboBox box, Func<Control> row)
     {
-        Style style = new(x => x.OfType<ListBoxItem>());
-        style.Setters.Add(new Setter(TemplatedControl.TemplateProperty, new FuncControlTemplate<ListBoxItem>((_, _) => new ContentPresenter
+        Contain<ComboBoxItem>(box, row, foreground: true);
+        box.SelectionBoxItemTemplate = new Chosen(row);
+    }
+
+    /// <summary>A list's containers given a template of the list's own whose presenter holds a row made once, standing
+    /// where the theme's template has its presenter (the drop-down's binding its foreground too, as the theme's does).</summary>
+    private static void Contain<TContainer>(ItemsControl list, Func<Control> row, bool foreground)
+        where TContainer : ContentControl
+    {
+        Style style = new(x => x.OfType<TContainer>());
+        style.Setters.Add(new Setter(TemplatedControl.TemplateProperty, new FuncControlTemplate<TContainer>((_, _) =>
         {
-            Name = "PART_ContentPresenter",
-            [!ContentPresenter.BackgroundProperty] = new TemplateBinding(TemplatedControl.BackgroundProperty),
-            [!ContentPresenter.BorderBrushProperty] = new TemplateBinding(TemplatedControl.BorderBrushProperty),
-            [!ContentPresenter.BorderThicknessProperty] = new TemplateBinding(TemplatedControl.BorderThicknessProperty),
-            [!ContentPresenter.CornerRadiusProperty] = new TemplateBinding(TemplatedControl.CornerRadiusProperty),
-            [!ContentPresenter.PaddingProperty] = new TemplateBinding(TemplatedControl.PaddingProperty),
-            [!ContentPresenter.VerticalContentAlignmentProperty] = new TemplateBinding(ContentControl.VerticalContentAlignmentProperty),
-            [!ContentPresenter.HorizontalContentAlignmentProperty] = new TemplateBinding(ContentControl.HorizontalContentAlignmentProperty),
-            Content = row(),
+            ContentPresenter presenter = new()
+            {
+                Name = "PART_ContentPresenter",
+                [!ContentPresenter.BackgroundProperty] = new TemplateBinding(TemplatedControl.BackgroundProperty),
+                [!ContentPresenter.BorderBrushProperty] = new TemplateBinding(TemplatedControl.BorderBrushProperty),
+                [!ContentPresenter.BorderThicknessProperty] = new TemplateBinding(TemplatedControl.BorderThicknessProperty),
+                [!ContentPresenter.CornerRadiusProperty] = new TemplateBinding(TemplatedControl.CornerRadiusProperty),
+                [!ContentPresenter.PaddingProperty] = new TemplateBinding(TemplatedControl.PaddingProperty),
+                [!ContentPresenter.VerticalContentAlignmentProperty] = new TemplateBinding(ContentControl.VerticalContentAlignmentProperty),
+                [!ContentPresenter.HorizontalContentAlignmentProperty] = new TemplateBinding(ContentControl.HorizontalContentAlignmentProperty),
+                Content = row(),
+            };
+            if (foreground)
+            {
+                presenter[!ContentPresenter.ForegroundProperty] = new TemplateBinding(TemplatedControl.ForegroundProperty);
+            }
+            return presenter;
         })));
         list.Styles.Add(style);
     }
@@ -61,6 +84,24 @@ public static class ReusedRows
             control.Bind(property, control.GetResourceObservable(key));
         }
     }
+
+    /// <summary>A drop-down's closed box: one row kept for it, made again only once the box's template is made anew, and
+    /// none while nothing is chosen.</summary>
+    private sealed class Chosen(Func<Control> make) : IRecyclingDataTemplate
+    {
+        private Control? row;
+
+        public Control? Build(object? param) => Build(param, null);
+
+        public Control? Build(object? data, Control? existing) => existing ?? (row is not null && Free(row, data) ? row : row = make());
+
+        public bool Match(object? data) => data is not null;
+    }
+
+    /// <summary>Whether a row kept can be handed to the presenter asking for it to show an item: it is in no presenter, or
+    /// in one in the tree showing that item, which is the one asking.</summary>
+    private static bool Free(Control row, object? data) =>
+        row.GetVisualParent() is not { } parent || (parent is ContentPresenter { Content: { } shown } && ((ILogical)parent).IsAttachedToLogicalTree && Equals(shown, data));
 
     private sealed class Shown<T>
         where T : class

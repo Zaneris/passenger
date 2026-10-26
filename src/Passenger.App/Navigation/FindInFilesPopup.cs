@@ -1,7 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -110,7 +109,11 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         }
 
         projectBox = Field(choices.Projects, editable: false);
-        projectBox.ItemTemplate = new FuncDataTemplate<ProjectModel>((project, _) => new TextBlock { Text = project?.Name });
+        ReusedRows.Use(projectBox, () =>
+        {
+            TextBlock name = new();
+            return name.Showing<ProjectModel>(project => name.Text = project.Name);
+        });
         projectBox.SelectedItem = choices.Projects.FirstOrDefault(p => p.Path == choices.Start.Project) ?? choices.Projects.FirstOrDefault();
         directoryBox = Field(choices.Directories, editable: true);
         directoryBox.Text = choices.Start.Directory ?? string.Empty;

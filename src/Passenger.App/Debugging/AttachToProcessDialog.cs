@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -73,18 +72,10 @@ public sealed class AttachToProcessDialog : Window
         Border headerFrame = new() { [DockPanel.DockProperty] = Dock.Top, Child = header, BorderThickness = new Thickness(0, 0, 0, 1) };
         headerFrame.Bind(Border.BorderBrushProperty, headerFrame.GetResourceObservable(TokenKeys.Separator));
 
-        rows = new ListBox
-        {
-            Classes = { "tree" },
-            ItemTemplate = new FuncDataTemplate<AttachRow>((row, _) => row is null ? new Panel() : Row(row), supportsRecycling: false),
-        };
-        rows.ContainerPrepared += (_, e) =>
-        {
-            if (e.Container is ListBoxItem { DataContext: AttachRow { Process: null } } heading)
-            {
-                heading.IsEnabled = false;
-            }
-        };
+        rows = new ListBox { Classes = { "tree" } };
+        ReusedRows.Use(rows, Row);
+        // A heading is never chosen; a container shows a heading and a program in turn as the list is filled again.
+        rows.ContainerPrepared += (_, e) => e.Container.IsEnabled = e.Container.DataContext is not AttachRow { Process: null };
         rows.AddHandler(KeyDownEvent, OnKey, RoutingStrategies.Tunnel);
         rows.DoubleTapped += (_, e) =>
         {
@@ -229,30 +220,40 @@ public sealed class AttachToProcessDialog : Window
         }
     }
 
-    private static Control Row(AttachRow row)
+    /// <summary>A row for whichever heading or program the list hands its container: a group's heading, or a program's
+    /// name, id, user and command line (why it cannot be attached to, or what to know first, after it and in its tip).</summary>
+    private static Control Row()
     {
-        if (row.Process is not { } process)
+        TextBlock heading = new() { Classes = { "muted" }, FontSize = 11, FontWeight = FontWeight.SemiBold, Margin = new Thickness(4, 6, 0, 2) };
+        TextBlock name = Cell(0, muted: false);
+        TextBlock id = Cell(1, muted: false);
+        TextBlock user = Cell(2, muted: true);
+        TextBlock line = Cell(3, muted: true);
+        Grid grid = new() { ColumnDefinitions = new ColumnDefinitions(Columns), Height = ListRow.Height, Children = { name, id, user, line } };
+        Panel row = new() { Children = { heading, grid } };
+        return row.Showing<AttachRow>(shown =>
         {
-            return new TextBlock { Text = row.Heading, Classes = { "muted" }, FontSize = 11, FontWeight = FontWeight.SemiBold, Margin = new Thickness(4, 6, 0, 2) };
-        }
-        Grid grid = new() { ColumnDefinitions = new ColumnDefinitions(Columns), Height = ListRow.Height };
-        grid.Children.Add(Cell(process.Name, 0, muted: false));
-        grid.Children.Add(Cell(process.Id == 0 ? string.Empty : process.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), 1, muted: false));
-        grid.Children.Add(Cell(process.User, 2, muted: true));
-        // Why it cannot be attached to, or what to know first (a Release build, emulation), after its command line.
-        string? said = process.WhyNot ?? process.Note;
-        TextBlock line = Cell(said is null ? process.CommandLine : $"{process.CommandLine}  ({said})", 3, muted: true);
-        ToolTip.SetTip(line, said is null ? process.CommandLine : $"{process.CommandLine}\n{said}");
-        grid.Children.Add(line);
-        return grid;
+            heading.IsVisible = shown.Process is null;
+            grid.IsVisible = shown.Process is not null;
+            heading.Text = shown.Heading;
+            if (shown.Process is not { } process)
+            {
+                return;
+            }
+            name.Text = process.Name;
+            id.Text = process.Id == 0 ? string.Empty : process.Id.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            user.Text = process.User;
+            string? said = process.WhyNot ?? process.Note;
+            line.Text = said is null ? process.CommandLine : $"{process.CommandLine}  ({said})";
+            ToolTip.SetTip(line, said is null ? process.CommandLine : $"{process.CommandLine}\n{said}");
+        });
     }
 
-    private static TextBlock Cell(string text, int column, bool muted)
+    private static TextBlock Cell(int column, bool muted)
     {
         TextBlock cell = new()
         {
             [Grid.ColumnProperty] = column,
-            Text = text,
             Margin = new Thickness(4, 0, 10, 0),
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,

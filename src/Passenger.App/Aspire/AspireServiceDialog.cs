@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
 
 namespace Passenger.App.Aspire;
 
@@ -14,15 +13,12 @@ public sealed class AspireServiceDialog : Window
         MinWidth = 400;
         MinHeight = 260;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        Services = new ListBox
+        Services = new ListBox { ItemsSource = services };
+        ReusedRows.Use(Services, () =>
         {
-            ItemsSource = services,
-            ItemTemplate = new FuncDataTemplate<AspireSelection>((selection, _) => new TextBlock
-            {
-                Text = selection?.Resource.ToString(),
-                TextTrimming = Avalonia.Media.TextTrimming.CharacterEllipsis,
-            }),
-        };
+            TextBlock name = new() { TextTrimming = Avalonia.Media.TextTrimming.CharacterEllipsis };
+            return name.Showing<AspireSelection>(selection => name.Text = selection.Resource.ToString());
+        });
         Profile = new Button { Content = "Profile", IsDefault = true, IsEnabled = false, Classes = { "primary" } };
         Button cancel = new() { Content = "Cancel", IsCancel = true };
         Services.SelectionChanged += (_, _) => Profile.IsEnabled = Services.SelectedItem is AspireSelection;

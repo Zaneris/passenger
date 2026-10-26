@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -48,12 +47,8 @@ public sealed class AddReferenceDialog : Window
         MinHeight = 240;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
-        list = new ListBox
-        {
-            Classes = { "tree" },
-            ItemsSource = choices,
-            ItemTemplate = new FuncDataTemplate<ReferenceChoice>((choice, _) => choice is null ? new Panel() : Row(choice), supportsRecycling: false),
-        };
+        list = new ListBox { Classes = { "tree" }, ItemsSource = choices };
+        ReusedRows.Use(list, Row);
         list.SelectedItem = choices.FirstOrDefault(c => c.CanChoose);
         list.AddHandler(KeyDownEvent, OnListKeyDown, RoutingStrategies.Tunnel);
         Border rows = new() { Classes = { "framed" }, Child = list };
@@ -112,25 +107,31 @@ public sealed class AddReferenceDialog : Window
         }
     }
 
-    private static Control Row(ReferenceChoice choice)
+    /// <summary>A row for whichever project the list hands its container: its box, which follows the project while shown
+    /// and checks the one it shows, its name and where it is, greyed when it cannot be chosen.</summary>
+    private static Control Row()
     {
-        CheckBox check = new() { IsChecked = choice.IsChosen, IsEnabled = choice.CanChoose, VerticalAlignment = VerticalAlignment.Center, Focusable = false };
-        check.IsCheckedChanged += (_, _) => choice.IsChosen = check.IsChecked == true;
-        choice.PropertyChanged += (_, e) =>
+        CheckBox check = new() { VerticalAlignment = VerticalAlignment.Center, Focusable = false };
+        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
+        TextBlock detail = new() { Classes = { "muted" }, FontSize = 12, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        StackPanel row = new() { Orientation = Orientation.Horizontal, Height = 28, Margin = new Thickness(6, 0), Children = { check, name, detail } };
+        bool setting = false;
+        check.IsCheckedChanged += (_, _) =>
         {
-            if (e.PropertyName == nameof(ReferenceChoice.IsChosen))
+            if (!setting && row.DataContext is ReferenceChoice choice)
             {
-                check.IsChecked = choice.IsChosen;
+                choice.IsChosen = check.IsChecked == true;
             }
         };
-        TextBlock detail = new() { Classes = { "muted" }, Text = choice.Detail, FontSize = 12, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        return new StackPanel
+        return row.Showing<ReferenceChoice>(choice =>
         {
-            Orientation = Orientation.Horizontal,
-            Height = 28,
-            Margin = new Thickness(6, 0),
-            Opacity = choice.CanChoose ? 1 : 0.55,
-            Children = { check, new TextBlock { Text = choice.Name, VerticalAlignment = VerticalAlignment.Center }, detail },
-        };
+            setting = true;
+            check.IsChecked = choice.IsChosen;
+            check.IsEnabled = choice.CanChoose;
+            setting = false;
+            name.Text = choice.Name;
+            detail.Text = choice.Detail;
+            row.Opacity = choice.CanChoose ? 1 : 0.55;
+        });
     }
 }

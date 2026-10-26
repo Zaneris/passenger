@@ -1334,7 +1334,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     public void Every_lists_rows_are_made_once_by_ReusedRows_never_by_an_item_template()
     {
         Regex made = new(@"\b(?:FuncDataTemplate|FuncTreeDataTemplate|IDataTemplate|IRecyclingDataTemplate|ITreeDataTemplate|DataTemplates)\b(?:<(?:[^<>]|<[^<>]*>)+>)?|<(?:DataTemplate|TreeDataTemplate)\b|\bFuncControlTemplate<(?:ListBoxItem|ComboBoxItem|TreeViewItem)>");
-        Regex given = new(@"\bItemTemplate\s*=\s*""?[\w.{} ]*(?:<(?:[^<>]|<[^<>]*>)+>)?|<\w+\.ItemTemplate>");
+        Regex given = new(@"\b(?:SelectionBox)?ItemTemplate\s*=\s*""?[\w.{} ]*(?:<(?:[^<>]|<[^<>]*>)+>)?|<\w+\.(?:SelectionBox)?ItemTemplate>");
         Regex container = new(@"<Style Selector=""[^""]*(?:ListBoxItem|ComboBoxItem)""[^>]*>(?:(?!</Style>).)*?Property=""(?:Content)?Template""", RegexOptions.Singleline);
         List<(string Key, string Where)> found = [];
         foreach ((string path, string text) in UiFiles(theme: true).Where(f => !f.Path.EndsWith("/ReusedRows.cs", StringComparison.Ordinal)))
@@ -1375,24 +1375,9 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// <summary>The lists whose rows still come from an item template, by file and template, to move to ReusedRows.</summary>
     private static readonly string[] NotYetReused =
     [
-        "src/Passenger.App/Aspire/AspireServiceDialog.cs: FuncDataTemplate<AspireSelection>",
-        "src/Passenger.App/Debugging/AttachToProcessDialog.cs: FuncDataTemplate<AttachRow>",
         "src/Passenger.App/Editors/EditorGroup.cs: FuncDataTemplate<EditorTab>",
-        "src/Passenger.App/Explorer/AddReferenceDialog.cs: FuncDataTemplate<ReferenceChoice>",
-        "src/Passenger.App/Explorer/DockerDialogs.cs: FuncDataTemplate<ComposeChoice>",
-        "src/Passenger.App/Migrations/MigrationsView.cs: FuncDataTemplate<object>",
-        "src/Passenger.App/Navigation/FindInFilesPopup.cs: FuncDataTemplate<ProjectModel>",
-        "src/Passenger.App/Run/RunConfigurationsDialog.cs: FuncDataTemplate<Entry>",
-        "src/Passenger.App/Run/RunConfigurationsDialog.cs: FuncDataTemplate<object>",
-        "src/Passenger.App/Settings/LiveTemplatesPane.cs: FuncDataTemplate<LiveTemplate>",
-        "src/Passenger.App/Settings/PostfixTemplatesPane.cs: FuncDataTemplate<PostfixTemplate?>",
-        "src/Passenger.App/Templates/NewProjectDialog.cs: FuncDataTemplate<ProjectTemplate?>",
-        "src/Passenger.App/Templates/NewProjectDialog.cs: FuncDataTemplate<TemplateFamily?>",
-        "src/Passenger.App/ToolWindows/DebugView.cs: FuncDataTemplate<DapThread>",
         "src/Passenger.App/ToolWindows/DebugView.cs: FuncDataTemplate<DebugTab>",
-        "src/Passenger.App/ToolWindows/NuGetSourcesView.cs: FuncDataTemplate<ConfigFile>",
         "src/Passenger.App/ToolWindows/TerminalPanel.cs: FuncDataTemplate<TerminalTab>",
-        "src/Passenger.App/Vcs/ConflictsDialog.cs: FuncDataTemplate<ConflictRow>",
     ];
 
     /// <summary>Muted words are made one way, by the muted class (MutedText, or the class on a TextBlock of its own), so a
