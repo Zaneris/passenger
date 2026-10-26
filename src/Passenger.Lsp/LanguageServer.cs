@@ -35,7 +35,7 @@ public sealed class LanguageServer : IAsyncDisposable
     private readonly ServerLog log;
     private readonly Dictionary<long, (string Method, long Since)> waiting = [];
     private readonly Dictionary<string, (int Left, TaskCompletionSource Spent)> refusing = [];
-    private readonly List<(string Method, Func<object, bool> Which, Task Until)> holding = [];
+    private readonly List<Hold> holding = [];
     private readonly Timer watch;
     private long requests;
     private long partialResults;
@@ -507,11 +507,27 @@ public sealed class LanguageServer : IAsyncDisposable
     {
         lock (holding)
         {
-            holding.Add((method, which, until));
+            holding.Add(new Hold(method, which, until, Answered: false, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)));
         }
     }
 
-    private Task? Held(string method, object parameters)
+    /// <summary>Sends the next request of a method whose parameters <paramref name="which"/> takes and holds its answer until
+    /// <paramref name="until"/> ends, as one the server worked out before what goes on meanwhile, for a test of that. Done
+    /// once the answer has come and is held.</summary>
+    public Task HoldNextAnswer(string method, Func<object, bool> which, Task until)
+    {
+        Hold hold = new(method, which, until, Answered: true, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+        lock (holding)
+        {
+            holding.Add(hold);
+        }
+        return hold.Holding.Task;
+    }
+
+    /// <summary>A request a test holds: unsent, or its answer once it has come; <see cref="Holding"/> done once it is held.</summary>
+    private sealed record Hold(string Method, Func<object, bool> Which, Task Until, bool Answered, TaskCompletionSource Holding);
+
+    private Hold? Held(string method, object parameters)
     {
         lock (holding)
         {
@@ -520,9 +536,9 @@ public sealed class LanguageServer : IAsyncDisposable
             {
                 return null;
             }
-            Task until = holding[at].Until;
+            Hold held = holding[at];
             holding.RemoveAt(at);
-            return until;
+            return held;
         }
     }
 
@@ -552,14 +568,22 @@ public sealed class LanguageServer : IAsyncDisposable
             {
                 throw new LanguageServerFailed("the language server refused it: as a test asked", method);
             }
-            if (Held(method, parameters) is { } until)
+            Hold? held = Held(method, parameters);
+            if (held is { Answered: false })
             {
-                await until.WaitAsync(cancel).ConfigureAwait(false);
+                held.Holding.TrySetResult();
+                await held.Until.WaitAsync(cancel).ConfigureAwait(false);
             }
             Task<T?> answer = rpc.InvokeWithParameterObjectAsync<T?>(method, parameters, cancel);
             try
             {
-                return await answer.WaitAsync(cancel).ConfigureAwait(false);
+                T? answered = await answer.WaitAsync(cancel).ConfigureAwait(false);
+                if (held is { Answered: true })
+                {
+                    held.Holding.TrySetResult();
+                    await held.Until.WaitAsync(cancel).ConfigureAwait(false);
+                }
+                return answered;
             }
             catch (OperationCanceledException) when (cancel.IsCancellationRequested)
             {

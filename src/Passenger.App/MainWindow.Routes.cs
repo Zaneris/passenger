@@ -46,7 +46,8 @@ public partial class MainWindow
             }
             document.Text.Changed += (_, _) =>
             {
-                if (session.ProjectOf(document.Path) is { } project && session.Routes.IsWeb(project.Path))
+                // Until the routes are first read any project may be a web one, and a read under way may predate this change.
+                if (session.ProjectOf(document.Path) is { } project && (!session.Routes.HasRead || session.Routes.IsWeb(project.Path)))
                 {
                     session.Routes.Stale(project.Path);
                     // No longer the text its routes were read from: its icons go until the routes are read again.
@@ -117,11 +118,11 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>The server loaded projects (more of them, or one again): every project's routes are read again, a read before
-    /// having found none of a project it had yet to load.</summary>
+    /// <summary>The server loaded projects (more of them, or one again): every project's routes are read again, a read before,
+    /// or one under way, having found none of a project it had yet to load.</summary>
     private void RoutesProjectsLoaded(CSharpService service)
     {
-        if (service == session.CSharp && !session.IsEnded && session.Routes.HasRead)
+        if (service == session.CSharp && !session.IsEnded)
         {
             session.Routes.Forget();
             WantRoutes();
@@ -164,12 +165,12 @@ public partial class MainWindow
         {
             return;
         }
-        IReadOnlyList<string> asked = current.Routes.ToRead();
+        RoutesAsked asked = current.Routes.ToRead();
         RoutesFound? found = await BackgroundWork.Run(async () =>
         {
             try
             {
-                RoutesFound answer = await roslyn.ExtensionAsync<RoutesFound>(Handlers.WebRoutes, new RoutesRequest(asked)).ConfigureAwait(false);
+                RoutesFound answer = await roslyn.ExtensionAsync<RoutesFound>(Handlers.WebRoutes, new RoutesRequest(asked.Projects)).ConfigureAwait(false);
                 // Paths as the window compares them: canonical, which the server's need not be.
                 return new RoutesFound([.. answer.Routes.Select(r => r with
                 {

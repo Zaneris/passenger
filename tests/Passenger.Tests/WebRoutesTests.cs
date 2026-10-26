@@ -280,6 +280,78 @@ public sealed class WebRoutesTests
         }
     }
 
+    /// <summary>A change while the routes are read is read again once that read answers: a file of routes a web project takes
+    /// in from a shared folder, written as the first read answers and loaded with the project again, is listed after that
+    /// read, which lacked it; and a route typed while the project's routes are read again is listed as typed, not as that
+    /// read found it a key before.</summary>
+    [AvaloniaFact]
+    public void A_route_that_comes_while_the_routes_are_read_is_listed_once_that_read_has_answered()
+    {
+        string folder = TestFolders.Create("routes-during-");
+        TestFolders.Write(folder, "Web/Web.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>").With(
+            "  <ItemGroup>\n    <Compile Include=\"../Shared/*.cs\" />\n  </ItemGroup>\n"));
+        TestFolders.Write(folder, "Web/Program.cs",
+            "using Web;\n\nWebApplication app = WebApplication.CreateBuilder(args).Build();\napp.MapGet(\"/health\", () => \"ok\");\napp.MapShared();\napp.Run();\n");
+        TestFolders.Write(folder, "Shared/Names.cs", "namespace Web;\n\npublic static class Names\n{\n}\n");
+        Restore.Run(Path.Combine(folder, "Web"));
+        MainWindow window = Ui.OpenFolder(folder);
+        try
+        {
+            Ui.WaitFor(() => window.CSharpService is { IsReady: true }, "the language server to load Web", TimeSpan.FromMinutes(2));
+            Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
+            int loads = 0;
+            window.CSharpService.ProjectsLoaded += (_, _) => loads++;
+
+            // The first read answered before Shared/Routes.cs is written, and held until Web has loaded again with it.
+            TaskCompletionSource first = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            Task firstHeld = server.HoldNextAnswer(Passenger.Lsp.LspMethods.DispatchExtensionMessage, ReadsRoutes, first.Task);
+            try
+            {
+                window.ShowToolWindow(ToolWindowIds.Endpoints);
+                Ui.PumpUntil(() => firstHeld.IsCompleted, "the first read of the routes, answered and held", TimeSpan.FromMinutes(1));
+                TestFolders.Write(folder, "Shared/Routes.cs",
+                    "namespace Web;\n\npublic static class SharedRoutes\n{\n    public static void MapShared(this IEndpointRouteBuilder app) => app.MapGet(\"/shared\", () => \"shared\");\n}\n");
+                Ui.PumpUntil(() => loads > 0, "the language server to load Web again with Shared/Routes.cs", TimeSpan.FromMinutes(2));
+            }
+            finally
+            {
+                first.SetResult();
+            }
+            Ui.WaitFor(() => Titles(window).Contains("GET /shared"),
+                () => $"Shared/Routes.cs's route, written while the first read was under way, to be listed once Web loaded with it (listed: {string.Join(", ", Titles(window))})",
+                TimeSpan.FromMinutes(1));
+
+            window.OpenFile(Path.Combine(folder, "Web", "Program.cs"));
+            Ui.Settle();
+            Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
+            editor.Focus();
+            Ui.PlaceAfter(editor, "\"/health");
+            // The read a key makes answered and held, and another key typed meanwhile.
+            TaskCompletionSource typed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            Task typedHeld = server.HoldNextAnswer(Passenger.Lsp.LspMethods.DispatchExtensionMessage, ReadsRoutes, typed.Task);
+            try
+            {
+                window.KeyTextInput("z");
+                Ui.PumpUntil(() => typedHeld.IsCompleted, "the read of Web's routes the key made, answered and held", TimeSpan.FromMinutes(1));
+                window.KeyTextInput("y");
+            }
+            finally
+            {
+                typed.SetResult();
+            }
+            Ui.WaitFor(() => Titles(window).Contains("GET /healthzy"),
+                () => $"the route as typed, GET /healthzy, its last key typed while the read the first made was under way (listed: {string.Join(", ", Titles(window))})",
+                TimeSpan.FromMinutes(1));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>Whether a request to the language server is a read of the routes.</summary>
+    private static bool ReadsRoutes(object parameters) => parameters is Passenger.Lsp.RoslynExtension.DispatchWorkspaceMessageParams { MessageName: Handlers.WebRoutes };
+
     private static IReadOnlyList<string> Titles(MainWindow window) => [.. window.Endpoints.Routes.Select(RouteRequests.Title)];
 
     private static WebRoute Route(MainWindow window, string title) =>

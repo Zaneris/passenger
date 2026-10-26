@@ -7,12 +7,18 @@ using Passenger.Roslyn.Extension;
 namespace Passenger.App.Endpoints;
 
 /// <summary>The folder's web routes, as the C# server's extension last read them (<see cref="Handlers.WebRoutes"/>), by
-/// project: a project's are read again only once a file of it changed (<see cref="Stale"/>), and every project's at first.</summary>
+/// project: a project's are read again only once a file of it changed (<see cref="Stale"/>), and every project's at first.
+/// A read's answer clears only what no change made due again while it read (<see cref="Changes"/>).</summary>
 public sealed class RouteCatalog
 {
     private readonly Dictionary<string, IReadOnlyList<WebRoute>> byProject = new(PathNames.Comparer);
-    private readonly HashSet<string> stale = new(PathNames.Comparer);
+
+    /// <summary>The projects whose routes are due again, each with the change that last made it so.</summary>
+    private readonly Dictionary<string, int> stale = new(PathNames.Comparer);
     private bool unread = true;
+
+    /// <summary>The change that last made every project due.</summary>
+    private int forgotten;
 
     /// <summary>Every route read, by project then as their code declares them.</summary>
     public IReadOnlyList<WebRoute> All { get; private set; } = [];
@@ -23,24 +29,32 @@ public sealed class RouteCatalog
     /// <summary>Whether a read is due: none yet, or a project's file changed since.</summary>
     public bool Wants => unread || stale.Count > 0;
 
+    /// <summary>How many changes have made routes due, each <see cref="Stale"/> and <see cref="Forget"/>.</summary>
+    public int Changes { get; private set; }
+
     /// <summary>The web projects read, with their routes or none.</summary>
     public IEnumerable<string> Projects => byProject.Keys;
 
-    /// <summary>What the next read asks for: every project (none named) until the first, then the stale ones.</summary>
-    public IReadOnlyList<string> ToRead() => unread ? [] : [.. stale];
+    /// <summary>What the next read asks for: every project (none named) until the first, then the stale ones; as of the
+    /// changes made so far.</summary>
+    public RoutesAsked ToRead() => new(unread ? [] : [.. stale.Keys], Changes);
 
-    /// <summary>A read's answer for what it asked: the projects asked for that it no longer finds are gone.</summary>
-    public void Took(RoutesFound found, IReadOnlyList<string> asked)
+    /// <summary>A read's answer for what it asked: the projects asked for that it no longer finds are gone, and what a change
+    /// made due after it was asked stays due.</summary>
+    public void Took(RoutesFound found, RoutesAsked asked)
     {
-        if (asked.Count == 0)
+        if (asked.Projects.Count == 0)
         {
             byProject.Clear();
-            unread = false;
+            unread = forgotten > asked.Changes;
         }
-        foreach (string project in asked)
+        foreach (string project in asked.Projects.Count == 0 ? [.. stale.Keys] : asked.Projects)
         {
             byProject.Remove(project);
-            stale.Remove(project);
+            if (stale.TryGetValue(project, out int since) && since <= asked.Changes)
+            {
+                stale.Remove(project);
+            }
         }
         foreach (string project in found.Projects)
         {
@@ -51,23 +65,22 @@ public sealed class RouteCatalog
 
     /// <summary>A project's file changed: its routes are read again at the next read (none for a project that is no web
     /// project, which the read finds out cheaply).</summary>
-    public void Stale(string project)
-    {
-        if (!unread)
-        {
-            stale.Add(project);
-        }
-    }
+    public void Stale(string project) => stale[project] = ++Changes;
 
     /// <summary>Every project is read again, as at first (a new language server, a project come or gone).</summary>
     public void Forget()
     {
         unread = true;
+        forgotten = ++Changes;
         stale.Clear();
     }
 
     public bool IsWeb(string project) => byProject.ContainsKey(project);
 }
+
+/// <summary>What a read of the routes asks for (every project when it names none), and how many changes it reads as of
+/// (<see cref="RouteCatalog.Changes"/>).</summary>
+public sealed record RoutesAsked(IReadOnlyList<string> Projects, int Changes);
 
 /// <summary>How a route and an .http file's requests meet: a request calls a route when its method is one the route takes
 /// and its URL's path, after its host, fits the route's template (a parameter's segment taking any value, a

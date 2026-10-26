@@ -140,5 +140,6 @@ public static class RoslynExtension
 
     private sealed record DispatchExtensionMessageParams(string MessageName, string Message, TextDocumentIdentifier TextDocument);
 
-    private sealed record DispatchWorkspaceMessageParams(string MessageName, string Message);
+    /// <summary>A message to one of the extension's workspace handlers, by the handler's name, as the server is sent it.</summary>
+    public sealed record DispatchWorkspaceMessageParams(string MessageName, string Message);
 }
