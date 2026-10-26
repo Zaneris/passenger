@@ -759,10 +759,10 @@ public static class TestFolders
 
 public static class Ui
 {
-    /// <summary>A key, or a chord ("control M , control S"), pressed as a person presses it, then what it ran let land: a
-    /// chord's second key comes right after its first, as a person's does within the two seconds the window waits for
-    /// it, never after background work that may take longer.</summary>
-    public static void Press(TopLevel window, string keys)
+    /// <summary>A key, or a chord ("control M , control S"), pressed as a person presses it, then what it ran let land
+    /// unless <paramref name="settle"/> is false: a chord's second key comes right after its first, as a person's does
+    /// within the two seconds the window waits for it, never after background work that may take longer.</summary>
+    public static void Press(TopLevel window, string keys, bool settle = true)
     {
         Shortcut shortcut = Passenger.Editor.Shortcut.Parse(keys.Replace('+', ' '));
         Stroke(window, shortcut.First);
@@ -770,7 +770,10 @@ public static class Ui
         {
             Stroke(window, second);
         }
-        Settle();
+        if (settle)
+        {
+            Settle();
+        }
     }
 
     private static void Stroke(TopLevel window, Keystroke stroke)
@@ -1644,11 +1647,12 @@ public static class Ui
         }
     }
 
-    /// <summary>Presses the platform's first shortcut for an IDE action, both keystrokes of a chord.</summary>
-    public static void Run(TopLevel window, string action)
+    /// <summary>Presses the platform's first shortcut for an IDE action, both keystrokes of a chord, then lets what it ran
+    /// land unless <paramref name="settle"/> is false.</summary>
+    public static void Run(TopLevel window, string action, bool settle = true)
     {
         Shortcut shortcut = Passenger.App.AppActions.Keymap().ShortcutsFor(action)[0];
-        Press(window, shortcut.Notation());
+        Press(window, shortcut.Notation(), settle);
     }
 
     /// <summary>The first shortcut the platform's keymap gives an IDE action, in keymap notation.</summary>

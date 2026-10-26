@@ -164,12 +164,15 @@ public sealed class LongListsTests : IDisposable
             MainWindow window = Ui.OpenFolder(root, languageServer: false, width: 1300, height: 900);
             window.OpenFile(Path.Combine(root, "Saved.cs"));
             CodeEditor editor = window.EditorArea.CodeEditor;
+            OpenDocument saved = window.EditorArea.Active!;
             editor.Focus();
             editor.GoTo(new Passenger.Text.TextPosition(1, 1));
             for (int save = 0; save < saves; save++)
             {
                 window.KeyTextInput("x");
-                Ui.Run(window, AppActions.Save);
+                // Each save written before the next key; the folder watcher hears them together, as a person's quick saves.
+                Ui.Run(window, AppActions.Save, settle: false);
+                Ui.PumpUntil(() => !saved.IsModified, $"save {save + 1} written");
             }
             Ui.Settle();
             window.Perform(AppActions.ShowLocalHistory);
@@ -321,7 +324,8 @@ public sealed class LongListsTests : IDisposable
     }
 
     /// <summary>A repository of commits on main, each adding a file, the last adding <paramref name="files"/>, and
-    /// <paramref name="branches"/> more branches at main.</summary>
+    /// <paramref name="branches"/> more branches at main: its history alone, which is all the lists read, none of its
+    /// files checked out (a sparse checkout of nothing).</summary>
     private string Repository(int commits, int files, int branches = 0)
     {
         string root = Folder();
@@ -345,6 +349,7 @@ public sealed class LongListsTests : IDisposable
         ChildResult imported = Ui.AwaitPumped(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command("git", ["fast-import", "--quiet"], root), stream.ToString(),
             TimeSpan.FromMinutes(1).Scaled())), "git fast-import", TimeSpan.FromMinutes(1) + TestFolders.Spare);
         Assert.True(imported.Succeeded, $"git fast-import made no repository of {commits} commits: {imported.Error}");
+        TestGit.Run(root, "sparse-checkout", "set", "--no-cone", "/none");
         TestGit.Run(root, "reset", "-q", "--hard");
         return root;
     }
