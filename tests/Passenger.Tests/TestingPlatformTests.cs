@@ -125,7 +125,9 @@ public sealed class TestingPlatformTests : TestingPlatformFolders, IClassFixture
         Write(solution, "Store.Tests/StoreTests.cs",
             "using Microsoft.VisualStudio.TestTools.UnitTesting;\n\nnamespace Store.Tests;\n\n[TestClass]\npublic class StoreTests\n{\n" +
             "    [TestMethod]\n    public void Keeps() => Assert.AreEqual(2, 1 + 1);\n\n" +
-            "    [TestMethod]\n    [DataRow(1)]\n    [DataRow(2)]\n    public void Counts(int items) => Assert.IsTrue(items > 0);\n}\n");
+            "    [TestMethod]\n    [DataRow(1)]\n    [DataRow(2)]\n    public void Counts(int items) => Assert.IsTrue(items > 0);\n\n" +
+            "    [TestMethod]\n    [DataRow(1, DisplayName = \"Repeats (same)\")]\n    [DataRow(2, DisplayName = \"Repeats (same)\")]\n" +
+            "    [DataRow(3, DisplayName = \"Repeats (same)\")]\n    public void Repeats(int items) => Assert.IsTrue(items > 0);\n}\n");
         Write(solution, "Suite.slnx", "<Solution>\n  <Project Path=\"Vs.Tests/Vs.Tests.csproj\" />\n  <Project Path=\"Store.Tests/Store.Tests.csproj\" />\n</Solution>\n");
         Restore.Run(Path.Combine(solution, "Suite.slnx"));
         MainWindow window = Ui.OpenFolder(solution, languageServer: false);
@@ -136,12 +138,15 @@ public sealed class TestingPlatformTests : TestingPlatformFolders, IClassFixture
         Ui.WaitFor(() => !window.Tests.IsBusy && Method(window, "Keeps")?.State is not (null or TestState.NotRun or TestState.Running), "the run of every test", TimeSpan.FromSeconds(240));
         Assert.True(Method(window, "Adds")!.State == TestState.Passed, $"The VSTest project's test did not pass:\n{Method(window, "Adds")!.Details}\n{window.BottomPanel.Tests.Status}");
         Assert.True(Method(window, "Keeps")!.State == TestState.Passed, $"The MSTest project on the platform's runner did not pass:\n{Method(window, "Keeps")!.Details}\n{window.BottomPanel.Tests.Status}");
-        Assert.Equal("Tests passed: 4, failed: 0 of 4", System.Text.RegularExpressions.Regex.Replace(window.BottomPanel.Tests.Status, @" in \d+\.\d s$", string.Empty));
+        Assert.Equal("Tests passed: 7, failed: 0 of 7", System.Text.RegularExpressions.Regex.Replace(window.BottomPanel.Tests.Status, @" in \d+\.\d s$", string.Empty));
         window.Tests.Tree.Toggle(Method(window, "Counts")!);
+        window.Tests.Tree.Toggle(Method(window, "Repeats")!);
+        // Rows of one name are told apart by the order they came in.
         Assert.Equal(
             [
                 "Vs.Tests", "  Vs.Tests", "    AddTests", "      Adds",
                 "Store.Tests", "  Store.Tests", "    StoreTests", "      Counts", "        Counts (1)", "        Counts (2)", "      Keeps",
+                "      Repeats", "        Repeats (same)", "        Repeats (same) (2)", "        Repeats (same) (3)",
             ],
             Shown(window));
         window.Close();

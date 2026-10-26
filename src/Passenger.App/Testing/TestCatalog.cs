@@ -39,9 +39,10 @@ public sealed class TestCatalog<THandle>
                 continue;
             }
             TestItem made = item(assembly, test);
+            string row = made.Row ?? made.DisplayName;
             for (int again = 2; handles.ContainsKey(made.Key); again++)
             {
-                made = made with { Row = $"{made.Row ?? made.DisplayName} ({again})" };
+                made = made with { Row = $"{row} ({again})" };
             }
             handles[made.Key] = handle(assembly, test);
             byAssembly[assembly.Path].Add(made.Key);
