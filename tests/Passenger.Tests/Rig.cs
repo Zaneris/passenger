@@ -1170,7 +1170,7 @@ public static class Ui
             top.MouseDown(point, MouseButton.Left);
             top.MouseUp(point, MouseButton.Left);
         }
-        lastClick = (new WeakReference<TopLevel>(top), point, DateTime.UtcNow);
+        lastClick = (new WeakReference<TopLevel>(top), point, top.PointToScreen(point), DateTime.UtcNow);
         Settle();
     }
 
@@ -1184,7 +1184,7 @@ public static class Ui
             window.MouseMove(from + ((to - from) * (step / 10.0)), RawInputModifiers.LeftMouseButton);
         }
         window.MouseUp(to, MouseButton.Left);
-        lastClick = (new WeakReference<TopLevel>(window), from, DateTime.UtcNow);
+        lastClick = (new WeakReference<TopLevel>(window), from, window.PointToScreen(from), DateTime.UtcNow);
         Settle();
     }
 
@@ -1205,7 +1205,7 @@ public static class Ui
         }
         string? doubled = count > 1 ? Doubled(top, point, count) : null;
         top.MouseUp(point, button, modifiers);
-        lastClick = (new WeakReference<TopLevel>(top), point, DateTime.UtcNow);
+        lastClick = (new WeakReference<TopLevel>(top), point, top.PointToScreen(point), DateTime.UtcNow);
         if (doubled is not null)
         {
             throw new InvalidOperationException(doubled);
@@ -1228,17 +1228,22 @@ public static class Ui
             + $"The double-tap time and size waited by: {platform?.GetDoubleTapTime(PointerType.Mouse).TotalMilliseconds.ToString() ?? "none (500)"} ms, {platform?.GetDoubleTapSize(PointerType.Mouse).ToString() ?? "none (4, 4)"}";
     }
 
-    /// <summary>Where and when the last click went down, its window held weakly, so a window closed is let go.</summary>
-    private static (WeakReference<TopLevel> Top, Point Point, DateTime At)? lastClick;
+    /// <summary>Where and when the last click went down, in its window and on the screen, its window held weakly, so a
+    /// window closed is let go.</summary>
+    private static (WeakReference<TopLevel> Top, Point Point, PixelPoint Screen, DateTime At)? lastClick;
 
-    /// <summary>Waits out the double-click time after a click at the same place, so a second click there is a click of its
-    /// own, as two a person makes apart are, never the second of a double click (<see cref="DoubleClick"/> makes one).</summary>
+    /// <summary>Waits out twice the double-click time after a click at the same place on the screen, in any window, so a
+    /// second click there is a click of its own, as two a person makes apart are, never the second of a double click
+    /// (<see cref="DoubleClick"/> makes one): the platform counts clicks by where they are on the screen, across windows,
+    /// and over a time longer than the double-click time it says.</summary>
     private static void Apart(TopLevel top, Point point)
     {
         Avalonia.Platform.IPlatformSettings? platform = Application.Current?.PlatformSettings;
-        TimeSpan between = platform?.GetDoubleTapTime(PointerType.Mouse) ?? TimeSpan.FromMilliseconds(500);
+        TimeSpan between = 2 * (platform?.GetDoubleTapTime(PointerType.Mouse) ?? TimeSpan.FromMilliseconds(500));
         Size near = platform?.GetDoubleTapSize(PointerType.Mouse) ?? new Size(4, 4);
-        if (lastClick is { } last && last.Top.TryGetTarget(out TopLevel? clicked) && clicked == top && Math.Abs(last.Point.X - point.X) <= near.Width / 2 && Math.Abs(last.Point.Y - point.Y) <= near.Height / 2
+        PixelPoint screen = top.PointToScreen(point);
+        double scale = top.RenderScaling;
+        if (lastClick is { } last && Math.Abs(last.Screen.X - screen.X) <= near.Width * scale && Math.Abs(last.Screen.Y - screen.Y) <= near.Height * scale
             && DateTime.UtcNow - last.At is { } since && since < between)
         {
             Hold(between - since, "a second click at the same place to be a click of its own, not a double click");
@@ -1398,7 +1403,7 @@ public static class Ui
     public static void ChooseFromRowMenu(Passenger.App.MainWindow window, Passenger.App.Explorer.ExplorerNode row, params string[] path)
     {
         RightClick(Row(window.ExplorerView, row));
-        Assert.True(window.ExplorerView.SelectedNodes.Contains(row),
+        Assert.True(window.ExplorerView.SelectedNodes.Any(n => SameRow(n, row)),
             $"A right-click on {row.Name} left [{string.Join(", ", window.ExplorerView.SelectedNodes.Select(n => n.Name))}] chosen, so its menu is another row's");
         Choose(window.ExplorerView.OpenMenu ?? throw new Xunit.Sdk.XunitException($"A right-click on {row.Name} opened no menu"), path);
     }
@@ -1408,9 +1413,14 @@ public static class Ui
     public static void ClickRow(Passenger.App.MainWindow window, Passenger.App.Explorer.ExplorerNode row)
     {
         Click(Row(window.ExplorerView, row));
-        Assert.True(window.ExplorerView.SelectedNodes.SequenceEqual([row]),
+        Assert.True(window.ExplorerView.SelectedNodes is [{ } chosen] && SameRow(chosen, row),
             $"A click on {row.Name} left [{string.Join(", ", window.ExplorerView.SelectedNodes.Select(n => n.Name))}] chosen");
     }
+
+    /// <summary>Whether two Explorer rows are one row as a person sees it, the same node or the one a refresh made in its
+    /// place (a file change read while the click waited).</summary>
+    private static bool SameRow(Passenger.App.Explorer.ExplorerNode a, Passenger.App.Explorer.ExplorerNode b) =>
+        a == b || (a.Kind == b.Kind && a.Name == b.Name && a.Depth == b.Depth && a.Path == b.Path && a.Owner == b.Owner);
 
     /// <summary>The centre of a control, in another's coordinates (its window's, for a drag's points).</summary>
     public static Point Centre(Control control, Visual within) =>
