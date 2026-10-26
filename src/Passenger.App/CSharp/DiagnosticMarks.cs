@@ -116,8 +116,19 @@ internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
     /// <summary>The diagnostics placed so, each with its range in the text as it stands.</summary>
     public IEnumerable<(Diagnostic Diagnostic, TextRange Range)> PlacedRanges => Placed.Zip(ranges.Select(r => r.Range));
 
-    /// <summary>The markers last given, where the text has carried them since.</summary>
-    public IReadOnlyList<Marker> Markers => [.. shown.Select(s => s.Marker with { Range = s.Range.Range })];
+    /// <summary>The markers last given, where the text has carried them since: read to show them with another source's.</summary>
+    public IReadOnlyList<Marker> Markers
+    {
+        get
+        {
+            Marker[] markers = new Marker[shown.Length];
+            for (int i = 0; i < markers.Length; i++)
+            {
+                markers[i] = shown[i].Marker with { Range = shown[i].Range.Range };
+            }
+            return markers;
+        }
+    }
 
     /// <summary>The text changed: the diagnostics' ranges moved with it, and are placed on the server's lines again when
     /// next asked for.</summary>
@@ -182,7 +193,12 @@ internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
             }
         }
         shown = [.. drawn.OrderBy(d => d.Item2.Range.Start)];
-        return [.. shown.Select(s => s.Marker)];
+        Marker[] markers = new Marker[shown.Length];
+        for (int i = 0; i < markers.Length; i++)
+        {
+            markers[i] = shown[i].Marker;
+        }
+        return markers;
     }
 
     /// <summary>A range of the text, carried as a squiggle is: what is typed at its end goes inside it while it holds text.</summary>

@@ -140,8 +140,8 @@ public sealed partial class CodeEditor : Control
     /// <summary>Whether <see cref="decorations"/> were made for this editor alone, let go of with the text.</summary>
     private bool ownsDecorations;
 
-    /// <summary>The markers drawn over the text (sorted), from the language service.</summary>
-    public IReadOnlyList<Marker> Markers => decorations.Markers;
+    /// <summary>The markers drawn over the text (sorted), from the language service, carried with the text.</summary>
+    public MarkerList Markers => decorations.Markers;
 
     public void SetMarkers(IReadOnlyList<Marker> markers) => decorations.SetMarkers(markers);
 
@@ -200,15 +200,18 @@ public sealed partial class CodeEditor : Control
         counts.InvalidateMeasure();
     }
 
-    /// <summary>Draws what the decorations were set to: problems counted again, lines with hints drawn otherwise wrapped
-    /// again, the rows of other folds.</summary>
+    /// <summary>Draws what the decorations were set to: other counts of problems measured again, lines with hints drawn
+    /// otherwise wrapped again, the rows of other folds.</summary>
     private void OnDecorationsChanged(object? sender, DecorationKind kind)
     {
         switch (kind)
         {
             case DecorationKind.Markers:
-                counts.InvalidateMeasure();
-                InvalidateArrange();
+                if (counts.Stale)
+                {
+                    counts.InvalidateMeasure();
+                    InvalidateArrange();
+                }
                 break;
             case DecorationKind.InlayHints:
                 HintList before = wrappedHints;

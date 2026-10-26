@@ -188,12 +188,8 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
 
     private void OnChanged(object? sender, DocumentChangedEventArgs e)
     {
-        // The markers and the problems a fix asked for at the caret reads, where the text carried their ranges.
+        // The problems a fix asked for at the caret reads, where the text carried their ranges.
         diagnostics.Moved();
-        if (document.Markers.Count > 0)
-        {
-            document.Markers = diagnostics.Markers;
-        }
         Pull(Pause);
         // An AppHost's edit may change what its services are told is missing; any other file's changes only its own.
         if (AspireRole == Aspire.AspireRole.AppHost)

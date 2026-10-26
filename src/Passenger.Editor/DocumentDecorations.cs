@@ -16,10 +16,11 @@ public enum DecorationKind
 
 /// <summary>What is drawn on one document's text for whoever shows it: its markers, inlay hints, folds, line-end
 /// annotations, change marks and bookmarks. Every editor showing the document reads this one (<see cref="CodeEditor.Show"/>),
-/// so a split or another window draws what the first does; an editor given a text alone has one of its own. The hints and
-/// the folds are carried through each change ahead of everyone who hears of it, as runs an edit moves only where it
-/// reaches; the rest are set again by their owners. Each list is replaced, never changed in place, and kept in order by
-/// line, so a frame reads only what is on screen. Read and changed on the thread that changes the document.</summary>
+/// so a split or another window draws what the first does; an editor given a text alone has one of its own. The markers,
+/// the hints and the folds are carried through each change ahead of everyone who hears of it, as runs an edit moves only
+/// where it reaches, so their owners set them again only with others; the rest are set again by their owners. Each list
+/// is replaced, never changed in place, and kept in order by line, so a frame reads only what is on screen. Read and
+/// changed on the thread that changes the document.</summary>
 public sealed class DocumentDecorations
 {
     private static readonly LineOrdered<LineAnnotation> NoAnnotations = new([], static a => a.Line, static a => a.Line);
@@ -38,18 +39,15 @@ public sealed class DocumentDecorations
 
     public TextDocument Text { get; }
 
-    /// <summary>Raised when one kind was set again, its list replaced; never for the hints and folds a change carried, which
-    /// each editor follows as it hears of the change.</summary>
+    /// <summary>Raised when one kind was set again, its list replaced; never for the markers, hints and folds a change
+    /// carried, which each editor follows as it hears of the change.</summary>
     public event EventHandler<DecorationKind>? Changed;
 
     /// <summary>The language service's markers, in the order of their starts.</summary>
-    public IReadOnlyList<Marker> Markers { get; private set; } = [];
-
-    /// <summary>The furthest any marker up to each reaches, so a line finds its first marker by halving.</summary>
-    internal int[] MarkerReach { get; private set; } = [];
+    public MarkerList Markers { get; private set; } = MarkerList.Empty;
 
     /// <summary>How many of the markers are errors and how many warnings.</summary>
-    public (int Errors, int Warnings) Problems { get; private set; }
+    public (int Errors, int Warnings) Problems => Markers.Problems;
 
     /// <summary>The hints, in offset order.</summary>
     public HintList InlayHints { get; private set; } = HintList.Empty;
@@ -75,31 +73,16 @@ public sealed class DocumentDecorations
     /// <summary>How many times markers were given out of order and sorted here: what a host that gives them so costs a key.</summary>
     public int MarkersSorted { get; private set; }
 
-    /// <summary>Sets the markers, taken as given when they are in order already, as a host carrying them through a key gives
-    /// them: thousands sorted again at every key cost it.</summary>
+    /// <summary>Sets the markers for the text as it stands, taken as given when they are in order already (a
+    /// <see cref="MarkerList"/> always is), and carried through its changes from then on.</summary>
     public void SetMarkers(IReadOnlyList<Marker> markers)
     {
         if (ReferenceEquals(markers, Markers))
         {
             return;
         }
-        bool ordered = InOrder(markers, static m => m.Range.Start);
-        MarkersSorted += ordered ? 0 : 1;
-        Markers = ordered ? markers : [.. markers.OrderBy(m => m.Range.Start)];
-        if (MarkerReach.Length != Markers.Count)
-        {
-            MarkerReach = new int[Markers.Count];
-        }
-        int errors = 0;
-        int warnings = 0;
-        for (int i = 0; i < Markers.Count; i++)
-        {
-            Marker marker = Markers[i];
-            MarkerReach[i] = Math.Max(i > 0 ? MarkerReach[i - 1] : 0, marker.Range.End);
-            errors += marker.Kind == MarkerKind.Error ? 1 : 0;
-            warnings += marker.Kind == MarkerKind.Warning ? 1 : 0;
-        }
-        Problems = (errors, warnings);
+        Markers = MarkerList.Of(markers, out bool sorted);
+        MarkersSorted += sorted ? 1 : 0;
         Changed?.Invoke(this, DecorationKind.Markers);
     }
 
@@ -156,8 +139,8 @@ public sealed class DocumentDecorations
         Changed?.Invoke(this, DecorationKind.Bookmarks);
     }
 
-    /// <summary>Carries the hints and folds through a change once, whichever of its hearers asks first: an editor that heard
-    /// of it before this did wraps its lines with the hints where the change left them.</summary>
+    /// <summary>Carries the markers, hints and folds through a change once, whichever of its hearers asks first: an editor
+    /// that heard of it before this did wraps its lines with the hints where the change left them.</summary>
     internal void Follow(DocumentChangedEventArgs change)
     {
         if (change.Version == carried)
@@ -165,6 +148,10 @@ public sealed class DocumentDecorations
             return;
         }
         carried = change.Version;
+        if (Markers.Count > 0)
+        {
+            Markers = Markers.Through(change.Edits);
+        }
         if (InlayHints.Count > 0)
         {
             InlayHints = InlayHints.Through(change.Edits);

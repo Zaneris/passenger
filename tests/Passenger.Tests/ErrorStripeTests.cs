@@ -72,17 +72,20 @@ public sealed class ErrorStripeTests
             $"The stripe's marks were worked out {editor.StripeMarksBuilt - built - 1} times after a line was put in, not once");
     }
 
-    /// <summary>Keys typed above 4,000 warnings, the warnings set again moved through each as the language server's
-    /// are, keep every mark and allocate on the UI thread under twice what they do above 40, and a click on a mark goes
-    /// to its warning as the text stands.</summary>
+    /// <summary>Keys typed above 4,000 warnings, which the document carries through each, keep every mark and allocate on
+    /// the UI thread under twice what they do above 40, and so does an Enter, which moves every mark down a row; a click on
+    /// a mark goes to its warning as the text stands.</summary>
     [AvaloniaFact]
-    public void Keys_above_four_thousand_warnings_carried_through_them_cost_what_they_do_above_forty()
+    public void Keys_and_an_Enter_above_four_thousand_warnings_cost_what_they_do_above_forty()
     {
-        long few = BytesPerKey(40);
-        long many = BytesPerKey(4000);
-        TestContext.Current.TestOutputHelper?.WriteLine($"A key allocated {few:N0} bytes above 40 warnings, {many:N0} above 4,000.");
-        Assert.True(many < few * 2,
-            $"A key above 4,000 warnings allocated {many / 1024:N0} KB on the UI thread, above 40 {few / 1024:N0} KB: the stripe's marks and the markers' order were made again from all of them");
+        (long fewKey, long fewEnter) = BytesPerKey(40);
+        (long manyKey, long manyEnter) = BytesPerKey(4000);
+        TestContext.Current.TestOutputHelper?.WriteLine(
+            $"A key allocated {fewKey:N0} bytes above 40 warnings, {manyKey:N0} above 4,000; an Enter {fewEnter:N0} and {manyEnter:N0}.");
+        Assert.True(manyKey < fewKey * 2,
+            $"A key above 4,000 warnings allocated {manyKey / 1024:N0} KB on the UI thread, above 40 {fewKey / 1024:N0} KB: the markers, the stripe's marks or their order were made again from all of them");
+        Assert.True(manyEnter < fewEnter * 2,
+            $"An Enter above 4,000 warnings allocated {manyEnter / 1024:N0} KB on the UI thread, above 40 {fewEnter / 1024:N0} KB: the stripe's marks or their messages were made anew for all of them");
     }
 
     /// <summary>A frame over a file with a warning, an annotation, a change bar and a bookmark on each of 4,000 lines
@@ -113,22 +116,14 @@ public sealed class ErrorStripeTests
         return Ui.BlinkBytes(editor);
     }
 
-    /// <summary>What a key typed at the top of a file of a warning a line allocates on the UI thread, its warnings set again
-    /// moved through it as a host carries them (their moving left out, which is the host's), the stripe drawn.</summary>
-    private static long BytesPerKey(int lines)
+    /// <summary>What a key and an Enter typed at the top of a file of a warning a line allocate on the UI thread, the
+    /// warnings set once, as a host sets them when its server reports, the stripe drawn after each.</summary>
+    private static (long Key, long Enter) BytesPerKey(int lines)
     {
         EditorRig rig = new(string.Concat(Enumerable.Range(0, lines).Select(i => $"        int value{i} = {i};\n")));
         CodeEditor editor = rig.Editor;
         TextSnapshot text = rig.Document.Snapshot;
         editor.SetMarkers([.. Enumerable.Range(0, lines).Select(i => new Marker(new TextRange(text.GetLineStart(i) + 12, 5), MarkerKind.Warning, Unused))]);
-        long carrying = 0;
-        rig.Document.Changed += (_, e) =>
-        {
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            Marker[] moved = [.. editor.Markers.Select(m => m with { Range = TextEditing.MapRange(m.Range, e.Edits) })];
-            carrying += GC.GetAllocatedBytesForCurrentThread() - before;
-            editor.SetMarkers(moved);
-        };
         editor.Focus();
         Ui.Settle();
         int built = editor.StripeMarksBuilt;
@@ -138,10 +133,11 @@ public sealed class ErrorStripeTests
         {
             rig.Type("x");
         }
-        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated - carrying;
+        long keys = GC.GetAllocatedBytesForCurrentThread() - allocated;
         Assert.True(editor.StripeMarksBuilt == built, $"The stripe's marks were worked out {editor.StripeMarksBuilt - built} times for keys that moved no line");
         List<CodeEditor.StripeMark> warnings = [.. editor.StripeMarks.Where(m => m.Kind == StripeMarkKind.Warning)];
         Assert.Equal(lines, warnings.Count);
+        Assert.Equal(text.GetLineStart(lines - 1) + 12 + Keys, editor.Markers[lines - 1].Range.Start);
 
         if (lines <= 40)
         {
@@ -151,8 +147,27 @@ public sealed class ErrorStripeTests
             rig.Window.MouseUp(at, MouseButton.Left);
             Ui.Settle();
             Assert.Equal(text.GetLineStart(lines - 1) + 12 + Keys, editor.Selections.Primary.Caret);
+            editor.Selections = SelectionSet.Single(0);
+            Ui.Settle();
         }
-        return allocated / Keys;
+
+        // The first aside, whose redraw of thousands of marks allocates once what later ones reuse.
+        rig.Press("ENTER");
+        Ui.Settle();
+        const int Enters = 3;
+        allocated = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < Enters; i++)
+        {
+            rig.Press("ENTER");
+            Ui.Settle();
+        }
+        long enters = GC.GetAllocatedBytesForCurrentThread() - allocated;
+        Assert.True(editor.StripeMarksBuilt == built + 1 + Enters, $"The stripe's marks were worked out {editor.StripeMarksBuilt - built} times for {1 + Enters} Enters");
+        warnings = [.. editor.StripeMarks.Where(m => m.Kind == StripeMarkKind.Warning)];
+        Assert.Equal(lines, warnings.Count);
+        Assert.Equal(1 + Enters + lines - 1, warnings[^1].Line);
+        Assert.Equal(Unused, warnings[^1].Message);
+        return (keys / Keys, enters / Enters);
     }
 
     /// <summary>A warning on each line on screen and a change down the whole file, as Git marks a new one: a click on the

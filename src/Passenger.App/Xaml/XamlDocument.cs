@@ -183,7 +183,10 @@ public sealed class XamlDocument : IDisposable
         Diagnostics = found;
         ReadsLocalized = localizes;
         gaps.Set(Document.Text, [.. found.Where(d => d.Gap is not null).Select(d => (d.Range, d.Gap!))]);
-        live.Set(Document.Text, [.. found.Select(d => new Marker(d.Range, d.Severity == XamlSeverity.Error ? MarkerKind.Error : MarkerKind.Warning, d.Message))]);
+        live.Set(Document.Text, [.. found.Select(d => new Marker(d.Range, d.Severity == XamlSeverity.Error ? MarkerKind.Error : MarkerKind.Warning, d.Message)
+        {
+            StartGravity = AnchorGravity.After,
+        })]);
         Show();
         IReadOnlyList<ColourUse> colours = await BackgroundWork.Run(() => Colours.InXaml(file, file.Variant));
         if (!disposed && Document.Text.Version == version)
@@ -208,7 +211,10 @@ public sealed class XamlDocument : IDisposable
             int start = line.Start + Math.Min(problem.Position.Column, line.Length);
             TextRange range = WordAt(text, start, line);
             string code = problem.Code is { Length: > 0 } c ? $"{c}: " : string.Empty;
-            found.Add(new Marker(range, problem.Severity == ProblemSeverity.Error ? MarkerKind.Error : MarkerKind.Warning, code + Plain(problem.Message)));
+            found.Add(new Marker(range, problem.Severity == ProblemSeverity.Error ? MarkerKind.Error : MarkerKind.Warning, code + Plain(problem.Message))
+            {
+                StartGravity = AnchorGravity.After,
+            });
         }
         built.Set(Document.Text, found);
         Show();
@@ -241,11 +247,8 @@ public sealed class XamlDocument : IDisposable
     private void OnChanged(object? sender, DocumentChangedEventArgs e)
     {
         due = true;
-        if (built.Count > 0)
-        {
-            DropEditedLines(e);
-        }
-        if (live.Count + built.Count > 0 || Document.Markers.Count > 0)
+        // Shown again only when a build's problem went, or when what is shown is none of this file's.
+        if ((built.Count > 0 && DropEditedLines(e)) || (live.Count + built.Count == 0 && Document.Markers.Count > 0))
         {
             Show();
         }
@@ -253,8 +256,8 @@ public sealed class XamlDocument : IDisposable
     }
 
     /// <summary>A build's problem on a line edited since is the build's, no longer this text's: one on a line of the text as
-    /// it stands that an edit of the change reached.</summary>
-    private void DropEditedLines(DocumentChangedEventArgs e)
+    /// it stands that an edit of the change reached; whether there was one.</summary>
+    private bool DropEditedLines(DocumentChangedEventArgs e)
     {
         TextSnapshot after = e.After;
         HashSet<int> edited = [];
@@ -269,7 +272,7 @@ public sealed class XamlDocument : IDisposable
             }
             shift += edit.Text.Length - edit.Length;
         }
-        built.Drop(m => edited.Contains(after.GetLineFromOffset(Math.Min(m.Range.Start, after.Length))));
+        return built.Drop(m => edited.Contains(after.GetLineFromOffset(Math.Min(m.Range.Start, after.Length))));
     }
 
     /// <summary>The markers shown, where the text has carried them: what the check found, and the build's where the check

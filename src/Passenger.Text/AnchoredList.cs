@@ -15,6 +15,10 @@ public sealed class AnchoredList<T>(Func<T, TextRange> rangeOf, Func<T, TextRang
 
     public int Count => ranges.Length;
 
+    /// <summary>How many times items were set, dropped or let go: while it stands, <see cref="Items"/> are the same items,
+    /// at most moved.</summary>
+    public int Given { get; private set; }
+
     /// <summary>The items, each on its range in the text as it stands.</summary>
     public IReadOnlyList<T> Items
     {
@@ -77,6 +81,7 @@ public sealed class AnchoredList<T>(Func<T, TextRange> rangeOf, Func<T, TextRang
         }
         ranges = [.. keptRanges];
         items = keptItems;
+        Given++;
         if (ranges.Length == 0)
         {
             document = null;
@@ -87,6 +92,7 @@ public sealed class AnchoredList<T>(Func<T, TextRange> rangeOf, Func<T, TextRang
     /// <summary>Lets every range go: none is left.</summary>
     public void Clear()
     {
+        Given++;
         foreach (AnchoredRange range in ranges)
         {
             range.Remove();

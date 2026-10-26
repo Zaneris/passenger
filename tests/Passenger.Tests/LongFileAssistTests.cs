@@ -424,6 +424,57 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
         window.Close();
     }
 
+    /// <summary>Keys typed above four thousand warnings, a local each that is never read, cost the UI thread what they do
+    /// above forty, the rest of that file's four thousand lines adding to a total: the document carries the server's
+    /// markers through a key, so the C# host sets them again only when the server reports, and each still stands under its
+    /// local.</summary>
+    [AvaloniaFact]
+    public void A_key_above_thousands_of_warnings_costs_what_it_does_above_a_few()
+    {
+        MainWindow window = project.Open("FewWarned.cs");
+        long few = WarnedKeys(window, "FewWarned.cs", 40);
+        long many = WarnedKeys(window, "Warned.cs", 4000);
+        TestContext.Current.TestOutputHelper?.WriteLine($"A key allocated {few / 1024} KB on the UI thread above 40 warnings, {many / 1024} KB above 4,000");
+        Assert.True(many <= few + (32 * 1024),
+            $"A key above 4,000 warnings allocated {many / 1024} KB on the UI thread, {(many - few) / 1024} KB more than above 40: the markers were copied for every key");
+        window.Close();
+    }
+
+    /// <summary>The bytes a key and the frame after it allocate on the UI thread, the middle of five, typed above a file's warnings
+    /// once they have come; every warning then still stands under its local.</summary>
+    private long WarnedKeys(MainWindow window, string file, int warned)
+    {
+        window.OpenFile(project.PathOf(file));
+        Ui.Settle();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument document = window.EditorArea.Active!;
+        Ui.WaitFor(() => editor.ProblemCount.Warnings == warned, $"the warnings of {file}'s {warned} locals never read");
+        Ui.PlaceAfter(editor, "int total = 0");
+        editor.Focus();
+        Ui.Settle();
+        const int Keys = 5;
+        long[] bytes = new long[Keys];
+        for (int i = 0; i < Keys; i++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            window.KeyTextInput("1");
+            Ui.Hold(TimeSpan.FromMilliseconds(10), "a frame after the key, whose allocations are measured");
+            bytes[i] = GC.GetAllocatedBytesForCurrentThread() - before;
+        }
+        TestContext.Current.TestOutputHelper?.WriteLine($"The keys above {warned} warnings allocated {string.Join(", ", bytes.Select(b => $"{b / 1024} KB"))}");
+        TextSnapshot text = document.Text.Snapshot;
+        List<Marker> warnings = [.. document.Markers.Where(m => m.Kind == MarkerKind.Warning)];
+        Assert.Equal(warned, warnings.Count);
+        foreach (Marker warning in warnings)
+        {
+            Assert.True(text.GetText(warning.Range.Start, "unused".Length) == "unused",
+                $"After {Keys} keys above them, a warning of {file} stands on '{text.GetText(warning.Range.Start, Math.Min(12, text.Length - warning.Range.Start))}' on line {text.GetLineFromOffset(warning.Range.Start) + 1}");
+        }
+        // The middle key's: an answer to an earlier request may land in another's frame.
+        Array.Sort(bytes);
+        return bytes[Keys / 2];
+    }
+
     /// <summary>Keys typed above a file's calls once its hints have come, with soft wrap on or off: how many hints, and the
     /// bytes each key and the frame after it allocate on the UI thread and the characters each wraps, on average; every hint
     /// then still stands before its argument.</summary>
@@ -561,6 +612,12 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
 
         public static readonly string Few = Called("Few", 4000, 60);
 
+        /// <summary>Warned.cs: a method of four thousand locals each given a number and never read, a warning each; FewWarned.cs
+        /// the same, but for the first forty, the rest of its four thousand lines adding to the total it returns.</summary>
+        public static readonly string Warned = Locals("Warned", 4000, 4000);
+
+        public static readonly string FewWarned = Locals("FewWarned", 4000, 40);
+
         /// <summary>Long.cs: two hundred methods of a hundred lines and more, every fiftieth with an error, a string given a number.</summary>
         public static readonly string Long = TwentyThousandLines(errors: true, "Long", "}\n");
 
@@ -577,6 +634,8 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
             File.WriteAllText(PathOf("Dotted.cs"), Dotted);
             File.WriteAllText(PathOf("Calls.cs"), Calls);
             File.WriteAllText(PathOf("Few.cs"), Few);
+            File.WriteAllText(PathOf("Warned.cs"), Warned);
+            File.WriteAllText(PathOf("FewWarned.cs"), FewWarned);
             // The server's first load makes bin, which a reset would take for a file the test added: made now, the folder stays as reset.
             Directory.CreateDirectory(PathOf("bin"));
         }
@@ -591,6 +650,25 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
                 text.Append(System.Globalization.CultureInfo.InvariantCulture, $"    public static int Call{i}() => {(i < hinted ? "Of(3, 4)" : "Of(width: 3, height: 4)")};\n");
             }
             return text.Append("}\n").ToString();
+        }
+
+        /// <summary>A method of <paramref name="lines"/> statements, the first <paramref name="warned"/> a local never read,
+        /// the rest adding to a total it returns.</summary>
+        private static string Locals(string name, int lines, int warned)
+        {
+            StringBuilder text = new($"static class {name}\n{{\n    public static int Typed()\n    {{\n        int total = 0;\n");
+            for (int i = 0; i < lines; i++)
+            {
+                if (i < warned)
+                {
+                    text.Append(System.Globalization.CultureInfo.InvariantCulture, $"        int unused{i} = {i};\n");
+                }
+                else
+                {
+                    text.Append(System.Globalization.CultureInfo.InvariantCulture, $"        total += {i};\n");
+                }
+            }
+            return text.Append("        return total;\n    }\n}\n").ToString();
         }
 
         /// <summary>Two hundred methods of a hundred lines and more: 20,000 lines, as many as Roslyn parses fresh every time.</summary>

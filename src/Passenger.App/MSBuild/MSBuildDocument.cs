@@ -23,7 +23,6 @@ public sealed class MSBuildDocument : IDisposable
     private readonly Debounce inspecting;
     private (int Version, XmlTree Tree)? parsed;
     private IReadOnlyList<InsightDiagnostic> diagnostics = [];
-    private readonly AnchoredList<Marker> markers = new(m => m.Range, (m, range) => m with { Range = range });
     private bool disposed;
 
     internal MSBuildDocument(MSBuildService service, OpenDocument document)
@@ -303,9 +302,17 @@ public sealed class MSBuildDocument : IDisposable
         }
         TextSnapshot text = Document.Text.Snapshot;
         XmlTree tree = Tree;
-        markers.Set(Document.Text, [.. diagnostics.Select(d => new Marker(RangeOf(text, tree, d), d.Error ? MarkerKind.Error : MarkerKind.Warning,
-            (d.Code is { Length: > 0 } code ? $"{code}: " : string.Empty) + Plain(d.Message))), .. advisories]);
-        Document.Markers = markers.Items;
+        IEnumerable<Marker> found = diagnostics.Select(d => new Marker(RangeOf(text, tree, d), d.Error ? MarkerKind.Error : MarkerKind.Warning,
+            (d.Code is { Length: > 0 } code ? $"{code}: " : string.Empty) + Plain(d.Message)));
+        // Text typed at a problem's start goes before it.
+        Document.Markers = [.. found.Concat(advisories).Select(m => m with { Range = Clamped(m.Range, text.Length), StartGravity = AnchorGravity.After })];
+    }
+
+    /// <summary>A range held inside a text of a length.</summary>
+    private static TextRange Clamped(TextRange range, int length)
+    {
+        int start = Math.Clamp(range.Start, 0, length);
+        return TextRange.FromBounds(start, Math.Clamp(range.End, start, length));
     }
 
     /// <summary>Where a problem MSBuild places at a line and column goes: an import not found on its Project, a
@@ -343,21 +350,13 @@ public sealed class MSBuildDocument : IDisposable
         return at > 0 && message.IndexOf(", position ", at, StringComparison.Ordinal) > at ? message[..at].TrimEnd() : message;
     }
 
-    private void OnChanged(object? sender, DocumentChangedEventArgs e)
-    {
-        if (markers.Count > 0)
-        {
-            Document.Markers = markers.Items;
-        }
-        inspecting.Restart();
-    }
+    private void OnChanged(object? sender, DocumentChangedEventArgs e) => inspecting.Restart();
 
     public void Dispose()
     {
         disposed = true;
         inspecting.Stop();
         Document.Text.Changed -= OnChanged;
-        markers.Clear();
         if (Document.Markers.Count > 0)
         {
             Document.Markers = [];

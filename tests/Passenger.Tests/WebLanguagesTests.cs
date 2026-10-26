@@ -358,6 +358,70 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
         }
     }
 
+    /// <summary>Keys typed above a stylesheet's four thousand empty rules, a warning each from the CSS server, cost the UI
+    /// thread what they do above forty, the rest of that file's four thousand rules setting a colour: the document carries
+    /// the server's markers through a key, so the web host sets them again only when the server reports.</summary>
+    [AvaloniaFact]
+    public void Keys_above_thousands_of_a_stylesheets_warnings_cost_what_they_do_above_a_few()
+    {
+        SkipWithoutNode();
+        string folder = TestFolders.Create("css-warnings-");
+        File.WriteAllText(Path.Combine(folder, "few.css"), Rules(4000, 40));
+        File.WriteAllText(Path.Combine(folder, "many.css"), Rules(4000, 4000));
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false, autosaves: false);
+        try
+        {
+            long few = WarnedKeys(window, Path.Combine(PathNames.Canonical(folder), "few.css"), 40);
+            long many = WarnedKeys(window, Path.Combine(PathNames.Canonical(folder), "many.css"), 4000);
+            TestContext.Current.TestOutputHelper?.WriteLine($"A key allocated {few / 1024} KB on the UI thread above 40 warnings, {many / 1024} KB above 4,000");
+            Assert.True(many <= few + (32 * 1024),
+                $"A key above a stylesheet's 4,000 warnings allocated {many / 1024} KB on the UI thread, {(many - few) / 1024} KB more than above 40: the markers were copied for every key");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A stylesheet of <paramref name="rules"/> rules under a comment, the first <paramref name="empty"/> empty.</summary>
+    private static string Rules(int rules, int empty) =>
+        "/* top */\n" + string.Concat(Enumerable.Range(0, rules).Select(i => i < empty ? $".empty{i} {{}}\n" : $".full{i} {{ color: red; }}\n"));
+
+    /// <summary>The bytes a key and the frame after it allocate on the UI thread, the middle of five, typed into a stylesheet's first
+    /// line once its warnings have come; every warning then still stands on its empty rule.</summary>
+    private static long WarnedKeys(MainWindow window, string path, int warned)
+    {
+        window.OpenFile(path);
+        Ui.Settle();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument document = window.EditorArea.Active!;
+        Ui.WaitFor(() => editor.ProblemCount.Warnings == warned, $"the CSS server's warnings of {warned} empty rules");
+        Ui.PlaceAfter(editor, "/* top");
+        editor.Focus();
+        Ui.Settle();
+        const int Keys = 5;
+        long[] bytes = new long[Keys];
+        for (int i = 0; i < Keys; i++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            window.KeyTextInput("1");
+            Ui.Hold(TimeSpan.FromMilliseconds(10), "a frame after the key, whose allocations are measured");
+            bytes[i] = GC.GetAllocatedBytesForCurrentThread() - before;
+        }
+        TestContext.Current.TestOutputHelper?.WriteLine($"The keys above {warned} warnings allocated {string.Join(", ", bytes.Select(b => $"{b / 1024} KB"))}");
+        TextSnapshot text = document.Text.Snapshot;
+        List<Marker> warnings = [.. document.Markers.Where(m => m.Kind == MarkerKind.Warning)];
+        Assert.Equal(warned, warnings.Count);
+        foreach (Marker warning in warnings)
+        {
+            Assert.True(text.GetText(warning.Range.Start, ".empty".Length) == ".empty",
+                $"After {Keys} keys above them, a warning stands on '{text.GetText(warning.Range.Start, Math.Min(12, text.Length - warning.Range.Start))}' on line {text.GetLineFromOffset(warning.Range.Start) + 1}");
+        }
+        // The middle key's: an answer to an earlier request may land in another's frame.
+        Array.Sort(bytes);
+        return bytes[Keys / 2];
+    }
+
     private static void CopyFolder(string from, string to)
     {
         foreach (string file in Directory.EnumerateFiles(from, "*", SearchOption.AllDirectories))

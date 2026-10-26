@@ -407,24 +407,8 @@ public sealed partial class CodeEditor
     private void DrawMarkers(DrawingContext context, LineView view, Gap[] gaps, double left, double y, double clipLeft, double clipRight)
     {
         RowSpan span = view.Span;
-        IReadOnlyList<Marker> markers = Markers;
-        int[] reach = decorations.MarkerReach;
-        // The markers before the first that reaches this far all end before the line.
-        int low = 0;
-        int high = markers.Count;
-        while (low < high)
-        {
-            int middle = (low + high) / 2;
-            if (reach[middle] < span.Start)
-            {
-                low = middle + 1;
-            }
-            else
-            {
-                high = middle;
-            }
-        }
-        for (int i = low; i < markers.Count; i++)
+        MarkerList markers = decorations.Markers;
+        for (int i = markers.FirstReaching(span.Start); i < markers.Count; i++)
         {
             Marker marker = markers[i];
             // One starting where a row wraps is the next row's.

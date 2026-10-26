@@ -83,7 +83,7 @@ public sealed class WebDocument : IServerDocument, IDisposable
     /// (<see cref="Containers.EngineChecks"/>).</summary>
     public void ShowEngine(IReadOnlyList<Marker> markers)
     {
-        engine.Set(document.Text, [.. markers.OrderBy(m => m.Range.Start)]);
+        engine.Set(document.Text, [.. markers.OrderBy(m => m.Range.Start).Select(m => m with { StartGravity = AnchorGravity.After })]);
         document.Markers = Shown();
     }
 
@@ -199,8 +199,8 @@ public sealed class WebDocument : IServerDocument, IDisposable
     private void OnChanged(object? sender, DocumentChangedEventArgs e)
     {
         diagnostics.Moved();
-        // What it shows is every marker of its own server's and ESLint's, so with none shown only the engine's can move.
-        if (document.Markers.Count + engine.Count > 0)
+        // An engine's markers are shown again, as a key may take one onto or off a line the server marks.
+        if (engine.Count > 0)
         {
             document.Markers = Shown();
         }

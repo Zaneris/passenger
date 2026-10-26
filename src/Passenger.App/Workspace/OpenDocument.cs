@@ -20,7 +20,6 @@ public sealed class OpenDocument : Observable
 {
     private IHighlighter? parser;
     private IHighlighter? highlighter;
-    private IReadOnlyList<Marker> markers = [];
     private IReadOnlyList<string> projectContexts = [];
     private string? projectContext;
     private IReadOnlyList<LineMark> lineMarks = [];
@@ -225,6 +224,11 @@ public sealed class OpenDocument : Observable
                 Decorations.SetLineAnnotations(ShownAnnotations);
             }
             FollowHeld(change.Edits);
+            if (Markers.Count > 0)
+            {
+                // Moved with the text, so what lists them follows.
+                Raise(nameof(Markers));
+            }
             Raise(nameof(IsModified));
         };
     }
@@ -299,15 +303,15 @@ public sealed class OpenDocument : Observable
     /// and bookmarks, which the properties here set.</summary>
     public DocumentDecorations Decorations { get; }
 
-    /// <summary>The language service's markers (diagnostics), in this text's offsets.</summary>
+    /// <summary>The language service's markers (diagnostics), in this text's offsets: set when a service reports, and
+    /// carried with the text between reports (<see cref="DocumentDecorations.Markers"/>).</summary>
     public IReadOnlyList<Marker> Markers
     {
-        get => markers;
+        get => Decorations.Markers;
         set
         {
-            if (!ReferenceEquals(markers, value))
+            if (!ReferenceEquals(Decorations.Markers, value))
             {
-                markers = value;
                 Decorations.SetMarkers(value);
                 Raise();
             }
