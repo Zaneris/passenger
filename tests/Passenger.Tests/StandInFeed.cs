@@ -62,8 +62,9 @@ public sealed class StandInFeed : IDisposable
 
     public void Dispose() => http.Dispose();
 
-    /// <summary>A package with nothing in it but its manifest and an empty lib folder, so any framework takes it.</summary>
-    public static byte[] Package(string id, string version)
+    /// <summary>A package with nothing in it but its manifest, an empty lib folder, so any framework takes it, and the
+    /// <paramref name="files"/> given (an MSBuild SDK's Sdk/Sdk.props), each by its path in the package and its text.</summary>
+    public static byte[] Package(string id, string version, IReadOnlyDictionary<string, string>? files = null)
     {
         using MemoryStream bytes = new();
         using (ZipArchive zip = new(bytes, ZipArchiveMode.Create, leaveOpen: true))
@@ -83,6 +84,11 @@ public sealed class StandInFeed : IDisposable
                     """);
             }
             zip.CreateEntry("lib/netstandard2.0/_._");
+            foreach ((string path, string text) in files ?? new Dictionary<string, string>())
+            {
+                using StreamWriter file = new(zip.CreateEntry(path).Open());
+                file.Write(text);
+            }
         }
         return bytes.ToArray();
     }

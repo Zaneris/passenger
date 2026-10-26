@@ -172,7 +172,7 @@ public sealed partial class BuildRunController
         if (plan.Builds.Count > 0)
         {
             work.Say($"Building {string.Join(", ", plan.Builds.Select(Path.GetFileNameWithoutExtension))}…");
-            BuildOutcome built = await BuildForAsync(plan.Builds, work.Stopping);
+            BuildOutcome built = await BuildForAsync(plan.Builds, work.Stopping, work);
             if (!built.Succeeded)
             {
                 return Checkpoint(work, chosen.Name) is { } stopped ? Said(stopped) : built.Message;
@@ -451,7 +451,7 @@ public sealed partial class BuildRunController
         {
             using IDisposable held = BackgroundWork.Scope();
             parts.Editors.SaveAll();
-            BuildOutcome built = await BuildForAsync(run.Plan.Builds, work.Stopping);
+            BuildOutcome built = await BuildForAsync(run.Plan.Builds, work.Stopping, work);
             if (!built.Succeeded)
             {
                 return Said(built.Message);

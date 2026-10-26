@@ -566,7 +566,7 @@ public sealed partial class BuildRunController
         {
             return (null, problem, true);
         }
-        if (build && plan.Build is { } step && await BuildForAsync(step, work.Stopping) is { Succeeded: false } unbuilt)
+        if (build && plan.Build is { } step && await BuildForAsync(step, work) is { Succeeded: false } unbuilt)
         {
             return (null, Checkpoint(work, chosen.Name) ?? unbuilt.Message, false);
         }
@@ -583,7 +583,11 @@ public sealed partial class BuildRunController
     /// Run, Debug or Profile begins: stopped as the start is (<paramref name="stopping"/>), as Stop stops a build. What is
     /// open is saved first; a project whose last build here stands (<see cref="UpToDate"/>) is not built again, the Build
     /// window and the status bar saying so.</summary>
-    public Task<BuildOutcome> BuildForAsync(BuildStep step, CancellationToken stopping) => BuildForAsync([step.Project], stopping, step.Framework, step.Output);
+    public Task<BuildOutcome> BuildForAsync(BuildStep step, CancellationToken stopping) => BuildForAsync([step.Project], stopping, null, step.Framework, step.Output);
+
+    /// <summary>A start's build of what it starts, as <see cref="BuildForAsync(BuildStep, CancellationToken)"/>, saying in its
+    /// work when it waits for a build under way.</summary>
+    public Task<BuildOutcome> BuildForAsync(BuildStep step, Working work) => BuildForAsync([step.Project], work.Stopping, work, step.Framework, step.Output);
 
     /// <summary>What a start says of a project it did not build: nothing its build reads changed since its last.</summary>
     public static string UpToDateSaid(string project) => $"{project} is up to date: nothing its build reads has changed since it was built, so it was not built again";
@@ -593,15 +597,34 @@ public sealed partial class BuildRunController
         : $"{Listed(projects)} are up to date: nothing their builds read has changed since they were built, so they were not built again";
 
     /// <summary>A start's build of its projects (<see cref="BuildForAsync(BuildStep, CancellationToken)"/>), several side by
-    /// side in one dotnet build (<see cref="TogetherBuild"/>): none is built when the last build here of each stands, and all
-    /// are when one does not, what each build left then kept for its next start's check.</summary>
-    private async Task<BuildOutcome> BuildForAsync(IReadOnlyList<string> projects, CancellationToken stopping, string? framework = null, string? output = null)
+    /// side in one dotnet build (<see cref="TogetherBuild"/>), after any build under way: none is built when the last build
+    /// here of each stands, and all are when one does not, what each build left then kept for its next start's check.</summary>
+    private async Task<BuildOutcome> BuildForAsync(IReadOnlyList<string> projects, CancellationToken stopping, Working? work, string? framework = null, string? output = null)
     {
         UiThread.Check();
         List<UpToDate.Check> checks = [];
         TogetherBuild? side = null;
-        if (session.Folder is { } folder && !IsBuilding && !session.IsEnded && projects.Count > 0)
+        while (session.Folder is { } folder && !session.IsEnded && projects.Count > 0)
         {
+            if (building is { } under)
+            {
+                // Begun before this start or while it checked, a build may change what the check reads.
+                string? stage = work?.Stage;
+                work?.Say("Waiting for the build under way to end…");
+                try
+                {
+                    await under.Task.WaitAsync(stopping);
+                }
+                catch (OperationCanceledException) when (stopping.IsCancellationRequested)
+                {
+                    return new BuildOutcome(BuildStatus.Stopped, "Build stopped");
+                }
+                if (stage is not null && work is { IsStopped: false })
+                {
+                    work.Say(stage);
+                }
+                continue;
+            }
             parts.Editors.SaveAll();
             bool windows = WindowsTargeting(projects);
             string state = parts.StateFolder();
@@ -613,7 +636,11 @@ public sealed partial class BuildRunController
             {
                 return new BuildOutcome(BuildStatus.Stopped, "Build stopped");
             }
-            if (found.All(check => check is { Holds: true }) && !IsBuilding && !session.IsEnded)
+            if (IsBuilding)
+            {
+                continue;
+            }
+            if (found.All(check => check is { Holds: true }) && !session.IsEnded)
             {
                 string said = UpToDateSaid([.. projects.Select(project => Path.GetFileNameWithoutExtension(project))]);
                 parts.Views.Build.Clear();
@@ -622,6 +649,7 @@ public sealed partial class BuildRunController
                 return new BuildOutcome(BuildStatus.Succeeded, said);
             }
             checks = [.. found.OfType<UpToDate.Check>()];
+            break;
         }
         TaskCompletionSource<BuildOutcome> ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
         // Where they cannot be built together (TogetherBuild.Write's null), they are built one after another.
@@ -975,7 +1003,7 @@ public sealed partial class BuildRunController
                     return Said(asked);
                 }
                 parts.Dock.Show(ToolWindowIds.Aspire);
-                string? problem = await session.Aspire.StartAsync(configuration, mode, step => BuildForAsync(step, work.Stopping), work.Stopping, https);
+                string? problem = await session.Aspire.StartAsync(configuration, mode, step => BuildForAsync(step, work), work.Stopping, https);
                 if (problem is not null)
                 {
                     return Said(problem);

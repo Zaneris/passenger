@@ -280,24 +280,26 @@ internal static class Evaluation
         }
     }
 
-    /// <summary>The files MSBuild looks for from a project's folder up, by the property that names each and its default name.</summary>
-    private static readonly (string Property, string Name)[] Above =
+    /// <summary>The files MSBuild looks for from a project's folder up, by the property that names each and its default name;
+    /// global.json, which no property names, gives the SDKs from the package folders their versions (msbuild-sdks).</summary>
+    private static readonly (string? Property, string Name)[] Above =
     [
         ("_DirectoryBuildPropsFile", "Directory.Build.props"),
         ("_DirectoryBuildTargetsFile", "Directory.Build.targets"),
         ("_DirectoryPackagesPropsFile", "Directory.Packages.props"),
+        (null, "global.json"),
     ];
 
     /// <summary>What would change a project's evaluation by coming or going, stamped (most as not there): each
-    /// Directory.Build.props, .targets and Directory.Packages.props MSBuild looks for from the project's folder up, as far
-    /// as the first it finds, and the props and targets a restore writes for the project to import. Without an evaluation
-    /// (one that failed), by their default names and place.</summary>
+    /// Directory.Build.props, .targets, Directory.Packages.props and global.json looked for from the project's folder up,
+    /// as far as the first it finds, and the props and targets a restore writes for the project to import. Without an
+    /// evaluation (one that failed), by their default names and place.</summary>
     internal static IEnumerable<Stamp> LookedFor(string path, Project? evaluated)
     {
         string folder = Path.GetDirectoryName(path)!;
-        foreach ((string property, string name) in Above)
+        foreach ((string? property, string name) in Above)
         {
-            string named = evaluated?.GetPropertyValue(property) is { Length: > 0 } given ? given : name;
+            string named = property is not null && evaluated?.GetPropertyValue(property) is { Length: > 0 } given ? given : name;
             for (string? at = folder; at is not null; at = Path.GetDirectoryName(at))
             {
                 Stamp stamp = Stamps.File(Path.Combine(at, named));

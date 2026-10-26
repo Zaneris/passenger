@@ -1063,20 +1063,16 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         settled = false;
         work.Say($"Building {startup.Name}…");
         BuildRunController builds = parts.Builds();
-        if (builds.IsBuilding)
-        {
-            return "Another build is running";
-        }
         bool covers = project == startup || startup.ProjectReferences.Count > 0 && References(startup, project, parts.Session().Projects, []);
         if (!covers)
         {
-            BuildOutcome first = await builds.BuildForAsync(new BuildStep(project.Path, null), work.Stopping);
+            BuildOutcome first = await builds.BuildForAsync(new BuildStep(project.Path, null), work);
             if (!first.Succeeded)
             {
                 return first.Message;
             }
         }
-        BuildOutcome built = await builds.BuildForAsync(new BuildStep(startup.Path, framework), work.Stopping);
+        BuildOutcome built = await builds.BuildForAsync(new BuildStep(startup.Path, framework), work);
         return built.Succeeded ? null : built.Message;
     }
 
