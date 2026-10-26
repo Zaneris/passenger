@@ -211,7 +211,7 @@ public sealed class FoldingTests : IDisposable
         {
             (long bytes, int count) = syntax.Worked;
             edit();
-            Ui.Settle();
+            Ui.Parsed(syntax);
             (long after, int counted) = syntax.Worked;
             long each = (after - bytes) / Math.Max(1, counted - count);
             if (each > most)
@@ -342,6 +342,7 @@ public sealed class FoldingTests : IDisposable
         Ui.Settle();
         CodeEditor editor = window.EditorArea.CodeEditor;
         Passenger.App.Workspace.OpenDocument document = window.EditorArea.Active!;
+        CSharpHighlighter syntax = document.Syntax!;
         Ui.WaitFor(() => document.FoldRegions.Count > 2, "the file's regions");
         // The last method folded, far below the screen.
         editor.GoTo(new TextPosition(source.Count(c => c == '\n') - 3, 8));
@@ -358,7 +359,7 @@ public sealed class FoldingTests : IDisposable
         {
             long before = GC.GetAllocatedBytesForCurrentThread();
             window.KeyTextInput("1");
-            Ui.Settle();
+            Ui.Parsed(syntax);
             least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
         }
         FoldRegion folded = Assert.Single(document.FoldRegions, r => r.Folded);
@@ -400,7 +401,7 @@ public sealed class FoldingTests : IDisposable
         {
             key();
             string carried = Spans(document.FoldRegions);
-            Ui.Settle();
+            Ui.Parsed(syntax);
             string found = Spans(syntax.Folds);
             Assert.True(carried == found, $"After {what} the regions the file carried are not those its parse finds:\nfound   {found}\ncarried {carried}");
             int folded = document.FoldRegions.Count(r => r.Folded);

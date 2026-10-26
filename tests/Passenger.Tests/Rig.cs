@@ -1096,6 +1096,15 @@ public static class Ui
         return task.GetAwaiter().GetResult();
     }
 
+    /// <summary>Waits for the parse of a C# file's text as it stands to land, its folds with it, and for the frame that
+    /// landing laid out to be drawn: what a key costs its parse, without the work held off until typing pauses (the
+    /// breadcrumbs' outline), which the next key puts off again as a person's does.</summary>
+    public static void Parsed(Passenger.Languages.CSharp.CSharpHighlighter syntax)
+    {
+        PumpUntil(() => syntax.Newest is not null, "the parse of the text as it stands");
+        Draw();
+    }
+
     /// <summary>Waits for something to become true while background work is still under way (a git made slow, an answer
     /// held back), running the dispatcher's loop but never waiting for that work to land as <see cref="WaitFor"/> does.</summary>
     public static void PumpUntil(Func<bool> condition, string what, TimeSpan? limit = null)
