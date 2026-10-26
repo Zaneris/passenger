@@ -52,6 +52,8 @@ BESIDE = ("Collection(DebugSession.Collection)", "Collection(Beside.Name)")
 DECLARATION = re.compile(r"^(?P<attributes>(?:\[[^\n]*\][ \t]*\r?\n)*)(?:(?:public|internal|sealed|static|partial|abstract"
                          r"|file)\s+)*class\s+(?P<name>\w+)(?P<rest>[^\n{]*)", re.M)
 NAMESPACE = re.compile(r"^namespace\s+(?P<name>[\w.]+)\s*;", re.M)
+# A test's result as the console logger writes it, never a line of a test's message ("Failed to restore …").
+RESULT = re.compile(r"^  (?P<outcome>Passed|Failed|Skipped) " + re.escape(trx.PREFIX) + r"\S+")
 
 
 def sources():
@@ -203,9 +205,8 @@ class Process:
         try:
             with open(self.log_path, encoding="utf-8", errors="replace") as file:
                 for line in file:
-                    word = line.strip().split(" ", 1)[0]
-                    if word in found:
-                        found[word] += 1
+                    if result := RESULT.match(line):
+                        found[result["outcome"]] += 1
         except OSError:
             pass
         return found
