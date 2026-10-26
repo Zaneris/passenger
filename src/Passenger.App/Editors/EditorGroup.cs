@@ -73,8 +73,8 @@ public sealed class EditorGroup : DockPanel
         {
             ItemsSource = tabs,
             ItemsPanel = new FuncTemplate<Panel?>(() => new StackPanel { Orientation = Orientation.Horizontal }),
-            ItemTemplate = new FuncDataTemplate<EditorTab>((tab, _) => Tab(tab), supportsRecycling: false),
         };
+        ReusedRows.Use(strip, Tab);
         PreviewToggle = ToolButtons.Toggle(IconKeys.Preview, "Preview");
         PreviewToggle.Classes.Add("tabStripTool");
         PreviewToggle.IsVisible = false;
@@ -607,13 +607,11 @@ public sealed class EditorGroup : DockPanel
         }
     }
 
-    private Control Tab(EditorTab? tab)
+    /// <summary>A tab for whichever file the strip hands it: its icon, its name, a pin while pinned, and its × or, while
+    /// changed, a dot; its menu, close, pin and presses act on the file it shows. It follows its file only while on the
+    /// strip, so a tab closed or moved to another group is held by nothing it showed.</summary>
+    private Control Tab()
     {
-        if (tab is null)
-        {
-            return new TextBlock();
-        }
-        OpenDocument document = tab.Document;
         PathIcon icon = new();
         TextBlock name = new() { Classes = { "tabName" }, VerticalAlignment = VerticalAlignment.Center };
         Ellipse modified = new() { Classes = { "modified" }, Width = 7, Height = 7 };
@@ -621,20 +619,10 @@ public sealed class EditorGroup : DockPanel
         closeGlyph.Bind(PathIcon.DataProperty, closeGlyph.GetResourceObservable(IconKeys.Close));
         Button close = new() { Classes = { "tabClose" }, Content = closeGlyph };
         ToolTip.SetTip(close, "Close");
-        close.Click += (_, e) =>
-        {
-            area.CloseTab(this, document);
-            e.Handled = true;
-        };
         PathIcon pinGlyph = new() { Classes = { "small" } };
         pinGlyph.Bind(PathIcon.DataProperty, pinGlyph.GetResourceObservable(IconKeys.Pin));
         Button pin = new() { Classes = { "tabPin" }, Content = pinGlyph };
         ToolTip.SetTip(pin, "Unpin Tab");
-        pin.Click += (_, e) =>
-        {
-            Pin(document, false);
-            e.Handled = true;
-        };
         Border border = new()
         {
             Classes = { "tab" },
@@ -646,8 +634,26 @@ public sealed class EditorGroup : DockPanel
                 Children = { icon, name, pin, new Panel { Width = 16, Height = 16, Children = { modified, close } } },
             },
         };
-        void Paint()
+        OpenDocument? Shown() => (border.DataContext as EditorTab)?.Document;
+        close.Click += (_, e) =>
         {
+            if (Shown() is { } document)
+            {
+                area.CloseTab(this, document);
+            }
+            e.Handled = true;
+        };
+        pin.Click += (_, e) =>
+        {
+            if (Shown() is { } document)
+            {
+                Pin(document, false);
+            }
+            e.Handled = true;
+        };
+        void Paint(EditorTab tab)
+        {
+            OpenDocument document = tab.Document;
             name.Text = document.Title;
             icon.Data = document.Icon;
             icon.Foreground = document.IconBrush;
@@ -658,42 +664,69 @@ public sealed class EditorGroup : DockPanel
             pin.IsVisible = tab.IsPinned;
         }
         void OnCurrentChanged(object? sender, EventArgs e) => border.Classes.Set("elsewhere", !IsCurrent);
-        void OnTabChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
-        {
-            border.Classes.Set("active", tab.IsActive);
-            pin.IsVisible = tab.IsPinned;
-        }
         void OnFileChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
+            if (border.DataContext is not EditorTab tab)
+            {
+                return;
+            }
             if (e.PropertyName == nameof(OpenDocument.IsModified))
             {
-                modified.IsVisible = document.IsModified;
+                modified.IsVisible = tab.Document.IsModified;
             }
             else if (e.PropertyName == nameof(OpenDocument.Path))
             {
-                Paint();
+                Paint(tab);
             }
         }
-        // Subscribed only while on the strip, so a tab closed or moved to another group is held by nothing it showed.
+        bool onStrip = false;
+        OpenDocument? followed = null;
+        void Follow()
+        {
+            OpenDocument? following = onStrip ? Shown() : null;
+            if (following == followed)
+            {
+                return;
+            }
+            if (followed is not null)
+            {
+                followed.PropertyChanged -= OnFileChanged;
+            }
+            followed = following;
+            if (following is not null)
+            {
+                following.PropertyChanged += OnFileChanged;
+            }
+        }
+        border.DataContextChanged += (_, _) => Follow();
         border.AttachedToVisualTree += (_, _) =>
         {
+            onStrip = true;
             CurrentChanged += OnCurrentChanged;
-            tab.PropertyChanged += OnTabChanged;
-            document.PropertyChanged += OnFileChanged;
-            Paint();
+            Follow();
+            border.Classes.Set("elsewhere", !IsCurrent);
         };
         border.DetachedFromVisualTree += (_, _) =>
         {
+            onStrip = false;
             CurrentChanged -= OnCurrentChanged;
-            tab.PropertyChanged -= OnTabChanged;
-            document.PropertyChanged -= OnFileChanged;
+            Follow();
         };
-        Paint();
         ContextMenu menu = new();
-        menu.Opening += (_, _) => area.OpenTabMenu(this, document, menu);
+        menu.Opening += (_, _) =>
+        {
+            if (Shown() is { } document)
+            {
+                area.OpenTabMenu(this, document, menu);
+            }
+        };
         border.ContextMenu = menu;
         border.PointerPressed += (_, e) =>
         {
+            if (Shown() is not { } document)
+            {
+                return;
+            }
             PointerPointProperties pressed = e.GetCurrentPoint(this).Properties;
             if (pressed.IsMiddleButtonPressed)
             {
@@ -711,7 +744,7 @@ public sealed class EditorGroup : DockPanel
         };
         border.PointerMoved += (_, e) => area.TabDragOf(this)?.Continue(e);
         border.PointerReleased += (_, e) => area.TabDragOf(this)?.End(e);
-        return border;
+        return border.Showing<EditorTab>(Paint);
     }
 
     /// <summary>What the editor's context switcher shows for a file in several of the server's projects: the target

@@ -58,8 +58,8 @@ public sealed class TerminalPanel : DockPanel
             ItemsSource = tabs,
             VerticalAlignment = VerticalAlignment.Center,
             ItemsPanel = new FuncTemplate<Panel?>(() => new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 }),
-            ItemTemplate = new FuncDataTemplate<TerminalTab>((tab, _) => tab is null ? new TextBlock() : Tab(tab), supportsRecycling: false),
         };
+        ReusedRows.Use(strip, Tab);
         Children.Add(view);
         Bind(BackgroundProperty, this.GetResourceObservable(TokenKeys.Terminal_Background));
         AttachedToVisualTree += (_, _) =>
@@ -221,12 +221,18 @@ public sealed class TerminalPanel : DockPanel
         }
     }
 
-    private Control Tab(TerminalTab tab)
+    /// <summary>A shell's tab for whichever shell the strip hands it: its name, muted once the shell has ended, and its ×,
+    /// which stops what runs in the shell it shows and closes it.</summary>
+    private Control Tab()
     {
-        TextBlock name = new() { Text = tab.Name, VerticalAlignment = VerticalAlignment.Center };
-        name.Classes.Set("muted", tab.HasEnded);
-        ToggleButton button = ToolTabs.Tab(name, tab.IsActive, () =>
+        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
+        ToggleButton button = null!;
+        button = ToolTabs.Tab(name, false, () =>
         {
+            if (button.DataContext is not TerminalTab tab)
+            {
+                return;
+            }
             if (tab.Run is { } run)
             {
                 run.Stop();
@@ -237,23 +243,20 @@ public sealed class TerminalPanel : DockPanel
             }
             Close(tab);
         }, "Close Session");
-        tab.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName == nameof(TerminalTab.IsActive))
-            {
-                button.IsChecked = tab.IsActive;
-            }
-            else if (e.PropertyName == nameof(TerminalTab.HasEnded))
-            {
-                name.Classes.Set("muted", tab.HasEnded);
-            }
-        };
         // A press on the open tab leaves it open, where the toggle would let it go.
         button.Click += (_, _) =>
         {
-            Show(tab);
-            button.IsChecked = tab.IsActive;
+            if (button.DataContext is TerminalTab tab)
+            {
+                Show(tab);
+                button.IsChecked = tab.IsActive;
+            }
         };
-        return button;
+        return button.Showing<TerminalTab>(tab =>
+        {
+            name.Text = tab.Name;
+            name.Classes.Set("muted", tab.HasEnded);
+            button.IsChecked = tab.IsActive;
+        });
     }
 }

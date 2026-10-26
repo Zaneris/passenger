@@ -1326,17 +1326,16 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             Directory.Exists(Path.Combine(root, "src", string.Join('.', name.Split('.').Take(parts)))));
     }
 
-    /// <summary>Every list's rows are made once with their containers by ReusedRows and handed each item the list shows
-    /// there, so scrolling builds no row again: a list's rows from an item template (ItemTemplate, a data template of any
-    /// kind) or a container's template of its own fails here, naming its line. <see cref="NotYetReused"/> holds the lists
-    /// not moved yet, each taken off as it moves, and one no longer found fails too, so it only shrinks.</summary>
+    /// <summary>Every list's rows, a drop-down's choices and a strip's tabs are made once by ReusedRows and handed each item
+    /// shown there, so scrolling builds no row again: rows from an item template (ItemTemplate, a data template of any
+    /// kind) or a container's template of its own fail here, naming the line.</summary>
     [Fact]
     public void Every_lists_rows_are_made_once_by_ReusedRows_never_by_an_item_template()
     {
         Regex made = new(@"\b(?:FuncDataTemplate|FuncTreeDataTemplate|IDataTemplate|IRecyclingDataTemplate|ITreeDataTemplate|DataTemplates)\b(?:<(?:[^<>]|<[^<>]*>)+>)?|<(?:DataTemplate|TreeDataTemplate)\b|\bFuncControlTemplate<(?:ListBoxItem|ComboBoxItem|TreeViewItem)>");
         Regex given = new(@"\b(?:SelectionBox)?ItemTemplate\s*=\s*""?[\w.{} ]*(?:<(?:[^<>]|<[^<>]*>)+>)?|<\w+\.(?:SelectionBox)?ItemTemplate>");
         Regex container = new(@"<Style Selector=""[^""]*(?:ListBoxItem|ComboBoxItem)""[^>]*>(?:(?!</Style>).)*?Property=""(?:Content)?Template""", RegexOptions.Singleline);
-        List<(string Key, string Where)> found = [];
+        List<string> found = [];
         foreach ((string path, string text) in UiFiles(theme: true).Where(f => !f.Path.EndsWith("/ReusedRows.cs", StringComparison.Ordinal)))
         {
             string[] lines = text.Split('\n');
@@ -1350,35 +1349,17 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                 Match template = made.Match(lines[i]) is { Success: true } kind ? kind : given.Match(lines[i]);
                 if (template.Success)
                 {
-                    found.Add(($"{path}: {template.Value.Trim()}", $"{path}:{i + 1}"));
+                    found.Add($"{path}:{i + 1}: {template.Value.Trim()}");
                 }
             }
             foreach (Match match in container.Matches(text))
             {
-                found.Add(($"{path}: a ListBoxItem's Template", $"{path}:{text.AsSpan(0, match.Index).Count('\n') + 1}"));
+                found.Add($"{path}:{text.AsSpan(0, match.Index).Count('\n') + 1}: a ListBoxItem's Template");
             }
         }
-        List<string> known = [.. NotYetReused];
-        List<string> unknown = [];
-        foreach ((string key, string where) in found)
-        {
-            if (!known.Remove(key))
-            {
-                unknown.Add($"{where}: {key[(key.IndexOf(": ", StringComparison.Ordinal) + 2)..]}");
-            }
-        }
-        Assert.True(unknown.Count == 0, $"{unknown.Count} lists make their rows from an item template, building a row for every item scrolled into view: "
-            + $"give each a row made once through ReusedRows.Use, showing its DataContext (Showing):\n{string.Join("\n", unknown)}");
-        Assert.True(known.Count == 0, $"{known.Count} lists named as not yet on ReusedRows are no longer found: take each off NotYetReused:\n{string.Join("\n", known)}");
+        Assert.True(found.Count == 0, $"{found.Count} lists make their rows from an item template, building a row for every item scrolled into view: "
+            + $"give each a row made once through ReusedRows.Use, showing its DataContext (Showing):\n{string.Join("\n", found)}");
     }
-
-    /// <summary>The lists whose rows still come from an item template, by file and template, to move to ReusedRows.</summary>
-    private static readonly string[] NotYetReused =
-    [
-        "src/Passenger.App/Editors/EditorGroup.cs: FuncDataTemplate<EditorTab>",
-        "src/Passenger.App/ToolWindows/DebugView.cs: FuncDataTemplate<DebugTab>",
-        "src/Passenger.App/ToolWindows/TerminalPanel.cs: FuncDataTemplate<TerminalTab>",
-    ];
 
     /// <summary>Muted words are made one way, by the muted class (MutedText, or the class on a TextBlock of its own), so a
     /// change to how muted words look is made once: a TextBlock's foreground bound by hand to the muted colour fails here.</summary>

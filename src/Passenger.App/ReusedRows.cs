@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
@@ -26,6 +27,10 @@ public static class ReusedRows
         Contain<ComboBoxItem>(box, row, foreground: true);
         box.SelectionBoxItemTemplate = new Chosen(row);
     }
+
+    /// <summary>A strip of tabs, or any items control whose items stand in plain presenters: each item's row is made once,
+    /// the first time a presenter shows it, and handed it as its DataContext.</summary>
+    public static void Use(ItemsControl strip, Func<Control> tab) => strip.ItemTemplate = new Kept(tab);
 
     /// <summary>A list's containers given a template of the list's own whose presenter holds a row made once, standing
     /// where the theme's template has its presenter (the drop-down's binding its foreground too, as the theme's does).</summary>
@@ -83,6 +88,31 @@ public static class ReusedRows
         {
             control.Bind(property, control.GetResourceObservable(key));
         }
+    }
+
+    /// <summary>A strip's rows, one made for each item the first time a presenter shows it and handed back each time
+    /// after, a presenter attached again among them (which asks for its row anew).</summary>
+    private sealed class Kept(Func<Control> make) : IRecyclingDataTemplate
+    {
+        private readonly ConditionalWeakTable<object, Control> rows = [];
+
+        public Control? Build(object? param) => Build(param, null);
+
+        public Control? Build(object? data, Control? existing)
+        {
+            if (existing is not null || data is null)
+            {
+                return existing;
+            }
+            if (!rows.TryGetValue(data, out Control? row) || !Free(row, data))
+            {
+                row = make();
+                rows.AddOrUpdate(data, row);
+            }
+            return row;
+        }
+
+        public bool Match(object? data) => data is not null;
     }
 
     /// <summary>A drop-down's closed box: one row kept for it, made again only once the box's template is made anew, and
