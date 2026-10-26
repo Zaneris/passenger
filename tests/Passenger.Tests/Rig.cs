@@ -1144,6 +1144,7 @@ public static class Ui
             top.MouseDown(point, MouseButton.Left);
             top.MouseUp(point, MouseButton.Left);
         }
+        lastClick = (new WeakReference<TopLevel>(top), point, DateTime.UtcNow);
         Settle();
     }
 
@@ -1157,6 +1158,7 @@ public static class Ui
             window.MouseMove(from + ((to - from) * (step / 10.0)), RawInputModifiers.LeftMouseButton);
         }
         window.MouseUp(to, MouseButton.Left);
+        lastClick = (new WeakReference<TopLevel>(window), from, DateTime.UtcNow);
         Settle();
     }
 
@@ -1164,13 +1166,40 @@ public static class Ui
     {
         (TopLevel top, Point point) = Aim(control, at);
         Apart(top, point);
-        top.MouseDown(point, button, modifiers);
+        int count = 0;
+        EventHandler<PointerPressedEventArgs> pressed = (_, e) => count = e.ClickCount;
+        top.AddHandler(InputElement.PointerPressedEvent, pressed, Avalonia.Interactivity.RoutingStrategies.Tunnel, handledEventsToo: true);
+        try
+        {
+            top.MouseDown(point, button, modifiers);
+        }
+        finally
+        {
+            top.RemoveHandler(InputElement.PointerPressedEvent, pressed);
+        }
+        string? doubled = count > 1 ? Doubled(top, point, count) : null;
         top.MouseUp(point, button, modifiers);
         lastClick = (new WeakReference<TopLevel>(top), point, DateTime.UtcNow);
+        if (doubled is not null)
+        {
+            throw new InvalidOperationException(doubled);
+        }
         if (settle)
         {
             Settle();
         }
+    }
+
+    /// <summary>What a click the platform took as the second of a double click (or later) says: where it and the click
+    /// before it went, how far apart in time, and the double-tap time and size the test waited by.</summary>
+    private static string Doubled(TopLevel top, Point point, int count)
+    {
+        Avalonia.Platform.IPlatformSettings? platform = Application.Current?.PlatformSettings;
+        string before = lastClick is { } last && last.Top.TryGetTarget(out TopLevel? clicked)
+            ? $"at {last.Point} in {(clicked == top ? "the same window" : clicked.GetType().Name)}, {(DateTime.UtcNow - last.At).TotalMilliseconds:0} ms before"
+            : "none Ui made";
+        return $"A click at {point} in {top.GetType().Name} was taken as click {count} of a run, not a click of its own; the click before it was {before}. "
+            + $"The double-tap time and size waited by: {platform?.GetDoubleTapTime(PointerType.Mouse).TotalMilliseconds.ToString() ?? "none (500)"} ms, {platform?.GetDoubleTapSize(PointerType.Mouse).ToString() ?? "none (4, 4)"}";
     }
 
     /// <summary>Where and when the last click went down, its window held weakly, so a window closed is let go.</summary>
