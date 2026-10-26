@@ -190,7 +190,7 @@ public partial class ManagedDebugger
             }
             catch (Exception ex)
             {
-                _logger?.Invoke($"Error forwarding debuggee output: {ex.Message}");
+                _logger?.Invoke($"Error forwarding debuggee output: {ex}");
             }
         }
     }
@@ -204,16 +204,9 @@ public partial class ManagedDebugger
             return false;
         }
 
-        if (bp.CorBreakpoint is not null)
+        if (bp.CorBreakpoint?.TryActivate(false) is int deactivated and < 0)
         {
-            try
-            {
-                bp.CorBreakpoint.Activate(false);
-            }
-            catch (Exception ex)
-            {
-                _logger?.Invoke($"Error deactivating breakpoint: {ex.Message}");
-            }
+            _logger?.Invoke($"Error deactivating breakpoint: 0x{deactivated:X8}");
         }
         return _breakpointManager.RemoveBreakpoint(id);
     }
@@ -470,16 +463,9 @@ public partial class ManagedDebugger
         }
         foreach (BreakpointManager.BreakpointInfo gone in existingBreakpoints.Where(b => !kept.Contains(b)))
         {
-            if (gone.CorBreakpoint is not null)
+            if (gone.CorBreakpoint?.TryActivate(false) is int deactivated and < 0)
             {
-                try
-                {
-                    gone.CorBreakpoint.Activate(false);
-                }
-                catch (Exception ex)
-                {
-                    _logger?.Invoke($"Error deactivating breakpoint: {ex.Message}");
-                }
+                _logger?.Invoke($"Error deactivating breakpoint: 0x{deactivated:X8}");
             }
             _breakpointManager.RemoveBreakpoint(gone.Id);
         }
@@ -541,8 +527,10 @@ public partial class ManagedDebugger
         {
             foreach (BreakpointManager.FunctionBreakpointBinding binding in gone.FunctionBindings)
             {
-                try { binding.CorBreakpoint.Activate(false); }
-                catch (Exception ex) { _logger?.Invoke($"Error deactivating function breakpoint: {ex.Message}"); }
+                if (binding.CorBreakpoint.TryActivate(false) is int deactivated and < 0)
+                {
+                    _logger?.Invoke($"Error deactivating function breakpoint: 0x{deactivated:X8}");
+                }
             }
             _breakpointManager.RemoveBreakpoint(gone.Id);
         }
@@ -612,7 +600,7 @@ public partial class ManagedDebugger
                 result.Add((id, threadInfo.Name ?? (id == _mainThreadId ? "Main Thread" : "<No Name>"), id == _mainThreadId));
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (Failures.OfRuntime(ex))
         {
             _logger?.Invoke($"Error getting threads: {ex.Message}");
         }
@@ -696,7 +684,8 @@ public partial class ManagedDebugger
         }
         catch (Exception ex)
         {
-            _logger?.Invoke($"Error getting stack trace: {ex.Message}");
+            // A frame that fails to be read leaves the frames read before it, its failure said whole.
+            _logger?.Invoke($"Error getting stack trace: {ex}");
         }
 
         return result;
@@ -1074,27 +1063,24 @@ public partial class ManagedDebugger
         _logger?.Invoke("Terminate");
         if (_process is not null && !_exited.IsSet)
         {
-            try
+            // A running process cannot be terminated (CORDBG_E_PROCESS_NOT_SYNCHRONIZED): it is stopped first.
+            if (_process.TryIsRunning(out bool isRunning) is Cor.S_OK && isRunning)
             {
-                // A running process cannot be terminated (CORDBG_E_PROCESS_NOT_SYNCHRONIZED): it is stopped first.
-                if (_process.TryIsRunning(out bool isRunning) is Cor.S_OK && isRunning)
+                int stopResult = _process.TryStop(0);
+                if (stopResult is not (Cor.S_OK or Cor.CORDBG_E_PROCESS_TERMINATED))
                 {
-                    int stopResult = _process.TryStop(0);
-                    if (stopResult is not (Cor.S_OK or Cor.CORDBG_E_PROCESS_TERMINATED))
-                    {
-                        _logger?.Invoke($"Error stopping process before terminating it: {stopResult}");
-                    }
-                }
-                _process.Terminate(0);
-                // The process goes on the runtime's thread; letting go of it before it has would race that.
-                if (!_exited.Wait(TimeSpan.FromSeconds(5)))
-                {
-                    _logger?.Invoke("The process had not exited 5 s after Terminate");
+                    _logger?.Invoke($"Error stopping process before terminating it: {stopResult}");
                 }
             }
-            catch (Exception ex)
+            int terminated = _process.TryTerminate(0);
+            if (terminated < 0)
             {
-                _logger?.Invoke($"Error terminating process: {ex.Message}");
+                _logger?.Invoke($"Error terminating process: 0x{terminated:X8}");
+            }
+            // The process goes on the runtime's thread; letting go of it before it has would race that.
+            else if (!_exited.Wait(TimeSpan.FromSeconds(5)))
+            {
+                _logger?.Invoke("The process had not exited 5 s after Terminate");
             }
         }
         await EndAsync().ConfigureAwait(false);

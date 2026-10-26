@@ -840,7 +840,8 @@ public partial class ManagedDebugger
         }
         catch (Exception ex)
         {
-            _logger?.Invoke($"Error binding breakpoint at {bp.FilePath}:{bp.Line}: {ex.Message}");
+            // One breakpoint's failure to bind is its own, said on it, never the binding of those beside it.
+            _logger?.Invoke($"Error binding breakpoint at {bp.FilePath}:{bp.Line}: {ex}");
             bp.Verified = false;
             bp.Message = $"Error binding breakpoint: {ex.Message}";
             return false;
@@ -896,7 +897,8 @@ public partial class ManagedDebugger
         }
         catch (Exception ex)
         {
-            _logger?.Invoke($"Error binding function breakpoint '{bp.FunctionName}' in {module.ModuleName}: {ex.Message}");
+            // One module's failure to bind the breakpoint is its own, never the binding in the modules beside it.
+            _logger?.Invoke($"Error binding function breakpoint '{bp.FunctionName}' in {module.ModuleName}: {ex}");
             if (!bp.Verified)
             {
                 bp.Message = $"Error binding function breakpoint: {ex.Message}";

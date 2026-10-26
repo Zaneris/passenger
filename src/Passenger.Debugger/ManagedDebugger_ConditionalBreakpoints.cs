@@ -33,7 +33,7 @@ public partial class ManagedDebugger
         }
         catch (Exception ex)
         {
-            _logger?.Invoke($"Exception evaluating condition '{condition}': {ex.Message}");
+            _logger?.Invoke($"Exception evaluating condition '{condition}': {ex}");
             return (true, ex.Message);
         }
     }

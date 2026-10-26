@@ -22,14 +22,8 @@ internal sealed class AsyncStepper
 
         public void Deactivate()
         {
-            try
-            {
-                Breakpoint?.Activate(false);
-            }
-            catch
-            {
-                // Ignore deactivation errors
-            }
+            // A breakpoint the runtime cannot deactivate is one whose module or process has gone, with nothing left to stop.
+            Breakpoint?.TryActivate(false);
         }
 
         public void Dispose()
@@ -111,8 +105,10 @@ internal sealed class AsyncStepper
 
             return true;
         }
-        catch (Exception)
+        catch (Exception error)
         {
+            // A call into the program, whose failure (its throw, its abort, the runtime's refusal) leaves the step a plain one.
+            _debugger.Log($"The async step out could not ask the builder to tell of its end: {error}");
             return false;
         }
     }
@@ -171,7 +167,7 @@ internal sealed class AsyncStepper
 
             return true;
         }
-        catch (Exception)
+        catch (Exception error) when (Failures.OfRuntime(error))
         {
             return false;
         }
@@ -497,7 +493,7 @@ internal sealed class AsyncStepper
             ICorDebugValue fieldValueUnwrapped = fieldValue.UnwrapDebugValue();
             return fieldValueUnwrapped;
         }
-        catch (Exception)
+        catch (Exception error) when (Failures.OfRuntime(error))
         {
             return null;
         }

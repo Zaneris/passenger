@@ -24,12 +24,7 @@ public partial class ManagedDebugger
             yield break;
         }
 
-        ICorDebugValue stateMachine;
-        try
-        {
-            stateMachine = physicalFrame.GetArgument(0);
-        }
-        catch
+        if (physicalFrame.TryGetArgument(0, out ICorDebugValue? stateMachine) < 0 || stateMachine is null)
         {
             yield break;
         }
@@ -221,7 +216,7 @@ public partial class ManagedDebugger
             ICorDebugGenericValue? field = GetInstanceFieldValue(objectValue, name)?.UnwrapDebugValue() as ICorDebugGenericValue;
             return field is null ? null : BitConverter.ToInt32(field.GetValueAsBytes());
         }
-        catch
+        catch (Exception error) when (Failures.OfRuntime(error))
         {
             return null;
         }

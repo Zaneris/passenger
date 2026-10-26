@@ -125,7 +125,7 @@ internal sealed class EvaluationMetadataResolver(ManagedDebugger debugger, Metad
         {
             typeParameters = type.TypeParameters;
         }
-        catch
+        catch (Exception error) when (Failures.OfRuntime(error))
         {
             typeParameters = [];
         }

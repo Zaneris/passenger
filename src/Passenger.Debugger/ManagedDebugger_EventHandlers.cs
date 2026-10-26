@@ -92,7 +92,7 @@ public partial class ManagedDebugger
 
             _logger?.Invoke(metadataReader.HasSymbols ? $"  Symbols loaded for {moduleName}" : $"  No symbols found for {moduleName}");
         }
-        catch (Exception ex)
+        catch (Exception ex) when (Failures.OfRuntime(ex))
         {
             _logger?.Invoke($"  Error loading symbols for {moduleName}: {ex.Message}");
         }
@@ -428,7 +428,7 @@ public partial class ManagedDebugger
             _entryBreakpoint = new EntryBreakpoint(corBreakpoint, moduleInfo.BaseAddress, entryPoint.MethodToken, entryPoint.ILOffset);
             _logger?.Invoke($"Entry breakpoint bound in {moduleInfo.ModuleName} at method 0x{entryPoint.MethodToken:X}, IL offset {entryPoint.ILOffset}");
         }
-        catch (Exception ex)
+        catch (Exception ex) when (Failures.OfRuntime(ex))
         {
             _logger?.Invoke($"Error binding entry breakpoint in {moduleInfo.ModuleName}: {ex.Message}");
         }
@@ -811,7 +811,7 @@ public partial class ManagedDebugger
             return frame is not null && FindModule(frame.Function.Module) is { IsUserCode: true }
                 && (frame.Function is not ICorDebugFunction2 function || function.TryGetJMCStatus(out bool isJustMyCode) is not Cor.S_OK || isJustMyCode);
         }
-        catch
+        catch (Exception error) when (Failures.OfRuntime(error))
         {
             return false;
         }

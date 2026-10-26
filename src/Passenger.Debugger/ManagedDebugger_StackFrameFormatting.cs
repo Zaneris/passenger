@@ -43,7 +43,7 @@ public partial class ManagedDebugger
             string parameters = GetFormattedParameters(reader, methodDefinition, genericContext);
             return $"{Path.GetFileName(module.Name)}!{className}.{methodName}({parameters})";
         }
-        catch
+        catch (Exception error) when (Failures.OfRuntime(error))
         {
             return "Unknown";
         }

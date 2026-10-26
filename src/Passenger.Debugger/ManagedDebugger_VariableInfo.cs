@@ -763,7 +763,9 @@ public partial class ManagedDebugger
         return false;
     }
 
-    private static async Task WithFailureHandling(List<VariableInfo> result, string fieldName, Func<Task> func)
+    /// <summary>A row's value read, any failure of it (the runtime's, the program's, an evaluation's) shown as the row's
+    /// value, so the rows beside it are read on.</summary>
+    private async Task WithFailureHandling(List<VariableInfo> result, string fieldName, Func<Task> func)
     {
         try
         {
@@ -771,6 +773,7 @@ public partial class ManagedDebugger
         }
         catch (Exception ex)
         {
+            _logger?.Invoke($"{fieldName} could not be read: {ex}");
             result.Add(new VariableInfo
             {
                 Name = fieldName,

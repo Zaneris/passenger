@@ -9,13 +9,10 @@ namespace Passenger.Analyzers;
 /// <summary>PSG0005: a catch of every exception (`catch`, `catch (Exception)`, with no filter) that does not pass what it
 /// caught on. A boundary passes it on before it can leave (<see cref="PassesOn"/>): it rethrows it, throws it inside
 /// another, or gives it whole (itself, never only its Message) to a call, a value kept or returned, or a string made of
-/// it, unless that is in a branch it may not take. Not looked at yet (<see cref="NotYet"/>): the debugger's engine, whose
-/// catches around the runtime's calls take what its interop makes of a failed HRESULT, which can be any of many types.</summary>
+/// it, unless that is in a branch it may not take.</summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class CatchAlls : DiagnosticAnalyzer
 {
-    private static readonly ImmutableHashSet<string> NotYet = ImmutableHashSet.Create(StringComparer.Ordinal, "Passenger.Debugger");
-
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get; } = [Rules.CatchAll];
 
     public override void Initialize(AnalysisContext context)
@@ -24,8 +21,7 @@ public sealed class CatchAlls : DiagnosticAnalyzer
         context.EnableConcurrentExecution();
         context.RegisterCompilationStartAction(start =>
         {
-            if (!NotYet.Contains(start.Compilation.AssemblyName ?? string.Empty)
-                && start.Compilation.GetTypeByMetadataName("System.Exception") is { } exception)
+            if (start.Compilation.GetTypeByMetadataName("System.Exception") is { } exception)
             {
                 start.RegisterOperationAction(c => Check(c, exception), OperationKind.Try);
             }

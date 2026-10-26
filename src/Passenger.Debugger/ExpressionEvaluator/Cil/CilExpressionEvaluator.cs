@@ -45,6 +45,8 @@ internal sealed class CilExpressionEvaluator(RuntimeAssemblyPrimitiveTypeClasses
         }
         catch (Exception ex)
         {
+            // An expression's every failure, its compile's, the interpreter's or the program's, is its answer.
+            debugger.Log($"Evaluating {expression} failed: {ex}");
             return new EvaluationResult { Error = $"error: {ex.Message}" };
         }
     }

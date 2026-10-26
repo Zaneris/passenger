@@ -196,7 +196,7 @@ public partial class ModuleMetadataReader : IDisposable
             provider = MetadataReaderProvider.FromMetadataImage(ImmutableArray.Create(metadata));
             return new ModuleMetadataReader(provider);
         }
-        catch
+        catch (Exception error) when (Failures.OfReading(error))
         {
             provider?.Dispose();
             return null;
@@ -220,7 +220,10 @@ public partial class ModuleMetadataReader : IDisposable
             using FileStream stream = File.OpenRead(assemblyPath);
             return TryLoadInternal(stream, assemblyPath);
         }
-        catch { return null; }
+        catch (Exception error) when (Failures.OfReading(error))
+        {
+            return null;
+        }
     }
 
     public bool TryLoadSymbols(string pdbPath)
@@ -239,7 +242,7 @@ public partial class ModuleMetadataReader : IDisposable
             SetPdbProvider(provider);
             return true;
         }
-        catch
+        catch (Exception error) when (Failures.OfReading(error))
         {
             provider?.Dispose();
             return false;
@@ -253,7 +256,7 @@ public partial class ModuleMetadataReader : IDisposable
             using MemoryStream stream = new MemoryStream(inMemoryModuleBytes, writable: false);
             return TryLoadInternal(stream);
         }
-        catch
+        catch (Exception error) when (Failures.OfReading(error))
         {
             return null;
         }
@@ -298,7 +301,7 @@ public partial class ModuleMetadataReader : IDisposable
 
             return result;
         }
-        catch
+        catch (Exception error) when (Failures.OfReading(error))
         {
             peReader?.Dispose();
             return null;
@@ -328,9 +331,13 @@ public partial class ModuleMetadataReader : IDisposable
             // Don't need to dispose stream, FromPortablePdbStream disposes of it internally
             FileStream pdbStream = File.OpenRead(pdbPath);
             provider = MetadataReaderProvider.FromPortablePdbStream(pdbStream);
-            MetadataReader reader = provider.GetMetadataReader();
-
-            BlobContentId pdbId = new BlobContentId(reader.DebugMetadataHeader!.Id);
+            // Metadata without a PDB's header is no portable PDB of the assembly's.
+            if (provider.GetMetadataReader().DebugMetadataHeader is not { } header)
+            {
+                provider.Dispose();
+                return false;
+            }
+            BlobContentId pdbId = new BlobContentId(header.Id);
             BlobContentId expectedId = new BlobContentId(codeViewData.Guid, codeViewEntry.Stamp);
 
             if (codeViewData.Age == 1 && pdbId == expectedId)
@@ -342,7 +349,7 @@ public partial class ModuleMetadataReader : IDisposable
             provider.Dispose();
             return false;
         }
-        catch
+        catch (Exception error) when (Failures.OfReading(error))
         {
             provider?.Dispose();
             return false;
@@ -356,7 +363,7 @@ public partial class ModuleMetadataReader : IDisposable
             SetPdbProvider(_peReader!.ReadEmbeddedPortablePdbDebugDirectoryData(embeddedPdbEntry));
             return true;
         }
-        catch
+        catch (Exception error) when (Failures.OfReading(error))
         {
             return false;
         }

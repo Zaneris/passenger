@@ -121,7 +121,7 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         {
             typeParameters = frame.TypeParameters;
         }
-        catch
+        catch (Exception error) when (Failures.OfRuntime(error))
         {
             return ([], []);
         }
@@ -140,7 +140,7 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
                 .GetGenericParameters()
                 .Count();
         }
-        catch
+        catch (Exception error) when (Failures.OfRuntime(error))
         {
             return 0;
         }
