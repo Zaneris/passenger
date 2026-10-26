@@ -198,6 +198,47 @@ public sealed class LongListsTests : IDisposable
         });
     }
 
+    /// <summary>Find Usages of a method called a hundred times and of one called a thousand, ten calls to a file, so the
+    /// rows handed on are files' as well as usages': both searches in one window, on one language server.</summary>
+    [AvaloniaFact]
+    public void A_scroll_step_down_a_thousand_usages_in_the_find_window_hands_the_rows_other_usages_never_making_one_again()
+    {
+        string root = Folder();
+        TestFolders.Write(root, "Used.csproj", TestProjects.Library());
+        TestFolders.Write(root, "Used.cs", "public static class Used\n{\n    public static int Few() => 1;\n\n    public static int Many() => 1;\n}\n");
+        foreach ((string name, int calls) in new[] { ("Few", 100), ("Many", 1000) })
+        {
+            for (int file = 0; file < calls / 10; file++)
+            {
+                TestFolders.Write(root, $"{name}/Calls{file:000}.cs", $"static class {name}Calls{file}\n{{\n    static int All() =>\n"
+                    + string.Join(" +\n", Enumerable.Repeat($"        Used.{name}()", 10)) + ";\n}\n");
+            }
+        }
+        Restore.Run(root);
+        MainWindow window = Ui.OpenFolder(root, width: 1300, height: 900);
+        try
+        {
+            Ui.WaitFor(() => window.CSharpService is { IsReady: true }, () => $"the language server to load the project ({window.CSharpService?.State})", TimeSpan.FromMinutes(3));
+            window.OpenFile(Path.Combine(root, "Used.cs"));
+            Ui.Settle();
+            FindView find = window.Find;
+            Holds("The Find window", "usages", 100, 1000, usages =>
+            {
+                string name = usages == 100 ? "Few" : "Many";
+                Ui.PlaceAfter(window.EditorArea.CodeEditor, $"int {name[..2]}");
+                Ui.Run(window, AppActions.FindUsages);
+                Ui.WaitFor(() => find.Shown == $"Usages of {name}" && find.Rows.Count(r => r.Usage is not null) == usages + 1,
+                    () => $"{name}'s {usages} calls and declaration in the Find window, where it shows {find.Shown} with {find.Rows.Count(r => r.Usage is not null)} usages: {window.Status}");
+                Ui.Settle();
+                return (find.GetVisualDescendants().OfType<ListBox>().Single(), () => { });
+            });
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>Holds a list of many items to what one of few costs a wheel step, and both to make no row again, each in a
     /// window of its own, closed once scrolled.</summary>
     private static void Holds(string list, string items, int few, int many, Func<int, (MainWindow Window, ListBox List)> open) =>
