@@ -96,13 +96,13 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
   (`src/Passenger.Analyzers`, every rule's id and words in `Rules.cs`) fails its text written anywhere else, a plain word
   only where a parameter or member marked `[IdentifierOf]` its home takes it.
 - **Async is awaited**: no async void (PSG0002), no async lambda given to a void delegate (PSG0003), no blocking wait on
-  a task (PSG0004; a read where the task has certainly ended passes; the Debugger's ICorDebug callbacks and the test
-  classes `TestsNotYet` names not looked at yet); a caller that must stay synchronous (Main's end, a library's
-  synchronous callback) goes through `Synchronously.Run`, saying why.
+  a task (PSG0004; a read where the task has certainly ended passes; the test classes `TestsNotYet` names not looked at
+  yet); a caller that must stay synchronous (Main's end, a library's synchronous callback) goes through
+  `Synchronously.Run`, saying why.
 - **Work for the thread pool goes through `BackgroundWork`** (`Run`, and `Debounce` rather than a `DispatcherTimer`), so
   screenshots and tests wait for it; `Unheld`/`UnheldThread` for work that mustn't hold them, saying why (PSG0006; a
-  test's own through `Waiting.Apart`). **A catch-all is a boundary** that passes on what it caught (PSG0005; the
-  Debugger's ICorDebug catches not looked at yet).
+  test's own through `Waiting.Apart`). **A catch-all is a boundary** that passes on what it caught (PSG0005); a catch
+  around the runtime's interop takes what it can throw, `Failures.OfRuntime` (`OfReading` for files and metadata).
 - **A malformed flag or environment value is fatal**, never a silent default (`LaunchOptions.cs`).
 - **A warning is fixed at its cause.** Turning it off (NoWarn, a pragma, a lowered severity, a suppression) or moving
   the line it checks (a raised budget or limit) does not count as fixing it; neither does an analyzer's baseline.
