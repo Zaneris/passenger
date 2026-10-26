@@ -58,6 +58,11 @@ public partial class MainWindow
             // A restore writes the props and targets a project imports beside its assets.
             session.Evaluate();
         }
+        if (changes.LaunchProfiles && !(changes.Projects || changes.Lost))
+        {
+            // Only the run configurations are made of launch profiles, so the solution and the Explorer stay as they are.
+            session.Configurations.Configure(Projects);
+        }
         // A C# file written may have gained or lost the AppHost SDK's line; one come or gone is the index's to find.
         session.AspireFiles.Changed(changes.Paths, every: changes.Lost);
         if (changes.Lost)
@@ -77,8 +82,7 @@ public partial class MainWindow
             }
         }
         // A settings file, a launch profile or a compose file written: the reads of keys nothing gave are looked at again.
-        if (changes.Lost || changes.Paths.Any(p => ConfigurationFiles.IsSettings(p) || Path.GetFileName(p).Equals(Run.LaunchProfile.SettingsFile, StringComparison.OrdinalIgnoreCase)
-            || Web.ComposeDeclarations.IsCompose(p)))
+        if (changes.Lost || changes.LaunchProfiles || changes.Paths.Any(p => ConfigurationFiles.IsSettings(p) || Web.ComposeDeclarations.IsCompose(p)))
         {
             session.CSharp?.ConfigurationChanged();
         }

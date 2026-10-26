@@ -157,7 +157,7 @@ public partial class MainWindow
         {
             FilesChanged();
             Explorer.Reveal(put[^1]);
-            // Read again, the rows lost the keys; they take them back for the next Paste.
+            // The keys go with the choice to the row revealed, for the next Paste.
             Explorer.FocusRows();
             refused.Insert(0, $"{(copy ? "Copied" : "Moved")} {Together([.. put.Select(Path.GetFileName).OfType<string>()])} to {Path.GetFileName(into)}");
         }

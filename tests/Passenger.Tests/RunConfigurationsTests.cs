@@ -5,8 +5,10 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.Explorer;
 using Passenger.App.Run;
 using Passenger.App.State;
+using Passenger.App.Workspace;
 using Passenger.Core;
 
 namespace Passenger.Tests;
@@ -238,7 +240,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
 
     /// <summary>A generated configuration's arguments changed in place, with no copy, are what Run gives the program, and are
     /// there when the folder opens again; its launch profile's environment changed on disk then reaches it while the
-    /// arguments stay the person's, and the dialog marks the arguments alone as changed from the profile.</summary>
+    /// arguments stay the person's, the Explorer left as it was, and the dialog marks the arguments alone as changed.</summary>
     [AvaloniaFact]
     public void A_generated_configurations_arguments_changed_in_place_are_run_kept_with_the_folder_and_stay_over_its_launch_profile_as_it_changes()
     {
@@ -271,9 +273,15 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
             RunConfiguration kept = Assert.Single(again.Configurations);
             Assert.True(kept.Generated && kept.Arguments == "--name Grace", $"The change in place was not kept with the folder: {kept.Name} runs with {kept.Arguments}");
 
+            again.ExplorerView.Reveal(Path.Combine(project, "Hello.csproj"));
+            Ui.Settle();
+            ExplorerNode hello = again.ExplorerView.Tree.Rows.First(r => r.Name == "Hello");
+            Ui.ClickRow(again, hello);
             Write("Hello/Properties/launchSettings.json", Greet("Hello"));
             Ui.WaitFor(() => again.Configurations[0].Environment.GetValueOrDefault("GREETING") == "Hello", "the launch profile's new variable to reach the configuration");
             Assert.Equal("--name Grace", again.Configurations[0].Arguments);
+            Assert.True(again.ExplorerView.Tree.Rows.Contains(hello) && again.ExplorerView.Rows().IsKeyboardFocusWithin && again.ExplorerView.SelectedNodes is [{ Name: "Hello" }],
+                "launchSettings.json changed on disk had the Explorer's rows made again, as a project changed does, or took its keys or its choice");
             RunConfigurationsDialog reopened = again.ShowRunConfigurations();
             Assert.Equal(["Program arguments"], reopened.Marked);
             reopened.Close();
@@ -351,9 +359,9 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
 
     /// <summary>Save as Launch Profile, greyed with why on a generated configuration and a name a profile has, adds one made
     /// in the dialog (its project's name taken off its own) after the profiles of a launchSettings.json, the rest byte for
-    /// byte; dotnet run runs it by that name, and it is listed as generated from it, the console kept here. Undo takes the
-    /// profile out, the folder's own configuration back; Redo saves it again, and the folder opened again lists it as
-    /// generated, the console still kept here.</summary>
+    /// byte; dotnet run runs it by that name, listed as generated from it, the console kept here. Undo in the Explorer takes
+    /// the profile out, the folder's own configuration back, the keys left there for Redo to save it again; the folder
+    /// opened again lists it as generated, the console still kept here.</summary>
     [AvaloniaFact]
     public void Save_as_launch_profile_adds_a_configuration_made_here_to_launchSettings_json_which_dotnet_run_runs_and_Undo_takes_it_back()
     {
@@ -415,14 +423,15 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
             window.ExplorerView.Reveal(Path.Combine(project, "Hello.csproj"));
             Ui.Settle();
             Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Name.StartsWith("Hello", StringComparison.Ordinal)));
-            Ui.Run(window, Passenger.Editor.EditorActions.Undo);
+            Heard(window, settingsFile, () => Ui.Run(window, Passenger.Editor.EditorActions.Undo));
             Assert.Equal(["Undo Save Hello: Staging as a Launch Profile? It changes launchSettings.json and the run configuration Hello: Staging."], asked);
             Assert.Equal(Profiles, File.ReadAllText(settingsFile));
             Assert.Equal(["Hello: Greet", "Hello: Other", "Hello: Staging"], Names(window));
             Assert.True(window.Configuration is { Name: "Hello: Staging", Generated: false, Arguments: "one \"two three\"", Console: ConsoleKind.Terminal },
                 $"Undo did not bring the folder's own configuration back, chosen: {window.Configuration?.Name}, generated {window.Configuration?.Generated}");
+            Assert.True(window.ExplorerView.Rows().IsKeyboardFocusWithin && window.ExplorerView.SelectedNodes is [{ Name: "Hello" }],
+                $"Undo, the files read again and the folder watcher's word of launchSettings.json, left the Explorer's keys elsewhere, [{string.Join(", ", window.ExplorerView.SelectedNodes.Select(n => n.Name))}] chosen");
 
-            Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Name.StartsWith("Hello", StringComparison.Ordinal)));
             Ui.Run(window, Passenger.Editor.EditorActions.Redo);
             Assert.True(File.ReadAllText(settingsFile) == written, $"Redo did not add the profile again: {window.Status} ({string.Join(" | ", asked)})");
             Assert.True(window.Configuration is { Name: "Hello: Staging", Generated: true, Console: ConsoleKind.Terminal },
@@ -894,4 +903,23 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
     }
 
     private void Write(string relative, string text) => TestFolders.Write(folder, relative, text);
+
+    /// <summary>Does something that writes a file, and waits for the folder watcher to hear of it and for what it heard to
+    /// land, which a settle alone does not wait for.</summary>
+    private static void Heard(MainWindow window, string path, Action change)
+    {
+        bool heard = false;
+        void Hear(object? sender, FolderChanges changes) => heard |= changes.Paths.Contains(PathNames.Canonical(path));
+        window.FolderWatcher!.Changed += Hear;
+        try
+        {
+            change();
+            Ui.WaitFor(() => heard, $"the folder watcher to hear of {Path.GetFileName(path)} written");
+            Ui.Settle();
+        }
+        finally
+        {
+            window.FolderWatcher!.Changed -= Hear;
+        }
+    }
 }

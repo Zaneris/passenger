@@ -20,6 +20,10 @@ public sealed record FolderChanges(IReadOnlySet<string> Paths, bool Structure, b
     /// were is not known, so everything shown from the folder is read again (the open files, the Explorer, the solution,
     /// Go to File's index). <see cref="Paths"/> then holds the folder itself.</summary>
     public bool Lost { get; init; }
+
+    /// <summary>Whether a project's launch profiles (its <c>launchSettings.json</c>) were among the files: the run
+    /// configurations are made of them, and nothing the solution or the Explorer shows is.</summary>
+    public bool LaunchProfiles { get; init; }
 }
 
 /// <summary>Watches a folder for what other programs change in it (a terminal's <c>git pull</c>, an agent's edits,
@@ -53,6 +57,7 @@ public sealed class FolderWatcher : IDisposable
     private bool rewalking;
     private bool structure;
     private bool projects;
+    private bool launchProfiles;
     private bool git;
     private bool lost;
     private bool pending;
@@ -491,6 +496,7 @@ public sealed class FolderWatcher : IDisposable
                     }
                 }
                 projects |= IsProjectFile(path);
+                launchProfiles |= Path.GetFileName(path.AsSpan()).Equals(Run.LaunchProfile.SettingsFile, StringComparison.OrdinalIgnoreCase);
             }
             if (pending)
             {
@@ -520,8 +526,7 @@ public sealed class FolderWatcher : IDisposable
         return above;
     }
 
-    /// <summary>Whether a file is a solution, project, props or targets file or the launch profiles, which the solution is
-    /// read again for.</summary>
+    /// <summary>Whether a file is a solution, project, props or targets file, which the solution is read again for.</summary>
     private static bool IsProjectFile(string path)
     {
         ReadOnlySpan<char> extension = Path.GetExtension(path.AsSpan());
@@ -532,7 +537,7 @@ public sealed class FolderWatcher : IDisposable
                 return true;
             }
         }
-        return Path.GetFileName(path.AsSpan()).Equals(Run.LaunchProfile.SettingsFile, StringComparison.OrdinalIgnoreCase);
+        return false;
     }
 
     private void Deliver()
@@ -546,11 +551,12 @@ public sealed class FolderWatcher : IDisposable
                 Restored = new HashSet<string>(restored, StringComparer.Ordinal),
                 ComeOrGone = new HashSet<string>(comeOrGone, StringComparer.Ordinal),
                 Lost = lost,
+                LaunchProfiles = launchProfiles,
             };
             paths.Clear();
             restored.Clear();
             comeOrGone.Clear();
-            structure = projects = git = lost = pending = false;
+            structure = projects = launchProfiles = git = lost = pending = false;
             live = !disposed;
         }
         if (live)
