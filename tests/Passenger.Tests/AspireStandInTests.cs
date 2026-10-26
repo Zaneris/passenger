@@ -347,35 +347,74 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         // The least one log landing allocated on the UI thread, with as many kept as given (the first fill one envelope).
         long Costs(int kept)
         {
-            Send(kept - sent);
-            Ui.WaitFor(() => Landed(sent), $"the first {sent} logs to land");
+            sent = SendLogs(dashboard, sent, kept - sent);
+            Ui.WaitFor(() => LogLanded(window, sent), $"the first {sent} logs to land");
             Ui.Settle();
             long least = long.MaxValue;
             for (int round = 0; round < 5; round++)
             {
                 long before = GC.GetAllocatedBytesForCurrentThread();
-                Send(1);
-                Ui.WaitFor(() => Landed(sent), $"log {sent} to land");
+                sent = SendLogs(dashboard, sent, 1);
+                Ui.WaitFor(() => LogLanded(window, sent), $"log {sent} to land");
                 Ui.Settle();
                 least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
             }
             return least;
         }
-
-        void Send(int count)
-        {
-            dashboard.Send("logs", "{\"resourceLogs\":[{\"resource\":{\"attributes\":[{\"key\":\"service.name\",\"value\":{\"stringValue\":\"apiservice\"}}]},"
-                + "\"scopeLogs\":[{\"logRecords\":["
-                + string.Join(",", Enumerable.Range(sent + 1, count).Select(number =>
-                    $"{{\"timeUnixNano\":\"1760000000000000000\",\"severityText\":\"Information\",\"body\":{{\"stringValue\":\"log {number}\"}}}}"))
-                + "]}]}]}");
-            sent += count;
-        }
-
-        bool Landed(int last) => window.AspireWindow.StructuredLogs.ItemCount > 0
-            && window.AspireWindow.StructuredLogs.Items[window.AspireWindow.StructuredLogs.ItemCount - 1] is Passenger.App.ToolWindows.RunItem<AspireStructuredLog> item
-            && item.Data.Message == $"log {last}";
     }
+
+    /// <summary>An app's logs kept in the Telemetry tab, scrolled with the wheel as <see cref="LongListsTests"/> scrolls
+    /// the IDE's own lists: a step down the dashboard's bound of them allocates what one down a hundred does, and the rows
+    /// are handed other logs, none made again.</summary>
+    [AvaloniaFact]
+    public void A_scroll_step_down_a_thousand_logs_in_the_telemetry_tab_hands_the_rows_other_logs_never_making_one_again()
+    {
+        project.Reset();
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        backend.PushResource(new Resource { Name = "apiservice", DisplayName = "apiservice", Uid = "api", ResourceType = "Project", State = "Running" });
+        AspireDashboardHost dashboard = Ui.Await(AspireDashboardHost.StartAsync(), "the stand-in dashboard");
+        dashboard.Streams = true;
+        MainWindow window = OpenRunning(backend, dashboard.Endpoint);
+        int sent = 0;
+        try
+        {
+            FindAction(window, "Show Aspire Resources");
+            Ui.Click(Tab(window, "Telemetry"));
+            Ui.WaitFor(() => dashboard.Following("logs") == 1, "the Telemetry tab to follow the dashboard's logs");
+            LongListsTests.Holds("The Telemetry tab's logs", "logs", 100, AspireClient.LogLimit, count =>
+            {
+                sent = SendLogs(dashboard, sent, count - sent);
+                Ui.WaitFor(() => LogLanded(window, sent), $"the first {sent} logs to land");
+                Ui.Settle();
+                return (window.AspireWindow.StructuredLogs, () => { });
+            });
+            Assert.Equal(AspireClient.LogLimit, window.AspireWindow.Telemetry.Logs.Count);
+            Assert.Empty(backend.Errors);
+        }
+        finally
+        {
+            window.Close();
+            Ui.Await(Complete(dashboard.DisposeAsync().AsTask()), "the stand-in dashboard to stop");
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+    }
+
+    /// <summary>The apiservice's logs after the first <paramref name="sent"/>, as many as <paramref name="count"/>, sent by
+    /// the stand-in dashboard in one envelope, each saying its number: how many it has sent now.</summary>
+    private static int SendLogs(AspireDashboardHost dashboard, int sent, int count)
+    {
+        dashboard.Send("logs", "{\"resourceLogs\":[{\"resource\":{\"attributes\":[{\"key\":\"service.name\",\"value\":{\"stringValue\":\"apiservice\"}}]},"
+            + "\"scopeLogs\":[{\"logRecords\":["
+            + string.Join(",", Enumerable.Range(sent + 1, count).Select(number =>
+                $"{{\"timeUnixNano\":\"1760000000000000000\",\"severityText\":\"Information\",\"body\":{{\"stringValue\":\"log {number}\"}}}}"))
+            + "]}]}]}");
+        return sent + count;
+    }
+
+    /// <summary>Whether the Telemetry tab lists the log of this number last.</summary>
+    private static bool LogLanded(MainWindow window, int last) => window.AspireWindow.StructuredLogs.ItemCount > 0
+        && window.AspireWindow.StructuredLogs.Items[window.AspireWindow.StructuredLogs.ItemCount - 1] is Passenger.App.ToolWindows.RunItem<AspireStructuredLog> item
+        && item.Data.Message == $"log {last}";
 
     /// <summary>One resource's restart costs what it changed: with three resources' consoles merged and shown, a new
     /// generation of one ends its own stream alone and reads its lines again after those shown; the others' streams go
