@@ -10,6 +10,13 @@ that fixed it, in one of the forms below. A failure not yet understood goes in o
 
 ## 2026-10-26
 
+- `StuckEvaluationTests`' `An_evaluation_spinning_in_a_finally_block_runs_to_its_end_once_let_out`, Windows (x64) in CI
+  run 40398875778: "The evaluation took longer than 3 s and cou…" without "as it runs a catch or finally block". On x64 the
+  getter's spin loop makes a call, and a look that stops the thread inside it finds it held at the call's return at an
+  unsafe point (about one look in eight); the engine read the thread's state before its frames, so that look said "it
+  runs outside managed code", and the reason told is the last look's. **A race in the IDE**, a wrong reason only (no
+  abort was asked): the evaluation's frames are read first, as the runtime puts an abort off for a finally on any of
+  them whatever the thread does; one sleeping in its finally, told "it waits" every time, is the test's second case (b5badad0).
 - `ProfilerTests`' `A_profile_of_ten_thousand_stacks_reads_drags_and_draws_in_what_its_stacks_and_bars_keep`, macOS in
   CI run 40398875778: "The flame graph drew 544 bars whole and 74 zoomed into a leaf" (and 406 bytes a bar against
   400). The test's program, about 200 ms long, left the sampler few samples on the runner, so the flame graph's bars were
