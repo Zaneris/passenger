@@ -43,9 +43,8 @@ clone of the last Debug build: reconnect to pick up a new one). Ask Roslyn with 
 and `usages`, debug the IDE's projects, and look at the window with `app_screenshot` (`app` ide). Lines and columns count
 from 1. Anything it gets wrong is a Passenger bug.
 
-**Look at UI changes** with a screenshot at `--scale 2` before calling them done. It runs on the headless platform (real
-Skia, never a window or the focus), opens what the command line names, takes its steps through real input, waits for
-background work and captures the compositor's frame:
+**Look at UI changes** with a screenshot at `--scale 2` before calling them done: headless (real Skia, never a window or
+the focus), it opens what the command line names, takes its steps through real input and waits for background work:
 
 ```sh
 artifacts/bin/Passenger.App/debug/Passenger . --file src/Passenger.App/App.axaml.cs --caret 12:5 \
@@ -53,23 +52,17 @@ artifacts/bin/Passenger.App/debug/Passenger . --file src/Passenger.App/App.axaml
     --screenshot out.png --size 1400x880 --scale 2 --crop 320,76,900,500 --theme light
 ```
 
-Steps: `--key` ("cmd+shift+L" or Rider's "meta shift L"), `--type` (one input, so completion opens only on a trigger
-typed alone), `--click`, `--right-click`, `--hover X,Y` (logical units), `--click-name NAME` (exit 2 if none),
-`--drag[-hold] X1,Y1,X2,Y2`, `--wait MS`, `--window-buttons` (macOS's traffic lights, drawn by Passenger), `--agent
-COMMAND` (an agent in the Terminal's Agent tab, joined by `$PASSENGER --mcp-attach $PASSENGER_PID`, every tool allowed).
-A step after one that opens a dialog goes to the dialog. A screenshot keeps no state unless PASSENGER_SETTINGS names a
-folder (short on macOS: a socket path holds at most 103 bytes). Headless, dispatcher timers fire only inside a running
-frame (`Screenshot.Pump`, `Ui.WaitFor`); `Ui.Settle` fires those due, so the caret's 530 ms blink redraws during a long
-settle.
+Steps: `--key`, `--type` (one input, so completion opens only on a trigger typed alone), `--click`, `--right-click`,
+`--hover X,Y` (logical units), `--click-name NAME` (exit 2 if none), `--drag[-hold]`, `--wait MS`, `--window-buttons`,
+`--agent COMMAND` (an agent in the Terminal's Agent tab, every tool allowed); a step after one that opens a dialog goes to
+the dialog. State is kept only where PASSENGER_SETTINGS names a folder (short on macOS: a socket path holds 103 bytes).
+Headless, dispatcher timers fire only inside a running frame (`Screenshot.Pump`, `Ui.WaitFor`).
 
-**Build facts.** Everything builds under `artifacts/` (`UseArtifactsOutput`). Package versions live only in
-`Directory.Packages.props` (Roslyn's server's as `RoslynServerVersion`, each kept pin saying why), shared properties only
-in `Directory.Build.props` (the version too). Packages come from nuget.org alone, as it signed them, at what each project's
-`packages.lock.json` pins: CI restores locked, so commit a rewritten lock file with its change. Every lock file holds all
-eight `RuntimeIdentifiers` (osx-x64 and the linux-musl pair too), even a Windows-only project's, since a publish's RID
-reaches every referenced project's restore. Every recipe and CI set `AVALONIA_TELEMETRY_OPTOUT=1`. `Directory.Build.targets`
-gives every ProjectReference its full path (the SDK opens a solution reached through a symlink by the link and built
-referenced projects twice).
+**Build facts.** Everything builds under `artifacts/`. Package versions live only in `Directory.Packages.props` (each
+kept pin saying why), shared properties only in `Directory.Build.props` (the version too). Packages come from nuget.org
+alone, as it signed them, at what each project's `packages.lock.json` pins: CI restores locked, so commit a rewritten lock
+file with its change. Every lock file holds all eight `RuntimeIdentifiers`, even a Windows-only project's (a publish's
+RID reaches every referenced project's restore). Every recipe and CI set `AVALONIA_TELEMETRY_OPTOUT=1`.
 
 ## Rules
 
@@ -77,27 +70,24 @@ referenced projects twice).
   (`.debugger`, `.roslynDevKit`, `.testDiscovery`), nor `VSCodeDebugProtocol`; nothing is copied out of an installed
   extension. Roslyn's server comes from NuGet; `Passenger.Dap` is the protocol.
 - **No Avalonia Accelerate** (TreeDataGrid, DevTools: `DeveloperTools.TakeOut` removes what `dotnet new avalonia.app` adds).
-- **Every dependency, icon or asset has an open-source licence and an entry in `THIRD_PARTY_NOTICES.md`**, in the same
-  change: a package by NuGet id with its licence and copyright as stated (`just notices` and CI fail otherwise), copied
-  source by file and origin, assets after the marker line, a new SPDX licence's text in `tools/Passenger.Notices/Licenses`,
-  a package inside Roslyn's server in its table. The owner's two exceptions: Visual Studio Telemetry and
-  Utilities.Internal inside Roslyn's server (its Razor support needs them), and the TextMate bundle licence. MIT first.
+- **Every dependency, icon or asset has an open-source licence and an entry in `THIRD_PARTY_NOTICES.md`** in the same
+  change (`just notices` and CI fail on a package missed): a package by NuGet id with its licence and copyright as
+  stated, copied source by file and origin, assets after the marker line, a new SPDX text in
+  `tools/Passenger.Notices/Licenses`, a package inside Roslyn's server in its table. The owner's exceptions: Visual Studio
+  Telemetry and Utilities.Internal inside Roslyn's server (its Razor support needs them), and the TextMate bundle
+  licence. MIT first.
 - **Every program Passenger starts goes through `ChildProcesses`** (`Command`/`DotnetCommand`, then `Start`,
-  `StartAsync` or `RunAsync`; `Kill` ends it with all it started), so none outlives the IDE (`Lifeline`: a job object on
-  Windows, a watchdog over process groups elsewhere). Started elsewhere: the terminal's shell (Porta.Pty), vstest.console,
-  Velopack's Update.exe, and the person's Passenger an agent's `--mcp-attach` starts (`StartApart`); a program run in the
-  terminal is `Adopt`ed. Docker Desktop and the file manager are the person's (`open -a`, `open -R`, Explorer, through
-  ChildProcesses).
-- **No secret on a command line** (any process can read it): give it through the environment, or don't make it (the dev
-  certificate goes to containers as PEM with no password). Command lines are logged and echoed through
-  `ChildProcesses.Shown`, and secrets everywhere (Details, Inspect's copies, logs, consoles, hints, agents' answers) are
-  masked by one rule, `ContainerSecrets` (`Secret`, `InValue`, `InSaid`, `CommandLine`).
-- **Containers are ended by label**, since no child holds them: everything an engine makes for Passenger carries
-  `ContainerLabels` (state, machine, process, folder). A folder's end removes what it started (only containers and
-  networks carrying this process's labels; never `down` or `--remove-orphans`, which take the person's own), the
-  watchdog's last command removes the process's own however it ends, and the next start removes those of a dead process
-  of this state and machine. What an engine makes unlabelled (Aspire's DCP containers and session network) is recorded in
-  `AspireContainerOwnership` and ended by the same rules. Persistent containers and the person's own are never removed.
+  `StartAsync` or `RunAsync`; `Kill` ends it with all it started), so none outlives the IDE (`Lifeline`), each given its
+  folder as the disk names it, PWD too. Started elsewhere: the terminal's shell (Porta.Pty), vstest.console, Velopack's
+  Update.exe and an agent's `--mcp-attach` Passenger (`StartApart`); a program run in the terminal is `Adopt`ed.
+- **No secret on a command line** (any process can read it): give it through the environment, or don't make it. Secrets
+  everywhere (Details, logs, consoles, hints, agents' answers, `ChildProcesses.Shown`'s echoes) are masked by one rule,
+  `ContainerSecrets`.
+- **Containers are ended by label** (`ContainerLabels`: state, machine, process, folder), never by `down` or
+  `--remove-orphans`, which take the person's own: a folder's end removes what this process started there, the
+  watchdog's last command all it started, the next start what a dead process of this state and machine left. Aspire's
+  unlabelled DCP containers and network are recorded in `AspireContainerOwnership` and ended the same way; persistent
+  containers and the person's own never are.
 - **Colours are tokens** (`Passenger.*` in `Theme/Tokens.axaml`), given in every theme (dark and light, `Harbour.axaml`
   and each look `just themes` writes); Fluent's keys are mapped once in `Theme/FluentKeys.axaml`. UiRulesTests fails on a
   colour or non-zero CornerRadius written outside `Theme/` (but the content's own) and on an unmapped Fluent key.
@@ -106,17 +96,16 @@ referenced projects twice).
   (`src/Passenger.Analyzers`, every rule's id and words in `Rules.cs`) fails its text written anywhere else, a plain word
   only where a parameter or member marked `[IdentifierOf]` its home takes it.
 - **Async is awaited**: no async void (PSG0002), no async lambda given to a void delegate (PSG0003), no blocking wait on
-  a task (PSG0004; a read where the task has certainly ended passes, and the Debugger's ICorDebug callbacks and the
-  tests are not looked at yet); a caller that must stay synchronous (Main's end, a library's synchronous callback) goes
-  through `Synchronously.Run`, saying why.
-- **A catch-all is a boundary** that passes on what it caught (PSG0005; the Debugger's ICorDebug catches not looked at
-  yet); **work for the thread pool goes through `BackgroundWork`**: `Run`, or `Unheld`/`UnheldThread` saying why it
-  holds nothing (PSG0006; the tests not looked at yet).
+  a task (PSG0004; a read where the task has certainly ended passes; the Debugger's ICorDebug callbacks and the test
+  classes `TestsNotYet` names not looked at yet); a caller that must stay synchronous (Main's end, a library's
+  synchronous callback) goes through `Synchronously.Run`, saying why.
+- **Work for the thread pool goes through `BackgroundWork`** (`Run`, and `Debounce` rather than a `DispatcherTimer`), so
+  screenshots and tests wait for it; `Unheld`/`UnheldThread` for work that mustn't hold them, saying why (PSG0006; a
+  test's own through `Waiting.Apart`). **A catch-all is a boundary** that passes on what it caught (PSG0005; the
+  Debugger's ICorDebug catches not looked at yet).
 - **A malformed flag or environment value is fatal**, never a silent default (`LaunchOptions.cs`).
 - **A warning is fixed at its cause.** Turning it off (NoWarn, a pragma, a lowered severity, a suppression) or moving
   the line it checks (a raised budget or limit) does not count as fixing it; neither does an analyzer's baseline.
-- **Work off the UI thread that changes what is drawn goes through `BackgroundWork`** (`Run`, and `Debounce` rather than
-  a `DispatcherTimer`), so screenshots and tests wait for it; one that mustn't hold them says why in a comment.
 - **Work nothing awaits goes to `IdeErrors.Observe`** (`Core.UnawaitedWork.Observe` below the App), never a bare `_ =`
   or a call left as a statement, so its fault is said as it happens: IdeErrorsTests reads the built IL (`DroppedTasks`).
 - **One threading rule.** Controls, documents, the window's `ProjectSession` and its parts, controllers and views belong
@@ -158,148 +147,96 @@ referenced projects twice).
 
 ## Where things are
 
-Projects in `src/`:
-- `Passenger.Core`: what everything shares, no UI. `ChildProcesses` (`RunAsync`'s limit, a 2 s `OutputGrace` after exit,
-  `mostOutput`; `StartAsync` forks off the UI thread, since a fork costs a large process tens of ms, #233),
-  `Dotnet`/`Programs`/`ShellEnvironment` (tools found as the login shell would), `PathNames`, `AtomicFile`,
-  `SocketFolders` (every Unix socket, short paths), `DotnetProcesses` (attachable programs), `InFlight`,
-  `BackgroundWork`, `Product` (the one place the version is read), `PassengerLog` (passenger.log for code below the App,
-  never `IdeLog`), `WebAddress`, `UnawaitedWork`.
-- `Passenger.Text`: the rope (an immutable B-tree, so every version is a thread-safe snapshot), `TextDocument` (undo,
-  LSP-ordered changes; carets and run lists carry offsets with `TextEditing.Map*` over the change's `SortedEdits` as it
-  came), carets, every editing command as a pure function to an `EditPlan`, `MarkupIndent`, `WordDiff`, `FuzzyMatch`
-  (allocates nothing), `FileText` (encoding, BOM, `.editorconfig`, line separator), `ChangeMark`, anchors
-  (`TextDocument.AnchorAt`/`RangeAt`, moved before `Changed`; each handler isolated, its failure to
-  `PassengerLog.Report`; `AnchoredList` for a list of them, read once a change): hold a place in the text with one,
-  never your own `Map*`.
-- `Passenger.Editor`: the `CodeEditor` control (partials), `Keymap` and `EditorActions` (presets), `IHighlighter`; the
-  gutter's columns but numbers and folds are the App's (`IGutterColumn`, `EditorGutter`), the editor naming no debugger,
-  test or VCS concept (EditorRulesTests). What a file's editors draw is its one `DocumentDecorations`
-  (`OpenDocument.Decorations`, `CodeEditor.Show` takes it), never fed per split. With soft wrap, whatever turns an
-  offset into a place goes through `Rows`/`RowSpan`. Wraps (`WrapMap`), rows (`RowMap`), folds (`FoldList`), hints
-  (`HintList`) and built lines (`LineRuns`) are runs an edit moves only where it reaches, so a key costs what it
-  changed, not the file's size: keep it so.
-- `Passenger.Languages`: C# coloured by Roslyn's parser in-process (`CSharpHighlighter`, also each open file's one
-  syntax service, `OpenDocument.Syntax`: use it, never a fresh parse), the rest by VS Code's TextMate grammars
-  (`TextMateHighlighter`, scopes mapped in `ScopeColours`); `Highlighters.For` chooses. A new language: one `Language`
-  entry (patterns, comments, grammar, folds, service), its grammar file and a notices entry; compare entries, never
-  names. A finder never tells its answer inside a document's `Changed` (the open file moves its regions in a later
-  handler).
-- `Passenger.Xaml`: Passenger's own XAML core (no Avalonia; WPF shares it): tolerant syntax, a TypeSystem over the
-  project's assemblies and its C#, the Avalonia and WPF dialects (`XamlProjectBuilder.DialectOf`), completion,
-  diagnostics, navigation, `XamlFormatter`, refactorings, `CreateFromUsage`. Not Avalonia.Ide.CompletionEngine.
-- `Passenger.Lsp`: the LSP client (StreamJsonRpc, whose types never leave the project; a server that fails is
-  `LanguageServerFailed`), Roslyn's server downloaded per platform (`RoslynServer.targets`, four VS assemblies left out),
-  `LspDocument` (requests in editor offsets; answers that grow with the solution decoded off the UI thread; never a
-  change between a "\r\n"'s halves), `RazorHtml`, `LanguageSession` for other servers, and `WebServers.targets` (the web
-  servers under `web/`, pinned in `WebServers/package.json` and its lock; to move a pin: edit it, `npm install
-  --package-lock-only --ignore-scripts`, update the notices' "Inside web/" table).
-- `Passenger.Roslyn.Extension`: Passenger's handlers inside Roslyn's server (`--extension`), compiled against its
-  publicized assemblies (`src/Publicize.targets`): the host's project loading (`ProjectLoader`), Hot Reload, refactoring
-  descriptions, Aspire's code help, routes, configuration reads. A handler reads the solution, never changes it.
-- `Passenger.Host`: MSBuild in a process of its own per SDK (`ProjectHosts`), over JSON lines: `evaluate`, `build`
-  (design-time, as Roslyn's build host), `inspect` (MSBuild files' code help), `properties`, `inputs` (what a build
-  reads, stamped, for `UpToDate`), `hold` (no generating design-time build while Passenger builds: Windows lets one
-  writer have a file), `cancel`. Results are stamped with what they read, so a reopen redoes only what changed; a
-  Windows-only framework loads with EnableWindowsTargeting off Windows.
-- `Passenger.Vcs`, `Passenger.Workspace`, `Passenger.Packages`: the App's Git, folder model and NuGet code that
-  needs no UI, referencing no Avalonia; what belongs to the UI thread stays in the App's folder of the same name.
-- `Passenger.Dap`, `Passenger.Debugger` (+`.Interop`), `Passenger.DebugAdapter`: Passenger's own debugger (begun from
-  SharpDbg and ICorDebugSharp, MIT) behind its own DAP, in a process of its own under `debugger/`.
-  `Passenger.ContainerTools` is `passenger-tools`, what runs inside a Linux container (`dap`, `processes`, `trace`,
-  `heap`, `sources`, `version`): self-contained, carried only in the release's archives.
-- `Passenger.Profiler`: EventPipe sampling (`ProfilingSession`, `Snapshot`), heap snapshots with ClrMD (`MemorySnapshot`,
-  `HeapGraph`, `HeapHistory`; ClrMD's Azure packages stay carried, and its DAC stays loaded once used: unloading it crashed
-  on Linux), live requests (`LiveRequests`), and recording inside a container (`InContainer`, `HeapWire`, nothing in a
-  frame trusted).
-- `Passenger.Inspector` (+`.Wpf`): the Live Visual Tree's helper, loaded into a run or debugged app by a startup hook,
-  answering over a Unix socket (`Protocol.cs` compiled into both ends). `Passenger.WpfPreview`: WPF's previewer (Windows
-  only, design mode). `Passenger.TestFrames`: pictures of a failed headless test. `Passenger.Terminal`: the VT emulator
-  and Porta.Pty sessions.
-- `Passenger.Analyzers`: Passenger's own analyzer rules (PSG…), referenced by every project as an analyzer; a rule goes
-  on only where nothing it flags is left.
-- `tools/`: `Passenger.Notices` (the notices files), `Passenger.NodePackages` (the web servers without Node.js), the test
-  runner and shard scripts, packaging scripts (`tools/linux`, the disk image's layout), site shots.
+Projects in `src/`; `find_symbol` finds the rest:
+- `Passenger.Core`: what everything shares, no UI: `ChildProcesses` (`StartAsync` forks off the UI thread: a fork costs a
+  large process tens of ms), `Dotnet`/`Programs`/`ShellEnvironment` (tools found as the login shell would), `PathNames`,
+  `AtomicFile`, `SocketFolders` (every Unix socket), `InFlight`, `BackgroundWork`, `Product` (the one place the version
+  is read), `PassengerLog` (below the App, never `IdeLog`), `UnawaitedWork`.
+- `Passenger.Text`: the rope (every version a thread-safe snapshot), `TextDocument`, every editing command as a pure
+  function to an `EditPlan`, `FuzzyMatch` (allocates nothing), `FileText`, and anchors (`AnchorAt`/`RangeAt`/`MarkAt`,
+  `AnchoredList`; moved before `Changed`, each handler isolated): hold a place in the text with one, never your own
+  `TextEditing.Map*`.
+- `Passenger.Editor`: the `CodeEditor` control (partials), `Keymap` and `EditorActions` (presets). The gutter's columns but
+  numbers and folds are the App's (`IGutterColumn`), the editor naming no debugger, test or VCS concept
+  (EditorRulesTests); what a file's editors draw is its one `DocumentDecorations`, never fed per split. With soft wrap, an
+  offset becomes a place through `Rows`/`RowSpan`. Wraps, rows, folds, hints and built lines are runs an edit moves only
+  where it reaches, so a key costs what it changed, not the file's size: keep it so.
+- `Passenger.Languages`: C# coloured by Roslyn's parser in-process (`CSharpHighlighter`, also each open file's one syntax
+  service, `OpenDocument.Syntax`: never a fresh parse), the rest by VS Code's TextMate grammars. A new language: one
+  `Language` entry, its grammar file and a notices entry; compare entries, never names. A finder never tells its answer
+  inside a document's `Changed` (the open file moves its regions in a later handler).
+- `Passenger.Xaml`: Passenger's own XAML core (no Avalonia; WPF shares it; not Avalonia.Ide.CompletionEngine).
+- `Passenger.Lsp`: the LSP client (StreamJsonRpc, whose types never leave the project), Roslyn's server downloaded per
+  platform (`RoslynServer.targets`), `LspDocument` (answers that grow with the solution decoded off the UI thread; never
+  a change between a "\r\n"'s halves), and the web servers under
+  `web/`, pinned in `WebServers/package.json` and its lock (to move a pin: edit it, `npm install --package-lock-only
+  --ignore-scripts`, update the notices' "Inside web/" table).
+- `Passenger.Roslyn.Extension`: Passenger's handlers inside Roslyn's server, compiled against its publicized assemblies
+  (`src/Publicize.targets`). A handler reads the solution, never changes it.
+- `Passenger.Host`: MSBuild in a process of its own per SDK and global.json (`ProjectHosts`), over JSON lines, its
+  results stamped with what they read; `hold` keeps generating design-time builds off while Passenger builds (Windows
+  lets one writer have a file).
+- `Passenger.Vcs`, `Passenger.Workspace`, `Passenger.Packages`: the App's Git, folder model and NuGet code that needs no
+  UI; what belongs to the UI thread stays in the App's folder of the same name.
+- `Passenger.Dap`, `Passenger.Debugger` (+`.Interop`), `Passenger.DebugAdapter`: Passenger's own debugger behind its own
+  DAP, in a process of its own under `debugger/`. `Passenger.ContainerTools` (`passenger-tools`) runs inside a Linux
+  container, self-contained, carried only in the release's archives.
+- `Passenger.Profiler`: EventPipe sampling and ClrMD heap snapshots (its Azure packages stay carried; its DAC stays loaded
+  once used: unloading it crashed on Linux); recording inside a container trusts nothing in a frame.
+- `Passenger.Inspector` (+`.Wpf`): the Live Visual Tree's helper, loaded into the app by a startup hook, answering over a
+  Unix socket (`Protocol.cs` compiled into both ends). `Passenger.WpfPreview` (Windows only), `Passenger.TestFrames`
+  (pictures of a failed headless test), `Passenger.Terminal` (the VT emulator, Porta.Pty).
+- `Passenger.Analyzers`: the PSG rules (`Rules.cs`); a rule goes on only where nothing it flags is left.
+- `tools/`: the notices, the web servers without Node.js, the test runner and shard scripts, packaging, site shots.
 
 `src/Passenger.App`, by area:
-- **Shell.** `PassengerApp` (the process root: every open goes through `OpenProject`), `MainWindow` and its partials,
-  `ProjectSession` (one folder's services made and ended together; a handler acts only while its session is bound,
-  `Bind`), `StatusBar` (`StatusPlace` makes its words a link),
-  `PopupHost`, `IdeKeys` (the one keymap in every window but a dialog; a part with keys of its own is an `IOwnKeys`).
-  The toolbar is the main window's title bar: anything new on it goes inside `ToolbarStart` or `ToolbarEnd`, or Windows
-  takes a press on it for the caption's. Logs are `logs/` under the state root (`IdeLog`: passenger.log, roslyn/,
-  lsp.log, dap.log, vstest.log, mcp.log; Settings › Diagnostics turns on protocol traces).
-- **Editors.** `EditorArea` (splits of `EditorGroup`s; editor windows are `EditorFrame`s of the same area, so a file in
-  two windows is one `OpenDocument`; wire every editor through `ForEachEditor`; `CloseTab` is the one close), and
-  `OpenDocument` (encoding, BOM and line separator kept; images, fonts, workbooks and release notes are previews that hold
-  no text, `HoldsText` false). A Markdown file's preview is its group's `MarkdownPreview`, drawn by What's New's `Markdown`.
-- **Docking.** `DockHost` and `ToolWindowIds` (a kept layout records windows by them, so a value never changes; add a
-  window with one `Dock.Add`). A window builds its view when first shown; what the IDE writes while it's hidden lives in a
-  model (`ProblemsModel`, `DebugModel`, `AspireModel`, `RequestLog`, `MigrationsController`), and code reaches a view
-  only through a property that builds it for a person's action.
-- **C#.** `CSharpService`, `CSharpDocument`, `ServerDiagnostics` (one pull at a time after a pause), `CodeAssist` (the
-  window's wiring) over `CodeCompletion` (narrowed off the UI thread, rows kept), `QuickInfo`, `ParameterInfo`,
-  `CodeNavigation`, `CodeActions` (Passenger's own `EditorFixes` first) and `PopupPlacement`; each language's answers a
-  `LanguageAssist`, asked in `LanguageAssists`' one order; `WorkspaceEdits` (a server's edit to a file not open is
-  refused if it was written in the last 2 s; an agent's call waits instead, `Patience`), `TypeRename`, `LiveTemplates`.
-- **Web languages.** `WebLanguages` (one Node.js server per kind: TypeScript, HTML, CSS, JSON, Dockerfile, YAML; ESLint
-  and Prettier per folder; every per-kind switch names each kind), `JsonSchemas` (carried schemas; downloads only while
-  Settings allows), compose help (`ComposeDeclarations`, `ComposeNames`, `ComposeRename`, `ComposeText`). The servers are
-  carried under `web/`, in a macOS bundle under `Contents/Resources/web` (`WebLanguages.Carried`).
-- **XAML and MSBuild files.** `XamlService`/`XamlDocument`, the previewers (`AvaloniaPreviewHost`, `WpfPreviewHost`),
-  `LibrarySources`, `SourceLink`; `MSBuildService`/`MSBuildDocument` (evaluated on the typed text).
-- **Build and run.** `BuildRunController` (partials), `ProcessRunner`, `ConsoleSink` (every console, through one
-  `PumpAsync`), `BuildOutput`, `RunConfiguration` (data: the folder's own, or generated from launch profiles, compose
-  files and Dockerfiles and edited in place as `ConfigurationEdit`s), `LaunchPlan` (one resolution for Run, Debug,
+- **Shell.** `PassengerApp` (every open goes through `OpenProject`), `ProjectSession` (one folder's services made and
+  ended together; a handler acts only while its session is bound, `Bind`), `StatusBar` (`StatusPlace` makes its words a
+  link), `IdeKeys` (the one keymap in every window but a dialog; a part with keys of its own is an `IOwnKeys`). The
+  toolbar is the title bar: anything new on it goes inside `ToolbarStart` or `ToolbarEnd`, or Windows takes a press on
+  it for the caption's. Logs are `logs/` under the state root (`IdeLog`; Settings › Diagnostics turns on protocol traces).
+- **Editors.** `EditorArea` (a file in two windows is one `OpenDocument`; wire every editor through `ForEachEditor`;
+  `CloseTab` is the one close); a preview holds no text (`HoldsText` false).
+- **Docking.** A kept layout records windows by `ToolWindowIds`, so a value never changes; add a window with one
+  `Dock.Add`. A view is built when first shown: what the IDE writes while it's hidden lives in a model, and code reaches
+  a view only through a property that builds it for a person's action.
+- **C#.** `CSharpService`, `ServerDiagnostics` (one pull at a time after a pause), `CodeAssist` (the window's wiring) over
+  its parts; each language's answers a `LanguageAssist`, asked in `LanguageAssists`' one order. `WorkspaceEdits`: a
+  server's edit to a file not open is refused if it was written in the last 2 s (an agent's call waits, `Patience`).
+- **Web languages.** `WebLanguages` (one Node.js server per kind; every per-kind switch names each kind), `JsonSchemas`
+  (downloads only while Settings allows); in a macOS bundle the servers live under `Contents/Resources/web`.
+- **Build and run.** `BuildRunController` (partials), `ConsoleSink` (every console through one `PumpAsync`),
+  `RunConfiguration` (data, edited in place as `ConfigurationEdit`s), `LaunchPlan` (one resolution for Run, Debug,
   Profile, Hot Reload and a debugged test host; a Passenger it launches keeps its state in the launcher's `sandbox/`),
-  `UpToDate` (a launch's build skipped while what its last build read and wrote stands; anything it can't account for
-  builds), `TogetherBuild` (a start's projects side by side in one dotnet build), Publish (`PublishProfiles`, `PubXml`,
-  a profile's `.pubxml` as the SDK reads it).
-- **Runs of services.** `ServiceRun` is the one model of a run of several .NET services; `ContainerRun` and
-  `AspireAppRun` are its kinds. Debug, Attach, Run without Debugger, Restart and Profile of a service are written once
-  (`BuildRunController.Services.cs`); a kind supplies only its restarts, holds, program places and refusals. One start at
-  a time (`TakeStartAsync`); Stop ends every session and recording before the programs go (`EndSessionsAsync`).
-- **Containers.** Through the person's `docker` CLI and context only, never the Engine API or a Docker package
-  (`ContainerEngine`, `ContainerSnapshot`, `ContainerCommands`; a service's name always after `--`). Compose's own model
-  is the plan (`ComposeModel`, `ContainerPlans`); fast mode by default (the host's build mounted into the image's runtime
-  stage); Passenger's override written to the state; services held at their start for Debug, Hot Reload and Profile;
-  the tools downloaded from the release and SHA256-checked (`ContainerTools`). `EngineChecks` runs BuildKit's and
-  Compose's checks on open files. Podman works both ways it's set up (`EngineState.IsPodman`).
-- **Aspire.** `AspireController` (Aspire's IDE execution protocol on loopback, bearer tokens checked first),
-  `AspireInteractions` (the resource service's gRPC; the protocol's C# is checked in), `AspireTelemetry`, `AspireClient`
-  (the CLI, for an AppHost Passenger didn't start), `AspireOrchestration`. A run's logs and traces: `Telemetry/`.
-- **Web apps' data.** Routes from code (`WebRoutes`, `RouteCatalog`), the Requests window (`RequestLog`, only while
-  someone looks), Migrations (`MigrationsController`, `EfGaps`, `EfProviders`, `EfRun`; connection strings by environment
-  only), configuration (`ConfigurationFiles`, `ConfigurationKey`), Endpoints (`HttpFile`, `EndpointClient`: nothing goes
-  over the network but on Test or Send, and a send taking the person's environment asks first).
-- **Localization.** The extension's `LocalizedReads` (`Localization.cs`) reads a C# or Razor file's localizer keys and
-  generated-resource properties (Razor through its generated C#'s `#line`), `Passenger.Xaml`'s `XamlLocalization` XAML's
-  `{x:Static}`; `ResourceFiles` is the one reader of `.resx` and `xlf/*.xlf`, and the card, warning and fix are shared.
-- **Debugging.** `DebugController` (a `DebugTab` per session, several at once; `Session` is the chosen tab's),
-  `DebugSession`, `BreakpointStore`, `VariablesTree`/`VariablesList` (Variables and the hover card are one list), Hot
-  Reload (`Debugging/HotReload.cs`), Attach to Process (`MainWindow.Attach.cs`).
-- **Profiling and the live app.** `ProfilerCommands`, `ProfilerView`, `FramesView`, `MemoryView`; `LiveApp`,
-  `LiveTreeController`, `BindingErrors`, `BindingValuesController`.
-- **Tests window.** `TestFinder` (tests from code before any build), `TestRunners` (a Testing Platform app to
-  `TestingPlatformRunner`, the rest to `VsTestRunner`, the only file that knows VSTest's object model), `TestTree`.
-- **The rest,** each folder named for its job: `Vcs` (`VcsController`; `Git` over porcelain v2 and `ThreeWayMerge`
-  in Passenger.Vcs), `Packages` (`NuGetView`, `FolderPackages`, every package change's one path; feeds, `FeedSet` and
-  nuget.config in Passenger.Packages, credentials only to their feed's host), `History` (Local History), `Navigation`,
-  `Workspace` (the UI's part; `SolutionModel`, `ProjectHosts` and `SolutionEdits`/`ProjectEdits`, which change files as
-  text, never `dotnet sln`/`add reference`, in Passenger.Workspace), `Welcome`, `Templates` (every `dotnet new`
-  through `ProjectTemplates.New`/`NewCommand`), `Updates` (`Releases`, `Updater`; only an installed copy updates itself;
-  What's New from `docs/release-notes/X.Y.Z.md`), `Settings`, `State`, `Discord`.
+  `UpToDate` (a launch's build skipped while what its last build read and wrote stands, a build under way waited out
+  first), `TogetherBuild`.
+- **Runs of services.** `ServiceRun` is the one model (`ContainerRun`, `AspireAppRun` its kinds): Debug, Attach,
+  Restart and Profile of a service are written once (`BuildRunController.Services.cs`). One start at a time
+  (`TakeStartAsync`); Stop ends every session and recording before the programs go.
+- **Containers.** The person's `docker` CLI and context only, never the Engine API or a Docker package; a service's name
+  always after `--`. Compose's own model is the plan, Passenger's override goes to the state, and the tools downloaded
+  from the release are SHA256-checked. Podman works both ways it's set up (`EngineState.IsPodman`).
+- **Aspire.** `AspireController` (the IDE execution protocol on loopback, bearer tokens checked first),
+  `AspireInteractions` (gRPC, its C# checked in), `AspireClient` (the CLI, for an AppHost Passenger didn't start).
+- **Web apps' data.** The Requests window reads only while someone looks; Migrations takes connection strings by
+  environment only; Endpoints sends nothing but on Test or Send, and a send taking the person's environment asks first.
+  `ResourceFiles` is the one reader of `.resx` and `xlf/*.xlf`.
+- **Debugging.** `DebugController` (a `DebugTab` per session, several at once), `DebugSession`, `BreakpointStore`;
+  Variables and the hover card are one list.
+- **Tests window.** `TestFinder` (tests from code before any build), `TestRunners`; `VsTestRunner` is the only file that
+  knows VSTest's object model.
+- **The rest.** `Packages` (every package change's one path; credentials only to their feed's host), `Workspace`
+  (`SolutionEdits`/`ProjectEdits` change files as text, never `dotnet sln`/`add reference`), `Templates` (every `dotnet
+  new` through `ProjectTemplates`), `Updates` (only an installed copy updates itself; What's New from
+  `docs/release-notes/X.Y.Z.md`).
 - **MCP.** `PassengerTools` (every tool, run on the UI thread, answering with what its operation returned), `McpHost`
-  (`--mcp FOLDER`, headless; a window's socket; `--mcp-attach` through `McpProxy`), `AgentConnection` (admission and
-  per-tool questions).
+  (`--mcp FOLDER`, a window's socket, `--mcp-attach` through `McpProxy`), `AgentConnection` (admission and questions).
 
-Releases and the site: `ci.yml` and `release.yml` (from a `vX.Y.Z` tag; its body is `docs/release-notes/X.Y.Z.md`, which
-fails a publish while it is the stand-in) call `test.yml`, every system's suite in four shards. `site/` is
-passenger-ide.net, plain HTML and CSS, deployed by hand (`gh workflow run Site --ref main`, the owner's); its share card
-is named by its content, so a changed one takes a new name. Each page (home, `/containers`, `/agents`, `/linux`) has its
-own title, description, canonical and Open Graph tags and a `sitemap.xml` entry, and loads only the site's files (CSP
-'self'); `just site-shots themes` makes every `--look`'s capture a frame of one animated WebP (img2webp), and the
-aspire and requests scenes run `tools/site-shots/services`, an AppHost that needs no container engine.
+Releases and the site: `ci.yml` and `release.yml` (from a `vX.Y.Z` tag, its body `docs/release-notes/X.Y.Z.md`, refused
+while it is the stand-in) call `test.yml`, every system's suite in four shards. `site/` is passenger-ide.net, plain HTML
+and CSS loading only its own files (CSP 'self'), deployed by the owner by hand: each page has its own title,
+description, canonical, Open Graph tags and `sitemap.xml` entry, a changed share card takes a new name, and `just
+site-shots` retakes its images.
 
 ## Traps
 
@@ -341,13 +278,13 @@ aspire and requests scenes run `tools/site-shots/services`, an AppHost that need
   whose file was replaced under it (`just package-mac` ejects one first) or a bundle written into (#450). Tests never start a
   program inside an unsigned bundle, and the run's folder ends in `.noindex`, so Spotlight reads none of what a run makes.
 - **Linux**: file systems tell letter case apart, so a test of another letter case skips there.
-- **MSBuild**: a build through another spelling of a project's path deletes what the first wrote (IncrementalClean;
-  the terminal's shell is given its folder as PWD, #413), and a reused node carries a project's earlier spelling and the
-  NuGet home it started with into the next build. It keeps no idle node unless the process's nice value is 0.
+- **MSBuild**: a build through another spelling of a project's path deletes what the first wrote (IncrementalClean; a
+  shell or MSBuild takes an inherited PWD for its folder's path, #413, #537), and a reused node carries a project's
+  earlier spelling and NuGet home into the next build. It keeps no idle node unless the process's nice value is 0.
 - **The terminal reuses a line** once it leaves the screen and a full scrollback (`TerminalLine.Reuse`): nothing keeps a
   `TerminalLine` past its line number.
 - **Avalonia 12's lists** re-attach, and so re-style, every recycled container and never reuse a `DataTemplate`'s
-  content: a long list's row lives in its container's template (ExplorerView).
+  content: a list's rows go through `ReusedRows`, made once with their containers (UiRulesTests names the lists not yet).
 - **EventPipe from a program's start**: .NET 10's LoggingEventSource misreads the `FilterSpecs` it is made with, so a
   category takes no `:Level` there or none of its logs come (`LiveRequests.LogsSpec`).
 
@@ -370,8 +307,9 @@ workspace pull), due timers fired, the last layout drawn; a give-up lists each h
 running program, the state store's 0.5 s write delay (flush to read a state file), templates read ahead, the system's
 delay before the watcher hears a change (wait for its `Changed`). Words describing the window as a wait gave up are a
 `Func<string>`. Wait with `Ui.WaitFor`, `Ui.PumpUntil`/`Pumped` (the loop run, not settled: a held start, an app that
-keeps the window busy) or `Waiting.Until`/`UntilAsync`/`Within` off the UI thread; time that must pass is `Ui.Hold(time,
-why)`, `Ui.Stall` or `Waiting.For`. Every limit is written as a developer machine's time and scaled by
+keeps the window busy) or `Waiting.Until`/`UntilAsync`/`Within` off the UI thread; read a task's answer once it ended
+(`Ui.Await`, `AwaitPumped`, `Landed(task, what)`), and start a test's own work through `Waiting.Apart`. Time that must
+pass is `Ui.Hold(time, why)`, `Ui.Stall` or `Waiting.For`. Every limit is written as a developer machine's time and scaled by
 `TestRun.TimeScale` (`PASSENGER_TEST_TIME_SCALE`; CI 2 on macOS, 2.5 on Windows, 2 on Linux); the IDE's own waits on what
 it started scale by `PASSENGER_WAIT_SCALE`. `FLAKES.md` records each CI failure's cause.
 
@@ -398,8 +336,8 @@ languageServer: false)`).
 
 **Runs.** `just test` deals the classes outside Alone to N processes by `TestTimes.json` (each with its own run folder;
 the container classes in one lane), then the Alone classes in one. CI deals each system's suite to four shards the same
-way; a shard over `TestBudget.json`'s 32 minutes fails (macOS's runners vary ±10%; a fifth macOS shard would queue behind the disk image), a class over its seconds warns, and `just test-times RUN` rewrites
-the times. The run sets its nice value to 0; a test needing an MSBuild node waits for `Processes.MSBuildNodesCounted` or
+way; a shard over `TestBudget.json`'s 32 minutes fails, a class over its seconds warns, and `just test-times RUN`
+rewrites the times. The run sets its nice value to 0; a test needing an MSBuild node waits for `Processes.MSBuildNodesCounted` or
 skips saying why. The VMs run a filter on a commit: Windows on Arm, `~/Documents/passenger-vm/vm-test.sh NAME FILTER` (no
 Node.js; it can't see dot folders), and Ubuntu 26.04 ARM64, `vm-test-linux.sh NAME FILTER`.
 
@@ -426,9 +364,8 @@ nothing large: a test needing an image the engine lacks names it and skips), Nod
 
 **Debuggees** (`tests/Debuggees`): tests find the lines they stop at by their code (`Debuggees.Line`, `MyMethodEnd`), so
 changing a line's code means changing the tests that name it (a breakpoint on a line with a lambda binds inside it: give
-the column). `SelfDebuggingTests` finds its
-breakpoint by the code `status.Text = why;` in MainWindow.Actions.cs. `Debugging/Helpers/StartHold` holds a launched
-program at its start (`DOTNET_DiagnosticPorts=…,connect,suspend`). `PASSENGER_ENGINE_LOG=FILE` keeps the engine's log.
+the column). `SelfDebuggingTests` finds its breakpoint by the code `status.Text = why;` in MainWindow.Actions.cs.
+`Debugging/Helpers/StartHold` holds a launched program at its start. `PASSENGER_ENGINE_LOG=FILE` keeps the engine's log.
 
 **MCP tests** are agents on the SDK's own client over `McpRig`: `McpTests` and per-area classes on `--mcp`,
 `McpWindowTests` and `McpAttachTests` on a window through `--mcp-attach`, `McpDebuggingTests` holding the tool list's
@@ -454,6 +391,7 @@ size. Each checks a tool's answer, leaving the window's steps to the window's te
   `ToolButtons.Of`/`Toggle` (never focusable); muted words `MutedText`; list keys `ListKeys.Move`; counts `Plural.Of`;
   rounded borders `Border.kindBadge`, `tag` or `box`, never a literal radius; lists of what runs `RunRows`, Details tabs
   `DetailsTables`, merged consoles `MergedLog`; a toolbar down a side `ToolColumn`; scrollbars `ControlThemes.axaml`; the
-  focus ring `FocusRing`. A row a template makes hears its item only while shown (`Observable.FollowWhileShown`).
+  focus ring `FocusRing`; a list's rows `ReusedRows` (`Use`, `Showing`). A row hears its item only while shown
+  (`Observable.FollowWhileShown`).
 - `MainWindow.SmallestWidth` is 640: the layout works at half a 1366-wide screen, and new windows fit the screen's
   working area (`FitToScreen`).
