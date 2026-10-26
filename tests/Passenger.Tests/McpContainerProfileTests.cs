@@ -15,9 +15,9 @@ public sealed class McpContainerProfileTests(ContainerRunDebuggingTests.Tools to
     [Fact]
     public async Task An_agent_profiles_a_program_in_a_container_its_hot_method_at_its_line_and_its_heap()
     {
-        ContainerProfilingTests.Spins spins = await Waiting.Apart(() => ContainerProfilingTests.Spins.Shared, Cancel);
+        ContainerProfilingTests.Spins spins = await ContainerProfilingTests.Spins.SharedAsync();
         Assert.SkipWhen(spins.WhyNot is not null, spins.WhyNot ?? string.Empty);
-        string container = await Waiting.Apart(() => spins.Start("agent", offWindow: true), Cancel);
+        string container = await spins.StartAsync("agent");
         await using McpClient client = await Start(["--mcp", spins.Folder], languageServer: false);
 
         CallToolResult unattached = await Result(client, McpTools.Profile, new() { ["container"] = container, ["seconds"] = 1 });
@@ -31,7 +31,7 @@ public sealed class McpContainerProfileTests(ContainerRunDebuggingTests.Tools to
         Assert.True(spin.TryGetProperty("source", out JsonElement source) && source.GetString() == $"Program.cs:{ContainerProfilingTests.Spins.SpinLine}",
             $"The hot method in the container is not named at its line: {spin}");
         Assert.Contains(profiled.GetProperty("heap").EnumerateArray(), t => t.GetProperty("type").GetString() == "Keepsake");
-        Assert.Equal("running", Docker.State(container));
+        Assert.Equal("running", await Docker.StateAsync(container));
     }
 
     /// <summary>A compose configuration profiled as an agent asks: its launched service recorded in its container from its
@@ -53,17 +53,17 @@ public sealed class McpContainerProfileTests(ContainerRunDebuggingTests.Tools to
             Assert.True(spin.TryGetProperty("source", out JsonElement source) && source.GetString()!.EndsWith($"Program.cs:{ContainerRunProfilingTests.SpinLine}", StringComparison.Ordinal),
                 $"The service's hot method is not named at its line: {spin}");
             Assert.Contains(profiled.GetProperty("heap").EnumerateArray(), t => t.GetProperty("type").GetString() == "Keepsake");
-            Assert.Equal("running", ContainerRunsTests.States(project)["api"]);
+            Assert.Equal("running", (await ContainerRunsTests.StatesAsync(project))["api"]);
         }
         finally
         {
             await Call(client, McpTools.Stop);
-            Assert.True(await Waiting.UntilAsync(() => Docker.NoneLeft(project), TimeSpan.FromMinutes(2),
+            Assert.True(await Waiting.UntilAsync(() => Docker.NoneLeftAsync(project), TimeSpan.FromMinutes(2),
                 TestContext.Current.CancellationToken), "stop left the configuration's containers behind");
             // The headless IDE's state is not the run's, whose end removes only its own images: these go here.
-            foreach (string image in Docker.Run("images", "-q", "--filter", $"label=com.docker.compose.project={project}").Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            foreach (string image in (await Docker.RunAsync("images", "-q", "--filter", $"label=com.docker.compose.project={project}")).Split('\n', StringSplitOptions.RemoveEmptyEntries))
             {
-                Docker.Run("rmi", "-f", image);
+                await Docker.RunAsync("rmi", "-f", image);
             }
         }
     }

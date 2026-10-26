@@ -10,24 +10,7 @@ internal static class TestsNotYet
     private const string Assembly = "Passenger.Tests";
 
     private static readonly ImmutableHashSet<string> Types = ImmutableHashSet.Create(StringComparer.Ordinal,
-        "AspireContainersTests",
-        "AspireExternalDataTests",
-        "AspireStandInTests",
-        "AspireTests",
-        "ContainerDebuggingTests",
-        "ContainerPrograms",
-        "ContainerRunDebuggingTests",
-        "ContainerRunProfilingTests",
-        "ContainerRunsTests",
-        "ContainerRunStopsTests",
-        "ContainerServicesTests",
-        "ContainersTests",
-        "ContainerTelemetryTests",
-        "DebugSession",
-        "Docker",
-        "DockerFilesTests",
-        "EngineChecksTests",
-        "StandInAppHost");
+        "DebugSession");
 
     /// <summary>Whether the symbol is in one of those classes.</summary>
     public static bool Contains(ISymbol? symbol)

@@ -214,9 +214,9 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
         {
             TestFolders.Write(folder, $"{app}/Dockerfile", "FROM mcr.microsoft.com/dotnet/aspnet:10.0\nWORKDIR /src\nCOPY . .\nEXPOSE 8080\n"
                 + $"ENTRYPOINT [\"dotnet\", \"/src/{app}/out/{app}.dll\"]\n");
-            ChildResult built = Task.Run(() => ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", Path.Combine(folder, app, $"{app}.csproj"), "-c", configuration,
+            ChildResult built = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", Path.Combine(folder, app, $"{app}.csproj"), "-c", configuration,
                 "-o", Path.Combine(folder, app, "out"), $"-p:PathMap={folder}{Path.DirectorySeparatorChar}=/src/", "-nologo", "-v:q"], folder), null,
-                TimeSpan.FromMinutes(5).Scaled(), CancellationToken.None)).GetAwaiter().GetResult();
+                TimeSpan.FromMinutes(5).Scaled(), CancellationToken.None)), $"{app}'s build", TimeSpan.FromMinutes(5) + TestFolders.Spare);
             Assert.True(built.Succeeded, $"{app} did not build: {built.Output}{built.Error}");
         }
         File.AppendAllText(Path.Combine(folder, "compose.yaml"), "  quiet:\n    build: { context: ., dockerfile: Api/Dockerfile }\n"
@@ -357,9 +357,7 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
                 {
                     return false;
                 }
-                Task<IReadOnlyList<Passenger.Dap.DapStackFrame>> frames = session.StackTraceAsync(thread);
-                Ui.WaitFor(() => frames.IsCompleted, "the stop's frames");
-                Passenger.Dap.DapStackFrame top = frames.Result.First(f => f.Source?.Path is not null);
+                Passenger.Dap.DapStackFrame top = Ui.Await(session.StackTraceAsync(thread), "the stop's frames").First(f => f.Source?.Path is not null);
                 at = (top.Source!.Path, top.Line - 1);
                 return true;
             }, what, TimeSpan.FromMinutes(2));
@@ -377,11 +375,8 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
 
     internal static string Evaluate(DebugSession session, string expression)
     {
-        Task<IReadOnlyList<Passenger.Dap.DapStackFrame>> frames = session.StackTraceAsync(session.StoppedThread ?? 0);
-        Ui.WaitFor(() => frames.IsCompleted, "the stop's frames");
-        Task<Passenger.Dap.EvaluateResponse> value = session.EvaluateAsync(expression, frames.Result[0].Id, "watch");
-        Ui.WaitFor(() => value.IsCompleted, $"{expression} to be evaluated");
-        return value.Result.Result;
+        IReadOnlyList<Passenger.Dap.DapStackFrame> frames = Ui.Await(session.StackTraceAsync(session.StoppedThread ?? 0), "the stop's frames");
+        return Ui.Await(session.EvaluateAsync(expression, frames[0].Id, "watch"), $"{expression} to be evaluated").Result;
     }
 
     /// <summary>Resumes a tab's program as Resume does with its tab chosen, waiting for it to run.</summary>
@@ -401,7 +396,7 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
     /// <summary>A request to a port, answered once the program goes on (one paused at a breakpoint is waited for); asked
     /// again while nothing listens there yet (the program let go of a moment ago, or restarting). It never fails: a request
     /// that gets no answer within a minute of refusals, or at all, gives back why, so no failure of it outlives its test.</summary>
-    internal static Task<string> Get(int port) => Task.Run(async () =>
+    internal static Task<string> Get(int port) => Waiting.Apart(async () =>
     {
         Uri address = new($"http://localhost:{port.ToString(CultureInfo.InvariantCulture)}/");
         DateTime until = DateTime.UtcNow + TimeSpan.FromMinutes(1).Scaled();
@@ -423,18 +418,20 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
     });
 
     /// <summary>Passenger's container tools for the engine's processor, published where a dev build finds them.</summary>
-    public sealed class Tools
+    public sealed class Tools : IAsyncLifetime
     {
-        public Tools()
+        public async ValueTask InitializeAsync()
         {
-            WhyNot = Docker.WhyNot;
+            WhyNot = await Docker.WhyNotAsync();
             if (WhyNot is null)
             {
-                ContainerPrograms.Publish($"linux-{ContainerPrograms.Processor()}");
+                await ContainerPrograms.PublishAsync($"linux-{await ContainerPrograms.ProcessorAsync()}");
             }
         }
 
         /// <summary>Why no container runs here, or null.</summary>
-        public string? WhyNot { get; }
+        public string? WhyNot { get; private set; }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

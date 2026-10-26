@@ -53,7 +53,9 @@ public sealed class McpProcessesTests : McpRig, IClassFixture<RestoredFolders>
             SaveEdit($"save {save}");
         }
 
-        McpClient client = Await(Waiting.Apart(() => Start(["--mcp", Folder], languageServer: false)), "the agent's Passenger starting");
+        // Taken here, on the UI thread, where the folder is restored.
+        string taken = Folder;
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp", taken], languageServer: false)), "the agent's Passenger starting");
         try
         {
             Await(Waiting.Apart(() => Call(client, McpTools.Open, new() { ["path"] = "Notes.txt" })), "the agent opening Notes.txt");
@@ -106,7 +108,9 @@ public sealed class McpProcessesTests : McpRig, IClassFixture<RestoredFolders>
         const int Earlier = 40_000;
         File.WriteAllText(log, string.Concat(Enumerable.Range(0, Earlier).Select(i =>
             $"{{\"s\":{(now - 100_000_000) * 1000 + i},\"t\":{now - ((Earlier - i) * 200L)},\"k\":\"label\",\"n\":\"earlier {i}\"}}\n")));
-        McpClient client = Await(Waiting.Apart(() => Start(["--mcp", Folder], languageServer: false)), "the agent's Passenger starting");
+        // Taken here, on the UI thread, where the folder is restored.
+        string taken = Folder;
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp", taken], languageServer: false)), "the agent's Passenger starting");
         long[] clock = [new DateTimeOffset(2026, 3, 2, 9, 0, 0, TimeSpan.Zero).UtcTicks];
         global::Passenger.App.History.HistoryKeeping day = new(Days: 1) { Clock = () => new(Interlocked.Read(ref clock[0]), TimeSpan.Zero) };
         MainWindow window = new() { Width = 1200, Height = 800, StateFolder = OwnState, HistoryKeeping = day, StartsLanguageServer = false };

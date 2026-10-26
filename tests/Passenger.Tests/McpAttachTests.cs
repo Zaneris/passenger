@@ -669,7 +669,9 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
         {
             window.OpenFile(Path.Combine(window.Folder!, "Helper.cs"));
             Ui.Settle();
-            client = Await(Waiting.Apart(() => Start(["--mcp-attach", Folder])), "the agent attaching");
+            // Taken here, on the UI thread, where the folder is restored.
+            string taken = Folder;
+            client = Await(Waiting.Apart(() => Start(["--mcp-attach", taken])), "the agent attaching");
             Await(Waiting.Apart(() => Call(client, McpTools.Diagnostics, new() { ["path"] = "Helper.cs" })), "the language server loading the sample");
             Ui.Settle();
             Assert.DoesNotContain(InFlight.Now(), piece => piece.What.Contains(Passenger.Lsp.LspMethods.DocumentDiagnostic, StringComparison.Ordinal));

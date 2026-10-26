@@ -142,7 +142,8 @@ public sealed class ContainerRunProfilingTests(ContainerRunDebuggingTests.Tools 
         {
             return "the snapshot names no container";
         }
-        ChildResult answered = Task.Run(() => ChildProcesses.RunAsync(place.Tools(["sources"]), $"{code.Token}\t{code.ModuleFile}\n", TimeSpan.FromSeconds(30))).GetAwaiter().GetResult();
+        ChildResult answered = Ui.AwaitPumped(Waiting.Apart(() => ChildProcesses.RunAsync(place.Tools(["sources"]), $"{code.Token}\t{code.ModuleFile}\n", TimeSpan.FromSeconds(30))),
+            "the tools' sources in the container", TimeSpan.FromSeconds(30) + TestFolders.Spare);
         return $"asked {code.Token} in {code.ModuleFile}; exit {answered.ExitCode}: '{answered.Output}' '{answered.Error}'";
     }
 

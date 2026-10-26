@@ -283,25 +283,32 @@ public sealed class ContainerProfilingTests(ContainerProfilingTests.Spins.Built 
 
             """;
 
-        private static readonly Lazy<Spins> Made = new(() => new Spins(), LazyThreadSafetyMode.ExecutionAndPublication);
+        private static readonly Lazy<Task<Spins>> Made = new(() => Waiting.Apart(MakeAsync), LazyThreadSafetyMode.ExecutionAndPublication);
 
-        private Spins()
+        private Spins(string folder, string? whyNot, string image)
         {
-            WhyNot = Docker.WhyNot;
-            string root = TestFolders.Unowned("spins-");
-            Folder = PathNames.Canonical(Path.Combine(root, "Spins"));
-            if (WhyNot is not null)
-            {
-                return;
-            }
-            ContainerPrograms.Publish($"linux-{ContainerPrograms.Processor()}");
-            string output = Path.Combine(root, "out");
-            ContainerPrograms.Build(Folder, Project, Program, output);
-            Image = ContainerPrograms.Image(Path.Combine(root, "image"), "spins", "mcr.microsoft.com/dotnet/runtime:10.0", output, "Spins");
+            Folder = folder;
+            WhyNot = whyNot;
+            Image = image;
         }
 
-        /// <summary>The program and its image, made once for the run.</summary>
-        public static Spins Shared => Made.Value;
+        private static async Task<Spins> MakeAsync()
+        {
+            string? whyNot = await Docker.WhyNotAsync();
+            string root = TestFolders.Unowned("spins-");
+            string folder = PathNames.Canonical(Path.Combine(root, "Spins"));
+            if (whyNot is not null)
+            {
+                return new Spins(folder, whyNot, string.Empty);
+            }
+            await ContainerPrograms.PublishAsync($"linux-{await ContainerPrograms.ProcessorAsync()}");
+            string output = Path.Combine(root, "out");
+            await ContainerPrograms.BuildAsync(folder, Project, Program, output);
+            return new Spins(folder, null, await ContainerPrograms.ImageAsync(Path.Combine(root, "image"), "spins", "mcr.microsoft.com/dotnet/runtime:10.0", output, "Spins"));
+        }
+
+        /// <summary>The program and its image, made once for the run, the first time a fixture or a test with no window asks.</summary>
+        public static Task<Spins> SharedAsync() => Made.Value;
 
         /// <summary>Why no container runs here, or null.</summary>
         public string? WhyNot { get; }
@@ -309,30 +316,48 @@ public sealed class ContainerProfilingTests(ContainerProfilingTests.Spins.Built 
         /// <summary>The program's project folder, canonical, as the IDE names it.</summary>
         public string Folder { get; }
 
-        public string Image { get; } = string.Empty;
+        public string Image { get; }
 
         /// <summary>The line (from one) of the hot method's first sequence point, its opening brace, as its PDB has it.</summary>
         public static int SpinLine => Array.FindIndex(Program.Split('\n'), l => l.Contains("public static double Spin()", StringComparison.Ordinal)) + 2;
 
         /// <summary>A container of the image, started as a person would start one (not by Passenger), labelled as the run's,
         /// once its program says what it keeps; <paramref name="held"/>, its runtime held at its start
-        /// (DOTNET_DefaultDiagnosticPortSuspend=1), as a container run's Profile will start each service; <paramref
-        /// name="offWindow"/> for an agent's test, which has no window whose loop to run meanwhile.</summary>
-        public string Start(string name, bool held = false, bool offWindow = false)
+        /// (DOTNET_DefaultDiagnosticPortSuspend=1), as a container run's Profile will start each service. From the UI
+        /// thread, the window's loop running as it waits; an agent's test, with no window, awaits <see cref="StartAsync"/>.</summary>
+        public string Start(string name, bool held = false)
         {
-            string named = $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}spins{name}";
-            Docker.Run(["run", "-d", .. Docker.AnyPids, "--name", named, "--label", Docker.RunLabel, .. held ? (string[])["-e", "DOTNET_DefaultDiagnosticPortSuspend=1"] : [], Image]);
-            // Not Dispatcher.UIThread.CheckAccess(): in a process no window test has run in yet, asking makes the asking thread Avalonia's.
-            Assert.True(held || (offWindow ? Waiting.Until(() => Kept(named) > 0, TimeSpan.FromMinutes(1))
-                : Ui.Pumped(() => Kept(named) > 0, TimeSpan.FromMinutes(1))),
+            string named = Named(name);
+            Docker.Run(Run(named, held));
+            Assert.True(held || Ui.Pumped(() => Kept(named) > 0, TimeSpan.FromMinutes(1)),
                 $"The program in {named} never said what it keeps: {Docker.Ask(["logs", "--tail", "5", named])}");
             return named;
         }
 
-        /// <summary>How many objects the program in a container last said it keeps.</summary>
-        public static int Kept(string container)
+        /// <inheritdoc cref="Start"/>
+        public async Task<string> StartAsync(string name, bool held = false)
         {
-            string said = Docker.Ask(["logs", "--tail", "1", container]).Trim();
+            string named = Named(name);
+            await Docker.RunAsync(Run(named, held));
+            Assert.True(held || await Waiting.UntilAsync(async () => await KeptAsync(named) > 0, TimeSpan.FromMinutes(1)),
+                $"The program in {named} never said what it keeps: {await Docker.AskAsync(["logs", "--tail", "5", named])}");
+            return named;
+        }
+
+        private static string Named(string name) => $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}spins{name}";
+
+        private string[] Run(string named, bool held) =>
+            ["run", "-d", .. Docker.AnyPids, "--name", named, "--label", Docker.RunLabel, .. held ? (string[])["-e", "DOTNET_DefaultDiagnosticPortSuspend=1"] : [], Image];
+
+        /// <summary>How many objects the program in a container last said it keeps.</summary>
+        public static int Kept(string container) => KeptOf(Docker.Ask(["logs", "--tail", "1", container]));
+
+        /// <inheritdoc cref="Kept"/>
+        public static async Task<int> KeptAsync(string container) => KeptOf(await Docker.AskAsync(["logs", "--tail", "1", container]));
+
+        private static int KeptOf(string logged)
+        {
+            string said = logged.Trim();
             return said.StartsWith("kept ", StringComparison.Ordinal) && int.TryParse(said[5..], CultureInfo.InvariantCulture, out int kept) ? kept : 0;
         }
 
@@ -340,9 +365,13 @@ public sealed class ContainerProfilingTests(ContainerProfilingTests.Spins.Built 
         public static string Top(string container) => Docker.Ask(["top", container]);
 
         /// <summary>The class fixture: the program made before the class's tests, off the window's thread.</summary>
-        public sealed class Built
+        public sealed class Built : IAsyncLifetime
         {
-            public Spins Spins { get; } = Shared;
+            public Spins Spins { get; private set; } = null!;
+
+            public async ValueTask InitializeAsync() => Spins = await SharedAsync();
+
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
         }
     }
 }

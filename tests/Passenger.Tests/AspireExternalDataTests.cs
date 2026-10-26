@@ -89,8 +89,8 @@ public sealed class AspireExternalDataTests(AspireApp project) : IClassFixture<A
     /// <summary>The ids of the CLI and the AppHost aspire ps lists for an AppHost, empty while none is up.</summary>
     private static int[] Listed(string cli, string appHost)
     {
-        ChildResult listed = Task.Run(() => ChildProcesses.RunAsync(ChildProcesses.Command(cli, ["ps", "--format", "json", "--nologo"]),
-            limit: TimeSpan.FromSeconds(30).Scaled())).GetAwaiter().GetResult();
+        ChildResult listed = Ui.AwaitPumped(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command(cli, ["ps", "--format", "json", "--nologo"]),
+            limit: TimeSpan.FromSeconds(30).Scaled())), "aspire ps", TimeSpan.FromSeconds(30) + TestFolders.Spare);
         if (!listed.Succeeded || listed.Output.TrimStart() is not ['[', ..] output)
         {
             return [];

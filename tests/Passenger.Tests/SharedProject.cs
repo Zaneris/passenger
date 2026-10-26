@@ -89,10 +89,23 @@ public abstract class SharedProject : IAsyncLifetime
 
     /// <summary>Writes a file a test needs that the project does not have: the next window starts a server of its own, which
     /// loads it as a server started on the folder would, rather than one that would only hear of it through its file
-    /// watcher; and before the next test the file goes, with that server.</summary>
+    /// watcher; and before the next test the file goes, with that server. From the UI thread; a test with no window awaits
+    /// <see cref="WriteAsync"/>.</summary>
     public string Write(string name, string text)
     {
         Drop();
+        return Written(name, text);
+    }
+
+    /// <inheritdoc cref="Write"/>
+    public async Task<string> WriteAsync(string name, string text)
+    {
+        await Server.Drop();
+        return Written(name, text);
+    }
+
+    private string Written(string name, string text)
+    {
         changed = true;
         string path = PathOf(name);
         File.WriteAllText(path, text);

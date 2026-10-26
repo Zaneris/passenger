@@ -21,7 +21,7 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
         await using AspireInteractionHost resources = await AspireInteractionHost.StartAsync(project.KeyFile);
         resources.PushResource(new Passenger.App.Aspire.Protocol.Resource { Name = "api-owned-instance", DisplayName = "api", Uid = "api", ResourceType = "Project", State = "Running" });
         await using AspireDashboardHost dashboard = await AspireDashboardHost.StartAsync();
-        project.Serve(resources, dashboard.Endpoint);
+        await project.ServeAsync(resources, dashboard.Endpoint);
         await using McpClient client = await Start(["--mcp", project.Folder], languageServer: false);
         string host = PathNames.Canonical(project.ProjectFile);
         string api = host + "::api-owned-instance";
@@ -108,7 +108,7 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
             await project.ResetAsync();
             await using AspireInteractionHost resources = await AspireInteractionHost.StartAsync(project.KeyFile);
             resources.PushResource(new Passenger.App.Aspire.Protocol.Resource { Name = "api-owned-instance", DisplayName = "api", Uid = "api", ResourceType = "Project", State = "Running" });
-            project.Serve(resources, elsewhere);
+            await project.ServeAsync(resources, elsewhere);
             await using McpClient client = await Start(["--mcp", project.Folder], languageServer: false);
             string host = PathNames.Canonical(project.ProjectFile);
             await Running(client, host);
@@ -127,7 +127,7 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
         await project.ResetAsync();
         await using AspireInteractionHost resources = await AspireInteractionHost.StartAsync(project.KeyFile);
         resources.PushResource(new Passenger.App.Aspire.Protocol.Resource { Name = "api-owned-instance", DisplayName = "api", Uid = "api", ResourceType = "Project", State = "Running" });
-        project.Serve(resources);
+        await project.ServeAsync(resources);
         await using McpClient client = await Start(["--mcp", project.Folder], languageServer: false);
         string host = PathNames.Canonical(project.ProjectFile);
         await Running(client, host);
@@ -170,7 +170,7 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
             ArgumentInputs = { new Passenger.App.Aspire.Protocol.InteractionInput { Name = "rows", Label = "Rows", InputType = Passenger.App.Aspire.Protocol.InputType.Number } },
         });
         resources.PushResource(api);
-        project.Serve(resources);
+        await project.ServeAsync(resources);
         await using McpClient client = await Start(["--mcp", project.Folder], languageServer: false);
         string host = PathNames.Canonical(project.ProjectFile);
         await Running(client, host);

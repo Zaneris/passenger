@@ -22,8 +22,8 @@ public sealed class McpContainersTests : McpRig, IClassFixture<RestoredFolders>
     [Fact]
     public async Task An_agent_lists_the_engines_containers_reads_a_log_and_stops_and_starts_one()
     {
-        Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
-        string name = Docker.Container("agent", "echo agent-hello; trap 'exit 0' TERM; while true; do sleep 1; done");
+        await Docker.SkipWithoutEngineAsync();
+        string name = await Docker.ContainerAsync("agent", "echo agent-hello; trap 'exit 0' TERM; while true; do sleep 1; done");
         await TakeFolderAsync();
         await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
 
@@ -36,9 +36,9 @@ public sealed class McpContainersTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Contains("agent-hello", Text(await Call(client, McpTools.Containers, new() { ["container"] = name })), StringComparison.Ordinal);
 
         Assert.Equal($"{name}: stop done", Text(await Call(client, McpTools.ContainerAction, new() { ["container"] = name, ["action"] = "stop" })));
-        Assert.Equal("exited", Docker.State(name));
+        Assert.Equal("exited", await Docker.StateAsync(name));
         Assert.Equal($"{name}: start done", Text(await Call(client, McpTools.ContainerAction, new() { ["container"] = name, ["action"] = "start" })));
-        Assert.Equal("running", Docker.State(name));
+        Assert.Equal("running", await Docker.StateAsync(name));
 
         CallToolResult unknown = await Result(client, McpTools.ContainerAction, new() { ["container"] = $"{name}-not", ["action"] = "stop" });
         Assert.True(unknown.IsError == true && Text(unknown).Contains("containers lists them", StringComparison.Ordinal), $"A stop of no such container answered: {Text(unknown)}");
@@ -47,7 +47,7 @@ public sealed class McpContainersTests : McpRig, IClassFixture<RestoredFolders>
     [Fact]
     public async Task An_agents_run_brings_a_compose_configuration_up_with_its_services_state_and_stop_takes_it_down()
     {
-        Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
+        await Docker.SkipWithoutEngineAsync();
         string compose = Plain("mcp-compose-");
         string project = $"ptest{Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture)}agentrun";
         File.WriteAllText(Path.Combine(compose, "compose.yaml"), $"name: {project}\nservices:\n  ticker:\n    image: {Docker.Image}\n"
@@ -59,12 +59,12 @@ public sealed class McpContainersTests : McpRig, IClassFixture<RestoredFolders>
         string status = ran.GetProperty("status").GetString()!;
         Assert.Contains($"Compose project {project}", status, StringComparison.Ordinal);
         Assert.Contains("ticker: running", status, StringComparison.Ordinal);
-        Assert.Equal("running", Docker.Run("compose", "-p", project, "ps", "--format", "{{.State}}"));
+        Assert.Equal("running", await Docker.RunAsync("compose", "-p", project, "ps", "--format", "{{.State}}"));
         Assert.True(await Waiting.UntilAsync(async () => Text(await Call(client, McpTools.Output)).Contains("ticker-up", StringComparison.Ordinal), TimeSpan.FromMinutes(1), TestContext.Current.CancellationToken),
             "output never had the service's log");
 
         Assert.Equal("Stopped", Text(await Call(client, McpTools.Stop)));
-        Assert.Equal(string.Empty, Docker.Run("ps", "-aq", "--filter", $"label=com.docker.compose.project={project}"));
+        Assert.Equal(string.Empty, await Docker.RunAsync("ps", "-aq", "--filter", $"label=com.docker.compose.project={project}"));
     }
 
     [AvaloniaFact]
@@ -188,7 +188,9 @@ public sealed class McpContainersTests : McpRig, IClassFixture<RestoredFolders>
         string left = Docker.Container("left", "sleep 600", state, machine, gone);
         string living = Docker.Container("living", "sleep 600", labels);
         string elsewhere = Docker.Container("elsewhere", "sleep 600", state, $"{ContainerLabels.Machine}=0123456789abcdef", gone);
-        McpClient client = Await(Waiting.Apart(() => Start(["--mcp", Folder], environment: new() { [StateStore.Variable] = TestRun.Settings }, languageServer: false)), "Passenger starting");
+        // Taken here, on the UI thread, where the folder is restored.
+        string taken = Folder;
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp", taken], environment: new() { [StateStore.Variable] = TestRun.Settings }, languageServer: false)), "Passenger starting");
         try
         {
             Ui.WaitFor(() => Docker.State(left) is null, $"{left}, labelled with this state and a process that is gone, removed as Passenger started",

@@ -306,18 +306,16 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
     /// tools put in, the program found by its id there, the adapter started there over docker exec.</summary>
     private static void AttachThrough(MainWindow window, string container, ContainerPaths map)
     {
-        (string tools, int id) = Task.Run(async () =>
+        (string tools, int id) = Ui.AwaitPumped(Waiting.Apart(async () =>
         {
             string executable = await ContainerTools.InContainerAsync(window.Engine, container, CancellationToken.None)
                 ?? await ContainerTools.CopyIntoAsync(window.Engine, container, ContainerToolsSource.Default(window.Releases).Local
                     .Select(l => Path.Combine(l, "linux-" + Turns.Processor)).First(Directory.Exists), CancellationToken.None);
             IReadOnlyList<DotnetProcess> there = await ContainerTools.ProcessesAsync(window.Engine, container, executable, CancellationToken.None);
             return (executable, there.Single(p => p.CommandLine.Contains("Turns.dll", StringComparison.Ordinal)).Id);
-        }).GetAwaiter().GetResult();
+        }), $"the tools in {container} and the program's id there");
         AdapterPlace place = new(arguments => window.Engine.Command(ContainerTools.AdapterCommand(container, tools, arguments)), ContainerTools.SymbolCache, map, container);
-        Task<string?> attached = window.Debugger.AttachAsync(id, $"Turns in {container}", place: place);
-        Ui.WaitFor(() => attached.IsCompleted, "the debugger to attach through the path map");
-        Assert.Null(attached.Result);
+        Assert.Null(Ui.Await(window.Debugger.AttachAsync(id, $"Turns in {container}", place: place), "the debugger to attach through the path map"));
     }
 
     /// <summary>Waits for the program to stop at its breakpoint, failing with what the status bar said when the attach failed.</summary>
@@ -339,21 +337,16 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
         }
         catch (TimeoutException)
         {
-            Task<IReadOnlyList<Passenger.Dap.DapStackFrame>> frames = session.StackTraceAsync(session.StoppedThread ?? 0);
-            Ui.WaitFor(() => frames.IsCompleted, "the stop's frames");
+            IReadOnlyList<Passenger.Dap.DapStackFrame> frames = Ui.Await(session.StackTraceAsync(session.StoppedThread ?? 0), "the stop's frames");
             Assert.Fail("The stop did not show in the editor; its frames: "
-                + string.Join(", ", frames.Result.Take(3).Select(f => $"{f.Name} at {f.Source?.Path}:{f.Line}")));
+                + string.Join(", ", frames.Take(3).Select(f => $"{f.Name} at {f.Source?.Path}:{f.Line}")));
         }
     }
 
     private static string Evaluate(DebugSession session, string expression)
     {
-        Task<int> thread = Task.FromResult(session.StoppedThread ?? 0);
-        Task<IReadOnlyList<Passenger.Dap.DapStackFrame>> frames = session.StackTraceAsync(thread.Result);
-        Ui.WaitFor(() => frames.IsCompleted, "the stop's frames");
-        Task<Passenger.Dap.EvaluateResponse> value = session.EvaluateAsync(expression, frames.Result[0].Id, "watch");
-        Ui.WaitFor(() => value.IsCompleted, $"{expression} to be evaluated");
-        return value.Result.Result;
+        IReadOnlyList<Passenger.Dap.DapStackFrame> frames = Ui.Await(session.StackTraceAsync(session.StoppedThread ?? 0), "the stop's frames");
+        return Ui.Await(session.EvaluateAsync(expression, frames[0].Id, "watch"), $"{expression} to be evaluated").Result;
     }
 
     /// <summary>The program the tests debug, built here in Debug for .NET 10 four ways (as it is, naming the container's
@@ -361,7 +354,7 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
     /// and Passenger's container tools for the engine's processor made where a dev build finds them
     /// (artifacts/container-tools), as <c>just container-tools</c> makes them: a publish of each system, some seconds when
     /// they are up to date. The images carry the run's label and go with the run's containers as it ends (Docker.RemoveEverything).</summary>
-    public sealed class Turns : IDisposable
+    public sealed class Turns : IAsyncLifetime
     {
         private const string Program = """
             // A program that counts its turns until it is ended, for the debugger to attach to in a container.
@@ -390,45 +383,46 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
 
         private readonly string root;
 
-        public Turns()
+        public Turns() => root = TestFolders.Unowned("turns-");
+
+        public async ValueTask InitializeAsync()
         {
-            WhyNot = Docker.WhyNot;
-            root = TestFolders.Unowned("turns-");
+            WhyNot = await Docker.WhyNotAsync();
             if (WhyNot is not null)
             {
                 return;
             }
-            Processor = ContainerPrograms.Processor();
+            Processor = await ContainerPrograms.ProcessorAsync();
             Rid = $"linux-{Processor}";
             foreach (string rid in (string[])[Rid, $"linux-musl-{Processor}"])
             {
-                ContainerPrograms.Publish(rid);
+                await ContainerPrograms.PublishAsync(rid);
             }
-            string host = Build("host", null);
-            string mapped = Build("mapped", "/src/Turns/");
-            string windows = Build("windows", @"C:\work\Turns\");
-            Glibc = Image("glibc", "mcr.microsoft.com/dotnet/runtime:10.0", host, null);
-            Alpine = Image("alpine", "mcr.microsoft.com/dotnet/runtime:10.0-alpine", host, null);
-            Mapped = Image("mapped", "mcr.microsoft.com/dotnet/runtime:10.0", mapped, Folder("mapped"));
-            Windows = Image("windows", "mcr.microsoft.com/dotnet/runtime:10.0", windows, null);
+            string host = await Build("host", null);
+            string mapped = await Build("mapped", "/src/Turns/");
+            string windows = await Build("windows", @"C:\work\Turns\");
+            Glibc = await Image("glibc", "mcr.microsoft.com/dotnet/runtime:10.0", host, null);
+            Alpine = await Image("alpine", "mcr.microsoft.com/dotnet/runtime:10.0-alpine", host, null);
+            Mapped = await Image("mapped", "mcr.microsoft.com/dotnet/runtime:10.0", mapped, Folder("mapped"));
+            Windows = await Image("windows", "mcr.microsoft.com/dotnet/runtime:10.0", windows, null);
         }
 
         /// <summary>Why no container runs here, or null.</summary>
-        public string? WhyNot { get; }
+        public string? WhyNot { get; private set; }
 
         /// <summary>The engine's processor, as .NET names it (x64, arm64).</summary>
         public static string Processor { get; private set; } = "x64";
 
         /// <summary>The tools' glibc system for the engine.</summary>
-        public string Rid { get; } = "linux-x64";
+        public string Rid { get; private set; } = "linux-x64";
 
-        public string Glibc { get; } = string.Empty;
+        public string Glibc { get; private set; } = string.Empty;
 
-        public string Alpine { get; } = string.Empty;
+        public string Alpine { get; private set; } = string.Empty;
 
-        public string Mapped { get; } = string.Empty;
+        public string Mapped { get; private set; } = string.Empty;
 
-        public string Windows { get; } = string.Empty;
+        public string Windows { get; private set; } = string.Empty;
 
         /// <summary>A build's project folder, canonical, as the IDE names it.</summary>
         public string Folder(string variant) => PathNames.Canonical(Path.Combine(root, variant, "Turns"));
@@ -448,23 +442,24 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
 
         /// <summary>The program's project in a folder of its own, built in Debug with its paths mapped to <paramref name="mapped"/>
         /// (the PDB naming them so) or not; its output folder.</summary>
-        private string Build(string variant, string? mapped)
+        private async Task<string> Build(string variant, string? mapped)
         {
             string output = Path.Combine(root, "out", variant);
-            ContainerPrograms.Build(Path.Combine(root, variant, "Turns"), Project, Program, output, mapped);
+            await ContainerPrograms.BuildAsync(Path.Combine(root, variant, "Turns"), Project, Program, output, mapped);
             return output;
         }
 
         /// <summary>An image of the build on a runtime image, with its sources at /src/Turns when given; its tag.</summary>
-        private string Image(string variant, string from, string build, string? sources) =>
-            ContainerPrograms.Image(Path.Combine(root, "image-" + variant), variant, from, build, "Turns", sources, sources is null ? null : "/src/Turns/");
+        private Task<string> Image(string variant, string from, string build, string? sources) =>
+            ContainerPrograms.ImageAsync(Path.Combine(root, "image-" + variant), variant, from, build, "Turns", sources, sources is null ? null : "/src/Turns/");
 
-        public void Dispose()
+        public ValueTask DisposeAsync()
         {
             if (Directory.Exists(root))
             {
                 Directory.Delete(root, recursive: true);
             }
+            return ValueTask.CompletedTask;
         }
     }
 }

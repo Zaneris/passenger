@@ -63,7 +63,7 @@ public sealed class EngineChecksTests
             Assert.True(window.Settings.BuildKitChecks, "Ticking Check Dockerfiles with BuildKit left it off");
 
             // Podman has no BuildKit: the status bar and Problems say the Dockerfile goes unchecked, and nothing is marked.
-            EngineState engine = Task.Run(() => ContainerEngine.Shared.StateAsync()).GetAwaiter().GetResult();
+            EngineState engine = Ui.AwaitPumped(Waiting.Apart(() => ContainerEngine.Shared.StateAsync()), "the container engine's state");
             if (engine.IsPodman)
             {
                 Ui.WaitFor(() => window.Status == engine.Limit, $"the status bar to say Podman has no BuildKit, not \"{window.Status}\"");
@@ -207,7 +207,7 @@ public sealed class EngineChecksTests
         {
             listener.Start();
             Port = ((IPEndPoint)listener.LocalEndpoint).Port;
-            accepting = Task.Run(async () =>
+            accepting = Waiting.Apart(async () =>
             {
                 try
                 {
@@ -228,10 +228,14 @@ public sealed class EngineChecksTests
 
         public int Connections => Volatile.Read(ref connections) + (listener.Pending() ? 1 : 0);
 
+        /// <summary>Stops listening and waits up to 10 s for the loop to see it, the window's loop running meanwhile.</summary>
         public void Dispose()
         {
             listener.Stop();
-            accepting.Wait(TimeSpan.FromSeconds(10));
+            if (Ui.Pumped(() => accepting.IsCompleted, TimeSpan.FromSeconds(10), scaled: false) && accepting.IsCompleted)
+            {
+                accepting.GetAwaiter().GetResult();
+            }
         }
     }
 
@@ -737,7 +741,7 @@ public sealed class EngineChecksTests
     private static void SkipWithoutBuildx()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
-        EngineState state = Task.Run(() => ContainerEngine.Shared.StateAsync()).GetAwaiter().GetResult();
+        EngineState state = Ui.AwaitPumped(Waiting.Apart(() => ContainerEngine.Shared.StateAsync()), "the container engine's state");
         Assert.SkipWhen(state.BuildxVersion is null && !state.IsPodman, "docker buildx, whose build checks a Dockerfile's are, is not installed here");
     }
 

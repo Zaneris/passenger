@@ -415,7 +415,7 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
     [Fact(Skip = AspireApp.AppHostSkipped, SkipType = typeof(AspireApp), SkipWhen = nameof(AspireApp.IsUnavailable))]
     public async Task An_AppHosts_session_container_a_crashed_Passenger_left_is_removed_as_the_next_one_starts_and_a_persistent_one_stays()
     {
-        Assert.SkipWhen(AspireContainersTests.WhyNot is not null, AspireContainersTests.WhyNot ?? string.Empty);
+        await AspireContainersTests.SkipWithoutEngineAsync();
         string starter = TestFolders.Create("mcp-aspire-crash-");
         DeleteAtEnd(starter);
         await TestFolders.PrepareAsync(async () =>
@@ -462,15 +462,15 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
                 }
             }
             await Until(() => killed.All(id => !Processes.IsRunning(id)), "Passenger, its children and the orchestrator killed");
-            Assert.Equal("running", Docker.State(session));
+            Assert.Equal("running", await Docker.StateAsync(session));
 
             await using McpClient next = await Start(["--mcp", starter], languageServer: false);
-            await Until(() => Docker.State(session) is null, "the next Passenger to remove the session container the crashed one's AppHost left");
-            Assert.Equal("running", Docker.State(kept));
+            await Until(async () => await Docker.StateAsync(session) is null, "the next Passenger to remove the session container the crashed one's AppHost left");
+            Assert.Equal("running", await Docker.StateAsync(kept));
         }
         finally
         {
-            AspireContainersTests.RemoveMade();
+            await AspireContainersTests.RemoveMadeAsync();
         }
     }
 
@@ -481,7 +481,7 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
     public async Task An_AppHosts_session_container_goes_with_a_Passenger_killed_alone_by_its_watchdogs_last_command_and_a_persistent_one_stays()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows has no watchdog: the job object ends Passenger's children, and the next start removes its containers");
-        Assert.SkipWhen(AspireContainersTests.WhyNot is not null, AspireContainersTests.WhyNot ?? string.Empty);
+        await AspireContainersTests.SkipWithoutEngineAsync();
         string starter = TestFolders.Create("mcp-aspire-watchdog-");
         DeleteAtEnd(starter);
         await TestFolders.PrepareAsync(async () =>
@@ -523,8 +523,8 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
             passenger.Kill();
             await Until(() => !Processes.IsRunning(passenger.Id), "Passenger killed alone");
             await Until(() => !Processes.IsRunning(host), "the watchdog to end the AppHost its Passenger started");
-            await Until(() => Docker.State(session) is null, "the watchdog's last command to remove the session container the AppHost's orchestrator made");
-            Assert.Equal("running", Docker.State(kept));
+            await Until(async () => await Docker.StateAsync(session) is null, "the watchdog's last command to remove the session container the AppHost's orchestrator made");
+            Assert.Equal("running", await Docker.StateAsync(kept));
         }
         finally
         {
@@ -532,7 +532,7 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
             {
                 Processes.Kill(id);
             }
-            AspireContainersTests.RemoveMade();
+            await AspireContainersTests.RemoveMadeAsync();
         }
     }
 }

@@ -697,13 +697,15 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         string[] missing = [.. ((string[])["mcr.microsoft.com/dotnet/sdk:10.0", "mcr.microsoft.com/dotnet/runtime:10.0"])
-            .Where(i => !Task.Run(() => Passenger.App.Containers.ContainerEngine.Shared.RunAsync(["image", "inspect", i], TimeSpan.FromSeconds(30).Scaled())).GetAwaiter().GetResult().Succeeded)];
+            .Where(i => !Ui.AwaitPumped(Waiting.Apart(() => Passenger.App.Containers.ContainerEngine.Shared.RunAsync(["image", "inspect", i], TimeSpan.FromSeconds(30).Scaled())),
+                $"docker image inspect {i}", TimeSpan.FromSeconds(30) + TestFolders.Spare).Succeeded)];
         Assert.SkipWhen(missing.Length > 0, $"The engine lacks the images the Dockerfile builds on, which no test pulls: pull {string.Join(" and ", missing)} to run it");
         string dockerfile = DockerSupportAtRoot(solution: false);
         string folder = Path.GetDirectoryName(dockerfile)!;
         string image = $"ptest{Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture)}tiny";
-        Passenger.Core.ChildResult built = Task.Run(() => Passenger.App.Containers.ContainerEngine.Shared.RunAsync(
-            ["build", "--pull=false", "--label", Docker.RunLabel, "-t", image, "-f", dockerfile, folder], TimeSpan.FromMinutes(10).Scaled())).GetAwaiter().GetResult();
+        Passenger.Core.ChildResult built = Ui.AwaitPumped(Waiting.Apart(() => Passenger.App.Containers.ContainerEngine.Shared.RunAsync(
+            ["build", "--pull=false", "--label", Docker.RunLabel, "-t", image, "-f", dockerfile, folder], TimeSpan.FromMinutes(10).Scaled())), "the Dockerfile's build",
+            TimeSpan.FromMinutes(10) + TestFolders.Spare);
         try
         {
             Assert.True(built.Succeeded, $"The Dockerfile written did not build: {Passenger.App.Containers.ContainerEngine.Said(built)}");
@@ -832,8 +834,9 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
             ("ByReference/Program.cs", "System.Console.WriteLine(\"By reference\");\n"),
             ("ByPackage/ByPackage.csproj", Console + "  <ItemGroup>\n    <PackageReference Include=\"Shop.Kit\" Version=\"1.0.0\" />\n  </ItemGroup>\n</Project>\n"),
             ("ByPackage/Program.cs", "System.Console.WriteLine(\"By package\");\n"));
-        Passenger.Core.ChildResult packed = Task.Run(() => Passenger.Core.ChildProcesses.RunAsync(
-            Passenger.Core.ChildProcesses.DotnetCommand(["pack", Path.Combine(folder, "Kit", "Kit.csproj"), "-o", Path.Combine(folder, "feed")]), limit: Restore.Limit.Scaled())).GetAwaiter().GetResult();
+        Passenger.Core.ChildResult packed = Ui.Await(Waiting.Apart(() => Passenger.Core.ChildProcesses.RunAsync(
+            Passenger.Core.ChildProcesses.DotnetCommand(["pack", Path.Combine(folder, "Kit", "Kit.csproj"), "-o", Path.Combine(folder, "feed")]), limit: Restore.Limit.Scaled())),
+            "Kit's pack", Restore.Limit + TestFolders.Spare);
         Assert.True(packed.Succeeded, $"Kit did not pack: {packed.Output}{packed.Error}");
         Restore.Run(Path.Combine(folder, "ByPackage", "ByPackage.csproj"));
         MainWindow window = OpenOwn(Path.Combine(folder, "Kit.slnx"));

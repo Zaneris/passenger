@@ -559,7 +559,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         {
             try
             {
-                return Task.Run(() => client.GetStringAsync(address)).GetAwaiter().GetResult();
+                return Ui.AwaitPumped(Waiting.Apart(() => client.GetStringAsync(address)), $"the answer at {address}", client.Timeout + TestFolders.Spare);
             }
             catch (Exception failed) when (failed is HttpRequestException or TaskCanceledException)
             {
@@ -787,8 +787,8 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
             File.SetUnixFileMode(Path.GetDirectoryName(secrets)!, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         }
         // As deployed: web published (no static web assets of this machine's to look for) into the runtime's image, run as its own user.
-        ChildResult built = Task.Run(() => ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["publish", Path.Combine(folder, "Web", "Web.csproj"), "-c", "Debug",
-            "-o", Path.Combine(folder, "deployed"), "-nologo", "-v:q"], folder), null, TimeSpan.FromMinutes(5).Scaled(), CancellationToken.None)).GetAwaiter().GetResult();
+        ChildResult built = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["publish", Path.Combine(folder, "Web", "Web.csproj"), "-c", "Debug",
+            "-o", Path.Combine(folder, "deployed"), "-nologo", "-v:q"], folder), null, TimeSpan.FromMinutes(5).Scaled(), CancellationToken.None)), "web's publish", TimeSpan.FromMinutes(5) + TestFolders.Spare);
         Assert.True(built.Succeeded, $"web did not build: {built.Output}{built.Error}");
         // Its files readable by any user whatever the mode the run made them with: in the image they are root's.
         TestFolders.Write(folder, "Web/Deployed.Dockerfile", "FROM mcr.microsoft.com/dotnet/aspnet:10.0\nUSER $APP_UID\nWORKDIR /app\nCOPY --chmod=755 deployed .\nEXPOSE 8080\nENTRYPOINT [\"dotnet\", \"Web.dll\"]\n");
@@ -1027,12 +1027,16 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
     }
 
     /// <summary>Each service's container's state, by service, failing the test when docker cannot say.</summary>
-    internal static Dictionary<string, string> States(string project) =>
-        StatesOf(Docker.Run("compose", "-p", project, "ps", "--all", "--format", "{{.Service}} {{.State}}"));
+    internal static Dictionary<string, string> States(string project) => StatesOf(Docker.Run(StatesAsked(project)));
+
+    /// <inheritdoc cref="States"/>
+    internal static async Task<Dictionary<string, string>> StatesAsync(string project) => StatesOf(await Docker.RunAsync(StatesAsked(project)));
+
+    private static string[] StatesAsked(string project) => ["compose", "-p", project, "ps", "--all", "--format", "{{.Service}} {{.State}}"];
 
     /// <summary>Each service's container's state as a wait looks at them: null while docker cannot say.</summary>
     internal static Dictionary<string, string>? StatesNow(string project) =>
-        Docker.Said("compose", "-p", project, "ps", "--all", "--format", "{{.Service}} {{.State}}") is { } said ? StatesOf(said) : null;
+        Docker.Said(StatesAsked(project)) is { } said ? StatesOf(said) : null;
 
     /// <summary>Compose's lines of services and states; a service with two containers for a moment (one made anew beside the
     /// one it replaces) has both states, joined, which no single state equals.</summary>
@@ -1042,15 +1046,25 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
             .GroupBy(p => p[0], StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => string.Join('+', g.Select(p => p[1])), StringComparer.Ordinal);
 
-    internal static string Container(string project, string service) =>
-        Docker.Run("ps", "-q", "--filter", $"label=com.docker.compose.project={project}", "--filter", $"label=com.docker.compose.service={service}");
+    internal static string Container(string project, string service) => Docker.Run(ContainerAsked(project, service, all: false));
+
+    /// <inheritdoc cref="Container"/>
+    internal static Task<string> ContainerAsync(string project, string service) => Docker.RunAsync(ContainerAsked(project, service, all: false));
+
+    private static string[] ContainerAsked(string project, string service, bool all) =>
+        ["ps", all ? "-aq" : "-q", "--filter", $"label=com.docker.compose.project={project}", "--filter", $"label=com.docker.compose.service={service}"];
 
     /// <summary>When a service's container last started; empty while it has none, stopped or not (a restart between its
     /// stop and its start, a container made anew), which a wait reads as not yet.</summary>
     internal static string Started(string project, string service) =>
-        Docker.Ask(["ps", "-aq", "--filter", $"label=com.docker.compose.project={project}", "--filter", $"label=com.docker.compose.service={service}"]).Trim() is { Length: > 0 } container
-            && !container.Contains('\n', StringComparison.Ordinal)
+        Docker.Ask(ContainerAsked(project, service, all: true)).Trim() is { Length: > 0 } container && !container.Contains('\n', StringComparison.Ordinal)
             ? Docker.Ask(["inspect", "-f", "{{.State.StartedAt}}", container]).Trim()
+            : string.Empty;
+
+    /// <inheritdoc cref="Started"/>
+    internal static async Task<string> StartedAsync(string project, string service) =>
+        (await Docker.AskAsync(ContainerAsked(project, service, all: true))).Trim() is { Length: > 0 } container && !container.Contains('\n', StringComparison.Ordinal)
+            ? (await Docker.AskAsync(["inspect", "-f", "{{.State.StartedAt}}", container])).Trim()
             : string.Empty;
 
     /// <summary>The host's port a service's port inside (8080 unless given) is published on.</summary>
@@ -1090,7 +1104,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
     {
         try
         {
-            return Task.Run(() => Http.GetStringAsync(new Uri($"http://localhost:{port}/"))).GetAwaiter().GetResult();
+            return Ui.AwaitPumped(Waiting.Apart(() => Http.GetStringAsync(new Uri($"http://localhost:{port}/"))), $"the answer on port {port}", Http.Timeout + TestFolders.Spare);
         }
         catch (Exception failed) when (failed is HttpRequestException or TaskCanceledException)
         {

@@ -538,6 +538,16 @@ public abstract class McpRig : IDisposable
         }
     }
 
+    /// <inheritdoc cref="Until(Func{bool}, string)"/>
+    protected async Task Until(Func<Task<bool>> condition, string what)
+    {
+        TimeSpan limit = TimeSpan.FromMinutes(2);
+        if (!await Waiting.UntilAsync(condition, limit, Cancel, TimeSpan.FromMilliseconds(100)))
+        {
+            throw new TimeoutException($"Waited {limit.Scaled().TotalSeconds} s for {what}.{Said()}");
+        }
+    }
+
     /// <summary>What a tool answered in words, or an error's words.</summary>
     protected static string Text(JsonElement answer) => answer.ValueKind == JsonValueKind.String ? answer.GetString()! : answer.GetRawText();
 

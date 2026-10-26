@@ -360,7 +360,9 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
 
         string socket = window.AgentSocket ?? throw new InvalidOperationException($"The window does not listen for agents: {window.Status}");
         Assert.Equal([socket], Sockets());
-        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", Folder])), "the agent attaching");
+        // Taken here, on the UI thread, where the folder is restored.
+        string taken = Folder;
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", taken])), "the agent attaching");
         McpClient? second = null;
         try
         {
@@ -380,7 +382,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
             dialog.Change(s => s with { McpServer = true });
             dialog.Ok();
             Ui.Settle();
-            second = Await(Waiting.Apart(() => Start(["--mcp-attach", Folder])), "a second agent attaching");
+            second = Await(Waiting.Apart(() => Start(["--mcp-attach", taken])), "a second agent attaching");
             Assert.Equal(window.Folder, Await(Waiting.Apart(() => Call(second, McpTools.Workspace)), "the second agent's call").GetProperty("folder").GetString());
             Assert.Empty(window.OwnedWindows.OfType<AgentAdmissionDialog>());
             WaitFor(() => window.AgentStatus == "2 agents connected", "the status bar to count both agents");

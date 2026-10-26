@@ -1001,7 +1001,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
                 if (command.CommandName == "resource-restart")
                 {
                     Processes.Kill(first);
-                    again = Task.Run(() => project.StartApiAsync("apiservice", subscribe: false));
+                    again = Waiting.Apart(() => project.StartApiAsync("apiservice", subscribe: false));
                 }
             };
             // Attach shows the Debug window: the Aspire window's resources are asked for again.
@@ -2115,7 +2115,7 @@ public sealed class StandInAppHost : SharedProject
     /// the execution endpoint the IDE gave the AppHost; with the IDE's answer.</summary>
     internal (System.Net.WebSockets.ClientWebSocket Notified, System.Net.HttpStatusCode Answer) AskToStartApi(string resource, string mode = "NoDebug",
         IReadOnlyDictionary<string, string>? environment = null, string? projectPath = null) =>
-        Ui.Await(Task.Run(() => StartApiAsync(resource, mode, environment, projectPath: projectPath)), "the IDE's answer to the run session");
+        Ui.Await(Waiting.Apart(() => StartApiAsync(resource, mode, environment, projectPath: projectPath)), "the IDE's answer to the run session");
 
     /// <summary>Writes tests/Debuggees/BindingErrorsApp into the stand-in's folder, restored from the run's feed and built by
     /// its real path, for the AppHost to start as a service of its own: an Avalonia app whose caption's binding fails. Its
@@ -2211,10 +2211,17 @@ public sealed class StandInAppHost : SharedProject
     /// with <paramref name="https"/>, its dashboard served there as an https profile serves it, with no unsecured transport.</summary>
     internal void Serve(AspireInteractionHost backend, string? https = null) => Write($"{Name}/Properties/launchSettings.json", Profile(backend.Endpoint, https));
 
+    /// <inheritdoc cref="Serve(AspireInteractionHost, string?)"/>
+    internal Task ServeAsync(AspireInteractionHost backend) => WriteAsync($"{Name}/Properties/launchSettings.json", Profile(backend.Endpoint));
+
     /// <summary>The launch profile of <see cref="Serve(AspireInteractionHost, string?)"/>, the AppHost's own address
     /// (applicationUrl, where the IDE finds its dashboard) the stand-in dashboard's.</summary>
     internal void Serve(AspireInteractionHost backend, Uri dashboard) =>
         Write($"{Name}/Properties/launchSettings.json", Profile(backend.Endpoint, applicationUrl: dashboard.AbsoluteUri.TrimEnd('/')));
+
+    /// <inheritdoc cref="Serve(AspireInteractionHost, Uri)"/>
+    internal Task ServeAsync(AspireInteractionHost backend, Uri dashboard) =>
+        WriteAsync($"{Name}/Properties/launchSettings.json", Profile(backend.Endpoint, applicationUrl: dashboard.AbsoluteUri.TrimEnd('/')));
 
     private string Profile(Uri? resourceService, string? https = null, string? applicationUrl = null)
     {

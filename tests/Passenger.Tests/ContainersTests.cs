@@ -42,7 +42,10 @@ internal static class Docker
     public static IReadOnlyList<string> Images { get; } =
         [.. File.ReadAllLines(Path.Combine(Debugging.Helpers.Debuggees.Root, "tests", "Passenger.Tests", "ContainerImages.txt")).Select(l => l.Trim()).Where(l => l.Length > 0)];
 
-    private static readonly Lazy<string?> Unusable = new(() =>
+    /// <summary>Why no container can run here, asked once a run, on the thread pool, the first time a test asks.</summary>
+    private static readonly Lazy<Task<string?>> Unusable = new(() => Waiting.Apart(UnusableAsync), LazyThreadSafetyMode.ExecutionAndPublication);
+
+    private static async Task<string?> UnusableAsync()
     {
         if (ContainerEngine.Shared.Cli is null)
         {
@@ -57,8 +60,8 @@ internal static class Docker
         TimeSpan limit = TimeSpan.FromSeconds(30).Scaled();
         try
         {
-            ChildResult info = Ask(["info", "--format", "{{.OSType}}"], limit);
-            if (!info.Succeeded && Ask(["info", "--format", "{{.Host.OS}}"], limit) is { Succeeded: true } podman)
+            ChildResult info = await AskAsync(["info", "--format", "{{.OSType}}"], limit);
+            if (!info.Succeeded && await AskAsync(["info", "--format", "{{.Host.OS}}"], limit) is { Succeeded: true } podman)
             {
                 // A docker that is Podman's own command words its system there.
                 info = podman;
@@ -66,13 +69,13 @@ internal static class Docker
             string os = info.Output.Trim();
             string? why = !info.Succeeded ? $"The container engine is not running here: {ContainerEngine.Said(info)}"
                 : os != "linux" ? $"The container engine here runs {os} containers, and these tests run Linux ones" : null;
-            if (why is null && !mayPull && Images.Where(i => !Ask(["image", "inspect", i], limit).Succeeded).ToArray() is { Length: > 0 } missing)
+            if (why is null && !mayPull && await MissingAsync(limit) is { Length: > 0 } missing)
             {
                 why = $"The engine lacks {string.Join(" and ", missing)}, which no test pulls here ({PullVariable}=never): pull them before the run";
             }
             if (why is null)
             {
-                RemoveDeadRuns();
+                await RemoveDeadRunsAsync();
             }
             return why;
         }
@@ -80,41 +83,55 @@ internal static class Docker
         {
             return $"The container engine did not answer docker info within {limit.TotalSeconds:0} s";
         }
-    });
+    }
+
+    /// <summary>The images the run's tests take that the engine lacks.</summary>
+    private static async Task<string[]> MissingAsync(TimeSpan limit)
+    {
+        List<string> missing = [];
+        foreach (string image in Images)
+        {
+            if (!(await AskAsync(["image", "inspect", image], limit)).Succeeded)
+            {
+                missing.Add(image);
+            }
+        }
+        return [.. missing];
+    }
 
     /// <summary>What runs of this machine that ended without their own end (killed, crashed) left: everything with a run's
     /// label whose process is gone, and what such a run had its IDE make, labelled with that run's state and process.</summary>
-    private static void RemoveDeadRuns()
+    private static async Task RemoveDeadRunsAsync()
     {
         string machine = $"{ContainerLabels.MachineValue}.";
         TimeSpan limit = TimeSpan.FromSeconds(60).Scaled();
         try
         {
-            foreach ((string kind, string[] list, string[] remove) in (ReadOnlySpan<(string, string[], string[])>)[
+            foreach ((string kind, string[] list, string[] remove) in ((string, string[], string[])[])[
                 ("container", ["ps", "-a"], ["rm", "-f"]), ("network", ["network", "ls"], ["network", "rm"]), ("volume", ["volume", "ls"], ["volume", "rm", "-f"])])
             {
                 string id = kind == "volume" ? "{{.Name}}" : "{{.ID}}";
-                string[] dead = [.. Lines(Ask([.. list, "--filter", $"label={RunKey}", "--format", $"{id}|{{{{.Label \"{RunKey}\"}}}}"], limit).Output)
+                string[] dead = [.. Lines((await AskAsync([.. list, "--filter", $"label={RunKey}", "--format", $"{id}|{{{{.Label \"{RunKey}\"}}}}"], limit)).Output)
                     .Select(l => l.Split('|')).Where(l => l.Length == 2 && l[1].StartsWith(machine, StringComparison.Ordinal) && ContainerLabels.IsGone(l[1][machine.Length..]))
                     .Select(l => l[0])
-                    .Concat(Lines(Ask([.. list, "--filter", $"label={ContainerLabels.Machine}={ContainerLabels.MachineValue}", "--format",
-                            $"{id}|{{{{.Label \"{ContainerLabels.State}\"}}}}|{{{{.Label \"{ContainerLabels.Process}\"}}}}"], limit).Output)
+                    .Concat(Lines((await AskAsync([.. list, "--filter", $"label={ContainerLabels.Machine}={ContainerLabels.MachineValue}", "--format",
+                            $"{id}|{{{{.Label \"{ContainerLabels.State}\"}}}}|{{{{.Label \"{ContainerLabels.Process}\"}}}}"], limit)).Output)
                         .Select(l => l.Split('|')).Where(l => l.Length == 3 && IsDeadRuns(l[1], l[2])).Select(l => l[0]))
                     .Distinct(StringComparer.Ordinal)];
                 if (dead.Length > 0)
                 {
-                    Ask([.. remove, .. dead], limit);
+                    await AskAsync([.. remove, .. dead], limit);
                 }
             }
-            string[] images = Lines(Ask(["image", "ls", "-a", "-q", "--filter", $"label={RunKey}"], limit).Output);
+            string[] images = Lines((await AskAsync(["image", "ls", "-a", "-q", "--filter", $"label={RunKey}"], limit)).Output);
             if (images.Length > 0)
             {
-                string[] dead = [.. Lines(Ask(["image", "inspect", "--format", $"{{{{.Id}}}}|{{{{index .Config.Labels \"{RunKey}\"}}}}", .. images.Distinct(StringComparer.Ordinal)], limit).Output)
+                string[] dead = [.. Lines((await AskAsync(["image", "inspect", "--format", $"{{{{.Id}}}}|{{{{index .Config.Labels \"{RunKey}\"}}}}", .. images.Distinct(StringComparer.Ordinal)], limit)).Output)
                     .Select(l => l.Split('|')).Where(l => l.Length == 2 && l[1].StartsWith(machine, StringComparison.Ordinal) && ContainerLabels.IsGone(l[1][machine.Length..]))
                     .Select(l => l[0])];
                 if (dead.Length > 0)
                 {
-                    Ask(["rmi", "-f", .. dead], limit);
+                    await AskAsync(["rmi", "-f", .. dead], limit);
                 }
             }
         }
@@ -131,21 +148,26 @@ internal static class Docker
             && state == ContainerLabels.StateValueOf(Path.Combine(Path.GetTempPath(), TestRun.Prefix + id + TestRun.Unindexed, "settings"));
     }
 
-    /// <summary>Runs docker to its end off the caller's thread, which may be the window's: its continuations never wait on it.</summary>
-    private static ChildResult Ask(string[] words, TimeSpan limit) => Task.Run(() => ContainerEngine.Shared.RunAsync(words, limit)).GetAwaiter().GetResult();
+    /// <summary>Docker run to its end from the UI thread (a window test's), on the thread pool, the window's loop running
+    /// meanwhile and never waited for; a test with no window, or a fixture, awaits each member's async form.</summary>
+    private static ChildResult Ask(string[] words, TimeSpan limit) =>
+        Ui.AwaitPumped(Waiting.Apart(() => AskAsync(words, limit)), $"docker {string.Join(' ', words)}", limit + TestFolders.Spare);
+
+    private static Task<ChildResult> AskAsync(string[] words, TimeSpan limit) => ContainerEngine.Shared.RunAsync(words, limit);
 
     /// <summary>What docker says to a command, its output or else its errors, whether it succeeded or not.</summary>
-    public static string Ask(string[] arguments)
-    {
-        ChildResult result = Ask(arguments, TimeSpan.FromMinutes(1).Scaled());
-        return result.Output.Length > 0 ? result.Output : result.Error;
-    }
+    public static string Ask(string[] arguments) => Said(Ask(arguments, TimeSpan.FromMinutes(1).Scaled()));
+
+    /// <inheritdoc cref="Ask(string[])"/>
+    public static async Task<string> AskAsync(string[] arguments) => Said(await AskAsync(arguments, TimeSpan.FromMinutes(1).Scaled()));
+
+    private static string Said(ChildResult result) => result.Output.Length > 0 ? result.Output : result.Error;
 
     /// <summary>What a test's docker build takes so its image lands in the engine: Docker's buildx on a builder of its own
     /// (on Podman's socket, a BuildKit container it starts) keeps what it built in that builder's cache unless told to load it.
     /// Podman's own build has no --load, and lands its images.</summary>
-    public static string[] Load =>
-        Task.Run(() => ContainerEngine.Shared.StateAsync()).GetAwaiter().GetResult() is { PodmanCli: false, BuildxVersion: not null } ? ["--load"] : [];
+    public static async Task<string[]> LoadAsync() =>
+        await ContainerEngine.Shared.StateAsync() is { PodmanCli: false, BuildxVersion: not null } ? ["--load"] : [];
 
     /// <summary>An image's name as Docker words it: Podman names an image built or loaded here in full (docker.io/library/…,
     /// localhost/…).</summary>
@@ -157,13 +179,28 @@ internal static class Docker
     public static string WithoutInit(string command) =>
         command.StartsWith("/run/podman-init -- ", StringComparison.Ordinal) ? command["/run/podman-init -- ".Length..] : command;
 
-    /// <summary>Why no container can run here (no CLI, no engine, Windows containers), or null when one can.</summary>
-    public static string? WhyNot => Unusable.Value;
+    /// <summary>Why no container can run here (no CLI, no engine, Windows containers), or null when one can: asked from the
+    /// UI thread, the window's loop running meanwhile.</summary>
+    public static string? WhyNot => Ui.AwaitPumped(Unusable.Value, "the container engine to say what it runs", TimeSpan.FromMinutes(5));
+
+    /// <inheritdoc cref="WhyNot"/>
+    public static Task<string?> WhyNotAsync() => Unusable.Value;
+
+    /// <summary>Skips a test with no window where no container can run, saying why.</summary>
+    public static async Task SkipWithoutEngineAsync()
+    {
+        string? why = await WhyNotAsync();
+        Assert.SkipWhen(why is not null, why ?? string.Empty);
+    }
 
     /// <summary>Runs docker to its end, failing the test with what it said when it fails.</summary>
-    public static string Run(params string[] arguments)
+    public static string Run(params string[] arguments) => Ran(arguments, Ask(arguments, TimeSpan.FromMinutes(3).Scaled()));
+
+    /// <inheritdoc cref="Run"/>
+    public static async Task<string> RunAsync(params string[] arguments) => Ran(arguments, await AskAsync(arguments, TimeSpan.FromMinutes(3).Scaled()));
+
+    private static string Ran(string[] arguments, ChildResult result)
     {
-        ChildResult result = Ask(arguments, TimeSpan.FromMinutes(3).Scaled());
         Assert.True(result.Succeeded, $"docker {string.Join(' ', arguments)} failed: {ContainerEngine.Said(result)}");
         return result.Output.Trim();
     }
@@ -174,8 +211,7 @@ internal static class Docker
     {
         try
         {
-            ChildResult result = Ask(arguments, TimeSpan.FromMinutes(1).Scaled());
-            return result.Succeeded ? result.Output.Trim() : null;
+            return Answer(Ask(arguments, TimeSpan.FromMinutes(1).Scaled()));
         }
         catch (TimeoutException)
         {
@@ -183,10 +219,30 @@ internal static class Docker
         }
     }
 
+    /// <inheritdoc cref="Said"/>
+    public static async Task<string?> SaidAsync(params string[] arguments)
+    {
+        try
+        {
+            return Answer(await AskAsync(arguments, TimeSpan.FromMinutes(1).Scaled()));
+        }
+        catch (TimeoutException)
+        {
+            return null;
+        }
+    }
+
+    private static string? Answer(ChildResult result) => result.Succeeded ? result.Output.Trim() : null;
+
     /// <summary>Whether a Compose project has no container left (of those carrying each label given too), as a wait looks:
     /// false while docker cannot say.</summary>
-    public static bool NoneLeft(string project, params string[] labels) =>
-        Said(["ps", "-aq", "--filter", $"label=com.docker.compose.project={project}", .. labels.SelectMany(l => (string[])["--filter", $"label={l}"])]) is "";
+    public static bool NoneLeft(string project, params string[] labels) => Said(Left(project, labels)) is "";
+
+    /// <inheritdoc cref="NoneLeft"/>
+    public static async Task<bool> NoneLeftAsync(string project, params string[] labels) => await SaidAsync(Left(project, labels)) is "";
+
+    private static string[] Left(string project, string[] labels) =>
+        ["ps", "-aq", "--filter", $"label=com.docker.compose.project={project}", .. labels.SelectMany(l => (string[])["--filter", $"label={l}"])];
 
     /// <summary>Waits, the window running, until a Compose project has no container left (of those carrying each label given
     /// too), failing with what was to take them down.</summary>
@@ -216,32 +272,45 @@ internal static class Docker
     /// <summary>A container of busybox running <paramref name="command"/>, named and labelled as the test's, with more labels.</summary>
     public static string Container(string name, string command, params string[] labels)
     {
+        (string named, string[] words) = Busybox(name, command, labels);
+        Run(words);
+        return named;
+    }
+
+    /// <inheritdoc cref="Container"/>
+    public static async Task<string> ContainerAsync(string name, string command, params string[] labels)
+    {
+        (string named, string[] words) = Busybox(name, command, labels);
+        await RunAsync(words);
+        return named;
+    }
+
+    private static (string Named, string[] Words) Busybox(string name, string command, string[] labels)
+    {
         string named = $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}{name}";
         List<string> words = ["run", "-d", .. AnyPids, "--name", named, "--label", RunLabel];
         foreach (string label in labels)
         {
             words.AddRange(["--label", label]);
         }
-        Run([.. words, Image, "sh", "-c", command]);
-        return named;
+        return (named, [.. words, Image, "sh", "-c", command]);
     }
 
     /// <summary>A container's state as docker inspect says it (running, exited, paused), or null when there is none.</summary>
-    public static string? State(string name)
-    {
-        ChildResult result = Ask(["inspect", "-f", "{{.State.Status}}", name], TimeSpan.FromSeconds(30).Scaled());
-        return result.Succeeded ? result.Output.Trim() : null;
-    }
+    public static string? State(string name) => Answer(Ask(["inspect", "-f", "{{.State.Status}}", name], TimeSpan.FromSeconds(30).Scaled()));
+
+    /// <inheritdoc cref="State"/>
+    public static async Task<string?> StateAsync(string name) => Answer(await AskAsync(["inspect", "-f", "{{.State.Status}}", name], TimeSpan.FromSeconds(30).Scaled()));
 
     /// <summary>Whether a volume of that name is there.</summary>
     public static bool VolumeExists(string name) => Ask(["volume", "inspect", name], TimeSpan.FromSeconds(30).Scaled()).Succeeded;
 
     /// <summary>Removes every container, network, volume and image the run's tests made or had the IDE make (the run's state's label), as
     /// the run ends; quiet where there is no engine.</summary>
-    public static void RemoveEverything()
+    public static async Task RemoveEverythingAsync()
     {
         // A run none of whose tests asked for an engine made nothing on one.
-        if (!Unusable.IsValueCreated || Unusable.Value is not null)
+        if (!Unusable.IsValueCreated || await Unusable.Value is not null)
         {
             return;
         }
@@ -249,30 +318,30 @@ internal static class Docker
         {
             foreach (string label in (string[])[RunLabel, $"{ContainerLabels.State}={ContainerLabels.StateValue}"])
             {
-                ChildResult containers = Ask(["ps", "-aq", "--filter", $"label={label}"], TimeSpan.FromSeconds(30).Scaled());
+                ChildResult containers = await AskAsync(["ps", "-aq", "--filter", $"label={label}"], TimeSpan.FromSeconds(30).Scaled());
                 string[] ids = containers.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
                 if (ids.Length > 0)
                 {
-                    Ask(["rm", "-f", .. ids], TimeSpan.FromSeconds(60).Scaled());
+                    await AskAsync(["rm", "-f", .. ids], TimeSpan.FromSeconds(60).Scaled());
                 }
-                ChildResult networks = Ask(["network", "ls", "-q", "--filter", $"label={label}"], TimeSpan.FromSeconds(30).Scaled());
+                ChildResult networks = await AskAsync(["network", "ls", "-q", "--filter", $"label={label}"], TimeSpan.FromSeconds(30).Scaled());
                 string[] made = networks.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
                 if (made.Length > 0)
                 {
-                    Ask(["network", "rm", .. made], TimeSpan.FromSeconds(60).Scaled());
+                    await AskAsync(["network", "rm", .. made], TimeSpan.FromSeconds(60).Scaled());
                 }
-                ChildResult volumes = Ask(["volume", "ls", "-q", "--filter", $"label={label}"], TimeSpan.FromSeconds(30).Scaled());
+                ChildResult volumes = await AskAsync(["volume", "ls", "-q", "--filter", $"label={label}"], TimeSpan.FromSeconds(30).Scaled());
                 string[] kept = volumes.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
                 if (kept.Length > 0)
                 {
-                    Ask(["volume", "rm", "-f", .. kept], TimeSpan.FromSeconds(60).Scaled());
+                    await AskAsync(["volume", "rm", "-f", .. kept], TimeSpan.FromSeconds(60).Scaled());
                 }
                 // Untagged ones too: one removed while a container ran is only untagged and stays.
-                ChildResult images = Ask(["image", "ls", "-a", "-q", "--filter", $"label={label}"], TimeSpan.FromSeconds(30).Scaled());
+                ChildResult images = await AskAsync(["image", "ls", "-a", "-q", "--filter", $"label={label}"], TimeSpan.FromSeconds(30).Scaled());
                 string[] built = [.. images.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct(StringComparer.Ordinal)];
                 if (built.Length > 0)
                 {
-                    Ask(["rmi", "-f", .. built], TimeSpan.FromSeconds(60).Scaled());
+                    await AskAsync(["rmi", "-f", .. built], TimeSpan.FromSeconds(60).Scaled());
                 }
             }
         }
@@ -511,14 +580,10 @@ public sealed class ContainersTests
         Assert.Equal(["/big", "/note.txt"], view.Files.Entries.Select(f => f.Path).Order(StringComparer.Ordinal));
 
         // Asked for by its path all the same (as a test or a stale row could), it is refused and nothing is written.
-        Task<string?> refused = view.Files.OpenAsync("/" + made);
-        Ui.WaitFor(() => refused.IsCompleted, "the made-up path's answer");
-        Assert.NotNull(refused.Result);
+        Assert.NotNull(Ui.Await(view.Files.OpenAsync("/" + made), "the made-up path's answer"));
         Assert.False(File.Exists(escaped), $"A container's made-up file name had Passenger write {escaped}, outside its cache");
 
-        Task<string?> big = view.Files.OpenAsync("/big");
-        Ui.WaitFor(() => big.IsCompleted, "the large file's answer");
-        Assert.Equal("/big is larger than 16 MB", big.Result);
+        Assert.Equal("/big is larger than 16 MB", Ui.Await(view.Files.OpenAsync("/big"), "the large file's answer"));
         string cache = Path.Combine(window.StateFolder, "cache", "containers");
         Assert.Empty(Directory.Exists(cache) ? Directory.EnumerateFiles(cache, "*big*", SearchOption.AllDirectories) : []);
 

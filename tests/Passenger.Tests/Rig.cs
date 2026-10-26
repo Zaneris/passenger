@@ -37,7 +37,7 @@ public static class TestApp
 /// never writes to the person's own state, log or history, an agent of theirs never attaches to a test's window, and a
 /// person's commit signing or hooks never reach a test's commit. The folder goes when the run ends; one a run that was
 /// killed left goes when the next begins.</summary>
-public sealed class TestRun : IDisposable
+public sealed class TestRun : IAsyncDisposable
 {
     internal const string Prefix = "passenger-run-";
 
@@ -241,8 +241,10 @@ public sealed class TestRun : IDisposable
     }
 
     /// <summary>The run's end, once every test is done (xunit disposes the assembly's fixture then).</summary>
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
+        // No child holds a container: what the run's tests made, and what they had the IDE make, goes by its labels.
+        await Docker.RemoveEverythingAsync();
         End();
         // Once more after the log's own last flush, which it hooked after the run began, and so runs before this.
         AppDomain.CurrentDomain.ProcessExit += (_, _) => End();
@@ -250,8 +252,6 @@ public sealed class TestRun : IDisposable
 
     private static void End()
     {
-        // No child holds a container: what the run's tests made, and what they had the IDE make, goes by its labels.
-        Docker.RemoveEverything();
         // The windows' agent sockets are in a folder named for the run's state, outside it.
         foreach (string folder in (string[])[Root, Passenger.App.Mcp.McpHost.SocketFolder, AspireCli.Home])
         {
@@ -1136,6 +1136,18 @@ public static class Ui
             throw new TimeoutException($"Waited {within.TotalSeconds} s for {what}, the window's thread idle");
         }
         return task.GetAwaiter().GetResult();
+    }
+
+    /// <inheritdoc cref="Idle{T}(Task{T}, string, TimeSpan?)"/>
+    public static void Idle(Task task, string what, TimeSpan? limit = null)
+    {
+        TimeSpan within = (limit ?? SettleLimit).Scaled();
+        Waiting.Until(() => task.IsCompleted, within, scaled: false);
+        if (!task.IsCompleted)
+        {
+            throw new TimeoutException($"Waited {within.TotalSeconds} s for {what}, the window's thread idle");
+        }
+        task.GetAwaiter().GetResult();
     }
 
     /// <summary>A click as a person's mouse makes it, pressed and let go at the control's centre (or a point in it) in the
