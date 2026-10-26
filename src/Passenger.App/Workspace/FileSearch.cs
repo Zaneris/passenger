@@ -199,13 +199,15 @@ public static class FileSearch
 
     /// <summary>Replaces every match in a file, an open one's text as the editor has it (<paramref name="open"/>), else
     /// its own read from disk, a regex's groups ($1, ${name}) filled in from each match as the Find bar's Replace fills
-    /// them; a file whose search a regex ran too long in is left, never replaced in part.</summary>
+    /// them; a file whose search a regex ran too long in is left, never replaced in part, as is one whose replaced text
+    /// would be too long.</summary>
     public static Replacing Plan(string path, TextSnapshot? open, SearchPattern pattern, string replacement)
     {
         if (open is not null)
         {
             SearchResult found = TextSearch.FindAll(open, pattern, int.MaxValue);
-            return new Replacing(path, open, found.Stopped ? [] : found.Replacements(replacement), null, null, found.Stopped ? StoppedWhy : null);
+            string? why = Unreplaced(found, replacement);
+            return new Replacing(path, open, why is null ? found.Replacements(replacement) : [], null, null, why);
         }
         try
         {
@@ -214,7 +216,7 @@ public static class FileSearch
                 return new Replacing(path, null, [], null, null, null);
             }
             SearchResult found = TextSearch.FindAll(file.Text, pattern, int.MaxValue);
-            return found.Stopped ? new Replacing(path, null, [], null, null, StoppedWhy)
+            return Unreplaced(found, replacement) is { } why ? new Replacing(path, null, [], null, null, why)
                 : new Replacing(path, null, [], file, Applied(file.Text, found.Replacements(replacement)), null);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
@@ -222,6 +224,11 @@ public static class FileSearch
             return new Replacing(path, null, [], null, null, Refusal(error));
         }
     }
+
+    /// <summary>Why a file's matches are left as they were: a regex ran too long there, or replacing them would make its
+    /// text too long (<see cref="Refusals.TooLongReplaced"/>); null when they are replaced.</summary>
+    private static string? Unreplaced(SearchResult found, string replacement) =>
+        found.Stopped ? StoppedWhy : Refusals.TooLongReplaced(found, replacement);
 
     /// <summary>Why a file the system would not let be read or written is left as it was.</summary>
     public static string Refusal(Exception error) => error switch

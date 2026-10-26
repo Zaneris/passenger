@@ -1,3 +1,6 @@
+using System.Globalization;
+using Passenger.Text;
+
 namespace Passenger.App;
 
 /// <summary>Why an action cannot run for want of what it acts on, named once, so the same want reads the same wherever an
@@ -31,6 +34,13 @@ public static class Refusals
     /// <summary>A service its run left unstarted (<see cref="DontStart"/>), as it is named, and what starts it as its run's kind
     /// starts one (<see cref="Run.ServiceRun.StartsIt"/>).</summary>
     public static string NotStarted(string service, string startsIt) => $"{service} is not started: {DontStart}; {startsIt}";
+
+    /// <summary>Why no match of a search is replaced: replacing every one would make the text longer than a replacement
+    /// may (<see cref="SearchResult.TooLong"/>), worked out before any is made; null when it would not.</summary>
+    public static string? TooLongReplaced(SearchResult found, string replacement) =>
+        found.ReplacedLength(replacement) is var length && found.TooLong(length)
+            ? string.Create(CultureInfo.InvariantCulture, $"the text replaced would be {length:N0} characters long, more than {SearchResult.MostReplaced:N0}")
+            : null;
 
     /// <summary>Why an action on the file shown cannot run: none is shown.</summary>
     public static string? NeedsFile(ActionContext context) => context.File is null ? NoFile : null;

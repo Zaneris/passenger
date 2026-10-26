@@ -333,17 +333,23 @@ public partial class FindBar : UserControl
             IdeErrors.Observe(ReplaceAllApartAsync(editor, text, query, replacement));
             return;
         }
-        Replace(editor, found.Replacements(replacement));
+        (IReadOnlyList<TextEdit> edits, string? why) = Replacing(found, replacement);
+        Replace(editor, edits, why);
     }
+
+    /// <summary>Every match's replacement as an edit, or why none is made: the text it makes would be too long, said
+    /// before any is made.</summary>
+    private static (IReadOnlyList<TextEdit> Edits, string? Why) Replacing(SearchResult found, string replacement) =>
+        Refusals.TooLongReplaced(found, replacement) is { } why ? ([], why) : (found.Replacements(replacement), null);
 
     private async Task ReplaceAllApartAsync(CodeEditor shown, TextSnapshot text, SearchQuery query, string replacement)
     {
         Count.Text = Searching;
         // Each match's groups are found again where it stood, as long as the search took: off the UI thread too.
-        (SearchResult found, IReadOnlyList<TextEdit> edits) = await BackgroundWork.Run(() =>
+        (SearchResult found, (IReadOnlyList<TextEdit> edits, string? why)) = await BackgroundWork.Run(() =>
         {
             SearchResult searched = TextSearch.FindAll(text, query, TextSearch.Apart, int.MaxValue);
-            return (searched, searched.Stopped ? [] : searched.Replacements(replacement));
+            return (searched, searched.Stopped ? ([], null) : Replacing(searched, replacement));
         });
         if (editor != shown || !IsVisible || grid is not null)
         {
@@ -360,11 +366,16 @@ public partial class FindBar : UserControl
             Count.Text = $"{found.Problem} Nothing was replaced.";
             return;
         }
-        Replace(shown, edits);
+        Replace(shown, edits, why);
     }
 
-    private void Replace(CodeEditor shown, IReadOnlyList<TextEdit> edits)
+    private void Replace(CodeEditor shown, IReadOnlyList<TextEdit> edits, string? why)
     {
+        if (why is not null)
+        {
+            Count.Text = $"Nothing was replaced: {why}.";
+            return;
+        }
         shown.ApplyEdits(edits);
         Count.Text = $"Replaced {edits.Count}";
     }

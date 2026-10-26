@@ -175,6 +175,78 @@ public sealed class FindTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Replace All of every word's edge (\b) with the whole text ($_) over a file of 12,000 characters would make
+    /// it 144 million long, the text again at each of its 12,000 matches: it is refused before any of it is made, saying
+    /// how long, the file left as it was and the click allocating a few times the file's size (most of it the list of its
+    /// matches), never the replacement's 288 MB.</summary>
+    [AvaloniaFact]
+    public void Replace_all_that_would_make_the_text_too_long_is_refused_before_any_of_it_is_made()
+    {
+        string text = string.Concat(Enumerable.Repeat("a a a a a a a a a a\n", 600));
+        (MainWindow window, CodeEditor editor) = Open(text);
+        Ui.Press(window, Ui.Shortcut(AppActions.Replace));
+        FindBar bar = window.EditorArea.FindBar;
+        bar.FindControl<ToggleButton>("UseRegex")!.IsChecked = true;
+        window.KeyTextInput(@"\b");
+        bar.FindControl<TextBox>("ReplaceWith")!.Text = "$_";
+        Ui.Settle();
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        Ui.Click(bar.FindControl<Button>("ReplaceAllButton")!);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Ui.WaitFor(() => bar.CountText != "Searching…", () => $"Replace All's search to end; the count says '{bar.CountText}'");
+        Assert.True(bar.CountText == "Nothing was replaced: the text replaced would be 144,012,000 characters long, more than 100,000,000.",
+            $"After Replace All of \\b with $_ over 12,000 characters the count says '{bar.CountText}'");
+        Assert.True(editor.Document.Snapshot.ToString() == text, "Replace All refused for a text too long still changed it");
+        long file = text.Length * sizeof(char);
+        TestContext.Current.TestOutputHelper?.WriteLine($"Replace All allocated {allocated:N0} bytes on the UI thread, the file {file:N0}.");
+        Assert.True(allocated < file * 32,
+            $"Replace All allocated {allocated / 1024:N0} KB on the UI thread refusing a replacement of a {file / 1024:N0} KB file: it made the replacement it refused");
+        window.Close();
+    }
+
+    /// <summary>Replace All with a regex whose replacement takes the whole text ($_), what stands before and after each
+    /// match ($`, $') and its groups, with '$'s that stand for nothing, gives what .NET's Regex.Replace gives; in a file
+    /// of "\r\n" lines, with each break it carries over the file's own.</summary>
+    [AvaloniaFact]
+    public void Replace_all_taking_the_whole_text_or_what_stands_around_each_match_gives_what_dotnet_gives()
+    {
+        const string Text = "ab cd\nef\n";
+        (string Pattern, string Replacement)[] cases =
+        [
+            (@"\b", "[$_]"),
+            (@"(\w)(?<rest>\w*)", "<$`|$'|$+|${rest}$1$$_$9${x}$&$>"),
+            (@"d\s", "{$'$`}"),
+        ];
+        (MainWindow window, CodeEditor editor) = Open(Text);
+        File.WriteAllText(Path.Combine(folder, "Crlf.txt"), Text.ReplaceLineEndings("\r\n"));
+        foreach (string end in new[] { "\n", "\r\n" })
+        {
+            if (end == "\r\n")
+            {
+                window.OpenFile("Crlf.txt");
+                Ui.Settle();
+                editor = window.EditorArea.CodeEditor;
+            }
+            Ui.Press(window, Ui.Shortcut(AppActions.Replace));
+            FindBar bar = window.EditorArea.FindBar;
+            bar.FindControl<ToggleButton>("UseRegex")!.IsChecked = true;
+            foreach ((string pattern, string replacement) in cases)
+            {
+                bar.FindControl<TextBox>("Query")!.Text = pattern;
+                bar.FindControl<TextBox>("ReplaceWith")!.Text = replacement;
+                Ui.Settle();
+                Ui.Click(bar.FindControl<Button>("ReplaceAllButton")!);
+                string expected = System.Text.RegularExpressions.Regex.Replace(Text, pattern, replacement).ReplaceLineEndings(end);
+                string replaced = editor.Document.Snapshot.ToString();
+                Assert.True(replaced == expected,
+                    $"Replace All of {pattern} with {replacement} in {(end == "\n" ? "\"\\n\"" : "\"\\r\\n\"")} lines wrote '{replaced}', where .NET writes '{expected}'");
+                editor.TryExecute(EditorActions.Undo);
+                Assert.Equal(Text.ReplaceLineEndings(end), editor.Document.Snapshot.ToString());
+            }
+        }
+        window.Close();
+    }
+
     /// <summary>Keys typed at the top of a file of 20,000 lines with the find bar open allocate on the UI thread under
     /// twice what they do in one of 200, the match at the end moving with them and still counted; on every thread, the
     /// search's own included, a key allocates under half the file's size, plain or as a regex over "\r\n" lines, and the

@@ -67,12 +67,12 @@ public static class TextSearch
         bool crlf = snapshot.LineCount > 1 && snapshot.GetLine(0).BreakLength == 2;
         if (pattern.Literal)
         {
-            return Blocks(snapshot, pattern, limit, crlf);
+            return Blocks(snapshot, pattern, limit, crlf) with { TextLength = snapshot.Length };
         }
         Lines lines = Lines.Of(snapshot);
         try
         {
-            return Found(lines.Text, lines.Returns, pattern, limit, pattern.Groups ? new FoundText(pattern, snapshot, null) : null, crlf);
+            return Found(lines.Text, lines.Returns, pattern, limit, pattern.Groups ? new FoundText(pattern, snapshot, null) : null, crlf) with { TextLength = snapshot.Length };
         }
         finally
         {
@@ -89,12 +89,12 @@ public static class TextSearch
         FoundText? found = pattern.Groups ? new FoundText(pattern, null, text) : null;
         if (pattern.Literal || !text.Contains("\r\n", StringComparison.Ordinal))
         {
-            return Found(text, [], pattern, limit, found, crlf);
+            return Found(text, [], pattern, limit, found, crlf) with { TextLength = text.Length };
         }
         Lines lines = Lines.Of(text);
         try
         {
-            return Found(lines.Text, lines.Returns, pattern, limit, found, crlf);
+            return Found(lines.Text, lines.Returns, pattern, limit, found, crlf) with { TextLength = text.Length };
         }
         finally
         {
@@ -473,13 +473,39 @@ internal sealed class FoundText(SearchPattern pattern, TextSnapshot? snapshot, s
     /// <summary>Where each '\r' left out of <see cref="lines"/> was in the text itself, in order.</summary>
     private int[] returns = [];
 
+    /// <summary>Where each '\n' of <see cref="lines"/> after no '\r' is, in order, once a replacement asks.</summary>
+    private int[]? lone;
+
     /// <summary>Every match in order up to the last asked for, for a pattern that <see cref="SearchPattern.Walks"/>.</summary>
     private List<Match>? walked;
+
+    public Regex Regex => pattern.Regex;
+
+    /// <summary>The text read as lines, each "\r\n" as "\n": what a match's groups and a replacement's $_ are of.</summary>
+    public string Lines => lines ??= Read();
+
+    /// <summary>An offset of the text itself in <see cref="Lines"/>: back past each '\r' left out before it.</summary>
+    public int InLines(int offset)
+    {
+        _ = Lines;
+        int before = Array.BinarySearch(returns, offset);
+        return offset - (before >= 0 ? before : ~before);
+    }
+
+    /// <summary>How many '\n's of <see cref="Lines"/> from <paramref name="from"/> to <paramref name="to"/> stand after
+    /// no '\r'.</summary>
+    public int Lone(int from, int to)
+    {
+        int[] at = lone ??= Lones(Lines);
+        int first = Array.BinarySearch(at, from);
+        int last = Array.BinarySearch(at, to);
+        return (last >= 0 ? last : ~last) - (first >= 0 ? first : ~first);
+    }
 
     /// <summary>Match <paramref name="index"/>, found at <paramref name="found"/> in the text itself.</summary>
     public Match Match(int index, TextRange found)
     {
-        string read = lines ??= Read();
+        string read = Lines;
         if (pattern.Walks)
         {
             walked ??= [];
@@ -489,8 +515,7 @@ internal sealed class FoundText(SearchPattern pattern, TextSnapshot? snapshot, s
             }
             return walked[index];
         }
-        int before = Array.BinarySearch(returns, found.Start);
-        return pattern.Untimed.Match(read, found.Start - (before >= 0 ? before : ~before));
+        return pattern.Untimed.Match(read, InLines(found.Start));
     }
 
     private string Read()
@@ -514,6 +539,280 @@ internal sealed class FoundText(SearchPattern pattern, TextSnapshot? snapshot, s
         {
             TextSearch.Lines.Keep(read);
         }
+    }
+
+    private static int[] Lones(string text)
+    {
+        List<int> found = [];
+        for (int at = text.IndexOf('\n', StringComparison.Ordinal); at >= 0; at = text.IndexOf('\n', at + 1))
+        {
+            if (at == 0 || text[at - 1] != '\r')
+            {
+                found.Add(at);
+            }
+        }
+        return [.. found];
+    }
+}
+
+/// <summary>A regex's replacement read as <see cref="Match.Result"/> reads it, and what it makes of each match: runs of
+/// its own characters, and what each '$' stands for, a group ($1, ${name}, $&amp; the match, $+ the last), the text
+/// before or after the match ($`, $') or the whole text ($_), each a slice of the text read as lines, so a match's
+/// replacement is measured before it is made and made in one copy. In a text of "\r\n" breaks, each '\n' it makes
+/// after no '\r' is written as "\r\n", the file's own.</summary>
+internal sealed class ReplacementText
+{
+    private static readonly Regex WordCharacter = new(@"[\w\u200C\u200D]");
+
+    private readonly FoundText found;
+    private readonly Part[] parts;
+    private readonly bool crlf;
+
+    /// <summary>Whether a part takes a group a match must be found again for: any but the match itself.</summary>
+    private readonly bool groups;
+
+    /// <summary>Whether a part takes from the text: any but the replacement's own characters.</summary>
+    private readonly bool sliced;
+
+    /// <summary>What every match is replaced with alike, for a replacement that takes nothing from the text.</summary>
+    private readonly string? alike;
+
+    public ReplacementText(FoundText found, string replacement, bool crlf)
+    {
+        // .NET reads it first, so one it refuses (a group's number past int.MaxValue) throws as Match.Result does.
+        _ = found.Regex.Replace(string.Empty, replacement, 0);
+        this.found = found;
+        this.crlf = crlf;
+        parts = Read(replacement, found.Regex);
+        groups = parts.Any(p => p is { Kind: Kind.Group, Group: > 0 });
+        sliced = parts.Any(p => p.Kind != Kind.Own);
+        alike = sliced ? null : Make(0, default);
+    }
+
+    private enum Kind
+    {
+        Own,
+        Group,
+        Before,
+        After,
+        Whole,
+    }
+
+    /// <summary>A run of the replacement's own characters (<see cref="Own"/>), or what a '$' stands for.</summary>
+    private readonly record struct Part(Kind Kind, int Group, string Own);
+
+    /// <summary>How long match <paramref name="index"/>'s replacement is, found at <paramref name="match"/> in the text
+    /// itself, its slices counted, never copied.</summary>
+    public long Length(int index, TextRange match)
+    {
+        if (alike is not null)
+        {
+            return alike.Length;
+        }
+        (Match? again, int start, int end) = Place(index, match);
+        return Measure(again, start, end);
+    }
+
+    /// <summary>Match <paramref name="index"/>'s replacement, found at <paramref name="match"/> in the text itself.</summary>
+    public string Make(int index, TextRange match)
+    {
+        if (alike is not null)
+        {
+            return alike;
+        }
+        (Match? again, int start, int end) = Place(index, match);
+        return string.Create(checked((int)Measure(again, start, end)), (this, again, start, end),
+            static (into, made) => made.Item1.Write(into, made.again, made.start, made.end));
+    }
+
+    /// <summary>A match found again for its groups, when a part takes one, and where it stands in the lines.</summary>
+    private (Match? Again, int Start, int End) Place(int index, TextRange match) => !sliced ? (null, 0, 0)
+        : (groups ? found.Match(index, match) : null, found.InLines(match.Start), found.InLines(match.End));
+
+    private long Measure(Match? again, int start, int end)
+    {
+        long length = 0;
+        char last = '\0';
+        foreach (Part part in parts)
+        {
+            ReadOnlySpan<char> piece = Piece(part, again, start, end, out int at);
+            if (piece.IsEmpty)
+            {
+                continue;
+            }
+            length += piece.Length;
+            if (crlf)
+            {
+                length += at < 0 ? Lone(piece, last) : (piece[0] == '\n' && last != '\r' ? 1 : 0) + found.Lone(at + 1, at + piece.Length);
+                last = piece[^1];
+            }
+        }
+        return length;
+    }
+
+    private void Write(Span<char> into, Match? again, int start, int end)
+    {
+        int written = 0;
+        char last = '\0';
+        foreach (Part part in parts)
+        {
+            ReadOnlySpan<char> piece = Piece(part, again, start, end, out _);
+            if (piece.IsEmpty)
+            {
+                continue;
+            }
+            int at = 0;
+            while (crlf && piece[at..].IndexOf('\n') is var next and >= 0)
+            {
+                piece.Slice(at, next).CopyTo(into[written..]);
+                written += next;
+                if ((at + next > 0 ? piece[at + next - 1] : last) != '\r')
+                {
+                    into[written++] = '\r';
+                }
+                into[written++] = '\n';
+                at += next + 1;
+            }
+            piece[at..].CopyTo(into[written..]);
+            written += piece.Length - at;
+            last = piece[^1];
+        }
+    }
+
+    /// <summary>What a part makes of a match from <paramref name="start"/> to <paramref name="end"/> of the lines, and
+    /// where in them it stands (-1 for the replacement's own characters).</summary>
+    private ReadOnlySpan<char> Piece(Part part, Match? again, int start, int end, out int at)
+    {
+        switch (part.Kind)
+        {
+            case Kind.Own:
+                at = -1;
+                return part.Own;
+            case Kind.Whole:
+                at = 0;
+                return found.Lines;
+            case Kind.Before:
+                at = 0;
+                return found.Lines.AsSpan(0, start);
+            case Kind.After:
+                at = end;
+                return found.Lines.AsSpan(end);
+            case Kind.Group when part.Group == 0:
+                at = start;
+                return found.Lines.AsSpan(start, end - start);
+            default:
+                Group group = again!.Groups[part.Group];
+                at = group.Index;
+                return group.Success ? group.ValueSpan : [];
+        }
+    }
+
+    /// <summary>How many '\n's of the replacement's own characters stand after no '\r', <paramref name="last"/> the
+    /// character before them.</summary>
+    private static int Lone(ReadOnlySpan<char> own, char last)
+    {
+        int count = 0;
+        for (int i = 0; i < own.Length; i++)
+        {
+            if (own[i] == '\n' && (i > 0 ? own[i - 1] : last) != '\r')
+            {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /// <summary>The replacement's parts, each '$' read as .NET reads it: a group by a number or name the regex has
+    /// (${...} braced), $$, $&amp;, $`, $', $+ or $_, else the '$' is its own character.</summary>
+    private static Part[] Read(string replacement, Regex regex)
+    {
+        int[] numbers = regex.GetGroupNumbers();
+        List<Part> parts = [];
+        StringBuilder own = new();
+        int i = 0;
+        while (i < replacement.Length)
+        {
+            char c = replacement[i++];
+            if (c != '$')
+            {
+                own.Append(c);
+                continue;
+            }
+            (Part? part, int after) = Dollar(replacement, i, regex, numbers);
+            if (part is not { } read)
+            {
+                own.Append('$');
+                // $$ is one '$'; a '$' that stands for nothing is its own, and what follows it is read on.
+                i = after;
+                continue;
+            }
+            if (own.Length > 0)
+            {
+                parts.Add(new Part(Kind.Own, 0, own.ToString()));
+                own.Clear();
+            }
+            parts.Add(read);
+            i = after;
+        }
+        if (own.Length > 0)
+        {
+            parts.Add(new Part(Kind.Own, 0, own.ToString()));
+        }
+        return [.. parts];
+    }
+
+    /// <summary>What the '$' before <paramref name="at"/> stands for and where the replacement goes on: null for its own
+    /// character, going on at <paramref name="at"/> (past the second '$' of $$).</summary>
+    private static (Part? Part, int After) Dollar(string replacement, int at, Regex regex, int[] numbers)
+    {
+        if (at == replacement.Length)
+        {
+            return (null, at);
+        }
+        int i = at;
+        char c = replacement[i];
+        bool braced = c == '{' && i + 1 < replacement.Length;
+        if (braced)
+        {
+            c = replacement[++i];
+        }
+        if (char.IsAsciiDigit(c))
+        {
+            int number = 0;
+            while (i < replacement.Length && char.IsAsciiDigit(replacement[i]))
+            {
+                number = checked((number * 10) + (replacement[i++] - '0'));
+            }
+            if ((!braced || (i < replacement.Length && replacement[i++] == '}')) && numbers.Contains(number))
+            {
+                return (new Part(Kind.Group, number, string.Empty), i);
+            }
+            return (null, at);
+        }
+        if (braced)
+        {
+            int start = i;
+            while (i < replacement.Length && WordCharacter.IsMatch(replacement.AsSpan(i, 1)))
+            {
+                i++;
+            }
+            string name = replacement[start..i];
+            if (name.Length > 0 && i < replacement.Length && replacement[i++] == '}' && regex.GroupNumberFromName(name) is var number and >= 0)
+            {
+                return (new Part(Kind.Group, number, string.Empty), i);
+            }
+            return (null, at);
+        }
+        Part? read = c switch
+        {
+            '&' => new Part(Kind.Group, 0, string.Empty),
+            '`' => new Part(Kind.Before, 0, string.Empty),
+            '\'' => new Part(Kind.After, 0, string.Empty),
+            '+' => new Part(Kind.Group, numbers.Max(), string.Empty),
+            '_' => new Part(Kind.Whole, 0, string.Empty),
+            _ => null,
+        };
+        return (read, read is null ? (c == '$' ? at + 1 : at) : at + 1);
     }
 }
 
@@ -844,30 +1143,45 @@ public sealed record SearchResult(IReadOnlyList<TextRange> Matches, bool Truncat
     /// <summary>Whether the text's breaks are "\r\n", as a break a group carries over is then written.</summary>
     internal bool Crlf { get; init; }
 
+    /// <summary>The length of the text searched.</summary>
+    public int TextLength { get; init; }
+
+    /// <summary>The longest text, in characters, that replacing every match makes of a shorter one: past it a replacement
+    /// is refused before any of it is made (a regex's $_ is the whole text again for each match).</summary>
+    public const long MostReplaced = 100_000_000;
+
     /// <summary>What match <paramref name="index"/> is replaced with: the replacement as typed, or for a regex with its
     /// groups ($1, ${name}) filled in from that match where it stood, its lookarounds, anchors and \b as they held.</summary>
-    public string Replacement(int index, string replacement)
+    public string Replacement(int index, string replacement) =>
+        Found is null ? replacement : new ReplacementText(Found, replacement, Crlf).Make(index, Matches[index]);
+
+    /// <summary>How long the text searched would be with every match replaced, worked out from the matches and what the
+    /// replacement takes of the text for each, none of it made.</summary>
+    public long ReplacedLength(string replacement)
     {
-        if (Found is null)
+        long length = TextLength;
+        ReplacementText? replacing = Found is null ? null : new(Found, replacement, Crlf);
+        for (int i = 0; i < Matches.Count; i++)
         {
-            return replacement;
+            TextRange match = Matches[i];
+            length += (replacing?.Length(i, match) ?? replacement.Length) - match.Length;
         }
-        // Only a '$' asks for what the match holds; a replacement without one is its own result.
-        string replaced = replacement.Contains('$', StringComparison.Ordinal) ? Found.Match(index, Matches[index]).Result(replacement) : replacement;
-        // A break a group carried over is the file's own, as the text it replaces had.
-        return Crlf && replaced.Contains('\n', StringComparison.Ordinal)
-            ? replaced.Replace("\r\n", "\n", StringComparison.Ordinal).Replace("\n", "\r\n", StringComparison.Ordinal)
-            : replaced;
+        return length;
     }
+
+    /// <summary>Whether replacing every match would make the text longer than <see cref="MostReplaced"/> and than it
+    /// was (<see cref="ReplacedLength"/>).</summary>
+    public bool TooLong(long replaced) => replaced > Math.Max(MostReplaced, TextLength);
 
     /// <summary>Every match's replacement, as edits of the text searched.</summary>
     public IReadOnlyList<TextEdit> Replacements(string replacement)
     {
+        ReplacementText? replacing = Found is null ? null : new(Found, replacement, Crlf);
         TextEdit[] edits = new TextEdit[Matches.Count];
         for (int i = 0; i < edits.Length; i++)
         {
             TextRange match = Matches[i];
-            edits[i] = new TextEdit(match.Start, match.Length, Replacement(i, replacement));
+            edits[i] = new TextEdit(match.Start, match.Length, replacing?.Make(i, match) ?? replacement);
         }
         return edits;
     }

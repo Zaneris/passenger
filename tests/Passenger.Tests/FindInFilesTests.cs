@@ -291,6 +291,29 @@ public sealed class FindInFilesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Replace in Files of every word's edge (\b) with the whole text ($_) in a file of 12,000 characters would
+    /// make it 144 million long: the file is named as left as it was, with how long its text would be.</summary>
+    [AvaloniaFact]
+    public void Replace_all_that_would_make_a_files_text_too_long_leaves_it_and_says_so()
+    {
+        string words = Path.Combine(folder, "Words.txt");
+        string text = string.Concat(Enumerable.Repeat("a a a a a a a a a a\n", 600));
+        File.WriteAllText(words, text);
+        MainWindow window = Open();
+        FindInFilesPopup popup = window.ShowFindInFiles(replace: true)!;
+        popup.Regex = true;
+        popup.FileMask = "*.txt";
+        Search(popup, @"\b");
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+        popup.Replacement = "$_";
+        popup.RequestReplace();
+        Ui.WaitFor(() => window.Status?.StartsWith("Nothing replaced", StringComparison.Ordinal) == true || window.Status?.StartsWith("Replaced", StringComparison.Ordinal) == true,
+            () => $"the replacement; the status says '{window.Status}'");
+        Assert.Equal("Nothing replaced; not replaced: Words.txt (the text replaced would be 144,012,000 characters long, more than 100,000,000)", window.Status);
+        Assert.True(File.ReadAllText(words) == text, "Replace in Files wrote a file whose replaced text it said was too long");
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void Replace_all_over_an_open_file_keeps_its_caret_folds_and_breakpoints()
     {
