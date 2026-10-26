@@ -100,6 +100,9 @@ public sealed class MigrationsTests
     {
         string folder = ShopApp.Make(design: false, tool: null);
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        List<string> opened = [];
+        window.EditorArea.Opened += (_, document) => opened.Add($"{Path.GetFileName(document.Path)}, opened from:\n"
+            + string.Join("\n", new System.Diagnostics.StackTrace().ToString().Split('\n').Where(f => f.Contains(" Passenger.", StringComparison.Ordinal)).Take(12)));
         try
         {
             // Found as the projects are read, the window hidden.
@@ -128,9 +131,9 @@ public sealed class MigrationsTests
             Assert.Contains("<PrivateAssets>all</PrivateAssets>", project, StringComparison.Ordinal);
             Ui.WaitFor(() => Gaps(window).Length == 0, $"no gap left ({Gaps(window)})");
 
-            UndoFromExplorer(window, Path.Combine(folder, "Shop.csproj"));
+            UndoFromExplorer(window, Path.Combine(folder, "Shop.csproj"), () => string.Join("\n", opened));
             Assert.DoesNotContain("Microsoft.EntityFrameworkCore.Design", File.ReadAllText(Path.Combine(folder, "Shop.csproj")), StringComparison.Ordinal);
-            UndoFromExplorer(window, Path.Combine(folder, "Shop.csproj"));
+            UndoFromExplorer(window, Path.Combine(folder, "Shop.csproj"), () => string.Join("\n", opened));
             Assert.False(File.Exists(Path.Combine(folder, "dotnet-tools.json")), "Undo left the tool manifest the fix made");
         }
         finally
@@ -324,8 +327,9 @@ public sealed class MigrationsTests
         }
     }
 
-    /// <summary>Undo from the Solution view, a row chosen there, its question answered yes: the last command taken back.</summary>
-    private static void UndoFromExplorer(MainWindow window, string path)
+    /// <summary>Undo from the Solution view, a row chosen there, its question answered yes: the last command taken back;
+    /// <paramref name="opened"/> says where the files open in editors were opened from.</summary>
+    private static void UndoFromExplorer(MainWindow window, string path, Func<string>? opened = null)
     {
         List<string> asked = [];
         window.Confirm = (_, question, _) =>
@@ -342,7 +346,7 @@ public sealed class MigrationsTests
         string? focused = window.FocusManager?.GetFocusedElement()?.GetType().Name;
         Ui.Run(window, Passenger.Editor.EditorActions.Undo);
         Assert.True(asked.Count == 1, $"Undo asked {asked.Count} questions: {string.Join(" | ", asked)} (the command to undo was {next ?? "none"}; "
-            + $"open: {open}; active: {active ?? "none"}; the keys with: {focused ?? "nothing"}; the status bar said {window.Status})");
+            + $"open: {open}; active: {active ?? "none"}; the keys with: {focused ?? "nothing"}; the status bar said {window.Status}){(opened is null ? "" : $"\n{opened()}")}");
     }
 
     private static string Gaps(MainWindow window) => string.Join(" | ", window.MigrationsView.GapsShown);
