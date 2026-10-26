@@ -175,7 +175,8 @@ public sealed class ProblemsTests : IClassFixture<RestoredFolders>, IDisposable
 
     /// <summary>A file with thousands of problems types as one with few does: every key moves the file's markers, and the
     /// File tab lists where they went once typing pauses, rather than placing and listing every one again for each
-    /// key.</summary>
+    /// key. Only keys that came within the pause of the one before, by the clock, are counted: a loaded machine's keys may
+    /// come further apart, and the pause is then over between them.</summary>
     [AvaloniaFact]
     public void Keys_typed_above_thousands_of_problems_list_them_again_once_typing_pauses()
     {
@@ -196,24 +197,35 @@ public sealed class ProblemsTests : IClassFixture<RestoredFolders>, IDisposable
         editor.Focus();
         Ui.Settle();
 
-        // Keys in quick succession, each one's own work done but no pause between them.
+        // Keys in quick succession, each one's own work done but no pause between them, until eight came within the pause.
         int listed = 0;
+        int quick = 0;
+        int typed = 0;
         IReadOnlyList<Problem> shown = problems.FileProblems;
         const int Keys = 8;
-        for (int i = 0; i < Keys; i++)
+        long last = System.Diagnostics.Stopwatch.GetTimestamp();
+        while (quick < Keys && typed < Keys * 4)
         {
+            long pressed = System.Diagnostics.Stopwatch.GetTimestamp();
             window.KeyPress(Avalonia.Input.Key.Enter, Avalonia.Input.RawInputModifiers.None, Avalonia.Input.PhysicalKey.None, null);
             window.KeyRelease(Avalonia.Input.Key.Enter, Avalonia.Input.RawInputModifiers.None, Avalonia.Input.PhysicalKey.None, null);
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-            listed += ReferenceEquals(problems.FileProblems, shown) ? 0 : 1;
+            if (typed == 0 || System.Diagnostics.Stopwatch.GetElapsedTime(last) < MainWindow.ProblemsPause)
+            {
+                quick++;
+                listed += ReferenceEquals(problems.FileProblems, shown) ? 0 : 1;
+            }
             shown = problems.FileProblems;
+            last = pressed;
+            typed++;
         }
+        Assert.True(quick == Keys, $"Of {typed} keys typed in quick succession only {quick} came within {MainWindow.ProblemsPause.TotalMilliseconds} ms of the one before");
         Assert.True(listed <= Keys / 4, $"The File tab listed the file's 3,000 problems again {listed} times for {Keys} keys typed in quick succession");
 
         Ui.Settle();
         Assert.Equal(3000, problems.FileProblems.Count);
-        Assert.Equal(new TextPosition(4 + Keys, 12), problems.FileProblems[0].Position);
-        Assert.Equal(new TextPosition(4 + Keys + 2999, 12), problems.FileProblems[^1].Position);
+        Assert.Equal(new TextPosition(4 + typed, 12), problems.FileProblems[0].Position);
+        Assert.Equal(new TextPosition(4 + typed + 2999, 12), problems.FileProblems[^1].Position);
         window.Close();
     }
 
