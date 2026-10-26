@@ -221,6 +221,13 @@ public static partial class BuildOutput
     [GeneratedRegex(@"^#\d+\s+\d+(?:\.\d+)?\s+")]
     private static partial Regex BuildKitStep();
 
+    /// <summary>The severity of the problem a console's line names (an image's build's with BuildKit's step before it too),
+    /// or null; a line holding neither severity's word is passed over without a string made of it.</summary>
+    public static ProblemSeverity? SeverityOf(ReadOnlySpan<char> line) =>
+        !line.ContainsAny(Severities) ? null
+        : Matched(line.ToString()) is not { } match ? null
+        : match.Groups["severity"].Value == "error" ? ProblemSeverity.Error : ProblemSeverity.Warning;
+
     /// <summary>A XAML compiler's message with the place it repeats at its end (Avalonia's "Line 8, position 6.", WPF's
     /// MarkupCompile's "Line 8 Position 6.") said at another, as the editor counts the file's lines; as it was when it
     /// repeats no such place, or another than <paramref name="was"/> (both from zero).</summary>

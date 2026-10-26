@@ -1659,7 +1659,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         pairs.Add((TokenKeys.Editor_Caret, TokenKeys.Editor_CurrentLine, Mark));
         foreach (string kind in (string[])["Keyword", "ControlKeyword", "Comment", "DocComment", "String", "StringEscape", "Number", "Preprocessor", "Class", "Interface",
             "Struct", "Enum", "Delegate", "TypeParameter", "Method", "Property", "Event", "Field", "Constant", "EnumMember", "ErrorOutput", "UserInput", "Link",
-            "Brace1", "Brace2", "Brace3", "Tag", "AttributeName", "AttributeValue", "Entity", "JsonKey", "YamlKey", "Heading", "Code", "Quote", "LinkDestination"])
+            "BuildError", "BuildWarning", "Brace1", "Brace2", "Brace3", "Tag", "AttributeName", "AttributeValue", "Entity", "JsonKey", "YamlKey", "Heading", "Code", "Quote", "LinkDestination"])
         {
             pairs.Add(($"Passenger.Syntax.{kind}", TokenKeys.Editor_Background, Text));
             pairs.Add(($"Passenger.Syntax.{kind}", TokenKeys.Editor_CurrentLine, Text));

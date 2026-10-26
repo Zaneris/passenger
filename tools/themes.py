@@ -270,11 +270,11 @@ SHAPES = {
              ("BoxShadows", "Passenger.TabShadow", "0 0 0 0 #00000000"), ("Thickness", "Passenger.PopupEdge", "1")],
 }
 
-SYNTAX_KINDS = ["Keyword", "ControlKeyword", "Comment", "DocComment", "String", "StringEscape", "Number", "Preprocessor",
-                "Class", "Interface", "Struct", "Enum", "Delegate", "TypeParameter", "Method", "Property", "Event",
-                "Field", "Constant", "EnumMember", "ErrorOutput", "UserInput", "Link", "Brace1", "Brace2", "Brace3",
-                "Tag", "AttributeName", "AttributeValue", "Entity", "JsonKey", "YamlKey", "Heading", "Code", "Quote",
-                "LinkDestination"]
+SYNTAX_KINDS = ["Keyword", "ControlKeyword", "Comment", "DocComment", "String", "StringEscape", "Number",
+                "Preprocessor", "Class", "Interface", "Struct", "Enum", "Delegate", "TypeParameter", "Method",
+                "Property", "Event", "Field", "Constant", "EnumMember", "ErrorOutput", "UserInput", "Link",
+                "BuildError", "BuildWarning", "Brace1", "Brace2", "Brace3", "Tag", "AttributeName", "AttributeValue",
+                "Entity", "JsonKey", "YamlKey", "Heading", "Code", "Quote", "LinkDestination"]
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -522,6 +522,7 @@ def variant(theme, p, dark):
         "Delegate": mix(pick("struct"), text, 0.25), "TypeParameter": pick("type"), "Method": pick("method"),
         "Property": pick("member"), "Event": pick("event"), "Field": pick("member"), "Constant": pick("number"),
         "EnumMember": pick("member"), "ErrorOutput": hue("red"), "UserInput": hue("green"), "Link": hue("blue"),
+        "BuildError": hue("red"), "BuildWarning": hue("yellow") if dark else hue("orange"),
         "Brace1": hue("yellow"), "Brace2": hue("purple"), "Brace3": hue("blue"), "Tag": pick("tag"),
         "AttributeName": pick("attribute"), "AttributeValue": pick("string"), "Entity": pick("escape"),
         "JsonKey": pick("member"), "YamlKey": pick("keyword"), "Heading": pick("heading"), "Code": pick("string"),

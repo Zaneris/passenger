@@ -11,9 +11,9 @@ namespace Passenger.App.ToolWindows;
 
 /// <summary>A program's or a build's console: the code editor, read-only, following the end while the output grows, with
 /// the run toolbar down its left side (rerun, stop, clear). Output comes through its <see cref="Sink"/> from any thread;
-/// standard error is drawn in the error colour, and what a person types goes to the program's <see cref="Input"/> a line
-/// at a time, in the input colour. It keeps a cycle buffer of text, the oldest lines dropped past it. Its file locations
-/// and web addresses are links (<see cref="Links"/>).</summary>
+/// standard error is drawn in the error colour, a build's error and warning lines in their severities' colours, and what a
+/// person types goes to the program's <see cref="Input"/> a line at a time, in the input colour. It keeps a cycle buffer of
+/// text, the oldest lines dropped past it. Its file locations and web addresses are links (<see cref="Links"/>).</summary>
 public sealed class OutputView : DockPanel
 {
     /// <summary>The cycle buffer a console keeps by default: 1024 KB of text.</summary>
@@ -442,10 +442,15 @@ public sealed class OutputView : DockPanel
 
     /// <summary>The console's coloured stretches (standard error, what was typed), in order and apart. They are kept in
     /// offsets from the start of all the console has held since it was last cleared, so dropping its oldest lines moves
-    /// none of them, and a line's colours are found by halving.</summary>
+    /// none of them, and a line's colours are found by halving. A line naming a build's or a compiler's problem is found
+    /// as it is drawn, in its severity's colour over the stream's, as every console showing a build draws it.</summary>
     private sealed class ConsoleColours : IHighlighter
     {
+        /// <summary>Lines longer than this are never read for a problem, as output written without line breaks.</summary>
+        private const int LongestLine = 4096;
+
         private readonly List<SyntaxSpan> spans = [];
+        private readonly char[] reading = new char[LongestLine];
         private ConsoleLinks? links;
 
         /// <summary>How much text has been dropped from the start since the console was cleared.</summary>
@@ -535,32 +540,59 @@ public sealed class OutputView : DockPanel
             {
                 found.Add(spans[i] with { Start = spans[i].Start - dropped });
             }
+            if (Problems(text, start, length) is { } problems)
+            {
+                found = Under(found, problems);
+            }
             IReadOnlyList<SyntaxSpan> linked = links?.GetSpans(text, start, length) ?? [];
             return linked.Count == 0 ? found : Under(found, linked);
         }
 
-        /// <summary>The streams' colours with the links laid over them: a stretch a link covers is the link's alone.</summary>
-        private static List<SyntaxSpan> Under(List<SyntaxSpan> coloured, IReadOnlyList<SyntaxSpan> linked)
+        /// <summary>The lines over a stretch that name a problem, each whole in its severity's colour; null for none.</summary>
+        private List<SyntaxSpan>? Problems(TextSnapshot text, int start, int length)
         {
-            List<SyntaxSpan> merged = [.. linked];
-            foreach (SyntaxSpan span in coloured)
+            List<SyntaxSpan>? found = null;
+            int end = start + length;
+            for (int line = text.GetLineFromOffset(start); line < text.LineCount && text.GetLineStart(line) < end; line++)
+            {
+                LineSpan span = text.GetLine(line);
+                if (span.Length == 0 || span.Length > LongestLine)
+                {
+                    continue;
+                }
+                Span<char> chars = reading.AsSpan(0, span.Length);
+                text.CopyTo(span.Start, chars);
+                if (Run.BuildOutput.SeverityOf(chars) is { } severity)
+                {
+                    (found ??= []).Add(new SyntaxSpan(span.Start, span.Length, severity == Run.ProblemSeverity.Error ? TokenKind.BuildError : TokenKind.BuildWarning));
+                }
+            }
+            return found;
+        }
+
+        /// <summary>Colours with others laid over them (a problem's line over a stream's, a link over both): a stretch one
+        /// above covers is that one's alone.</summary>
+        private static List<SyntaxSpan> Under(List<SyntaxSpan> below, IReadOnlyList<SyntaxSpan> above)
+        {
+            List<SyntaxSpan> merged = [.. above];
+            foreach (SyntaxSpan span in below)
             {
                 int from = span.Start;
-                foreach (SyntaxSpan link in linked)
+                foreach (SyntaxSpan over in above)
                 {
-                    if (link.End <= from)
+                    if (over.End <= from)
                     {
                         continue;
                     }
-                    if (link.Start >= span.End)
+                    if (over.Start >= span.End)
                     {
                         break;
                     }
-                    if (link.Start > from)
+                    if (over.Start > from)
                     {
-                        merged.Add(span with { Start = from, Length = link.Start - from });
+                        merged.Add(span with { Start = from, Length = over.Start - from });
                     }
-                    from = link.End;
+                    from = over.End;
                 }
                 if (from < span.End)
                 {

@@ -171,6 +171,31 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         Problem warning = Assert.Single(problems, p => p.Severity == ProblemSeverity.Warning);
         Assert.Equal("Detected package version outside of dependency constraint.\n Hello -> A -> X (>= 2.0)\n Hello -> X (>= 1.0)", warning.Message);
         Assert.StartsWith("Build failed: 1 error, 1 warning", window.Status, StringComparison.Ordinal);
+
+        // MSBuild writes them to standard output, where the Build window draws each of their lines in its severity's colour.
+        OutputView build = window.BottomPanel.Build;
+        TextSnapshot text = build.Document.Snapshot;
+        IReadOnlyList<SyntaxSpan> colours = build.Editor.Highlighter!.GetSpans(text, 0, text.Length);
+        SyntaxSpan[] On(int line) =>
+            [.. colours.Where(s => s.Start < text.GetLine(line).Start + text.GetLine(line).Length && s.End > text.GetLine(line).Start && s.Kind != TokenKind.Link)];
+        string Drawn() => string.Join("\n", Enumerable.Range(0, text.LineCount).Select(l => $"[{string.Join(",", On(l).Select(s => s.Kind))}] {text.GetLineText(l)}"));
+        int[] coloured = [0, 0];
+        for (int line = 0; line < text.LineCount; line++)
+        {
+            string said = text.GetLineText(line);
+            TokenKind? severity = said.Contains(": error AVLN1001", StringComparison.Ordinal) ? TokenKind.BuildError
+                : said.Contains(": warning NU1608", StringComparison.Ordinal) ? TokenKind.BuildWarning : null;
+            SyntaxSpan[] on = On(line);
+            bool drawn = severity is { } kind
+                ? on.Length > 0 && on.All(s => s.Kind == kind) && on[^1].End == text.GetLine(line).Start + text.GetLine(line).Length
+                : on.All(s => s.Kind is not (TokenKind.BuildError or TokenKind.BuildWarning));
+            Assert.True(drawn, $"Line {line + 1} of the Build window is drawn in the wrong colours, each line's here:\n{Drawn()}");
+            if (severity is { } counted)
+            {
+                coloured[counted == TokenKind.BuildError ? 0 : 1]++;
+            }
+        }
+        Assert.True(coloured[0] > 0 && coloured[1] > 0, $"The Build window shows no line of the error or the warning:\n{Drawn()}");
         window.Perform(AppActions.ShowProblems);
         window.BottomPanel.Problems.Shown = ProblemsTab.Build;
         Ui.Settle();

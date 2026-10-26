@@ -220,6 +220,8 @@
             <SolidColorBrush x:Key="Passenger.Syntax.ErrorOutput" Color="#F0717A" />
             <SolidColorBrush x:Key="Passenger.Syntax.UserInput" Color="#A8D553" />
             <SolidColorBrush x:Key="Passenger.Syntax.Link" Color="#5CBDF7" />
+            <SolidColorBrush x:Key="Passenger.Syntax.BuildError" Color="#F0717A" />
+            <SolidColorBrush x:Key="Passenger.Syntax.BuildWarning" Color="#FFB65A" />
             <SolidColorBrush x:Key="Passenger.Syntax.Brace1" Color="#FFB65A" />
             <SolidColorBrush x:Key="Passenger.Syntax.Brace2" Color="#D3A9FC" />
             <SolidColorBrush x:Key="Passenger.Syntax.Brace3" Color="#5CBDF7" />
@@ -439,6 +441,8 @@
             <SolidColorBrush x:Key="Passenger.Syntax.ErrorOutput" Color="#C83C43" />
             <SolidColorBrush x:Key="Passenger.Syntax.UserInput" Color="#527813" />
             <SolidColorBrush x:Key="Passenger.Syntax.Link" Color="#1171B8" />
+            <SolidColorBrush x:Key="Passenger.Syntax.BuildError" Color="#C83C43" />
+            <SolidColorBrush x:Key="Passenger.Syntax.BuildWarning" Color="#B25415" />
             <SolidColorBrush x:Key="Passenger.Syntax.Brace1" Color="#956414" />
             <SolidColorBrush x:Key="Passenger.Syntax.Brace2" Color="#8758BC" />
             <SolidColorBrush x:Key="Passenger.Syntax.Brace3" Color="#1171B8" />

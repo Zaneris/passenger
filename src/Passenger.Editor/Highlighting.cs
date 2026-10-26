@@ -45,6 +45,12 @@ public enum TokenKind
     /// <summary>A link in a console (a file's location, a web address), in the link colour.</summary>
     Link,
 
+    /// <summary>A console's line naming an error as MSBuild and the compilers write one, in the error colour.</summary>
+    BuildError,
+
+    /// <summary>A console's line naming a warning as MSBuild and the compilers write one, in the warning colour.</summary>
+    BuildWarning,
+
     /// <summary>A bracket at a nesting depth, the three colours taking turns (rainbow braces).</summary>
     Brace1,
     Brace2,
