@@ -271,13 +271,17 @@ public sealed class LongListsTests : IDisposable
         }
     }
 
-    /// <summary>The least the UI thread allocated for a wheel step down a list, of five, and how many rows a scroll past
-    /// every row first shown made again: rows shown beyond one to each container the list had.</summary>
+    /// <summary>The least the UI thread allocated for a wheel step down a list, of five after one step more, and how many
+    /// rows a scroll past every row first shown made again: rows shown beyond one to each container the list had. The
+    /// step more is not counted: a list grown shorter since its rows were laid out holds the rows past its new foot until
+    /// it scrolls, so its first step brings in a row fewer than every step after.</summary>
     internal static (long Least, int Made) Scrolled(ListBox list)
     {
         TopLevel top = TopLevel.GetTopLevel(list) ?? throw new Xunit.Sdk.XunitException("The list is not shown");
         Point middle = list.TranslatePoint(new Point(list.Bounds.Width / 2, list.Bounds.Height / 2), top)
             ?? throw new Xunit.Sdk.XunitException("The list is not laid out");
+        top.MouseWheel(middle, new Vector(0, -1));
+        Ui.Settle();
         long least = long.MaxValue;
         for (int i = 0; i < 5; i++)
         {
