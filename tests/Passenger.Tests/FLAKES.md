@@ -10,6 +10,13 @@ that fixed it, in one of the forms below. A failure not yet understood goes in o
 
 ## 2026-10-26
 
+- `ProfilerTests`' `A_profile_of_ten_thousand_stacks_reads_drags_and_draws_in_what_its_stacks_and_bars_keep`, macOS in
+  CI run 40398875778: "The flame graph drew 544 bars whole and 74 zoomed into a leaf" (and 406 bytes a bar against
+  400). The test's program, about 200 ms long, left the sampler few samples on the runner, so the flame graph's bars were
+  few, wide and nearly all labelled; a labelled bar cost 330–500 bytes a frame, its label drawn under its bar's clip
+  (Skia's rounded clip allocates its radii each time) and, trimmed, as two glyph runs. **A cost in the IDE**: a label is
+  one glyph run with no clip, about 130–230 bytes a labelled bar; the program spins in each leaf so its profile draws
+  thousands of bars anywhere, and the test holds a frame of labelled bars alone to under 400 bytes a bar (fe3694bc).
 - `RunConfigurationsTests`' `Save_as_launch_profile_adds_a_configuration_made_here_to_launchSettings_json_which_dotnet_run_runs_and_Undo_takes_it_back`,
   the Mac's whole run at 39a3600b under load (#532): "The Explorer does not show Hello" at the row click after Undo. The
   folder watcher took `launchSettings.json` for a project file, so the Undo's write had the solution read again and every
