@@ -276,6 +276,19 @@ public sealed partial class EditorArea : UserControl
         return Load(full, asBytes: false) is { Asset: null, IsBinary: false } document ? (document, Hold(document)) : null;
     }
 
+    /// <summary>A file's document as <see cref="Open"/> reads it (an asset's preview, a binary file's bytes) for work that
+    /// ends, such as an agent's call: the open one, else one read from disk with no tab, held (<see cref="Hold"/>) until
+    /// the hold is disposed. The file system's exception when it cannot be read.</summary>
+    public (OpenDocument Document, IDisposable Hold) Lend(string path)
+    {
+        string full = PathNames.Canonical(path);
+        OpenDocument document = Find(full) ?? LoadNew(full, asBytes: true);
+        return (document, Hold(document));
+    }
+
+    /// <summary>Whether a tab shows the file, in any window.</summary>
+    public bool HasTab(OpenDocument document) => AllGroups.Any(g => g.Has(document));
+
     /// <summary>Names a change made across files through these editors (a refactoring's), for Local History: held while
     /// the change is made.</summary>
     public Func<IDisposable?>? Recording { get; set; }
@@ -784,16 +797,22 @@ public sealed partial class EditorArea : UserControl
         }
         try
         {
-            OpenDocument document = OpenDocument.Load(full, asBytes);
-            document.PreviewFailed += OnPreviewFailed;
-            Opened?.Invoke(this, document);
-            documents.Add(document);
-            return document;
+            return LoadNew(full, asBytes);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             return null;
         }
+    }
+
+    /// <summary>A file not open read from disk and opened with no tab; the file system's exception when it cannot be read.</summary>
+    private OpenDocument LoadNew(string full, bool asBytes)
+    {
+        OpenDocument document = OpenDocument.Load(full, asBytes);
+        document.PreviewFailed += OnPreviewFailed;
+        Opened?.Invoke(this, document);
+        documents.Add(document);
+        return document;
     }
 
     /// <summary>An asset whose first decode failed closes, its tabs with it, as a file that could not be read never

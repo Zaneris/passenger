@@ -138,7 +138,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     }
 
     [McpServerTool(Name = McpTools.EditorText, Title = "A file's text in the editor", ReadOnly = true), Description(
-        "A file's text as the editor holds it, unsaved changes included, its lines numbered; opened if it is not.")]
+        "A file's text as the editor holds it, unsaved changes included, its lines numbered.")]
     public Task<string> EditorText(string path, int? from = null, int? to = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         TextSnapshot text = (await TextualAsync(path, cancel)).Text.Snapshot;
@@ -558,7 +558,6 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             ServerServed served = file as ServerServed ?? throw Lacks(file, "Reformat Code", MSBuildHas);
             (document, lsp) = (served.Document, served.Lsp);
         }
-        window.OpenFile(document.Path);
         CSharp.CodeActions.Reformatted done = await window.Assist.Actions.ReformatAsync(document, null, () => lsp)
             ?? throw new InvalidOperationException($"Reformat Code was not applied: {Relative(document.Path)} was closed as it was reformatted");
         return Saved(done, document);
@@ -567,7 +566,6 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     /// <summary>A XAML file reformatted as the window's Reformat Code and Code Cleanup reformat it, then saved.</summary>
     private async Task<CSharp.CodeActions.Reformatted> FormatXamlAsync(OpenDocument markup, string what)
     {
-        window.OpenFile(markup.Path);
         CSharp.CodeActions.Reformatted done = await window.Assist.Languages.Xaml.ReformatXamlAsync(markup, null, what);
         _ = Saved(done, markup);
         return done;
@@ -1609,14 +1607,27 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             {
                 // Ended while it waited its turn (its agent shut out as the window left the folder): it does nothing in the next.
                 cancel.ThrowIfCancellationRequested();
-                if (!Session.WorkspaceRead.IsCompleted || !Session.Models.Idle.IsCompleted)
+                // A tool run inside another's call reads its files into that call's, let go as that one ends.
+                CallFiles? own = Files.Value is null ? new CallFiles(Editors, connection is { Attached: true }) : null;
+                if (own is not null)
                 {
-                    AgentCall.Say($"Waiting for {Session.Folder ?? "the folder"}'s projects to be read");
-                    await Session.WorkspaceRead.WaitAsync(cancel);
-                    await Session.Models.Idle.WaitAsync(cancel);
-                    AgentCall.Say(null);
+                    Files.Value = own;
                 }
-                return await work();
+                try
+                {
+                    if (!Session.WorkspaceRead.IsCompleted || !Session.Models.Idle.IsCompleted)
+                    {
+                        AgentCall.Say($"Waiting for {Session.Folder ?? "the folder"}'s projects to be read");
+                        await Session.WorkspaceRead.WaitAsync(cancel);
+                        await Session.Models.Idle.WaitAsync(cancel);
+                        AgentCall.Say(null);
+                    }
+                    return await work();
+                }
+                finally
+                {
+                    own?.LetGo();
+                }
             });
         }
         catch (Exception error) when (error is InvalidOperationException or ArgumentException or IOException or UnauthorizedAccessException or TimeoutException
@@ -2000,25 +2011,119 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             ?? throw new TimeoutException($"The language server has not loaded {Path.GetFileName(document.Path)} ({Session.CSharp?.State ?? "none"})"));
     }
 
-    /// <summary>A file opened as the editor would. An agent's own file tools write to disk and ask about the file at once,
-    /// before the folder's watcher has told the editor: an open file it has not changed takes the disk's text first, so no
-    /// answer is about the text before, reading the disk off the UI thread and only once its length or time changed since
-    /// the editor read it (<see cref="OpenDocument.TakeDiskTextAsync"/>). A preview has no text to take, and is decoded
-    /// again only when the watcher hears its file change.</summary>
+    /// <summary>A file opened as the editor would, with no tab, held for the call (<see cref="CallFiles"/>). An agent's own
+    /// file tools write to disk and ask at once, before the watcher has told the editor: an open file it has not changed
+    /// takes the disk's text first, read off the UI thread and only once its length or time changed since the editor read
+    /// it (<see cref="OpenDocument.TakeDiskTextAsync"/>). A preview has no text to take, and is decoded again only when
+    /// the watcher hears its file change.</summary>
     private async Task<OpenDocument> DocumentAsync(string path, CancellationToken cancel)
     {
         string full = Resolve(path);
         if (Editors.Find(full) is { } open)
         {
+            Files.Value?.Hold(open);
             await open.TakeDiskTextAsync(cancel);
             return open;
         }
-        if (window.OpenFile(full) is { } problem)
+        if (Files.Value is not { Ended: false } call)
         {
-            throw new FileNotFoundException($"{full} could not be opened: {problem}");
+            throw new InvalidOperationException($"{Relative(full)} is opened for a tool's call only while the call runs");
         }
-        return Editors.Find(full)
-            ?? throw new FileNotFoundException($"{full} is not open in the editor");
+        try
+        {
+            return call.Lend(full);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            throw new FileNotFoundException($"{full} could not be opened: {error.Message}", error);
+        }
+    }
+
+    /// <summary>The call this flow serves' files (<see cref="OnUi"/>'s), the dispatcher flowing it as it flows <see
+    /// cref="AgentCall"/>.</summary>
+    private static readonly AsyncLocal<CallFiles?> Files = new();
+
+    /// <summary>The files one call read or changed, held open while it runs so no other call's end closes them under it, and
+    /// let go after it (<see cref="Lingering"/>): one with no tab closes then, unless the call left it unsaved, or changed it
+    /// in a person's window (<paramref name="keepChanged"/>), where its Undo is the person's, which keeps it in a tab. So an
+    /// agent's session never holds open every file it read, nor a person's window a tab they never opened.</summary>
+    private sealed class CallFiles(Passenger.App.Editors.EditorArea editors, bool keepChanged)
+    {
+        private readonly Dictionary<OpenDocument, (IDisposable Hold, int Version)> held = [];
+
+        /// <summary>Whether the call has ended and let its files go, so nothing it left running holds one again.</summary>
+        public bool Ended { get; private set; }
+
+        public void Hold(OpenDocument document)
+        {
+            if (!Ended && !held.ContainsKey(document))
+            {
+                held[document] = (editors.Hold(document), document.Text.Version);
+            }
+        }
+
+        public OpenDocument Lend(string full)
+        {
+            (OpenDocument document, IDisposable hold) = editors.Lend(full);
+            if (!held.TryAdd(document, (hold, document.Text.Version)))
+            {
+                hold.Dispose();
+            }
+            return document;
+        }
+
+        public void LetGo()
+        {
+            Ended = true;
+            List<IDisposable> holds = [];
+            foreach ((OpenDocument document, (IDisposable hold, int version)) in held)
+            {
+                bool kept = document.IsModified || (keepChanged && document.Text.Version != version);
+                if (kept && editors.Documents.Contains(document) && !editors.HasTab(document))
+                {
+                    editors.Activate(document);
+                }
+                holds.Add(hold);
+            }
+            held.Clear();
+            Lingering.Of(editors).Take(holds);
+        }
+    }
+
+    /// <summary>The files of the call that ended last, held a moment more: an agent's next call is often on the same file,
+    /// which then keeps what its servers worked out as it opened (a linter's findings, a compose file's names). Let go as
+    /// the next call ends, or once the window's calls pause for <see cref="Pause"/>.</summary>
+    private sealed class Lingering
+    {
+        private static readonly TimeSpan Pause = TimeSpan.FromSeconds(2);
+
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Passenger.App.Editors.EditorArea, Lingering> Windows = new();
+
+        private readonly Debounce later;
+        private List<IDisposable> holds = [];
+
+        private Lingering() => later = new Debounce(Pause, () =>
+        {
+            Take([]);
+            return Task.CompletedTask;
+        });
+
+        public static Lingering Of(Passenger.App.Editors.EditorArea editors) => Windows.GetValue(editors, _ => new Lingering());
+
+        /// <summary>Holds the files of the call that ended, then lets go of those of the one before, so a file both held stays open.</summary>
+        public void Take(List<IDisposable> next)
+        {
+            List<IDisposable> before = holds;
+            holds = next;
+            foreach (IDisposable hold in before)
+            {
+                hold.Dispose();
+            }
+            if (next.Count > 0)
+            {
+                later.Restart();
+            }
+        }
     }
 
     /// <summary>A file opened as <see cref="DocumentAsync"/> opens it, refused when its tab holds no text of the file's (an
