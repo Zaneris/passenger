@@ -230,6 +230,25 @@ public sealed class TestRun : IAsyncDisposable
         return new Restored(run);
     }
 
+    /// <summary>A command run on the person's checkout given their NuGet settings back, as <see cref="PersonsNuGet"/> gives
+    /// them, but to it alone, so its restore of their projects is the one their builds wrote.</summary>
+    public static System.Diagnostics.ProcessStartInfo WithPersonsNuGet(System.Diagnostics.ProcessStartInfo start)
+    {
+        foreach ((string variable, string? value) in PersonsNuGetVariables)
+        {
+            if (value is null)
+            {
+                start.Environment.Remove(variable);
+            }
+            else
+            {
+                start.Environment[variable] = value;
+            }
+        }
+        start.Environment["MSBUILDDISABLENODEREUSE"] = "1";
+        return start;
+    }
+
     private sealed class Restored(Dictionary<string, string?> variables) : IDisposable
     {
         public void Dispose()
