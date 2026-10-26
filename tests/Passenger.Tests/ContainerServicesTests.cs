@@ -137,6 +137,9 @@ public sealed class ContainerServicesTests(ContainerRunDebuggingTests.Tools tool
             Assert.Equal("api 1", Ui.AwaitPumped(ContainerRunDebuggingTests.Get(ContainerRunsTests.Published(project, "api")), "api's answer", TimeSpan.FromMinutes(3.5)));
             Ui.WaitFor(() => window.RequestLog.Requests.Count(r => r.Path == "/" && r.Status == 200) == 2, "both services' requests, listed as they ended", TimeSpan.FromSeconds(30));
             Assert.Equal(["api of Compose: compose.yaml", "web of Compose: compose.yaml"], window.RequestLog.Requests.Select(r => r.From).Order(StringComparer.Ordinal));
+            // A request that came before its project's routes were read finds its route once they are.
+            Ui.WaitFor(() => window.RequestLog.Requests.All(r => r.Route is not null),
+                () => $"each request's route ({string.Join(", ", window.RequestLog.Requests.Select(r => $"{r.From}: {r.Route?.Project ?? "none yet"}"))})", TimeSpan.FromMinutes(1));
             Assert.All(window.RequestLog.Requests, r => Assert.True(r.Route is { } route && route.Project.Contains(r.From[..3], StringComparison.OrdinalIgnoreCase),
                 $"{r.From}'s request reached {r.Route?.Project ?? "no route"}"));
 
