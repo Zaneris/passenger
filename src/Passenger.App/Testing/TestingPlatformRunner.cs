@@ -136,14 +136,14 @@ public sealed class TestingPlatformRunner : ITestRunner
                 chosen.Add(node);
             }
         }
-        List<TestOutcome> all = [];
+        List<TestOutcome> all = new(chosen.Count);
         long began = Stopwatch.GetTimestamp();
         try
         {
             await using Host host = await Host.StartAsync(assembly, environment, debugger, log, cancel);
             bool ran = await host.RequestAsync("testing/runTests", chosen, changed =>
             {
-                List<TestOutcome> batch = [];
+                List<TestOutcome> batch = new(changed.Count);
                 foreach (PlatformNode node in changed)
                 {
                     if (byUid.TryGetValue(node.Uid, out TestItem? test) && Outcome(test, node) is { } outcome)

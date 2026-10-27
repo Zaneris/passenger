@@ -1,3 +1,4 @@
+using Nerdbank.Streams;
 using StreamJsonRpc;
 
 namespace Passenger.Lsp;
@@ -13,7 +14,8 @@ public sealed class JsonRpcPeer : IDisposable
 
     public JsonRpcPeer(Stream stream)
     {
-        rpc = new JsonRpc(new HeaderDelimitedMessageHandler(stream, stream, new SystemTextJsonFormatter()))
+        // Each message in one piece, parsed where it lies rather than copied whole into an array rented for it.
+        rpc = new JsonRpc(new HeaderDelimitedMessageHandler(stream.UsePipeWriter(), new ContiguousReader(stream), new SystemTextJsonFormatter()))
         {
             SynchronizationContext = new Microsoft.VisualStudio.Threading.NonConcurrentSynchronizationContext(sticky: false),
         };
