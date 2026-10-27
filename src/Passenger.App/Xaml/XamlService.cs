@@ -1,3 +1,4 @@
+using Avalonia.Threading;
 using Passenger.App.Editors;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -249,12 +250,21 @@ public sealed class XamlService : IDisposable
             return loading;
         }
         Dictionary<string, TextSnapshot> texts = OpenTexts();
-        Func<string, ProjectEvaluation?>? evaluations = Evaluations;
-        Task<XamlProjectBuilder?> builder = BackgroundWork.Run(() => XamlProjectBuilder.For(project, DotnetRoot.Value, IdeErrors.Report, evaluations));
+        Task<XamlProjectBuilder?> builder = BuilderAsync(project, Evaluations);
         loading = new XamlLoading(project, builder, LoadAsync(builder, texts));
         projects[project] = loading;
         IdeErrors.Observe(AnnounceAsync(loading));
         return loading;
+    }
+
+    /// <summary>A project's builder, made on the thread pool once the window has laid out and drawn what it had to (the
+    /// file whose opening asked for it): the read that follows keeps every processor and the collector busy for a while,
+    /// which that first frame would otherwise wait behind. None for a session ended meanwhile.</summary>
+    private async Task<XamlProjectBuilder?> BuilderAsync(string project, Func<string, ProjectEvaluation?>? evaluations)
+    {
+        using IDisposable held = BackgroundWork.Scope();
+        await Dispatcher.Yield(DispatcherPriority.Background);
+        return disposed ? null : await BackgroundWork.Run(() => XamlProjectBuilder.For(project, DotnetRoot.Value, IdeErrors.Report, evaluations));
     }
 
     private static async Task<XamlProject?> LoadAsync(Task<XamlProjectBuilder?> made, Dictionary<string, TextSnapshot> texts)
@@ -326,8 +336,7 @@ public sealed class XamlService : IDisposable
     private void Reload(XamlLoading loading)
     {
         Dictionary<string, TextSnapshot> texts = OpenTexts();
-        Func<string, ProjectEvaluation?>? evaluations = Evaluations;
-        Task<XamlProjectBuilder?> builder = BackgroundWork.Run(() => XamlProjectBuilder.For(loading.ProjectPath, DotnetRoot.Value, IdeErrors.Report, evaluations));
+        Task<XamlProjectBuilder?> builder = BuilderAsync(loading.ProjectPath, Evaluations);
         XamlLoading again = loading with { Builder = builder, Loaded = LoadAsync(builder, texts) };
         projects[loading.ProjectPath] = again;
         foreach (XamlDocument document in documents.Values.Where(d => d.Loading.ProjectPath == loading.ProjectPath))
