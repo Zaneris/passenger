@@ -123,8 +123,9 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
   ACL and streams and macOS metadata kept, a read-only file refused, Local History given the old bytes). Any other whole
   file: `AtomicFile.Write`. Never `File.WriteAll*`. Passenger saves an open project, solution, nuget.config or
   Directory.Packages.props before writing it and loads what it wrote after (`SaveBeforeWriting`, `FollowWritten`). A
-  change of several files, or one that moves a file, is one command of global undo (`EditorArea.Commands.Record`).
-  Server edits pass `LineEndings.Fit` then `Indentation.Fit`.
+  change of several files, or one that moves a file, is one command of global undo (`EditorArea.Commands.Record`), and
+  the window follows only what a change of files made, moved or deleted (`Following`, `CameOrWent`), never a whole
+  re-read of the folder. Server edits pass `LineEndings.Fit` then `Indentation.Fit`.
 - **State is a `StateDocument`** in the one `StateStore` (versioned `Upgrades`, `Clamped`, written debounced and merged,
   a bad file set aside as `.bad`), read off the UI thread; never a file of its own. Per-folder state lives under
   `workspaces/<name>-<hash>/` and is made in `ProjectSession`. A new setting: an `AppSettings` property, its row and
