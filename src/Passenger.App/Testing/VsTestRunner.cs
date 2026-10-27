@@ -137,7 +137,7 @@ public sealed class VsTestRunner : ITestRunner
         List<TestCase> chosen = [];
         foreach (TestItem test in tests)
         {
-            if (cases.Of(test.Key) is { } found && running.TryAdd((found.Id, found.Source), test))
+            if (cases.Of(test) is { } found && running.TryAdd((found.Id, found.Source), test))
             {
                 chosen.Add(found);
             }

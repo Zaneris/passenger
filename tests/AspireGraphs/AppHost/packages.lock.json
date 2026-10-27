@@ -504,14 +504,6 @@
         "resolved": "18.4.0",
         "contentHash": "iQWOKi3L5QStmWqDjDubcr1KlTDy88qBTe88I0etlUUo1l0zSNebGJXl1Xetyl+ACA+ujP3YUtxo3Nz54JPriw=="
       },
-      "Microsoft.VisualStudio.Threading.Only": {
-        "type": "Transitive",
-        "resolved": "17.14.15",
-        "contentHash": "NqONyw1RXyj9P3k5e1uU2k9kc1ptwuU5NJQzG+MPq7vQVHUzBY8HLuJf/N2Rw5H/myD96CVxziDxmjawPuzntw==",
-        "dependencies": {
-          "Microsoft.VisualStudio.Validation": "17.8.8"
-        }
-      },
       "Microsoft.VisualStudio.Validation": {
         "type": "Transitive",
         "resolved": "17.13.22",
@@ -644,6 +636,15 @@
         "dependencies": {
           "Grpc.Net.Common": "2.83.0",
           "Microsoft.Extensions.Logging.Abstractions": "8.0.0"
+        }
+      },
+      "Microsoft.VisualStudio.Threading.Only": {
+        "type": "CentralTransitive",
+        "requested": "[18.7.23, )",
+        "resolved": "17.14.15",
+        "contentHash": "NqONyw1RXyj9P3k5e1uU2k9kc1ptwuU5NJQzG+MPq7vQVHUzBY8HLuJf/N2Rw5H/myD96CVxziDxmjawPuzntw==",
+        "dependencies": {
+          "Microsoft.VisualStudio.Validation": "17.8.8"
         }
       },
       "ModelContextProtocol.Core": {

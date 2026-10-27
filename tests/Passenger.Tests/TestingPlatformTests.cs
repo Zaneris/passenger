@@ -8,6 +8,7 @@ using Passenger.App.Testing;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.Tests;
 
@@ -237,7 +238,7 @@ public sealed class TestingPlatformDebuggingTests : TestingPlatformFolders, ICla
 public abstract class TestingPlatformFolders : IDisposable
 {
     /// <summary>xUnit v3 on the platform alone: its own program, with no test SDK or VSTest adapter.</summary>
-    private const string XunitProject =
+    internal const string XunitProject =
         $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n    <OutputType>Exe</OutputType>\n" +
         "    <ImplicitUsings>enable</ImplicitUsings>\n  </PropertyGroup>\n  <ItemGroup>\n    <PackageReference Include=\"xunit.v3\" Version=\"4.0.2\" />\n  </ItemGroup>\n</Project>\n";
 
@@ -309,4 +310,82 @@ public abstract class TestingPlatformFolders : IDisposable
 
     protected static TestNode? Method(MainWindow window, string name) =>
         window.Tests.Tree.Roots.SelectMany(r => r.Methods).FirstOrDefault(m => m.Name == name);
+}
+
+/// <summary>What a test host's results cost the IDE to read, counted across the process, so the class runs alone.</summary>
+[Collection(Alone.Name)]
+public sealed class TestingPlatformBytesTests(ITestOutputHelper testOutput) : IDisposable
+{
+    private const int Rows = 2000;
+
+    private readonly string folder = PathNames.Canonical(TestFolders.Create("mtp-bytes-"));
+
+    public void Dispose() => TestFolders.Delete(folder);
+
+    /// <summary>A run of 2,000 tests, a tenth failing and a seventh writing output, is told by its test host as test nodes
+    /// read straight from the bytes they came in, each test looked up by its key without making it: the run costs the IDE
+    /// at most twice the JSON of its results, least of three, and every result reads as the run with protocol traces on
+    /// (whose trace gives the JSON) read it.</summary>
+    [Fact]
+    public async Task A_runs_results_cost_at_most_twice_their_JSON_to_read()
+    {
+        CancellationToken cancel = TestContext.Current.CancellationToken;
+        string project = TestFolders.Write(folder, "Sums.Tests.csproj", TestingPlatformFolders.XunitProject);
+        string source = TestFolders.Write(folder, "RowTests.cs",
+            "using Xunit;\n\nnamespace Sums.Tests;\n\npublic class RowTests(ITestOutputHelper output)\n{\n" +
+            $"    public static IEnumerable<object[]> Rows => Enumerable.Range(0, {Rows}).Select(i => new object[] {{ i }});\n\n" +
+            "    [Theory]\n    [MemberData(nameof(Rows))]\n    [Trait(\"Area\", \"Sums\")]\n    public void Adds_up(int row)\n    {\n" +
+            "        if (row % 7 == 0)\n        {\n            output.WriteLine($\"row {row} of the sums\");\n        }\n" +
+            "        Assert.True(row % 10 != 9, $\"row {row} does not add up\");\n    }\n}\n");
+        await Restore.RunAsync(project);
+        ChildResult built = await ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", project, "-nologo", "-v:q"]), limit: Restore.Limit.Scaled(), cancel: cancel);
+        Assert.True(built.Succeeded, $"The test project did not build:\n{built.Output}{built.Error}");
+        TestAssembly assembly = new(new ProjectModel(project, "Sums.Tests", "Exe", [TestProjects.Framework], [], [], true), TestProjects.Framework,
+            Path.Combine(folder, "bin", "Debug", TestProjects.Framework, "Sums.Tests.dll"));
+        using TestingPlatformRunner runner = new();
+        IReadOnlyList<TestItem> tests = await runner.DiscoverAsync([assembly], cancel: cancel);
+        Assert.Equal(Rows, tests.Count);
+        TestItem first = tests.Single(t => t.Row == "Adds_up(row: 9)");
+        Assert.Equal(("Sums.Tests.RowTests.Adds_up", source, KeyValuePair.Create("Area", "Sums")), (first.FullyQualifiedName, first.Path, Assert.Single(first.Traits)));
+
+        string log = IdeLog.PathOf(IdeLog.Tests);
+        IdeLog.Flush();
+        int logged = File.Exists(log) ? Ui.Shared(log).Length : 0;
+        bool tracing = IdeLog.Traces;
+        RunSummary traced;
+        IdeLog.Traces = true;
+        try
+        {
+            traced = await runner.RunAsync(tests, _ => { }, cancel: cancel);
+        }
+        finally
+        {
+            IdeLog.Traces = tracing;
+        }
+        IdeLog.Flush();
+        const string Told = "<-- testing/testUpdates/tests ";
+        long json = Ui.Shared(log)[logged..].Split('\n').Where(l => l.Contains(Told, StringComparison.Ordinal))
+            .Sum(l => (long)System.Text.Encoding.UTF8.GetByteCount(l[(l.IndexOf(Told, StringComparison.Ordinal) + Told.Length)..].TrimEnd('\r')));
+        long least = long.MaxValue;
+        RunSummary? ran = null;
+        for (int time = 0; time < 3; time++)
+        {
+            long before = GC.GetTotalAllocatedBytes(precise: true);
+            ran = await runner.RunAsync(tests, _ => { }, cancel: cancel);
+            least = Math.Min(least, GC.GetTotalAllocatedBytes(precise: true) - before);
+        }
+        Assert.Equal(Rows, ran!.Outcomes.Count);
+        Assert.Equal(Rows / 10, ran.Outcomes.Count(o => o.State == TestState.Failed));
+        TestOutcome failed = ran.Outcomes.Single(o => o.Test == first);
+        Assert.Equal((TestState.Failed, "row 9 does not add up"), (failed.State, failed.Message));
+        Assert.Contains("RowTests.cs:line", failed.StackTrace, StringComparison.Ordinal);
+        Assert.Equal("row 7 of the sums", ran.Outcomes.Single(o => o.Test.Row == "Adds_up(row: 7)").Output?.Trim());
+        Assert.Equal(Said(traced), Said(ran));
+        testOutput.WriteLine($"{json:N0} bytes of JSON, {least:N0} allocated ({(double)least / json:0.00}×), {least / Rows:N0} a result");
+        Assert.True(least <= json * 2,
+            $"Reading a run's {Rows:N0} results of {json:N0} bytes of JSON allocated {least:N0} bytes ({(double)least / json:0.0}× its JSON): every test a run reports costs the IDE that much more memory");
+
+        static List<string> Said(RunSummary run) =>
+            [.. run.Outcomes.Select(o => $"{o.Test.Id} {o.State} {o.DisplayName} {o.Message} {o.StackTrace} {o.Output}").Order(StringComparer.Ordinal)];
+    }
 }

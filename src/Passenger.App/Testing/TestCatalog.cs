@@ -1,3 +1,4 @@
+using System.Buffers;
 using Passenger.Core;
 
 namespace Passenger.App.Testing;
@@ -13,8 +14,24 @@ public sealed class TestCatalog<THandle>
     private readonly Dictionary<string, List<string>> byAssembly = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> canonical = new(StringComparer.Ordinal);
 
-    /// <summary>What runs a test told; null for a key no look found.</summary>
-    public THandle? Of(string key) => handles.GetValueOrDefault(key);
+    /// <summary>The longest key looked for on the stack; a longer one is written into a rented array.</summary>
+    private const int OnStack = 512;
+
+    /// <summary>What runs a test told; null for one no look found. Its key is looked for as it is written, never made a
+    /// string: a run of thousands of tests asks for each.</summary>
+    public THandle? Of(TestItem test)
+    {
+        int length = test.KeyLength;
+        char[]? rented = null;
+        Span<char> key = length <= OnStack ? stackalloc char[OnStack] : (rented = ArrayPool<char>.Shared.Rent(length));
+        test.WriteKey(key);
+        handles.GetAlternateLookup<ReadOnlySpan<char>>().TryGetValue(key[..length], out THandle? handle);
+        if (rented is not null)
+        {
+            ArrayPool<char>.Shared.Return(rented);
+        }
+        return handle;
+    }
 
     /// <summary>Tells what a look at some assemblies found, in place of what each had: every test with its assembly, its
     /// id, what it is told as and what runs it, in the order they came.</summary>

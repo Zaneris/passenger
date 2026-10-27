@@ -307,14 +307,6 @@
           "Microsoft.TestPlatform.ObjectModel": "18.11.0"
         }
       },
-      "Microsoft.VisualStudio.Threading.Only": {
-        "type": "Transitive",
-        "resolved": "18.7.23",
-        "contentHash": "iOaVAQLPt1KxFyYqZqKxqNu8BgQUiPLNeT8XhX+549eWaGw49e1MxjlkjTIBwvlfrU4lPp+Nm99oRpmsgN7RJw==",
-        "dependencies": {
-          "Microsoft.VisualStudio.Validation": "17.13.22"
-        }
-      },
       "Microsoft.VisualStudio.Validation": {
         "type": "Transitive",
         "resolved": "17.13.22",
@@ -509,6 +501,7 @@
           "Grpc.Net.Client": "[2.84.0, )",
           "ICSharpCode.Decompiler": "[11.1.0.9782, )",
           "Microsoft.TestPlatform.TranslationLayer": "[18.11.0, )",
+          "Microsoft.VisualStudio.Threading.Only": "[18.7.23, )",
           "ModelContextProtocol.Core": "[2.3.0, )",
           "NuGet.Configuration": "[7.9.0, )",
           "Passenger.Core": "[0.2.0, )",
@@ -523,7 +516,6 @@
           "Passenger.Vcs": "[0.2.0, )",
           "Passenger.Workspace": "[0.2.0, )",
           "Passenger.Xaml": "[0.2.0, )",
-          "StreamJsonRpc": "[2.26.150, )",
           "Velopack": "[1.2.161, )"
         }
       },
@@ -758,6 +750,15 @@
         "contentHash": "PQk9INK5qLjQWzTuJCIDAah8AorDJatkBsCH/fDRTsENRqsAXBwzzY//Sqz5DuH7fQOyWTG+FHVO7FzLxNwCVQ==",
         "dependencies": {
           "Microsoft.TestPlatform.ObjectModel": "18.11.0"
+        }
+      },
+      "Microsoft.VisualStudio.Threading.Only": {
+        "type": "CentralTransitive",
+        "requested": "[18.7.23, )",
+        "resolved": "18.7.23",
+        "contentHash": "iOaVAQLPt1KxFyYqZqKxqNu8BgQUiPLNeT8XhX+549eWaGw49e1MxjlkjTIBwvlfrU4lPp+Nm99oRpmsgN7RJw==",
+        "dependencies": {
+          "Microsoft.VisualStudio.Validation": "17.13.22"
         }
       },
       "NuGet.Configuration": {

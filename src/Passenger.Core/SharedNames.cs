@@ -2,12 +2,12 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Passenger.Dap;
+namespace Passenger.Core;
 
-/// <summary>Names many variables share (a collection's elements' type) read as one string: each kept by its bytes' hash in
-/// one of a fixed number of places, and handed out again while it holds its place; a name another has taken the place of is
-/// read anew. Any thread: a place holds a whole string or none.</summary>
-internal sealed class SharedNames : JsonConverter<string>
+/// <summary>Names many messages share (a collection's elements' type, the file, type and method of a theory's rows) read
+/// as one string: each kept by its bytes' hash in one of a fixed number of places, and handed out again while it holds its
+/// place; a name another has taken the place of is read anew. Any thread: a place holds a whole string or none.</summary>
+public sealed class SharedNames : JsonConverter<string>
 {
     private const int Places = 512;
 
@@ -16,10 +16,13 @@ internal sealed class SharedNames : JsonConverter<string>
 
     private static readonly string?[] Kept = new string?[Places];
 
-    public override string? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    public override string? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => Read(ref reader);
+
+    /// <summary>The string or property name the reader is on, the one kept for its bytes when there is one.</summary>
+    public static string? Read(ref Utf8JsonReader reader)
     {
         long length = reader.HasValueSequence ? reader.ValueSequence.Length : reader.ValueSpan.Length;
-        if (reader.TokenType != JsonTokenType.String || length > Longest)
+        if (reader.TokenType is not (JsonTokenType.String or JsonTokenType.PropertyName) || length > Longest)
         {
             return reader.GetString();
         }

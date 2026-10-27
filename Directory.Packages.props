@@ -47,6 +47,8 @@
     <!-- The NuGet window's package sources, read by NuGet's own code, so they match the CLI's. -->
     <PackageVersion Include="NuGet.Configuration" Version="7.9.0" />
     <PackageVersion Include="StreamJsonRpc" Version="2.26.150" />
+    <!-- The app's JoinableTaskFactory (Synchronously.cs), at the version StreamJsonRpc takes. -->
+    <PackageVersion Include="Microsoft.VisualStudio.Threading.Only" Version="18.7.23" />
     <PackageVersion Include="Porta.Pty" Version="2.2.3" />
     <!-- TextMate grammars' tokenizer, with Oniguruma's regular expressions (a native per system): colour for every
          language but C#. -->

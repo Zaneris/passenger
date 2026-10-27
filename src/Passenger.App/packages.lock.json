@@ -119,6 +119,15 @@
           "Microsoft.TestPlatform.ObjectModel": "18.11.0"
         }
       },
+      "Microsoft.VisualStudio.Threading.Only": {
+        "type": "Direct",
+        "requested": "[18.7.23, )",
+        "resolved": "18.7.23",
+        "contentHash": "iOaVAQLPt1KxFyYqZqKxqNu8BgQUiPLNeT8XhX+549eWaGw49e1MxjlkjTIBwvlfrU4lPp+Nm99oRpmsgN7RJw==",
+        "dependencies": {
+          "Microsoft.VisualStudio.Validation": "17.13.22"
+        }
+      },
       "ModelContextProtocol.Core": {
         "type": "Direct",
         "requested": "[2.3.0, )",
@@ -136,20 +145,6 @@
         "dependencies": {
           "NuGet.Common": "7.9.0",
           "System.Security.Cryptography.ProtectedData": "8.0.0"
-        }
-      },
-      "StreamJsonRpc": {
-        "type": "Direct",
-        "requested": "[2.26.150, )",
-        "resolved": "2.26.150",
-        "contentHash": "JDtGDKGWd6EK8Vqo/f6qxCmumqWJXTrvNa4nony1WrTGsORsmWtyC/qCgV5GFUYoXeNsGsYF9ALQCJvzHmqAqQ==",
-        "dependencies": {
-          "MessagePack": "2.5.307",
-          "Microsoft.VisualStudio.Threading.Only": "18.7.23",
-          "Microsoft.VisualStudio.Validation": "17.13.22",
-          "Nerdbank.MessagePack": "1.3.88",
-          "Nerdbank.Streams": "2.13.16",
-          "Newtonsoft.Json": "13.0.4"
         }
       },
       "Velopack": {
@@ -358,14 +353,6 @@
         "type": "Transitive",
         "resolved": "18.11.0",
         "contentHash": "BXBHYnwSOljKute8UYCMXOLAdB7awxEMppPSpqOF1ZxLD/W/OH+vTBgFaXA7q0aditJTVXSMVenel+wOkEIyNg=="
-      },
-      "Microsoft.VisualStudio.Threading.Only": {
-        "type": "Transitive",
-        "resolved": "18.7.23",
-        "contentHash": "iOaVAQLPt1KxFyYqZqKxqNu8BgQUiPLNeT8XhX+549eWaGw49e1MxjlkjTIBwvlfrU4lPp+Nm99oRpmsgN7RJw==",
-        "dependencies": {
-          "Microsoft.VisualStudio.Validation": "17.13.22"
-        }
       },
       "Microsoft.VisualStudio.Validation": {
         "type": "Transitive",
@@ -610,6 +597,20 @@
         "contentHash": "Q+U4BOiKQP8AR68Fjy6h+rLlcXcH5ao+qwIO7xAejO0U4MqFqM9/SdtcG/cZwOlQydciagiA0I7HWVRkfealyQ==",
         "dependencies": {
           "Microsoft.Windows.Console.ConPTY": "1.24.260710001"
+        }
+      },
+      "StreamJsonRpc": {
+        "type": "CentralTransitive",
+        "requested": "[2.26.150, )",
+        "resolved": "2.26.150",
+        "contentHash": "JDtGDKGWd6EK8Vqo/f6qxCmumqWJXTrvNa4nony1WrTGsORsmWtyC/qCgV5GFUYoXeNsGsYF9ALQCJvzHmqAqQ==",
+        "dependencies": {
+          "MessagePack": "2.5.307",
+          "Microsoft.VisualStudio.Threading.Only": "18.7.23",
+          "Microsoft.VisualStudio.Validation": "17.13.22",
+          "Nerdbank.MessagePack": "1.3.88",
+          "Nerdbank.Streams": "2.13.16",
+          "Newtonsoft.Json": "13.0.4"
         }
       },
       "TextMateSharp": {

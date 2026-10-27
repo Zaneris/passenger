@@ -44,8 +44,8 @@
     <!-- NuGet's own reading of the machine's settings and of target frameworks: the global packages folder EF's tools are
          found in (Migrations/EfTools.cs) and which framework takes another's (Aspire/AspireOrchestration.cs). -->
     <PackageReference Include="NuGet.Configuration" />
-    <!-- Microsoft.Testing.Platform's test hosts speak JSON-RPC (Testing/TestingPlatformRunner.cs). -->
-    <PackageReference Include="StreamJsonRpc" />
+    <!-- JoinableTaskFactory, which runs async work to its end where a caller must stay synchronous (Synchronously.cs). -->
+    <PackageReference Include="Microsoft.VisualStudio.Threading.Only" />
     <!-- The Windows install's hooks: what its installer and uninstaller ask of Passenger.exe (Installation.cs). -->
     <PackageReference Include="Velopack" />
   </ItemGroup>

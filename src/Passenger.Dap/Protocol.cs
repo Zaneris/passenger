@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Passenger.Core;
 
 namespace Passenger.Dap;
 

@@ -32,6 +32,18 @@ public sealed record TestItem(string Project, string FullyQualifiedName, string 
     /// <summary>Where the tree keeps it: its id under the target framework it ran for.</summary>
     internal string Key => $"{Framework}|{Id}";
 
+    /// <summary>The length of its <see cref="Key"/>.</summary>
+    internal int KeyLength => (Framework?.Length ?? 0) + 1 + Project.Length + 2 + MethodLength + (Row is null ? 0 : 2 + Row.Length);
+
+    /// <summary>Its <see cref="Key"/> written into <paramref name="into"/>, which <see cref="KeyLength"/> fits.</summary>
+    internal void WriteKey(Span<char> into)
+    {
+        ReadOnlySpan<char> method = FullyQualifiedName.AsSpan(0, MethodLength);
+        _ = Row is null ? into.TryWrite($"{Framework}|{Project}::{method}", out _) : into.TryWrite($"{Framework}|{Project}::{method}::{Row}", out _);
+    }
+
+    private int MethodLength => FullyQualifiedName.IndexOf('(') is var arguments and >= 0 ? arguments : FullyQualifiedName.Length;
+
     /// <summary>"A.B.Class.Method(1, 2)" as "A.B.Class.Method".</summary>
     public static string MethodOf(string fullyQualifiedName) =>
         fullyQualifiedName.IndexOf('(') is var arguments and >= 0 ? fullyQualifiedName[..arguments] : fullyQualifiedName;
