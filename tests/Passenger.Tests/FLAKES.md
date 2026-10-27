@@ -50,6 +50,11 @@ that fixed it, in one of the forms below. A failure not yet understood goes in o
   turns before and was never handled; the runtime sends a thread no other while one is unanswered. Rosetta loses
   SIGUSR1 to a thread whose traps a Mach exception server answers (a C program: 20,000 of 20,000 handled on arm64, none
   after the 24th under Rosetta). **Neither**: Rosetta's alone; the test skips under it, saying why (07cb27f6).
+- `LongTextTests`' key in a line of a million characters, Linux x64 shard 2: "allocated 369,496 bytes … against 345,736
+  … the line's measure was made again", reading 6,428 characters against 7,196. Avalonia's text formatter leaves the
+  pooled arrays of runs it shapes together and splits to finalizers, so between collections its pool runs dry and a key
+  costs about 9 KB more; the test took the short line's keys before the long line's, and the shard's long-lived process
+  ran dry between them. **The test**: the lines' keys are taken in turns, each after a collection (147139ee).
 
 ## 2026-10-26
 

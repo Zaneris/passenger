@@ -323,6 +323,8 @@ long random editing session checks every key against a string model, with soft w
 it. Performance is held by what the UI thread allocates in a small case against a large one, not by a time; to see where
 the UI thread's time goes, attach Passenger's profiler to the test process (`ProfilingSession.AttachAsync(Environment.ProcessId, …)`).
 A headless frame is GC pressure, so tests that press thousands of keys draw a small window.
+Avalonia's text formatter gives the pooled arrays of runs it shapes together back only when finalized, so a measure of a
+key's bytes collects first (LongTextTests).
 
 **Waits (#237).** A test waits for what it checks, however slow the machine. `Ui.Settle` (and `Press`, `Landed`,
 `WaitFor` on it) waits until the IDE is quiet: `BackgroundWork` landed, nothing in `InFlight` (but Roslyn's held
