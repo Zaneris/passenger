@@ -40,6 +40,10 @@ public partial class MainWindow
     /// <summary>The socket agents reach this window through, else null.</summary>
     public string? AgentSocket => agentSocket?.Path;
 
+    /// <summary>A test's slow agent: the next line the window writes to an agent stalls this long, its end not yet written
+    /// (<see cref="Mcp.AgentSocket.StallNextLine"/>).</summary>
+    public void StallNextAgentLine(TimeSpan stall) => agentSocket?.StallNextLine(stall);
+
     /// <summary>Agents let into the window and still connected.</summary>
     public int Agents
     {

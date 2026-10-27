@@ -526,7 +526,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
 
 /// <summary>McpAttachTests' agents where what is tested is held to a time: an attach given up during initialization, one
 /// past a full socket backlog, an attached diagnostic on a suspended server given up or shut out, and a call nobody answers
-/// coming back at the window's limit. So the class runs alone.</summary>
+/// coming back at the window's limit, also while its word to a slow agent is still written. So the class runs alone.</summary>
 [Collection(Alone.Name)]
 public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders>
 {
@@ -836,6 +836,40 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
         finally
         {
             window.ApplySettings(window.Settings with { TraceProtocols = false });
+            Gone(client);
+            window.Close();
+        }
+    }
+
+    /// <summary>A slow agent: the window's word of what a call waits on is still being written to it when the call ends
+    /// at the window's limit. The word goes whole first and the answer after it, on a line of its own, so the agent hears
+    /// both; a word cut short as the call ended would have taken the answer with it, and the call would never come back.</summary>
+    [AvaloniaFact]
+    public void A_call_that_ends_while_its_word_to_a_slow_agent_is_still_written_comes_back_after_that_word()
+    {
+        TimeSpan limit = TimeSpan.FromSeconds(5).Scaled();
+        string unattended = Plain("mcp-stalled-");
+        MainWindow window = new() { Width = 1200, Height = 800, AgentAnswerLimit = limit, StartsLanguageServer = false };
+        window.Show();
+        window.OpenFolder(unattended);
+        Ui.Settle();
+        string where = $"the Passenger window on {window.Folder}";
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        try
+        {
+            Heard letIn = new();
+            Task<CallToolResult> unanswered = Waiting.Apart(() => Result(client, McpTools.Workspace, heard: letIn));
+            WaitFor(() => window.OwnedWindows.OfType<AgentAdmissionDialog>().Any(d => d.IsVisible), "the window to ask whether the agent may work there");
+            // The call's next beat stalls until well past the window's limit, which ends the call while the beat is written.
+            window.StallNextAgentLine(limit + TimeSpan.FromSeconds(5).Scaled());
+            CallToolResult notLetIn = Await(unanswered, "the call nobody let in, ended while its word to the agent was still written");
+            Assert.True(notLetIn.IsError == true && Text(notLetIn).Contains($"Nobody at {where} answered within {limit.TotalSeconds:0} s whether Test Agent may work there.", StringComparison.Ordinal),
+                $"The call nobody let in was answered: {Text(notLetIn)}");
+            Assert.True(letIn.Told.Any(t => t.Message?.StartsWith($"Waiting for the person at {where} to let Test Agent in", StringComparison.Ordinal) == true),
+                $"The agent never heard what its call waited on: {letIn}");
+        }
+        finally
+        {
             Gone(client);
             window.Close();
         }
