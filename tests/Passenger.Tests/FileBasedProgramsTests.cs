@@ -3,6 +3,7 @@ using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.CSharp;
 using Passenger.App.Explorer;
+using Passenger.App.Testing;
 using Passenger.App.Debugging;
 using Passenger.Workspace;
 using Passenger.Core;
@@ -152,6 +153,61 @@ public sealed class FileBasedProgramsTests : IDisposable
             window.Close();
         }
     }
+
+    /// <summary>A program holding xUnit tests (<c>#:package xunit.v3</c>) is a test project of its own: the Unit Tests window
+    /// shows its tests from its code, and Run All builds it and runs them, each passing or failing as it does.</summary>
+    [AvaloniaFact]
+    public void A_programs_xunit_tests_show_in_the_tests_window_and_run_from_it()
+    {
+        // The run's own NuGet configuration, whose package cache holds xunit.v3 as the tests' own project restores it.
+        string tests = PathNames.Canonical(TestFolders.Create("program-tests-"));
+        try
+        {
+            TestFolders.Write(tests, "Directory.Build.props", "<Project>\n  <PropertyGroup>\n    <UseArtifactsOutput>true</UseArtifactsOutput>\n  </PropertyGroup>\n</Project>\n");
+            string sums = TestFolders.Write(tests, "sums.cs", """
+                #:package xunit.v3@3.2.2
+                #:property PublishAot=false
+                using Xunit;
+
+                public class SumTests
+                {
+                    [Fact]
+                    public void Two_and_two_make_four() => Assert.Equal(4, 2 + 2);
+
+                    [Fact]
+                    public void Two_and_two_make_five() => Assert.Equal(5, 2 + 2);
+                }
+
+                """);
+            Restore.Run(sums);
+            MainWindow window = Ui.OpenFolder(tests, languageServer: false);
+            try
+            {
+                Ui.WaitFor(() => window.Projects is [{ IsTestProject: true }], "sums.cs to be a program holding tests", TimeSpan.FromMinutes(2));
+                window.Perform(AppActions.ShowTests);
+                Ui.WaitFor(() => Method(window, "Two_and_two_make_four") is not null && Method(window, "Two_and_two_make_five") is not null,
+                    () => $"the Unit Tests window to show the program's tests from its code; it shows {string.Join(", ", window.Tests.Tree.Rows.Select(r => r.Name))}");
+
+                Assert.True(window.Perform(AppActions.RunAllTests));
+                Ui.WaitFor(() => !window.Tests.IsBusy && Method(window, "Two_and_two_make_four")?.State is TestState.Passed or TestState.Failed,
+                    () => $"the run of the program's tests ({window.BottomPanel.Tests.Status})", TimeSpan.FromMinutes(3));
+                Assert.True(Method(window, "Two_and_two_make_four")!.State == TestState.Passed,
+                    $"The program's passing test did not pass: {Method(window, "Two_and_two_make_four")!.Details}\n{window.BottomPanel.Tests.Status}");
+                Assert.Equal(TestState.Failed, Method(window, "Two_and_two_make_five")!.State);
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+        finally
+        {
+            TestFolders.Delete(tests);
+        }
+    }
+
+    private static TestNode? Method(MainWindow window, string name) =>
+        window.Tests.Tree.Roots.SelectMany(r => r.Methods).FirstOrDefault(m => m.Name == name);
 
     /// <summary>A program that references another (<c>#:ref lib.cs</c>, a library of its own) has that program for a project
     /// too, which the language server answers across into, and Run builds and runs the two.</summary>
