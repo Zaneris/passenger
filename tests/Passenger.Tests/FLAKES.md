@@ -67,6 +67,15 @@ that fixed it, in one of the forms below. A failure not yet understood goes in o
   frame; on its own it held keys only for single pauses of 5 to 25 ms. **A bug in the IDE**: the read begins once the
   window has drawn (fd15830b); worst wait on Linux x64 with 4 processors 172 to 261 ms before, 158 to 198 after. This
   answers the 39324137868 entry's "look at the read's work on the UI thread".
+- `PauseTests`' evaluation waiting on another thread, Windows x64 run 40544196991: "The evaluation took longer than 3 s
+  and cou…", not "…was stopped: it may wait on another thread". The abort was asked at the first look, but had not
+  taken within its 1.2 s on the loaded runner (it takes 15 to 60 ms after the runtime's 0.5 s hold on arm64, 80 to 360
+  ms under x64), so the evaluation was left to run on. **A bug in the IDE**: its wait on the program for the abort did
+  not scale with the machine; it scales by `PASSENGER_WAIT_SCALE`, and the test quotes the whole answer and the engine's
+  log (03fa8ed6).
+- Linux shard 2 in run 40544196991: 32.3 minutes of tests, over a shard's 32, every test passing; its job took 36
+  minutes where the other Linux shards' took 24 to 27. **The deal**: dealt from older times it took more than its share;
+  dealt again from the two newest runs (1bfb9da6).
 
 ## 2026-10-26
 
