@@ -1,5 +1,9 @@
 using System.Net.Http;
+using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
+using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Endpoints;
 using Passenger.App.Run;
@@ -533,23 +537,73 @@ public sealed class LiveRequestsTests
         }
     }
 
-    /// <summary>The tooltip of each of a request's command rows, as the pointer resting on the row shows it, each row
-    /// scrolled into view first.</summary>
+    /// <summary>A command's row shows the command's own tooltip where the row last showed a request: with more requests
+    /// listed than the window shows, each command heard in a batch of its own is handed the row of a request scrolled off
+    /// the list's foot, as a slow machine's batches hand them. The app's events are stood in for by the profiler reader's.</summary>
+    [AvaloniaFact]
+    public void A_command_handed_the_row_of_a_request_shows_its_own_tooltip()
+    {
+        string folder = TestFolders.Create("requests-reused-");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.ShowToolWindow(ToolWindowIds.Requests);
+            Ui.Settle();
+            int heard = 0;
+            ListBox list = window.Requests.GetVisualDescendants().OfType<ListBox>().Single();
+            Assert.True(list.Bounds.Height >= 4 * ListRow.Height, $"The Requests window's list is {list.Bounds.Height} high, too low to show a request and its three commands");
+            while (window.Requests.Rows.Count * ListRow.Height < list.Bounds.Height + (4 * ListRow.Height))
+            {
+                string each = $"request-{heard}";
+                Hear(new RequestBegan(each, DateTime.UtcNow, each, "GET", $"/orders/{heard++}", string.Empty), new RequestEnded(each, DateTime.UtcNow, each, 200));
+            }
+
+            string id = "signing-up";
+            DateTime at = DateTime.UtcNow;
+            string[] texts = ["INSERT INTO \"Customers\" (\"Name\") VALUES (@p0)", "UPDATE \"Customers\" SET \"Name\" = @p0", "SELECT COUNT(*) FROM \"Customers\""];
+            Hear(new RequestBegan(id, at, id, "GET", "/sign-up/ada", string.Empty));
+            for (int i = 0; i < texts.Length; i++)
+            {
+                Hear(new CommandRan(id, at, $"{id}-{i}", texts[i], 1.5, null, null));
+            }
+            Hear(new RequestEnded(id, at, id, 200));
+            string[] tips = CommandTips(window, window.RequestLog.Requests.Single(r => r.Path == "/sign-up/ada"));
+            Assert.True(tips.SequenceEqual(texts), $"The pointer resting on the sign-up's commands, each in the row of a request before, reads [{string.Join(" | ", tips)}], not their own texts [{string.Join(" | ", texts)}]");
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        // Events the window takes in one batch, laid out before the next.
+        void Hear(params WebEvent[] told)
+        {
+            foreach (WebEvent one in told)
+            {
+                window.RequestLog.Hear(one, "Shop", null);
+            }
+            Ui.Settle();
+        }
+    }
+
+    /// <summary>The tooltip of each of a request's command rows, as the pointer resting on the row's words finds it (never
+    /// on a part the row hides), each row found by its command and scrolled into view first.</summary>
     private static string[] CommandTips(MainWindow window, LiveRequest request)
     {
-        Avalonia.Controls.ListBox list = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window.Requests).OfType<Avalonia.Controls.ListBox>().Single();
-        IReadOnlyList<object> rows = window.Requests.Rows;
+        ListBox list = window.Requests.GetVisualDescendants().OfType<ListBox>().Single();
         List<string> tips = [];
-        for (int at = 0; at < rows.Count; at++)
+        foreach (RequestsView.CommandRow row in window.Requests.Rows.OfType<RequestsView.CommandRow>().Where(r => r.Request == request).ToList())
         {
-            if (rows[at] is RequestsView.CommandRow row && row.Request == request)
-            {
-                list.ScrollIntoView(at);
-                Ui.Settle();
-                Avalonia.Controls.Control shown = list.ContainerFromIndex(at) ?? throw new Xunit.Sdk.XunitException($"The command row {at} is not shown");
-                tips.Add(Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(shown).OfType<Avalonia.Controls.Control>()
-                    .Select(Avalonia.Controls.ToolTip.GetTip).OfType<string>().First());
-            }
+            list.ScrollIntoView(window.Requests.Rows.ToList().IndexOf(row));
+            Ui.Settle();
+            Control shown = list.ContainerFromIndex(window.Requests.Rows.ToList().IndexOf(row)) ?? throw new Xunit.Sdk.XunitException($"The row of the command {row.Command.Text} is not shown");
+            TextBlock words = shown.GetVisualDescendants().OfType<TextBlock>().FirstOrDefault(t => t.IsEffectivelyVisible && t.Text is { Length: > 0 })
+                ?? throw new Xunit.Sdk.XunitException($"The row of the command {row.Command.Text} shows no words");
+            Point at = words.TranslatePoint(new Point(2, words.Bounds.Height / 2), window) ?? throw new Xunit.Sdk.XunitException("The command's row is not laid out");
+            // What covers the row (a tooltip the window opened under a pointer that never moved) is passed over.
+            Visual? found = window.InputHitTest(at, v => v == shown || v.IsVisualAncestorOf(shown) || shown.IsVisualAncestorOf(v)) as Visual;
+            tips.Add((found ?? list).GetSelfAndVisualAncestors().TakeWhile(v => v != list).OfType<Control>().Select(ToolTip.GetTip).OfType<string>().FirstOrDefault()
+                ?? throw new Xunit.Sdk.XunitException($"The pointer on the words of the command {row.Command.Text}'s row finds {found?.GetType().Name ?? "nothing"}, with no tooltip"));
         }
         return [.. tips];
     }
