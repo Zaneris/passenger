@@ -169,8 +169,8 @@ public sealed class TestRun : IAsyncDisposable
         Environment.SetEnvironmentVariable(Passenger.Text.TextSearch.ApartVariable, "1000");
         // The IDE's own waits on what it started (an Aspire service's start, a restart's wait for it) as long as the run's.
         Environment.SetEnvironmentVariable(Passenger.Core.Waits.ScaleVariable, TimeScale.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        // A run stopped before its end (Ctrl+C) leaves nothing either.
-        AppDomain.CurrentDomain.ProcessExit += (_, _) => End();
+        // A run stopped before its end (Ctrl+C) leaves nothing either, but what is held, which the next run's start removes.
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => End(waiting: false);
     }
 
     /// <summary>On macOS and Linux, NuGet's home for the run, which NuGet takes from DOTNET_CLI_HOME: its user nuget.config,
@@ -268,19 +268,22 @@ public sealed class TestRun : IAsyncDisposable
     {
         // No child holds a container: what the run's tests made, and what they had the IDE make, goes by its labels.
         await Docker.RemoveEverythingAsync();
-        End();
+        End(waiting: true);
         // Once more after the log's own last flush, which it hooked after the run began, and so runs before this.
-        AppDomain.CurrentDomain.ProcessExit += (_, _) => End();
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => End(waiting: false);
     }
 
-    private static void End()
+    /// <summary>The run's folders removed, a held one waited for only as the assembly's fixture ends: xunit fails a process
+    /// still running 10 s after its run ended as one whose foreground threads were left running, so the process's exit
+    /// tries each once.</summary>
+    private static void End(bool waiting)
     {
         // The windows' agent sockets are in a folder named for the run's state, outside it.
         foreach (string folder in (string[])[Root, Passenger.App.Mcp.McpHost.SocketFolder, AspireCli.Home])
         {
             try
             {
-                TestFolders.Delete(folder);
+                TestFolders.Delete(folder, waiting);
             }
             catch (Exception held) when (held is IOException or UnauthorizedAccessException)
             {
@@ -663,7 +666,13 @@ public static class TestFolders
         }
     }
 
-    public static void Delete(string path)
+    /// <summary>A folder removed, waiting up to 30 s for what holds it to let go; one still held is named on Windows with
+    /// the programs that may hold it.</summary>
+    public static void Delete(string path) => Delete(path, waiting: true);
+
+    /// <summary><see cref="Delete(string)"/>, or where <paramref name="waiting"/> is false tried at once, naming nothing
+    /// that holds it.</summary>
+    public static void Delete(string path, bool waiting)
     {
         // A settings folder's log lines still queued would make its logs folder again once it was gone.
         Passenger.App.IdeErrors.Flush();
@@ -682,14 +691,14 @@ public static class TestFolders
                 Writable(path);
                 return false;
             }
-        }, TimeSpan.FromSeconds(30), every: TimeSpan.FromMilliseconds(100));
+        }, waiting ? TimeSpan.FromSeconds(30) : TimeSpan.Zero, every: TimeSpan.FromMilliseconds(100));
         if (!deleted && Directory.Exists(path))
         {
             try
             {
                 Directory.Delete(path, recursive: true);
             }
-            catch (IOException error) when (OperatingSystem.IsWindows())
+            catch (IOException error) when (OperatingSystem.IsWindows() && waiting)
             {
                 throw new IOException($"{error.Message} Processes {Running(path)}", error);
             }
