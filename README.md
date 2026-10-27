@@ -7,7 +7,7 @@ Windows, macOS and Linux ([how to install it there](https://passenger-ide.net/li
 <p align="center">
   <a href="https://passenger-ide.net">Website</a> •
   <a href="https://passenger-ide.net/#download">Download</a> •
-  <a href="https://github.com/Zaneris/passenger/releases/tag/v0.2.1">What's new in 0.2.1</a> •
+  <a href="https://github.com/Zaneris/passenger/releases/tag/v0.2.2">What's new in 0.2.2</a> •
   <a href="#what-it-does">What it does</a> •
   <a href="#your-coding-agent-using-the-ide-as-you-do">Your coding agent</a> •
   <a href="#building">Building</a> •
