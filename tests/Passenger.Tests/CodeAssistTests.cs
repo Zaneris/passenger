@@ -1,5 +1,6 @@
 using System.Text;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input.Platform;
@@ -78,6 +79,36 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Assert.Equal(PathNames.Canonical(project.PathOf("Helper.cs")), window.EditorArea.Active?.Path);
         Assert.Equal(2, window.EditorArea.CodeEditor.CaretPosition.Line);
         window.Close();
+    }
+
+    /// <summary>The status bar's path keeps its buttons as the caret moves: a move within a member makes and changes none,
+    /// and one to another member, out to the type and back in, gives the buttons there are that member's words, the path
+    /// shown through the same buttons throughout. Every move to another member made the path's buttons and marks again,
+    /// each with a handler of its own.</summary>
+    [AvaloniaFact]
+    public void The_path_in_the_status_bar_keeps_its_buttons_as_the_caret_moves()
+    {
+        MainWindow window = project.Open("Program.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "Helper.Tw");
+        Ui.WaitFor(() => window.Breadcrumbs.Count == 3, "the member the caret is in");
+        Button[] made = Crumbs();
+        Assert.Equal(["Program.cs", "Program", "Main()"], made.Select(b => b.Content as string));
+        Ui.Press(window, "RIGHT");
+        Ui.Press(window, "LEFT");
+        Assert.True(Crumbs().SequenceEqual(made), "A caret move within Main() made the path's buttons again");
+        editor.GoTo(new TextPosition(1, 0));
+        Ui.Settle();
+        Assert.Equal(["Program.cs", "Program"], window.Breadcrumbs);
+        Assert.True(Crumbs()[..2].SequenceEqual(made[..2]), "A caret move out of Main() to its type made the path's buttons again, each with a handler of its own");
+        Ui.PlaceAfter(editor, "Helper.Tw");
+        Ui.Settle();
+        Assert.Equal(["Program.cs", "Program", "Main()"], window.Breadcrumbs);
+        Assert.True(Crumbs().SequenceEqual(made), "A caret move back into Main() made the path's buttons again, each with a handler of its own");
+        window.Close();
+
+        // The path's buttons in the status bar, those hidden past the path shown too.
+        Button[] Crumbs() => [.. window.GetVisualDescendants().OfType<Button>().Where(b => b.Classes.Contains("crumb"))];
     }
 
     /// <summary>A file shown before its folder's language server has it names the member the caret is in once the server

@@ -130,6 +130,69 @@ public sealed class LongTextTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Left, Right and Backspace with a thousand carets, each far along a long line after accented letters (a
+    /// letter and its combining mark), read no copy of the text around each caret: Left and Right allocate on the UI
+    /// thread under 512 bytes for each caret (its place in the carets' sets), and Backspace under 256 bytes for each caret
+    /// more than typing a letter. A step back over a grapheme copied the 1,024 characters before every caret to find it,
+    /// and Backspace a block of the line besides: 2.2 KB for each caret, and 2.7 KB more than a letter typed.</summary>
+    [AvaloniaFact]
+    public void Left_Right_and_Backspace_with_a_thousand_carets_copy_nothing_around_each_caret()
+    {
+        StringBuilder text = new();
+        for (int i = 0; i < SelectionSet.MaxCount; i++)
+        {
+            text.Append("    int total").Append(i).Append(" = ");
+            for (int k = 0; k < 130; k++)
+            {
+                text.Append("value + ");
+            }
+            text.Append("cafe\u0301e\u0301e\u0301;\n");
+        }
+        string path = Path.Combine(folder, "Long.cs");
+        File.WriteAllText(path, text.ToString());
+        MainWindow window = new() { Width = 1000, Height = 500, Autosaves = false, StartsLanguageServer = false };
+        window.Show();
+        Assert.Null(window.OpenFile(path));
+        Ui.Settle();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        TextSnapshot snapshot = editor.Document.Snapshot;
+        Assert.True(snapshot.GetLine(0).Length > 1024, $"The lines are {snapshot.GetLine(0).Length} characters long");
+        editor.Selections = SelectionSet.Create([.. Enumerable.Range(0, SelectionSet.MaxCount).Select(line => Selection.At(snapshot.GetLine(line).End - 1))], 0);
+        editor.Focus();
+        Ui.Settle();
+        long left = Least(() => Ui.Press(window, "LEFT"));
+        Assert.Equal(snapshot.GetLine(0).End - 7, editor.Selections.Primary.Caret);
+        long right = Least(() => Ui.Press(window, "RIGHT"));
+        Assert.Equal(snapshot.GetLine(0).End - 1, editor.Selections.Primary.Caret);
+        long typed = Least(() => Ui.Type(window, "x", "x"));
+        for (int i = 0; i < 3; i++)
+        {
+            Ui.Press(window, "BACK_SPACE");
+        }
+        long back = Least(() => Ui.Press(window, "BACK_SPACE"));
+        TestContext.Current.TestOutputHelper?.WriteLine($"With {SelectionSet.MaxCount:N0} carets, Left allocated {left:N0} bytes on the UI thread, Right {right:N0}, a letter typed {typed:N0} and Backspace {back:N0}");
+        Assert.Equal(SelectionSet.MaxCount, editor.Selections.Count);
+        Assert.EndsWith("value + caf;", editor.Document.Snapshot.GetLineText(0), StringComparison.Ordinal);
+        Assert.True(left < 512L * SelectionSet.MaxCount, $"Left with {SelectionSet.MaxCount:N0} carets allocated {left:N0} bytes on the UI thread, {left / SelectionSet.MaxCount:N0} for each caret: the text before each was copied");
+        Assert.True(right < 512L * SelectionSet.MaxCount, $"Right with {SelectionSet.MaxCount:N0} carets allocated {right:N0} bytes on the UI thread, {right / SelectionSet.MaxCount:N0} for each caret: the text after each was copied");
+        Assert.True(back - typed < 256L * SelectionSet.MaxCount,
+            $"Backspace with {SelectionSet.MaxCount:N0} carets allocated {back:N0} bytes on the UI thread, against {typed:N0} for a letter typed: {(back - typed) / SelectionSet.MaxCount:N0} for each caret more, the text before each copied");
+        window.Close();
+
+        // The least a key and its frame allocate on the UI thread, of three.
+        static long Least(Action key)
+        {
+            long least = long.MaxValue;
+            for (int i = 0; i < 3; i++)
+            {
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                key();
+                least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
+            }
+            return least;
+        }
+    }
+
     /// <summary>The median time a key takes the UI thread, to its frame, with a caret in each of a file's first thousand
     /// methods.</summary>
     private double CaretKeys(MainWindow window, string name, int methods)

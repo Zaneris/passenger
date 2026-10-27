@@ -186,12 +186,21 @@ public sealed class StatusBar
         if (editor is null)
         {
             caret.Text = "";
+            shownCaret = default;
             return;
         }
         TextPosition at = editor.CaretPosition;
         int carets = editor.Selections.Count;
-        int selected = editor.Selections.Items.Sum(s => s.Length);
+        int selected = carets > 1 ? 0 : editor.Selections.Primary.Length;
+        if (shownCaret == (at, carets, selected) && caret.Text is { Length: > 0 })
+        {
+            return;
+        }
+        shownCaret = (at, carets, selected);
         string position = $"{at.Line + 1}:{at.Column + 1}";
         caret.Text = carets > 1 ? $"{carets} carets" : selected > 0 ? $"{position} ({selected} chars)" : position;
     }
+
+    /// <summary>What the caret's words say: a move that changes none of it words nothing again.</summary>
+    private (TextPosition At, int Carets, int Selected) shownCaret;
 }

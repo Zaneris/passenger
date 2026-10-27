@@ -1,3 +1,5 @@
+using System.Buffers;
+
 namespace Passenger.Text;
 
 /// <summary>Which markup a file is, for the editing that reads its tags: XML (XAML, MSBuild), or HTML, whose void
@@ -11,7 +13,8 @@ public enum MarkupKind
 
 /// <summary>The indentation Enter gives a new line in markup, from the tags before the caret: a level in from the
 /// element the caret is inside, the element's own on a line its end tag starts, and under a tag's first attribute
-/// inside the tag. HTML's elements whose end tag may be left out (li, p, td, ...) close as its parser has them.</summary>
+/// inside the tag. HTML's elements whose end tag may be left out (li, p, td, ...) close as its parser has them. The text is
+/// read into a pooled buffer and its tags' names kept as places in it, so an Enter makes no string of the text or a tag.</summary>
 internal static class MarkupIndent
 {
     /// <summary>The text an XML file's Enter reads back from the caret first, then four times as much, and so on, until it
@@ -19,6 +22,8 @@ internal static class MarkupIndent
     private const int FirstReach = 4096;
 
     private static readonly HashSet<string> RawTextElements = new(StringComparer.OrdinalIgnoreCase) { "script", "style", "textarea", "title" };
+
+    private static readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> RawText = RawTextElements.GetAlternateLookup<ReadOnlySpan<char>>();
 
     /// <summary>The start tags that close an open p (HTML's "close a p element" in button scope).</summary>
     private static readonly HashSet<string> ClosesParagraph = new(StringComparer.OrdinalIgnoreCase)
@@ -28,8 +33,17 @@ internal static class MarkupIndent
         "main", "menu", "nav", "ol", "p", "plaintext", "pre", "search", "section", "summary", "table", "ul", "xmp",
     };
 
+    private static readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> ParagraphClosers = ClosesParagraph.GetAlternateLookup<ReadOnlySpan<char>>();
+
     /// <summary>The elements no implied end reaches past (most of HTML's scope markers).</summary>
     private static readonly string[] Scopes = ["html", "body", "table", "td", "th", "caption", "template", "object", "applet", "marquee"];
+
+    private static readonly string[] ListBounds = ["ul", "ol", "menu", .. Scopes];
+    private static readonly string[] TableBounds = ["table", "template", "html"];
+    private static readonly string[] DefinitionBounds = ["dl", .. Scopes];
+    private static readonly string[] SelectBounds = ["select", "datalist", "template"];
+    private static readonly string[] GroupBounds = ["select", "template"];
+    private static readonly string[] ParagraphBounds = ["button", .. Scopes];
 
     /// <summary>The new line's indentation for Enter at <paramref name="at"/> whose line goes on at <paramref name="rest"/>,
     /// with the end tag's own line's when the caret sits between a start tag and an end tag; null where Enter keeps the
@@ -39,7 +53,7 @@ internal static class MarkupIndent
         bool endTagFollows = limit - rest >= 2 && text[rest] == '<' && text[rest + 1] == '/';
         string? following = endTagFollows ? EndTagAt(text, rest, limit) : null;
         // HTML's left-out end tags depend on what holds an element as far out as the file's start; XML's tags pair up.
-        Place place = kind == MarkupKind.Xml ? Back(text, at, following) : Read(text.GetText(0, at), 0, kind, following);
+        Place place = kind == MarkupKind.Xml ? Back(text, at, following) : ReadWhole(text, at, kind, following);
         switch (place.Kind)
         {
             case PlaceKind.Content:
@@ -79,6 +93,10 @@ internal static class MarkupIndent
     /// <see cref="Attribute"/> its first attribute's, when that is on the tag's line before the caret), or other.</summary>
     private readonly record struct Place(PlaceKind Kind, int Parent = -1, bool Opened = false, int Tag = -1, int Attribute = -1, int Closer = -1);
 
+    /// <summary>An element open at a place of the text read forwards: its name's place in the text, its start tag's and where
+    /// its content begins.</summary>
+    private readonly record struct Open(int NameStart, int NameLength, int Start, int Inside);
+
     /// <summary>The name of the end tag that starts at <paramref name="at"/>, null while it has none yet.</summary>
     private static string? EndTagAt(TextSnapshot text, int at, int limit)
     {
@@ -90,21 +108,47 @@ internal static class MarkupIndent
         return end > at + 2 ? text.GetText(at + 2, end - at - 2) : null;
     }
 
+    /// <summary>The place at the caret read forwards from the file's start, the text before it read into a pooled buffer.</summary>
+    private static Place ReadWhole(TextSnapshot text, int at, MarkupKind kind, string? following)
+    {
+        char[] chars = ArrayPool<char>.Shared.Rent(Math.Max(1, at));
+        try
+        {
+            Span<char> before = chars.AsSpan(0, at);
+            text.CopyTo(0, before);
+            return Read(before, 0, kind, following);
+        }
+        finally
+        {
+            ArrayPool<char>.Shared.Return(chars);
+        }
+    }
+
     /// <summary>An XML file's place read back from the caret, a stretch at a time, as far as the elements that hold it; read
-    /// from the file's start as a whole where what it found back there does not pair up (an end tag with no start).</summary>
+    /// from the file's start as a whole where what it found back there does not pair up (an end tag with no start). Each
+    /// stretch is read into a pooled buffer.</summary>
     private static Place Back(TextSnapshot text, int at, string? following)
     {
         for (int reach = FirstReach; ; reach *= 4)
         {
             int from = Math.Max(0, at - reach);
-            string s = text.GetText(from, at - from);
-            if (Back(s, from, from == 0, following) is { } place && (from == 0 || !Closes(text.GetText(at, Math.Min(reach, text.Length - at)))))
+            char[] chars = ArrayPool<char>.Shared.Rent(Math.Max(1, at - from));
+            try
             {
-                return place;
+                Span<char> s = chars.AsSpan(0, at - from);
+                text.CopyTo(from, s);
+                if (Back(s, from, from == 0, following) is { } place && (from == 0 || !Closes(text, at, Math.Min(reach, text.Length - at))))
+                {
+                    return place;
+                }
+                if (from == 0)
+                {
+                    return Read(s, 0, MarkupKind.Xml, following);
+                }
             }
-            if (from == 0)
+            finally
             {
-                return Read(s, 0, MarkupKind.Xml, following);
+                ArrayPool<char>.Shared.Return(chars);
             }
         }
     }
@@ -112,28 +156,48 @@ internal static class MarkupIndent
     /// <summary>Whether the text after the caret ends a comment or CDATA section it does not begin, one the caret may be in
     /// though its beginning is further back than was read. Only a caret further than a stretch from both ends of one (an
     /// inline task's long code) is read as the markup it holds.</summary>
-    private static bool Closes(string after) => Ends(after, "<!--", "-->") || Ends(after, "<![CDATA[", "]]>");
-
-    private static bool Ends(string after, string opener, string closer)
+    private static bool Closes(TextSnapshot text, int at, int length)
     {
-        int end = after.IndexOf(closer, StringComparison.Ordinal);
-        return end >= 0 && after.AsSpan(0, end).IndexOf(opener, StringComparison.Ordinal) < 0;
+        char[] chars = ArrayPool<char>.Shared.Rent(Math.Max(1, length));
+        try
+        {
+            Span<char> after = chars.AsSpan(0, length);
+            text.CopyTo(at, after);
+            return Ends(after, "<!--", "-->") || Ends(after, "<![CDATA[", "]]>");
+        }
+        finally
+        {
+            ArrayPool<char>.Shared.Return(chars);
+        }
     }
+
+    private static bool Ends(ReadOnlySpan<char> after, string opener, string closer)
+    {
+        int end = after.IndexOf(closer);
+        return end >= 0 && after[..end].IndexOf(opener) < 0;
+    }
+
+    /// <summary>Where <paramref name="value"/> last is in <paramref name="s"/> wholly at or before <paramref name="last"/>.</summary>
+    private static int LastBefore(ReadOnlySpan<char> s, string value, int last) => s[..(last + 1)].LastIndexOf(value);
+
+    /// <summary>Where <paramref name="value"/> first is in <paramref name="s"/> from <paramref name="from"/> on, wholly before
+    /// <paramref name="end"/>.</summary>
+    private static int IndexIn(ReadOnlySpan<char> s, string value, int from, int end) => s[from..end].IndexOf(value) is var at and >= 0 ? from + at : -1;
 
     /// <summary>Whether the '&lt;' at <paramref name="lt"/> follows a tag that has ended (its '>' outside its quoted values,
     /// which MSBuild's item transforms put '->' in), not one it would be inside of (typed among another tag's attributes);
     /// unknown, and so false, where the stretch holds no tag before it.</summary>
-    private static bool AfterTag(string s, int lt, bool whole)
+    private static bool AfterTag(ReadOnlySpan<char> s, int lt, bool whole)
     {
-        int before = lt == 0 ? -1 : s.LastIndexOf('<', lt - 1);
+        int before = lt == 0 ? -1 : s[..lt].LastIndexOf('<');
         if (before < 0)
         {
             return whole;
         }
-        string? closer = s.AsSpan(before).StartsWith("<!--") ? "-->" : s.AsSpan(before).StartsWith("<![CDATA[") ? "]]>" : s.AsSpan(before).StartsWith("<?") ? "?>" : null;
+        string? closer = s[before..].StartsWith("<!--") ? "-->" : s[before..].StartsWith("<![CDATA[") ? "]]>" : s[before..].StartsWith("<?") ? "?>" : null;
         if (closer is not null)
         {
-            return s.IndexOf(closer, before + 2, lt - before - 2, StringComparison.Ordinal) >= 0;
+            return IndexIn(s, closer, before + 2, lt) >= 0;
         }
         return TagEnd(s, before + 1, lt).End < lt;
     }
@@ -141,7 +205,7 @@ internal static class MarkupIndent
     /// <summary>The place at the end of <paramref name="s"/> (the text from <paramref name="from"/> to the caret), read tag
     /// by tag backwards; null where it needs the text before <paramref name="s"/>, or (<paramref name="whole"/>) where the
     /// tags do not pair up, which only reading forwards from the start settles.</summary>
-    private static Place? Back(string s, int from, bool whole, string? following)
+    private static Place? Back(ReadOnlySpan<char> s, int from, bool whole, string? following)
     {
         // The caret inside a comment, CDATA section or processing instruction begun in the stretch: the line's indentation.
         foreach ((string opener, string ender) in (ReadOnlySpan<(string, string)>)[("<!--", "-->"), ("<![CDATA[", "]]>"), ("<?", "?>")])
@@ -151,17 +215,18 @@ internal static class MarkupIndent
                 return AfterTag(s, begun, whole) ? new Place(PlaceKind.Other) : null;
             }
         }
-        List<string> closed = [];
+        // The end tags read back that no start tag has paired yet, by their names' places, as a stack.
+        List<(int Start, int Length)>? closed = null;
         int innermost = -1;
         int inside = -1;
         int p = s.Length;
         while (true)
         {
-            int lt = p == 0 ? -1 : s.LastIndexOf('<', p - 1);
+            int lt = p == 0 ? -1 : s[..p].LastIndexOf('<');
             if (lt < 0)
             {
                 // The file's start: whatever was found open, or the top level; an end tag left unpaired needs the forward read.
-                return !whole || closed.Count > 0 ? null : Found(innermost, -1);
+                return !whole || closed is { Count: > 0 } ? null : Found(s, from, innermost, inside, -1);
             }
             // A comment, CDATA section or processing instruction that ends before what was read after it, or a '<' inside one.
             if (Within(s, lt, p, "<!--", "-->") is { } comment)
@@ -187,10 +252,10 @@ internal static class MarkupIndent
             {
                 return null;
             }
-            if (s.AsSpan(lt).StartsWith("<!"))
+            if (s[lt..].StartsWith("<!"))
             {
                 // A declaration (DOCTYPE), whose '>' ends it before what was read after it.
-                if (MarkupNames.DeclarationEnd(s.AsSpan(0, p), lt) < 0)
+                if (MarkupNames.DeclarationEnd(s[..p], lt) < 0)
                 {
                     return p == s.Length ? new Place(PlaceKind.Other) : null;
                 }
@@ -222,24 +287,24 @@ internal static class MarkupIndent
                 {
                     return null;
                 }
-                bool onTagLine = attribute >= 0 && s.AsSpan(lt, attribute - lt).IndexOfAny('\r', '\n') < 0;
+                bool onTagLine = attribute >= 0 && s[lt..attribute].IndexOfAny('\r', '\n') < 0;
                 return quote != '\0' || endTag ? new Place(PlaceKind.Other) : new Place(PlaceKind.Tag, Tag: from + lt, Attribute: onTagLine ? from + attribute : -1);
             }
             p = lt;
-            string name = s[nameStart..nameEnd];
+            ReadOnlySpan<char> name = s[nameStart..nameEnd];
             if (endTag)
             {
-                closed.Add(name);
+                (closed ??= []).Add((nameStart, nameEnd - nameStart));
                 continue;
             }
             if (s[gt - 1] == '/')
             {
                 continue;
             }
-            if (closed.Count > 0)
+            if (closed is { Count: > 0 })
             {
                 // An end tag that is not this element's: only the whole file read forwards says which it closes.
-                if (!string.Equals(closed[^1], name, StringComparison.Ordinal))
+                if (!s.Slice(closed[^1].Start, closed[^1].Length).SequenceEqual(name))
                 {
                     return null;
                 }
@@ -252,41 +317,43 @@ internal static class MarkupIndent
                 innermost = lt;
                 inside = gt + 1;
             }
-            if (following is null || string.Equals(name, following, StringComparison.Ordinal))
+            if (following is null || name.SequenceEqual(following))
             {
-                return Found(innermost, following is null ? -1 : lt);
+                return Found(s, from, innermost, inside, following is null ? -1 : lt);
             }
         }
-
-        Place Found(int start, int closer) => start < 0
-            ? new Place(PlaceKind.Content)
-            : new Place(PlaceKind.Content, Parent: from + start, Opened: s.AsSpan(inside).IsWhiteSpace(), Closer: closer < 0 ? -1 : from + closer);
     }
+
+    /// <summary>The caret in an element's content read back: the innermost element open at it (none at the top level) and the
+    /// one an end tag after the caret closes.</summary>
+    private static Place Found(ReadOnlySpan<char> s, int from, int start, int inside, int closer) => start < 0
+        ? new Place(PlaceKind.Content)
+        : new Place(PlaceKind.Content, Parent: from + start, Opened: s[inside..].IsWhiteSpace(), Closer: closer < 0 ? -1 : from + closer);
 
     /// <summary>Where the last <paramref name="opener"/> in <paramref name="s"/> is when no <paramref name="closer"/> follows
     /// it, else -1.</summary>
-    private static int Unclosed(string s, string opener, string closer)
+    private static int Unclosed(ReadOnlySpan<char> s, string opener, string closer)
     {
-        int open = s.LastIndexOf(opener, StringComparison.Ordinal);
-        return open >= 0 && s.IndexOf(closer, open + opener.Length, StringComparison.Ordinal) < 0 ? open : -1;
+        int open = s.LastIndexOf(opener);
+        return open >= 0 && s[(open + opener.Length)..].IndexOf(closer) < 0 ? open : -1;
     }
 
     /// <summary>Where the construct holding a '&lt;' at <paramref name="lt"/> begins, when one ends between it and
     /// <paramref name="p"/>; -1 when its beginning is not in <paramref name="s"/> or does not pair with that end, null with none.</summary>
-    private static int? Within(string s, int lt, int p, string opener, string closer)
+    private static int? Within(ReadOnlySpan<char> s, int lt, int p, string opener, string closer)
     {
-        int end = s.IndexOf(closer, lt + 1, p - lt - 1, StringComparison.Ordinal);
+        int end = IndexIn(s, closer, lt + 1, p);
         if (end < 0)
         {
             return null;
         }
-        int start = s.LastIndexOf(opener, lt, StringComparison.Ordinal);
-        return start >= 0 && s.IndexOf(closer, start + opener.Length, StringComparison.Ordinal) == end ? start : -1;
+        int start = LastBefore(s, opener, lt);
+        return start >= 0 && IndexIn(s, closer, start + opener.Length, s.Length) == end ? start : -1;
     }
 
     /// <summary>A tag's '>' (outside its quoted values) from its name's end, <paramref name="limit"/> where it has none
     /// before it, with the quote still open there and its first attribute's offset (-1 with none).</summary>
-    private static (int End, char Quote, int Attribute) TagEnd(string s, int from, int limit)
+    private static (int End, char Quote, int Attribute) TagEnd(ReadOnlySpan<char> s, int from, int limit)
     {
         char quote = '\0';
         int attribute = -1;
@@ -315,13 +382,14 @@ internal static class MarkupIndent
     }
 
     /// <summary>The place at the end of <paramref name="s"/>, read forwards from the file's start (<paramref name="from"/> 0).</summary>
-    private static Place Read(string s, int from, MarkupKind kind, string? following)
+    private static Place Read(ReadOnlySpan<char> s, int from, MarkupKind kind, string? following)
     {
         StringComparison names = kind == MarkupKind.Html ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-        List<(string Name, int Start, int Inside)> open = [];
+        List<Open> open = [];
         int i = 0;
-        while (i < s.Length && s.IndexOf('<', i) is var lt and >= 0)
+        while (i < s.Length && s[i..].IndexOf('<') is var found and >= 0)
         {
+            int lt = i + found;
             if (Skip(s, lt, "<!--", "-->") is { } comment)
             {
                 if (comment < 0)
@@ -331,7 +399,7 @@ internal static class MarkupIndent
                 i = comment;
                 continue;
             }
-            if ((Skip(s, lt, "<![CDATA[", "]]>") ?? Skip(s, lt, "<?", "?>") ?? (s.AsSpan(lt).StartsWith("<!") ? MarkupNames.DeclarationEnd(s, lt) : null)) is { } declaration)
+            if ((Skip(s, lt, "<![CDATA[", "]]>") ?? Skip(s, lt, "<?", "?>") ?? (s[lt..].StartsWith("<!") ? MarkupNames.DeclarationEnd(s, lt) : null)) is { } declaration)
             {
                 if (declaration < 0)
                 {
@@ -357,17 +425,17 @@ internal static class MarkupIndent
                 i = lt + 1;
                 continue;
             }
-            string name = s[nameStart..nameEnd];
+            ReadOnlySpan<char> name = s[nameStart..nameEnd];
             (int gt, char quote, int attribute) = TagEnd(s, nameEnd, s.Length);
             if (gt == s.Length)
             {
-                bool onTagLine = attribute >= 0 && s.AsSpan(lt, attribute - lt).IndexOfAny('\r', '\n') < 0;
+                bool onTagLine = attribute >= 0 && s[lt..attribute].IndexOfAny('\r', '\n') < 0;
                 return quote != '\0' || endTag ? new Place(PlaceKind.Other) : new Place(PlaceKind.Tag, Tag: from + lt, Attribute: onTagLine ? from + attribute : -1);
             }
             i = gt + 1;
             if (endTag)
             {
-                int match = open.FindLastIndex(e => string.Equals(e.Name, name, names));
+                int match = LastOpen(s, open, name, names);
                 if (match >= 0)
                 {
                     open.RemoveRange(match, open.Count - match);
@@ -376,16 +444,16 @@ internal static class MarkupIndent
             }
             if (kind == MarkupKind.Html)
             {
-                CloseImplied(open, name);
+                CloseImplied(s, open, name);
             }
             if (s[gt - 1] == '/' || kind == MarkupKind.Html && MarkupNames.IsVoid(name))
             {
                 continue;
             }
-            open.Add((name, lt, gt + 1));
-            if (kind == MarkupKind.Html && RawTextElements.Contains(name))
+            open.Add(new Open(nameStart, nameEnd - nameStart, lt, gt + 1));
+            if (kind == MarkupKind.Html && RawText.Contains(name))
             {
-                int close = s.IndexOf("</" + name, gt + 1, StringComparison.OrdinalIgnoreCase);
+                int close = EndTagOf(s, name, gt + 1);
                 if (close < 0)
                 {
                     return new Place(PlaceKind.Other);
@@ -397,86 +465,131 @@ internal static class MarkupIndent
         {
             return new Place(PlaceKind.Content);
         }
-        (_, int start, int inside) = open[^1];
-        int closer = following is null ? -1 : open.FindLastIndex(e => string.Equals(e.Name, following, names));
-        return new Place(PlaceKind.Content, Parent: from + start, Opened: s.AsSpan(inside).IsWhiteSpace(), Closer: closer < 0 ? -1 : from + open[closer].Start);
+        Open innermost = open[^1];
+        int closer = following is null ? -1 : LastOpen(s, open, following, names);
+        return new Place(PlaceKind.Content, Parent: from + innermost.Start, Opened: s[innermost.Inside..].IsWhiteSpace(), Closer: closer < 0 ? -1 : from + open[closer].Start);
+    }
+
+    /// <summary>The last open element of a name, -1 with none.</summary>
+    private static int LastOpen(ReadOnlySpan<char> s, List<Open> open, ReadOnlySpan<char> name, StringComparison names)
+    {
+        for (int k = open.Count - 1; k >= 0; k--)
+        {
+            if (s.Slice(open[k].NameStart, open[k].NameLength).Equals(name, names))
+            {
+                return k;
+            }
+        }
+        return -1;
+    }
+
+    /// <summary>Where the first end tag of a raw text element ("&lt;/script", any case) is from <paramref name="from"/> on, -1
+    /// with none.</summary>
+    private static int EndTagOf(ReadOnlySpan<char> s, ReadOnlySpan<char> name, int from)
+    {
+        for (int at = from; at + 2 + name.Length <= s.Length && s[at..].IndexOf("</") is var found and >= 0; at += found + 1)
+        {
+            int tag = at + found;
+            if (tag + 2 + name.Length <= s.Length && s.Slice(tag + 2, name.Length).Equals(name, StringComparison.OrdinalIgnoreCase))
+            {
+                return tag;
+            }
+        }
+        return -1;
     }
 
     /// <summary>The open elements a start tag ends first, as HTML's parser ends those whose end tag may be left out: an li
     /// by the next li, a p by a block, a cell by the next cell or row, and so on, never past what bounds each (the list,
-    /// the table, the select).</summary>
-    private static void CloseImplied(List<(string Name, int Start, int Inside)> open, string started)
+    /// the table, the select), in the order HTML's parser ends them.</summary>
+    private static void CloseImplied(ReadOnlySpan<char> s, List<Open> open, ReadOnlySpan<char> started)
     {
-        foreach ((string[] ends, string[] bounds) in ImpliedEnds(started.ToLowerInvariant()))
+        Span<char> lowered = started.Length <= 64 ? stackalloc char[started.Length] : new char[started.Length];
+        started.ToLowerInvariant(lowered);
+        switch (lowered)
         {
-            for (int k = open.Count - 1; k >= 0; k--)
+            case "li":
+                End(s, open, ["li"], ListBounds);
+                break;
+            case "dt" or "dd":
+                End(s, open, ["dt", "dd"], DefinitionBounds);
+                break;
+            case "td" or "th":
+                End(s, open, ["td", "th"], TableBounds);
+                break;
+            case "tr":
+                End(s, open, ["td", "th"], TableBounds);
+                End(s, open, ["tr"], TableBounds);
+                break;
+            case "tbody" or "thead" or "tfoot":
+                End(s, open, ["td", "th"], TableBounds);
+                End(s, open, ["tr"], TableBounds);
+                End(s, open, ["tbody", "thead", "tfoot"], TableBounds);
+                break;
+            case "option":
+                End(s, open, ["option"], SelectBounds);
+                break;
+            case "optgroup":
+                End(s, open, ["option"], SelectBounds);
+                End(s, open, ["optgroup"], GroupBounds);
+                break;
+            case "rt" or "rp":
+                End(s, open, ["rt", "rp"], ["ruby"]);
+                break;
+        }
+        if (ParagraphClosers.Contains(lowered))
+        {
+            End(s, open, ["p"], ParagraphBounds);
+        }
+    }
+
+    /// <summary>Ends the innermost open element named among <paramref name="ends"/> and all inside it, unless one named
+    /// among <paramref name="bounds"/> comes first; the names compared in lower case.</summary>
+    private static void End(ReadOnlySpan<char> s, List<Open> open, ReadOnlySpan<string> ends, ReadOnlySpan<string> bounds)
+    {
+        Span<char> lowered = stackalloc char[64];
+        for (int k = open.Count - 1; k >= 0; k--)
+        {
+            ReadOnlySpan<char> name = s.Slice(open[k].NameStart, open[k].NameLength);
+            if (name.Length > lowered.Length)
             {
-                string name = open[k].Name.ToLowerInvariant();
-                if (ends.Contains(name))
-                {
-                    open.RemoveRange(k, open.Count - k);
-                    break;
-                }
-                if (bounds.Contains(name))
-                {
-                    break;
-                }
+                // Longer than any name HTML ends or bounds by.
+                continue;
+            }
+            Span<char> lower = lowered[..name.Length];
+            name.ToLowerInvariant(lower);
+            if (Among(lower, ends))
+            {
+                open.RemoveRange(k, open.Count - k);
+                break;
+            }
+            if (Among(lower, bounds))
+            {
+                break;
             }
         }
     }
 
-    /// <summary>For a start tag, each set of elements it ends with what that search stops at, in the order HTML's parser
-    /// ends them.</summary>
-    private static IEnumerable<(string[] Ends, string[] Bounds)> ImpliedEnds(string started)
+    private static bool Among(ReadOnlySpan<char> name, ReadOnlySpan<string> names)
     {
-        string[] list = ["ul", "ol", "menu", .. Scopes];
-        string[] table = ["table", "template", "html"];
-        switch (started)
+        foreach (string one in names)
         {
-            case "li":
-                yield return (["li"], list);
-                break;
-            case "dt" or "dd":
-                yield return (["dt", "dd"], ["dl", .. Scopes]);
-                break;
-            case "td" or "th":
-                yield return (["td", "th"], table);
-                break;
-            case "tr":
-                yield return (["td", "th"], table);
-                yield return (["tr"], table);
-                break;
-            case "tbody" or "thead" or "tfoot":
-                yield return (["td", "th"], table);
-                yield return (["tr"], table);
-                yield return (["tbody", "thead", "tfoot"], table);
-                break;
-            case "option":
-                yield return (["option"], ["select", "datalist", "template"]);
-                break;
-            case "optgroup":
-                yield return (["option"], ["select", "datalist", "template"]);
-                yield return (["optgroup"], ["select", "template"]);
-                break;
-            case "rt" or "rp":
-                yield return (["rt", "rp"], ["ruby"]);
-                break;
+            if (name.SequenceEqual(one))
+            {
+                return true;
+            }
         }
-        if (ClosesParagraph.Contains(started))
-        {
-            yield return (["p"], ["button", .. Scopes]);
-        }
+        return false;
     }
 
     /// <summary>Past a construct starting at <paramref name="at"/> with <paramref name="opener"/>: after its
     /// <paramref name="closer"/>, -1 when the text ends inside it, null when it does not start there.</summary>
-    private static int? Skip(string s, int at, string opener, string closer)
+    private static int? Skip(ReadOnlySpan<char> s, int at, string opener, string closer)
     {
-        if (string.CompareOrdinal(s, at, opener, 0, opener.Length) != 0 || s.Length - at < opener.Length)
+        if (!s[at..].StartsWith(opener))
         {
             return null;
         }
-        int end = s.IndexOf(closer, at + opener.Length, StringComparison.Ordinal);
+        int end = IndexIn(s, closer, at + opener.Length, s.Length);
         return end < 0 ? -1 : end + closer.Length;
     }
 

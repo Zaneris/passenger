@@ -188,6 +188,7 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
         int line = first;
         long shown = began;
         List<SyntaxSpan> scratch = [];
+        char[] buffer = [];
         while (line < count)
         {
             int until = Math.Min(count, line + LinesAtATime);
@@ -197,7 +198,7 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
             {
                 for (; line < until; line++)
                 {
-                    TokenLine read = Read(rules, text, line, state, scratch);
+                    TokenLine read = Read(rules, text, line, state, scratch, ref buffer);
                     built.Add(read);
                     state = read.End;
                     int next = line + 1;
@@ -264,19 +265,24 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>One line's colours and the state it ends in.</summary>
-    private TokenLine Read(IGrammar rules, TextSnapshot text, int line, IStateStack? state, List<SyntaxSpan> scratch)
+    /// <summary>One line's colours and the state it ends in, the line read into the pass's buffer (grown as a line needs).
+    /// The grammar's regular expressions keep the last memory they searched, but match it again only when a string holds
+    /// it, so a buffer written over between lines is never taken for the line before.</summary>
+    private TokenLine Read(IGrammar rules, TextSnapshot text, int line, IStateStack? state, List<SyntaxSpan> scratch, ref char[] buffer)
     {
         LineSpan span = text.GetLine(line);
         if (span.Length > LongestLine)
         {
             return new TokenLine([], state);
         }
+        if (buffer.Length < span.Length + 1)
+        {
+            buffer = new char[Math.Max(span.Length + 1, Math.Min(LongestLine + 1, buffer.Length * 2))];
+        }
         // The grammar reads a line with its break, which it would otherwise copy the line to add.
-        char[] chars = new char[span.Length + 1];
-        text.CopyTo(span.Start, chars.AsSpan(0, span.Length));
-        chars[span.Length] = '\n';
-        ITokenizeLineResult2 result = rules.TokenizeLine2(new LineText(chars.AsMemory()), state, LineLimit);
+        text.CopyTo(span.Start, buffer.AsSpan(0, span.Length));
+        buffer[span.Length] = '\n';
+        ITokenizeLineResult2 result = rules.TokenizeLine2(new LineText(buffer.AsMemory(0, span.Length + 1)), state, LineLimit);
         int[] tokens = result.Tokens;
         scratch.Clear();
         for (int i = 0; i < tokens.Length; i += 2)

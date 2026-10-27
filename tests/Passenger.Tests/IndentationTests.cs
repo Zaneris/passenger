@@ -312,6 +312,48 @@ public sealed class IndentationTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Enter in a large HTML file, which reads the tags from the file's start for the end tags it leaves out, costs
+    /// what an Enter in a small one does, and indents alike: it allocates on the UI thread under 64 KB more after 20,000
+    /// list items, each with a paragraph its end tag left out, than after three, the least of three Enters each. It copied
+    /// the whole text before the caret, and made each tag's name and the elements it ends again: 30 MB here.</summary>
+    [AvaloniaFact]
+    public void Enter_in_a_large_html_file_costs_what_it_does_in_a_small_one()
+    {
+        (long small, string smallEnd) = Enters("small.html", 3);
+        (long large, string largeEnd) = Enters("large.html", 20_000);
+        TestContext.Current.TestOutputHelper?.WriteLine($"Enter allocated {small:N0} bytes on the UI thread after 3 items, {large:N0} after 20,000");
+        Assert.Equal(smallEnd, largeEnd);
+        Assert.True(large - small < 64 * 1024, $"Enter after 20,000 list items and paragraphs allocated {large:N0} bytes on the UI thread, against {small:N0} after three: the text before the caret was copied and its tags read into strings");
+
+        // The least an Enter after the last item of a list allocates, and the text from that item on after three.
+        (long Bytes, string End) Enters(string name, int items)
+        {
+            StringBuilder html = new("<!DOCTYPE html>\n<html>\n<body>\n<ul>\n");
+            for (int i = 0; i < items; i++)
+            {
+                html.Append("    <li>Item ").Append(i).Append(" <P>a paragraph\n");
+            }
+            Write(name, html.Append("    <li>Last</li>\n</ul>\n</body>\n</html>\n").ToString());
+            MainWindow window = Open(name);
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Ui.PlaceAfter(editor, "<li>Last</li>");
+            Ui.Settle();
+            long least = long.MaxValue;
+            for (int i = 0; i < 3; i++)
+            {
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                window.KeyPress(Avalonia.Input.Key.Enter, Avalonia.Input.RawInputModifiers.None, Avalonia.Input.PhysicalKey.Enter, null);
+                least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
+                window.KeyRelease(Avalonia.Input.Key.Enter, Avalonia.Input.RawInputModifiers.None, Avalonia.Input.PhysicalKey.Enter, null);
+                Ui.Settle();
+            }
+            window.KeyTextInput("<li>Next</li>");
+            string text = Text(editor);
+            window.Close();
+            return (least, text[text.IndexOf("    <li>Last", StringComparison.Ordinal)..]);
+        }
+    }
+
     private void Write(string name, string text) => TestFolders.Write(folder, name, text);
 
     /// <summary>A window on the folder, with a file of it open when one is named; it saves only when asked.</summary>
