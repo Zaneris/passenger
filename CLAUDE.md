@@ -237,7 +237,8 @@ Projects in `src/`; `find_symbol` finds the rest:
   new` through `ProjectTemplates`), `Updates` (only an installed copy updates itself; What's New from
   `docs/release-notes/X.Y.Z.md`).
 - **MCP.** `PassengerTools` (every tool, run on the UI thread, answering with what its operation returned), `McpHost`
-  (`--mcp FOLDER`, a window's socket, `--mcp-attach` through `McpProxy`), `AgentConnection` (admission and questions).
+  (`--mcp FOLDER`, a window's socket, `--mcp-attach` through `McpProxy`), `HeadStart` (an `--mcp` folder's opening begun
+  before its window, which its first session takes up), `AgentConnection` (admission and questions).
 
 Releases and the site: `ci.yml` and `release.yml` (from a `vX.Y.Z` tag, its body `docs/release-notes/X.Y.Z.md`, refused
 while it is the stand-in) call `test.yml`, every system's suite in four shards. `site/` is passenger-ide.net, plain HTML
