@@ -198,6 +198,160 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
         second.Close();
     }
 
+    /// <summary>A file open as the language server starts again, or as the solution gains a project, reaches the new server
+    /// only once it has said that file's project loaded, never one of its Miscellaneous Files meanwhile, though a program
+    /// found beside the solution as it started is loaded beside the projects shown first; a file no project of the folder
+    /// holds reaches it at once.</summary>
+    [AvaloniaFact]
+    public void Files_open_as_the_server_starts_again_or_the_solution_gains_a_project_reach_it_once_their_projects_have_loaded()
+    {
+        string program = Path.Combine(folder, "App", "Program.cs");
+        string greeter = Path.Combine(folder, "Lib", "Greeter.cs");
+        string extra = Write(folder, "Extra/Extra.cs", "namespace Extra;\n\npublic static class Sum\n{\n}\n");
+        Write(folder, "Extra/Extra.csproj", TestProjects.Library());
+        Restore.Run(Path.Combine(folder, "Extra", "Extra.csproj"));
+        MainWindow window = Keeping();
+        window.ApplySettings(window.Settings with { TraceProtocols = true });
+        try
+        {
+            window.OpenFile(program);
+            window.OpenFile(extra);
+            // Shown, Lib's file has Lib loaded first, App after it.
+            window.OpenFile(greeter);
+            int first = AllServed(window, 0, program, extra, greeter);
+
+            // Ended: the server started again finds a program written beside the solution as it starts.
+            Passenger.App.CSharp.CSharpService csharp = window.CSharpService!;
+            HeldFeed held = new(csharp.Feed!);
+            csharp.Feed = held;
+            System.Diagnostics.Process.GetProcessById(first).Kill();
+            ProgramFoundAsItStarts(window, held, "tool.cs");
+            int again = AllServed(window, first, program, extra, greeter);
+            string[] trace = Trace(again);
+            List<string> early = Early(trace, (program, "App.csproj"), (greeter, "Lib.csproj"));
+            Assert.True(early.Count == 0,
+                $"The language server started again was given files before it loaded their projects, which it made Miscellaneous Files meanwhile: {string.Join("; ", early)}\n{Shown(trace)}");
+            int extraOpened = Array.FindIndex(trace, line => Opens(line, extra));
+            int firstLoad = Array.FindIndex(trace, line => Reports(line, ".csproj"));
+            Assert.True(extraOpened >= 0 && extraOpened < firstLoad,
+                $"Extra.cs, which no project of the solution held, was not given the server started again at once, before it loaded a project: {Shown(trace)}");
+
+            // The solution gains Extra, and the server started for it finds another program written as it starts.
+            HeldFeed? next = null;
+            EventHandler hold = (_, _) =>
+            {
+                if (next is null && window.Session.CSharp is { Feed: { } feed } made)
+                {
+                    made.Feed = next = new HeldFeed(feed);
+                }
+            };
+            window.Session.CSharpChanged += hold;
+            try
+            {
+                // Replaced whole, so no read finds it half written.
+                string written = Write(folder, "Shapes.slnx.new", "<Solution>\n  <Project Path=\"App/App.csproj\" />\n  <Project Path=\"Extra/Extra.csproj\" />\n  <Project Path=\"Lib/Lib.csproj\" />\n</Solution>\n");
+                File.Move(written, Path.Combine(folder, "Shapes.slnx"), overwrite: true);
+                Ui.PumpUntil(() => next is { Asked: true }, "a language server started for the solution with Extra to ask for its projects", TimeSpan.FromMinutes(1));
+                ProgramFoundAsItStarts(window, next!, "more.cs");
+            }
+            finally
+            {
+                window.Session.CSharpChanged -= hold;
+                next?.Release();
+            }
+            int gained = AllServed(window, again, program, extra, greeter);
+            string[] grown = Trace(gained);
+            early = Early(grown, (program, "App.csproj"), (extra, "Extra.csproj"), (greeter, "Lib.csproj"));
+            Assert.True(early.Count == 0,
+                $"The language server started for the solution with Extra was given files before it loaded their projects, which it made Miscellaneous Files meanwhile: {string.Join("; ", early)}\n{Shown(grown)}");
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { TraceProtocols = false });
+            window.Close();
+        }
+    }
+
+    /// <summary>Writes a program beside the solution while a starting server's projects are held from it, and lets them go
+    /// once the folder has found the program.</summary>
+    private void ProgramFoundAsItStarts(MainWindow window, HeldFeed held, string name)
+    {
+        Ui.PumpUntil(() => held.Asked, "the language server starting to ask for the projects to load", TimeSpan.FromMinutes(1));
+        string written = Write(folder, name, "#!/usr/bin/env dotnet\nSystem.Console.WriteLine(\"tool\");\n");
+        Ui.PumpUntil(() => window.Session.Workspace?.Programs.Any(p => PathNames.Same(p.Path, written)) == true,
+            $"{name}, written beside the solution, to be found as the language server starts", TimeSpan.FromMinutes(1));
+        held.Release();
+    }
+
+    /// <summary>Waits for a language server other than <paramref name="before"/> to have loaded every project and been given
+    /// each file; its process.</summary>
+    private static int AllServed(MainWindow window, int before, params string[] files)
+    {
+        Ui.WaitFor(() => window.CSharpService is { Session: { IsLoaded: true } session } csharp && session.Server.ProcessId != before
+            && files.All(f => window.EditorArea.Documents.FirstOrDefault(d => PathNames.Same(d.Path, f)) is { } open && csharp.For(open)?.Lsp is not null),
+            $"a language server to load the projects and be given the open files ({window.CSharpService?.State})", TimeSpan.FromMinutes(3));
+        return window.CSharpService!.Session!.Server.ProcessId;
+    }
+
+    /// <summary>What lsp.log holds of one server's messages, a line each.</summary>
+    private static string[] Trace(int server)
+    {
+        Passenger.App.IdeErrors.Flush();
+        return [.. Ui.Shared(Path.Combine(Passenger.App.IdeErrors.LogFolder, "lsp.log")).Split('\n').Where(line => line.Contains($"[server {server}] ", StringComparison.Ordinal))];
+    }
+
+    /// <summary>The files a server was told open before it said their projects loaded, each with its project's name.</summary>
+    private static List<string> Early(string[] trace, params (string File, string Project)[] files)
+    {
+        List<string> early = [];
+        foreach ((string file, string project) in files)
+        {
+            int opened = Array.FindIndex(trace, line => Opens(line, file));
+            int loaded = Array.FindIndex(trace, line => Reports(line, project));
+            if (opened < 0 || loaded < 0 || opened < loaded)
+            {
+                early.Add($"{Path.GetFileName(file)} told open at message {opened}, {project} said loaded at {loaded}");
+            }
+        }
+        return early;
+    }
+
+    /// <summary>Whether a traced line tells the server a file is open.</summary>
+    private static bool Opens(string line, string file) =>
+        line.Contains("] --> ", StringComparison.Ordinal) && line.Contains($"\"method\":\"{Passenger.Lsp.LspMethods.DidOpen}\"", StringComparison.Ordinal)
+        && System.Text.RegularExpressions.Regex.Match(line, "\"uri\":\"([^\"]+)\"") is { Success: true } uri && PathNames.Same(new Uri(uri.Groups[1].Value).LocalPath, file);
+
+    /// <summary>Whether a traced line is the server's word that a project's load ended, with problems or none.</summary>
+    private static bool Reports(string line, string project) =>
+        line.Contains("] <-- ", StringComparison.Ordinal) && line.Contains($"\"method\":\"{Passenger.Lsp.LspMethods.LogMessage}\"", StringComparison.Ordinal)
+        && (line.Contains("Successfully completed load of", StringComparison.Ordinal) || line.Contains(" while loading ", StringComparison.Ordinal))
+        && line.Contains(project, StringComparison.Ordinal);
+
+    /// <summary>The didOpen and load lines of a trace, for a failure's message.</summary>
+    private static string Shown(string[] trace) =>
+        string.Join('\n', trace.Where(line => line.Contains(Passenger.Lsp.LspMethods.DidOpen, StringComparison.Ordinal) || Reports(line, ".csproj")).Select(line => line.Length > 300 ? line[..300] : line));
+
+    /// <summary>The window's project feed with its first list of the projects to load held until the test lets it go, as a
+    /// start whose design-time builds come slowly.</summary>
+    private sealed class HeldFeed(Passenger.Lsp.IProjectFeed feed) : Passenger.Lsp.IProjectFeed
+    {
+        private readonly TaskCompletionSource asked = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public bool Asked => asked.Task.IsCompleted;
+
+        public void Release() => released.TrySetResult();
+
+        public async Task<(IReadOnlyList<Passenger.Roslyn.Extension.ProjectToOpen> First, IReadOnlyList<Passenger.Roslyn.Extension.ProjectToOpen> Later)?> ProjectsAsync(CancellationToken cancel)
+        {
+            asked.TrySetResult();
+            await released.Task.WaitAsync(cancel);
+            return await feed.ProjectsAsync(cancel);
+        }
+
+        public Task<Passenger.Roslyn.Extension.ProjectInfoResult> InfoAsync(string path, CancellationToken cancel) => feed.InfoAsync(path, cancel);
+    }
+
     private static IEnumerable<string?> Codes(MainWindow window, string path) =>
         window.EditorArea.Documents.FirstOrDefault(d => d.Path == path) is { } open && window.CSharpService?.For(open) is { } served
             ? served.Diagnostics.Select(d => d.Code?.ToString())
@@ -395,5 +549,5 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
         Ui.WaitFor(() => window.EditorArea.Documents.FirstOrDefault(d => d.Path == program) is { } open && window.CSharpService?.For(open)?.Diagnostics.Any(d => d.Code?.ToString() == "CS0117" && d.Message.Contains("Absent", StringComparison.Ordinal)) == true,
             "the server's error on Greeter.Absent, which it gives only knowing Lib's Greeter", TimeSpan.FromMinutes(2));
 
-    private static void Write(string root, string relative, string text) => TestFolders.Write(root, relative, text);
+    private static string Write(string root, string relative, string text) => TestFolders.Write(root, relative, text);
 }

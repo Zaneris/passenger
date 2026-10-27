@@ -21,20 +21,34 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
         Projects = solution is null ? projects : [];
         server.ProjectsLoaded += (_, _) =>
         {
-            // The server says so after each open it was sent: the projects opened first, then the rest.
-            if (Interlocked.Increment(ref completed) < opens)
+            // The server says so after each open it was sent: the projects opened first, the rest, and each reload meanwhile.
+            lock (counting)
             {
-                firstLoaded.TrySetResult();
-                return;
+                if (++completed < opens)
+                {
+                    firstLoaded.TrySetResult();
+                    return;
+                }
+                IsLoaded = true;
             }
-            IsLoaded = true;
             Loaded?.Invoke(this, EventArgs.Empty);
         };
     }
 
-    /// <summary>How many opens the server was sent, and how many it has said it finished.</summary>
+    /// <summary>How many opens the server was sent that its load waits for (a reload sent while it loads among them, as the
+    /// server's word that one ended names none), and how many it has said it finished.</summary>
     private int opens = 1;
     private int completed;
+    private readonly Lock counting = new();
+
+    /// <summary>The start's opens: the projects opened first and the rest.</summary>
+    private void Expect(int starting)
+    {
+        lock (counting)
+        {
+            opens = starting;
+        }
+    }
 
     /// <summary>Done once the projects opened first have loaded, after which the rest are opened.</summary>
     private readonly TaskCompletionSource firstLoaded = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -88,7 +102,7 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
                 (IReadOnlyList<ProjectToOpen> before, IReadOnlyList<ProjectToOpen> rest) = fed;
                 if (before.Count > 0)
                 {
-                    session.opens = 2;
+                    session.Expect(2);
                     await server.NotifyAsync(ProjectMethods.Load, new LoadProjectsParams(before, solution)).ConfigureAwait(false);
                     Core.UnawaitedWork.Observe(session.OpenRestAsync(() => server.NotifyAsync(ProjectMethods.Load, new LoadProjectsParams(rest, solution))));
                     return session;
@@ -99,7 +113,7 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
             IReadOnlyList<string> ahead = first is null ? [] : await first().ConfigureAwait(false);
             if (ahead.Count > 0)
             {
-                session.opens = 2;
+                session.Expect(2);
                 await server.NotifyAsync(LspMethods.ProjectOpen, new OpenProjectParams([.. ahead.Select(DocumentUris.FromPath)])).ConfigureAwait(false);
                 // The rest once those have loaded: opened at once, the server would take them all in one batch.
                 Core.UnawaitedWork.Observe(session.OpenRestAsync(() => solution is not null
@@ -164,11 +178,19 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
     public bool Fed { get; private set; }
 
     /// <summary>Has a server fed by the client load projects again, from the design-time builds it asks for: their files
-    /// or what they import changed, which the server watches only in part.</summary>
+    /// or what they import changed, which the server watches only in part. One sent while the server loads is waited for
+    /// too, before <see cref="IsLoaded"/>.</summary>
     public void Reload(IReadOnlyList<string> projects)
     {
         if (Fed && projects.Count > 0)
         {
+            lock (counting)
+            {
+                if (!IsLoaded)
+                {
+                    opens++;
+                }
+            }
             Server.Notify(ProjectMethods.Load, new LoadProjectsParams([.. projects.Select(p => new ProjectToOpen(p, null))], Solution));
         }
     }
