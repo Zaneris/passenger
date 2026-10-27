@@ -159,7 +159,8 @@ Projects in `src/`; `find_symbol` finds the rest:
   numbers and folds are the App's (`IGutterColumn`), the editor naming no debugger, test or VCS concept
   (EditorRulesTests); what a file's editors draw is its one `DocumentDecorations`, never fed per split. With soft wrap, an
   offset becomes a place through `Rows`/`RowSpan`. Wraps, rows, folds, hints and built lines are runs an edit moves only
-  where it reaches, so a key costs what it changed, not the file's size: keep it so.
+  where it reaches, so a key costs what it changed, not the file's size: keep it so. Row views are carried so too, a
+  highlighter carrying the colours of lines an edit didn't reach (`IHighlighter.Showing`, `KeptColours`).
 - `Passenger.Languages`: C# coloured by Roslyn's parser in-process (`CSharpHighlighter`, also each open file's one syntax
   service, `OpenDocument.Syntax`: never a fresh parse), the rest by VS Code's TextMate grammars. A new language: one
   `Language` entry, its grammar file and a notices entry; compare entries, never names. A finder never tells its answer
