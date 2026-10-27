@@ -680,9 +680,6 @@ public sealed class FileColoursResponsivenessTests : FileColoursFolder
         }
     }
 
-    /// <summary>The parse a key starts classifies the lines on screen on its worker, and its landing hands them to the
-    /// screen: the frame after it classifies nothing again on the UI thread. A key classifies again at most the line it
-    /// changed, counted in the characters classified there, not a time.</summary>
     /// <summary>A C# 15 union typed into a file has its name in a struct's colour at its declaration, as a record struct's
     /// is, from the parser's colours alone.</summary>
     [AvaloniaFact]
@@ -693,11 +690,14 @@ public sealed class FileColoursResponsivenessTests : FileColoursFolder
         editor.Selections = SelectionSet.Single(editor.Document.Snapshot.Length);
         editor.Focus();
         window.KeyTextInput("public union Pet(Cat, Dog);");
-        Assert.True(KindOf(editor, "Pet(") is TokenKind.Struct, $"The union's name typed is coloured as {KindOf(editor, "Pet(")?.ToString() ?? "several kinds"}, not as a struct's");
+        Assert.True(KindOf(editor, "Pet") is TokenKind.Struct, $"The union's name typed is coloured as {KindOf(editor, "Pet")?.ToString() ?? "several kinds"}, not as a struct's");
         Assert.Equal(TokenKind.Keyword, KindOf(editor, "union"));
         window.Close();
     }
 
+    /// <summary>The parse a key starts classifies the lines on screen on its worker, and its landing hands them to the
+    /// screen: the frame after it classifies nothing again on the UI thread. A key classifies again at most the line it
+    /// changed, counted in the characters classified there, not a time.</summary>
     [AvaloniaFact]
     public void A_parse_landing_after_a_key_hands_the_screen_the_colours_its_worker_read()
     {
