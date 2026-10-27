@@ -512,18 +512,8 @@ public sealed class FolderWatchTests : IDisposable
         }
 
         // Areas of 200 empty files each.
-        static void Areas(string root, int areas)
-        {
-            for (int area = 0; area < areas; area++)
-            {
-                string dir = Path.Combine(root, $"Area{area}", "Features");
-                Directory.CreateDirectory(dir);
-                for (int i = 0; i < 200; i++)
-                {
-                    File.WriteAllText(Path.Combine(dir, $"Feature{area}x{i}.cs"), string.Empty);
-                }
-            }
-        }
+        static void Areas(string root, int areas) => TestFolders.WriteAll(root, Enumerable.Range(0, areas * 200)
+            .Select(file => (Path.Combine($"Area{file / 200}", "Features", $"Feature{file / 200}x{file % 200}.cs"), string.Empty)));
     }
 
     /// <summary>What a file made and a file deleted in a folder allocate from the change to the IDE quiet again, the least of
