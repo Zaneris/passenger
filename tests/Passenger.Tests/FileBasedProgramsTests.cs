@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.CSharp;
@@ -212,6 +213,50 @@ public sealed class FileBasedProgramsTests : IDisposable
         bool skipped = console.Contains(BuildRunController.UpToDateSaid("app"), StringComparison.Ordinal);
         Assert.True(built ? ran == 1 && !skipped : ran == 0 && skipped,
             $"{which} {(built ? "was not built first" : "was built though nothing it reads changed")}: {ran} dotnet builds of app.cs started, and the Build window says:\n{console}");
+    }
+
+    /// <summary>Write to Launch Profile writes a program's generated configuration's changed arguments into its profile in
+    /// app.run.json, and Save as Launch Profile saves one made here as a new profile there, which generates it from then on
+    /// and Run runs with its arguments.</summary>
+    [AvaloniaFact]
+    public void Write_and_save_as_launch_profile_take_a_programs_app_run_json()
+    {
+        string settings = Path.Combine(folder, "app.run.json");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "app: greet"), "app.cs's configuration", TimeSpan.FromMinutes(2));
+            RunConfigurationsDialog dialog = window.ShowRunConfigurations();
+            Assert.True(dialog.Choose("app: greet"));
+            dialog.ArgumentsBox.Text = "Grace Hopper";
+            Ui.Settle();
+            Assert.True(dialog.WriteButton.IsEffectivelyEnabled, $"Write to Launch Profile cannot be used on a program's profile: {ToolTip.GetTip(dialog.WriteButton)}");
+            Ui.Click(dialog.WriteButton);
+            Assert.True(dialog.Problem.Length == 0, $"Write to Launch Profile was refused: {dialog.Problem}");
+            Assert.Contains("\"commandLineArgs\": \"Grace Hopper\"", File.ReadAllText(settings), StringComparison.Ordinal);
+            Assert.Equal("Written to its launch profile in app.run.json: Program arguments.", dialog.Changes);
+
+            Ui.Click(dialog.AddButton);
+            Ui.Click(Assert.IsType<ContextMenu>(dialog.AddMenu).Items.OfType<MenuItem>().First());
+            dialog.NameBox.Text = "app: Staging";
+            dialog.ArgumentsBox.Text = "Alan Turing";
+            Ui.Settle();
+            Assert.True(dialog.SaveAsProfileButton.IsEffectivelyEnabled, $"Save as Launch Profile cannot be used on a program's configuration: {ToolTip.GetTip(dialog.SaveAsProfileButton)}");
+            Ui.Click(dialog.SaveAsProfileButton);
+            Assert.True(dialog.Problem.Length == 0, $"Save as Launch Profile was refused: {dialog.Problem}");
+            Assert.StartsWith("Saved as the launch profile Staging in app's app.run.json: it is now app: Staging, generated from that profile", dialog.Changes, StringComparison.Ordinal);
+            Assert.Equal(["greet", "Staging"], LaunchProfile.Read(settings).Select(p => p.Name));
+            Ui.Click(dialog.OkButton);
+
+            Assert.True(window.SelectConfiguration("app: Staging"));
+            Ui.Launched(window, window.RunAsync(), "app.cs's run of its saved profile", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => Output(window).Contains("Process finished", StringComparison.Ordinal), "the program to finish", TimeSpan.FromMinutes(2));
+            Assert.Contains("Hello, Alan Turing\n", Output(window), StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
     }
 
     /// <summary>A program holding xUnit tests (<c>#:package xunit.v3</c>) is a test project of its own: the Unit Tests window

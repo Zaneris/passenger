@@ -507,10 +507,10 @@ public sealed class RunConfigurationsDialog : Window
 
     public TextBox RunArgumentsBox { get; }
 
-    private const string WriteTip = "Applies the changes here, then writes those its launch profile has a place for into the project's Properties/launchSettings.json, "
+    private const string WriteTip = "Applies the changes here, then writes those its launch profile has a place for into the project's Properties/launchSettings.json (a file-based program's .run.json), "
         + "as one step Undo takes back; the rest stay kept with the folder";
 
-    private const string SaveAsTip = "Applies the changes here, then saves this configuration as a new profile of its project's Properties/launchSettings.json, "
+    private const string SaveAsTip = "Applies the changes here, then saves this configuration as a new profile of its project's Properties/launchSettings.json (a file-based program's .run.json), "
         + "which the repository shares and it is then generated from; what a profile has no place for stays kept with the folder. One step Undo takes back";
 
     private const string FastMode = "Fast, from Passenger's build";
@@ -634,8 +634,9 @@ public sealed class RunConfigurationsDialog : Window
         row.Configuration = now with { Source = null };
         IReadOnlyList<string> left = ConfigurationEdit.Changed(row.Source, row.Configuration);
         string done = Titles(changed.Except(left));
-        written = (done.Length > 0 ? $"Written to its launch profile in launchSettings.json: {done}." : "Its launch profile in launchSettings.json was written.")
-            + (left.Count > 0 ? $" Kept here, as launchSettings.json has no place for it: {Titles(left)}." : string.Empty);
+        string file = LaunchProfile.SettingsName(now.Project);
+        written = (done.Length > 0 ? $"Written to its launch profile in {file}: {done}." : $"Its launch profile in {file} was written.")
+            + (left.Count > 0 ? $" Kept here, as {file} has no place for it: {Titles(left)}." : string.Empty);
         showing = true;
         try
         {
@@ -681,7 +682,7 @@ public sealed class RunConfigurationsDialog : Window
             showing = false;
         }
         IReadOnlyList<string> left = now.Source is { } source ? ConfigurationEdit.Changed(source, now) : [];
-        written = $"{said}." + (left.Count > 0 ? $" Kept here, as launchSettings.json has no place for it: {Titles(left)}." : string.Empty);
+        written = $"{said}." + (left.Count > 0 ? $" Kept here, as {LaunchProfile.SettingsName(now.Project)} has no place for it: {Titles(left)}." : string.Empty);
         ShowChosen();
     }
 
@@ -1003,7 +1004,7 @@ public sealed class RunConfigurationsDialog : Window
         string name = project?.Name ?? Path.GetFileNameWithoutExtension(shown.Project);
         string origin = !shown.Generated ? string.Empty
             : shown.Origin is { } container ? container
-            : shown.LaunchProfile.Length > 0 ? $"Generated from the launch profile {shown.LaunchProfile} in {name}'s Properties/launchSettings.json"
+            : shown.LaunchProfile.Length > 0 ? $"Generated from the launch profile {shown.LaunchProfile} in {name}'s {LaunchProfile.SettingsShown(shown.Project)}"
             : $"Generated for the executable project {name}";
         if (shown.Generated)
         {
@@ -1047,7 +1048,7 @@ public sealed class RunConfigurationsDialog : Window
                 && LaunchProfile.Read(project).FirstOrDefault(p => p.Name == row.Configuration.LaunchProfile) is { } profile
                 && LaunchSettingsEdits.For(project, profile, row.Source!, row.Configuration).Count > 0;
             WriteButton.IsEnabled = writable;
-            ToolTip.SetTip(WriteButton, writable ? WriteTip : "launchSettings.json has no place for these changes, which stay kept with the folder");
+            ToolTip.SetTip(WriteButton, writable ? WriteTip : $"{LaunchProfile.SettingsName(row.Configuration.Project)} has no place for these changes, which stay kept with the folder");
         }
 
         ShowSaveAs();

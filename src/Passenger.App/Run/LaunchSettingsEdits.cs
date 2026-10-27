@@ -166,7 +166,7 @@ public static class LaunchSettingsEdits
             return null;
         }
         FileText file = FileText.Load(path) ?? throw new IOException($"{Path.GetFileName(path)} is not a text file");
-        (string? text, string? problem) = Added(file.Text, profile, values);
+        (string? text, string? problem) = Added(file.Text, profile, values, Path.GetFileName(path));
         if (text is null)
         {
             return problem;
@@ -178,7 +178,7 @@ public static class LaunchSettingsEdits
     /// <summary>The text with a profile added after its last, laid out as the file lays out its profiles, every other
     /// character as it was (a file with no <c>profiles</c> given them after its last property); null with why when it does
     /// not read as JSON or has a profile of that name, its letter case aside, as dotnet run tells them apart.</summary>
-    public static (string? Text, string? Problem) Added(string text, string profile, JsonObject values)
+    public static (string? Text, string? Problem) Added(string text, string profile, JsonObject values, string named)
     {
         JsonText.Node root;
         try
@@ -187,11 +187,11 @@ public static class LaunchSettingsEdits
         }
         catch (FormatException unreadable)
         {
-            return (null, $"launchSettings.json does not read as JSON: {unreadable.Message}");
+            return (null, $"{named} does not read as JSON: {unreadable.Message}");
         }
         if (root.Kind != JsonText.Kind.Object)
         {
-            return (null, "launchSettings.json does not hold an object");
+            return (null, $"{named} does not hold an object");
         }
         JsonText.Layout layout = new(text, JsonText.Unit(text, root));
         if (root.Member("profiles")?.Value is not { } profiles)
@@ -200,11 +200,11 @@ public static class LaunchSettingsEdits
         }
         if (profiles.Kind != JsonText.Kind.Object)
         {
-            return (null, "launchSettings.json's profiles are not an object");
+            return (null, $"{named}'s profiles are not an object");
         }
         if (profiles.Members.FirstOrDefault(m => string.Equals(m.Name, profile, StringComparison.OrdinalIgnoreCase)) is { } taken)
         {
-            return (null, $"launchSettings.json has a profile named {taken.Name} already");
+            return (null, $"{named} has a profile named {taken.Name} already");
         }
         return (layout.Add(profiles, profile, values), null);
     }
@@ -214,7 +214,7 @@ public static class LaunchSettingsEdits
     public static string? Write(string path, string profile, IReadOnlyList<Change> changes)
     {
         FileText file = FileText.Load(path) ?? throw new IOException($"{Path.GetFileName(path)} is not a text file");
-        (string? text, string? problem) = Changed(file.Text, profile, changes);
+        (string? text, string? problem) = Changed(file.Text, profile, changes, Path.GetFileName(path));
         if (text is null)
         {
             return problem;
@@ -228,7 +228,7 @@ public static class LaunchSettingsEdits
 
     /// <summary>The text with the profile's values changed, every other character as it was; null with why when it does not
     /// read as JSON or has no such profile.</summary>
-    public static (string? Text, string? Problem) Changed(string text, string profile, IReadOnlyList<Change> changes)
+    public static (string? Text, string? Problem) Changed(string text, string profile, IReadOnlyList<Change> changes, string named)
     {
         foreach (Change change in changes)
         {
@@ -239,11 +239,11 @@ public static class LaunchSettingsEdits
             }
             catch (FormatException unreadable)
             {
-                return (null, $"launchSettings.json does not read as JSON: {unreadable.Message}");
+                return (null, $"{named} does not read as JSON: {unreadable.Message}");
             }
             if (root.Member("profiles")?.Value is not { Kind: JsonText.Kind.Object } profiles || profiles.Member(profile)?.Value is not { Kind: JsonText.Kind.Object } found)
             {
-                return (null, $"launchSettings.json has no profile {profile}");
+                return (null, $"{named} has no profile {profile}");
             }
             JsonText.Layout layout = new(text, JsonText.Unit(text, root));
             text = change.Entry is null ? layout.Set(found, change.Property, change.Value) : layout.SetEntry(found, change.Property, change.Entry, change.Value);

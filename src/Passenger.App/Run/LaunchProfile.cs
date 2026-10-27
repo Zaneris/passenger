@@ -87,6 +87,16 @@ public sealed record LaunchProfile(
     /// <summary>The file a project's launch profiles are in; a file-based program's, as <see cref="FileSettingsPath"/> finds it.</summary>
     public static string SettingsPath(ProjectModel project) => project.IsProgram ? FileSettingsPath(project.Path) : SettingsIn(project.Folder);
 
+    /// <summary>The name of the file a project's launch profiles are in (a file-based program's app.run.json), as a person is told it.</summary>
+    public static string SettingsName(string project) =>
+        Passenger.Host.ProgramFiles.IsProgram(project) ? Path.GetFileName(FileSettingsPath(project)) : SettingsFile;
+
+    /// <summary>Where a project's launch profiles are in its folder, as a person is told it: Properties/launchSettings.json,
+    /// or a file-based program's app.run.json.</summary>
+    public static string SettingsShown(string project) =>
+        Path.GetRelativePath(Path.GetDirectoryName(project)!, Passenger.Host.ProgramFiles.IsProgram(project) ? FileSettingsPath(project) : SettingsIn(Path.GetDirectoryName(project)!))
+            .Replace('\\', '/');
+
     /// <summary>The launch profiles' file of a project in this folder.</summary>
     public static string SettingsIn(string folder) => Path.Combine(folder, "Properties", SettingsFile);
 

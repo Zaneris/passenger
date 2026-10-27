@@ -80,17 +80,17 @@ public partial class MainWindow
         if (Projects.FirstOrDefault(p => PathNames.Same(p.Path, edited.Project)) is not { } project
             || LaunchProfile.Read(project).FirstOrDefault(p => p.Name == edited.LaunchProfile) is not { } profile)
         {
-            return (null, $"The launch profile {edited.LaunchProfile} is no longer in its project's launchSettings.json");
+            return (null, $"The launch profile {edited.LaunchProfile} is no longer in its project's {LaunchProfile.SettingsName(edited.Project)}");
         }
         IReadOnlyList<LaunchSettingsEdits.Change> changes = LaunchSettingsEdits.For(project, profile, source, edited);
         if (changes.Count == 0)
         {
-            return (null, $"launchSettings.json has no place for {name}'s changes: they stay kept with the folder");
+            return (null, $"{LaunchProfile.SettingsName(project.Path)} has no place for {name}'s changes: they stay kept with the folder");
         }
         string path = LaunchProfile.SettingsPath(project);
         if (SaveBeforeWriting([path]) is { } unsaved)
         {
-            return (null, $"launchSettings.json could not be changed: {unsaved}");
+            return (null, $"{Path.GetFileName(path)} could not be changed: {unsaved}");
         }
         JsonObject? before = configurations.EditOf(name);
         using CommandHistory.Recording made = Editors.Commands.Record($"Write {name} to Its Launch Profile");
@@ -111,7 +111,7 @@ public partial class MainWindow
         }
         if (problem is not null)
         {
-            return (null, $"launchSettings.json could not be changed: {problem}");
+            return (null, $"{Path.GetFileName(path)} could not be changed: {problem}");
         }
         RunConfiguration? now = configurations.Rebase(name, edited);
         JsonObject? after = configurations.EditOf(name);
@@ -127,9 +127,9 @@ public partial class MainWindow
         ? WhyNotShare(dialog.Chosen, dialog.Rows)
         : WhyNotShare(Configuration, Configurations);
 
-    /// <summary>Why a configuration cannot be saved as a launch profile: none is chosen, it is generated, it runs containers
-    /// or a file-based program, its project is not loaded, or its name, less its project's, is a profile's already or would
-    /// make the name of another listed; null when it can.</summary>
+    /// <summary>Why a configuration cannot be saved as a launch profile: none is chosen, it is generated, it runs containers,
+    /// its project is not loaded, or its name, less its project's, is a profile's already or would make the name of another
+    /// listed; null when it can.</summary>
     private string? WhyNotShare(RunConfiguration? shared, IReadOnlyList<RunConfiguration> listed)
     {
         if (Folder is null)
@@ -150,10 +150,6 @@ public partial class MainWindow
         {
             return $"{shared.Name} runs containers: a launch profile saved here runs a project on this machine";
         }
-        if (Path.GetExtension(shared.Project).Equals(".cs", StringComparison.OrdinalIgnoreCase))
-        {
-            return $"{shared.Name} runs a file-based program, which has no project's launchSettings.json";
-        }
         if (Projects.FirstOrDefault(p => p.Exists && p.IsRunnable && PathNames.Same(p.Path, shared.Project)) is not { } project)
         {
             return shared.Project.Length == 0 ? $"{shared.Name} has no project to run" : $"{shared.Name}'s project, {Path.GetFileNameWithoutExtension(shared.Project)}, is not loaded";
@@ -165,7 +161,7 @@ public partial class MainWindow
         }
         if (LaunchProfile.Read(project).FirstOrDefault(p => string.Equals(p.Name, profile, StringComparison.OrdinalIgnoreCase)) is { } taken)
         {
-            return $"{project.Name}'s launchSettings.json has a profile named {taken.Name} already";
+            return $"{project.Name}'s {LaunchProfile.SettingsName(project.Path)} has a profile named {taken.Name} already";
         }
         string generated = RunConfiguration.NameOf(project, profile);
         return listed.FirstOrDefault(c => !ReferenceEquals(c, shared) && string.Equals(c.Name, generated, StringComparison.OrdinalIgnoreCase)) is { } named
@@ -239,7 +235,7 @@ public partial class MainWindow
         string path = LaunchProfile.SettingsPath(project);
         if (SaveBeforeWriting([path]) is { } unsaved)
         {
-            return (null, $"launchSettings.json could not be changed: {unsaved}");
+            return (null, $"{Path.GetFileName(path)} could not be changed: {unsaved}");
         }
         string properties = Path.GetDirectoryName(path)!;
         bool madeFolder = !Directory.Exists(properties);
@@ -265,7 +261,7 @@ public partial class MainWindow
         }
         if (problem is not null)
         {
-            return (null, $"launchSettings.json could not be changed: {problem}");
+            return (null, $"{Path.GetFileName(path)} could not be changed: {problem}");
         }
         if (madeFolder)
         {
@@ -301,7 +297,7 @@ public partial class MainWindow
                     configurations.Unshare(mine, at, now.Name, before, chosen);
                 }
             }));
-        return (now, $"Saved as the launch profile {profile} in {project.Name}'s Properties/launchSettings.json{(madeFile ? ", made for it" : string.Empty)}: "
+        return (now, $"Saved as the launch profile {profile} in {project.Name}'s {LaunchProfile.SettingsShown(project.Path)}{(madeFile ? ", made for it" : string.Empty)}: "
             + $"it is now {now.Name}, generated from that profile");
     }
 
