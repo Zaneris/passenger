@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Passenger.Dap;
 using Passenger.Tests.Debugging.Helpers;
 
@@ -292,6 +293,8 @@ public class StepTests(ITestOutputHelper testOutputHelper)
     [Fact]
     public async Task A_step_that_ends_while_another_threads_exception_breakpoint_tries_its_condition_stops_once_the_condition_is_tried()
     {
+        Assert.SkipWhen(UnderRosetta, "Rosetta loses the runtime's signal to a thread that takes a trap as it comes, so the stepping thread, once a "
+            + "step's trap met one, can never be stopped while it waits in managed code for the racing thread, whose exception never comes");
         // Each turn the racing thread's exception finds its handler before, as or after the step ends.
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         (int letGo, int stepped, _) = RaceLines;
@@ -313,6 +316,12 @@ public class StepTests(ITestOutputHelper testOutputHelper)
                 + "condition never holding: it could not be tried, the step's end having stopped the program while its getter ran");
         }
     }
+
+    /// <summary>x64 .NET under Rosetta on an Arm Mac, where a thread that takes a trap (a breakpoint, a single step) as the
+    /// runtime's activation signal reaches it never receives that signal, nor any after it; the runtime sends a thread no
+    /// other while one is unanswered, so it can no longer stop that thread in managed code.</summary>
+    private static bool UnderRosetta => OperatingSystem.IsMacOS() && RuntimeInformation.ProcessArchitecture == Architecture.X64
+        && RuntimeInformation.OSArchitecture == Architecture.Arm64;
 
     /// <summary>How many times a race between a step's end and another thread's breakpoint is run: each turn goes either way.</summary>
     private const int RaceTurns = 30;
