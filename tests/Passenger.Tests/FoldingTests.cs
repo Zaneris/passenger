@@ -184,6 +184,80 @@ public sealed class FoldingTests : IDisposable
         Assert.True(asking.Asked.Count == 0, $"A frame with nothing changed asked for colours again: {string.Join(", ", asking.Asked)}.");
     }
 
+    /// <summary>A comment after a file's last token, or one opened and never closed, is coloured a comment on every line it
+    /// covers, the screen's colours asked from the file's first line: it is the end of the file's trivia, which a walk of
+    /// the tokens from above stepped over, so it was drawn plain.</summary>
+    [AvaloniaFact]
+    public void A_comment_at_the_end_of_a_file_is_coloured_a_comment_however_the_screen_asks()
+    {
+        EditorRig rig = new("class Shapes\n{\n    int Area() => 1;\n}\n// after the class\n/* never\nclosed\n");
+        using CSharpHighlighter csharp = new(rig.Document);
+        rig.Editor.Highlighter = csharp;
+        Ui.Settle();
+        TextSnapshot text = rig.Document.Snapshot;
+        IReadOnlyList<SyntaxSpan> spans = csharp.GetSpans(text, 0, text.Length);
+        foreach (int line in (ReadOnlySpan<int>)[4, 5, 6])
+        {
+            LineSpan span = text.GetLine(line);
+            Assert.True(spans.Any(s => s.Kind == TokenKind.Comment && s.Start <= span.Start && s.End >= span.End),
+                $"Line {line + 1}, \"{text.GetText(span.Start, span.Length)}\", is not coloured a comment: {string.Join(", ", spans.Select(s => $"{s.Kind} {s.Start}..{s.End}"))}");
+        }
+    }
+
+    /// <summary>A frame of a screen of squiggles, one under each line, and of fold chevrons, the pointer over the gutter,
+    /// makes no shape or pen for them: five frames drawn again with nothing moved make no shape, and one allocates on the
+    /// UI thread under 1 KB for each squiggle and chevron more than a frame of the same lines with neither, the least of
+    /// five frames each. Each was a new geometry and a new pen at every frame, 2.8 KB.</summary>
+    [AvaloniaFact]
+    public void A_frame_of_squiggles_and_fold_chevrons_makes_no_shape_or_pen_for_them()
+    {
+        StringBuilder text = new("class Many\n{\n");
+        for (int i = 0; i < 40; i++)
+        {
+            text.Append(System.Globalization.CultureInfo.InvariantCulture, $"    int M{i}()\n    {{\n        int value{i} = {i};\n        return value{i};\n    }}\n");
+        }
+        EditorRig rig = new(text.Append("}\n").ToString());
+        using CSharpHighlighter csharp = new(rig.Document);
+        rig.Editor.Highlighter = csharp;
+        Ui.WaitFor(() => csharp.Folds.Count > 40, "the file's regions");
+        rig.Editor.SetFoldRegions(csharp.Folds);
+        Ui.Settle();
+        CodeEditor editor = rig.Editor;
+        // The stripe's marks for the problems are another control's frame.
+        editor.ShowErrorStripe = false;
+        TextSnapshot snapshot = rig.Document.Snapshot;
+        (int first, int last) = editor.LinesShown;
+        long plain = LeastFrame();
+        editor.SetMarkers([.. Enumerable.Range(first, last - first + 1).Select(line =>
+            new Marker(new TextRange(snapshot.GetLineStart(line), Math.Max(1, snapshot.GetLine(line).Length)), line % 2 == 0 ? MarkerKind.Warning : MarkerKind.Error, "a problem"))]);
+        rig.Window.MouseMove(editor.TranslatePoint(new Point(4, 40), rig.Window)!.Value);
+        Ui.Settle();
+        int chevrons = editor.FoldRegions.Count(r => { int line = snapshot.GetLineFromOffset(r.Start); return line >= first && line <= last; });
+        int shapes = (last - first + 1) + chevrons;
+        long made = editor.ShapesMade;
+        long marked = LeastFrame();
+        Assert.True(editor.ShapesMade == made, $"Five frames of {shapes} squiggles and chevrons that moved none made {editor.ShapesMade - made} shapes");
+        TestContext.Current.TestOutputHelper?.WriteLine($"A frame allocated {plain:N0} bytes on the UI thread with no marks, {marked:N0} with {last - first + 1} squiggles and {chevrons} chevrons");
+        Assert.True(chevrons > 5, $"The screen shows {chevrons} regions' chevrons");
+        Assert.True(marked - plain < 1024 * shapes,
+            $"A frame of {last - first + 1} squiggles and {chevrons} chevrons allocated {marked:N0} bytes on the UI thread against {plain:N0} with none: {(marked - plain) / shapes} bytes for each, a shape and a pen made for it");
+
+        long LeastFrame()
+        {
+            long least = long.MaxValue;
+            for (int i = 0; i < 5; i++)
+            {
+                editor.InvalidateVisual();
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                AvaloniaHeadlessPlatform.ForceRenderTimerTick(1);
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
+            }
+            return least;
+        }
+    }
+
     /// <summary>A key in a file of 20,000 lines costs its parse what the key changed: each key here (in a method or in
     /// the usings), and each member pasted in, deleted or wrapped in a #region, allocates on the parsing worker under a
     /// twentieth of what opening the file did, and after each the folds are those the same text has opened

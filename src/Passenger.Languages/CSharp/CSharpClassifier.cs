@@ -34,8 +34,12 @@ internal static class CSharpClassifier
         List<SyntaxSpan> spans = [];
         SyntaxToken token = root.FindToken(Math.Min(range.Start, Math.Max(0, root.FullSpan.End - 1)));
         int depth = DepthBefore(token);
+        // The walk steps over the file's end (no width), so its trivia (a comment never closed) is read after it.
+        SyntaxToken end = root.GetLastToken(includeZeroWidth: true);
+        bool endRead = false;
         while (token.RawKind != 0 && token.FullSpan.Start <= range.End)
         {
+            endRead |= token == end;
             AddTrivia(token.LeadingTrivia, range, spans);
             // A skipped token is trivia, not one of the tree's tokens: never a bracket.
             int bracket = token.Parent is { IsStructuredTrivia: true } ? 0 : Bracket(token);
@@ -55,6 +59,10 @@ internal static class CSharpClassifier
             }
             AddTrivia(token.TrailingTrivia, range, spans);
             token = Next(root, token);
+        }
+        if (!endRead && end.RawKind != 0 && end.Span.Length == 0 && end.FullSpan.Start <= range.End)
+        {
+            AddTrivia(end.LeadingTrivia, range, spans);
         }
         return spans;
     }

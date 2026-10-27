@@ -508,6 +508,72 @@ public sealed class ActiveEditorResponsivenessTests : ActiveEditorFolders
             return (least, path);
         }
     }
+
+    /// <summary>A key in a screenful of coloured C# makes again only the row it changed: it asks for the colours of that
+    /// row alone, and what it allocates on the UI thread, its parse landing included, beyond what drawing the screen once
+    /// does, is under 256 bytes more for each row in an editor showing 67 rows than in one showing 19, the least of six
+    /// keys. Every row's view, colours and text were made again for each key, and every row's colours asked for again as
+    /// its parse landed: 2.6 KB for each row more.</summary>
+    [AvaloniaFact]
+    public void A_key_in_a_screen_of_coloured_code_makes_again_only_the_row_it_changed()
+    {
+        StringBuilder text = new("static class Coloured\n{\n");
+        for (int i = 0; i < 200; i++)
+        {
+            text.Append(System.Globalization.CultureInfo.InvariantCulture,
+                $"    public static string Name{i}(int value) => value > {i} ? \"large\" : $\"small {{value}}\"; // note {i}\n");
+        }
+        string source = text.Append("}\n").ToString();
+        string path = Path.Combine(folder, "Coloured.cs");
+        File.WriteAllText(path, source);
+        (long few, int fewRows) = Keys(200);
+        (long many, int manyRows) = Keys(1500);
+        TestContext.Current.TestOutputHelper?.WriteLine($"A key allocated {few:N0} bytes on the UI thread beyond its frame showing {fewRows} rows, {many:N0} showing {manyRows}");
+        Assert.True(manyRows >= fewRows + 40, $"The tall editor showed {manyRows} rows, the short one {fewRows}");
+        Assert.True(many - few < 256 * (manyRows - fewRows),
+            $"A key in coloured C# allocated {many:N0} bytes on the UI thread beyond its frame showing {manyRows} rows, against {few:N0} showing {fewRows}: {(many - few) / (manyRows - fewRows)} bytes for each row more, every row on screen made again");
+
+        // A key's least UI-thread bytes, at a mid-screen line's end, less a frame's with nothing changed; and the rows shown.
+        (long Bytes, int Rows) Keys(double height)
+        {
+            MainWindow window = new() { Width = 1100, Height = height, StartsLanguageServer = false };
+            window.Show();
+            window.OpenFile(path);
+            Ui.Settle();
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            (int first, int last) = editor.LinesShown;
+            int line = (first + last) / 2;
+            LineSpan typed = editor.Document.Snapshot.GetLine(line);
+            Assert.EndsWith($"// note {line - 2}", editor.Document.Snapshot.GetText(typed.Start, typed.Length), StringComparison.Ordinal);
+            editor.Selections = SelectionSet.Single(typed.End);
+            editor.Focus();
+            Ui.Settle();
+            long key = long.MaxValue;
+            long frame = long.MaxValue;
+            for (int i = 0; i < 6; i++)
+            {
+                long coloured = editor.CharactersColoured;
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                window.KeyTextInput("7");
+                Ui.Settle();
+                key = Math.Min(key, GC.GetAllocatedBytesForCurrentThread() - before);
+                coloured = editor.CharactersColoured - coloured;
+                Assert.True(coloured <= typed.Length + 16,
+                    $"A key on a line of {typed.Length + i + 1} characters showing {last - first + 1} rows had {coloured:N0} characters coloured: rows it did not change were coloured again");
+                editor.InvalidateVisual();
+                before = GC.GetAllocatedBytesForCurrentThread();
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                AvaloniaHeadlessPlatform.ForceRenderTimerTick(1);
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                frame = Math.Min(frame, GC.GetAllocatedBytesForCurrentThread() - before);
+            }
+            TestContext.Current.TestOutputHelper?.WriteLine($"A key allocated {key:N0} bytes on the UI thread, a frame {frame:N0}");
+            int rows = editor.LinesShown.Last - editor.LinesShown.First + 1;
+            Assert.Contains($"// note {line - 2}777777\n", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+            window.Close();
+            return (key - frame, rows);
+        }
+    }
 }
 
 /// <summary>The folders an Active Editor test writes its files and keeps its settings in, its texts, and the helpers that

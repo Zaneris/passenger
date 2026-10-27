@@ -106,6 +106,12 @@ public sealed class SemanticHighlighter : IHighlighter, IBraceMatcher, IDisposab
         return merged;
     }
 
+    public void Showing(TextSnapshot snapshot, int start, int length)
+    {
+        Shown(start, length);
+        syntax.Showing(snapshot, start, length);
+    }
+
     /// <summary>The parser's colours this layers over, which stand alone again once the server is gone.</summary>
     public IHighlighter Syntax => syntax;
 
@@ -123,7 +129,16 @@ public sealed class SemanticHighlighter : IHighlighter, IBraceMatcher, IDisposab
         document.Text.Changed -= OnTextChanged;
     }
 
-    private void OnSyntaxChanged(object? sender, EventArgs e) => Changed?.Invoke(this, EventArgs.Empty);
+    private void OnSyntaxChanged(object? sender, EventArgs e)
+    {
+        KeptColours = syntax.KeptColours;
+        Changed?.Invoke(this, EventArgs.Empty);
+        KeptColours = false;
+    }
+
+    /// <summary>The parser's word that it kept every colour it had given, while it is raised: the server's tokens are as
+    /// they were.</summary>
+    public bool KeptColours { get; private set; }
 
     /// <summary>How many changes the colours shown are carried through to the text as it stands, each range drawn going
     /// through each: a run of typing in one place is one, however long the server takes to answer.</summary>

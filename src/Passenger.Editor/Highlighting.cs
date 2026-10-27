@@ -113,6 +113,17 @@ public interface IHighlighter
     /// <summary>The spans overlapping [start, start + length) of <paramref name="text"/>, sorted.
     /// A highlighter still working on an older version answers with its best mapping of what it had.</summary>
     IReadOnlyList<SyntaxSpan> GetSpans(TextSnapshot text, int start, int length);
+
+    /// <summary>A run of whole rows [start, start + length) of <paramref name="text"/> on screen, told once for each text
+    /// drawn: rows an edit did not reach keep their colours and ask for none, so a highlighter reading ahead for the screen
+    /// learns it here.</summary>
+    void Showing(TextSnapshot text, int start, int length)
+    {
+    }
+
+    /// <summary>Whether what <see cref="Changed"/> was last raised for left every colour already given for whole lines of
+    /// the text as it stands as it was given (a parse that read them the same), so the lines drawn with them stand.</summary>
+    bool KeptColours => false;
 }
 
 /// <summary>A highlighter that knows its language's brackets, which the editor highlights in pairs at the caret and Move

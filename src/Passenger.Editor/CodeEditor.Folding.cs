@@ -257,7 +257,9 @@ public sealed partial class CodeEditor
             return;
         }
         TextSnapshot text = document.Snapshot;
-        HashSet<int> drawn = [];
+        HashSet<int> drawn = chevronLines;
+        drawn.Clear();
+        IPen pen = palette.PenOf(palette.LineNumber, 1.2);
         for (int i = FirstStartingOn(text, first); i < FoldRegions.Count && FoldLines.StartLineOf(text, FoldRegions[i]) <= last; i++)
         {
             FoldRegion region = FoldRegions[i];
@@ -268,9 +270,11 @@ public sealed partial class CodeEditor
             }
             bool folded = map.Placeholders.ContainsKey(line);
             double middle = TopOf(line) - scroll.Y + metrics.LineHeight / 2;
-            StreamGeometry chevron = new();
-            using (StreamGeometryContext path = chevron.Open())
+            ShapeKey key = new(folded ? ShapeKind.Folded : ShapeKind.Open, x, middle, 0, 0);
+            if (!shapes.TryGet(key, out StreamGeometry? chevron))
             {
+                chevron = shapes.Add(key, new StreamGeometry());
+                using StreamGeometryContext path = chevron.Open();
                 if (folded)
                 {
                     path.BeginFigure(new Point(x + 2, middle - 4), false);
@@ -284,15 +288,21 @@ public sealed partial class CodeEditor
                     path.LineTo(new Point(x + 8, middle - 2));
                 }
             }
-            context.DrawGeometry(null, new Pen(palette.LineNumber, 1.2), chevron);
+            context.DrawGeometry(null, pen, chevron);
         }
     }
+
+    /// <summary>The lines a frame drew a chevron on, found again for each.</summary>
+    private readonly HashSet<int> chevronLines = [];
 
     /// <summary>A folded region's placeholder after its first line's code, on a chip a click unfolds.</summary>
     private double DrawPlaceholder(DrawingContext context, int line, FoldRegion region, double x, double y)
     {
         x += metrics.CharWidth;
-        TextLine label = labels.Get((region.Placeholder, -8), () => Format(region.Placeholder, [], RunWith(palette.Annotation)));
+        if (!labels.TryGet((region.Placeholder, -8), out TextLine? label))
+        {
+            label = labels.Add((region.Placeholder, -8), Format(region.Placeholder, [], RunWith(palette.Annotation)));
+        }
         Rect chip = new(x, y + 2, label.WidthIncludingTrailingWhitespace + metrics.CharWidth, metrics.LineHeight - 4);
         context.FillRectangle(palette.InlayHintBack, chip, 3);
         label.Draw(context, new Point(x + metrics.CharWidth / 2, y + (metrics.LineHeight - label.Height) / 2));

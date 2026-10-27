@@ -20,6 +20,13 @@ public sealed partial class CodeEditor
     private Advances? advances;
     private int colouring;
 
+    /// <summary>A frame's rows' views and those it formats whole, kept from frame to frame.</summary>
+    private LineView[] frameViews = [];
+    private readonly List<LineView> frameWhole = [];
+
+    /// <summary>The text whose rows on screen the highlighter was last told of.</summary>
+    private TextSnapshot? toldShowing;
+
     /// <summary>How many characters the editor has given the text formatter: each line, window and label it formatted.
     /// What a key or a frame costs to draw.</summary>
     public long CharactersFormatted { get; private set; }
@@ -38,8 +45,14 @@ public sealed partial class CodeEditor
     private LineView[] ViewsOf(TextSnapshot text, List<RowSpan> shown, double viewLeft, double viewWidth)
     {
         views.Use(text, colouring);
-        LineView[] found = new LineView[shown.Count];
-        List<LineView> whole = [];
+        TellShowing(text, shown);
+        if (frameViews.Length < shown.Count)
+        {
+            frameViews = new LineView[Math.Max(shown.Count, frameViews.Length * 2)];
+        }
+        LineView[] found = frameViews;
+        List<LineView> whole = frameWhole;
+        whole.Clear();
         for (int i = 0; i < shown.Count; i++)
         {
             LineView view = views[shown[i]] ?? views.Add(NewView(text, shown[i]));
@@ -58,10 +71,32 @@ public sealed partial class CodeEditor
             {
                 whole.Add(view);
             }
-            view.Text?.Touch(views.Frame);
+            view.Use(views.Frame);
         }
         FormatWhole(text, whole);
+        whole.Clear();
         return found;
+    }
+
+    /// <summary>Tells the highlighter each run of neighbouring rows on screen, once for each text: rows carried through an
+    /// edit ask it for no colours, yet it reads ahead what the screen shows.</summary>
+    private void TellShowing(TextSnapshot text, List<RowSpan> shown)
+    {
+        if (highlighter is null || ReferenceEquals(toldShowing, text) || shown.Count == 0)
+        {
+            return;
+        }
+        toldShowing = text;
+        for (int i = 0; i < shown.Count;)
+        {
+            int j = i;
+            while (j + 1 < shown.Count && shown[j + 1].Start == shown[j].EndIncludingBreak)
+            {
+                j++;
+            }
+            highlighter.Showing(text, shown[i].Start, shown[j].EndIncludingBreak - shown[i].Start);
+            i = j + 1;
+        }
     }
 
     /// <summary>A row's view to measure with: the one drawn, or one made now, which the next frame draws.</summary>
@@ -71,9 +106,13 @@ public sealed partial class CodeEditor
         LineView view = views[row] ?? views.Add(NewView(text, row));
         if (view.Long is null && view.Text is null)
         {
-            FormatWhole(text, [view]);
+            List<LineView> one = frameWhole;
+            int from = one.Count;
+            one.Add(view);
+            FormatWhole(text, one, from);
+            one.RemoveAt(from);
         }
-        view.Text?.Touch(views.Frame);
+        view.Use(views.Frame);
         return view;
     }
 
@@ -86,10 +125,11 @@ public sealed partial class CodeEditor
         return new LineView(span, new LongLine(text, span.Start, span.Length, Measures()));
     }
 
-    /// <summary>Whole rows formatted with their colours, which are asked for once for each run of neighbouring rows.</summary>
-    private void FormatWhole(TextSnapshot text, List<LineView> lines)
+    /// <summary>Whole rows formatted with their colours, which are asked for once for each run of neighbouring rows: those
+    /// of the list from <paramref name="from"/> on.</summary>
+    private void FormatWhole(TextSnapshot text, List<LineView> lines, int from = 0)
     {
-        for (int i = 0; i < lines.Count;)
+        for (int i = from; i < lines.Count;)
         {
             int j = i;
             while (j + 1 < lines.Count && lines[j + 1].Span.Start == lines[j].Span.EndIncludingBreak)
@@ -107,6 +147,7 @@ public sealed partial class CodeEditor
                 FormatKey key = new(content, runs);
                 lines[k].Text = views.Formatted(key) ?? views.Add(key, Format(content, runs, null));
                 lines[k].Runs = runs;
+                lines[k].Use(views.Frame);
             }
             i = j + 1;
         }
@@ -126,6 +167,7 @@ public sealed partial class CodeEditor
         string content = text.GetText(span.Start + start, end - start);
         FormatKey key = new(content, runs);
         view.Window(start, end, measure.XOf(start), views.Formatted(key) ?? views.Add(key, Format(content, runs, null)));
+        view.Use(views.Frame);
     }
 
     private IReadOnlyList<SyntaxSpan> Colours(TextSnapshot text, int start, int length)
@@ -174,6 +216,32 @@ public sealed partial class CodeEditor
         return runs;
     }
 
+    /// <summary>Whether the coloured stretches from <paramref name="start"/> to <paramref name="end"/>, read on from
+    /// <paramref name="index"/>, are <paramref name="runs"/>, as <see cref="Runs"/> would make them, making nothing.</summary>
+    private static bool SameRuns(IReadOnlyList<SyntaxSpan> spans, ref int index, int start, int end, LineRun[] runs)
+    {
+        while (index < spans.Count && spans[index].End <= start)
+        {
+            index++;
+        }
+        int made = 0;
+        for (int i = index; i < spans.Count && spans[i].Start < end; i++)
+        {
+            SyntaxSpan s = spans[i];
+            int from = Math.Max(s.Start, start) - start;
+            int to = Math.Min(s.End, end) - start;
+            if (to > from && s.Kind != TokenKind.Text)
+            {
+                if (made == runs.Length || runs[made] != new LineRun(from, to - from, s.Kind))
+                {
+                    return false;
+                }
+                made++;
+            }
+        }
+        return made == runs.Length;
+    }
+
     private TextLine Format(string content, LineRun[] runs, TextRunProperties? only)
     {
         TextRunProperties plain = only ?? Run(TokenKind.Text);
@@ -192,6 +260,7 @@ public sealed partial class CodeEditor
     private void ForgetLines()
     {
         views.Clear();
+        shapes.Clear();
         labels.Clear();
         rowGaps.Clear();
         numbers.Clear();
@@ -252,7 +321,7 @@ public sealed partial class CodeEditor
     /// <see cref="From"/> to <see cref="To"/> placed at <see cref="X"/> by its measure, which gives every column outside it.</summary>
     private sealed class LineView(RowSpan span, LongLine? measure)
     {
-        public RowSpan Span { get; } = span;
+        public RowSpan Span { get; private set; } = span;
         public LongLine? Long { get; } = measure;
         public Formatted? Text { get; set; }
 
@@ -273,6 +342,15 @@ public sealed partial class CodeEditor
         public double Baseline => Text!.Line.Baseline;
 
         public bool Covers(int from, int to) => Text is not null && From <= from && To >= to;
+
+        /// <summary>The last frame that drew or measured with this row.</summary>
+        public long Used { get; private set; }
+
+        public void Use(long frame)
+        {
+            Used = frame;
+            Text?.Touch(frame);
+        }
 
         public void Window(int from, int to, double x, Formatted text)
         {
@@ -305,6 +383,14 @@ public sealed partial class CodeEditor
         }
 
         public void Draw(DrawingContext context, double left, double top) => Text!.Line.Draw(context, new Point(left + X, top));
+
+        /// <summary>The same row of the text an edit made, which it did not reach: <paramref name="shift"/> characters and
+        /// <paramref name="lines"/> lines on from where it was.</summary>
+        public void Follow(TextSnapshot text, int shift, int lines)
+        {
+            Span = Span with { Start = Span.Start + shift, Line = Span.Line + lines };
+            Long?.Follow(text, Span.Start);
+        }
     }
 
     /// <summary>The rows drawn or measured since the text or its colours last changed, by where they start, and every
@@ -312,8 +398,11 @@ public sealed partial class CodeEditor
     /// screen.</summary>
     private sealed class LineViews
     {
-        private readonly Dictionary<int, LineView> byLine = [];
+        private Dictionary<int, LineView> byLine = [];
+        private Dictionary<int, LineView> spare = [];
         private readonly Dictionary<FormatKey, Formatted> formatted = [];
+        private readonly List<LineView> scratch = [];
+        private readonly List<FormatKey> stale = [];
         private TextSnapshot? text;
         private int colouring;
 
@@ -333,20 +422,77 @@ public sealed partial class CodeEditor
             }
             else if (colouring != colours)
             {
-                foreach (LineView view in byLine.Values.ToList())
-                {
-                    if (view.Long is null)
-                    {
-                        byLine.Remove(view.Span.Start);
-                    }
-                    else
-                    {
-                        view.Text = null;
-                    }
-                }
+                DropShort(all: true);
             }
             text = snapshot;
             colouring = colours;
+        }
+
+        /// <summary>The views carried through an edit: those of the lines it did not reach kept, moved with the text after it,
+        /// as the highlighter carries their colours, so the next frame makes again only the rows it changed. Lines ending
+        /// where it starts, or starting where it ends, count as reached, as the highlighter counts them.</summary>
+        public void Follow(DocumentChangedEventArgs change)
+        {
+            if (!ReferenceEquals(text, change.Before))
+            {
+                return;
+            }
+            IReadOnlyList<TextEdit> edits = change.Edits;
+            if (edits.Count == 0 || byLine.Count == 0)
+            {
+                byLine.Clear();
+                text = change.After;
+                return;
+            }
+            TextSnapshot before = change.Before;
+            int first = edits[0].Start;
+            int last = edits[^1].Start + edits[^1].Length;
+            int shift = change.After.Length - before.Length;
+            int lines = change.After.LineCount - before.LineCount;
+            spare.Clear();
+            foreach ((int start, LineView view) in byLine)
+            {
+                LineSpan line = before.GetLine(view.Span.Line);
+                if (line.EndIncludingBreak < first)
+                {
+                    view.Follow(change.After, 0, 0);
+                    spare[start] = view;
+                }
+                else if (line.Start > last)
+                {
+                    view.Follow(change.After, shift, lines);
+                    spare[start + shift] = view;
+                }
+            }
+            (byLine, spare) = (spare, byLine);
+            spare.Clear();
+            text = change.After;
+        }
+
+        /// <summary>Drops the views of rows (all, or those this frame did not use or whose formatted line was disposed), a
+        /// long one keeping its measure, which read the whole line, and letting go of its window.</summary>
+        private void DropShort(bool all)
+        {
+            scratch.Clear();
+            foreach (LineView view in byLine.Values)
+            {
+                if (all || view.Used != Frame || view.Text is { Disposed: true })
+                {
+                    scratch.Add(view);
+                }
+            }
+            foreach (LineView view in scratch)
+            {
+                if (view.Long is null)
+                {
+                    byLine.Remove(view.Span.Start);
+                }
+                else
+                {
+                    view.Text = null;
+                }
+            }
+            scratch.Clear();
         }
 
         public LineView Add(LineView view)
@@ -364,11 +510,13 @@ public sealed partial class CodeEditor
                 // Made again for the text in view at the next frame anyway, with the colours as they are by then.
                 return true;
             }
-            List<LineView> shown = [];
+            List<LineView> shown = scratch;
+            shown.Clear();
             foreach (LineView view in byLine.Values)
             {
                 if (view.Long is not null && view.Text is not null)
                 {
+                    shown.Clear();
                     return false;
                 }
                 if (view.Runs is not null && view.Text is not null)
@@ -376,28 +524,37 @@ public sealed partial class CodeEditor
                     shown.Add(view);
                 }
             }
-            shown.Sort((a, b) => a.Span.Start.CompareTo(b.Span.Start));
-            for (int i = 0; i < shown.Count;)
+            shown.Sort(ByStart);
+            try
             {
-                int j = i;
-                while (j + 1 < shown.Count && shown[j + 1].Span.Start == shown[j].Span.EndIncludingBreak)
+                for (int i = 0; i < shown.Count;)
                 {
-                    j++;
-                }
-                int start = shown[i].Span.Start;
-                IReadOnlyList<SyntaxSpan> spans = colours(snapshot, start, shown[j].Span.EndIncludingBreak - start);
-                int index = 0;
-                for (int k = i; k <= j; k++)
-                {
-                    if (!Runs(spans, ref index, shown[k].Span.Start, shown[k].Span.End).AsSpan().SequenceEqual(shown[k].Runs))
+                    int j = i;
+                    while (j + 1 < shown.Count && shown[j + 1].Span.Start == shown[j].Span.EndIncludingBreak)
                     {
-                        return false;
+                        j++;
                     }
+                    int start = shown[i].Span.Start;
+                    IReadOnlyList<SyntaxSpan> spans = colours(snapshot, start, shown[j].Span.EndIncludingBreak - start);
+                    int index = 0;
+                    for (int k = i; k <= j; k++)
+                    {
+                        if (!SameRuns(spans, ref index, shown[k].Span.Start, shown[k].Span.End, shown[k].Runs!))
+                        {
+                            return false;
+                        }
+                    }
+                    i = j + 1;
                 }
-                i = j + 1;
+                return true;
             }
-            return true;
+            finally
+            {
+                shown.Clear();
+            }
         }
+
+        private static readonly Comparison<LineView> ByStart = (a, b) => a.Span.Start.CompareTo(b.Span.Start);
 
         /// <summary>The line formatted to show this, kept on for this frame, if there is one.</summary>
         public Formatted? Formatted(FormatKey key)
@@ -420,34 +577,22 @@ public sealed partial class CodeEditor
 
         public void EndFrame()
         {
-            List<FormatKey>? stale = null;
+            stale.Clear();
             foreach ((FormatKey key, Formatted line) in formatted)
             {
                 if (line.Frame != Frame)
                 {
                     line.Dispose();
-                    (stale ??= []).Add(key);
+                    stale.Add(key);
                 }
             }
-            if (stale is not null)
+            foreach (FormatKey key in stale)
             {
-                foreach (FormatKey key in stale)
-                {
-                    formatted.Remove(key);
-                }
-                // A long line keeps its measure, which read the whole line; a short one is made again when next shown.
-                foreach (LineView view in byLine.Values.Where(v => v.Text is { Disposed: true }).ToList())
-                {
-                    if (view.Long is null)
-                    {
-                        byLine.Remove(view.Span.Start);
-                    }
-                    else
-                    {
-                        view.Text = null;
-                    }
-                }
+                formatted.Remove(key);
             }
+            stale.Clear();
+            // A row not drawn or measured in this frame is made again when next shown, as it may be hidden or scrolled away.
+            DropShort(all: false);
             Frame++;
         }
 
@@ -479,8 +624,8 @@ public sealed partial class CodeEditor
         /// <summary>How far past what it reads a grapheme may run: one longer is cut there.</summary>
         private const int Overrun = 64;
 
-        private readonly TextSnapshot text;
-        private readonly int start;
+        private TextSnapshot text;
+        private int start;
         private readonly Advances advances;
         private readonly int[]? kept;
         private readonly double[]? keptX;
@@ -512,6 +657,13 @@ public sealed partial class CodeEditor
         public int Length { get; }
         public double Width { get; }
         public double CodeWidth { get; }
+
+        /// <summary>The same characters in a text an edit made, which it did not reach, starting at <paramref name="at"/>.</summary>
+        public void Follow(TextSnapshot moved, int at)
+        {
+            text = moved;
+            start = at;
+        }
 
         /// <summary>The kept grapheme boundary at or before a column.</summary>
         public int KeptAtOrBefore(int column)

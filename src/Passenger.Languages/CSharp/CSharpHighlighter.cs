@@ -63,6 +63,10 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
     private int linesVersion = -1;
     private long classified;
 
+    /// <summary>Whether <see cref="lines"/> still holds every line's colours given since the last parse landed: none let go
+    /// but those an edit reached, and no part of a line given apart.</summary>
+    private bool linesWhole = true;
+
     /// <summary>The most lines kept, past which they are let go: a few screens.</summary>
     private const int MostLines = 4096;
 
@@ -113,23 +117,16 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
     {
         if (tree is null)
         {
+            // No colours yet, which the lines kept do not hold.
+            linesWhole = false;
             return [];
         }
-        if (cachedVersion != version)
-        {
-            cached.Clear();
-            asked.Clear();
-            cachedVersion = version;
-        }
-        if (cached.TryGetValue((start, length), out SyntaxSpan[]? known))
+        if (cached.TryGetValue((start, length), out SyntaxSpan[]? known) && cachedVersion == version)
         {
             return known;
         }
-        (int First, int Last)? whole = WholeLines(snapshot, start, length);
-        if (asked.Count < 64 && length > 0 && start + length <= snapshot.Length)
-        {
-            asked.Add(whole ?? (snapshot.GetLineFromOffset(start), snapshot.GetLineFromOffset(start + length - 1)));
-        }
+        (int First, int Last)? whole = Ask(snapshot, start, length);
+        linesWhole &= whole is not null;
         SyntaxSpan[] result = whole is (int first, int last) ? ByLine(snapshot, first, last) : [.. Classified(start, length)];
         if (cached.Count >= 256)
         {
@@ -137,6 +134,32 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
         }
         cached[(start, length)] = result;
         return result;
+    }
+
+    public void Showing(TextSnapshot snapshot, int start, int length)
+    {
+        if (tree is not null)
+        {
+            Ask(snapshot, start, length);
+        }
+    }
+
+    /// <summary>Notes a range asked of the newest text for the next parse to classify ahead: its whole lines, if it is
+    /// whole lines.</summary>
+    private (int First, int Last)? Ask(TextSnapshot snapshot, int start, int length)
+    {
+        if (cachedVersion != version)
+        {
+            cached.Clear();
+            asked.Clear();
+            cachedVersion = version;
+        }
+        (int First, int Last)? whole = WholeLines(snapshot, start, length);
+        if (asked.Count < 64 && length > 0 && start + length <= snapshot.Length)
+        {
+            asked.Add(whole ?? (snapshot.GetLineFromOffset(start), snapshot.GetLineFromOffset(start + length - 1)));
+        }
+        return whole;
     }
 
     /// <summary>A range's colours read from the tree: the range carried back through the edits since to the tree's text,
@@ -182,15 +205,16 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
     {
         if (linesVersion != version || lines.Count > MostLines)
         {
+            linesWhole &= lines.Count == 0;
             lines.Clear();
             linesVersion = version;
         }
-        List<SyntaxSpan> spans = [];
+        int count = 0;
         for (int line = first; line <= last;)
         {
             if (Kept(snapshot.GetLine(line)) is { } kept)
             {
-                Add(spans, kept, snapshot.GetLine(line).Start);
+                count += kept.Length;
                 line++;
                 continue;
             }
@@ -207,10 +231,25 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
                 LineSpan of = snapshot.GetLine(each);
                 SyntaxSpan[] pieces = Pieces(found, of.Start, of.EndIncludingBreak);
                 lines[of.Start] = (of.EndIncludingBreak - of.Start, pieces);
-                Add(spans, pieces, of.Start);
+                count += pieces.Length;
             }
         }
-        return [.. spans];
+        if (count == 0)
+        {
+            return [];
+        }
+        // Every line is kept by now, so the colours are copied once, into an array of their number.
+        SyntaxSpan[] spans = new SyntaxSpan[count];
+        int at = 0;
+        for (int line = first; line <= last; line++)
+        {
+            LineSpan of = snapshot.GetLine(line);
+            foreach (SyntaxSpan piece in Kept(of)!)
+            {
+                spans[at++] = piece with { Start = piece.Start + of.Start };
+            }
+        }
+        return spans;
     }
 
     /// <summary>A line's colours as kept for the text as it stands, relative to its start; null when none are kept.</summary>
@@ -234,14 +273,6 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
         return pieces is null ? [] : [.. pieces];
     }
 
-    private static void Add(List<SyntaxSpan> spans, SyntaxSpan[] pieces, int lineStart)
-    {
-        foreach (SyntaxSpan piece in pieces)
-        {
-            spans.Add(piece with { Start = piece.Start + lineStart });
-        }
-    }
-
     /// <summary>The lines' colours carried through an edit while the tree they were read from stands, which would read them
     /// the same: those of the lines it did not reach kept, moved with the text after it, so a key classifies again only the
     /// lines it changed rather than every line on screen (each key while a solution loads, the parse falling behind).</summary>
@@ -249,6 +280,7 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
     {
         if (linesVersion != version || lines.Count == 0 || edits.Count == 0)
         {
+            linesWhole &= lines.Count == 0;
             lines.Clear();
             linesVersion = version + 1;
             return;
@@ -378,7 +410,7 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
                     parsedText.ForgetHistory();
                     sinceTree.RemoveAll(batch => batch.Version <= parsedVersion);
                     cached.Clear();
-                    TakeLines(done.Result.Lines);
+                    KeptColours = TakeLines(done.Result.Lines);
                     Changed?.Invoke(this, EventArgs.Empty);
                     if (parsedVersion == version)
                     {
@@ -401,7 +433,7 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
 
     /// <summary>The lines the landing parse classified on its worker, as the lines kept for the text as it stands: carried
     /// through the edits made since it was asked for, which <see cref="sinceTree"/> holds once the parse has landed.</summary>
-    private void TakeLines(Dictionary<int, (int Length, SyntaxSpan[] Spans)> read)
+    private bool TakeLines(Dictionary<int, (int Length, SyntaxSpan[] Spans)> read)
     {
         foreach ((_, IReadOnlyList<TextEdit> edits) in sinceTree)
         {
@@ -412,10 +444,30 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
             Carry(read, spareLines, edits);
             (read, spareLines) = (spareLines, read);
         }
+        bool kept = linesWhole && linesVersion == version && Holds(read, lines);
         spareLines = lines;
         lines = read;
         linesVersion = version;
+        linesWhole = true;
+        return kept;
     }
+
+    /// <summary>Whether lines' colours read anew give every line given before its colours as they were.</summary>
+    private static bool Holds(Dictionary<int, (int Length, SyntaxSpan[] Spans)> read, Dictionary<int, (int Length, SyntaxSpan[] Spans)> given)
+    {
+        foreach ((int start, (int Length, SyntaxSpan[] Spans) line) in given)
+        {
+            if (!read.TryGetValue(start, out (int Length, SyntaxSpan[] Spans) now) || now.Length != line.Length || !now.Spans.AsSpan().SequenceEqual(line.Spans))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// <summary>Whether the parse that last landed gave every line it had given colours to the colours it had: the lines
+    /// drawn with them stand.</summary>
+    public bool KeptColours { get; private set; }
 
     /// <summary>The newest tree carried to the text as it stands. Asked before the first parse has landed, that parse is
     /// waited for rather than made twice.</summary>

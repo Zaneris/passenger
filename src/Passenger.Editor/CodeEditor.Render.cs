@@ -1,7 +1,9 @@
 using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Media.Immutable;
 using Avalonia.Media.TextFormatting;
 using Avalonia.Threading;
 using Passenger.Text;
@@ -53,9 +55,9 @@ public sealed partial class CodeEditor
         int last = shown.Count > 0 ? shown[^1].Line : -1;
         LineView[] lineViews = ViewsOf(text, shown, scroll.X - TextPadLeft, Math.Max(0, size.Width - gutter));
         int rangeStart = shown.Count > 0 ? lineViews[0].Span.Start : 0;
-        int rangeEnd = shown.Count > 0 ? lineViews[^1].Span.EndIncludingBreak : 0;
+        int rangeEnd = shown.Count > 0 ? lineViews[shown.Count - 1].Span.EndIncludingBreak : 0;
         HashSet<int> caretLines = CaretLines(text, rangeStart, rangeEnd);
-        bool noneSelected = selections.Items.All(s => s.IsEmpty);
+        bool noneSelected = NoneSelected();
         LineTints marked = TintsOf(first, last);
         Dictionary<int, IBrush>? tints = ChangeBackgrounds ? ChangeTints(first, last) : null;
         // The rows go down the lines, and the annotations with them from the first on screen.
@@ -166,6 +168,7 @@ public sealed partial class CodeEditor
         views.EndFrame();
         labels.EndFrame();
         numbers.EndFrame();
+        shapes.EndFrame();
         // The widest line drawn since the text changed, so a long line deleted gives its width back, but the view stays.
         widestLine = widestStale ? Math.Max(widest, scroll.X + Viewport.Width - TextPadLeft - (metrics.CharWidth * 4)) : Math.Max(widestLine, widest);
         widestStale = false;
@@ -176,6 +179,19 @@ public sealed partial class CodeEditor
             Dispatcher.UIThread.Post(UpdateScrollBars);
         }
         RefreshStripe();
+    }
+
+    private bool NoneSelected()
+    {
+        IReadOnlyList<Selection> items = selections.Items;
+        for (int i = 0; i < items.Count; i++)
+        {
+            if (!items[i].IsEmpty)
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     /// <summary>The first selection that ends at or after an offset; selections never overlap, so their ends rise with
@@ -221,10 +237,14 @@ public sealed partial class CodeEditor
         return low;
     }
 
+    /// <summary>The lines with a caret on them on screen, found again for each frame.</summary>
+    private readonly HashSet<int> caretLines = [];
+
     /// <summary>The lines with a caret on them between two offsets: those on screen.</summary>
     private HashSet<int> CaretLines(TextSnapshot text, int start, int end)
     {
-        HashSet<int> lines = [];
+        HashSet<int> lines = caretLines;
+        lines.Clear();
         IReadOnlyList<Selection> items = selections.Items;
         for (int i = FirstCaretFrom(start); i < items.Count && items[i].Caret <= end; i++)
         {
@@ -304,7 +324,7 @@ public sealed partial class CodeEditor
                 if (i == CurrentHighlight)
                 {
                     // The current match stands out from the rest, outlined in the caret's colour.
-                    context.DrawRectangle(palette.SearchCurrent, new Pen(palette.Caret, 1), box, 2, 2);
+                    context.DrawRectangle(palette.SearchCurrent, palette.PenOf(palette.Caret, 1), box, 2, 2);
                 }
                 else
                 {
@@ -337,7 +357,7 @@ public sealed partial class CodeEditor
             // On the pixel grid, so a dot and an arrow's shaft are drawn crisp in their colour.
             double middle = Math.Floor(y + (metrics.LineHeight / 2));
             double dot = Math.Max(2, Math.Round(metrics.FontSize / 7));
-            Pen? arrow = null;
+            IPen? arrow = null;
             for (int i = 0; i < to - from; i++)
             {
                 char c = buffer[i];
@@ -353,14 +373,16 @@ public sealed partial class CodeEditor
                     context.FillRectangle(palette.Whitespace, new Rect(Math.Round(((x1 + x2) / 2) - (dot / 2)), middle - Math.Floor(dot / 2), dot, dot));
                     continue;
                 }
-                arrow ??= new Pen(palette.Whitespace, 1);
+                arrow ??= palette.PenOf(palette.Whitespace, 1);
                 double shaft = middle + 0.5;
                 double tail = x1 + (metrics.CharWidth * 0.3);
                 double head = Math.Max(tail + 2, x2 - (metrics.CharWidth * 0.3));
                 double barb = Math.Min(3, metrics.CharWidth * 0.35);
-                StreamGeometry shape = new();
-                using (StreamGeometryContext path = shape.Open())
+                ShapeKey key = new(ShapeKind.Tab, tail, head, shaft, barb);
+                if (!shapes.TryGet(key, out StreamGeometry? shape))
                 {
+                    shape = shapes.Add(key, new StreamGeometry());
+                    using StreamGeometryContext path = shape.Open();
                     path.BeginFigure(new Point(tail, shaft), false);
                     path.LineTo(new Point(head, shaft));
                     path.EndFigure(false);
@@ -387,9 +409,11 @@ public sealed partial class CodeEditor
         double top = y + ((metrics.LineHeight - size) / 2);
         double bottom = top + size;
         double barb = Math.Max(2, size / 3);
-        StreamGeometry sign = new();
-        using (StreamGeometryContext path = sign.Open())
+        ShapeKey key = new(ShapeKind.Wrap, left, top, size, barb);
+        if (!shapes.TryGet(key, out StreamGeometry? sign))
         {
+            sign = shapes.Add(key, new StreamGeometry());
+            using StreamGeometryContext path = sign.Open();
             path.BeginFigure(new Point(right, top), false);
             path.LineTo(new Point(right, bottom));
             path.LineTo(new Point(left, bottom));
@@ -399,7 +423,7 @@ public sealed partial class CodeEditor
             path.LineTo(new Point(left + barb, bottom + barb));
             path.EndFigure(false);
         }
-        context.DrawGeometry(null, new Pen(palette.SoftWrapSign, 1), sign);
+        context.DrawGeometry(null, palette.PenOf(palette.SoftWrapSign, 1), sign);
     }
 
     /// <summary>Squiggles under errors, warnings and suggestions; unnecessary code is faded by laying
@@ -453,8 +477,10 @@ public sealed partial class CodeEditor
             LineAnnotation annotation = annotations[i];
             bool ground = annotation.Look == LineAnnotationLook.ErrorOnGround;
             bool error = ground || annotation.Look == LineAnnotationLook.Error;
-            TextLine text = labels.Get((annotation.Text, error ? -4 : -3), () =>
-                Format(annotation.Text, [], error ? annotationRuns.Error : annotationRuns.Value));
+            if (!labels.TryGet((annotation.Text, error ? -4 : -3), out TextLine? text))
+            {
+                text = labels.Add((annotation.Text, error ? -4 : -3), Format(annotation.Text, [], error ? annotationRuns.Error : annotationRuns.Value));
+            }
             double top = y + (metrics.LineHeight - text.Height) / 2;
             if (ground)
             {
@@ -466,8 +492,8 @@ public sealed partial class CodeEditor
     }
 
     /// <summary>A squiggle from x1 to x2, drawn only where it can be seen: whole waves off either edge are left out, so
-    /// one under a line of a million characters costs the screen's width.</summary>
-    private static void DrawWave(DrawingContext context, IBrush brush, double x1, double x2, double y, double clipLeft, double clipRight)
+    /// one under a line of a million characters costs the screen's width. Made again only where it moved.</summary>
+    private void DrawWave(DrawingContext context, IBrush brush, double x1, double x2, double y, double clipLeft, double clipRight)
     {
         const double Step = 2.5;
         double skipped = Math.Floor((clipLeft - (Step * 2) - x1) / (Step * 2));
@@ -480,9 +506,11 @@ public sealed partial class CodeEditor
         {
             return;
         }
-        StreamGeometry wave = new();
-        using (StreamGeometryContext path = wave.Open())
+        ShapeKey key = new(ShapeKind.Wave, x1, x2, y, 0);
+        if (!shapes.TryGet(key, out StreamGeometry? wave))
         {
+            wave = shapes.Add(key, new StreamGeometry());
+            using StreamGeometryContext path = wave.Open();
             path.BeginFigure(new Point(x1, y), false);
             bool up = true;
             for (double x = x1 + Step; x < x2 + Step; x += Step)
@@ -492,8 +520,78 @@ public sealed partial class CodeEditor
             }
             path.EndFigure(false);
         }
-        context.DrawGeometry(null, new Pen(brush, 1), wave);
+        context.DrawGeometry(null, palette.PenOf(brush, 1), wave);
     }
+
+    private readonly ShapeCache shapes = new();
+
+    /// <summary>How many shapes (squiggles, tabs' arrows, wrap signs, fold chevrons) the editor has made to draw: what a
+    /// frame that moved none should leave as it was.</summary>
+    public long ShapesMade => shapes.Made;
+
+    /// <summary>What a shape the editor draws is: its kind and the numbers that place and size it.</summary>
+    private readonly record struct ShapeKey(ShapeKind Kind, double A, double B, double C, double D);
+
+    private enum ShapeKind
+    {
+        Wave,
+        Tab,
+        Wrap,
+        Open,
+        Folded,
+    }
+
+    /// <summary>The shapes drawn in the last frame (squiggles, tabs' arrows, wrap signs, fold chevrons), by what they are and
+    /// where: a frame draws again those it drew before without making them, and lets go of the rest.</summary>
+    private sealed class ShapeCache
+    {
+        private Dictionary<ShapeKey, StreamGeometry> previous = [];
+        private Dictionary<ShapeKey, StreamGeometry> current = [];
+
+        public bool TryGet(ShapeKey key, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out StreamGeometry? shape)
+        {
+            if (current.TryGetValue(key, out shape))
+            {
+                return true;
+            }
+            if (previous.Remove(key, out shape))
+            {
+                current[key] = shape;
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>How many shapes have been made: what drawing them has cost.</summary>
+        public long Made { get; private set; }
+
+        public StreamGeometry Add(ShapeKey key, StreamGeometry shape)
+        {
+            Made++;
+            current[key] = shape;
+            return shape;
+        }
+
+        public void EndFrame()
+        {
+            previous.Clear();
+            (previous, current) = (current, previous);
+        }
+
+        public void Clear()
+        {
+            previous.Clear();
+            current.Clear();
+        }
+    }
+
+    /// <summary>The text's I-beam and a link's hand, made once.</summary>
+    private static Cursor? ibeam;
+    private static Cursor? hand;
+
+    private static Cursor IbeamCursor => ibeam ??= new Cursor(StandardCursorType.Ibeam);
+
+    private static Cursor HandCursor => hand ??= new Cursor(StandardCursorType.Hand);
 
     /// <summary>A diff side's tint for each line from <paramref name="first"/> to <paramref name="last"/> inside a change,
     /// the first change's that holds it.</summary>
@@ -633,6 +731,7 @@ public sealed partial class CodeEditor
         private static readonly IBrush None = Brushes.Transparent;
         private readonly Dictionary<TokenKind, IBrush> syntax = [];
         private readonly Dictionary<TokenKind, SyntaxStyle> styles = [];
+        private readonly Dictionary<(IBrush Brush, double Thickness), IPen> pens = [];
 
         /// <summary>Every resource the palette was read from, in order, to tell a theme's change from none.</summary>
         private List<object?> found = [];
@@ -693,6 +792,16 @@ public sealed partial class CodeEditor
         public Geometry? PassedIcon { get; private init; }
 
         public IBrush Syntax(TokenKind kind) => syntax.TryGetValue(kind, out IBrush? brush) ? brush : Text;
+
+        /// <summary>A pen of a brush and a thickness, made once for each, immutable as a frame's drawing keeps it.</summary>
+        public IPen PenOf(IBrush brush, double thickness)
+        {
+            if (!pens.TryGetValue((brush, thickness), out IPen? pen))
+            {
+                pens[(brush, thickness)] = pen = new ImmutablePen((IImmutableBrush)brush.ToImmutable(), thickness);
+            }
+            return pen;
+        }
 
         /// <summary>The style the theme sets a kind in, or null for the kind's own.</summary>
         public SyntaxStyle? Style(TokenKind kind) => styles.TryGetValue(kind, out SyntaxStyle style) ? style : null;

@@ -190,11 +190,15 @@ public sealed partial class CodeEditor
         return span.Start + column;
     }
 
+    /// <summary>The rows a frame shows, found again for each.</summary>
+    private readonly List<RowSpan> rowsShown = [];
+
     /// <summary>The rows from <paramref name="firstRow"/> to <paramref name="lastRow"/>, in order, stepping over folded lines
     /// rather than visiting them.</summary>
     private List<RowSpan> RowsOnScreen(TextSnapshot text, int firstRow, int lastRow)
     {
-        List<RowSpan> shown = [];
+        List<RowSpan> shown = rowsShown;
+        shown.Clear();
         RowMap map = Rows;
         FoldLines folds = map.Folds;
         (int line, int sub) = map.LineOfRow(firstRow);
@@ -367,6 +371,7 @@ public sealed partial class CodeEditor
     /// folds carried through it, then the wraps, so the lines it touched wrap with their hints where they now stand.</summary>
     private void OnChangedFirst(object? sender, DocumentChangedEventArgs change)
     {
+        views.Follow(change);
         decorations.Follow(change);
         wrappedHints = decorations.InlayHints;
         FollowWraps(change);

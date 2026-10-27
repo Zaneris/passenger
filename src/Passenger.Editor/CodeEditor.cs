@@ -62,7 +62,7 @@ public sealed partial class CodeEditor : Control
     {
         Focusable = true;
         ClipToBounds = true;
-        Cursor = new Cursor(StandardCursorType.Ibeam);
+        Cursor = IbeamCursor;
         stripe = new ErrorStripe(this);
         counts = new ProblemCounts(this);
         VisualChildren.Add(vertical);
@@ -424,6 +424,7 @@ public sealed partial class CodeEditor : Control
             {
                 highlighter.Changed += OnHighlighterChanged;
             }
+            toldShowing = null;
             colouring++;
             InvalidateVisual();
         }
@@ -746,18 +747,28 @@ public sealed partial class CodeEditor : Control
         InvalidateVisual();
     }
 
-    private void OnHighlighterChanged(object? sender, EventArgs e) => Dispatcher.UIThread.Post(Recolour);
+    private void OnHighlighterChanged(object? sender, EventArgs e)
+    {
+        coloursMoved |= highlighter is not { KeptColours: true };
+        Dispatcher.UIThread.Post(Recolour);
+    }
+
+    /// <summary>Whether the highlighter has been changed since the last <see cref="Recolour"/> without saying it kept every
+    /// colour it had given.</summary>
+    private bool coloursMoved;
 
     /// <summary>New colours for the same text: the lines are formatted again, each found again if its colours stayed. When
-    /// the lines drawn keep every colour they have (a parse that finds what a key carried them to), nothing is drawn again
-    /// but a bracket pair the parse told anew.</summary>
+    /// the lines drawn keep every colour they have (a parse that finds what a key carried them to, or that says so), nothing
+    /// is drawn again but a bracket pair the parse told anew.</summary>
     private void Recolour()
     {
         if (BracesChanged())
         {
             InvalidateVisual();
         }
-        if (views.Keep(document.Snapshot, Colours))
+        bool moved = coloursMoved;
+        coloursMoved = false;
+        if (!moved || views.Keep(document.Snapshot, Colours))
         {
             return;
         }

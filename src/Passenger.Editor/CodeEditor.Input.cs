@@ -213,7 +213,7 @@ public sealed partial class CodeEditor
         base.OnPointerMoved(e);
         Point position = e.GetPosition(this);
         RestartHover(position);
-        Cursor = position.X < GutterWidth || drag.Mode == DragMode.Gutter ? Cursor.Default : new Cursor(StandardCursorType.Ibeam);
+        Cursor = position.X < GutterWidth || drag.Mode == DragMode.Gutter ? Cursor.Default : IbeamCursor;
         FollowLinks(position, drag.Mode != DragMode.None && e.GetCurrentPoint(this).Properties.IsLeftButtonPressed);
         bool inGutter = position.X < GutterWidth;
         if (inGutter != overGutter)
