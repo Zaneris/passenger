@@ -44,6 +44,12 @@ that fixed it, in one of the forms below. A failure not yet understood goes in o
   in 4 KB pieces and was copied whole into a pooled array that, on few processors, nearly always missed the pool (2.04
   to 2.37 times in a 4-processor container). **The IDE's own allocation**: the peer reads each message into one kept
   buffer, 1.50 to 1.61 times after (f4cdb7a7).
+- `StepTests`' race of a step's end against another thread's exception breakpoint, x64 .NET under Rosetta on the Mac (7
+  of 8): "No stopped event came in 60 s", the engine's log ending at a Continue. The runtime was suspending for the racing
+  thread's exception and waited for the stepping thread, whose activation signal had gone out during a single step 37
+  turns before and was never handled; the runtime sends a thread no other while one is unanswered. Rosetta loses
+  SIGUSR1 to a thread whose traps a Mach exception server answers (a C program: 20,000 of 20,000 handled on arm64, none
+  after the 24th under Rosetta). **Neither**: Rosetta's alone; the test skips under it, saying why (07cb27f6).
 
 ## 2026-10-26
 
