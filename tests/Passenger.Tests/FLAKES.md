@@ -73,6 +73,14 @@ that fixed it, in one of the forms below. A failure not yet understood goes in o
   ms under x64), so the evaluation was left to run on. **A bug in the IDE**: its wait on the program for the abort did
   not scale with the machine; it scales by `PASSENGER_WAIT_SCALE`, and the test quotes the whole answer and the engine's
   log (03fa8ed6).
+- `DebuggerTests`' debugger that dies with an exception, macOS shard 2 of run 40544196991: "Not found:
+  UnauthorizedAccessException" in the IDE's log, the console holding the stack trace. The session listened for its
+  debugger's exit only once the window's thread had the started process back; a process raises Exited once, so a
+  debugger that died within those milliseconds (0.04 s, its engine log refused) was never heard to end: no log entry,
+  its session never ended. Beside 18 CPU burners the test then waited 90 s, 5 rounds in 7; on CI its wait matched an
+  earlier test's "Passenger's debugger (process" in the same process. **A race in the IDE**: the session takes an exit
+  before it listened too, as both previewers now do; **and the test waited wrong**: it waits for its own debugger's
+  entry by process id (2d45e290).
 - Linux shard 2 in run 40544196991: 32.3 minutes of tests, over a shard's 32, every test passing; its job took 36
   minutes where the other Linux shards' took 24 to 27. **The deal**: dealt from older times it took more than its share;
   dealt again from the two newest runs (1bfb9da6).
