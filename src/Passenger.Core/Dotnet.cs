@@ -10,12 +10,14 @@ public static class Dotnet
     private static readonly ConcurrentDictionary<string, Lazy<Task<string>>> Sdks = new(PathNames.Comparer);
 
     /// <summary>The SDK a folder's dotnet runs (its global.json's, else the newest), as <c>dotnet --version</c> names it
-    /// there: asked once for the folder and the global.json over it as it stands, and again after <see cref="ForgetSdks"/>;
-    /// an <see cref="InvalidOperationException"/> saying why when it names none, which is asked again next time.</summary>
+    /// there: asked once for the folder and the global.json over it as it stands, on the thread pool whoever asks first, and
+    /// again after <see cref="ForgetSdks"/>; an <see cref="InvalidOperationException"/> saying why when it names none, which
+    /// is asked again next time.</summary>
     public static async Task<string> SdkAsync(string folder, CancellationToken cancel = default)
     {
         string key = $"{folder}\n{GlobalJsonOver(folder)}";
-        Lazy<Task<string>> once = Sdks.GetOrAdd(key, _ => new Lazy<Task<string>>(() => AskSdkAsync(folder)));
+        // Not held, the ask being every caller's: on the first one's thread, one busy or never running again would hold the rest.
+        Lazy<Task<string>> once = Sdks.GetOrAdd(key, _ => new Lazy<Task<string>>(() => BackgroundWork.Unheld(() => AskSdkAsync(folder))));
         try
         {
             return await once.Value.WaitAsync(cancel).ConfigureAwait(false);

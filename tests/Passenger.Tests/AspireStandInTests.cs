@@ -2457,7 +2457,8 @@ public sealed class StandInAppHost : SharedProject
         {
             await notified.ConnectAsync(new Uri($"ws://{session[0]}/run_session/notify?api-version={version}"), CancellationToken.None);
         }
-        using HttpClient http = new();
+        // Past the waits on its answer, which say what the IDE was busy with as they give up; scaled, as they are.
+        using HttpClient http = new() { Timeout = TimeSpan.FromMinutes(2).Scaled() };
         using HttpRequestMessage start = new(HttpMethod.Put, $"http://{session[0]}/run_session?api-version={version}")
         {
             Content = new StringContent(JsonSerializer.Serialize(new

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Explorer;
@@ -256,6 +257,67 @@ public sealed class ProjectEvaluationTests : IDisposable
 
         static string ServerLog(int process) => Directory.Exists(Passenger.App.CSharp.CSharpService.LogFolder)
             && Directory.EnumerateFiles(Passenger.App.CSharp.CSharpService.LogFolder, $"server-*-{process}.log").SingleOrDefault() is { } path ? Ui.Shared(path) : string.Empty;
+    }
+
+    /// <summary>A run whose window closed as it began working out what App runs, the SDK App's folder picks still being
+    /// asked, leaves the project host to every window after it: one opened on App's folder shows App as MSBuild evaluates
+    /// it. Each window's loop here never runs again once its window has gone, as a window test's does once it is over.</summary>
+    [Fact]
+    public async Task A_run_whose_window_closed_as_it_began_leaves_the_project_host_to_the_windows_after_it()
+    {
+        HeadlessUnitTestSession session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(ProjectEvaluationTests).Assembly);
+        // A failure comes back as each window's answer: thrown, it would end this test on the window's thread.
+        Exception? ran = await session.Dispatch(() => InWindow(() =>
+        {
+            MainWindow window = Open();
+            // Its plan asks the host for App's folder, whose SDK no window has asked for yet.
+            Assert.True(window.Perform(AppActions.RunProgram), "Run did not start");
+            // Gone at once, and its loop with it, before the SDK's answer can come.
+            window.Close();
+        }, waitForEnds: false), TestContext.Current.CancellationToken);
+        await Task.Yield();
+        Throw(ran);
+        Write("App/App.slnx", "<Solution>\n  <Project Path=\"App.csproj\" />\n</Solution>\n");
+        Exception? opened = await session.Dispatch(() => InWindow(() =>
+        {
+            MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
+            window.Show();
+            window.OpenFolder(Path.Combine(folder, "App", "App.slnx"));
+            Ui.WaitFor(() => window.Session.Workspace?.Projects.FirstOrDefault(p => p.Name == "App")?.Evaluated is not null,
+                "the window opened on App's folder after the run's window closed to show App as MSBuild evaluates it", TimeSpan.FromSeconds(30));
+            Assert.Contains("Serilog", Children(window, "Dependencies"));
+        }, waitForEnds: true), TestContext.Current.CancellationToken);
+        await Task.Yield();
+        Throw(opened);
+
+        // As every window test starts and ends (TestsLeaveNothingBehind): a window left open closed, and its end waited out.
+        static Exception? InWindow(Action steps, bool waitForEnds)
+        {
+            BackgroundWork.Forget();
+            OpenWindows.Watch();
+            try
+            {
+                steps();
+                if (waitForEnds)
+                {
+                    OpenWindows.CloseAll();
+                }
+                return null;
+            }
+            catch (Exception failed)
+            {
+                OpenWindows.CloseAll();
+                return failed;
+            }
+        }
+
+        static void Throw(Exception? failed)
+        {
+            if (failed is not null)
+            {
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(failed);
+            }
+        }
     }
 
     /// <summary>A window on the solution with no C# language server: the Solution view's projects are the project host's
