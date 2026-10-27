@@ -10,6 +10,18 @@ that fixed it, in one of the forms below. A failure not yet understood goes in o
 
 ## 2026-10-26
 
+- `McpAttachTimingTests`' `An_agents_call_nobody_answers_comes_back_at_the_windows_limit_and_hears_what_it_waits_on_meanwhile`,
+  Linux in CI run 40422179664: "The workspace call had no answer in 120 s", though mcp.log has the window answering at
+  10 s. The call's one-second progress beat fell due as its admission question closed, and the call's end cancelled
+  the beat's write between the SDK's JSON and its newline (each write takes the sender's token), so the answer joined
+  that line and the agent dropped it as JSON it could not read. **A race in the IDE**: every MCP connection writes a
+  message whole once begun, a cancellation stopping it only while it waits its turn (`PeerTransport`, 10a6cc6a).
+- `AspireOrchestrationTests`' fixture, Windows in CI run 40422179664: "The process cannot access the file
+  '…\\aspire-orchestration-df8cfeae' because it is being used by another process", until the run's end 13 minutes
+  later, with only idle MSBuild nodes and the project host running. An MSBuild node starts in its launcher's folder,
+  the language server's restore runs in the solution's, and on Windows the server's nodes outlived it by up to
+  MSBuild's 15 idle minutes, one never taken up keeping the folder (the VM did not repeat it). **A race in the IDE**,
+  most likely: the language server runs in a Windows job of its own, closed with every process it started (05de9d64).
 - `FileColoursResponsivenessTests`' `A_union_typed_has_its_name_in_a_structs_colour_where_it_is_declared`, every system in
   CI run 40422179664: "The union's name typed is coloured as several kinds, not as a struct's". Not a flake: the test
   read the colour of `Pet(`, the name and its parenthesis, two colours, so it could never pass; it landed with its file's

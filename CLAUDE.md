@@ -273,7 +273,9 @@ site-shots` retakes its images.
   `PASSENGER_START=headless` and a PASSENGER_SETTINGS of its own; never a bare `--mcp-attach`, never `just run`.
 - **Aspire's CLI and AppHosts** keep running AppHosts in `$HOME/.aspire/cli/bch` whatever ASPIRE_HOME says; on Windows in
   the profile whatever the environment says (those tests skip there).
-- **Windows**: a write waits out a reader that shares no writes for up to 2 s (`FileText.WhileHeld`); closing a socket
+- **Windows**: a folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
+  outlive it, so a child whose descendants must end with it is held with `ChildProcesses.HoldFamily`; a write waits out a
+  reader that shares no writes for up to 2 s (`FileText.WhileHeld`); closing a socket
   with unread input resets it, losing what was written (servers shut their side and drain first); the diagnostics library
   leaves a profiler pipe open after its listener goes (`ProfilingSession.CloseLeftListener` closes it, by reflection).
 - **macOS**: a Unix socket path holds 104 bytes; `codesign` takes a dotted folder under `Contents/MacOS` for a bundle (so
