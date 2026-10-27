@@ -8,6 +8,15 @@ pattern shows. A **race in the IDE** is fixed in the IDE; waiting longer or tryi
 To add one: a line under its date, newest first, naming the test, the run, the cause in a sentence and the commit
 that fixed it, in one of the forms below. A failure not yet understood goes in only once it is.
 
+## 2026-10-27
+
+- `IdeErrorsTests`' `A_language_server_that_ends_just_as_it_starts_is_started_again`, the Mac in three processes beside
+  AspireStandInTests and TestingPlatformTests: "Waited 135 s for the server started again to be ended as its start
+  came back". The test's feed held the window's thread from the projects' answer and read the restarted server's
+  process only then; since aa666d77 asks for the projects as the server starts, that answer came 10 to 15 ms after
+  the process began (565 to 603 ms before), under load before its start was told, so the hold waited 180 s for the
+  start of process 0. **The test**: it waits for the process and then its start, and fails at once when it gives up (86ad35c5).
+
 ## 2026-10-26
 
 - `AspireStandInTests` on the Windows VM beside another agent's run: two run sessions had no answer from the IDE's DCP
