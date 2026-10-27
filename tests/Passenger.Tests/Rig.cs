@@ -1611,24 +1611,33 @@ public static class Ui
 
     /// <summary>A pixel of the window as the compositor last drew it, at a point in its coordinates: what a person sees,
     /// which a fresh render of every control would not show if one of them was never asked to draw again.</summary>
-    public static Avalonia.Media.Color Pixel(TopLevel window, Point at)
+    public static Avalonia.Media.Color Pixel(TopLevel window, Point at) => Pixels(window, [at])[0];
+
+    /// <summary>The window's pixels at several points of its coordinates, all read from the one frame the compositor last
+    /// drew, as <see cref="Pixel"/> reads one.</summary>
+    public static Avalonia.Media.Color[] Pixels(TopLevel window, IReadOnlyList<Point> at)
     {
         using Avalonia.Media.Imaging.WriteableBitmap frame = window.CaptureRenderedFrame()
             ?? throw new InvalidOperationException("The window has drawn no frame.");
         byte[] pixel = new byte[4];
+        Avalonia.Media.Color[] colours = new Avalonia.Media.Color[at.Count];
         System.Runtime.InteropServices.GCHandle pinned = System.Runtime.InteropServices.GCHandle.Alloc(pixel, System.Runtime.InteropServices.GCHandleType.Pinned);
         try
         {
-            PixelPoint point = PixelPoint.FromPoint(at, window.RenderScaling);
-            frame.CopyPixels(new PixelRect(point.X, point.Y, 1, 1), pinned.AddrOfPinnedObject(), 4, 4);
+            for (int i = 0; i < at.Count; i++)
+            {
+                PixelPoint point = PixelPoint.FromPoint(at[i], window.RenderScaling);
+                frame.CopyPixels(new PixelRect(point.X, point.Y, 1, 1), pinned.AddrOfPinnedObject(), 4, 4);
+                colours[i] = frame.Format == Avalonia.Platform.PixelFormat.Rgba8888
+                    ? Avalonia.Media.Color.FromRgb(pixel[0], pixel[1], pixel[2])
+                    : Avalonia.Media.Color.FromRgb(pixel[2], pixel[1], pixel[0]);
+            }
         }
         finally
         {
             pinned.Free();
         }
-        return frame.Format == Avalonia.Platform.PixelFormat.Rgba8888
-            ? Avalonia.Media.Color.FromRgb(pixel[0], pixel[1], pixel[2])
-            : Avalonia.Media.Color.FromRgb(pixel[2], pixel[1], pixel[0]);
+        return colours;
     }
 
     /// <summary>Fails unless an editor's gutter and text, as the compositor last drew them, each show more than a ground: an
