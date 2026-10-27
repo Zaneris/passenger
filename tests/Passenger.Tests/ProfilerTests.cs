@@ -477,6 +477,8 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
 
             Avalonia.Controls.Button take = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(view).OfType<Avalonia.Controls.Button>()
                 .Single(b => b.Content as string == "Get Memory Snapshot");
+            // Where only the runtime can write it, into the program's output (Linux's ptrace_scope), that is let.
+            window.Confirm = (_, _, _) => Task.FromResult(true);
             Ui.Click(take, settle: false);
             // Bounded, so a createdump that never finishes fails here, not the run.
             Ui.WaitFor(() => view.Memory is not null || window.Status?.StartsWith("No memory snapshot", StringComparison.Ordinal) == true,

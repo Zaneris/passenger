@@ -555,8 +555,9 @@ public sealed class ProfilingSession : IAsyncDisposable
     }
 
     /// <summary>What the program's heap holds now, comparable object by object with the run's earlier ones; the run
-    /// goes on.</summary>
-    public Task<MemorySnapshot> TakeMemorySnapshotAsync(CancellationToken cancellation = default)
+    /// goes on. Where only the program's runtime can write it, putting createdump's lines into the program's output, it
+    /// is taken only <paramref name="intoOutput"/>, else a <see cref="DumpIntoOutputException"/> says so first.</summary>
+    public Task<MemorySnapshot> TakeMemorySnapshotAsync(bool intoOutput = false, CancellationToken cancellation = default)
     {
         if (process.HasExited)
         {
@@ -565,10 +566,10 @@ public sealed class ProfilingSession : IAsyncDisposable
         if (Place is { } place)
         {
             containerHeap ??= new ContainerHeap(place, ProcessId);
-            return containerHeap.TakeAsync(cancellation);
+            return containerHeap.TakeAsync(intoOutput, cancellation);
         }
         heapHistory ??= new HeapHistory(process.Id);
-        return heapHistory.TakeAsync(cancellation);
+        return heapHistory.TakeAsync(intoOutput, cancellation);
     }
 
     /// <summary>Finishes when the program has ended, by itself or killed, and what it wrote has been read: all of it, unless

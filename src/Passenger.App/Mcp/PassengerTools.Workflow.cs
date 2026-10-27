@@ -286,13 +286,18 @@ public sealed partial class PassengerTools
         // An Avalonia app's inspector, which records its frames; null for any other program.
         LiveTree.LiveApp? inspected = Session.ProfiledApp;
         IReadOnlyList<HeapTypeInfo>? heap = null;
+        string? heapNote = null;
         if (seconds is { } limit)
         {
             await When(() => running.HasExited, TimeSpan.FromSeconds(Math.Clamp(limit, 1, 3600)), cancel, Ends(running.ExitedAsync()), Ends(running.PutAway));
             CheckProfileTarget();
-            if (memory && !running.HasExited && await window.MemorySnapshotAsync(cancel) is { } taken)
+            if (memory && !running.HasExited)
             {
-                heap = [.. taken.Types.Take(Math.Clamp(top, 1, 200)).Select(t => new HeapTypeInfo(t.Name, t.Count, t.Bytes))];
+                (Passenger.Profiler.MemorySnapshot? taken, heapNote) = await window.MemorySnapshotUnaskedAsync(cancel);
+                if (taken is not null)
+                {
+                    heap = [.. taken.Types.Take(Math.Clamp(top, 1, 200)).Select(t => new HeapTypeInfo(t.Name, t.Count, t.Bytes))];
+                }
             }
         }
         else
@@ -328,6 +333,7 @@ public sealed partial class PassengerTools
             snapshot.TracePath,
             heap)
         {
+            HeapNote = heapNote,
             Frames = snapshot.Place is { } elsewhere && snapshot.HotSpots.Any(h => h.Module.StartsWith("Avalonia", StringComparison.Ordinal))
                 ? new UiFramesInfo(0, 0, 0, 0, 0, []) { Why = Profiling.FramesView.InContainer(elsewhere.Where) }
                 : UiFramesOf(snapshot.UiFrames, Math.Clamp(top, 1, 200), inspected),
@@ -539,6 +545,9 @@ public sealed record ProfileFrame(string Method, int TotalMs, int SelfMs, string
 
 public sealed record ProfileInfo(double DurationMs, int Samples, int Threads, IReadOnlyList<ProfileFrame> HotSpots, IReadOnlyList<ProfileFrame> HotPath, string Trace, IReadOnlyList<HeapTypeInfo>? Heap = null)
 {
+    /// <summary>Why there is no heap when a memory snapshot was asked for, or what taking it put into the program's output.</summary>
+    public string? HeapNote { get; init; }
+
     /// <summary>An Avalonia app's frames, as the Frames page shows them; null for any other program.</summary>
     public UiFramesInfo? Frames { get; init; }
 }

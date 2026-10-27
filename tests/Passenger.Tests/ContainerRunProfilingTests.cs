@@ -100,6 +100,8 @@ public sealed class ContainerRunProfilingTests(ContainerRunDebuggingTests.Tools 
             int port = ContainerRunsTests.Published(project, "web");
             Assert.True(Ui.Pumped(() => ContainerRunsTests.Answer(port) == "web 1", TimeSpan.FromMinutes(1)), "web, let go by the profiler, did not answer");
 
+            // Where only the runtime can write it, into the program's output (Linux's ptrace_scope), that is let.
+            window.Confirm = (_, _, _) => Task.FromResult(true);
             Ui.ClickButton(window.ProfilerView, "Get Memory Snapshot");
             Ui.WaitFor(() => window.ProfilerView.Memory is not null || window.Status?.StartsWith("No memory snapshot", StringComparison.Ordinal) == true,
                 "the memory snapshot of web", TimeSpan.FromMinutes(2));

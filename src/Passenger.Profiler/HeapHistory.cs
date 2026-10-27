@@ -36,13 +36,25 @@ internal sealed class HeapHistory(int processId) : IAsyncDisposable
     private EventPipeEventSource? source;
     private Task? listening;
 
-    /// <summary>Takes the next snapshot, and finds each earlier one's objects in it.</summary>
-    public async Task<MemorySnapshot> TakeAsync(CancellationToken cancel)
+    /// <summary>How Passenger writes the program's dump itself (<see cref="DumpTool.Find"/>), or why it cannot, found with
+    /// the first snapshot.</summary>
+    private (string? Tool, string? WhyNot)? dumpTool;
+
+    /// <summary>Takes the next snapshot, and finds each earlier one's objects in it. Where only the program's runtime can
+    /// write its dump, which puts createdump's lines into the program's output, that is done only
+    /// <paramref name="intoOutput"/>, else a <see cref="DumpIntoOutputException"/> says so before anything starts.</summary>
+    public async Task<MemorySnapshot> TakeAsync(bool intoOutput, CancellationToken cancel)
     {
         await taking.WaitAsync(cancel);
         try
         {
             Stopwatch clock = Stopwatch.StartNew();
+            dumpTool ??= await BackgroundWork.Run(() => DumpTool.Find(processId), cancel);
+            if (dumpTool is (_, string why) && !intoOutput)
+            {
+                throw new DumpIntoOutputException($"Only the program's runtime can write its memory snapshot, as {why}, and it writes "
+                    + "createdump's progress into the program's output, which a program speaking over its output (a language or MCP server) takes for its own");
+            }
             await ListenAsync(cancel);
             lock (gate)
             {
@@ -98,9 +110,10 @@ internal sealed class HeapHistory(int processId) : IAsyncDisposable
         }
     }
 
-    /// <summary>Has the runtime write a dump of its heap (createdump, which holds every thread of the program while it
-    /// writes), and gives what shows when it held them: when it was asked for and answered, and the samples the runtime's
-    /// sampler took meanwhile, every thread each millisecond, its own thread held with the rest.</summary>
+    /// <summary>Has a dump of the program's heap written (by Passenger where it can, else by the runtime's createdump),
+    /// which holds every thread of the program while it writes, and gives what shows when it held them: when
+    /// it was asked for and answered, and the samples the runtime's sampler took meanwhile, every thread each
+    /// millisecond, its own thread held with the rest.</summary>
     private async Task<Dumped> DumpAsync(string dump, CancellationToken cancel)
     {
         DiagnosticsClient client = new(processId);
@@ -123,7 +136,14 @@ internal sealed class HeapHistory(int processId) : IAsyncDisposable
         DateTime sent = DateTime.UtcNow;
         try
         {
-            await client.WriteDumpAsync(DumpType.WithHeap, dump, logDumpGeneration: false, cancel);
+            if (dumpTool is { WhyNot: null } own)
+            {
+                await DumpTool.WriteAsync(own.Tool, processId, dump, cancel);
+            }
+            else
+            {
+                await client.WriteDumpAsync(DumpType.WithHeap, dump, logDumpGeneration: false, cancel);
+            }
         }
         finally
         {

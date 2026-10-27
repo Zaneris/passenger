@@ -108,6 +108,8 @@ public sealed class ProgramListsTests : IClassFixture<ProgramListsTests.Lots>
             MemoryView memory = view.MemoryPage;
             Ui.Launched(window, window.ProfileAsync("holds"), "the program to build and start under the profiler", TimeSpan.FromMinutes(3));
             Ui.PumpUntil(() => window.BottomPanel.Run.Document.Snapshot.ToString().Contains("ready", StringComparison.Ordinal), "the program to fill its heap");
+            // Where only the runtime can write it, into the program's output (Linux's ptrace_scope), that is let.
+            window.Confirm = (_, _, _) => Task.FromResult(true);
             Ui.ClickButton(view, "Get Memory Snapshot");
             // Bounded, so a createdump that never finishes fails here, not the run.
             Ui.WaitFor(() => view.Memory is not null || window.Status?.StartsWith("No memory snapshot", StringComparison.Ordinal) == true, "the memory snapshot", TimeSpan.FromMinutes(2));

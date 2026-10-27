@@ -209,6 +209,8 @@ public sealed class ContainerProfilingTests(ContainerProfilingTests.Spins.Built 
     /// <summary>Get Memory Snapshot, as its button takes one: the snapshot numbered so, or the test fails with why there is none.</summary>
     private static MemorySnapshot MemorySnapshot(MainWindow window, int number)
     {
+        // Where only the runtime can write it, into the program's output (Linux's ptrace_scope), that is let.
+        window.Confirm = (_, _, _) => Task.FromResult(true);
         Ui.ClickButton(window.ProfilerView, "Get Memory Snapshot");
         Ui.WaitFor(() => window.ProfilerView.Memory?.Number == number || window.Status?.StartsWith("No memory snapshot", StringComparison.Ordinal) == true,
             $"memory snapshot #{number} of the program in the container", TimeSpan.FromMinutes(2));

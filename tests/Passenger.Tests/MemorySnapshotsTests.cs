@@ -334,8 +334,54 @@ public sealed class MemorySnapshotsTests : IDisposable
         window.Close();
     }
 
-    /// <summary>A console project, built and started under the profiler from the window, run until it says it is ready.</summary>
-    private MainWindow Profiled(string name, string program, string framework = TestProjects.Framework)
+    [AvaloniaFact]
+    public void A_memory_snapshot_writes_nothing_into_the_output_of_a_program_that_echoes_its_input_byte_for_byte()
+    {
+        // A program whose output is its input, as a language or MCP server's output is its protocol's alone.
+        MainWindow window = Profiled("Echo", """
+            Stream input = Console.OpenStandardInput();
+            Stream output = Console.OpenStandardOutput();
+            byte[] buffer = new byte[4096];
+            int read;
+            while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+            {
+                output.Write(buffer, 0, read);
+                output.Flush();
+            }
+            """, sent: "ready\n");
+        string before = Console(window);
+        List<string> asked = [];
+        window.Confirm = (_, text, _) =>
+        {
+            asked.Add(text);
+            return Task.FromResult(false);
+        };
+        Ui.ClickButton(window.ProfilerView, "Get Memory Snapshot");
+        // Bounded, so a createdump that never finishes fails here, not the run.
+        Responsive(() => window.ProfilerView.Memory is not null || window.Status?.StartsWith("No memory snapshot", StringComparison.Ordinal) == true,
+            "the memory snapshot", _ => { });
+        if (asked.Count == 0)
+        {
+            Assert.True(window.ProfilerView.Memory?.Number == 1, window.Status);
+        }
+        else
+        {
+            // Only where Passenger may not read a program it did not start (Linux's ptrace_scope) is it asked first.
+            Assert.True(OperatingSystem.IsLinux(), $"Passenger asked before a memory snapshot, saying: {asked[0]}");
+            Assert.Contains("createdump", asked[0], StringComparison.Ordinal);
+            Assert.Null(window.ProfilerView.Memory);
+        }
+        window.Profiling!.Input!.Write("after\n");
+        window.Profiling.Input.Flush();
+        Ui.PumpUntil(() => Console(window).EndsWith("after\n", StringComparison.Ordinal), "the program to echo what it was sent after the snapshot");
+        Assert.Equal(before + "after\n", Console(window));
+        window.Profiling.Kill();
+        window.Close();
+    }
+
+    /// <summary>A console project, built and started under the profiler from the window, run until it says it is ready
+    /// (having been <paramref name="sent"/> a line to say back, for a program that says nothing by itself).</summary>
+    private MainWindow Profiled(string name, string program, string framework = TestProjects.Framework, string? sent = null)
     {
         string project = Path.Combine(folder, name);
         Directory.CreateDirectory(project);
@@ -346,6 +392,11 @@ public sealed class MemorySnapshotsTests : IDisposable
         MainWindow window = Ui.OpenFolder(project, width: 1400, height: 900, languageServer: false);
         Task<string?> started = window.ProfileAsync();
         Ui.Launched(window, started, "the build and the start", TimeSpan.FromMinutes(3));
+        if (sent is not null)
+        {
+            window.Profiling!.Input!.Write(sent);
+            window.Profiling.Input.Flush();
+        }
         Ui.PumpUntil(() => Console(window).Contains("ready", StringComparison.Ordinal), "the program to be ready");
         return window;
     }
@@ -353,6 +404,8 @@ public sealed class MemorySnapshotsTests : IDisposable
     /// <summary>Get Memory Snapshot pressed, and its snapshot listed, the window answering meanwhile.</summary>
     private static MemorySnapshot Snapshot(MainWindow window, int number, Action<TimeSpan>? stalled = null)
     {
+        // Where only the runtime can write it, into the program's output (Linux's ptrace_scope), that is let.
+        window.Confirm = (_, _, _) => Task.FromResult(true);
         Ui.ClickButton(window.ProfilerView, "Get Memory Snapshot");
         // Bounded, so a createdump that never finishes fails here, not the run.
         Responsive(() => window.ProfilerView.Memory?.Number == number || window.Status?.StartsWith("No memory snapshot", StringComparison.Ordinal) == true,

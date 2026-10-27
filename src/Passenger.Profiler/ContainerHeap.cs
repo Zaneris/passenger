@@ -29,10 +29,11 @@ internal sealed class ContainerHeap(ProfilePlace place, int processId) : IAsyncD
     /// ended: 10 minutes, generous for a heap of millions of objects, which take a minute or two.</summary>
     public static readonly TimeSpan Limit = TimeSpan.FromMinutes(10);
 
-    /// <summary>Takes the next snapshot. Its answer is read whole or not at all: a frame left half read would be taken for the
-    /// next one's, so one given up (<paramref name="cancel"/>) or past <see cref="Limit"/> ends the tools, which the next
-    /// snapshot starts again, and fails with a <see cref="ProfilingException"/> saying why.</summary>
-    public async Task<MemorySnapshot> TakeAsync(CancellationToken cancel)
+    /// <summary>Takes the next snapshot, into the program's output only <paramref name="intoOutput"/>
+    /// (<see cref="HeapHistory.TakeAsync"/>). Its answer is read whole or not at all: a frame left half read would be
+    /// taken for the next one's, so one given up (<paramref name="cancel"/>) or past <see cref="Limit"/> ends the tools,
+    /// which the next snapshot starts again, and fails with a <see cref="ProfilingException"/> saying why.</summary>
+    public async Task<MemorySnapshot> TakeAsync(bool intoOutput, CancellationToken cancel)
     {
         await taking.WaitAsync(cancel).ConfigureAwait(false);
         try
@@ -42,7 +43,7 @@ internal sealed class ContainerHeap(ProfilePlace place, int processId) : IAsyncD
             Stopwatch clock = Stopwatch.StartNew();
             try
             {
-                await running.StandardInput.WriteLineAsync(InContainer.TakeSnapshot).ConfigureAwait(false);
+                await running.StandardInput.WriteLineAsync(intoOutput ? InContainer.TakeSnapshotIntoOutput : InContainer.TakeSnapshot).ConfigureAwait(false);
                 await running.StandardInput.FlushAsync(CancellationToken.None).ConfigureAwait(false);
             }
             catch (Exception gone) when (gone is IOException or ObjectDisposedException)
@@ -73,6 +74,10 @@ internal sealed class ContainerHeap(ProfilePlace place, int processId) : IAsyncD
             if (frame is not { } answer)
             {
                 throw new InvalidOperationException(await GoneAsync().ConfigureAwait(false));
+            }
+            if (answer.Kind == HeapWire.IntoOutput)
+            {
+                throw new DumpIntoOutputException(Encoding.UTF8.GetString(answer.Body));
             }
             if (answer.Kind == HeapWire.Failure)
             {

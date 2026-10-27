@@ -20,6 +20,10 @@ public static class InContainer
     /// <summary>The command <see cref="HeapAsync"/> takes a snapshot for, one a line.</summary>
     public const string TakeSnapshot = "snapshot";
 
+    /// <summary>The command <see cref="HeapAsync"/> takes a snapshot for even where only the runtime can write it, into
+    /// the program's output (<see cref="DumpIntoOutputException"/>).</summary>
+    public const string TakeSnapshotIntoOutput = "snapshot into-output";
+
     /// <summary>Records a program from now: its EventPipe session written to <paramref name="output"/> as it comes,
     /// until <paramref name="input"/> ends, when the session is stopped and its rundown flushed, or the program ends.
     /// With <paramref name="resume"/> a runtime held at its start is let go once the session has begun, and nothing it
@@ -128,25 +132,30 @@ public static class InContainer
         }
     }
 
-    /// <summary>Takes a snapshot of the program's heap for each <see cref="TakeSnapshot"/> line on
-    /// <paramref name="input"/> and writes it to <paramref name="output"/> (<see cref="HeapWire"/>), its objects
-    /// followed from one snapshot to the next through the collections between them; one that fails is written as why.
-    /// Ends with the input. Exit code 2 for a line it does not know.</summary>
+    /// <summary>Takes a snapshot of the program's heap for each <see cref="TakeSnapshot"/> or
+    /// <see cref="TakeSnapshotIntoOutput"/> line on <paramref name="input"/> and writes it to <paramref name="output"/>
+    /// (<see cref="HeapWire"/>), its objects followed from one snapshot to the next through the collections between
+    /// them; one that fails is written as why. Ends with the input. Exit code 2 for a line it does not know.</summary>
     public static async Task<int> HeapAsync(int processId, Stream input, Stream output, TextWriter said)
     {
         await using HeapHistory history = new(processId);
         using StreamReader commands = new(input);
         while (await commands.ReadLineAsync().ConfigureAwait(false) is { } line)
         {
-            if (line.Trim() != TakeSnapshot)
+            bool intoOutput = line.Trim() == TakeSnapshotIntoOutput;
+            if (!intoOutput && line.Trim() != TakeSnapshot)
             {
-                await said.WriteLineAsync($"heap takes one command a line, {TakeSnapshot}, not '{line}'").ConfigureAwait(false);
+                await said.WriteLineAsync($"heap takes one command a line, {TakeSnapshot} or {TakeSnapshotIntoOutput}, not '{line}'").ConfigureAwait(false);
                 return 2;
             }
             try
             {
-                MemorySnapshot taken = await history.TakeAsync(CancellationToken.None).ConfigureAwait(false);
+                MemorySnapshot taken = await history.TakeAsync(intoOutput, CancellationToken.None).ConfigureAwait(false);
                 HeapWire.WriteSnapshot(output, taken);
+            }
+            catch (DumpIntoOutputException only)
+            {
+                HeapWire.WriteIntoOutput(output, only.Message);
             }
             catch (Exception error) when (error is InvalidOperationException or IOException or ServerNotAvailableException or DiagnosticsClientException
                 or TimeoutException or HeapUnreadableException or UnauthorizedAccessException or SocketException)
