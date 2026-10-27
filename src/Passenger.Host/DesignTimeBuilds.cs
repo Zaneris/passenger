@@ -193,7 +193,7 @@ internal static class DesignTimeBuilds
         };
         if (language is null || file.Ticks == 0)
         {
-            return new BuiltProject(path, "[]", [file], language is null ? null : $"{path} does not exist");
+            return new BuiltProject(path, RawJson.EmptyArray, [file], language is null ? null : $"{path} does not exist");
         }
         List<Project> loaded = [];
         try
@@ -222,18 +222,18 @@ internal static class DesignTimeBuilds
                 RoslynProjectFileInfo info = Read(language, path, instance, globs);
                 if (info.CommandLineArgs.Length == 0 && !logged.Any(d => d.Error))
                 {
-                    return new BuiltProject(path, "[]", [file], $"{Path.GetFileName(path)}{(info.TargetFramework is { } framework ? $" ({framework})" : string.Empty)}: its design-time build gave no compiler command line");
+                    return new BuiltProject(path, RawJson.EmptyArray, [file], $"{Path.GetFileName(path)}{(info.TargetFramework is { } framework ? $" ({framework})" : string.Empty)}: its design-time build gave no compiler command line");
                 }
                 infos.Add(info);
             }
             IReadOnlyList<Stamp> heads = [.. Evaluation.IncludedHeads(path, infos.SelectMany(i => i.Documents).Select(d => new EvaluatedItem("Compile", d.FilePath)))];
             IReadOnlyList<Stamp> inputs = Evaluation.Inputs(file, loaded, Evaluation.OutsideRoots(outer), [.. restored, .. looked, .. heads]);
             IReadOnlyList<Stamp> walked = Evaluation.Folders(path, folders, infos.SelectMany(i => i.Documents.Concat(i.AdditionalDocuments)).Select(d => d.FilePath));
-            return new BuiltProject(path, JsonSerializer.Serialize(infos, Written), [.. inputs, .. walked], null, said);
+            return new BuiltProject(path, new RawJson(JsonSerializer.SerializeToUtf8Bytes(infos, Written)), [.. inputs, .. walked], null, said);
         }
         catch (Exception error) when (error is InvalidProjectFileException or IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException)
         {
-            return new BuiltProject(path, "[]", [file], error.Message);
+            return new BuiltProject(path, RawJson.EmptyArray, [file], error.Message);
         }
         finally
         {

@@ -119,7 +119,7 @@ public sealed class ProjectBuilds
         inHost = null;
         foreach (TaskCompletionSource<BuiltProject> waiter in waiting.Values)
         {
-            waiter.TrySetResult(new BuiltProject(string.Empty, "[]", [], "the folder was closed"));
+            waiter.TrySetResult(new BuiltProject(string.Empty, RawJson.EmptyArray, [], "the folder was closed"));
         }
         waiting.Clear();
     }
@@ -249,7 +249,7 @@ public sealed class ProjectBuilds
         {
             Awaited--;
         }
-        return built.Problem is { } problem ? new ProjectInfoResult(null, problem) : new ProjectInfoResult(built.Infos, null, Said(built.Diagnostics));
+        return built.Problem is { } problem ? new ProjectInfoResult(null, problem) : new ProjectInfoResult(built.Infos.ToString(), null, Said(built.Diagnostics));
     }
 
     private Task<BuiltProject> Built(string path)
@@ -383,7 +383,7 @@ public sealed class ProjectBuilds
                 IdeErrors.Write($"The project host could not build the projects of {following}: {why}");
                 foreach (string path in Left())
                 {
-                    Land(mine, new BuiltProject(path, "[]", [], why));
+                    Land(mine, new BuiltProject(path, RawJson.EmptyArray, [], why));
                 }
             }
         }
@@ -520,11 +520,10 @@ public sealed record KeptBuild
 
     public static KeptBuild Of(BuiltProject built)
     {
-        byte[] text = Encoding.UTF8.GetBytes(built.Infos);
         using MemoryStream packed = new();
         using (BrotliStream brotli = new(packed, CompressionLevel.Fastest, leaveOpen: true))
         {
-            brotli.Write(text);
+            brotli.Write(built.Infos.Utf8.Span);
         }
         return new KeptBuild { Builds = Convert.ToBase64String(packed.ToArray()), Inputs = [.. built.Inputs], Diagnostics = [.. built.Diagnostics ?? []] };
     }

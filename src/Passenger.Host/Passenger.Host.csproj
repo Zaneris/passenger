@@ -22,9 +22,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Passenger.Core's paths, and its reader of JSON lines, compiled in since its net11.0 is past the host's. -->
+    <!-- Passenger.Core's paths, its reader of JSON lines and its pooled buffer, compiled in since its net11.0 is past the host's. -->
     <Compile Include="../Passenger.Core/PathNames.cs" Link="PathNames.cs" />
     <Compile Include="../Passenger.Core/JsonLines.cs" Link="JsonLines.cs" />
+    <Compile Include="../Passenger.Core/PooledBytes.cs" Link="PooledBytes.cs" />
   </ItemGroup>
 
   <!-- MSBuild's own dependencies come from the SDK with it: copied here, an older one would be loaded in their place. -->

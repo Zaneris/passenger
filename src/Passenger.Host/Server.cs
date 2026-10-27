@@ -8,16 +8,14 @@ namespace Passenger.Host;
 /// <summary>The host's side of the protocol: each request run on the thread pool as it comes, so one window's evaluation
 /// never waits behind another's, and every line written whole under one lock. A request that throws answers with the
 /// exception's message; the host goes on.</summary>
-public sealed class Server(TextWriter protocol, HostReady ready)
+public sealed class Server(Replies replies, HostReady ready)
 {
-    private readonly object writing = new();
-
     /// <summary>The requests that can be cancelled, while they run, by id.</summary>
     private readonly ConcurrentDictionary<int, CancellationTokenSource> cancellable = new();
 
     public void Run(TextReader input)
     {
-        Write(new HostReply { Id = 0, Result = JsonSerializer.SerializeToElement(ready, HostJson.Options) });
+        replies.Result(0, ready);
         List<Task> running = [];
         while (JsonLines.Read(input, HostJson.Request, static (_, error) => Console.Error.WriteLine($"Passenger.Host: a request that does not read: {error.Message}"))
             is { } request)
@@ -47,17 +45,17 @@ public sealed class Server(TextWriter protocol, HostReady ready)
                 HostMethods.Program => VirtualProjects.Take(Read<ProgramParams>(request)),
                 _ => throw new InvalidOperationException($"the host has no method {request.Method}"),
             };
-            Write(new HostReply { Id = request.Id, Result = JsonSerializer.SerializeToElement(result, result.GetType(), HostJson.Options) });
+            replies.Result(request.Id, result);
         }
         catch (OperationCanceledException)
         {
-            Write(new HostReply { Id = request.Id, Error = "cancelled" });
+            replies.Error(request.Id, "cancelled");
         }
         catch (Exception error)
         {
             // Whole on the host's error stream, which Passenger logs; its message is the answer.
             Console.Error.WriteLine($"Passenger.Host: {request.Method} failed: {error}");
-            Write(new HostReply { Id = request.Id, Error = error.Message });
+            replies.Error(request.Id, error.Message);
         }
         finally
         {
@@ -93,7 +91,7 @@ public sealed class Server(TextWriter protocol, HostReady ready)
         Evaluation.Run(asked, evaluated =>
         {
             Interlocked.Increment(ref count);
-            Write(new HostReply { Id = id, Partial = JsonSerializer.SerializeToElement(evaluated, HostJson.Options) });
+            replies.Partial(id, evaluated);
         }, cancel);
         return new EvaluateDone(count, Stopwatch.GetElapsedTime(began).TotalSeconds);
     }
@@ -105,7 +103,7 @@ public sealed class Server(TextWriter protocol, HostReady ready)
         await DesignTimeBuilds.Run(asked, built =>
         {
             Interlocked.Increment(ref count);
-            Write(new HostReply { Id = id, Partial = JsonSerializer.SerializeToElement(built, HostJson.Options) });
+            replies.Partial(id, built);
         }, cancel);
         return new BuildDone(count, Stopwatch.GetElapsedTime(began).TotalSeconds);
     }
@@ -113,16 +111,7 @@ public sealed class Server(TextWriter protocol, HostReady ready)
     /// <summary>Held until cancelled, which answers the request as cancelled.</summary>
     private async Task<bool> Hold(int id, CancellationToken release)
     {
-        await DesignTimeBuilds.HoldAsync(state => Write(new HostReply { Id = id, Partial = JsonSerializer.SerializeToElement(state, HostJson.Options) }), release);
+        await DesignTimeBuilds.HoldAsync(state => replies.Partial(id, state), release);
         return true;
-    }
-
-    private void Write(HostReply reply)
-    {
-        string line = JsonSerializer.Serialize(reply, HostJson.Options);
-        lock (writing)
-        {
-            protocol.WriteLine(line);
-        }
     }
 }

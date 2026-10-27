@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Explorer;
@@ -308,4 +309,46 @@ public sealed class ProjectEvaluationTests : IDisposable
     }
 
     private void Write(string relative, string text) => TestFolders.Write(folder, relative, text);
+}
+
+/// <summary>What a design-time build's reply costs the IDE to read, counted across the process, so the class runs alone.</summary>
+[Collection(Alone.Name)]
+public sealed class ProjectHostBytesTests(ITestOutputHelper testOutput) : IDisposable
+{
+    private readonly string folder = PathNames.Canonical(TestFolders.Create("host-bytes-"));
+
+    public void Dispose() => TestFolders.Delete(folder);
+
+    /// <summary>A project's design-time build comes back as one line whose compiler command line, every framework reference's
+    /// path among it, is carried as the JSON it is: read in place from the bytes the line came in, it costs the IDE at most
+    /// twice the line's JSON, and the language server is given the same command line; least of five.</summary>
+    [Fact]
+    public async Task A_design_time_builds_reply_costs_at_most_twice_its_JSON_to_read()
+    {
+        CancellationToken cancel = TestContext.Current.CancellationToken;
+        string project = Path.Combine(folder, "App", "App.csproj");
+        Directory.CreateDirectory(Path.GetDirectoryName(project)!);
+        File.WriteAllText(project, TestProjects.Console());
+        File.WriteAllText(Path.Combine(folder, "App", "Program.cs"), "System.Console.WriteLine(\"Shop\");\n");
+        await Restore.RunAsync(project);
+        ProjectHost host = await ProjectHosts.ForAsync(folder, cancel);
+        long least = long.MaxValue;
+        BuiltProject? built = null;
+        for (int time = 0; time < 5; time++)
+        {
+            List<BuiltProject> replies = [];
+            long before = GC.GetTotalAllocatedBytes(precise: true);
+            await host.BuildAsync([project], new Dictionary<string, string>(), replies.Add, cancel).WaitAsync(TimeSpan.FromMinutes(2).Scaled(), cancel);
+            least = Math.Min(least, GC.GetTotalAllocatedBytes(precise: true) - before);
+            built = Assert.Single(replies);
+        }
+        Assert.Null(built!.Problem);
+        using JsonDocument infos = JsonDocument.Parse(built.Infos.ToString());
+        string arguments = string.Join('\n', infos.RootElement[0].GetProperty("commandLineArgs").EnumerateArray().Select(a => a.GetString()));
+        Assert.Contains("System.Runtime.dll", arguments, StringComparison.Ordinal);
+        long json = JsonSerializer.SerializeToUtf8Bytes(built, HostJson.Options).Length;
+        testOutput.WriteLine($"{json:N0} bytes of JSON, {least:N0} allocated ({(double)least / json:0.00}×)");
+        Assert.True(least <= json * 2,
+            $"Reading a design-time build's reply of {json:N0} bytes of JSON allocated {least:N0} bytes ({(double)least / json:0.0}× its JSON): every project's build costs the IDE that much more memory as a solution loads");
+    }
 }

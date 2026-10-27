@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
@@ -6,20 +8,46 @@ namespace Passenger.Host;
 
 // The project host's protocol, one definition for both ends (the app compiles this file too): one JSON object a line
 // each way over the host's standard input and output. The app asks (HostRequest); the host answers each request with
-// partial results as they come, then with its result or why it failed (HostReply, by the request's id). The host's
+// partial results as they come, then with its result or why it failed (HostReply's lines, by the request's id). The host's
 // first line, id 0, says which SDK's MSBuild it loaded, or why it loaded none.
 
 public sealed record HostRequest(int Id, string Method, JsonElement Params);
 
-public sealed record HostReply
+/// <summary>A reply's line, {"id":N,"partial":value}, {"id":N,"result":value} or {"id":N,"error":"why"}: its value written
+/// straight into the line by the host and read in place by the app, by these names.</summary>
+public static class HostReply
 {
-    public int Id { get; init; }
+    public static ReadOnlySpan<byte> Id => "id"u8;
 
-    public JsonElement? Partial { get; init; }
+    public static ReadOnlySpan<byte> Partial => "partial"u8;
 
-    public JsonElement? Result { get; init; }
+    public static ReadOnlySpan<byte> Result => "result"u8;
 
-    public string? Error { get; init; }
+    public static ReadOnlySpan<byte> Error => "error"u8;
+}
+
+/// <summary>A JSON value carried whole as its UTF-8 bytes: written into a message as the value it is, and read out of one
+/// as its bytes, never as a string inside the message.</summary>
+[JsonConverter(typeof(RawJsonConverter))]
+public sealed class RawJson(byte[] utf8)
+{
+    public static RawJson EmptyArray { get; } = new("[]"u8.ToArray());
+
+    public ReadOnlyMemory<byte> Utf8 { get; } = utf8;
+
+    public override string ToString() => Encoding.UTF8.GetString(Utf8.Span);
+}
+
+public sealed class RawJsonConverter : JsonConverter<RawJson>
+{
+    /// <summary>The value's bytes copied out of the message, its document's room pooled and given back.</summary>
+    public override RawJson Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        using JsonDocument value = JsonDocument.ParseValue(ref reader);
+        return new RawJson(JsonMarshal.GetRawUtf8Value(value.RootElement).ToArray());
+    }
+
+    public override void Write(Utf8JsonWriter writer, RawJson value, JsonSerializerOptions options) => writer.WriteRawValue(value.Utf8.Span, skipInputValidation: true);
 }
 
 public static class HostMethods
@@ -72,9 +100,6 @@ public static class HostJson
 
     /// <summary>A request's line as the host reads it.</summary>
     public static JsonTypeInfo<HostRequest> Request { get; } = (JsonTypeInfo<HostRequest>)Options.GetTypeInfo(typeof(HostRequest));
-
-    /// <summary>An answer's line as the app reads it.</summary>
-    public static JsonTypeInfo<HostReply> Reply { get; } = (JsonTypeInfo<HostReply>)Options.GetTypeInfo(typeof(HostReply));
 }
 
 /// <summary>The SDK the host loaded: its folder (MSBuild's) and version.</summary>
@@ -197,10 +222,67 @@ public sealed record BuildParams(IReadOnlyList<string> Projects, IReadOnlyDictio
 public sealed record BuildDone(int Built, double Seconds);
 
 /// <summary>A project's design-time builds as Roslyn's server takes them (a JSON array of its ProjectFileInfo, one a target
-/// framework), what they read (the project file, its imports outside the SDK and package folders and those it would import
+/// framework, carried as its bytes), what they read (the project file, its imports outside the SDK and package folders and those it would import
 /// were they there, its packages' assets, its folders), and why they failed, when they did; with the errors and warnings
 /// the builds logged.</summary>
-public sealed record BuiltProject(string Path, string Infos, IReadOnlyList<Stamp> Inputs, string? Problem, IReadOnlyList<BuildDiagnostic>? Diagnostics = null);
+public sealed record BuiltProject(string Path, RawJson Infos, IReadOnlyList<Stamp> Inputs, string? Problem, IReadOnlyList<BuildDiagnostic>? Diagnostics = null)
+{
+    /// <summary>A reply's build read in place, its infos copied out of it as their bytes (from a string too, as a host
+    /// before these wrote them) and the rest read by the serializer.</summary>
+    public static BuiltProject Read(ReadOnlySpan<byte> json)
+    {
+        Utf8JsonReader reader = new(json);
+        if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
+        {
+            throw new JsonException("a build that is not an object");
+        }
+        string? path = null;
+        RawJson infos = RawJson.EmptyArray;
+        IReadOnlyList<Stamp>? inputs = null;
+        string? problem = null;
+        IReadOnlyList<BuildDiagnostic>? diagnostics = null;
+        while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
+        {
+            bool isPath = reader.ValueTextEquals("path"u8);
+            bool isInfos = reader.ValueTextEquals("infos"u8);
+            bool isInputs = reader.ValueTextEquals("inputs"u8);
+            bool isProblem = reader.ValueTextEquals("problem"u8);
+            bool isDiagnostics = reader.ValueTextEquals("diagnostics"u8);
+            reader.Read();
+            if (isPath)
+            {
+                path = reader.GetString();
+            }
+            else if (isInfos && reader.TokenType == JsonTokenType.String)
+            {
+                infos = new RawJson(Encoding.UTF8.GetBytes(reader.GetString()!));
+            }
+            else if (isInfos)
+            {
+                int start = (int)reader.TokenStartIndex;
+                reader.Skip();
+                infos = new RawJson(json[start..(int)reader.BytesConsumed].ToArray());
+            }
+            else if (isInputs)
+            {
+                inputs = JsonSerializer.Deserialize<List<Stamp>>(ref reader, HostJson.Options);
+            }
+            else if (isProblem)
+            {
+                problem = reader.GetString();
+            }
+            else if (isDiagnostics)
+            {
+                diagnostics = JsonSerializer.Deserialize<List<BuildDiagnostic>>(ref reader, HostJson.Options);
+            }
+            else
+            {
+                reader.Skip();
+            }
+        }
+        return new BuiltProject(path ?? throw new JsonException("a build with no path"), infos, inputs ?? [], problem, diagnostics);
+    }
+}
 
 /// <summary>An error or warning a design-time build logged, with the project file it was logged for.</summary>
 public sealed record BuildDiagnostic(bool Error, string Message, string Project);
