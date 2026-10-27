@@ -97,7 +97,16 @@ public abstract class SharedProject : IAsyncLifetime
         return Written(name, text);
     }
 
-    /// <inheritdoc cref="Write"/>
+    /// <summary>Writes several files a test needs that the project does not have, as <see cref="Write(string, string)"/>
+    /// writes one, the warm server ended once for them all, the files written several at once (as
+    /// <see cref="TestFolders.WriteAll"/> writes them). From the UI thread.</summary>
+    public void Write(IEnumerable<(string Name, string Text)> files)
+    {
+        Drop();
+        Parallel.ForEach(files, file => Written(file.Name, file.Text));
+    }
+
+    /// <inheritdoc cref="Write(string, string)"/>
     public async Task<string> WriteAsync(string name, string text)
     {
         await Server.Drop();
@@ -115,7 +124,7 @@ public abstract class SharedProject : IAsyncLifetime
     /// <summary>Rewrites one of the project's own files for a test: the warm server is kept once it holds the file as
     /// written, read through its own watcher as it reads a file changed on disk (<see cref="WarmServer.HoldsAsync"/>), and
     /// ended if it does not within <see cref="Rereading"/>; <see cref="Reset"/> puts the file back for the next test. A file
-    /// the project does not have goes through <see cref="Write"/>.</summary>
+    /// the project does not have goes through <see cref="Write(string, string)"/>.</summary>
     public string Rewrite(string name, string text)
     {
         string path = Path.GetFullPath(PathOf(name));

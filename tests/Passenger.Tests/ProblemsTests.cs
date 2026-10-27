@@ -362,6 +362,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
     private (MainWindow Window, string Typed, int Listed) Warned(int warnings)
     {
         const int Files = 20;
+        List<(string, string)> files = [("Typed.cs", Typed)];
         for (int i = 0; i < Files; i++)
         {
             System.Text.StringBuilder warned = new($"static class Warned{i}\n{{\n    static void All()\n    {{\n");
@@ -369,9 +370,9 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
             {
                 warned.Append(System.Globalization.CultureInfo.InvariantCulture, $"        int unused{j};\n");
             }
-            Write($"Warned{i}.cs", warned.Append("    }\n}\n").ToString());
+            files.Add(($"Warned{i}.cs", warned.Append("    }\n}\n").ToString()));
         }
-        Write("Typed.cs", Typed);
+        project.Write(files);
         string typed = Passenger.Core.PathNames.Canonical(Path.Combine(project.Folder, "Typed.cs"));
         MainWindow window = project.Open("Typed.cs", w => w.Perform(AppActions.ShowProblems));
         ProblemsModel problems = window.BottomPanel.Problems;
@@ -417,6 +418,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
     private (long Bytes, int Listed) PullBytes(int files, int warnings, int lines)
     {
         string comment = string.Concat(Enumerable.Repeat("// A line of a long comment the compiler passes over, as long as a line of code.\n", lines));
+        List<(string, string)> written = [];
         for (int i = 0; i < files; i++)
         {
             System.Text.StringBuilder text = new(comment);
@@ -425,8 +427,9 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
             {
                 text.Append(System.Globalization.CultureInfo.InvariantCulture, $"        int unused{j};\n");
             }
-            Write($"Long{i}.cs", text.Append("    }\n}\n").ToString());
+            written.Add(($"Long{i}.cs", text.Append("    }\n}\n").ToString()));
         }
+        project.Write(written);
         MainWindow window = project.Open("Program.cs");
         ProblemsModel problems = window.BottomPanel.Problems;
         // Each file's warnings and Bad.cs's error.
