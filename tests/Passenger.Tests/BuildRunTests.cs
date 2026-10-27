@@ -764,6 +764,52 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         window.Close();
     }
 
+    /// <summary>A console as output streams copies none of the lines on screen it has linked before, nor makes their links
+    /// again: six lines written, each drawn, and the pointer moved onto a linked row after each, copy only the lines written
+    /// to find their links, and a row on screen throughout has the same links at the end as at the start. Each row's text
+    /// was copied as its colours were compared and again as its links were drawn, at every line written and every pointer
+    /// move over it, its links made again each time.</summary>
+    [AvaloniaFact]
+    public void A_console_as_output_streams_copies_no_line_it_has_linked()
+    {
+        string folder = TestFolders.Create("links-");
+        string source = TestFolders.Write(folder, "Orders.cs", "static class Orders\n{\n}\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        window.ShowToolWindow(ToolWindowIds.Run);
+        OutputView run = window.BottomPanel.Run;
+        for (int i = 0; i < 80; i++)
+        {
+            run.Append(Frame(i));
+        }
+        Ui.Settle();
+        CodeEditor editor = run.Editor;
+        int rows = editor.LinesShown.Last - editor.LinesShown.First + 1;
+        Assert.True(rows >= 10, $"The Run window showed {rows} rows");
+        int kept = editor.LinesShown.Last - 2;
+        IReadOnlyList<TextLink> first = editor.Links!(editor.Document.Snapshot, kept);
+        Assert.Single(first);
+        long copied = run.Links.LinesCopied;
+        for (int i = 0; i < 6; i++)
+        {
+            run.Append(Frame(100 + i));
+            Ui.Settle();
+            int line = editor.LinesShown.Last - 2;
+            TextLink link = Assert.Single(editor.Links!(editor.Document.Snapshot, line));
+            Point on = editor.TranslatePoint(editor.PointOf(link.Range.Start + 2 + i) + new Point(1, editor.LineHeight / 2), window)!.Value;
+            window.MouseMove(on, Avalonia.Input.RawInputModifiers.None);
+            Ui.Settle();
+            Assert.Equal(link.Range, editor.HoveredLink?.Range);
+        }
+        Assert.True(run.Links.LinesCopied - copied <= 6,
+            $"Six lines written to a console showing {rows} rows of linked stack frames, and the pointer moved onto one after each, copied {run.Links.LinesCopied - copied} lines to find their links: lines it had linked were copied again");
+        Assert.InRange(kept, editor.LinesShown.First, editor.LinesShown.Last);
+        Assert.Same(first, editor.Links!(editor.Document.Snapshot, kept));
+        window.Close();
+        TestFolders.Delete(folder);
+
+        string Frame(int i) => $"   at Orders.Load{i}(String file) in {source}:line {(i % 3) + 1}\n";
+    }
+
     /// <summary>Settings' Toolset and Build, Presentation: Build opens the Build window as it starts, unless "when
     /// build is explicitly invoked" is off, and a build's end brings it forward as "Showing build results after build
     /// completed" says, by default only when errors were received; Run's build, an implicit one, opens it only with
