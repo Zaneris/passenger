@@ -30,7 +30,7 @@ internal static class DiagnosticMarks
         {
             return null;
         }
-        string code = diagnostic.Code?.ToString() is { Length: > 0 } c ? $"{c}: " : string.Empty;
+        string code = diagnostic.Code is { Length: > 0 } c ? $"{c}: " : string.Empty;
         return new Marker(range, k, code + diagnostic.Message);
     }
 
@@ -66,6 +66,7 @@ internal static class DiagnosticMarks
                 Range = new LspRange(lines.PositionOf(Math.Min(now.Start, length)), lines.PositionOf(Math.Min(now.End, length))),
                 Severity = diagnostic.Severity,
                 Code = diagnostic.Code,
+                CodeIsNumber = diagnostic.CodeIsNumber,
                 CodeDescription = diagnostic.CodeDescription,
                 Source = diagnostic.Source,
                 Message = diagnostic.Message,

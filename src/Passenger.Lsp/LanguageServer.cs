@@ -230,9 +230,9 @@ public sealed class LanguageServer : IAsyncDisposable
         Action<IReadOnlyList<WorkspaceDocumentDiagnosticReport>> streamed, CancellationToken cancel = default)
     {
         string token = $"passenger-workspace-diagnostic-{Interlocked.Increment(ref partialResults)}";
-        client.Partials[token] = value =>
+        client.Partials[token] = report =>
         {
-            if (value.Deserialize<WorkspaceDiagnosticReport>(Json.Options) is { Items.Count: > 0 } report)
+            if (report is { Items.Count: > 0 })
             {
                 streamed(report.Items);
             }
@@ -896,7 +896,7 @@ public sealed class LanguageServer : IAsyncDisposable
         private readonly List<string?> workspaceSources = [];
 
         /// <summary>What takes each partial result of a request under way, by the token it was asked with.</summary>
-        public System.Collections.Concurrent.ConcurrentDictionary<string, Action<JsonElement>> Partials { get; } = new(StringComparer.Ordinal);
+        public System.Collections.Concurrent.ConcurrentDictionary<string, Action<WorkspaceDiagnosticReport?>> Partials { get; } = new(StringComparer.Ordinal);
 
         public IReadOnlyList<string?> WorkspaceDiagnosticSources
         {
@@ -1122,11 +1122,12 @@ public sealed class LanguageServer : IAsyncDisposable
         }
 
         /// <summary>A request's partial result, which the server's own progress sends with its token and value in order
-        /// rather than named as work done progress names them; one no request under way asked for is dropped.</summary>
+        /// rather than named as work done progress names them, read as the workspace diagnostics' reports it streams, the one
+        /// request that asks for partial results; one no request under way asked for is dropped.</summary>
         [JsonRpcMethod(LspMethods.Progress)]
-        public void Progress(JsonElement partialToken, JsonElement partialValue)
+        public void Progress(JsonElement partialToken, WorkspaceDiagnosticReport? partialValue)
         {
-            if (partialToken.ValueKind == JsonValueKind.String && partialToken.GetString() is { } token && Partials.TryGetValue(token, out Action<JsonElement>? take))
+            if (partialToken.ValueKind == JsonValueKind.String && partialToken.GetString() is { } token && Partials.TryGetValue(token, out Action<WorkspaceDiagnosticReport?>? take))
             {
                 take(partialValue);
             }

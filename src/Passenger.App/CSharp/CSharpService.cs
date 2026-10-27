@@ -377,8 +377,9 @@ public sealed class CSharpService : IAsyncDisposable
         analysed.Clear();
     }
 
-    /// <summary>The reports a pull changed, each URI made a path once and each file with problems read as the server read it
-    /// (a file not open is the disk's), its problems placed on the editor's lines: off the UI thread, as they come.</summary>
+    /// <summary>The reports a pull changed, each URI made a path once and each file with problems looked at as the server read
+    /// it (a file not open is the disk's) for breaks only the server counts, its problems placed on the editor's lines: off
+    /// the UI thread, as they come.</summary>
     private static List<WorkspaceReport> Placed(IReadOnlyList<WorkspaceDocumentDiagnosticReport> changed)
     {
         Dictionary<string, string> paths = DocumentUris.ToPaths(changed.Select(r => r.Uri));
@@ -396,7 +397,7 @@ public sealed class CSharpService : IAsyncDisposable
                 }
                 if (!lines.TryGetValue(path, out ServerLines? counted))
                 {
-                    lines[path] = counted = ServerPlaces.Differing(ServerPlaces.Read(path));
+                    lines[path] = counted = ServerPlaces.DifferingOnDisk(path);
                 }
                 problems.Add(new SolutionProblem(path, diagnostic, ServerPlaces.PositionOf(counted, diagnostic.Range.Start)));
             }

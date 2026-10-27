@@ -168,7 +168,7 @@ public partial class MainWindow
     private static Problem ProblemOf(SolutionProblem problem, string project) => new(
         problem.Diagnostic.Severity == DiagnosticSeverity.Error ? ProblemSeverity.Error : ProblemSeverity.Warning,
         problem.Diagnostic.Message,
-        problem.Diagnostic.Code?.ValueKind == System.Text.Json.JsonValueKind.String ? problem.Diagnostic.Code.Value.GetString() : problem.Diagnostic.Code?.ToString(),
+        problem.Diagnostic.Code,
         problem.Path,
         problem.At,
         project);

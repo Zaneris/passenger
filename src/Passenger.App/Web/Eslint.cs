@@ -529,7 +529,7 @@ public sealed class EslintDocument : IDisposable
         {
             return null;
         }
-        string? rule = diagnostic.Code is { ValueKind: JsonValueKind.String } code ? code.GetString() : null;
+        string? rule = diagnostic.CodeIsNumber ? null : diagnostic.Code;
         string message = rule is null ? $"ESLint: {diagnostic.Message}" : $"ESLint: {diagnostic.Message} ({rule})";
         return new Marker(range, k, message) { Link = rule is null ? null : diagnostic.CodePage, LinkText = rule };
     }

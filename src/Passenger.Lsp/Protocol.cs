@@ -309,25 +309,320 @@ public sealed record SemanticTokensLegend(IReadOnlyList<string> TokenTypes, IRea
 
 // Diagnostics
 
+/// <summary>A server's diagnostic, read from its UTF-8 by <see cref="DiagnosticConverter"/>.</summary>
+[JsonConverter(typeof(DiagnosticConverter))]
 public sealed class Diagnostic
 {
     public LspRange Range { get; init; } = new(new LspPosition(0, 0), new LspPosition(0, 0));
     public DiagnosticSeverity? Severity { get; init; }
-    public JsonElement? Code { get; init; }
 
-    /// <summary>Where the code is explained (<c>{ "href": … }</c>): an ESLint rule's page.</summary>
-    public JsonElement? CodeDescription { get; init; }
+    /// <summary>The server's code for it, a number's as written (TypeScript's 2322).</summary>
+    public string? Code { get; init; }
+
+    /// <summary>Whether the server wrote <see cref="Code"/> as a number, as it is written back to it.</summary>
+    public bool CodeIsNumber { get; init; }
+
+    /// <summary>Where the code is explained: an ESLint rule's page.</summary>
+    public CodeDescription? CodeDescription { get; init; }
 
     public string? Source { get; init; }
     public string Message { get; init; } = string.Empty;
     public List<DiagnosticTag>? Tags { get; init; }
+
+    /// <summary>What the server keeps with it, raw, as it is given back to the server with a request for its fixes.</summary>
     public JsonElement? Data { get; init; }
 
     /// <summary>The page <see cref="CodeDescription"/> names, when it is a web address.</summary>
     [JsonIgnore]
-    public Uri? CodePage =>
-        CodeDescription is { ValueKind: JsonValueKind.Object } description && description.TryGetProperty("href", out JsonElement href)
-        && href.ValueKind == JsonValueKind.String && Uri.TryCreate(href.GetString(), UriKind.Absolute, out Uri? page) ? page : null;
+    public Uri? CodePage => CodeDescription?.Href is { } href && Uri.TryCreate(href, UriKind.Absolute, out Uri? page) ? page : null;
+}
+
+/// <summary>A diagnostic code's page (<c>{ "href": … }</c>).</summary>
+public sealed record CodeDescription(string Href);
+
+/// <summary>A diagnostic read field by field from its UTF-8 and written back the same way: a code a string or a number, the
+/// strings a server repeats across a report (codes, sources) made once per thread, nothing kept but what the
+/// diagnostic holds. A workspace's report holds thousands of them.</summary>
+public sealed class DiagnosticConverter : JsonConverter<Diagnostic>
+{
+    /// <summary>The codes and sources this thread read last, one made string each, so a report's thousand CS0168s share one.</summary>
+    [ThreadStatic]
+    private static string?[]? recent;
+
+    [ThreadStatic]
+    private static int next;
+
+    public override Diagnostic Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.StartObject)
+        {
+            throw new JsonException($"A diagnostic is an object, not {reader.TokenType}");
+        }
+        LspRange? range = null;
+        DiagnosticSeverity? severity = null;
+        string? code = null;
+        bool number = false;
+        CodeDescription? description = null;
+        string? source = null;
+        string? message = null;
+        List<DiagnosticTag>? tags = null;
+        JsonElement? data = null;
+        while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
+        {
+            Field field = FieldOf(ref reader);
+            reader.Read();
+            switch (field)
+            {
+                case Field.Range:
+                    range = JsonSerializer.Deserialize<LspRange>(ref reader, options);
+                    break;
+                case Field.Severity:
+                    severity = reader.TokenType == JsonTokenType.Null ? null : (DiagnosticSeverity)reader.GetInt32();
+                    break;
+                case Field.Code:
+                    (code, number) = Code(ref reader);
+                    break;
+                case Field.CodeDescription:
+                    description = Description(ref reader);
+                    break;
+                case Field.Source:
+                    source = Repeated(ref reader);
+                    break;
+                case Field.Message:
+                    message = reader.GetString();
+                    break;
+                case Field.Tags:
+                    tags = Tags(ref reader);
+                    break;
+                case Field.Data:
+                    data = reader.TokenType == JsonTokenType.Null ? null : JsonElement.ParseValue(ref reader);
+                    break;
+                default:
+                    reader.Skip();
+                    break;
+            }
+        }
+        return new Diagnostic
+        {
+            Range = range ?? new LspRange(new LspPosition(0, 0), new LspPosition(0, 0)),
+            Severity = severity,
+            Code = code,
+            CodeIsNumber = number,
+            CodeDescription = description,
+            Source = source,
+            Message = message ?? string.Empty,
+            Tags = tags,
+            Data = data,
+        };
+    }
+
+    public override void Write(Utf8JsonWriter writer, Diagnostic value, JsonSerializerOptions options)
+    {
+        writer.WriteStartObject();
+        writer.WritePropertyName("range"u8);
+        JsonSerializer.Serialize(writer, value.Range, options);
+        if (value.Severity is { } severity)
+        {
+            writer.WriteNumber("severity"u8, (int)severity);
+        }
+        if (value.Code is { } code)
+        {
+            if (value.CodeIsNumber)
+            {
+                writer.WritePropertyName("code"u8);
+                writer.WriteRawValue(code, skipInputValidation: false);
+            }
+            else
+            {
+                writer.WriteString("code"u8, code);
+            }
+        }
+        if (value.CodeDescription is { } description)
+        {
+            writer.WriteStartObject("codeDescription"u8);
+            writer.WriteString("href"u8, description.Href);
+            writer.WriteEndObject();
+        }
+        if (value.Source is { } source)
+        {
+            writer.WriteString("source"u8, source);
+        }
+        writer.WriteString("message"u8, value.Message);
+        if (value.Tags is { } tags)
+        {
+            writer.WriteStartArray("tags"u8);
+            foreach (DiagnosticTag tag in tags)
+            {
+                writer.WriteNumberValue((int)tag);
+            }
+            writer.WriteEndArray();
+        }
+        if (value.Data is { } data)
+        {
+            writer.WritePropertyName("data"u8);
+            data.WriteTo(writer);
+        }
+        writer.WriteEndObject();
+    }
+
+    private enum Field
+    {
+        Other,
+        Range,
+        Severity,
+        Code,
+        CodeDescription,
+        Source,
+        Message,
+        Tags,
+        Data,
+    }
+
+    /// <summary>The field a property name names, as the serializer matches names, ignoring case.</summary>
+    private static Field FieldOf(ref Utf8JsonReader reader)
+    {
+        if (reader.ValueTextEquals("range"u8))
+        {
+            return Field.Range;
+        }
+        if (reader.ValueTextEquals("severity"u8))
+        {
+            return Field.Severity;
+        }
+        if (reader.ValueTextEquals("code"u8))
+        {
+            return Field.Code;
+        }
+        if (reader.ValueTextEquals("codeDescription"u8))
+        {
+            return Field.CodeDescription;
+        }
+        if (reader.ValueTextEquals("source"u8))
+        {
+            return Field.Source;
+        }
+        if (reader.ValueTextEquals("message"u8))
+        {
+            return Field.Message;
+        }
+        if (reader.ValueTextEquals("tags"u8))
+        {
+            return Field.Tags;
+        }
+        if (reader.ValueTextEquals("data"u8))
+        {
+            return Field.Data;
+        }
+        // Escaped, its length is past any of the names' unescaped.
+        if ((reader.HasValueSequence ? reader.ValueSequence.Length : reader.ValueSpan.Length) > 96)
+        {
+            return Field.Other;
+        }
+        Span<char> buffer = stackalloc char[96];
+        ReadOnlySpan<char> name = buffer[..reader.CopyString(buffer)];
+        return name.Equals("range", StringComparison.OrdinalIgnoreCase) ? Field.Range
+            : name.Equals("severity", StringComparison.OrdinalIgnoreCase) ? Field.Severity
+            : name.Equals("code", StringComparison.OrdinalIgnoreCase) ? Field.Code
+            : name.Equals("codeDescription", StringComparison.OrdinalIgnoreCase) ? Field.CodeDescription
+            : name.Equals("source", StringComparison.OrdinalIgnoreCase) ? Field.Source
+            : name.Equals("message", StringComparison.OrdinalIgnoreCase) ? Field.Message
+            : name.Equals("tags", StringComparison.OrdinalIgnoreCase) ? Field.Tags
+            : name.Equals("data", StringComparison.OrdinalIgnoreCase) ? Field.Data
+            : Field.Other;
+    }
+
+    /// <summary>A code as text, whether it is a number (its digits as written); true for a number.</summary>
+    private static (string? Code, bool Number) Code(ref Utf8JsonReader reader) => reader.TokenType switch
+    {
+        JsonTokenType.Null => (null, false),
+        JsonTokenType.String => (Repeated(ref reader), false),
+        JsonTokenType.Number => (Repeated(ref reader), true),
+        _ => (JsonElement.ParseValue(ref reader).ToString(), false),
+    };
+
+    /// <summary>A string or number token's text, the same string as this thread made for it lately.</summary>
+    private static string? Repeated(ref Utf8JsonReader reader)
+    {
+        if (reader.TokenType == JsonTokenType.Null)
+        {
+            return null;
+        }
+        string?[] kept = recent ??= new string?[8];
+        foreach (string? one in kept)
+        {
+            if (one is not null && (reader.TokenType == JsonTokenType.String ? reader.ValueTextEquals(one) : Digits(Written(ref reader), one)))
+            {
+                return one;
+            }
+        }
+        string made = reader.TokenType == JsonTokenType.String ? reader.GetString()! : System.Text.Encoding.UTF8.GetString(Written(ref reader));
+        kept[next] = made;
+        next = (next + 1) % kept.Length;
+        return made;
+    }
+
+    /// <summary>A number's bytes as written, copied only where they cross the reader's segments.</summary>
+    private static ReadOnlySpan<byte> Written(ref Utf8JsonReader reader) => reader.HasValueSequence ? System.Buffers.BuffersExtensions.ToArray(reader.ValueSequence) : reader.ValueSpan;
+
+    /// <summary>Whether a number's bytes, as written, are a string's characters.</summary>
+    private static bool Digits(ReadOnlySpan<byte> written, string text)
+    {
+        if (written.Length != text.Length)
+        {
+            return false;
+        }
+        for (int i = 0; i < written.Length; i++)
+        {
+            if (written[i] != text[i])
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// <summary>A code's page, from its href when that is a string.</summary>
+    private static CodeDescription? Description(ref Utf8JsonReader reader)
+    {
+        if (reader.TokenType != JsonTokenType.StartObject)
+        {
+            reader.Skip();
+            return null;
+        }
+        string? href = null;
+        while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
+        {
+            bool named = reader.ValueTextEquals("href"u8);
+            reader.Read();
+            if (named && reader.TokenType == JsonTokenType.String)
+            {
+                href = reader.GetString();
+            }
+            else
+            {
+                reader.Skip();
+            }
+        }
+        return href is null ? null : new CodeDescription(href);
+    }
+
+    private static List<DiagnosticTag>? Tags(ref Utf8JsonReader reader)
+    {
+        if (reader.TokenType == JsonTokenType.Null)
+        {
+            return null;
+        }
+        if (reader.TokenType != JsonTokenType.StartArray)
+        {
+            throw new JsonException($"A diagnostic's tags are an array, not {reader.TokenType}");
+        }
+        List<DiagnosticTag> tags = [];
+        while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
+        {
+            tags.Add((DiagnosticTag)reader.GetInt32());
+        }
+        return tags;
+    }
 }
 
 public sealed record DocumentDiagnosticParams(TextDocumentIdentifier TextDocument, string? Identifier = null, string? PreviousResultId = null);

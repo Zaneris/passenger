@@ -271,13 +271,12 @@ public sealed class WebDocument : IServerDocument, IDisposable
     /// server's script), none for the rest, whose codes are lint rules' names or the JSON server's numbers.</summary>
     private static Diagnostic Named(Diagnostic diagnostic)
     {
-        string? code = diagnostic.Code is { ValueKind: System.Text.Json.JsonValueKind.Number } number && diagnostic.Source is "typescript" or "ts" or "js"
-            ? $"TS{number}" : null;
+        string? code = diagnostic is { CodeIsNumber: true, Code: { } number } && diagnostic.Source is "typescript" or "ts" or "js" ? $"TS{number}" : null;
         return new Diagnostic
         {
             Range = diagnostic.Range,
             Severity = diagnostic.Severity,
-            Code = code is null ? null : System.Text.Json.JsonSerializer.SerializeToElement(code),
+            Code = code,
             CodeDescription = diagnostic.CodeDescription,
             Source = diagnostic.Source,
             Message = diagnostic.Message,

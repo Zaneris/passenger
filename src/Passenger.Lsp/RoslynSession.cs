@@ -700,7 +700,7 @@ public sealed class LspDocument : IDisposable
             all.AddRange(await Server.RazorHtmlDiagnosticsAsync(DocumentUris.ToPath(Uri), text.ToString(), cancel).ConfigureAwait(false));
         }
         List<Diagnostic> distinct = all
-            .DistinctBy(d => (d.Range, d.Message, d.Code?.ToString()))
+            .DistinctBy(d => (d.Range, d.Message, d.Code))
             .ToList();
         Came(ref diagnosed, asked);
         return (distinct, version);

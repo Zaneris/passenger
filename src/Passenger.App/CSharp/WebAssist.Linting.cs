@@ -69,7 +69,7 @@ internal sealed partial class WebAssist
         }
         if (fix.OpensDocumentation)
         {
-            if (lint.Diagnostics.FirstOrDefault(d => d.Code is { ValueKind: JsonValueKind.String } code && code.GetString() == fix.Rule)?.CodePage is { } page)
+            if (lint.Diagnostics.FirstOrDefault(d => !d.CodeIsNumber && d.Code == fix.Rule)?.CodePage is { } page)
             {
                 context.Browse(page);
             }

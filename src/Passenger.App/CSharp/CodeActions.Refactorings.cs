@@ -113,7 +113,7 @@ internal sealed partial class CodeActions
     {
         // Asked of the server now rather than read from the diagnostics shown, which a file just opened has yet to get.
         (IReadOnlyList<Diagnostic> found, _) = await lsp.DiagnosticsAsync();
-        List<Diagnostic> unused = [.. found.Where(d => d.Code is { ValueKind: System.Text.Json.JsonValueKind.String } code && code.GetString() == RoslynNames.UnnecessaryUsing)];
+        List<Diagnostic> unused = [.. found.Where(d => !d.CodeIsNumber && d.Code == RoslynNames.UnnecessaryUsing)];
         bool removed = unused.Count > 0
             && await ApplyNamed(lsp, document, LineRange(document.Text.Snapshot, document.Text.Snapshot.GetLineFromOffset(lsp.OffsetOf(unused[0].Range.Start))), unused, RoslynNames.RemoveUnnecessaryUsings);
         TextSnapshot text = document.Text.Snapshot;
