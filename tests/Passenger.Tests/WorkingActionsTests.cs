@@ -60,6 +60,8 @@ public sealed class WorkingActionsTests : WorkingActionsFolders, IClassFixture<R
         Ui.Click(run, settle: false);
         Assert.True(said.Skip(before).Any(s => s.StartsWith("Already under way: ", StringComparison.Ordinal)),
             $"A second click on Run should be told it is under way, but the status bar said: {string.Join(" | ", said.Skip(before))}");
+        held.Reached();
+        Assert.Equal("Already under way: Building Hello…", window.Actions.WhyNot(AppActions.RunProgram, window.Actions.Context()));
         held.LetGo();
         Ui.WaitFor(() => Output(window).Contains("Process finished", StringComparison.Ordinal), "the program to run to its end", TimeSpan.FromMinutes(2));
         Assert.True(builds == 1, $"Two clicks on Run built {builds} times, where the second should have started nothing");
@@ -241,11 +243,15 @@ public abstract class WorkingActionsFolders : IDisposable
             Write(folder, "hold", string.Empty);
         }
 
-        /// <summary>Lets the build go once it has reached the hold, failing unless it does: a start whose build never got
-        /// there was never held by it.</summary>
+        /// <summary>Waits for the build to reach the hold, failing unless it does: a start whose build never got there was
+        /// never held by it.</summary>
+        public void Reached() =>
+            Ui.PumpUntil(() => File.Exists(Path.Combine(folder, "held")), "the build to reach its hold", TimeSpan.FromMinutes(2));
+
+        /// <summary>Lets the build go once it has reached the hold.</summary>
         public void LetGo()
         {
-            Ui.PumpUntil(() => File.Exists(Path.Combine(folder, "held")), "the build to reach its hold", TimeSpan.FromMinutes(2));
+            Reached();
             Dispose();
         }
 
