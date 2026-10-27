@@ -1,3 +1,6 @@
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Avalonia;
@@ -2552,4 +2555,150 @@ public sealed class StandInAppHost : SharedProject
             ? JsonSerializer.Serialize(new { profiles = new { http = new { commandName = "Project", environmentVariables = environment } } })
             : JsonSerializer.Serialize(new { profiles = new { http = new { commandName = "Project", applicationUrl, environmentVariables = environment } } });
     }
+}
+
+/// <summary>What an AppHost's followed telemetry costs the IDE to read, counted across the process, so the class runs alone:
+/// the dashboard a stand-in on a socket of the test's own, writing envelopes made before they are counted.</summary>
+[Collection(Alone.Name)]
+public sealed class AspireTelemetryBytesTests(ITestOutputHelper testOutput)
+{
+    private const string Key = "dashboard-key-6f1c2a";
+    private const int Records = 200;
+
+    /// <summary>A followed stream's log records, each with its body, trace and span and the attributes .NET's logging gives
+    /// a request's end (its format, a status code, a time in milliseconds), headers with a credential in them, and every
+    /// tenth an exception's: an envelope of 200 costs the reader at most twice its JSON, least of six, and each log reads
+    /// as written, its credentials masked.</summary>
+    [Fact]
+    public async Task A_followed_streams_logs_cost_at_most_twice_their_JSON_to_read()
+    {
+        CancellationToken cancel = TestContext.Current.CancellationToken;
+        using TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+        Uri endpoint = new($"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/");
+        using SemaphoreSlim landed = new(0);
+        AspireLogBatch? last = null;
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+        Task watching = AspireTelemetry.WatchLogsAsync(endpoint, Key, batch =>
+        {
+            last = batch;
+            landed.Release();
+        }, stop.Token);
+        byte[][] envelopes = [.. Enumerable.Range(0, 6).Select(e => Encoding.UTF8.GetBytes(LogEnvelope(e) + "\n"))];
+        long least = await Measure(listener, "/api/telemetry/logs?follow=true", envelopes, landed, stop, watching);
+        Assert.Equal(Records, last!.Added.Count);
+        AspireStructuredLog log = last.Added[9];
+        Assert.Equal(("apiservice-1", "apiservice", "Request 5009 finished in 12.5 ms"), (log.ResourceName, log.ServiceName, log.Message));
+        Assert.Equal("••••••", log.Data.GetProperty("attributes").GetProperty("http.request.header.authorization").GetString());
+        Assert.Equal("Bearer ••••••", log.Data.GetProperty("attributes").GetProperty("Forwarded").GetString());
+        Assert.Equal("failed with ••••••", log.Data.GetProperty("exception").GetString());
+        Assert.Equal("200", log.Data.GetProperty("attributes").GetProperty("StatusCode").GetString());
+        Report("log", envelopes[0].Length - 1, least);
+    }
+
+    /// <summary>A followed stream's spans, ten to a trace, each with the attributes of an HTTP request and an event: an
+    /// envelope of 200 costs the reader at most twice its JSON, least of six, and each span reads as written.</summary>
+    [Fact]
+    public async Task A_followed_streams_spans_cost_at_most_twice_their_JSON_to_read()
+    {
+        CancellationToken cancel = TestContext.Current.CancellationToken;
+        using TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+        Uri endpoint = new($"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/");
+        using SemaphoreSlim landed = new(0);
+        IReadOnlyList<AspireTrace>? last = null;
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+        Task watching = AspireTelemetry.WatchTracesAsync(endpoint, Key, traces =>
+        {
+            last = traces;
+            landed.Release();
+        }, stop.Token);
+        byte[][] envelopes = [.. Enumerable.Range(0, 6).Select(e => Encoding.UTF8.GetBytes(SpanEnvelope(e) + "\n"))];
+        long least = await Measure(listener, "/api/telemetry/spans?follow=true", envelopes, landed, stop, watching);
+        AspireTrace trace = last!.First(t => t.TraceId == TraceId(5, 3));
+        Assert.Equal(10, trace.Spans.Count);
+        AspireSpan root = Assert.Single(trace.Spans, span => span.ParentSpanId is null);
+        Assert.Equal((SpanId(5, 3, 0), "apiservice-1", "apiservice"), (root.SpanId, root.Source, root.Service));
+        Assert.Equal("GET /orders/53", root.Data.GetProperty("name").GetString());
+        Assert.Equal("••••••", root.Data.GetProperty("attributes").GetProperty("db.password").GetString());
+        Report("span", envelopes[0].Length - 1, least);
+    }
+
+    /// <summary>The least the process allocated from writing an envelope to the reader's batch of it, its stream the
+    /// first connection's to the stand-in, the reader stopped before the connection ends.</summary>
+    private static async Task<long> Measure(TcpListener listener, string path, byte[][] envelopes, SemaphoreSlim landed, CancellationTokenSource stop, Task watching)
+    {
+        CancellationToken cancel = TestContext.Current.CancellationToken;
+        using TcpClient served = await listener.AcceptTcpClientAsync(cancel);
+        NetworkStream stream = served.GetStream();
+        byte[] head = new byte[8192];
+        int read = 0;
+        while (!Encoding.ASCII.GetString(head, 0, read).Contains("\r\n\r\n", StringComparison.Ordinal))
+        {
+            int more = await stream.ReadAsync(head.AsMemory(read), cancel);
+            Assert.True(more > 0, "The reader closed its connection before its request was whole");
+            read += more;
+        }
+        string request = Encoding.ASCII.GetString(head, 0, read);
+        Assert.StartsWith($"GET {path} HTTP/1.1", request, StringComparison.Ordinal);
+        Assert.Contains($"x-api-key: {Key}", request, StringComparison.OrdinalIgnoreCase);
+        await stream.WriteAsync("HTTP/1.1 200 OK\r\nContent-Type: application/x-ndjson\r\n\r\n"u8.ToArray(), cancel);
+        long least = long.MaxValue;
+        foreach (byte[] envelope in envelopes)
+        {
+            long before = GC.GetTotalAllocatedBytes(precise: true);
+            await stream.WriteAsync(envelope, cancel);
+            Assert.True(await landed.WaitAsync(TimeSpan.FromSeconds(30).Scaled(), cancel), "The reader did not hand over an envelope's records within 30 s");
+            least = Math.Min(least, GC.GetTotalAllocatedBytes(precise: true) - before);
+        }
+        stop.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => watching);
+        return least;
+    }
+
+    private void Report(string record, long json, long least)
+    {
+        testOutput.WriteLine($"{json:N0} bytes of JSON, {least:N0} allocated ({(double)least / json:0.00}×), {least / Records:N0} a {record}");
+        Assert.True(least <= json * 2,
+            $"Reading an envelope of {Records} {record}s of {json:N0} bytes of JSON allocated {least:N0} bytes ({(double)least / json:0.0}× its JSON): every {record} an app sends costs the IDE that much more memory");
+    }
+
+    private static string LogEnvelope(int envelope) =>
+        "{\"resourceLogs\":[{\"resource\":{\"attributes\":[{\"key\":\"service.name\",\"value\":{\"stringValue\":\"apiservice\"}},"
+        + "{\"key\":\"service.instance.id\",\"value\":{\"stringValue\":\"1\"}}]},\"scopeLogs\":[{\"scope\":{\"name\":\"Microsoft.AspNetCore.Hosting.Diagnostics\"},\"logRecords\":["
+        + string.Join(",", Enumerable.Range(0, Records).Select(i =>
+        {
+            int number = (envelope * 1000) + i;
+            string exception = i % 10 == 9 ? $",{{\"key\":\"exception.message\",\"value\":{{\"stringValue\":\"failed with {Key}\"}}}}" : string.Empty;
+            return $"{{\"timeUnixNano\":\"17600000000{number:D8}\",\"observedTimeUnixNano\":\"17600000000{number:D8}\",\"severityNumber\":9,\"severityText\":\"Information\","
+                + $"\"body\":{{\"stringValue\":\"Request {number:D4} finished in 12.5 ms\"}},\"attributes\":["
+                + "{\"key\":\"{OriginalFormat}\",\"value\":{\"stringValue\":\"Request {Number} finished in {ElapsedMilliseconds} ms\"}},"
+                + "{\"key\":\"ElapsedMilliseconds\",\"value\":{\"doubleValue\":12.5}},{\"key\":\"StatusCode\",\"value\":{\"intValue\":\"200\"}},"
+                + "{\"key\":\"http.request.header.authorization\",\"value\":{\"stringValue\":\"Bearer abc.def.ghi\"}},"
+                + "{\"key\":\"Forwarded\",\"value\":{\"stringValue\":\"Bearer abc.def.ghi\"}},"
+                + $"{{\"key\":\"Path\",\"value\":{{\"stringValue\":\"/orders/{number:D4}\"}}}}{exception}],\"flags\":1,"
+                + $"\"traceId\":\"{TraceId(envelope, i / 10)}\",\"spanId\":\"{SpanId(envelope, i / 10, i % 10)}\"}}";
+        }))
+        + "]}]}]}";
+
+    private static string SpanEnvelope(int envelope) =>
+        "{\"resourceSpans\":[{\"resource\":{\"attributes\":[{\"key\":\"service.name\",\"value\":{\"stringValue\":\"apiservice\"}},"
+        + "{\"key\":\"service.instance.id\",\"value\":{\"stringValue\":\"1\"}}]},\"scopeSpans\":[{\"scope\":{\"name\":\"Microsoft.AspNetCore\"},\"spans\":["
+        + string.Join(",", Enumerable.Range(0, Records).Select(i =>
+        {
+            int trace = i / 10, span = i % 10;
+            string parent = span == 0 ? string.Empty : $"\"parentSpanId\":\"{SpanId(envelope, trace, 0)}\",";
+            return $"{{\"traceId\":\"{TraceId(envelope, trace)}\",\"spanId\":\"{SpanId(envelope, trace, span)}\",{parent}\"name\":\"GET /orders/{envelope}{trace}\",\"kind\":2,"
+                + $"\"startTimeUnixNano\":\"17600000000{(envelope * 1000) + i:D8}\",\"endTimeUnixNano\":\"17600000001{(envelope * 1000) + i:D8}\",\"attributes\":["
+                + "{\"key\":\"http.request.method\",\"value\":{\"stringValue\":\"GET\"}},{\"key\":\"url.path\",\"value\":{\"stringValue\":\"/orders\"}},"
+                + "{\"key\":\"http.response.status_code\",\"value\":{\"intValue\":\"200\"}},{\"key\":\"server.address\",\"value\":{\"stringValue\":\"localhost\"}},"
+                + "{\"key\":\"server.port\",\"value\":{\"intValue\":\"5000\"}},{\"key\":\"db.password\",\"value\":{\"stringValue\":\"hunter2\"}}],"
+                + "\"events\":[{\"timeUnixNano\":\"1760000000500000000\",\"name\":\"retry\",\"attributes\":[{\"key\":\"attempt\",\"value\":{\"intValue\":\"1\"}}]}],"
+                + "\"status\":{\"code\":1},\"flags\":256}";
+        }))
+        + "]}]}]}";
+
+    private static string TraceId(int envelope, int trace) => $"{envelope:x4}{trace:x4}0af7651916cd43dd8448eb21";
+
+    private static string SpanId(int envelope, int trace, int span) => $"{envelope:x4}{trace:x4}{span:x4}b7ad";
 }

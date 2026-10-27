@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Net.Http;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using Passenger.App.Containers;
 
 namespace Passenger.App.Aspire;
@@ -29,26 +28,15 @@ public static class AspireTelemetry
         Action<AspireLogBatch> changed, CancellationToken cancel, bool follow = true, string? query = null)
     {
         ArgumentNullException.ThrowIfNull(changed);
+        AspireRecords records = new(dashboardApiKey);
         return ReadAsync(baseUri, dashboardApiKey, "logs", envelope =>
         {
             List<AspireStructuredLog> added = [];
             List<AspireStructuredLog> evicted = [];
-            foreach ((JsonElement row, string resource, string service) in Records(envelope, "resourceLogs", "scopeLogs", "logRecords"))
+            foreach ((JsonElement row, string resource, string service) in Records(records, envelope, "resourceLogs", "scopeLogs", "logRecords"))
             {
-                Dictionary<string, string?> attributes = Attributes(row);
-                (JsonElement data, int size) = Masked(new
-                {
-                    timestamp = Timestamp(row, "timeUnixNano"),
-                    severity = AspireJson.String(row, "severityText") ?? "Unknown",
-                    resourceName = resource,
-                    serviceName = service,
-                    message = row.TryGetProperty("body", out JsonElement body) ? AnyText(AnyValue(body)) : null,
-                    traceId = Identity(row, "traceId", 32, required: false),
-                    spanId = Identity(row, "spanId", 16, required: false),
-                    exception = attributes.GetValueOrDefault("exception.stacktrace") ?? attributes.GetValueOrDefault("exception.message"),
-                    attributes,
-                }, dashboardApiKey);
-                added.Add(logs.Add(data, resource, size, evicted));
+                (byte[] json, string resourceName, string serviceName) = records.Log(row, resource, service);
+                added.Add(logs.Add(json, resourceName, serviceName, resource, evicted));
             }
             changed(new AspireLogBatch(added, evicted));
         }, cancel, follow, query);
@@ -66,9 +54,10 @@ public static class AspireTelemetry
         public IReadOnlyList<AspireStructuredLog> Kept => Array.AsReadOnly(logs.Select(item => item.Log).ToArray());
 
         /// <summary>Keeps a log, the oldest past the bounds evicted into <paramref name="evicted"/>, oldest first.</summary>
-        public AspireStructuredLog Add(JsonElement data, string resource, int size, List<AspireStructuredLog> evicted)
+        public AspireStructuredLog Add(byte[] json, string resourceName, string serviceName, string resource, List<AspireStructuredLog> evicted)
         {
-            AspireStructuredLog log = new(data) { Sequence = ++heard };
+            AspireStructuredLog log = new(json, resourceName, serviceName) { Sequence = ++heard };
+            int size = json.Length;
             logs.Enqueue((log, resource, size));
             bytes += size;
             resources[resource] = resources.GetValueOrDefault(resource) + 1;
@@ -111,39 +100,26 @@ public static class AspireTelemetry
     {
         ArgumentNullException.ThrowIfNull(changed);
         RecentTraces traces = new();
+        AspireRecords records = new(dashboardApiKey);
         return ReadAsync(baseUri, dashboardApiKey, follow ? "spans" : requestedTraceId is null ? "traces" : $"traces/{requestedTraceId.ToLowerInvariant()}", envelope =>
         {
-            foreach ((JsonElement row, string resource, string service) in Records(envelope, "resourceSpans", "scopeSpans", "spans"))
+            Span<char> identity = stackalloc char[32];
+            foreach ((JsonElement row, string resource, string service) in Records(records, envelope, "resourceSpans", "scopeSpans", "spans"))
             {
-                string traceId = Identity(row, "traceId", 32, required: true)!;
-                string spanId = Identity(row, "spanId", 16, required: true)!;
-                ulong start = Nanoseconds(row, "startTimeUnixNano");
-                ulong end = Nanoseconds(row, "endTimeUnixNano");
+                string traceId = traces.Known(records.RequiredIdentity(row, "traceId", identity));
+                string spanId = new(records.RequiredIdentity(row, "spanId", identity[..16]));
+                ulong start = records.Nanoseconds(row, "startTimeUnixNano");
+                ulong end = records.Nanoseconds(row, "endTimeUnixNano");
                 if (end < start)
                 {
                     throw new InvalidDataException("Aspire telemetry returned a span ending before it starts.");
                 }
                 int status = row.TryGetProperty("status", out JsonElement statusData)
                     && statusData.TryGetProperty("code", out JsonElement code) && code.TryGetInt32(out int number) ? number : 0;
-                (JsonElement data, int size) = Masked(new
-                {
-                    traceId,
-                    spanId,
-                    parentSpanId = Identity(row, "parentSpanId", 16, required: false),
-                    name = AspireJson.String(row, "name"),
-                    source = resource,
-                    service,
-                    startTime = Timestamp(row, "startTimeUnixNano"),
-                    endTime = Timestamp(row, "endTimeUnixNano"),
-                    startTimeUnixNano = start.ToString(CultureInfo.InvariantCulture),
-                    endTimeUnixNano = end.ToString(CultureInfo.InvariantCulture),
-                    durationMs = (end - start) / 1_000_000d,
-                    status = status switch { 1 => "Ok", 2 => "Error", _ => "Unset" },
-                    attributes = Attributes(row),
-                    events = Optional(row, "events"),
-                    links = Optional(row, "links"),
-                }, dashboardApiKey);
-                traces.Add(traceId, new KeptSpan(new AspireSpan(data), spanId, resource, start, end, size, status == 2));
+                (byte[] json, string writtenSpanId, string? parentSpanId, string? name, string source, string writtenService) =
+                    records.Span(row, resource, service, traceId, spanId, start, end, status);
+                AspireSpan span = new(json, writtenSpanId, parentSpanId, name, source, writtenService);
+                traces.Add(traceId, new KeptSpan(span, spanId, resource, start, end, json.Length, status == 2));
             }
             changed(traces.Snapshot());
         }, cancel, follow, query);
@@ -165,10 +141,19 @@ public static class AspireTelemetry
         }
 
         private readonly Dictionary<string, Kept> traces = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, Kept>.AlternateLookup<ReadOnlySpan<char>> byChars;
         private readonly LinkedList<string> recent = new();
         private readonly Dictionary<string, int> sources = new(StringComparer.Ordinal);
         private int bytes;
         private int count;
+
+        public RecentTraces()
+        {
+            byChars = traces.GetAlternateLookup<ReadOnlySpan<char>>();
+        }
+
+        /// <summary>A trace's id as the trace kept has it, made a string only for a trace not kept.</summary>
+        public string Known(ReadOnlySpan<char> traceId) => byChars.TryGetValue(traceId, out string? kept, out _) ? kept : new string(traceId);
 
         public void Add(string traceId, KeptSpan span)
         {
@@ -231,18 +216,29 @@ public static class AspireTelemetry
         }
     }
 
-    private static AspireTrace Trace(string id, IEnumerable<KeptSpan> values)
+    private static AspireTrace Trace(string id, Dictionary<string, KeptSpan>.ValueCollection values)
     {
-        KeptSpan[] spans = values.OrderBy(span => span.Start).ThenBy(span => span.Id, StringComparer.Ordinal).ToArray();
-        ulong end = spans.Max(span => span.End);
-        AspireSpan root = spans.Select(span => span.Span).FirstOrDefault(span => span.ParentSpanId is null) ?? spans[0].Span;
+        KeptSpan[] spans = new KeptSpan[values.Count];
+        values.CopyTo(spans, 0);
+        Array.Sort(spans, static (one, other) => one.Start != other.Start ? one.Start.CompareTo(other.Start) : string.CompareOrdinal(one.Id, other.Id));
+        ulong end = 0;
+        bool failed = false;
+        AspireSpan? root = null;
+        AspireSpan[] kept = new AspireSpan[spans.Length];
+        for (int i = 0; i < spans.Length; i++)
+        {
+            end = Math.Max(end, spans[i].End);
+            failed |= spans[i].Failed;
+            kept[i] = spans[i].Span;
+            root ??= spans[i].Span.ParentSpanId is null ? spans[i].Span : null;
+        }
         return new AspireTrace(JsonSerializer.SerializeToElement(new
         {
             traceId = id,
-            title = AspireJson.String(root.Data, "name"),
+            title = (root ?? spans[0].Span).Name,
             durationMs = (end - spans[0].Start) / 1_000_000d,
-            hasError = spans.Any(span => span.Failed),
-        }), Array.AsReadOnly(spans.Select(span => span.Span).ToArray()));
+            hasError = failed,
+        }), Array.AsReadOnly(kept));
     }
 
     private static async Task ReadAsync(Uri baseUri, string apiKey, string kind, Action<JsonElement> receive, CancellationToken cancel,
@@ -386,51 +382,9 @@ public static class AspireTelemetry
         }
     }
 
-    /// <summary>A record as kept, its credentials masked, and its size in bytes, which its bounds count: made once, written once
-    /// and measured as written, never written again to be measured.</summary>
-    private static (JsonElement Data, int Bytes) Masked(object record, string apiKey)
-    {
-        JsonNode root = JsonSerializer.SerializeToNode(record)!;
-        Mask(root);
-        byte[] written = JsonSerializer.SerializeToUtf8Bytes(root);
-        Utf8JsonReader reader = new(written);
-        return (JsonElement.ParseValue(ref reader), written.Length);
-
-        void Mask(JsonNode? node)
-        {
-            if (node is JsonObject properties)
-            {
-                bool secretAttribute = properties["key"] is JsonValue key && key.TryGetValue(out string? name)
-                    && name is not null && ContainerSecrets.Secret(name);
-                foreach ((string field, JsonNode? value) in properties.ToArray())
-                {
-                    if (field != "key" && ContainerSecrets.Secret(field) || secretAttribute && field == "value")
-                    {
-                        properties[field] = ContainerSecrets.Masked;
-                    }
-                    else if (value is JsonValue text && text.TryGetValue(out string? content) && content is not null)
-                    {
-                        properties[field] = ContainerSecrets.InValue(content.Replace(apiKey, ContainerSecrets.Masked, StringComparison.Ordinal));
-                    }
-                    else
-                    {
-                        Mask(value);
-                    }
-                }
-            }
-            else if (node is JsonArray items)
-            {
-                foreach (JsonNode? item in items)
-                {
-                    Mask(item);
-                }
-            }
-        }
-    }
-
     /// <summary>Each record of an envelope with its resource as the dashboard names it (its service's name, then its instance
     /// after a dash) and its service's name alone, which a sibling's name with a dash in it can never be mistaken for.</summary>
-    private static IEnumerable<(JsonElement Row, string Resource, string Service)> Records(JsonElement envelope, string resources, string scopes, string records)
+    private static IEnumerable<(JsonElement Row, string Resource, string Service)> Records(AspireRecords reader, JsonElement envelope, string resources, string scopes, string records)
     {
         foreach (JsonElement group in AspireJson.Array(envelope, resources, required: true))
         {
@@ -438,7 +392,7 @@ public static class AspireTelemetry
             {
                 throw new InvalidDataException("Aspire telemetry omitted its OTLP resource.");
             }
-            Dictionary<string, string?> attributes = Attributes(resource);
+            Dictionary<string, string?> attributes = reader.Strings(resource);
             string name = attributes.GetValueOrDefault("service.name") ?? "unknown";
             string? instance = attributes.GetValueOrDefault("service.instance.id");
             string identity = string.IsNullOrEmpty(instance) ? name : $"{name}-{instance}";
@@ -459,131 +413,4 @@ public static class AspireTelemetry
             }
         }
     }
-
-    private static Dictionary<string, string?> Attributes(JsonElement row)
-    {
-        Dictionary<string, string?> result = new(StringComparer.Ordinal);
-        foreach (JsonElement item in AspireJson.Array(row, "attributes"))
-        {
-            string key = AspireJson.RequiredString(item, "key");
-            if (!item.TryGetProperty("value", out JsonElement value))
-            {
-                throw new InvalidDataException("Aspire telemetry omitted an attribute value.");
-            }
-            result[key] = ContainerSecrets.Secret(key) ? ContainerSecrets.Masked : AnyText(AnyValue(value));
-        }
-        return result;
-    }
-
-    private static string? AnyText(JsonNode? value) => value is JsonValue scalar && scalar.TryGetValue(out string? text)
-        ? text : value?.ToJsonString();
-
-    private static JsonNode? AnyValue(JsonElement value, int depth = 0)
-    {
-        if (value.ValueKind == JsonValueKind.Null)
-        {
-            return null;
-        }
-        if (depth >= 16)
-        {
-            throw new InvalidDataException("Aspire telemetry AnyValue nesting exceeded 16 levels.");
-        }
-        JsonProperty[] fields = AspireJson.Object(value).EnumerateObject().Where(field => field.Value.ValueKind != JsonValueKind.Null).ToArray();
-        if (fields.Length == 0)
-        {
-            return null;
-        }
-        if (fields.Length != 1)
-        {
-            throw new InvalidDataException("Aspire telemetry returned multiple AnyValue variants.");
-        }
-        JsonProperty field = fields[0];
-        switch (field.Name)
-        {
-            case "stringValue" or "bytesValue" when field.Value.ValueKind == JsonValueKind.String:
-                return JsonValue.Create(ContainerSecrets.InValue(field.Value.GetString()!));
-            case "boolValue" when field.Value.ValueKind is JsonValueKind.True or JsonValueKind.False:
-                return JsonValue.Create(field.Value.GetBoolean());
-            case "intValue" when field.Value.ValueKind == JsonValueKind.String
-                && long.TryParse(field.Value.GetString(), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out long integer):
-                return JsonValue.Create(integer);
-            case "intValue" when field.Value.ValueKind == JsonValueKind.Number && field.Value.TryGetInt64(out long numericInteger):
-                return JsonValue.Create(numericInteger);
-            case "doubleValue" when field.Value.ValueKind == JsonValueKind.Number && field.Value.TryGetDouble(out double number) && double.IsFinite(number):
-                return JsonValue.Create(number);
-            case "doubleValue" when field.Value.ValueKind == JsonValueKind.String && field.Value.GetString() is "NaN" or "Infinity" or "-Infinity":
-                return JsonValue.Create(field.Value.GetString());
-            case "arrayValue":
-            {
-                IReadOnlyList<JsonElement> items = AnyItems(field.Value);
-                JsonArray array = new();
-                foreach (JsonElement item in items)
-                {
-                    array.Add(AnyValue(item, depth + 1));
-                }
-                return array;
-            }
-            case "kvlistValue":
-            {
-                IReadOnlyList<JsonElement> items = AnyItems(field.Value);
-                JsonObject properties = new();
-                foreach (JsonElement item in items)
-                {
-                    string key = AspireJson.RequiredString(item, "key");
-                    if (!item.TryGetProperty("value", out JsonElement child))
-                    {
-                        throw new InvalidDataException("Aspire telemetry omitted an AnyValue attribute value.");
-                    }
-                    properties[key] = ContainerSecrets.Secret(key) ? JsonValue.Create(ContainerSecrets.Masked) : AnyValue(child, depth + 1);
-                }
-                return properties;
-            }
-            default:
-                throw new InvalidDataException("Aspire telemetry returned an invalid AnyValue variant.");
-        }
-    }
-
-    private static IReadOnlyList<JsonElement> AnyItems(JsonElement value)
-    {
-        IReadOnlyList<JsonElement> items = AspireJson.Array(value, "values");
-        if (items.Count > 1024)
-        {
-            throw new InvalidDataException("Aspire telemetry AnyValue collection exceeded 1024 entries.");
-        }
-        return items;
-    }
-
-    private static string? Identity(JsonElement row, string field, int length, bool required)
-    {
-        string? value = AspireJson.String(row, field);
-        if (!required && string.IsNullOrEmpty(value))
-        {
-            return null;
-        }
-        return value is not null && value.Length == length && value.All(Uri.IsHexDigit)
-            ? value.ToLowerInvariant() : throw new InvalidDataException("Aspire telemetry returned an invalid trace or span identity.");
-    }
-
-    private static ulong Nanoseconds(JsonElement row, string field)
-    {
-        if (row.TryGetProperty(field, out JsonElement value)
-            && (value.ValueKind == JsonValueKind.String && ulong.TryParse(value.GetString(), NumberStyles.None, CultureInfo.InvariantCulture, out ulong parsed)))
-        {
-            return parsed;
-        }
-        throw new InvalidDataException("Aspire telemetry returned an invalid nanosecond timestamp.");
-    }
-
-    private static string Timestamp(JsonElement row, string field)
-    {
-        ulong nanoseconds = Nanoseconds(row, field);
-        ulong ticks = nanoseconds / 100;
-        if (ticks > (ulong)(DateTimeOffset.MaxValue.Ticks - DateTimeOffset.UnixEpoch.Ticks))
-        {
-            throw new InvalidDataException("Aspire telemetry timestamp is outside the supported date range.");
-        }
-        return DateTimeOffset.UnixEpoch.AddTicks((long)ticks).ToString("O", CultureInfo.InvariantCulture);
-    }
-
-    private static JsonElement? Optional(JsonElement row, string field) => row.TryGetProperty(field, out JsonElement value) ? value : null;
 }

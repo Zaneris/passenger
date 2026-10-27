@@ -136,6 +136,9 @@ public static partial class ContainerSecrets
             ? $"{part.Groups["head"].Value}{Masked}" : part.Value);
     }
 
+    /// <summary>Whether <see cref="InValue"/> may mask something in a value; when not, it gives the value back as it is.</summary>
+    public static bool InValueMasks(ReadOnlySpan<char> value) => value.Length > 0 && MasksInValue(value);
+
     /// <summary>Whether <see cref="InValue"/> may mask something in a value: a Bearer's or Basic's credentials, a URL's
     /// password, or a connection string's part whose name is a secret's and whose value is not empty.</summary>
     private static bool MasksInValue(ReadOnlySpan<char> value)
