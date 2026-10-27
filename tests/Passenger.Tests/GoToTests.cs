@@ -194,6 +194,29 @@ public sealed class GoToTests : IClassFixture<GoToTests.Project>
         window.Close();
     }
 
+    /// <summary>Back from a declaration returns to the call Go to Declaration left, and Back again to the file shown
+    /// before the call's file opened; Forward goes the same way again.</summary>
+    [AvaloniaFact]
+    public void Back_after_go_to_declaration_returns_to_the_call_then_to_the_file_shown_before_and_forward_retraces_them()
+    {
+        MainWindow window = project.Open("Shapes.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        PlaceIn(editor, 28, "Label");
+        window.OpenFile(project.PathOf("Program.cs"));
+        Ui.Settle();
+        Ui.PlaceAfter(editor, "shape.Ar");
+        TextPosition call = editor.CaretPosition;
+        Ui.Press(window, Ui.Shortcut(AppActions.GoToDeclaration));
+        Ui.WaitFor(() => window.EditorArea.Active?.Name == "Shapes.cs", "Go to Declaration to open Square's Area");
+        TextPosition declaration = editor.CaretPosition;
+
+        Step(window, AppActions.Back, "Program.cs", call, "Back from the declaration");
+        Step(window, AppActions.Back, "Shapes.cs", new TextPosition(28, "class La".Length), "A second Back, to the file Program.cs was opened over,");
+        Step(window, AppActions.Forward, "Program.cs", call, "Forward after two Backs");
+        Step(window, AppActions.Forward, "Shapes.cs", declaration, "A second Forward");
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void Last_edit_location_steps_back_through_edits_in_two_files_and_recent_lists_show_only_what_was_edited()
     {
@@ -261,6 +284,15 @@ public sealed class GoToTests : IClassFixture<GoToTests.Project>
             Ui.Press(window, "DOWN");
         }
         Ui.Press(window, "ENTER");
+    }
+
+    /// <summary>Back or Forward by its keys, and the file and place it shows.</summary>
+    private static void Step(MainWindow window, string action, string file, TextPosition at, string what)
+    {
+        Ui.Press(window, Ui.Shortcut(action));
+        TextPosition caret = window.EditorArea.CodeEditor.CaretPosition;
+        Assert.True(window.EditorArea.Active?.Name == file && caret == at,
+            $"{what} showed {window.EditorArea.Active?.Name} at {caret.Line + 1}:{caret.Column + 1}, not {file} at {at.Line + 1}:{at.Column + 1}");
     }
 
     /// <summary>The caret inside a name on a line, past its first two letters.</summary>

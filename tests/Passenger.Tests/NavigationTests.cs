@@ -5,6 +5,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.Editors;
 using Passenger.Editor;
 using Passenger.Text;
 
@@ -360,7 +361,145 @@ public sealed class NavigationTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Back and Forward step through the files opened one after another from the Explorer, each at the caret it
+    /// was left at, as they do through the places a navigation left.</summary>
+    [AvaloniaFact]
+    public void Back_and_forward_step_through_the_files_opened_from_the_explorer_each_at_its_caret()
+    {
+        WriteFiles("A.cs", "B.cs", "C.cs");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        FromExplorer(window, "A.cs");
+        Down(window, 2);
+        FromExplorer(window, "B.cs");
+        Down(window, 5);
+        FromExplorer(window, "C.cs");
+        Down(window, 7);
+
+        Step(window, AppActions.Back, "B.cs", 5, "Back from C.cs, opened from the Explorer after B.cs,");
+        Step(window, AppActions.Back, "A.cs", 2, "A second Back");
+        Step(window, AppActions.Forward, "B.cs", 5, "Forward after two Backs");
+        Step(window, AppActions.Forward, "C.cs", 7, "A second Forward");
+        window.Close();
+    }
+
+    /// <summary>A click on a tab leaves the file shown for Back as a navigation does; a file left again keeps one place
+    /// behind, where it was left last.</summary>
+    [AvaloniaFact]
+    public void Back_and_forward_step_through_the_files_shown_by_a_click_on_their_tabs_each_once()
+    {
+        WriteFiles("A.cs", "B.cs", "C.cs");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        window.OpenFile("A.cs");
+        window.OpenFile("B.cs");
+        window.OpenFile("C.cs");
+        Ui.Settle();
+        ClickTab(window, "A.cs");
+        Down(window, 3);
+        ClickTab(window, "B.cs");
+        Down(window, 6);
+
+        Step(window, AppActions.Back, "A.cs", 3, "Back after a click on A.cs's tab, then on B.cs's,");
+        Step(window, AppActions.Back, "C.cs", 0, "A second Back, to the file A.cs's tab was clicked from,");
+        Step(window, AppActions.Back, "B.cs", 0, "A third Back, to B.cs as C.cs opened over it,");
+        Step(window, AppActions.Back, "B.cs", 0, "A fourth Back, past A.cs left twice and kept once,");
+        Step(window, AppActions.Forward, "C.cs", 0, "Forward after the Backs");
+        Step(window, AppActions.Forward, "A.cs", 3, "A second Forward");
+        Step(window, AppActions.Forward, "B.cs", 6, "A third Forward");
+        window.Close();
+    }
+
+    /// <summary>A tab closed puts nothing behind, so Back never opens the file just closed, while a file closed after it
+    /// was left for another opens again at its place.</summary>
+    [AvaloniaFact]
+    public void Back_passes_a_tab_just_closed_by_and_opens_again_a_file_closed_after_it_was_left()
+    {
+        WriteFiles("A.cs", "B.cs", "C.cs");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        window.OpenFile("A.cs");
+        Ui.Settle();
+        Down(window, 4);
+        window.OpenFile("B.cs");
+        window.OpenFile("C.cs");
+        Ui.Settle();
+        Ui.Run(window, AppActions.CloseTab);
+        Assert.Equal("B.cs", window.EditorArea.Active?.Name);
+        Step(window, AppActions.Back, "A.cs", 4, "Back after C.cs's tab closed and showed B.cs");
+
+        ClickTab(window, "B.cs");
+        ClickTab(window, "A.cs");
+        Ui.Run(window, AppActions.CloseTab);
+        Assert.True(window.EditorArea.Active?.Name == "B.cs" && window.EditorArea.Documents.All(d => d.Name != "A.cs"), "Close Tab on A.cs left it open");
+        Step(window, AppActions.Back, "A.cs", 4, "Back after A.cs, left for B.cs, was shown again and closed,");
+        window.Close();
+    }
+
+    /// <summary>A click in the split beside leaves the file of the split worked in for Back.</summary>
+    [AvaloniaFact]
+    public void Back_returns_to_the_file_left_by_a_click_in_the_split_beside()
+    {
+        WriteFiles("A.cs", "B.cs");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        window.OpenFile("A.cs");
+        Ui.Settle();
+        EditorGroup left = window.EditorArea.ActiveGroup;
+        Assert.True(window.Perform(AppActions.SplitRight));
+        window.OpenFile("B.cs");
+        Ui.Settle();
+        Down(window, 5);
+        Ui.Click(left.Editor);
+        Assert.True(window.EditorArea.ActiveGroup == left && window.EditorArea.Active?.Name == "A.cs", "A click in the left split did not make its A.cs the file worked in");
+        int clicked = window.EditorArea.CodeEditor.CaretPosition.Line;
+
+        Step(window, AppActions.Back, "B.cs", 5, "Back after a click in the left split's A.cs");
+        Step(window, AppActions.Forward, "A.cs", clicked, "Forward from B.cs");
+        window.Close();
+    }
+
     private void Write(string relative, string text) => TestFolders.Write(folder, relative, text);
+
+    /// <summary>Files of ten numbered lines each, none a comment, so none folds.</summary>
+    private void WriteFiles(params string[] names)
+    {
+        foreach (string name in names)
+        {
+            Write(name, string.Join('\n', Enumerable.Range(1, 10).Select(i => $"int line{i} = {i};")));
+        }
+    }
+
+    /// <summary>A file opened by a double-click on its row in the Explorer, the keys then in its editor.</summary>
+    private static void FromExplorer(MainWindow window, string name)
+    {
+        Ui.DoubleClick(Ui.Row(window.ExplorerView, window.ExplorerView.Tree.Rows.First(r => r.Name == name)));
+        Assert.True(window.EditorArea.Active?.Name == name, $"A double-click on {name} in the Explorer showed {window.EditorArea.Active?.Name}");
+    }
+
+    private static void ClickTab(MainWindow window, string name)
+    {
+        Ui.Click(window.EditorArea.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == name && t.Classes.Contains("tabName")));
+        Assert.True(window.EditorArea.Active?.Name == name, $"A click on {name}'s tab showed {window.EditorArea.Active?.Name}");
+    }
+
+    /// <summary>The caret moved down some lines by the Down key, in the file shown.</summary>
+    private static void Down(MainWindow window, int lines)
+    {
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Assert.True(editor.IsKeyboardFocusWithin, $"The keys are not in {window.EditorArea.Active?.Name}'s editor");
+        int from = editor.CaretPosition.Line;
+        for (int i = 0; i < lines; i++)
+        {
+            Ui.Press(window, "DOWN");
+        }
+        Assert.True(editor.CaretPosition.Line == from + lines, $"Down {lines} times in {window.EditorArea.Active?.Name} moved its caret from line {from + 1} to {editor.CaretPosition.Line + 1}");
+    }
+
+    /// <summary>Back or Forward by its keys, and the file and line it shows.</summary>
+    private static void Step(MainWindow window, string action, string file, int line, string what)
+    {
+        Ui.Press(window, Ui.Shortcut(action));
+        TextPosition caret = window.EditorArea.CodeEditor.CaretPosition;
+        Assert.True(window.EditorArea.Active?.Name == file && caret.Line == line,
+            $"{what} showed {window.EditorArea.Active?.Name} at line {caret.Line + 1}, not {file} at line {line + 1}");
+    }
 
     private MainWindow Open() => Ui.OpenFolder(folder);
 }
