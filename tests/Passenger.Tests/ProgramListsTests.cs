@@ -88,6 +88,7 @@ public sealed class ProgramListsTests : IClassFixture<ProgramListsTests.Lots>
                     Assert.True(opened is not null, $"The snapshot of {count} methods did not open: {window.Status}");
                     view.ShowPage(page);
                     Ui.Settle();
+                    TestContext.Current.TestOutputHelper?.WriteLine($"{list} listed {listed()} of the {count} {items} the program made");
                     Assert.True(listed() >= count / 2, $"{list} listed {listed()} of the {count} {items} the program made");
                     return (view.GetVisualDescendants().OfType<ListBox>().Single(l => l.IsEffectivelyVisible && which(l)), () => { });
                 });
@@ -136,8 +137,8 @@ public sealed class ProgramListsTests : IClassFixture<ProgramListsTests.Lots>
     }
 
     /// <summary>A program of long lists, chosen by its arguments: "fields" makes an object of a hundred fields and one of a
-    /// thousand and writes them, where a breakpoint stops it; "calls N" calls N of its thousand methods, each spinning a few
-    /// milliseconds in its own body and making objects of a type of its own; "holds" keeps a hundred objects of one type and
+    /// thousand and writes them, where a breakpoint stops it; "calls N" calls N of its thousand methods, each spinning some
+    /// ten milliseconds in its own body and making objects of a type of its own; "holds" keeps a hundred objects of one type and
     /// a thousand of another, says it is ready and waits on its input.</summary>
     public sealed class Lots : SharedProject
     {
@@ -212,7 +213,7 @@ public sealed class ProgramListsTests : IClassFixture<ProgramListsTests.Lots>
             {
                 // 380 KB of its own type, then its own arithmetic, calling nothing, so samples land in its body.
                 text.Append(CultureInfo.InvariantCulture, $"    [MethodImpl(MethodImplOptions.NoInlining)] private static long M{i}() {{ for (int i = 0; i < 8000; i++) {{ kept[i & 15] = new Made{i}(); }} ")
-                    .Append("long spun = 0; for (long i = 0; i < 4_000_000; i++) { spun += (i * 31) ^ (spun >> 3); } return spun; }\n");
+                    .Append("long spun = 0; for (long i = 0; i < 12_000_000; i++) { spun += (i * 31) ^ (spun >> 3); } return spun; }\n");
             }
             text.Append("}\n\n");
             for (int i = 0; i < Methods; i++)

@@ -10,6 +10,12 @@ that fixed it, in one of the forms below. A failure not yet understood goes in o
 
 ## 2026-10-27
 
+- `ProgramListsTests`' profile of a thousand methods, macOS shard 4 of Release run 40562976386: "The profiler's call
+  tree listed 493 of the 1000 methods the program made", under the half the list's measure needs. Each method spun some
+  4 ms, and the runtime's sampler on a loaded 3-processor runner woke late enough to miss over half of them; this Mac
+  at background QoS beside 10 CPU burners listed 704. Not the IDE's: the runtime writes the trace itself, so no reader
+  dropped samples. **The test**: each method spins three times as long, and every list is whole there again (1000 of
+  1000); the test says what each list held (in this commit).
 - `IdeErrorsTests`' `A_language_server_that_ends_just_as_it_starts_is_started_again`, the Mac in three processes beside
   AspireStandInTests and TestingPlatformTests: "Waited 135 s for the server started again to be ended as its start
   came back". The test's feed held the window's thread from the projects' answer and read the restarted server's
