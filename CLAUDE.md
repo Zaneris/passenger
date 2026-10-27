@@ -346,7 +346,7 @@ nuget.org (local feeds: `AvaloniaApp.Feed`, `StandInFeed`, and the restore-only 
 that fill the package cache), GitHub (`PASSENGER_RELEASES` dead), registries (`PASSENGER_BUILDKIT_CHECKS=off`), Docker Hub,
 symbol servers, Discord, or the person's Passenger (`PASSENGER_START=headless`). It shortens `PASSENGER_EVAL_TIMEOUT_MS`
 (3 s), `PASSENGER_WATCH_LATER_MS` (3 s), `PASSENGER_MCP_PROGRESS_MS` (1 s) and `PASSENGER_REGEX_TIMEOUT_MS` (1 s); a test holding a server to not answering
-sets that server's limits, never the run's. After each window test its windows close and what they started is waited out
+sets that server's limits, never the run's. After each window test its windows close (those it closed itself too) and what they started is waited out
 (`TestsLeaveNothingBehind`). A plain `[Fact]` using `HeadlessUnitTestSession.Dispatch` must not end on the session's
 thread (`await Task.Yield()` before throwing). A sleeping Mac fails tests: full runs go under `caffeinate -is`.
 

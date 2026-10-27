@@ -10,6 +10,13 @@ that fixed it, in one of the forms below. A failure not yet understood goes in o
 
 ## 2026-10-27
 
+- `AspireStandInTests`, Windows shard 2 of Release run 40574842088: the eight tests after the one whose AppHost runs an
+  Avalonia app failed in 0.2 s at `SharedProject.Reset`, "Access to the path 'Avalonia.Base.dll' is denied"; the ninth,
+  0.2 s later, passed. The app was killed as its window closed, but TestsLeaveNothingBehind waited out only windows a
+  test left open, so the next reset deleted the folder while the dying app still mapped its DLL. **The test rig**: it
+  waits for the end of every IDE window a test closed itself. Its new test found **a bug in the IDE** too: a language
+  server that answers nothing ran on after its window closed, its shutdown's limit cancelling a request that waits for
+  the server's answer; the shutdown is given up at its limit (35fadc92).
 - `LiveRequestsTests`' requests window over the running shop, Windows shard 3 of Release run 40574842088: "A value of the
   Password column shows in the clear, or not as dots: GET /orders/{id:int}: lambda (Shop: http)". A Requests row view
   holds a request's line and a command's and shows one; the list handed a sign-up command the row of the first request
