@@ -94,7 +94,7 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
         host = started;
         started.OutputDataReceived += (_, e) => log.Heard(e.Data);
         started.ErrorDataReceived += (_, e) => log.Heard(e.Data);
-        started.Exited += (_, _) => UiThread.Post(() => Ended(started));
+        HearEnd(started, () => Ended(started));
         started.BeginOutputReadLine();
         started.BeginErrorReadLine();
         starting = Stopwatch.StartNew();
@@ -227,6 +227,25 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
             return $"{details.ExceptionType}: {message}{XamlPreview.Where(sent, details.LineNumber, details.LinePosition)}";
         }
         return result.Error.Split('\n')[0].Trim();
+    }
+
+    /// <summary>Has <paramref name="ended"/> run once on the window's thread after a previewer's process ends, an end
+    /// before this listened too: a process raises Exited once, and one that died as it started may have raised it already.</summary>
+    internal static void HearEnd(Process started, Action ended)
+    {
+        int heard = 0;
+        void Heard()
+        {
+            if (Interlocked.Exchange(ref heard, 1) == 0)
+            {
+                UiThread.Post(ended);
+            }
+        }
+        started.Exited += (_, _) => Heard();
+        if (started.HasExited)
+        {
+            Heard();
+        }
     }
 
     private void Ended(Process process)

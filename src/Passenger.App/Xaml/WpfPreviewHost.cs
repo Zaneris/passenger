@@ -131,7 +131,7 @@ internal sealed class WpfPreviewHost : IPreviewHost
         }
         process = started;
         started.ErrorDataReceived += (_, e) => log.Heard(e.Data);
-        started.Exited += (_, _) => UiThread.Post(() => Ended(started));
+        AvaloniaPreviewHost.HearEnd(started, () => Ended(started));
         started.BeginErrorReadLine();
         starting = Stopwatch.StartNew();
         // Long-lived readers of the previewer's streams: each answer holds the window's work itself (UiThread.Post).
