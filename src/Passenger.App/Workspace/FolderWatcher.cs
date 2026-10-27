@@ -30,7 +30,7 @@ public sealed record FolderChanges(IReadOnlySet<string> Paths, bool Structure, b
 /// <c>dotnet new</c>). Changes are gathered for a moment and handed over together on the UI thread, as background work.
 /// Build output, dependencies and Git's folder are passed over, except Git's HEAD, index and refs and a restore's
 /// assets; where each folder is watched on its own (Linux), they are never watched at all but for Git's and each obj
-/// itself, and a folder made later is watched as it appears.</summary>
+/// itself, and a folder made later is watched as it appears, what was written in it before then taken as made with it.</summary>
 public sealed class FolderWatcher : IDisposable
 {
     private static readonly TimeSpan Gather = TimeSpan.FromMilliseconds(150);
@@ -157,13 +157,13 @@ public sealed class FolderWatcher : IDisposable
             // Deleted since it was seen.
             return false;
         }
-        watcher.Created += (_, e) => OnCreated(e.FullPath);
+        watcher.Created += (_, e) => OnCreated(e.FullPath, made: true);
         watcher.Deleted += (_, e) => OnDeleted(e.FullPath);
         watcher.Changed += (_, e) => Note(e.FullPath, created: false);
         watcher.Renamed += (_, e) =>
         {
             OnDeleted(e.OldFullPath);
-            OnCreated(e.FullPath);
+            OnCreated(e.FullPath, made: false);
         };
         watcher.Error += (_, e) => OnError(watcher, e.GetException());
         lock (gate)
@@ -186,12 +186,20 @@ public sealed class FolderWatcher : IDisposable
         return true;
     }
 
-    private void OnCreated(string path)
+    /// <summary>A file or folder come, <paramref name="made"/> there or moved in. Where each folder is watched on its own,
+    /// a folder is watched from now on, so the files already written in one made (with it at once, as <c>dotnet new -o</c>
+    /// and an agent write them) are taken as made too, as one watch over the tree hears them; one moved in is itself alone.</summary>
+    private void OnCreated(string path, bool made)
     {
         if (watching.EachFolder && Kept(path) && Directory.Exists(path))
         {
             Follow(() =>
             {
+                if (made)
+                {
+                    WatchFrom(path, file => Note(file, created: true));
+                    return;
+                }
                 WatchFrom(path);
                 // A restore that made obj (or artifacts) may have written its assets before the folder was watched.
                 foreach (string assets in AssetsIn(path))
@@ -289,9 +297,10 @@ public sealed class FolderWatcher : IDisposable
         });
     }
 
-    /// <summary>Watches a kept folder and the kept folders under it, each before what is in it is read, so a folder made
-    /// meanwhile is either read here or heard of from the folder above it.</summary>
-    private void WatchFrom(string top)
+    /// <summary>Watches a kept folder and the kept folders under it, each before what is in it is read, so a folder or file
+    /// made meanwhile is either read here or heard of from its own folder; each file in them is given to <paramref
+    /// name="found"/>.</summary>
+    private void WatchFrom(string top, Action<string>? found = null)
     {
         Stack<string> folders = new([top]);
         while (folders.Count > 0)
@@ -309,6 +318,13 @@ public sealed class FolderWatcher : IDisposable
                     if (child.LinkTarget is null && Kept(child.FullName))
                     {
                         folders.Push(child.FullName);
+                    }
+                }
+                if (found is not null)
+                {
+                    foreach (string file in Directory.EnumerateFiles(at))
+                    {
+                        found(file);
                     }
                 }
             }

@@ -695,6 +695,25 @@ public sealed class FolderWatchTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A project and a program each written with its folder at once (as <c>dotnet new -o</c> and an agent write
+    /// them) are the folder's, each with its run configuration, watched the system's way and as on Linux, each folder on
+    /// its own, whose watch on a new folder begins only once the files are written in it.</summary>
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_project_and_a_program_written_each_with_its_folder_are_found_with_their_run_configurations(bool asOnLinux)
+    {
+        Write("App/App.csproj", Project);
+        MainWindow window = Open(asOnLinux ? FolderWatching.Inotify : FolderWatching.Platform, languageServer: false);
+        Assert.Equal(["App"], window.Configurations.Select(c => c.Name));
+
+        Write("Tool/Tool.csproj", Project);
+        Write("scripts/hello.cs", "#:property PublishAot=false\nConsole.WriteLine(\"hello\");\n");
+        Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "Tool") && window.Configurations.Any(c => c.Name == "hello"),
+            () => $"Tool.csproj and hello.cs, written with their folders, to have run configurations; there are {string.Join(", ", window.Configurations.Select(c => c.Name))}");
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void A_folders_sln_and_slnx_listing_different_projects_give_the_explorer_and_the_language_server_the_same_one()
     {
