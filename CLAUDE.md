@@ -150,7 +150,8 @@ Projects in `src/`; `find_symbol` finds the rest:
 - `Passenger.Core`: what everything shares, no UI: `ChildProcesses` (`StartAsync` forks off the UI thread: a fork costs a
   large process tens of ms), `Dotnet`/`Programs`/`ShellEnvironment` (tools found as the login shell would), `PathNames`,
   `AtomicFile`, `SocketFolders` (every Unix socket), `InFlight`, `BackgroundWork`, `Product` (the one place the version
-  is read), `PassengerLog` (below the App, never `IdeLog`), `UnawaitedWork`.
+  is read), `PassengerLog` (below the App, never `IdeLog`), `UnawaitedWork`, `Utf8Lines` and `PooledBytes` (a peer's
+  lines read and messages written as pooled bytes).
 - `Passenger.Text`: the rope (every version a thread-safe snapshot), `TextDocument`, every editing command as a pure
   function to an `EditPlan`, `FuzzyMatch` (allocates nothing), `FileText`, and anchors (`AnchorAt`/`RangeAt`/`MarkAt`,
   `AnchoredList`; moved before `Changed`, each handler isolated): hold a place in the text with one, never your own
