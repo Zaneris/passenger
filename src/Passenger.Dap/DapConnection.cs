@@ -1,7 +1,7 @@
-using System.Globalization;
+using System.Buffers;
+using System.Buffers.Text;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using System.Threading.Channels;
 using Passenger.Core;
 
@@ -33,6 +33,11 @@ public sealed class DapConnection : IAsyncDisposable
     private readonly Stream output;
     private readonly Action<string>? log;
     private readonly Lock writeGate = new();
+
+    /// <summary>The message being written, under <see cref="writeGate"/>: its envelope and its body serialized straight into
+    /// one pooled buffer.</summary>
+    private readonly PooledBytes writing = new();
+    private Utf8JsonWriter? writer;
 
     /// <summary>The requests sent and not yet answered, each by its command; every message's sequence number is counted here.</summary>
     private readonly PendingRequests<string, JsonElement> pending = new();
@@ -126,23 +131,13 @@ public sealed class DapConnection : IAsyncDisposable
         {
             return Task.FromException<JsonElement>(closed);
         }
-        JsonObject message = new()
-        {
-            ["seq"] = seq,
-            ["type"] = "request",
-            ["command"] = command,
-        };
-        if (arguments is not null)
-        {
-            message["arguments"] = JsonSerializer.SerializeToNode(arguments, arguments.GetType(), Options);
-        }
         if (cancellation.CanBeCanceled)
         {
             cancellation.Register(() => pending.Forget(seq, answer, cancellation));
         }
         try
         {
-            Write(message);
+            Write(new Envelope(seq, "request"u8, Command: command), "arguments"u8, arguments);
         }
         catch (Exception error) when (error is IOException or ObjectDisposedException)
         {
@@ -151,20 +146,7 @@ public sealed class DapConnection : IAsyncDisposable
         return answer;
     }
 
-    public void SendEvent(string name, object? body = null)
-    {
-        JsonObject message = new()
-        {
-            ["seq"] = pending.NextId(),
-            ["type"] = "event",
-            ["event"] = name,
-        };
-        if (body is not null)
-        {
-            message["body"] = JsonSerializer.SerializeToNode(body, body.GetType(), Options);
-        }
-        Write(message);
-    }
+    public void SendEvent(string name, object? body = null) => Write(new Envelope(pending.NextId(), "event"u8, Event: name), "body"u8, body);
 
     public async ValueTask DisposeAsync()
     {
@@ -209,24 +191,74 @@ public sealed class DapConnection : IAsyncDisposable
         }
     }
 
-    private void Write(JsonObject message)
+    /// <summary>A message's fields but its body, in the order they are written.</summary>
+    private readonly ref struct Envelope(int seq, ReadOnlySpan<byte> type, int? RequestSeq = null, string? Command = null, string? Event = null,
+        bool? Success = null, string? Message = null)
     {
-        string json = message.ToJsonString(Options);
-        byte[] body = Encoding.UTF8.GetBytes(json);
-        byte[] header = Encoding.ASCII.GetBytes(string.Create(CultureInfo.InvariantCulture, $"Content-Length: {body.Length}\r\n\r\n"));
+        public int Seq { get; } = seq;
+        public ReadOnlySpan<byte> Type { get; } = type;
+        public int? RequestSeq { get; } = RequestSeq;
+        public string? Command { get; } = Command;
+        public string? Event { get; } = Event;
+        public bool? Success { get; } = Success;
+        public string? Message { get; } = Message;
+    }
+
+    /// <summary>Writes one message: its envelope, then its body (or arguments) serialized straight after it into the same
+    /// pooled buffer, and its header formatted on the stack. Nothing is sent of a message that does not serialize.</summary>
+    private void Write(Envelope envelope, ReadOnlySpan<byte> bodyName, object? body)
+    {
         lock (writeGate)
         {
+            writing.Clear();
+            Utf8JsonWriter json = writer ??= new Utf8JsonWriter(writing, new JsonWriterOptions { Encoder = Options.Encoder });
+            json.Reset(writing);
+            json.WriteStartObject();
+            json.WriteNumber("seq"u8, envelope.Seq);
+            json.WriteString("type"u8, envelope.Type);
+            if (envelope.RequestSeq is { } requestSeq)
+            {
+                json.WriteNumber("request_seq"u8, requestSeq);
+            }
+            if (envelope.Command is { } command)
+            {
+                json.WriteString("command"u8, command);
+            }
+            if (envelope.Event is { } name)
+            {
+                json.WriteString("event"u8, name);
+            }
+            if (envelope.Success is { } success)
+            {
+                json.WriteBoolean("success"u8, success);
+            }
+            if (envelope.Message is { } message)
+            {
+                json.WriteString("message"u8, message);
+            }
+            if (body is not null)
+            {
+                json.WritePropertyName(bodyName);
+                JsonSerializer.Serialize(json, body, body.GetType(), Options);
+            }
+            json.WriteEndObject();
+            json.Flush();
+            ReadOnlySpan<byte> written = writing.Written;
+            Span<byte> header = stackalloc byte[40];
+            "Content-Length: "u8.CopyTo(header);
+            Utf8Formatter.TryFormat(written.Length, header[16..], out int digits);
+            "\r\n\r\n"u8.CopyTo(header[(16 + digits)..]);
             // Under the gate, so the trace has the messages in the order they went.
-            Trace?.Invoke(Name, $"--> {json}");
-            output.Write(header);
-            output.Write(body);
+            Trace?.Invoke(Name, $"--> {Encoding.UTF8.GetString(written)}");
+            output.Write(header[..(20 + digits)]);
+            output.Write(written);
             output.Flush();
         }
     }
 
     private async Task ReadAsync()
     {
-        byte[] buffer = new byte[UsualBuffer];
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(UsualBuffer);
         int filled = 0;
         try
         {
@@ -241,7 +273,7 @@ public sealed class DapConnection : IAsyncDisposable
                     }
                     if (filled == buffer.Length)
                     {
-                        Array.Resize(ref buffer, buffer.Length * 2);
+                        buffer = Grown(buffer, filled, buffer.Length * 2);
                     }
                     int read = await input.ReadAsync(buffer.AsMemory(filled), stopping.Token).ConfigureAwait(false);
                     if (read == 0)
@@ -255,7 +287,7 @@ public sealed class DapConnection : IAsyncDisposable
                 {
                     throw new IOException($"A DAP message's header ran past {MostHeader} bytes without the blank line that ends it");
                 }
-                long length = ContentLength(Encoding.ASCII.GetString(buffer, 0, headerEnd));
+                long length = ContentLength(buffer.AsSpan(0, headerEnd));
                 if (length > MostBody)
                 {
                     throw new IOException($"A DAP message of {length} bytes is over the {MostBody} bytes the connection reads of one");
@@ -264,7 +296,7 @@ public sealed class DapConnection : IAsyncDisposable
                 int size = (int)length;
                 if (buffer.Length < start + size)
                 {
-                    Array.Resize(ref buffer, start + size);
+                    buffer = Grown(buffer, filled, start + size);
                 }
                 while (filled < start + size)
                 {
@@ -276,14 +308,20 @@ public sealed class DapConnection : IAsyncDisposable
                     filled += read;
                 }
                 Trace?.Invoke(Name, $"<-- {Encoding.UTF8.GetString(buffer, start, size)}");
-                // Parsed from a copy: a document reads the memory it is given, and the buffer is reused.
-                JsonElement message = JsonDocument.Parse(buffer.AsSpan(start, size).ToArray()).RootElement;
+                // Read in place, its document's room pooled: what outlives the buffer, reused, is copied out of it (Receive).
+                using (JsonDocument message = JsonDocument.Parse(buffer.AsMemory(start, size)))
+                {
+                    Receive(message.RootElement);
+                }
                 // What came after it moves to the front, into a buffer of the usual size again when it had grown for a large one.
-                byte[] next = buffer.Length > UsualBuffer && filled - start - size <= UsualBuffer ? new byte[UsualBuffer] : buffer;
+                byte[] next = buffer.Length > UsualBuffer && filled - start - size <= UsualBuffer ? ArrayPool<byte>.Shared.Rent(UsualBuffer) : buffer;
                 buffer.AsSpan(start + size, filled - start - size).CopyTo(next);
+                if (next != buffer)
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                }
                 buffer = next;
                 filled -= start + size;
-                Receive(message);
             }
         }
         catch (OperationCanceledException) when (stopping.IsCancellationRequested)
@@ -302,27 +340,38 @@ public sealed class DapConnection : IAsyncDisposable
         }
     }
 
+    /// <summary>A larger buffer from the pool holding what this one was filled with, this one given back.</summary>
+    private static byte[] Grown(byte[] buffer, int filled, int size)
+    {
+        byte[] grown = ArrayPool<byte>.Shared.Rent(size);
+        buffer.AsSpan(0, filled).CopyTo(grown);
+        ArrayPool<byte>.Shared.Return(buffer);
+        return grown;
+    }
+
     /// <summary>A header's Content-Length, read as a long, so a length too large for the buffer is refused by its size rather
     /// than taken for no length; one larger still than a long is over every limit.</summary>
-    private static long ContentLength(string header)
+    private static long ContentLength(ReadOnlySpan<byte> header)
     {
-        foreach (string line in header.Split("\r\n"))
+        ReadOnlySpan<byte> lines = header;
+        while (lines.Length > 0)
         {
-            int colon = line.IndexOf(':', StringComparison.Ordinal);
-            if (colon > 0 && line.AsSpan(0, colon).Trim().Equals("Content-Length", StringComparison.OrdinalIgnoreCase))
+            int next = lines.IndexOf("\r\n"u8);
+            ReadOnlySpan<byte> line = next < 0 ? lines : lines[..next];
+            lines = next < 0 ? [] : lines[(next + 2)..];
+            int colon = line.IndexOf((byte)':');
+            if (colon > 0 && Ascii.EqualsIgnoreCase(line[..colon][Ascii.Trim(line[..colon])], "Content-Length"u8))
             {
-                ReadOnlySpan<char> value = line.AsSpan(colon + 1).Trim();
-                if (long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out long length))
+                ReadOnlySpan<byte> value = line[(colon + 1)..];
+                value = value[Ascii.Trim(value)];
+                if (value.Length > 0 && !value.ContainsAnyExceptInRange((byte)'0', (byte)'9'))
                 {
-                    return length;
-                }
-                if (value.Length > 0 && !value.ContainsAnyExceptInRange('0', '9'))
-                {
-                    return long.MaxValue;
+                    return Utf8Parser.TryParse(value, out long length, out int read) && read == value.Length ? length : long.MaxValue;
                 }
             }
         }
-        throw new IOException($"A DAP message with no Content-Length: '{(header.Length > 200 ? header[..200] + "…" : header)}'");
+        string shown = Encoding.ASCII.GetString(header[..Math.Min(header.Length, 200)]);
+        throw new IOException($"A DAP message with no Content-Length: '{(header.Length > 200 ? shown + "…" : shown)}'");
     }
 
     private void Receive(JsonElement message)
@@ -342,7 +391,7 @@ public sealed class DapConnection : IAsyncDisposable
             }
             return;
         }
-        inbox.Writer.TryWrite(message);
+        inbox.Writer.TryWrite(message.Clone());
     }
 
     private async Task DispatchAsync()
@@ -385,42 +434,45 @@ public sealed class DapConnection : IAsyncDisposable
     {
         int seq = request.GetProperty("seq").GetInt32();
         string command = Text(request, "command") ?? string.Empty;
-        JsonObject response = new()
-        {
-            ["seq"] = 0,
-            ["type"] = "response",
-            ["request_seq"] = seq,
-            ["command"] = command,
-        };
+        object? body = null;
+        Exception? failed = null;
         try
         {
             if (!handlers.TryGetValue(command, out Func<JsonElement, Task<object?>>? handler))
             {
                 throw new DapException(command, $"Request '{command}' is not supported.");
             }
-            object? body = await handler(request.TryGetProperty("arguments", out JsonElement arguments) ? arguments : default).ConfigureAwait(false);
-            response["success"] = true;
-            if (body is not null)
-            {
-                response["body"] = JsonSerializer.SerializeToNode(body, body.GetType(), Options);
-            }
+            body = await handler(request.TryGetProperty("arguments", out JsonElement arguments) ? arguments : default).ConfigureAwait(false);
         }
         catch (Exception error)
         {
-            log?.Invoke($"DAP {command} failed: {error}");
-            response["success"] = false;
-            response["message"] = error is DapException dap ? dap.Reason : error.Message;
+            failed = error;
         }
-        response["seq"] = pending.NextId();
         try
         {
-            Write(response);
+            if (failed is null)
+            {
+                try
+                {
+                    Write(new Envelope(pending.NextId(), "response"u8, seq, command, Success: true), "body"u8, body);
+                }
+                catch (Exception error) when (error is not (IOException or ObjectDisposedException))
+                {
+                    // A body that does not serialize answers as a failed handler does.
+                    failed = error;
+                }
+            }
+            if (failed is not null)
+            {
+                log?.Invoke($"DAP {command} failed: {failed}");
+                Write(new Envelope(pending.NextId(), "response"u8, seq, command, Success: false, Message: failed is DapException dap ? dap.Reason : failed.Message), "body"u8, null);
+            }
         }
         catch (Exception error) when (error is IOException or ObjectDisposedException)
         {
             return;
         }
-        if (afterResponse.TryGetValue(command, out (Action Then, bool EvenIfFailed) after) && (after.EvenIfFailed || (bool)response["success"]!))
+        if (afterResponse.TryGetValue(command, out (Action Then, bool EvenIfFailed) after) && (after.EvenIfFailed || failed is null))
         {
             after.Then();
         }
@@ -441,4 +493,51 @@ public sealed class DapException(string command, string reason) : Exception($"{c
 
     /// <summary>The other end's words alone, without the command.</summary>
     public string Reason { get; } = reason;
+}
+
+/// <summary>A message's bytes as they are written, in an array from the shared pool, grown by renting a larger one; a large
+/// message's is given back for one of the usual size before the next is written.</summary>
+internal sealed class PooledBytes : IBufferWriter<byte>
+{
+    private const int Usual = 64 * 1024;
+    private byte[] array = ArrayPool<byte>.Shared.Rent(Usual);
+    private int count;
+
+    public ReadOnlySpan<byte> Written => array.AsSpan(0, count);
+
+    public void Advance(int written) => count += written;
+
+    public Memory<byte> GetMemory(int sizeHint = 0)
+    {
+        Ensure(sizeHint);
+        return array.AsMemory(count);
+    }
+
+    public Span<byte> GetSpan(int sizeHint = 0)
+    {
+        Ensure(sizeHint);
+        return array.AsSpan(count);
+    }
+
+    public void Clear()
+    {
+        count = 0;
+        if (array.Length > Usual)
+        {
+            ArrayPool<byte>.Shared.Return(array);
+            array = ArrayPool<byte>.Shared.Rent(Usual);
+        }
+    }
+
+    private void Ensure(int sizeHint)
+    {
+        int needed = count + Math.Max(sizeHint, 1);
+        if (needed > array.Length)
+        {
+            byte[] larger = ArrayPool<byte>.Shared.Rent(Math.Max(needed, array.Length * 2));
+            array.AsSpan(0, count).CopyTo(larger);
+            ArrayPool<byte>.Shared.Return(array);
+            array = larger;
+        }
+    }
 }
