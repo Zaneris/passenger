@@ -60,8 +60,16 @@ public sealed class LongTextTests : IDisposable
     [AvaloniaFact]
     public void A_key_in_a_line_of_a_million_characters_measures_and_allocates_what_one_in_ten_thousand_does()
     {
-        (long smallBytes, long smallRead) = KeysInTheMiddle(10_000);
-        (long largeBytes, long largeRead) = KeysInTheMiddle(1_000_000);
+        KeysInTheMiddle small = new(10_000);
+        KeysInTheMiddle large = new(1_000_000);
+        // Taken in turns, so what the process takes on meanwhile (fonts it meets, code compiled again) weighs on both alike.
+        for (int round = 0; round < 4; round++)
+        {
+            small.Round();
+            large.Round();
+        }
+        (long smallBytes, long smallRead) = small.Close();
+        (long largeBytes, long largeRead) = large.Close();
         TestContext.Current.TestOutputHelper?.WriteLine(
             $"A key read {smallRead:N0} characters to measure in a line of 10,000 and {largeRead:N0} in one of a million, allocating {smallBytes:N0} and {largeBytes:N0} bytes on the UI thread");
         Assert.True(largeRead <= smallRead + 256,
@@ -373,36 +381,61 @@ public sealed class LongTextTests : IDisposable
 
     /// <summary>What a key costs in the middle of a line of words, tabs, CJK, accented letters and emoji: characters read to
     /// measure it and bytes allocated on the UI thread, typing a letter, typing a CJK character and Backspace each, the
-    /// least of four rounds, summed. The line repeats 32 characters, and the caret stands as far into a step of its columns
+    /// least of the rounds, summed. The line repeats 32 characters, and the caret stands as far into a step of its columns
     /// in either line, so what is on screen, and the window of the line laid out for it, are the same.</summary>
-    private static (long Bytes, long Read) KeysInTheMiddle(int length)
+    private sealed class KeysInTheMiddle
     {
-        const string Unit = "word\t中文 café 👍🏽, xyz plain ok ";
-        Assert.Equal(32, Unit.Length);
-        StringBuilder text = new("above\n");
-        text.Insert(text.Length, Unit, length / Unit.Length);
-        int middle = "above\n".Length + (length / 2 / 256 * 256) + 200;
-        EditorRig rig = new(text.Append("\nbelow\n").ToString());
-        rig.Editor.Highlighter = new Numbers();
-        rig.PlaceCaret(middle);
-        Ui.Settle();
-        Action[] keys = [() => rig.Type("x"), () => rig.Type("中"), () => rig.Press("BACK_SPACE"), () => rig.Press("BACK_SPACE")];
-        long[] bytes = [.. keys.Select(_ => long.MaxValue)];
-        long[] read = [.. keys.Select(_ => long.MaxValue)];
-        for (int round = 0; round < 4; round++)
+        private const string Unit = "word\t中文 café 👍🏽, xyz plain ok ";
+
+        private readonly string text;
+        private readonly EditorRig rig;
+        private readonly Action[] keys;
+        private readonly long[] bytes;
+        private readonly long[] read;
+
+        public KeysInTheMiddle(int length)
         {
+            Assert.Equal(32, Unit.Length);
+            StringBuilder line = new("above\n");
+            line.Insert(line.Length, Unit, length / Unit.Length);
+            int middle = "above\n".Length + (length / 2 / 256 * 256) + 200;
+            text = line.Append("\nbelow\n").ToString();
+            rig = new EditorRig(text);
+            rig.Editor.Highlighter = new Numbers();
+            rig.PlaceCaret(middle);
+            Ui.Settle();
+            keys = [() => rig.Type("x"), () => rig.Type("中"), () => rig.Press("BACK_SPACE"), () => rig.Press("BACK_SPACE")];
+            bytes = [.. keys.Select(_ => long.MaxValue)];
+            read = [.. keys.Select(_ => long.MaxValue)];
+        }
+
+        /// <summary>Each key once, in this line's window, which is made the one the keys go to.</summary>
+        public void Round()
+        {
+            rig.Window.Activate();
+            rig.Editor.Focus();
+            Ui.Settle();
+            int[] grown = [1, 2, 1, 0];
             for (int k = 0; k < keys.Length; k++)
             {
+                // Arrays of runs Avalonia splits go back to its pool only when finalized: a key starts with them back.
+                GC.Collect(1, GCCollectionMode.Forced, blocking: true);
+                GC.WaitForPendingFinalizers();
                 long measured = rig.Editor.CharactersMeasured;
                 long before = GC.GetAllocatedBytesForCurrentThread();
                 keys[k]();
                 bytes[k] = Math.Min(bytes[k], GC.GetAllocatedBytesForCurrentThread() - before);
                 read[k] = Math.Min(read[k], rig.Editor.CharactersMeasured - measured);
+                Assert.True(rig.Document.Snapshot.Length == text.Length + grown[k], "A key in the middle of a long line went to another window's editor");
             }
         }
-        Assert.Equal(text.ToString(), rig.Text);
-        rig.Window.Close();
-        return (bytes.Sum(), read.Sum());
+
+        public (long Bytes, long Read) Close()
+        {
+            Assert.Equal(text, rig.Text);
+            rig.Window.Close();
+            return (bytes.Sum(), read.Sum());
+        }
     }
 
     /// <summary>Every column of the long lines around the caret, their ends and others at random are drawn where a fresh
