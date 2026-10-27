@@ -716,8 +716,7 @@ Foundation and Contributors) at the commit Roslyn's server is built from (dc1db3
   Copyright (c) 2016 .NET Foundation, as its header says; it colours a Markdown file's C# code blocks too.
 
 Reading them, Passenger leaves out what VS Code's reader passes over (a capture that is not a rule) and lets a rule
-that begins with no end never end, as VS Code does, writes a class of every character past one (`[^\x{00}-\x{7F}]`,
-which its regular expressions misread inside another class, as Less's are) as the range it is, and takes YAML's typed
+that begins with no end never end, as VS Code does, and takes YAML's typed
 scalars (booleans, numbers, null) out of a block mapping's keys, so a key such as a workflow's `on` is read as a key.
 
 ```

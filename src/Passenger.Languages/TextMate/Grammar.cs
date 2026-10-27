@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
 using Passenger.Editor;
 using Tint;
 using Tint.Loading;
@@ -12,7 +11,7 @@ namespace Passenger.Languages.TextMate;
 /// under <c>TextMate/Grammars</c>) with the grammars it embeds, in a registry of its own. Documents of this scope
 /// share a tokenizer, whose mutable scratch buffers and scanners are protected by <see cref="Gate"/>. Different
 /// scopes use separate registries and tokenizers.</summary>
-internal sealed partial class Grammar
+internal sealed class Grammar
 {
     private static readonly Dictionary<string, Lazy<Grammar>> Loaded = [];
 
@@ -125,11 +124,7 @@ internal sealed partial class Grammar
         }
     }
 
-    [GeneratedRegex(@"\[\^\\x\{0+\}-\\x\{([0-9A-Fa-f]{1,5})\}\]")]
-    private static partial Regex PastCharacter();
-
-    /// <summary>Keep the same normalized grammar as the previous tokenizer: malformed captures removed, open-ended
-    /// begins closed by U+FFFF, and nested non-ASCII character classes expressed as ranges. The source assets stay unchanged.</summary>
+    /// <summary>Preserves Passenger's handling of malformed captures and open-ended begins. The source assets stay unchanged.</summary>
     private static void Tidy(JsonNode? node)
     {
         if (node is JsonObject rule)
@@ -137,14 +132,6 @@ internal sealed partial class Grammar
             if (rule.ContainsKey("begin") && !rule.ContainsKey("end") && !rule.ContainsKey("while"))
             {
                 rule["end"] = "\uFFFF";
-            }
-            foreach (string key in (string[])["match", "begin", "end", "while"])
-            {
-                if (rule[key] is JsonValue value && value.TryGetValue(out string? pattern) && pattern.Contains("[^\\x{0", StringComparison.Ordinal))
-                {
-                    rule[key] = PastCharacter().Replace(pattern, past =>
-                        $"[\\x{{{int.Parse(past.Groups[1].ValueSpan, NumberStyles.HexNumber, CultureInfo.InvariantCulture) + 1:X}}}-\\x{{10FFFF}}]");
-                }
             }
             foreach ((string key, JsonNode? value) in rule)
             {
