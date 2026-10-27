@@ -10,6 +10,13 @@ that fixed it, in one of the forms below. A failure not yet understood goes in o
 
 ## 2026-10-26
 
+- `AspireStandInTests` on the Windows VM beside another agent's run: two run sessions had no answer from the IDE's DCP
+  endpoint in the stand-in's 100 s, then a Run held 675 s (BuildRunController.cs:724) and each later settle 225 s at
+  ProjectModels.cs:265, the project host idle. `ProjectHosts.ForAsync`, asked on a window's thread, took the gate every
+  window shares there and asked `dotnet --version` (`Dotnet.SdkAsync`, whose first ask every later caller shares), its
+  ends coming back to that thread; a headless test's thread never runs again once its test is over, so one ending
+  mid-ask left the gate held. **A race in the IDE**: the host and the SDK are found on the thread pool, whoever asks;
+  the stand-in's request times out after 2 minutes scaled (d8fbd889).
 - `AspireTests`' `Gutter_startup_profile_uses_its_AppHost_not_the_toolbar_and_records_the_first_hot_turn`, the Mac with
   real AppHosts beside three agents' runs: "Expected \"Show Aspire Resources\", Actual \"Discover Aspire AppHosts\"",
   Find Action's first row with nothing typed. A real AppHost sends its "No trusted development certificate"
