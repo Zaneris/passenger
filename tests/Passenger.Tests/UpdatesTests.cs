@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.IO.Compression;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
@@ -10,6 +11,8 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
+using ModelContextProtocol.Client;
+using Passenger.App.Mcp;
 using Passenger.App;
 using Passenger.App.Settings;
 using Passenger.App.Updates;
@@ -23,8 +26,9 @@ namespace Passenger.Tests;
 /// copy says once per version that it is out, never of an older one, a pre-release, a draft or a failure. Check for
 /// Updates asks whenever a person wants; the setting off, nothing is asked or downloaded. A stand-in on a loopback port
 /// answers for GitHub and its downloads, which no test reaches; each installed copy is in a test folder, and each
-/// version's disk image is made once for the class (<see cref="DiskImages"/>).</summary>
-public sealed class UpdatesTests : IClassFixture<UpdatesTests.DiskImages>, IDisposable
+/// version's disk image is made once for the class (<see cref="DiskImages"/>). Agents' relays running from an installed
+/// copy are the build's own, started as an agent starts one (<see cref="McpRig"/>).</summary>
+public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages>
 {
     /// <summary>The downloads the release workflow publishes with every release, by fixed names.</summary>
     private static readonly string[] Downloads =
@@ -39,10 +43,11 @@ public sealed class UpdatesTests : IClassFixture<UpdatesTests.DiskImages>, IDisp
 
     public UpdatesTests(DiskImages images) => this.images = images;
 
-    public void Dispose()
+    public override void Dispose()
     {
         github.Dispose();
         TestFolders.Delete(settings);
+        base.Dispose();
     }
 
     [AvaloniaFact]
@@ -533,9 +538,17 @@ public sealed class UpdatesTests : IClassFixture<UpdatesTests.DiskImages>, IDisp
         using System.Diagnostics.Process other = ChildProcesses.Start(ChildProcesses.Command(executable, ["120"]));
         try
         {
+            string? before = window.Status;
             Ui.Click(window.FindControl<Button>("UpdateButton")!);
             Assert.True(window.IsVisible, "Restart to Update closed the window while another Passenger runs from the same app");
-            Assert.Equal($"Another Passenger is open from {copy.Bundle}: close it, then restart to update", window.Status);
+            Assert.True(Notice(window) == $"Passenger {newer} waits for 1 program to close",
+                $"With another Passenger running from the app, Restart to Update's notice is '{Notice(window)}'");
+            string tip = ToolTip.GetTip(window.FindControl<Button>("UpdateButton")!) as string ?? string.Empty;
+            Assert.True(tip.Contains($"Passenger {newer} cannot be installed while this runs from {copy.Bundle}:", StringComparison.Ordinal)
+                && tip.Contains($"process {other.Id}: ", StringComparison.Ordinal) && tip.Contains("Passenger 120", StringComparison.Ordinal)
+                && tip.Contains("Quit it", StringComparison.Ordinal),
+                $"The notice does not name what holds the update back in full, with what to do: '{tip}'");
+            Assert.True(window.Status == before, $"What holds the update back was said in the status bar's cut-off message: '{window.Status}'");
 
             window.Close();
             Ended(window);
@@ -588,6 +601,75 @@ public sealed class UpdatesTests : IClassFixture<UpdatesTests.DiskImages>, IDisp
         {
             Detach(volume);
         }
+    }
+
+    [AvaloniaFact]
+    [SupportedOSPlatform("macos")]
+    public void An_install_ends_the_agents_relays_running_from_the_app_joined_or_not_each_saying_why_and_goes_ahead()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(),
+            "On Windows Velopack's Update.exe replaces the install once this process has ended; a test cannot end its own process");
+        using IDisposable theme = TestsTheme();
+        AppBundle copy = new(images, TestFolders.Create("installed-"));
+        copy.Relaying();
+        string newer = Bumped(1, 0);
+        github.Answer = Release($"v{newer}", files: copy.Update(newer));
+        string joining = PathNames.Canonical(Plain("relay-joined-"));
+        string idle = PathNames.Canonical(Plain("relay-idle-"));
+        MainWindow agents = AgentsWindow(joining, languageServer: false);
+        // One agent has called a tool, its relay joined to the window; the other has called none.
+        Process joinedRelay = StartPassenger(["--mcp-attach", joining], executable: copy.Executable);
+        McpClient joined = Await(Waiting.Apart(() => Connect(joinedRelay, ["--mcp-attach", joining])), "the first agent's session starting");
+        Unasked(agents, joined, McpTools.Workspace);
+        Process idleRelay = StartPassenger(["--mcp-attach", idle], executable: copy.Executable);
+        McpClient waiting = Await(Waiting.Apart(() => Connect(idleRelay, ["--mcp-attach", idle])), "the second agent's session starting");
+
+        MainWindow window = Started(copy.Updater());
+        window.WatchForUpdates();
+        Ui.WaitFor(() => Notice(window) == $"Restart to update to Passenger {newer}", $"the status bar to offer Restart to Update to v{newer}");
+        // The notice says, as the pointer comes to it, whose connections the install ends.
+        Button notice = window.FindControl<Button>("UpdateButton")!;
+        window.MouseMove(Avalonia.VisualExtensions.TranslatePoint(notice, new Avalonia.Point(notice.Bounds.Width / 2, notice.Bounds.Height / 2), window)!.Value, Avalonia.Input.RawInputModifiers.None);
+        Ui.Settle();
+        string tip = ToolTip.GetTip(notice) as string ?? string.Empty;
+        Assert.True(tip.Contains("Installing it ends 2 agents' connections to Passenger, on ", StringComparison.Ordinal)
+            && tip.Contains(joining, StringComparison.Ordinal) && tip.Contains(idle, StringComparison.Ordinal),
+            $"Before Restart to Update, the notice does not say it ends the two agents' connections, on {joining} and {idle}: '{tip}'");
+
+        Ui.Click(notice, settle: false);
+        Ui.Settle();
+        Assert.False(window.IsVisible, "Restart to Update did not close the window with only agents' relays running from the app");
+        Ended(window);
+        window.InstallUpdate();
+        Assert.True(copy.InstalledVersion == newer, $"Restart to Update with agents' relays running left {copy.Bundle} at {copy.InstalledVersion}, not {newer}");
+        Assert.True(joinedRelay.HasExited && idleRelay.HasExited,
+            $"The install left an agent's relay running from the app it replaced: joined {(joinedRelay.HasExited ? "ended" : "runs")}, idle {(idleRelay.HasExited ? "ended" : "runs")}");
+        string why = $"passenger: Passenger {newer} is being installed in {copy.Bundle}, which ends this agent's connection to Passenger. Reconnect the agent";
+        WaitFor(() => Errors().Count(line => line.StartsWith(why, StringComparison.Ordinal)) == 2, "each relay to say on its standard error why it ended");
+        string[] log = Ui.IdeLog().Split('\n');
+        foreach ((string folder, Process relay) in (ReadOnlySpan<(string, Process)>)[(joining, joinedRelay), (idle, idleRelay)])
+        {
+            Assert.Contains(log, line => line.Contains($"Updates: ended the agent's relay on {folder} (process {relay.Id}) to install Passenger {newer}", StringComparison.Ordinal));
+        }
+        Assert.True(Ui.Shared(copy.Started) == $"started {newer}\n", $"Restart to Update did not start the new version once: what started says '{Ui.Shared(copy.Started)}'");
+        Gone(joined);
+        Gone(waiting);
+
+        // Closed rather than restarted, with an agent's relay running: the update installs all the same.
+        copy.Relaying();
+        string later = Bumped(1, 1);
+        github.Answer = Release($"v{later}", files: copy.Update(later));
+        Process relayLeft = StartPassenger(["--mcp-attach", idle], executable: copy.Executable);
+        McpClient left = Await(Waiting.Apart(() => Connect(relayLeft, ["--mcp-attach", idle])), "an agent's session starting again");
+        window = Started(copy.Updater());
+        window.WatchForUpdates();
+        Ui.WaitFor(() => Notice(window) == $"Restart to update to Passenger {later}", $"the status bar to offer Restart to Update to v{later}");
+        window.Close();
+        Ended(window);
+        window.InstallUpdate();
+        Assert.True(copy.InstalledVersion == later, $"Passenger closed with v{later} ready and an agent's relay running left {copy.Bundle} at {copy.InstalledVersion}");
+        Assert.True(relayLeft.HasExited, "Closing Passenger to install the update left the agent's relay running from the app it replaced");
+        Gone(left);
     }
 
     /// <summary>Unmounts the test's volume. The system's own readers of new files (Spotlight, the code-signing checks)
@@ -781,6 +863,8 @@ public sealed class UpdatesTests : IClassFixture<UpdatesTests.DiskImages>, IDisp
 
         public string Bundle { get; }
 
+        public string Executable => Path.Combine(Bundle, "Contents", "MacOS", "Passenger");
+
         public string Staging { get; }
 
         /// <summary>Where each start of the app writes its version: in the folder above the one it is in, the test's own.</summary>
@@ -824,6 +908,23 @@ public sealed class UpdatesTests : IClassFixture<UpdatesTests.DiskImages>, IDisp
             {
                 return [];
             }
+        }
+
+        /// <summary>The installed app made the build's own Passenger, its executable beside the build's assemblies, signed
+        /// again as each file of Contents/MacOS is: an agent's relay runs from it.</summary>
+        public void Relaying()
+        {
+            string macOS = Path.Combine(Bundle, "Contents", "MacOS");
+            File.Delete(Executable);
+            string[] build = [.. Directory.EnumerateFiles(AppContext.BaseDirectory)
+                .Where(file => Path.GetFileName(file) is "Passenger" or "Passenger.deps.json" or "Passenger.runtimeconfig.json" || file.EndsWith(".dll", StringComparison.Ordinal))];
+            // A clone where the volume makes one, as fast as a link and as much the app's own as a copy.
+            if (!Ran("/bin/cp", ["-c", .. build, macOS], TimeSpan.FromMinutes(1)).Succeeded)
+            {
+                Tool("/bin/cp", [.. build, macOS]);
+            }
+            Tool("/usr/bin/codesign", ["--force", "--sign", "-", .. Directory.EnumerateFiles(macOS).Where(file => file != Executable)]);
+            Tool("/usr/bin/codesign", "--force", "--sign", "-", Bundle);
         }
 
         /// <summary>Whether the installed app's signature holds, as Gatekeeper checks it.</summary>

@@ -131,11 +131,13 @@ public sealed partial class DiskImageUpdater : Updater
             IdeErrors.Write($"Updates: Passenger {version} was not installed: {app} is gone");
             return;
         }
-        if (OthersRunning())
+        IReadOnlyList<OtherCopy> others = Others();
+        if (others.Any(other => !other.Relay))
         {
-            IdeErrors.Write($"Updates: Passenger {version} waits to install: another Passenger runs from {Bundle}");
+            IdeErrors.Write($"Updates: Passenger {version} waits to install: another Passenger runs from {Bundle}: {Listed(others.Where(other => !other.Relay))}");
             return;
         }
+        EndRelays(others, version);
         (string? why, string? old) = Replace(app, version);
         if (why is not null)
         {
@@ -217,21 +219,22 @@ public sealed partial class DiskImageUpdater : Updater
         await CleanAsync(keep: null).ConfigureAwait(false);
     }
 
-    public override bool OthersRunning()
+    protected override IReadOnlyList<int> RunningHere()
     {
         // As the system names a process's executable, links resolved.
         string executable = PathNames.Canonical(Path.Combine(Bundle, "Contents", "MacOS", "Passenger"));
+        List<int> here = [];
         foreach (Process running in Process.GetProcessesByName("Passenger"))
         {
             using (running)
             {
                 if (running.Id != Environment.ProcessId && ExecutableOf(running.Id) is { } path && PathNames.Same(path, executable))
                 {
-                    return true;
+                    here.Add(running.Id);
                 }
             }
         }
-        return false;
+        return here;
     }
 
     /// <summary>The app at the image's top, copied out of it mounted read-only (hdiutil checks the image's own checksums

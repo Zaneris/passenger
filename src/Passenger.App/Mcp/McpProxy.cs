@@ -119,15 +119,110 @@ public sealed class McpProxy
         // The server waits out calls still going as the agent goes, so its going, or SIGTERM, is watched for here.
         TaskCompletionSource terminated = new(TaskCreationOptions.RunContinuationsAsynchronously);
         using System.Runtime.InteropServices.PosixSignalRegistration? signal = McpHost.EndOnSignal(() => terminated.TrySetResult());
-        // Main's thread, which serves nothing itself, waits here until the agent goes.
-        Synchronously.Run(async () => { await Task.WhenAny(running, transport.MessageReader.Completion, terminated.Task); });
-        gone.Cancel();
-        proxy.Leave();
-        // The process ends as Main returns: the server, cut short by the agent's going, has 5 s to end first.
-        Synchronously.Run(async () => { await Task.WhenAny(running, Task.Delay(TimeSpan.FromSeconds(5))); });
-        // What the agent's going cut short.
-        _ = running.Exception;
+        string? said = Announce(proxy.here);
+        try
+        {
+            // Main's thread, which serves nothing itself, waits here until the agent goes.
+            Synchronously.Run(async () => { await Task.WhenAny(running, transport.MessageReader.Completion, terminated.Task); });
+            if (terminated.Task.IsCompleted)
+            {
+                SayWhyEnded();
+            }
+            gone.Cancel();
+            proxy.Leave();
+            // The process ends as Main returns: the server, cut short by the agent's going, has 5 s to end first.
+            Synchronously.Run(async () => { await Task.WhenAny(running, Task.Delay(TimeSpan.FromSeconds(5))); });
+            // What the agent's going cut short.
+            _ = running.Exception;
+        }
+        finally
+        {
+            if (said is not null)
+            {
+                File.Delete(said);
+            }
+        }
         return 0;
+    }
+
+    /// <summary>The file in a socket folder that says a process is an agent's relay, and the folder it works in, so an update
+    /// of the app it runs from finds it, whether or not it joined a window (<see cref="Updates.Updater.Others"/>).</summary>
+    internal static string RelayFile(string sockets, int processId) => Path.Combine(sockets, $"{processId}.relay");
+
+    /// <summary>The file in a socket folder in which an update says why it ends a relay, which the relay passes on to its agent.</summary>
+    internal static string EndingFile(string sockets, int processId) => Path.Combine(sockets, $"{processId}.ending");
+
+    /// <summary>Writes this relay's <see cref="RelayFile"/>, and gives it, or null where the socket folder cannot be made,
+    /// which leaves an update to name the relay as a program in its way.</summary>
+    private static string? Announce(string here)
+    {
+        try
+        {
+            string file = RelayFile(McpHost.OwnSocketFolder(), Environment.ProcessId);
+            AtomicFile.Write(file, System.Text.Encoding.UTF8.GetBytes(here));
+            return file;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            IdeErrors.Write($"Agents: this relay cannot say it is one, so an update of Passenger waits for it to end: {error.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>The folder a running relay works in, as its <see cref="RelayFile"/> says, or null for a process that is no
+    /// relay: one with no such file, or started after its file was written (a dead relay's id taken again).</summary>
+    internal static string? RelayAt(int processId)
+    {
+        if (McpHost.FoundSocketFolder() is not { } sockets)
+        {
+            return null;
+        }
+        string file = RelayFile(sockets, processId);
+        try
+        {
+            string folder = File.ReadAllText(file);
+            DateTime written = File.GetLastWriteTimeUtc(file);
+            using Process process = Process.GetProcessById(processId);
+            return process.StartTime.ToUniversalTime() <= written ? folder : null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException
+            or System.ComponentModel.Win32Exception)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Tells a relay why it is about to be ended (<see cref="EndingFile"/>).</summary>
+    internal static void TellEnding(int processId, string why)
+    {
+        if (McpHost.FoundSocketFolder() is { } sockets)
+        {
+            AtomicFile.Write(EndingFile(sockets, processId), System.Text.Encoding.UTF8.GetBytes(why));
+        }
+    }
+
+    /// <summary>Ended by the system: why, when an update said so, on standard error, which the agent's client shows in its
+    /// log of the server, and in the IDE's log.</summary>
+    private static void SayWhyEnded()
+    {
+        if (McpHost.FoundSocketFolder() is not { } sockets)
+        {
+            return;
+        }
+        string file = EndingFile(sockets, Environment.ProcessId);
+        try
+        {
+            string why = File.ReadAllText(file);
+            File.Delete(file);
+            IdeErrors.Write($"Agents: this relay ends: {why}");
+            using Stream error = IdeLog.GivenError();
+            error.Write(System.Text.Encoding.UTF8.GetBytes($"passenger: {why}\n"));
+            error.Flush();
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            // Ended for another reason, which has nothing to say.
+        }
     }
 
     /// <summary>One call of the agent's, on the window it is joined to: told to the agent while it joins one, and the

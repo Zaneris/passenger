@@ -69,10 +69,18 @@ public partial class MainWindow
         {
             Menus = OperatingSystem.IsMacOS() ? [] : [new MenuPlace("Help", 3, 1)],
         });
-        actions.Add(new IdeAction(AppActions.RestartToUpdate, "Restart to Update", "Help", _ => RestartToUpdate())
+        actions.Add(new IdeAction(AppActions.RestartToUpdate, "Restart to Update", "Help", _ => IdeErrors.Observe(RestartToUpdateAsync()))
         {
             WhyNot = _ => readyRelease is null ? "No update is downloaded and ready to install" : null,
         });
+        // The agents an install would cut off come and go: the notice says who, as the pointer comes to it.
+        UpdateButton.PointerEntered += (_, _) =>
+        {
+            if (notice == UpdateNotice.Ready && readyRelease is { } ready)
+            {
+                ShowReady(ready);
+            }
+        };
         Closed += (_, _) =>
         {
             updateTimer?.Stop();
@@ -305,16 +313,23 @@ public partial class MainWindow
     }
 
     /// <summary>Quits Passenger, every window closing, to install the update and start it, as the person chose; a window
-    /// that does not close (a file it could not save) installs nothing yet, and one that asks first restarts once answered.</summary>
-    private void RestartToUpdate()
+    /// that does not close (a file it could not save) installs nothing yet, and one that asks first restarts once answered.
+    /// Another program running from the install (but an agent's relay, which the install ends) holds it back, named in
+    /// the notice.</summary>
+    private async Task RestartToUpdateAsync()
     {
-        if (readyRelease is null || SelfUpdate is not { } updater)
+        if (readyRelease is not { } ready || SelfUpdate is not { } updater)
         {
             return;
         }
-        if (updater.OthersRunning())
+        OtherCopy[] blocking = [.. updater.Others().Where(other => !other.Relay)];
+        if (blocking.Length > 0)
         {
-            status.Text = $"Another Passenger is open from {updater.Installed}: close it, then restart to update";
+            string[] named = await BackgroundWork.Run(() => Task.WhenAll(blocking.Select(other => Updater.NamedAsync(other.ProcessId))));
+            if (readyRelease == ready)
+            {
+                ShowBlocked(ready, updater.Installed, named);
+            }
             return;
         }
         // A window kept open keeps the update for the next end, which starts nothing.
@@ -332,7 +347,7 @@ public partial class MainWindow
         {
             return;
         }
-        if (notice is UpdateNotice.Downloading or UpdateNotice.Ready && UpdateShown is { } shown)
+        if (notice is UpdateNotice.Downloading or UpdateNotice.Ready or UpdateNotice.Blocked && UpdateShown is { } shown)
         {
             ShowUpdate(shown, shown.Link);
         }
@@ -406,7 +421,36 @@ public partial class MainWindow
     {
         UpdateShown = release;
         Notice(UpdateNotice.Ready, IconKeys.Rerun, TokenKeys.Link, $"Restart to update to Passenger {release.Version}",
-            $"Passenger {release.Version} is downloaded and checked. Click to restart into it;\notherwise it installs when Passenger closes.");
+            $"Passenger {release.Version} is downloaded and checked. Click to restart into it;\notherwise it installs when Passenger closes.{RelaysEnded()}");
+    }
+
+    /// <summary>What installing does to the agents connected through relays of this install, which it ends: said before,
+    /// with the folders they work in.</summary>
+    private string RelaysEnded()
+    {
+        if (SelfUpdate is not { } updater)
+        {
+            return string.Empty;
+        }
+        string[] folders = [.. updater.Others().Where(other => other.Relay).Select(other => other.Folder!)];
+        if (folders.Length == 0)
+        {
+            return string.Empty;
+        }
+        return $"\nInstalling it ends {Plural.Of(folders.Length, "agent's connection", "agents' connections")} to Passenger, on "
+            + $"{string.Join(", ", folders.Distinct(PathNames.Comparer))}: each agent reconnects to go on (/mcp in Claude Code).";
+    }
+
+    /// <summary>The update held back by programs running from the install, each named in full, with what to do; a click
+    /// tries again.</summary>
+    private void ShowBlocked(LatestRelease release, string installed, IReadOnlyList<string> named)
+    {
+        UpdateShown = release;
+        bool one = named.Count == 1;
+        Notice(UpdateNotice.Blocked, IconKeys.Error, TokenKeys.Warning, $"Passenger {release.Version} waits for {Plural.Of(named.Count, "program")} to close",
+            $"Passenger {release.Version} cannot be installed while {(one ? "this runs" : "these run")} from {installed}:\n"
+            + string.Join("\n", named.Select(n => $"• {n}"))
+            + $"\nQuit {(one ? "it" : "each")} (an agent's own Passenger, --mcp, ends with that agent's session), then click here to restart to update.");
     }
 
     /// <summary>A download refused, in the editor's warning colour, its link the release's page rather than the file
@@ -433,7 +477,7 @@ public partial class MainWindow
     /// own launcher as a link anywhere opens; Restart to Update once the update is ready.</summary>
     private void OnUpdateClicked(object? sender, RoutedEventArgs e)
     {
-        if (notice == UpdateNotice.Ready)
+        if (notice is UpdateNotice.Ready or UpdateNotice.Blocked)
         {
             Request(AppActions.RestartToUpdate);
         }
@@ -448,6 +492,7 @@ public partial class MainWindow
         Available,
         Downloading,
         Ready,
+        Blocked,
         Refused,
     }
 }
