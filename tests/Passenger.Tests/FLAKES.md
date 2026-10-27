@@ -10,6 +10,22 @@ that fixed it, in one of the forms below. A failure not yet understood goes in o
 
 ## 2026-10-26
 
+- `AspireTests`' `Gutter_startup_profile_uses_its_AppHost_not_the_toolbar_and_records_the_first_hot_turn`, the Mac with
+  real AppHosts beside three agents' runs: "Expected \"Show Aspire Resources\", Actual \"Discover Aspire AppHosts\"",
+  Find Action's first row with nothing typed. A real AppHost sends its "No trusted development certificate"
+  notification whenever its start reaches it, shown as a window that activated and took the keys (headless, cleared
+  them); under load it came after Find Action opened, so the action's name went nowhere. **A race in the IDE**, met by
+  a person typing as an AppHost starts too: a notification shows without taking the keys (5f419625).
+- Windows in CI run 40422179664, shard 3: "[FATAL ERROR] Foreground threads were left running, forcing process exit",
+  every test passed. No thread was left: xunit exits a process still running 10 s after its run, and the run's end
+  waited up to 75 s for a held folder (05de9d64's MSBuild nodes) in the fixture and again in each ProcessExit handler.
+  **The test rig**: only the fixture's end waits; the process's exit tries each folder once (fdb93364).
+- `TerminalTests`' key read: "key? qkey q", a key typed between the prompt and ReadKey echoed by the tty. **The test**:
+  it takes the key once the program says it read it (411bd003).
+- Compose Run, Debug and Profile on a busy machine: "ports are not available". **A race in the IDE**: a chosen host port
+  is outside the system's ephemeral range and free at every address, and is chosen again if taken before `up` (806cf9d5).
+- `MigrationsTests`' main test and `VcsTests`' diff test on the Windows VM, seeming to hang: nothing hung, the VM ran at
+  time scale 1. **Neither**: the VM scripts run at CI's scales.
 - `McpAttachTimingTests`' `An_agents_call_nobody_answers_comes_back_at_the_windows_limit_and_hears_what_it_waits_on_meanwhile`,
   Linux in CI run 40422179664: "The workspace call had no answer in 120 s", though mcp.log has the window answering at
   10 s. The call's one-second progress beat fell due as its admission question closed, and the call's end cancelled

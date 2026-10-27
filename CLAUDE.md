@@ -273,6 +273,8 @@ site-shots` retakes its images.
   never asked about on a person's window (#278). `debug_evaluate`, `debug_input` and `breakpoint_set` are `Destructive`
   and ask the person the first time; every question closes unanswered after 2 minutes; calls send progress every 10 s
   (OpenCode gives up after 60 s of silence).
+- **A window the IDE opens of its own accord** (a notification, not a person's action) shows with `ShowActivated` false,
+  or it takes the keys from what the person types (headless, it clears them).
 - **Agents never open windows on the person's screen**: `--mcp FOLDER`, or `--mcp-attach` with
   `PASSENGER_START=headless` and a PASSENGER_SETTINGS of its own; never a bare `--mcp-attach`, never `just run`.
 - **Aspire's CLI and AppHosts** keep running AppHosts in `$HOME/.aspire/cli/bch` whatever ASPIRE_HOME says; on Windows in
