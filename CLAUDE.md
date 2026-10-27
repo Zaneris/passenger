@@ -152,7 +152,7 @@ Projects in `src/`; `find_symbol` finds the rest:
   large process tens of ms), `Dotnet`/`Programs`/`ShellEnvironment` (tools found as the login shell would), `PathNames`,
   `AtomicFile`, `SocketFolders` (every Unix socket), `InFlight`, `BackgroundWork`, `Product` (the one place the version
   is read), `PassengerLog` (below the App, never `IdeLog`), `UnawaitedWork`, `Utf8Lines` and `PooledBytes` (a peer's
-  lines read and messages written as pooled bytes).
+  lines read and messages written as pooled bytes), `SharedNames` (a name read from bytes, made once).
 - `Passenger.Text`: the rope (every version a thread-safe snapshot), `TextDocument`, every editing command as a pure
   function to an `EditPlan`, `FuzzyMatch` (allocates nothing), `FileText`, and anchors (`AnchorAt`/`RangeAt`/`MarkAt`,
   `AnchoredList`; moved before `Changed`, each handler isolated): hold a place in the text with one, never your own
@@ -168,7 +168,8 @@ Projects in `src/`; `find_symbol` finds the rest:
   `Language` entry, its grammar file and a notices entry; compare entries, never names. A finder never tells its answer
   inside a document's `Changed` (the open file moves its regions in a later handler).
 - `Passenger.Xaml`: Passenger's own XAML core (no Avalonia; WPF shares it; not Avalonia.Ide.CompletionEngine).
-- `Passenger.Lsp`: the LSP client (StreamJsonRpc, whose types never leave the project), Roslyn's server downloaded per
+- `Passenger.Lsp`: the LSP client (StreamJsonRpc, whose types never leave the project; `JsonRpcPeer` for any other
+  JSON-RPC peer, the Testing Platform's test hosts), Roslyn's server downloaded per
   platform (`RoslynServer.targets`), `LspDocument` (answers that grow with the solution decoded off the UI thread; never
   a change between a "\r\n"'s halves), and the web servers under
   `web/`, pinned in `WebServers/package.json` and its lock (to move a pin: edit it, `npm install --package-lock-only
