@@ -198,7 +198,6 @@ public sealed class VariablesList : ListBox
         if (DataWatch is { } offer)
         {
             MenuItem watch = ListMenus.Item(DataWatchOffer.Set, null, () => DataBreakpointRequested?.Invoke(this, node), enabled: false);
-            ToolTip.SetShowOnDisabled(watch, true);
             items.Add(new Separator());
             items.Add(watch);
             IdeErrors.Observe(Offer(watch, offer(node)));

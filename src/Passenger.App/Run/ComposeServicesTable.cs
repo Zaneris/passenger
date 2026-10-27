@@ -190,7 +190,6 @@ public sealed class ComposeServicesTable : Border
         projectBox.SelectedIndex = found + 1;
         ToolTip.SetTip(projectBox, named ? "The project the AppHost runs for this resource, as its code names it"
             : choosable ? "The project this service runs: Run builds it and runs it in the service's container" : "Runs its image: no project of the solution");
-        ToolTip.SetShowOnDisabled(projectBox, true);
         ComboBox actionBox = new() { Classes = { "cell" }, HorizontalAlignment = HorizontalAlignment.Stretch, IsEnabled = editable };
         Grid cells = new() { ColumnDefinitions = new ColumnDefinitions(Columns), MinHeight = ListRow.Height };
         Control[] parts = [name, projectBox, actionBox];

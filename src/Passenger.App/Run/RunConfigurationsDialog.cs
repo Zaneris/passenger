@@ -91,7 +91,6 @@ public sealed class RunConfigurationsDialog : Window
         FrameworkBox = new ComboBox { Classes = { "form" } };
         ProfileBox = new ComboBox { Classes = { "form" } };
         SaveAsProfileButton = new Button { Name = "SaveAsProfileButton", IsVisible = false };
-        ToolTip.SetShowOnDisabled(SaveAsProfileButton, true);
         SaveAsProfileButton.Click += (_, _) => SaveAsLaunchProfile();
         ReusedRows.Use(ProjectBox, () =>
         {
@@ -230,7 +229,6 @@ public sealed class RunConfigurationsDialog : Window
         ];
 
         WriteButton = new Button { Content = "Write to Launch Profile", Name = "WriteButton" };
-        ToolTip.SetShowOnDisabled(WriteButton, true);
         ResetButton = new Button { Content = "Reset to Launch Profile", Name = "ResetButton" };
         WriteButton.Click += (_, _) => WriteToLaunchProfile();
         ResetButton.Click += (_, _) => Reset();
@@ -984,7 +982,6 @@ public sealed class RunConfigurationsDialog : Window
             foreach (Control identity in (Control[])[NameBox, ProjectBox, ProfileBox])
             {
                 identity.IsEnabled = !shown.Generated;
-                ToolTip.SetShowOnDisabled(identity, true);
                 ToolTip.SetTip(identity, shown.Generated ? $"Its link to its {SourceName(shown)}, which a copy can change" : null);
             }
         }

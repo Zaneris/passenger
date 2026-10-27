@@ -217,7 +217,6 @@ public sealed class LiveTreeView : DockPanel
         watch.ToggleType = MenuItemToggleType.CheckBox;
         watch.IsChecked = Watched?.Invoke(value) == true;
         ToolTip.SetTip(watch, WhyNotBreak?.Invoke() ?? "Stop the app wherever this property of this control is changed: a style, a binding, code or an animation");
-        ToolTip.SetShowOnDisabled(watch, true);
         List<Control> items = [watch];
         if (value.Place is { } place)
         {

@@ -754,6 +754,85 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         };
     }
 
+    /// <summary>A greyed button shows its tooltip under the pointer, which says why it is greyed: Live Templates' Delete,
+    /// greyed for a built-in template, says how one is turned off instead.</summary>
+    [AvaloniaFact]
+    public void A_greyed_button_shows_its_tooltip_under_the_pointer()
+    {
+        MainWindow window = Open(1200, 800);
+        SettingsDialog? dialog = null;
+        try
+        {
+            dialog = window.ShowSettings();
+            Ui.Settle();
+            dialog.Query = "live templates";
+            Ui.Settle();
+            Assert.True(dialog.Templates.Choose("cw"), "The Live Templates page does not list cw");
+            Ui.Settle();
+            Button delete = dialog.Templates.DeleteButton;
+            Assert.False(delete.IsEnabled, "Delete is not greyed for cw, a built-in template");
+            Rest(dialog, delete, "A built-in template is turned off by its check box, so it can be turned on again");
+        }
+        finally
+        {
+            dialog?.Close();
+            window.Close();
+        }
+    }
+
+    /// <summary>A greyed check box shows its tooltip under the pointer: in NuGet's Sources, a feed of the machine's
+    /// nuget.config, which NuGet never writes, has its check box greyed, saying what it is all the same. On Linux alone,
+    /// where NuGet takes the machine's folder from the run (NUGET_COMMON_APPLICATION_DATA).</summary>
+    [AvaloniaFact]
+    public void A_greyed_check_box_shows_its_tooltip_under_the_pointer()
+    {
+        Assert.SkipUnless(OperatingSystem.IsLinux(), "NuGet reads the machine's nuget.config from the system's own folder here, which a test does not write");
+        string machine = Directory.CreateDirectory(Path.Combine(Environment.GetEnvironmentVariable("NUGET_COMMON_APPLICATION_DATA")!, "NuGet", "Config")).FullName;
+        // Its feed turned off, so a restore beside the test uses none of it.
+        File.WriteAllText(Path.Combine(machine, "Team.config"), """
+            <?xml version="1.0" encoding="utf-8"?>
+            <configuration>
+              <packageSources>
+                <add key="team" value="https://team.invalid/v3/index.json" />
+              </packageSources>
+              <disabledPackageSources>
+                <add key="team" value="true" />
+              </disabledPackageSources>
+            </configuration>
+            """);
+        MainWindow window = Open(1200, 800);
+        try
+        {
+            window.Perform(AppActions.ShowNuGet);
+            Ui.Landed(() => window.NuGet.PackageSources.Feeds.Count > 0, "the package sources read");
+            Ui.Click(((Panel)window.NuGet.Tabs).Children.OfType<ToggleButton>().Single(t => (string?)t.Content == "Sources"), settle: false);
+            Ui.WaitFor(() => window.NuGet.ShowsSources && window.NuGet.Sources.Files.Any(f => f.Place == Passenger.Packages.ConfigPlace.Machine),
+                () => $"the Sources tab with the machine's nuget.config, where it lists [{string.Join(", ", window.NuGet.Sources.Files.Select(f => $"{f.Path} ({f.Place})"))}]");
+            Passenger.Packages.ConfigFile file = window.NuGet.Sources.Files.Single(f => f.Place == Passenger.Packages.ConfigPlace.Machine);
+            Ui.Click(Ui.Row(window.NuGet.Sources.GetVisualDescendants().OfType<ListBox>().First(l => l.Items.Contains(file)), file));
+            CheckBox? toggle = null;
+            Ui.WaitFor(() => (toggle = window.NuGet.Sources.GetVisualDescendants().OfType<Grid>().FirstOrDefault(g => g.Tag as string == "team")?.Children.OfType<CheckBox>().FirstOrDefault()) is not null,
+                "the machine's feed team, listed with its check box");
+            Assert.False(toggle!.IsEnabled, "The check box of a feed of the machine's nuget.config, which NuGet never writes, is not greyed");
+            Rest(window, toggle, "Enabled");
+        }
+        finally
+        {
+            window.Close();
+            File.Delete(Path.Combine(machine, "Team.config"));
+        }
+    }
+
+    /// <summary>Rests the pointer on a control and waits for the tooltip it opens to say what is given.</summary>
+    private static void Rest(TopLevel top, Control control, string tip)
+    {
+        top.MouseMove(control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), top)!.Value);
+        Ui.WaitFor(() => Shown(top) == tip, () => $"\"{tip}\" shown with the pointer resting on the greyed {control.GetType().Name}, where it shows {Shown(top) ?? "no tooltip"}",
+            TimeSpan.FromSeconds(5));
+
+        static string? Shown(TopLevel top) => top.GetVisualDescendants().OfType<ToolTip>().FirstOrDefault(t => t.IsEffectivelyVisible)?.Content as string;
+    }
+
     /// <summary>The status bar's words are a link while they have a place to go (an internal error's, IDE Internal Errors):
     /// the hand, a key's reach, and the link's colour underlined under the pointer, from the shared style in every look;
     /// words that go nowhere stay the bar's muted words under the pointer, and the keys pass them by.</summary>
