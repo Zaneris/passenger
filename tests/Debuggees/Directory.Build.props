@@ -1,7 +1,8 @@
 <Project>
   <!-- The programs the debugger's tests debug: fixtures, not Passenger's code, so none of the repo's rules (their
        unused locals and odd shapes are what the tests look at), and a runtime of their own (net10.0, the current
-       LTS), not the IDE's. The tests stop at their lines and columns, so their layout is part of the tests. -->
+       LTS; net11.0 for the two async programs, as runtime async is .NET 11's), not the IDE's. The tests stop at their
+       lines and columns, so their layout is part of the tests. -->
   <PropertyGroup>
     <UseArtifactsOutput>true</UseArtifactsOutput>
     <ArtifactsPath>$(MSBuildThisFileDirectory)../../artifacts</ArtifactsPath>
