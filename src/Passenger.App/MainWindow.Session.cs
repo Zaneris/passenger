@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using Passenger.App.CSharp;
 using Passenger.App.Run;
+using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Workspace;
 
@@ -50,7 +51,20 @@ public partial class MainWindow
         ContainerTools = () => ContainerToolsFrom ?? Containers.ContainerToolsSource.Default(Releases),
         DockerHub = DockerHub,
         StartsLanguageServer = StartsLanguageServer,
+        HeadStart = headStart,
     };
+
+    /// <summary>The opening of the folder the process was started on, begun before the window was built, which the first
+    /// session of the window takes up (<see cref="SessionSetup.HeadStart"/>); a windowless Passenger's. None for a person's
+    /// window, which opens its folder itself.</summary>
+    public HeadStart? HeadStart
+    {
+        get => headStart;
+        init => headStart = value;
+    }
+
+    /// <summary>The head start until the window's first folder has opened, which alone takes it up.</summary>
+    private HeadStart? headStart;
 
     /// <summary>Where this window's Dockerfile server asks for image tags in Docker Hub's place: the one given, else
     /// the place <c>PASSENGER_DOCKER_HUB</c> names, else Docker Hub's own.</summary>
@@ -158,6 +172,8 @@ public partial class MainWindow
         WorkspaceModel? withSolution = WorkspaceModel.ReadSolution(folder, named);
         // The projects as MSBuild last evaluated them, from the folder's cache, before any is evaluated again.
         ProjectSession opened = ProjectSession.Open(Setup(), folder, named, withSolution, keepsWorkspace ? Store().Project(folder) : null);
+        // The head start is this first folder's: one opened later, this one again too, is read and evaluated afresh.
+        headStart = null;
         // The consoles are another folder's: what it ran said its last there before its end landed.
         Bottom.Run.Clear();
         Bottom.Build.Clear();

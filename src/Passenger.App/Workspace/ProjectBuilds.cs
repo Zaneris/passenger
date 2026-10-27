@@ -68,14 +68,15 @@ public sealed class ProjectBuilds
     public int Awaited { get; private set; }
 
     /// <summary>Takes up a folder, with the store's cache of its builds when the window keeps one, read off the UI thread
-    /// as the folder opens.</summary>
-    public void Open(string opened, StateDocument<ProjectBuildCache>? cache)
+    /// as the folder opens, or the builds begun <paramref name="ahead"/> of the window, which the server's first question
+    /// waits for.</summary>
+    public void Open(string opened, StateDocument<ProjectBuildCache>? cache, Task<ProjectBuildCache>? ahead = null)
     {
         UiThread.Check();
         Close();
         folder = opened;
         kept = cache;
-        reading = cache?.ValueAsync();
+        reading = ahead ?? cache?.ValueAsync();
     }
 
     /// <summary>The cache, once read, in what the builds know.</summary>
@@ -211,7 +212,8 @@ public sealed class ProjectBuilds
         ProjectToOpen Open(string path) => standing.GetValueOrDefault(path) ?? new(path, null);
     }
 
-    private static List<ProjectDiagnostic> Said(IReadOnlyList<BuildDiagnostic>? logged) =>
+    /// <summary>The errors and warnings a project's builds logged, as the server is given them.</summary>
+    internal static List<ProjectDiagnostic> Said(IReadOnlyList<BuildDiagnostic>? logged) =>
         [.. (logged ?? []).Select(d => new ProjectDiagnostic(d.Error, d.Message, d.Project))];
 
     /// <summary>The SDK the folder's host loads, which the builds kept were made with or not; null when it will not start.</summary>
@@ -331,14 +333,17 @@ public sealed class ProjectBuilds
         building = true;
         List<string> round = [.. queued.Where(p => !heldOff.Any(h => PathNames.Within(p, h)))];
         queued.RemoveAll(round.Contains);
-        Dictionary<string, string> properties = new(solution(), StringComparer.OrdinalIgnoreCase)
-        {
-            // What Roslyn's server gives its own build host, so Razor's generated C# is in the builds as it would be there.
-            ["RazorDesignTimeTargets"] = Path.Combine(RoslynServerFolder.Carried, "Targets", "Microsoft.NET.Sdk.Razor.DesignTime.targets"),
-        };
+        Dictionary<string, string> properties = Properties(solution());
         // Not background work: only the language server's load waits on it, and a large solution's round takes minutes.
         IdeErrors.Observe(RoundAsync(generation, folder, round, properties, ending.Token));
     }
+
+    /// <summary>The global properties the projects are built with at design time under a solution's.</summary>
+    public static Dictionary<string, string> Properties(IReadOnlyDictionary<string, string> solution) => new(solution, StringComparer.OrdinalIgnoreCase)
+    {
+        // What Roslyn's server gives its own build host, so Razor's generated C# is in the builds as it would be there.
+        ["RazorDesignTimeTargets"] = Path.Combine(RoslynServerFolder.Carried, "Targets", "Microsoft.NET.Sdk.Razor.DesignTime.targets"),
+    };
 
     /// <summary>The solution the projects are built under now, by the path its global properties give.</summary>
     private string? Under() => solution().GetValueOrDefault("SolutionPath");

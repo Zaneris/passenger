@@ -9,8 +9,8 @@ using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Passenger.App.State;
+using Passenger.App.Workspace;
 using Passenger.Core;
-using Passenger.Workspace;
 
 namespace Passenger.App.Mcp;
 
@@ -229,7 +229,8 @@ public static partial class McpHost
         Stream output = Console.OpenStandardOutput();
         // Standard output is the protocol's alone, and standard error the agent may never read: the console goes to the log.
         IdeLog.TakeConsole();
-        StartHostAhead(launch);
+        // The folder's opening begun now, on workers, while the window that takes it up is built.
+        HeadStart? ahead = HeadStart.Begin(launch, StartsLanguageServer);
 
         using CancellationTokenSource done = new();
         TaskCompletionSource<PassengerTools> ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -260,7 +261,9 @@ public static partial class McpHost
             .SetupWithoutStarting();
 
         // The agent's own IDE, which no other agent joins.
-        MainWindow window = new() { Width = 1600, Height = 1000, AgentsAllowed = false, AgentsOwn = true, StartsLanguageServer = StartsLanguageServer };
+        MainWindow window = new() { Width = 1600, Height = 1000, AgentsAllowed = false, AgentsOwn = true, StartsLanguageServer = StartsLanguageServer, HeadStart = ahead };
+        IdeErrors.Write($"Passenger {Product.Version} ({Product.Commit ?? "no commit"}) for an agent, with no window shown: its window built "
+            + $"{System.Diagnostics.Stopwatch.GetElapsedTime(Program.StartedAt).TotalSeconds:0.00} s after launch");
         window.SetRenderScaling(2);
         window.Show();
         window.Start(launch);
@@ -272,33 +275,6 @@ public static partial class McpHost
         PassengerApp.Quit();
         PassengerApp.End();
         return 0;
-    }
-
-    /// <summary>Starts the project host for the folder the command line names, on a worker, while the window is made, which
-    /// the folder's first evaluation would wait for; one that cannot start says why when the folder asks for it.</summary>
-    private static void StartHostAhead(LaunchOptions launch)
-    {
-        if ((launch.Workspace ?? launch.Folder) is not { } named)
-        {
-            return;
-        }
-        string full = PathNames.Canonical(named);
-        string folder = File.Exists(full) && WorkspaceModel.Opens(full) ? Path.GetDirectoryName(full)! : full;
-        if (Directory.Exists(folder))
-        {
-            // Not held: nothing drawn waits for it, and the folder's first evaluation waits for the host itself.
-            IdeErrors.Observe(BackgroundWork.Unheld(async () =>
-            {
-                try
-                {
-                    await ProjectHosts.ForAsync(folder);
-                }
-                catch (ProjectHostFailed)
-                {
-                    // Said when the folder asks for its host.
-                }
-            }));
-        }
     }
 
     /// <summary><c>--headless [PATH]</c>: a person's window on the headless platform, which <c>--mcp-attach</c> starts

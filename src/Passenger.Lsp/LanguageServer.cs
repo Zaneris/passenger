@@ -119,6 +119,58 @@ public sealed class LanguageServer : IAsyncDisposable
     /// <summary>Work the server reports the progress of (<c>$/progress</c>: Roslyn's project loads); raised on any thread.</summary>
     public event EventHandler<WorkProgress>? Progressed;
 
+    private readonly Lock saying = new();
+
+    /// <summary>What the server logged, showed and reported the progress of while held, in order; null while not held.</summary>
+    private List<Action>? heldSaid;
+
+    /// <summary>Holds what the server logs, shows and reports the progress of (<see cref="Logged"/>, <see cref="Shown"/>,
+    /// <see cref="Progressed"/>) for listeners that come later, which <see cref="ReleaseSaid"/> says it all to.</summary>
+    public void HoldSaid()
+    {
+        lock (saying)
+        {
+            heldSaid ??= [];
+        }
+    }
+
+    /// <summary>Says what was held to the listeners there now, in order, before anything the server says after.</summary>
+    public void ReleaseSaid()
+    {
+        while (true)
+        {
+            List<Action> said;
+            lock (saying)
+            {
+                if (heldSaid is not { Count: > 0 })
+                {
+                    heldSaid = null;
+                    return;
+                }
+                said = heldSaid;
+                heldSaid = [];
+            }
+            foreach (Action say in said)
+            {
+                say();
+            }
+        }
+    }
+
+    /// <summary>Raises one of the events <see cref="HoldSaid"/> holds, now or once released.</summary>
+    private void Say(Action say)
+    {
+        lock (saying)
+        {
+            if (heldSaid is not null)
+            {
+                heldSaid.Add(say);
+                return;
+            }
+        }
+        say();
+    }
+
     /// <summary>Where every message to and from every server goes while set, with the server's process and an arrow
     /// for its direction ("-->" to the server); called on the connection's threads.</summary>
     public static Action<int, string>? Trace { get; set; }
@@ -941,14 +993,20 @@ public sealed class LanguageServer : IAsyncDisposable
         public void LogMessage(LogMessageParams message)
         {
             Owner?.log.Write($"{DateTime.Now:HH:mm:ss.fff} {message.Message}");
-            Owner?.Logged?.Invoke(Owner, message);
+            if (Owner is { } owner)
+            {
+                owner.Say(() => owner.Logged?.Invoke(owner, message));
+            }
         }
 
         [JsonRpcMethod(LspMethods.ShowMessage)]
         public void ShowMessage(LogMessageParams message)
         {
             Owner?.log.Write($"{DateTime.Now:HH:mm:ss.fff} Shown: {message.Message}");
-            Owner?.Shown?.Invoke(Owner, message);
+            if (Owner is { } owner)
+            {
+                owner.Say(() => owner.Shown?.Invoke(owner, message));
+            }
         }
 
         /// <summary>Roslyn's own showMessage, with commands for VS Code's C# extension (Show C# logs) that have no meaning here.</summary>
@@ -1117,9 +1175,9 @@ public sealed class LanguageServer : IAsyncDisposable
         [JsonRpcMethod(LspMethods.Progress)]
         public void Progress(ProgressParams progress)
         {
-            if (WorkProgress.From(progress) is { } work)
+            if (WorkProgress.From(progress) is { } work && Owner is { } owner)
             {
-                Owner?.Progressed?.Invoke(Owner, work);
+                owner.Say(() => owner.Progressed?.Invoke(owner, work));
             }
         }
 

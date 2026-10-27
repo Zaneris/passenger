@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using ModelContextProtocol.Client;
@@ -47,6 +48,36 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"tests_list asked for the state it says the tests are in answered: {notRun}");
         CallToolResult wrong = await Result(client, McpTools.TestsList, new() { ["state"] = "broken" });
         Assert.True(wrong.IsError == true && Text(wrong).Contains("there are passed, failed, skipped and notRun", StringComparison.Ordinal), $"tests_list in no state answered: {Text(wrong)}");
+    }
+
+    /// <summary>An agent's own Passenger opens its folder as it starts, while its window is still being built: the first C#
+    /// answer comes from the language server started then, which loaded the projects as the project host evaluated and built
+    /// them then, and the window, once built, takes all of it up. Of what its opening asked of the built window before (an
+    /// evaluation, a design-time build, a language server's start and load), it asks none: the window's build is no
+    /// longer the first answer's to wait out.</summary>
+    [Fact]
+    public async Task An_agents_own_passenger_opens_its_folder_while_its_window_is_built_which_takes_it_up_and_does_none_of_it_again()
+    {
+        string folder = PathNames.Canonical(await TakeFolderAsync());
+        await using McpClient client = await Start(["--mcp", folder]);
+        string answered = (await Call(client, McpTools.SymbolInfo, new() { ["path"] = "Helper.cs", ["line"] = 3, ["column"] = 23 })).GetString()!;
+        Assert.StartsWith("int Helper.Twice(int value)", answered, StringComparison.Ordinal);
+
+        string logged = Path.Combine(OwnState, "logs", "passenger.log");
+        string log = string.Empty;
+        await Until(() => (log = Ui.Shared(logged)).Contains(") loaded ", StringComparison.Ordinal) && log.Contains("as MSBuild evaluates them", StringComparison.Ordinal),
+            "the log to say the language server loaded the project and the Solution view showed it");
+        int begun = log.IndexOf($"Opening {folder} as Passenger starts, ahead of its window", StringComparison.Ordinal);
+        int built = log.IndexOf("for an agent, with no window shown: its window built", StringComparison.Ordinal);
+        Assert.True(begun >= 0 && built > begun, $"The folder's opening was not begun before the window was built:\n{log}");
+        string[] ahead = [.. Regex.Matches(log, $@"C# language server \(process (\d+)\) started ahead for {Regex.Escape(folder)} ")
+            .Select(m => m.Groups[1].Value)];
+        string[] loaded = [.. Regex.Matches(log, @"C# language server \(process (\d+)\) loaded ").Select(m => m.Groups[1].Value)];
+        Assert.True(ahead.Length == 1 && loaded.SequenceEqual(ahead) && log.Contains($"C# language server (process {ahead[0]}) started ahead taken up for {folder}", StringComparison.Ordinal)
+            && !log.Contains($"C# language server (process {ahead[0]}) started for", StringComparison.Ordinal),
+            $"The answer came from a language server the window started once built, not the one started as Passenger did:\n{log}");
+        Assert.False(Regex.IsMatch(log, @"evaluated \d+ of the \d+ projects of"), $"The window evaluated the folder's project again once built:\n{log}");
+        Assert.False(log.Contains("at design time in", StringComparison.Ordinal), $"The window built the folder's project at design time again once built:\n{log}");
     }
 
     /// <summary>A file-based program (<c>dotnet run app.cs</c>) is a project to an agent: workspace lists it by its C# file,

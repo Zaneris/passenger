@@ -27,6 +27,7 @@ public sealed class CSharpService : IAsyncDisposable
     private readonly Dictionary<OpenDocument, CSharpDocument> documents = [];
     private readonly ServerRestarts restarts = new();
     private readonly WarmServer? warm;
+    private readonly HeadStart? headStart;
 
     /// <summary>What this service hung on its server's events, undone when the server is kept for another window.</summary>
     private readonly List<Action> unhooks = [];
@@ -44,8 +45,13 @@ public sealed class CSharpService : IAsyncDisposable
     private (LanguageServer? Server, HashSet<string> Projects) reported = (null, new HashSet<string>(PathNames.Comparer));
 
     /// <summary>A service that starts its own server and ends it with itself, or, given a <see cref="WarmServer"/>, takes
-    /// up the server kept there and leaves its own there as it ends.</summary>
-    public CSharpService(WarmServer? warm = null) => this.warm = warm;
+    /// up the server kept there and leaves its own there as it ends; given a <see cref="HeadStart"/>, it takes up the
+    /// server started there for its folder, once.</summary>
+    public CSharpService(WarmServer? warm = null, HeadStart? headStart = null)
+    {
+        this.warm = warm;
+        this.headStart = headStart;
+    }
 
     /// <summary>The projects a starting server opens before the rest, asked on the UI thread as it is ready to open them:
     /// the file shown's and those it references, so that file's answers come first.</summary>
@@ -315,6 +321,25 @@ public sealed class CSharpService : IAsyncDisposable
         }
         told = shown.Indentation.Options;
         session?.Server.SetOptions(IndentSettings(told));
+    }
+
+    /// <summary>The options a server is started with for settings as they stand, before any file is shown.</summary>
+    internal static Dictionary<string, object?> StartOptions(Settings.AppSettings settings) =>
+        StartOptions(new IndentOptions(), settings.SolutionWideAnalysis, (settings.ParameterHints, settings.TypeHints));
+
+    /// <summary>The options a server is started with: an indentation, the analysis's scope and the inlay hints shown.</summary>
+    private static Dictionary<string, object?> StartOptions(IndentOptions indent, bool solutionWide, (bool Parameters, bool Types) shown)
+    {
+        Dictionary<string, object?> options = new(IndentSettings(indent));
+        foreach ((string name, object? value) in solutionWide ? FullSolution : new Dictionary<string, object?>())
+        {
+            options[name] = value;
+        }
+        foreach ((string name, object? value) in HintSettings(shown))
+        {
+            options[name] = value;
+        }
+        return options;
     }
 
     /// <summary>Roslyn's options for an indentation, by the names it asks for them under.</summary>
@@ -789,18 +814,27 @@ public sealed class CSharpService : IAsyncDisposable
             string logs = LogFolder;
             IndentOptions startedWith = told;
             (bool, bool) hintedWith = hints;
-            Dictionary<string, object?> options = new(IndentSettings(startedWith));
-            foreach ((string name, object? value) in solutionWide ? FullSolution : new Dictionary<string, object?>())
-            {
-                options[name] = value;
-            }
-            foreach ((string name, object? value) in HintSettings(hintedWith))
-            {
-                options[name] = value;
-            }
+            Dictionary<string, object?> options = StartOptions(startedWith, solutionWide, hintedWith);
             RoslynSession started;
             string loading = solution is not null ? Path.GetFileName(solution) : Plural.Of(projects.Length, "project");
-            if (warm?.Take(opening.Folder, solution, projects, options) is { } taken)
+            Func<CancellationToken, Task<RoslynSession?>>? startedAhead = warm is null ? headStart?.TakeServer(opening.Folder, solution, projects, options) : null;
+            RoslynSession? takenAhead = startedAhead is null ? null : await startedAhead(cancel);
+            if (takenAhead is not null)
+            {
+                started = takenAhead;
+                Hear(started.Server);
+                // What it said while no window listened, its projects' load among it, heard now in order.
+                started.Server.ReleaseSaid();
+                // What it asks for from now on is this window's to answer.
+                if (started.Fed)
+                {
+                    started.Server.Feed = Feed;
+                }
+                IdeErrors.Write($"C# language server (process {started.Server.ProcessId}) started ahead taken up for {opening.Folder}, {loading} {(started.IsLoaded ? "loaded" : "loading")}");
+                IdeErrors.Observe(TimeFirstColoursAsync(started, began));
+                IdeErrors.Observe(TimeActiveFileAsync(started, began));
+            }
+            else if (warm?.Take(opening.Folder, solution, projects, options) is { } taken)
             {
                 started = taken.Session;
                 Hear(started.Server);

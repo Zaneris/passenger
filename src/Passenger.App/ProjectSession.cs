@@ -50,6 +50,10 @@ public sealed record SessionSetup(
 
     /// <summary>Where the container tools come from that reach a program in a container: the window's.</summary>
     public required Func<Containers.ContainerToolsSource> ContainerTools { get; init; }
+
+    /// <summary>The opening of a folder begun as the process started, which the session that opens that folder takes up:
+    /// the first of a windowless Passenger's window.</summary>
+    public HeadStart? HeadStart { get; init; }
 }
 
 /// <summary>Projects whose evaluation landed, as the workspace now has them, and whether which projects hold tests, or what
@@ -76,6 +80,10 @@ public sealed class ProjectSession : IAsyncDisposable
 
     private Task? ending;
     private bool closing;
+
+    /// <summary>The opening of the folder begun as the process started, until the first walk for its projects has landed:
+    /// what the session has not taken of it by then is ended.</summary>
+    private HeadStart? ahead;
 
     private ProjectSession(SessionSetup setup, string? folder)
     {
@@ -142,20 +150,25 @@ public sealed class ProjectSession : IAsyncDisposable
     /// until MSBuild has evaluated them again (<see cref="Evaluate"/>).</summary>
     public static ProjectSession Open(SessionSetup setup, string folder, string? named, WorkspaceModel? withSolution, ProjectState? kept = null)
     {
+        HeadStart? ahead = setup.HeadStart is { } head && PathNames.Same(head.Folder, folder)
+            && (head.Named is null ? named is null : named is not null && PathNames.Same(head.Named, named)) ? head : null;
         ProjectSession session = new(setup, folder)
         {
             NamedSolution = named,
             LocalHistory = History.LocalHistory.Open(folder, setup.StateFolder, setup.HistoryKeeping),
+            ahead = ahead,
         };
         // Where the log's timing of the language server's start (CSharpService) begins.
         IdeErrors.Write($"Opened {folder}{(withSolution is { } read && read.OpenedAs != folder ? $" with {Path.GetFileName(read.OpenedAs)}" : string.Empty)}");
         // A folder without a solution has no projects until the walk for them lands: none to load, run or build meanwhile.
         session.reads++;
-        session.Models.Open(folder, kept?.ProjectModels);
-        // Its projects' design-time builds as kept, which its language server loads them from.
-        session.DesignTimeBuilds.Open(folder, kept?.ProjectBuilds);
+        session.Models.Open(folder, kept?.ProjectModels, ahead?.Evaluations);
+        // Its projects' design-time builds as kept, or as begun ahead, which its language server loads them from.
+        session.DesignTimeBuilds.Open(folder, kept?.ProjectBuilds, ahead?.Builds);
         session.openedAt = System.Diagnostics.Stopwatch.GetTimestamp();
-        session.Workspace = session.Models.Apply(withSolution ?? new WorkspaceModel(folder, null, []));
+        // The folder as read ahead, its projects walked for already, when that read has landed.
+        WorkspaceModel opening = ahead?.Read is { IsCompletedSuccessfully: true } walked ? walked.Result : withSolution ?? new WorkspaceModel(folder, null, []);
+        session.Workspace = session.Models.Apply(opening);
         session.TakeFilter(session.Workspace);
         session.TimeSolutionView();
         session.Configurations.Configure(session.Projects);
@@ -878,14 +891,16 @@ public sealed class ProjectSession : IAsyncDisposable
     {
         IdeErrors.Observe(Vcs.OpenAsync(Folder!));
         StartCSharp();
-        WalkForProjects();
+        // The walk begun ahead is the first, and what the session has not taken of the opening once it lands is ended.
+        WalkForProjects(ahead?.Read);
         // Once the files it opens with are open, so the one shown's project is evaluated first.
         UiThread.Post(Evaluate);
     }
 
-    /// <summary>Walks the folder for its projects off the window's thread, as background work, and takes what it finds when
-    /// it differs from what the session has, unless another read came first or the session was left.</summary>
-    private void WalkForProjects()
+    /// <summary>Walks the folder for its projects off the window's thread, as background work, or takes the walk given
+    /// (begun ahead), and takes what it finds when it differs from what the session has, unless another read came first
+    /// or the session was left.</summary>
+    private void WalkForProjects(Task<WorkspaceModel>? begun = null)
     {
         string walking = Folder!;
         string? named = NamedSolution;
@@ -894,7 +909,7 @@ public sealed class ProjectSession : IAsyncDisposable
         WorkspaceRead = landed.Task;
         // Held through the walk, then by the crossing, which lets go of what it can never deliver.
         IDisposable held = BackgroundWork.Scope();
-        IdeErrors.Observe(BackgroundWork.Unheld(() => WorkspaceModel.Read(walking, named)).ContinueWith(walked =>
+        IdeErrors.Observe((begun ?? BackgroundWork.Unheld(() => WorkspaceModel.Read(walking, named))).ContinueWith(walked =>
         {
             // Seen here, so a walk that failed after another read began is no unobserved task's error later.
             _ = walked.Exception;
@@ -910,10 +925,22 @@ public sealed class ProjectSession : IAsyncDisposable
                 finally
                 {
                     landed.TrySetResult();
+                    if (begun is not null)
+                    {
+                        IdeErrors.Observe(EndAhead());
+                    }
                 }
             });
             held.Dispose();
         }, TaskScheduler.Default));
+    }
+
+    /// <summary>Ends what the session did not take of the opening begun ahead (the language server it started), once.</summary>
+    private Task EndAhead()
+    {
+        HeadStart? ended = ahead;
+        ahead = null;
+        return ended?.EndAsync() ?? Task.CompletedTask;
     }
 
     /// <summary>Takes a new read of the folder. The language server starts again only when what it loaded changed: another
@@ -944,7 +971,7 @@ public sealed class ProjectSession : IAsyncDisposable
         if (!IsEnded && setup.StartsLanguageServer && Workspace is { } opening && (opening.Solution is not null || opening.Projects.Count > 0))
         {
             Settings.AppSettings shown = setup.Settings();
-            CSharp = new CSharpService(setup.WarmServer)
+            CSharp = new CSharpService(setup.WarmServer, ahead)
             {
                 SolutionWide = setup.SolutionWide(),
                 Hints = (shown.ParameterHints, shown.TypeHints),
@@ -1081,6 +1108,7 @@ public sealed class ProjectSession : IAsyncDisposable
         parts.Add(("the test runner", Tests.DisposeAsync().AsTask()));
         parts.Add(("the language server", CSharp?.DisposeAsync().AsTask() ?? Task.CompletedTask));
         CSharp = null;
+        parts.Add(("the language server started ahead", EndAhead()));
         parts.Add(("the web language servers", Web?.DisposeAsync().AsTask() ?? Task.CompletedTask));
         Web = null;
         // No child holds a container: the engine ends what the folder started, once Compose has stopped making them.

@@ -67,24 +67,25 @@ public sealed class ProjectModels
         return done;
     }
 
-    /// <summary>Takes up a folder, with the store's cache of its evaluations when the window keeps one, which lands as
-    /// <see cref="Changed"/> once read.</summary>
-    public void Open(string opened, StateDocument<ProjectModelCache>? cache)
+    /// <summary>Takes up a folder, with the store's cache of its evaluations when the window keeps one, or the evaluations
+    /// begun <paramref name="ahead"/> of the window, either landing as <see cref="Changed"/> once there; the first round
+    /// waits for them, so it evaluates only what changed since.</summary>
+    public void Open(string opened, StateDocument<ProjectModelCache>? cache, Task<ProjectModelCache>? ahead = null)
     {
         UiThread.Check();
         Close();
         folder = opened;
         kept = cache;
-        if (cache is not null)
+        if ((ahead ?? cache?.ValueAsync()) is { } evaluations)
         {
             idle = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            reading = TakeCacheAsync(generation, cache);
+            reading = TakeCacheAsync(generation, evaluations);
         }
     }
 
-    private async Task TakeCacheAsync(int mine, StateDocument<ProjectModelCache> cache)
+    private async Task TakeCacheAsync(int mine, Task<ProjectModelCache> evaluations)
     {
-        ProjectModelCache value = await cache.ValueAsync();
+        ProjectModelCache value = await evaluations;
         if (mine != generation)
         {
             return;
