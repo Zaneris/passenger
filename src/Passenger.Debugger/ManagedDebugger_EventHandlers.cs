@@ -456,6 +456,14 @@ public partial class ManagedDebugger
             Continue(clearVariables: false);
             return;
         }
+        if (_asyncStepper?.WaitsAtAwait(corThread) is true)
+        {
+            // The step's runtime-async method left at an await that suspended: the step goes on where its run does.
+            stepCompleteEventArgs.Stepper.Deactivate();
+            _stepper = null;
+            Continue(clearVariables: true);
+            return;
+        }
         ICorDebugILFrame ilFrame = (ICorDebugILFrame)corThread.ActiveFrame;
         // An async step's breakpoint at an await, which the step ran to, was not hit: the async step is over.
         _asyncStepper?.ClearActiveAsyncStep();
@@ -663,6 +671,10 @@ public partial class ManagedDebugger
             case CorDebugExceptionCallbackType.DEBUG_EXCEPTION_CATCH_HANDLER_FOUND:
                 {
                     bool handlerIsUserCode = IsUserCodeFrame(exceptionEventArgs.Frame);
+                    if (exceptionEventArgs.Frame is { } caughtIn)
+                    {
+                        _asyncStepper?.CaughtOn(corThread, caughtIn);
+                    }
                     bool seen = _exceptionStates.TryGetValue(threadId, out ExceptionPropagationState? state);
                     shouldStop = _justMyCode && handlerIsUserCode is false && seen && state!.HasReachedUserCode && MatchesExceptionBreakpoint(ExceptionBreakpointFilter.UserUnhandled, exceptionType);
                     // Without Just My Code every frame is the user's, so an exception is handled in user code or not at all.

@@ -186,6 +186,8 @@
     <ProjectReference Include="../Debuggees/PassengerCases/PassengerCases.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../Debuggees/ReadsInputConsoleApp/ReadsInputConsoleApp.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../Debuggees/ReadsInputConsoleAppNoCet/ReadsInputConsoleAppNoCet.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../Debuggees/RuntimeAsyncConsoleApp/RuntimeAsyncConsoleApp.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../Debuggees/StateMachineAsyncConsoleApp/StateMachineAsyncConsoleApp.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../Debuggees/SteppingConsoleApp/SteppingConsoleApp.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../Debuggees/TerminalConsoleApp/TerminalConsoleApp.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../Debuggees/TerminalCases/TerminalCases.csproj" ReferenceOutputAssembly="false" />

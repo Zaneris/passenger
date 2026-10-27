@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<!-- .NET 11's runtime async: its async methods compiled with no state machines, only AsyncHelpers' awaits. -->
+		<TargetFramework>net11.0</TargetFramework>
+		<Features>runtime-async=on</Features>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+	</PropertyGroup>
+
+</Project>

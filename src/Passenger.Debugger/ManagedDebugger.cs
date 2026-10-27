@@ -673,9 +673,9 @@ public partial class ManagedDebugger
     private (int ThreadId, StackRange? Frame)? _stepping;
 
     /// <summary>Where a frame lies on its thread's stack: its identity while it lives, as the stack's memory does not move.</summary>
-    private readonly record struct StackRange(CORDB_ADDRESS Start, CORDB_ADDRESS End);
+    internal readonly record struct StackRange(CORDB_ADDRESS Start, CORDB_ADDRESS End);
 
-    private static StackRange? RangeOf(ICorDebugFrame frame) =>
+    internal static StackRange? RangeOf(ICorDebugFrame frame) =>
         frame.TryGetStackRange(out CORDB_ADDRESS start, out CORDB_ADDRESS end) is Cor.S_OK ? new StackRange(start, end) : null;
 
     /// <summary>Steps out of the frame of a handler outside the user's code, Just My Code: the step ends where the
@@ -736,7 +736,8 @@ public partial class ManagedDebugger
 
         ICorDebugStepper stepper = frame.CreateStepper();
         stepper.SetInterceptMask(CorDebugIntercept.INTERCEPT_ALL & ~(CorDebugIntercept.INTERCEPT_SECURITY | CorDebugIntercept.INTERCEPT_CLASS_INIT));
-        return BeginStep(stepper, thread, frame, _justMyCode, stepper =>
+        bool justMyCode = _justMyCode && _asyncStepper?.SeesFrameLeave(thread, frame) is not true;
+        return BeginStep(stepper, thread, frame, justMyCode, stepper =>
         {
             if (stepType == StepType.StepOut)
             {
@@ -757,7 +758,7 @@ public partial class ManagedDebugger
 
     /// <summary>The IL a step from a frame's statement steps through: its sequence point to the next one that shows a line,
     /// to the method's end from one of no length. None in a module the debugger could not read.</summary>
-    private (int Start, int End)? StepRangeOf(ICorDebugILFrame frame)
+    internal (int Start, int End)? StepRangeOf(ICorDebugILFrame frame)
     {
         ICorDebugFunction function = frame.Function;
         if (FindModule(function.Module)?.MetadataReader.GetStartAndEndSequencePointIlOffsetsForIlOffset(function.Token, frame.IP.pnOffset, ModuleMetadataReader.VersionOf(frame)) is not var (start, end))
@@ -955,7 +956,7 @@ public partial class ManagedDebugger
     /// <summary>The thread's managed frames from its stop down. An evaluation given up, still running on the thread, is a
     /// chain of its own above the stop's (CHAIN_FUNC_EVAL, ending at its [Func Eval] frame): its frames are left out, so a
     /// frame's depth names the same frame as before the evaluation began.</summary>
-    private static IEnumerable<ICorDebugFrame> EnumerateFramesForThread(ICorDebugThread thread)
+    internal static IEnumerable<ICorDebugFrame> EnumerateFramesForThread(ICorDebugThread thread)
     {
         List<ICorDebugChain> chains = [.. thread.EnumerateChains()];
         int stop = chains.FindLastIndex(chain => chain.Reason is CorDebugChainReason.CHAIN_FUNC_EVAL) + 1;

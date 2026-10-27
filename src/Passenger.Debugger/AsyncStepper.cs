@@ -10,7 +10,7 @@ public enum StepType
     StepOut
 }
 
-internal sealed class AsyncStepper
+internal sealed partial class AsyncStepper
 {
     private readonly ManagedDebugger _debugger;
     private class AsyncBreakpoint
@@ -185,6 +185,14 @@ internal sealed class AsyncStepper
                 return (false, null);
             }
 
+            _runtimeStep?.Dispose();
+            _runtimeStep = null;
+            if (frame is ICorDebugILFrame awaiting && TrySetupRuntimeAsyncStep(thread, awaiting, stepType))
+            {
+                // A run whose caller waits in a continuation runs to it with no stepper, which would pass its breakpoint by.
+                return (true, _runtimeStep!.FrameAwaits);
+            }
+
             ICorDebugFunction function = frame.Function;
             CORDB_ADDRESS moduleAddress = function.Module.BaseAddress;
             mdMethodDef methodToken = function.Token;
@@ -282,6 +290,12 @@ internal sealed class AsyncStepper
     /// program stops there.</summary>
     public async Task<(bool HandledByAsyncStepper, bool? ShouldStop)> TryHandleBreakpoint(ICorDebugThread thread, ICorDebugFunctionBreakpoint breakpoint)
     {
+        if (_runtimeStep is { } runtime && runtime.Resume.Breakpoint == breakpoint)
+        {
+            TakeRuntimeResume(runtime, thread);
+            return (true, false);
+        }
+
         if (_notifyDebuggerBreakpoint is not null &&
             MatchesBreakpoint(breakpoint, _notifyDebuggerBreakpoint, thread))
         {
@@ -565,6 +579,8 @@ internal sealed class AsyncStepper
     {
         _currentAsyncStep?.Dispose();
         _currentAsyncStep = null;
+        _runtimeStep?.Dispose();
+        _runtimeStep = null;
     }
 
     /// <summary>
@@ -574,6 +590,8 @@ internal sealed class AsyncStepper
     {
         _currentAsyncStep?.Dispose();
         _currentAsyncStep = null;
+        _runtimeStep?.Dispose();
+        _runtimeStep = null;
         _notifyDebuggerBreakpoint?.Dispose();
         _notifyDebuggerBreakpoint = null;
     }

@@ -54,6 +54,8 @@
     <Project Path="tests/Debuggees/PassengerCases/PassengerCases.csproj" />
     <Project Path="tests/Debuggees/ReadsInputConsoleApp/ReadsInputConsoleApp.csproj" />
     <Project Path="tests/Debuggees/ReadsInputConsoleAppNoCet/ReadsInputConsoleAppNoCet.csproj" />
+    <Project Path="tests/Debuggees/RuntimeAsyncConsoleApp/RuntimeAsyncConsoleApp.csproj" />
+    <Project Path="tests/Debuggees/StateMachineAsyncConsoleApp/StateMachineAsyncConsoleApp.csproj" />
     <Project Path="tests/Debuggees/SteppingConsoleApp/SteppingConsoleApp.csproj" />
     <Project Path="tests/Debuggees/TerminalCases/TerminalCases.csproj" />
     <Project Path="tests/Debuggees/TerminalConsoleApp/TerminalConsoleApp.csproj" />
