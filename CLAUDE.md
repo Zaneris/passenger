@@ -9,7 +9,7 @@ description of what the code does.
 
 **Passenger** is an IDE for C# and modern .NET (CoreCLR only: no .NET Framework, Mono or Unity), written in C# on .NET 11
 with an Avalonia 12 UI, for Windows, macOS and Linux. v0.2.0 shipped; the work now is bug fixes and code cleanup only, no
-new features, on main toward 0.2.2 (https://github.com/Zaneris/passenger/milestone/7), features waiting in the Backlog
+new features, on main toward 0.2.3 (https://github.com/Zaneris/passenger/milestone/5), features waiting in the Backlog
 (https://github.com/Zaneris/passenger/milestone/2). Each issue says **Now:**, **The aim:** and **Done when:**;
 read it before anything larger than a fix, and close or tick it when it lands. A new feature is the best Passenger can
 make it, never a copy of another IDE's; only its keys follow Rider's keymaps (their files are in the jars of
