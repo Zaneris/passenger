@@ -2383,12 +2383,37 @@ public sealed class StandInAppHost : SharedProject
     /// <summary>Builds the stand-in's service, which the IDE starts as it is built, by its real path, as the IDE's
     /// builds of it (a restart's) name it: a build through the run folder's link (macOS's TMPDIR, under /var) after one
     /// of the IDE's would have MSBuild's IncrementalClean delete the runtimeconfig.json and deps.json the IDE's
-    /// wrote.</summary>
+    /// wrote. None when its files and what its last build here left are as they were then (<see cref="ApiBuilt"/>).</summary>
     internal void BuildApi()
     {
+        if (apiBuilt is { } last && last.SequenceEqual(ApiBuilt()))
+        {
+            return;
+        }
+        apiBuilt = null;
         ChildResult result = Ui.Await(ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", PathNames.Canonical(ApiProject), "-nologo", "-v:q"]),
             limit: TimeSpan.FromMinutes(3).Scaled()), "the stand-in API's build");
         Assert.True(result.Succeeded, $"The stand-in API did not build: {result.Output}{result.Error}");
+        apiBuilt = ApiBuilt();
+    }
+
+    /// <summary>What the service's last build by <see cref="BuildApi"/> found and left, or null before one.</summary>
+    private (string Path, DateTime Written, long Length)[]? apiBuilt;
+
+    /// <summary>The service's own files, MSBuild's beside the solution (a Directory.Build.props among them), its restore's
+    /// assets and what its build leaves for the IDE to start, each with its time and length (a file missing has neither):
+    /// a test that changed, added or removed one, or a build that wrote one, shows here.</summary>
+    private (string Path, DateTime Written, long Length)[] ApiBuilt()
+    {
+        string own = PathOf(Api);
+        string output = Path.Combine(own, "bin", "Debug", TestProjects.Framework);
+        IEnumerable<string> sources = Directory.EnumerateFiles(own, "*", SearchOption.AllDirectories)
+            .Where(path => Path.GetRelativePath(own, path).Split(Path.DirectorySeparatorChar)[0] is not ("bin" or "obj"));
+        IEnumerable<string> beside = Directory.EnumerateFiles(Folder).Where(path => Path.GetFileName(path).ToLowerInvariant() is "global.json" or "nuget.config"
+            || Path.GetFileName(path).StartsWith("Directory.", StringComparison.OrdinalIgnoreCase));
+        return [.. sources.Concat(beside).Order(StringComparer.Ordinal)
+            .Concat([Path.Combine(own, "obj", "project.assets.json"), Path.Combine(output, $"{Api}.dll"), Path.Combine(output, $"{Api}.runtimeconfig.json"), Path.Combine(output, $"{Api}.deps.json")])
+            .Select(path => new FileInfo(path)).Select(file => file.Exists ? (file.FullName, file.LastWriteTimeUtc, file.Length) : (file.FullName, DateTime.MinValue, -1L))];
     }
 
     /// <summary>Asks the IDE to start the stand-in's service as a resource of that name, as DCP starts a project resource: the
