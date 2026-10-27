@@ -502,14 +502,15 @@ public sealed class IdeErrorsTests : IDisposable
         string? missed = null;
         try
         {
-            // Its projects handed over, the window's thread is held until the log says the start came back and its server ended.
+            // From its projects' answer, which can come before the server started again has begun, the window's thread is held until that server's start came back and it ended.
             Assert.NotNull(csharp.Feed);
             csharp.Feed = new EndingOnce(csharp.Feed, () =>
             {
-                int server = Volatile.Read(ref next);
-                if (!Waiting.Until(() => Said($"C# language server (process {server}) started for {folder}") > 0, TimeSpan.FromMinutes(2), every: TimeSpan.FromMilliseconds(50)))
+                int server = 0;
+                if (!Waiting.Until(() => (server = Volatile.Read(ref next)) != 0 && Said($"C# language server (process {server}) started for {folder}") > 0,
+                    TimeSpan.FromMinutes(2), every: TimeSpan.FromMilliseconds(50)))
                 {
-                    missed = $"the start of the server (process {server}) never came back";
+                    missed = server == 0 ? "no language server was started again" : $"the start of the server (process {server}) never came back";
                     return;
                 }
                 int endedBefore = Said($"The C# language server (process {server}) ended");
@@ -524,7 +525,7 @@ public sealed class IdeErrorsTests : IDisposable
                 }
             });
             Process.GetProcessById(first).Kill();
-            Ui.WaitFor(() => next != 0 && !Running(next), "the server started again to be ended as its start came back");
+            Ui.WaitFor(() => missed is not null || (next != 0 && !Running(next)), "the server started again to be ended as its start came back");
             Assert.True(missed is null, $"The window's thread was let go before its server's start and end had both come: {missed}");
             Ui.WaitFor(() => csharp.Session is { IsLoaded: true } session && session.Server.ProcessId != first && session.Server.ProcessId != next,
                 $"the language server ended as it started to be started again ({csharp.State})");
