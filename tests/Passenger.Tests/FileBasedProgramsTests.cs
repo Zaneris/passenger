@@ -3,6 +3,7 @@ using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.CSharp;
 using Passenger.App.Explorer;
+using Passenger.App.Run;
 using Passenger.App.Testing;
 using Passenger.App.Debugging;
 using Passenger.Workspace;
@@ -152,6 +153,65 @@ public sealed class FileBasedProgramsTests : IDisposable
         {
             window.Close();
         }
+    }
+
+    /// <summary>A second Run of a program nothing of which changed builds nothing, the Build window saying it is up to date;
+    /// a change to a file it includes builds it first, and the run shows the change.</summary>
+    [AvaloniaFact]
+    public void A_second_run_of_an_unchanged_program_builds_nothing_and_a_change_to_its_included_file_builds_it()
+    {
+        List<string> builds = [];
+        EventHandler<ChildStart> started = (_, child) =>
+        {
+            if (child.Command.Contains(" build ", StringComparison.Ordinal) && child.Command.Contains("app.cs", StringComparison.Ordinal))
+            {
+                lock (builds)
+                {
+                    builds.Add(child.Command);
+                }
+            }
+        };
+        ChildProcesses.Started += started;
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "app: greet"), "app.cs's configuration", TimeSpan.FromMinutes(2));
+            Assert.True(window.SelectConfiguration("app: greet"));
+            Ran(window, builds, built: true, "Hello, Ada Lovelace", "its first run");
+            Ran(window, builds, built: false, "Hello, Ada Lovelace", "a run with nothing changed");
+
+            File.WriteAllText(Helper, File.ReadAllText(Helper).Replace("$\"Hello, {name}\"", "$\"Goodbye, {name}\"", StringComparison.Ordinal));
+            Ran(window, builds, built: true, "Goodbye, Ada Lovelace", "a run after the file it includes changed");
+            Ran(window, builds, built: false, "Goodbye, Ada Lovelace", "a run with nothing changed since");
+        }
+        finally
+        {
+            ChildProcesses.Started -= started;
+            window.Close();
+        }
+    }
+
+    /// <summary>Runs the program chosen, holding it to a dotnet build of it or none, and to printing what it should.</summary>
+    private static void Ran(MainWindow window, List<string> builds, bool built, string printed, string which)
+    {
+        int before;
+        lock (builds)
+        {
+            before = builds.Count;
+        }
+        Ui.Launched(window, window.RunAsync(), $"app.cs's run ({which})", TimeSpan.FromMinutes(2));
+        Ui.WaitFor(() => Output(window).Contains("Process finished", StringComparison.Ordinal), $"the program to finish ({which})", TimeSpan.FromMinutes(2));
+        Assert.Contains(printed, Output(window), StringComparison.Ordinal);
+        int ran;
+        lock (builds)
+        {
+            ran = builds.Count - before;
+        }
+        window.BottomPanel.Build.Flush();
+        string console = window.BottomPanel.Build.Document.Snapshot.ToString();
+        bool skipped = console.Contains(BuildRunController.UpToDateSaid("app"), StringComparison.Ordinal);
+        Assert.True(built ? ran == 1 && !skipped : ran == 0 && skipped,
+            $"{which} {(built ? "was not built first" : "was built though nothing it reads changed")}: {ran} dotnet builds of app.cs started, and the Build window says:\n{console}");
     }
 
     /// <summary>A program holding xUnit tests (<c>#:package xunit.v3</c>) is a test project of its own: the Unit Tests window

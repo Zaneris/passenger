@@ -22,12 +22,12 @@ public static class UpToDate
     /// was asked (its folder, the project, the build's global properties).</summary>
     public sealed record Check(string Key, BuildInputs Inputs, bool Holds, string Folder, string Project, IReadOnlyDictionary<string, string> Properties);
 
-    /// <summary>What a build of a project (a .csproj, built where its own build puts it) would read now, asked of the host
-    /// for the folder the build runs in, with whether its last build here stands; null for one that cannot be checked, or a
-    /// host that could not say. On any thread.</summary>
+    /// <summary>What a build of a project (a .csproj, or a file-based program's C# file, built where its own build puts it)
+    /// would read now, asked of the host for the folder the build runs in, with whether its last build here stands; null for
+    /// one that cannot be checked, or a host that could not say. On any thread.</summary>
     public static async Task<Check?> CheckAsync(BuildStep step, IReadOnlyList<string> arguments, bool windowsTargeting, string folder, CancellationToken cancel)
     {
-        if (step.Output is not null || !step.Project.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+        if (step.Output is not null || !(step.Project.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase) || ProgramFiles.IsProgram(step.Project)))
         {
             return null;
         }

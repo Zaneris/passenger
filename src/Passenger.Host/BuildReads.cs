@@ -169,6 +169,11 @@ internal static class BuildReads
             {
                 continue;
             }
+            // What Clean deletes, which a build writes rather than reads: a file-based program's caches beside its output.
+            if (item.ItemType == "Clean")
+            {
+                continue;
+            }
             string path = item.ItemType == "Reference" && item.GetMetadataValue("HintPath") is { Length: > 0 } hint
                 ? Path.GetFullPath(Separated(hint), project.DirectoryPath)
                 : FullPath(item);
