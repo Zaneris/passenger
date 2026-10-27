@@ -30,10 +30,12 @@
   </PropertyGroup>
 
   <!-- Passenger's own rules (src/Passenger.Analyzers) over every project but theirs, as an analyzer alone: nothing of it
-       is referenced or carried. -->
+       is referenced or carried. Built for no system, whatever a publish is for: the compiler that loads it runs on the
+       publishing machine, which can't load a library marked for another's processor. -->
   <ItemGroup Condition="'$(MSBuildProjectName)' != 'Passenger.Analyzers'">
     <ProjectReference Include="$(MSBuildThisFileDirectory)src/Passenger.Analyzers/Passenger.Analyzers.csproj"
-                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all" />
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all"
+                      GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained" />
   </ItemGroup>
 
   <!-- Passenger's own code writes a whole file only through AtomicFile, FileText.Save or OwnFiles: File.WriteAll* is
