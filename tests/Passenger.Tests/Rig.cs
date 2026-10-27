@@ -357,8 +357,9 @@ public static partial class Nice
 /// each test has a dispatcher of its own, and work a test left running (one that failed before its window settled, or
 /// closed it mid-parse) ends on that dispatcher, which never runs again, and held for ever would fail every window test
 /// after it on <see cref="Ui.Settle"/>'s limit. And after a window test, every window it left open is closed (one that
-/// failed before its own close) and what those windows started (a language server, a build, a debugger) is waited out,
-/// then the folders the test made as it ran are removed, the windows that used them gone first.</summary>
+/// failed before its own close) and what its windows started (a language server, a build, a debugger, a program) is waited
+/// out, those it closed itself too, then the folders the test made as it ran are removed, the windows that used them gone
+/// first.</summary>
 [AttributeUsage(AttributeTargets.Assembly)]
 public sealed class TestsLeaveNothingBehindAttribute : BeforeAfterTestAttribute
 {
@@ -392,10 +393,14 @@ public sealed class TestsLeaveNothingBehindAttribute : BeforeAfterTestAttribute
         method.GetCustomAttribute<AvaloniaFactAttribute>() is not null || method.GetCustomAttribute<AvaloniaTheoryAttribute>() is not null;
 }
 
-/// <summary>The windows open now, as a test leaves them, for <see cref="TestsLeaveNothingBehindAttribute"/> to close.</summary>
+/// <summary>The windows open now, as a test leaves them, for <see cref="TestsLeaveNothingBehindAttribute"/> to close, and the
+/// IDE's windows the test closed itself, whose ends it waits out as it does those it closes.</summary>
 public static class OpenWindows
 {
     private static readonly List<Window> Open = [];
+
+    /// <summary>The IDE's windows closed since the test began, what each started perhaps still ending.</summary>
+    private static readonly List<Passenger.App.MainWindow> Closed = [];
     private static bool watching;
 
     /// <summary>The longest the work of windows closed after a test may take to land, past the end their own limit gives
@@ -408,23 +413,31 @@ public static class OpenWindows
         {
             watching = true;
             Window.WindowOpenedEvent.AddClassHandler<Window>((window, _) => Open.Add(window));
-            Window.WindowClosedEvent.AddClassHandler<Window>((window, _) => Open.Remove(window));
+            Window.WindowClosedEvent.AddClassHandler<Window>((window, _) =>
+            {
+                Open.Remove(window);
+                if (window is Passenger.App.MainWindow closed)
+                {
+                    Closed.Add(closed);
+                }
+            });
         }
         Open.Clear();
+        Closed.Clear();
     }
 
-    /// <summary>Closes every window still open, the last opened first, waits for what each started to end (its own limit
-    /// kills what will not), then for their background work to land, which a dispatcher that never runs again could not
-    /// let go. A window its test left open (one that failed) leaves no warm server for the next test: the one it would
-    /// keep is ended with the rest. Whether it all landed: work that never does, the next window test lets go of as it
-    /// starts.</summary>
+    /// <summary>Closes every window still open, the last opened first, waits for what each started to end, and what each
+    /// the test closed itself started (its own limit kills what will not), then for their background work to land, which a
+    /// dispatcher that never runs again could not let go. A window left open (one that failed) leaves no warm server for the
+    /// next test: the one it would keep is ended with the rest. Whether it all landed: work that never does, the next window
+    /// test lets go of as it starts.</summary>
     public static bool CloseAll()
     {
         if (!Dispatcher.UIThread.CheckAccess())
         {
             throw new InvalidOperationException("Windows left open can only be closed on their own thread");
         }
-        List<Task> ending = [];
+        List<Task> ending = [.. Closed.Select(window => window.Ended).OfType<Task>().Where(ended => !ended.IsCompleted)];
         while (Open.Count > 0)
         {
             Window last = Open[^1];
@@ -438,6 +451,7 @@ public static class OpenWindows
                 }
             }
         }
+        Closed.Clear();
         if (ending.Count == 0 && BackgroundWork.Pending == 0)
         {
             return true;

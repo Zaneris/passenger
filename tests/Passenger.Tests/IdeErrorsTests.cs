@@ -448,6 +448,35 @@ public sealed class IdeErrorsTests : IDisposable
         Assert.True(Core.BackgroundWork.Pending == 0, $"{Core.BackgroundWork.Pending} pieces of the failed test's work were still held for the next test to wait out");
     }
 
+    /// <summary>A window test that closes its own window, as most do, is over only once what that window started has ended,
+    /// as one it left open is: here a language server that answers nothing, which the window's end kills at its limit. On
+    /// Windows a program still ending holds the DLLs it loaded, which the next test's reset of a shared project deletes.</summary>
+    [AvaloniaFact]
+    public void A_window_test_that_closes_its_own_window_is_over_once_what_the_window_started_has_ended()
+    {
+        MainWindow window = OpenProgram();
+        int server = window.CSharpService!.Session!.Server.ProcessId;
+        Processes.Suspend(server, "The language server");
+        try
+        {
+            window.Close();
+
+            // What runs after every window test, however it ended.
+            new TestsLeaveNothingBehindAttribute().After(
+                typeof(IdeErrorsTests).GetMethod(nameof(A_window_test_that_closes_its_own_window_is_over_once_what_the_window_started_has_ended))!,
+                (Xunit.v3.IXunitTest)TestContext.Current.Test!);
+
+            Assert.True(window.Ended is { IsCompleted: true },
+                $"The window test was over with what its closed window started still ending, its language server among it ({Processes.Describe(server)})");
+            Assert.True(Processes.Gone(server), $"The language server that answered nothing (process {server}) still runs after its window's end");
+        }
+        finally
+        {
+            // Stopped, it never ends by itself, whatever failed above.
+            Processes.Kill(server);
+        }
+    }
+
     [AvaloniaFact]
     public void A_language_server_that_stops_answering_is_reported_not_responding_and_started_again()
     {

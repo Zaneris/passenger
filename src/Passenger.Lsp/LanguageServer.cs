@@ -814,7 +814,10 @@ public sealed class LanguageServer : IAsyncDisposable
             if (!HasExited)
             {
                 using CancellationTokenSource limit = new(TimeSpan.FromSeconds(3));
-                await rpc.InvokeWithCancellationAsync<object?>(LspMethods.Shutdown, [], limit.Token).ConfigureAwait(false);
+                // Given up at its limit, not cancelled: a cancelled request waits for the server's word, which a hung one never gives.
+                Task<object?> answer = rpc.InvokeWithCancellationAsync<object?>(LspMethods.Shutdown, [], CancellationToken.None);
+                _ = answer.ContinueWith(t => _ = t.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                await answer.WaitAsync(limit.Token).ConfigureAwait(false);
                 await rpc.NotifyAsync(LspMethods.Exit).ConfigureAwait(false);
             }
         }
