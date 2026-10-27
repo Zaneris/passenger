@@ -17,6 +17,9 @@ namespace Passenger.Tests;
 /// one a window test that failed left loading.</summary>
 public sealed class IdeErrorsTests : IDisposable
 {
+    /// <summary>What the C# language server's command line names it by.</summary>
+    private const string RoslynServer = "Microsoft.CodeAnalysis.LanguageServer";
+
     private readonly string folder = TestFolders.Create("errors-");
 
     /// <summary>The language servers' logs from before the test, in the log folder the whole run shares.</summary>
@@ -570,9 +573,9 @@ public sealed class IdeErrorsTests : IDisposable
         MainWindow window = new() { Width = 1200, Height = 800 };
         window.Show();
         List<string> said = [];
-        using IDisposable following = Following(window, said);
+        using IDisposable following = Ui.FollowStatus(window, said);
         int ended;
-        using (EndingAsTheyStart ending = new(times: 1))
+        using (EndingAsTheyStart ending = new(RoslynServer, times: 1))
         {
             window.OpenFolder(folder);
             window.OpenFile("Program.cs");
@@ -604,9 +607,9 @@ public sealed class IdeErrorsTests : IDisposable
         MainWindow window = new() { Width = 1200, Height = 800 };
         window.Show();
         List<string> said = [];
-        using IDisposable following = Following(window, said);
+        using IDisposable following = Ui.FollowStatus(window, said);
         const string LeftStopped = "The C# language server ended as it started 4 times in 5 minutes, so it was left stopped; Restart C# Language Server starts it again";
-        using (EndingAsTheyStart ending = new())
+        using (EndingAsTheyStart ending = new(RoslynServer))
         {
             window.OpenFolder(folder);
             window.OpenFile("Program.cs");
@@ -633,55 +636,6 @@ public sealed class IdeErrorsTests : IDisposable
         TypeAnErrorAndSeeItReported(window);
         window.Close();
     }
-
-    /// <summary>Ends each of the next language servers as its process starts, before it can answer anything, until disposed;
-    /// <see cref="Ended"/> lists the processes it ended.</summary>
-    private sealed class EndingAsTheyStart : IDisposable
-    {
-        private readonly List<int> ended = [];
-        private readonly EventHandler<Passenger.Core.ChildStart> started;
-
-        public EndingAsTheyStart(int times = int.MaxValue)
-        {
-            started = (_, child) =>
-            {
-                if (!child.Command.Contains("Microsoft.CodeAnalysis.LanguageServer", StringComparison.Ordinal))
-                {
-                    return;
-                }
-                lock (ended)
-                {
-                    if (ended.Count >= times)
-                    {
-                        return;
-                    }
-                    ended.Add(child.ProcessId);
-                }
-                using Process ending = Process.GetProcessById(child.ProcessId);
-                ending.Kill();
-                ending.WaitForExit();
-            };
-            Passenger.Core.ChildProcesses.Started += started;
-        }
-
-        public IReadOnlyList<int> Ended
-        {
-            get
-            {
-                lock (ended)
-                {
-                    return [.. ended];
-                }
-            }
-        }
-
-        public void Dispose() => Passenger.Core.ChildProcesses.Started -= started;
-    }
-
-    /// <summary>Every text the status bar's words show from now on, as a person reading them throughout saw them.</summary>
-    private static IDisposable Following(MainWindow window, List<string> said) =>
-        Avalonia.AvaloniaObjectExtensions.GetObservable(window.FindControl<TextBlock>("StatusText")!, TextBlock.TextProperty)
-            .Subscribe(new Avalonia.Reactive.AnonymousObserver<string?>(text => said.Add(text ?? string.Empty)));
 
     /// <summary>Call Hierarchy asked of a server that stops before it answers says so, and asked while the next one starts
     /// says it needs the server; once it is back, the Hierarchy window shown before it ended still opens a row, its callers

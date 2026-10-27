@@ -132,6 +132,47 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
         }
     }
 
+    /// <summary>ESLint's server, ending during every start before it has answered, is started again only as often as a
+    /// language server is, then left stopped, the status bar saying why; once what ended it is gone, those words start it
+    /// again with the file it checks, without the folder opened again.</summary>
+    [AvaloniaFact]
+    public void An_ESLint_server_that_ends_during_every_start_is_left_stopped_saying_so_and_its_words_start_it_again()
+    {
+        Project.SkipWithoutNode();
+        project.AddFolder("ending", ("app.js", "let total = 1;\nconsole.log(total);\n"));
+        const string LeftStopped = "The ESLint language server ended as it started 4 times in 5 minutes, so it was left stopped; click to start it again";
+        MainWindow window = Ui.OpenFolder(project.Folder, autosaves: false);
+        List<string> said = [];
+        using IDisposable following = Ui.FollowStatus(window, said);
+        try
+        {
+            OpenDocument document;
+            using (EndingAsTheyStart ending = new("eslintServer.js"))
+            {
+                window.OpenFile(project.PathOf("ending/app.js"));
+                document = window.EditorArea.Active!;
+                Ui.WaitFor(() => said.Contains(LeftStopped), () => $"ESLint to be left stopped after its server ended as it started {ending.Ended.Count} times (the status bar says {window.Status})");
+                Ui.Settle();
+                Assert.True(ending.Ended.Count == 4, $"ESLint's server was started {ending.Ended.Count} times, ending each time as it started, rather than once and then 3 times again");
+                Assert.True(said.Contains("The ESLint language server ended as it started; starting it again"),
+                    $"The status bar never said ESLint's server that ended as it started was started again; it said: {string.Join(" | ", said)}");
+                Assert.True(window.Status == LeftStopped, $"The status bar says \"{window.Status}\" of ESLint left stopped, having said: {string.Join(" | ", said)}");
+                Assert.Equal("start it again", window.StatusPlace?.Name);
+            }
+            Assert.DoesNotContain(document.Markers, m => m.Message.StartsWith("ESLint:", StringComparison.Ordinal));
+
+            Ui.Click(window.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "StatusMessage"));
+            Ui.WaitFor(() => document.Markers.Any(m => m.Message == PreferConst), () => $"ESLint's problem once the status bar's words started its server again (the status bar says {window.Status})");
+            Assert.True(said.Contains("Starting the ESLint language server again"),
+                $"The status bar never said ESLint left stopped was started again; it said: {string.Join(" | ", said)}");
+        }
+        finally
+        {
+            window.Close();
+            project.Reset();
+        }
+    }
+
     [AvaloniaFact]
     public void Fix_ESLint_Problems_fixes_the_whole_file_and_a_save_fixes_first_when_Settings_ask_and_Disabled_takes_ESLints_problems_away()
     {

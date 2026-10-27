@@ -29,10 +29,9 @@ public sealed class ServerRestarts
     /// <summary>A person started the server again: the restarts before count no more.</summary>
     public void Forget() => restarts.Clear();
 
-    /// <summary>What the status bar says of a server lost (<paramref name="what"/>: "The C# language server ended"), started
-    /// <paramref name="again"/> or left stopped.</summary>
-    public static string Said(string what, bool again) =>
-        again ? $"{what}; starting it again" : $"{LeftStopped(what)}; the IDE's log says why";
+    /// <summary>What the status bar says of a server lost (<paramref name="what"/>: "The C# language server ended") and
+    /// started again.</summary>
+    public static string StartedAgain(string what) => $"{what}; starting it again";
 
     /// <summary>Why a server lost was left stopped: "The C# language server ended 4 times in 5 minutes, so it was left
     /// stopped".</summary>

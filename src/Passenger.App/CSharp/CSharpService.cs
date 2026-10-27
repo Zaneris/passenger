@@ -1324,7 +1324,7 @@ public sealed class CSharpService : IAsyncDisposable
             Stopped?.Invoke(this, ServerRestarts.LeftStopped(what));
             return;
         }
-        Stopped?.Invoke(this, ServerRestarts.Said(what, again: true));
+        Stopped?.Invoke(this, ServerRestarts.StartedAgain(what));
         Start(restarting);
     }
 

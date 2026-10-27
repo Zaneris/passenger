@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -14,7 +15,8 @@ namespace Passenger.Tests;
 /// own &lt;style&gt; and &lt;script&gt;: each gets completion, a problem, go to declaration and rename from the language
 /// servers Passenger carries under web/ (TypeScript's, and VS Code's for HTML, CSS and JSON), run on the machine's
 /// Node.js, a Razor file's through Razor's own forwarding to the HTML server. Without a Node.js the files keep their
-/// colours and say why. Each test opens its own window, with web servers of its own, on the app as written (<see
+/// colours and say why; a server that ends as it starts is started again, a few times at most, then left stopped until a
+/// person starts it again. Each test opens its own window, with web servers of its own, on the app as written (<see
 /// cref="SharedProject"/>): with no C# language server, which the scripts, stylesheets and JSON ask nothing of, but for the
 /// component's, whose Razor is Roslyn's, on the warm one the class shares; a test that cannot find Node.js skips, saying
 /// so.</summary>
@@ -305,6 +307,8 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
         string missing = Path.Combine(TestRun.Root, "no-node-here", OperatingSystem.IsWindows() ? "node.exe" : "node");
         MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = false };
         window.Show();
+        List<string> said = [];
+        using IDisposable following = Ui.FollowStatus(window, said);
         try
         {
             window.ApplySettings(window.Settings with { NodeInterpreter = missing });
@@ -316,6 +320,9 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
             Assert.Equal($"JavaScript has its colours only: there is no Node.js at {missing}, which Settings | Languages & Frameworks | Node.js names.",
                 window.EditorArea.ActiveGroup.BannerText);
             Assert.Equal("JavaScript · no Node.js", window.LanguageShown);
+            Assert.True(window.EditorArea.ActiveGroup.BannerLink is null, $"The banner over a script with no Node.js to run its server offers '{window.EditorArea.ActiveGroup.BannerLink}'");
+            Assert.True(!said.Any(s => s.Contains("starting it again", StringComparison.Ordinal)),
+                $"A server with no Node.js to run on was tried again; the status bar said: {string.Join(" | ", said)}");
             Assert.Equal(TokenKind.Keyword, KindOf(editor, "function"));
 
             Ui.Run(window, AppActions.Rename);
@@ -335,6 +342,101 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
             window.Close();
         }
     }
+
+    /// <summary>A web language server whose process ends during its own start, before it has answered, is started again as
+    /// one that ends later is, the status bar saying so, and its language comes back for the file open.</summary>
+    [AvaloniaFact]
+    public void A_stylesheets_language_server_that_ends_as_it_starts_is_started_again_saying_so_and_checks_the_file()
+    {
+        SkipWithoutNode();
+        string folder = TestFolders.Create("css-ending-");
+        File.WriteAllText(Path.Combine(folder, "site.css"), Unknown);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false, autosaves: false);
+        List<string> said = [];
+        using IDisposable following = Ui.FollowStatus(window, said);
+        try
+        {
+            using (EndingAsTheyStart ending = new(CssServer, times: 1))
+            {
+                window.OpenFile(Path.Combine(PathNames.Canonical(folder), "site.css"));
+                OpenDocument document = window.EditorArea.Active!;
+                Ui.WaitFor(() => document.Markers.Any(Warned), () => $"the CSS server's warning once it was started again ({window.LanguageShown}; the status bar says {window.Status})");
+                Assert.True(ending.Ended.Count == 1, $"The CSS language server was ended {ending.Ended.Count} times as it started, not once");
+            }
+            Assert.True(said.Contains("The CSS language server ended as it started; starting it again"),
+                $"The status bar never said the server that ended as it started was started again; it said: {string.Join(" | ", said)}");
+            Assert.Contains($"The CSS language server ended as it started for {window.Folder}", Ui.IdeLog());
+            Assert.Equal("CSS", window.LanguageShown);
+            Assert.Null(window.EditorArea.ActiveGroup.BannerText);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A web language server that ends during every start is started again only as often as one that ends later
+    /// is, then left stopped, its file's banner and the status bar saying why and offering to start it again. Its words
+    /// start it while the cause stands, and it is tried as often again, its restarts counted afresh; once the cause is
+    /// gone, the banner's link starts it, and the file is checked again, without the folder opened again.</summary>
+    [AvaloniaFact]
+    public void A_stylesheets_language_server_that_ends_during_every_start_is_left_stopped_saying_so_and_its_words_start_it_again()
+    {
+        SkipWithoutNode();
+        string folder = TestFolders.Create("css-ending-");
+        File.WriteAllText(Path.Combine(folder, "site.css"), Unknown);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false, autosaves: false);
+        List<string> said = [];
+        using IDisposable following = Ui.FollowStatus(window, said);
+        const string LeftStopped = "The CSS language server ended as it started 4 times in 5 minutes, so it was left stopped; click to start it again";
+        const string Banner = "CSS has its colours only: its language server stopped 4 times in 5 minutes.";
+        try
+        {
+            OpenDocument document;
+            using (EndingAsTheyStart ending = new(CssServer))
+            {
+                window.OpenFile(Path.Combine(PathNames.Canonical(folder), "site.css"));
+                document = window.EditorArea.Active!;
+                Ui.WaitFor(() => window.EditorArea.ActiveGroup.BannerText == Banner,
+                    () => $"the banner to say the CSS server was left stopped after it ended as it started {ending.Ended.Count} times (it says {window.EditorArea.ActiveGroup.BannerText})");
+                Ui.Settle();
+                Assert.True(ending.Ended.Count == 4, $"The CSS language server was started {ending.Ended.Count} times, ending each time as it started, rather than once and then 3 times again");
+                Assert.True(said.Contains("The CSS language server ended as it started; starting it again"),
+                    $"The status bar never said the server that ended as it started was started again; it said: {string.Join(" | ", said)}");
+                Assert.True(window.Status == LeftStopped, $"The status bar says \"{window.Status}\" of the CSS server left stopped, having said: {string.Join(" | ", said)}");
+                Assert.Equal("start it again", window.StatusPlace?.Name);
+                Assert.Equal("Start it again", window.EditorArea.ActiveGroup.BannerLink);
+                Assert.Equal("CSS · language server stopped", window.LanguageShown);
+
+                Ui.Click(window.GetVisualDescendants().OfType<Avalonia.Controls.Button>().Single(b => b.Name == "StatusMessage"));
+                Ui.WaitFor(() => ending.Ended.Count >= 8 && window.EditorArea.ActiveGroup.BannerText == Banner,
+                    () => $"the CSS server started again by the status bar's words to be left stopped again after 4 more starts ({ending.Ended.Count} in all; the banner says {window.EditorArea.ActiveGroup.BannerText})");
+                Ui.Settle();
+                Assert.True(ending.Ended.Count == 8, $"The CSS server started again by the status bar's words was started {ending.Ended.Count - 4} times, not 4: its restarts before were counted still");
+                Assert.True(said.Contains("Starting the CSS language server again"),
+                    $"The status bar never said the CSS server left stopped was started again; it said: {string.Join(" | ", said)}");
+                Assert.Equal(LeftStopped, window.Status);
+            }
+            Assert.DoesNotContain(document.Markers, Warned);
+
+            Ui.Click(window.EditorArea.ActiveGroup.BannerLinkControl);
+            Ui.WaitFor(() => document.Markers.Any(Warned), () => $"the CSS server's warning once the banner's link started it again ({window.LanguageShown}; the banner says {window.EditorArea.ActiveGroup.BannerText})");
+            Assert.Null(window.EditorArea.ActiveGroup.BannerText);
+            Assert.Equal("CSS", window.LanguageShown);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>What the CSS language server's command line names it by.</summary>
+    private const string CssServer = "cssServerMain.js";
+
+    /// <summary>A stylesheet with a property CSS has not, which its server warns of.</summary>
+    private const string Unknown = ".card {\n    colr: red;\n}\n";
+
+    private static bool Warned(Marker marker) => marker.Kind == MarkerKind.Warning && marker.Message.Contains("Unknown property: 'colr'", StringComparison.Ordinal);
 
     [AvaloniaFact]
     public void A_project_with_its_own_typescript_is_read_by_it()

@@ -14,8 +14,8 @@ namespace Passenger.App.Web;
 /// vscode-langservers-extracted) on the web servers' Node.js, started with the first file it checks, running the
 /// project's own eslint package (found from each file's folder up, or the one Settings names) with its own
 /// configuration, for the files "Run for files" covers. Its problems are each file's as typed
-/// (<see cref="EslintDocument"/>); a server that ends is started again with its files, a few times at most. A UI-thread
-/// object.</summary>
+/// (<see cref="EslintDocument"/>); a server that ends (as it starts too) is started again with its files, a few times at
+/// most, then left stopped until a person starts it again. A UI-thread object.</summary>
 public sealed class EslintService : IAsyncDisposable
 {
     private readonly string folder;
@@ -37,8 +37,11 @@ public sealed class EslintService : IAsyncDisposable
         this.node = node;
     }
 
-    /// <summary>Something for the status bar: the server could not start, ended, or said a file has no configuration.</summary>
+    /// <summary>Something for the status bar: the server could not start, or said a file has no configuration.</summary>
     public event EventHandler<string>? Message;
+
+    /// <summary>The server ended or stopped answering, with what was done about it, for the status bar.</summary>
+    public event EventHandler<WebServerLost>? Stopped;
 
     /// <summary>A rule's page the server asked to be opened.</summary>
     public event EventHandler<Uri>? Browse;
@@ -322,25 +325,50 @@ public sealed class EslintService : IAsyncDisposable
         }
     }
 
-    /// <summary>A server gone: started again with its files, unless one has gone too often to be worth it.</summary>
+    /// <summary>A server gone: started again with its files, unless one has gone too often to be worth it, when it is left
+    /// stopped until a person starts it again (<see cref="StartAgain"/>).</summary>
     private void Lost(string what)
     {
-        bool again = restarts.Again();
+        if (restarts.Again())
+        {
+            Replace(stopped: null);
+            Stopped?.Invoke(this, new WebServerLost(ServerRestarts.StartedAgain(what), null));
+            return;
+        }
+        Replace(stopped: $"it stopped {ServerRestarts.Often}");
+        Stopped?.Invoke(this, new WebServerLost(ServerRestarts.LeftStopped(what), StartAgain));
+    }
+
+    /// <summary>Starts a server left stopped again at a person's word, with the files it checks, its restarts counted
+    /// afresh: it runs again once what ended it is gone.</summary>
+    private void StartAgain()
+    {
+        UiThread.Check();
+        if (disposed || server is not { LeftStopped: true })
+        {
+            return;
+        }
+        restarts.Forget();
+        IdeErrors.Write($"The ESLint language server is started again for {folder}, as asked");
+        Message?.Invoke(this, "Starting the ESLint language server again");
+        Replace(stopped: null);
+    }
+
+    /// <summary>Ends the server and gives its files a new one: started, or left stopped for the reason given, keeping them
+    /// for a start at a person's word.</summary>
+    private void Replace(string? stopped)
+    {
         List<(OpenDocument Document, WebDocument Web)> open = [.. documents.Select(d => (d.Key, d.Value.Web))];
         Reset();
-        if (again)
-        {
-            foreach ((OpenDocument document, WebDocument web) in open)
-            {
-                Attach(document, web);
-            }
-        }
-        else
+        if (stopped is not null)
         {
             server = Server();
-            server.Stop($"it stopped {ServerRestarts.Often}");
+            server.Stop(stopped);
         }
-        Message?.Invoke(this, ServerRestarts.Said(what, again));
+        foreach ((OpenDocument document, WebDocument web) in open)
+        {
+            Attach(document, web);
+        }
     }
 
     public ValueTask DisposeAsync()

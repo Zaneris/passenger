@@ -308,12 +308,19 @@ public partial class MainWindow
                     structure?.FollowServer();
                 }
             };
-            web.Stopped += (_, message) =>
+            // Each stop is logged with why, so the log is where to see more; one left stopped is started again from its words.
+            web.Stopped += (_, lost) =>
             {
-                if (session == next)
+                if (session != next)
                 {
-                    Say(message, LogPlace);
+                    return;
                 }
+                if (lost.StartAgain is { } again)
+                {
+                    Say($"{lost.Said}; click to start it again", StartAgainPlace(again));
+                    return;
+                }
+                Say(lost.Said, LogPlace);
             };
             web.Message += (_, message) =>
             {

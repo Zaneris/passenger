@@ -1580,6 +1580,11 @@ public static class Ui
         Settle();
     }
 
+    /// <summary>Every text the status bar's words show from now on, as a person reading them throughout saw them.</summary>
+    public static IDisposable FollowStatus(Passenger.App.MainWindow window, List<string> said) =>
+        AvaloniaObjectExtensions.GetObservable(window.FindControl<TextBlock>("StatusText")!, TextBlock.TextProperty)
+            .Subscribe(new Avalonia.Reactive.AnonymousObserver<string?>(text => said.Add(text ?? string.Empty)));
+
     /// <summary>The IDE's log as a person opening it would find it: what was queued for it written first, and read sharing
     /// the file with the log's own thread, which may be writing to it (Windows refuses a reader that does not share).</summary>
     public static string IdeLog()
@@ -2075,6 +2080,50 @@ public static class TestGit
         await RunAsync(folder, "add", "-A");
         await RunAsync(folder, "commit", "-q", "-m", "First");
     }
+}
+
+/// <summary>Ends each of the next language servers whose command line names <c>server</c> as its process starts, before it
+/// can answer anything, a number of <c>times</c> at most, until disposed; <see cref="Ended"/> lists the processes it ended.</summary>
+public sealed class EndingAsTheyStart : IDisposable
+{
+    private readonly List<int> ended = [];
+    private readonly EventHandler<ChildStart> started;
+
+    public EndingAsTheyStart(string server, int times = int.MaxValue)
+    {
+        started = (_, child) =>
+        {
+            if (!child.Command.Contains(server, StringComparison.Ordinal))
+            {
+                return;
+            }
+            lock (ended)
+            {
+                if (ended.Count >= times)
+                {
+                    return;
+                }
+                ended.Add(child.ProcessId);
+            }
+            using Process ending = Process.GetProcessById(child.ProcessId);
+            ending.Kill();
+            ending.WaitForExit();
+        };
+        ChildProcesses.Started += started;
+    }
+
+    public IReadOnlyList<int> Ended
+    {
+        get
+        {
+            lock (ended)
+            {
+                return [.. ended];
+            }
+        }
+    }
+
+    public void Dispose() => ChildProcesses.Started -= started;
 }
 
 /// <summary>Programs the IDE started for a test, by id, as a process list would show them.</summary>
