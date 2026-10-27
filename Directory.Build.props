@@ -3,7 +3,7 @@
   <PropertyGroup>
     <TargetFramework>net11.0</TargetFramework>
     <!-- The version, until a vX.Y.Z tag on the commit names it. -->
-    <Version>0.2.1</Version>
+    <Version>0.2.2</Version>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
