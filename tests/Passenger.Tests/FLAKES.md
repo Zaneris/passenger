@@ -55,6 +55,12 @@ that fixed it, in one of the forms below. A failure not yet understood goes in o
   pooled arrays of runs it shapes together and splits to finalizers, so between collections its pool runs dry and a key
   costs about 9 KB more; the test took the short line's keys before the long line's, and the shard's long-lived process
   ran dry between them. **The test**: the lines' keys are taken in turns, each after a collection (147139ee).
+- `WorkingActionsTests`' second click on Run, Linux x64 run 40524535928 shard 3: "A second click on Run should be told
+  it is under way, but the status bar said: Build succeeded | … | Hello exited with code 0 | Working out how to run
+  Hello…". A second click at one place waits out twice the double-click time (1 s), and nothing held the first Run
+  under way meanwhile: straight after another class's build, Hello built (660 to 770 ms in a 4-processor container), ran
+  and ended within it. A fast machine, not a loaded one. **The test**: its build waits at its compile until the second
+  click is answered (`HoldNextBuild`), Debug's double click too, and the ring is read from one frame (9804ed6e).
 
 ## 2026-10-26
 
