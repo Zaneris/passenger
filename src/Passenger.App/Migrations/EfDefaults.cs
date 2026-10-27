@@ -10,6 +10,10 @@ namespace Passenger.App.Migrations;
 /// made in the Migrations window does.</summary>
 public sealed record EfDefaults(string? Project, string? StartupProject, string? Context, string? Framework)
 {
+    /// <summary>Whether the file gives an option beyond those four (a configuration, a runtime), which the window leaves to
+    /// dotnet ef.</summary>
+    public bool Beyond { get; init; }
+
     /// <summary>The defaults the tool would read running in a folder; null for a tool before EF Core 11, which reads none, or
     /// a folder with no such file, or one that does not read.</summary>
     public static EfDefaults? Find(string folder, EfTool? tool)
@@ -30,7 +34,7 @@ public sealed record EfDefaults(string? Project, string? StartupProject, string?
     }
 
     /// <summary>Whether a tool is EF Core 11's or later, which reads the defaults and removes a migration offline.</summary>
-    public static bool ReadsDefaults(EfTool tool) => int.TryParse(tool.Version.Split('.')[0], out int major) && major >= 11;
+    public static bool ReadsDefaults(EfTool tool) => tool.Major >= 11;
 
     /// <summary>Whether a path the file gives names a project: its file, or its folder.</summary>
     public static bool Names(string? named, ProjectModel project) =>
@@ -50,7 +54,10 @@ public sealed record EfDefaults(string? Project, string? StartupProject, string?
                 read.RootElement.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.String && value.GetString() is { } text
                     && !string.IsNullOrWhiteSpace(text) ? text : null;
             string? Placed(string? path) => path is null ? null : PathNames.Canonical(Path.TrimEndingDirectorySeparator(Path.GetFullPath(path, root)));
-            return new EfDefaults(Placed(Value("project")), Placed(Value("startupProject")), Value("context"), Value("framework"));
+            return new EfDefaults(Placed(Value("project")), Placed(Value("startupProject")), Value("context"), Value("framework"))
+            {
+                Beyond = read.RootElement.EnumerateObject().Any(option => option.Name is not ("project" or "startupProject" or "context" or "framework")),
+            };
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or ArgumentException)
         {

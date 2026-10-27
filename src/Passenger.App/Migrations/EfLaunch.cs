@@ -4,18 +4,20 @@ using Passenger.Core;
 
 namespace Passenger.App.Migrations;
 
-/// <summary>The start dotnet ef 10 makes of its own ef.dll, made from what the project host evaluated: <c>dotnet exec</c> with
-/// the startup project's deps and runtime configuration, then the command with the projects' assemblies, folders, namespace,
-/// language and Design assembly. A command is then one process, never waiting on dotnet ef and the MSBuild it starts for
-/// each project. Only for dotnet-ef 10, whose start this is; any other version, or a project it would start otherwise
-/// (.NET Framework's), keeps dotnet ef.</summary>
+/// <summary>The start dotnet ef 10 and 11 make of their own ef.dll, made from what the project host evaluated: <c>dotnet
+/// exec</c> with the startup project's deps and runtime configuration, then the command with the projects' assemblies,
+/// folders, namespace, language and Design assembly. A command is then one process, never waiting on dotnet ef and the
+/// MSBuild it starts for each project. Only for dotnet-ef 10 and 11, whose start this is; any other version, or a project
+/// either would start otherwise or refuse (.NET Framework's, a platform's or a Design assembly of its own, options of
+/// .config/dotnet-ef.json beyond those the window gives), keeps dotnet ef.</summary>
 internal sealed class EfLaunch
 {
     /// <summary>What dotnet ef reads of each project, by MSBuild's names.</summary>
     public static readonly IReadOnlyList<string> Properties =
     [
         "AssemblyName", "Language", "OutputPath", "ProjectAssetsFile", "ProjectDir", "RootNamespace", "RuntimeFrameworkVersion", "TargetFileName",
-        "TargetFrameworkMoniker", "Nullable", "TargetFramework", "RuntimeIdentifier",
+        "TargetFrameworkMoniker", "Nullable", "TargetFramework", "RuntimeIdentifier", "ProjectDepsFileName", "ProjectRuntimeConfigFileName", "DesignAssembly",
+        "PlatformTarget", "TargetPlatformIdentifier",
     ];
 
     private readonly string efDll;
@@ -36,22 +38,28 @@ internal sealed class EfLaunch
     }
 
     /// <summary>The launch for the tool and the two projects' evaluated properties (the same for one project), from
-    /// <paramref name="working"/>; null where dotnet ef would start ef.dll otherwise or something it reads is not there. On
-    /// any thread.</summary>
-    public static EfLaunch? Of(EfTool tool, string projectPath, IReadOnlyDictionary<string, string> project, string startupPath,
+    /// <paramref name="working"/>, with the defaults the tool reads (<paramref name="defaults"/>); null where dotnet ef would
+    /// start ef.dll otherwise or something it reads is not there. On any thread.</summary>
+    public static EfLaunch? Of(EfTool tool, EfDefaults? defaults, string projectPath, IReadOnlyDictionary<string, string> project, string startupPath,
         IReadOnlyDictionary<string, string> startup, string working)
     {
+        bool eleven = tool.Major >= 11;
         if (tool.EfDll(Path.GetDirectoryName(startupPath)!) is not { } efDll
             || !Value(startup, "TargetFrameworkMoniker").StartsWith(".NETCoreApp,Version=v", StringComparison.Ordinal)
-            || !System.Version.TryParse(Value(startup, "TargetFrameworkMoniker")[".NETCoreApp,Version=v".Length..], out Version? version) || version.Major < 2)
+            || !System.Version.TryParse(Value(startup, "TargetFrameworkMoniker")[".NETCoreApp,Version=v".Length..], out Version? version)
+            || version.Major < (eleven ? 10 : 2)
+            || (eleven && (defaults?.Beyond == true || Value(startup, "TargetPlatformIdentifier").Length > 0 || Value(startup, "DesignAssembly").Length > 0
+                || (Value(startup, "PlatformTarget") is { Length: > 0 } platform && !platform.Equals("AnyCPU", StringComparison.OrdinalIgnoreCase)))))
         {
             return null;
         }
         string startupFolder = Path.TrimEndingDirectorySeparator(Separated(Value(startup, "ProjectDir")));
         string target = Path.GetFullPath(Path.Combine(startupFolder, Separated(Value(startup, "OutputPath"))));
         string assets = Separated(Value(startup, "ProjectAssetsFile"));
-        string deps = Path.Combine(target, Value(startup, "AssemblyName") + ".deps.json");
-        string runtimeConfig = Path.Combine(target, Value(startup, "AssemblyName") + ".runtimeconfig.json");
+        // dotnet-ef 11 names them by the SDK's properties, 10 by the assembly.
+        string deps = Path.Combine(target, eleven && Value(startup, "ProjectDepsFileName") is { Length: > 0 } depsFile ? depsFile : Value(startup, "AssemblyName") + ".deps.json");
+        string runtimeConfig = Path.Combine(target, eleven && Value(startup, "ProjectRuntimeConfigFileName") is { Length: > 0 } configFile
+            ? configFile : Value(startup, "AssemblyName") + ".runtimeconfig.json");
         if (startupFolder.Length == 0 || !File.Exists(deps) || Read(assets) is not { } restored)
         {
             return null;

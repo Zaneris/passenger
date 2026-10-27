@@ -86,7 +86,8 @@ public sealed class MigrationsTests
             ChoiceDialog remove = Asked<ChoiceDialog>(window, "Remove Last's question");
             Assert.Contains("AddPrice", string.Join(' ', remove.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text)), StringComparison.Ordinal);
             Ui.ClickButton(remove, "Remove");
-            Ui.WaitFor(() => Rows(window) is [("Initial", true)], $"AddPrice removed and the list read again ({window.Status})", Slow);
+            // Not settled: the build and model check after it are for Problems, which this does not read.
+            Ui.PumpUntil(() => Rows(window) is [("Initial", true)], $"AddPrice removed and the list read again ({window.Status})", Slow);
             Assert.Empty(Directory.GetFiles(Path.Combine(folder, "Migrations"), "*_AddPrice*.cs"));
         }
         finally
@@ -378,7 +379,8 @@ public sealed class MigrationsTests
             ChoiceDialog remove = Asked<ChoiceDialog>(window, "Remove Last's question");
             Assert.Contains("could not be read", string.Join(' ', remove.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text)), StringComparison.Ordinal);
             Ui.ClickButton(remove, "Remove");
-            Ui.WaitFor(() => window.Migrations.Busy is null && Rows(window).Count == 0, () => $"Initial removed with the database out of reach ({window.Status})", Slow);
+            // Not settled: the build and model check after it are for Problems, which this does not read.
+            Ui.PumpUntil(() => Rows(window).Count == 0, $"Initial removed with the database out of reach ({window.Status})", Slow);
             Assert.Empty(Directory.GetFiles(Path.Combine(data, "Migrations"), "*_Initial*.cs"));
 
             Assert.True(commands.Count > 0 && commands.All(c => c.Contains("Web.csproj", StringComparison.Ordinal) && !c.Contains("Api.csproj", StringComparison.Ordinal)),
@@ -593,7 +595,8 @@ internal static class ShopApp
             }
 
             """);
-        Restore.Run(Path.Combine(folder, "Shop.slnx"));
+        // By its real path: NuGet reaches Data by that too, and two spellings of one project restored at once collide.
+        Restore.Run(Passenger.Core.PathNames.Canonical(Path.Combine(folder, "Shop.slnx")));
         return folder;
     }
 

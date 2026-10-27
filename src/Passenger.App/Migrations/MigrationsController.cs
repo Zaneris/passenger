@@ -768,8 +768,10 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             environment = new Dictionary<string, string>(environment.Concat(database.Environment).GroupBy(e => e.Key).Select(g => g.Last()));
         }
         Database = database?.Where;
-        (IReadOnlyList<string>? outputs, EfLaunch? launch) = await BuiltAsync(project, startup, framework, tool, folder, parts.Session().Projects, work.Stopping);
-        return (new EfSetting(project, startup, framework, folder, environment, Context, tool, restore.Runtime ?? runtime)
+        (IReadOnlyList<string>? outputs, EfLaunch? launch) = await BuiltAsync(project, startup, framework, tool, defaults, folder, parts.Session().Projects, work.Stopping);
+        // With none chosen yet, the context the tool's defaults name, as dotnet ef would take it.
+        string? context = Context ?? (EfDefaults.ReadsDefaults(tool) ? defaults?.Context : null);
+        return (new EfSetting(project, startup, framework, folder, environment, context, tool, restore.Runtime ?? runtime)
             { Database = database, Outputs = outputs, Launch = launch }, null);
     }
 
@@ -778,7 +780,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
     /// is given, null when either cannot be said; and ef.dll's launch from the same evaluations (<see cref="EfLaunch"/>),
     /// null where dotnet ef runs.</summary>
     private static async Task<(IReadOnlyList<string>? Outputs, EfLaunch? Launch)> BuiltAsync(ProjectModel project, ProjectModel startup, string? framework, EfTool tool,
-        string working, IReadOnlyList<ProjectModel> all, CancellationToken cancel)
+        EfDefaults? defaults, string working, IReadOnlyList<ProjectModel> all, CancellationToken cancel)
     {
         List<string> folders = [];
         Dictionary<ProjectModel, IReadOnlyDictionary<string, string>> evaluated = [];
@@ -808,7 +810,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
                 return (null, null);
             }
         }
-        EfLaunch? launch = await BackgroundWork.Run(() => EfLaunch.Of(tool, project.Path, evaluated[project], startup.Path, evaluated[startup], working));
+        EfLaunch? launch = await BackgroundWork.Run(() => EfLaunch.Of(tool, defaults, project.Path, evaluated[project], startup.Path, evaluated[startup], working));
         return (folders, launch);
     }
 
@@ -1221,7 +1223,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
     }
 
     /// <summary>The contexts (with <paramref name="contexts"/>, unless what they were listed from stands), the chosen
-    /// context's migrations (with <paramref name="list"/>; with no context chosen, the only one's) and its model's check,
+    /// context's migrations (<paramref name="list"/>; none chosen, the setting's, else the only one's) and its model's check,
     /// side by side where ef.dll starts alone (its build host copied first) or once a run has left dotnet ef nothing to copy
     /// into the output (<see cref="settled"/>), else one by one. What the build stands as (<paramref name="read"/>,
     /// <see cref="ReadOf"/>) is kept with each answer; <paramref name="fresh"/> takes nothing from earlier reads.</summary>
@@ -1229,7 +1231,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
     {
         string? remembered = fresh ? null : read;
         bool together = settled || setting.Launch is not null;
-        string? context = Context;
+        string? context = Context ?? setting.Context;
         Task<EfOutcome>? naming = contexts && (remembered is null || remembered != contextsRead) ? RunAsync(setting with { Context = null }, ["dbcontext", "list", "--json"], work) : null;
         if (naming is not null && !together)
         {

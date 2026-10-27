@@ -37,12 +37,18 @@ public sealed record EfTool(EfToolPlace Place, string Version, string Where)
         return start;
     }
 
-    /// <summary>The ef.dll inside dotnet-ef 10's package, which <see cref="EfLaunch"/> starts as dotnet ef would: the local
-    /// tool's in the package cache the folder's restores use, the global tool's in its store; null for another version or
-    /// a package not there (a local tool not restored).</summary>
+    /// <summary>The ef.dll inside dotnet-ef 10's or 11's package, which <see cref="EfLaunch"/> starts as dotnet ef would: the
+    /// local tool's in the package cache the folder's restores use, the global tool's in its store; null for another version
+    /// or a package not there (a local tool not restored).</summary>
     public string? EfDll(string folder)
     {
-        if (!Version.StartsWith("10.", StringComparison.Ordinal))
+        string[]? inside = Major switch
+        {
+            10 => ["tools", "net8.0", "any", "tools", "net8.0", "any", "ef.dll"],
+            11 => ["tools", "net10.0", "any", "tools", "net", "ef.dll"],
+            _ => null,
+        };
+        if (inside is null)
         {
             return null;
         }
@@ -50,9 +56,12 @@ public sealed record EfTool(EfToolPlace Place, string Version, string Where)
         string? package = Place == EfToolPlace.Local
             ? EfTools.PackagesFolder(folder) is { } packages ? Path.Combine(packages, EfTools.Id, version) : null
             : Path.Combine(Path.GetDirectoryName(Where)!, ".store", EfTools.Id, version, EfTools.Id, version);
-        string? efDll = package is null ? null : Path.Combine(package, "tools", "net8.0", "any", "tools", "net8.0", "any", "ef.dll");
+        string? efDll = package is null ? null : Path.Combine([package, .. inside]);
         return efDll is not null && File.Exists(efDll) ? efDll : null;
     }
+
+    /// <summary>The tool's major version; 0 when its version does not read.</summary>
+    public int Major => int.TryParse(Version.Split('.')[0], out int major) ? major : 0;
 }
 
 /// <summary>Finds a project's <c>dotnet ef</c> as dotnet finds it (a local tool manifest from its folder up, else the
