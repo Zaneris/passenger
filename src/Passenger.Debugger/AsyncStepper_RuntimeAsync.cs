@@ -7,19 +7,31 @@ namespace Passenger.Debugger;
 /// whichever thread. The step waits there, at the IL after the await, for its run to go on.</summary>
 internal sealed partial class AsyncStepper
 {
-    /// <summary>A step through an await of a runtime-async method. <see cref="Frame"/> is a frame on the stepping thread: the
-    /// awaiting one (<see cref="FrameAwaits"/>), until it leaves at the await, or the one a step leaves whose caller is
-    /// suspended, waiting for its run in a continuation.</summary>
-    private sealed class RuntimeAsyncStep(ICorDebugThread thread, StepType type, ManagedDebugger.StackRange frame, bool frameAwaits, AsyncBreakpoint resume,
-        ICorDebugHandleValue? chain)
+    /// <summary>A step through an await of a runtime-async method. Its frame is one on the stepping thread: the awaiting one
+    /// (<see cref="FrameAwaits"/>), until it leaves at the await, or the one a step leaves whose caller is suspended,
+    /// waiting for its run in a continuation.</summary>
+    private sealed class RuntimeAsyncStep(ICorDebugThread thread, StepType type, ManagedDebugger.StackRange frame, ICorDebugFunction method, bool frameAwaits,
+        AsyncBreakpoint resume, bool resumesPast, ICorDebugHandleValue? chain)
     {
         public ICorDebugThread Thread { get; } = thread;
         public StepType Type { get; } = type;
-        public ManagedDebugger.StackRange Frame { get; } = frame;
         public bool FrameAwaits { get; } = frameAwaits;
+
+        private readonly CORDB_ADDRESS _module = method.Module.BaseAddress;
+        private readonly mdMethodDef _method = method.Token;
+
+        /// <summary>Whether a frame is the step's: at its place on the stack and of its method, as another method's frame can
+        /// take that place once the step's has gone (on x64 a frame's place is a single stack address).</summary>
+        public bool IsFrame(ICorDebugFrame each) =>
+            ManagedDebugger.RangeOf(each) == frame && each.TryGetFunction(out ICorDebugFunction function) is Cor.S_OK
+            && function.Token == _method && function.Module.BaseAddress == _module;
 
         /// <summary>Where the awaiting method goes on after the await, whether it suspended there or not.</summary>
         public AsyncBreakpoint Resume { get; } = resume;
+
+        /// <summary>Whether that is past the await's statement, on a line of its own: optimized code (the libraries')
+        /// leaves nothing of the statement after its await.</summary>
+        public bool ResumesPast { get; } = resumesPast;
 
         /// <summary>Whether the stepping thread has left the awaiting frame at the await, which then suspended.</summary>
         public bool Left { get; set; }
@@ -76,9 +88,12 @@ internal sealed partial class AsyncStepper
             return false;
         }
         ICorDebugHandleValue? chain = ChainOf(thread, frame);
-        _runtimeStep = new RuntimeAsyncStep(thread, type, range, frameAwaits, Arm(function.ILCode, function.Module.BaseAddress, function.Token, (uint)resume), chain);
+        bool past = _debugger.StepRangeOf(awaiting, awaited.Call) is var (start, end) && (resume < start || resume >= end);
+        _runtimeStep = new RuntimeAsyncStep(thread, type, range, frame.Function, frameAwaits, Arm(function.ILCode, function.Module.BaseAddress, function.Token, (uint)resume),
+            past, chain);
         _debugger.Log($"{type} through the runtime-async await at IL_{awaited.Call:X4} of method 0x{(int)function.Token:X} on thread {thread.Id}: "
-            + $"its run goes on at IL_{resume:X4}{(frameAwaits ? "" : ", its caller waiting in a continuation")}{(chain is null ? "" : ", its chain's task told")}");
+            + $"its run goes on at IL_{resume:X4}{(past ? ", past the await's statement" : "")}{(frameAwaits ? "" : ", its caller waiting in a continuation")}"
+            + (chain is null ? "" : ", its chain's task told"));
         return true;
     }
 
@@ -232,7 +247,7 @@ internal sealed partial class AsyncStepper
     /// through the code that called it, and, should that thread call the method again where it goes on, pass by the
     /// step's breakpoint there.</summary>
     public bool SeesFrameLeave(ICorDebugThread thread, ICorDebugFrame frame) =>
-        _runtimeStep is { FrameAwaits: true, Left: false, Type: StepType.StepOver } step && thread.Id == step.Thread.Id && ManagedDebugger.RangeOf(frame) == step.Frame;
+        _runtimeStep is { FrameAwaits: true, Left: false, Type: StepType.StepOver } step && thread.Id == step.Thread.Id && step.IsFrame(frame);
 
     /// <summary>The step's stepper has stopped on the stepping thread: true when the step goes on, to wait where its run
     /// goes on, the awaiting frame having left at its await (or, for a step out, the awaiting caller reached).</summary>
@@ -242,8 +257,8 @@ internal sealed partial class AsyncStepper
         {
             return false;
         }
-        bool held = ManagedDebugger.EnumerateFramesForThread(thread).Any(frame => ManagedDebugger.RangeOf(frame) == step.Frame);
-        if (step.Type is StepType.StepOut ? ManagedDebugger.RangeOf(thread.ActiveFrame) == step.Frame : !held)
+        bool held = ManagedDebugger.EnumerateFramesForThread(thread).Any(step.IsFrame);
+        if (step.Type is StepType.StepOut ? step.IsFrame(thread.ActiveFrame) : !held)
         {
             step.Left = !held;
             _debugger.Log(held ? "The step out is back in the awaiting caller: the step waits where it goes on after the await"
@@ -264,9 +279,9 @@ internal sealed partial class AsyncStepper
         {
             return;
         }
-        List<ManagedDebugger.StackRange?> frames = [.. ManagedDebugger.EnumerateFramesForThread(thread).Select(ManagedDebugger.RangeOf)];
-        int awaiting = frames.IndexOf(step.Frame);
-        if (awaiting >= 0 && frames.IndexOf(caught) > awaiting)
+        List<ICorDebugFrame> frames = [.. ManagedDebugger.EnumerateFramesForThread(thread)];
+        int awaiting = frames.FindIndex(step.IsFrame);
+        if (awaiting >= 0 && frames.FindIndex(frame => ManagedDebugger.RangeOf(frame) == caught) > awaiting)
         {
             _debugger.Log("An exception unwinds the step's frame: the step through its await ends");
             _runtimeStep = null;
@@ -274,12 +289,12 @@ internal sealed partial class AsyncStepper
         }
     }
 
-    /// <summary>Whether a thread still holds a frame; false for one that has ended.</summary>
-    private static bool Holds(ICorDebugThread thread, ManagedDebugger.StackRange frame)
+    /// <summary>Whether the stepping thread still holds the step's frame; false for a thread that has ended.</summary>
+    private static bool Holds(RuntimeAsyncStep step)
     {
         try
         {
-            return ManagedDebugger.EnumerateFramesForThread(thread).Any(each => ManagedDebugger.RangeOf(each) == frame);
+            return ManagedDebugger.EnumerateFramesForThread(step.Thread).Any(step.IsFrame);
         }
         catch (Exception error) when (Failures.OfRuntime(error))
         {
@@ -305,23 +320,29 @@ internal sealed partial class AsyncStepper
     /// <summary>The awaiting method goes on after the await on a thread. In the awaiting frame itself, what it awaited was
     /// done at once: a step over or into goes on as it was, a step out on to the caller's next line. Elsewhere, once the
     /// step's frame has left and in the step's chain, it is the step's run going on, which the step goes on from on this
-    /// thread; else it is another run's.</summary>
-    private void TakeRuntimeResume(RuntimeAsyncStep step, ICorDebugThread thread)
+    /// thread, or ends at once when that is past the await's statement; else it is another run's. True when it ended.</summary>
+    private bool TakeRuntimeResume(RuntimeAsyncStep step, ICorDebugThread thread)
     {
-        bool sameFrame = step is { FrameAwaits: true, Left: false } && thread.Id == step.Thread.Id && ManagedDebugger.RangeOf(thread.ActiveFrame) == step.Frame;
-        if (!sameFrame && ((!step.Left && Holds(step.Thread, step.Frame)) || !InChain(step, thread)))
+        bool sameFrame = step is { FrameAwaits: true, Left: false } && thread.Id == step.Thread.Id && step.IsFrame(thread.ActiveFrame);
+        if (!sameFrame && ((!step.Left && Holds(step)) || !InChain(step, thread)))
         {
             _debugger.Log($"Another run of the method goes on after the await on thread {thread.Id}: it runs on");
-            return;
+            return false;
         }
         _runtimeStep = null;
         step.Dispose();
         if (sameFrame && step.Type is not StepType.StepOut)
         {
             _debugger.Log("The await was done at once: the step goes on");
-            return;
+            return false;
+        }
+        if (step.ResumesPast && _debugger.StopStepAt(thread))
+        {
+            _debugger.Log($"The awaiting method goes on past the await's statement on thread {thread.Id}: the step ends there");
+            return true;
         }
         _debugger.Log($"The awaiting method goes on after the await on thread {thread.Id}: the step goes on there");
         _debugger.StepOnFromResume(thread, step.Type is StepType.StepOut ? StepType.StepOver : step.Type);
+        return false;
     }
 }

@@ -287,13 +287,12 @@ internal sealed partial class AsyncStepper
     }
 
     /// <summary>Handles a breakpoint hit as part of an async step: whether the async stepper took it, and whether the
-    /// program stops there.</summary>
+    /// program stops there (none when the step has ended there, its stop shown).</summary>
     public async Task<(bool HandledByAsyncStepper, bool? ShouldStop)> TryHandleBreakpoint(ICorDebugThread thread, ICorDebugFunctionBreakpoint breakpoint)
     {
         if (_runtimeStep is { } runtime && runtime.Resume.Breakpoint == breakpoint)
         {
-            TakeRuntimeResume(runtime, thread);
-            return (true, false);
+            return (true, TakeRuntimeResume(runtime, thread) ? null : false);
         }
 
         if (_notifyDebuggerBreakpoint is not null &&

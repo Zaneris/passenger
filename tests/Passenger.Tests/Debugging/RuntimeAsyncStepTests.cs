@@ -96,8 +96,8 @@ public class RuntimeAsyncStepTests(ITestOutputHelper testOutputHelper)
     }
 
     /// <summary>.NET 11's libraries are compiled with runtime async: Process.WaitForExitAsync, its module decompiled, steps over
-    /// its await for the child to end (which the debuggee lets end only once the method has suspended there) to a line of
-    /// its own after the await, rather than to its caller.</summary>
+    /// its await for the child to end (which the debuggee lets end only once the method has suspended there) to its next
+    /// line of code after the await, rather than to its caller or past that line.</summary>
     [Fact]
     public async Task Without_Just_My_Code_a_step_over_an_await_in_a_decompiled_library_method_stops_in_it_once_it_goes_on()
     {
@@ -130,9 +130,10 @@ public class RuntimeAsyncStepTests(ITestOutputHelper testOutputHelper)
         int awaited = stop.Line ?? 0;
         Assert.True(IsAwait(lines, awaited), $"Stepping over WaitForExitAsync's lines met no await; its stops: {string.Join(", ", stops)}");
         stop = await host.StepOverAsync(stop.ThreadId!.Value).WaitForStoppedEvent();
-        Assert.True(stop.Reason == StopReasons.Step && stop.Source?.Path == decompiled && stop.Line > awaited,
+        string? skipped = stop.Line > awaited ? lines[awaited..(stop.Line.Value - 1)].FirstOrDefault(line => line.Trim() is not ("" or "{" or "}")) : null;
+        Assert.True(stop.Reason == StopReasons.Step && stop.Source?.Path == decompiled && stop.Line > awaited && skipped is null,
             $"A step over WaitForExitAsync's await at line {awaited} ({lines[awaited - 1].Trim()}) stopped for {stop.Reason} at {stop.Source?.Path}:{stop.Line}, "
-            + "not on a line of it after the await");
+            + (skipped is null ? "not on a line of it after the await" : $"past its next line of code ({skipped.Trim()})"));
     }
 
     private static bool IsAwait(string[] lines, int? line) =>

@@ -310,6 +310,11 @@ public partial class ManagedDebugger
                     Continue(clearVariables: true);
                     return;
                 }
+                if (shouldStop is null)
+                {
+                    // The async step ended here and showed its stop.
+                    return;
+                }
 
                 if (_stepper is not null)
                 {

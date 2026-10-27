@@ -658,6 +658,22 @@ public partial class ManagedDebugger
         FollowReturnWatch(thread);
     }
 
+    /// <summary>The step through an await ends where its run goes on, on this thread, already on a line after the await's
+    /// statement. False, stopping nothing, where that shows no line: none read, a hidden one, or under Just My Code
+    /// not the user's code.</summary>
+    internal bool StopStepAt(ICorDebugThread thread)
+    {
+        if (thread.ActiveFrame is not ICorDebugILFrame frame || (_justMyCode && !IsUserCodeFrame(frame)) || FindModule(frame.Function.Module) is not { } module
+            || module.MetadataReader.IsCurrentSequencePointHidden(frame.Function.Token, frame.IP.pnOffset, ModuleMetadataReader.VersionOf(frame))
+            || GetSourceInfoAtFrame(frame, _justMyCode is false) is not { } source)
+        {
+            return false;
+        }
+        EndStepper();
+        ReportStop(thread.Id, StopReasons.Step, source.FilePath, source.StartLine, source.StartColumn);
+        return true;
+    }
+
     /// <summary>A pause that came while the process was held for an event of its own, taken at the next Continue.</summary>
     private bool _pauseRequested;
 
@@ -756,12 +772,13 @@ public partial class ManagedDebugger
         });
     }
 
-    /// <summary>The IL a step from a frame's statement steps through: its sequence point to the next one that shows a line,
-    /// to the method's end from one of no length. None in a module the debugger could not read.</summary>
-    internal (int Start, int End)? StepRangeOf(ICorDebugILFrame frame)
+    /// <summary>The IL a step from a frame's statement (the one at its IP, or at the IL offset given) steps through: its
+    /// sequence point to the next one that shows a line, to the method's end from one of no length. None in a module the
+    /// debugger could not read.</summary>
+    internal (int Start, int End)? StepRangeOf(ICorDebugILFrame frame, int? at = null)
     {
         ICorDebugFunction function = frame.Function;
-        if (FindModule(function.Module)?.MetadataReader.GetStartAndEndSequencePointIlOffsetsForIlOffset(function.Token, frame.IP.pnOffset, ModuleMetadataReader.VersionOf(frame)) is not var (start, end))
+        if (FindModule(function.Module)?.MetadataReader.GetStartAndEndSequencePointIlOffsetsForIlOffset(function.Token, at ?? frame.IP.pnOffset, ModuleMetadataReader.VersionOf(frame)) is not var (start, end))
         {
             return null;
         }
