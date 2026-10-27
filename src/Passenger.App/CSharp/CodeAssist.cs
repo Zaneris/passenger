@@ -328,6 +328,10 @@ public sealed class CodeAssist
         return false;
     }
 
+    /// <summary>Closes the list of choices or rename box open in a window, as Escape there does wherever the keys are,
+    /// saying whether one was.</summary>
+    public bool Dismiss(Avalonia.Controls.TopLevel window) => popups.Dismiss(window);
+
     /// <summary>The code actions, on the active editor's caret: those that ask the language server need a C# file of a
     /// folder it runs for; the error steps and Quick Documentation (the problems there, a paused program's values) only a
     /// file.</summary>

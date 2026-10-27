@@ -66,7 +66,7 @@ public partial class MainWindow : Window
         popups = new PopupHost(Overlay, OverlayHost, Editors, () => session.Debug.Breakpoints);
         navigator = new Navigation.Navigator(new Navigation.NavigatorParts(Editors, () => session, popups, status, path => OpenFile(path), Editors.TextOf));
         // One keymap for the whole window, seen before any control: editor actions go to the editor with the focus.
-        windowKeys = new IdeKeys(this, keys, popups, OnKey, OnActivity, OnLeft);
+        windowKeys = new IdeKeys(this, keys, popups, OnEscape, OnKey, OnActivity, OnLeft);
         windowKeys.Attach(this);
         AddActions();
         AddTitleBar();
@@ -401,6 +401,10 @@ public partial class MainWindow : Window
             e.Handled = true;
         }
     }
+
+    /// <summary>Escape in one of the IDE's windows with no popup over it: whether it closed the code's list of choices or
+    /// rename box there.</summary>
+    private bool OnEscape(TopLevel window) => assist.Dismiss(window);
 
     /// <summary>The editor a window's editor actions go to while it has the keys: a side of a diff or a merge, or the
     /// shown file's (the active group's, in this window or an editor window); none in a window whose keys are elsewhere.</summary>

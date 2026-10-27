@@ -1487,6 +1487,103 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         static string Said(List<(string Title, string Detail)> shown) => string.Join("; ", shown.Select(s => $"{s.Title} [{s.Detail}]"));
     }
 
+    /// <summary>Show Context Actions' list closes on a click in the editor away from it, the caret going where the click
+    /// was and nothing applied, as the completion list closes on one; a click on one of its rows chooses that row and
+    /// leaves it open.</summary>
+    [AvaloniaFact]
+    public void Show_context_actions_list_closes_on_a_click_in_the_editor_away_from_it()
+    {
+        MainWindow window = project.Open("Program.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        string before = editor.Document.Snapshot.ToString();
+        Ui.PlaceAfter(editor, "int res");
+        editor.Focus();
+        Ui.Run(window, AppActions.QuickFix);
+        Ui.WaitFor(() => window.Assist.Offered.Count > 1, "Show Context Actions' list for result");
+        IReadOnlyList<string> offered = window.Assist.Offered;
+
+        ListBoxItem second = OfferedRow(window, offered[1]);
+        Ui.Click(second);
+        Assert.True(second.IsSelected && window.Assist.Offered.SequenceEqual(offered),
+            $"A click on the list's second row ({offered[1]}) did not choose it in the list, which shows [{string.Join("; ", window.Assist.Offered)}]");
+
+        int away = before.IndexOf("class Program", StringComparison.Ordinal) + "class Pro".Length;
+        Ui.Click(editor, editor.PointOf(away) + new Point(1, editor.LineHeight / 2));
+        Assert.True(window.Assist.Offered.Count == 0,
+            $"A click in the editor away from Show Context Actions' list left it open, its fixes now applying at the old caret: [{string.Join("; ", window.Assist.Offered)}]");
+        Assert.Equal(new TextPosition(0, "class Pro".Length), editor.CaretPosition);
+        Assert.Equal(before, editor.Document.Snapshot.ToString());
+        window.Close();
+    }
+
+    /// <summary>Escape closes the code's lists of choices and its rename box wherever in the window the keys are: Show
+    /// Context Actions' list once Find Action, closed, has handed the editor the keys again, and Generate's once the
+    /// Explorer has them, which keeps them; Generate's list and the rename box close on a click away too, renaming
+    /// nothing.</summary>
+    [AvaloniaFact]
+    public void Escape_closes_the_lists_of_choices_and_the_rename_box_wherever_the_keys_are()
+    {
+        MainWindow window = project.Open("Program.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "int res");
+        editor.Focus();
+        Ui.Run(window, AppActions.QuickFix);
+        Ui.WaitFor(() => window.Assist.Offered.Count > 0, "Show Context Actions' list for result");
+        Ui.Run(window, AppActions.FindAction);
+        Assert.NotNull(window.Popup);
+        Ui.Press(window, "ESCAPE");
+        Assert.True(window.Popup is null && editor.IsFocused && window.Assist.Offered.Count > 0,
+            $"Find Action closed did not leave the editor with the keys under Show Context Actions' list (Find Action {(window.Popup is null ? "closed" : "open")}, "
+            + $"the keys with {window.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"}, the list offering {window.Assist.Offered.Count})");
+        Ui.Press(window, "ESCAPE");
+        Assert.True(window.Assist.Offered.Count == 0,
+            $"Escape with the keys back in the editor left Show Context Actions' list open: [{string.Join("; ", window.Assist.Offered)}]");
+
+        window.OpenFile(project.PathOf("Point.cs"));
+        Ui.Settle();
+        string point = editor.Document.Snapshot.ToString();
+        Ui.PlaceAfter(editor, "public int X");
+        Ui.Run(window, AppActions.Generate);
+        Ui.WaitFor(() => window.Assist.Offered.Count > 0, "what can be generated");
+        Ui.Run(window, AppActions.FocusExplorer);
+        Assert.True(window.ExplorerView.Rows().IsKeyboardFocusWithin && window.Assist.Offered.Count > 0,
+            $"Focus Explorer left the keys with {window.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"} and Generate's list offering {window.Assist.Offered.Count}");
+        Ui.Press(window, "ESCAPE");
+        Assert.True(window.Assist.Offered.Count == 0, $"Escape in the Explorer left Generate's list open: [{string.Join("; ", window.Assist.Offered)}]");
+        Assert.True(window.ExplorerView.Rows().IsKeyboardFocusWithin,
+            $"Escape that closed Generate's list took the Explorer's keys to {window.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"}");
+
+        editor.Focus();
+        Ui.Run(window, AppActions.Generate);
+        Ui.WaitFor(() => window.Assist.Offered.Count > 0, "what can be generated, again");
+        Ui.Click(editor, editor.PointOf(0) + new Point(1, editor.LineHeight / 2));
+        Assert.True(window.Assist.Offered.Count == 0, $"A click in the editor away from Generate's list left it open: [{string.Join("; ", window.Assist.Offered)}]");
+
+        Ui.PlaceAfter(editor, "public int Y");
+        Ui.Run(window, AppActions.Rename);
+        Ui.WaitFor(() => window.Assist.Renaming == "Y", "the rename box");
+        window.KeyTextInput("Height");
+        Ui.Click(editor, editor.PointOf(0) + new Point(1, editor.LineHeight / 2));
+        Assert.True(window.Assist.Renaming is null, $"A click in the editor away from the rename box left it open, holding {window.Assist.Renaming}");
+        Ui.PlaceAfter(editor, "public int Y");
+        Ui.Run(window, AppActions.Rename);
+        Ui.WaitFor(() => window.Assist.Renaming == "Y", "the rename box again");
+        Ui.Run(window, AppActions.FindAction);
+        Ui.Press(window, "ESCAPE");
+        Assert.True(editor.IsFocused && window.Assist.Renaming == "Y",
+            $"Find Action closed did not leave the editor with the keys under the rename box (the keys with {window.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"}, the box holding {window.Assist.Renaming ?? "nothing"})");
+        Ui.Press(window, "ESCAPE");
+        Assert.True(window.Assist.Renaming is null, $"Escape with the keys back in the editor left the rename box open, holding {window.Assist.Renaming}");
+        Ui.Settle();
+        Assert.True(editor.Document.Snapshot.ToString() == point, $"The rename box closed by a click away or Escape renamed Y:\n{editor.Document.Snapshot}");
+        window.Close();
+    }
+
+    /// <summary>The row of the open list of choices that shows these words.</summary>
+    private static ListBoxItem OfferedRow(MainWindow window, string title) =>
+        window.GetVisualDescendants().OfType<ListBoxItem>().FirstOrDefault(row => row.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text == title))
+        ?? throw new Xunit.Sdk.XunitException($"No row of the list of choices shows {title}");
+
     [AvaloniaFact]
     public void Parameter_info_keeps_a_sentence_apart_from_a_parameter_its_documentation_names_straight_after_it()
     {

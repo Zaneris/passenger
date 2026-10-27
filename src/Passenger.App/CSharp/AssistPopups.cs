@@ -370,8 +370,8 @@ internal sealed class CompletionRowView : DockPanel
     }
 }
 
-/// <summary>A titled list to choose from (fixes, definitions, usages, surround templates): Up and Down, Enter to choose,
-/// a choice's digit to choose it at once, Escape or a click away to dismiss.</summary>
+/// <summary>A titled list to choose from (fixes, definitions, usages, surround templates): Up and Down, Enter or a double
+/// click to choose, a choice's digit to choose it at once.</summary>
 internal sealed class ChoicePopup : Border
 {
     // Styled as the Border it is, so the theme's Border.popup reaches it.
@@ -428,8 +428,8 @@ internal sealed class ChoicePopup : Border
         }, DispatcherPriority.Loaded);
     }
 
-    /// <summary>The choice made, or null when dismissed.</summary>
-    public event EventHandler<Choice?>? Done;
+    /// <summary>The choice made.</summary>
+    public event EventHandler<Choice>? Done;
 
     /// <summary>The choice the list has selected now, as Up and Down move it.</summary>
     public event EventHandler<Choice?>? Moved;
@@ -439,11 +439,6 @@ internal sealed class ChoicePopup : Border
         if (e.Key == Key.Enter)
         {
             Choose();
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Escape)
-        {
-            Done?.Invoke(this, null);
             e.Handled = true;
         }
         else if (Digit(e.Key) is { } digit && list.ItemsSource is IEnumerable<Choice> choices && choices.FirstOrDefault(c => c.Mnemonic == digit) is { } marked)
@@ -491,7 +486,7 @@ internal sealed class ChoicePopup : Border
 /// chooses it, if it has one.</summary>
 internal sealed record Choice(string Text, string Detail, object Value, bool DetailIsCode = false, char? Mnemonic = null);
 
-/// <summary>Inline rename: the name in a box over itself, all of it selected; Enter renames, Escape leaves it. For a
+/// <summary>Inline rename: the name in a box over itself, all of it selected; Enter renames. For a
 /// type declared in files named after it, Also rename files to reflect this change is a check box under it, with the
 /// files it would rename, clicked while the keys stay with the name.</summary>
 internal sealed class RenameBox : Border
@@ -566,11 +561,6 @@ internal sealed class RenameBox : Border
         {
             string text = name.Text?.Trim() ?? string.Empty;
             Done?.Invoke(this, text.Length > 0 ? text : null);
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Escape)
-        {
-            Done?.Invoke(this, null);
             e.Handled = true;
         }
     }
