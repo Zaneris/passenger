@@ -12,8 +12,9 @@ using Passenger.App.ToolWindows;
 namespace Passenger.Tests;
 
 /// <summary>An error inside the IDE is caught, written to the log and shown, never the end of it; a language server
-/// that ends on its own, or stops answering, is started again with the open files, and one still starting when its
-/// folder closes is ended, as is one a window test that failed left loading.</summary>
+/// that ends on its own (as it starts too), or stops answering, is started again with the open files, one that keeps
+/// ending is left stopped until a person starts it again, and one still starting when its folder closes is ended, as is
+/// one a window test that failed left loading.</summary>
 public sealed class IdeErrorsTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("errors-");
@@ -558,6 +559,129 @@ public sealed class IdeErrorsTests : IDisposable
 
         public Task<Passenger.Roslyn.Extension.ProjectInfoResult> InfoAsync(string path, CancellationToken cancel) => feed.InfoAsync(path, cancel);
     }
+
+    /// <summary>A server whose process ends during its own start, before it has answered, is started again as one that ends
+    /// later is, the window saying so, and C# comes back for the file open; asked to, the IDE starts it again in place of
+    /// the one running.</summary>
+    [AvaloniaFact]
+    public void A_language_server_that_ends_during_its_start_is_started_again_saying_so()
+    {
+        WriteProgram(folder);
+        MainWindow window = new() { Width = 1200, Height = 800 };
+        window.Show();
+        List<string> said = [];
+        using IDisposable following = Following(window, said);
+        int ended;
+        using (EndingAsTheyStart ending = new(times: 1))
+        {
+            window.OpenFolder(folder);
+            window.OpenFile("Program.cs");
+            Ui.WaitFor(() => window.CSharpService is { IsReady: true }, () => $"C# to come back after its language server ended as it started ({window.CSharpService?.State})");
+            ended = Assert.Single(ending.Ended);
+        }
+        Passenger.App.CSharp.CSharpService csharp = window.CSharpService!;
+        int running = csharp.Session!.Server.ProcessId;
+        Assert.True(running != ended, $"C# is ready on the server that was ended as it started (process {ended})");
+        Assert.True(said.Contains("The C# language server ended as it started; starting it again"),
+            $"The status bar never said the server that ended as it started was started again; it said: {string.Join(" | ", said)}");
+        Assert.Contains($"The C# language server ended as it started for {window.Folder}", Ui.IdeLog());
+        TypeAnErrorAndSeeItReported(window);
+
+        Assert.True(window.Perform(AppActions.RestartCSharpServer), $"Restart C# Language Server did not run on a server that runs: {window.Status}");
+        Ui.WaitFor(() => csharp.Session is { IsLoaded: true } session && session.Server.ProcessId != running,
+            () => $"the language server to be started again in place of the one running ({csharp.State})");
+        Ui.WaitFor(() => !Running(running), $"the server restarted in place of (process {running}) to be ended, not left behind");
+        window.Close();
+    }
+
+    /// <summary>A server that ends during every start is started again only as often as one that ends later is, then left
+    /// stopped, the window saying why and where to start it again; once what ended it is gone, its words start it again,
+    /// as Restart C# Language Server does, without the folder opened again.</summary>
+    [AvaloniaFact]
+    public void A_language_server_that_ends_during_every_start_is_left_stopped_saying_so_and_its_words_start_it_again()
+    {
+        WriteProgram(folder);
+        MainWindow window = new() { Width = 1200, Height = 800 };
+        window.Show();
+        List<string> said = [];
+        using IDisposable following = Following(window, said);
+        const string LeftStopped = "The C# language server ended as it started 4 times in 5 minutes, so it was left stopped; Restart C# Language Server starts it again";
+        using (EndingAsTheyStart ending = new())
+        {
+            window.OpenFolder(folder);
+            window.OpenFile("Program.cs");
+            Ui.WaitFor(() => window.CSharpService is { IsStopped: true },
+                () => $"C# to be left stopped after its language server ended as it started {ending.Ended.Count} times ({window.CSharpService?.State})");
+            Ui.Settle();
+            Assert.True(ending.Ended.Count == 4, $"The language server was started {ending.Ended.Count} times, ending each time as it started, rather than once and then 3 times again");
+        }
+        Passenger.App.CSharp.CSharpService csharp = window.CSharpService!;
+        Assert.Equal("C# stopped", csharp.State);
+        Assert.Equal("C# · C# stopped", window.FindControl<TextBlock>("LanguageText")!.Text);
+        Assert.True(said.Contains("The C# language server ended as it started; starting it again"),
+            $"The status bar never said the server that ended as it started was started again; it said: {string.Join(" | ", said)}");
+        Assert.True(window.Status == LeftStopped, $"The status bar says \"{window.Status}\" of C# left stopped, having said: {string.Join(" | ", said)}");
+        Assert.Equal("start it again", window.StatusPlace?.Name);
+
+        Ui.Click(window.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "StatusMessage"));
+        Ui.WaitFor(() => csharp.IsReady, () => $"C# left stopped to be started again by the status bar's words ({csharp.State}; the status bar says {window.Status})");
+        Assert.False(csharp.IsStopped, "C# started again is still said to be left stopped");
+        Assert.True(said.Contains("Starting the C# language server again"),
+            $"The status bar never said C# left stopped was started again; it said: {string.Join(" | ", said)}");
+        // The words clicked have the keys: the editor takes them back as a person's click there does.
+        Ui.Click(window.EditorArea.CodeEditor);
+        TypeAnErrorAndSeeItReported(window);
+        window.Close();
+    }
+
+    /// <summary>Ends each of the next language servers as its process starts, before it can answer anything, until disposed;
+    /// <see cref="Ended"/> lists the processes it ended.</summary>
+    private sealed class EndingAsTheyStart : IDisposable
+    {
+        private readonly List<int> ended = [];
+        private readonly EventHandler<Passenger.Core.ChildStart> started;
+
+        public EndingAsTheyStart(int times = int.MaxValue)
+        {
+            started = (_, child) =>
+            {
+                if (!child.Command.Contains("Microsoft.CodeAnalysis.LanguageServer", StringComparison.Ordinal))
+                {
+                    return;
+                }
+                lock (ended)
+                {
+                    if (ended.Count >= times)
+                    {
+                        return;
+                    }
+                    ended.Add(child.ProcessId);
+                }
+                using Process ending = Process.GetProcessById(child.ProcessId);
+                ending.Kill();
+                ending.WaitForExit();
+            };
+            Passenger.Core.ChildProcesses.Started += started;
+        }
+
+        public IReadOnlyList<int> Ended
+        {
+            get
+            {
+                lock (ended)
+                {
+                    return [.. ended];
+                }
+            }
+        }
+
+        public void Dispose() => Passenger.Core.ChildProcesses.Started -= started;
+    }
+
+    /// <summary>Every text the status bar's words show from now on, as a person reading them throughout saw them.</summary>
+    private static IDisposable Following(MainWindow window, List<string> said) =>
+        Avalonia.AvaloniaObjectExtensions.GetObservable(window.FindControl<TextBlock>("StatusText")!, TextBlock.TextProperty)
+            .Subscribe(new Avalonia.Reactive.AnonymousObserver<string?>(text => said.Add(text ?? string.Empty)));
 
     /// <summary>Call Hierarchy asked of a server that stops before it answers says so, and asked while the next one starts
     /// says it needs the server; once it is back, the Hierarchy window shown before it ended still opens a row, its callers

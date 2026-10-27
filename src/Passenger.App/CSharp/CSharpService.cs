@@ -14,10 +14,11 @@ namespace Passenger.App.CSharp;
 /// <summary>C# for the open folder: Roslyn's language server started on the workspace's solution or projects, its state
 /// for the status bar, and a <see cref="CSharpDocument"/> for every C# file open in a tab. Files opened before the
 /// server is ready are attached once it is, a file of a project it is loading once that project has loaded. A server
-/// that ends on its own, or stops answering, is started again with the open files, a few times at most. What the server
-/// tells the person (a project that did not load or loaded with warnings, and why) is said in the status bar and logged,
-/// each project's load problems kept for Problems, the load's progress shown, and each start's phases timed. A UI-thread
-/// object: what the server says from its threads crosses through <see cref="UiThread"/>.</summary>
+/// that ends on its own (during its start too), or stops answering, is started again with the open files, a few times at
+/// most, and whenever a person asks (<see cref="Restart"/>). What the server tells the person (a project that did not
+/// load or loaded with warnings, and why) is said in the status bar and logged, each project's load problems kept for
+/// Problems, the load's progress shown, and each start's phases timed. A UI-thread object: what the server says from its
+/// threads crosses through <see cref="UiThread"/>.</summary>
 public sealed class CSharpService : IAsyncDisposable
 {
     /// <summary>How long after an error the server logged a message it shows can be its reason (a project's failure to
@@ -121,7 +122,12 @@ public sealed class CSharpService : IAsyncDisposable
     public bool IsReady => session is { IsLoaded: true };
     public RoslynSession? Session => session;
 
-    /// <summary>The server ended on its own or stopped answering, with what was done about it; raised on the UI thread.</summary>
+    /// <summary>Whether servers ended too often, so the last was left stopped, until it is started again
+    /// (<see cref="Restart"/>).</summary>
+    public bool IsStopped { get; private set; }
+
+    /// <summary>The server ended on its own or stopped answering, with what was done about it: started again, or left stopped
+    /// (<see cref="IsStopped"/>), saying why. Raised on the UI thread.</summary>
     public event EventHandler<string>? Stopped;
 
     /// <summary>What the server tells the person (<c>window/showMessage</c>, Roslyn's toasts), with what it logged when
@@ -675,6 +681,7 @@ public sealed class CSharpService : IAsyncDisposable
         starting?.Cancel();
         CancellationTokenSource cancel = new();
         starting = cancel;
+        IsStopped = false;
         SetState("Starting C#…");
         BackgroundWork.Begin();
         IdeErrors.Observe(Run(workspace, cancel.Token));
@@ -953,6 +960,12 @@ public sealed class CSharpService : IAsyncDisposable
         catch (Exception error) when (error is OperationCanceledException || cancel.IsCancellationRequested)
         {
             // Given up (another folder opened, the window closed): however its end came, there is nothing to say of it.
+        }
+        catch (LanguageServerFailed failed) when (failed.Ended)
+        {
+            IdeErrors.Write($"The C# language server ended as it started for {opening.Folder}: {failed}");
+            Progress = null;
+            Lost(workspace ?? opening, "The C# language server ended as it started");
         }
         catch (Exception error)
         {
@@ -1278,6 +1291,47 @@ public sealed class CSharpService : IAsyncDisposable
     /// unless servers have gone too often to be worth it.</summary>
     private void Replace(RoslynSession lost, WorkspaceModel restarting, string what)
     {
+        LetGo(lost);
+        Lost(restarting, what);
+    }
+
+    /// <summary>Starts the server again at a person's word, in place of the one running or starting, its restarts counted
+    /// afresh: one left stopped for ending too often runs again once what ended it is gone.</summary>
+    public void Restart()
+    {
+        UiThread.Check();
+        if (disposed || workspace is not { } restarting)
+        {
+            return;
+        }
+        restarts.Forget();
+        if (session is { } running)
+        {
+            LetGo(running);
+        }
+        IdeErrors.Write($"The C# language server is started again for {restarting.Folder}, as asked");
+        Start(restarting);
+    }
+
+    /// <summary>A server, as it ran or as it started, gone: started again, unless servers have gone too often to be worth
+    /// it, when C# is left stopped saying why.</summary>
+    private void Lost(WorkspaceModel restarting, string what)
+    {
+        if (!restarts.Again())
+        {
+            IsStopped = true;
+            SetState("C# stopped");
+            Stopped?.Invoke(this, ServerRestarts.LeftStopped(what));
+            return;
+        }
+        Stopped?.Invoke(this, ServerRestarts.Said(what, again: true));
+        Start(restarting);
+    }
+
+    /// <summary>A server let go of, ended in its own time: its work, problems and reports forgotten, and the open files back
+    /// to the parser's colours until another opens them.</summary>
+    private void LetGo(RoslynSession lost)
+    {
         session = null;
         Progress = null;
         works.Clear();
@@ -1292,14 +1346,6 @@ public sealed class CSharpService : IAsyncDisposable
             Detach(open);
             Attach(open);
         }
-        if (!restarts.Again())
-        {
-            SetState("C# stopped");
-            Stopped?.Invoke(this, ServerRestarts.Said(what, again: false));
-            return;
-        }
-        Stopped?.Invoke(this, ServerRestarts.Said(what, again: true));
-        Start(restarting);
     }
 
     /// <summary>A server gone: one started again loads every project afresh and reports their problems again.</summary>

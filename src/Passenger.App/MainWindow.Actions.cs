@@ -187,6 +187,11 @@ public partial class MainWindow
         Add(A.FocusEditor, "Focus Editor", "IDE", _ => FocusEditor(), Refusals.NeedsFile);
         Add(A.ToggleSolutionAnalysis, "Toggle Solution-Wide Analysis", "IDE", _ => ToggleSolutionAnalysis(),
             _ => session.CSharp is null ? Refusals.NoCSharp : null, ("Code", 4, 0));
+        Add(A.RestartCSharpServer, "Restart C# Language Server", "IDE", _ =>
+        {
+            session.CSharp!.Restart();
+            status.Text = "Starting the C# language server again";
+        }, _ => session.CSharp is null ? Refusals.NoCSharp : null, ("Code", 4, 1), words: ["Roslyn"]);
     }
 
     /// <summary>The editor's actions, run where the keys are: a text box's own editing there, another editor (a diff's)

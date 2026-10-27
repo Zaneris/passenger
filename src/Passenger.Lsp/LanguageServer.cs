@@ -480,6 +480,12 @@ public sealed class LanguageServer : IAsyncDisposable
         return server2;
     }
 
+    /// <summary>Whether a fault nothing observed is StreamJsonRpc's own word that the connection was lost, on the answer a
+    /// request waited for, which it drops when the request's sending fails as the server goes (its caller is told of that
+    /// failure, thrown): never thrown itself, so never a caller's.</summary>
+    public static bool IsDroppedAnswer(AggregateException unobserved) =>
+        unobserved.InnerExceptions.All(e => e is ConnectionLostException { InnerException: null, StackTrace: null });
+
     /// <summary>Ends a server whose start was given up or failed, at once, with its log: there is no shutdown to ask it for.</summary>
     private void Abandon()
     {
@@ -671,7 +677,7 @@ public sealed class LanguageServer : IAsyncDisposable
         OperationCanceledException when cancel.IsCancellationRequested => null,
         OperationCanceledException => new LanguageServerFailed("the language server cancelled it", method, error),
         ConnectionLostException or ObjectDisposedException or IOException => new LanguageServerFailed(
-            killed ? "the language server stopped responding, so it was ended" : "the language server stopped before it answered", method, error),
+            killed ? "the language server stopped responding, so it was ended" : "the language server stopped before it answered", method, error) { Ended = true },
         RemoteRpcException refused => new LanguageServerFailed($"the language server refused it: {refused.Message.Split('\n')[0].Trim()}", method, error),
         _ => null,
     };

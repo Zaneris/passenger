@@ -464,8 +464,16 @@ public partial class MainWindow
                     ReadOpenAspireMarks(again: true);
                 }
             };
-            // Each stop is logged with why: the log is where to see more.
-            service.Stopped += (_, message) => Say(message, LogPlace);
+            // Each stop is logged with why, so the log is where to see more; one left stopped is started again from its words.
+            service.Stopped += (_, message) =>
+            {
+                if (service.IsStopped)
+                {
+                    Say($"{message}; {actions![AppActions.RestartCSharpServer]!.Title} starts it again", RestartCSharpPlace);
+                    return;
+                }
+                Say(message, LogPlace);
+            };
             service.Said += (_, said) => status.Say(said.Text, said.Severity, said.Problem is { } problem ? LoadProblemPlace(problem) : null);
             WatchProblems(service);
             service.FollowIndent(Editors.Active);

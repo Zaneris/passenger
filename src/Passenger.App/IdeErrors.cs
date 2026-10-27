@@ -89,7 +89,10 @@ public static class IdeErrors
         installed = true;
         TaskScheduler.UnobservedTaskException += (_, e) =>
         {
-            Report(Single(e.Exception));
+            if (!Lsp.LanguageServer.IsDroppedAnswer(e.Exception))
+            {
+                Report(Single(e.Exception));
+            }
             e.SetObserved();
         };
         // Past saving: an exception off the UI thread still ends the process, but leaves its reason in the log.

@@ -228,6 +228,10 @@ public static class AppActions
     public const string ShowProblems = "app.showProblems";
     public const string ShowFind = "app.showFind";
     public const string ToggleSolutionAnalysis = "app.toggleSolutionAnalysis";
+
+    // The C# language server started again in place of the one running, or of one left stopped for ending too often: no
+    // key of Rider's.
+    public const string RestartCSharpServer = "app.restartCSharpServer";
     public const string ShowDebug = "app.showDebug";
     public const string HideToolWindow = "app.hideToolWindow";
     public const string Back = "app.back";

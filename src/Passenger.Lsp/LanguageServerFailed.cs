@@ -12,4 +12,8 @@ public sealed class LanguageServerFailed(string reason, string? method = null, E
 
     /// <summary>The request that failed, when one was sent.</summary>
     public string? Method { get; } = method;
+
+    /// <summary>Whether the server had ended, or was ended, so nothing answered: not a refusal of its own. One started again
+    /// may answer.</summary>
+    public bool Ended { get; init; }
 }
