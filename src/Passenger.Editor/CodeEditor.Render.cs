@@ -525,9 +525,9 @@ public sealed partial class CodeEditor
 
     private readonly ShapeCache shapes = new();
 
-    /// <summary>How many shapes (squiggles, tabs' arrows, wrap signs, fold chevrons) the editor has made to draw: what a
-    /// frame that moved none should leave as it was.</summary>
-    public long ShapesMade => shapes.Made;
+    /// <summary>How many shapes (squiggles, tabs' arrows, wrap signs, fold chevrons, the gutter columns' marks) the editor
+    /// has made to draw: what a frame that moved none should leave as it was.</summary>
+    public long ShapesMade => shapes.Made + (gutterFrame?.ShapesMade ?? 0);
 
     /// <summary>What a shape the editor draws is: its kind and the numbers that place and size it.</summary>
     private readonly record struct ShapeKey(ShapeKind Kind, double A, double B, double C, double D);

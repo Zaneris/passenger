@@ -35,14 +35,16 @@ public sealed class BookmarkColumn(CodeEditor editor) : IGutterColumn
 
     public GutterAnswer Press(GutterPress press) => GutterAnswer.Passed;
 
-    /// <summary>A bookmark's ribbon: a strip with a notch cut from its foot.</summary>
+    /// <summary>A bookmark's ribbon: a strip with a notch cut from its foot, kept while it stands where it did.</summary>
     private static void DrawRibbon(GutterFrame frame, double x, double top)
     {
         double height = Math.Min(frame.LineHeight - 4, 12);
         double y = top + ((frame.LineHeight - height) / 2);
-        StreamGeometry ribbon = new();
-        using (StreamGeometryContext path = ribbon.Open())
+        GutterShape key = new(nameof(DrawRibbon), x, y, height);
+        if (!frame.TryShape(key, out StreamGeometry? ribbon))
         {
+            ribbon = frame.AddShape(key);
+            using StreamGeometryContext path = ribbon.Open();
             path.BeginFigure(new Point(x, y), true);
             path.LineTo(new Point(x + 8, y));
             path.LineTo(new Point(x + 8, y + height));

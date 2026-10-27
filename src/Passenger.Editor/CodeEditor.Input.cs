@@ -55,7 +55,7 @@ public sealed partial class CodeEditor
         {
             return;
         }
-        string typed = new(e.Text.Where(c => c >= ' ' && c != '\u007f').ToArray());
+        string typed = Printable(e.Text);
         if (typed.Length == 0)
         {
             return;
@@ -65,6 +65,28 @@ public sealed partial class CodeEditor
         Apply(TextEditing.Type(document.Snapshot, selections, typed));
         e.Handled = true;
         Typed?.Invoke(this, typed);
+    }
+
+    private static readonly System.Buffers.SearchValues<char> ControlCharacters = System.Buffers.SearchValues.Create(
+        "\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u0007\u0008\u0009\u000A\u000B\u000C\u000D\u000E\u000F\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001A\u001B\u001C\u001D\u001E\u001F\u007F");
+
+    /// <summary>What was typed less its control characters: the text itself when it holds none, as a key's does.</summary>
+    private static string Printable(string text)
+    {
+        if (text.AsSpan().IndexOfAny(ControlCharacters) < 0)
+        {
+            return text;
+        }
+        Span<char> kept = text.Length <= 256 ? stackalloc char[text.Length] : new char[text.Length];
+        int count = 0;
+        foreach (char c in text)
+        {
+            if (!ControlCharacters.Contains(c))
+            {
+                kept[count++] = c;
+            }
+        }
+        return new string(kept[..count]);
     }
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)

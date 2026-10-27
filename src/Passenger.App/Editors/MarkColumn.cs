@@ -191,6 +191,6 @@ public sealed class MarkColumn : IGutterColumn
     {
         double size = Math.Min(frame.LineHeight - 6, 12);
         Rect square = new(left + 5, top + ((frame.LineHeight - size) / 2), size, size);
-        frame.Context.DrawRectangle(new SolidColorBrush(colour), new Pen(frame.Brush(TokenKeys.Editor_LineNumber), 1), square, 2, 2);
+        frame.Context.DrawRectangle(frame.Brush(colour), frame.Pen(TokenKeys.Editor_LineNumber, 1), square, 2, 2);
     }
 }

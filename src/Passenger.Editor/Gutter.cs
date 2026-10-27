@@ -80,6 +80,8 @@ public sealed class GutterFrame
     private readonly CodeEditor editor;
     private readonly List<GutterLine> lines = [];
     private readonly HashSet<int> covered = [];
+    private Dictionary<GutterShape, StreamGeometry> shapes = [];
+    private Dictionary<GutterShape, StreamGeometry> lastShapes = [];
     private DrawingContext? context;
 
     internal GutterFrame(CodeEditor editor)
@@ -126,6 +128,40 @@ public sealed class GutterFrame
     /// <summary>The look's brush for a token (<see cref="TokenKeys"/>), read once for each look; none for a key it lacks.</summary>
     public IBrush Brush(string key) => editor.GutterBrush(key);
 
+    /// <summary>A pen of a token's brush, made once for each look, thickness and ends.</summary>
+    public IPen Pen(string key, double thickness, PenLineCap cap = PenLineCap.Flat, PenLineJoin join = PenLineJoin.Miter) =>
+        editor.GutterPen(key, thickness, cap, join);
+
+    /// <summary>A brush of a colour the text names (a swatch), kept from frame to frame.</summary>
+    public IBrush Brush(Color colour) => editor.GutterColour(colour);
+
+    /// <summary>A shape the columns drew in the last frame at the same place and size, kept for this one.</summary>
+    public bool TryShape(GutterShape key, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out StreamGeometry? shape)
+    {
+        if (shapes.TryGetValue(key, out shape))
+        {
+            return true;
+        }
+        if (lastShapes.Remove(key, out shape))
+        {
+            shapes[key] = shape;
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>A shape made for this frame, which the next draws again while it stands where it did.</summary>
+    public StreamGeometry AddShape(GutterShape key)
+    {
+        StreamGeometry shape = new();
+        shapes[key] = shape;
+        ShapesMade++;
+        return shape;
+    }
+
+    /// <summary>How many shapes the columns have made to draw.</summary>
+    internal long ShapesMade { get; private set; }
+
     /// <summary>Text in the editor's font, a scale of its size, in a token's colour, kept from frame to frame.</summary>
     public TextLine Label(string text, string brushKey, double scale = 1, bool bold = false) => editor.GutterLabel(text, brushKey, scale, bold);
 
@@ -159,8 +195,20 @@ public sealed class GutterFrame
     {
         context = null;
         lines.Clear();
+        lastShapes.Clear();
+        (lastShapes, shapes) = (shapes, lastShapes);
+    }
+
+    /// <summary>Lets go of the shapes kept, for a new look or font.</summary>
+    internal void ForgetShapes()
+    {
+        shapes.Clear();
+        lastShapes.Clear();
     }
 }
+
+/// <summary>A shape a gutter column draws: what it is (the column's own name for it), where and how large.</summary>
+public readonly record struct GutterShape(string Kind, double X, double Y, double Size);
 
 /// <summary>The tints the columns lay behind the text of the lines on screen, one frame at a time: a whole line's, or a
 /// stretch of it, drawn only on a line with no tint of its own.</summary>

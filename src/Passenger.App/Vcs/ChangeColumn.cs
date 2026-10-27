@@ -45,9 +45,11 @@ public sealed class ChangeColumn(CodeEditor editor) : IGutterColumn
             double top = frame.TopOf(change.Line);
             if (change.Kind == ChangeMarkKind.Deleted)
             {
-                StreamGeometry wedge = new();
-                using (StreamGeometryContext path = wedge.Open())
+                GutterShape key = new(nameof(ChangeMarkKind.Deleted), x, top, 4);
+                if (!frame.TryShape(key, out StreamGeometry? wedge))
                 {
+                    wedge = frame.AddShape(key);
+                    using StreamGeometryContext path = wedge.Open();
                     path.BeginFigure(new Point(x - 1, top - 4), true);
                     path.LineTo(new Point(x + 4, top));
                     path.LineTo(new Point(x - 1, top + 4));

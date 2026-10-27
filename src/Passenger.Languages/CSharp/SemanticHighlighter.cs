@@ -375,17 +375,33 @@ public sealed class SemanticHighlighter : IHighlighter, IBraceMatcher, IDisposab
         {
             covered = TextEditing.MapRange(covered, history[i].Edits);
         }
-        TextRange reach = covered;
         List<SyntaxSpan> spans = Carried(near, start, end);
-        spans.RemoveAll(s => s.Start < reach.Start || s.End > reach.End);
-        if (whole is not null && (start < reach.Start || end > reach.End))
+        Keep(spans, covered, inside: true);
+        if (whole is not null && (start < covered.Start || end > covered.End))
         {
             List<SyntaxSpan> around = Carried(whole, start, end);
-            around.RemoveAll(s => s.End > reach.Start && s.Start < reach.End);
+            Keep(around, covered, inside: false);
             spans.AddRange(around);
             spans.Sort((a, b) => a.Start.CompareTo(b.Start));
         }
         return spans;
+    }
+
+    /// <summary>Keeps the spans wholly inside a range, or (not <paramref name="inside"/>) those touching none of it, in order.</summary>
+    private static void Keep(List<SyntaxSpan> spans, TextRange range, bool inside)
+    {
+        int kept = 0;
+        for (int i = 0; i < spans.Count; i++)
+        {
+            SyntaxSpan span = spans[i];
+            bool within = span.Start >= range.Start && span.End <= range.End;
+            bool apart = span.End <= range.Start || span.Start >= range.End;
+            if (inside ? within : apart)
+            {
+                spans[kept++] = span;
+            }
+        }
+        spans.RemoveRange(kept, spans.Count - kept);
     }
 
     /// <summary>One answer's tokens near a range of the current text: found in the answer's own text by halving, then

@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Media.Immutable;
 using Avalonia.Media.TextFormatting;
 
 namespace Passenger.Editor;
@@ -28,6 +29,8 @@ public sealed partial class CodeEditor
 
     private readonly Dictionary<string, IBrush> gutterBrushes = [];
     private readonly Dictionary<(string Key, double Scale, bool Bold), TextRunProperties> gutterRuns = [];
+    private readonly Dictionary<(string Key, double Thickness, PenLineCap Cap, PenLineJoin Join), IPen> gutterPens = [];
+    private readonly Dictionary<Color, IBrush> gutterColours = [];
     private readonly LabelCache<(string Text, string Key, double Scale, bool Bold)> gutterLabels = new();
 
     /// <summary>Sets the host's columns: those left of the numbers, outermost first, and those right of them, nearest first.</summary>
@@ -167,6 +170,30 @@ public sealed partial class CodeEditor
         return brush;
     }
 
+    /// <summary>A pen of a token's brush in the look in force, kept until the look changes, immutable as a frame keeps it.</summary>
+    internal IPen GutterPen(string key, double thickness, PenLineCap cap, PenLineJoin join)
+    {
+        if (!gutterPens.TryGetValue((key, thickness, cap, join), out IPen? pen))
+        {
+            gutterPens[(key, thickness, cap, join)] = pen = new ImmutablePen((IImmutableBrush)GutterBrush(key).ToImmutable(), thickness, lineCap: cap, lineJoin: join);
+        }
+        return pen;
+    }
+
+    /// <summary>A colour's brush, kept for the colours the screen shows, a few hundred at most.</summary>
+    internal IBrush GutterColour(Color colour)
+    {
+        if (!gutterColours.TryGetValue(colour, out IBrush? brush))
+        {
+            if (gutterColours.Count >= 256)
+            {
+                gutterColours.Clear();
+            }
+            gutterColours[colour] = brush = new ImmutableSolidColorBrush(colour);
+        }
+        return brush;
+    }
+
     private IBrush? FindBrush(string key) => this.TryFindResource(key, ActualThemeVariant, out object? value) ? value as IBrush : null;
 
     /// <summary>Whether a brush the columns drew with is another in the resources now (a colour scheme laid over them).</summary>
@@ -202,6 +229,8 @@ public sealed partial class CodeEditor
     {
         gutterBrushes.Clear();
         gutterRuns.Clear();
+        gutterPens.Clear();
+        gutterFrame?.ForgetShapes();
         gutterLabels.Clear();
         MeasureColumns();
     }

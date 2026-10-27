@@ -125,10 +125,11 @@ public sealed class DebugMarks
         DrawingContext context = frame.Context;
         double radius = Math.Min(frame.LineHeight - 6, 14) / 2;
         Point centre = new(x, y);
-        IBrush fill = frame.Brush(mark.Muted ? TokenKeys.Editor_BreakpointMuted : mark.Tracepoint ? TokenKeys.Editor_Tracepoint : TokenKeys.Editor_Breakpoint);
+        string fillKey = mark.Muted ? TokenKeys.Editor_BreakpointMuted : mark.Tracepoint ? TokenKeys.Editor_Tracepoint : TokenKeys.Editor_Breakpoint;
+        IBrush fill = frame.Brush(fillKey);
         if (mark.Muted && mark.Kind == LineMarkKind.BreakpointDisabled)
         {
-            context.DrawEllipse(null, new Pen(fill, 1.5), centre, radius - 0.75, radius - 0.75);
+            context.DrawEllipse(null, frame.Pen(fillKey, 1.5), centre, radius - 0.75, radius - 0.75);
             return;
         }
         if (mark.Conditional && mark.Kind is LineMarkKind.Breakpoint or LineMarkKind.BreakpointBound)
@@ -145,21 +146,23 @@ public sealed class DebugMarks
                 break;
             case LineMarkKind.BreakpointBound:
                 context.DrawEllipse(fill, null, centre, radius, radius);
-                StreamGeometry tick = new();
-                using (StreamGeometryContext path = tick.Open())
+                GutterShape key = new(nameof(LineMarkKind.BreakpointBound), x, y, radius);
+                if (!frame.TryShape(key, out StreamGeometry? tick))
                 {
+                    tick = frame.AddShape(key);
+                    using StreamGeometryContext path = tick.Open();
                     path.BeginFigure(new Point(x - radius * 0.45, y + radius * 0.02), false);
                     path.LineTo(new Point(x - radius * 0.1, y + radius * 0.38));
                     path.LineTo(new Point(x + radius * 0.48, y - radius * 0.35));
                     path.EndFigure(false);
                 }
-                context.DrawGeometry(null, new Pen(frame.Brush(TokenKeys.Editor_Background), 1.6, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round), tick);
+                context.DrawGeometry(null, frame.Pen(TokenKeys.Editor_Background, 1.6, PenLineCap.Round, PenLineJoin.Round), tick);
                 break;
             case LineMarkKind.BreakpointInvalid:
-                context.DrawEllipse(null, new Pen(fill, 1.5), centre, radius - 0.75, radius - 0.75);
+                context.DrawEllipse(null, frame.Pen(fillKey, 1.5), centre, radius - 0.75, radius - 0.75);
                 break;
             default:
-                context.DrawEllipse(null, new Pen(frame.Brush(TokenKeys.Editor_LineNumber), 1.5), centre, radius - 0.75, radius - 0.75);
+                context.DrawEllipse(null, frame.Pen(TokenKeys.Editor_LineNumber, 1.5), centre, radius - 0.75, radius - 0.75);
                 break;
         }
     }
@@ -171,9 +174,11 @@ public sealed class DebugMarks
         double y = top + (frame.LineHeight - height) / 2;
         double x = left + 5;
         const double Width = 13;
-        StreamGeometry arrow = new();
-        using (StreamGeometryContext path = arrow.Open())
+        GutterShape key = new(nameof(DrawExecutionArrow), x, y, height);
+        if (!frame.TryShape(key, out StreamGeometry? arrow))
         {
+            arrow = frame.AddShape(key);
+            using StreamGeometryContext path = arrow.Open();
             path.BeginFigure(new Point(x, y), true);
             path.LineTo(new Point(x + Width - height / 2, y));
             path.LineTo(new Point(x + Width, y + height / 2));

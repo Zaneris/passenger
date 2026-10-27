@@ -655,9 +655,9 @@ public sealed partial class CodeEditor : Control
             CaretLimitReached?.Invoke(this, EventArgs.Empty);
         }
         SelectionSet clamped = value.Clamp(document.Snapshot.Length);
-        leaning = nextLeaning ?? [];
+        leaning = nextLeaning ?? Emptied(leaning);
         nextLeaning = null;
-        wrapLeaning = nextWrapLeaning ?? [];
+        wrapLeaning = nextWrapLeaning ?? Emptied(wrapLeaning);
         nextWrapLeaning = null;
         UnfoldAroundCarets(clamped);
         bool changed = !clamped.SameAs(selections) || clamped.PrimaryIndex != selections.PrimaryIndex;
@@ -676,6 +676,9 @@ public sealed partial class CodeEditor : Control
             SelectionChanged?.Invoke(this, EventArgs.Empty);
         }
     }
+
+    /// <summary>A set of places a caret leans at, empty: the one given while it is, as most moves leave it.</summary>
+    private static HashSet<int> Emptied(HashSet<int> set) => set.Count == 0 ? set : [];
 
     /// <summary>Scrolls just enough to show <paramref name="offset"/>, keeping a few columns of room
     /// beside it.</summary>

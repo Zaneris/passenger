@@ -225,8 +225,8 @@ public sealed partial class CodeEditor
     private void StepHorizontally(TextSnapshot text, bool forward, bool extend)
     {
         document.BreakUndoGroup();
-        HashSet<int> lean = [];
-        HashSet<int> wrapLean = [];
+        HashSet<int>? lean = null;
+        HashSet<int>? wrapLean = null;
         SelectionSet moved = selections.With(s =>
         {
             if (!extend && !s.IsEmpty)
@@ -253,7 +253,7 @@ public sealed partial class CodeEditor
             {
                 to = caret;
                 toAfter = after;
-                wrapLean.Add(caret);
+                (wrapLean ??= []).Add(caret);
             }
             else
             {
@@ -262,12 +262,12 @@ public sealed partial class CodeEditor
                 toAfter = to == caret ? after : !forward;
                 if (forward && to != caret && IsWrapAt(text, to))
                 {
-                    wrapLean.Add(to);
+                    (wrapLean ??= []).Add(to);
                 }
             }
             if (HintsAt(to) is { Any: true, Trailing: bool trailing } && toAfter == trailing)
             {
-                lean.Add(to);
+                (lean ??= []).Add(to);
             }
             return s.MoveTo(to, extend);
         });

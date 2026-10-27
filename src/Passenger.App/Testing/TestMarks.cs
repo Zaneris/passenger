@@ -38,9 +38,11 @@ public static class TestMarks
             context.DrawEllipse(brush, null, new Point(x + (size / 2), y + (size / 2)), size / 2.6, size / 2.6);
             return;
         }
-        StreamGeometry triangle = new();
-        using (StreamGeometryContext path = triangle.Open())
+        GutterShape key = new(nameof(TestMarks), x, y, size);
+        if (!frame.TryShape(key, out StreamGeometry? triangle))
         {
+            triangle = frame.AddShape(key);
+            using StreamGeometryContext path = triangle.Open();
             path.BeginFigure(new Point(x, y), true);
             path.LineTo(new Point(x + (size * 0.9), y + (size / 2)));
             path.LineTo(new Point(x, y + size));
@@ -50,7 +52,7 @@ public static class TestMarks
         if (kind == TestMarkKind.Failed)
         {
             // A failed test: the run icon with a red mark on it.
-            context.DrawEllipse(frame.Brush(TokenKeys.Editor_Error), new Pen(frame.Brush(TokenKeys.Editor_Gutter), 1.2), new Point(x + size, y + size - 1), 2.6, 2.6);
+            context.DrawEllipse(frame.Brush(TokenKeys.Editor_Error), frame.Pen(TokenKeys.Editor_Gutter, 1.2), new Point(x + size, y + size - 1), 2.6, 2.6);
         }
     }
 }
