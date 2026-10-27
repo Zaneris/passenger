@@ -16,6 +16,34 @@ that fixed it, in one of the forms below. A failure not yet understood goes in o
   process only then; since aa666d77 asks for the projects as the server starts, that answer came 10 to 15 ms after
   the process began (565 to 603 ms before), under load before its start was told, so the hold waited 180 s for the
   start of process 0. **The test**: it waits for the process and then its start, and fails at once when it gives up (86ad35c5).
+- `FilesFollowed.Check` on Windows in CI run 40465410317 (LocalHistoryTests' revert of A.cs, RefactoringDialogsTests'
+  Change Signature, TypeRenameTests' rename of Order.cs, RunConfigurationsTests' Undo and Redo of launchSettings.json):
+  not load. ReplaceFile with no backup name sets the old file aside as `name~RF<hex>.TMP` and deletes it as the save
+  ends; the watcher took that for a file come and gone, so the projects were evaluated again, and its '~' made Go to
+  File's index walk the folder whole as for an 8.3 alias. **A bug in the IDE**: the save names what it sets aside as
+  its own, and the index walks whole only for a name an 8.3 alias can be (a7aefd5c).
+- `RuntimeAsyncStepTests`' step over WaitForExitAsync's await in the decompiled library, Linux and Windows x64: "stopped
+  for step at …Process.cs:1908" from line 1928 (1841 from 1861 on Windows). Optimized code keeps nothing of an await's
+  statement after it, so the run went on inside the next statement and the step stepped over that whole statement; x64's
+  code for it runs into code shared with an identical line 20 lines earlier, and arm64 skipped the line unseen. **A bug
+  in the IDE**: a step whose run goes on past the await's statement ends there (e7853b0f).
+- `RuntimeAsyncStepTests`' step out before the method suspends, Windows x64: "The session ended while a stopped event
+  was awaited". The step told the awaiting caller's frame by its stack place alone, a single address on x64, which
+  another method's frame took once `<Main>$` suspended, so the step took its own run for another's and the program ran
+  to its end. **A bug in the IDE**: the step's frame is told by its place and its method (e7853b0f).
+- `ProjectEvaluationTests`' file shown's project loaded first, Linux x64: "The language server took up another project
+  before the file shown's, and the one it references". Since aa666d77 asks for the design-time builds as the server
+  starts, the window could ask for the file shown's projects before the folder's first evaluation round began, find
+  the models idle and take App alone, unevaluated. **A race in the IDE**: the wait goes on until the models follow the
+  workspace (b3457547).
+- `FileBasedProgramsTests`' program beside a solution, Linux x64: "Waited 120 s for tools/tool.cs, written beside the
+  solution, to be a program of its own". Linux watches each folder on its own, and a new folder's watch began after
+  the file written with it, so the file was never heard of. **A race in the IDE**: the files already in a folder just
+  made are taken as made with it (3f1f6fd6).
+- `TestingPlatformBytesTests`, Linux and macOS: 2.07 and 2.13 times the results' JSON. Each test-host message arrived
+  in 4 KB pieces and was copied whole into a pooled array that, on few processors, nearly always missed the pool (2.04
+  to 2.37 times in a 4-processor container). **The IDE's own allocation**: the peer reads each message into one kept
+  buffer, 1.50 to 1.61 times after (f4cdb7a7).
 
 ## 2026-10-26
 
