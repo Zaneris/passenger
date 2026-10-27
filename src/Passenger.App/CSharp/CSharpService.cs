@@ -59,6 +59,31 @@ public sealed class CSharpService : IAsyncDisposable
     /// languages'); null for Passenger's own few answers.</summary>
     public Func<CancellationToken, Task<LanguageServer?>>? HtmlServer { get; set; }
 
+    /// <summary>Programs found beside the projects it was started on, in the workspace as it is now: loaded by a server fed
+    /// its projects, now or as soon as it has started. False for one that builds its own, which loads only what it was
+    /// started on.</summary>
+    public bool Load(WorkspaceModel now, IReadOnlyList<string> programs)
+    {
+        UiThread.Check();
+        if (session is { Fed: false })
+        {
+            return false;
+        }
+        workspace = now;
+        if (session is null)
+        {
+            found.AddRange(programs);
+        }
+        else
+        {
+            session.Reload(programs);
+        }
+        return true;
+    }
+
+    /// <summary>Programs found while the server started, loaded once it has.</summary>
+    private readonly List<string> found = [];
+
     /// <summary>Has the server load projects again whose files or imports changed (a Directory.Build.props edited), which
     /// it watches only in part; one that builds its own projects finds what it watches itself.</summary>
     public void Reload(IReadOnlyList<string> projects)
@@ -856,6 +881,11 @@ public sealed class CSharpService : IAsyncDisposable
                 started.Server.NotResponding -= onHung;
             });
             session = started;
+            if (found.Count > 0)
+            {
+                started.Reload([.. found]);
+                found.Clear();
+            }
             // One that ended before Exited was listened to (as its start came back to this thread) is replaced as any that ends.
             if (started.Server.Ended is not null)
             {

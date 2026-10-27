@@ -164,7 +164,7 @@ public partial class MainWindow
         Bottom.Debug.Clear();
         Bind(opened);
         Explorer.Load(opened.Workspace!);
-        opened.Start(walk: withSolution is null);
+        opened.Start();
         FindTests();
         Editors.ShowFolderHint(folder);
         RestoreWorkspace();

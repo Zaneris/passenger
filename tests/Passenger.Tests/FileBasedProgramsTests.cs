@@ -1,6 +1,8 @@
 using System.IO.Compression;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
+using Passenger.App.CSharp;
+using Passenger.App.Explorer;
 using Passenger.App.Debugging;
 using Passenger.Workspace;
 using Passenger.Core;
@@ -109,6 +111,48 @@ public sealed class FileBasedProgramsTests : IDisposable
         }
     }
 
+    /// <summary>A program beside a solution is the folder's, as in a folder with no solution: a project row of the Solution
+    /// view after the solution's own, with its run configuration, its file served in its project, and Run and Debug
+    /// building and launching it; Build builds the solution and the program.</summary>
+    [AvaloniaFact]
+    public void A_program_beside_a_solution_is_listed_after_its_projects_and_runs_and_debugs()
+    {
+        TestFolders.Write(folder, "Lib/Lib.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net11.0</TargetFramework>\n  </PropertyGroup>\n</Project>\n");
+        TestFolders.Write(folder, "Lib/Shapes.cs", "namespace Lib;\n\npublic static class Shapes\n{\n}\n");
+        TestFolders.Write(folder, "Tools.slnx", "<Solution>\n  <Project Path=\"Lib/Lib.csproj\" />\n</Solution>\n");
+        MainWindow window = Ui.OpenFolder(folder);
+        try
+        {
+            Assert.Equal("Tools", window.Solution?.Name);
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "app: greet"), "app.cs beside the solution to be a program with its app.run.json profile's configuration",
+                TimeSpan.FromMinutes(2));
+            Assert.Equal(["Lib.csproj", "app.cs"], window.Projects.Select(p => Path.GetFileName(p.Path)).Order(StringComparer.Ordinal));
+            Ui.WaitFor(() => window.ExplorerView.Tree.Root?.Children is [{ Name: "Lib" }, { Name: "app", IsProgram: true }],
+                () => $"the Solution view to list Lib, then the program app; it lists {string.Join(", ", window.ExplorerView.Tree.Root?.Children?.Select(c => c.Name) ?? [])}");
+            Assert.Equal("2 projects", window.ExplorerView.Tree.Root!.Detail);
+            Ui.WaitFor(() => window.Projects.Single(p => PathNames.Same(p.Path, App)).IsEvaluated, "the program evaluated", TimeSpan.FromMinutes(2));
+            ExplorerNode program = window.ExplorerView.Tree.Root.Children![1];
+            window.ExplorerView.Tree.Expand(program);
+            Assert.Equal(["Dependencies", "app.cs", "helper.cs"], program.Children!.Select(c => c.Name));
+            Assert.Equal([Path.Combine(folder, "Tools.slnx"), App], window.WorkspaceModel!.BuildTargets(window.Projects));
+            Assert.Null(window.OpenFile(App));
+            WaitForWarning(window, App, "app.cs");
+
+            // A program written beside them is found and loaded by the same language server, which is not started again.
+            CSharpService? served = window.CSharpService;
+            TestFolders.Write(folder, "tools/tool.cs", "#:property PublishAot=false\nint unused = 0;\nConsole.WriteLine(\"tool\");\n");
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "tool"), "tools/tool.cs, written beside the solution, to be a program of its own", TimeSpan.FromMinutes(1));
+            Assert.Same(served, window.CSharpService);
+            Assert.Null(window.OpenFile(Path.Combine(folder, "tools", "tool.cs")));
+            WaitForWarning(window, Path.Combine(folder, "tools", "tool.cs"), "tool.cs");
+            RunsAndStops(window);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A program that references another (<c>#:ref lib.cs</c>, a library of its own) has that program for a project
     /// too, which the language server answers across into, and Run builds and runs the two.</summary>
     [AvaloniaFact]
@@ -173,7 +217,12 @@ public sealed class FileBasedProgramsTests : IDisposable
         CodeEditor editor = window.EditorArea.CodeEditor;
         Assert.Contains("public static string Greet", editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line), StringComparison.Ordinal);
         WaitForWarning(window, Helper, "helper.cs");
+        RunsAndStops(window);
+    }
 
+    /// <summary>Run prints the program's output with its profile's arguments, and Debug stops at a breakpoint in its included file.</summary>
+    private void RunsAndStops(MainWindow window)
+    {
         Assert.True(window.SelectConfiguration("app: greet"));
         Ui.Launched(window, window.RunAsync(), "app.cs to build and run", TimeSpan.FromMinutes(2));
         Ui.WaitFor(() => Output(window).Contains("Process finished", StringComparison.Ordinal), "the program to finish", TimeSpan.FromMinutes(2));

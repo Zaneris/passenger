@@ -35,7 +35,7 @@ public partial class MainWindow
         Row(A.AddReference, "Add Reference…", row => ShowAddReference(Referencing(row)!),
             row => Referencing(row) is null ? $"{row.Name} takes no reference" : null, row => row.Kind == NodeKind.Project ? "Reference…" : "Add Reference…");
         Row(A.AddDockerSupport, "Add Docker Support…", row => ShowDockerSupport(row.Path!),
-            row => row is { Kind: NodeKind.Project, Path: not null } ? null : "Docker support is added to a project", _ => "Docker Support…");
+            row => row is { Kind: NodeKind.Project, Path: not null, IsProgram: false } ? null : "Docker support is added to a project", _ => "Docker Support…");
         Row(A.AddDockerCompose, "Add Docker Compose…", _ => ShowDockerCompose(),
             row => row.Kind == NodeKind.Solution ? null : "Docker Compose is added to the solution", _ => "Docker Compose…");
         // The solution's, from its row or a solution folder's, and from Find Action wherever a solution is open.
@@ -83,7 +83,8 @@ public partial class MainWindow
         });
 
         static string? Holds(ExplorerNode row) => NewGoesIn(row) is null ? $"Nothing new goes in {row.Name}" : null;
-        static string? Referencing(ExplorerNode row) => row.Kind == NodeKind.Project ? row.Path : row.Kind == NodeKind.Dependencies ? row.Owner : null;
+        static string? Referencing(ExplorerNode row) => row.Kind == NodeKind.Project && !row.IsProgram ? row.Path
+            : row.Kind == NodeKind.Dependencies && row.Owner is { } owner && !Passenger.Host.ProgramFiles.IsProgram(owner) ? owner : null;
     }
 
     /// <summary>One of the Explorer's own actions, on its row.</summary>

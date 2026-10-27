@@ -106,13 +106,12 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>What the C# files written, come or gone change of a folder's file-based programs, where the folder is read
-    /// for them (no solution or project opened): one that is a program now and was not, or the reverse, has the folder read
-    /// again; one a program compiles (its own file, or one it includes) has the projects evaluated again, its directives
-    /// being its project's.</summary>
+    /// <summary>What the C# files written, come or gone change of the folder's file-based programs: one that is a program
+    /// now and was not, or the reverse, has the folder read again; one a program compiles (its own file, or one it
+    /// includes) has the projects evaluated again, its directives being its project's.</summary>
     private (bool Made, bool Written) ProgramsChanged(IEnumerable<string> paths)
     {
-        if (session.Workspace is not { Solution: null, ProjectFile: null })
+        if (session.Workspace is null)
         {
             return (false, false);
         }

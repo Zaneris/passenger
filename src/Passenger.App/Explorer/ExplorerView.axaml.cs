@@ -157,6 +157,9 @@ public partial class ExplorerView : UserControl
     private string? folder;
     private SolutionModel? solution;
 
+    /// <summary>The file-based programs beside the solution, which the Solution view lists after its own.</summary>
+    private IReadOnlyList<ProjectModel> programs = [];
+
     /// <summary>The project opened alone, which the Solution view shows at its top.</summary>
     private ProjectModel? project;
 
@@ -176,6 +179,7 @@ public partial class ExplorerView : UserControl
     {
         folder = null;
         solution = null;
+        programs = [];
         project = null;
         ViewSwitch.IsVisible = false;
         Tree.Clear();
@@ -235,6 +239,7 @@ public partial class ExplorerView : UserControl
     private void Take(WorkspaceModel workspace)
     {
         solution = workspace.Solution;
+        programs = [.. workspace.Programs];
         project = workspace.ProjectFile is null ? null : workspace.Projects.FirstOrDefault();
         ViewSwitch.IsVisible = solution is not null || project is not null;
     }
@@ -243,7 +248,7 @@ public partial class ExplorerView : UserControl
     {
         if (solutionView && solution is not null)
         {
-            Tree.LoadSolution(solution);
+            Tree.LoadSolution(solution, programs);
             ViewName.Text = "Solution";
         }
         else if (solutionView && project is not null)

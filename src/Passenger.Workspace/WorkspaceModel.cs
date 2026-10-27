@@ -5,9 +5,10 @@ namespace Passenger.Workspace;
 
 /// <summary>The open folder's solution and projects, decided here alone for the Explorer, the language server, Build,
 /// Run, NuGet and the test runner: the solution, solution filter or project opened by name while it is there, else the
-/// solution at the folder's top; with none, the projects anywhere under the folder but its build output, dependencies and hidden folders,
-/// and beside them its file-based programs (<see cref="IsProgram"/>), each a project of its own named by its C# file.
-/// Read when the folder opens and again when the folder watcher sees a solution or project change, never on each use.</summary>
+/// solution at the folder's top; with none, the projects anywhere under the folder but its build output, dependencies and
+/// hidden folders. Beside them, its file-based programs (<see cref="IsProgram"/>) outside every project's folder, each a
+/// project of its own named by its C# file. Read when the folder opens and again when the folder watcher sees a
+/// solution, project or program change, never on each use.</summary>
 public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IReadOnlyList<ProjectModel> Projects)
 {
     /// <summary>The most projects taken from a folder with no solution, so a monorepo does not load hundreds at once.</summary>
@@ -45,10 +46,13 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
     /// <summary>Whether a solution's project is a Docker Compose project (.dcproj).</summary>
     public static bool IsComposeProject(string path) => Path.GetExtension(path).Equals(".dcproj", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Reads a folder, with the solution or project it was opened by, which stays its workspace while it is there.
-    /// A folder without either is walked for its projects, which is a worker's job, never the window's thread's.</summary>
+    /// <summary>Reads a folder, with the solution or project it was opened by, which stays its workspace while it is there,
+    /// and walks it for its programs (a folder without either for its projects too), which is a worker's job, never the
+    /// window's thread's.</summary>
     public static WorkspaceModel Read(string folder, string? named = null) =>
-        ReadSolution(folder, named) ?? new WorkspaceModel(folder, null, [.. ProjectsUnder(folder).Select(ProjectModel.Unevaluated)]);
+        ReadSolution(folder, named) is { } read
+            ? read.WithPrograms(Walk(folder, [.. read.Projects.Where(p => !p.IsProgram).Select(p => p.Folder)]))
+            : new WorkspaceModel(folder, null, [.. Walk(folder, null).Select(ProjectModel.Unevaluated)]);
 
     /// <summary>A folder read through the solution or project it was opened by, else its own solution: a listing of the
     /// folder's top and the files the solution names, quick enough for the window's thread. Null for a folder without one
@@ -85,10 +89,22 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
     public WorkspaceModel Reread() =>
         new(Folder, null, [.. Projects.Where(p => File.Exists(p.Path)).Select(p => ProjectModel.Unevaluated(p.Path))]);
 
-    /// <summary>What building the whole builds: the solution, or each project loaded in turn when some are unloaded or
-    /// there is no solution; the folder when it has neither, for the .NET command line to say why.</summary>
+    /// <summary>A solution's or project's read with the programs found beside it before, those still there, until the walk
+    /// for them lands: what the language server loaded stays loaded meanwhile.</summary>
+    public WorkspaceModel KeepingPrograms(WorkspaceModel before) =>
+        WithPrograms(before.Programs.Where(p => File.Exists(p.Path)).Select(p => p.Path));
+
+    /// <summary>The same workspace with these programs in place of those it had, after its solution's or folder's projects.</summary>
+    public WorkspaceModel WithPrograms(IEnumerable<string> programs) =>
+        this with { Projects = [.. Projects.Where(p => !p.IsProgram), .. programs.Distinct(PathNames.Comparer).Select(ProjectModel.Unevaluated)] };
+
+    /// <summary>Its file-based programs, which no solution lists: those beside a solution's or project's, or among a folder's.</summary>
+    public IEnumerable<ProjectModel> Programs => Projects.Where(p => p.IsProgram);
+
+    /// <summary>What building the whole builds: the solution and each program beside it, or each project loaded in turn
+    /// when some are unloaded or there is no solution; the folder when it has neither, for the .NET command line to say why.</summary>
     public IReadOnlyList<string> BuildTargets(IReadOnlyList<ProjectModel> loaded) =>
-        Solution is not null && loaded.Count == Projects.Count && ComposeProjects.Count == 0 ? [Solution.Path]
+        Solution is not null && loaded.Count == Projects.Count && ComposeProjects.Count == 0 ? [Solution.Path, .. Programs.Select(p => p.Path)]
         : Solution is null && Projects.Count == 0 ? [Folder]
         : [.. loaded.Select(p => p.Path)];
 
@@ -99,20 +115,41 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
         Solution?.Path == other.Solution?.Path && Projects.Select(p => p.Path).SequenceEqual(other.Projects.Select(p => p.Path))
         && (Filter is null ? other.Filter is null : Filter.Keeps(other.Filter));
 
+    /// <summary>The programs a read of the same folder has beyond this one's, when nothing else differs: the same solution
+    /// through the same filter, every project of this one's still there. Null for any other difference, or none.</summary>
+    public IReadOnlyList<string>? ProgramsAddedIn(WorkspaceModel read)
+    {
+        List<string> added = [.. read.Programs.Select(p => p.Path).Where(p => !Projects.Any(q => PathNames.Same(q.Path, p)))];
+        bool kept = Solution?.Path == read.Solution?.Path && (Filter is null ? read.Filter is null : Filter.Keeps(read.Filter))
+            && Projects.All(p => read.Projects.Any(q => PathNames.Same(q.Path, p.Path)))
+            && read.Projects.Count == Projects.Count + added.Count;
+        return kept && added.Count > 0 ? added : null;
+    }
+
     /// <summary>The project files and programs under a folder, those nearer the top first, as a walk for what projects build
     /// finds them (<see cref="FolderWalk"/>): hidden folders are version control's, IDEs' and tools' own (a worktree's copy
-    /// of them). A program is looked for only outside every project's folder.</summary>
-    private static List<string> ProjectsUnder(string folder)
+    /// of them). A program is looked for only outside every project's folder. Given the folders of a solution's or project's
+    /// own (<paramref name="solved"/>), the walk enters none of them and takes programs alone, a project file it finds
+    /// keeping its folder's files its own.</summary>
+    private static List<string> Walk(string folder, IReadOnlyList<string>? solved)
     {
         List<string> found = [];
-        List<string> projectFolders = [];
-        foreach ((string at, IReadOnlyList<string> files) in FolderWalk.Folders(folder, built: true).Take(FolderLimit))
+        List<string> projectFolders = [.. solved ?? []];
+        if (projectFolders.Any(p => PathNames.Within(folder, p)))
+        {
+            return found;
+        }
+        HashSet<string> passed = new(projectFolders, PathNames.Comparer);
+        foreach ((string at, IReadOnlyList<string> files) in FolderWalk.Folders(folder, built: true, enters: f => !passed.Contains(f)).Take(FolderLimit))
         {
             List<string> projects = [.. files.Where(IsProject)];
             if (projects.Count > 0)
             {
                 projectFolders.Add(at);
-                found.AddRange(projects);
+                if (solved is null)
+                {
+                    found.AddRange(projects);
+                }
             }
             else if (!projectFolders.Any(p => PathNames.IsUnder(at, p)))
             {

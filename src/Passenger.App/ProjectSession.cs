@@ -863,28 +863,22 @@ public sealed class ProjectSession : IAsyncDisposable
         Read(withSolution);
     }
 
-    /// <summary>Takes the folder's solution, read now; or for a folder without one the projects it had, read again now,
-    /// and those added or gone since once a worker has walked its folders for them.</summary>
+    /// <summary>Takes the folder's solution, read now, with the programs beside it it had; or for a folder without one the
+    /// projects it had, read again now; and those added or gone since once a worker has walked its folders for them.</summary>
     private void Read(WorkspaceModel? withSolution)
     {
         reads++;
-        Reload(withSolution ?? Workspace!.Reread());
-        if (withSolution is null)
-        {
-            WalkForProjects();
-        }
+        Reload(withSolution?.KeepingPrograms(Workspace!) ?? Workspace!.Reread());
+        WalkForProjects();
     }
 
     /// <summary>Starts what a folder runs once the window has bound its views to the session: Git's lookup, the language
-    /// server, and for a folder without a solution the walk for its projects.</summary>
-    public void Start(bool walk)
+    /// server, and the walk for its programs (and, for a folder without a solution, its projects).</summary>
+    public void Start()
     {
         IdeErrors.Observe(Vcs.OpenAsync(Folder!));
         StartCSharp();
-        if (walk)
-        {
-            WalkForProjects();
-        }
+        WalkForProjects();
         // Once the files it opens with are open, so the one shown's project is evaluated first.
         UiThread.Post(Evaluate);
     }
@@ -927,10 +921,12 @@ public sealed class ProjectSession : IAsyncDisposable
     private void Reload(WorkspaceModel read)
     {
         bool loaded = Workspace is not null && Workspace.LoadsAs(read);
+        IReadOnlyList<string>? programs = loaded ? null : Workspace?.ProgramsAddedIn(read);
         TakeFilter(read);
         Workspace = Models.Apply(read);
         Configurations.Configure(Projects);
-        if (!loaded)
+        // Programs found beside what it loaded are loaded beside them, where a server fed its projects can take them.
+        if (!loaded && !(programs is not null && CSharp?.Load(Workspace, programs) == true))
         {
             StartCSharp();
         }

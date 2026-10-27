@@ -86,21 +86,29 @@ public sealed class ExplorerTree
     /// <summary>The solution shown, whose projects say which one a file is revealed in.</summary>
     private SolutionModel? solution;
 
+    /// <summary>The file-based programs beside the solution shown: no solution lists one, so each is a project of the
+    /// folder's after the solution's own, as a folder with no solution has its programs beside its projects.</summary>
+    private IReadOnlyList<ProjectModel> programs = [];
+
     public void LoadFileSystem(string folder)
     {
         IsSolutionView = false;
         solution = null;
+        programs = [];
         Show(Folder(PathNames.Canonical(folder), 0, dimmed: false));
     }
 
-    public void LoadSolution(SolutionModel solution)
+    /// <summary>A solution: its folders, projects and items, then the programs beside it, each by name.</summary>
+    public void LoadSolution(SolutionModel solution, IReadOnlyList<ProjectModel> beside)
     {
         IsSolutionView = true;
         this.solution = solution;
-        Take(solution.Projects);
-        int count = solution.Projects.Count();
+        programs = beside;
+        Take([.. solution.Projects, .. beside]);
+        int count = solution.Projects.Count() + beside.Count;
         ExplorerNode root = new(NodeKind.Solution, solution.Name, solution.Path, 0, false,
-            node => Entries(solution.Entries, node.Depth + 1, null),
+            node => [.. Entries(solution.Entries, node.Depth + 1, null),
+                .. beside.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).Select(p => Project(p, node.Depth + 1))],
             Plural.Of(count, "project"));
         Show(root);
     }
@@ -167,6 +175,7 @@ public sealed class ExplorerTree
         if (solution is not null)
         {
             solution = solution.WithProjects(Current);
+            programs = [.. programs.Select(Current)];
         }
         List<ExplorerNode> reloaded = [];
         foreach (ExplorerNode node in Loaded(Root, n => n.Kind == NodeKind.Project && n.Path is { } path && changed.Contains(path)))
@@ -321,12 +330,12 @@ public sealed class ExplorerTree
             return null;
         }
         string full = PathNames.Canonical(path);
-        string? owner = solution is null ? null : ProjectModel.Owning(solution.Projects, full)?.Path;
+        string? owner = solution is null ? null : ProjectModel.Owning([.. solution.Projects, .. programs], full)?.Path;
         // A file a project takes from elsewhere shows where its Link puts it, in the project that holds it.
         string? linked = null;
         if (owner is null && solution is not null)
         {
-            foreach (ProjectModel project in solution.Projects)
+            foreach (ProjectModel project in solution.Projects.Concat(programs))
             {
                 if (FilesOf(Current(project))?.LogicalOf(full) is { } logical)
                 {
@@ -393,6 +402,7 @@ public sealed class ExplorerTree
         Rows.Clear();
         Root = null;
         solution = null;
+        programs = [];
         IsSolutionView = false;
     }
 
@@ -531,6 +541,11 @@ public sealed class ExplorerTree
         ProjectModel project = Current(given);
         ProjectFiles? files = FilesOf(project);
         Nesting nesting = new(project, NestFiles, files);
+        if (files is null && project.IsProgram)
+        {
+            // Its folder is not its own: until its evaluation says what it includes, its C# file alone.
+            return [new ExplorerNode(NodeKind.File, Path.GetFileName(project.Path), project.Path, depth, dimmed, null)];
+        }
         if (files is null)
         {
             string folder = relative.Length == 0 ? project.Folder : Path.Combine(project.Folder, relative.Replace('/', Path.DirectorySeparatorChar));
@@ -713,11 +728,15 @@ public sealed class ExplorerNode : Observable, ITreeRow
     /// <summary>A file or folder on disk that can be cut, copied or dragged, rather than a part of the solution.</summary>
     public bool IsMovable => Kind is NodeKind.Folder || Kind == NodeKind.File && !IsSolutionItem;
 
+    /// <summary>A file-based program beside the solution, which is no solution's to rename or take out: its C# file is,
+    /// as the row under it.</summary>
+    public bool IsProgram => Kind == NodeKind.Project && Path is { } program && ProgramFiles.IsProgram(program);
+
     /// <summary>What Rename renames: what is on disk, but a file only the solution lists, and a solution folder.</summary>
-    public bool CanRename => Kind is NodeKind.Folder or NodeKind.Project or NodeKind.SolutionFolder || Kind == NodeKind.File && !IsSolutionItem;
+    public bool CanRename => Kind is NodeKind.Folder or NodeKind.SolutionFolder || Kind == NodeKind.Project && !IsProgram || Kind == NodeKind.File && !IsSolutionItem;
 
     /// <summary>What Delete takes away: a file or folder to the Trash, or what is the solution's own out of it.</summary>
-    public bool CanRemove => Kind is NodeKind.File or NodeKind.Folder or NodeKind.Project or NodeKind.SolutionFolder
+    public bool CanRemove => Kind is NodeKind.File or NodeKind.Folder or NodeKind.SolutionFolder || Kind == NodeKind.Project && !IsProgram
         || Kind == NodeKind.ProjectReference && Referenced is not null;
 
     /// <summary>What Delete only takes out of the solution or its project, its files staying on disk: a project, a
