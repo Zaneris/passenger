@@ -437,8 +437,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
             Ui.Settle();
             long before = GC.GetTotalAllocatedBytes(precise: true);
             window.Perform(AppActions.ToggleSolutionAnalysis);
-            // Waited for as counted, not quiet: the first pull of a source may be held open past its reports. Read by the
-            // tab's count, as the list of every problem is sorted afresh for each look while they come.
+            // Counted rather than quiet: a source's first pull may stay open, and the whole list sorts again at each look.
             Ui.PumpUntil(() => problems.SolutionCount == listed, $"the solution's {listed} problems", TimeSpan.FromMinutes(3));
             least = Math.Min(least, GC.GetTotalAllocatedBytes(precise: true) - before);
             Assert.Equal(new TextPosition(lines + 4, 12), problems.SolutionProblems!.First(p => p.Path!.EndsWith("Long0.cs", StringComparison.Ordinal)).Position);
