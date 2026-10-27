@@ -81,21 +81,40 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
     PushPace IDocumentHost.Pushes => PushPace.Latest;
 
     /// <summary>Starts a server on a folder and has it open the solution, else the projects, those <paramref name="first"/>
-    /// names loaded alone before the rest. <paramref name="started"/> is given the server before it opens anything, so
-    /// what it says of the load is heard from the start; with <paramref name="feed"/>, a server that has Passenger's
-    /// project loader loads the projects from its design-time builds. Cancelled or failed, it ends the server it started,
-    /// so one given up (another folder opened) never goes on loading this folder unseen.</summary>
+    /// names loaded alone before the rest. <paramref name="started"/> is given the server before it opens anything; with
+    /// <paramref name="feed"/>, a server that has Passenger's project loader loads the projects from their design-time
+    /// builds, asked for as it starts so they are built meanwhile. Cancelled or failed, it ends the server it started, so
+    /// one given up (another folder opened) never goes on loading this folder unseen.</summary>
     public static async Task<RoslynSession> StartAsync(string folder, string? solution, IReadOnlyList<string> projects, string logFolder,
         CancellationToken cancel = default, IReadOnlyDictionary<string, object?>? options = null, Action<LanguageServer>? started = null,
         Func<Task<IReadOnlyList<string>>>? first = null, IProjectFeed? feed = null, string? stateCache = null)
     {
-        LanguageServer server = await LanguageServer.StartRoslynAsync(folder, logFolder, cancel, options, stateCache).ConfigureAwait(false);
+        Task<(IReadOnlyList<ProjectToOpen> First, IReadOnlyList<ProjectToOpen> Later)?>? feeding = feed?.ProjectsAsync(cancel);
+        LanguageServer server;
+        try
+        {
+            server = await LanguageServer.StartRoslynAsync(folder, logFolder, cancel, options, stateCache).ConfigureAwait(false);
+        }
+        catch
+        {
+            Observe(feeding);
+            throw;
+        }
         RoslynSession session = new(server, folder, solution, projects);
         try
         {
             cancel.ThrowIfCancellationRequested();
             started?.Invoke(server);
-            if (feed is not null && await HasLoaderAsync(server, cancel).ConfigureAwait(false) && await feed.ProjectsAsync(cancel).ConfigureAwait(false) is { } fed)
+            if (feeding is not null && !await HasLoaderAsync(server, cancel).ConfigureAwait(false))
+            {
+                // The server builds its projects itself; the builds asked for are kept for the folder's next opening.
+                Observe(feeding);
+                feeding = null;
+            }
+            // Awaited from here, its fault the start's own.
+            Task<(IReadOnlyList<ProjectToOpen> First, IReadOnlyList<ProjectToOpen> Later)?>? asked = feeding;
+            feeding = null;
+            if (asked is not null && await asked.ConfigureAwait(false) is { } fed)
             {
                 server.Feed = feed;
                 session.Fed = true;
@@ -132,10 +151,21 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
         }
         catch
         {
+            Observe(feeding);
             await session.DisposeAsync().ConfigureAwait(false);
             throw;
         }
         return session;
+    }
+
+    /// <summary>The design-time builds asked for as a server started that will not load them: a fault in the asking is
+    /// said as it faults.</summary>
+    private static void Observe(Task? feeding)
+    {
+        if (feeding is not null)
+        {
+            Core.UnawaitedWork.Observe(feeding);
+        }
     }
 
     /// <summary>Opens the rest of the solution once the projects opened first have loaded; a server gone meanwhile opens

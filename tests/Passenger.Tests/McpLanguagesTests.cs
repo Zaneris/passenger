@@ -341,44 +341,57 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
     }
 
     /// <summary>The class's restored folders, Avalonia's and WPF's galleries, the Aspire AppHost and its service, and the web
-    /// app of routes, each written as its test needs it: all four are restored at once as the first test takes one, rather
-    /// than each test's in its turn. Each test takes its own; those no test took go with the class.</summary>
-    public sealed class Restored : IDisposable
+    /// app of routes, each written as its test needs it: all four are restored at once, begun as the class starts, so the
+    /// tests that take none run meanwhile, rather than each test's in its turn. Each test takes its own; those no test took
+    /// go with the class.</summary>
+    public sealed class Restored : IAsyncLifetime
     {
         private readonly Dictionary<string, string> folders = new(StringComparer.Ordinal);
         private readonly HashSet<string> taken = new(StringComparer.Ordinal);
+        private Task restoring = Task.CompletedTask;
+
+        public ValueTask InitializeAsync()
+        {
+            restoring = Waiting.Apart(RestoreAsync);
+            return ValueTask.CompletedTask;
+        }
+
+        private async Task RestoreAsync()
+        {
+            (string Name, Func<string, Task> Write)[] kinds = [("mcpaxaml-", Avalonia), ("mcpaspire-", Aspire), ("mcpwxaml-", Wpf), ("mcproutes-", Routes)];
+            try
+            {
+                foreach ((string kind, Func<string, Task> write) in kinds)
+                {
+                    string folder = PathNames.Canonical(TestFolders.Unowned(kind));
+                    folders[kind] = folder;
+                    await write(folder);
+                }
+                await Task.WhenAll(folders.Values.Select(Restore.RunAsync));
+            }
+            catch
+            {
+                foreach (string folder in folders.Values)
+                {
+                    TestFolders.Delete(folder);
+                }
+                folders.Clear();
+                throw;
+            }
+        }
 
         public async Task<string> Take(string name)
         {
-            if (folders.Count == 0)
-            {
-                (string Name, Func<string, Task> Write)[] kinds = [("mcpaxaml-", Avalonia), ("mcpaspire-", Aspire), ("mcpwxaml-", Wpf), ("mcproutes-", Routes)];
-                try
-                {
-                    foreach ((string kind, Func<string, Task> write) in kinds)
-                    {
-                        string folder = PathNames.Canonical(TestFolders.Unowned(kind));
-                        folders[kind] = folder;
-                        await write(folder);
-                    }
-                    await Task.WhenAll(folders.Values.Select(Restore.RunAsync));
-                }
-                catch
-                {
-                    foreach (string folder in folders.Values)
-                    {
-                        TestFolders.Delete(folder);
-                    }
-                    folders.Clear();
-                    throw;
-                }
-            }
+            await restoring;
             taken.Add(name);
             return folders[name];
         }
 
-        public void Dispose()
+        /// <summary>Once the restore has ended, the folders no test took go; one that failed took its folders with it, and
+        /// each test that took one failed saying why.</summary>
+        public async ValueTask DisposeAsync()
         {
+            await Task.WhenAny(restoring);
             foreach ((string kind, string folder) in folders)
             {
                 if (!taken.Contains(kind))
