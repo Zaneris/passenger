@@ -1425,6 +1425,48 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
+    /// <summary>A notification the AppHost sends whenever its start gets to it (a real AppHost's development certificate's)
+    /// shows over the window without taking its keys: what the person goes on typing in Find Action as it comes stays
+    /// there, and Enter runs the action they typed.</summary>
+    [AvaloniaFact]
+    public void A_notification_the_AppHost_sends_while_the_person_types_leaves_the_keys_where_they_are()
+    {
+        project.Reset();
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        MainWindow window = OpenRunning(backend);
+        try
+        {
+            Assert.NotEqual(Passenger.App.ToolWindows.RunWindows.DetailsTab, window.Aspire.ShownPage);
+            Ui.Run(window, AppActions.FindAction);
+            Passenger.App.Navigation.ActionPopup popup = Assert.IsType<Passenger.App.Navigation.ActionPopup>(window.Popup);
+            backend.Push(new WatchInteractionsResponseUpdate
+            {
+                InteractionId = 3,
+                Title = "No trusted development certificate",
+                Message = "No trusted development certificate was found.",
+                Notification = new InteractionNotification { Intent = MessageIntent.Error },
+            });
+            AspireInteractionDialog notification = Interaction(window, "No trusted development certificate");
+            Ui.Settle();
+            window.KeyTextInput("Show Aspire Resources");
+            Ui.Settle();
+            Assert.True(popup.Query == "Show Aspire Resources",
+                $"The AppHost's notification took the keys typed in Find Action as it came: Find Action holds \"{popup.Query}\", "
+                + $"the keys are with {window.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"}");
+            Ui.Press(window, "ENTER");
+            Assert.Null(window.Popup);
+            Assert.Equal(Passenger.App.ToolWindows.RunWindows.DetailsTab, window.Aspire.ShownPage);
+            Assert.True(notification.IsVisible, "The AppHost's notification went before the person answered it");
+            CompleteInteraction(backend, window, 3);
+            Assert.Empty(backend.Errors);
+        }
+        finally
+        {
+            window.Close();
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+    }
+
     /// <summary>A prompt the AppHost shows (a real AppHost's own, as the development certificate's notification is)
     /// never keeps the main window open: the window's close closes it with it, and ends the AppHost as Stop
     /// would.</summary>
