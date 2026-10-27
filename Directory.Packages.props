@@ -50,9 +50,9 @@
     <!-- The app's JoinableTaskFactory (Synchronously.cs), at the version StreamJsonRpc takes. -->
     <PackageVersion Include="Microsoft.VisualStudio.Threading.Only" Version="18.7.23" />
     <PackageVersion Include="Porta.Pty" Version="2.2.3" />
-    <!-- TextMate grammars' tokenizer, with Oniguruma's regular expressions (a native per system): colour for every
+    <!-- TextMate grammars' tokenizer, with GregsEx's managed regular expressions: colour for every
          language but C#. -->
-    <PackageVersion Include="TextMateSharp" Version="2.0.4" />
+    <PackageVersion Include="Tint" Version="0.1.2" />
     <!-- VSTest's own client for the vstest.console the SDK ships: discovery, runs and debugging of tests. -->
     <PackageVersion Include="Microsoft.TestPlatform.TranslationLayer" Version="18.11.0" />
     <!-- The Windows install's hooks, at the version of the vpk tool that packs it (dotnet-tools.json). -->

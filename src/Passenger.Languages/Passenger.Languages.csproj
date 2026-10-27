@@ -7,7 +7,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
-    <PackageReference Include="TextMateSharp" />
+    <PackageReference Include="Tint" />
     <ProjectReference Include="../Passenger.Editor/Passenger.Editor.csproj" />
     <ProjectReference Include="../Passenger.Lsp/Passenger.Lsp.csproj" />
     <ProjectReference Include="../Passenger.Text/Passenger.Text.csproj" />
