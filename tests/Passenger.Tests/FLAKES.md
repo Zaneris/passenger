@@ -10,6 +10,10 @@ that fixed it, in one of the forms below. A failure not yet understood goes in o
 
 ## 2026-10-26
 
+- `FileColoursResponsivenessTests`' `A_union_typed_has_its_name_in_a_structs_colour_where_it_is_declared`, every system in
+  CI run 40422179664: "The union's name typed is coloured as several kinds, not as a struct's". Not a flake: the test
+  read the colour of `Pet(`, the name and its parenthesis, two colours, so it could never pass; it landed with its file's
+  other class run but not its own. **The test**: it reads `Pet` alone, which is a struct's colour (e236127d).
 - `StuckEvaluationTests`' `An_evaluation_spinning_in_a_finally_block_runs_to_its_end_once_let_out`, Windows (x64) in CI
   run 40398875778: "The evaluation took longer than 3 s and cou…" without "as it runs a catch or finally block". On x64 the
   getter's spin loop makes a call, and a look that stops the thread inside it finds it held at the call's return at an
