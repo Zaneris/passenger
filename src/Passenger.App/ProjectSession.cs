@@ -681,11 +681,12 @@ public sealed class ProjectSession : IAsyncDisposable
     }
 
     /// <summary><see cref="ActiveProjects"/> once the evaluation has said what each of them references (the file shown's
-    /// project is evaluated first), which the language server waits a few seconds for at most.</summary>
+    /// project is evaluated first), which the language server waits a few seconds for at most, the folder's first round
+    /// waited for even before it has begun.</summary>
     private async Task<IReadOnlyList<string>> ActiveProjectsAsync()
     {
         DateTime until = DateTime.UtcNow + TimeSpan.FromSeconds(5);
-        while (!Models.Idle.IsCompleted && DateTime.UtcNow < until && ActiveProjects(evaluated: true) is null)
+        while ((!Models.Followed || !Models.Idle.IsCompleted) && DateTime.UtcNow < until && ActiveProjects(evaluated: true) is null)
         {
             await Task.Delay(TimeSpan.FromMilliseconds(100));
         }

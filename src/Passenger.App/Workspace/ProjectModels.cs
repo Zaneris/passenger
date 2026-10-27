@@ -55,6 +55,10 @@ public sealed class ProjectModels
     /// <summary>Whether every project of the workspace last followed has its complete evaluation in.</summary>
     public bool IsComplete { get; private set; }
 
+    /// <summary>Whether a workspace was given to follow since the folder was taken up: until then no round has begun, so
+    /// <see cref="Idle"/> says nothing of its evaluations.</summary>
+    public bool Followed { get; private set; }
+
     private TaskCompletionSource idle = Done();
 
     /// <summary>Done while no round runs: what an agent's Open waits for before it says what the projects are.</summary>
@@ -123,6 +127,7 @@ public sealed class ProjectModels
         made.Clear();
         Problem = null;
         IsComplete = false;
+        Followed = false;
     }
 
     /// <summary>The models made of the evaluations known, each made once (its references are each a path made canonical).</summary>
@@ -166,6 +171,7 @@ public sealed class ProjectModels
             return;
         }
         wanted = (workspace, active);
+        Followed = true;
         IsComplete = workspace.Projects.Where(p => p.Exists).All(p => known.TryGetValue(p.Path, out EvaluatedProject? e) && e.Complete);
         // Until the cache is read, which follows what is wanted then.
         if (running != generation && reading.IsCompleted)
