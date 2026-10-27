@@ -68,21 +68,20 @@ public partial class MainWindow
         bool ignoring = !File.Exists(ignore);
         try
         {
-            using (CommandHistory.Recording made = Editors.Commands.Record("Add Docker Support"))
+            Following([described.Dockerfile, ignore], () =>
             {
+                using CommandHistory.Recording made = Editors.Commands.Record("Add Docker Support");
                 WriteNew(made, described.Dockerfile, DockerFiles.Dockerfile(described, context));
                 if (ignoring)
                 {
                     WriteNew(made, ignore, DockerFiles.Ignore);
                 }
-            }
+            });
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            FilesChanged();
             return DockerSaid($"Docker Support could not be added to {described.Name}: {error.Message}");
         }
-        FilesChanged();
         OpenFile(described.Dockerfile);
         return DockerSaid(null, ignoring ? $"Added a Dockerfile to {described.Name}, and a .dockerignore at {(Solution is { } solution ? $"{solution.Name}'s folder" : DockerShown(context))}" : $"Added a Dockerfile to {described.Name}");
     }
@@ -211,33 +210,35 @@ public partial class MainWindow
         string? problem = null;
         try
         {
-            using CommandHistory.Recording made = Editors.Commands.Record("Add Docker Compose");
-            foreach ((DockerProject project, _, _) in composed.Where(c => c.Existing is null))
+            Following([.. composed.Select(c => c.Project.Dockerfile), ignore, compose, solution.Path], () =>
             {
-                WriteNew(made, project.Dockerfile, DockerFiles.Dockerfile(project, context));
-                dockerfiles.Add(project.Name);
-            }
-            if (!File.Exists(ignore))
-            {
-                WriteNew(made, ignore, DockerFiles.Ignore);
-            }
-            WriteNew(made, compose, DockerFiles.Compose(context, composed));
-            made.Watch(solution.Path);
-            try
-            {
-                problem = SolutionItem(solution, PathNames.Canonical(compose));
-            }
-            finally
-            {
-                // Open, it takes the text now, inside the command, so the command's undo takes it back too.
-                FollowWritten([solution.Path]);
-            }
+                using CommandHistory.Recording made = Editors.Commands.Record("Add Docker Compose");
+                foreach ((DockerProject project, _, _) in composed.Where(c => c.Existing is null))
+                {
+                    WriteNew(made, project.Dockerfile, DockerFiles.Dockerfile(project, context));
+                    dockerfiles.Add(project.Name);
+                }
+                if (!File.Exists(ignore))
+                {
+                    WriteNew(made, ignore, DockerFiles.Ignore);
+                }
+                WriteNew(made, compose, DockerFiles.Compose(context, composed));
+                made.Watch(solution.Path);
+                try
+                {
+                    problem = SolutionItem(solution, PathNames.Canonical(compose));
+                }
+                finally
+                {
+                    // Open, it takes the text now, inside the command, so the command's undo takes it back too.
+                    FollowWritten([solution.Path]);
+                }
+            });
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             problem = error.Message;
         }
-        FilesChanged();
         ReloadSolution();
         if (problem is not null)
         {

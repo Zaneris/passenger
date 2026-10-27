@@ -138,15 +138,11 @@ internal sealed partial class CodeActions
         List<string> dropped = [];
         try
         {
-            TypeRename.Apply(context.Editors, edit, [], name, null, dropped);
+            context.ChangeFiles([.. changes.Select(c => c.Path)], () => TypeRename.Apply(context.Editors, edit, [], name, null, dropped));
         }
         catch (WorkspaceEditFailed failed)
         {
             return failed.Message;
-        }
-        if (changes.Any(c => c.Made is not null) || changes.Any(c => context.Editors.Documents.All(d => d.Path != c.Path)))
-        {
-            context.ChangedFiles();
         }
         return dropped.Count > 0 ? $"{name} was not applied to {string.Join(", ", dropped)}: it was edited meanwhile" : null;
     }

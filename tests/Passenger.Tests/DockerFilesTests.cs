@@ -517,6 +517,8 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
         }
     }
 
+    /// <summary>Add Docker Support's Dockerfile and .dockerignore come into the Explorer as their own rows alone, every other
+    /// row shown staying the row it was, and Undo takes both away.</summary>
     [AvaloniaFact]
     public void Add_docker_support_writes_the_projects_dockerfile_and_the_contexts_dockerignore_and_undo_takes_both_away()
     {
@@ -524,14 +526,17 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
         try
         {
             AwaitEvaluated(window);
+            string dockerfile = app.PathOf("Api/Dockerfile");
+            string ignore = app.PathOf(".dockerignore");
+            window.ExplorerView.Reveal(app.PathOf("Api/Program.cs"));
+            window.ExplorerView.Reveal(app.PathOf("Worker/Program.cs"));
+            Ui.Settle();
             Ui.ChooseFromRowMenu(window, Row(window, NodeKind.Project, "Api"), "Add", "Docker Support…");
             DockerSupportDialog dialog = DialogButtonsTests.Check(Assert.Single(window.OwnedWindows.OfType<DockerSupportDialog>()));
             Assert.Equal(DockerSupportKind.Dockerfile, dialog.Chosen);
-            dialog.Accept();
-            Ui.Settle();
+            FilesFollowed.Check(window, "Add Docker Support", [dockerfile, ignore], dialog.Accept);
+            Assert.Contains(window.ExplorerView.Tree.Rows, r => r.Path == dockerfile);
 
-            string dockerfile = app.PathOf("Api/Dockerfile");
-            string ignore = app.PathOf(".dockerignore");
             Assert.Equal(Shop.Dockerfile, File.ReadAllText(dockerfile));
             Assert.Equal(DockerFiles.Ignore, File.ReadAllText(ignore));
             Assert.Equal(dockerfile, window.EditorArea.Active?.Path);

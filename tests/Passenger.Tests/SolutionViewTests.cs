@@ -739,6 +739,63 @@ public sealed class SolutionViewTests : IDisposable
         window.Close();
     }
 
+    /// <summary>New File (its folder made with it), New Folder, a file copied and pasted and a file cut and pasted each put in
+    /// or take out the rows of what they made or moved alone: every other row shown stays the row it was, with Go to File's
+    /// folder never walked again.</summary>
+    [AvaloniaFact]
+    public void New_file_new_folder_and_paste_make_again_only_the_rows_of_what_they_make_or_move()
+    {
+        string models = Path.Combine(folder, "Shop.App", "Models");
+        string catalog = Path.Combine(folder, "Shop.Core", "Catalog");
+        string order = Path.Combine(models, "Order.cs");
+        string line = Path.Combine(models, "Lines", "Line.cs");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        Show(window, order);
+        Show(window, line);
+        Show(window, Path.Combine(catalog, "Product.cs"));
+        Show(window, Path.Combine(folder, "Shop.App", "Program.cs"));
+
+        string drafts = Path.Combine(catalog, "Drafts");
+        FilesFollowed.Check(window, "New File", [drafts], () => Add(Show(window, catalog), "New File…", "Drafts/Notes.txt"));
+        Assert.True(File.Exists(Path.Combine(drafts, "Notes.txt")), $"New File made no Drafts/Notes.txt: {window.Status}");
+        Assert.Contains(window.FileIndex.Files, f => f.EndsWith("Notes.txt", StringComparison.Ordinal));
+
+        string archive = Path.Combine(models, "Archive");
+        FilesFollowed.Check(window, "New Folder", [archive], () => Add(Show(window, models), "New Folder…", "Archive"));
+        Assert.True(Directory.Exists(archive), $"New Folder made no Archive: {window.Status}");
+
+        FilesFollowed.Check(window, "Copy and Paste", [Path.Combine(catalog, "Order.cs")], () =>
+        {
+            Ui.ClickRow(window, Show(window, order));
+            Ui.Run(window, EditorActions.Copy);
+            Ui.ClickRow(window, Show(window, catalog));
+            Ui.Run(window, EditorActions.Paste);
+        });
+        Assert.Equal("Copied Order.cs to Catalog", window.Status);
+
+        FilesFollowed.Check(window, "Cut and Paste", [line, Path.Combine(archive, "Line.cs")], () =>
+        {
+            Ui.ClickRow(window, Show(window, line));
+            Ui.Run(window, EditorActions.Cut);
+            Ui.ClickRow(window, Show(window, archive));
+            Ui.Run(window, EditorActions.Paste);
+        });
+        Assert.Equal("Moved Line.cs to Archive", window.Status);
+        Assert.Contains(window.FileIndex.Files, f => f.EndsWith(Path.Combine("Archive", "Line.cs"), StringComparison.Ordinal));
+        Assert.DoesNotContain(window.FileIndex.Files, f => f.EndsWith(Path.Combine("Lines", "Line.cs"), StringComparison.Ordinal));
+        window.Close();
+
+        // Add, then the item, with the name typed into its popup and Enter pressed.
+        void Add(ExplorerNode row, string item, string name)
+        {
+            Ui.ChooseFromRowMenu(window, row, "Add", item);
+            Assert.IsType<NamePopup>(window.Popup);
+            window.KeyTextInput(name);
+            Ui.Press(window, "ENTER");
+            Assert.False(window.IsPopupOpen, $"{item} refused {name}: {(window.Popup as NamePopup)?.Problem}");
+        }
+    }
+
     private MainWindow Open() => Ui.OpenFolder(folder);
 
     /// <summary>Opens the Explorer's folders down to a file or folder, as a person does to get to it, and gives its row.</summary>

@@ -78,6 +78,9 @@ public sealed class PublishTests : IClassFixture<RestoredFolders>, IDisposable
         }
     }
 
+    /// <summary>A profile saved comes into the Explorer as the rows of the folders made for it alone, every other row shown
+    /// staying the row it was; Undo takes it away, Redo makes it again, and it publishes again after a restart as dotnet
+    /// publish takes it.</summary>
     [AvaloniaFact]
     public void A_saved_profile_is_one_undo_step_publishes_again_after_a_restart_and_dotnet_publish_takes_it()
     {
@@ -87,13 +90,17 @@ public sealed class PublishTests : IClassFixture<RestoredFolders>, IDisposable
         MainWindow window = Keeping(state);
         try
         {
+            window.ExplorerView.Reveal(PathNames.Canonical(Path.Combine(folder, "src", "Hello", "Program.cs")));
+            window.ExplorerView.Reveal(PathNames.Canonical(Path.Combine(folder, "src", "Site", "appsettings.json")));
+            Ui.Settle();
             PublishDialog dialog = Show(window, "Hello");
             dialog.ProfileName = "Nightly";
             dialog.Configuration = "Debug";
             dialog.OutputFolder = "../../out/nightly/";
             Ui.Settle();
             Assert.True(dialog.Destination is { } shown && PathNames.Same(shown, nightly), $"The dialog says the app lands in {dialog.Destination}, not in {nightly}");
-            Assert.Null(Done(dialog.SaveAsync(), "the profile to be saved"));
+            FilesFollowed.Check(window, "Saving a publish profile", [Path.Combine(folder, "src", "Hello", "Properties")],
+                () => Assert.Null(Done(dialog.SaveAsync(), "the profile to be saved")));
             string saved = File.ReadAllText(profile);
             Assert.True(saved.Contains("<Configuration>Debug</Configuration>", StringComparison.Ordinal) && saved.Contains("<PublishDir>../../out/nightly/</PublishDir>", StringComparison.Ordinal),
                 $"The saved profile says:\n{saved}");

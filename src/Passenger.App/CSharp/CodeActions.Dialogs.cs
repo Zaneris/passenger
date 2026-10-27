@@ -238,15 +238,15 @@ internal sealed partial class CodeActions
             }
             List<string> dropped = [];
             IReadOnlyList<RefactoredFile> files = WorkspaceEdits.Files(edit, WorkspaceEdits.Answered(context.Editors, asked));
-            using (CommandHistory.Recording recording = context.Editors.Commands.Record(name))
+            context.ChangeFiles([.. made.Changes.Select(c => c.Path), .. WorkspaceEdits.Paths(edit)], () =>
             {
+                using CommandHistory.Recording recording = context.Editors.Commands.Record(name);
                 foreach (FileChange change in made.Changes)
                 {
                     recording.Watch(PathNames.Canonical(change.Path));
                 }
                 _ = WorkspaceEdits.Apply(context.Editors, edit, asked, dropped);
-            }
-            context.ChangedFiles();
+            });
             // Counted by file: a file made is its creation and its text, which the edit counts apart.
             string said = done(made.Changes.Count - dropped.Count) + (dropped.Count > 0 ? $", but not in {string.Join(", ", dropped)}: it was edited meanwhile" : string.Empty);
             return new RefactorOutcome(said, null, files, dropped);

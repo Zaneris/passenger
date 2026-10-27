@@ -325,6 +325,55 @@ public sealed class LocalHistoryTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A revert follows only what it changes: a file's text put back leaves every Explorer row as it was, with Go to
+    /// File's folder never walked again and the project not checked again, and a file deleted brought back puts in its own
+    /// row alone.</summary>
+    [AvaloniaFact]
+    public void A_revert_of_a_text_makes_no_row_again_and_one_bringing_back_a_file_only_its_own()
+    {
+        Write("Shop.csproj", TestProjects.Library());
+        string a = Write("src/A.cs", "class A\n{\n}\n");
+        string b = Write("src/B.cs", "class B\n{\n}\n");
+        Write("Notes.txt", "notes\n");
+        MainWindow window = Open("src/A.cs");
+        Save(window, 0, 0, "sealed ");
+        Save(window, 0, 0, "public ");
+        window.OpenFile(b);
+        Save(window, 0, 0, "sealed ");
+        Show(window, a);
+        Show(window, Path.Combine(folder, "Notes.txt"));
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+        Ui.ChooseFromRowMenu(window, Show(window, b), "Edit", "Delete…");
+        Ui.WaitFor(() => !File.Exists(b), "B.cs deleted");
+
+        Ui.ChooseFromRowMenu(window, Show(window, Path.Combine(folder, "src")), "Local History", "Show History…");
+        HistoryTab history = window.LocalHistoryWindow.Shown!;
+        Ui.Landed(() => history.Rows.Count > 0 && history.Rows[0].Title == "Delete B.cs", "B.cs's deletion");
+        Ui.Landed(() => history.Diff?.Left.Document.Snapshot.ToString() == "sealed class B\n{\n}\n", "B.cs as it was deleted");
+        FilesFollowed.Check(window, "Revert of B.cs's deletion", [b], () =>
+        {
+            Task reverting = history.RevertAsync();
+            Ui.WaitFor(() => reverting.IsCompleted, "the revert");
+        });
+        Assert.Equal("sealed class B\n{\n}\n", File.ReadAllText(b));
+        Assert.Contains(window.ExplorerView.Tree.Rows, r => r.Path == PathNames.Canonical(b));
+
+        window.OpenFile(a);
+        Ui.Settle();
+        history = ShowFromFileMenu(window, "Show History…");
+        Ui.Landed(() => history.Rows.Count == 2, "A.cs's two saves");
+        // The first save's version: A.cs as it was before it.
+        history.Select(history.Rows[1]);
+        Ui.Settle();
+        FilesFollowed.Check(window, "Revert of A.cs", [a], () =>
+        {
+            Task reverting = history.RevertAsync();
+            Ui.WaitFor(() => reverting.IsCompleted, "the revert");
+        }, textsAlone: true);
+        Assert.Equal("class A\n{\n}\n", File.ReadAllText(a));
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void A_files_history_follows_it_through_a_rename_in_the_solution_view()
     {

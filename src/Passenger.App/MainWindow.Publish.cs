@@ -178,32 +178,31 @@ public partial class MainWindow
         }
         try
         {
-            using CommandHistory.Recording made = Editors.Commands.Record($"Save Publish Profile {choice.Profile}");
-            try
+            Following([file], () =>
             {
-                if (had is null)
+                using CommandHistory.Recording made = Editors.Commands.Record($"Save Publish Profile {choice.Profile}");
+                try
                 {
-                    WriteNew(made, file, text);
+                    if (had is null)
+                    {
+                        WriteNew(made, file, text);
+                    }
+                    else
+                    {
+                        made.Watch(file);
+                        FileText.Save(file, text, had.Encoding, had.HasBom, had.CrBreaks);
+                    }
                 }
-                else
+                finally
                 {
-                    made.Watch(file);
-                    FileText.Save(file, text, had.Encoding, had.HasBom, had.CrBreaks);
+                    // Open, it takes the text now, inside the command, so the command's undo takes it back too.
+                    FollowWritten([file]);
                 }
-            }
-            finally
-            {
-                // Open, it takes the text now, inside the command, so the command's undo takes it back too.
-                FollowWritten([file]);
-            }
+            });
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             return $"{shownName} could not be written: {error.Message}";
-        }
-        if (had is null)
-        {
-            FilesChanged();
         }
         status.Text = $"Saved the publish profile {choice.Profile} of {Path.GetFileNameWithoutExtension(choice.Project)}";
         return null;

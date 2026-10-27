@@ -69,7 +69,8 @@ public sealed class RefactoringDialogsTests
         window.Close();
     }
 
-    /// <summary>Change Signature adds, removes and reorders parameters, and every call passes its arguments in the new order.</summary>
+    /// <summary>Change Signature adds, removes and reorders parameters, and every call passes its arguments in the new order,
+    /// a change of texts alone that makes no Explorer row again and has the project checked no more.</summary>
     private void ChangeSignature(MainWindow window, List<(string Title, string Text)> asked)
     {
         asked.Clear();
@@ -96,7 +97,7 @@ public sealed class RefactoringDialogsTests
         Ui.Settle();
         Assert.Equal("public static int Scale(int factor, int value, int offset)", dialog.Preview);
         Assert.Equal(string.Empty, dialog.Problem);
-        Next(dialog);
+        FilesFollowed.Check(window, "Change Signature", [PathOf("Calc.cs"), PathOf("Till.cs")], () => Next(dialog), textsAlone: true);
 
         string calc = Calc.Replace("Scale(int value, int factor, int unused)", "Scale(int factor, int value, int offset)", StringComparison.Ordinal)
             .Replace("Scale(value, 2, 0)", "Scale(2, value, 0)", StringComparison.Ordinal);
@@ -112,7 +113,8 @@ public sealed class RefactoringDialogsTests
         Assert.Equal(Till, File.ReadAllText(PathOf("Till.cs")));
     }
 
-    /// <summary>Extract Interface makes the interface of the members chosen in a file of its own, and the class implements it.</summary>
+    /// <summary>Extract Interface makes the interface of the members chosen in a file of its own, whose row alone comes into
+    /// the Explorer, and the class implements it.</summary>
     private void ExtractInterface(MainWindow window, List<(string Title, string Text)> asked)
     {
         asked.Clear();
@@ -126,9 +128,9 @@ public sealed class RefactoringDialogsTests
         Assert.Equal(["Total: int", "Add(int): void", "Describe(): string"], dialog.Members.Select(m => m.Text));
         Ui.Click(dialog.Members[2].Box);
         Assert.False(dialog.Members[2].Box.IsChecked, "A click did not leave Describe out of the interface");
-        Next(dialog);
-
         string extracted = PathOf("IOrder.cs");
+        FilesFollowed.Check(window, "Extract Interface", [extracted], () => Next(dialog));
+
         Assert.True(File.Exists(extracted), $"Extract Interface made no IOrder.cs: {window.Status}");
         Assert.Equal("namespace Shop;\n\npublic interface IOrder\n{\n    int Total { get; }\n\n    void Add(int amount);\n}\n", File.ReadAllText(extracted).ReplaceLineEndings("\n"));
         Assert.Equal(Order.Replace("public class Order", "public class Order : IOrder", StringComparison.Ordinal), window.EditorArea.Active?.Text.Snapshot.ToString());

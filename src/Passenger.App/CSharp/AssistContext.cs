@@ -38,8 +38,6 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
 
     public event EventHandler<string>? Message;
 
-    public event EventHandler? FilesChanged;
-
     public event EventHandler<Uri>? Browsed;
 
     public CodeEditor Editor => editors.CodeEditor;
@@ -112,8 +110,23 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
     /// <summary>Find Usages' answer, for the Find window: what was searched for and where it is used.</summary>
     public void ShowUsages((string Title, IReadOnlyList<LspLocation> Usages) found) => UsagesFound?.Invoke(this, found);
 
-    /// <summary>A refactoring changed files beyond the open ones, or made new ones, which the Explorer and Git then show.</summary>
-    public void ChangedFiles() => FilesChanged?.Invoke(this, EventArgs.Empty);
+    /// <summary>How the window runs a change of files beyond the open ones (<see cref="ChangeFiles"/>).</summary>
+    public Action<IReadOnlyCollection<string>, Action>? FilesChanging { get; set; }
+
+    /// <summary>Runs a refactoring's change of files beyond the open ones, which the window follows once it is done: what it
+    /// made, moved or deleted among <paramref name="paths"/>, which the Explorer and Git then show, and the projects that
+    /// read a text it changed.</summary>
+    public void ChangeFiles(IReadOnlyCollection<string> paths, Action change)
+    {
+        if (FilesChanging is { } following)
+        {
+            following(paths, change);
+        }
+        else
+        {
+            change();
+        }
+    }
 
     /// <summary>A page to open in the browser: an ESLint rule's, an image's registry page.</summary>
     public void Browse(Uri page) => Browsed?.Invoke(this, page);

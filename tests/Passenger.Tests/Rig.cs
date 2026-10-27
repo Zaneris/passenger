@@ -1719,6 +1719,45 @@ public static class ExplorerRows
         explorer.GetVisualDescendants().OfType<ListBox>().First(l => ReferenceEquals(l.ItemsSource, explorer.Tree.Rows));
 }
 
+/// <summary>A change of files the IDE makes itself held to following only what it changed: every Explorer row but those of
+/// the files and folders it made, moved or deleted (and of what is under them) stays the row it was, Go to File's folder is
+/// never walked again, and a change of texts alone has the projects checked no more. What the folder watcher does once it
+/// hears of the change is waited for and held to the same.</summary>
+public static class FilesFollowed
+{
+    public static void Check(Passenger.App.MainWindow window, string what, IReadOnlyCollection<string> changed, Action change, bool textsAlone = false)
+    {
+        List<string> paths = [.. changed.Select(PathNames.Canonical)];
+        bool Touched(Passenger.App.Explorer.ExplorerNode row) => row.Path is { } path && paths.Any(p => PathNames.Within(path, p));
+        List<Passenger.App.Explorer.ExplorerNode> before = [.. window.ExplorerView.Tree.Rows];
+        int rounds = window.Session.Models.Rounds;
+        int walks = 0;
+        bool heard = false;
+        void Walked(object? sender, EventArgs e) => walks++;
+        void Hear(object? sender, Passenger.App.Workspace.FolderChanges changes) =>
+            heard |= changes.Paths.Any(p => paths.Any(c => PathNames.Within(p, c) || PathNames.Within(c, p)));
+        window.FileIndex.Walked += Walked;
+        window.FolderWatcher!.Changed += Hear;
+        try
+        {
+            change();
+            Ui.WaitFor(() => heard, $"the folder watcher to hear of what {what} changed");
+            Ui.Settle();
+        }
+        finally
+        {
+            window.FileIndex.Walked -= Walked;
+            window.FolderWatcher!.Changed -= Hear;
+        }
+        List<Passenger.App.Explorer.ExplorerNode> now = [.. window.ExplorerView.Tree.Rows];
+        Assert.True(now.Where(r => !Touched(r)).SequenceEqual(before.Where(r => !Touched(r)), ReferenceEqualityComparer.Instance),
+            $"{what} made again rows other than those of what it changed: [{string.Join(", ", now.Where(r => !Touched(r) && !before.Contains(r, ReferenceEqualityComparer.Instance)).Select(r => r.Name))}] are new");
+        Assert.True(walks == 0, $"{what} had the whole folder walked again for Go to File {walks} times");
+        Assert.True(!textsAlone || window.Session.Models.Rounds == rounds,
+            $"{what}, which changed texts alone, had the projects checked again {window.Session.Models.Rounds - rounds} times");
+    }
+}
+
 /// <summary>The one place a test lets time pass (Thread.Sleep and Task.Delay are banned elsewhere, BannedSymbols.txt): a wait
 /// for a condition, looked at again every few milliseconds until it holds or its limit (scaled by the run's
 /// <see cref="TestRun.TimeScale"/>) is out, and time that a test needs to pass, named. It never runs the window's loop:

@@ -375,6 +375,27 @@ public static class WorkspaceEdits
         return files;
     }
 
+    /// <summary>Every file an edit changes, makes, moves (from and to) or deletes.</summary>
+    public static IReadOnlyList<string> Paths(JsonElement edit)
+    {
+        List<string> paths = [];
+        foreach (FileEdits change in Shapes.WorkspaceEdit(edit))
+        {
+            if (change.Operation is not { } operation)
+            {
+                paths.Add(DocumentUris.ToPath(change.Uri));
+                continue;
+            }
+            Resource resource = Resource.Read(operation);
+            paths.Add(resource.Path);
+            if (resource.To is { } to)
+            {
+                paths.Add(to);
+            }
+        }
+        return paths;
+    }
+
     /// <summary>One of an edit's file operations (create, rename or delete): its paths and its options.</summary>
     private sealed record Resource(string Kind, string Path, string? To, JsonElement Options)
     {

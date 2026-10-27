@@ -102,6 +102,8 @@ public partial class MainWindow
         HashSet<string> dependents = [.. following.Values.SelectMany(d => d)];
         List<string> put = [];
         List<(string From, string To)> moved = [];
+        // The ends of the moves, followed with the copies once all are put.
+        List<string> came = [];
         List<string> refused = [];
         foreach (string source in paths.Where(p => !dependents.Contains(p)))
         {
@@ -130,7 +132,7 @@ public partial class MainWindow
                 .Where(d => !PathNames.Same(d.Item1, d.Item2))];
             foreach ((string from, string to) in going)
             {
-                if (await PutOneAsync(from, to, into, copy) is { } problem)
+                if (await PutOneAsync(from, to, into, copy, came) is { } problem)
                 {
                     if (problem.Length > 0)
                     {
@@ -155,7 +157,7 @@ public partial class MainWindow
         }
         if (put.Count > 0)
         {
-            FilesChanged();
+            CameOrWent([.. came, .. put]);
             Explorer.Reveal(put[^1]);
             // The keys go with the choice to the row revealed, for the next Paste.
             Explorer.FocusRows();
@@ -166,8 +168,9 @@ public partial class MainWindow
     }
 
     /// <summary>Moves or copies one file or folder to where it goes, replacing what has its name there once the person
-    /// agrees; null once it is there, else why not ("" when they would not replace).</summary>
-    private async Task<string?> PutOneAsync(string source, string target, string into, bool copy)
+    /// agrees, a move's ends gathered into <paramref name="came"/>; null once it is there, else why not ("" when they would
+    /// not replace).</summary>
+    private async Task<string?> PutOneAsync(string source, string target, string into, bool copy, List<string> came)
     {
         string name = Path.GetFileName(source);
         if (!PathNames.Same(target, source) && (File.Exists(target) || Directory.Exists(target)))
@@ -178,7 +181,7 @@ public partial class MainWindow
                 return string.Empty;
             }
         }
-        return (copy ? CopyOnDisk(source, target) : Editors.MoveFile(source, target)) is { } problem
+        return (copy ? CopyOnDisk(source, target) : Gathering(came, () => Editors.MoveFile(source, target))) is { } problem
             ? $"{name} could not be {(copy ? "copied" : "moved")}: {problem}"
             : null;
     }
@@ -394,35 +397,11 @@ public partial class MainWindow
             return;
         }
         // What may come or go, with the folders over it, as they stand before: a part may make or take away a folder.
-        Dictionary<string, bool> stood = new(PathNames.Comparer);
-        foreach (string path in command.Moves.SelectMany(m => new[] { m.From, m.To }).Concat(command.Created.Select(c => c.Path)))
-        {
-            for (string? at = PathNames.Canonical(path); at is not null && (Folder is not { } folder || PathNames.IsUnder(at, folder)); at = Path.GetDirectoryName(at))
-            {
-                stood.TryAdd(at, File.Exists(at) || Directory.Exists(at));
-            }
-        }
-        List<string> moved = movesFollowed = [];
-        string? failed;
-        try
-        {
-            // Asked again: a file may have changed while the question was open.
-            failed = Editors.Commands.Blocked(command, redo) ?? (redo ? Editors.Commands.Redo(command) : Editors.Commands.Undo(command));
-        }
-        finally
-        {
-            movesFollowed = null;
-        }
-        List<string> cameOrWent = [.. moved, .. stood.Where(s => s.Value != (File.Exists(s.Key) || Directory.Exists(s.Key))).Select(s => s.Key)];
-        if (cameOrWent.Count > 0)
-        {
-            CameOrWent(cameOrWent);
-        }
-        else if (session.Models.Read([.. command.Texts.Select(t => t.Document?.Path ?? (redo ? command.Moved(t.Path) : t.Path))]))
-        {
-            // Only texts changed, a project's or an import's among them: the projects that read it are evaluated again.
-            session.Evaluate();
-        }
+        Dictionary<string, bool> stood = Standing(command.Moves.SelectMany(m => new[] { m.From, m.To }).Concat(command.Created.Select(c => c.Path)));
+        List<string> moved = [];
+        // Asked again: a file may have changed while the question was open.
+        string? failed = Gathering(moved, () => Editors.Commands.Blocked(command, redo) ?? (redo ? Editors.Commands.Redo(command) : Editors.Commands.Undo(command)));
+        Followed(stood, moved, [.. command.Texts.Select(t => t.Document?.Path ?? (redo ? command.Moved(t.Path) : t.Path))]);
         status.Text = failed is null ? $"{(redo ? "Redone" : "Undone")}: {command.Name}" : $"Cannot {verb.ToLowerInvariant()} {command.Name}: {failed}";
     }
 }

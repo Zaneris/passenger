@@ -14,8 +14,8 @@ namespace Passenger.App;
 /// <summary>The Explorer's file operations: New File, New Folder and New Class where a row holds things, Rename and
 /// Delete (to the Trash) for what is on disk, though a project's Delete takes it out of the solution; the solution's
 /// own folders' are in MainWindow.Solution.cs, and the actions that run them on a row in MainWindow.ExplorerActions.cs.
-/// The open tabs follow a rename and close with a delete, and the Explorer, the file index and Git are read again
-/// after.</summary>
+/// The open tabs follow a rename and close with a delete, and the Explorer, the file index and Git follow what each
+/// made, moved or deleted.</summary>
 public partial class MainWindow
 {
     private void AddFileOperations()
@@ -96,18 +96,20 @@ public partial class MainWindow
         }
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            // Made as its .editorconfig asks: its line breaks and its charset.
-            EditorConfig conventions = EditorConfig.For(path);
-            FileEncoding charset = conventions.Charset ?? FileEncoding.Utf8;
-            LineSeparator separator = conventions.EndOfLine ?? LineSeparator.LF;
-            FileText.Save(path, LineEndings.In(text, separator.Held()), charset.Encoding, charset.Bom, separator == LineSeparator.CR);
+            Following([path], () =>
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                // Made as its .editorconfig asks: its line breaks and its charset.
+                EditorConfig conventions = EditorConfig.For(path);
+                FileEncoding charset = conventions.Charset ?? FileEncoding.Utf8;
+                LineSeparator separator = conventions.EndOfLine ?? LineSeparator.LF;
+                FileText.Save(path, LineEndings.In(text, separator.Held()), charset.Encoding, charset.Bom, separator == LineSeparator.CR);
+            });
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             return NotMade(name, error);
         }
-        FilesChanged();
         OpenFile(path);
         Explorer.Reveal(PathNames.Canonical(path));
         return null;
@@ -126,13 +128,12 @@ public partial class MainWindow
         }
         try
         {
-            Directory.CreateDirectory(path);
+            Following([path], () => Directory.CreateDirectory(path));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             return NotMade(name, error);
         }
-        FilesChanged();
         Explorer.Reveal(PathNames.Canonical(path));
         return null;
     }
@@ -269,9 +270,9 @@ public partial class MainWindow
             // The files nested under it go with it too (Form1.resx with Form1.cs), those that are parts of the type once.
             moves.AddRange(WithDependents(path, name).Where(d => !moves.Any(m => m.From == d.From)));
             List<string> dropped = [];
-            int files = TypeRename.Apply(Editors, made, moves, $"Rename {type.Name} to {renamed}", asked, dropped,
-                recording => FollowMoved([.. moves.Select(m => (m.From, PathNames.Canonical(m.To)))], recording));
-            FilesChanged();
+            int files = Following([.. moves.SelectMany(m => new[] { m.From, m.To }), .. WorkspaceEdits.Paths(made)],
+                () => TypeRename.Apply(Editors, made, moves, $"Rename {type.Name} to {renamed}", asked, dropped,
+                    recording => FollowMoved([.. moves.Select(m => (m.From, PathNames.Canonical(m.To)))], recording)));
             Explorer.Reveal(PathNames.Canonical(target));
             status.Text = $"Renamed {Path.GetFileName(path)} to {name}, and {type.Name} to {renamed} in {Plural.Of(files, "file")}"
                 + (dropped.Count > 0 ? $", but not in {string.Join(", ", dropped)}: it was edited meanwhile" : string.Empty);
@@ -320,19 +321,25 @@ public partial class MainWindow
         {
             return $"{Path.GetFileName(taken.To)} is already there";
         }
-        using (CommandHistory.Recording recording = Editors.Commands.Record($"Rename {Path.GetFileName(path)} to {name}"))
+        string? failed = Following([.. moves.SelectMany(m => new[] { m.From, m.To })], () =>
         {
+            using CommandHistory.Recording recording = Editors.Commands.Record($"Rename {Path.GetFileName(path)} to {name}");
             foreach ((string from, string to) in moves)
             {
-                if (Editors.MoveFile(from, to) is { } failed)
+                if (Editors.MoveFile(from, to) is { } refused)
                 {
-                    return failed;
+                    return refused;
                 }
             }
             if (FollowMoved([.. moves.Select(m => (m.From, PathNames.Canonical(m.To)))], recording) is { } unfollowed)
             {
                 status.Text = unfollowed;
             }
+            return null;
+        });
+        if (failed is not null)
+        {
+            return failed;
         }
         Explorer.Reveal(PathNames.Canonical(target));
         return null;
@@ -452,18 +459,81 @@ public partial class MainWindow
         return true;
     }
 
-    /// <summary>The Explorer, the index Go to File and Find in Files read, and Git's colours, after files changed.</summary>
-    private void FilesChanged()
+    /// <summary>Runs a change of files the IDE makes itself, then follows only what it came to: what it made, moved or
+    /// deleted along <paramref name="paths"/> (a folder over one among them) and the moves it made, as
+    /// <see cref="CameOrWent"/> does; a change of texts alone has evaluated again the projects that read one of them.</summary>
+    private T Following<T>(IReadOnlyCollection<string> paths, Func<T> change)
     {
-        Explorer.Refresh();
-        // What a project's wildcards take in changed here: its evaluation follows at once, not when the watcher hears of it.
-        session.Evaluate();
-        session.MSBuild.FilesCameOrWent();
-        if (Folder is { } folder)
+        Dictionary<string, bool> stood = Standing(paths);
+        List<string> moved = [];
+        try
         {
-            session.Index.Build(folder);
+            return Gathering(moved, change);
         }
-        IdeErrors.Observe(session.Vcs.RefreshAsync());
+        finally
+        {
+            Followed(stood, moved, paths);
+        }
+    }
+
+    private void Following(IReadOnlyCollection<string> paths, Action change) => Following(paths, () =>
+    {
+        change();
+        return true;
+    });
+
+    /// <summary>Whether each file and folder along the paths stands, up to the open folder: what a change made or took away
+    /// is what stands otherwise after it, a folder made or taken with a file among them.</summary>
+    private Dictionary<string, bool> Standing(IEnumerable<string> paths)
+    {
+        Dictionary<string, bool> stood = new(PathNames.Comparer);
+        foreach (string path in paths)
+        {
+            for (string? at = PathNames.Canonical(path); at is not null && (Folder is not { } folder || PathNames.IsUnder(at, folder)); at = Path.GetDirectoryName(at))
+            {
+                // A folder already looked at was looked at with every folder over it.
+                if (!stood.TryAdd(at, Stands(at)))
+                {
+                    break;
+                }
+            }
+        }
+        return stood;
+    }
+
+    private static bool Stands(string path) => File.Exists(path) || Directory.Exists(path);
+
+    /// <summary>Runs a change, the ends of the moves it makes gathered into <paramref name="moved"/>, to be followed with the
+    /// rest of what it changed once it is done rather than one by one.</summary>
+    private T Gathering<T>(List<string> moved, Func<T> change)
+    {
+        List<string>? outer = movesFollowed;
+        movesFollowed = moved;
+        try
+        {
+            return change();
+        }
+        finally
+        {
+            movesFollowed = outer;
+        }
+    }
+
+    /// <summary>Follows a change of files once it is done: what came or went along <paramref name="stood"/>'s paths, with the
+    /// ends of the moves it made, as <see cref="CameOrWent"/> does; with none, the projects whose evaluation read one of
+    /// <paramref name="texts"/> are evaluated again.</summary>
+    private void Followed(Dictionary<string, bool> stood, IReadOnlyCollection<string> moved, IReadOnlyCollection<string> texts)
+    {
+        List<string> cameOrWent = [.. moved, .. stood.Where(s => s.Value != Stands(s.Key)).Select(s => s.Key)];
+        if (cameOrWent.Count > 0)
+        {
+            CameOrWent(cameOrWent);
+        }
+        else if (session.Models.Read(texts))
+        {
+            // Only texts changed, a project's or an import's among them: the projects that read it are evaluated again.
+            session.Evaluate();
+        }
     }
 
     /// <summary>Files or folders the IDE itself made, moved or deleted, followed at once rather than when the folder watcher

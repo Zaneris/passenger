@@ -162,7 +162,8 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
     }
 
     /// <summary>Rename on a file in the Solution view offers to rename the class it is named after, which renames it and its
-    /// uses, and Undo there takes both back, asked first; a form's files nested under it go along; and a file holding types
+    /// uses, every row but the file's own staying the row it was, and Undo there takes both back, asked first; a form's
+    /// files nested under it go along; and a file holding types
     /// of other names keeps its name when one of them is renamed, is renamed alone in the Solution view, and named back by
     /// Undo there.</summary>
     [AvaloniaFact]
@@ -178,8 +179,11 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
         Assert.Equal("Rename type 'Order' to match the new file name", option.Content);
         Assert.True(option.IsChecked, "Rider renames the type with its file unless asked not to");
         window.KeyTextInput("Purchase.cs");
-        Ui.Press(window, "ENTER");
-        Ui.WaitFor(() => !window.IsPopupOpen, $"the rename to finish: {popup.Problem}");
+        FilesFollowed.Check(window, "Renaming Order.cs with its class", [OrderPath, PurchasePath], () =>
+        {
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => !window.IsPopupOpen, $"the rename to finish: {popup.Problem}");
+        });
 
         Assert.False(File.Exists(OrderPath), "Order.cs is still there");
         Assert.Equal(Order.Replace("Order", "Purchase", StringComparison.Ordinal), File.ReadAllText(PurchasePath));
