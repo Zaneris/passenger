@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Passenger.Dap;
 
 // The Debug Adapter Protocol, as much of it as Passenger's debugger speaks, in the protocol's own field
@@ -285,6 +287,7 @@ public sealed record DapVariable
 {
     public string Name { get; init; } = string.Empty;
     public string Value { get; init; } = string.Empty;
+    [JsonConverter(typeof(SharedNames))]
     public string? Type { get; init; }
     public string? EvaluateName { get; init; }
     public int VariablesReference { get; init; }
