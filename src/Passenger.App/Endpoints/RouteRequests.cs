@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -97,11 +98,28 @@ public static partial class RouteRequests
     /// <summary>Whether a request sent from the gutter can reach the route: a gRPC method needs a gRPC client.</summary>
     public static bool Sendable(WebRoute route) => route.Kind != RouteKinds.Grpc;
 
+    /// <summary>Whether a route takes a method: any when it names none, else one of its own, in any case.</summary>
+    public static bool Takes(WebRoute route, string method)
+    {
+        IReadOnlyList<string> methods = route.Methods;
+        if (methods.Count == 0)
+        {
+            return true;
+        }
+        for (int i = 0; i < methods.Count; i++)
+        {
+            if (string.Equals(methods[i], method, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /// <summary>Whether a request calls a route.</summary>
     public static bool Calls(EndpointRequest request, WebRoute route)
     {
-        if (route.Kind == RouteKinds.Grpc || (route.Methods.Count > 0 && !route.Methods.Contains(request.Method, StringComparer.OrdinalIgnoreCase)
-            && !(route.Kind == RouteKinds.SignalR && request.Method == "POST")))
+        if (route.Kind == RouteKinds.Grpc || (!Takes(route, request.Method) && !(route.Kind == RouteKinds.SignalR && request.Method == "POST")))
         {
             return false;
         }
@@ -142,44 +160,10 @@ public static partial class RouteRequests
 
     /// <summary>Whether a path fits a template, segment by segment as ASP.NET Core's matcher reads it: a literal by its
     /// letters in any case, a parameter by any value, an optional one by none, a catch-all by the rest.</summary>
-    public static bool Fits(string template, string path)
-    {
-        string[] want = Segments(template);
-        string[] got = Segments(path);
-        for (int i = 0; i < want.Length; i++)
-        {
-            string segment = want[i];
-            if (segment.StartsWith("{*", StringComparison.Ordinal) || segment.StartsWith("{**", StringComparison.Ordinal))
-            {
-                return true;
-            }
-            if (i >= got.Length)
-            {
-                return want[i..].All(w => w.StartsWith('{') && (w.EndsWith("?}", StringComparison.Ordinal) || w.Contains('=', StringComparison.Ordinal)));
-            }
-            if (!SegmentFits(segment, got[i]))
-            {
-                return false;
-            }
-        }
-        return got.Length == want.Length;
-    }
-
-    private static string[] Segments(string path) => path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-
-    private static bool SegmentFits(string segment, string got)
-    {
-        if (!segment.Contains('{', StringComparison.Ordinal))
-        {
-            return string.Equals(segment, got, StringComparison.OrdinalIgnoreCase);
-        }
-        // A segment of parameters and literals ("{name}.{ext}"): each parameter takes some characters, a {{variable}} any.
-        string pattern = "^" + string.Concat(Parameter().Split(segment).Select((part, i) => i % 2 == 1 ? ".+" : Regex.Escape(part))) + "$";
-        return Regex.IsMatch(got, pattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-    }
+    public static bool Fits(string template, string path) => RouteTemplate.Of(template).Fits(path);
 
     [GeneratedRegex(@"(\{[^{}]+\})")]
-    private static partial Regex Parameter();
+    internal static partial Regex Parameter();
 
     /// <summary>The variable a project's requests name its address by, as <c>dotnet new webapi</c>'s .http file does.</summary>
     public static string HostVariable(string project) => Path.GetFileNameWithoutExtension(project) + "_HostAddress";
@@ -297,4 +281,120 @@ public static partial class RouteRequests
     /// <summary>Where a route is written, as the editor counts the place (the server's place converted by the caller).</summary>
     public static string Where(WebRoute route, string? root) =>
         string.Create(CultureInfo.InvariantCulture, $"{PathNames.Shown(route.Path, root)}:{route.At.Line + 1}");
+}
+
+/// <summary>A route's template split into its segments once and kept, by its text, for every path walked against it as
+/// spans: a literal compared by its letters in any case, a segment of parameters (and literals) by a regex made once, a
+/// catch-all taking the rest, and the segments a path may leave out (an optional parameter, one with a default).</summary>
+public sealed class RouteTemplate
+{
+    /// <summary>The templates split so far: those of a folder's routes, a few hundred, made again only past this many.</summary>
+    private const int Kept = 4096;
+
+    private static readonly ConcurrentDictionary<string, RouteTemplate> split = new(StringComparer.Ordinal);
+
+    private readonly Segment[] segments;
+
+    private RouteTemplate(string template)
+    {
+        List<Segment> parts = [];
+        foreach (Range range in template.AsSpan().Split('/'))
+        {
+            string text = template[range];
+            if (text.Length > 0)
+            {
+                parts.Add(new Segment(text));
+            }
+        }
+        segments = [.. parts];
+        Braces = template.AsSpan().Count('{');
+    }
+
+    /// <summary>How many '{' it holds: of two templates a path fits, the one with fewer is the literal one, and wins.</summary>
+    public int Braces { get; }
+
+    /// <summary>A template's split, made once for its text.</summary>
+    public static RouteTemplate Of(string template)
+    {
+        if (split.TryGetValue(template, out RouteTemplate? known))
+        {
+            return known;
+        }
+        if (split.Count >= Kept)
+        {
+            split.Clear();
+        }
+        return split.GetOrAdd(template, static text => new RouteTemplate(text));
+    }
+
+    /// <summary>Whether a path fits it (<see cref="RouteRequests.Fits"/>), its segments walked in place.</summary>
+    public bool Fits(ReadOnlySpan<char> path)
+    {
+        int at = 0;
+        foreach (Range range in path.Split('/'))
+        {
+            ReadOnlySpan<char> got = path[range];
+            if (got.IsEmpty)
+            {
+                continue;
+            }
+            if (at >= segments.Length)
+            {
+                return false;
+            }
+            Segment want = segments[at];
+            if (want.CatchAll)
+            {
+                return true;
+            }
+            if (!want.Fits(got))
+            {
+                return false;
+            }
+            at++;
+        }
+        if (at < segments.Length && segments[at].CatchAll)
+        {
+            return true;
+        }
+        for (; at < segments.Length; at++)
+        {
+            if (!segments[at].MayBeLeftOut)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// <summary>A segment of a template: a literal, or parameters with literals between (<c>{name}.{ext}</c>), each
+    /// parameter taking some characters, a request's <c>{{variable}}</c> any.</summary>
+    private sealed class Segment
+    {
+        private readonly string text;
+        private readonly Regex? pattern;
+
+        public Segment(string text)
+        {
+            this.text = text;
+            CatchAll = text.StartsWith("{*", StringComparison.Ordinal);
+            MayBeLeftOut = text.StartsWith('{') && (text.EndsWith("?}", StringComparison.Ordinal) || text.Contains('=', StringComparison.Ordinal));
+            if (text.Contains('{', StringComparison.Ordinal))
+            {
+                StringBuilder written = new("^");
+                string[] parts = RouteRequests.Parameter().Split(text);
+                for (int i = 0; i < parts.Length; i++)
+                {
+                    written.Append(i % 2 == 1 ? ".+" : Regex.Escape(parts[i]));
+                }
+                pattern = new Regex(written.Append('$').ToString(), RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            }
+        }
+
+        public bool CatchAll { get; }
+
+        public bool MayBeLeftOut { get; }
+
+        public bool Fits(ReadOnlySpan<char> got) => pattern?.IsMatch(got) ?? got.Equals(text, StringComparison.OrdinalIgnoreCase);
+    }
 }

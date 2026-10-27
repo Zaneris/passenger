@@ -113,7 +113,7 @@ public static class ServerPlaces
     /// <summary>Whether Roslyn's compilers read the file (C#, Visual Basic, Razor), so the lines a compiler's message or a
     /// stack frame (its PDB's) names in it are counted as the server counts them, to be read through its text.</summary>
     public static bool CountedByRoslyn(string path) =>
-        Path.GetExtension(path).ToLowerInvariant() is ".cs" or ".csx" or ".vb" or ".razor" or ".cshtml";
+        PathNames.HasExtension(path, [".cs", ".csx", ".vb", ".razor", ".cshtml"]);
 
     /// <summary>Whether a file is XAML, whose compilers (Avalonia's XamlIl, WPF's markup compiler) count its lines as an XML
     /// reader does (<see cref="ServerLines.OfXml"/>) in the places they write: a PDB's sequence points, an element's own.</summary>

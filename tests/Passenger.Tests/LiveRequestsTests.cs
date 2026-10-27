@@ -4,6 +4,7 @@ using Passenger.App;
 using Passenger.App.Endpoints;
 using Passenger.App.Run;
 using Passenger.Profiler;
+using Passenger.Roslyn.Extension;
 
 namespace Passenger.Tests;
 
@@ -311,7 +312,7 @@ public sealed class LiveRequestsTests
         int heard = 0;
         try
         {
-            window.ShowToolWindow(ToolWindowIds.Requests);
+            // The log alone, as it keeps the requests while no one looks: a drawn row's cost is held by the test above.
             Ui.Settle();
             long few = Costs(5);
             long many = Costs(RequestLog.Most);
@@ -380,6 +381,155 @@ public sealed class LiveRequestsTests
                 window.RequestLog.Hear(new RequestEnded(id, at, id, 200), "Shop", null);
             }
             return id;
+        }
+    }
+
+    /// <summary>A request heard costs the window what it costs with five routes when the folder has five hundred: each
+    /// route's template is split once, and the request's path is walked against them where it lies. The routes are stood
+    /// in for by the catalog's answer from the C# server, the app's events by the profiler reader's.</summary>
+    [AvaloniaFact]
+    public void A_request_heard_costs_the_window_what_it_costs_with_five_routes_when_the_folder_has_five_hundred()
+    {
+        string folder = TestFolders.Create("requests-routes-");
+        string project = Path.Combine(folder, "Shop.csproj");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        int heard = 0;
+        try
+        {
+            // The log alone, as it keeps the requests while no one looks: a drawn row's cost is held by the test above.
+            Ui.Settle();
+            long few = Costs(5);
+            long many = Costs(500);
+            Assert.True(many < few + 1024,
+                $"A request heard with 500 routes allocated {many:N0} bytes on the UI thread, with 5 routes {few:N0}: its path is matched against each route by making it again");
+            Assert.Equal("/orders/{id}", window.RequestLog.Requests[^1].Route?.Template);
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        // The least a request heard allocated on the UI thread with this many routes, the one it reaches the last.
+        long Costs(int routes)
+        {
+            window.RequestLog.Clear();
+            List<WebRoute> declared = [];
+            for (int i = 0; i < routes - 1; i++)
+            {
+                string template = (i % 3) switch
+                {
+                    0 => $"/api/things{i}",
+                    1 => $"/api/things{i}/{{id}}/parts",
+                    _ => $"/files{i}/{{name}}.{{extension}}",
+                };
+                declared.Add(Route(template));
+            }
+            declared.Add(Route("/orders/{id}"));
+            window.Session.Routes.Took(new RoutesFound(declared, [project]), window.Session.Routes.ToRead());
+            for (int i = 0; i < 3; i++)
+            {
+                Hear(Request());
+            }
+            long least = long.MaxValue;
+            for (int round = 0; round < 5; round++)
+            {
+                WebEvent[] told = Request();
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                Hear(told);
+                least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
+            }
+            return least;
+        }
+
+        WebRoute Route(string template) => new(project, RouteKinds.Minimal, ["GET"], template, null, [], "Handle", Path.Combine(folder, "Program.cs"),
+            new Place(0, 0), new Place(0, 1), string.Empty);
+
+        // A request as the app tells of it, made before it is measured: its start and its end.
+        WebEvent[] Request()
+        {
+            string id = $"request-{heard}";
+            DateTime at = DateTime.UtcNow;
+            return [new RequestBegan(id, at, id, "GET", $"/orders/{heard++}", string.Empty), new RequestEnded(id, at, id, 200)];
+        }
+
+        void Hear(WebEvent[] told)
+        {
+            foreach (WebEvent one in told)
+            {
+                window.RequestLog.Hear(one, "Shop", null);
+            }
+            Ui.Settle();
+        }
+    }
+
+    /// <summary>A 2 KB SQL command of hundreds of words, its parameters' values logged, costs the window what one of the
+    /// same length with a few long words costs: its text is read for its columns as ranges of its characters, with no
+    /// string made for each word, and the log masked once.</summary>
+    [AvaloniaFact]
+    public void A_two_kilobyte_SQL_command_costs_the_window_no_string_for_each_of_its_words()
+    {
+        string folder = TestFolders.Create("requests-sql-");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        int heard = 0;
+        try
+        {
+            // The log alone, as it keeps the requests while no one looks: a row drawn shapes each word of its text.
+            Ui.Settle();
+            long words = Costs(round => string.Concat(Enumerable.Repeat($"c{round}, ", 300)));
+            long few = Costs(round => new string((char)('a' + round), 1200) + ", ");
+            Assert.True(words < few + 1024,
+                $"A 2 KB command of 300 words cost the UI thread {words:N0} bytes, one of its length in a few words {few:N0}: each word of its text is made a string");
+            LiveCommand command = Assert.Single(window.RequestLog.Requests[^1].Commands);
+            Assert.Equal("@p0='••••••', @p1='Ada' (Size = 3)", command.Parameters);
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        // The least a request of one such command (its log heard first) allocated on the UI thread, each text new to it.
+        long Costs(Func<int, string> selected)
+        {
+            for (int i = 0; i < 3; i++)
+            {
+                Hear(Request(Sql(selected(i))));
+            }
+            long least = long.MaxValue;
+            for (int round = 3; round < 8; round++)
+            {
+                WebEvent[] told = Request(Sql(selected(round)));
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                Hear(told);
+                least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
+            }
+            return least;
+        }
+
+        // A command's text of 2 KB: the columns selected, then a WHERE that compares a secret's column and a name's.
+        static string Sql(string selected)
+        {
+            string where = " FROM \"Customers\" AS \"c\" WHERE \"c\".\"Password\" = @p0 AND \"c\".\"Name\" = @p1";
+            string text = "SELECT " + selected + "1" + where;
+            return text + new string(' ', 2048 - text.Length);
+        }
+
+        // A request as the app tells of it, made before it is measured: its start, EF Core's log of its command, the command and its end.
+        WebEvent[] Request(string sql)
+        {
+            string id = $"request-{heard++}";
+            DateTime at = DateTime.UtcNow;
+            string logged = $"Executed DbCommand (1ms) [Parameters=[@p0='hunter22' (Size = 8), @p1='Ada' (Size = 3)], CommandType='Text', CommandTimeout='30']\n{sql}";
+            return [new RequestBegan(id, at, id, "GET", "/customers", string.Empty), new CommandLogged(id, at, logged),
+                new CommandRan(id, at, $"{id}-0", sql, 1.5, null, null), new RequestEnded(id, at, id, 200)];
+        }
+
+        void Hear(WebEvent[] told)
+        {
+            foreach (WebEvent one in told)
+            {
+                window.RequestLog.Hear(one, "Shop", null);
+            }
+            Ui.Settle();
         }
     }
 

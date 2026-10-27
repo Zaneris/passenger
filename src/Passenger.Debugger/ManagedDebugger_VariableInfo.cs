@@ -777,7 +777,7 @@ public partial class ManagedDebugger
             .ToArray();
         foreach ((uint[]? indices, ICorDebugValue? element) in elements)
         {
-            string name = $"[{string.Join(", ", indices)}]";
+            string name = indices.Length == 1 ? $"[{indices[0]}]" : $"[{string.Join(", ", indices)}]";
             await WithFailureHandling(result, name, async () =>
             {
                 (string? friendlyTypeName, string? value, ICorDebugValue? debuggerProxyInstance, bool resultIsError, string? displayName) = await GetDisplayedValueAsync(element, threadId, stackDepth, true);

@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -70,7 +71,20 @@ public sealed class LiveRequest(string trace, string method, string path, string
     public string? Project { get; internal set; }
 
     /// <summary>Whether a command of it ran again and again (an N+1).</summary>
-    public bool HasRepeats => Commands.Any(c => c.Repeated);
+    public bool HasRepeats
+    {
+        get
+        {
+            foreach (LiveCommand command in Commands)
+            {
+                if (command.Repeated)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
 }
 
 /// <summary>What a batch of events changed: the requests that came (oldest first), those already listed that changed (an end,
@@ -156,8 +170,12 @@ public sealed class RequestLog
     public void Reroute()
     {
         UiThread.Check();
-        foreach (LiveRequest request in requests.Where(r => r.Route is null))
+        foreach (LiveRequest request in requests)
         {
+            if (request.Route is not null)
+            {
+                continue;
+            }
             request.Route = routeOf(request.Method, request.Path, request.Project);
             if (request.Route is not null)
             {
@@ -261,21 +279,24 @@ public sealed class RequestLog
                     each.Runs = same.Count;
                 }
                 issuer.Commands.Add(command);
-                // EF Core logs a command before it tells of it: its log, heard first, gives it its parameters.
-                if (issuer.Logged.FirstOrDefault(m => Logs(m, ran.Text)) is { } logged)
+                // EF Core logs a command before it tells of it: its log, heard first and masked then, gives it its parameters.
+                for (int i = 0; i < issuer.Logged.Count; i++)
                 {
-                    issuer.Logged.Remove(logged);
-                    command.Parameters = CommandParameters.Of(logged);
+                    if (Logs(issuer.Logged[i], ran.Text))
+                    {
+                        command.Parameters = CommandParameters.OfMasked(issuer.Logged[i]);
+                        issuer.Logged.RemoveAt(i);
+                        break;
+                    }
                 }
                 changed.Add(issuer);
                 return;
-            case CommandRead read when byTrace.TryGetValue((from, read.Trace), out LiveRequest? reader)
-                && reader.Commands.LastOrDefault(c => c.Id == read.Id) is { } readCommand:
+            case CommandRead read when byTrace.TryGetValue((from, read.Trace), out LiveRequest? reader) && Last(reader, read.Id) is { } readCommand:
                 readCommand.Reads = read.Reads;
                 changed.Add(reader);
                 return;
             case CommandLogged log when byTrace.TryGetValue((from, log.Trace), out LiveRequest? logger):
-                if (logger.Commands.FirstOrDefault(c => c.Parameters is null && Logs(log.Message, c.Text)) is { } unnamed)
+                if (Unnamed(logger, log.Message) is { } unnamed)
                 {
                     unnamed.Parameters = CommandParameters.Of(log.Message);
                     changed.Add(logger);
@@ -287,6 +308,32 @@ public sealed class RequestLog
         }
     }
 
+    /// <summary>A request's last command of this id.</summary>
+    private static LiveCommand? Last(LiveRequest request, string id)
+    {
+        for (int i = request.Commands.Count - 1; i >= 0; i--)
+        {
+            if (request.Commands[i].Id == id)
+            {
+                return request.Commands[i];
+            }
+        }
+        return null;
+    }
+
+    /// <summary>A request's first command with no parameters yet that a log is of.</summary>
+    private static LiveCommand? Unnamed(LiveRequest request, string logged)
+    {
+        foreach (LiveCommand command in request.Commands)
+        {
+            if (command.Parameters is null && Logs(logged, command.Text))
+            {
+                return command;
+            }
+        }
+        return null;
+    }
+
     /// <summary>Whether EF Core's log of a command is of this text: it logs the text trimmed, and SaveChanges' commands end
     /// with a line break.</summary>
     private static bool Logs(string logged, string text) => logged.AsSpan().Contains(text.AsSpan().TrimEnd(), StringComparison.Ordinal);
@@ -295,14 +342,38 @@ public sealed class RequestLog
 /// <summary>A command's parameters as EF Core's log of it writes them (<c>[Parameters=[@__id_0='2' (DbType = Int32)], …]</c>),
 /// each value masked as ContainerSecrets masks a value of that name, or as a secret's when the column it fills or meets is
 /// named as one (<see cref="Columns"/>: EF's <c>@p0</c>, <c>@p1</c>… say nothing of their columns), so no secret the app
-/// logs is kept or shown in the clear.</summary>
+/// logs is kept or shown in the clear. A command's text is read for its columns once (an N+1 runs one text again and
+/// again), as ranges of its own characters.</summary>
 public static partial class CommandParameters
 {
+    /// <summary>The command texts whose columns are kept: past this many, they are read again.</summary>
+    private const int KeptTexts = 256;
+
+    private static readonly ConcurrentDictionary<string, IReadOnlyDictionary<string, string>> columnsOf = new(StringComparer.Ordinal);
+
     /// <summary>The parameters a log names, masked, as "@name='value'" apart by commas; empty for a command with none.</summary>
-    public static string Of(string logged)
+    public static string Of(string logged) => OfMasked(Masked(logged));
+
+    /// <summary>The parameters a log <see cref="Masked"/> before names, as <see cref="Of"/> gives them, masked no more.</summary>
+    public static string OfMasked(string masked)
     {
-        Match list = List().Match(Masked(logged));
-        return list.Success ? string.Join(", ", One().Matches(list.Groups["list"].Value).Select(p => p.Value.Trim())) : string.Empty;
+        Match list = List().Match(masked);
+        if (!list.Success)
+        {
+            return string.Empty;
+        }
+        Group named = list.Groups["list"];
+        ReadOnlySpan<char> parameters = masked.AsSpan(named.Index, named.Length);
+        StringBuilder joined = new();
+        foreach (ValueMatch one in One().EnumerateMatches(parameters))
+        {
+            if (joined.Length > 0)
+            {
+                joined.Append(", ");
+            }
+            joined.Append(parameters.Slice(one.Index, one.Length).Trim());
+        }
+        return joined.ToString();
     }
 
     /// <summary>A log's text with each parameter's value masked as <see cref="Of"/> shows it, the command's text read for
@@ -319,7 +390,7 @@ public static partial class CommandParameters
             {
                 return p.Value;
             }
-            columns ??= Columns(TextOf(logged));
+            columns ??= ColumnsOf(logged);
             string shown = columns.TryGetValue(name, out string? column) && ContainerSecrets.Secret(column) ? ContainerSecrets.Masked
                 : ContainerSecrets.Shown(name.TrimStart('@', ':', '$'), value);
             // A secret's size says something of it: its dots stand alone.
@@ -327,9 +398,27 @@ public static partial class CommandParameters
         });
     }
 
+    /// <summary>The columns of the command a log is of, read once for each text.</summary>
+    private static IReadOnlyDictionary<string, string> ColumnsOf(string logged)
+    {
+        ReadOnlySpan<char> sql = TextOf(logged);
+        ConcurrentDictionary<string, IReadOnlyDictionary<string, string>>.AlternateLookup<ReadOnlySpan<char>> read = columnsOf.GetAlternateLookup<ReadOnlySpan<char>>();
+        if (read.TryGetValue(sql, out IReadOnlyDictionary<string, string>? known))
+        {
+            return known;
+        }
+        if (columnsOf.Count >= KeptTexts)
+        {
+            columnsOf.Clear();
+        }
+        IReadOnlyDictionary<string, string> columns = Columns(sql);
+        read.TryAdd(sql, columns);
+        return columns;
+    }
+
     /// <summary>The command's text in EF Core's log of it: what follows the line that names its parameters (the whole log
     /// when it has none).</summary>
-    private static string TextOf(string logged)
+    private static ReadOnlySpan<char> TextOf(string logged)
     {
         Match list = List().Match(logged);
         if (!list.Success)
@@ -337,143 +426,155 @@ public static partial class CommandParameters
             return logged;
         }
         int line = logged.IndexOf('\n', list.Index + list.Length);
-        return line < 0 ? string.Empty : logged[(line + 1)..];
+        return line < 0 ? [] : logged.AsSpan(line + 1);
     }
 
     /// <summary>The column each parameter of a command's text fills or meets, by the parameter's name: an INSERT's column
     /// list against each row of its VALUES (SQL Server's MERGE of several rows against the columns its source's alias
     /// names), and a <c>column = @p</c> or <c>@p = column</c> (a SET's, a WHERE's; <c>&lt;&gt;</c>, <c>LIKE</c> and the
     /// rest of the comparisons too), the column the last name of a qualified one (<c>"c"."Password"</c>).</summary>
-    private static IReadOnlyDictionary<string, string> Columns(string sql)
+    private static Dictionary<string, string> Columns(ReadOnlySpan<char> sql)
     {
-        List<SqlToken> tokens = Tokens(sql);
         Dictionary<string, string> columns = new(StringComparer.OrdinalIgnoreCase);
-        List<string>? inserting = null;
-        for (int i = 0; i < tokens.Count; i++)
+        SqlToken[] rented = ArrayPool<SqlToken>.Shared.Rent(Math.Max(1, sql.Length));
+        try
         {
-            SqlToken token = tokens[i];
-            if (token.Kind == SqlKind.Parameter)
+            SqlTokens tokens = new(sql, rented.AsSpan(0, Tokenize(sql, rented)));
+            // The "(" of the INSERT's column list the next VALUES fills, or -1.
+            int inserting = -1;
+            for (int i = 0; i < tokens.Count; i++)
             {
-                if (i >= 2 && Compares(tokens[i - 1]) && tokens[i - 2].IsName)
+                if (tokens[i].Kind == SqlKind.Parameter)
                 {
-                    columns.TryAdd(token.Text, tokens[i - 2].Text);
-                }
-                else if (i + 2 < tokens.Count && Compares(tokens[i + 1]) && tokens[i + 2].IsName)
-                {
-                    int last = i + 2;
-                    while (last + 2 < tokens.Count && tokens[last + 1].Is(".") && tokens[last + 2].IsName)
+                    if (i >= 2 && Compares(tokens, i - 1) && tokens.IsName(i - 2))
                     {
-                        last += 2;
+                        Add(columns, tokens, i, i - 2);
                     }
-                    columns.TryAdd(token.Text, tokens[last].Text);
-                }
-            }
-            else if (token.Is(";"))
-            {
-                inserting = null;
-            }
-            else if (token.Is("INSERT"))
-            {
-                // INSERT [INTO] [table] (columns): MERGE's INSERT names no table.
-                int at = i + 1 < tokens.Count && tokens[i + 1].Is("INTO") ? i + 2 : i + 1;
-                while (at < tokens.Count && tokens[at].IsName)
-                {
-                    at += at + 1 < tokens.Count && tokens[at + 1].Is(".") ? 2 : 1;
-                    if (!tokens[at - 1].Is("."))
+                    else if (i + 2 < tokens.Count && Compares(tokens, i + 1) && tokens.IsName(i + 2))
                     {
-                        break;
-                    }
-                }
-                inserting = Names(tokens, at);
-            }
-            else if (token.Is("VALUES"))
-            {
-                List<List<string?>> rows = Rows(tokens, i + 1, out int after);
-                // MERGE … USING (VALUES (…), (…)) AS i (columns): the source's columns, else the INSERT's.
-                IReadOnlyList<string>? named = after + 3 < tokens.Count && tokens[after].Is(")") && tokens[after + 1].Is("AS") && tokens[after + 2].IsName
-                    ? Names(tokens, after + 3) : null;
-                if ((named ?? inserting) is { } names)
-                {
-                    foreach (List<string?> row in rows)
-                    {
-                        for (int k = 0; k < Math.Min(row.Count, names.Count); k++)
+                        int last = i + 2;
+                        while (last + 2 < tokens.Count && tokens.Is(last + 1, ".") && tokens.IsName(last + 2))
                         {
-                            if (row[k] is { } parameter)
-                            {
-                                columns.TryAdd(parameter, names[k]);
-                            }
+                            last += 2;
+                        }
+                        Add(columns, tokens, i, last);
+                    }
+                }
+                else if (tokens.Is(i, ";"))
+                {
+                    inserting = -1;
+                }
+                else if (tokens.Is(i, "INSERT"))
+                {
+                    // INSERT [INTO] [table] (columns): MERGE's INSERT names no table.
+                    int at = i + 1 < tokens.Count && tokens.Is(i + 1, "INTO") ? i + 2 : i + 1;
+                    while (at < tokens.Count && tokens.IsName(at))
+                    {
+                        at += at + 1 < tokens.Count && tokens.Is(at + 1, ".") ? 2 : 1;
+                        if (!tokens.Is(at - 1, "."))
+                        {
+                            break;
                         }
                     }
+                    inserting = Names(tokens, at) >= 0 ? at : -1;
                 }
-                inserting = null;
-                i = after - 1;
+                else if (tokens.Is(i, "VALUES"))
+                {
+                    int after = Rows(tokens, i + 1, null, -1);
+                    // MERGE … USING (VALUES (…), (…)) AS i (columns): the source's columns, else the INSERT's.
+                    int named = after + 3 < tokens.Count && tokens.Is(after, ")") && tokens.Is(after + 1, "AS") && tokens.IsName(after + 2)
+                        && Names(tokens, after + 3) >= 0 ? after + 3 : inserting;
+                    if (named >= 0)
+                    {
+                        Rows(tokens, i + 1, columns, named);
+                    }
+                    inserting = -1;
+                    i = after - 1;
+                }
             }
+        }
+        finally
+        {
+            ArrayPool<SqlToken>.Shared.Return(rented);
         }
         return columns;
     }
 
-    /// <summary>Whether a token compares what stands on either side of it.</summary>
-    private static bool Compares(SqlToken token) => token.Is("=") || token.Is("<>") || token.Is("!=") || token.Is("<") || token.Is(">")
-        || token.Is("<=") || token.Is(">=") || token.Is("LIKE");
-
-    /// <summary>A parenthesised list of names starting at a token, as an INSERT's columns are written; null for anything else.</summary>
-    private static List<string>? Names(List<SqlToken> tokens, int open)
+    /// <summary>A parameter's column, unless it has one already: the two made strings only then.</summary>
+    private static void Add(Dictionary<string, string> columns, SqlTokens tokens, int parameter, int column)
     {
-        if (open >= tokens.Count || !tokens[open].Is("("))
+        if (!columns.GetAlternateLookup<ReadOnlySpan<char>>().ContainsKey(tokens.Span(parameter)))
         {
-            return null;
+            columns.Add(tokens.Text(parameter), tokens.Text(column));
         }
-        List<string> names = [];
-        for (int at = open + 1; at < tokens.Count; at += 2)
-        {
-            if (!tokens[at].IsName || at + 1 >= tokens.Count)
-            {
-                return null;
-            }
-            names.Add(tokens[at].Text);
-            if (tokens[at + 1].Is(")"))
-            {
-                return names;
-            }
-            if (!tokens[at + 1].Is(","))
-            {
-                return null;
-            }
-        }
-        return null;
     }
 
-    /// <summary>The rows of a VALUES from a token on, each item the parameter it is alone (null for anything else), and the
-    /// token after the last row.</summary>
-    private static List<List<string?>> Rows(List<SqlToken> tokens, int from, out int after)
+    /// <summary>Whether a token compares what stands on either side of it.</summary>
+    private static bool Compares(SqlTokens tokens, int at) => tokens.Is(at, "=") || tokens.Is(at, "<>") || tokens.Is(at, "!=") || tokens.Is(at, "<")
+        || tokens.Is(at, ">") || tokens.Is(at, "<=") || tokens.Is(at, ">=") || tokens.Is(at, "LIKE");
+
+    /// <summary>How many names a parenthesised list starting at a token holds, as an INSERT's columns are written (the
+    /// k-th at <c>open + 1 + 2k</c>); -1 for anything else.</summary>
+    private static int Names(SqlTokens tokens, int open)
     {
-        List<List<string?>> rows = [];
-        int at = from;
-        while (at < tokens.Count && tokens[at].Is("("))
+        if (open >= tokens.Count || !tokens.Is(open, "("))
         {
-            List<string?> row = [];
-            List<SqlToken> item = [];
+            return -1;
+        }
+        for (int at = open + 1; at < tokens.Count; at += 2)
+        {
+            if (!tokens.IsName(at) || at + 1 >= tokens.Count)
+            {
+                return -1;
+            }
+            if (tokens.Is(at + 1, ")"))
+            {
+                return (at - open + 1) / 2;
+            }
+            if (!tokens.Is(at + 1, ","))
+            {
+                return -1;
+            }
+        }
+        return -1;
+    }
+
+    /// <summary>Walks the rows of a VALUES from a token on, giving each item that is a parameter alone the column the
+    /// names list at <paramref name="names"/> has in its place (when <paramref name="columns"/> are given), and gives the
+    /// token after the last row.</summary>
+    private static int Rows(SqlTokens tokens, int from, Dictionary<string, string>? columns, int names)
+    {
+        int count = columns is null ? 0 : Names(tokens, names);
+        int at = from;
+        while (at < tokens.Count && tokens.Is(at, "("))
+        {
+            int item = 0;
             int depth = 0;
+            int items = 0;
+            int alone = -1;
             at++;
             for (; at < tokens.Count; at++)
             {
-                SqlToken token = tokens[at];
-                if (depth == 0 && (token.Is(",") || token.Is(")")))
+                if (depth == 0 && (tokens.Is(at, ",") || tokens.Is(at, ")")))
                 {
-                    row.Add(item is [{ Kind: SqlKind.Parameter } alone] ? alone.Text : null);
-                    item.Clear();
-                    if (token.Is(")"))
+                    if (columns is not null && items == 1 && tokens[alone].Kind == SqlKind.Parameter && item < count)
+                    {
+                        Add(columns, tokens, alone, names + 1 + (2 * item));
+                    }
+                    item++;
+                    items = 0;
+                    if (tokens.Is(at, ")"))
                     {
                         break;
                     }
                     continue;
                 }
-                depth += token.Is("(") ? 1 : token.Is(")") ? -1 : 0;
-                item.Add(token);
+                depth += tokens.Is(at, "(") ? 1 : tokens.Is(at, ")") ? -1 : 0;
+                alone = at;
+                items++;
             }
-            rows.Add(row);
             at++;
-            if (at < tokens.Count && tokens[at].Is(",") && at + 1 < tokens.Count && tokens[at + 1].Is("("))
+            if (at < tokens.Count && tokens.Is(at, ",") && at + 1 < tokens.Count && tokens.Is(at + 1, "("))
             {
                 at++;
             }
@@ -482,15 +583,15 @@ public static partial class CommandParameters
                 break;
             }
         }
-        after = at;
-        return rows;
+        return at;
     }
 
     /// <summary>A command's text as words, quoted names, parameters, literals and symbols, its comments passed over: enough
-    /// of SQL's for <see cref="Columns"/>, in every provider's quoting (<c>"Password"</c>, <c>[Password]</c>, <c>`Password`</c>).</summary>
-    private static List<SqlToken> Tokens(string sql)
+    /// of SQL's for <see cref="Columns"/>, in every provider's quoting (<c>"Password"</c>, <c>[Password]</c>,
+    /// <c>`Password`</c>). Each token is a range of the text, written into <paramref name="into"/>; gives how many.</summary>
+    private static int Tokenize(ReadOnlySpan<char> sql, SqlToken[] into)
     {
-        List<SqlToken> tokens = [];
+        int count = 0;
         int i = 0;
         while (i < sql.Length)
         {
@@ -502,34 +603,36 @@ public static partial class CommandParameters
             }
             else if (c == '-' && next == '-')
             {
-                int end = sql.IndexOf('\n', i);
-                i = end < 0 ? sql.Length : end + 1;
+                int end = sql[i..].IndexOf('\n');
+                i = end < 0 ? sql.Length : i + end + 1;
             }
             else if (c == '/' && next == '*')
             {
-                int end = sql.IndexOf("*/", i + 2, StringComparison.Ordinal);
-                i = end < 0 ? sql.Length : end + 2;
+                int end = sql[(i + 2)..].IndexOf("*/", StringComparison.Ordinal);
+                i = end < 0 ? sql.Length : i + 2 + end + 2;
             }
             else if (c is '\'' or '"' or '`' or '[')
             {
                 char close = c == '[' ? ']' : c;
-                StringBuilder text = new();
+                bool doubled = false;
                 int at = i + 1;
-                for (; at < sql.Length; at++)
+                while (sql[at..].IndexOf(close) is int found and >= 0)
                 {
-                    if (sql[at] == close)
+                    at += found;
+                    if (at + 1 < sql.Length && sql[at + 1] == close)
                     {
-                        if (at + 1 < sql.Length && sql[at + 1] == close)
-                        {
-                            text.Append(close);
-                            at++;
-                            continue;
-                        }
-                        break;
+                        doubled = true;
+                        at += 2;
+                        continue;
                     }
-                    text.Append(sql[at]);
+                    break;
                 }
-                tokens.Add(new SqlToken(c == '\'' ? SqlKind.Literal : SqlKind.Quoted, text.ToString()));
+                at = Math.Min(at, sql.Length);
+                if (at < sql.Length && sql[at] != close)
+                {
+                    at = sql.Length;
+                }
+                into[count++] = new SqlToken(c == '\'' ? SqlKind.Literal : SqlKind.Quoted, i + 1, at - i - 1, doubled ? close : '\0');
                 i = at + 1;
             }
             else if (c is '@' or ':' or '$' && (char.IsLetterOrDigit(next) || next == '_') && !(c == ':' && i > 0 && sql[i - 1] == ':'))
@@ -539,7 +642,7 @@ public static partial class CommandParameters
                 {
                     at++;
                 }
-                tokens.Add(new SqlToken(SqlKind.Parameter, sql[i..at]));
+                into[count++] = new SqlToken(SqlKind.Parameter, i, at - i);
                 i = at;
             }
             else if (char.IsLetterOrDigit(c) || c == '_')
@@ -549,17 +652,17 @@ public static partial class CommandParameters
                 {
                     at++;
                 }
-                tokens.Add(new SqlToken(char.IsDigit(c) ? SqlKind.Number : SqlKind.Word, sql[i..at]));
+                into[count++] = new SqlToken(char.IsDigit(c) ? SqlKind.Number : SqlKind.Word, i, at - i);
                 i = at;
             }
             else
             {
-                string symbol = (c, next) is ('<', '>') or ('!', '=') or ('<', '=') or ('>', '=') or (':', ':') ? sql.Substring(i, 2) : c.ToString();
-                tokens.Add(new SqlToken(SqlKind.Symbol, symbol));
-                i += symbol.Length;
+                int length = (c, next) is ('<', '>') or ('!', '=') or ('<', '=') or ('>', '=') or (':', ':') ? 2 : 1;
+                into[count++] = new SqlToken(SqlKind.Symbol, i, length);
+                i += length;
             }
         }
-        return tokens;
+        return count;
     }
 
     private enum SqlKind
@@ -572,14 +675,33 @@ public static partial class CommandParameters
         Symbol,
     }
 
-    /// <summary>A word of a command's text: a keyword or bare name, a quoted name, a parameter, a literal, a number or a symbol.</summary>
-    private readonly record struct SqlToken(SqlKind Kind, string Text)
+    /// <summary>A word of a command's text, as the range of the text it takes: a keyword or bare name, a quoted name, a
+    /// parameter, a literal, a number or a symbol; a quoted one's range is inside its quotes, <see cref="Doubled"/> the
+    /// quote it writes twice for one, if it does.</summary>
+    private readonly record struct SqlToken(SqlKind Kind, int Start, int Length, char Doubled = '\0');
+
+    /// <summary>A command's tokens over its text, compared where they lie: a string is made only of a name kept.</summary>
+    private readonly ref struct SqlTokens(ReadOnlySpan<char> sql, ReadOnlySpan<SqlToken> tokens)
     {
+        private readonly ReadOnlySpan<char> sql = sql;
+        private readonly ReadOnlySpan<SqlToken> tokens = tokens;
+
+        public int Count => tokens.Length;
+
+        public SqlToken this[int at] => tokens[at];
+
         /// <summary>A name a column can have: a bare word or a quoted one.</summary>
-        public bool IsName => Kind is SqlKind.Word or SqlKind.Quoted;
+        public bool IsName(int at) => tokens[at].Kind is SqlKind.Word or SqlKind.Quoted;
 
         /// <summary>Whether it is this keyword (a bare word, in any case) or symbol.</summary>
-        public bool Is(string word) => Kind is SqlKind.Word or SqlKind.Symbol && Text.Equals(word, StringComparison.OrdinalIgnoreCase);
+        public bool Is(int at, string word) => tokens[at].Kind is SqlKind.Word or SqlKind.Symbol && Span(at).Equals(word, StringComparison.OrdinalIgnoreCase);
+
+        public ReadOnlySpan<char> Span(int at) => sql.Slice(tokens[at].Start, tokens[at].Length);
+
+        /// <summary>Its text, a quoted one's doubled quotes made one.</summary>
+        public string Text(int at) => tokens[at].Doubled is char quote and not '\0'
+            ? new string(Span(at)).Replace(new string(quote, 2), quote.ToString(), StringComparison.Ordinal)
+            : new string(Span(at));
     }
 
     [GeneratedRegex(@"\[Parameters=\[(?<list>.*?)\], CommandType=", RegexOptions.Singleline)]

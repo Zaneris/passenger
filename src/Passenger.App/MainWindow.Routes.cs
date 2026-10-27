@@ -77,7 +77,7 @@ public partial class MainWindow
     }
 
     /// <summary>Files whose text can declare a route.</summary>
-    private static bool IsRouteSource(string path) => Path.GetExtension(path).ToLowerInvariant() is ".cs" or ".razor" or ".cshtml" or ".proto";
+    private static bool IsRouteSource(string path) => PathNames.HasExtension(path, [".cs", ".razor", ".cshtml", ".proto"]);
 
     /// <summary>The routes are read once typing pauses when a read is due and someone looks: the Endpoints window shown, or a
     /// file open that could declare one (<paramref name="opening"/> one now, which the open files may not list yet).</summary>

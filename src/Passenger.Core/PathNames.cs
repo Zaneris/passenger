@@ -102,6 +102,20 @@ public static partial class PathNames
 
     private static string Joined(string folder, ReadOnlySpan<char> name) => Path.Join(folder, name);
 
+    /// <summary>Whether a path's extension is one of these, in any letter case, read where it lies.</summary>
+    public static bool HasExtension(string path, ReadOnlySpan<string> extensions)
+    {
+        ReadOnlySpan<char> extension = Path.GetExtension(path.AsSpan());
+        foreach (string one in extensions)
+        {
+            if (extension.Equals(one, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /// <summary>Whether a file is the system's own record of its folder (Finder's .DS_Store, Explorer's Thumbs.db), which no
     /// walk or listing of a folder shows and no project means to hold.</summary>
     public static bool IsSystemFile(string name) => IsSystemFile(name.AsSpan());
