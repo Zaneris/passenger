@@ -66,6 +66,9 @@ public sealed class DebugSession
     private readonly Queue<string> errors = new();
     private readonly TaskCompletionSource errorsRead = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+    /// <summary>Done once the adapter's process has ended, however soon after its start that was.</summary>
+    private readonly TaskCompletionSource exited = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     /// <summary>Run to Cursor's place, at its built line, until the next stop.</summary>
     private (string Path, int Line)? runToCursor;
 
@@ -166,9 +169,13 @@ public sealed class DebugSession
         };
         adapter.BeginErrorReadLine();
         adapter.EnableRaisingEvents = true;
-        // After the last of its error stream, so a crash's own words reach the console and the log before its end.
-        adapter.Exited += (_, _) => IdeErrors.Observe(Task.WhenAny(errorsRead.Task, Task.Delay(TimeSpan.FromSeconds(2)))
-            .ContinueWith(_ => UiThread.Post(() => OnAdapterExited(log)), TaskScheduler.Default));
+        adapter.Exited += (_, _) => exited.TrySetResult();
+        // Exited is raised once: an adapter that died as it started may have had it before this thread came to listen.
+        if (adapter.HasExited)
+        {
+            exited.TrySetResult();
+        }
+        IdeErrors.Observe(HearEndAsync(log));
         connection = new DapConnection(adapter.StandardOutput.BaseStream, adapter.StandardInput.BaseStream, log) { Name = name };
         connection.EventReceived += (name, body) =>
         {
@@ -562,6 +569,15 @@ public sealed class DebugSession
         {
             // Never answered when the adapter was killed, or was gone already.
         }
+    }
+
+    /// <summary>Hears the adapter's end after the last of its error stream (or 2 s of waiting for it), so a crash's own
+    /// words reach the console and the log before its end.</summary>
+    private async Task HearEndAsync(Action<string> log)
+    {
+        await exited.Task.ConfigureAwait(false);
+        await Task.WhenAny(errorsRead.Task, Task.Delay(TimeSpan.FromSeconds(2))).ConfigureAwait(false);
+        UiThread.Post(() => OnAdapterExited(log));
     }
 
     /// <summary>The adapter's process ended: with exit code 0 as asked, or killed when it would not go; any other end is

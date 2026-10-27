@@ -1332,9 +1332,13 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         try
         {
             MainWindow window = Open();
+            // This session's debugger, by its process: another test's may have ended in the run's log before.
+            int adapter = 0;
+            window.Debugger.StateChanged += (_, _) => adapter = window.Debugger.Session?.AdapterProcessId ?? adapter;
             Ui.Run(window, AppActions.Debug);
-            Ui.WaitFor(() => Ui.IdeLog().Contains("Passenger's debugger (process", StringComparison.Ordinal),
-                "the debugger's end in the IDE's log");
+            Assert.True(adapter != 0, $"Debug started no debugger: {window.Status}");
+            string ended = $"Passenger's debugger (process {adapter}) stopped";
+            Ui.WaitFor(() => Ui.IdeLog().Contains(ended, StringComparison.Ordinal), "the debugger's end in the IDE's log");
 
             Assert.True(window.IsVisible, "The IDE went down with its debugger");
             Assert.False(window.Debugger.IsDebugging);
@@ -1344,6 +1348,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             Assert.Contains("Unhandled exception. System.UnauthorizedAccessException", console, StringComparison.Ordinal);
             Assert.Contains("at Program.<Main>", console, StringComparison.Ordinal);
             string log = Ui.IdeLog();
+            log = log[log.IndexOf(ended, StringComparison.Ordinal)..];
             Assert.Contains("UnauthorizedAccessException", log, StringComparison.Ordinal);
             Assert.Contains("at Program.<Main>", log, StringComparison.Ordinal);
             string debuggerLog = Ui.Shared(Path.Combine(IdeErrors.LogFolder, "dap.log"));
