@@ -184,7 +184,8 @@ Projects in `src/`; `find_symbol` finds the rest:
   DAP, in a process of its own under `debugger/`. `Passenger.ContainerTools` (`passenger-tools`) runs inside a Linux
   container, self-contained, carried only in the release's archives.
 - `Passenger.Profiler`: EventPipe sampling and ClrMD heap snapshots (its Azure packages stay carried; its DAC stays loaded
-  once used: unloading it crashed on Linux); recording inside a container trusts nothing in a frame.
+  once used: unloading it crashed on Linux); recording inside a container trusts nothing in a frame. A heap dump is Passenger's
+  own (`DumpTool`): the runtime's createdump writes into the program's stdout, and Windows' dumps only its parent.
 - `Passenger.Inspector` (+`.Wpf`): the Live Visual Tree's helper, loaded into the app by a startup hook, answering over a
   Unix socket (`Protocol.cs` compiled into both ends). `Passenger.WpfPreview` (Windows only), `Passenger.TestFrames`
   (pictures of a failed headless test), `Passenger.Terminal` (the VT emulator, Porta.Pty).
