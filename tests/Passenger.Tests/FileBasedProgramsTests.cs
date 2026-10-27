@@ -314,6 +314,43 @@ public sealed class FileBasedProgramsTests : IDisposable
     private static TestNode? Method(MainWindow window, string name) =>
         window.Tests.Tree.Roots.SelectMany(r => r.Methods).FirstOrDefault(m => m.Name == name);
 
+    /// <summary>Files a program includes from another folder and by a wildcard, each with directives of its own, are the
+    /// program's code rather than programs of their own: the folder's one project is the program, compiling them, and its
+    /// run prints what each gives.</summary>
+    [AvaloniaFact]
+    public void Files_a_program_includes_from_another_folder_or_by_a_wildcard_are_never_programs_themselves()
+    {
+        TestFolders.Write(folder, "app.cs", """
+            #:package Passenger.ProgramTest@1.0.0
+            #:property PublishAot=false
+            #:include helper.cs
+            #:include shared/util.cs
+            #:include lib/*.cs
+            Console.WriteLine(Helper.Greet(Util.Name + " " + Extra.Name));
+
+            """);
+        TestFolders.Write(folder, "shared/util.cs", "#:property Nullable=enable\nstatic class Util\n{\n    public const string Name = \"util\";\n}\n");
+        TestFolders.Write(folder, "lib/extra.cs", "#:property ImplicitUsings=enable\nstatic class Extra\n{\n    public const string Name = \"extra\";\n}\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => window.Projects is [{ IsEvaluated: true }], () => $"app.cs to be the folder's one program, evaluated; the projects are {string.Join(", ", window.Projects.Select(p => p.Path))}",
+                TimeSpan.FromMinutes(2));
+            ProjectModel program = Assert.Single(window.Projects);
+            Assert.True(PathNames.Same(program.Path, App), $"The folder's one project is {program.Path}, not the program app.cs");
+            Assert.True(program.Holds(Path.Combine(folder, "shared", "util.cs")) && program.Holds(Path.Combine(folder, "lib", "extra.cs")),
+                $"app.cs does not compile the files it includes: {string.Join(", ", program.Evaluated!.Items.Where(i => i.Type == "Compile").Select(i => i.Path))}");
+            Assert.True(window.SelectConfiguration("app: greet"));
+            Ui.Launched(window, window.RunAsync(), "app.cs to build and run", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => Output(window).Contains("Process finished", StringComparison.Ordinal), "the program to finish", TimeSpan.FromMinutes(2));
+            Assert.Contains("Hello, util extra\n", Output(window), StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A program that references another (<c>#:ref lib.cs</c>, a library of its own) has that program for a project
     /// too, which the language server answers across into, and Run builds and runs the two.</summary>
     [AvaloniaFact]

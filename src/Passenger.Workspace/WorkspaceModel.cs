@@ -160,6 +160,9 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
                 break;
             }
         }
+        // A file a program includes, from any folder or by a wildcard, is that program's code, whatever its own head says.
+        List<(string Program, List<string> Patterns)> including = [.. found.Where(ProgramFiles.IsProgram).Select(p => (p, Included(p).ToList()))];
+        found.RemoveAll(q => ProgramFiles.IsProgram(q) && including.Any(i => !PathNames.Same(i.Program, q) && i.Patterns.Any(pattern => Globbed(pattern, q))));
         // A program another references (#:ref lib.cs) is one, its project the SDK's, whatever its head says.
         for (int i = 0; i < found.Count; i++)
         {
@@ -187,20 +190,46 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
         }
     }
 
+    /// <summary>The C# files a program's <c>#:include</c> directives name, each a full path that may hold MSBuild's wildcards
+    /// (<c>lib/*.cs</c>, <c>**</c>) as the SDK hands it to MSBuild; none that names a property.</summary>
+    private static IEnumerable<string> Included(string program)
+    {
+        foreach (string directive in ProgramFiles.Head(program))
+        {
+            if (ProgramFiles.Parse(directive) is ("include", { Length: > 0 } value) && !value.Contains('$', StringComparison.Ordinal)
+                && (ProgramFiles.IsProgram(value) || value.EndsWith('*')))
+            {
+                yield return Path.GetFullPath(value, Path.GetDirectoryName(program)!);
+            }
+        }
+    }
+
+    /// <summary>Whether a file matches an include as MSBuild's globs match: <c>*</c> and <c>?</c> within a name, <c>**</c>
+    /// across folders, letter case as the file system tells it.</summary>
+    private static bool Globbed(string pattern, string path) =>
+        Matches(pattern.Split(Separators), 0, path.Split(Separators), 0, PathNames.Comparison == StringComparison.OrdinalIgnoreCase);
+
+    private static readonly char[] Separators = ['/', '\\'];
+
+    private static bool Matches(string[] parts, int part, string[] names, int name, bool ignoreCase) =>
+        part == parts.Length ? name == names.Length
+        : parts[part] == "**" ? Matches(parts, part + 1, names, name, ignoreCase) || (name < names.Length && Matches(parts, part, names, name + 1, ignoreCase))
+        : name < names.Length && NameMatches(parts[part], names[name], ignoreCase) && Matches(parts, part + 1, names, name + 1, ignoreCase);
+
+    /// <summary>Whether a name matches one part of a glob; the empty part before a rooted path's first separator, which the
+    /// system's matcher matches with nothing, matches the empty name.</summary>
+    private static bool NameMatches(string part, string name, bool ignoreCase) => part.AsSpan().IndexOfAny('*', '?') < 0
+        ? name.Equals(part, ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)
+        : System.IO.Enumeration.FileSystemName.MatchesSimpleExpression(part, name, ignoreCase);
+
     /// <summary>Whether a C# file's head makes it a file-based program, as <c>dotnet run</c> runs it: a <c>#!</c> line or a
     /// <c>#:</c> directive, unless it is a single-file Aspire AppHost, which Aspire runs. A folder's walk takes one only
     /// outside every project's folder, whose files are the project's.</summary>
     public static bool IsProgram(string path, IReadOnlyList<string> head) =>
         ProgramFiles.IsProgram(path) && head.Count > 0 && !head.Any(IsAspireSdk);
 
-    /// <summary>The programs among one folder's files, those another of them includes (<c>#:include helper.cs</c>, which is
-    /// the including program's code) left out.</summary>
-    private static IEnumerable<string> ProgramsAmong(IReadOnlyList<string> files)
-    {
-        List<string> programs = [.. files.Where(f => IsProgram(f, ProgramFiles.Head(f)))];
-        HashSet<string> included = new(programs.SelectMany(p => Named(p, "include")), PathNames.Comparer);
-        return programs.Where(p => !included.Contains(p));
-    }
+    /// <summary>The C# files among one folder's whose heads make them programs.</summary>
+    private static IEnumerable<string> ProgramsAmong(IReadOnlyList<string> files) => files.Where(f => IsProgram(f, ProgramFiles.Head(f)));
 
     private static bool IsAspireSdk(string directive) =>
         ProgramFiles.Parse(directive) is ("sdk", { } sdk) && sdk.Split('@')[0].Trim().Equals("Aspire.AppHost.Sdk", StringComparison.OrdinalIgnoreCase);
