@@ -82,7 +82,10 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
         Assert.True(after == before, $"The paused program's other thread counted on from {before} to {after} while its properties were listed");
 
         EvaluateResponse waited = await host.EvaluateAsync(frame, "Counter.Next");
-        Assert.Contains("another thread", waited.Result, StringComparison.Ordinal);
+        string log = host.EngineLog();
+        Assert.True(waited.Result.Contains("another thread", StringComparison.Ordinal),
+            $"An evaluation spinning until the paused thread counts was answered \"{waited.Result}\", where it was to be stopped saying it may wait on "
+            + $"another thread; the engine's log from it:\n{log[Math.Max(0, log.LastIndexOf("Evaluate: Counter.Next", StringComparison.Ordinal))..]}");
         EvaluateResponse sum = await host.EvaluateAsync(frame, "1 + 1");
         Assert.Equal("2", sum.Result);
     }

@@ -60,10 +60,11 @@ public static class AdapterProgram
             }
         }
 
-        // How long an evaluation may run before it is stopped; a malformed value is fatal, as a flag's is.
+        // How long an evaluation may run before it is stopped, and an abort's waits; a malformed value is fatal, as a flag's is.
         try
         {
             Passenger.Debugger.Extensions.EvaluationTimeout = AdapterEnvironment.EvaluationTimeout;
+            _ = Passenger.Core.Waits.Scale;
         }
         catch (FormatException error)
         {

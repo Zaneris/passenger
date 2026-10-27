@@ -219,8 +219,9 @@ public static class Extensions
     public static TimeSpan EvaluationTimeout { get; set; } = Dap.AdapterEnvironment.DefaultEvaluationTimeout;
 
     /// <summary>How long an evaluation past its time is looked at for a moment it runs managed code, and how long an abort
-    /// asked then may take, before the evaluation is left to run on to its own end: 2 s of the 5 s.</summary>
-    internal static TimeSpan AbortWait => EvaluationTimeout * 0.4;
+    /// asked then may take, before the evaluation is left to run on to its own end: 2 s of the 5 s, longer on a slower
+    /// machine by <see cref="Core.Waits.Scale"/>, as both wait on the program.</summary>
+    internal static TimeSpan AbortWait => Core.Waits.Of(EvaluationTimeout * 0.4);
 
     /// <summary>How often an evaluation past its time is looked at, the program held a moment each time.</summary>
     internal static readonly TimeSpan LookEvery = TimeSpan.FromMilliseconds(25);
