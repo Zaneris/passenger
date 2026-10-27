@@ -616,6 +616,34 @@ public sealed class FolderWatchTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Names with a '~' that is no 8.3 alias's come and go without Go to File's index walking the folder again: another
+    /// program's save, whose old file is set aside under the name Windows' ReplaceFile gives it, and an owner file beside
+    /// a workbook. The index then lists what a walk lists.</summary>
+    [AvaloniaFact]
+    public void A_tilde_in_the_names_another_program_saves_through_walks_nothing_again_for_go_to_file()
+    {
+        Write("App/App.cs", "class App { }\n");
+        Write("App/Book.xlsx", "a workbook\n");
+        MainWindow window = Open(languageServer: false);
+        string app = Path.Combine(folder, "App", "App.cs");
+        string written = Path.Combine(folder, "App", "App.cs.new");
+        string setAside = app + "~RF71cb1793.TMP";
+        FilesFollowed.Check(window, "A save that set App.cs aside as ReplaceFile does", [app, written, setAside], () =>
+        {
+            Write("App/App.cs.new", "class App { int saved; }\n");
+            File.Move(app, setAside);
+            File.Move(written, app);
+            File.Delete(setAside);
+        });
+        string owner = Path.Combine(folder, "App", "~$Book.xlsx");
+        FilesFollowed.Check(window, "An owner file made beside Book.xlsx", [owner], () => Write("App/~$Book.xlsx", "its owner\n"));
+        FilesFollowed.Check(window, "The owner file deleted", [owner], () => File.Delete(owner));
+        string[] walked = Walked(folder);
+        Ui.WaitFor(() => walked.SequenceEqual(window.FileIndex.Files),
+            () => $"Go to File to list [{string.Join(", ", walked)}], not [{string.Join(", ", window.FileIndex.Files)}]");
+        window.Close();
+    }
+
     /// <summary>The files a window opened on a folder afresh lists for Go to File, in their order.</summary>
     private static string[] Walked(string root)
     {

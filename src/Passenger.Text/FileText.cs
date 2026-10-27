@@ -157,7 +157,8 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
     /// <summary>How large a file's content Local History keeps, and so reads before a save writes over it.</summary>
     public const int KeptLimit = 20 * 1024 * 1024;
 
-    /// <summary>The temporary file a save writes first, which nothing but the save should see.</summary>
+    /// <summary>The temporary file a save writes first, and the old file a replace sets aside, which nothing but the save
+    /// should see.</summary>
     public const string SaveSuffix = ".passenger-save";
 
     /// <summary>Whether a path is a save's temporary file, there beside its file for the moment the save writes: what
@@ -299,22 +300,46 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
 
     /// <summary>Puts the written file in the target's place. On Windows that is ReplaceFile's, which keeps what the target
     /// was (its attributes, Hidden and System among them, its explicit ACL, its alternate data streams, Zone.Identifier's
-    /// too, its creation date), where a move gives it the new file's attributes and the folder's inherited ACL.</summary>
+    /// too, its creation date), where a move gives it the new file's attributes and the folder's inherited ACL. The old file
+    /// it sets aside meanwhile is named as a save's own (<see cref="IsSaving(string)"/>), never as a file come and gone,
+    /// and deleted once the new one has its place.</summary>
     private static void Over(string temporary, string target)
     {
-        if (OperatingSystem.IsWindows() && File.Exists(target))
+        if (!OperatingSystem.IsWindows() || !File.Exists(target))
         {
-            try
+            File.Move(temporary, target, overwrite: true);
+            return;
+        }
+        string setAside = Path.Join(Path.GetDirectoryName(target), Guid.NewGuid().ToString("N") + SaveSuffix);
+        try
+        {
+            File.Replace(temporary, target, setAside, ignoreMetadataErrors: true);
+        }
+        catch (Exception refused) when (refused is IOException or UnauthorizedAccessException && !File.Exists(target) && File.Exists(temporary))
+        {
+            // ERROR_UNABLE_TO_MOVE_REPLACEMENT_2: the old file is set aside but the new one could not take its name; the move gives it.
+            File.Move(temporary, target, overwrite: true);
+        }
+        finally
+        {
+            // Kept while it is the only copy left.
+            if (File.Exists(target))
             {
-                File.Replace(temporary, target, destinationBackupFileName: null, ignoreMetadataErrors: true);
-                return;
-            }
-            catch (Exception refused) when (refused is IOException or UnauthorizedAccessException && !File.Exists(target) && File.Exists(temporary))
-            {
-                // ERROR_UNABLE_TO_MOVE_REPLACEMENT: the old file went but the new one could not take its name; the move gives it.
+                Forget(setAside);
             }
         }
-        File.Move(temporary, target, overwrite: true);
+    }
+
+    /// <summary>Deletes the file a replace set aside; one held a moment (Windows) is left beside the file.</summary>
+    private static void Forget(string setAside)
+    {
+        try
+        {
+            File.Delete(setAside);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+        }
     }
 
     /// <summary>A write made again while Windows refuses it because another program has the file open sharing no writes,

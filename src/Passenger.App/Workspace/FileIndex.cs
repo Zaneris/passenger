@@ -448,7 +448,7 @@ public sealed class FileIndex
             {
                 ReadOnlySpan<char> relative = PathNames.Below(path, top);
                 // A short name on Windows may stand for a file listed by its long one.
-                if (relative.IsEmpty && PathNames.Same(path, top) || OperatingSystem.IsWindows() && relative.Contains('~'))
+                if (relative.IsEmpty && PathNames.Same(path, top) || OperatingSystem.IsWindows() && MayBeShort(relative))
                 {
                     return Again;
                 }
@@ -480,6 +480,26 @@ public sealed class FileIndex
                 letters.Add(PathLetters.Of(file));
             }
             return new(gone, came, letters, Whole: false);
+        }
+
+        /// <summary>Whether a name along a path may be an 8.3 alias the system made, which stands for a long name: at most
+        /// eight letters then three after a dot, its first part ending in '~' and digits (PROGRA~1, NOTESF~2.TXT). A '~'
+        /// anywhere else is the name's own (A.cs~RF71cb1793.TMP, the name a replace sets a file aside under; ~$Book.xlsx).</summary>
+        private static bool MayBeShort(ReadOnlySpan<char> relative)
+        {
+            foreach (Range at in relative.SplitAny(PathNames.Separators))
+            {
+                ReadOnlySpan<char> name = relative[at];
+                int dot = name.IndexOf('.');
+                ReadOnlySpan<char> stem = dot < 0 ? name : name[..dot];
+                int tilde = stem.LastIndexOf('~');
+                if (tilde >= 0 && tilde < stem.Length - 1 && stem.Length <= 8 && name.Length - stem.Length <= 4
+                    && !stem[(tilde + 1)..].ContainsAnyExceptInRange('0', '9'))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         /// <summary>The entries of a folder that are named, as its listing has them: a file as the walk names it, a folder
