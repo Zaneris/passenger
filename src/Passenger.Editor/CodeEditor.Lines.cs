@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Globalization;
 using Avalonia;
 using Avalonia.Media;
@@ -33,6 +34,9 @@ public sealed partial class CodeEditor
 
     /// <summary>How many characters the editor has asked its highlighter to colour.</summary>
     public long CharactersColoured { get; private set; }
+
+    /// <summary>How many characters the editor has read to place a long line's columns: what a key costs to measure.</summary>
+    public long CharactersMeasured { get; private set; }
 
     /// <summary>How many frames the editor has drawn: what a key costs to draw.</summary>
     public long Frames { get; private set; }
@@ -122,7 +126,7 @@ public sealed partial class CodeEditor
         {
             return new LineView(span, null);
         }
-        return new LineView(span, new LongLine(text, span.Start, span.Length, Measures()));
+        return new LineView(span, new LongLine(this, text, span.Start, span.Length, Measures()));
     }
 
     /// <summary>Whole rows formatted with their colours, which are asked for once for each run of neighbouring rows: those
@@ -391,6 +395,18 @@ public sealed partial class CodeEditor
             Span = Span with { Start = Span.Start + shift, Line = Span.Line + lines };
             Long?.Follow(text, Span.Start);
         }
+
+        /// <summary>The same line after edits inside it, now <paramref name="span"/>: its measure carried through them, its
+        /// window let go.</summary>
+        public void Carried(RowSpan span)
+        {
+            Span = span;
+            Text = null;
+            Runs = null;
+            From = 0;
+            To = 0;
+            X = 0;
+        }
     }
 
     /// <summary>The rows drawn or measured since the text or its colours last changed, by where they start, and every
@@ -430,8 +446,9 @@ public sealed partial class CodeEditor
 
         /// <summary>The views carried through an edit: those of the lines it did not reach kept, moved with the text after it,
         /// as the highlighter carries their colours, so the next frame makes again only the rows it changed. Lines ending
-        /// where it starts, or starting where it ends, count as reached, as the highlighter counts them.</summary>
-        public void Follow(DocumentChangedEventArgs change)
+        /// where it starts, or starting where it ends, count as reached, as the highlighter counts them; a long line it
+        /// reached inside keeps its measure, carried through it, where that measures with <paramref name="measures"/>.</summary>
+        public void Follow(DocumentChangedEventArgs change, Advances? measures)
         {
             if (!ReferenceEquals(text, change.Before))
             {
@@ -463,10 +480,71 @@ public sealed partial class CodeEditor
                     view.Follow(change.After, shift, lines);
                     spare[start + shift] = view;
                 }
+                else if (view.Long is { } measure && measures is not null && measure.MeasuresWith(measures)
+                    && view.Span.Start == line.Start && view.Span.Length == line.Length && Carry(change, line, measure) is { } now)
+                {
+                    view.Carried(RowSpan.Whole(now));
+                    spare[now.Start] = view;
+                }
             }
             (byLine, spare) = (spare, byLine);
             spare.Clear();
             text = change.After;
+        }
+
+        /// <summary>A long line's measure carried through the edits inside it, which leave it one line, still long: the line it
+        /// is now, or null where an edit reaches past it.</summary>
+        private static LineSpan? Carry(DocumentChangedEventArgs change, LineSpan line, LongLine measure)
+        {
+            IReadOnlyList<TextEdit> edits = change.Edits;
+            int moved = 0;
+            int grown = 0;
+            int first = -1;
+            int last = -1;
+            for (int k = 0; k < edits.Count; k++)
+            {
+                TextEdit edit = edits[k];
+                if (edit.Start >= line.Start && edit.End <= line.End)
+                {
+                    first = first < 0 ? k : first;
+                    last = k;
+                    grown += edit.Text.Length - edit.Length;
+                }
+                else if (edit.End <= line.Start)
+                {
+                    moved += edit.Text.Length - edit.Length;
+                }
+                else if (edit.Start >= line.EndIncludingBreak)
+                {
+                    break;
+                }
+                else
+                {
+                    return null;
+                }
+            }
+            TextSnapshot after = change.After;
+            int at = line.Start + moved;
+            int length = line.Length + grown;
+            if (length <= LongLineLength || at > after.Length)
+            {
+                return null;
+            }
+            // What came before may have joined it to the line above, and what it took in may have broken it.
+            LineSpan now = after.GetLine(after.GetLineFromOffset(at));
+            if (now.Start != at || now.Length != length)
+            {
+                return null;
+            }
+            if (first < 0)
+            {
+                measure.Follow(after, at);
+            }
+            else
+            {
+                measure.Carry(after, at, length, edits, first, last, line.Start);
+            }
+            return now;
         }
 
         /// <summary>Drops the views of rows (all, or those this frame did not use or whose formatted line was disposed), a
@@ -614,49 +692,83 @@ public sealed partial class CodeEditor
         : Math.Max(1, StringInfo.GetNextTextElementLength(chars[at..]));
 
     /// <summary>Where a long line's columns fall, without formatting it: each grapheme's width as the formatter lays it alone
-    /// (a tab's fixed width), summed, and the first grapheme boundary from every <see cref="Step"/>-th column kept with its
-    /// x, so a column's x or an x's column reads a step at most. Printable ASCII in a monospaced font keeps none: a
-    /// column's x is a product. Only shaping across graphemes (Arabic's joined letters) lays a line out otherwise.</summary>
+    /// (a tab's fixed width), summed exactly, and a grapheme boundary kept with its x about every <see cref="Step"/> columns,
+    /// so a column's x or an x's column reads a step or so at most. An edit inside the line reads it again only from the
+    /// boundary kept before the edit to the first one after it that the graphemes fall on again, and moves those after by
+    /// what it changed, so the measure is the one a fresh read makes, whatever edits made the line. Printable ASCII in a
+    /// monospaced font keeps none: a column's x is a product. Only shaping across graphemes (Arabic's joined letters) lays a
+    /// line out otherwise.</summary>
     private sealed class LongLine
     {
         public const int Step = 256;
 
-        /// <summary>How far past what it reads a grapheme may run: one longer is cut there.</summary>
+        /// <summary>The longest a grapheme is read: one longer is cut there, wherever it starts.</summary>
         private const int Overrun = 64;
 
+        /// <summary>The parts of a pixel widths are summed in: every bit of a width from a pixel up, so a sum is exact and the
+        /// same however it is grouped.</summary>
+        private const double Unit = 4503599627370496.0;
+
+        private readonly CodeEditor editor;
+        private readonly Advances advances;
+
+        /// <summary>Printable ASCII's one width, or -1 where they differ.</summary>
+        private readonly Int128 uniform;
+
+        private readonly Int128 tab;
         private TextSnapshot text;
         private int start;
-        private readonly Advances advances;
-        private readonly int[]? kept;
-        private readonly double[]? keptX;
 
-        public LongLine(TextSnapshot text, int start, int length, Advances advances)
+        /// <summary>The kept boundaries, rising from the line's start, and their x; null while the line is printable ASCII in
+        /// one width.</summary>
+        private int[]? kept;
+        private Int128[] keptX = [];
+        private int count;
+
+        /// <summary>What an edit writes the kept boundaries into, swapped with them after it.</summary>
+        private int[] nextKept = [];
+        private Int128[] nextX = [];
+        private int written;
+
+        private Int128 width;
+        private int codeEnd;
+
+        public LongLine(CodeEditor editor, TextSnapshot text, int start, int length, Advances advances)
         {
+            this.editor = editor;
             this.text = text;
             this.start = start;
             Length = length;
             this.advances = advances;
-            bool plain = !double.IsNaN(advances.Uniform);
+            uniform = double.IsNaN(advances.Uniform) ? -1 : Fixed(advances.Uniform);
+            tab = Fixed(advances.Tab);
+            bool plain = uniform >= 0;
             if (plain)
             {
+                editor.CharactersMeasured += length;
                 text.VisitChunks(start, length, chunk => plain = plain && !chunk.Span.ContainsAnyExceptInRange(' ', '~'));
             }
             if (plain)
             {
-                Width = Length * advances.Uniform;
+                width = length * uniform;
             }
             else
             {
-                kept = new int[(Length / Step) + 1];
-                keptX = new double[kept.Length];
-                Width = Scan(kept, keptX);
+                kept = new int[(length / Step) + 1];
+                keptX = new Int128[kept.Length];
+                count = kept.Length;
+                width = Scan(kept, keptX);
             }
-            CodeWidth = XOf(CodeEnd(text, start, length));
+            codeEnd = CodeEnd();
+            Settle();
         }
 
-        public int Length { get; }
-        public double Width { get; }
-        public double CodeWidth { get; }
+        public int Length { get; private set; }
+        public double Width { get; private set; }
+        public double CodeWidth { get; private set; }
+
+        /// <summary>Whether it measures with these widths.</summary>
+        public bool MeasuresWith(Advances measures) => ReferenceEquals(advances, measures);
 
         /// <summary>The same characters in a text an edit made, which it did not reach, starting at <paramref name="at"/>.</summary>
         public void Follow(TextSnapshot moved, int at)
@@ -665,26 +777,54 @@ public sealed partial class CodeEditor
             start = at;
         }
 
-        /// <summary>The kept grapheme boundary at or before a column.</summary>
+        /// <summary>The line after edits inside it that leave it one line, <paramref name="length"/> long from
+        /// <paramref name="at"/> in <paramref name="moved"/>: <paramref name="edits"/> <paramref name="first"/> to
+        /// <paramref name="last"/>, their offsets from <paramref name="was"/>, where the line started before them.</summary>
+        public void Carry(TextSnapshot moved, int at, int length, IReadOnlyList<TextEdit> edits, int first, int last, int was)
+        {
+            int before = Length;
+            int lastEnd = edits[last].End - was;
+            text = moved;
+            start = at;
+            Length = length;
+            if (kept is null && !Plain(edits, first, last))
+            {
+                KeepSteps(before);
+            }
+            if (kept is null)
+            {
+                width = length * uniform;
+            }
+            else
+            {
+                Remeasure(edits, first, last, was);
+            }
+            codeEnd = codeEnd > lastEnd ? codeEnd + length - before : CodeEnd();
+            Settle();
+        }
+
+        /// <summary>The first grapheme boundary from a step at or before a column: where a window of the line starts, as a
+        /// fresh measure puts it.</summary>
         public int KeptAtOrBefore(int column)
         {
             if (kept is null)
             {
                 return column / Step * Step;
             }
-            int k = Math.Min(column / Step, kept.Length - 1);
-            return kept[k] <= column ? kept[k] : kept[k - 1];
+            int step = Math.Min(column, Length) / Step;
+            int at = BoundaryFrom(step * Step);
+            return at <= column ? at : BoundaryFrom((step - 1) * Step);
         }
 
-        /// <summary>The kept grapheme boundary at or after a column, or the line's end.</summary>
+        /// <summary>The first grapheme boundary from a step at or after a column, or the line's end.</summary>
         public int KeptAtOrAfter(int column)
         {
-            int k = (column + Step - 1) / Step;
+            int step = (column + Step - 1) / Step;
             if (kept is null)
             {
-                return Math.Min(Length, k * Step);
+                return Math.Min(Length, step * Step);
             }
-            return k < kept.Length ? kept[k] : Length;
+            return step <= Length / Step ? BoundaryFrom(step * Step) : Length;
         }
 
         public double XOf(int column)
@@ -692,14 +832,10 @@ public sealed partial class CodeEditor
             column = Math.Clamp(column, 0, Length);
             if (kept is null)
             {
-                return column * advances.Uniform;
+                return ToDouble(column * uniform);
             }
-            int k = Math.Min(column / Step, kept.Length - 1);
-            if (kept[k] > column)
-            {
-                k--;
-            }
-            return Walk(kept[k], keptX![k], column, double.NaN).X;
+            int k = Before(column);
+            return ToDouble(Walk(kept[k], keptX[k], column, -1).X);
         }
 
         /// <summary>The caret's column nearest an x: after the grapheme under it when past its middle.</summary>
@@ -713,17 +849,18 @@ public sealed partial class CodeEditor
             {
                 return Length;
             }
+            Int128 find = Fixed(x);
             if (kept is null)
             {
-                int column = (int)(x / advances.Uniform);
-                return Math.Min(Length, x - (column * advances.Uniform) >= advances.Uniform / 2 ? column + 1 : column);
+                int column = (int)(find / uniform);
+                return Math.Min(Length, (find - (column * uniform)) * 2 >= uniform ? column + 1 : column);
             }
             int low = 0;
-            int high = keptX!.Length;
+            int high = count;
             while (low < high)
             {
                 int middle = (low + high) / 2;
-                if (keptX[middle] <= x)
+                if (keptX[middle] <= find)
                 {
                     low = middle + 1;
                 }
@@ -733,26 +870,211 @@ public sealed partial class CodeEditor
                 }
             }
             int k = Math.Max(0, low - 1);
-            return Walk(kept[k], keptX[k], k + 1 < kept.Length ? kept[k + 1] : Length, x).Column;
+            return Walk(kept[k], keptX[k], k + 1 < count ? kept[k + 1] : Length, find).Column;
+        }
+
+        private void Settle()
+        {
+            Width = ToDouble(width);
+            CodeWidth = XOf(codeEnd);
+        }
+
+        /// <summary>Whether what the edits put in keeps a line of printable ASCII so.</summary>
+        private static bool Plain(IReadOnlyList<TextEdit> edits, int first, int last)
+        {
+            for (int e = first; e <= last; e++)
+            {
+                if (edits[e].Text.AsSpan().ContainsAnyExceptInRange(' ', '~'))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        /// <summary>Boundaries kept for a line of printable ASCII in one width, as it was <paramref name="before"/> characters
+        /// long: each step's column, as every column is one.</summary>
+        private void KeepSteps(int before)
+        {
+            count = (before / Step) + 1;
+            kept = new int[count];
+            keptX = new Int128[count];
+            for (int k = 0; k < count; k++)
+            {
+                kept[k] = k * Step;
+                keptX[k] = kept[k] * uniform;
+            }
+        }
+
+        /// <summary>The kept boundaries carried through edits: those before each edit kept, the line read again from the last of
+        /// them to the first old one after the edit that the graphemes fall on again, and the rest moved by what the edits
+        /// changed. What is read again keeps a boundary every step, and one left a step or less from the next is dropped.</summary>
+        private void Remeasure(IReadOnlyList<TextEdit> edits, int first, int last, int was)
+        {
+            int[] cols = kept!;
+            Int128[] xs = keptX;
+            int n = count;
+            if (nextKept.Length < n + 2)
+            {
+                nextKept = new int[n + (n / 2) + 2];
+                nextX = new Int128[nextKept.Length];
+            }
+            written = 0;
+            Put(0, 0);
+            int i = 1;
+            int moved = 0;
+            Int128 movedX = 0;
+            bool ended = false;
+            Span<char> chars = stackalloc char[(2 * Step) + Overrun];
+            int e = first;
+            while (e <= last)
+            {
+                int editAt = edits[e].Start - was;
+                // A boundary rests on the characters before it and the one or two after it.
+                while (i < n && cols[i] + 2 <= editAt)
+                {
+                    Put(cols[i] + moved, xs[i] + movedX);
+                    i++;
+                }
+                int column = nextKept[written - 1];
+                Int128 x = nextX[written - 1];
+                int lastKept = column;
+                int reach = edits[e].End - was;
+                int after = moved + edits[e].Text.Length - edits[e].Length;
+                e++;
+                int readAt = column;
+                int read = 0;
+                while (true)
+                {
+                    while (e <= last && column > edits[e].Start - was + after)
+                    {
+                        reach = edits[e].End - was;
+                        after += edits[e].Text.Length - edits[e].Length;
+                        e++;
+                    }
+                    while (i < n && (cols[i] < reach || cols[i] + after < column))
+                    {
+                        i++;
+                    }
+                    if (column == Length)
+                    {
+                        width = x;
+                        ended = true;
+                        i = n;
+                        e = last + 1;
+                        break;
+                    }
+                    if (i < n && cols[i] + after == column && (e > last || cols[i] <= edits[e].Start - was))
+                    {
+                        while (written > 1 && column - nextKept[written - 2] <= Step)
+                        {
+                            written--;
+                        }
+                        moved = after;
+                        movedX = x - xs[i];
+                        break;
+                    }
+                    if (column - lastKept >= Step)
+                    {
+                        Put(column, x);
+                        lastKept = column;
+                    }
+                    if (column + Overrun > readAt + read && readAt + read < Length)
+                    {
+                        readAt = column;
+                        read = Math.Min(chars.Length, Length - column);
+                        text.CopyTo(start + column, chars[..read]);
+                        editor.CharactersMeasured += read;
+                    }
+                    int size = Piece(chars[..read], column - readAt);
+                    x += Of(chars.Slice(column - readAt, size));
+                    column += size;
+                }
+            }
+            for (; i < n; i++)
+            {
+                Put(cols[i] + moved, xs[i] + movedX);
+            }
+            if (!ended)
+            {
+                width += movedX;
+            }
+            (kept, nextKept) = (nextKept, cols);
+            (keptX, nextX) = (nextX, xs);
+            count = written;
+        }
+
+        private void Put(int column, Int128 x)
+        {
+            if (written == nextKept.Length)
+            {
+                Array.Resize(ref nextKept, nextKept.Length * 2);
+                Array.Resize(ref nextX, nextKept.Length);
+            }
+            nextKept[written] = column;
+            nextX[written] = x;
+            written++;
+        }
+
+        /// <summary>The last kept boundary at or before a column.</summary>
+        private int Before(int column)
+        {
+            int low = 0;
+            int high = count - 1;
+            while (low < high)
+            {
+                int middle = (int)((uint)(low + high + 1) >> 1);
+                if (kept![middle] <= column)
+                {
+                    low = middle;
+                }
+                else
+                {
+                    high = middle - 1;
+                }
+            }
+            return low;
+        }
+
+        /// <summary>The first grapheme boundary at or after a column.</summary>
+        private int BoundaryFrom(int column)
+        {
+            int from = kept![Before(column)];
+            if (from == column)
+            {
+                return column;
+            }
+            int read = Math.Min(Length, column + Overrun) - from;
+            Span<char> chars = read <= (2 * Step) + (2 * Overrun) ? stackalloc char[(2 * Step) + (2 * Overrun)] : new char[read];
+            chars = chars[..read];
+            text.CopyTo(start + from, chars);
+            editor.CharactersMeasured += read;
+            int i = 0;
+            while (from + i < column)
+            {
+                i += Piece(chars, i);
+            }
+            return from + i;
         }
 
         /// <summary>Reads on a grapheme at a time from a kept boundary and its x toward <paramref name="to"/>: the x of the
-        /// grapheme that holds it (its own, at a boundary), or, should the x <paramref name="find"/> come first, the
-        /// boundary nearest that.</summary>
-        private (double X, int Column) Walk(int from, double x, int to, double find)
+        /// grapheme that holds it (its own, at a boundary), or, should the x <paramref name="find"/> (unless negative) come
+        /// first, the boundary nearest that.</summary>
+        private (Int128 X, int Column) Walk(int from, Int128 x, int to, Int128 find)
         {
             int read = Math.Min(Length, to + Overrun) - from;
             Span<char> chars = read <= (2 * Step) + (2 * Overrun) ? stackalloc char[(2 * Step) + (2 * Overrun)] : new char[read];
             chars = chars[..read];
             text.CopyTo(start + from, chars);
+            editor.CharactersMeasured += read;
             int i = 0;
             while (from + i < to)
             {
-                int length = Grapheme(chars, i);
-                double advance = Of(chars.Slice(i, length));
-                if (find < x + advance)
+                int length = Piece(chars, i);
+                Int128 advance = Of(chars.Slice(i, length));
+                if (find >= 0 && find < x + advance)
                 {
-                    return (x, find - x >= advance / 2 ? from + i + length : from + i);
+                    return (x, (find - x) * 2 >= advance ? from + i + length : from + i);
                 }
                 if (from + i + length > to)
                 {
@@ -765,75 +1087,95 @@ public sealed partial class CodeEditor
         }
 
         /// <summary>The whole line read a block at a time, keeping the boundaries; its width.</summary>
-        private double Scan(int[] marks, double[] xs)
+        private Int128 Scan(int[] marks, Int128[] xs)
         {
             const int Block = 4096;
-            char[] buffer = new char[Block + Overrun];
-            double uniform = advances.Uniform;
-            int column = 0;
-            double x = 0;
-            int next = 0;
-            while (column < Length)
+            char[] rented = ArrayPool<char>.Shared.Rent(Block + Overrun);
+            try
             {
-                int read = Math.Min(buffer.Length, Length - column);
-                text.CopyTo(start + column, buffer.AsSpan(0, read));
-                ReadOnlySpan<char> chars = buffer.AsSpan(0, read);
-                int limit = Math.Min(Block, read);
-                int i = 0;
-                while (i < limit)
+                Span<char> buffer = rented.AsSpan(0, Block + Overrun);
+                int column = 0;
+                Int128 x = 0;
+                int next = 0;
+                while (column < Length)
                 {
-                    for (; next < marks.Length && next * Step <= column + i; next++)
+                    int read = Math.Min(buffer.Length, Length - column);
+                    text.CopyTo(start + column, buffer[..read]);
+                    editor.CharactersMeasured += read;
+                    ReadOnlySpan<char> chars = buffer[..read];
+                    int limit = Math.Min(Block, read);
+                    int i = 0;
+                    while (i < limit)
                     {
-                        marks[next] = column + i;
-                        xs[next] = x;
-                    }
-                    if (!double.IsNaN(uniform))
-                    {
-                        int run = chars[i..].IndexOfAnyExceptInRange(' ', '~');
-                        run = run < 0 ? read - i : run;
-                        if (i + run < read || column + read < Length)
+                        for (; next < marks.Length && next * Step <= column + i; next++)
                         {
-                            // The last may begin a grapheme with what follows it.
-                            run--;
+                            marks[next] = column + i;
+                            xs[next] = x;
                         }
-                        run = Math.Min(run, limit - i);
-                        if (run > 0)
+                        if (uniform >= 0)
                         {
-                            for (; next < marks.Length && next * Step < column + i + run; next++)
+                            int run = chars[i..].IndexOfAnyExceptInRange(' ', '~');
+                            run = run < 0 ? read - i : run;
+                            if (i + run < read || column + read < Length)
                             {
-                                marks[next] = next * Step;
-                                xs[next] = x + (((next * Step) - column - i) * uniform);
+                                // The last may begin a grapheme with what follows it.
+                                run--;
                             }
-                            x += run * uniform;
-                            i += run;
-                            continue;
+                            run = Math.Min(run, limit - i);
+                            if (run > 0)
+                            {
+                                for (; next < marks.Length && next * Step < column + i + run; next++)
+                                {
+                                    marks[next] = next * Step;
+                                    xs[next] = x + (((next * Step) - column - i) * uniform);
+                                }
+                                x += run * uniform;
+                                i += run;
+                                continue;
+                            }
                         }
+                        int length = Piece(chars, i);
+                        x += Of(chars.Slice(i, length));
+                        i += length;
                     }
-                    int length = Grapheme(chars, i);
-                    x += Of(chars.Slice(i, length));
-                    i += length;
+                    column += i;
                 }
-                column += i;
+                for (; next < marks.Length; next++)
+                {
+                    marks[next] = Length;
+                    xs[next] = x;
+                }
+                return x;
             }
-            for (; next < marks.Length; next++)
+            finally
             {
-                marks[next] = Length;
-                xs[next] = x;
+                ArrayPool<char>.Shared.Return(rented);
             }
-            return x;
         }
 
-        private double Of(ReadOnlySpan<char> grapheme) => grapheme is ['\t'] ? advances.Tab : advances.Of(grapheme);
+        /// <summary>The grapheme at a place, cut at <see cref="Overrun"/> characters: <paramref name="chars"/> reach that far
+        /// past it or to the line's end.</summary>
+        private static int Piece(ReadOnlySpan<char> chars, int at) => Grapheme(chars[..Math.Min(chars.Length, at + Overrun)], at);
 
-        /// <summary>Where a line's code ends, before the spaces after it, read back from its end a block at a time.</summary>
-        private static int CodeEnd(TextSnapshot text, int start, int length)
+        private Int128 Of(ReadOnlySpan<char> grapheme) =>
+            grapheme is ['\t'] ? tab
+            : uniform >= 0 && grapheme is [>= ' ' and <= '~'] ? uniform
+            : Fixed(advances.Of(grapheme));
+
+        private static Int128 Fixed(double pixels) => pixels < 2048 ? (long)(pixels * Unit) : (Int128)(pixels * Unit);
+
+        private static double ToDouble(Int128 units) => (double)units / Unit;
+
+        /// <summary>Where the line's code ends, before the spaces after it, read back from its end a block at a time.</summary>
+        private int CodeEnd()
         {
             Span<char> block = stackalloc char[Step];
-            int end = length;
+            int end = Length;
             while (end > 0)
             {
                 int read = Math.Min(Step, end);
                 text.CopyTo(start + end - read, block[..read]);
+                editor.CharactersMeasured += read;
                 for (int i = read - 1; i >= 0; i--, end--)
                 {
                     if (!char.IsWhiteSpace(block[i]))

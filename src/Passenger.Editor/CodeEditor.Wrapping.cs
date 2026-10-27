@@ -371,7 +371,7 @@ public sealed partial class CodeEditor
     /// folds carried through it, then the wraps, so the lines it touched wrap with their hints where they now stand.</summary>
     private void OnChangedFirst(object? sender, DocumentChangedEventArgs change)
     {
-        views.Follow(change);
+        views.Follow(change, advances);
         decorations.Follow(change);
         wrappedHints = decorations.InlayHints;
         FollowWraps(change);

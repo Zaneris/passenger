@@ -54,6 +54,122 @@ public sealed class LongTextTests : IDisposable
         Assert.True(longKey <= 10 * shortKey, $"A key on the long line took {longKey:F2} ms, against {shortKey:F2} ms on a short line.");
     }
 
+    /// <summary>A key in the middle of a line of a million characters of words, tabs, CJK, accented letters and emoji,
+    /// whose columns only their graphemes' widths place, reads and allocates what a key in such a line of ten thousand
+    /// does: the line's measure is carried through the edit, read again only around it.</summary>
+    [AvaloniaFact]
+    public void A_key_in_a_line_of_a_million_characters_measures_and_allocates_what_one_in_ten_thousand_does()
+    {
+        (long smallBytes, long smallRead) = KeysInTheMiddle(10_000);
+        (long largeBytes, long largeRead) = KeysInTheMiddle(1_000_000);
+        TestContext.Current.TestOutputHelper?.WriteLine(
+            $"A key read {smallRead:N0} characters to measure in a line of 10,000 and {largeRead:N0} in one of a million, allocating {smallBytes:N0} and {largeBytes:N0} bytes on the UI thread");
+        Assert.True(largeRead <= smallRead + 256,
+            $"A key in a line of a million characters read {largeRead:N0} of them to measure the line, against {smallRead:N0} in a line of 10,000: the line was measured again whole");
+        Assert.True(largeBytes <= smallBytes + 2048,
+            $"A key in a line of a million characters allocated {largeBytes:N0} bytes on the UI thread, against {smallBytes:N0} in a line of 10,000: the line's measure was made again");
+    }
+
+    /// <summary>Random edits to two long lines (typing, deleting, replacing a selection, several carets, a long insertion,
+    /// Undo and Redo) of tabs, CJK, Arabic, emoji with their joiners and modifiers, flags, combining marks, a grapheme
+    /// longer than any read whole and lone surrogates, one of them printable ASCII until an edit puts more in: after every
+    /// edit each column of both lines is where a fresh editor of the same text, scrolled alike, draws it.</summary>
+    [AvaloniaFact]
+    public void Edits_to_long_lines_leave_every_column_where_a_fresh_editor_draws_it()
+    {
+        Random random = new(548);
+        string[] pieces =
+        [
+            "a", "b", "z", "word", " ", "  ", "\t", "中", "文字", "é", "é", "́", "👍", "👍🏽", "👨‍👩‍👧", "‍", "🇨🇦",
+            "\U0001F1E8", "ب", "سلام", "\uD83D", "\uDE00", "x" + new string('́', 70), ",", ";", ".",
+        ];
+        string Pieces(int count) => string.Concat(Enumerable.Range(0, count).Select(_ => pieces[random.Next(pieces.Length)]));
+        StringBuilder text = new("first\n");
+        while (text.Length < 6000)
+        {
+            text.Append(Pieces(1));
+        }
+        // Far enough apart that only one of the long lines is on screen at a time.
+        text.Append('\n').Append(string.Concat(Enumerable.Repeat("short\n", 60)));
+        int plainLine = 62;
+        text.Append(string.Concat(Enumerable.Range(0, 700).Select(i => $"w{i} "))).Append("\nlast\n");
+        EditorRig rig = new(text.ToString());
+        int[] lines = [1, plainLine];
+        for (int step = 0; step < 240; step++)
+        {
+            TextSnapshot snapshot = rig.Document.Snapshot;
+            LineSpan line = snapshot.GetLine(lines[random.Next(lines.Length)]);
+            int At() => line.Start + random.Next(line.Length + 1);
+            int kind = random.Next(20);
+            string did;
+            if (line.Length < 4000)
+            {
+                rig.PlaceCaret(At());
+                rig.Window.KeyTextInput(Pieces(400));
+                did = "a long insertion to keep the line long";
+            }
+            else if (kind < 6)
+            {
+                rig.PlaceCaret(At());
+                string typed = Pieces(random.Next(1, 4));
+                rig.Window.KeyTextInput(typed);
+                did = $"typed {Escaped(typed)}";
+            }
+            else if (kind < 10)
+            {
+                rig.PlaceCaret(At());
+                string key = new[] { "BACK_SPACE", "DELETE", "alt BACK_SPACE", "alt DELETE" }[random.Next(4)];
+                for (int i = random.Next(1, 4); i > 0; i--)
+                {
+                    rig.Press(key);
+                }
+                did = key;
+            }
+            else if (kind < 13)
+            {
+                int from = At();
+                int to = Math.Min(line.End, from + random.Next(300));
+                rig.Editor.Selections = SelectionSet.Single(new Selection(from, to));
+                string typed = random.Next(2) == 0 ? string.Empty : Pieces(random.Next(1, 4));
+                if (typed.Length == 0)
+                {
+                    rig.Press("BACK_SPACE");
+                }
+                else
+                {
+                    rig.Window.KeyTextInput(typed);
+                }
+                did = $"replaced {from - line.Start}..{to - line.Start} with {Escaped(typed)}";
+            }
+            else if (kind < 15)
+            {
+                List<Selection> carets = [.. Enumerable.Range(0, random.Next(2, 5)).Select(_ => Selection.At(At())).DistinctBy(s => s.Caret)];
+                rig.Editor.Selections = SelectionSet.Create(carets, 0);
+                string typed = Pieces(1);
+                rig.Window.KeyTextInput(typed);
+                did = $"typed {Escaped(typed)} at {carets.Count} carets";
+            }
+            else if (kind < 16)
+            {
+                rig.PlaceCaret(At());
+                rig.Window.KeyTextInput(Pieces(random.Next(100, 200)));
+                did = "a long insertion";
+            }
+            else if (kind < 19)
+            {
+                rig.Press("meta Z");
+                did = "Undo";
+            }
+            else
+            {
+                rig.Press("meta shift Z");
+                did = "Redo";
+            }
+            Ui.Settle();
+            AssertColumnsMatchAFreshEditor(rig, lines, random, $"step {step}: {did}");
+        }
+    }
+
     [AvaloniaFact]
     public void A_click_far_along_a_line_of_a_million_characters_puts_the_caret_on_the_character_clicked()
     {
@@ -254,6 +370,85 @@ public sealed class LongTextTests : IDisposable
         }
         return ((rig.Editor.CharactersFormatted - formatted) / keys.Length, (rig.Editor.CharactersColoured - coloured) / keys.Length);
     }
+
+    /// <summary>What a key costs in the middle of a line of words, tabs, CJK, accented letters and emoji: characters read to
+    /// measure it and bytes allocated on the UI thread, typing a letter, typing a CJK character and Backspace each, the
+    /// least of four rounds, summed. The line repeats 32 characters, and the caret stands as far into a step of its columns
+    /// in either line, so what is on screen, and the window of the line laid out for it, are the same.</summary>
+    private static (long Bytes, long Read) KeysInTheMiddle(int length)
+    {
+        const string Unit = "word\t中文 café 👍🏽, xyz plain ok ";
+        Assert.Equal(32, Unit.Length);
+        StringBuilder text = new("above\n");
+        text.Insert(text.Length, Unit, length / Unit.Length);
+        int middle = "above\n".Length + (length / 2 / 256 * 256) + 200;
+        EditorRig rig = new(text.Append("\nbelow\n").ToString());
+        rig.Editor.Highlighter = new Numbers();
+        rig.PlaceCaret(middle);
+        Ui.Settle();
+        Action[] keys = [() => rig.Type("x"), () => rig.Type("中"), () => rig.Press("BACK_SPACE"), () => rig.Press("BACK_SPACE")];
+        long[] bytes = [.. keys.Select(_ => long.MaxValue)];
+        long[] read = [.. keys.Select(_ => long.MaxValue)];
+        for (int round = 0; round < 4; round++)
+        {
+            for (int k = 0; k < keys.Length; k++)
+            {
+                long measured = rig.Editor.CharactersMeasured;
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                keys[k]();
+                bytes[k] = Math.Min(bytes[k], GC.GetAllocatedBytesForCurrentThread() - before);
+                read[k] = Math.Min(read[k], rig.Editor.CharactersMeasured - measured);
+            }
+        }
+        Assert.Equal(text.ToString(), rig.Text);
+        rig.Window.Close();
+        return (bytes.Sum(), read.Sum());
+    }
+
+    /// <summary>Every column of the long lines around the caret, their ends and others at random are drawn where a fresh
+    /// editor of the same text, with the same carets and scrolled alike, draws them.</summary>
+    private static void AssertColumnsMatchAFreshEditor(EditorRig rig, int[] lines, Random random, string where)
+    {
+        EditorRig fresh = new(rig.Text);
+        try
+        {
+            fresh.Editor.Selections = rig.Editor.Selections;
+            fresh.Editor.ScrollTo(rig.Editor.ScrollOffset);
+            Ui.Settle();
+            // A hop far away and back lays a long line's kept window out again for what is shown, as the fresh editor's is.
+            Vector shown = fresh.Editor.ScrollOffset;
+            rig.Editor.ScrollTo(new Vector(shown.X > 20_000 ? 0 : 1e9, shown.Y));
+            Ui.Settle();
+            rig.Editor.ScrollTo(shown);
+            Ui.Settle();
+            Assert.Equal(shown, rig.Editor.ScrollOffset);
+            TextSnapshot text = rig.Document.Snapshot;
+            int caret = rig.Caret;
+            foreach (int number in lines)
+            {
+                LineSpan line = text.GetLine(number);
+                List<int> offsets = [line.Start, line.End, .. Enumerable.Range(0, 40).Select(_ => line.Start + random.Next(line.Length + 1))];
+                for (int offset = Math.Max(line.Start, caret - 300); offset <= Math.Min(line.End, caret + 300); offset++)
+                {
+                    offsets.Add(offset);
+                }
+                foreach (int offset in offsets)
+                {
+                    Point mine = rig.Editor.PointOf(offset) + rig.Editor.ScrollOffset;
+                    Point theirs = fresh.Editor.PointOf(offset) + fresh.Editor.ScrollOffset;
+                    Assert.True(mine == theirs, $"Column {offset - line.Start} of line {number + 1} is drawn at {mine.X}, where a fresh editor draws it at {theirs.X} ({where}).");
+                }
+            }
+        }
+        finally
+        {
+            fresh.Window.Close();
+            rig.Editor.Focus();
+            Ui.Settle();
+        }
+    }
+
+    private static string Escaped(string text) => string.Concat(text.Select(c => c is >= ' ' and <= '~' ? c.ToString() : $"\\u{(int)c:X4}"));
 
     private static double Median(List<double> times)
     {
