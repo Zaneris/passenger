@@ -370,6 +370,8 @@ public sealed class LanguageServer : IAsyncDisposable
         start.RedirectStandardOutput = true;
         start.RedirectStandardError = true;
         Process process = ChildProcesses.Start(start);
+        // Its restores' MSBuild nodes outlive the restores, and would keep the folder they started in for their idle time.
+        ChildProcesses.HoldFamily(process);
         // Every message passes the trace from initialize on, so one turned on while the server runs starts at the next.
         TracedStream input = new(process.StandardInput.BaseStream, process.Id, "-->");
         TracedStream output = new(process.StandardOutput.BaseStream, process.Id, "<--", across: input);

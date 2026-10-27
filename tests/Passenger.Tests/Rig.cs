@@ -691,13 +691,13 @@ public static class TestFolders
             }
             catch (IOException error) when (OperatingSystem.IsWindows())
             {
-                throw new IOException($"{error.Message} Still running: {Running(path)}", error);
+                throw new IOException($"{error.Message} Processes {Running(path)}", error);
             }
         }
     }
 
-    /// <summary>The programs that may hold a folder on Windows, which no API names for a folder a process runs in: those
-    /// the run started (its children's children, by their parents), and any naming the folder or run by dotnet.</summary>
+    /// <summary>The programs that may hold a folder on Windows: first those working in it, then those the run started (its
+    /// children's children, by their parents), and any naming the folder or run by dotnet.</summary>
     private static string Running(string path)
     {
         try
@@ -733,9 +733,11 @@ public static class TestFolders
                 }
                 return false;
             }
+            string[] working = [.. processes.Where(p => Processes.WindowsWorkingFolder(p.Key) is { } folder && PathNames.Within(Path.TrimEndingDirectorySeparator(folder), path))
+                .Select(p => p.Value.Row.Replace('\t', ' '))];
             string[] holding = [.. processes.Where(p => Ours(p.Key) || p.Value.Row.Contains(Path.GetFileName(path), StringComparison.OrdinalIgnoreCase)
                 || p.Value.Row.Split('\t')[2].Equals("dotnet.exe", StringComparison.OrdinalIgnoreCase)).Select(p => p.Value.Row.Replace('\t', ' '))];
-            return holding.Length == 0 ? "nothing of the run's" : string.Join("; ", holding);
+            return $"working in it: {(working.Length == 0 ? "none" : string.Join("; ", working))}. Still running: {(holding.Length == 0 ? "nothing of the run's" : string.Join("; ", holding))}";
         }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
         {
@@ -2125,6 +2127,97 @@ public static partial class Processes
             }
         }
     }
+
+    /// <summary>Each MSBuild worker node now by id on Windows, with its handshake's salt, read with its command line from
+    /// its process's parameters in its memory, as no tool there shows another process's environment. Empty elsewhere.</summary>
+    public static IReadOnlyDictionary<int, string> WindowsMSBuildNodes()
+    {
+        Dictionary<int, string> nodes = [];
+        if (!OperatingSystem.IsWindows())
+        {
+            return nodes;
+        }
+        foreach (System.Diagnostics.Process process in System.Diagnostics.Process.GetProcessesByName("dotnet"))
+        {
+            using (process)
+            {
+                try
+                {
+                    if (WindowsParameters(process) is ({ } commandLine, { } environment) && commandLine.Contains("/nodemode:1", StringComparison.Ordinal))
+                    {
+                        nodes[process.Id] = environment.Split('\0').FirstOrDefault(v => v.StartsWith("MSBUILDNODEHANDSHAKESALT=", StringComparison.OrdinalIgnoreCase))?["MSBUILDNODEHANDSHAKESALT=".Length..] ?? string.Empty;
+                    }
+                }
+                catch (Exception gone) when (gone is InvalidOperationException or System.ComponentModel.Win32Exception)
+                {
+                    // It ended as it was read.
+                }
+            }
+        }
+        return nodes;
+    }
+
+    /// <summary>The folder a process works in on Windows, which Windows lets nobody delete while it does, read from its
+    /// parameters in its memory (CurrentDirectory at 0x38); null elsewhere, or where its memory does not read.</summary>
+    public static string? WindowsWorkingFolder(int id)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return null;
+        }
+        try
+        {
+            using System.Diagnostics.Process process = System.Diagnostics.Process.GetProcessById(id);
+            IntPtr handle = process.Handle;
+            long[] basic = new long[6];
+            if (NtQueryInformationProcess(handle, 0, basic, basic.Length * sizeof(long), out _) != 0 || ReadMemory(handle, basic[1] + 0x20, 8) is not { } at
+                || ReadMemory(handle, BitConverter.ToInt64(at) + 0x38, 16) is not { } folder)
+            {
+                return null;
+            }
+            return ReadMemory(handle, BitConverter.ToInt64(folder, 8), BitConverter.ToUInt16(folder, 0)) is { } name ? System.Text.Encoding.Unicode.GetString(name) : null;
+        }
+        catch (Exception unread) when (unread is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            // Gone, or not the user's to read.
+            return null;
+        }
+    }
+
+    /// <summary>A 64-bit process's command line and environment block, from its PEB's RTL_USER_PROCESS_PARAMETERS
+    /// (CommandLine at 0x70, Environment at 0x80, EnvironmentSize at 0x3F0), or nulls where its memory does not read.</summary>
+    private static (string? CommandLine, string? Environment) WindowsParameters(System.Diagnostics.Process process)
+    {
+        IntPtr handle = process.Handle;
+        long[] basic = new long[6];
+        if (NtQueryInformationProcess(handle, 0, basic, basic.Length * sizeof(long), out _) != 0
+            || ReadMemory(handle, basic[1] + 0x20, 8) is not { } at)
+        {
+            return (null, null);
+        }
+        long parameters = BitConverter.ToInt64(at);
+        if (ReadMemory(handle, parameters + 0x70, 16) is not { } line || ReadMemory(handle, parameters + 0x80, 8) is not { } environment
+            || ReadMemory(handle, parameters + 0x3F0, 8) is not { } size)
+        {
+            return (null, null);
+        }
+        byte[]? command = ReadMemory(handle, BitConverter.ToInt64(line, 8), BitConverter.ToUInt16(line, 0));
+        byte[]? block = ReadMemory(handle, BitConverter.ToInt64(environment), (int)Math.Min(BitConverter.ToInt64(size), 1 << 20));
+        return (command is null ? null : System.Text.Encoding.Unicode.GetString(command), block is null ? null : System.Text.Encoding.Unicode.GetString(block));
+    }
+
+    private static byte[]? ReadMemory(IntPtr process, long address, int length)
+    {
+        byte[] read = new byte[length];
+        return ReadProcessMemory(process, new IntPtr(address), read, new IntPtr(length), out IntPtr got) && got.ToInt64() == length ? read : null;
+    }
+
+    [System.Runtime.InteropServices.DllImport("ntdll.dll")]
+    private static extern int NtQueryInformationProcess(IntPtr process, int informationClass, long[] information, int length, out int returned);
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool ReadProcessMemory(IntPtr process, IntPtr address, byte[] buffer, IntPtr size, out IntPtr read);
 
     /// <summary>The worker nodes MSBuild counts now as a build ends, and the most it keeps for the next build, one and a half
     /// a processor: the MSBuild executable's (those of MSBuild's server, which a terminal's dotnet build uses), not the

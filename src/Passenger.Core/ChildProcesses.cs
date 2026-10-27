@@ -361,8 +361,14 @@ public static class ChildProcesses
         }
     }
 
+    /// <summary>Has <see cref="Kill"/> end what a child that has just started starts from now on, even once the process that
+    /// started it has gone (a restore's MSBuild nodes after the restore), which on Windows no walk of its tree finds;
+    /// elsewhere its process group already holds them.</summary>
+    public static void HoldFamily(Process process) => Lifeline.HoldFamily(process);
+
     /// <summary>Ends a child and everything it started, now, passing over what has ended: its tree on Windows, but for a
-    /// process of it Windows will not end (one ending, or not ours where a parent's id was reused); on macOS and Linux its
+    /// process of it Windows will not end (one ending, or not ours where a parent's id was reused), and the whole of a
+    /// family held (<see cref="HoldFamily"/>); on macOS and Linux its
     /// process group, which holds what it started and what it left behind, whether or not it has ended itself. Never the
     /// runtime's tree kill there, which stops each process before killing it and can then hang for good on macOS.</summary>
     public static void Kill(Process process)
@@ -386,6 +392,10 @@ public static class ChildProcesses
                 {
                     // Windows refuses a process of the tree that has ended or is ending, or is not ours: the child must still go.
                     process.Kill();
+                }
+                finally
+                {
+                    Lifeline.KillGroup(process);
                 }
                 return;
             }

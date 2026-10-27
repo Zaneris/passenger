@@ -552,6 +552,27 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         }
     }
 
+    /// <summary>On Windows the MSBuild nodes the language server's restore leaves to be reused are no part of the server's
+    /// tree once the restore has gone, and one no build ever took up keeps the folder it was started in, the solution's,
+    /// which Windows then lets nobody delete. They end with the server, as its process group ends them elsewhere: none is
+    /// left once the window closes.</summary>
+    [AvaloniaFact]
+    public void The_language_servers_msbuild_nodes_end_with_it_on_windows_too()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Elsewhere the server's process group holds its nodes, which A_build_goes_on_through_the_language_server_starting_again_while_it_runs checks");
+        WriteTwoProjects();
+        using OwnMSBuild msbuild = new();
+        // Settling waits for the projects to load, which Roslyn says once its restore of Tools has ended.
+        MainWindow window = Open();
+        string server = $"passenger-{Environment.ProcessId}-server-";
+        int[] restored = [.. Processes.WindowsMSBuildNodes().Where(node => node.Value.Contains(server, StringComparison.Ordinal)).Select(node => node.Key)];
+        window.Close();
+        Assert.True(restored.Length > 0, "The language server's restore left no MSBuild node, so none could outlive it");
+        Ui.WaitFor(() => !restored.Any(Processes.IsRunning),
+            () => $"the language server's MSBuild nodes to end with it as its window closed; still running: {string.Join(", ", restored.Where(Processes.IsRunning).Select(Processes.Describe))}",
+            TimeSpan.FromSeconds(30));
+    }
+
     /// <summary>A WPF app built the moment it opens, while the project host's design-time build of it (the language
     /// server's) is writing its generated code: both write obj/…/App.g.cs, which Windows lets one writer have. The
     /// build waits for the design-time build, the Build window saying so, and runs alone. Here the design-time build

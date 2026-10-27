@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 
 namespace Passenger.Core;
 
@@ -39,8 +40,17 @@ internal static partial class Lifeline
         if [ -n "$last" ]; then eval "$last"; fi
         """;
 
+    /// <summary>JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: a job's processes end as its last handle closes.</summary>
+    private const uint KillOnJobClose = 0x2000;
+
+    /// <summary>JobObjectExtendedLimitInformation, the class of <see cref="JobLimits"/>.</summary>
+    private const int ExtendedLimitInformation = 9;
+
     private static readonly object Gate = new();
     private static readonly HashSet<int> Groups = [];
+
+    /// <summary>On Windows, the jobs of the children whose whole family ends with them (<see cref="HoldFamily"/>), by id.</summary>
+    private static readonly Dictionary<int, SafeFileHandle> Families = [];
     private static Process? watchdog;
     private static string? atEnd;
     private static bool unavailable;
@@ -96,14 +106,35 @@ internal static partial class Lifeline
         }
     }
 
-    /// <summary>Kills what is left of a child's group: what it started, and what it left behind once it ended (Roslyn's
-    /// BuildHost after its server, a build's nodes). Only a group of Passenger's own, still listed, is ever signalled.</summary>
-    public static void KillGroup(Process process)
+    /// <summary>On Windows, puts a child that has just started in a job of its own, which every process it starts from then
+    /// on joins, so <see cref="KillGroup"/> ends them all, those whose own parent has gone among them (a restore's MSBuild
+    /// nodes once the restore has ended), which no walk of its tree finds. Elsewhere its process group does that already.</summary>
+    public static void HoldFamily(Process process)
     {
-        if (OperatingSystem.IsWindows())
+        if (!OperatingSystem.IsWindows())
         {
             return;
         }
+        SafeFileHandle job = CreateJobObject(IntPtr.Zero, null);
+        JobLimits limits = new() { LimitFlags = KillOnJobClose };
+        if (job.IsInvalid || !SetInformationJobObject(job, ExtendedLimitInformation, ref limits, Marshal.SizeOf<JobLimits>())
+            || !AssignProcessToJobObject(job, process.SafeHandle))
+        {
+            // Held by nothing more than its tree, as every other child is.
+            job.Dispose();
+            return;
+        }
+        lock (Gate)
+        {
+            Families[process.Id] = job;
+        }
+    }
+
+    /// <summary>Kills what is left of a child's group: what it started, and what it left behind once it ended (Roslyn's
+    /// BuildHost after its server, a build's nodes). Only a group of Passenger's own, still listed, is ever signalled; on
+    /// Windows, the job of a child whose family it holds (<see cref="HoldFamily"/>).</summary>
+    public static void KillGroup(Process process)
+    {
         int group;
         try
         {
@@ -111,6 +142,17 @@ internal static partial class Lifeline
         }
         catch (InvalidOperationException)
         {
+            return;
+        }
+        if (OperatingSystem.IsWindows())
+        {
+            SafeFileHandle? job;
+            lock (Gate)
+            {
+                Families.Remove(group, out job);
+            }
+            // Its last handle closing ends every process still in it.
+            job?.Dispose();
             return;
         }
         lock (Gate)
@@ -197,4 +239,40 @@ internal static partial class Lifeline
 
     [LibraryImport("libc", EntryPoint = "kill", SetLastError = true)]
     private static partial int Signal(int process, int signal);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "CreateJobObjectW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial SafeFileHandle CreateJobObject(IntPtr security, string? name);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SetInformationJobObject(SafeFileHandle job, int informationClass, ref JobLimits information, int length);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool AssignProcessToJobObject(SafeFileHandle job, SafeProcessHandle process);
+
+    /// <summary>JOBOBJECT_EXTENDED_LIMIT_INFORMATION, its basic limits, I/O counters and memory limits in the system's order.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    private struct JobLimits
+    {
+        public long PerProcessUserTimeLimit;
+        public long PerJobUserTimeLimit;
+        public uint LimitFlags;
+        public nuint MinimumWorkingSetSize;
+        public nuint MaximumWorkingSetSize;
+        public uint ActiveProcessLimit;
+        public nuint Affinity;
+        public uint PriorityClass;
+        public uint SchedulingClass;
+        public ulong ReadOperationCount;
+        public ulong WriteOperationCount;
+        public ulong OtherOperationCount;
+        public ulong ReadTransferCount;
+        public ulong WriteTransferCount;
+        public ulong OtherTransferCount;
+        public nuint ProcessMemoryLimit;
+        public nuint JobMemoryLimit;
+        public nuint PeakProcessMemoryUsed;
+        public nuint PeakJobMemoryUsed;
+    }
 }
