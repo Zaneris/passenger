@@ -397,7 +397,7 @@ public sealed class EndpointsView : DockPanel
     {
         RowIcon headingIcon = new() { Width = 14, Height = 14, Margin = new Thickness(0, 0, 6, 0) };
         TextBlock headingName = new() { FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        StackPanel heading = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Margin = new Thickness(8, 0), IsHitTestVisible = false, Children = { headingIcon, headingName } };
+        StackPanel heading = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Margin = new Thickness(8, 0), Children = { headingIcon, headingName } };
         Panel row = new();
         (DockPanel request, Action<EndpointRequest> showRequest) = RequestRow(row);
         (DockPanel route, Action<WebRoute> showRoute) = RouteRow(row);
@@ -414,12 +414,12 @@ public sealed class EndpointsView : DockPanel
                 case FileRow file:
                     headingIcon.DataKey = IconKeys.DocumentText;
                     headingName.Text = file.Name;
-                    ToolTip.SetTip(headingName, file.Path);
+                    ToolTip.SetTip(heading, file.Path);
                     break;
                 case ProjectRow project:
                     headingIcon.DataKey = IconKeys.Endpoints;
                     headingName.Text = project.Name;
-                    ToolTip.SetTip(headingName, project.Path);
+                    ToolTip.SetTip(heading, project.Path);
                     break;
                 case EndpointRequest shown:
                     showRequest(shown);

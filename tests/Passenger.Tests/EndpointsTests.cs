@@ -9,6 +9,7 @@ using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Endpoints;
 using Passenger.App.State;
+using Passenger.Roslyn.Extension;
 
 namespace Passenger.Tests;
 
@@ -31,6 +32,52 @@ public sealed class EndpointsTests : IDisposable
         Assert.Equal(["All items", "Add an item", "{{base}}/missing"], window.Endpoints.Requests.Select(r => r.Title));
         Assert.Equal("dev", window.Endpoints.Environment);
         window.Close();
+    }
+
+    /// <summary>Resting the pointer on an .http file's heading or a web project's shows the file's or the project's path;
+    /// a click on a heading chooses its row, and a double click there or Enter or F4 opens nothing. The project's routes
+    /// are stood in for by a read's answer.</summary>
+    [AvaloniaFact]
+    public void Resting_the_pointer_on_a_files_or_a_projects_heading_shows_its_path()
+    {
+        string folder = Folder();
+        string project = Path.Combine(folder, "Shop", "Shop.csproj");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.ShowToolWindow(ToolWindowIds.Endpoints);
+            Ui.WaitFor(() => window.Endpoints.Requests.Count == 3, "the .http file's three requests");
+            window.Endpoints.ShowRoutes([new WebRoute(project, RouteKinds.Minimal, ["GET"], "/orders", null, [], "lambda", Path.Combine(folder, "Shop", "Program.cs"),
+                new Place(0, 0), new Place(0, 1), string.Empty)]);
+            Ui.Settle();
+            foreach ((string name, string path) in ((string, string)[])[("api.http", window.Endpoints.Requests[0].File), ("Shop", project)])
+            {
+                TextBlock heading = Heading(name);
+                window.MouseMove(heading.TranslatePoint(new Point(heading.Bounds.Width / 2, heading.Bounds.Height / 2), window)!.Value);
+                Ui.WaitFor(() => Tip() == path, () => $"the path {path} shown with the pointer resting on the heading {name}, where it shows {Tip() ?? "no tooltip"}", TimeSpan.FromSeconds(5));
+            }
+
+            ListBox list = window.Endpoints.GetVisualDescendants().OfType<ListBox>().Single();
+            TextBlock file = Heading("api.http");
+            Control row = list.ContainerFromItem(list.Items.OfType<EndpointsView.FileRow>().Single())!;
+            Point on = file.TranslatePoint(new Point(file.Bounds.Width / 2, file.Bounds.Height / 2), row)!.Value;
+            Ui.Click(row, on);
+            Assert.True(list.SelectedItem is EndpointsView.FileRow, $"A click on the heading api.http chose {list.SelectedItem ?? "nothing"}, not the heading's row");
+            Ui.DoubleClick(row, on);
+            Ui.Press(window, "ENTER");
+            Ui.Press(window, "F4");
+            Assert.True(window.EditorArea.Active is null && api.Received.Count == 0 && list.SelectedItem is EndpointsView.FileRow,
+                $"A double click, Enter and F4 on the heading api.http opened {window.EditorArea.Active?.Path ?? "nothing"} and sent {api.Received.Count} requests, where a heading opens and sends nothing");
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        TextBlock Heading(string name) => window.Endpoints.GetVisualDescendants().OfType<TextBlock>().FirstOrDefault(t => t.IsEffectivelyVisible && t.Text == name)
+            ?? throw new Xunit.Sdk.XunitException($"No heading {name} is shown in the Endpoints window");
+
+        string? Tip() => window.GetVisualDescendants().OfType<ToolTip>().FirstOrDefault(t => t.IsEffectivelyVisible)?.Content as string;
     }
 
     [AvaloniaFact]
