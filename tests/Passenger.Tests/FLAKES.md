@@ -61,6 +61,12 @@ that fixed it, in one of the forms below. A failure not yet understood goes in o
   under way meanwhile: straight after another class's build, Hello built (660 to 770 ms in a 4-processor container), ran
   and ended within it. A fast machine, not a loaded one. **The test**: its build waits at its compile until the second
   click is answered (`HoldNextBuild`), Debug's double click too, and the ring is read from one frame (9804ed6e).
+- `XamlTimingTests`' keys while Passenger.App's types are read, Linux x64 run 40524535928 shard 2: a key waited 369 ms
+  against the 250 ms bound, the read taking 2509 ms (about 2.5 times its usual). The read began as Shell.axaml opened,
+  so its PLINQ threads on every processor and the collections of its 280 MB landed on the file's opening and first
+  frame; on its own it held keys only for single pauses of 5 to 25 ms. **A bug in the IDE**: the read begins once the
+  window has drawn (fd15830b); worst wait on Linux x64 with 4 processors 172 to 261 ms before, 158 to 198 after. This
+  answers the 39324137868 entry's "look at the read's work on the UI thread".
 
 ## 2026-10-26
 
