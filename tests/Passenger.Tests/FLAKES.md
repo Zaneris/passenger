@@ -10,6 +10,12 @@ that fixed it, in one of the forms below. A failure not yet understood goes in o
 
 ## 2026-10-27
 
+- `LiveRequestsTests`' requests window over the running shop, Windows shard 3 of Release run 40574842088: "A value of the
+  Password column shows in the clear, or not as dots: GET /orders/{id:int}: lambda (Shop: http)". A Requests row view
+  holds a request's line and a command's and shows one; the list handed a sign-up command the row of the first request
+  scrolled off its foot, and the test read the first tooltip of any part of the row, the hidden request line's among
+  them. A person's pointer never reaches a hidden line. **The test**: it reads the tooltip the pointer on the row's words
+  finds, the row found by its command, and a new test makes the hand-over happen on any machine (796f1e63).
 - `ProgramListsTests`' profile of a thousand methods, macOS shard 4 of Release run 40562976386: "The profiler's call
   tree listed 493 of the 1000 methods the program made", under the half the list's measure needs. Each method spun some
   4 ms, and the runtime's sampler on a loaded 3-processor runner woke late enough to miss over half of them; this Mac
