@@ -297,7 +297,6 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>Started as the Finder or the Dock start it, Passenger runs the git its login shell's PATH finds, though the
     /// profile leaves a job running, and no git it starts waits on that job.</summary>
-    [Gate]
     [Fact]
     public async Task A_login_profile_that_leaves_a_job_running_holds_up_no_git_Passenger_starts()
     {
