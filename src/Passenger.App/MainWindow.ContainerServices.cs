@@ -77,10 +77,17 @@ public partial class MainWindow
             actions!.Add(new IdeAction(id, title, "Services", context => IdeErrors.Observe(ServiceActionAsync(id, AimOf(context))))
             {
                 WhyNot = context => WhyNotOn(id, AimOf(context)),
+                TitleIn = id is AppActions.ServiceDebug or AppActions.ServiceRun ? context => ReplicaTitle(id, AimOf(context)) ?? title : null,
                 Words = [formerly, title.Replace("Service", "Container Service", StringComparison.Ordinal)],
             });
         }
     }
+
+    /// <summary>Debug's or Run without Debugger's title on one replica of several the Aspire window chose, saying that what it
+    /// keeps for the configuration's next run is every replica's, whose replicas are new; null on any other.</summary>
+    private static string? ReplicaTitle(string id, ServiceAim aim) => aim is { Run: { } run, Start: { } start } && run.ReplicaOf(start) is not null
+        ? id == AppActions.ServiceDebug ? "Debug Replica (Every Replica Next Run)" : "Run Replica without Debugger (Every Replica Next Run)"
+        : null;
 
     /// <summary>The service a service action acts on, by where it was asked: the one its gutter menu names, else the one chosen
     /// in the Containers or Aspire window: the one with the keys, else the one of the two shown, else the one chosen in last.</summary>

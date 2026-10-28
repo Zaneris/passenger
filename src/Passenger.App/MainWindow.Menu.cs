@@ -511,8 +511,8 @@ public partial class MainWindow
     }
 
     /// <summary>An item of a tool window's row menu (the Containers and Aspire windows'), its action's as the window's menus
-    /// show it: its title and keys, greyed with why while it cannot run, worked out each time the menu opens, and run there
-    /// when chosen.</summary>
+    /// show it: its title there and keys, greyed with why while it cannot run, worked out each time the menu opens, and run
+    /// there when chosen.</summary>
     private MenuItem RowMenuItem(string id)
     {
         IdeAction action = actions![id]!;
@@ -520,7 +520,9 @@ public partial class MainWindow
         actions.ShowKeys(item, action.Id);
         item.AttachedToVisualTree += (_, _) =>
         {
-            string? why = actions.WhyNot(action.Id, actions.Context());
+            ActionContext context = actions.Context();
+            item.Header = action.TitleWhere(context);
+            string? why = actions.WhyNot(action.Id, context);
             item.IsEnabled = why is null;
             ToolTip.SetTip(item, why);
         };

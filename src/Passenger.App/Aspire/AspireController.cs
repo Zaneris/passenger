@@ -1324,7 +1324,7 @@ public sealed class AspireAppRun : ServiceRun
 
     /// <summary>The replica's resource name of a start of a service its AppHost runs as several (<see cref="AspireResourceRun.Replica"/>),
     /// else null.</summary>
-    internal string? ReplicaOf(AspireResourceRun start) => replicated.Contains(((IRunService)start).Name) ? start.Replica : null;
+    public override string? ReplicaOf(IRunService service) => service is AspireResourceRun start && replicated.Contains(service.Name) ? start.Replica : null;
 
     /// <summary>Takes from its AppHost's resources the services it runs as several replicas: project resources sharing a
     /// display name, which is their service's.</summary>

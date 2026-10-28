@@ -259,6 +259,10 @@ public abstract class ServiceRun
     /// resource's name).</summary>
     public virtual string SessionName(IRunService service) => service.Name;
 
+    /// <summary>A start's own name where its kind runs a service as several of one name (an AppHost's replicas: its resource's),
+    /// else null.</summary>
+    public virtual string? ReplicaOf(IRunService service) => null;
+
     /// <summary>The session debugging a service from here, its Debug tab's, else null: by its session's name, unless its kind
     /// keeps each start's own (an Aspire service's, whose replicas share a name).</summary>
     public virtual DebugSession? SessionOf(DebugController debug, IRunService service) => debug.SessionNamed(SessionName(service));

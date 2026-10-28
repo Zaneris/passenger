@@ -280,8 +280,9 @@ public sealed partial class BuildRunController
 
     /// <summary>Debug of one .NET service of a run, the others left as they run: its session ended, its program made again
     /// held at its start, and a session attached in a Debug tab of its own, so its startup stops at its breakpoints; kept for
-    /// the run's restarts and a Rerun until chosen otherwise. One the run left unstarted is started now, held. The start
-    /// given (a replica its window chose), else the service of that name. Null once attached, else why not.</summary>
+    /// the run's restarts and a Rerun until chosen otherwise, and for its configuration's next run (<see cref="NextRun"/>). One
+    /// the run left unstarted is started now, held. The start given (a replica its window chose), else the service of that
+    /// name. Null once attached, else why not.</summary>
     public Task<string?> DebugServiceAsync(ServiceRun? run, string name, IRunService? start = null) => OnServiceAsync(run, name, AppActions.ServiceDebug,
         $"Restarting {name} to debug it…", async (run, service, work) =>
     {
@@ -293,7 +294,8 @@ public sealed partial class BuildRunController
         // One the run left unstarted is started now, held.
         return run.LeftUnstarted(service)
             ? Done(await StartLaterAsync(run, service, work, "to debug it from its start"), $"Debugging {name} of {run.Name} from its start, started now; the rest run on as they were")
-            : Done(await RestartServicesAsync(run, [service], work, "to debug it from its start"), $"Debugging {name} of {run.Name} from its start; the rest run on as they were");
+            : Done(await RestartServicesAsync(run, [service], work, "to debug it from its start"),
+                $"Debugging {run.ReplicaOf(service) ?? name} of {run.Name} from its start; the rest run on as they were{NextRun(run, service, debug: true)}");
     }, start);
 
     /// <summary>Attach to one .NET service of the container run under way (<see cref="AttachServiceAsync(ServiceRun, string, IRunService)"/>).</summary>
@@ -343,13 +345,15 @@ public sealed partial class BuildRunController
         {
             return Done(await StartLaterAsync(run, service, work, "to run it"), $"{name} of {run.Name} started, without the debugger; the rest run on as they were");
         }
+        string said = run.ReplicaOf(service) ?? name;
         if (!held && !debugged)
         {
-            return Done(null, $"{name} of {run.Name} already runs without the debugger: nothing restarted");
+            return Done(null, $"{said} of {run.Name} already runs without the debugger: nothing restarted{NextRun(run, service, debug: false)}");
         }
         if (run.RestartsToRunWithoutDebugger)
         {
-            return Done(await RestartServicesAsync(run, [service], work, "to run without the debugger"), $"{name} of {run.Name} restarted without the debugger");
+            return Done(await RestartServicesAsync(run, [service], work, "to run without the debugger"),
+                $"{said} of {run.Name} restarted without the debugger{NextRun(run, service, debug: false)}");
         }
         await session.Debug.DetachAsync(run.SessionName(service));
         return Done(null, $"{name} of {run.Name} runs on without the debugger, not restarted; its next restart starts it unheld");
@@ -389,6 +393,11 @@ public sealed partial class BuildRunController
         parts.Say(failed ?? done);
         return failed;
     }
+
+    /// <summary>What a choice of one replica of several keeps for its configuration's next run, said after what it did: every
+    /// replica's, as that run's replicas are new (their instances are made again each run); nothing for a service of one.</summary>
+    private static string NextRun(ServiceRun run, IRunService service, bool debug) => run.ReplicaOf(service) is null ? string.Empty
+        : debug ? $"; the next run debugs every replica of {service.Name}" : $"; the next run runs every replica of {service.Name} without it";
 
     /// <summary>What a person chose for a service of the run, kept for its configuration.</summary>
     private void Choose(ServiceRun run, string service, bool debug)

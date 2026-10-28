@@ -1089,9 +1089,9 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             replicas.Show(unheld);
             replicas.Choose(second);
             FindAction(window, "Run Service without Debugger");
-            Ui.WaitFor(() => window.Status is { } status && status.StartsWith($"apiservice of {config}", StringComparison.Ordinal),
+            Ui.WaitFor(() => window.Status is { } status && status.StartsWith($"apiservice-{second} of {config}", StringComparison.Ordinal),
                 () => $"Run without Debugger of the second replica to say what it did ({window.Status})", TimeSpan.FromMinutes(2));
-            Assert.Equal($"apiservice of {config} restarted without the debugger", window.Status);
+            Assert.Equal($"apiservice-{second} of {config} restarted without the debugger; the next run runs every replica of apiservice without it", window.Status);
             Dictionary<string, int> undebugged = replicas.Programs();
             Assert.True(undebugged[second] != unheld[second] && replicas.Of(second) is [{ DebugTab: null }] && debugged.DebugTab is not { IsLive: true },
                 "Run without Debugger of the second replica did not restart it unheld");
@@ -1161,6 +1161,53 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         {
             window.Close();
             replicas.Dispose();
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+    }
+
+    /// <summary>Debug of one replica of a service its AppHost runs as two says, in its row's menu and the status bar, that the
+    /// configuration's next run debugs every replica, as that run's replicas are new (their instances made again); and the next
+    /// run does, each of its replicas held at its start and debugged.</summary>
+    [AvaloniaFact]
+    public void Debug_of_one_replica_says_the_next_run_debugs_every_replica_which_it_does()
+    {
+        project.Reset();
+        project.BuildApi();
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        MainWindow window = OpenRunning(backend);
+        (string first, string second) = ("aaaaaaaa", "bbbbbbbb");
+        StandInReplicas replicas = new(project, backend, window, [first, second]);
+        StandInReplicas? next = null;
+        string config = StandInAppHost.Configuration;
+        try
+        {
+            Dictionary<string, int> started = replicas.Start(first, second);
+            replicas.Choose(second);
+            Ui.RightClick(Words(Row(window, $"apiservice-{second}"), "apiservice"));
+            ContextMenu menu = window.AspireWindow.ResourceList.ContextMenu ?? throw new Xunit.Sdk.XunitException("The replica's row has no menu");
+            Ui.WaitFor(() => menu.IsOpen, "the replica's row menu to open");
+            Assert.Equal(["Debug Replica (Every Replica Next Run)", "Attach to Service", "Run Replica without Debugger (Every Replica Next Run)", "Profile Service"],
+                menu.Items.OfType<Control>().TakeWhile(item => item is MenuItem).Select(item => (string?)((MenuItem)item).Header));
+            Ui.Choose(menu, "Debug Replica (Every Replica Next Run)");
+            Ui.WaitFor(() => replicas.Of(second) is [{ ProcessId: int restarted, DebugTab.IsLive: true }] && restarted != started[second],
+                () => $"Debug to restart the second replica held and attach to it ({window.Status})", TimeSpan.FromMinutes(2));
+            Assert.Equal($"Debugging apiservice-{second} of {config} from its start; the rest run on as they were; the next run debugs every replica of apiservice",
+                window.Status);
+
+            replicas.Dispose();
+            // Each AppHost writes its own key, which its resource connection is read by: none an earlier one's.
+            File.Delete(project.KeyFile);
+            Ui.Launched(window, window.RunAsync(), "the configuration's next run");
+            next = new(project, backend, window, ["cccccccc", "dddddddd"]);
+            next.Start("cccccccc", "dddddddd");
+            Assert.True(((string[])["cccccccc", "dddddddd"]).All(instance => next.Of(instance) is [{ DebugTab.IsLive: true }]),
+                "The next run did not debug every replica of the service, as Debug of one replica said it would");
+            Assert.Empty(backend.Errors);
+        }
+        finally
+        {
+            window.Close();
+            (next ?? replicas).Dispose();
             Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
         }
     }
