@@ -61,9 +61,6 @@ public sealed record FileTests(IReadOnlyList<(string Type, int Line)> Types, IRe
 /// closed file's own; lines are the editor's.</summary>
 public static class TestsAtCaret
 {
-    /// <summary>A closed file's parse: preprocessor symbols as the editor's (a Debug build's), no documentation comments.</summary>
-    private static readonly CSharpParseOptions ClosedFile = new(LanguageVersion.Preview, DocumentationMode.None, preprocessorSymbols: ["DEBUG", "TRACE", "NET", "NETCOREAPP"]);
-
     private static readonly HashSet<string> TestAttributes = new(StringComparer.Ordinal)
     {
         "Fact", "Theory", "AvaloniaFact", "AvaloniaTheory", "Test", "TestCase", "TestCaseSource", "TestMethod", "DataTestMethod",
@@ -136,9 +133,10 @@ public static class TestsAtCaret
         return new FileTests(types, tests, methods);
     }
 
-    /// <summary>A file not open in an editor, parsed on its own: an open one's tests are read from its shared parse.</summary>
-    public static FileTests Read(string text) =>
-        Read(new ParsedText(CSharpSyntaxTree.ParseText(text, ClosedFile), TextSnapshot.From(text)));
+    /// <summary>A file not open in an editor, parsed on its own with its project's symbols (<see cref="CSharpParsing"/>),
+    /// its documentation comments passed over: an open one's tests are read from its shared parse.</summary>
+    public static FileTests Read(string text, CSharpParseOptions options) =>
+        Read(new ParsedText(CSharpSyntaxTree.ParseText(text, options.WithDocumentationMode(DocumentationMode.None)), TextSnapshot.From(text)));
 
     /// <summary>Whether a test's full name (a theory's rows, NUnit's cases included) belongs to a type and method.</summary>
     public static bool Matches(string fullyQualifiedName, string type, string? method)

@@ -12,6 +12,7 @@ using Avalonia.VisualTree;
 using Passenger.App.Tables;
 using Passenger.App.Workspace;
 using Passenger.Editor;
+using Passenger.Lsp;
 using Passenger.Text;
 
 namespace Passenger.App.Editors;
@@ -776,12 +777,7 @@ public sealed class EditorGroup : DockPanel
         {
             return null;
         }
-        return document.ProjectContexts.Select(ProjectOf).Distinct(StringComparer.Ordinal).Count() == 1 && FrameworkOf(chosen) is { } framework ? framework : chosen;
-
-        static string ProjectOf(string label) => FrameworkOf(label) is { } framework ? label[..^(framework.Length + 3)] : label;
+        return document.ProjectContexts.Select(ProjectContext.ProjectOf).Distinct(StringComparer.Ordinal).Count() == 1
+            && ProjectContext.FrameworkOf(chosen) is { } framework ? framework : chosen;
     }
-
-    /// <summary>The target framework a context's name ends with, in parentheses; null for a project's alone.</summary>
-    private static string? FrameworkOf(string label) =>
-        label.EndsWith(')') && label.LastIndexOf(" (", StringComparison.Ordinal) is int open and > 0 ? label[(open + 2)..^1] : null;
 }

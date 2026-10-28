@@ -80,6 +80,7 @@ public partial class MainWindow : Window
         AddSettings();
         AddActiveEditor();
         AddFolding();
+        AddCompilationSymbols();
         AddPackages();
         AddProfiler();
         AddLiveTree();

@@ -131,6 +131,7 @@ internal static class Evaluation
             IsTestProject = each.Any(p => p.GetPropertyValue("IsTestProject").Equals("true", StringComparison.OrdinalIgnoreCase)),
             IsAspireHost = each.Any(p => p.GetPropertyValue("IsAspireHost").Equals("true", StringComparison.OrdinalIgnoreCase)),
             Dependencies = [.. each.Select((p, i) => Dependencies(p, named[i]))],
+            Symbols = [.. each.Select(DefinedSymbols.Of).OfType<FrameworkSymbols>()],
             Items = items,
             Properties = Carried(first, excluded),
             Inputs = Inputs(file, each, excluded, [.. LookedFor(path, first), .. IncludedHeads(path, items)]),

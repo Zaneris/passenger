@@ -1,3 +1,4 @@
+using Microsoft.CodeAnalysis.CSharp;
 using Passenger.Editor;
 using Passenger.Languages.CSharp;
 using Passenger.Languages.TextMate;
@@ -9,8 +10,9 @@ namespace Passenger.Languages;
 /// grammar's for the files beside it, a scan of XML's tags or JSON's brackets, or none.</summary>
 public static class Highlighters
 {
-    public static IHighlighter? For(Language language, TextDocument document) =>
-        language.Parsed ? new CSharpHighlighter(document)
+    /// <param name="options">A C# file's preprocessor symbols (<see cref="CSharpParsing"/>), a Debug build's when not given.</param>
+    public static IHighlighter? For(Language language, TextDocument document, CSharpParseOptions? options = null) =>
+        language.Parsed ? new CSharpHighlighter(document, options)
         : language.Grammar is { } grammar ? TextMateHighlighter.For(grammar, document)
         : null;
 

@@ -12,6 +12,7 @@ using Passenger.Editor;
 using Passenger.Text;
 using Passenger.Core;
 using Passenger.Workspace;
+using Microsoft.CodeAnalysis.CSharp;
 
 namespace Passenger.App.Navigation;
 
@@ -39,6 +40,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
 
     private readonly Func<SearchQuery, SearchScope, CancellationToken, Task<FilesFound>> search;
     private readonly Func<string, TextSnapshot?> textOf;
+    private readonly Func<string, CSharpParseOptions> parseOptions;
     private readonly TextBox query;
     private readonly TextBox? replacement;
     private readonly ToggleButton matchCase;
@@ -66,12 +68,14 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
 
     private Task? searching;
 
+    /// <param name="parseOptions">What a C# file's preview is parsed with: its project's symbols.</param>
     /// <param name="ligatures">Settings' Enable ligatures, which the matched lines and the preview follow.</param>
     public FindInFilesPopup(Func<SearchQuery, SearchScope, CancellationToken, Task<FilesFound>> search, Func<string, TextSnapshot?> textOf,
-        bool replace, string? initial, FindChoices choices, bool ligatures)
+        Func<string, CSharpParseOptions> parseOptions, bool replace, string? initial, FindChoices choices, bool ligatures)
     {
         this.search = search;
         this.textOf = textOf;
+        this.parseOptions = parseOptions;
         projects = choices.Projects;
         Width = PopupFrame.Widest;
         query = new TextBox { Classes = { "search" }, PlaceholderText = "Text to find", Text = initial ?? string.Empty };
@@ -462,7 +466,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         TextDocument shown = new(text.ToString());
         preview.Show(shown, SelectionSet.Single(0), default);
         (preview.Highlighter as IDisposable)?.Dispose();
-        preview.Highlighter = Languages.Highlighters.For(Languages.Language.ForPath(match.Path), shown);
+        preview.Highlighter = Languages.Highlighters.For(Languages.Language.ForPath(match.Path), shown, parseOptions(match.Path));
         if (match.Line < shown.Snapshot.LineCount)
         {
             int at = shown.Snapshot.GetLineStart(match.Line) + match.Column;

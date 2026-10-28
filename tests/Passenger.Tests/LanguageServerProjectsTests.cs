@@ -402,6 +402,36 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
         window.Close();
     }
 
+    /// <summary>The file's own parse (its brackets' pairs, its folds, what Safe Delete reads) takes the symbols of the
+    /// framework chosen in the editor: the member only net11.0 compiles is disabled text to it in the other framework and
+    /// code in net11.0.</summary>
+    [AvaloniaFact]
+    public void A_multi_targeted_files_own_parse_takes_the_symbols_of_the_target_framework_chosen_in_the_editor()
+    {
+        string greeter = Path.Combine(folder, "Lib", "Greeter.cs");
+        MainWindow window = Keeping();
+        window.OpenFile(greeter);
+        OpenDocument document = window.EditorArea.Active!;
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.WaitFor(() => window.CSharpService?.IsReady == true && document.ProjectContexts.Count == 2,
+            "the server to say Greeter.cs is compiled for both of Lib's target frameworks", TimeSpan.FromMinutes(2));
+
+        Choose(window, editor, "Lib (net11.0)");
+        Ui.WaitFor(() => !ParsedDisabled(document, "Missing;"), "Newer, which only net11.0 compiles, parsed as code with net11.0 chosen");
+        Choose(window, editor, $"Lib ({TestProjects.Framework})");
+        Ui.WaitFor(() => ParsedDisabled(document, "Missing;"), $"Newer, which {TestProjects.Framework} never compiles, parsed as disabled text with {TestProjects.Framework} chosen");
+        window.Close();
+    }
+
+    /// <summary>Whether the file's own parse colours the code at <paramref name="code"/> as disabled, whatever the server's colours.</summary>
+    private static bool ParsedDisabled(OpenDocument document, string code)
+    {
+        Passenger.Text.TextSnapshot text = document.Text.Snapshot;
+        int at = text.ToString().IndexOf(code, StringComparison.Ordinal);
+        Passenger.Text.LineSpan line = text.GetLine(text.GetLineFromOffset(at));
+        return document.Syntax!.GetSpans(text, line.Start, line.EndIncludingBreak - line.Start).Any(s => s.Kind == TokenKind.Excluded && s.Start <= at && s.End > at);
+    }
+
     /// <summary>Clicks the editor's switcher and the framework in the menu it opens.</summary>
     private static void Choose(MainWindow window, CodeEditor editor, string context)
     {

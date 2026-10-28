@@ -56,6 +56,9 @@ public sealed class FileMemo<T> where T : class
         }
     }
 
+    /// <summary>Lets a file's parse go, so the next asked of it is made anew.</summary>
+    public void Forget(string path) => kept.TryRemove(path, out _);
+
     /// <summary>Lets every parse go.</summary>
     public void Clear() => kept.Clear();
 }

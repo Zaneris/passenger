@@ -16,10 +16,8 @@ namespace Passenger.Languages.CSharp;
 /// typing never flashes plain. A key costs the UI thread the lines it changed, whatever the size of the file.</summary>
 public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder, IDisposable
 {
-    /// <summary>The symbols a Debug build defines, so <c>#if DEBUG</c> code is coloured as code.</summary>
-    private static readonly CSharpParseOptions Options = new(LanguageVersion.Preview, DocumentationMode.Parse, preprocessorSymbols: ["DEBUG", "TRACE", "NET", "NETCOREAPP"]);
-
     private readonly TextDocument document;
+    private CSharpParseOptions options;
     private readonly SynchronizationContext? ui = SynchronizationContext.Current;
     private readonly List<(int Version, IReadOnlyList<TextEdit> Edits)> sinceTree = [];
     private SnapshotText text;
@@ -70,15 +68,32 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
     /// <summary>The most lines kept, past which they are let go: a few screens.</summary>
     private const int MostLines = 4096;
 
-    public CSharpHighlighter(TextDocument document)
+    /// <param name="options">The file's preprocessor symbols (<see cref="CSharpParsing"/>), a Debug build's when not given.</param>
+    public CSharpHighlighter(TextDocument document, CSharpParseOptions? options = null)
     {
         this.document = document;
+        this.options = options ?? CSharpParsing.Default;
         text = new SnapshotText(document.Snapshot);
         document.Changed += OnChanged;
         Parse();
     }
 
     public event EventHandler? Changed;
+
+    /// <summary>What the file is parsed with: its project's preprocessor symbols. Others given parse it again whole, once, on
+    /// a worker, its colours, folds and syntax landing as a parse's do; the trees until then keep the symbols they had.</summary>
+    public CSharpParseOptions Options
+    {
+        get => options;
+        set
+        {
+            if (!ReferenceEquals(value, options))
+            {
+                options = value;
+                Parse();
+            }
+        }
+    }
 
     /// <summary>What folds in the text (<see cref="FoldRegions"/>), from the newest parse of the text as it stands.</summary>
     public IReadOnlyList<FoldRegion> Folds { get; private set; } = [];
@@ -377,8 +392,10 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
         }
         parsing = true;
         SnapshotText parsedText = text;
-        SyntaxTree? previous = tree;
-        FoldRegions? previousFolds = treeFolds;
+        CSharpParseOptions parsedWith = options;
+        // A tree of other symbols reads its directives otherwise, so the text is parsed whole.
+        SyntaxTree? previous = ReferenceEquals(tree?.Options, parsedWith) ? tree : null;
+        FoldRegions? previousFolds = previous is null ? null : treeFolds;
         int parsedVersion = version;
         parsingVersion = parsedVersion;
         (int First, int Last)[] warm = [.. asked];
@@ -387,10 +404,10 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
         Task<(SyntaxTree Tree, FoldRegions Folds, Dictionary<int, (int Length, SyntaxSpan[] Spans)> Lines)> parse = BackgroundWork.Unheld(() =>
         {
             long allocated = GC.GetAllocatedBytesForCurrentThread();
-            SyntaxTree parsed = previous is null ? CSharpSyntaxTree.ParseText(parsedText, Options) : previous.WithChangedText(parsedText);
+            SyntaxTree parsed = previous is null ? CSharpSyntaxTree.ParseText(parsedText, parsedWith) : previous.WithChangedText(parsedText);
             // The screen's lines classified here build the tree's nodes off the UI thread, which classifies them no more.
             Dictionary<int, (int Length, SyntaxSpan[] Spans)> read = Read(parsed.GetRoot(), parsedText.Snapshot, warm);
-            FoldRegions folds = FoldRegions.Of(new ParsedText(parsed, parsedText.Snapshot), previous is null ? null : previousFolds);
+            FoldRegions folds = FoldRegions.Of(new ParsedText(parsed, parsedText.Snapshot), previousFolds);
             Interlocked.Add(ref parseBytes, GC.GetAllocatedBytesForCurrentThread() - allocated);
             Interlocked.Increment(ref parses);
             return (Tree: parsed, Folds: folds, Lines: read);
@@ -410,6 +427,10 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
                     parsedText.ForgetHistory();
                     sinceTree.RemoveAll(batch => batch.Version <= parsedVersion);
                     cached.Clear();
+                    if (current is not null && !ReferenceEquals(current.Tree.Options, parsedWith))
+                    {
+                        current = null;
+                    }
                     KeptColours = TakeLines(done.Result.Lines);
                     Changed?.Invoke(this, EventArgs.Empty);
                     if (parsedVersion == version)
@@ -419,7 +440,7 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
                         Parsed?.Invoke(this, Current);
                     }
                 }
-                if (parsedVersion != version)
+                if (parsedVersion != version || !ReferenceEquals(parsedWith, options))
                 {
                     Parse();
                 }
@@ -479,7 +500,7 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
             ((IAsyncResult)first).AsyncWaitHandle.WaitOne();
             basis = first.IsCompletedSuccessfully ? first.Result.Tree : null;
         }
-        return basis is null ? CSharpSyntaxTree.ParseText(text, Options) : basis.WithChangedText(text);
+        return basis is null ? CSharpSyntaxTree.ParseText(text, options) : basis.WithChangedText(text);
     }
 
     private void OnUi(Action action)

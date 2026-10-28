@@ -360,19 +360,6 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         Ui.WaitFor(() => !window.Tests.IsBusy && Method(window, "Adds")?.State == TestState.Passed, "the solution's tests to run", TimeSpan.FromSeconds(180));
         window.Close();
 
-        // The editor's menu at the caret: its items that run a test.
-        static List<string> TestItems(MainWindow window)
-        {
-            window.EditorArea.CodeEditor.RequestContextMenu();
-            Ui.Settle();
-            Avalonia.Controls.ContextMenu menu = window.OpenContextMenu ?? throw new InvalidOperationException("The editor's menu did not open");
-            List<string> items = [.. menu.Items.OfType<Avalonia.Controls.MenuItem>().Select(i => i.Header as string ?? string.Empty)
-                .Where(h => h.StartsWith("Run '", StringComparison.Ordinal) || h.StartsWith("Debug '", StringComparison.Ordinal))];
-            menu.Close();
-            Ui.Settle();
-            return items;
-        }
-
         // A row's menu as its right-click opens it, by its items' titles.
         static List<string> RowMenu(MainWindow window, Passenger.App.Explorer.ExplorerNode row)
         {
@@ -383,6 +370,32 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
             Ui.Settle();
             return items;
         }
+    }
+
+    /// <summary>A test under a symbol its framework defines (#if NET8_0_OR_GREATER) is one as its project compiles it:
+    /// the Unit Tests window lists it from its code, the editor offers it at the caret, and Run Tests runs it there; one
+    /// under a symbol the framework lacks is no test.</summary>
+    [AvaloniaFact]
+    public void A_test_under_its_frameworks_symbols_is_listed_from_its_code_and_runs_at_the_caret_and_one_under_a_symbol_it_lacks_is_none()
+    {
+        string solution = NewFolder();
+        Write(solution, "Gated.Tests/Gated.Tests.csproj", TestProject(TestProjects.Framework));
+        Write(solution, "Gated.Tests/GatedTests.cs",
+            "using Xunit;\n\nnamespace Gated.Tests;\n\npublic class GatedTests\n{\n#if NET8_0_OR_GREATER\n    [Fact]\n    public void Modern() => Assert.Equal(4, 2 + 2);\n#endif\n\n" +
+            "#if !NET8_0_OR_GREATER\n    [Fact]\n    public void Legacy() => Assert.Equal(5, 2 + 2);\n#endif\n}\n");
+        Restore.Run(Path.Combine(solution, "Gated.Tests"));
+        MainWindow window = Ui.OpenFolder(solution, languageServer: false);
+        Ui.WaitFor(() => Method(window, "Modern") is not null,
+            () => $"the test under #if NET8_0_OR_GREATER in the Unit Tests window from its code, which lists [{string.Join(", ", Shown(window))}]");
+        Assert.True(Method(window, "Legacy") is null, $"The Unit Tests window lists Legacy, under #if !NET8_0_OR_GREATER, which its {TestProjects.Framework} project never compiles");
+
+        window.OpenFile(Path.Combine(solution, "Gated.Tests", "GatedTests.cs"));
+        Ui.Settle();
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "void Mod");
+        Assert.Equal(["Run 'Modern'", "Debug 'Modern'", "Run 'Modern' Until Failure"], TestItems(window));
+        Ui.Run(window, AppActions.RunTests);
+        Ui.WaitFor(() => !window.Tests.IsBusy && Method(window, "Modern")?.State == TestState.Passed, () => $"the test at the caret to run: {window.Status}", TimeSpan.FromSeconds(180));
+        window.Close();
     }
 
     [Gate]
@@ -1025,6 +1038,19 @@ public abstract class UnitTestsFolders : IDisposable
 
     protected static TestNode? Method(MainWindow window, string name) =>
         window.Tests.Tree.Roots.SelectMany(r => r.Methods).FirstOrDefault(m => m.Name == name);
+
+    /// <summary>The editor's menu at the caret: its items that run a test.</summary>
+    protected static List<string> TestItems(MainWindow window)
+    {
+        window.EditorArea.CodeEditor.RequestContextMenu();
+        Ui.Settle();
+        Avalonia.Controls.ContextMenu menu = window.OpenContextMenu ?? throw new InvalidOperationException("The editor's menu did not open");
+        List<string> items = [.. menu.Items.OfType<Avalonia.Controls.MenuItem>().Select(i => i.Header as string ?? string.Empty)
+            .Where(h => h.StartsWith("Run '", StringComparison.Ordinal) || h.StartsWith("Debug '", StringComparison.Ordinal))];
+        menu.Close();
+        Ui.Settle();
+        return items;
+    }
 
     /// <summary>The Unit Tests window's Stop, on its toolbar.</summary>
     protected static Button StopButton(MainWindow window) =>

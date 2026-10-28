@@ -357,6 +357,7 @@ public partial class MainWindow
             {
                 Explorer.Reload(next.Workspace!);
                 ShowWorkspaceName();
+                FollowSymbols();
                 FindTests();
                 // Each file's project, which Problems lists the solution's under, as the projects now are.
                 ShowSolutionProblems();
@@ -367,6 +368,7 @@ public partial class MainWindow
             if (session == next)
             {
                 Explorer.UpdateProjects(next.Workspace!, evaluated.Projects);
+                FollowSymbols();
                 if (evaluated.TestsChanged)
                 {
                     FindTests();

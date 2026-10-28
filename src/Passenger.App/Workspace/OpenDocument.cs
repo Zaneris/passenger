@@ -1,5 +1,6 @@
 using System.Text;
 using Avalonia;
+using Microsoft.CodeAnalysis.CSharp;
 using Passenger.App.Debugging;
 using Passenger.App.Editors;
 using Passenger.App.Testing;
@@ -86,8 +87,8 @@ public sealed class OpenDocument : Observable
     /// An asset's tab shows it loading until its decode lands off the UI thread; a missing, empty or oversized one is
     /// refused at once. Other binary content opens as its bytes' text, read-only and never written
     /// (<see cref="FileText.Bytes"/>), or, unless <paramref name="asBytes"/> (for what would edit it), is refused with an
-    /// <see cref="IOException"/>, as is one past <see cref="LargestText"/>.</summary>
-    public static OpenDocument Load(string path, bool asBytes = true)
+    /// <see cref="IOException"/>, as is one past <see cref="LargestText"/>. C# is parsed with its project's symbols.</summary>
+    public static OpenDocument Load(string path, bool asBytes = true, CSharpParseOptions? options = null)
     {
         if (AssetPreview.KindOf(path) is { } kind)
         {
@@ -112,7 +113,7 @@ public sealed class OpenDocument : Observable
             throw new IOException($"{name} is {length / (1024.0 * 1024):0.#} MB: the editor opens a file of up to {LargestText / (1024 * 1024)} MB as text");
         }
         FileText file = FileText.Load(path) ?? (asBytes ? FileText.Bytes(path) : throw new IOException($"{name} looks like a binary file."));
-        OpenDocument document = new(path, file);
+        OpenDocument document = new(path, file, options);
         document.ReadAt(stamp);
         return document;
     }
@@ -192,7 +193,8 @@ public sealed class OpenDocument : Observable
     }
 
     /// <summary>Opens text with the encoding and line endings read from disk, and the conventions its path supplies.</summary>
-    public OpenDocument(string path, FileText file)
+    /// <param name="options">A C# file's preprocessor symbols (<see cref="CSharpParsing"/>), a Debug build's when not given.</param>
+    public OpenDocument(string path, FileText file, CSharpParseOptions? options = null)
     {
         Path = path;
         Text = new TextDocument(file.Text);
@@ -207,7 +209,7 @@ public sealed class OpenDocument : Observable
         Conventions = EditorConfig.For(path);
         Indentation = Choose();
         FollowLineEnding(file.Text.Contains('\n', StringComparison.Ordinal));
-        parser = Parser();
+        parser = Parser(options);
         highlighter = parser;
         finder = Finder();
         Text.Changed += (_, change) =>
@@ -925,11 +927,11 @@ public sealed class OpenDocument : Observable
         }
     }
 
-    /// <summary>The in-process parser's colours and folds for the file's language (C#'s parse, another language's TextMate
-    /// grammar); null for a language with neither.</summary>
-    private IHighlighter? Parser()
+    /// <summary>The in-process parser's colours and folds for the file's language (C#'s parse, with the file's
+    /// <paramref name="options"/>, another language's TextMate grammar); null for a language with neither.</summary>
+    private IHighlighter? Parser(CSharpParseOptions? options = null)
     {
-        IHighlighter? colours = Highlighters.For(Language, Text);
+        IHighlighter? colours = Highlighters.For(Language, Text, options);
         if (colours is CSharpHighlighter csharp)
         {
             csharp.Parsed += (_, parsed) => Parsed?.Invoke(this, parsed);

@@ -28,7 +28,7 @@ public partial class MainWindow
             return null;
         }
         Navigation.FindChoices choices = new(on ?? KeptScope(), Projects, session.FindScope.RecentDirectories, ScopeNames(), findSettings.RecentFileMasks);
-        Navigation.FindInFilesPopup popup = new(SearchFiles, Editors.TextOf, replace, navigator.SelectedWord(), choices, settings.Ligatures);
+        Navigation.FindInFilesPopup popup = new(SearchFiles, Editors.TextOf, path => Editors.ParseOptions(path), replace, navigator.SelectedWord(), choices, settings.Ligatures);
         popup.ScopeChanged += (_, scope) => KeepFindScope(scope, closing: false);
         // However it closes: a match chosen, Escape, a click outside.
         popup.DetachedFromVisualTree += (_, _) => KeepFindScope(popup.Scope, closing: true);

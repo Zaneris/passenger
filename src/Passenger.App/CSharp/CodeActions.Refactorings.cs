@@ -197,7 +197,7 @@ internal sealed partial class CodeActions
         {
             return (null, "Safe Delete deletes only what this folder's own code declares");
         }
-        ParsedText? syntax = open?.Syntax?.Current ?? (FileText.Load(path) is { } file ? SafeDeletion.Parse(file.Text) : null);
+        ParsedText? syntax = open?.Syntax?.Current ?? (FileText.Load(path) is { } file ? SafeDeletion.Parse(file.Text, context.Editors.ParseOptions(path)) : null);
         if (syntax is null)
         {
             return (null, $"Safe Delete cannot read {Path.GetFileName(path)} as text");

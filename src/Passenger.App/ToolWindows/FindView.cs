@@ -7,6 +7,7 @@ using Avalonia.Media;
 using Passenger.Editor;
 using Passenger.Languages.CSharp;
 using Passenger.Text;
+using Microsoft.CodeAnalysis.CSharp;
 
 namespace Passenger.App.ToolWindows;
 
@@ -62,6 +63,7 @@ public sealed class FindView : DockPanel
     private readonly CodeEditor preview;
     private readonly TextBlock placeholder;
     private readonly Func<string, string?> textOf;
+    private readonly Func<string, CSharpParseOptions> parseOptions;
 
     /// <summary>The searches' tabs, shown only while there is one: an empty row with a rule under it says nothing.</summary>
     private readonly Border tabBar;
@@ -69,9 +71,11 @@ public sealed class FindView : DockPanel
     private Search? current;
 
     /// <param name="textOf">A file's text as it is now: the open editor's, else the disk's.</param>
-    public FindView(Func<string, string?> textOf)
+    /// <param name="parseOptions">What a C# file's preview is parsed with: its project's symbols.</param>
+    public FindView(Func<string, string?> textOf, Func<string, CSharpParseOptions> parseOptions)
     {
         this.textOf = textOf;
+        this.parseOptions = parseOptions;
         tabBar = ToolBars.Top(new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden, Content = tabs, Margin = new Thickness(8, 0) });
         tabBar.IsVisible = false;
         Children.Add(tabBar);
@@ -295,7 +299,7 @@ public sealed class FindView : DockPanel
             TextDocument document = new(text);
             preview.Document = document;
             (preview.Highlighter as IDisposable)?.Dispose();
-            preview.Highlighter = Languages.Highlighters.For(Languages.Language.ForPath(usage.Path), document);
+            preview.Highlighter = Languages.Highlighters.For(Languages.Language.ForPath(usage.Path), document, parseOptions(usage.Path));
             preview.Tag = usage.Path;
         }
         TextSnapshot snapshot = preview.Document.Snapshot;

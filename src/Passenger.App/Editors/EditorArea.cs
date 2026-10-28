@@ -3,10 +3,12 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Microsoft.CodeAnalysis.CSharp;
 using Passenger.App.Docking;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Languages.CSharp;
 using Passenger.Text;
 
 namespace Passenger.App.Editors;
@@ -90,6 +92,10 @@ public sealed partial class EditorArea : UserControl
 
     /// <summary>The open folder, whose files alone a Markdown preview draws the images of; null for none.</summary>
     public Func<string?> Root { get; set; } = () => null;
+
+    /// <summary>What a C# file is parsed with in process, open or not: its project's preprocessor symbols
+    /// (<see cref="CSharp.CompilationSymbols"/>), as the window knows its projects. Asked on the UI thread.</summary>
+    public Func<string, CSharpParseOptions> ParseOptions { get; set; } = _ => CSharpParsing.Default;
 
     private bool showsMarkdownPreview = true;
 
@@ -218,7 +224,7 @@ public sealed partial class EditorArea : UserControl
         OpenDocument document;
         try
         {
-            document = OpenDocument.Load(full);
+            document = OpenDocument.Load(full, options: ParseOptions(full));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -888,7 +894,7 @@ public sealed partial class EditorArea : UserControl
     /// <summary>A file not open read from disk and opened with no tab; the file system's exception when it cannot be read.</summary>
     private OpenDocument LoadNew(string full, bool asBytes)
     {
-        OpenDocument document = OpenDocument.Load(full, asBytes);
+        OpenDocument document = OpenDocument.Load(full, asBytes, ParseOptions(full));
         document.PreviewFailed += OnPreviewFailed;
         Opened?.Invoke(this, document);
         documents.Add(document);

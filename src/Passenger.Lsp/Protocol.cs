@@ -76,7 +76,16 @@ public sealed record ProjectContext(
     [property: JsonPropertyName("_vs_label")] string Label,
     [property: JsonPropertyName("_vs_id")] string Id,
     [property: JsonPropertyName("_vs_kind")] int Kind = 0,
-    [property: JsonPropertyName("_vs_is_miscellaneous")] bool IsMiscellaneous = false);
+    [property: JsonPropertyName("_vs_is_miscellaneous")] bool IsMiscellaneous = false)
+{
+    /// <summary>The target framework a context's label ends with in parentheses, as Roslyn names each framework of a
+    /// multi-targeted project ("Lib (net10.0)"); null for a project's name alone.</summary>
+    public static string? FrameworkOf(string label) =>
+        label.EndsWith(')') && label.LastIndexOf(" (", StringComparison.Ordinal) is int open and > 0 ? label[(open + 2)..^1] : null;
+
+    /// <summary>The project a context's label names, its framework left off.</summary>
+    public static string ProjectOf(string label) => FrameworkOf(label) is { } framework ? label[..^(framework.Length + 3)] : label;
+}
 
 /// <summary>The projects a document is in (<c>textDocument/_vs_getProjectContexts</c>) and the one the server answers
 /// for unless a request names another.</summary>

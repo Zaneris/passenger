@@ -232,7 +232,7 @@ public sealed class Navigator
             else if (parts.TextOf(place.Path) is { } read)
             {
                 TextDocument closed = new(read.ToString());
-                IHighlighter? colours = Languages.Highlighters.For(Languages.Language.ForPath(place.Path), closed);
+                IHighlighter? colours = Languages.Highlighters.For(Languages.Language.ForPath(place.Path), closed, Editors.ParseOptions(place.Path));
                 if (colours is IDisposable disposable)
                 {
                     made.Add(disposable);

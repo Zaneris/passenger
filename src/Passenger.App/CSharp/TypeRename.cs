@@ -148,7 +148,7 @@ public static class TypeRename
         {
             return null;
         }
-        return (CSharpSyntaxTree.ParseText(file.Text).GetRoot(), TextSnapshot.From(file.Text));
+        return (CSharpSyntaxTree.ParseText(file.Text, editors.ParseOptions(path)).GetRoot(), TextSnapshot.From(file.Text));
     }
 
     private static bool IsCSharp(string path) => path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase);

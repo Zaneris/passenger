@@ -56,8 +56,8 @@ public sealed record SessionSetup(
     public HeadStart? HeadStart { get; init; }
 }
 
-/// <summary>Projects whose evaluation landed, as the workspace now has them, and whether which projects hold tests, or what
-/// packages the projects reference, changed with them.</summary>
+/// <summary>Projects whose evaluation landed, as the workspace now has them, and whether which projects hold tests (or the
+/// preprocessor symbols their code is read with), or what packages the projects reference, changed with them.</summary>
 public sealed record EvaluatedProjects(IReadOnlyList<ProjectModel> Projects, bool TestsChanged, bool PackagesChanged);
 
 /// <summary>One folder or solution open in a window, or a window's nothing before one opens: what the folder has (its
@@ -745,7 +745,9 @@ public sealed class ProjectSession : IAsyncDisposable
         Configurations.Configure(Projects);
         // A project evaluated again is loaded again by the language server too, which watches only some imports.
         CSharp?.Reload([.. before.Projects.Where(p => changed.Contains(p.Path) && p.Evaluated is { Complete: true }).Select(p => p.Path).Distinct(StringComparer.Ordinal)]);
-        bool tests = !before.Projects.Where(p => p.IsTestProject).Select(p => p.Path).SequenceEqual(Workspace.Projects.Where(p => p.IsTestProject).Select(p => p.Path));
+        bool tests = !before.Projects.Where(p => p.IsTestProject).Select(p => p.Path).SequenceEqual(Workspace.Projects.Where(p => p.IsTestProject).Select(p => p.Path))
+            || before.Projects.Zip(Workspace.Projects).Any(p => changed.Contains(p.First.Path) && TestFinder.HoldsTests(p.Second)
+                && !ReferenceEquals(CompilationSymbols.Of(p.First), CompilationSymbols.Of(p.Second)));
         bool packages = before.Projects.Zip(Workspace.Projects).Any(p => changed.Contains(p.First.Path) && !p.First.Packages.SequenceEqual(p.Second.Packages));
         ProjectsEvaluated?.Invoke(this, new EvaluatedProjects([.. Workspace.Projects.Where(p => changed.Contains(p.Path))], tests, packages));
         Web?.Checks.CodeChanged();

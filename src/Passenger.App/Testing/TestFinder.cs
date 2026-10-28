@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using Microsoft.CodeAnalysis.CSharp;
+using Passenger.App.CSharp;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Workspace;
@@ -20,6 +22,10 @@ public sealed class TestFinder
     /// <summary>Closed files' reads by path, with the write time and length they were read at: a file read again only
     /// once it has changed. Filled by the workers that read them.</summary>
     private readonly FileMemo<FileTests> onDisk = new();
+
+    /// <summary>The preprocessor symbols each test project's closed files were last read with, by its path: read with
+    /// others, they are read again.</summary>
+    private readonly Dictionary<string, CSharpParseOptions> readWith = new(StringComparer.Ordinal);
 
     /// <summary>Open files' reads, which stand for the file while it is open.</summary>
     private readonly Dictionary<string, FileTests> open = new(StringComparer.Ordinal);
@@ -67,9 +73,22 @@ public sealed class TestFinder
             onDisk.Clear();
             listed.Clear();
             told.Clear();
+            readWith.Clear();
         }
         every = projects;
         Projects = [.. projects.Where(HoldsTests)];
+        foreach (ProjectModel project in Projects)
+        {
+            CSharpParseOptions symbols = CompilationSymbols.Of(project);
+            if (readWith.TryGetValue(project.Path, out CSharpParseOptions? before) && !ReferenceEquals(before, symbols))
+            {
+                foreach (string file in listed.GetValueOrDefault(project.Path) ?? [])
+                {
+                    onDisk.Forget(file);
+                }
+            }
+            readWith[project.Path] = symbols;
+        }
         HashSet<string> current = [.. Projects.Select(p => p.Path)];
         foreach (string gone in told.Keys.Where(p => !current.Contains(p)).ToList())
         {
@@ -162,7 +181,8 @@ public sealed class TestFinder
 
         async Task ReadAsync()
         {
-            await BackgroundWork.Run(() => Parallel.ForEach(changed, ReadFile));
+            (string Path, CSharpParseOptions Symbols)[] reads = [.. changed.Select(path => (path, CompilationSymbols.Of(every, path)))];
+            await BackgroundWork.Run(() => Parallel.ForEach(reads, read => ReadFile(read.Path, read.Symbols)));
             Tell([.. projects.Where(Projects.Contains)]);
         }
     }
@@ -215,20 +235,21 @@ public sealed class TestFinder
     private Dictionary<string, IReadOnlyList<string>> List(IReadOnlyList<ProjectModel> projects, IReadOnlyList<ProjectModel> solution)
     {
         Dictionary<string, IReadOnlyList<string>> found = new(StringComparer.Ordinal);
-        List<string> all = [];
+        List<(string Path, CSharpParseOptions Symbols)> all = [];
         foreach (ProjectModel project in projects)
         {
             List<string> files = [.. FolderWalk.ProjectFiles(project, solution, ".cs")];
             found[project.Path] = files;
-            all.AddRange(files);
+            CSharpParseOptions symbols = CompilationSymbols.Of(project);
+            all.AddRange(files.Select(file => (file, symbols)));
         }
-        Parallel.ForEach(all, ReadFile);
+        Parallel.ForEach(all, read => ReadFile(read.Path, read.Symbols));
         return found;
     }
 
-    /// <summary>Reads a closed file's tests unless it has not changed since they were read; one being written is read once
-    /// the watcher says so again. A worker's.</summary>
-    private void ReadFile(string path) => onDisk.Get(path, file => TestsAtCaret.Read(File.ReadAllText(file)));
+    /// <summary>Reads a closed file's tests with its project's symbols unless it has not changed since they were read; one
+    /// being written is read once the watcher says so again. A worker's.</summary>
+    private void ReadFile(string path, CSharpParseOptions symbols) => onDisk.Get(path, file => TestsAtCaret.Read(File.ReadAllText(file), symbols));
 
     /// <summary>Tells the projects' tests as their files now read, open ones from their own parse, for those that changed
     /// (or all of them, once a listing has ended, which may have found none).</summary>
