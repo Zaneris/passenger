@@ -101,10 +101,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     });
 
     [McpServerTool(Name = McpTools.Workspace, Title = "The workspace", ReadOnly = true), Description(
-        "The open folder and solution, its projects (output type, frameworks), run configurations (the chosen one marked), the " +
-        "language server's state, the open files (unsaved marked) and the active one with its caret, and the Aspire AppHosts and " +
-        "container run under way, each resource with its state, hold, debug session and target. routes adds the web projects' " +
-        "routes, read from their code.")]
+        "The open folder and solution (or solution filter), its projects (output type, frameworks, unloaded marked), run " +
+        "configurations (the chosen one marked), the language server's state, the open files (unsaved marked) and the active " +
+        "one with its caret, and the Aspire AppHosts and container run under way, each resource with its state, hold, debug " +
+        "session and target. routes adds the web projects' routes, read from their code.")]
     public Task<Workspace> GetWorkspace(bool routes = false, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         Workspace answered = await RunsWorkspace(Snapshot(), cancel);
@@ -2247,8 +2247,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         TextPosition? caret = active is null ? null : Editors.CodeEditor.CaretPosition;
         return new Workspace(
             session.Folder,
-            session.Solution?.Path,
-            [.. (session.Workspace?.Projects ?? []).Select(p => new ProjectInfo(p.Name, Relative(p.Path), p.OutputType, p.TargetFrameworks))],
+            session.Workspace?.Filter?.Path ?? session.Solution?.Path,
+            [.. (session.Workspace?.Projects ?? []).Select(p => new ProjectInfo(p.Name, Relative(p.Path), p.OutputType, p.TargetFrameworks)
+            {
+                Unloaded = session.Unloaded.Contains(p.Path) ? true : null,
+            })],
             [.. session.Configurations.All.Select(c => c.Name)],
             session.Configurations.Chosen?.Name,
             session.CSharp is not { } csharp ? "none" : csharp.IsReady ? "ready" : csharp.State,
@@ -2388,7 +2391,12 @@ public sealed record Workspace(
 /// its handler, its parameters ("id:int (route)"), where it is declared, and its body's type.</summary>
 public sealed record RouteInfo(string Project, string Kind, string Route, string Handler, IReadOnlyList<string> Parameters, string Path, int Line, string? Body);
 
-public sealed record ProjectInfo(string Name, string Path, string? OutputType, IReadOnlyList<string> TargetFrameworks);
+public sealed record ProjectInfo(string Name, string Path, string? OutputType, IReadOnlyList<string> TargetFrameworks)
+{
+    /// <summary>True for a project not loaded: one the solution filter opened leaves out, or one the person unloaded; null
+    /// for one loaded, which the answer leaves unsaid.</summary>
+    public bool? Unloaded { get; init; }
+}
 
 public sealed record Finding(string Severity, string? Code, string Message, string? Path, int Line, int Column);
 

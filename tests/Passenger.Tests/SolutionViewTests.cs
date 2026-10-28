@@ -741,6 +741,55 @@ public sealed class SolutionViewTests : IDisposable
         }
     }
 
+    /// <summary>A file-based program beside the solution: Add Reference never offers it, since no project reference can name
+    /// a C# file; and the solution's filter, opened over the solution or in a window of its own, unloads the solution's
+    /// project it leaves out alone, the program loaded with its run configuration either way.</summary>
+    [AvaloniaFact]
+    public void A_program_beside_the_solution_is_never_offered_as_a_reference_and_stays_loaded_however_a_solution_filter_opens()
+    {
+        Write("scripts/tool.cs", "#!/usr/bin/env dotnet\nSystem.Console.WriteLine(\"tool\");\n");
+        string filter = PathNames.Canonical(Path.Combine(folder, "Shop.App.slnf"));
+        Write("Shop.App.slnf", "{\n  \"solution\": {\n    \"path\": \"Shop.slnx\",\n    \"projects\": [\n      \"Shop.App\\\\Shop.App.csproj\"\n    ]\n  }\n}\n");
+        string tool = PathNames.Canonical(Path.Combine(folder, "scripts", "tool.cs"));
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => window.Projects.Any(p => p.Path == tool), "scripts/tool.cs beside the solution to be a program of the folder's");
+            Ui.ChooseFromRowMenu(window, Row(window, NodeKind.Project, "Shop.App"), "Add", "Reference…");
+            AddReferenceDialog dialog = Assert.Single(window.OwnedWindows.OfType<AddReferenceDialog>());
+            Assert.True(dialog.Choices.Select(c => c.Name).SequenceEqual(["Shop.Core"]),
+                $"Add Reference offered [{string.Join(", ", dialog.Choices.Select(c => c.Detail))}], where a program chosen would write a ProjectReference no build can load");
+            dialog.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.None, null);
+            Ui.Settle();
+
+            Assert.Null(window.Open(filter));
+            Ui.Settle();
+            Assert.Equal(filter, window.Session.Workspace?.OpenedAs);
+            Loaded(window, "the filter opened over the solution");
+        }
+        finally
+        {
+            window.Close();
+        }
+        window = Ui.OpenFolder(filter, languageServer: false);
+        try
+        {
+            Loaded(window, "the filter opened in a window of its own");
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        void Loaded(MainWindow shown, string after)
+        {
+            string Said() => string.Join(", ", shown.ExplorerView.Tree.Rows.Where(r => r.Kind == NodeKind.Project).Select(r => $"{r.Name} {(r.IsDimmed ? "unloaded" : "loaded")}"));
+            Ui.WaitFor(() => Said() == "Shop.App loaded, Shop.Core unloaded, tool loaded", () => $"after {after}, the Explorer to show the program loaded beside Shop.App ({Said()})");
+            Assert.True(shown.Configurations.Any(c => c.Name == "tool") && shown.Session.Projects.Any(p => p.Path == tool),
+                $"After {after}, the program is lost to Run and Build: its run configurations are [{string.Join(", ", shown.Configurations.Select(c => c.Name))}]");
+        }
+    }
+
     /// <summary>A file deleted takes its own row out, and Unload Project and Reload Project make the project's row again,
     /// dimmed and then open to open: every other row shown stays the row it was, rather than every row of the tree being
     /// made again for one.</summary>

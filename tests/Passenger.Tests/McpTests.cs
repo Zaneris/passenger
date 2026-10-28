@@ -428,6 +428,37 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal($"Ran {AppActions.ShowLiveTree}", (await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.ShowLiveTree })).GetString());
     }
 
+    /// <summary>An agent's Passenger started on a solution filter beside a file-based program, then given the solution and the
+    /// filter again: while the filter is open, workspace names it as the solution and marks unloaded the project it leaves
+    /// out, the program loaded with its run configuration; with the solution, nothing is marked.</summary>
+    [Fact]
+    public async Task An_agent_on_a_solution_filter_is_told_the_filter_and_the_project_it_leaves_out_and_keeps_the_program_beside_it()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-filter-"));
+        DeleteAtEnd(folder);
+        TestFolders.Write(folder, "App/App.csproj", TestProjects.Console());
+        TestFolders.Write(folder, "App/Program.cs", "System.Console.WriteLine(\"app\");\n");
+        TestFolders.Write(folder, "Lib/Lib.csproj", TestProjects.Library());
+        TestFolders.Write(folder, "Shop.slnx", "<Solution>\n  <Project Path=\"App/App.csproj\" />\n  <Project Path=\"Lib/Lib.csproj\" />\n</Solution>\n");
+        TestFolders.Write(folder, "App.slnf", "{\n  \"solution\": {\n    \"path\": \"Shop.slnx\",\n    \"projects\": [ \"App\\\\App.csproj\" ]\n  }\n}\n");
+        TestFolders.Write(folder, "scripts/tool.cs", "#!/usr/bin/env dotnet\nSystem.Console.WriteLine(\"tool\");\n");
+        string filter = Path.Combine(folder, "App.slnf");
+        await using McpClient client = await Start(["--mcp", filter], languageServer: false);
+        Told(await Call(client, McpTools.Open, new() { ["path"] = "App.slnf" }), filter, "Passenger started on the filter");
+        Told(await Call(client, McpTools.Open, new() { ["path"] = "Shop.slnx" }), Path.Combine(folder, "Shop.slnx"), "the solution opened");
+        Told(await Call(client, McpTools.Open, new() { ["path"] = "App.slnf" }), filter, "the filter opened over the solution");
+
+        static void Told(JsonElement workspace, string solution, string after)
+        {
+            string[] projects = [.. workspace.GetProperty("projects").EnumerateArray()
+                .Select(p => p.GetProperty("name").GetString() + (p.TryGetProperty("unloaded", out JsonElement marked) && marked.GetBoolean() ? " unloaded" : string.Empty))];
+            string[] configurations = [.. workspace.GetProperty("runConfigurations").EnumerateArray().Select(c => c.GetString()!)];
+            Assert.True(workspace.GetProperty("solution").GetString() == solution
+                && projects.SequenceEqual(["App", solution.EndsWith(".slnf", StringComparison.Ordinal) ? "Lib unloaded" : "Lib", "tool"]) && configurations.Contains("tool"),
+                $"After {after}, the workspace answered: {workspace}, where an agent builds and tests what it names and marks loaded");
+        }
+    }
+
     /// <summary>An agent's Passenger started on its folder in lower case, from a working folder and a PWD spelling it so (an
     /// agent started in <c>~/documents/app</c>): its workspace answer and the restore and build it makes name the folder as
     /// the disk does, so no build through the disk's spelling restores, compiles or deletes what this one wrote.</summary>

@@ -276,8 +276,9 @@ public sealed class ProjectSession : IAsyncDisposable
         return Unloaded.Remove(project);
     }
 
-    /// <summary>Takes the solution filter a read of the folder has: the projects it leaves out are unloaded in place of
-    /// those the one before left out, and those the person loaded since stay loaded while it keeps the same projects.</summary>
+    /// <summary>Takes the solution filter a read of the folder has: the solution's projects it leaves out are unloaded in
+    /// place of those the one before left out, and those the person loaded since stay loaded while it keeps the same
+    /// projects. The programs beside the solution are none of its projects, so no filter unloads them.</summary>
     private void TakeFilter(WorkspaceModel read)
     {
         if (read.Filter is { } now ? now.Keeps(filter) : filter is null)
@@ -287,7 +288,7 @@ public sealed class ProjectSession : IAsyncDisposable
         Unloaded.ExceptWith(filteredOut);
         filteredOut.Clear();
         filter = read.Filter;
-        foreach (ProjectModel project in filter is { } kept ? read.Projects.Where(p => !kept.Projects.Contains(p.Path)) : [])
+        foreach (ProjectModel project in filter is { } kept ? read.Projects.Where(p => !p.IsProgram && !kept.Projects.Contains(p.Path)) : [])
         {
             if (Unloaded.Add(project.Path))
             {

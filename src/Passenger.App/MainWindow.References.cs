@@ -12,12 +12,13 @@ namespace Passenger.App;
 public partial class MainWindow
 {
     /// <summary>The dialog over the solution's other projects, those the project references checked; OK makes the project
-    /// reference just those. Null, saying why, when there is no other project.</summary>
+    /// reference just those. A file-based program is no project file a reference can name, so it is never offered. Null,
+    /// saying why, when there is no other project.</summary>
     public AddReferenceDialog? ShowAddReference(string project)
     {
         string name = Path.GetFileNameWithoutExtension(project);
         IReadOnlyList<ProjectModel> all = session.Workspace?.Projects ?? [];
-        List<ProjectModel> others = [.. all.Where(p => !PathNames.Same(p.Path, project)).OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)];
+        List<ProjectModel> others = [.. all.Where(p => !p.IsProgram && !PathNames.Same(p.Path, project)).OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)];
         if (others.Count == 0)
         {
             status.Text = $"The solution has no other project for {name} to reference";
