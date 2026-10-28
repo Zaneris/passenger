@@ -28,6 +28,20 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   - Outside the code: 7 (the runner, GitHub, xunit, Rosetta).
   - Unlabelled: 7.
 
+## 2026-10-28
+
+- `DebuggerTests`' Continue pressed while a stop's values are read, Linux x64 report lane of run 40623345416:
+  "slow.Getter never showed 1500 as a watch: the watches were slow.Getter = error: An evaluation that could not be
+  stopped is still running on this thread…". The program started its ticking thread just before its first stop, which
+  caught that thread in its first moments holding what the stop's first evaluation (Variables' ToString of `slow`)
+  needed; an evaluation runs its thread alone, so it waited, outside managed code, on a thread it held still, past its
+  3 s and its abort's window, and was left to run on, and the watch after it was refused on that thread. 5a880bf2 gave
+  both threads their first use of `Interlocked` and a file write there. The Ubuntu VM beside 4 burners failed so in 1
+  of 3 runs, the engine's log saying "past its time and not aborted: it runs outside managed code"; a program whose
+  other thread the stop catches loading a type the watch needs does so every time. Not the IDE's: it gives up and says
+  so, as for any evaluation waiting on a thread it holds still. **The test**: its program stops only once that thread
+  has gone round its loop; the VM then passed 10 of 10 beside the burners, the Mac 4 of 4 beside 14 (in this commit).
+
 ## 2026-10-27
 
 - `AspireStandInTests`, Windows shard 2 of Release run 40574842088: the eight tests after the one whose AppHost runs an

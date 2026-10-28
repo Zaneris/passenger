@@ -1112,6 +1112,8 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         string spins = Path.Combine(Fresh(), "spins.txt");
         Write("Program.cs", "Slow slow = new();\n"
             + $"new Thread(() =>\n{{\n    for (long n = 1; ; n++)\n    {{\n        try\n        {{\n            File.WriteAllText(@\"{ticks}\", n.ToString());\n        }}\n        catch (IOException)\n        {{\n        }}\n        Interlocked.Exchange(ref Slow.Ticks, n); Thread.Sleep(5);\n    }}\n}}) {{ IsBackground = true }}.Start();\n"
+            // The stop waits out the other thread's start, whose locks an evaluation there would wait on while holding it still.
+            + "while (Interlocked.Read(ref Slow.Ticks) < 2)\n{\n    Thread.Sleep(1);\n}\n"
             + "int total = 0;\nfor (int i = 1; i <= 3; i++)\n{\n    total += i;\n}\nConsole.WriteLine($\"total {total}\");\n\n"
             + "sealed class Slow\n{\n    public static long Ticks;\n\n    public int Getter => Spin(1500);\n\n    public override string ToString() => $\"slow {Spin(1500)}\";\n\n"
             + $"    static int Spin(int ms)\n    {{\n        long from = Interlocked.Read(ref Ticks);\n        File.AppendAllText(@\"{spins}\", \"began\\n\");\n"
@@ -1119,7 +1121,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             + $"        while (clock.ElapsedMilliseconds < ms)\n        {{\n        }}\n        File.AppendAllText(@\"{spins}\", $\"ended {{from}} {{Interlocked.Read(ref Ticks)}}\\n\");\n        return ms;\n    }}\n}}\n");
         MainWindow window = Open();
         CodeEditor editor = window.EditorArea.CodeEditor;
-        editor.GoTo(new TextPosition(18, 4));
+        editor.GoTo(new TextPosition(22, 4));
         Ui.Run(window, AppActions.ToggleBreakpoint);
         StartDebugging(window);
         WaitDebugging(window, () => Value(window, "i") == "1", "the first stop's locals");
