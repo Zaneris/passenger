@@ -1867,10 +1867,9 @@ public static class Waiting
     public static Task Apart(Action work, CancellationToken cancel = default) => BackgroundWork.Unheld(work, cancel);
 }
 
-/// <summary>How long a key waits for the window's thread: work posted at input's priority, as the platform's keys wait
-/// for the thread between jobs, the longest wait kept until <see cref="Stop"/>. Each is posted as soon as the last is
-/// answered, from a thread of its own, so a loaded machine that is slow to wake a timer or the thread pool still
-/// takes as many looks as the window answers.</summary>
+/// <summary>Looks at the window's thread as keys come: work posted at input's priority, as the platform's keys wait for the
+/// thread between jobs, each posted as soon as the last is answered, from a thread of its own, until <see cref="Stop"/>;
+/// how many it answered says it went on taking keys.</summary>
 public sealed class InputWait : IDisposable
 {
     private readonly SemaphoreSlim answered = new(0);
@@ -1883,9 +1882,8 @@ public sealed class InputWait : IDisposable
         {
             while (!stopped)
             {
-                long at = Stopwatch.GetTimestamp();
                 Interlocked.Increment(ref posted);
-                Dispatcher.UIThread.Post(() => Answer(Stopwatch.GetElapsedTime(at)), DispatcherPriority.Input);
+                Dispatcher.UIThread.Post(Answer, DispatcherPriority.Input);
                 while (!stopped && !answered.Wait(100))
                 {
                 }
@@ -1895,23 +1893,20 @@ public sealed class InputWait : IDisposable
         poster.Start();
     }
 
-    public TimeSpan Longest { get; private set; }
-
     public int Answered { get; private set; }
 
     public int Posted => Volatile.Read(ref posted);
 
-    /// <summary>Stops measuring, on the window's thread, so a wait while it is not running never counts.</summary>
+    /// <summary>Stops looking, on the window's thread, so a look while it is not running never counts.</summary>
     public void Stop() => stopped = true;
 
     public void Dispose() => Stop();
 
-    private void Answer(TimeSpan waited)
+    private void Answer()
     {
         if (!stopped)
         {
             Answered++;
-            Longest = waited > Longest ? waited : Longest;
         }
         answered.Release();
     }

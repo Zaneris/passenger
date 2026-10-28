@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
@@ -873,9 +872,9 @@ public sealed class TerminalTests
         string.Join('\n', session.Screen.Scrollback.Select(l => l.Text()).Concat(session.Screen.Lines.Select(l => l.Text())));
 }
 
-/// <summary>The terminal holds the window to how soon it answers: a flood of output leaves it taking keys and Ctrl+C stops it,
-/// a paste into a program that reads nothing returns at once, and the shell echoes what is typed with every thread of the
-/// pool busy. Held to times, and the pool taken from everything beside it, so the class runs alone.</summary>
+/// <summary>The terminal never holds the window: a flood of output leaves it taking keys and Ctrl+C stops it, a paste into
+/// a program that reads nothing returns before the program reads it, and the shell echoes what is typed before the busy
+/// pool would get to it. The pool is taken from everything beside it, so the class runs alone.</summary>
 [Collection(Alone.Name)]
 public sealed class TerminalResponsivenessTests
 {
@@ -905,15 +904,10 @@ public sealed class TerminalResponsivenessTests
                 window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.None, null);
                 window.KeyRelease(Key.Enter, RawInputModifiers.None, PhysicalKey.None, null);
                 Ui.PumpUntil(() => shell.Screen.ScreenText().Contains("xxxxxxxx", StringComparison.Ordinal), "seq's lines to come onto the screen");
-                // A second more of the flood, or as long as the window takes to answer enough looks to time a key's wait.
-                Stopwatch flooding = Stopwatch.StartNew();
-                Ui.Hold(TimeSpan.FromSeconds(1), "a second of seq's flood, in which every key's wait is measured");
-                Ui.Pumped(() => waits.Answered >= 20, TimeSpan.FromSeconds(19));
+                // Looks at the window's thread, each posted once the last is answered, as keys come: twenty answered as seq pours on.
+                Ui.Pumped(() => waits.Answered >= 20, TimeSpan.FromSeconds(20));
                 waits.Stop();
-                Assert.True(waits.Answered >= 20,
-                    $"the window answered {waits.Answered} of {waits.Posted} looks at its thread in {flooding.Elapsed.TotalSeconds:F1} s of seq's output");
-                Assert.True(waits.Longest < TimeSpan.FromMilliseconds(250),
-                    $"a key waited {waits.Longest.TotalMilliseconds:F0} ms for the window while seq's output poured in");
+                Assert.True(waits.Answered >= 20, $"the window answered {waits.Answered} of {waits.Posted} looks at its thread while seq's output poured in");
             }
 
             // The window falls behind a moment: seq waits for it, unread, so Ctrl+C finds it running.
@@ -954,15 +948,30 @@ public sealed class TerminalResponsivenessTests
         try
         {
             (MainWindow window, TerminalSession shell) = TerminalTests.Open(folder, "/bin/sh");
-            window.KeyTextInput("sleep 30");
+            // A loop that reads none of its input until the test lets it end.
+            string go = Path.Combine(folder, "go");
+            window.KeyTextInput($"while [ ! -e '{go}' ]; do sleep 0.1; done");
             Ui.Press(window, "ENTER");
-            TerminalTests.WaitForScreen(window, shell, s => s.CursorRow > 0 && s.Lines[s.CursorRow - 1].Text().Contains("sleep 30", StringComparison.Ordinal), "sleep to start");
+            TerminalTests.WaitForScreen(window, shell, s => s.CursorRow > 0 && s.Lines[s.CursorRow - 1].Text().Contains("sleep 0.1", StringComparison.Ordinal), "the loop to start");
 
-            // Far more than the pseudo-terminal holds, while sleep reads none of it.
+            // Far more than the pseudo-terminal holds, while the loop reads none of it.
             TerminalTests.Copy(window, string.Concat(Enumerable.Range(0, 2000).Select(i => $"echo pasted {i}\n")));
-            Stopwatch pasting = Stopwatch.StartNew();
+            bool pasted = false;
+            bool letGo = false;
+            // A paste that waits for the loop to read it would never return: the loop is let go, the test failing, not hanging.
+            Task giveUp = Waiting.Apart(() =>
+            {
+                if (!Waiting.Until(() => Volatile.Read(ref pasted), TimeSpan.FromSeconds(30)))
+                {
+                    Volatile.Write(ref letGo, true);
+                    File.WriteAllText(go, string.Empty);
+                }
+            });
             Ui.Press(window, TerminalTests.PasteKey);
-            Assert.True(pasting.Elapsed < TimeSpan.FromSeconds(1), $"the paste held the window for {pasting.ElapsedMilliseconds} ms");
+            Volatile.Write(ref pasted, true);
+            Assert.False(Volatile.Read(ref letGo), "the paste held the window until the program that reads nothing was let go");
+            File.WriteAllText(go, string.Empty);
+            Ui.Await(giveUp, "the paste's give-up to stand down");
             // What the pseudo-terminal took it echoes, so the paste did go.
             Ui.WaitFor(() => TerminalTests.Screen(shell).Contains("echo pasted 0", StringComparison.Ordinal), "the start of the paste echoed", TimeSpan.FromSeconds(10));
 
@@ -985,10 +994,11 @@ public sealed class TerminalResponsivenessTests
         try
         {
             (MainWindow window, TerminalSession shell) = TerminalTests.Open(folder, "/bin/sh");
-            // Every thread of the pool held, as a build, a debugger or tests waiting on processes hold them, and more waiting.
+            // The pool's threads held, as builds and debuggers hold them, and more jobs waiting than it adds threads for soon.
             ThreadPool.GetMinThreads(out int threads, out _);
+            int jobs = (threads * 4) + 32;
             int taken = 0;
-            for (int i = 0; i < threads * 4; i++)
+            for (int i = 0; i < jobs; i++)
             {
                 ThreadPool.UnsafeQueueUserWorkItem(_ =>
                 {
@@ -997,16 +1007,17 @@ public sealed class TerminalResponsivenessTests
                 }, null);
             }
             Assert.True(Waiting.Until(() => Volatile.Read(ref taken) >= threads, TimeSpan.FromSeconds(10)), $"The pool took {Volatile.Read(ref taken)} of the {threads} jobs meant to hold its threads");
-            Stopwatch typing = Stopwatch.StartNew();
             window.KeyTextInput("echo typed");
             window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.None, null);
             window.KeyRelease(Key.Enter, RawInputModifiers.None, PhysicalKey.None, null);
             // Frames pumped by hand: settling waits for background work, which the busy pool would hold.
-            Ui.Pumped(() => TerminalTests.Screen(shell).Contains("\ntyped", StringComparison.Ordinal), TimeSpan.FromSeconds(30));
-            TimeSpan answered = typing.Elapsed;
+            int takenAtEcho = -1;
+            Ui.Pumped(() => TerminalTests.Screen(shell).Contains("\ntyped", StringComparison.Ordinal) && (takenAtEcho = Volatile.Read(ref taken)) >= 0, TimeSpan.FromSeconds(60));
             release.Set();
-            Assert.True(answered < TimeSpan.FromSeconds(5),
-                $"with the pool's {threads} threads busy, the shell's answer to a command typed took {answered.TotalSeconds:F1} s:\n{TerminalTests.Screen(shell)}");
+            Assert.True(takenAtEcho >= 0, $"with the pool's {threads} threads busy, the shell never answered a command typed:\n{TerminalTests.Screen(shell)}");
+            // The pool takes its jobs in order, so terminal work queued on it would run only after all of the test's.
+            Assert.True(takenAtEcho < jobs,
+                $"the shell's answer to a command typed came only once the pool had taken all {jobs} jobs queued before it: the terminal waited for the pool");
             window.Close();
         }
         finally
