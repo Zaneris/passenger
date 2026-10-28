@@ -188,6 +188,13 @@
           "Passenger.Core": "[0.2.2, )"
         }
       },
+      "passenger.workspace": {
+        "type": "Project",
+        "dependencies": {
+          "Passenger.Core": "[0.2.2, )",
+          "Passenger.Text": "[0.2.2, )"
+        }
+      },
       "passenger.xaml": {
         "type": "Project",
         "dependencies": {

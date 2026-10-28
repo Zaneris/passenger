@@ -18,11 +18,9 @@ public static class EfDatabases
 {
     private const string Prefix = "ConnectionStrings__";
 
-    /// <summary>The keywords a connection string names its host by, in the providers' spellings.</summary>
-    private static readonly string[] HostKeys = ["host", "server", "data source", "address", "addr", "network address"];
-
     /// <summary>The database a compose run gives a .NET service built from the startup project; null when the run has none
-    /// of it, or none of its connection strings names a service of the run.</summary>
+    /// of it, or none of its connection strings names a service of the run. One that cannot be given again as this machine
+    /// reaches it is given as the run writes it, which where it is says.</summary>
     public static async Task<EfRunDatabase?> OfComposeAsync(ContainerRun run, ProjectModel startup, CancellationToken cancel)
     {
         if (run.IsStopped || run.Plan.Dotnet.FirstOrDefault(d => PathNames.Same(d.Project, startup.Path)) is not { } service)
@@ -45,15 +43,24 @@ public static class EfDatabases
         string? endpoint = (await run.Engine.StateAsync(cancel: cancel)).Endpoint;
         Dictionary<string, string> environment = new(StringComparer.Ordinal);
         string? where = null;
+        List<string> kept = [];
         foreach ((string name, string value) in app.Environment.Where(e => e.Key.StartsWith(Prefix, StringComparison.OrdinalIgnoreCase)))
         {
-            if (await ReachAsync(run, model, value, endpoint, cancel) is { } reached)
+            if (await ReachAsync(run, model, value, endpoint, cancel) is not { } reached)
             {
-                environment[name] = reached.Value;
+                continue;
+            }
+            environment[name] = reached.Value ?? value;
+            if (reached.Value is null)
+            {
+                kept.Add($"{name} as {run.Name} writes it, which could not be given again to reach {reached.Where} from this machine");
+            }
+            else
+            {
                 where ??= $"{reached.Where}, as {run.Name} publishes it";
             }
         }
-        return environment.Count == 0 ? null : new EfRunDatabase(environment, where!);
+        return environment.Count == 0 ? null : new EfRunDatabase(environment, string.Join("; ", new[] { where }.Concat(kept).OfType<string>()));
     }
 
     /// <summary>The database an AppHost that runs now gives the startup project as one of its resources; null when none does.</summary>
@@ -75,60 +82,21 @@ public static class EfDatabases
     }
 
     /// <summary>A connection string the containers read given again as this machine reaches its database: the host a
-    /// service of the run (its keyword's, or a URL's), at the port Compose published its port on. Null for a host that is
-    /// no service of the run, or a port it does not publish.</summary>
-    private static async Task<(string Value, string Where)?> ReachAsync(ContainerRun run, ComposeModel model, string value, string? endpoint, CancellationToken cancel)
+    /// service of the run (<see cref="ConnectionServer"/>), at the port Compose published its port on, with where that is;
+    /// its value null where the string cannot be written again, where then the service. Null for a host that is no service
+    /// of the run, or a port it does not publish.</summary>
+    private static async Task<(string? Value, string Where)?> ReachAsync(ContainerRun run, ComposeModel model, string value, string? endpoint, CancellationToken cancel)
     {
-        if (Uri.TryCreate(value.Trim(), UriKind.Absolute, out Uri? url) && url.Host.Length > 0 && !url.IsFile)
-        {
-            if (model[url.Host] is not { } named || (url.IsDefaultPort ? Default(named) : url.Port) is not { } inside
-                || await PublishedAsync(run, named, inside, cancel) is not { } at)
-            {
-                return null;
-            }
-            string host = Host(at.Link, endpoint);
-            UriBuilder moved = new(url) { Host = host, Port = at.Port };
-            return (moved.Uri.ToString(), $"{named.Name} at {host}:{at.Port}");
-        }
-        List<(string Key, string Value)> parts = [.. value.Split(';', StringSplitOptions.RemoveEmptyEntries)
-            .Select(p => p.Split('=', 2)).Where(p => p.Length == 2).Select(p => (p[0].Trim(), p[1].Trim()))];
-        int hostAt = parts.FindIndex(p => HostKeys.Contains(p.Key, StringComparer.OrdinalIgnoreCase));
-        if (hostAt < 0)
+        if (ConnectionServer.Of(value) is not { } server
+            || (model[server.Host] ?? model.Services.FirstOrDefault(s => s.Name.Equals(server.Host, StringComparison.OrdinalIgnoreCase))) is not { } service
+            || (server.Port ?? Default(service)) is not { } inside || await PublishedAsync(run, service, inside, cancel) is not { } published)
         {
             return null;
         }
-        // SQL Server's host,port; Postgres' and MySQL's Port keyword.
-        string[] written = parts[hostAt].Value.Replace("tcp:", string.Empty, StringComparison.OrdinalIgnoreCase).Split(',', 2);
-        int portAt = parts.FindIndex(p => p.Key.Equals("port", StringComparison.OrdinalIgnoreCase));
-        if (model[written[0].Trim()] is not { } service)
-        {
-            return null;
-        }
-        int? port = written.Length > 1 && int.TryParse(written[1].Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out int inHost) ? inHost
-            : portAt >= 0 && int.TryParse(parts[portAt].Value, NumberStyles.None, CultureInfo.InvariantCulture, out int keyed) ? keyed
-            : Default(service);
-        if (port is not { } target || await PublishedAsync(run, service, target, cancel) is not { } published)
-        {
-            return null;
-        }
-        string reached = Host(published.Link, endpoint);
-        if (written.Length > 1)
-        {
-            parts[hostAt] = (parts[hostAt].Key, $"{reached},{published.Port}");
-        }
-        else
-        {
-            parts[hostAt] = (parts[hostAt].Key, reached);
-            if (portAt >= 0)
-            {
-                parts[portAt] = (parts[portAt].Key, published.Port.ToString(CultureInfo.InvariantCulture));
-            }
-            else
-            {
-                parts.Insert(hostAt + 1, ("Port", published.Port.ToString(CultureInfo.InvariantCulture)));
-            }
-        }
-        return (string.Join(';', parts.Select(p => $"{p.Key}={p.Value}")), $"{service.Name} at {reached}:{published.Port}");
+        string host = Host(published.Link, endpoint);
+        // SQL Server's port follows its host after a comma.
+        return server.At(host, published.Port, besideHost: Kind(service) == "sqlserver") is { } moved
+            ? (moved, $"{service.Name} at {host}:{published.Port}") : (null, service.Name);
     }
 
     /// <summary>The port a service's port is published on on the engine's machine, as Compose says it (<c>compose port</c>,
@@ -154,8 +122,10 @@ public static class EfDatabases
 
     private static string Host(ContainerPort published, string? endpoint) => published.LinkOn(endpoint)?.Host ?? "localhost";
 
+    private static string? Kind(ComposeService service) => BackingService.OfImage(service.Image)?.Service;
+
     /// <summary>The port a backing service's image listens on, by its kind.</summary>
-    private static int? Default(ComposeService service) => BackingService.OfImage(service.Image)?.Service switch
+    private static int? Default(ComposeService service) => Kind(service) switch
     {
         "postgres" => 5432,
         "sqlserver" => 1433,
