@@ -2017,15 +2017,36 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             await When(() => Session.CSharp?.IsReady != false, ServerLimit, cancel, ServerState());
             AgentCall.Say(null);
         }
-        return Session.CSharp is { IsReady: true, Session: { } server }
-            ? server
-            : throw new TimeoutException($"The language server has not loaded the workspace ({Session.CSharp?.State ?? "none"})");
+        if (Session.CSharp is not { IsReady: true, Session: { } server })
+        {
+            throw new TimeoutException($"The language server has not loaded the workspace ({Session.CSharp?.State ?? "none"})");
+        }
+        await TakenInAsync(cancel);
+        return Session.CSharp?.Session ?? server;
     }
 
-    /// <summary>A file opened as the editor would, with the language server's document for it once the
-    /// server has loaded the workspace.</summary>
-    private async Task<(OpenDocument Document, LspDocument Lsp)> Code(string path, CancellationToken cancel)
+    /// <summary>Waits, once the language server has loaded the workspace, until it holds every C# file come under one of the
+    /// folder's projects in its project (one an agent wrote a moment before among them), for up to <see cref="Patience.Limit"/>:
+    /// an answer before would leave each it holds in none out, a rename's callers there unrenamed. Refused, naming the
+    /// first, when the time is up; whether it was waited for (false while the server still loads the workspace).</summary>
+    private async Task<bool> TakenInAsync(CancellationToken cancel)
     {
+        if (Session.CSharp is not { IsReady: true } csharp)
+        {
+            return false;
+        }
+        IReadOnlyList<(string Path, string Project)> left = await csharp.UnplacedAsync(Patience.Limit, looking: true,
+            waiting => AgentCall.Say(waiting is null ? null : $"Waiting for the C# language server to load {Relative(waiting)} into its project"), cancel);
+        return left.Count == 0 ? true
+            : throw new TimeoutException(Refusals.NotTakenIn(Relative(left[0].Path), Path.GetFileNameWithoutExtension(left[0].Project)));
+    }
+
+    /// <summary>A file opened as the editor would, with the language server's document for it once the server has loaded
+    /// the workspace and every C# file come under its projects (<see cref="TakenInAsync"/>, waited for before the file is
+    /// opened, so one just written is opened in its project; <paramref name="takenIn"/> when the caller has).</summary>
+    private async Task<(OpenDocument Document, LspDocument Lsp)> Code(string path, CancellationToken cancel, bool takenIn = false)
+    {
+        takenIn = takenIn || await TakenInAsync(cancel);
         OpenDocument document = await DocumentAsync(path, cancel);
         if (Session.CSharp is null)
         {
@@ -2038,6 +2059,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         // Answers before the solution has loaded are wrong; looked at every 50 ms: a server document raises nothing.
         await Until(() => Session.CSharp is not { } csharp || csharp.IsReady && csharp.For(document)?.Lsp is not null, ServerLimit, cancel);
+        if (!takenIn)
+        {
+            await TakenInAsync(cancel);
+        }
         return (document, Session.CSharp?.For(document)?.Lsp
             ?? throw new TimeoutException($"The language server has not loaded {Path.GetFileName(document.Path)} ({Session.CSharp?.State ?? "none"})"));
     }

@@ -221,6 +221,16 @@ internal sealed partial class CodeActions
     {
         try
         {
+            int version = document.Text.Version;
+            if (await context.TakenInAsync(document) is { } unloaded)
+            {
+                return RefactorOutcome.Refused($"{name} was not applied: {unloaded}");
+            }
+            // The place it was given is in the text as it was before the wait.
+            if (document.Text.Version != version)
+            {
+                return RefactorOutcome.Refused($"{name} was not applied: {document.Name} changed while the C# language server took in the files just made; try again");
+            }
             LspDocument lsp = context.Now(document);
             using Asked asked = WorkspaceEdits.Track(context.Editors);
             Refactored made = await ask(lsp);

@@ -44,6 +44,8 @@ public sealed partial class PassengerTools
     /// project read, the C# server's workspace loaded. A file no service reads is refused at once, saying which do.</summary>
     private async Task<Served> Serve(string path, CancellationToken cancel)
     {
+        // A C# file is opened in the server once the files come under its projects are in them.
+        bool takenIn = Languages.Language.ForPath(path).Service == Languages.LanguageService.CSharp && await TakenInAsync(cancel);
         OpenDocument document = await DocumentAsync(path, cancel);
         string name = Path.GetFileName(document.Path);
         if (XamlService.IsXaml(document.Path))
@@ -71,7 +73,7 @@ public sealed partial class PassengerTools
         }
         if (document.Language.Service == Languages.LanguageService.CSharp)
         {
-            (_, LspDocument lsp) = await Code(path, cancel);
+            (_, LspDocument lsp) = await Code(path, cancel, takenIn);
             return new ServerServed(document, document.Language.Name, lsp);
         }
         throw new InvalidOperationException($"Passenger has no code help for {LanguageOf(document)} files such as {name}: the code tools answer C#, Razor, "

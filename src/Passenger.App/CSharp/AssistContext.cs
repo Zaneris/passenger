@@ -95,6 +95,21 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
         WebOf(document) is not null ? "its language server is not running"
         : service() is { } csharp ? $"the C# language server is not ready: {csharp.State}" : Refusals.NoCSharp);
 
+    /// <summary>Waits until the C# server holds every C# file come under one of the folder's projects in its project, for up
+    /// to <see cref="Patience.Limit"/>, the status bar saying which meanwhile: a command answered before would leave each it
+    /// holds in none out (a rename its callers there). Why not when the time is up, else null; null at once, the caller's
+    /// offsets still standing, for a file of another server's or with none come.</summary>
+    public async Task<string?> TakenInAsync(OpenDocument document)
+    {
+        if (CSharp is not { IsReady: true } csharp || csharp.For(document) is null)
+        {
+            return null;
+        }
+        IReadOnlyList<(string Path, string Project)> left = await csharp.UnplacedAsync(Patience.Limit, looking: false,
+            waiting => Say(waiting is null ? string.Empty : $"Waiting for the C# language server to load {Path.GetFileName(waiting)} into its project…"), CancellationToken.None);
+        return left.Count == 0 ? null : Refusals.NotTakenIn(Path.GetFileName(left[0].Path), Path.GetFileNameWithoutExtension(left[0].Project));
+    }
+
     /// <summary>The folder the open file's places are named from: the C# server's, else the web servers'.</summary>
     public string? Root => service()?.Session?.Folder ?? Web?.Invoke()?.Folder;
 

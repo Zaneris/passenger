@@ -19,7 +19,7 @@ namespace Passenger.App.CSharp;
 /// load or loaded with warnings, and why) is said in the status bar and logged, each project's load problems kept for
 /// Problems, the load's progress shown, and each start's phases timed. A UI-thread object: what the server says from its
 /// threads crosses through <see cref="UiThread"/>.</summary>
-public sealed class CSharpService : IAsyncDisposable
+public sealed partial class CSharpService : IAsyncDisposable
 {
     /// <summary>How long after an error the server logged a message it shows can be its reason (a project's failure to
     /// load is logged before the message that there were problems loading it).</summary>
@@ -111,6 +111,7 @@ public sealed class CSharpService : IAsyncDisposable
     public void FilesChanged(FolderChanges changes)
     {
         UiThread.Check();
+        Arrived(changes);
         if (watching is { } watches)
         {
             watches.Heard(changes);
@@ -730,13 +731,20 @@ public sealed class CSharpService : IAsyncDisposable
     }
 
     /// <summary>Opens in the server each open file it can have in a project of its own now: every one once all the projects
-    /// have loaded, before that one no project of the folder holds, or whose project the server has said it loaded. One
-    /// opened while its project loads would be one of the server's Miscellaneous Files meanwhile, whose project it restores.</summary>
+    /// have loaded, before that one no project of the folder holds, or whose project the server has said it loaded; one come
+    /// since its project loaded once a load of it has ended since (<see cref="HeldBack"/>). One opened while its project
+    /// loads would be one of the server's Miscellaneous Files meanwhile, whose project it restores.</summary>
     private void ConnectLoaded(RoslynSession started)
     {
         List<OpenDocument>? connected = null;
+        TimeSpan? held = null;
         foreach ((OpenDocument open, CSharpDocument features) in documents)
         {
+            if (features.Lsp is null && HeldBack(open.Path, out TimeSpan left))
+            {
+                held = held is { } shorter && shorter < left ? shorter : left;
+                continue;
+            }
             string? holder = started.IsLoaded ? null : HolderOf(open.Path);
             if ((started.IsLoaded || holder is null || (reported.Server == started.Server && reported.Projects.Contains(holder)))
                 && features.Connect(started))
@@ -744,6 +752,7 @@ public sealed class CSharpService : IAsyncDisposable
                 (connected ??= []).Add(open);
             }
         }
+        HoldBack(held);
         foreach (OpenDocument open in connected ?? [])
         {
             Connected?.Invoke(this, open);
@@ -772,6 +781,7 @@ public sealed class CSharpService : IAsyncDisposable
         reported.Projects.Add(project);
         if (session is { } current && current.Server == from)
         {
+            Decide(project);
             ConnectLoaded(current);
         }
     }
@@ -782,6 +792,11 @@ public sealed class CSharpService : IAsyncDisposable
         if (documents.Remove(document, out CSharpDocument? features))
         {
             features.Dispose();
+            // One held back from the server may have been the last.
+            if (holding is not null && session is { } running)
+            {
+                ConnectLoaded(running);
+            }
         }
     }
 
@@ -796,6 +811,7 @@ public sealed class CSharpService : IAsyncDisposable
         disposed = true;
         analysing?.Cancel();
         starting?.Cancel();
+        HoldBack(null);
         foreach (CSharpDocument features in documents.Values)
         {
             features.Dispose();
@@ -925,12 +941,14 @@ public sealed class CSharpService : IAsyncDisposable
                 Each(document => document.FindContexts());
                 ProjectsLoaded?.Invoke(this, EventArgs.Empty);
             });
+            EventHandler<ProjectGiven> onGiven = (_, built) => OnProjectGiven(started.Server, built);
             EventHandler<string> onExited = (_, _) => UiThread.Post(() => OnExited(started));
             EventHandler<string> onHung = (_, why) => UiThread.Post(() => OnNotResponding(started, why));
             started.Loaded += onLoaded;
             started.Server.ColoursRefreshRequested += onColours;
             started.Server.DiagnosticsRefreshRequested += onDiagnostics;
             started.Server.ProjectsLoaded += onProjects;
+            started.Server.ProjectGiven += onGiven;
             started.Server.Exited += onExited;
             started.Server.NotResponding += onHung;
             started.Server.HtmlServer = HtmlServer;
@@ -942,10 +960,12 @@ public sealed class CSharpService : IAsyncDisposable
                 started.Server.ColoursRefreshRequested -= onColours;
                 started.Server.DiagnosticsRefreshRequested -= onDiagnostics;
                 started.Server.ProjectsLoaded -= onProjects;
+                started.Server.ProjectGiven -= onGiven;
                 started.Server.Exited -= onExited;
                 started.Server.NotResponding -= onHung;
             });
             session = started;
+            ForgetArrivals();
             watching?.Dispose();
             if (handed is not null)
             {

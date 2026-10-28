@@ -180,6 +180,16 @@ internal sealed class CodeNavigation(AssistContext context, PopupPlacement popup
     /// <summary>Find Usages through the language server: the usages of the name at an offset, for the Find window.</summary>
     public async Task ServerUsagesAsync(int offset)
     {
+        if (context.Editors.Active is { } shown)
+        {
+            using ChangeTracker waited = new(shown.Text);
+            if (await context.TakenInAsync(shown) is { } unloaded)
+            {
+                context.Say($"Find Usages: {unloaded}");
+                return;
+            }
+            offset = waited.MapOffset(offset);
+        }
         if (context.Ask("Find Usages") is not { } lsp)
         {
             return;

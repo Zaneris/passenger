@@ -556,6 +556,7 @@ public partial class MainWindow
         Explorer.RefreshFolders(named.Select(Path.GetDirectoryName).OfType<string>());
         session.Evaluate();
         session.MSBuild.FilesCameOrWent();
+        session.CSharp?.FilesCameOrWent(named);
         if (Folder is { } folder)
         {
             session.Index.Apply(folder, named);

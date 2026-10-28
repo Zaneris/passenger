@@ -22,6 +22,12 @@ public static class Refusals
     /// <summary>The folder has no C# language server: it has neither a solution nor a project, or its window starts none.</summary>
     public const string NoCSharp = "No C# language server runs for this folder";
 
+    /// <summary>A C# file come under a project that the language server has not loaded into it (<see
+    /// cref="CSharp.CSharpService.UnplacedAsync"/>), whose answers about the solution would leave it out.</summary>
+    public static string NotTakenIn(string file, string project) =>
+        $"{file} is not loaded into {project} yet: the C# language server has not taken it in after {CSharp.Patience.Limit.TotalSeconds:0} s, "
+        + "and would answer without it; try again once it has";
+
     /// <summary>Go to Declaration found nothing to go to where it was asked.</summary>
     public const string NoDeclaration = "Cannot find a declaration to go to";
 

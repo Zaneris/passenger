@@ -275,6 +275,37 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal(["Coins.cs changed"], Files(handled));
     }
 
+    [Fact]
+    public async Task An_agent_that_writes_a_new_class_and_its_caller_and_at_once_renames_it_or_asks_its_usages_has_the_caller_counted()
+    {
+        await TakeFolderAsync();
+        Shop(("Calc.cs", Calc));
+        await using McpClient client = await Start(["--mcp", Folder]);
+        // The projects loaded first, so the files written next come after.
+        await Call(client, McpTools.Diagnostics, new() { ["path"] = "Calc.cs" });
+
+        // Both new, then at once the rename: the language server has yet to take either into the project.
+        const string Triangle = "namespace Shop;\n\npublic class Triangle\n{\n    public static Triangle Make() => new();\n}\n";
+        const string UseTriangle = "namespace Shop;\n\npublic static class UseTriangle\n{\n    public static Triangle Run() => Triangle.Make();\n}\n";
+        File.WriteAllText(PathOf("Triangle.cs"), Triangle);
+        File.WriteAllText(PathOf("UseTriangle.cs"), UseTriangle);
+        (int line, int column) = LineColumn(Triangle, "Make", Triangle.IndexOf("Make", StringComparison.Ordinal));
+        CallToolResult renaming = await Result(client, McpTools.Rename, new() { ["path"] = "Triangle.cs", ["line"] = line, ["column"] = column, ["newName"] = "Build" });
+        Assert.True(renaming.IsError != true, $"A rename right after the agent wrote Triangle.cs and its caller answered: {Text(renaming)}");
+        Assert.Equal(Triangle.Replace("Make()", "Build()", StringComparison.Ordinal), File.ReadAllText(PathOf("Triangle.cs")));
+        Assert.True(File.ReadAllText(PathOf("UseTriangle.cs")) == UseTriangle.Replace("Triangle.Make()", "Triangle.Build()", StringComparison.Ordinal),
+            $"The rename ({Text(renaming)}) left the caller the agent had just written calling a method that is no longer there:\n{File.ReadAllText(PathOf("UseTriangle.cs"))}");
+
+        const string Square = "namespace Shop;\n\npublic class Square\n{\n    public static Square Make() => new();\n}\n";
+        const string UseSquare = "namespace Shop;\n\npublic static class UseSquare\n{\n    public static Square Run() => Square.Make();\n}\n";
+        File.WriteAllText(PathOf("Square.cs"), Square);
+        File.WriteAllText(PathOf("UseSquare.cs"), UseSquare);
+        (line, column) = LineColumn(Square, "Make", Square.IndexOf("Make", StringComparison.Ordinal));
+        JsonElement usages = await Call(client, McpTools.Usages, new() { ["path"] = "Square.cs", ["line"] = line, ["column"] = column });
+        Assert.True(Used(usages).Select(u => u.Path).Order(StringComparer.Ordinal).SequenceEqual(["Square.cs", "UseSquare.cs"]),
+            $"usages right after the agent wrote Square.cs and its caller missed the caller, so a change made by it would leave the caller behind: {Text(usages)}");
+    }
+
     [AvaloniaFact]
     public void An_agent_optimizes_imports_and_cleans_up_a_file_a_project_and_the_solution_and_hears_what_other_files_have()
     {

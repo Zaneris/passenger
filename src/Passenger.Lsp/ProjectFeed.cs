@@ -24,3 +24,7 @@ public sealed record FedProjects(IReadOnlyList<ProjectToOpen> First, IReadOnlyLi
 /// <summary>A project's design-time builds as a feed gives them, and the files they read that have changed since, by their
 /// canonical paths: a restore that landed as they were made.</summary>
 public sealed record FedProject(ProjectInfoResult Info, IReadOnlyList<FileEvent> Changed);
+
+/// <summary>A project's design-time builds given to the server's loader (<see cref="LanguageServer.ProjectGiven"/>): the
+/// project, and when the server asked for them (UTC).</summary>
+public readonly record struct ProjectGiven(string Project, DateTime Asked);

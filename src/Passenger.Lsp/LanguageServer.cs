@@ -182,6 +182,11 @@ public sealed class LanguageServer : IAsyncDisposable
     /// <summary>Where Passenger's project loader in the server gets the projects' design-time builds it asks for.</summary>
     public IProjectFeed? Feed { get; set; }
 
+    /// <summary>A project's design-time builds given to Passenger's project loader in the server, which loads the project
+    /// from them (or, given none, fails to): the project as it named it, and when it asked, so every file on disk before
+    /// then is in what it loads. Raised on the answering thread, before the answer goes.</summary>
+    public event EventHandler<ProjectGiven>? ProjectGiven;
+
     /// <summary>The server's colours moved in a way only it knows (a project reloaded, a file changed elsewhere): the
     /// semantic tokens should be asked for again. Raised on any thread.</summary>
     public event EventHandler? ColoursRefreshRequested;
@@ -1273,8 +1278,10 @@ public sealed class LanguageServer : IAsyncDisposable
             {
                 return new Roslyn.Extension.ProjectInfoResult(null, "Passenger has no design-time builds to give");
             }
+            DateTime at = DateTime.UtcNow;
             FedProject fed = await feed.InfoAsync(asked.Path, CancellationToken.None).ConfigureAwait(false);
             owner.WatchedFiles.Tell(fed.Changed);
+            owner.ProjectGiven?.Invoke(owner, new ProjectGiven(asked.Path, at));
             return fed.Info;
         }
 

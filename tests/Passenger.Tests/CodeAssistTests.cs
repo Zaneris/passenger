@@ -2055,6 +2055,30 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    /// <summary>A class and its caller another program wrote a moment ago (an agent in the terminal), heard by the window but
+    /// not yet taken into the project by the language server: Find Usages on the class's method, opened at once, lists the
+    /// caller too, where an answer from the server's Miscellaneous Files lists the declaration alone.</summary>
+    [AvaloniaFact]
+    public void Find_usages_in_a_file_another_program_has_just_written_lists_the_caller_it_wrote_beside_it()
+    {
+        MainWindow window = project.Open("Program.cs");
+        HashSet<string> heard = new(StringComparer.Ordinal);
+        EventHandler<FolderChanges> hear = (_, changes) => heard.UnionWith(changes.Paths.Select(Path.GetFileName).OfType<string>());
+        window.FolderWatcher!.Changed += hear;
+        File.WriteAllText(project.PathOf("Triangle.cs"), "class Triangle\n{\n    public static Triangle Make() => new();\n}\n");
+        File.WriteAllText(project.PathOf("UseTriangle.cs"), "static class UseTriangle\n{\n    public static Triangle Run() => Triangle.Make();\n}\n");
+        Ui.PumpUntil(() => heard.Contains("Triangle.cs") && heard.Contains("UseTriangle.cs"), "the folder's watcher to hear of both files");
+        window.FolderWatcher.Changed -= hear;
+        window.OpenFile(project.PathOf("Triangle.cs"));
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "Triangle Ma");
+        Ui.Run(window, AppActions.FindUsages);
+        Ui.WaitFor(() => window.Find.Rows.Any(r => r.Usage is not null), "the usages in the Find window");
+        string[] usages = [.. window.Find.Rows.Where(r => r.Usage is not null).Select(r => r.Label)];
+        Assert.True(usages.Contains("public static Triangle Run() => Triangle.Make();"),
+            $"Find Usages on a method just written missed the caller written beside it, so a rename would leave it behind: [{string.Join("; ", usages)}] ({window.Status})");
+        window.Close();
+    }
+
     /// <summary>The Find and Hierarchy windows' rows have the menu every list of results has: Go to (F4) and Copy.</summary>
     [AvaloniaFact]
     public void A_usages_and_a_callers_menu_goes_to_it_and_copies_its_path()

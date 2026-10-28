@@ -356,6 +356,15 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     /// files the server has yet to read again.</summary>
     internal async Task<RefactorOutcome> RenameSymbolAsync(OpenDocument document, int offset, string name, IReadOnlyList<string> typeFiles, Patience? patience)
     {
+        // Followed through what is typed while the files just made are waited for.
+        using (ChangeTracker waited = new(document.Text))
+        {
+            if (await context.TakenInAsync(document) is { } unloaded)
+            {
+                return RefactorOutcome.Refused($"Rename was not applied: {unloaded}");
+            }
+            offset = waited.MapOffset(offset);
+        }
         TextSnapshot text = document.Text.Snapshot;
         string old = text.GetText(RenamedAt(document, text, offset));
         // The open files as the request went: what is typed meanwhile carries the answer on.
