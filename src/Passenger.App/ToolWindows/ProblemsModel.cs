@@ -260,7 +260,8 @@ public sealed class ProblemsModel
     }
 
     /// <summary>The current file's problems, as they are typed: the same problems moved by a key move their rows, which
-    /// keep their place in the list, rather than every row being made again.</summary>
+    /// keep their place in the list, rather than every row being made again; another tab shown is left as it is but for
+    /// the File tab's title.</summary>
     public void ShowFile(string? name, IReadOnlyList<Problem> problems)
     {
         Problem[] ordered = Ordered(problems);
@@ -278,6 +279,11 @@ public sealed class ProblemsModel
         }
         fileName = name;
         file = ordered;
+        if (Shown != ProblemsTab.File)
+        {
+            TabsChanged?.Invoke(this, EventArgs.Empty);
+            return;
+        }
         Refresh();
     }
 

@@ -1,3 +1,4 @@
+using System.Collections.Specialized;
 using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -295,62 +296,66 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         window.Close();
     }
 
-    /// <summary>A typing pause lists again only the problems it changed, the open file's as its pull lands, however many the
-    /// solution has: with 4,000 warnings in twenty files nobody has open, the Solution tab shown, a pause allocates on the UI
-    /// thread under 8 bytes a problem more than with one in each.</summary>
+    /// <summary>A typing pause lists again only the open file's problems, however many the solution has: with 4,000 warnings
+    /// in twenty files nobody has open and the Solution tab shown, keys that move the open file's warning move its row where
+    /// it is, and one that gives the file an error takes out and puts in that file's rows alone, with its project's count.
+    /// What the tab's list is told counts, not what the pause costs: the tab is never listed whole again, nor another file's
+    /// rows.</summary>
     [AvaloniaFact]
     public void A_typing_pause_lists_again_only_the_open_files_problems_however_many_the_solution_has()
     {
-        (long few, int fewListed, string fewTaken) = UiBytesPerPause(warnings: 1);
-        (long many, int manyListed, string manyTaken) = UiBytesPerPause(warnings: 200);
-        int more = manyListed - fewListed;
-        long each = (many - few) / more;
-        string blinks = $"less what their time cost the window at rest: {manyTaken}, and {fewTaken}";
-        TestContext.Current.TestOutputHelper?.WriteLine(
-            $"A typing pause allocated {many:N0} bytes on the UI thread with {manyListed} problems in the solution, {few:N0} with {fewListed} ({blinks}): {each} bytes a problem.");
-        Assert.True(each < 8,
-            $"A typing pause allocated {many / 1024:N0} KB on the UI thread with {manyListed} problems in the solution, {few / 1024:N0} KB with {fewListed} ({blinks}): {each} bytes for each problem, which the window listed again");
-    }
-
-    /// <summary>The keys each case of a typing pause's cost types.</summary>
-    private const int PauseKeys = 5;
-
-    /// <summary>What a key typed in an open file and its pause allocate on the UI thread, less what the pause's time cost the
-    /// window as it costs at rest, measured in each case: the caret's blinks it drew (<see cref="Ui.BlinkBytes"/>) and each
-    /// millisecond of the wait (<see cref="Ui.RestBytesPerMs"/>), since the larger solution's server answers later. The least
-    /// of a few, with solution-wide analysis on, the Solution tab shown and twenty files nobody has open each with
-    /// <paramref name="warnings"/> warnings; how many problems the solution has, and what was taken out.</summary>
-    private (long Bytes, int Listed, string Taken) UiBytesPerPause(int warnings)
-    {
-        (MainWindow window, string typed, int listed) = Warned(warnings);
+        (MainWindow window, string typed, int listed) = Warned(warnings: 200);
         ProblemsModel problems = window.BottomPanel.Problems;
-        Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
-        long blink = Ui.BlinkBytes(editor);
-        double perMs = Ui.RestBytesPerMs(editor, blink, TimeSpan.FromSeconds(2));
-
-        long least = long.MaxValue;
-        int blinked = 0;
-        double waited = 0;
-        for (int i = 1; i <= PauseKeys; i++)
+        List<string> others = [];
+        int typedRows = 0;
+        void Heard(object? sender, NotifyCollectionChangedEventArgs change)
         {
-            long blinks = editor.Blinks;
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            long started = System.Diagnostics.Stopwatch.GetTimestamp();
-            window.KeyTextInput("1");
-            Ui.Settle();
-            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-            double ms = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
-            int drew = (int)(editor.Blinks - blinks);
-            blinked += drew;
-            waited += ms;
-            least = Math.Min(least, allocated - (drew * blink) - (long)(ms * perMs));
-            Problem moved = Assert.Single(problems.SolutionProblems!, p => p.Path == typed);
-            Assert.True(moved.Position == new TextPosition(4, 27 + i), $"After {i} keys the open file's warning is listed at {moved.Where}, not Typed.cs:5:{28 + i}");
-            Assert.Equal($"Typed.cs:5:{28 + i}", Assert.Single(problems.Rows, r => r.Problem?.Path == typed).Detail);
+            if (change.Action == NotifyCollectionChangedAction.Reset)
+            {
+                others.Add($"every row of the tab ({problems.Rows.Count})");
+                return;
+            }
+            foreach (ProblemRow row in (change.NewItems ?? Array.Empty<ProblemRow>()).OfType<ProblemRow>().Concat((change.OldItems ?? Array.Empty<ProblemRow>()).OfType<ProblemRow>()))
+            {
+                if (row.Problem?.Path == typed || row is { Depth: 1, Label: "Typed.cs" })
+                {
+                    typedRows++;
+                }
+                else if (row.Depth > 0)
+                {
+                    others.Add($"{row.Label} {row.Detail}");
+                }
+            }
         }
-        Assert.Equal(listed, problems.SolutionProblems!.Count);
+        INotifyCollectionChanged told = (INotifyCollectionChanged)problems.Rows;
+        told.CollectionChanged += Heard;
+        try
+        {
+            const int Keys = 5;
+            for (int i = 1; i <= Keys; i++)
+            {
+                window.KeyTextInput("1");
+                Ui.Settle();
+                Problem moved = Assert.Single(problems.SolutionProblems!, p => p.Path == typed);
+                Assert.True(moved.Position == new TextPosition(4, 27 + i), $"After {i} keys the open file's warning is listed at {moved.Where}, not Typed.cs:5:{28 + i}");
+                Assert.Equal($"Typed.cs:5:{28 + i}", Assert.Single(problems.Rows, r => r.Problem?.Path == typed).Detail);
+            }
+            Assert.True(typedRows == 0 && others.Count == 0, $"Keys that only moved the open file's warning listed rows again: {typedRows} of Typed.cs, and {string.Join(", ", others.Take(5))}");
+
+            window.KeyTextInput(" + missing");
+            Ui.WaitFor(() => problems.SolutionProblems?.Any(p => p.Path == typed && p.Severity == ProblemSeverity.Error) == true, "the error the key made, in the solution's problems");
+            Assert.Contains(problems.Rows, r => r.Problem is { Severity: ProblemSeverity.Error } error && error.Path == typed);
+        }
+        finally
+        {
+            told.CollectionChanged -= Heard;
+        }
+        TestContext.Current.TestOutputHelper?.WriteLine($"With {listed + 1} problems in the solution, the typing pauses listed again {typedRows} rows of Typed.cs and {others.Count} others");
+        Assert.True(others.Count == 0,
+            $"A typing pause in Typed.cs listed again {others.Count} rows the keys never changed, of {listed + 1} problems in the solution: {string.Join(", ", others.Take(10))}");
+        Assert.True(typedRows > 0, "The error the key made in Typed.cs was listed in the Solution tab with no row of Typed.cs put in");
+        Assert.Equal(listed + 1, problems.SolutionProblems!.Count);
         window.Close();
-        return (least, listed, $"{blinked} blinks at {blink:N0} bytes and {waited / 1000:0.0} s at {perMs:0.0} bytes a ms in {PauseKeys} pauses with {listed}");
     }
 
     /// <summary>The file open in a typing pause's tests.</summary>

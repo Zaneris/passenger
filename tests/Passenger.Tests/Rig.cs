@@ -882,34 +882,6 @@ public static class Ui
         return least;
     }
 
-    /// <summary>What a wait allocates on the UI thread for each millisecond it runs with the IDE at rest, less the caret's
-    /// blinks it drew at <paramref name="blink"/> each (<see cref="BlinkBytes"/>): the loop a settle runs while background
-    /// work is under way, run for <paramref name="time"/>, the middle of three. A measure of what a key costs takes it out
-    /// for each millisecond its wait ran, which a slower server's answer makes longer.</summary>
-    public static double RestBytesPerMs(CodeEditor editor, long blink, TimeSpan time)
-    {
-        Settle();
-        List<double> each = [];
-        for (int i = 0; i < 3; i++)
-        {
-            long blinks = editor.Blinks;
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            long started = System.Diagnostics.Stopwatch.GetTimestamp();
-            Waiting.Until(() =>
-            {
-                Dispatcher.UIThread.RunJobs();
-                AvaloniaHeadlessPlatform.ForceRenderTimerTick(1);
-                PromoteTimers(Dispatcher.UIThread);
-                Dispatcher.UIThread.RunJobs();
-                return System.Diagnostics.Stopwatch.GetElapsedTime(started) >= time;
-            }, time + TimeSpan.FromSeconds(1), every: TimeSpan.FromMilliseconds(2), scaled: false);
-            double ms = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
-            each.Add((GC.GetAllocatedBytesForCurrentThread() - before - ((editor.Blinks - blinks) * blink)) / ms);
-        }
-        each.Sort();
-        return each[1];
-    }
-
     private static bool Settled(DateTime limit, Func<bool>? also = null) => Waiting.Until(() =>
     {
         Dispatcher.UIThread.RunJobs();
