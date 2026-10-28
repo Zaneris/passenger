@@ -30,6 +30,12 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-10-28
 
+- `ProblemsTests`' thousand files rewritten on disk, the Mac under 14 burners beside CodeAssistTests before #604 landed:
+  the server told of 980 of the 1,000. FSEvents dropped the rest and said so (`MustScanSubDirs|UserDropped` on the
+  watched folder), but .NET 11's macOS watcher skips any event on the watched folder before it looks for that flag, so
+  no `Error` came; 1,000 deleted side by side lost about half every time. **The IDE**: the folder's watcher takes a
+  burst at risk (256 changes within a second, or an overflow) as a reason to list again the folders it touched against
+  its record, and once more after a quiet second (#607, in this commit).
 - `LanguageServerProjectsTests`' project whose packages arrive during its first design-time build, the Mac on main
   (#608): "The first window's build resolved the package (CS0103): the language server was given a build made after its
   assets arrived", in every run alone (passing on 9befe118's parent, failing from 9befe118 on) and in some of its class.
