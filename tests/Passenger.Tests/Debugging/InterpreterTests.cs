@@ -233,6 +233,23 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("98", (await Evaluate(host, frame, "\"abc\"u8[1]")).Value);
     }
 
+    /// <summary>A call that throws in the program is named with what its exception says, as the program's own catch reads
+    /// it, the value it was given too, on one line.</summary>
+    [Fact]
+    public async Task A_call_that_throws_in_the_program_is_named_with_what_its_exception_says()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        int frame = await StoppedInReadingAsync(host);
+
+        string caught = (await Evaluate(host, frame, "outOfRange.ReplaceLineEndings(\" \")")).Value;
+        string thrown = (await Evaluate(host, frame, "new string(letter, -1)")).Value;
+        Assert.True(thrown == $"error: Evaluation threw System.ArgumentOutOfRangeException: {caught.Trim('"')}",
+            $"new string(letter, -1) answered \"{thrown}\", where the program's catch read the exception's message as {caught}");
+        string parsed = (await Evaluate(host, frame, "int.Parse(word)")).Value;
+        Assert.True(parsed.StartsWith("error: Evaluation threw System.FormatException: ", StringComparison.Ordinal) && parsed.Contains("'hello'", StringComparison.Ordinal),
+            $"int.Parse(word) answered \"{parsed}\", where the program's FormatException names the text it could not read");
+    }
+
     private static int Line(string code) => Debuggees.Line("PassengerCases", code);
 
     /// <summary>PassengerCases launched and stopped in Reading.Run once its rounds are done; the top frame.</summary>

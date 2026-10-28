@@ -234,6 +234,7 @@ public static class Extensions
     private static async Task<ICorDebugValue?> RunEvalAsync(ICorDebugEval eval, Func<Task<CorDebugManagedCallbackEventArgs>> processEventsUntilEvalEventFunc, EvalStatus evalStatus, bool throwOnException, Action startEval, Func<EvalCompleteCorDebugManagedCallbackEventArgs, ICorDebugValue?> onComplete)
     {
         ICorDebugValue? returnValue = null;
+        ICorDebugValue? thrown = null;
 
         ICorDebugThread thread = eval.Thread;
         if (evalStatus.ImplicitOff is { } off && !evalStatus.Explicit)
@@ -364,21 +365,17 @@ public static class Extensions
                 ICorDebugValue exceptionValue = exceptionEvent.Eval.Result ?? throw new ManagedDebugger.EvalException("EvalException callback error - Result is null");
                 if (throwOnException)
                 {
-                    try
-                    {
-                        throw new ManagedDebugger.EvalException($"Evaluation threw {ManagedDebugger.GetCorDebugTypeFriendlyName(exceptionValue.ExactType)}");
-                    }
-                    finally
-                    {
-                        if (exceptionValue is ICorDebugHandleValue handle)
-                        {
-                            handle.TryDispose();
-                        }
-                    }
+                    thrown = exceptionValue;
                 }
-                returnValue = exceptionValue;
+                else
+                {
+                    returnValue = exceptionValue;
+                }
             }
-            return returnValue;
+            if (thrown is null)
+            {
+                return returnValue;
+            }
         }
         finally
         {
@@ -387,6 +384,21 @@ public static class Extensions
             reading.Dispose();
             // Taken at the next Continue; a process that ended meanwhile has no threads to set.
             process.TrySetAllThreadsDebugState(CorDebugThreadState.THREAD_RUN, thread);
+        }
+
+        try
+        {
+            string type = ManagedDebugger.GetCorDebugTypeFriendlyName(thrown.ExactType);
+            throw new ManagedDebugger.EvalException(await MessageOfAsync(thread, thrown, processEventsUntilEvalEventFunc, evalStatus) is { } message
+                ? $"Evaluation threw {type}: {message.ReplaceLineEndings(" ")}"
+                : $"Evaluation threw {type}");
+        }
+        finally
+        {
+            if (thrown is ICorDebugHandleValue handle)
+            {
+                handle.TryDispose();
+            }
         }
 
         // Reads the runtime's events, under the request's hold of the engine's lock, until the evaluation's end.
@@ -410,6 +422,44 @@ public static class Extensions
             catch (OperationCanceledException)
             {
                 return null;
+            }
+        }
+    }
+
+    /// <summary>What an exception the program threw in an evaluation says, as its Message reads, run on the thread it was
+    /// thrown on; null where that cannot be read.</summary>
+    private static async Task<string?> MessageOfAsync(ICorDebugThread thread, ICorDebugValue exception, Func<Task<CorDebugManagedCallbackEventArgs>> processEventsUntilEvalEventFunc, EvalStatus evalStatus)
+    {
+        ICorDebugType? type = exception.ExactType;
+        while (type is not null && ManagedDebugger.GetCorDebugTypeFriendlyName(type) != "System.Exception")
+        {
+            type = type.Base;
+        }
+        if (type is null)
+        {
+            return null;
+        }
+        ICorDebugValue? message;
+        try
+        {
+            ICorDebugClass exceptionClass = type.Class;
+            mdMethodDef getter = exceptionClass.Module.GetMetaDataInterface<IMetaDataImport>().FindMethod(exceptionClass.Token, "get_Message", 0, 0);
+            // A virtual call, so an exception's own Message, its parameter's name or value added, is what it says.
+            message = await thread.CreateEval().CallParameterizedFunctionAsync(processEventsUntilEvalEventFunc, evalStatus, exceptionClass.Module.GetFunctionFromToken(getter), 0, null, 1, [exception]);
+        }
+        catch (Exception error) when (error is ManagedDebugger.EvalException || Failures.OfRuntime(error))
+        {
+            return null;
+        }
+        try
+        {
+            return message?.UnwrapDebugValue() is ICorDebugStringValue text ? text.String : null;
+        }
+        finally
+        {
+            if (message is ICorDebugHandleValue handle)
+            {
+                handle.TryDispose();
             }
         }
     }

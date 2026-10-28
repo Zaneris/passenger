@@ -273,13 +273,22 @@ internal static class Reading
 		double huge = 1e19, negOne = -1.0, d300 = 300.7;
 		string[] casts = [$"{(int)huge}", $"{(int)-huge}", $"{(uint)negOne}", $"{(uint)(d300 * 1e8)}", $"{(byte)(d300 * 1e8)}", $"{(sbyte)-d300}",
 			$"{(ushort)(negOne * -70000)}", $"{(nint)huge}"];
+		string outOfRange = "";
+		try
+		{
+			_ = new string(letter, -1);
+		}
+		catch (ArgumentOutOfRangeException thrown)
+		{
+			outOfRange = thrown.Message;
+		}
 		for (int round = 0; round < 3; round++)
 		{
 			Console.WriteLine($"reading round {round}");
 			Console.WriteLine($"read round {round}");
 		}
 		Console.WriteLine("reading");
-		Console.WriteLine($"read {spot}, {tuple}, {word}{letter}, {boxed}, {native}, {unsignedNative} and {string.Join(", ", casts)}");
+		Console.WriteLine($"read {spot}, {tuple}, {word}{letter}, {boxed}, {native}, {unsignedNative}, {string.Join(", ", casts)} and {outOfRange}");
 	}
 }
 
