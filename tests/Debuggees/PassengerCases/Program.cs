@@ -291,13 +291,24 @@ internal static class Reading
 		{
 			outsideArray = thrown.Message;
 		}
+		int[]? none = null;
+		Labelled? nobody = null;
+		string nullArray = "";
+		try
+		{
+			_ = none![0];
+		}
+		catch (NullReferenceException thrown)
+		{
+			nullArray = thrown.Message;
+		}
 		for (int round = 0; round < 3; round++)
 		{
 			Console.WriteLine($"reading round {round}");
 			Console.WriteLine($"read round {round}");
 		}
 		Console.WriteLine("reading");
-		Console.WriteLine($"read {spot}, {tuple}, {word}{letter}, {boxed}, {native}, {unsignedNative}, {string.Join(", ", casts)}, {outOfRange} and {outsideArray}");
+		Console.WriteLine($"read {spot}, {tuple}, {word}{letter}, {boxed}, {native}, {unsignedNative}, {string.Join(", ", casts)}, {outOfRange}, {outsideArray}, {none?.Length}{nobody?.Value} and {nullArray}");
 	}
 }
 

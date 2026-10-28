@@ -294,6 +294,25 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("4", (await Evaluate(host, frame, "new[] { spot, spot }[1].Y")).Value);
     }
 
+    /// <summary>An index, a store or the length of a null array, and a field, a store or a call through a null reference,
+    /// throw the NullReferenceException the program would, named with what the program's own catch reads.</summary>
+    [Fact]
+    public async Task A_null_array_or_reference_throws_the_NullReferenceException_the_program_would()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        int frame = await StoppedInReadingAsync(host);
+
+        string caught = (await Evaluate(host, frame, "nullArray")).Value;
+        string expected = $"error: Evaluation threw System.NullReferenceException: {caught.Trim('"')}";
+        foreach (string expression in (string[])["none[0]", "none[1] = 2", "none.Length", "none[^1]", "((int[,])null)[0, 0]",
+            "nobody.Value", "nobody.Value = 1", "nobody.ToString()", "new[] { nobody }[0].Value", "(int)(object)nobody"])
+        {
+            string thrown = (await Evaluate(host, frame, expression)).Value;
+            Assert.True(thrown == expected, $"{expression} answered \"{thrown}\", where the program's catch read the exception's message as {caught}");
+        }
+        Assert.Equal("null", (await Evaluate(host, frame, "nobody?.Value")).Value);
+    }
+
     private static int Line(string code) => Debuggees.Line("PassengerCases", code);
 
     /// <summary>PassengerCases launched and stopped in Reading.Run once its rounds are done; the top frame.</summary>

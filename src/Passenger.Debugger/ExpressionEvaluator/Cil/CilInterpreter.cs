@@ -449,7 +449,7 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         }
         if (source.IsNull)
         {
-            throw new NullReferenceException();
+            throw ThrownAsInTheProgram(new NullReferenceException());
         }
         ICorDebugBoxValue boxed = (source.CorValue is ICorDebugReferenceValue reference ? reference.Dereference() as ICorDebugBoxValue : source.CorValue as ICorDebugBoxValue)
             ?? throw new InvalidCastException("The CIL value is not boxed");
@@ -745,7 +745,7 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
             }
             if (receiver.IsNull)
             {
-                throw new NullReferenceException();
+                throw ThrownAsInTheProgram(new NullReferenceException());
             }
 
             callArguments[0] = receiver.Value is EvaluationDelegate or EvaluationClosure
@@ -1279,9 +1279,12 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
             throwOnException: true));
     }
 
+    /// <summary>The array an instruction reads, writes or measures; a null one throws the NullReferenceException the
+    /// program's would.</summary>
     private static ICorDebugArrayValue GetArrayValue(CilValue value) =>
-        value.CorValue?.UnwrapDebugValue() as ICorDebugArrayValue
-        ?? throw new NullReferenceException("Array reference is null");
+        value.IsNull
+            ? throw ThrownAsInTheProgram(new NullReferenceException())
+            : value.CorValue?.UnwrapDebugValue() as ICorDebugArrayValue ?? throw new InvalidOperationException("The CIL value is not an array");
 
     /// <summary>A multi-dimensional array's Get, Set or Address, on the element its indices name, as ldelem, stelem and
     /// ldelema are on a vector's; an index outside its dimension throws as the program would.</summary>
@@ -1317,19 +1320,17 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         }
     }
 
+    /// <summary>The object or struct whose field ldfld, ldflda or stfld reaches; a null reference throws the
+    /// NullReferenceException the program's would.</summary>
     private static ICorDebugObjectValue GetFieldReceiver(CilValue receiver)
     {
-        ICorDebugValue? corValue = receiver.CorValue;
-        if (corValue is null && receiver.Location is IDebuggeeLocation directLocation)
+        CilValue held = receiver.Location is null or IDebuggeeLocation ? receiver : receiver.Location.Read();
+        ICorDebugValue? corValue = held.CorValue ?? (receiver.Location as IDebuggeeLocation)?.Value;
+        if (corValue is null ? held.IsNull : corValue is ICorDebugReferenceValue { IsNull: true })
         {
-            corValue = directLocation.Value;
+            throw ThrownAsInTheProgram(new NullReferenceException());
         }
-        else if (corValue is null && receiver.Location is not null)
-        {
-            corValue = receiver.Location.Read().CorValue;
-        }
-
-        return corValue?.UnwrapDebugValueToObject() ?? throw new NullReferenceException("Instance field receiver is null");
+        return corValue?.UnwrapDebugValueToObject() ?? throw new InvalidOperationException("The field's receiver is not an object of the program's");
     }
 
     private async Task<CilValue> BoxAsync(CilValue value, ICorDebugType targetType, CompiledExpressionEvaluationContext context, EvaluationHandleScope handles)
