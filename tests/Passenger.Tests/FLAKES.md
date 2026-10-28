@@ -30,6 +30,16 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-10-28
 
+- `ProblemsTests`' `Lines_typed_above_a_files_problems_move_their_rows_without_making_the_list_again`, macOS report lane
+  of run 40704117907 (#615): "The IDE was not quiet within 180 s. Still busy: background work begun at
+  CSharpService.cs:711", the start of a window taking up the class's kept server to load the file the test wrote. With
+  no window holding it, the server was told of the project's files written since it started and loaded the project
+  again, asking the closed window for its design-time builds; those, let go of with the folder, queued the question
+  and never answered it, and the next window's load waited behind that reload for good. A project file touched
+  between two windows, then a file written for the next, hung the start every time. Only a test's kept server
+  (`WarmServer`) outlives its window. **The IDE**: builds asked of a folder let go of are refused at once, and a kept
+  server's questions wait for the window that takes it up, whose builds answer them (#615, in this commit, with a test
+  that touches the project file between windows).
 - `CodeAssistTests`' type and parameter name hints, the Mac under 14 burners beside FolderWatchTests and ProblemsTests'
   thousand rewrites (#610): "Waited 135 s for the hint's hover card". As the window opened, its design-time build
   rewrote the project's generated .editorconfig; told of it, Roslyn read every document again, the text the same but its

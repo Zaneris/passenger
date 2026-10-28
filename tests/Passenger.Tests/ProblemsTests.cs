@@ -726,6 +726,24 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         Ui.ChooseFromMenu(rows, "Go to");
     }
 
+    /// <summary>The class's server, kept with no window, hears its project file change (its time alone, as a checkout
+    /// leaves it) and loads the project again, asking for builds no window is there to give: the next window that takes
+    /// it up gives them, and is ready with a file written meanwhile loaded and its error listed, rather than starting for
+    /// ever behind that question.</summary>
+    [AvaloniaFact]
+    public void A_kept_server_loading_its_project_again_between_windows_has_its_builds_from_the_next_window_which_lists_a_new_files_error()
+    {
+        project.Open("Helper.cs").Close();
+        File.SetLastWriteTimeUtc(project.PathOf("Sample.csproj"), DateTime.UtcNow);
+        Ui.WaitFor(() => project.Server.Unanswered > 0, "the kept server to ask for the builds of the project whose file it heard change");
+
+        Write("Several.cs", "class Several\n{\n    int First = \"one\";\n}\n");
+        MainWindow window = project.Open("Several.cs", w => w.Perform(AppActions.ShowProblems));
+        Ui.WaitFor(() => window.BottomPanel.Problems.FileProblems.Count(p => p.Severity == ProblemSeverity.Error) == 1,
+            "the error of the file written while the server loaded its project again with no window");
+        window.Close();
+    }
+
     private void Write(string name, string text) => project.Write(name, text);
 
     /// <summary>A console project of a program, a helper, its caller and a file with an error, restored once for every test,

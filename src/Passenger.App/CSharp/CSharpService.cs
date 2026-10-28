@@ -872,16 +872,11 @@ public sealed class CSharpService : IAsyncDisposable
                 IdeErrors.Observe(TimeFirstColoursAsync(started, began));
                 IdeErrors.Observe(TimeActiveFileAsync(started, began));
             }
-            else if (warm?.Take(opening.Folder, solution, projects) is { } taken)
+            else if (warm?.Take(opening.Folder, solution, projects, Feed) is { } taken)
             {
                 started = taken.Session;
                 Hear(started.Server);
                 HearKept(taken.Problems);
-                // What it asks for from now on is this window's to answer.
-                if (started.Fed)
-                {
-                    started.Server.Feed = Feed;
-                }
                 started.Server.ReplaceOptions(options);
                 loadAgain = taken.LoadAgain;
                 handed = taken.Watches;

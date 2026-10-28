@@ -101,7 +101,8 @@ public sealed class ProjectBuilds
         }
     }
 
-    /// <summary>Lets the folder go: what is still being built for it is dropped as it lands, and what waits for it fails.</summary>
+    /// <summary>Lets the folder go: what is still being built for it is dropped as it lands, and what waits for it, or asks
+    /// for it later, fails.</summary>
     public void Close()
     {
         UiThread.Check();
@@ -120,10 +121,13 @@ public sealed class ProjectBuilds
         inHost = null;
         foreach (TaskCompletionSource<BuiltProject> waiter in waiting.Values)
         {
-            waiter.TrySetResult(new BuiltProject(string.Empty, RawJson.EmptyArray, [], "the folder was closed"));
+            waiter.TrySetResult(new BuiltProject(string.Empty, RawJson.EmptyArray, [], Closed));
         }
         waiting.Clear();
     }
+
+    /// <summary>Why a project asked of a folder let go has no builds.</summary>
+    private const string Closed = "the folder was closed";
 
     /// <summary>Holds the project host's design-time builds of WPF and Avalonia projects off (every window's on that host)
     /// for a build of the IDE's own, which writes the generated code and resources they write in obj/: done once those running, named to
@@ -254,8 +258,13 @@ public sealed class ProjectBuilds
         return built.Problem is { } problem ? new ProjectInfoResult(null, problem) : new ProjectInfoResult(built.Infos.ToString(), null, Said(built.Diagnostics));
     }
 
+    /// <summary>A project's builds once the host has built them; asked once the folder was let go, no build at all, saying so.</summary>
     private Task<BuiltProject> Built(string path)
     {
+        if (folder is null)
+        {
+            return Task.FromResult(new BuiltProject(path, RawJson.EmptyArray, [], Closed));
+        }
         Queue(path);
         Pump();
         return waiting[path].Task;
