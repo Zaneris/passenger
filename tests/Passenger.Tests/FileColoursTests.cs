@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text;
 using Avalonia;
 using Avalonia.Controls;
@@ -655,9 +654,8 @@ public sealed class FileColoursTests : FileColoursFolder
     }
 }
 
-/// <summary>A key in a long file of a language TextMate colours costs the UI thread what one in a short file does. Held to a
-/// time, so the class runs alone.</summary>
-[Collection(Alone.Name)]
+/// <summary>A key in a long file of a language TextMate colours costs the UI thread what one in a short file does, counted
+/// in the lines the grammar reads and the bytes the UI thread allocates.</summary>
 public sealed class FileColoursResponsivenessTests : FileColoursFolder
 {
     /// <summary>A key in a file of 20,000 lines of XML, or 5,000 of Markdown, has the grammar read the line it changed,
@@ -683,13 +681,14 @@ public sealed class FileColoursResponsivenessTests : FileColoursFolder
             ("Notes.md", notes, "Section 250", "# Notes\n\n## Section 1\n\nSome **bold** text.\n", "Section 1"),
         })
         {
-            (double keyLong, double readLong, double lines, TextMateHighlighter colours) = Keys(window, file, text, at);
-            (double keyShort, _, _, _) = Keys(window, "Small" + Path.GetExtension(file), small, smallAt);
-            Assert.True(lines <= 2, $"A key in {file} had the grammar read {lines:F1} lines");
-            Assert.True(keyLong <= Math.Max(4 * keyShort, keyShort + 2), $"A key in {file} took the UI thread {keyLong:F2} ms, against {keyShort:F2} ms in a short file");
+            (long keyLong, double lines, TextMateHighlighter colours) = Keys(window, file, text, at);
+            (long keyShort, _, _) = Keys(window, "Small" + Path.GetExtension(file), small, smallAt);
             TestContext.Current.TestOutputHelper?.WriteLine(
-                $"{file}: {text.Count(c => c == '\n'):N0} lines; a key {keyLong:F2} ms on the UI thread ({keyShort:F2} ms in a short file), "
-                + $"{readLong:F2} ms off it reading {lines:F1} lines; opening it read {colours.Worked.Lines:N0} lines");
+                $"{file}: {text.Count(c => c == '\n'):N0} lines; a key allocated {keyLong:N0} bytes on the UI thread ({keyShort:N0} in a short file), "
+                + $"the grammar reading {lines:F1} lines off it; opening it read {colours.Worked.Lines:N0} lines");
+            Assert.True(lines <= 2, $"A key in {file} had the grammar read {lines:F1} lines");
+            Assert.True(keyLong <= keyShort + LongFileSlack,
+                $"A key in {file} allocated {keyLong:N0} bytes on the UI thread, against {keyShort:N0} in a short file: what the whole file has was made again");
         }
 
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -894,30 +893,33 @@ public abstract class FileColoursFolder : IDisposable
         return xml.Append("</Project>\n").ToString();
     }
 
-    /// <summary>A file opened in the window and typed in at a place: the median time a key takes the UI thread, the time
-    /// the grammar took for it off the UI thread, and the lines it read for it.</summary>
-    protected (double Key, double Read, double Lines, TextMateHighlighter Colours) Keys(MainWindow window, string file, string text, string at)
+    /// <summary>What a key may allocate on the UI thread in a long file beyond what it does in a short one: about 3 bytes a
+    /// line of 20,000, where a copy of the file's text would be 2 MB.</summary>
+    protected const long LongFileSlack = 256 * 1024;
+
+    /// <summary>A file opened in the window and typed in at a place: the least a key allocates on the UI thread with its
+    /// frame, and the lines the grammar read for each key off the UI thread.</summary>
+    protected (long Key, double Lines, TextMateHighlighter Colours) Keys(MainWindow window, string file, string text, string at)
     {
         CodeEditor editor = Open(window, file, text);
         TextMateHighlighter colours = (TextMateHighlighter)window.EditorArea.Active!.Highlighter!;
         editor.Selections = SelectionSet.Single(text.IndexOf(at, StringComparison.Ordinal) + 2);
         editor.Focus();
         Ui.Settle();
-        (long lines, int passes, TimeSpan time) = colours.Worked;
-        List<double> keys = [];
+        (long lines, int passes, _) = colours.Worked;
+        long least = long.MaxValue;
         const int Count = 12;
         for (int i = 0; i < Count; i++)
         {
-            long began = Stopwatch.GetTimestamp();
+            long before = GC.GetAllocatedBytesForCurrentThread();
             window.KeyTextInput(i % 2 == 0 ? "x" : "y");
             Dispatcher(window);
-            keys.Add(Stopwatch.GetElapsedTime(began).TotalMilliseconds);
+            least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
             Ui.Settle();
         }
-        (long linesAfter, int passesAfter, TimeSpan timeAfter) = colours.Worked;
+        (long linesAfter, int passesAfter, _) = colours.Worked;
         Assert.True(passesAfter - passes >= Count, $"{Count} keys in {file} made {passesAfter - passes} passes");
-        keys.Sort();
-        return (keys[Count / 2], (timeAfter - time).TotalMilliseconds / Count, (linesAfter - lines) / (double)Count, colours);
+        return (least, (linesAfter - lines) / (double)Count, colours);
     }
 
     /// <summary>What the key left for the UI thread to do (its frame, drawn with the colours carried), done.</summary>

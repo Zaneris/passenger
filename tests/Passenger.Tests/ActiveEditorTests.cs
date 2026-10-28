@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using Avalonia;
@@ -389,12 +388,11 @@ public sealed class ActiveEditorTests : ActiveEditorFolders
 }
 
 /// <summary>A key in a long soft-wrapped file costs the line it changed, never a wrap of the whole file, and about what it
-/// costs with soft wrap off. Held to times, so the class runs alone.</summary>
-[Collection(Alone.Name)]
+/// costs with soft wrap off, in the characters it wraps and the bytes it allocates on the UI thread.</summary>
 public sealed class ActiveEditorResponsivenessTests : ActiveEditorFolders
 {
     /// <summary>Twenty thousand lines of prose, each wrapping onto rows: a key costs the line it changed, never a wrap of the
-    /// whole file, and about what it costs with soft wrap off.</summary>
+    /// whole file, and allocates on the UI thread about what it does with soft wrap off.</summary>
     [AvaloniaFact]
     public void A_key_in_twenty_thousand_soft_wrapped_lines_wraps_only_the_line_it_changed()
     {
@@ -408,36 +406,33 @@ public sealed class ActiveEditorResponsivenessTests : ActiveEditorFolders
         int middle = rig.Document.Snapshot.GetLineStart(10_000) + 40;
         int line = rig.Document.Snapshot.GetLine(10_000).Length;
 
-        List<double> plainTimes = [];
-        List<double> wrappedTimes = [];
-        List<double> turnOn = [];
+        long plain = long.MaxValue;
+        long soft = long.MaxValue;
         long wrapped = 0;
         for (int round = 0; round < 3; round++)
         {
             rig.Editor.SoftWrap = false;
             Ui.Settle();
-            Keys(rig, middle, plainTimes);
-            long on = Stopwatch.GetTimestamp();
+            plain = Math.Min(plain, Keys(rig, middle));
             rig.Editor.SoftWrap = true;
             Ui.Settle();
-            turnOn.Add(Stopwatch.GetElapsedTime(on).TotalMilliseconds);
             Assert.True(rig.Editor.RowsShown > 40_000, $"Twenty thousand lines of 150 to 270 characters wrapped into only {rig.Editor.RowsShown} rows.");
             long before = rig.Editor.CharactersWrapped;
-            Keys(rig, middle, wrappedTimes);
+            soft = Math.Min(soft, Keys(rig, middle));
             wrapped = rig.Editor.CharactersWrapped - before;
         }
-        Assert.True(text == rig.Text, "The timed keys left the text changed.");
+        Assert.True(text == rig.Text, "The keys left the text changed.");
 
         // Six edits of a line of about two hundred characters: the whole file would be four million.
         Assert.True(wrapped <= 6 * (line + 2), $"Twelve keys, six of them edits of a line of {line} characters, wrapped {wrapped} characters.");
-        double plain = Median(plainTimes);
-        double soft = Median(wrappedTimes);
         TestContext.Current.TestOutputHelper?.WriteLine(
-            $"A key in 20,000 lines ({rig.Editor.RowsShown} rows): median {soft:F3} ms soft-wrapped, {plain:F3} ms not, "
-            + $"slowest {wrappedTimes.Max():F3} ms and {plainTimes.Max():F3} ms; twelve keys wrapped {wrapped} characters; "
-            + $"turning soft wrap on took {Median(turnOn):F1} ms.");
-        Assert.True(soft <= (3 * plain) + 1, $"A key took {soft:F2} ms soft-wrapped, against {plain:F2} ms with soft wrap off.");
+            $"Twelve keys in 20,000 lines ({rig.Editor.RowsShown} rows) allocated {soft:N0} bytes on the UI thread soft-wrapped, {plain:N0} not; they wrapped {wrapped} characters.");
+        Assert.True(soft <= plain + (SoftWrapSlack * Timed.Length),
+            $"Twelve keys in 20,000 soft-wrapped lines allocated {soft:N0} bytes on the UI thread, against {plain:N0} with soft wrap off: what every line or row has was made again");
     }
+
+    /// <summary>What a key may allocate on the UI thread soft-wrapped beyond what it does unwrapped: its line's rows.</summary>
+    private const long SoftWrapSlack = 16 * 1024;
 
     /// <summary>With soft wrap on, a key in an open C# file (which has folds) of 2,000 members, a wrapped comment over
     /// each, wraps the line it changed and no more, as in a file of 20, and allocates on the UI thread what a key there
@@ -637,14 +632,14 @@ public abstract class ActiveEditorFolders : IDisposable
     /// and six moves.</summary>
     protected static readonly string[] Timed = ["x", "y", "LEFT", "RIGHT", "DOWN", "UP", "BACK_SPACE", "BACK_SPACE", "meta RIGHT", "meta LEFT", "z", "BACK_SPACE"];
 
-    /// <summary>The timed keys at an offset, each timed.</summary>
-    protected static void Keys(EditorRig rig, int offset, List<double> times)
+    /// <summary>What <see cref="Timed"/>'s keys at an offset allocate on the UI thread, each with what it settled.</summary>
+    protected static long Keys(EditorRig rig, int offset)
     {
         rig.PlaceCaret(offset);
         Ui.Settle();
+        long before = GC.GetAllocatedBytesForCurrentThread();
         foreach (string key in Timed)
         {
-            long at = Stopwatch.GetTimestamp();
             if (key.Length == 1)
             {
                 rig.Type(key);
@@ -653,14 +648,8 @@ public abstract class ActiveEditorFolders : IDisposable
             {
                 rig.Press(key);
             }
-            times.Add(Stopwatch.GetElapsedTime(at).TotalMilliseconds);
         }
-    }
-
-    protected static double Median(List<double> times)
-    {
-        List<double> sorted = [.. times.Order()];
-        return sorted[sorted.Count / 2];
+        return GC.GetAllocatedBytesForCurrentThread() - before;
     }
 
     protected MainWindow Open(string name, string text)

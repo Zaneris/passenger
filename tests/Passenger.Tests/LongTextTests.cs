@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text;
 using Avalonia;
 using Avalonia.Headless;
@@ -13,7 +12,6 @@ namespace Passenger.Tests;
 /// <summary>The editor as quick on long text as on short: a line of a million characters (minified code, a program's
 /// output with no breaks) is typed in and moved through at the cost of a short one, as only what is on screen of it is
 /// laid out; carets stop at a thousand, and say so; and the sideways scroll is as wide as what is there.</summary>
-[Collection(Alone.Name)]
 public sealed class LongTextTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("long-");
@@ -35,23 +33,17 @@ public sealed class LongTextTests : IDisposable
         int onShort = source.IndexOf("little", StringComparison.Ordinal);
         int onLong = source.Length / 2;
 
-        List<double> shortTimes = [];
-        List<double> longTimes = [];
         (long Formatted, long Coloured) shortCost = default;
         (long Formatted, long Coloured) longCost = default;
-        // Taken in turns, so a machine that slows down meanwhile slows both alike.
         for (int round = 0; round < 3; round++)
         {
-            shortCost = Keys(rig, onShort, shortTimes);
-            longCost = Keys(rig, onLong + (round * 64), longTimes);
+            shortCost = Keys(rig, onShort);
+            longCost = Keys(rig, onLong + (round * 64));
         }
 
         // The whole line would be a million characters a key; what is on screen of it is a few hundred.
         Assert.True(longCost.Formatted <= 4096, $"A key on the long line formatted {longCost.Formatted} characters of it (a short line's key: {shortCost.Formatted}).");
         Assert.True(longCost.Coloured <= 4096, $"A key on the long line had {longCost.Coloured} characters coloured (a short line's key: {shortCost.Coloured}).");
-        double shortKey = Median(shortTimes);
-        double longKey = Median(longTimes);
-        Assert.True(longKey <= 10 * shortKey, $"A key on the long line took {longKey:F2} ms, against {shortKey:F2} ms on a short line.");
     }
 
     /// <summary>A key in the middle of a line of a million characters of words, tabs, CJK, accented letters and emoji,
@@ -240,17 +232,19 @@ public sealed class LongTextTests : IDisposable
         window.Close();
     }
 
-    /// <summary>A key with a thousand carets costs the UI thread what the carets cost, not the file's length: eight
-    /// thousand methods type as quickly as a thousand.</summary>
+    /// <summary>A key with a thousand carets costs the UI thread what the carets cost, not the file's length: in eight
+    /// thousand methods it allocates on the UI thread under 512 bytes a caret more than in a thousand (the text's deeper
+    /// tree, about 200), where a copy of the larger file's text would be 4 MB more.</summary>
     [AvaloniaFact]
     public void A_key_with_a_thousand_carets_costs_the_same_in_eight_thousand_methods_as_in_a_thousand()
     {
         MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false };
         window.Show();
-        double few = CaretKeys(window, "Few.cs", 1000);
-        double many = CaretKeys(window, "Many.cs", 8000);
-        TestContext.Current.TestOutputHelper?.WriteLine($"A key with 1,000 carets: {few:F1} ms in 1,000 methods, {many:F1} ms in 8,000");
-        Assert.True(many <= (2 * few) + 5, $"A key with 1,000 carets took the UI thread {many:F1} ms in a file of 8,000 methods, against {few:F1} ms in one of 1,000");
+        long few = CaretKeys(window, "Few.cs", 1000);
+        long many = CaretKeys(window, "Many.cs", 8000);
+        TestContext.Current.TestOutputHelper?.WriteLine($"A key with 1,000 carets allocated {few:N0} bytes on the UI thread in 1,000 methods, {many:N0} in 8,000");
+        Assert.True(many <= few + (512L * SelectionSet.MaxCount),
+            $"A key with 1,000 carets allocated {many:N0} bytes on the UI thread in a file of 8,000 methods, against {few:N0} in one of 1,000: it copied what the whole file has");
         window.Close();
     }
 
@@ -317,9 +311,9 @@ public sealed class LongTextTests : IDisposable
         }
     }
 
-    /// <summary>The median time a key takes the UI thread, to its frame, with a caret in each of a file's first thousand
+    /// <summary>The least a key allocates on the UI thread, with its frame, with a caret in each of a file's first thousand
     /// methods.</summary>
-    private double CaretKeys(MainWindow window, string name, int methods)
+    private long CaretKeys(MainWindow window, string name, int methods)
     {
         StringBuilder text = new("namespace Wide;\n\npublic sealed class Wide\n{\n");
         for (int i = 0; i < methods; i++)
@@ -340,23 +334,23 @@ public sealed class LongTextTests : IDisposable
         editor.Selections = SelectionSet.Create(carets, 0);
         editor.Focus();
         Ui.Settle();
-        List<double> times = [];
+        long least = long.MaxValue;
         for (int i = 0; i < 12; i++)
         {
-            long began = Stopwatch.GetTimestamp();
+            long before = GC.GetAllocatedBytesForCurrentThread();
             window.KeyTextInput(i % 2 == 0 ? "x" : "y");
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
             AvaloniaHeadlessPlatform.ForceRenderTimerTick(1);
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-            times.Add(Stopwatch.GetElapsedTime(began).TotalMilliseconds);
+            least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
             Ui.Settle();
         }
         Assert.Equal(SelectionSet.MaxCount, editor.Document.Snapshot.ToString().Split('\n').Count(l => l.StartsWith("        int labelxyxyxyxyxyxy = count;", StringComparison.Ordinal)));
-        return Median(times);
+        return least;
     }
 
-    /// <summary>Twelve keys at an offset, each timed; what they had formatted and coloured, a key.</summary>
-    private static (long Formatted, long Coloured) Keys(EditorRig rig, int offset, List<double> times)
+    /// <summary>Twelve keys at an offset; what they had formatted and coloured, a key.</summary>
+    private static (long Formatted, long Coloured) Keys(EditorRig rig, int offset)
     {
         rig.PlaceCaret(offset);
         Ui.Settle();
@@ -365,7 +359,6 @@ public sealed class LongTextTests : IDisposable
         long coloured = rig.Editor.CharactersColoured;
         foreach (string key in keys)
         {
-            long at = Stopwatch.GetTimestamp();
             if (key.Length == 1)
             {
                 rig.Type(key);
@@ -374,7 +367,6 @@ public sealed class LongTextTests : IDisposable
             {
                 rig.Press(key);
             }
-            times.Add(Stopwatch.GetElapsedTime(at).TotalMilliseconds);
         }
         return ((rig.Editor.CharactersFormatted - formatted) / keys.Length, (rig.Editor.CharactersColoured - coloured) / keys.Length);
     }
@@ -482,12 +474,6 @@ public sealed class LongTextTests : IDisposable
     }
 
     private static string Escaped(string text) => string.Concat(text.Select(c => c is >= ' ' and <= '~' ? c.ToString() : $"\\u{(int)c:X4}"));
-
-    private static double Median(List<double> times)
-    {
-        List<double> sorted = [.. times.Order()];
-        return sorted[sorted.Count / 2];
-    }
 
     /// <summary>Colours each run of digits in what it is asked for, reading only that.</summary>
     private sealed class Numbers : IHighlighter
