@@ -86,7 +86,7 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
     /// builds, asked for as it starts so they are built meanwhile. Cancelled or failed, it ends the server it started, so
     /// one given up (another folder opened) never goes on loading this folder unseen.</summary>
     public static async Task<RoslynSession> StartAsync(string folder, string? solution, IReadOnlyList<string> projects, string logFolder,
-        CancellationToken cancel = default, IReadOnlyDictionary<string, object?>? options = null, Action<LanguageServer>? started = null,
+        CancellationToken cancel = default, IReadOnlyDictionary<string, object>? options = null, Action<LanguageServer>? started = null,
         Func<Task<IReadOnlyList<string>>>? first = null, IProjectFeed? feed = null, string? stateCache = null)
     {
         Task<FedProjects?>? feeding = feed?.ProjectsAsync(cancel);

@@ -112,6 +112,64 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         window.Close();
     }
 
+    /// <summary>Solution-wide analysis turned off narrows the running server's scope back to its own, so it stops analysing
+    /// files nobody opened: asked again of Bad.cs, a file nobody opened, with the result it gave while the analysis was on,
+    /// the server says that file's problems are gone, where one left analysing the whole solution has nothing new to say.</summary>
+    [AvaloniaFact]
+    public void Solution_wide_analysis_turned_off_narrows_the_running_servers_scope_to_its_own()
+    {
+        MainWindow window = project.Open("Helper.cs");
+        ProblemsModel problems = window.BottomPanel.Problems;
+        window.Perform(AppActions.ToggleSolutionAnalysis);
+        Ui.WaitFor(() => problems.SolutionProblems?.Any(p => p.Code == "CS0029") == true, "the closed file's error");
+        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
+        (string? source, Passenger.Lsp.WorkspaceDocumentDiagnosticReport analysed) = Reported(server, server.WorkspaceDiagnosticSources, [],
+            r => r.Uri.EndsWith("/Bad.cs", StringComparison.Ordinal) && r.Items?.Any(d => d.Code == "CS0029") == true,
+            () => "Bad.cs's error in a pull of the whole solution's problems");
+        Assert.NotNull(analysed.ResultId);
+
+        window.Perform(AppActions.ToggleSolutionAnalysis);
+        Assert.False(window.Settings.SolutionWideAnalysis);
+        (_, Passenger.Lsp.WorkspaceDocumentDiagnosticReport narrowed) = Reported(server, [source], [new Passenger.Lsp.PreviousResultId(analysed.Uri, analysed.ResultId)],
+            r => r.Uri == analysed.Uri,
+            () => $"the server to say Bad.cs's problems are gone once solution-wide analysis was turned off: it says nothing new of a file it goes on analysing{Ui.ServerLogTail()}");
+        Assert.True(narrowed is { Kind: "full", ResultId: null, Items: null or [] },
+            $"Once solution-wide analysis was turned off the server reported Bad.cs as {narrowed.Kind} with {narrowed.Items?.Count ?? 0} problems and result {narrowed.ResultId ?? "none"}, where a server analysing the open files alone says its problems are gone");
+        Assert.Equal(server, window.CSharpService.Session?.Server);
+        window.Close();
+    }
+
+    /// <summary>The first report a pull of each source streams that <paramref name="wanted"/> takes, with its source, the
+    /// pulls let go once it has come, since Roslyn holds a workspace pull open until the next change.</summary>
+    private static (string? Source, Passenger.Lsp.WorkspaceDocumentDiagnosticReport Report) Reported(Passenger.Lsp.LanguageServer server,
+        IEnumerable<string?> sources, IReadOnlyList<Passenger.Lsp.PreviousResultId> previous, Func<Passenger.Lsp.WorkspaceDocumentDiagnosticReport, bool> wanted,
+        Func<string> what)
+    {
+        System.Collections.Concurrent.ConcurrentQueue<(string?, Passenger.Lsp.WorkspaceDocumentDiagnosticReport)> came = new();
+        using CancellationTokenSource letGo = new();
+        Task[] pulls = [.. sources.Select(source => server.WorkspaceDiagnosticsAsync(source, previous, reports =>
+        {
+            foreach (Passenger.Lsp.WorkspaceDocumentDiagnosticReport report in reports.Where(wanted))
+            {
+                came.Enqueue((source, report));
+            }
+        }, letGo.Token))];
+        try
+        {
+            Ui.WaitFor(() => !came.IsEmpty, what, TimeSpan.FromSeconds(30));
+            return came.TryPeek(out (string?, Passenger.Lsp.WorkspaceDocumentDiagnosticReport) first) ? first : throw new InvalidOperationException("No report came");
+        }
+        finally
+        {
+            letGo.Cancel();
+            Ui.WaitFor(() => pulls.All(p => p.IsCompleted), "the pulls let go to end");
+            if (pulls.FirstOrDefault(p => p.IsFaulted) is { Exception: { } failed })
+            {
+                throw failed;
+            }
+        }
+    }
+
     /// <summary>A pull the server refuses or cuts short (Roslyn cancels one a change made stale) is asked again, so the
     /// solution's problems go on following edits.</summary>
     [AvaloniaFact]

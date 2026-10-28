@@ -22,7 +22,7 @@ public sealed class HeadStart
     /// <summary>Stops the language server's start: the session that took it cancelled, or nothing took it.</summary>
     private readonly CancellationTokenSource stop = new();
 
-    private (Task<RoslynSession?> Started, IReadOnlyDictionary<string, object?> Options)? server;
+    private (Task<RoslynSession?> Started, IReadOnlyDictionary<string, object> Options)? server;
     private Task<ProjectHost?> hosting = Task.FromResult<ProjectHost?>(null);
     private bool ended;
 
@@ -86,7 +86,7 @@ public sealed class HeadStart
         Builds = languageServer ? BackgroundWork.Unheld(BuildAsync) : Task.FromResult(new ProjectBuildCache());
         if (languageServer)
         {
-            IReadOnlyDictionary<string, object?> options = CSharpService.StartOptions(new Settings.AppSettings());
+            IReadOnlyDictionary<string, object> options = CSharpService.StartOptions(new Settings.AppSettings());
             server = (BackgroundWork.Unheld(() => StartServerAsync(options, began)), options);
         }
     }
@@ -179,7 +179,7 @@ public sealed class HeadStart
     /// <summary>The language server, started once the read has found a solution or a project for it to load, and loading
     /// them from the builds begun ahead; what it says is held for the session that takes it up. None for a folder with
     /// neither, which the session starts none for.</summary>
-    private async Task<RoslynSession?> StartServerAsync(IReadOnlyDictionary<string, object?> options, long began)
+    private async Task<RoslynSession?> StartServerAsync(IReadOnlyDictionary<string, object> options, long began)
     {
         WorkspaceModel read = await Read;
         if (read.Solution is null && read.Projects.Count == 0)
@@ -196,10 +196,9 @@ public sealed class HeadStart
     /// <summary>The server started for the folder, for a session to take once and give these options: how it waits for
     /// that start, which its cancellation stops, to the server when it loads the solution or projects given, else to none
     /// (it loads others, its start failed or it ended), the session then starting its own. Null when it was taken or ended,
-    /// has another folder, or started with an option these leave to the server's default, which it never goes back to
-    /// (<see cref="LanguageServer.TakesOptions"/>).</summary>
+    /// has another folder, or started with an option these leave out, which it would keep (<see cref="LanguageServer.TakesOptions"/>).</summary>
     internal Func<CancellationToken, Task<RoslynSession?>>? TakeServer(string folder, string? solution, IReadOnlyList<string> projects,
-        IReadOnlyDictionary<string, object?> options)
+        IReadOnlyDictionary<string, object> options)
     {
         Task<RoslynSession?> started;
         lock (gate)

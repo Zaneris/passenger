@@ -211,10 +211,18 @@ public sealed partial class CSharpService : IAsyncDisposable
     public event EventHandler<IReadOnlyCollection<string>?>? SolutionProblemsChanged;
 
     /// <summary>The scope Roslyn's analyzers and compiler run over with solution-wide analysis on: every document.</summary>
-    private static readonly IReadOnlyDictionary<string, object?> FullSolution = new Dictionary<string, object?>
+    private static readonly IReadOnlyDictionary<string, object> FullSolution = new Dictionary<string, object>
     {
         ["dotnet_analyzer_diagnostics_scope"] = "fullSolution",
         ["dotnet_compiler_diagnostics_scope"] = "fullSolution",
+    };
+
+    /// <summary>The scope with solution-wide analysis off: Roslyn's own defaults for its analyzers and compiler, given as
+    /// values, since a running server keeps an option answered empty as it was.</summary>
+    private static readonly IReadOnlyDictionary<string, object> OwnScope = new Dictionary<string, object>
+    {
+        ["dotnet_analyzer_diagnostics_scope"] = "visibleFilesAndOpenFilesWithPreviouslyReportedDiagnostics",
+        ["dotnet_compiler_diagnostics_scope"] = "openFiles",
     };
 
     /// <summary>Each file's last report by source, its URI made a path and its errors and warnings placed on the editor's
@@ -342,13 +350,11 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// <summary>Whether a file's pull asks the server for its inlay hints: while the editors show either kind.</summary>
     internal bool AsksHints => hints.Parameters || hints.Types;
 
-    /// <summary>Roslyn's scope for its analyzers and compiler: every document with solution-wide analysis on, else its own
-    /// default (the open files).</summary>
-    private static Dictionary<string, object?> ScopeSettings(bool solutionWide) =>
-        FullSolution.ToDictionary(option => option.Key, option => solutionWide ? option.Value : null, StringComparer.Ordinal);
+    /// <summary>Roslyn's scope for its analyzers and compiler: every document with solution-wide analysis on, else its own.</summary>
+    private static IReadOnlyDictionary<string, object> ScopeSettings(bool solutionWide) => solutionWide ? FullSolution : OwnScope;
 
     /// <summary>Roslyn's switches for each kind of inlay hint, by the names it asks for them under.</summary>
-    private static Dictionary<string, object?> HintSettings((bool Parameters, bool Types) shown) => new()
+    private static Dictionary<string, object> HintSettings((bool Parameters, bool Types) shown) => new()
     {
         ["dotnet_enable_inlay_hints_for_parameters"] = shown.Parameters,
         ["csharp_enable_inlay_hints_for_types"] = shown.Types,
@@ -372,18 +378,15 @@ public sealed partial class CSharpService : IAsyncDisposable
     }
 
     /// <summary>The options a server is started with for settings as they stand, before any file is shown.</summary>
-    internal static Dictionary<string, object?> StartOptions(Settings.AppSettings settings) =>
+    internal static Dictionary<string, object> StartOptions(Settings.AppSettings settings) =>
         StartOptions(new IndentOptions(), settings.SolutionWideAnalysis, (settings.ParameterHints, settings.TypeHints));
 
-    /// <summary>The options a server is started with: an indentation, the analysis's scope and the inlay hints shown.</summary>
-    private static Dictionary<string, object?> StartOptions(IndentOptions indent, bool solutionWide, (bool Parameters, bool Types) shown)
+    /// <summary>The options a server is started with: an indentation, the analysis's scope and the inlay hints shown, each
+    /// given a value whatever the settings, so a server taken up by a window whose settings differ takes every one.</summary>
+    private static Dictionary<string, object> StartOptions(IndentOptions indent, bool solutionWide, (bool Parameters, bool Types) shown)
     {
-        Dictionary<string, object?> options = new(IndentSettings(indent));
-        foreach ((string name, object? value) in solutionWide ? FullSolution : new Dictionary<string, object?>())
-        {
-            options[name] = value;
-        }
-        foreach ((string name, object? value) in HintSettings(shown))
+        Dictionary<string, object> options = new(IndentSettings(indent), StringComparer.Ordinal);
+        foreach ((string name, object value) in ScopeSettings(solutionWide).Concat(HintSettings(shown)))
         {
             options[name] = value;
         }
@@ -391,7 +394,7 @@ public sealed partial class CSharpService : IAsyncDisposable
     }
 
     /// <summary>Roslyn's options for an indentation, by the names it asks for them under.</summary>
-    private static Dictionary<string, object?> IndentSettings(IndentOptions indent) => new()
+    private static Dictionary<string, object> IndentSettings(IndentOptions indent) => new()
     {
         ["indent_style"] = indent.UseTabs ? "tab" : "space",
         ["indent_size"] = indent.Size.ToString(System.Globalization.CultureInfo.InvariantCulture),
@@ -883,7 +886,7 @@ public sealed partial class CSharpService : IAsyncDisposable
             IndentOptions startedWith = told;
             (bool, bool) hintedWith = hints;
             bool wideWith = solutionWide;
-            Dictionary<string, object?> options = StartOptions(startedWith, wideWith, hintedWith);
+            Dictionary<string, object> options = StartOptions(startedWith, wideWith, hintedWith);
             RoslynSession started;
             ServerWatches? handed = null;
             bool loadAgain = false;

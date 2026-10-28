@@ -49,7 +49,7 @@ public sealed class LanguageServer : IAsyncDisposable
     /// <summary>The server's name among the requests in flight (<see cref="InFlight"/>).</summary>
     private readonly string who;
 
-    private readonly Dictionary<string, object?> options;
+    private readonly Dictionary<string, object> options;
 
     /// <summary>What <c>workspace/configuration</c> answers for a section, for a server that is not Roslyn; null for
     /// Roslyn's options (<see cref="Option"/>).</summary>
@@ -62,13 +62,13 @@ public sealed class LanguageServer : IAsyncDisposable
     private readonly Func<JsonElement, Task<string?>>? applyEdit;
 
     private LanguageServer(Process process, JsonRpc rpc, CountedMessages messages, ClientTarget client, ServerLog log, string logFolder,
-        IReadOnlyDictionary<string, object?>? options, Func<string?, object?>? configure = null, Func<string, CancellationToken, Task<string>>? content = null,
+        IReadOnlyDictionary<string, object>? options, Func<string?, object?>? configure = null, Func<string, CancellationToken, Task<string>>? content = null,
         Func<JsonElement, Task<string?>>? applyEdit = null)
     {
         this.configure = configure;
         this.content = content;
         this.applyEdit = applyEdit;
-        this.options = new Dictionary<string, object?>(options ?? new Dictionary<string, object?>(), StringComparer.Ordinal);
+        this.options = new Dictionary<string, object>(options ?? new Dictionary<string, object>(), StringComparer.Ordinal);
         this.process = process;
         this.rpc = rpc;
         this.messages = messages;
@@ -259,23 +259,23 @@ public sealed class LanguageServer : IAsyncDisposable
     public IReadOnlyList<string?> WorkspaceDiagnosticSources => client.WorkspaceDiagnosticSources;
 
     /// <summary>The options set on the server as it stands: those it started with and every change since.</summary>
-    public IReadOnlyDictionary<string, object?> Options
+    public IReadOnlyDictionary<string, object> Options
     {
         get
         {
             lock (options)
             {
-                return new Dictionary<string, object?>(options, StringComparer.Ordinal);
+                return new Dictionary<string, object>(options, StringComparer.Ordinal);
             }
         }
     }
 
     /// <summary>Changes several of the server's options at once, which it asks for again once.</summary>
-    public void SetOptions(IReadOnlyDictionary<string, object?> changed)
+    public void SetOptions(IReadOnlyDictionary<string, object> changed)
     {
         lock (options)
         {
-            foreach ((string name, object? value) in changed)
+            foreach ((string name, object value) in changed)
             {
                 options[name] = value;
             }
@@ -285,7 +285,7 @@ public sealed class LanguageServer : IAsyncDisposable
 
     /// <summary>Makes the server's options these alone, as one started with them has them, which it asks for again if
     /// they changed: a server another window leaves, or one started ahead of its window, takes its window's.</summary>
-    public void ReplaceOptions(IReadOnlyDictionary<string, object?> wanted)
+    public void ReplaceOptions(IReadOnlyDictionary<string, object> wanted)
     {
         lock (options)
         {
@@ -294,7 +294,7 @@ public sealed class LanguageServer : IAsyncDisposable
                 return;
             }
             options.Clear();
-            foreach ((string name, object? value) in wanted)
+            foreach ((string name, object value) in wanted)
             {
                 options[name] = value;
             }
@@ -337,7 +337,7 @@ public sealed class LanguageServer : IAsyncDisposable
         return handled.Task;
     }
 
-    /// <summary>An option's value: one changed while running, else Passenger's own, else null for the server's default.</summary>
+    /// <summary>An option's value: one changed while running, else Passenger's own, else null, which leaves the server's as it is.</summary>
     private object? Option(string name)
     {
         lock (options)
@@ -347,13 +347,13 @@ public sealed class LanguageServer : IAsyncDisposable
     }
 
     /// <summary>Whether a Roslyn server started with the options <paramref name="set"/> takes <paramref name="wanted"/> as it
-    /// runs (<see cref="ReplaceOptions"/>): told they changed, it asks again for every option Passenger sets, but passes
-    /// over one answered empty, so an option set at its start never goes back to the server's own default.</summary>
-    public static bool TakesOptions(IReadOnlyDictionary<string, object?> set, IReadOnlyDictionary<string, object?> wanted) =>
-        set.Keys.All(name => Answered(set, name) is null || Answered(wanted, name) is not null);
+    /// runs (<see cref="ReplaceOptions"/>): told they changed, it asks again for every option, but passes over one answered
+    /// empty, so an option set at its start that <paramref name="wanted"/> leaves out stays as it was.</summary>
+    public static bool TakesOptions(IReadOnlyDictionary<string, object> set, IReadOnlyDictionary<string, object> wanted) =>
+        set.Keys.All(name => Answered(wanted, name) is not null);
 
     /// <summary>What the server is answered for an option with these set: their value, else Passenger's own, else null.</summary>
-    private static object? Answered(IReadOnlyDictionary<string, object?> set, string name) =>
+    private static object? Answered(IReadOnlyDictionary<string, object> set, string name) =>
         set.TryGetValue(name, out object? value) ? value : Settings.TryGetValue(name, out object? own) ? own : null;
 
     /// <summary>The process has ended, or been ended by <see cref="Kill"/>, or let go of (<see cref="DisposeAsync"/>).</summary>
@@ -377,7 +377,7 @@ public sealed class LanguageServer : IAsyncDisposable
     /// in <paramref name="stateCache"/> where it may not write there, <see cref="RoslynServerFolder"/>), initializes it for
     /// a folder, and returns once it has said what it can do. Cancelled or failed, it leaves no process behind, at once
     /// rather than once the server answers.</summary>
-    public static async Task<LanguageServer> StartRoslynAsync(string folder, string logFolder, CancellationToken cancel, IReadOnlyDictionary<string, object?>? options = null,
+    public static async Task<LanguageServer> StartRoslynAsync(string folder, string logFolder, CancellationToken cancel, IReadOnlyDictionary<string, object>? options = null,
         string? stateCache = null)
     {
         string carried = Path.Combine(RoslynServerFolder.Carried, RoslynServerFolder.Assembly);
@@ -448,7 +448,7 @@ public sealed class LanguageServer : IAsyncDisposable
     }
 
     private static async Task<LanguageServer> StartCoreAsync(ProcessStartInfo start, string folder, string logFolder, JsonElement capabilities,
-        object? initializationOptions, IReadOnlyDictionary<string, object?>? options, Func<string?, object?>? configure,
+        object? initializationOptions, IReadOnlyDictionary<string, object>? options, Func<string?, object?>? configure,
         Func<string, CancellationToken, Task<string>>? content, Func<JsonElement, Task<string?>>? applyEdit, CancellationToken cancel)
     {
         start.RedirectStandardInput = true;
@@ -882,7 +882,7 @@ public sealed class LanguageServer : IAsyncDisposable
     /// never where the argument already says the name; type hints on a <c>var</c>, a lambda's parameter and a target-typed
     /// <c>new</c>, none for a collection expression; no file-based program found in the folder by the server itself, since
     /// the client names those it loads (a second project of the same program would answer beside it).</summary>
-    private static readonly Dictionary<string, object?> Settings = new(StringComparer.Ordinal)
+    private static readonly Dictionary<string, object> Settings = new(StringComparer.Ordinal)
     {
         ["dotnet_enable_automatic_discovery"] = false,
         ["dotnet_enable_inlay_hints_for_parameters"] = true,
