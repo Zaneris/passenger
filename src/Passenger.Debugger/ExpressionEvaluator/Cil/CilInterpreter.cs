@@ -564,25 +564,53 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         ICorDebugType[] typeArguments = constructor.DeclaringType.TypeArguments.IsDefaultOrEmpty
             ? []
             : constructor.DeclaringType.TypeArguments.Select(resolver.GetCorDebugType).ToArray();
+        ResolvedRuntimeMethod? stringMaker = resolver.GetRuntimeTypeName(constructor.DeclaringType) == "System.String" ? StringMaker(constructor) : null;
         ICorDebugEval eval = run.Context.Thread.CreateEval();
         ICorDebugValue? newValue;
         try
         {
-            newValue = handles.Track(await eval.NewParameterizedObjectAsync(
-                debugger.ProcessRuntimeEventsUntilEvalEvent,
-                debugger.EvalStatus,
-                constructor.Function,
-                typeArguments.Length,
-                typeArguments.Length == 0 ? null : typeArguments,
-                argumentValues.Length,
-                argumentValues,
-                throwOnException: true));
+            newValue = handles.Track(stringMaker is { } maker
+                ? await eval.CallParameterizedFunctionAsync(
+                    debugger.ProcessRuntimeEventsUntilEvalEvent,
+                    debugger.EvalStatus,
+                    maker.Function,
+                    0,
+                    null,
+                    argumentValues.Length,
+                    argumentValues,
+                    throwOnException: true)
+                : await eval.NewParameterizedObjectAsync(
+                    debugger.ProcessRuntimeEventsUntilEvalEvent,
+                    debugger.EvalStatus,
+                    constructor.Function,
+                    typeArguments.Length,
+                    typeArguments.Length == 0 ? null : typeArguments,
+                    argumentValues.Length,
+                    argumentValues,
+                    throwOnException: true));
         }
         finally
         {
             WriteBackTemporaryByRefArguments(temporaryByRefArguments, handles);
         }
         return newValue is null ? CilValue.Null() : CilValue.FromCorValue(newValue);
+    }
+
+    /// <summary>The static String.Ctor a string's constructor stands for, of the same parameters: the runtime makes a string
+    /// only through one, and refuses to make one as an object.</summary>
+    private static ResolvedRuntimeMethod StringMaker(ResolvedRuntimeMethod constructor)
+    {
+        string refused = $"Not evaluated: the program's runtime makes a string only through a String.Ctor, and has none taking ({string.Join(", ", constructor.Signature.ParameterTypes)})";
+        ResolvedRuntimeMethod maker;
+        try
+        {
+            maker = EvaluationMetadataResolver.ResolveMethodOf(constructor.DeclaringType, "Ctor", [.. constructor.Signature.ParameterTypes]);
+        }
+        catch (MissingMethodException)
+        {
+            throw new ManagedDebugger.EvalException(refused);
+        }
+        return maker.IsStatic ? maker : throw new ManagedDebugger.EvalException(refused);
     }
 
     private static CilValue[] Pop(Stack<CilValue> stack, int count)
@@ -1600,7 +1628,8 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
             return value.CorValue;
         }
 
-        if (value.Value is null)
+        // A string the expression wrote is made in the program, as an argument's is.
+        if (value.Value is null or string)
         {
             return await MaterializeForCallAsync(value, context, handles);
         }

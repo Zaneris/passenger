@@ -191,6 +191,27 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
         }
     }
 
+    /// <summary>A string the expression writes answers as the program's would, a call's receiver too, and a string's
+    /// constructors make the string the program would, or throw as it would.</summary>
+    [Fact]
+    public async Task A_written_string_and_a_strings_constructors_answer_as_the_program_would()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        int frame = await StoppedInReadingAsync(host);
+
+        Assert.Equal(("3", "int"), await Evaluate(host, frame, "\"abc\".Length"));
+        Assert.Equal(("98 'b'", "char"), await Evaluate(host, frame, "\"abc\"[1]"));
+        Assert.Equal("\"ABC\"", (await Evaluate(host, frame, "\"abc\".ToUpper()")).Value);
+        Assert.Equal("true", (await Evaluate(host, frame, "word.Contains(\"bell\".Substring(1))")).Value);
+        Assert.Equal(("\"aaa\"", "string"), await Evaluate(host, frame, "new string('a', 3)"));
+        Assert.Equal("\"AA\"", (await Evaluate(host, frame, "new string(letter, 2)")).Value);
+        Assert.Equal("\"ab\"", (await Evaluate(host, frame, "new string(new[] { 'a', 'b' })")).Value);
+        Assert.Equal("\"ell\"", (await Evaluate(host, frame, "new string(word.AsSpan(1, 3))")).Value);
+        string negative = (await Evaluate(host, frame, "new string('a', -1)")).Value;
+        Assert.True(negative.Contains("System.ArgumentOutOfRangeException", StringComparison.Ordinal),
+            $"new string('a', -1) answered \"{negative}\", where the program would throw an ArgumentOutOfRangeException");
+    }
+
     private static int Line(string code) => Debuggees.Line("PassengerCases", code);
 
     /// <summary>PassengerCases launched and stopped in Reading.Run once its rounds are done; the top frame.</summary>
