@@ -1154,9 +1154,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     /// <summary>How long tests_list waits for the tests to be found from the test projects' code.</summary>
     private static readonly TimeSpan TestsLookLimit = TimeSpan.FromSeconds(60);
 
+    /// <summary>The last run's tally and its failures, of the tests it ran alone.</summary>
     private TestRunInfo TestInfo(Testing.TestController tests)
     {
-        List<Testing.TestNode> failed = [.. tests.Tree.Methods.Where(m => m.State == Testing.TestState.Failed)];
+        List<Testing.TestNode> failed = [.. tests.RunMethods.Where(m => m.State == Testing.TestState.Failed)];
         return new TestRunInfo(tests.Summary, [.. failed.Select(m => new TestFailure(TestName(m), m.Path is { } at ? $"{Relative(at)}:{m.Line}" : null, m.Details))]);
     }
 

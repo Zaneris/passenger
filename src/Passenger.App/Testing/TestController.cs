@@ -97,6 +97,10 @@ public sealed class TestController : IAsyncDisposable
     /// <summary>The last run's tally, for the window's status line.</summary>
     public string Summary { get; private set; } = string.Empty;
 
+    /// <summary>The methods the last run ran, or the run under way runs: those its tally counts, each holding that run's
+    /// results alone.</summary>
+    public IReadOnlyList<TestNode> RunMethods { get; private set; } = [];
+
     /// <summary>Tests were found or results came in: the gutter's marks follow.</summary>
     public event EventHandler? Changed;
 
@@ -265,6 +269,7 @@ public sealed class TestController : IAsyncDisposable
                 }
             }
             lastRun = chosen ?? [];
+            RunMethods = methods;
             working?.Say($"{prefix}Running {Plural.Of(tests.Count, "test")}…");
             Tree.Begin(tests);
             RunSummary? summary = null;

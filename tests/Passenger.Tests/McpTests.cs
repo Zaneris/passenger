@@ -51,6 +51,36 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(wrong.IsError == true && Text(wrong).Contains("there are passed, failed, skipped and notRun", StringComparison.Ordinal), $"tests_list in no state answered: {Text(wrong)}");
     }
 
+    /// <summary>tests_run answers with the run it made alone: after a run of every test, one failing, a run of the passing
+    /// one by its name tells no failure, while tests_list still says the other failed when it last ran.</summary>
+    [Fact]
+    public async Task An_agents_run_of_a_passing_test_after_a_failure_answers_no_failure_of_a_test_it_did_not_run()
+    {
+        string tests = PathNames.Canonical(TestFolders.Create("mcp-run-tests-"));
+        DeleteAtEnd(tests);
+        await TestFolders.PrepareAsync(async () =>
+        {
+            File.WriteAllText(Path.Combine(tests, "Sums.Tests.csproj"),
+                $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n" +
+                "  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"18.10.1\" />\n    <PackageReference Include=\"xunit\" Version=\"2.9.3\" />\n" +
+                "    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"3.1.5\" />\n  </ItemGroup>\n</Project>\n");
+            File.WriteAllText(Path.Combine(tests, "SumTests.cs"),
+                "using Xunit;\n\nnamespace Sums.Tests;\n\npublic class SumTests\n{\n    [Fact]\n    public void Two_and_two_make_four() => Assert.Equal(4, 2 + 2);\n\n" +
+                "    [Fact]\n    public void Two_and_two_make_five() => Assert.Equal(5, 2 + 2);\n}\n");
+            await Restore.RunAsync(tests);
+        }, tests);
+        await using McpClient client = await Start(["--mcp", tests], languageServer: false);
+        JsonElement all = await Call(client, McpTools.TestsRun);
+        Assert.StartsWith("Tests passed: 1, failed: 1 of 2", all.GetProperty("summary").GetString(), StringComparison.Ordinal);
+        Assert.Equal("Sums.Tests.SumTests.Two_and_two_make_five", Assert.Single(all.GetProperty("failures").EnumerateArray()).GetProperty("test").GetString());
+
+        JsonElement four = await Call(client, McpTools.TestsRun, new() { ["filter"] = "make_four" });
+        Assert.StartsWith("Tests passed: 1, failed: 0 of 1", four.GetProperty("summary").GetString(), StringComparison.Ordinal);
+        Assert.True(four.GetProperty("failures").GetArrayLength() == 0, $"A run of one passing test answered failures of tests it did not run, as if they had failed in it: {four}");
+        JsonElement failed = Assert.Single((await Call(client, McpTools.TestsList, new() { ["state"] = "failed" })).EnumerateArray());
+        Assert.Equal("Sums.Tests.SumTests.Two_and_two_make_five", failed.GetProperty("test").GetString());
+    }
+
     /// <summary>An agent's own Passenger opens its folder as it starts, while its window is still being built: the first C#
     /// answer comes from the language server started then, which loaded the projects as the project host evaluated and built
     /// them then, and the window, once built, takes all of it up. Of what its opening asked of the built window before (an
