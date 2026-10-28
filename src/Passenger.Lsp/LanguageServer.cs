@@ -275,6 +275,25 @@ public sealed class LanguageServer : IAsyncDisposable
         Notify(LspMethods.DidChangeConfiguration, new { settings = new { } });
     }
 
+    /// <summary>Makes the server's options these alone, as one started with them has them, which it asks for again if
+    /// they changed: a server another window leaves takes its new window's.</summary>
+    public void ReplaceOptions(IReadOnlyDictionary<string, object?> wanted)
+    {
+        lock (options)
+        {
+            if (options.Count == wanted.Count && options.All(option => wanted.TryGetValue(option.Key, out object? value) && Equals(option.Value, value)))
+            {
+                return;
+            }
+            options.Clear();
+            foreach ((string name, object? value) in wanted)
+            {
+                options[name] = value;
+            }
+        }
+        Notify(LspMethods.DidChangeConfiguration, new { settings = new { } });
+    }
+
     /// <summary>Every document's diagnostics from one source, as the solution-wide analysis has them, each report given to
     /// <paramref name="streamed"/> as the server sends it, since Roslyn holds the pull open until the source next changes.
     /// The answer's own reports are given back; none is given to <paramref name="streamed"/> after it.</summary>

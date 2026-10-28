@@ -520,11 +520,12 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
 
     private void Write(string name, string text) => project.Write(name, text);
 
-    /// <summary>A console project of a program, a helper, its caller and a file with an error, restored once for every test.</summary>
+    /// <summary>A console project of a program, a helper, its caller and a file with an error, restored once for every test,
+    /// whose server the windows share through the files the tests write.</summary>
     public sealed class Project : SharedProject
     {
         public Project()
-            : base("problems-")
+            : base("problems-", loadsAgain: true)
         {
             TestFolders.Write(Folder, "Sample.csproj", TestProjects.Console());
             TestFolders.Write(Folder, "Program.cs", "class Program\n{\n    static void Main()\n    {\n    }\n}\n");

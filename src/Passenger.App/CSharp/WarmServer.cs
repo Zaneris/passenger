@@ -4,31 +4,35 @@ using Passenger.Lsp;
 namespace Passenger.App.CSharp;
 
 /// <summary>A language server a window leaves running as it closes (its projects loaded), for the next window that opens
-/// the same solution or projects with the same options to take up, loaded and warm, rather than start and load its own:
-/// what a test class gives its windows on one project (<see cref="MainWindow.WarmServer"/>). The problems its projects
-/// loaded with go with it, for the window that takes it up to hear as one that loaded them would. One no window takes is
-/// ended by the next one kept, by <see cref="Drop"/> or with the holder. The IDE's windows have none.</summary>
+/// the same solution or projects to take up, loaded and warm, with that window's options, rather than start and load its
+/// own: what a test class gives its windows on one project (<see cref="MainWindow.WarmServer"/>). The problems its projects
+/// loaded with go with it, for the window that takes it up to hear as one that loaded them would; files that came meanwhile
+/// (<see cref="HeardAsync"/>) are loaded by that window first. One no window takes is ended by the next one
+/// kept, by <see cref="Drop"/> or with the holder. The IDE's windows have none.</summary>
 public sealed class WarmServer : IAsyncDisposable
 {
     private readonly Lock gate = new();
     private RoslynSession? kept;
     private IReadOnlyList<ProjectLoadProblem> keptProblems = [];
 
-    /// <summary>The server kept, with the problems its projects loaded with, if it loaded what a window opens with the
-    /// options it would start one with, and is still running; it is the window's from then on. One that does not match stays
-    /// until another is kept or it is dropped.</summary>
-    internal (RoslynSession Session, IReadOnlyList<ProjectLoadProblem> Problems)? Take(string folder, string? solution, IReadOnlyList<string> projects,
-        IReadOnlyDictionary<string, object?> options)
+    /// <summary>Files of its projects came since it was kept, which it has not loaded.</summary>
+    private bool unloaded;
+
+    /// <summary>The server kept, with the problems its projects loaded with, if it loaded what a window opens and is still
+    /// running, and whether the window must have it load its projects again (files came since); it is the window's
+    /// from then on, its options made the window's. One that does not match stays until another is kept or it is dropped.</summary>
+    internal (RoslynSession Session, IReadOnlyList<ProjectLoadProblem> Problems, bool LoadAgain)? Take(string folder, string? solution, IReadOnlyList<string> projects)
     {
         lock (gate)
         {
+            // One that loads its projects itself cannot be had to load them again: it is no use once files came.
             if (kept is not { IsLoaded: true } session || session.Server.HasExited || session.Folder != folder || session.Solution != solution
-                || (solution is null && !session.Projects.SequenceEqual(projects, StringComparer.Ordinal)) || !Same(session.Server.Options, options))
+                || (solution is null && !session.Projects.SequenceEqual(projects, StringComparer.Ordinal)) || (unloaded && !session.Fed))
             {
                 return null;
             }
             kept = null;
-            return (session, keptProblems);
+            return (session, keptProblems, unloaded);
         }
     }
 
@@ -42,6 +46,7 @@ public sealed class WarmServer : IAsyncDisposable
             before = kept;
             kept = session;
             keptProblems = problems;
+            unloaded = false;
         }
         // Not held: the window's end waits for it with no UI thread to come back to (MainWindow.Ended).
         return before is null || before == session ? Task.CompletedTask : BackgroundWork.Unheld(() => before.DisposeAsync().AsTask());
@@ -58,6 +63,49 @@ public sealed class WarmServer : IAsyncDisposable
         }
         // Not held: the window's end waits for it with no UI thread to come back to (MainWindow.Ended).
         return ending is null ? Task.CompletedTask : BackgroundWork.Unheld(() => ending.DisposeAsync().AsTask());
+    }
+
+    /// <summary>Whether the server kept holds these files written as the texts given or has yet to load them, waited for
+    /// until the limit: those it has documents of read again through its own watcher, as it reads a file changed on disk,
+    /// and those it has none of loaded by the window that takes it up (<see cref="Take"/>); false when none is kept, or it
+    /// still held another text at the limit.</summary>
+    public async Task<bool> HeardAsync(IReadOnlyDictionary<string, string> texts, TimeSpan limit)
+    {
+        RoslynSession? session;
+        lock (gate)
+        {
+            session = kept;
+        }
+        if (session is null || session.Server.HasExited)
+        {
+            return false;
+        }
+        // By the canonical paths the server's documents have.
+        Dictionary<string, string> written = texts.ToDictionary(text => PathNames.Canonical(text.Key), text => text.Value, PathNames.Comparer);
+        try
+        {
+            IReadOnlyList<Roslyn.Extension.TextHeld> held = await session.HeldTextsAsync([.. written.Keys]).WaitAsync(limit).ConfigureAwait(false);
+            if (held.Any(text => text.Hash is null))
+            {
+                FilesCame(session);
+            }
+            Dictionary<string, string> read = held.Where(text => text.Hash is not null).ToDictionary(text => text.Path, text => written[text.Path], PathNames.Comparer);
+            return read.Count == 0 || await HoldsAsync(read, limit).ConfigureAwait(false);
+        }
+        catch (Exception failed) when (failed is LanguageServerFailed or TimeoutException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Files of its projects came while the server was kept (a test's own written): the window that takes it up
+    /// has it load its projects first, as a window does that sees files come.</summary>
+    private void FilesCame(RoslynSession session)
+    {
+        lock (gate)
+        {
+            unloaded |= kept == session;
+        }
     }
 
     /// <summary>Whether the server kept holds these files as the texts given, waited for until the limit; false when
@@ -103,9 +151,4 @@ public sealed class WarmServer : IAsyncDisposable
     }
 
     public ValueTask DisposeAsync() => new(Drop());
-
-    /// <summary>Whether two sets of options are the same: one set to its default (null) is not one never set, which the
-    /// server takes from Passenger's own.</summary>
-    private static bool Same(IReadOnlyDictionary<string, object?> set, IReadOnlyDictionary<string, object?> wanted) =>
-        set.Count == wanted.Count && set.All(option => wanted.TryGetValue(option.Key, out object? value) && Equals(option.Value, value));
 }

@@ -225,6 +225,23 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
         }
     }
 
+    /// <summary>Has a server fed by the client that has loaded its projects load them again, from the design-time builds
+    /// it asks for, and waits for that load as for its first: <see cref="IsLoaded"/> until it says it has. For a server
+    /// taken up after files came.</summary>
+    public void LoadAgain(IReadOnlyList<string> projects)
+    {
+        if (!Fed || projects.Count == 0)
+        {
+            return;
+        }
+        lock (counting)
+        {
+            IsLoaded = false;
+            opens = completed + 1;
+        }
+        Server.Notify(ProjectMethods.Load, new LoadProjectsParams([.. projects.Select(p => new ProjectToOpen(p, null))], Solution));
+    }
+
     /// <summary>Starts following a document open in an editor: the server is sent its text, then every
     /// change to it, in order.</summary>
     public LspDocument Open(string path, TextDocument text)

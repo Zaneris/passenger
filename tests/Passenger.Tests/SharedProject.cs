@@ -9,8 +9,9 @@ namespace Passenger.Tests;
 /// test starts on the project as written (<see cref="Reset"/>, from its class's constructor): what a test changed is put
 /// back and what it added removed; a server that saw a file come or go, or a project file change, even one undone since,
 /// or that a failed test left (<see cref="OpenWindows"/>), is ended, so the next window starts one that loads the files as
-/// written, while one whose documents a test only rewrote is kept once it holds them as written again. Its constructor
-/// writes the project; xunit then makes it ready (<see cref="InitializeAsync"/>).</summary>
+/// written, while one whose documents a test only rewrote is kept once it holds them as written again; a class whose tests
+/// write files in turn for several windows keeps it through them (<see cref="SharedProject(string, bool)"/>). Its
+/// constructor writes the project; xunit then makes it ready (<see cref="InitializeAsync"/>).</summary>
 public abstract class SharedProject : IAsyncLifetime
 {
     /// <summary>The project's own files as written, by path, outside what restores and builds write (bin and obj).</summary>
@@ -24,7 +25,19 @@ public abstract class SharedProject : IAsyncLifetime
     /// <summary>A test wrote a file of its own to the project since the last reset.</summary>
     private bool changed;
 
-    protected SharedProject(string name) => Folder = TestFolders.Create(name);
+    /// <summary>Whether the files a test writes keep the shared server, which the next window has load those it lacks
+    /// (<see cref="WarmServer.HeardAsync"/>), as a window open on the folder does as files come.</summary>
+    private readonly bool loadsAgain;
+
+    /// <summary>A project in a test folder of <paramref name="name"/>; with <paramref name="loadsAgain"/>, files a test
+    /// writes keep the shared server for its next window, which has it load them, where otherwise each such file ends it.
+    /// After the test they go with the server, as without: a server letting go of files it analysed solution-wide, by the
+    /// thousand, takes far longer than a new one's start.</summary>
+    protected SharedProject(string name, bool loadsAgain = false)
+    {
+        Folder = TestFolders.Create(name);
+        this.loadsAgain = loadsAgain;
+    }
 
     public string Folder { get; }
 
@@ -93,6 +106,12 @@ public abstract class SharedProject : IAsyncLifetime
     /// <see cref="WriteAsync"/>.</summary>
     public string Write(string name, string text)
     {
+        if (loadsAgain)
+        {
+            string path = Written(name, text);
+            Heard(new Dictionary<string, string>(StringComparer.Ordinal) { [path] = text });
+            return path;
+        }
         Drop();
         return Written(name, text);
     }
@@ -102,6 +121,13 @@ public abstract class SharedProject : IAsyncLifetime
     /// <see cref="TestFolders.WriteAll"/> writes them). From the UI thread.</summary>
     public void Write(IEnumerable<(string Name, string Text)> files)
     {
+        if (loadsAgain)
+        {
+            System.Collections.Concurrent.ConcurrentDictionary<string, string> texts = new(StringComparer.Ordinal);
+            Parallel.ForEach(files, file => texts[Written(file.Name, file.Text)] = file.Text);
+            Heard(texts);
+            return;
+        }
         Drop();
         Parallel.ForEach(files, file => Written(file.Name, file.Text));
     }
@@ -109,6 +135,15 @@ public abstract class SharedProject : IAsyncLifetime
     /// <inheritdoc cref="Write(string, string)"/>
     public async Task<string> WriteAsync(string name, string text)
     {
+        if (loadsAgain)
+        {
+            string path = Written(name, text);
+            if (!await Server.HeardAsync(new Dictionary<string, string>(StringComparer.Ordinal) { [path] = text }, Hearing.Scaled()))
+            {
+                await Server.Drop();
+            }
+            return path;
+        }
         await Server.Drop();
         return Written(name, text);
     }
@@ -119,6 +154,16 @@ public abstract class SharedProject : IAsyncLifetime
         string path = PathOf(name);
         File.WriteAllText(path, text);
         return path;
+    }
+
+    /// <summary>Has the kept server hear of files written (<see cref="WarmServer.HeardAsync"/>), ended if it does not
+    /// within <see cref="Hearing"/>; on the UI thread, the window's loop running as it waits.</summary>
+    private void Heard(IReadOnlyDictionary<string, string> texts)
+    {
+        if (!Ui.AwaitPumped(Waiting.Apart(() => Server.HeardAsync(texts, Hearing.Scaled())), "the kept language server to hear of the files written", Hearing + TestFolders.Spare))
+        {
+            Drop();
+        }
     }
 
     /// <summary>Rewrites one of the project's own files for a test: the warm server is kept once it holds the file as
@@ -232,6 +277,10 @@ public abstract class SharedProject : IAsyncLifetime
 
     /// <summary>How long a kept server has to read again the files a test rewrote, through its own watcher.</summary>
     private static readonly TimeSpan Rereading = TimeSpan.FromSeconds(10);
+
+    /// <summary>How long a kept server has to hear of the files a test writes, which it reads in half a second or not for
+    /// many: past it the next window starts a server of its own, sooner than a longer wait would let it.</summary>
+    private static readonly TimeSpan Hearing = TimeSpan.FromSeconds(3);
 
     /// <summary>Ends the shared server and removes the project; a fixture that holds more (a stand-in feed) ends it too.</summary>
     public virtual async ValueTask DisposeAsync()

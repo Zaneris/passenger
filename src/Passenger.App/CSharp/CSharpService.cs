@@ -823,6 +823,7 @@ public sealed class CSharpService : IAsyncDisposable
             (bool, bool) hintedWith = hints;
             Dictionary<string, object?> options = StartOptions(startedWith, solutionWide, hintedWith);
             RoslynSession started;
+            bool loadAgain = false;
             string loading = solution is not null ? Path.GetFileName(solution) : Plural.Of(projects.Length, "project");
             Func<CancellationToken, Task<RoslynSession?>>? startedAhead = warm is null ? headStart?.TakeServer(opening.Folder, solution, projects, options) : null;
             RoslynSession? takenAhead = startedAhead is null ? null : await startedAhead(cancel);
@@ -841,7 +842,7 @@ public sealed class CSharpService : IAsyncDisposable
                 IdeErrors.Observe(TimeFirstColoursAsync(started, began));
                 IdeErrors.Observe(TimeActiveFileAsync(started, began));
             }
-            else if (warm?.Take(opening.Folder, solution, projects, options) is { } taken)
+            else if (warm?.Take(opening.Folder, solution, projects) is { } taken)
             {
                 started = taken.Session;
                 Hear(started.Server);
@@ -851,7 +852,9 @@ public sealed class CSharpService : IAsyncDisposable
                 {
                     started.Server.Feed = Feed;
                 }
-                IdeErrors.Write($"C# language server (process {started.Server.ProcessId}) taken up warm for {opening.Folder}, {loading} loaded");
+                started.Server.ReplaceOptions(options);
+                loadAgain = taken.LoadAgain;
+                IdeErrors.Write($"C# language server (process {started.Server.ProcessId}) taken up warm for {opening.Folder}, {loading} loaded{(loadAgain ? ", to load again" : string.Empty)}");
             }
             else
             {
@@ -917,6 +920,11 @@ public sealed class CSharpService : IAsyncDisposable
                 started.Server.NotResponding -= onHung;
             });
             session = started;
+            if (loadAgain)
+            {
+                // Files came since it loaded them: waited for as its load is.
+                started.LoadAgain(projects);
+            }
             if (found.Count > 0)
             {
                 started.Reload([.. found]);
