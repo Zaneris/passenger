@@ -12,7 +12,7 @@ namespace Passenger.App;
 /// or WPF project with its design view to its right, drawn from the project's last build by its framework's previewer
 /// and following the text as typing pauses. Where the previewer places the file's elements (WPF's), a click on one
 /// selects its start tag in the editor and the element at the caret is outlined. A file's preview runs while the file
-/// is open and the preview on; it ends as either goes.</summary>
+/// is open and the preview on; it ends as either goes. On or off is kept in the store's previews.json.</summary>
 public partial class MainWindow
 {
     /// <summary>How long typing pauses before the previewer is sent the text.</summary>
@@ -82,7 +82,17 @@ public partial class MainWindow
 
     private void TogglePreview()
     {
-        previewing = !previewing;
+        ShowPreviews(!previewing);
+        if (keepsWorkspace && state is not null)
+        {
+            state.Previews.Set(state.Previews.Value with { Xaml = previewing });
+        }
+    }
+
+    /// <summary>Previews on or off: each group's XAML file shown beside its preview, or none.</summary>
+    private void ShowPreviews(bool on)
+    {
+        previewing = on;
         Editors.ShowsXamlPreview = previewing;
         if (!previewing)
         {

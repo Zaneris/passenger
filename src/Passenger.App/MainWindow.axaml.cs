@@ -62,7 +62,8 @@ public partial class MainWindow : Window
         UiThread.Own();
         InitializeComponent();
         session = ProjectSession.None(Setup());
-        status = new StatusBar(StatusMessage, StatusText, StatusIcon, StatusWorking, CaretText, IndentText, LanguageText, LineSeparatorButton, LineEndingText, EncodingButton, EncodingText);
+        status = new StatusBar(StatusMessage, StatusText, StatusIcon, StatusWorking, CaretButton, CaretText, IndentButton, IndentText, LanguageText, LineSeparatorButton, LineEndingText,
+            EncodingButton, EncodingText);
         popups = new PopupHost(Overlay, OverlayHost, Editors, () => session.Debug.Breakpoints);
         navigator = new Navigation.Navigator(new Navigation.NavigatorParts(Editors, () => session, popups, status, path => OpenFile(path), Editors.TextOf));
         // One keymap for the whole window, seen before any control: editor actions go to the editor with the focus.
@@ -602,6 +603,7 @@ public partial class MainWindow : Window
         Dock.LayoutChanged += (_, _) => KeepDock();
         findSettings = store.Find.Value;
         Editors.ShowsMarkdownPreview = store.Previews.Value.Markdown;
+        ShowPreviews(store.Previews.Value.Xaml);
         assist.RenameSettings = store.Refactorings.Value;
         assist.RenameSettingsChanged += (_, _) => state?.Refactorings.Set(assist.RenameSettings);
         keepsWorkspace = true;
@@ -737,7 +739,7 @@ public partial class MainWindow : Window
     {
         structure = new ToolWindows.StructureView();
         structure.Follow(() => Editors.Active is { } shown
-            ? (shown.Path, session.CSharp?.For(shown)?.Lsp ?? session.Web?.For(shown)?.Lsp, Editors.CodeEditor.CaretPosition.Line)
+            ? (shown.Path, session.OutlineOf(shown), Editors.CodeEditor.CaretPosition.Line)
             : null);
         structure.GoToRequested += (_, row) => NavigateTo(row.Path, row.Position);
         structure.UsagesRequested += (_, row) =>

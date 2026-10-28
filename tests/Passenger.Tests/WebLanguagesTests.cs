@@ -3,6 +3,7 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.Navigation;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
@@ -215,6 +216,32 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
             Assert.True(!document.Markers.Any(m => m.Kind == MarkerKind.Error),
                 $"{file} was read as plain CSS, its {language} marked as errors: {string.Join("; ", document.Markers.Select(m => m.Message))}");
         }
+        window.Close();
+    }
+
+    /// <summary>File Structure on a JSON file lists its keys, nested under the objects they are in, as its server outlines
+    /// them, and a key chosen is where the caret goes.</summary>
+    [AvaloniaFact]
+    public void File_structure_lists_a_JSON_files_keys_and_goes_to_the_one_chosen()
+    {
+        SkipWithoutNode();
+        MainWindow window = app.Open("package.json", languageServer: false);
+        OpenDocument document = window.EditorArea.Active!;
+        Ui.WaitFor(() => window.Session.Web?.For(document) is { Lsp: not null }, "the JSON server's document of package.json");
+        Ui.Run(window, AppActions.FileStructure);
+        SymbolPopup structure = window.Popup as SymbolPopup
+            ?? throw new Xunit.Sdk.XunitException($"File Structure on package.json opened {window.Popup?.GetType().Name ?? "nothing"}; the status bar said: {window.Status}");
+        Ui.WaitFor(() => structure.IsSettled && structure.Rows.Any(r => r.Name == "build"), "package.json's outline, its scripts' keys among it");
+        SymbolRow scripts = structure.Rows.First(r => r.Name == "scripts");
+        Assert.Equal(0, scripts.Depth);
+        Assert.Equal(1, structure.Rows.First(r => r.Name == "build").Depth);
+        window.KeyTextInput("build");
+        Ui.WaitFor(() => structure.IsSettled && structure.Rows.Select(r => r.Name).SequenceEqual(["scripts", "build"]), () => $"the outline filtered to the build script in its object, not [{string.Join(", ", structure.Rows.Select(r => r.Name))}]");
+        Ui.Press(window, "DOWN");
+        Assert.Equal("build", structure.Selected?.Name);
+        Ui.Press(window, "ENTER");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Assert.Contains("\"build\"", editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line), StringComparison.Ordinal);
         window.Close();
     }
 

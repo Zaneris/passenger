@@ -10,9 +10,9 @@ using Passenger.Text;
 
 namespace Passenger.App.ToolWindows;
 
-/// <summary>The Structure window: the active file's types and members, indented, from the language server's
-/// outline, asked as it is shown and, while it is, following the editor (a moment after typing stops) and choosing the
-/// member the caret is in. A click or Enter goes to a member.</summary>
+/// <summary>The Structure window: the active file's outline (a C# file's types and members, a JSON file's keys),
+/// indented, from its language server, asked as it is shown and, while it is, following the editor (a moment after
+/// typing stops) and choosing the member the caret is in. A click or Enter goes to a member.</summary>
 public sealed class StructureView : DockPanel
 {
     private static readonly TimeSpan Pause = TimeSpan.FromMilliseconds(600);
@@ -59,7 +59,7 @@ public sealed class StructureView : DockPanel
                 e.Handled = true;
             }
         };
-        placeholder = new TextBlock { Classes = { "emptyText" }, Text = "A C# file's members show here" };
+        placeholder = new TextBlock { Classes = { "emptyText" }, Text = "The open file's outline shows here" };
         settle = new Debounce(Pause, Refresh);
         ListMenus.Attach(list, () => list.SelectedItem is not SymbolRow chosen ? [] :
         [

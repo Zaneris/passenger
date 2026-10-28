@@ -466,6 +466,75 @@ public sealed class NavigationTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Go to Related File goes from a XAML file to its code-behind and back by its keys, and from a Razor
+    /// component's code-behind to its markup and back; a file with neither beside it greys it, saying why.</summary>
+    [AvaloniaFact]
+    public void Go_to_related_file_switches_between_markup_and_its_code_behind_both_ways()
+    {
+        Write("Views/MainWindow.axaml", "<Window xmlns=\"https://github.com/avaloniaui\" />\n");
+        Write("Views/MainWindow.axaml.cs", "namespace Shop.Views;\n\npublic partial class MainWindow { }\n");
+        Write("Pages/Counter.razor", "<h1>Counter</h1>\n");
+        Write("Pages/Counter.razor.cs", "namespace Shop.Pages;\n\npublic partial class Counter { }\n");
+        Write("Notes.cs", "class Notes { }\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        Assert.Null(window.OpenFile("Views/MainWindow.axaml"));
+        Ui.Settle();
+        Ui.Press(window, Ui.Shortcut(AppActions.GoToRelated));
+        Assert.Equal("MainWindow.axaml.cs", window.EditorArea.Active?.Name);
+        Ui.Press(window, Ui.Shortcut(AppActions.GoToRelated));
+        Assert.Equal("MainWindow.axaml", window.EditorArea.Active?.Name);
+
+        Assert.Null(window.OpenFile("Pages/Counter.razor.cs"));
+        Ui.Settle();
+        Ui.Run(window, AppActions.GoToRelated);
+        Assert.Equal("Counter.razor", window.EditorArea.Active?.Name);
+        Ui.Run(window, AppActions.GoToRelated);
+        Assert.Equal("Counter.razor.cs", window.EditorArea.Active?.Name);
+
+        Assert.Null(window.OpenFile("Notes.cs"));
+        Ui.Settle();
+        Ui.Press(window, Ui.Shortcut(AppActions.GoToRelated));
+        Assert.Equal("Notes.cs", window.EditorArea.Active?.Name);
+        Assert.Equal("Notes.cs has no code-behind or markup beside it", window.Status);
+        window.Close();
+    }
+
+    /// <summary>With more tabs than the strip shows, the active one is in sight: the last opened, at the strip's end; the
+    /// first gone back to, at its start; and one reached by Previous Tab, wherever it stands.</summary>
+    [AvaloniaFact]
+    public void The_active_tab_is_scrolled_into_the_strips_sight_however_many_tabs_crowd_it()
+    {
+        string[] names = [.. Enumerable.Range(0, 30).Select(i => $"Notes{i:00}.txt")];
+        WriteFiles(names);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        foreach (string name in names)
+        {
+            Assert.Null(window.OpenFile(name));
+        }
+        Ui.Settle();
+        EditorGroup group = window.EditorArea.ActiveGroup;
+        Assert.Equal(names.Length, group.Tabs.Count);
+        InSight(group, "Notes29.txt");
+        Assert.Null(window.OpenFile("Notes00.txt"));
+        Ui.Settle();
+        InSight(group, "Notes00.txt");
+        Ui.Run(window, AppActions.PreviousTab);
+        InSight(group, window.EditorArea.Active!.Name);
+        Assert.NotEqual("Notes00.txt", window.EditorArea.Active.Name);
+        window.Close();
+    }
+
+    /// <summary>The group's active tab, named so, lies wholly inside its strip's sight.</summary>
+    private static void InSight(EditorGroup group, string name)
+    {
+        ScrollViewer strip = group.TabStrip.GetVisualDescendants().OfType<ScrollViewer>().First();
+        Border tab = strip.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("tab") && b.Classes.Contains("active"));
+        Assert.Equal(name, tab.GetVisualDescendants().OfType<TextBlock>().First(t => t.Classes.Contains("tabName")).Text);
+        double left = tab.TranslatePoint(default, strip)?.X ?? double.NaN;
+        Assert.True(left >= -0.5 && left + tab.Bounds.Width <= strip.Viewport.Width + 0.5,
+            $"{name}'s tab, the active one, lies from {left:0.#} to {left + tab.Bounds.Width:0.#}, out of the strip's sight (0 to {strip.Viewport.Width:0.#})");
+    }
+
     private void Write(string relative, string text) => TestFolders.Write(folder, relative, text);
 
     /// <summary>Files of ten numbered lines each, none a comment, so none folds.</summary>

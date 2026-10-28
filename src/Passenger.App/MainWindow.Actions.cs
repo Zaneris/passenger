@@ -170,6 +170,9 @@ public partial class MainWindow
         Add(A.GoToSymbol, "Go to Symbol", "Navigate", _ => navigator.ShowGoToSymbol(), NeedsFolder, ("Navigate", 1, 2));
         Add(A.GoToLine, "Go to Line:Column", "Navigate", _ => navigator.ShowGoToLine(), Refusals.NeedsLines, ("Navigate", 1, 3));
         Add(A.FileStructure, "File Structure", "Navigate", _ => navigator.ShowFileStructure(), Refusals.NeedsFile, ("Navigate", 1, 4));
+        Add(A.GoToRelated, "Go to Related File", "Navigate", c => OpenFile(Navigation.CodeBehind.PartnerOf(c.File!.Path)!),
+            c => c.File is not { } file ? Refusals.NoFile : Navigation.CodeBehind.PartnerOf(file.Path) is null ? $"{file.Name} has no code-behind or markup beside it" : null,
+            ("Navigate", 1, 5), words: ["Code-Behind", "View Code", "View Markup"]);
 
         AddBuilding();
         AddPublishing();

@@ -644,6 +644,10 @@ public sealed class ProjectSession : IAsyncDisposable
     /// its first file opens; null with no folder.</summary>
     public Web.WebLanguages? Web { get; private set; }
 
+    /// <summary>The language server's document of an open file, which File Structure and the Structure window outline: the
+    /// C# server's, else its web language's; null while no server has it.</summary>
+    public Lsp.LspDocument? OutlineOf(OpenDocument document) => CSharp?.For(document)?.Lsp ?? Web?.For(document)?.Lsp;
+
     /// <summary>A language server started (or none, after one ended) in place of the one before.</summary>
     public event EventHandler? CSharpChanged;
 

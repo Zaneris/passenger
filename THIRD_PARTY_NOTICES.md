@@ -705,6 +705,8 @@ Microsoft Corporation), unchanged, from the project its header names:
 - `docker.tmLanguage.json` (VS Code 1.142.0, `extensions/docker`): from moby/moby's
   `contrib/syntax/textmate/Docker.tmbundle` (https://github.com/moby/moby), under the Apache License 2.0 below, with
   Docker's NOTICE.
+- `ini.tmLanguage.json` (VS Code 1.142.0, `extensions/ini`): converted from textmate/ini.tmbundle
+  (https://github.com/textmate/ini.tmbundle), under the TextMate bundle licence below; it colours .editorconfig files.
 
 And two that colour Razor's .razor and .cshtml files before the language server answers, files of Razor's tooling in
 dotnet/roslyn (https://github.com/dotnet/roslyn, where Razor's tooling moved from dotnet/razor; MIT, Copyright (c) .NET

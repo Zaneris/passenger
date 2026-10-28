@@ -222,6 +222,58 @@ public sealed class FilePropertiesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>The indent widget offers a tab and widths of spaces: one chosen is how Tab indents the file from then on,
+    /// over what its lines showed, the widget saying so and the file's text left as it was, until Automatic gives the
+    /// file its own back.</summary>
+    [AvaloniaFact]
+    public void The_indent_widget_chooses_how_a_file_indents_and_Automatic_gives_it_back_its_own()
+    {
+        const string Spaced = "class Spaced\n{\n    void Run()\n    {\n    }\n}\nint a;\nint b;\n";
+        string path = Write("Spaced.cs", Spaced);
+        MainWindow window = Open("Spaced.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Assert.Equal("4 spaces, detected", Shown(window, "IndentText"));
+
+        Click(window, "IndentButton");
+        Assert.Equal(["Tab", "2 spaces", "4 spaces", "8 spaces", "Automatic: 4 spaces, detected (checked)"], Items(window.OpenContextMenu!));
+        Choose(window, "Tab");
+        Assert.Equal("Tab, chosen", Shown(window, "IndentText"));
+        Assert.Equal("Indent: Tab, chosen for this file", Tip(window, "IndentButton"));
+        Assert.Equal(Spaced, Text(window));
+        editor.Selections = Passenger.Text.SelectionSet.Single(Spaced.IndexOf("int a;", StringComparison.Ordinal));
+        Ui.Press(window, "TAB");
+        Assert.Contains("\n\tint a;\n", Text(window), StringComparison.Ordinal);
+
+        Click(window, "IndentButton");
+        Assert.Equal(["Tab (checked)", "2 spaces", "4 spaces", "8 spaces", "Automatic: 4 spaces, detected"], Items(window.OpenContextMenu!));
+        Choose(window, "Automatic: 4 spaces, detected");
+        Assert.Equal("4 spaces, detected", Shown(window, "IndentText"));
+        editor.Selections = Passenger.Text.SelectionSet.Single(Text(window).IndexOf("int b;", StringComparison.Ordinal));
+        Ui.Press(window, "TAB");
+        Assert.Contains("\n\tint a;\n    int b;\n", Text(window), StringComparison.Ordinal);
+        Assert.Equal(Spaced, File.ReadAllText(path));
+        window.Close();
+    }
+
+    /// <summary>A click on the caret's place in the status bar opens Go to Line:Column, and the line given is where the
+    /// caret goes.</summary>
+    [AvaloniaFact]
+    public void A_click_on_the_carets_place_goes_to_a_line()
+    {
+        Write("Lines.cs", "class Lines\n{\n    int a;\n    int b;\n}\n");
+        MainWindow window = Open("Lines.cs");
+        Assert.Equal("1:1", Shown(window, "CaretText"));
+        Ui.Click(window.FindControl<Button>("CaretButton")!);
+        Assert.True(window.Popup is Passenger.App.Navigation.GoToLinePopup, $"A click on the caret's place opened {window.Popup?.GetType().Name ?? "nothing"}, not Go to Line");
+        window.KeyTextInput("4:5");
+        Ui.Settle();
+        Ui.Press(window, "ENTER");
+        Assert.False(window.IsPopupOpen, "Go to Line stayed open after Enter");
+        Assert.Equal(new Passenger.Text.TextPosition(3, 4), window.EditorArea.CodeEditor.CaretPosition);
+        Assert.Equal("4:5", Shown(window, "CaretText"));
+        window.Close();
+    }
+
     private string Write(string name, string text) => TestFolders.Write(folder, name, text);
 
     /// <summary>A window on the folder with a file of it open; it saves only when asked.</summary>

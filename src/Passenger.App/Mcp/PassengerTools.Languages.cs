@@ -130,13 +130,9 @@ public sealed partial class PassengerTools
 
     /// <summary>A file's language as the tools name it: XAML, MSBuild and the web languages by what reads them, the rest as
     /// the editor names them.</summary>
-    private static string LanguageOf(OpenDocument document) => Languages.Language.ForPath(document.Path) switch
-    {
-        { Service: Languages.LanguageService.Xaml } => "XAML",
-        { Service: Languages.LanguageService.MSBuild } => "MSBuild",
-        { Service: not (Languages.LanguageService.None or Languages.LanguageService.CSharp) } web => web.Name,
-        _ => document.Language.Name,
-    };
+    private static string LanguageOf(OpenDocument document) =>
+        Languages.Language.ForPath(document.Path) is { Service: not (Languages.LanguageService.None or Languages.LanguageService.CSharp) } served
+            ? served.Name : document.Language.Name;
 
     /// <summary>Go to Declaration in JSON, whose server has none: a package.json dependency's package, a script's run.</summary>
     private async Task<IReadOnlyList<Place>> JsonDefinition(ServerServed json, int offset, CancellationToken cancel)

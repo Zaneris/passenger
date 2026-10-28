@@ -59,7 +59,7 @@ public sealed class IndentationTests : IDisposable
         MainWindow window = Open("Spaced.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
         Assert.Equal("Tab, from .editorconfig", IndentShown(window));
-        Assert.Equal($"Indent: Tab, from {Path.Combine(folder, ".editorconfig")}", ToolTip.GetTip(window.FindControl<TextBlock>("IndentText")!));
+        Assert.Equal($"Indent: Tab, from {Path.Combine(folder, ".editorconfig")}", ToolTip.GetTip(window.FindControl<Button>("IndentButton")!));
 
         Ui.PlaceAfter(editor, "void Run()\n    {");
         Ui.Press(window, "ENTER");

@@ -398,13 +398,15 @@ public sealed class Navigator
         return owner.Length > 0 ? owner : match.Groups["project"].Value.Trim();
     }
 
-    /// <summary>File Structure: the active file's types and members, indented, filtered as typed with the containers of
-    /// what matches kept.</summary>
+    /// <summary>File Structure: the active file's outline (a C# file's types and members, a JSON file's keys), indented,
+    /// filtered as typed with the containers of what matches kept.</summary>
     public void ShowFileStructure()
     {
-        if (Editors.Active is not { } active || Session.CSharp?.For(active)?.Lsp is null)
+        if (Editors.Active is not { } active || Session.OutlineOf(active) is null)
         {
-            parts.Status.Text = "File Structure needs a C# file the language server has open";
+            parts.Status.Text = Editors.Active is { } file
+                ? $"File Structure needs a file a language server has open, and none has {file.Name}"
+                : "File Structure needs a file a language server has open";
             return;
         }
         IReadOnlyList<SymbolRow>? outline = null;
@@ -412,7 +414,7 @@ public sealed class Navigator
         SymbolPopup popup = new($"File Structure: {active.Name}", "Filter by name, CamelHumps too", async (query, cancel) =>
         {
             // The server's document now: one started again while the popup is open has a new one.
-            Lsp.LspDocument lsp = Session.CSharp?.For(active)?.Lsp ?? throw new Lsp.LanguageServerFailed("the C# language server is not running");
+            Lsp.LspDocument lsp = Session.OutlineOf(active) ?? throw new Lsp.LanguageServerFailed($"no language server has {active.Name} open");
             outline ??= ToolWindows.StructureView.Flatten(await lsp.OutlineAsync(cancel), 0, active.Path, Lsp.ServerLines.Of(lsp.Text.Snapshot));
             return FilterOutline(outline, query.Trim());
         })

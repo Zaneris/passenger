@@ -650,7 +650,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         {
             window.OpenFile(project.PathOf(Project.Deep));
             Ui.Settle();
-            Rect widgets = Placed(window, (Visual)Named<TextBlock>(window, "CaretText").Parent!);
+            Rect widgets = Placed(window, (Visual)Named<Button>(window, "CaretButton").Parent!);
             Button[] crumbs = [.. Named<Control>(window, "BreadcrumbHost").GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible)];
             Assert.NotEmpty(crumbs);
             foreach (Button crumb in crumbs)

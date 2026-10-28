@@ -33,6 +33,9 @@ public static class AppActions
     public const string LineSeparatorsLf = "app.lineSeparators.lf";
     public const string LineSeparatorsCr = "app.lineSeparators.cr";
 
+    // The indent widget's menu, which no keys open.
+    public const string FileIndentation = "app.fileIndentation";
+
     // Rider's ChangeTargetFramework (Target Framework), the editor's context switcher, which its keymaps give no keys.
     public const string TargetFramework = "app.code.targetFramework";
     public const string Save = "app.save";
@@ -45,6 +48,10 @@ public static class AppActions
     public const string GoToSymbol = "app.goToSymbol";
     public const string GoToEverything = "app.goToEverything";
     public const string FileStructure = "app.fileStructure";
+
+    // Rider's GotoRelated (Related Symbol), here a XAML or Razor file's code-behind and back: its Visual Studio keymaps'
+    // Ctrl+Alt+F7 and Cmd+Shift+F7, its VS Code keymaps' (from their parents) Ctrl+Alt+Home and Ctrl+Cmd+Up.
+    public const string GoToRelated = "app.goToRelated";
     public const string FindAction = "app.findAction";
     public const string FindInFiles = "app.findInFiles";
     public const string RecentFiles = "app.recentFiles";
@@ -529,6 +536,7 @@ public static class AppActions
                 .Bind(ShowSettings, "meta COMMA")
                 .Bind(ShowNuGet, "meta 7", "meta shift 7")
                 .Bind(FileStructure, "alt BACK_SLASH")
+                .Bind(GoToRelated, "meta shift F7")
                 .Bind(Find, "meta F")
                 .Bind(Replace, "control H")
                 .Bind(FindNext, "F3", "meta alt PAGE_DOWN")
@@ -654,6 +662,7 @@ public static class AppActions
             .Bind(ShowSettings, "control alt S")
             .Bind(ShowNuGet, "alt 7", "alt shift 7")
             .Bind(FileStructure, "alt BACK_SLASH")
+            .Bind(GoToRelated, "control alt F7")
             .Bind(Find, "control F")
             .Bind(Replace, "control H")
             .Bind(FindNext, "F3", "control alt PAGE_DOWN")
@@ -773,6 +782,7 @@ public static class AppActions
                 .Bind(GoToLine, "control G")
                 .Bind(GoToSymbol, "meta T")
                 .Bind(FileStructure, "meta alt O", "meta shift O")
+                .Bind(GoToRelated, "control meta UP")
                 .Bind(FindAction, "F1", "meta shift P", "meta shift A")
                 .Bind(FindInFiles, "meta shift F")
                 .Bind(RecentFiles, "meta E")
@@ -882,6 +892,7 @@ public static class AppActions
             .Bind(GoToSymbol, "control T")
             .Bind(GoToEverything, "F1", "control shift A")
             .Bind(FileStructure, "control shift O")
+            .Bind(GoToRelated, "control alt HOME")
             .Bind(FindAction, "control shift P")
             .Bind(FindInFiles, "control shift F")
             .Bind(RecentFiles, "control E")

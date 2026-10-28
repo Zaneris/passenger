@@ -1193,6 +1193,58 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>XAML Preview on or off is kept for the next window, as a Markdown file's preview is: turned on, the next
+    /// window shows a XAML file beside its preview; turned off from the tab strip, the next shows none.</summary>
+    [AvaloniaFact]
+    public void The_XAML_previews_on_or_off_is_kept_for_the_next_window()
+    {
+        string state = TestFolders.Create("xaml-state-");
+        try
+        {
+            MainWindow window = Started(state);
+            OpenDocument document = window.EditorArea.Active!;
+            Passenger.App.Editors.EditorGroup group = window.EditorArea.ActiveGroup;
+            Assert.True(group.PreviewToggle.IsChecked == false && window.PreviewOf(document) is null, "A first window showed the XAML preview before it was turned on");
+            Assert.True(window.Perform(AppActions.XamlPreview), $"XAML Preview could not run: {window.Status}");
+            Ui.Settle();
+            Assert.NotNull(window.PreviewOf(document));
+            window.Close();
+            Ui.Settle();
+
+            window = Started(state);
+            group = window.EditorArea.ActiveGroup;
+            Ui.WaitFor(() => window.PreviewOf(window.EditorArea.Active!) is not null, "the next window's preview beside the XAML file, the preview kept on");
+            Assert.True(group.PreviewToggle.IsChecked == true, "The tab strip's preview toggle stayed up in the window that kept the preview on");
+            Ui.Click(group.PreviewToggle);
+            Ui.Settle();
+            Assert.Null(window.PreviewOf(window.EditorArea.Active!));
+            window.Close();
+            Ui.Settle();
+
+            window = Started(state);
+            group = window.EditorArea.ActiveGroup;
+            Assert.True(group.PreviewToggle.IsChecked == false && window.PreviewOf(window.EditorArea.Active!) is null, "The next window showed the preview the last one turned off");
+            window.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(state);
+        }
+
+        // A window keeping its state in the test's own folder, the window's XAML open, with no C# language server.
+        MainWindow Started(string kept)
+        {
+            MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StateFolder = kept, StartsLanguageServer = false };
+            window.Show();
+            window.KeepLayout();
+            window.KeepSettings();
+            window.OpenFolder(app.Folder);
+            Assert.Null(window.OpenFile(app.PathOf("MainWindow.axaml")));
+            Ui.Settle();
+            return window;
+        }
+    }
+
     /// <summary>An Avalonia previewer that ends as it draws (a crash) has its end in passenger.log, with the last words the
     /// pane says it ended with, as the WPF previewer's is.</summary>
     [AvaloniaFact]

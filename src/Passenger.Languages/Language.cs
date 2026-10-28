@@ -79,11 +79,18 @@ public sealed class Language
     public static readonly Language Image = new("image", "Image", []);
     public static readonly Language Font = new("font", "Font", []);
 
+    /// <summary>Ignore files, a Dockerfile's own (<c>Dockerfile.dockerignore</c>) among them, so before Dockerfile.</summary>
+    public static readonly Language Ignore = new("ignore", "Ignore", ["*.dockerignore", "*.gitignore", ".*ignore"], line: "#");
+
     public static readonly Language Dockerfile = new("dockerfile", "Dockerfile",
         ["Dockerfile", "Dockerfile.*", "Containerfile", "Containerfile.*", "*.dockerfile"], line: "#",
         grammar: new("source.dockerfile", "docker.tmLanguage.json"), service: LanguageService.Dockerfile);
 
     public static readonly Language Dotenv = new("dotenv", "Dotenv", [".env", ".env.*", "*.env"], line: "#");
+
+    /// <summary>An .editorconfig, coloured as VS Code colours it, by the INI grammar.</summary>
+    public static readonly Language EditorConfig = new("properties", "EditorConfig", [".editorconfig"], line: "#",
+        grammar: new("source.ini", "ini.tmLanguage.json"));
 
     /// <summary>C#, coloured and folded by its own parse; its grammar is only what Razor and Markdown's fences embed.</summary>
     public static readonly Language CSharp = new("csharp", "C#", ["*.cs", "*.csx"], line: "//", block: ("/*", "*/"),
@@ -92,20 +99,20 @@ public sealed class Language
     public static readonly Language Razor = new("aspnetcorerazor", "Razor", ["*.razor", "*.cshtml"], block: ("@*", "*@"),
         grammar: new("text.aspnetcorerazor", "aspnetcorerazor.tmLanguage.json", Tags.Html), service: LanguageService.CSharp);
 
-    /// <summary>XAML, MSBuild's files and the rest of XML are one markup to the editor, each answered by its own service.</summary>
-    public static readonly Language Xaml = XmlKind("xaml", ["*.axaml", "*.paml", "*.xaml"], LanguageService.Xaml);
+    /// <summary>XAML, MSBuild's files and the rest of XML are one markup to the editor, each named and answered as its own.</summary>
+    public static readonly Language Xaml = XmlKind("xaml", "XAML", ["*.axaml", "*.paml", "*.xaml"], LanguageService.Xaml);
 
-    public static readonly Language MSBuild = XmlKind("msbuild", ["*.csproj", "*.fsproj", "*.vbproj", "*.proj", "*.props", "*.targets"], LanguageService.MSBuild);
+    public static readonly Language MSBuild = XmlKind("msbuild", "MSBuild", ["*.csproj", "*.fsproj", "*.vbproj", "*.proj", "*.props", "*.targets"], LanguageService.MSBuild);
 
-    public static readonly Language Xml = XmlKind("xml",
+    public static readonly Language Xml = XmlKind("xml", "XML",
         ["*.xml", "*.slnx", "*.resx", "*.config", "*.nuspec", "*.manifest", "*.runsettings", "*.xsd", "*.xslt", "*.xsl", "*.svg", "*.plist", "*.storyboard"],
         LanguageService.None);
 
     /// <summary>JSON, told to its server as JSON with comments where the file's reader takes them (TypeScript's
-    /// configuration, ASP.NET Core's settings and launch profiles, the SDK's global.json, ESLint's).</summary>
+    /// configuration, ASP.NET Core's settings and launch profiles, the SDK's global.json, ESLint's, a solution filter).</summary>
     public static readonly Language Json = new("json", "JSON",
         [new("*.jsonc", "jsonc"), new("tsconfig*.json", "jsonc"), new("jsconfig*.json", "jsonc"), new("appsettings*.json", "jsonc"),
-            new("launchSettings.json", "jsonc"), new("global.json", "jsonc"), new(".eslintrc.json", "jsonc"), "*.json"],
+            new("launchSettings.json", "jsonc"), new("global.json", "jsonc"), new(".eslintrc.json", "jsonc"), new("*.slnf", "jsonc"), "*.json"],
         line: "//", block: ("/*", "*/"), indent: 2, grammar: new("source.json", "JSON.tmLanguage.json"), folds: FoldScan.Json, service: LanguageService.Json);
 
     public static readonly Language Yaml = new("yaml", "YAML", ["*.yml", "*.yaml"], line: "#", indent: 2,
@@ -135,8 +142,6 @@ public sealed class Language
 
     public static readonly Language Shell = new("shellscript", "Shell", ["*.sh", "*.bash", "*.zsh"], line: "#",
         grammar: new("source.shell", "shell-unix-bash.tmLanguage.json"));
-
-    public static readonly Language Ignore = new("ignore", "Ignore", ["*.dockerignore"], line: "#");
 
     /// <summary>Languages with no grammar here, commented as C's are or as scripts are.</summary>
     public static readonly Language Code = new("code", "Code", ["*.rs", "*.go", "*.java", "*.kt", "*.swift", "*.c", "*.h", "*.cpp"],
@@ -202,8 +207,8 @@ public sealed class Language
     /// <summary>The file a grammar a language's grammar embeds is carried in, by its scope; null for one not carried.</summary>
     internal static string? GrammarFileOf(string scope) => GrammarFiles.Value.GetValueOrDefault(scope);
 
-    private static Language XmlKind(string id, IReadOnlyList<FilePattern> patterns, LanguageService service) =>
-        new(id, "XML", patterns, block: ("<!--", "-->"), indent: 2, grammar: new("text.xml", "xml.tmLanguage.json", Tags.Xml), folds: FoldScan.Xml,
+    private static Language XmlKind(string id, string name, IReadOnlyList<FilePattern> patterns, LanguageService service) =>
+        new(id, name, patterns, block: ("<!--", "-->"), indent: 2, grammar: new("text.xml", "xml.tmLanguage.json", Tags.Xml), folds: FoldScan.Xml,
             service: service, markup: MarkupKind.Xml);
 
     private FilePattern? PatternOf(ReadOnlySpan<char> name)

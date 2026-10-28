@@ -31,7 +31,7 @@ public delegate void StatusSay(string said, StatusPlace? more = null);
 /// <summary>The window's status bar: what the last action came to (an error's or a warning's marked with its icon until
 /// something else is said, and a link to where it has more to see while it has a place, its whole text on hover), and
 /// the file shown's place (its path while nothing is said), caret, line separator, encoding, indent and language with
-/// the language server's state. It says what it is told; what an operation came to is the operation's own answer, never
+/// the language server's state, each of the file's a widget a click acts on. It says what it is told; what an operation came to is the operation's own answer, never
 /// read back from here. A UI-thread object of the window.</summary>
 public sealed class StatusBar
 {
@@ -39,7 +39,9 @@ public sealed class StatusBar
     private readonly TextBlock text;
     private readonly PathIcon icon;
     private readonly WorkingRing working;
+    private readonly Button caretButton;
     private readonly TextBlock caret;
+    private readonly Button indentButton;
     private readonly TextBlock indent;
     private readonly TextBlock language;
     private readonly Button lineSeparator;
@@ -51,14 +53,16 @@ public sealed class StatusBar
     /// anything else said takes the icon and the place away.</summary>
     private (string Text, StatusPlace? Place)? standing;
 
-    public StatusBar(Button message, TextBlock text, PathIcon icon, WorkingRing working, TextBlock caret, TextBlock indent, TextBlock language, Button lineSeparator,
-        TextBlock lineEnding, Button encoding, TextBlock encodingText)
+    public StatusBar(Button message, TextBlock text, PathIcon icon, WorkingRing working, Button caretButton, TextBlock caret, Button indentButton, TextBlock indent,
+        TextBlock language, Button lineSeparator, TextBlock lineEnding, Button encoding, TextBlock encodingText)
     {
         this.message = message;
         this.text = text;
         this.icon = icon;
         this.working = working;
+        this.caretButton = caretButton;
         this.caret = caret;
+        this.indentButton = indentButton;
         this.indent = indent;
         this.language = language;
         this.lineSeparator = lineSeparator;
@@ -155,8 +159,9 @@ public sealed class StatusBar
         text.Text = active is null ? where : string.Empty;
         ShowStorage(active);
         OpenDocument? textual = Textual(active);
+        indentButton.IsVisible = textual is not null;
         indent.Text = textual?.Indentation.Shown ?? "";
-        ToolTip.SetTip(indent, textual?.Indentation.Tip(textual.Language.Name));
+        ToolTip.SetTip(indentButton, textual?.Indentation.Tip(textual.Language.Name));
         ShowLanguage(languageLabel);
         ShowCaret(textual is null ? null : editor);
     }
@@ -183,6 +188,7 @@ public sealed class StatusBar
     /// <summary>The caret's line and column, the carets there are, or what is selected; nothing with no file shown.</summary>
     public void ShowCaret(CodeEditor? editor)
     {
+        caretButton.IsVisible = editor is not null;
         if (editor is null)
         {
             caret.Text = "";

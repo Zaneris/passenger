@@ -48,6 +48,8 @@ public sealed class EditorGroup : DockPanel
     private readonly ObservableCollection<EditorTab> tabs = [];
     private readonly Dictionary<OpenDocument, (SelectionSet Selections, Vector Scroll)> views = [];
     private readonly Border tabBar;
+    private readonly ItemsControl strip;
+    private readonly ScrollViewer stripView;
     private readonly Grid body;
     private HairlineDivider? divider;
     private Control? side;
@@ -69,7 +71,7 @@ public sealed class EditorGroup : DockPanel
         Editor = new CodeEditor { IsVisible = false };
         Gutter = new EditorGutter(Editor);
         Find = new FindBar { [DockProperty] = Dock.Top };
-        ItemsControl strip = new()
+        strip = new ItemsControl
         {
             ItemsSource = tabs,
             ItemsPanel = new FuncTemplate<Panel?>(() => new StackPanel { Orientation = Orientation.Horizontal }),
@@ -85,6 +87,9 @@ public sealed class EditorGroup : DockPanel
             // It says what is in force once its action ran, or was refused.
             FollowPreviewToggle();
         };
+        stripView = new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, Content = strip };
+        // A narrower strip may leave the active tab out of sight.
+        stripView.SizeChanged += (_, _) => RevealActive();
         tabBar = new Border
         {
             Classes = { "tabStrip" },
@@ -94,7 +99,7 @@ public sealed class EditorGroup : DockPanel
                 Children =
                 {
                     PreviewToggle,
-                    new ScrollViewer { HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Hidden, VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled, Content = strip },
+                    stripView,
                 },
             },
         };
@@ -317,6 +322,15 @@ public sealed class EditorGroup : DockPanel
     private Control PreviewOf(OpenDocument document) =>
         document.Asset is { } asset ? new AssetPreviewControl(asset) : new ReleaseNotesView(document, area.Browse);
 
+    /// <summary>The active tab scrolled into the strip's sight once it is laid out, however many tabs crowd the strip.</summary>
+    private void RevealActive() => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+    {
+        if (active is not null && strip.ContainerFromItem(active) is { } tab)
+        {
+            tab.BringIntoView();
+        }
+    }, Avalonia.Threading.DispatcherPriority.Loaded);
+
     /// <summary>Whether the editor shows the file, rather than a view of its own in the editor's place.</summary>
     private static bool InEditor(OpenDocument document) => document.Asset is null && !document.IsReleaseNotes;
 
@@ -351,6 +365,7 @@ public sealed class EditorGroup : DockPanel
         }
         active = tabs.First(t => t.Document == document);
         active.IsActive = true;
+        RevealActive();
         document.PropertyChanged += OnDocumentChanged;
         ClearPreview();
         if (document.Asset is not null || document.IsReleaseNotes)
@@ -480,6 +495,7 @@ public sealed class EditorGroup : DockPanel
                 tabBar.IsVisible = false;
                 banner.IsVisible = false;
                 tables?.Hide();
+                Side = null;
                 FollowMarkdown();
             }
         }

@@ -642,10 +642,28 @@ public sealed class OpenDocument : Observable
         Choose(raise: true);
     }
 
-    /// <summary>The indentation from the .editorconfig, else the file's own lines, else its language; raised as changed.</summary>
+    /// <summary>The indentation chosen for the file on the indent widget, over every other, until the file closes; null
+    /// to follow its .editorconfig, its own lines and its language.</summary>
+    public IndentOptions? ChosenIndent
+    {
+        get => chosenIndent;
+        set
+        {
+            chosenIndent = value;
+            Choose(raise: true);
+        }
+    }
+
+    private IndentOptions? chosenIndent;
+
+    /// <summary>The indentation the file has with none chosen.</summary>
+    public FileIndent Unchosen => FileIndent.Choose(Conventions, detected, Language.Indent);
+
+    /// <summary>The indentation chosen, else from the .editorconfig, else the file's own lines, else its language; raised as
+    /// changed.</summary>
     private FileIndent Choose(bool raise = false)
     {
-        FileIndent chosen = FileIndent.Choose(Conventions, detected, Language.Indent);
+        FileIndent chosen = FileIndent.Choose(Conventions, detected, Language.Indent, chosenIndent);
         if (raise && chosen != Indentation)
         {
             Indentation = chosen;

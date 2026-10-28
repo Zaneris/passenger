@@ -497,6 +497,53 @@ public sealed class FileColoursTests : FileColoursFolder
         window.Close();
     }
 
+    /// <summary>The files a solution keeps beside its code edit as their kinds: a .gitignore and an .editorconfig comment
+    /// a line with '#', the .editorconfig coloured as INI is; a solution filter is the JSON it is, coloured and folded;
+    /// and the status bar names a XAML file XAML and a project file MSBuild, not XML.</summary>
+    [AvaloniaFact]
+    public void An_ignore_file_an_editorconfig_and_a_solution_filter_edit_as_their_kinds_and_the_status_bar_names_XAML()
+    {
+        MainWindow window = Window();
+        CodeEditor editor = Open(window, ".gitignore", "bin/\nobj/\n");
+        editor.Focus();
+        editor.Selections = SelectionSet.Single(0);
+        Ui.Run(window, EditorActions.ToggleLineComment);
+        Assert.Equal("# bin/\nobj/\n", editor.Document.Snapshot.ToString());
+        Assert.Equal("Ignore", window.LanguageShown);
+
+        const string Config = "root = true\n\n[*.cs]\nindent_style = space\n";
+        editor = Open(window, "config/.editorconfig", Config);
+        editor.Focus();
+        Assert.Equal(TokenKind.Keyword, KindOf(editor, "indent_style"));
+        editor.Selections = SelectionSet.Single(Config.IndexOf("indent_style", StringComparison.Ordinal));
+        Ui.Run(window, EditorActions.ToggleLineComment);
+        Assert.Contains("\n# indent_style = space\n", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        Assert.Equal(TokenKind.Comment, KindOf(editor, "# indent_style = space"));
+        Assert.Equal("EditorConfig", window.LanguageShown);
+
+        editor = Open(window, "Shop.slnf", """
+            {
+              "solution": {
+                "path": "Shop.slnx",
+                "projects": [
+                  "src/Api/Api.csproj"
+                ]
+              }
+            }
+
+            """);
+        Assert.Equal("JSON", window.LanguageShown);
+        Assert.Equal(TokenKind.JsonKey, KindOf(editor, "\"solution\""));
+        Assert.Equal(TokenKind.String, KindOf(editor, "\"Shop.slnx\""));
+        Assert.True(editor.FoldRegions.Count >= 3, $"The solution filter has {editor.FoldRegions.Count} folds, where its object, its solution and its projects each fold");
+
+        Open(window, "Views/MainView.axaml", "<UserControl xmlns=\"https://github.com/avaloniaui\" />\n");
+        Assert.Equal("XAML", window.LanguageShown);
+        Open(window, "Shapes.csproj", Project);
+        Assert.Equal("MSBuild", window.LanguageShown);
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void Comment_with_line_comment_writes_each_languages_own_comment_and_block_comment_wraps_XML_in_its_own()
     {
