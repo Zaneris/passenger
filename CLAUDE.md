@@ -253,7 +253,8 @@ Projects in `src/`; `find_symbol` finds the rest:
   knows VSTest's object model.
 - **The rest.** `Packages` (every package change's one path; credentials only to their feed's host), `Workspace`
   (`SolutionEdits`/`ProjectEdits` change files as text, never `dotnet sln`/`add reference`), `Templates` (every `dotnet
-  new` through `ProjectTemplates`), `Updates` (only an installed copy updates itself; What's New from
+  new` through `ProjectTemplates`; a new service's container or Aspire set-up after Create through Add's own actions,
+  `MainWindow.ServiceSetup`), `Updates` (only an installed copy updates itself; What's New from
   `docs/release-notes/X.Y.Z.md`).
 - **MCP.** `PassengerTools` (every tool, run on the UI thread, answering with what its operation returned), `McpHost`
   (`--mcp FOLDER`, a window's socket, `--mcp-attach` through `McpProxy`), `HeadStart` (an `--mcp` folder's opening
