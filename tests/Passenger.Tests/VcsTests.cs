@@ -1440,6 +1440,64 @@ public sealed class VcsTests : IDisposable
     }
 
     [Gate]
+    /// <summary>A submodule whose own files alone changed (a file it does not track put in it) has nothing to commit here:
+    /// the Commit window lists it with no box, saying why, and leaves it out; a commit of it is refused, and Rollback leaves
+    /// it as it is, each saying why. Once its commit moves it is offered and committed, and its commit moved again is rolled
+    /// back by checking the recorded one out in it, the file it does not track kept.</summary>
+    [AvaloniaFact]
+    public void A_submodule_whose_own_files_alone_changed_is_not_offered_for_commit_and_one_whose_commit_moved_is()
+    {
+        string library = TestFolders.Create("git-library-");
+        File.WriteAllText(Path.Combine(library, "Lib.cs"), "class Lib { }\n");
+        TestGit.Init(library);
+        Git("-c", "protocol.file.allow=always", "submodule", "add", "-q", library, "lib");
+        Git("commit", "-q", "-m", "Lib");
+        string lib = Path.Combine(folder, "lib");
+        File.WriteAllText(Path.Combine(lib, "Notes.txt"), "notes\n");
+        File.WriteAllText(Path.Combine(folder, "Shop.cs"), Original.Replace("int count", "long count", StringComparison.Ordinal));
+        const string Why = "lib is a submodule: its own untracked files are committed in it, not here";
+
+        MainWindow window = Open();
+        window.Perform(AppActions.ShowCommit);
+        CommitView commit = window.CommitView;
+        Ui.Landed(() => commit.Rows.OfType<CommitRow>().Any(r => r.Change.Name == "lib"), "lib listed as changed");
+        CommitRow content = commit.Rows.OfType<CommitRow>().Single(r => r.Change.Name == "lib");
+        Assert.False(content.CanChoose, "lib, with only a file it does not track, is offered for commit");
+        Assert.Equal(Why, content.Change.Uncommittable);
+        Assert.Equal(["Shop.cs"], commit.Chosen.Select(c => c.Name));
+        Assert.Contains(commit.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == Why && t.IsEffectivelyVisible);
+
+        CommitResult refused = Ui.Landed(window.Vcs.CommitAsync([content.Change], "Lib's notes", amend: false, push: false), "the commit's answer");
+        Assert.Equal(Why, refused.Commit.Message);
+        VcsOutcome left = Ui.Landed(window.Vcs.RollbackAsync([content.Change]), "the rollback's answer");
+        Assert.Equal("lib was left as it is: a submodule's own changes are rolled back in it", left.Message);
+        Assert.True(File.Exists(Path.Combine(lib, "Notes.txt")), "Rollback deleted the submodule's own file");
+
+        Library("Lib's own");
+        Ui.Landed(() => commit.Rows.OfType<CommitRow>().Any(r => r.Change.Name == "lib" && r.CanChoose && r.IsChosen), "lib offered and chosen once its commit moved");
+        commit.Message = "Lib moved";
+        Assert.True(Ui.Landed(commit.CommitAsync(push: false), "the commit"), window.Status);
+        string moved = TestGit.Run(lib, "rev-parse", "HEAD").Trim();
+        Assert.Equal(moved, Git("rev-parse", "HEAD:lib").Trim());
+        Ui.Landed(() => commit.Rows.OfType<CommitRow>().SingleOrDefault() is { CanChoose: false, Change.Name: "lib" }, "lib alone listed again, its untracked file left");
+
+        Library("Again");
+        Ui.Landed(() => commit.Rows.OfType<CommitRow>().Any(r => r.Change.Name == "lib" && r.CanChoose), "lib offered once its commit moved again");
+        VcsOutcome back = Ui.Landed(window.Vcs.RollbackAsync([commit.Rows.OfType<CommitRow>().Single(r => r.Change.Name == "lib").Change]), "the rollback's answer");
+        Assert.True(back.Succeeded, back.Message);
+        Assert.Equal(moved, TestGit.Run(lib, "rev-parse", "HEAD").Trim());
+        Assert.True(File.Exists(Path.Combine(lib, "Notes.txt")), "Rollback deleted the submodule's own file");
+        window.Close();
+
+        // A commit in the submodule, whose clone has no author of its own, then the window told of it.
+        void Library(string message)
+        {
+            TestGit.Run(lib, "-c", "user.name=Passenger Tests", "-c", "user.email=tests@passenger.invalid", "commit", "-q", "--allow-empty", "-m", message);
+            Task reading = window.Vcs.RefreshAsync();
+            Ui.Landed(() => reading.IsCompleted, "Git read again");
+        }
+    }
+
     [AvaloniaFact]
     public void A_file_name_with_brackets_is_that_file_alone_to_roll_back_and_to_commit()
     {

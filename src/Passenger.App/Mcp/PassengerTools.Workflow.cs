@@ -39,7 +39,7 @@ public sealed partial class PassengerTools
         ConflictSides sides = vcs.Sides;
         VcsConflicts? conflicts = vcs.Conflicts.Count == 0 ? null : new VcsConflicts(sides.Description, sides.Yours, sides.Theirs,
             [.. vcs.Conflicts.Select(c => new VcsConflict(Relative(c.Path), sides.YoursHas(c) ? "modified" : "deleted", sides.TheirsHas(c) ? "modified" : "deleted"))]);
-        return new VcsStatus(vcs.Branch, [.. vcs.Changes.Select(c => new VcsChange(Relative(c.Path), c.Kind.ToString().ToLowerInvariant(), c.From is { } from ? Relative(from) : null))], conflicts);
+        return new VcsStatus(vcs.Branch, [.. vcs.Changes.Select(c => new VcsChange(Relative(c.Path), c.Kind.ToString().ToLowerInvariant(), c.From is { } from ? Relative(from) : null, c.Uncommittable))], conflicts);
     });
 
     [McpServerTool(Name = McpTools.VcsResolve, Title = "Resolve a conflict", Destructive = true), Description(
@@ -97,7 +97,7 @@ public sealed partial class PassengerTools
         await vcs.Opened;
         await vcs.RefreshAsync();
         IReadOnlyList<FileChange> chosen = paths is null
-            ? [.. vcs.Changes.Where(c => c.Kind is not ChangeKind.Unversioned)]
+            ? [.. vcs.Changes.Where(c => c.Kind is not ChangeKind.Unversioned && c.Uncommittable is null)]
             : [.. paths.Select(Resolve).Select(p => vcs.Changes.FirstOrDefault(c => c.Path == p) ?? throw new ArgumentException($"{Relative(p)} has no changes to commit"))];
         AgentCall.Say($"Committing {Plural.Of(chosen.Count, "file")}{(push ? " and pushing" : string.Empty)}");
         CommitResult result = await vcs.CommitAsync(chosen, message, amend, push);
@@ -546,7 +546,8 @@ public sealed record VcsConflicts(string Operation, string? Yours, string? Their
 /// <summary>A file in conflict, and whether yours and theirs modified or deleted it.</summary>
 public sealed record VcsConflict(string Path, string Yours, string Theirs);
 
-public sealed record VcsChange(string Path, string Kind, string? From);
+/// <summary>A changed file, and where it is a submodule whose own files alone changed, why it has nothing to commit here.</summary>
+public sealed record VcsChange(string Path, string Kind, string? From, string? Uncommittable = null);
 
 /// <summary>A commit as vcs_log lists it; with a path, what it did there.</summary>
 public sealed record VcsCommit(string Hash, string Subject, string Author, string Date, IReadOnlyList<string> Refs, IReadOnlyList<VcsChange>? Changes = null);

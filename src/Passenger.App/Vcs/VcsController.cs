@@ -562,6 +562,10 @@ public sealed class VcsController : IDisposable
         {
             return new CommitResult(Report(false, "No files are chosen to commit"), null, null);
         }
+        if (chosen.Select(c => c.Uncommittable).FirstOrDefault(why => why is not null) is { } uncommittable)
+        {
+            return new CommitResult(Report(false, uncommittable), null, null);
+        }
         if (message.Trim().Length == 0)
         {
             return new CommitResult(Report(false, "The commit message is empty"), null, null);

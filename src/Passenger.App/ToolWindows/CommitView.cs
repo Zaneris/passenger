@@ -14,9 +14,15 @@ namespace Passenger.App.ToolWindows;
 /// <summary>A changed file in the Commit window, and whether it goes into the next commit.</summary>
 public sealed class CommitRow(FileChange change, bool chosen) : Observable
 {
-    private bool isChosen = chosen;
+    private bool isChosen = chosen && IsChoosable(change);
 
     public FileChange Change { get; } = change;
+
+    /// <summary>Whether it has a box: a file in conflict is resolved first, and a submodule whose own files alone changed
+    /// has nothing to commit here.</summary>
+    public bool CanChoose => IsChoosable(Change);
+
+    private static bool IsChoosable(FileChange change) => change.Kind is not ChangeKind.Conflicted && change.Uncommittable is null;
 
     public bool IsChosen
     {
@@ -46,7 +52,7 @@ public sealed class CommitGroup(string name, IReadOnlyList<CommitRow> rows) : Ob
     private static bool? State(IReadOnlyList<CommitRow> rows)
     {
         int count = rows.Count(r => r.IsChosen);
-        return count == rows.Count ? true : count == 0 ? false : null;
+        return count == 0 ? false : count == rows.Count(r => r.CanChoose) ? true : null;
     }
 }
 
@@ -127,7 +133,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
             if (e.Key == Key.Space && e.KeyModifiers == KeyModifiers.None)
             {
                 // Space flips the chosen rows' boxes.
-                CommitRow[] selected = [.. list.SelectedItems?.OfType<CommitRow>().Where(r => r.Change.Kind is not ChangeKind.Conflicted) ?? []];
+                CommitRow[] selected = [.. list.SelectedItems?.OfType<CommitRow>().Where(r => r.CanChoose) ?? []];
                 bool to = !selected.All(r => r.IsChosen);
                 foreach (CommitRow row in selected)
                 {
@@ -321,7 +327,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
     {
         // A merge's commit takes in every change but those left out, which stay changes, once the person agrees.
         bool excluding = vcs.Merge.CommitsWhole && !Amend && vcs.Conflicts.Count == 0
-            && rows.OfType<CommitRow>().Any(r => !r.IsChosen && r.Change.Kind is not (ChangeKind.Unversioned or ChangeKind.Conflicted));
+            && rows.OfType<CommitRow>().Any(r => r.CanChoose && !r.IsChosen && r.Change.Kind is not ChangeKind.Unversioned);
         if (excluding && Confirm is { } ask
             && !await ask("Changes Excluded from Merge Commit", "Are you sure you want to exclude these changed files from merge commit?", "Commit"))
         {
@@ -352,8 +358,8 @@ public sealed class CommitView : DockPanel, IOwnKeys
         Dictionary<FileChange, CommitRow> kept = [];
         foreach (CommitRow row in rows.OfType<CommitRow>())
         {
-            // A conflicted file has no box: resolved, it is chosen as any change is.
-            if (row.Change.Kind is not ChangeKind.Conflicted)
+            // A row with no box (a conflicted file): once it has one, it is chosen as any change is.
+            if (row.CanChoose)
             {
                 chosen[row.Change.Path] = row.IsChosen;
             }
@@ -413,8 +419,8 @@ public sealed class CommitView : DockPanel, IOwnKeys
             {
                 return same;
             }
-            // A file in conflict never goes into a commit as it is.
-            CommitRow row = new(change, change.Kind is not ChangeKind.Conflicted && (chosen.TryGetValue(change.Path, out bool was) ? was : byDefault));
+            // A file in conflict never goes into a commit as it is, nor a submodule with nothing to commit here.
+            CommitRow row = new(change, chosen.TryGetValue(change.Path, out bool was) ? was : byDefault);
             row.PropertyChanged += (_, _) =>
             {
                 foreach (CommitGroup group in rows.OfType<CommitGroup>())
@@ -479,7 +485,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
                 return;
             }
             bool to = groupBox.IsChecked != false;
-            foreach (CommitRow file in group.Rows)
+            foreach (CommitRow file in group.Rows.Where(r => r.CanChoose))
             {
                 file.IsChosen = to;
             }
@@ -499,20 +505,21 @@ public sealed class CommitView : DockPanel, IOwnKeys
             if (item is CommitGroup group)
             {
                 bool conflicts = group.Name == MergeConflicts;
-                groupBox.IsVisible = !conflicts;
+                // A group none of whose files can be chosen (a submodule's own changes alone) has no box either.
+                bool boxed = !conflicts && group.Rows.Any(r => r.CanChoose);
+                groupBox.IsVisible = boxed;
                 groupBox.IsChecked = group.IsChosen;
                 groupName.Text = group.Name;
-                groupName.Margin = new Thickness(conflicts ? 26 : 0, 0, 0, 0);
+                groupName.Margin = new Thickness(boxed ? 0 : 26, 0, 0, 0);
                 groupName.Resource(TextBlock.ForegroundProperty, ref groupColour, conflicts ? TokenKeys.Vcs_File_Conflicted : null);
                 count.Text = Core.Plural.Of(group.Rows.Count, "file");
                 resolve.IsVisible = conflicts;
             }
             else if (item is CommitRow file)
             {
-                bool conflicted = file.Change.Kind is ChangeKind.Conflicted;
-                fileBox.IsVisible = !conflicted;
+                fileBox.IsVisible = file.CanChoose;
                 fileBox.IsChecked = file.IsChosen;
-                fileLine.Margin = new Thickness(conflicted ? 44 : 0, 0, 0, 0);
+                fileLine.Margin = new Thickness(file.CanChoose ? 0 : 44, 0, 0, 0);
                 ShowFile(fileLine, icon, name, folder, ref nameColour, file.Change, vcs.Repository);
             }
             setting = false;
@@ -572,8 +579,11 @@ public sealed class CommitView : DockPanel, IOwnKeys
         name.Text = change.Name;
         name.Resource(TextBlock.ForegroundProperty, ref colour, KindToken(change.Kind));
         name.TextDecorations = change.Kind is ChangeKind.Deleted ? TextDecorations.Strikethrough : null;
-        folder.Text = repository is not null ? Path.GetDirectoryName(repository.Relative(change.Path))?.Replace('\\', '/') ?? string.Empty : string.Empty;
-        ToolTip.SetTip(line, change.From is { } from ? $"{change.Kind}: {from} -> {change.Path}" : $"{change.Kind}: {change.Path}");
+        // A change with nothing to commit here says why in its folder's place.
+        folder.Text = change.Uncommittable ?? (repository is not null ? Path.GetDirectoryName(repository.Relative(change.Path))?.Replace('\\', '/') ?? string.Empty : string.Empty);
+        ToolTip.SetTip(line, change.From is { } from ? $"{change.Kind}: {from} -> {change.Path}"
+            : change.Uncommittable is { } why ? $"{change.Kind}: {change.Path}\n{why}"
+            : $"{change.Kind}: {change.Path}");
     }
 
     /// <summary>A changed file's colour by how it changed (modified, added, deleted, new).</summary>

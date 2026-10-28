@@ -19,10 +19,47 @@ public enum ChangeKind
     Conflicted,
 }
 
-/// <summary>A changed file of the working tree: its path (absolute), how it changed, and where it came from if renamed.</summary>
-public sealed record FileChange(string Path, ChangeKind Kind, string? From = null)
+/// <summary>A changed file of the working tree: its path (absolute), how it changed, where it came from if renamed, and
+/// what changed in it where it is a submodule.</summary>
+public sealed record FileChange(string Path, ChangeKind Kind, string? From = null, SubmoduleChange Submodule = SubmoduleChange.None)
 {
     public string Name => System.IO.Path.GetFileName(Path);
+
+    /// <summary>Why the change cannot be committed here, or null when it can: a submodule whose own files changed while its
+    /// commit did not, which only a commit in the submodule takes.</summary>
+    public string? Uncommittable => IsSubmoduleContent
+        ? $"{Name} is a submodule: its own {OwnChanges} are committed in it, not here"
+        : null;
+
+    private bool IsSubmoduleContent => Submodule.HasFlag(SubmoduleChange.Submodule) && !Submodule.HasFlag(SubmoduleChange.Commit) && Kind is ChangeKind.Modified;
+
+    private string OwnChanges => (Submodule.HasFlag(SubmoduleChange.Modified), Submodule.HasFlag(SubmoduleChange.Untracked)) switch
+    {
+        (true, true) => "modified and untracked files",
+        (true, false) => "modified files",
+        _ => "untracked files",
+    };
+}
+
+/// <summary>What changed in a submodule as its repository's status says (its "sub" field): the commit it is at, which a
+/// commit here records, and the files in its own working tree, which only a commit in it takes.</summary>
+[Flags]
+public enum SubmoduleChange
+{
+    /// <summary>Not a submodule.</summary>
+    None = 0,
+
+    /// <summary>A submodule.</summary>
+    Submodule = 1,
+
+    /// <summary>Its commit is not the one the last commit records, in the index or checked out.</summary>
+    Commit = 2,
+
+    /// <summary>Files it tracks changed.</summary>
+    Modified = 4,
+
+    /// <summary>Files it does not track are in it.</summary>
+    Untracked = 8,
 }
 
 /// <summary>A commit as the log lists it: its hash and parents, who made it and when, the branches and tags at it,
@@ -271,7 +308,7 @@ public sealed class Git
                 case '1':
                     // "1 XY sub mH mI mW hH hI path"
                     string[] ordinary = entry.Split(' ', 9);
-                    changes.Add(new FileChange(Full(ordinary[8]), Kind(ordinary[1])));
+                    changes.Add(new FileChange(Full(ordinary[8]), Kind(ordinary[1]), Submodule: Submodule(ordinary[1], ordinary[2])));
                     break;
                 case '2':
                     // "2 XY sub mH mI mW hH hI Xscore path", then the path it came from as its own entry.
@@ -297,6 +334,15 @@ public sealed class Git
 
         static ChangeKind Kind(string xy) =>
             xy.Contains('D') ? ChangeKind.Deleted : xy[0] == 'A' ? ChangeKind.Added : ChangeKind.Modified;
+
+        // "N..." for a file; "S" then C, M and U (or '.') for a submodule's commit, tracked and untracked changes. A
+        // commit the index holds that the last commit does not is a change of its commit too.
+        static SubmoduleChange Submodule(string xy, string sub) => sub is ['S', var commit, var modified, var untracked]
+            ? SubmoduleChange.Submodule
+                | (commit == 'C' || xy[0] != '.' ? SubmoduleChange.Commit : SubmoduleChange.None)
+                | (modified == 'M' ? SubmoduleChange.Modified : SubmoduleChange.None)
+                | (untracked == 'U' ? SubmoduleChange.Untracked : SubmoduleChange.None)
+            : SubmoduleChange.None;
 
         static bool Staged(string mode) => mode.Any(c => c != '0');
     }
@@ -1225,19 +1271,24 @@ public sealed class Git
     /// <summary>The branch moved to a commit: soft keeps the changes staged, mixed keeps them in the files, hard drops them.</summary>
     public Task<GitResult> ResetAsync(string hash, ResetMode mode) => RunAsync(Root, ["reset", $"--{mode.ToString().ToLowerInvariant()}", "--end-of-options", hash]);
 
-    /// <summary>Puts files back as the last commit has them (Rollback): an unversioned file is deleted, and one added to
-    /// the index but in no commit is taken out of the index and kept on disk, unversioned, since nothing else holds it.
-    /// A file another program holds is tried again (<see cref="Attempts"/>), and one it never lets go of is named in the
-    /// result, the rest rolled back all the same.</summary>
+    /// <summary>Puts files back as the last commit has them (Rollback): an unversioned file is deleted, one added to the
+    /// index but in no commit kept on disk, unversioned; a submodule whose commit alone changed is checked out at the one
+    /// recorded, one whose own files changed left to its repository. A file another program holds is tried again
+    /// (<see cref="Attempts"/>); one it never lets go of, and a submodule left, are named in the result.</summary>
     public async Task<GitResult> RollbackAsync(IReadOnlyList<FileChange> changes)
     {
-        string[] tracked = [.. changes.Where(c => c.Kind is not (ChangeKind.Unversioned or ChangeKind.Added)).SelectMany(c => c.From is { } from ? new[] { c.Path, from } : [c.Path]).Select(Relative)];
+        FileChange[] ownChanges = [.. changes.Where(c => c.Submodule.HasFlag(SubmoduleChange.Submodule) && c.Kind is ChangeKind.Modified
+            && (c.Submodule.HasFlag(SubmoduleChange.Modified) || !c.Submodule.HasFlag(SubmoduleChange.Commit)))];
+        changes = [.. changes.Except(ownChanges)];
+        FileChange[] restoring = [.. changes.Where(c => c.Kind is not (ChangeKind.Unversioned or ChangeKind.Added))];
+        string[] tracked = [.. restoring.SelectMany(c => c.From is { } from ? new[] { c.Path, from } : [c.Path]).Select(Relative)];
         string[] staged = [.. changes.Where(c => c.Kind is ChangeKind.Added).Select(c => Literal(Relative(c.Path)))];
-        GitResult restored = tracked.Length == 0 ? new GitResult(0, string.Empty, string.Empty) : await RestoreAsync(tracked);
+        bool submodules = restoring.Any(c => c.Submodule.HasFlag(SubmoduleChange.Submodule));
+        GitResult restored = tracked.Length == 0 ? new GitResult(0, string.Empty, string.Empty) : await RestoreAsync(tracked, submodules);
         // -f takes out a file changed again since it was added too, which --cached leaves on disk as it is now.
         GitResult unadded = staged.Length == 0 ? restored : await RunAsync(Root, ["rm", "--cached", "-q", "-f", "--ignore-unmatch", "--", .. staged]);
         restored = restored.Succeeded ? unadded : restored;
-        List<string> kept = [];
+        List<string> kept = [.. ownChanges.Select(c => $"{c.Name} was left as it is: a submodule's own changes are rolled back in it")];
         foreach (FileChange unversioned in changes.Where(c => c.Kind is ChangeKind.Unversioned))
         {
             if (await DeleteAsync(unversioned.Path) is { } refused)
@@ -1259,13 +1310,14 @@ public sealed class Git
 
     private static readonly TimeSpan Retry = TimeSpan.FromMilliseconds(500);
 
-    /// <summary>The files as the last commit has them, in the index and on disk. A failure is tried again whatever git
-    /// said, its words being in the person's language: restoring twice is the same as once.</summary>
-    private async Task<GitResult> RestoreAsync(string[] relative)
+    /// <summary>The files as the last commit has them, in the index and on disk, and with <paramref name="submodules"/> each
+    /// submodule among them checked out at the commit it records. A failure is tried again whatever git said, its words
+    /// being in the person's language: restoring twice is the same as once.</summary>
+    private async Task<GitResult> RestoreAsync(string[] relative, bool submodules)
     {
         for (int attempt = 1; ; attempt++)
         {
-            GitResult restored = await RunAsync(Root, ["restore", "--source=HEAD", "--staged", "--worktree", "--", .. relative.Select(Literal)]);
+            GitResult restored = await RunAsync(Root, ["restore", .. submodules ? new[] { "--recurse-submodules" } : [], "--source=HEAD", "--staged", "--worktree", "--", .. relative.Select(Literal)]);
             if (restored.Succeeded || attempt == Attempts)
             {
                 return restored;
