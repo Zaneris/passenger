@@ -193,8 +193,8 @@ public sealed partial class PassengerTools
     });
 
     [McpServerTool(Name = McpTools.ReplaceInFiles, Title = "Replace in Files", Destructive = true), Description(
-        "Replaces every match find_in_files finds (its text, options, scope and mask) with replacement, as Replace All does: an " +
-        "open file's as one undoable step, saved; a closed one's in its own encoding (UTF-8 where that cannot hold the " +
+        "Replaces every match find_in_files finds (its text, options, scope and mask) with replacement, as Replace All does, as " +
+        "one Undo step: an open file's saved; a closed one's in its own encoding (UTF-8 where that cannot hold the " +
         "replacement, as the answer says). A regex's replacement takes its groups ($1, ${name}). Returns how many matches in " +
         "which files, and each file left as it was with why.")]
     public Task<string> ReplaceInFiles(string text, string replacement, bool matchCase = false, bool wholeWords = false, bool regex = false,
@@ -219,6 +219,8 @@ public sealed partial class PassengerTools
             throw new InvalidOperationException($"More than {FileSearch.MostMatches - 1} matches: narrow the scope or the mask, as Replace in Files lists no more");
         }
         List<string> files = [.. found.Select(m => m.Path).Distinct()];
+        // The open files' saves are the replace's too: one change set of Local History with what it wrote.
+        using IDisposable? activity = window.LocalHistory?.During(FilesReplaced.Title(query, replacement));
         FilesReplaced done = await window.ReplaceInFilesAsync(query, replacement, searched);
         List<string> said = [.. done.Converted];
         foreach (OpenDocument open in Editors.Documents.Where(d => d.IsModified && files.Contains(d.Path)).ToList())

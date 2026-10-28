@@ -189,7 +189,7 @@ public partial class MainWindow
         string what = FilesReplaced.Count(asked.Found.Replaceable);
         string leaving = asked.Found.Stopped.Count == 0 ? string.Empty
             : $" Not replaced in {string.Join(", ", asked.Found.Stopped.Select(Path.GetFileName))}: {FileSearch.StoppedWhy}.";
-        if (await Confirm("Replace in Files", $"Replace {what} with '{asked.Replacement}'? An open file's change can be undone there; a closed file is written.{leaving}", "Replace All"))
+        if (await Confirm("Replace in Files", $"Replace {what} with '{asked.Replacement}'? A closed file is written; one Undo takes back every file's change.{leaving}", "Replace All"))
         {
             FilesReplaced done = await ReplaceInFilesAsync(asked.Query, asked.Replacement, asked.Found);
             IReadOnlyList<SearchMatch> replaced = done.Replaced(asked.Found.Matches);
@@ -199,12 +199,11 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Replaces a query's matches in the files Find in Files found them in, each searched off the UI thread first:
-    /// an open one as one undoable step changing only its matches, so its carets, folds and breakpoints stay put; a closed
-    /// one written in its own encoding (UTF-8 when that cannot hold the replacement, said of each), answered for once it has
-    /// landed. A file the system refuses (read-only, access denied, held past the save's wait), one the editor shows
-    /// read-only, one a regex ran too long in, or an open one edited while it was searched is left as it was and named with
-    /// why; the rest are replaced all the same.</summary>
+    /// <summary>Replaces a query's matches where Find in Files found them, as one command of Undo and one change set of Local
+    /// History named for it: an open file's matches alone, so its carets and folds stay put; a closed one in its encoding
+    /// (UTF-8 when that cannot hold the replacement, said), answered for once it has landed. A file refused (read-only on disk
+    /// or in the editor, access denied, held past the save's wait), one a regex ran too long in, or one edited while it was
+    /// searched is left as it was and named with why; the rest are replaced all the same.</summary>
     public async Task<FilesReplaced> ReplaceInFilesAsync(SearchQuery query, string replacement, FilesFound found)
     {
         SearchPattern pattern = SearchPattern.For(query, TextSearch.Apart);
@@ -227,38 +226,50 @@ public partial class MainWindow
         }
         List<FileSearch.Replacing> planned = await BackgroundWork.Run(() => files.Select(f => FileSearch.Plan(f.Path, f.Open, pattern, replacement)).ToList());
         List<(string Path, string? Note)> written = [];
-        foreach (FileSearch.Replacing plan in planned)
+        string name = FilesReplaced.Title(query, replacement);
+        using IDisposable? activity = session.LocalHistory?.During(name);
+        IReadOnlyList<(string Path, Exception Refused)> unlanded;
+        using (CommandHistory.Recording recording = Editors.Commands.Record(name))
         {
-            if (plan.Why is { } why)
+            foreach (FileSearch.Replacing plan in planned)
             {
-                refused.Add((plan.Path, why));
+                if (plan.Why is { } why)
+                {
+                    refused.Add((plan.Path, why));
+                }
+                else if (plan.Searched is { } searched)
+                {
+                    if (Editors.Find(plan.Path) is not { HoldsText: true } open || !ReferenceEquals(open.Text.Snapshot, searched))
+                    {
+                        refused.Add((plan.Path, "edited while it was searched"));
+                    }
+                    else if (plan.Edits.Count > 0)
+                    {
+                        open.Text.BreakUndoGroup();
+                        open.Text.Edit(plan.Edits, open.Selections, TextEditing.MapThrough(open.Selections, plan.Edits));
+                        open.Text.BreakUndoGroup();
+                    }
+                }
+                else if (plan is { Closed: { } file, After: { } after } && after != file.Text)
+                {
+                    try
+                    {
+                        recording.Watch(plan.Path);
+                        written.Add((plan.Path, FileText.Save(plan.Path, after, file.Encoding, file.HasBom, file.CrBreaks).Converted));
+                    }
+                    catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                    {
+                        refused.Add((plan.Path, FileSearch.Refusal(error)));
+                    }
+                }
             }
-            else if (plan.Searched is { } searched)
+            recording.TakeOpen();
+            unlanded = await EditorArea.LandedAsync(written.Select(w => w.Path), waiting => status.Text = waiting);
+            foreach ((string path, _) in unlanded)
             {
-                if (Editors.Find(plan.Path) is not { HoldsText: true } open || !ReferenceEquals(open.Text.Snapshot, searched))
-                {
-                    refused.Add((plan.Path, "edited while it was searched"));
-                }
-                else if (plan.Edits.Count > 0)
-                {
-                    open.Text.BreakUndoGroup();
-                    open.Text.Edit(plan.Edits, open.Selections, TextEditing.MapThrough(open.Selections, plan.Edits));
-                    open.Text.BreakUndoGroup();
-                }
-            }
-            else if (plan is { Closed: { } file, After: { } after } && after != file.Text)
-            {
-                try
-                {
-                    written.Add((plan.Path, FileText.Save(plan.Path, after, file.Encoding, file.HasBom, file.CrBreaks).Converted));
-                }
-                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-                {
-                    refused.Add((plan.Path, FileSearch.Refusal(error)));
-                }
+                recording.Unwritten(path);
             }
         }
-        IReadOnlyList<(string Path, Exception Refused)> unlanded = await EditorArea.LandedAsync(written.Select(w => w.Path), waiting => status.Text = waiting);
         refused.AddRange(unlanded.Select(u => (u.Path, FileSearch.Refusal(u.Refused))));
         return new FilesReplaced([.. written.Where(w => !unlanded.Any(u => u.Path == w.Path)).Select(w => w.Note).OfType<string>()], refused);
     }

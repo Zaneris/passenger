@@ -267,6 +267,88 @@ public sealed class FindInFilesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Replace All across an open file and closed ones is one command: one Undo, asked once, takes every file back,
+    /// on disk and in the editor, and one Redo makes it again; Local History keeps what it wrote as one change set named
+    /// for it, not a change of each file's own.</summary>
+    [AvaloniaFact]
+    public void Replace_all_across_open_and_closed_files_is_one_undo_and_one_change_set_named_for_it()
+    {
+        const string Named = "Replace 'count' with 'total'";
+        string alpha = Path.Combine(folder, "Alpha.cs");
+        string gamma = Path.Combine(folder, "Gamma.cs");
+        File.WriteAllText(gamma, "class Gamma { int count; }\n");
+        MainWindow window = Open();
+        window.OpenFile(Path.Combine(folder, "Beta.cs"));
+        Ui.Settle();
+        OpenDocument beta = window.EditorArea.Active!;
+        string before = beta.Text.Snapshot.ToString();
+        int asked = 0;
+        window.Confirm = (_, _, _) =>
+        {
+            asked++;
+            return Task.FromResult(true);
+        };
+        FindInFilesPopup popup = window.ShowFindInFiles(replace: true)!;
+        popup.Words = true;
+        Search(popup, "count");
+        popup.Replacement = "total";
+        popup.RequestReplace();
+        Ui.WaitFor(() => window.Status?.StartsWith("Replaced", StringComparison.Ordinal) == true, () => $"the replacement; the status says '{window.Status}'");
+        Assert.Equal("Replaced 4 matches in 3 files", window.Status);
+        Assert.Equal("class Alpha\n{\n    int total;\n}\n", File.ReadAllText(alpha));
+        Assert.Equal("class Gamma { int total; }\n", File.ReadAllText(gamma));
+        Assert.Equal(before.Replace("count", "total", StringComparison.Ordinal).Replace("Count", "total", StringComparison.Ordinal), beta.Text.Snapshot.ToString());
+        Ui.Press(window, "ESCAPE");
+
+        Assert.True(window.Perform(AppActions.ShowProjectHistory), "Show Project History did not run");
+        Passenger.App.History.HistoryTab history = window.LocalHistoryWindow.Shown!;
+        Ui.Landed(() => history.Rows.Any(r => r.Title == Named), "the replace's change set in Local History");
+        Assert.True(history.Rows.Count(r => r.Title == Named) == 1 && !history.Rows.Any(r => r.Title is "Modify Alpha.cs" or "Modify Gamma.cs"),
+            $"Local History lists the replace's files as [{string.Join(", ", history.Rows.Select(r => r.Title))}], not one change set named for it");
+
+        window.EditorArea.CodeEditor.Focus();
+        asked = 0;
+        Ui.Run(window, EditorActions.Undo);
+        Ui.WaitFor(() => File.ReadAllText(alpha).Contains("int count;", StringComparison.Ordinal) && beta.Text.Snapshot.ToString() == before,
+            () => $"one Undo to take the replace back in Alpha.cs and Beta.cs; Beta.cs reads '{beta.Text.Snapshot}', and the status says '{window.Status}'");
+        Assert.Equal(1, asked);
+        Assert.Equal("class Alpha\n{\n    int count;\n}\n", File.ReadAllText(alpha));
+        Assert.Equal("class Gamma { int count; }\n", File.ReadAllText(gamma));
+
+        Ui.Run(window, EditorActions.Redo);
+        Ui.WaitFor(() => File.ReadAllText(alpha).Contains("int total;", StringComparison.Ordinal) && beta.Text.Snapshot.ToString() != before,
+            () => $"one Redo to make the replace again in Alpha.cs and Beta.cs; the status says '{window.Status}'");
+        Assert.Equal(2, asked);
+        Assert.Equal("class Gamma { int total; }\n", File.ReadAllText(gamma));
+        Assert.Contains("void total()", beta.Text.Snapshot.ToString(), StringComparison.Ordinal);
+        window.Close();
+    }
+
+    /// <summary>An agent's replace_in_files is the same one command, its open file saved: one Undo in the window takes every
+    /// file back.</summary>
+    [AvaloniaFact]
+    public void An_agents_replace_in_files_is_one_undo_across_the_files_it_changed()
+    {
+        string alpha = Path.Combine(folder, "Alpha.cs");
+        MainWindow window = Open();
+        window.OpenFile(Path.Combine(folder, "Beta.cs"));
+        Ui.Settle();
+        OpenDocument beta = window.EditorArea.Active!;
+        string before = beta.Text.Snapshot.ToString();
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+
+        Task<string> replacing = new Passenger.App.Mcp.PassengerTools(window).ReplaceInFiles("count", "total", wholeWords: true);
+        Assert.Contains(Ui.Await(replacing, "replace_in_files' answer"), new[] { "Alpha.cs, Beta.cs", "Beta.cs, Alpha.cs" }.Select(files => $"Replaced 3 matches in 2 files: {files}"));
+        Assert.Contains("void total()", File.ReadAllText(Path.Combine(folder, "Beta.cs")), StringComparison.Ordinal);
+
+        window.EditorArea.CodeEditor.Focus();
+        Ui.Run(window, EditorActions.Undo);
+        Ui.WaitFor(() => File.ReadAllText(alpha).Contains("int count;", StringComparison.Ordinal) && beta.Text.Snapshot.ToString() == before,
+            () => $"one Undo to take the agent's replace back in Alpha.cs and Beta.cs; Beta.cs reads '{beta.Text.Snapshot}', and the status says '{window.Status}'");
+        Assert.Equal("class Alpha\n{\n    int count;\n}\n", File.ReadAllText(alpha));
+        window.Close();
+    }
+
     [Gate]
     [AvaloniaFact]
     public void A_regex_backtracking_without_end_in_a_file_is_said_to_stop_there_to_the_popup_and_an_agent_and_replace_all_leaves_that_file()

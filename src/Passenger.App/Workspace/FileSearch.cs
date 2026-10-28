@@ -30,6 +30,9 @@ public sealed record FilesFound(IReadOnlyList<SearchMatch> Matches, IReadOnlyLis
 /// each with why.</summary>
 public sealed record FilesReplaced(IReadOnlyList<string> Converted, IReadOnlyList<(string Path, string Why)> Refused)
 {
+    /// <summary>What a replace is named as one command of Undo and one change set of Local History.</summary>
+    public static string Title(SearchQuery query, string replacement) => $"Replace '{query.Text}' with '{replacement}'";
+
     /// <summary>The matches in files that were replaced, the refused files' left out.</summary>
     public IReadOnlyList<SearchMatch> Replaced(IEnumerable<SearchMatch> matches) => [.. matches.Where(m => !Refused.Any(r => r.Path == m.Path))];
 

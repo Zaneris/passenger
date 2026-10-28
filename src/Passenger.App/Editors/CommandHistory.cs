@@ -308,6 +308,7 @@ public sealed class CommandHistory
         private readonly Dictionary<string, TextSnapshot?> closed = [];
         private readonly List<(string From, string To)> moves = [];
         private readonly List<Part> parts = [];
+        private List<TextChange>? openTaken;
         private bool ended;
 
         internal Recording(CommandHistory history, EditorArea editors, string name)
@@ -324,12 +325,19 @@ public sealed class CommandHistory
         /// path it had as the command began, where its undo moves it back before putting its text there.</summary>
         public void Watch(string path)
         {
-            string began = Enumerable.Reverse(moves).Aggregate(path, (at, move) => PathNames.Moved(at, move.To, move.From));
+            string began = Began(path);
             if (!editors.Documents.Any(d => d.Path == path) && !closed.ContainsKey(began))
             {
                 closed[began] = File.Exists(path) && FileText.Load(path) is { } file ? TextSnapshot.From(file.Text) : null;
             }
         }
+
+        /// <summary>A file not open the command watched left out of it: its write never landed, so it changed nothing.</summary>
+        public void Unwritten(string path) => closed.Remove(Began(path));
+
+        /// <summary>What the command changed in the open files, taken as it stands now: what is typed later, while it waits
+        /// for its writes to files not open to land, is no part of it.</summary>
+        public void TakeOpen() => openTaken = OpenChanges();
 
         /// <summary>Something besides files the command changed, taken back and made again with them; the command is kept
         /// for it however few files it changed.</summary>
@@ -344,14 +352,7 @@ public sealed class CommandHistory
             ended = true;
             editors.Moved -= OnMoved;
             Command made = new(name, [], [.. moves]);
-            List<TextChange> texts = [];
-            foreach ((OpenDocument document, (string path, object? step, TextSnapshot text)) in open)
-            {
-                if (editors.Documents.Contains(document) && document.Text.NextUndo is { } now && now != step)
-                {
-                    texts.Add(new TextChange(document, path, text, document.Text.Snapshot, now));
-                }
-            }
+            List<TextChange> texts = openTaken ?? OpenChanges();
             List<Creation> created = [];
             foreach ((string path, TextSnapshot? before) in closed)
             {
@@ -375,5 +376,22 @@ public sealed class CommandHistory
         }
 
         private void OnMoved(object? sender, FileMove move) => moves.Add((move.From, move.To));
+
+        /// <summary>Where a file was as the command began, before the moves it made since.</summary>
+        private string Began(string path) => Enumerable.Reverse(moves).Aggregate(path, (at, move) => PathNames.Moved(at, move.To, move.From));
+
+        /// <summary>Each open file the command changed: its text before and now, and the undo step that made it now.</summary>
+        private List<TextChange> OpenChanges()
+        {
+            List<TextChange> texts = [];
+            foreach ((OpenDocument document, (string path, object? step, TextSnapshot text)) in open)
+            {
+                if (editors.Documents.Contains(document) && document.Text.NextUndo is { } now && now != step)
+                {
+                    texts.Add(new TextChange(document, path, text, document.Text.Snapshot, now));
+                }
+            }
+            return texts;
+        }
     }
 }
