@@ -2078,12 +2078,18 @@ public static class TestGit
     public static string Run(string folder, params string[] arguments) =>
         Ui.AwaitPumped(Waiting.Apart(() => RunAsync(folder, arguments)), $"git {string.Join(' ', arguments)} in {folder}", Limit + TestFolders.Spare);
 
-    public static async Task<string> RunAsync(string folder, params string[] arguments)
+    /// <summary><see cref="Run"/> with what git reads given it (fast-import's stream).</summary>
+    public static string Feed(string folder, string input, params string[] arguments) =>
+        Ui.AwaitPumped(Waiting.Apart(() => RunAsync(folder, arguments, input)), $"git {string.Join(' ', arguments)} in {folder}", Limit + TestFolders.Spare);
+
+    public static Task<string> RunAsync(string folder, params string[] arguments) => RunAsync(folder, arguments, null);
+
+    private static async Task<string> RunAsync(string folder, string[] arguments, string? input)
     {
         Passenger.Core.ChildResult result;
         try
         {
-            result = await Passenger.Core.ChildProcesses.RunAsync(Passenger.Core.ChildProcesses.Command("git", arguments, folder), limit: Limit.Scaled());
+            result = await Passenger.Core.ChildProcesses.RunAsync(Passenger.Core.ChildProcesses.Command("git", arguments, folder), input, limit: Limit.Scaled());
         }
         catch (TimeoutException hung)
         {

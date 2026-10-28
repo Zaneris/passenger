@@ -941,6 +941,37 @@ public sealed class VcsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A click on the annotation of a line last changed by a commit older than the newest 2000, which the Git
+    /// window's log reads, chooses that commit all the same: the log is read down to it.</summary>
+    [AvaloniaFact]
+    public void A_click_on_an_annotation_chooses_its_commit_though_it_is_older_than_the_newest_2000_the_log_reads()
+    {
+        string first = Git("rev-parse", "HEAD").Trim();
+        // 2100 commits that change no file, on top of the first, made by one git.
+        System.Text.StringBuilder stream = new();
+        for (int i = 1; i <= 2100; i++)
+        {
+            string subject = $"Step {i}";
+            stream.Append(System.Globalization.CultureInfo.InvariantCulture,
+                $"commit refs/heads/main\ncommitter Passenger Tests <tests@passenger.invalid> {1_700_000_000 + i} +0000\ndata {subject.Length}\n{subject}\n");
+            stream.Append(i == 1 ? $"from {first}\n\n" : "\n");
+        }
+        TestGit.Feed(folder, stream.ToString(), "fast-import", "--quiet");
+        Assert.Equal("2101", Git("rev-list", "--count", "HEAD").Trim());
+
+        MainWindow window = Open();
+        Passenger.App.Workspace.OpenDocument shop = window.EditorArea.Active!;
+        Task annotating = window.ToggleAnnotationsAsync(shop);
+        Ui.Landed(() => annotating.IsCompleted, "the blame");
+        Assert.Equal(first, window.Vcs.BlameOf(shop)![0].Hash);
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.Click(editor, new Point(10, (editor.LineHeight / 2) - editor.ScrollOffset.Y), settle: false);
+        Ui.Settle();
+        Assert.True(window.GitLog.Selected?.Hash == first,
+            $"The click chose no commit older than the log's newest 2000: {window.GitLog.Rows.Count} commits were read and {window.GitLog.Selected?.Subject ?? "none"} chosen, not First, the 2101st");
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void Annotations_opened_and_closed_again_and_again_blame_the_file_once_for_each_pause_in_typing()
     {

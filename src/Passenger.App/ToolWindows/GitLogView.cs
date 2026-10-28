@@ -42,6 +42,10 @@ public sealed class GitLogView : DockPanel, IOwnKeys
     private bool stale = true;
     private int loads;
 
+    /// <summary>How many commits the Log reads: the newest <see cref="Git.LogLength"/>, more once a commit further down is
+    /// asked for (a blame's), kept until another folder's working tree is followed.</summary>
+    private int most = Git.LogLength;
+
     /// <summary>How many times the log has been read, which a save never adds to.</summary>
     public int Loads => loads;
 
@@ -244,6 +248,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         Branches?.Bind(next);
         (BranchFilter, BranchFilterName) = (null, null);
         branchFilter.IsVisible = false;
+        most = Git.LogLength;
         onHistoryChanged(this, EventArgs.Empty);
     }
 
@@ -281,11 +286,18 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         set => filter.Text = value;
     }
 
-    /// <summary>Chooses the commit with this hash, reading the log first if it has not been.</summary>
+    /// <summary>Chooses the commit with this hash, reading the log first if it has not been, and down to the commit when it
+    /// is older than those read.</summary>
     public async Task SelectHashAsync(string hash)
     {
         if (!all.Any(r => r.Commit.Hash == hash))
         {
+            await LoadAsync();
+        }
+        if (!all.Any(r => r.Commit.Hash == hash) && Scope is null && Range is null && vcs.Repository is { } repository
+            && await repository.LogDepthAsync(hash, BranchFilter is { } branch ? [branch] : null) is int depth && depth > most)
+        {
+            most = depth;
             await LoadAsync();
         }
         FilterText = string.Empty;
@@ -320,8 +332,8 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         IReadOnlyList<CommitInfo> commits = repository is null ? []
             : Scope is not null ? [.. history.Select(h => h.Commit)]
             : Range is { } range ? await repository.LogAsync(revisions: [$"{range.FromRef}..{range.ToRef}"])
-            : BranchFilter is { } branch ? await repository.LogAsync(revisions: [branch])
-            : await repository.LogAsync();
+            : BranchFilter is { } branch ? await repository.LogAsync(most, [branch])
+            : await repository.LogAsync(most);
         IReadOnlyList<GraphRow> laid = await BackgroundWork.Run(() => Scope is null ? CommitGraph.Layout(commits) : CommitGraph.Line(commits));
         if (load != loads)
         {

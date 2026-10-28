@@ -561,17 +561,32 @@ public sealed class Git
     /// most this many; or, given <paramref name="revisions"/>, theirs alone (a branch the log is filtered to,
     /// "main..feature" for the commits of feature main lacks). Not --all, which takes in the stash's own commits (and
     /// notes'). Read and parsed off the caller's thread.</summary>
-    public Task<IReadOnlyList<CommitInfo>> LogAsync(int most = 2000, IReadOnlyList<string>? revisions = null)
+    public Task<IReadOnlyList<CommitInfo>> LogAsync(int most = LogLength, IReadOnlyList<string>? revisions = null)
     {
-        // An unborn HEAD (a new repository, an orphan branch) is left out rather than failing the whole log.
-        string[] which = revisions is null ? ["--branches", "--remotes", "--tags", "--ignore-missing", "HEAD"] : ["--end-of-options", .. revisions];
-        string[] arguments = ["log", "--topo-order", $"--max-count={most}", CommitFormat, .. which, "--"];
+        string[] arguments = ["log", "--topo-order", $"--max-count={most}", CommitFormat, .. LogRevisions(revisions), "--"];
         return BackgroundWork.Run<IReadOnlyList<CommitInfo>>(async () =>
         {
             using GitOutput log = await OutputOfAsync(Root, arguments);
             // A branch with no commits yet has no history to read.
             return log.Succeeded ? Commits(log.Bytes) : [];
         });
+    }
+
+    /// <summary>How many commits the log reads unless asked for more.</summary>
+    public const int LogLength = 2000;
+
+    /// <summary>What the log is of: every branch, remote and tag and HEAD, or the revisions given.</summary>
+    private static string[] LogRevisions(IReadOnlyList<string>? revisions) =>
+        // An unborn HEAD (a new repository, an orphan branch) is left out rather than failing the whole log.
+        revisions is null ? ["--branches", "--remotes", "--tags", "--ignore-missing", "HEAD"] : ["--end-of-options", .. revisions];
+
+    /// <summary>How many commits <see cref="LogAsync"/> reads to be sure of reaching a commit: those of its log that are
+    /// not in the commit's history, every one of which may come before it, and the commit. Null where git does not have
+    /// the commit.</summary>
+    public async Task<int?> LogDepthAsync(string hash, IReadOnlyList<string>? revisions = null)
+    {
+        GitResult above = await RunAsync(Root, ["rev-list", "--count", .. LogRevisions(revisions), $"^{hash}", "--"], answers: [NotThere]);
+        return above.Succeeded && int.TryParse(above.Output.Trim(), System.Globalization.CultureInfo.InvariantCulture, out int count) ? count + 1 : null;
     }
 
     /// <summary>The commit HEAD names, as the log reads it, or null before the first commit.</summary>
