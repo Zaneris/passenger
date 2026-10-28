@@ -174,6 +174,23 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
         Assert.True((await Evaluate(host, frame, "unsignedNative")).Value == "9", "unsignedNative = 9 left the program's unsignedNative as it was");
     }
 
+    /// <summary>A float cast to an integer it does not fit answers what the program's runtime makes of the cast, as Reading's
+    /// casts holds it: the nearest value the integer holds, a type narrower than an int cut as that runtime's version cuts it.</summary>
+    [Fact]
+    public async Task A_float_cast_to_an_integer_it_does_not_fit_answers_what_the_programs_runtime_makes()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        int frame = await StoppedInReadingAsync(host);
+
+        string[] casts = ["(int)huge", "(int)-huge", "(uint)negOne", "(uint)(d300 * 1e8)", "(byte)(d300 * 1e8)", "(sbyte)-d300", "(ushort)(negOne * -70000)", "(nint)huge"];
+        for (int cast = 0; cast < casts.Length; cast++)
+        {
+            string evaluated = (await Evaluate(host, frame, casts[cast])).Value;
+            string run = (await Evaluate(host, frame, $"casts[{cast}]")).Value;
+            Assert.True(run == $"\"{evaluated}\"", $"{casts[cast]} evaluated to {evaluated}, where the program's runtime makes {run}");
+        }
+    }
+
     private static int Line(string code) => Debuggees.Line("PassengerCases", code);
 
     /// <summary>PassengerCases launched and stopped in Reading.Run once its rounds are done; the top frame.</summary>

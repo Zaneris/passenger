@@ -9,6 +9,10 @@ internal sealed class CilValue
     /// program.</summary>
     public static int PointerSize { get; set; } = IntPtr.Size;
 
+    /// <summary>The major version of the debuggee's runtime, its CoreLib's, set when CoreLib loads: how its numbers convert
+    /// follows it.</summary>
+    public static int RuntimeVersion { get; set; } = Environment.Version.Major;
+
     private CilValue(object? value, ICorDebugValue? corValue, ICilLocation? location = null, ICilLocation? sourceLocation = null, bool inBox = false)
     {
         Value = value;

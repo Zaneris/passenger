@@ -138,6 +138,7 @@ public partial class ManagedDebugger
         if (moduleName is "System.Private.CoreLib.dll")
         {
             Passenger.Debugger.ExpressionEvaluator.Cil.CilValue.PointerSize = metadataReader.PointerSize;
+            Passenger.Debugger.ExpressionEvaluator.Cil.CilValue.RuntimeVersion = metadataReader.PeMetadataReader.GetAssemblyDefinition().Version.Major;
             // Evaluations call methods on primitives through their value classes.
             MapRuntimePrimitiveTypesToCorDebugClass(corModule);
             // Made with CoreLib, which loads before any stop.

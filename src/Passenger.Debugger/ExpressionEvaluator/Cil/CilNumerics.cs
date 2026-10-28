@@ -162,18 +162,22 @@ internal static class CilNumerics
         _ => throw new NotSupportedException($"Conditional branch '{op}' is not supported")
     };
 
-    /// <summary>A conv instruction. A checked one (conv.ovf) reads an integer source as signed, and one ending .un as
-    /// unsigned, each as wide as it is on the stack; a floating-point source is its value either way.</summary>
-    public static CilValue Convert(ILOpCode op, CilValue value)
+    /// <summary>A conv instruction, as the program's runtime runs it. A checked one (conv.ovf) reads an integer source as
+    /// signed, and one ending .un as unsigned, each as wide as it is on the stack; a floating-point source is its value
+    /// either way.</summary>
+    public static CilValue Convert(ILOpCode op, CilValue value) => Convert(op, value, CilValue.PointerSize, CilValue.RuntimeVersion);
+
+    /// <summary>A conv instruction run by a program whose native integers are <paramref name="pointerSize"/> bytes wide,
+    /// on .NET <paramref name="runtimeVersion"/>.</summary>
+    internal static CilValue Convert(ILOpCode op, CilValue value, int pointerSize, int runtimeVersion)
     {
+        bool wide = pointerSize == 8;
         if (value.Value is float or double)
         {
-            return ConvertFloat(op, value.AsFloat());
+            return ConvertFloat(op, value.AsFloat(), wide, runtimeVersion);
         }
         long signed = value.AsInt64();
         ulong unsigned = value.AsUInt64();
-        // The program's native integers, which need not be as wide as the debugger's own.
-        bool wide = CilValue.PointerSize == 8;
         return op switch
         {
             ILOpCode.Conv_i1 => CilValue.FromPrimitive((int)unchecked((sbyte)signed)),
@@ -213,25 +217,28 @@ internal static class CilNumerics
         };
     }
 
-    private static CilValue ConvertFloat(ILOpCode op, double value)
+    /// <summary>A floating-point value to an integer, as .NET 9 and later convert it: one out of the target's range is the
+    /// nearest it holds, and NaN 0. A type narrower than an int takes its own range's nearest from .NET 11, and before
+    /// it an int's nearest cut to its bits (a runtime before .NET 9, which leaves the result to the processor, is taken as
+    /// .NET 9). A checked conversion throws as the runtime's does, whatever its version.</summary>
+    private static CilValue ConvertFloat(ILOpCode op, double value, bool wide, int runtimeVersion)
     {
-        long signed = unchecked((long)value);
-        ulong unsigned = unchecked((ulong)value);
-        bool wide = CilValue.PointerSize == 8;
+        bool ownRange = runtimeVersion >= 11;
+        int whole = (int)Nearest(value, int.MinValue, int.MaxValue);
         return op switch
         {
-            ILOpCode.Conv_i1 => CilValue.FromPrimitive((int)unchecked((sbyte)signed)),
-            ILOpCode.Conv_u1 => CilValue.FromPrimitive((int)unchecked((byte)signed)),
-            ILOpCode.Conv_i2 => CilValue.FromPrimitive((int)unchecked((short)signed)),
-            ILOpCode.Conv_u2 => CilValue.FromPrimitive((int)unchecked((ushort)signed)),
-            ILOpCode.Conv_i4 => CilValue.FromPrimitive(unchecked((int)signed)),
-            ILOpCode.Conv_u4 => CilValue.FromPrimitive(unchecked((uint)signed)),
-            ILOpCode.Conv_i8 => CilValue.FromPrimitive(signed),
-            ILOpCode.Conv_u8 => CilValue.FromPrimitive(unsigned),
+            ILOpCode.Conv_i1 => CilValue.FromPrimitive(ownRange ? (int)Nearest(value, sbyte.MinValue, sbyte.MaxValue) : unchecked((sbyte)whole)),
+            ILOpCode.Conv_u1 => CilValue.FromPrimitive(ownRange ? (int)Nearest(value, byte.MinValue, byte.MaxValue) : unchecked((byte)whole)),
+            ILOpCode.Conv_i2 => CilValue.FromPrimitive(ownRange ? (int)Nearest(value, short.MinValue, short.MaxValue) : unchecked((short)whole)),
+            ILOpCode.Conv_u2 => CilValue.FromPrimitive(ownRange ? (int)Nearest(value, ushort.MinValue, ushort.MaxValue) : unchecked((ushort)whole)),
+            ILOpCode.Conv_i4 => CilValue.FromPrimitive(whole),
+            ILOpCode.Conv_u4 => CilValue.FromPrimitive((uint)Nearest(value, uint.MinValue, uint.MaxValue)),
+            ILOpCode.Conv_i8 => CilValue.FromPrimitive(Nearest(value, long.MinValue, long.MaxValue)),
+            ILOpCode.Conv_u8 => CilValue.FromPrimitive(NearestUnsigned(value)),
             ILOpCode.Conv_r4 => CilValue.FromPrimitive((float)value),
             ILOpCode.Conv_r8 or ILOpCode.Conv_r_un => CilValue.FromPrimitive(value),
-            ILOpCode.Conv_i => wide ? CilValue.FromPrimitive(signed) : CilValue.FromPrimitive(unchecked((int)signed)),
-            ILOpCode.Conv_u => wide ? CilValue.FromPrimitive(unsigned) : CilValue.FromPrimitive(unchecked((uint)signed)),
+            ILOpCode.Conv_i => wide ? CilValue.FromPrimitive(Nearest(value, long.MinValue, long.MaxValue)) : CilValue.FromPrimitive(whole),
+            ILOpCode.Conv_u => wide ? CilValue.FromPrimitive(NearestUnsigned(value)) : CilValue.FromPrimitive((uint)Nearest(value, uint.MinValue, uint.MaxValue)),
             ILOpCode.Conv_ovf_i1 or ILOpCode.Conv_ovf_i1_un => CilValue.FromPrimitive((int)checked((sbyte)value)),
             ILOpCode.Conv_ovf_u1 or ILOpCode.Conv_ovf_u1_un => CilValue.FromPrimitive((int)checked((byte)value)),
             ILOpCode.Conv_ovf_i2 or ILOpCode.Conv_ovf_i2_un => CilValue.FromPrimitive((int)checked((short)value)),
@@ -245,4 +252,12 @@ internal static class CilNumerics
             _ => throw new NotSupportedException($"Conversion '{op}' is not supported")
         };
     }
+
+    /// <summary>The integer from minimum to maximum nearest a value's whole part; 0 for NaN.</summary>
+    private static long Nearest(double value, long minimum, long maximum) =>
+        double.IsNaN(value) ? 0 : value <= minimum ? minimum : value >= maximum ? maximum : (long)value;
+
+    /// <summary>The ulong nearest a value's whole part; 0 for NaN.</summary>
+    private static ulong NearestUnsigned(double value) =>
+        double.IsNaN(value) || value <= 0 ? 0 : value >= ulong.MaxValue ? ulong.MaxValue : (ulong)value;
 }
