@@ -863,6 +863,47 @@ public sealed class VcsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Update Project is one of Git's changes to the tree: a checkout asked for while its pull waits on the remote
+    /// (as the branches' Checkout asks) is refused as Git still busy, leaving the branch where it was, and the update lands.</summary>
+    [AvaloniaFact]
+    public void A_checkout_asked_for_while_update_project_pulls_is_refused_as_git_busy_and_the_update_lands()
+    {
+        string clone = TestFolders.Create("git-clone-");
+        Git("clone", "-q", "-c", "core.autocrlf=false", folder, clone);
+        TestGit.Run(clone, "branch", "feature");
+        File.WriteAllText(Path.Combine(folder, "Shop.cs"), Original.Replace("int count", "long count", StringComparison.Ordinal));
+        Git("commit", "-q", "-am", "Long");
+        // The remote's side of the pull waits for go, a minute at most, so the update is surely under way while the test acts.
+        string pulling = Path.Combine(clone, ".git", "pulling");
+        string go = Path.Combine(clone, ".git", "go");
+        TestGit.Run(clone, "config", "remote.origin.uploadpack",
+            $"touch '{Unix(pulling)}'; i=0; while [ ! -f '{Unix(go)}' ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i + 1)); done; git-upload-pack");
+
+        MainWindow window = Ui.OpenFolder(clone);
+        window.OpenFile(Path.Combine(clone, "Shop.cs"));
+        Ui.Settle();
+        List<string> said = [];
+        using IDisposable following = Ui.FollowStatus(window, said);
+        window.Perform(AppActions.UpdateProject);
+        VcsOutcome checkout;
+        try
+        {
+            Ui.PumpUntil(() => File.Exists(pulling), "the update's pull to reach the remote");
+            checkout = Ui.AwaitPumped(window.Vcs.CheckoutAsync("feature"), "the checkout asked for during the update");
+        }
+        finally
+        {
+            File.WriteAllText(go, string.Empty);
+        }
+        Assert.True(checkout is { Succeeded: false, Message: "Git is still busy with the last change" },
+            $"A checkout asked for while Update Project pulled was answered: {checkout.Message}");
+        Assert.Contains("Git is still busy with the last change", said);
+        Ui.Landed(() => Text(window).Contains("long count", StringComparison.Ordinal), "the upstream's change in the open file");
+        Ui.Landed(() => window.Status?.StartsWith("Updated", StringComparison.Ordinal) == true, "the update's end in the status bar");
+        Assert.Equal("main", TestGit.Run(clone, "branch", "--show-current").Trim());
+        window.Close();
+    }
+
     [Gate]
     [AvaloniaFact]
     public void Annotations_name_each_lines_commit_mark_a_typed_line_and_a_click_chooses_the_commit()

@@ -123,8 +123,8 @@ public sealed class VcsController : IDisposable
     /// it returns them in (a commit made, a push refused and git's reason).</summary>
     public event EventHandler<string>? Message;
 
-    /// <summary>A commit, a rollback, a stash or a change of branch is running. Another is refused until it ends, since
-    /// git's index lock would fail it halfway (a double-click on Commit).</summary>
+    /// <summary>A commit, an update, a rollback, a stash or a change of branch is running. Another is refused until it
+    /// ends, since git's index lock would fail it halfway (a double-click on Commit).</summary>
     public bool IsBusy { get; private set; }
 
     /// <summary>Raised when <see cref="IsBusy"/> changes, for the buttons that start one.</summary>
@@ -618,7 +618,8 @@ public sealed class VcsController : IDisposable
         return Report(pushed.Succeeded, pushed.Succeeded ? $"Pushed {Branch}" : $"Push failed: {pushed.Message}");
     }
 
-    /// <summary>Update Project: the upstream's commits brought in, then the open files and Git read again.</summary>
+    /// <summary>Update Project: the upstream's commits brought in, then the open files and Git read again; one of Git's
+    /// changes to the tree, refused while another runs and refusing others until it ends.</summary>
     public async Task<VcsOutcome> UpdateAsync()
     {
         UiThread.Check();
@@ -635,20 +636,23 @@ public sealed class VcsController : IDisposable
             return Report(false, UnderWay(AppActions.UpdateProject));
         }
         using Working? held = work;
-        if (await SavedFirstAsync(work) is { } unsaved)
+        return await OneAtATimeAsync(async () =>
         {
-            return Report(false, unsaved);
-        }
-        // Named until Git is read again, so the folder watcher has heard of what it changed.
-        using IDisposable? named = Activity?.Invoke("Update from VCS");
-        GitResult pulled = await repository.PullAsync();
-        ReloadOpenFiles();
-        await RefreshAsync();
-        if (Conflicted(Merge.Operation is MergeOperation.Rebase ? "Rebase stopped due to conflicts" : "Merged with conflicts") is { } stopped)
-        {
-            return stopped;
-        }
-        return Report(pulled.Succeeded, pulled.Succeeded ? Summary(pulled.Output, "Updated") : $"Update failed: {pulled.Message}");
+            if (await SavedFirstAsync(work) is { } unsaved)
+            {
+                return Report(false, unsaved);
+            }
+            // Named until Git is read again, so the folder watcher has heard of what it changed.
+            using IDisposable? named = Activity?.Invoke("Update from VCS");
+            GitResult pulled = await repository.PullAsync();
+            ReloadOpenFiles();
+            await RefreshAsync();
+            if (Conflicted(Merge.Operation is MergeOperation.Rebase ? "Rebase stopped due to conflicts" : "Merged with conflicts") is { } stopped)
+            {
+                return stopped;
+            }
+            return Report(pulled.Succeeded, pulled.Succeeded ? Summary(pulled.Output, "Updated") : $"Update failed: {pulled.Message}");
+        }, refused => refused);
     }
 
     /// <summary>After an operation that can stop for conflicts: when it did, what it came to, told to the status bar
