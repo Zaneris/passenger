@@ -15,6 +15,7 @@ namespace Passenger.Tests;
 /// <summary>About Passenger, naming the version, the commit and the runtime, and the licence and notices the app
 /// carries beside it: Passenger's own licence, and every package it carries (the app's, the debugger's and Roslyn's
 /// server's) with its licence's text.</summary>
+[Gate]
 public sealed partial class AboutTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("about-");

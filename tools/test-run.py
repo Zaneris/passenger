@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""The whole suite on one machine as several test processes at once, then what must run alone (`just test`).
+"""The suite, or one lane of it, as several test processes at once, then what must run alone (`just test`).
 
 1. Every class outside the Alone collection, dealt to N processes, since one runs its window tests one at a time: by its
-   seconds (the most any system took in TestTimes.json, else its budget), the heaviest first, each to the lightest
-   process so far. The classes run beside the window tests are dealt apart, their heaviest hand to the lightest window
-   hand; the container engine's go to one process together (LANES). Limits are scaled by SIDE_BY_SIDE_SCALE.
-2. The Alone classes in one process once the first phase has ended, so nothing runs beside them.
-
-Results go to artifacts/test-results/local/ (each process's .trx and console log); the failures are listed at the end.
+   seconds (the most any system took in TestTimes.json, else its budget; its share for one partly in the lane), the
+   heaviest first, each to the lightest process so far. The classes run beside the window tests (the unit tests too) are
+   dealt apart, their heaviest hand to the lightest window hand; the container engine's go to one process together
+   (TOGETHER). Limits are scaled by SIDE_BY_SIDE_SCALE.
+2. The Alone classes in one process once the first phase has ended, so nothing runs beside them. Results go to
+   artifacts/test-results/local/ (each process's .trx and console log); the failures are listed at the end.
 """
 import argparse
 import glob
@@ -19,8 +19,7 @@ import shutil
 import subprocess
 import sys
 import time
-import xml.etree.ElementTree as ElementTree
-from xml.sax.saxutils import escape
+from collections import Counter
 
 sys.dont_write_bytecode = True
 _spec = importlib.util.spec_from_file_location("test_shards", os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -32,6 +31,7 @@ trx = shards.trx
 ROOT = shards.ROOT
 PROJECT = shards.PROJECT
 ASSEMBLY = os.path.join(ROOT, "artifacts", "bin", "Passenger.Tests", "debug", "Passenger.Tests.dll")
+UNIT_ASSEMBLY = os.path.join(ROOT, "artifacts", "bin", "Passenger.UnitTests", "debug", "Passenger.UnitTests.dll")
 RESULTS = os.path.join(ROOT, "artifacts", "test-results", "local")
 SYSTEM = {"Darwin": "macOS", "Windows": "Windows", "Linux": "Linux"}.get(platform.system(), "Linux")
 TIME_SCALE = "PASSENGER_TEST_TIME_SCALE"
@@ -42,26 +42,31 @@ SIDE_BY_SIDE_SCALE = "1.5"
 HANG = "10m"
 # Classes that share something of the machine beyond the run's own folder, run in one process together in the first phase:
 # the container engine (its virtual machine's processors, image builds, Compose), by what a class's source calls.
-LANES = {
+TOGETHER = {
     "the container engine": re.compile(r"\bDocker\.(?:WhyNot|Run|Ask|Said|ComposeUp|Container|State|VolumeExists|Stopped"
                                        r"|TakenDown|NoneLeft|Images?)\b|\bContainerPrograms\b|\bStandInEngine\b"
                                        r"|\bContainerEngine\.Shared\b"),
 }
+# The unit tests, run beside the window tests in one process of the first phase.
+UNIT_TESTS = "[the unit tests]"
 # The collections that run beside the window tests' own in a process (Collections.cs).
 BESIDE = ("Collection(DebugSession.Collection)", "Collection(Beside.Name)")
 DECLARATION = re.compile(r"^(?P<attributes>(?:\[[^\n]*\][ \t]*\r?\n)*)(?:(?:public|internal|sealed|static|partial|abstract"
                          r"|file)\s+)*class\s+(?P<name>\w+)(?P<rest>[^\n{]*)", re.M)
 NAMESPACE = re.compile(r"^namespace\s+(?P<name>[\w.]+)\s*;", re.M)
 # A test's result as the console logger writes it, never a line of a test's message ("Failed to restore …").
-RESULT = re.compile(r"^  (?P<outcome>Passed|Failed|Skipped) " + re.escape(trx.PREFIX) + r"\S+")
+RESULT = re.compile(r"^  (?P<outcome>Passed|Failed|Skipped) (?:" + re.escape(trx.PREFIX) + "|"
+                    + re.escape(shards.UNIT_PREFIX) + r")\S+")
 
 
 def sources():
-    """Each top-level class the test project declares, by its name as a listing's tests give it (without PREFIX): whether
-    its declaration says it is Alone or runs beside the window tests, its bases' simple names, and the lanes its source
-    names."""
+    """Each top-level class the test projects declare, by its name as a listing's tests give it (owner): whether its
+    declaration says it is Alone or runs beside the window tests (a unit test always does), its bases' simple names, and
+    the TOGETHER groups its source names."""
     declared = {}
-    for path in glob.glob(os.path.join(PROJECT, "**", "*.cs"), recursive=True):
+    unit = os.path.join(shards.UNIT_PROJECT, "")
+    for path in glob.glob(os.path.join(PROJECT, "**", "*.cs"), recursive=True) + \
+            glob.glob(os.path.join(shards.UNIT_PROJECT, "**", "*.cs"), recursive=True):
         if os.sep + "obj" + os.sep in path or os.sep + "bin" + os.sep in path:
             continue
         with open(path, encoding="utf-8-sig") as file:
@@ -77,9 +82,9 @@ def sources():
             bases = re.findall(r"\b([A-Z]\w*)", rest.split(":", 1)[1]) if ":" in rest else []
             declared[name] = {
                 "alone": "Collection(Alone.Name)" in declaration["attributes"],
-                "beside": any(collection in declaration["attributes"] for collection in BESIDE),
+                "beside": path.startswith(unit) or any(collection in declaration["attributes"] for collection in BESIDE),
                 "bases": bases,
-                "lanes": [lane for lane, pattern in LANES.items() if pattern.search(body)],
+                "together": [group for group, pattern in TOGETHER.items() if pattern.search(body)],
             }
     return declared
 
@@ -113,18 +118,10 @@ def beside(name, declared):
     return declares(name, declared, "beside", False)
 
 
-def weight(name, times, budget):
-    """A class's seconds for dealing here: the most any system's runs took for it, else its budget."""
-    known = [system[name] for system in times.values() if name in system]
-    return max(known) if known else budget.get("classes", {}).get(name, budget.get("classSeconds", 60))
-
-
-def settings(classes, given):
-    """dotnet test's settings that run these classes' tests, and of them only those the given filter selects."""
-    names = "|".join(f"FullyQualifiedName~{trx.PREFIX}{name}." for name in sorted(classes))
-    chosen = f"({given})&({names})" if given else names
-    return ("<RunSettings>\n  <RunConfiguration>\n    <TestCaseFilter>" + escape(chosen)
-            + "</TestCaseFilter>\n  </RunConfiguration>\n</RunSettings>\n")
+def weight(name, times, budget, share):
+    """A class's seconds for dealing here: the most any system's runs took for it (else its budget), times its share."""
+    known = [times[system][name] for system in shards.SYSTEMS if name in times.get(system, {})]
+    return (max(known) if known else shards.budgeted(name, budget)) * share.get(name, 1.0)
 
 
 def default_processes():
@@ -145,10 +142,15 @@ def default_processes():
     return min(4, count)
 
 
-def listing(given):
-    """The tests dotnet test lists, with the filter given, asked again while a listing says discovery failed
-    (xunit #3576); None, saying why, when the third is no better. An empty listing with a filter is no test chosen."""
-    command = ["dotnet", "test", ASSEMBLY, "--list-tests"] + (["--filter", given] if given else [])
+def assemblies(lane):
+    """The test assemblies of a lane's projects."""
+    return [ASSEMBLY] + ([UNIT_ASSEMBLY] if shards.UNIT_PROJECT in shards.projects(lane) else [])
+
+
+def listing(given, built):
+    """The tests dotnet test lists from the assemblies, with the filter given, asked again while a listing says discovery
+    failed (xunit #3576); None, saying why, when the third is no better. An empty listing with a filter is no test chosen."""
+    command = ["dotnet", "test"] + built + ["--list-tests"] + (["--filter", given] if given else [])
     why = None
     for attempt in range(1, 4):
         done = subprocess.run(command, stdout=subprocess.PIPE, check=False)
@@ -167,7 +169,7 @@ def listing(given):
 class Process:
     """One dotnet test of the run, its words written to its log, its results to its own folder."""
 
-    def __init__(self, label, classes, given, folder, scale, shown):
+    def __init__(self, label, classes, chosen, folder, scale, shown):
         self.label = label
         self.classes = classes
         self.folder = folder
@@ -175,11 +177,12 @@ class Process:
         os.makedirs(folder, exist_ok=True)
         settings_path = os.path.join(folder, "hand.runsettings")
         with open(settings_path, "w", encoding="utf-8") as file:
-            file.write(settings(classes, given))
+            file.write(shards.run_settings(classes, chosen))
         environment = dict(os.environ)
         if scale is not None:
             environment[TIME_SCALE] = scale
-        command = ["dotnet", "test", ASSEMBLY, "--settings", settings_path, "--results-directory", folder,
+        built = [UNIT_ASSEMBLY if project == shards.UNIT_PROJECT else ASSEMBLY for project in shards.hand_projects(classes)]
+        command = ["dotnet", "test"] + built + ["--settings", settings_path, "--results-directory", folder,
                    "--logger", "trx", "--logger", "console;verbosity=normal",
                    "--blame-hang-timeout", HANG, "--blame-hang-dump-type", "none"]
         self.started = time.monotonic()
@@ -233,16 +236,8 @@ def stop(processes):
 
 def failures(folder):
     """Every test that ran and did not pass, with the first lines of what it said, from the run's .trx results."""
-    found = []
-    for file in trx.trx_files([folder]):
-        root = ElementTree.parse(file).getroot()
-        for result in root.iter(f"{trx.TRX}UnitTestResult"):
-            if result.get("outcome") in ("Passed", "NotExecuted"):
-                continue
-            message = result.find(f"{trx.TRX}Output/{trx.TRX}ErrorInfo/{trx.TRX}Message")
-            text = (message.text or "").strip() if message is not None else ""
-            found.append((result.get("testName", "?"), result.get("outcome"), "\n      ".join(text.splitlines()[:6])))
-    return found
+    return [(name, outcome, "\n      ".join(message.splitlines()[:6]))
+            for file in trx.trx_files([folder]) for name, outcome, message in trx.failed(file)]
 
 
 def plural(count, word):
@@ -258,20 +253,35 @@ def tally(folder):
     return counts
 
 
-def one_process(given):
-    """The suite as one dotnet test, which builds what it needs first, xunit keeping its own order."""
-    return subprocess.run(["dotnet", "test", PROJECT] + (["--filter", given] if given else []), cwd=ROOT).returncode
+def one_process(lane, chosen):
+    """The lane as one dotnet test of each of its projects, which builds what it needs first, xunit keeping its order."""
+    codes = [subprocess.run(["dotnet", "test", project] + (["--filter", chosen] if chosen else []), cwd=ROOT).returncode
+             for project in shards.projects(lane)]
+    return next((code for code in codes if code != 0), 0)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("filter", nargs="?", default="", help="dotnet test's --filter, as `just test Editing` gives it")
+    parser.add_argument("count", nargs="?", default="", help="how many processes, as `just test Editing 2` gives it")
     parser.add_argument("--processes", type=int, help="how many processes the first phase runs at once (default: "
                         "PASSENGER_TEST_PROCESSES, else a quarter of the processors, at most 4)")
     parser.add_argument("--plan", action="store_true", help="say how the classes would be dealt, and run none")
+    lanes = parser.add_mutually_exclusive_group()
+    lanes.add_argument("--lane", choices=shards.LANES, default="all", help="the part of the suite to run: the gate's "
+                       "[Gate] tests and the unit tests, the report lane's every other test, or all (the default)")
+    lanes.add_argument("--gate", dest="lane", action="store_const", const="gate", help="--lane gate")
+    lanes.add_argument("--report", dest="lane", action="store_const", const="report", help="--lane report")
     arguments = parser.parse_args()
     given = arguments.filter.strip()
+    lane = arguments.lane
+    chosen = shards.both(given, shards.lane_filter(lane))
     count = arguments.processes
+    if count is None and arguments.count.strip():
+        try:
+            count = int(arguments.count)
+        except ValueError:
+            sys.exit(f"test-run: \"{arguments.count}\" is no number of processes: give a whole number, 1 or more")
     if count is None and os.environ.get("PASSENGER_TEST_PROCESSES"):
         try:
             count = int(os.environ["PASSENGER_TEST_PROCESSES"])
@@ -282,8 +292,8 @@ def main():
         count = default_processes()
     if count < 1:
         sys.exit(f"test-run: {count} processes cannot run the tests: give 1 or more")
-    if count == 1:
-        return one_process(given)
+    if count == 1 and not arguments.plan:
+        return one_process(lane, chosen)
     if TIME_SCALE in os.environ:
         # Passed on unchecked: a malformed one fails every test, saying why.
         side_by_side = os.environ[TIME_SCALE]
@@ -291,17 +301,22 @@ def main():
         side_by_side = SIDE_BY_SIDE_SCALE
 
     began = time.monotonic()
-    built = subprocess.run(["dotnet", "build", PROJECT], cwd=ROOT)
-    if built.returncode != 0:
-        return built.returncode
-    tests = listing(given)
+    for project in shards.projects(lane):
+        built = subprocess.run(["dotnet", "build", project], cwd=ROOT)
+        if built.returncode != 0:
+            return built.returncode
+    tests = listing(chosen, assemblies(lane))
     if tests is None:
         print("test-run: dotnet test listed no tests, so none ran", file=sys.stderr)
         return 1
     if not tests:
-        print(f"No test matches the filter {given}")
+        print(f"No test matches the filter {chosen}")
         return 1
-    classes = sorted(set(shards.owner(test) for test in tests))
+    # A class with tests outside what runs weighs its share of its seconds, by its tests in a listing of them all.
+    whole = Counter(shards.owner(test) for test in (listing("", assemblies("all")) or [])) if chosen else None
+    counts = Counter(shards.owner(test) for test in tests)
+    share = shards.shares(counts, whole) if whole else {}
+    classes = sorted(counts)
     declared = sources()
     times = shards.load(shards.TIMES, {})
     budget = shards.load(shards.BUDGET, {})
@@ -311,12 +326,12 @@ def main():
     units = {}
     side = set()
     for name in rest:
-        lanes = declared.get(name, {}).get("lanes", [])
-        unit = f"[{lanes[0]}]" if lanes else name
+        together = declared.get(name, {}).get("together", [])
+        unit = f"[{together[0]}]" if together else UNIT_TESTS if name.startswith(shards.UNIT_PREFIX) else name
         units.setdefault(unit, []).append(name)
-        if not lanes and beside(name, declared):
+        if not together and beside(name, declared):
             side.add(unit)
-    unit_weights = {unit: sum(weight(name, times, budget) for name in members) for unit, members in units.items()}
+    unit_weights = {unit: sum(weight(name, times, budget, share) for name in members) for unit, members in units.items()}
     windowed = {unit: seconds for unit, seconds in unit_weights.items() if unit not in side}
     besides = {unit: seconds for unit, seconds in unit_weights.items() if unit in side}
     count = min(count, max(len(windowed), len(besides)))
@@ -327,14 +342,23 @@ def main():
     hands = [window_hands[w] + side_hands[b] for w, b in zip(by_window, by_side)]
     totals = [max(window_totals[w], side_totals[b]) for w, b in zip(by_window, by_side)]
     if arguments.plan:
+        print(f"{plural(len(tests), 'test')} of {'the suite' if lane == 'all' else f'the {lane} lane'}"
+              f"{f' matching {given}' if given else ''} in {plural(len(classes), 'class')}, from "
+              f"{', '.join(shards.shown(p) for p in shards.projects(lane))}")
+
+        def partly(name):
+            return f"  ({counts[name]} of its {whole[name]} tests)" if whole and counts[name] < whole[name] else ""
         for number, (hand, total) in enumerate(zip(hands, totals), 1):
             print(f"\nProcess {number}, about {total / 60:.1f} minutes by CI's times:")
             for unit in hand:
-                print(f"  {unit:<44} {unit_weights[unit]:>7.1f}" + (f"  ({', '.join(units[unit])})" if unit.startswith("[") else "")
-                      + ("  (beside)" if unit in side else ""))
-        print(f"\nAlone, after them, about {sum(weight(n, times, budget) for n in last) / 60:.1f} minutes by CI's times:")
+                grouped = unit.startswith("[")
+                print(f"  {unit:<44} {unit_weights[unit]:>7.1f}" + (f"  ({', '.join(units[unit])})" if grouped else "")
+                      + ("" if grouped else partly(unit)) + ("  (beside)" if unit in side else ""))
+        print(f"\nAlone, after them, about {sum(weight(n, times, budget, share) for n in last) / 60:.1f} minutes by "
+              "CI's times:")
         for name in last:
-            print(f"  {name:<44} {weight(name, times, budget):>7.1f}" + ("" if name in declared else "  (not in the sources)"))
+            print(f"  {name:<44} {weight(name, times, budget, share):>7.1f}" + partly(name)
+                  + ("" if name in declared else "  (not in the sources)"))
         return 0
 
     shutil.rmtree(RESULTS, ignore_errors=True)
@@ -347,10 +371,10 @@ def main():
     try:
         for number, (hand, total) in enumerate(zip(hands, totals), 1):
             members = [name for unit in hand for name in units[unit]]
-            lanes = [unit for unit in hand if unit.startswith("[")]
+            grouped = [unit for unit in hand if unit.startswith("[")]
             print(f"  Process {number}: {plural(len(members), 'class')}, about {total / 60:.1f} minutes by CI's times"
-                  + (f", with {', '.join(lanes)}" if lanes else ""), flush=True)
-            processes.append(Process(f"Process {number}", members, given, os.path.join(RESULTS, f"process-{number}"),
+                  + (f", with {', '.join(grouped)}" if grouped else ""), flush=True)
+            processes.append(Process(f"Process {number}", members, chosen, os.path.join(RESULTS, f"process-{number}"),
                                      side_by_side, shown=False))
         report = time.monotonic()
         while any(p.process.poll() is None for p in processes):
@@ -378,7 +402,7 @@ def main():
 
         if last:
             print(f"\n{plural(len(last), 'class')} alone, in one process with nothing beside it:", flush=True)
-            alone_process = Process("Alone", last, given, os.path.join(RESULTS, "alone"), None, shown=True)
+            alone_process = Process("Alone", last, chosen, os.path.join(RESULTS, "alone"), None, shown=True)
             processes.append(alone_process)
             alone_process.follow()
             failed_any |= alone_process.end() != 0

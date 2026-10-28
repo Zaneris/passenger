@@ -1,6 +1,6 @@
 # A release, run by hand from a vX.Y.Z tag with Dry run unticked (Actions > Release > Run workflow, or `gh workflow run
-# Release --ref vX.Y.Z -f dry_run=false`; pushing the tag alone runs nothing): every test (unless Skip the tests is
-# ticked), then each system's package and the container tools at the tag's version, each build checked to say that
+# Release --ref vX.Y.Z -f dry_run=false`; pushing the tag alone runs nothing): the gate's tests (unless Skip the tests
+# is ticked), then each system's package and the container tools at the tag's version, each build checked to say that
 # version, published as the tag's GitHub release with SHA256SUMS, the version's notes and Velopack's feed for each
 # Windows channel. The files' names never change, since the site's download links and an installed Passenger take them
 # by name. Signed only when the repository's secrets hold the credentials (the signing steps name them), else unsigned.
@@ -83,11 +83,14 @@ jobs:
             echo "publish=$publish"
           } >> "$GITHUB_OUTPUT"
 
+  # The gate's tests alone: the report lane's failures hold no release back, so a release runs none of them.
   test:
     name: Test
     needs: version
     if: ${{ !inputs.skip_tests }}
     uses: ./.github/workflows/test.yml
+    with:
+      report: false
 
   # Each system's package, with the Developer ID or the Windows signature when the secrets hold one. macOS is Apple
   # Silicon only; the arm64 installer and archive are cross-published on x64 runners.

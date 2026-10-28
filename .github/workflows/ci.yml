@@ -1,9 +1,9 @@
 # Run by hand only, as the owner decided to spend Actions' minutes (Actions > CI > Run workflow, or `gh workflow run CI
 # --ref main`; a pull request's branch the same way): the solution built (warnings are errors) and every test run on
-# macOS (arm64), Windows and Linux; the macOS disk image made and checked; the Windows installer and the Linux archive
-# built, installed, used and uninstalled; and on Linux, the solution restored from nothing and every package checked
-# against THIRD_PARTY_NOTICES.md. Every restore is locked to the packages.lock.json files. Actions are pinned to a
-# release's commit.
+# macOS (arm64), Windows and Linux, the gate's failing the run and the report lane's listed; the macOS disk image made
+# and checked; the Windows installer and the Linux archive built, installed, used and uninstalled; and on Linux, the
+# solution restored from nothing and every package checked against THIRD_PARTY_NOTICES.md. Every restore is locked to
+# the packages.lock.json files. Actions are pinned to a release's commit.
 name: CI
 
 on:
@@ -24,11 +24,13 @@ env:
   AVALONIA_TELEMETRY_OPTOUT: 1
 
 jobs:
-  # The solution built and every test run on macOS, Windows and Linux, each system's in shards that run at once, then a
-  # summary job per system named as the system.
+  # The solution built and every test run on macOS, Windows and Linux, each lane's in shards that run at once, then a
+  # summary job per lane and system and the report lane's failed tests in one table.
   test:
     name: Test
     uses: ./.github/workflows/test.yml
+    with:
+      report: true
 
   # The disk image, made with no Developer ID here (the app signed ad hoc, nothing notarized) and mounted read-only and
   # checked before it is done.

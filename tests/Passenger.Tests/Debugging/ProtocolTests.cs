@@ -34,6 +34,7 @@ public class ProtocolTests(ITestOutputHelper testOutputHelper)
     }
 
     [Fact]
+    [Gate]
     public async Task A_request_the_adapter_does_not_support_is_refused_naming_it_and_the_next_is_still_answered()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);

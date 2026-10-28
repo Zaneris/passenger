@@ -3,9 +3,9 @@
 
 Prints every class with its tests and seconds (xunit's own time for each test, its class made and disposed; a class
 fixture's setup is outside it), the slowest first, and each run's time from its start to its end. Given TestBudget.json,
-a class over its seconds is a warning and a shard over its minutes fails: the budget says how long a job may take before
-someone decides it should, and a class's seconds say where the time went. On GitHub Actions they are annotations and the
-table goes in the step's summary.
+a class over its seconds is a warning and a shard over its minutes fails (the report lane's only warns): the budget says
+how long a job may take before someone decides it should, and a class's seconds say where the time went. On GitHub
+Actions they are annotations and the table goes in the step's summary.
 
 python3 -I tools/test-times.py artifacts/test-results --budget tests/Passenger.Tests/TestBudget.json
 """
@@ -20,8 +20,9 @@ from datetime import datetime, timedelta, timezone
 
 TRX = "{http://microsoft.com/schemas/VisualStudio/TeamTest/2010}"
 PREFIX = "Passenger.Tests."
-# The folder a system's results come in, as its shard's job names its artifact and a download makes it a folder.
-SHARD_FOLDER = re.compile(r"^test-results-(?P<system>[A-Za-z]+)(?:-(?P<shard>\d+))?$")
+# The folder a system's results come in, as its shard's job names its artifact (with its lane since there are two) and a
+# download makes it a folder.
+SHARD_FOLDER = re.compile(r"^test-results-(?P<system>[A-Za-z]+)(?:-(?:gate|report))?(?:-(?P<shard>\d+))?$")
 
 
 def when(text):
@@ -78,24 +79,40 @@ def results(file):
     return run, found
 
 
+def failed(file):
+    """A .trx's tests that ran and did not pass, each (display name, outcome, what it said)."""
+    found = []
+    for result in ElementTree.parse(file).getroot().iter(f"{TRX}UnitTestResult"):
+        if result.get("outcome") in ("Passed", "NotExecuted"):
+            continue
+        message = result.find(f"{TRX}Output/{TRX}ErrorInfo/{TRX}Message")
+        found.append((result.get("testName", "?"), result.get("outcome"),
+                      (message.text or "").strip() if message is not None else ""))
+    return found
+
+
 def read(paths, shard=None):
     """Each class's tests, seconds, failures and shard, and each run's shard and seconds, from every .trx under the paths;
-    a run's shard is the given one, else its folder's."""
+    a run's shard is the given one, else its folder's, and a shard that ran several projects took their runs' seconds."""
     files = trx_files(paths)
     if not files:
         sys.exit(f"test-times: no .trx results under {', '.join(paths)}: run dotnet test with --logger trx")
     classes = {}
-    runs = []
+    spent_by = {}
+    unsharded = []
     for file in files:
         run, found = results(file)
         number = shard if shard is not None else shard_of(file)[1]
-        runs.append((number, run))
+        if number is None:
+            unsharded.append((None, run))
+        else:
+            spent_by[number] = spent_by.get(number, 0.0) + run
         for name, _, spent, outcome in found:
             entry = classes.setdefault(name, {"tests": 0, "seconds": 0.0, "failed": 0, "shard": number})
             entry["tests"] += 1
             entry["seconds"] += spent
             entry["failed"] += outcome not in ("Passed", "NotExecuted")
-    return classes, sorted(runs, key=lambda item: (item[0] is None, item[0] or 0))
+    return classes, sorted(spent_by.items()) + unsharded
 
 
 def main():
@@ -103,6 +120,8 @@ def main():
     parser.add_argument("results", nargs="+", help="a .trx file, or a folder holding them")
     parser.add_argument("--budget", help="the suite's budget: tests/Passenger.Tests/TestBudget.json")
     parser.add_argument("--label", help="what ran, for the summary's heading: macOS (arm64), shard 2 of 3")
+    parser.add_argument("--lane", choices=("gate", "report", "all"), default="all",
+                        help="the lane the results are of: the report lane's shards only warn over their minutes")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--shard", type=int, help="the results are this shard's alone, not the whole suite's")
     mode.add_argument("--summary", action="store_true",
@@ -116,8 +135,8 @@ def main():
     run_limit = budget.get("shardMinutes")
     allowed = budget.get("classes", {})
     sharded = len(runs) > 1 and all(shard is not None for shard, _ in runs)
-    # A shard runs only its own classes, so a budget for a class elsewhere says nothing there.
-    unknown = sorted(set(allowed) - set(classes)) if arguments.shard is None else []
+    # A shard runs only its own classes, and a lane only its own tests, so a budget for a class elsewhere says nothing there.
+    unknown = sorted(set(allowed) - set(classes)) if arguments.shard is None and arguments.lane == "all" else []
     # The shards' own jobs have warned of their classes and failed on their minutes, so the summary only shows them.
     held = not arguments.summary
 
@@ -151,11 +170,13 @@ def main():
         message = f"TestBudget.json gives {name} a budget, but the run has no such class"
         print(f"::warning title=Test budget::{message}" if github else f"warning: {message}")
     late = [(shard, run) for shard, run in runs if held and run_limit is not None and run > run_limit * 60]
+    blocking = arguments.lane != "report"
     for shard, run in late:
         message = (f"{run_name(shard)} took {run / 60:.1f} minutes, over a shard's budget of {run_limit} in "
                    "TestBudget.json: make what grew faster, deal the shards again from newer times (just test-times "
                    "RUN), add a shard, or raise the budget knowing why")
-        print(f"::error title=Tests over budget::{message}" if github else f"error: {message}")
+        kind = "error" if blocking else "warning"
+        print(f"::{kind} title=Tests over budget::{message}" if github else f"{kind}: {message}")
 
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
@@ -174,7 +195,7 @@ def main():
                 file.write(f"| {name} | {entry['tests']} | {entry['seconds']:.1f} | {given if given is not None else ''}{mark} |"
                            + (f" {entry['shard']} |" if sharded else "") + "\n")
             file.write("\n")
-    return 1 if late else 0
+    return 1 if late and blocking else 0
 
 
 if __name__ == "__main__":
