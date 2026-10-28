@@ -531,43 +531,70 @@ public sealed class FolderWatchTests : IDisposable
         window.Close();
     }
 
-    /// <summary>A file made, which Go to File lists, deleted unheard before the folder's watcher has taken it into its
-    /// record, as on a busy machine whose watcher's work runs late and whose burst drops the deletion's event: the listing
-    /// after the burst finds it gone, and Go to File lets it go. Its watchers stop as the file is deleted. A batch's
-    /// hand-over, looking at what came or went in it on disk, needs nothing of the window's thread: the record takes in a
-    /// file made while that thread runs nothing.</summary>
+    /// <summary>A file made, which Go to File lists, then deleted unheard, as a burst on a busy machine drops the deletion's
+    /// event: the folder's watcher took the file into its record as it handed it over, so the listing after the burst
+    /// finds it gone, and Go to File lets it go. A batch's hand-over, looking at what came or went in it on disk, needs
+    /// nothing of the window's thread: the record takes in a file made while that thread runs nothing.</summary>
     [AvaloniaTheory]
     [InlineData(false)]
     [InlineData(true)]
-    public void A_file_deleted_unheard_before_the_watcher_recorded_it_is_found_gone_after_a_burst(bool eachFolder)
+    public void A_file_made_then_deleted_unheard_is_found_gone_after_a_burst(bool eachFolder)
     {
         Write("One.cs", "class One { }\n");
         MainWindow window = Open(eachFolder ? FolderWatching.Inotify : FolderWatching.WholeTree, languageServer: false);
         Ui.Hold(TimeSpan.FromSeconds(3.5), "the watcher's record of the folder to be older than what an overflow may have lost");
         FolderWatcher watcher = window.FolderWatcher!;
         int entries = watcher.RecordSize.Entries;
-        Write("Kept.cs", "class Kept { }\n");
+        Write("Brief.cs", "class Brief { }\n");
         Assert.True(Ui.Idle(Waiting.Apart(() => Waiting.Until(() => watcher.RecordSize.Entries > entries, TimeSpan.FromSeconds(10))), "the record to take in a file made"),
             "The folder's watcher took a file made into its record only once the window's thread ran, so a batch's hand-over looked at the disk there");
-        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        watcher.HoldRecord(release.Task);
+        Ui.PumpUntil(() => window.FileIndex.Files.Contains("Brief.cs"), "the file made in Go to File");
         List<FileSystemWatcher> watchers = [.. watcher.Watches.Values];
         try
         {
-            Write("Brief.cs", "class Brief { }\n");
-            Ui.PumpUntil(() => window.FileIndex.Files.Contains("Brief.cs"), "the file made in Go to File");
             watchers.ForEach(w => w.EnableRaisingEvents = false);
             File.Delete(Path.Combine(folder, "Brief.cs"));
-            release.SetResult();
             RaiseError(watcher.Watches[folder], new InternalBufferOverflowException("Too many changes at once; directory listing is required."));
             Ui.PumpUntil(() => !window.FileIndex.Files.Contains("Brief.cs"),
                 $"Go to File to let go of the file deleted unheard, which it still lists among {string.Join(", ", window.FileIndex.Files)}", TimeSpan.FromSeconds(30));
         }
         finally
         {
-            release.TrySetResult();
             watchers.ForEach(w => w.EnableRaisingEvents = true);
         }
+        window.Close();
+    }
+
+    /// <summary>A folder of fifty files moved into the folder from elsewhere, then out again, as a person's mv or file
+    /// manager moves one: each of its files is handed over with it, come and then gone, in the batch the folder comes or
+    /// goes in, the folder never read again whole, and Go to File follows.</summary>
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_folder_moved_in_or_out_hands_over_each_of_its_files_in_the_batch_it_comes_or_goes_in(bool eachFolder)
+    {
+        Write("One.cs", "class One { }\n");
+        MainWindow window = Open(eachFolder ? FolderWatching.Inotify : FolderWatching.WholeTree, languageServer: false);
+        string elsewhere = TestFolders.Create("elsewhere-");
+        TestFolders.WriteAll(elsewhere, Enumerable.Range(0, 50).Select(i => (Path.Combine("Moving", $"Moving{i}.cs"), $"class Moving{i} {{ }}\n")));
+        string inside = Path.Combine(folder, "Moving");
+        string[] files = [.. Enumerable.Range(0, 50).Select(i => Path.Combine(inside, $"Moving{i}.cs"))];
+        List<FolderChanges> batches = [];
+        window.FolderWatcher!.Changed += (_, changes) => batches.Add(changes);
+
+        Directory.Move(Path.Combine(elsewhere, "Moving"), inside);
+        Ui.PumpUntil(() => batches.Any(b => b.ComeOrGone.Contains(inside)), "the folder moved in handed over");
+        FolderChanges came = batches.First(b => b.ComeOrGone.Contains(inside));
+        Assert.True(files.All(came.ComeOrGone.Contains), $"The batch the folder moved in came in named {files.Count(came.ComeOrGone.Contains)} of its 50 files as come");
+        Ui.PumpUntil(() => files.All(f => window.FileIndex.Files.Contains(Path.GetRelativePath(folder, f))), "the files moved in in Go to File");
+
+        batches.Clear();
+        Directory.Move(inside, Path.Combine(elsewhere, "Moved"));
+        Ui.PumpUntil(() => batches.Any(b => b.ComeOrGone.Contains(inside)), "the folder moved out handed over");
+        FolderChanges went = batches.First(b => b.ComeOrGone.Contains(inside));
+        Assert.True(files.All(went.ComeOrGone.Contains), $"The batch the folder moved out went in named {files.Count(went.ComeOrGone.Contains)} of its 50 files as gone");
+        Ui.PumpUntil(() => !window.FileIndex.Files.Any(f => f.StartsWith("Moving", StringComparison.Ordinal)), "the files moved out gone from Go to File");
+        Assert.False(batches.Any(b => b.Lost), "The folder's watcher read the whole folder again for a folder moved out");
         window.Close();
     }
 

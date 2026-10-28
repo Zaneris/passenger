@@ -13,6 +13,9 @@ public sealed class ServerWatchTests : IClassFixture<ServerWatchTests.Project>
 {
     private const int Files = 1000;
 
+    /// <summary>How many sources a folder moved in or out holds.</summary>
+    private const int Moved = 50;
+
     private readonly Project project;
 
     public ServerWatchTests(Project project)
@@ -77,42 +80,94 @@ public sealed class ServerWatchTests : IClassFixture<ServerWatchTests.Project>
         window.Close();
     }
 
-    /// <summary>A source written in obj, which the server is told came, deleted unheard before obj's watcher has taken it
-    /// into its record, as on a busy machine whose watcher's work runs late and whose burst drops the deletion's event:
-    /// the listing after the burst finds it gone, and the server is told it went.</summary>
+    /// <summary>A source written in obj, which the server is told came, then deleted unheard, as a burst on a busy machine
+    /// drops the deletion's event: obj's watcher took the source into its record as it handed it over, so the listing
+    /// after the burst finds it gone, and the server is told it went.</summary>
     [AvaloniaFact]
-    public void A_source_deleted_unheard_in_obj_before_its_watcher_recorded_it_reaches_the_server_as_gone()
+    public void A_source_told_come_then_deleted_unheard_in_obj_reaches_the_server_as_gone()
     {
         MainWindow window = project.Open("Program.cs");
         WatchedFiles watched = Watched(window);
         string obj = PathNames.Canonical(project.PathOf("obj"));
         WatchedTree tree = window.CSharpService!.Watching!.Of(obj)!;
         Ui.WaitFor(() => tree.Ready.IsCompleted, "obj's watcher to have recorded what is in it");
-        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        tree.HoldRecord(release.Task);
         List<FileSystemWatcher> watchers = [.. tree.Watches.Values];
         string source = Path.Combine(obj, "Unheard.cs");
-        Told made = new(watched, name => name == "Unheard.cs", gone: false);
-        Told gone = new(watched, name => name == "Unheard.cs", gone: true);
-        bool heardGone = false;
+        using Told made = new(watched, name => name == "Unheard.cs", gone: false);
+        using Told gone = new(watched, name => name == "Unheard.cs", gone: true);
+        File.WriteAllText(source, "static class Unheard\n{\n}\n");
+        Assert.True(Ui.Pumped(() => made.Count == 1, TimeSpan.FromSeconds(30)), $"The language server was not told of the source written in obj: {WatchLog(window)}");
+        bool heardGone;
         try
         {
-            File.WriteAllText(source, "static class Unheard\n{\n}\n");
-            Assert.True(Ui.Pumped(() => made.Count == 1, TimeSpan.FromSeconds(30)), $"The language server was not told of the source written in obj: {WatchLog(window)}");
             watchers.ForEach(w => w.EnableRaisingEvents = false);
             File.Delete(source);
-            release.SetResult();
             FolderWatchTests.RaiseError(tree.Watches[tree.Top], new InternalBufferOverflowException("Too many changes at once; directory listing is required."));
             heardGone = Ui.Pumped(() => gone.Count == 1, TimeSpan.FromSeconds(30));
         }
         finally
         {
-            release.TrySetResult();
             watchers.ForEach(w => w.EnableRaisingEvents = true);
-            made.Dispose();
-            gone.Dispose();
         }
         Assert.True(heardGone, $"The language server was never told the source deleted unheard in obj went, so it keeps its document and its problems: {WatchLog(window)}");
+        window.Close();
+    }
+
+    /// <summary>A folder of fifty sources moved into the project from elsewhere, which a folder's watcher hears as the folder
+    /// alone: Go to File lists every source and the server is told of each as made; one of them deleted after, unheard as a
+    /// burst drops it, is found gone by the listing after the burst, and the server told it went.</summary>
+    [AvaloniaFact]
+    public void A_folder_of_fifty_sources_moved_in_reaches_go_to_file_and_the_server_as_fifty_made_and_one_deleted_unheard_as_gone()
+    {
+        MainWindow window = project.Open("Program.cs");
+        WatchedFiles watched = Watched(window);
+        string elsewhere = TestFolders.Create("elsewhere-");
+        TestFolders.WriteAll(elsewhere, Enumerable.Range(0, Moved).Select(i => (Path.Combine("Arriving", $"Arriving{i}.cs"), $"static class Arriving{i}\n{{\n}}\n")));
+        using Told made = new(watched, name => name.StartsWith("Arriving", StringComparison.Ordinal), gone: false);
+        Directory.Move(Path.Combine(elsewhere, "Arriving"), project.PathOf("Arriving"));
+        bool heardMade = Ui.Pumped(() => made.Count == Moved, TimeSpan.FromSeconds(60));
+        Assert.True(heardMade, $"Of the {Moved} sources in a folder moved into the project, the language server was told of {made.Count} as made: {WatchLog(window)}");
+        Ui.PumpUntil(() => Enumerable.Range(0, Moved).All(i => window.FileIndex.Files.Contains(Path.Combine("Arriving", $"Arriving{i}.cs"))), "every source moved in in Go to File");
+
+        FolderWatcher watcher = window.FolderWatcher!;
+        List<FileSystemWatcher> watchers = [.. watcher.Watches.Values];
+        using Told gone = new(watched, name => name == "Arriving7.cs", gone: true);
+        bool heardGone;
+        try
+        {
+            watchers.ForEach(w => w.EnableRaisingEvents = false);
+            File.Delete(project.PathOf(Path.Combine("Arriving", "Arriving7.cs")));
+            FolderWatchTests.RaiseError(watcher.Watches[watcher.Top], new InternalBufferOverflowException("Too many changes at once; directory listing is required."));
+            heardGone = Ui.Pumped(() => gone.Count == 1, TimeSpan.FromSeconds(30));
+        }
+        finally
+        {
+            watchers.ForEach(w => w.EnableRaisingEvents = true);
+        }
+        Assert.True(heardGone, $"The language server was never told a source of the folder moved in, deleted unheard, went: {WatchLog(window)}");
+        Ui.PumpUntil(() => !window.FileIndex.Files.Contains(Path.Combine("Arriving", "Arriving7.cs")), "the source deleted unheard gone from Go to File");
+        window.Close();
+    }
+
+    /// <summary>A folder of fifty sources the server was told of moved out of the project, which a folder's watcher hears as
+    /// the folder alone: Go to File lets every source go, and the server is told of each as gone.</summary>
+    [AvaloniaFact]
+    public void A_folder_of_fifty_sources_moved_out_leaves_go_to_file_and_reaches_the_server_as_fifty_deletions()
+    {
+        MainWindow window = project.Open("Program.cs");
+        WatchedFiles watched = Watched(window);
+        using (Told made = new(watched, name => name.StartsWith("Leaving", StringComparison.Ordinal), gone: false))
+        {
+            TestFolders.WriteAll(project.Folder, Enumerable.Range(0, Moved).Select(i => (Path.Combine("Leaving", $"Leaving{i}.cs"), $"static class Leaving{i}\n{{\n}}\n")));
+            Assert.True(Ui.Pumped(() => made.Count == Moved, TimeSpan.FromSeconds(60)), $"Of the {Moved} sources written, the language server was told of {made.Count}: {WatchLog(window)}");
+        }
+        Ui.PumpUntil(() => Enumerable.Range(0, Moved).All(i => window.FileIndex.Files.Contains(Path.Combine("Leaving", $"Leaving{i}.cs"))), "every source written in Go to File");
+
+        using Told gone = new(watched, name => name.StartsWith("Leaving", StringComparison.Ordinal), gone: true);
+        Directory.Move(project.PathOf("Leaving"), Path.Combine(TestFolders.Create("elsewhere-"), "Leaving"));
+        bool heardGone = Ui.Pumped(() => gone.Count == Moved, TimeSpan.FromSeconds(60));
+        Assert.True(heardGone, $"Of the {Moved} sources in a folder moved out of the project, the language server was told {gone.Count} went: {WatchLog(window)}");
+        Ui.PumpUntil(() => !window.FileIndex.Files.Any(f => f.StartsWith("Leaving", StringComparison.Ordinal)), "every source moved out gone from Go to File");
         window.Close();
     }
 

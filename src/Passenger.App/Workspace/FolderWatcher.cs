@@ -104,9 +104,6 @@ public sealed class FolderWatcher : WatchedTree
         }
     }
 
-    /// <summary>A restore that made obj (or artifacts) may have written its assets before the folder was watched.</summary>
-    protected override IEnumerable<string> MovedIn(string folder) => AssetsIn(folder);
-
     /// <summary>Whether a folder is watched where each is watched on its own: the open folder and the kept folders under
     /// it, of Git's store only its top and refs, whose files say a commit or checkout happened, and of build output only
     /// the folders a restore writes its assets in (<see cref="HoldsRestores"/>).</summary>
@@ -134,36 +131,6 @@ public sealed class FolderWatcher : WatchedTree
             : last.SequenceEqual("artifacts") || last.SequenceEqual("obj") ? 1
             : 0;
         return output > 0 && !IgnoredFolders.AnyIn(folder, output switch { 3 => aboveThird, 2 => aboveSecond, _ => above });
-    }
-
-    /// <summary>The restore assets in a folder just made, or in the build output folders that hold them under it.</summary>
-    private List<string> AssetsIn(string top)
-    {
-        List<string> found = [];
-        Stack<string> folders = new([top]);
-        while (folders.Count > 0)
-        {
-            string at = folders.Pop();
-            string assets = Path.Combine(at, Assets);
-            if (PathNames.IsUnder(assets, folder) && IsRestore(PathNames.Below(assets, folder)) && File.Exists(assets))
-            {
-                found.Add(assets);
-            }
-            try
-            {
-                foreach (DirectoryInfo child in new DirectoryInfo(at).EnumerateDirectories())
-                {
-                    if (child.LinkTarget is null && PathNames.IsUnder(child.FullName, folder) && HoldsRestores(PathNames.Below(child.FullName, folder)))
-                    {
-                        folders.Push(child.FullName);
-                    }
-                }
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-            {
-            }
-        }
-        return found;
     }
 
     /// <summary>Whether a path, by its names from the open folder, is a restore's assets, which the rest of build output's

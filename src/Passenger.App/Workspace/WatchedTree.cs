@@ -6,11 +6,12 @@ using Passenger.Workspace;
 namespace Passenger.App.Workspace;
 
 /// <summary>A folder, and the kept folders under it, watched for what other programs change in them: changes are gathered
-/// for a moment and handed over together, as background work. A burst of changes may lose some unsaid (macOS's watcher
-/// drops the word that it did), so what is in each kept folder is recorded, and after a burst the folders it touched or
-/// whose entries changed are listed again against the record; changes lost past finding have the folder walked again,
-/// and what the record held that the walk no longer finds is handed over as gone. Which folders are kept, which of their
-/// entries recorded, what a change is taken for and where a batch goes are the watcher's own.</summary>
+/// for a moment and handed over together, as background work, a folder come or gone with each file in it. A burst of
+/// changes may lose some unsaid (macOS's watcher drops the word that it did), so what is in each kept folder is recorded
+/// as it was handed over, and after a burst the folders it touched or whose entries changed are listed again against the
+/// record; changes lost past finding have the folder walked again, and what the record held that the walk no longer finds
+/// is handed over as gone. Which folders are kept, which of their entries recorded, what a change is taken for and where
+/// a batch goes are the watcher's own.</summary>
 public abstract class WatchedTree : IDisposable
 {
     private static readonly TimeSpan Gather = TimeSpan.FromMilliseconds(150);
@@ -33,9 +34,6 @@ public abstract class WatchedTree : IDisposable
     /// <summary>Whether each kept folder is watched on its own rather than the whole tree through one watcher.</summary>
     private readonly bool eachFolder;
     private readonly object gate = new();
-
-    /// <summary>Held through a batch's hand-over, so batches go over in the order they were let go of.</summary>
-    private readonly Lock handing = new();
     private readonly Dictionary<string, FileSystemWatcher> watches = new(StringComparer.Ordinal);
 
     /// <summary>When each kept path was last heard of, and each kept folder had one of its paths heard, for the last moments.</summary>
@@ -182,9 +180,6 @@ public abstract class WatchedTree : IDisposable
     /// were looked for and the record follows what came or went in it as it was when let go of.</summary>
     protected abstract void Hand(FolderChanges changes);
 
-    /// <summary>The files in a folder moved in that may have changed before it was watched, taken as made with it.</summary>
-    protected virtual IEnumerable<string> MovedIn(string folder) => [];
-
     /// <summary>A folder that could not be watched, or no longer is: the system's watches used up, or another failure.</summary>
     protected virtual void Unwatched(string at, Exception error)
     {
@@ -198,31 +193,70 @@ public abstract class WatchedTree : IDisposable
     /// walk <see cref="Named"/> it, when that differs. Neither taken nor counted is passed over.</summary>
     protected readonly record struct Notice(bool Takes, bool Counts, string? Canonical, string? Named = null);
 
-    /// <summary>Lets go of the batch gathered and hands it over, from the thread pool: what came or went in it is looked at
-    /// off the gate, before anything it goes to looks, and the record takes each as it was then (<see cref="Keep"/>).</summary>
+    /// <summary>Lets go of the batch gathered and hands it over, as the work that keeps the record, after what it asked for
+    /// before: a folder come or gone in it brings in each file in it (<see cref="Spread"/>), what came or went is looked at
+    /// on disk off the gate, and the record takes each as it was then (<see cref="Keep"/>), before anything the batch goes
+    /// to looks.</summary>
     private void HandOver()
     {
-        lock (handing)
+        List<string> named;
+        lock (gate)
         {
-            FolderChanges? changes;
-            List<string> comeOrGone;
-            bool watching;
-            lock (gate)
+            named = disposed ? [] : [.. cameOrWent];
+        }
+        Dictionary<string, Seen> seen = new(StringComparer.Ordinal);
+        foreach (string path in named)
+        {
+            seen[path] = Seen.Now(path);
+        }
+        Spread(seen);
+        FolderChanges? changes;
+        List<string> comeOrGone;
+        bool watching;
+        lock (gate)
+        {
+            changes = Gathered(lost, overflowed);
+            lost = overflowed = pending = false;
+            watching = !disposed;
+            comeOrGone = watching ? [.. cameOrWent] : [];
+            cameOrWent.Clear();
+        }
+        foreach (string path in comeOrGone.Where(path => !seen.ContainsKey(path)))
+        {
+            seen[path] = Seen.Now(path);
+        }
+        Keep([.. comeOrGone.Select(path => seen[path])]);
+        if (changes is not null && watching)
+        {
+            Hand(changes);
+        }
+    }
+
+    /// <summary>Brings into the batch gathering each file of a folder come or gone in it, as found: a folder come that the
+    /// record has not is recorded with what is in it, and a recorded folder gone let go of with all it held.</summary>
+    private void Spread(Dictionary<string, Seen> named)
+    {
+        if (recordedAt is null)
+        {
+            return;
+        }
+        foreach (Seen seen in named.Values)
+        {
+            if (!seen.There && record.ContainsKey(seen.Path))
             {
-                changes = Gathered(lost, overflowed);
-                lost = overflowed = pending = false;
-                watching = !disposed;
-                comeOrGone = watching ? [.. cameOrWent] : [];
-                cameOrWent.Clear();
+                Forget(seen.Path, Beside);
             }
-            if (comeOrGone.Count > 0)
+            else if (seen.Folder && !record.ContainsKey(seen.Path) && Path.GetDirectoryName(seen.Path) is { } parent && record.ContainsKey(parent) && Kept(seen.Path))
             {
-                List<Seen> seen = [.. comeOrGone.Select(Seen.Now)];
-                Follow(() => Keep(seen));
+                WatchFrom(seen.Path, Beside);
             }
-            if (changes is not null && watching)
+        }
+
+        void Beside(string path)
+        {
+            if (!named.ContainsKey(path))
             {
-                Hand(changes);
+                Found(path, created: true);
             }
         }
     }
@@ -299,8 +333,9 @@ public abstract class WatchedTree : IDisposable
     }
 
     /// <summary>A file or folder come, <paramref name="made"/> there or moved in. Where each folder is watched on its own,
-    /// a folder is watched from now on, so the files already written in one made (with it at once, as <c>dotnet new -o</c>
-    /// and an agent write them) are taken as made too, as one watch over the tree hears them; one moved in is itself alone.</summary>
+    /// a folder is watched from now on and the files already in it taken in with it: those of one made (with it at once,
+    /// as <c>dotnet new -o</c> and an agent write them) as made, as one watch over the tree hears them; those of one moved
+    /// in as found.</summary>
     private void OnCreated(string path, bool made)
     {
         if (eachFolder && Kept(path) && Directory.Exists(path))
@@ -312,11 +347,7 @@ public abstract class WatchedTree : IDisposable
                     WatchFrom(path, file => Note(file, created: true));
                     return;
                 }
-                WatchFrom(path);
-                foreach (string file in MovedIn(path))
-                {
-                    Note(file, created: true);
-                }
+                WatchFrom(path, file => Found(file, created: true));
             });
         }
         Note(path, created: true);
@@ -385,16 +416,6 @@ public abstract class WatchedTree : IDisposable
                 }
             }, TaskScheduler.Default);
             IdeErrors.Observe(following);
-        }
-    }
-
-    /// <summary>Holds what the watcher does to its record (a batch's come and gone kept, a burst's folders listed again)
-    /// until <paramref name="until"/> ends, for a test of what changes on disk meanwhile.</summary>
-    public void HoldRecord(Task until)
-    {
-        lock (gate)
-        {
-            following = following.ContinueWith(_ => until, TaskScheduler.Default).Unwrap();
         }
     }
 
@@ -532,15 +553,18 @@ public abstract class WatchedTree : IDisposable
 
     /// <summary>Keeps the record of what a batch handed over came or went: each name in or out of its folder's record as it
     /// was when handed, so a change since, which what it was handed to may not have seen, still differs from the record
-    /// and is found if it goes unheard; a folder come recorded with what is in it, one gone let go of with every folder
-    /// recorded under it. The folders' stamps stay as they were, so a change lost beside these still shows.</summary>
+    /// and is found if it goes unheard; a folder come recorded with what is in it, what the batch did not hand found, and
+    /// one gone let go of with every folder recorded under it. The folders' stamps stay as they were, so a change lost
+    /// beside these still shows.</summary>
     private void Keep(List<Seen> batch)
     {
         if (recordedAt is null)
         {
             return;
         }
-        foreach (Seen seen in batch)
+        HashSet<string> handedOver = new(batch.Select(seen => seen.Path), StringComparer.Ordinal);
+        // A folder before what is in it, so its files are kept as handed once it is recorded.
+        foreach (Seen seen in batch.OrderBy(seen => seen.Path.Length))
         {
             if (Path.GetDirectoryName(seen.Path) is not { } parent || !record.TryGetValue(parent, out Listed? listed))
             {
@@ -552,7 +576,13 @@ public abstract class WatchedTree : IDisposable
                 recorded += listed.Names.Add(name) ? 1 : 0;
                 if (seen.Folder && !record.ContainsKey(seen.Path) && Kept(seen.Path))
                 {
-                    WatchFrom(seen.Path);
+                    WatchFrom(seen.Path, file =>
+                    {
+                        if (!handedOver.Contains(file))
+                        {
+                            Found(file, created: true);
+                        }
+                    });
                 }
             }
             else if (!seen.There)
@@ -603,6 +633,7 @@ public abstract class WatchedTree : IDisposable
         }
         int read = 0;
         int found = 0;
+        int unheard = 0;
         // Each folder after those above it, so one gone is let go of with its parent's listing.
         foreach (string at in listing.OrderBy(f => f.Length))
         {
@@ -614,7 +645,7 @@ public abstract class WatchedTree : IDisposable
             {
                 if (at == Top && !Directory.Exists(at))
                 {
-                    Forget(at, file => Found(file, created: true));
+                    Forget(at, file => Find(file, created: true));
                 }
                 continue;
             }
@@ -629,8 +660,8 @@ public abstract class WatchedTree : IDisposable
             foreach (string name in was.Names.Where(n => !names.Contains(n)))
             {
                 string path = Path.Join(at, name);
-                Forget(path, file => Found(file, created: true));
-                Found(path, created: true);
+                Forget(path, file => Find(file, created: true));
+                Find(path, created: true);
             }
             Keep(at, now.Stamp, entries);
             foreach (Entry entry in entries)
@@ -638,31 +669,42 @@ public abstract class WatchedTree : IDisposable
                 string path = Path.Join(at, entry.Name);
                 if (!was.Names.Contains(entry.Name))
                 {
-                    Found(path, created: true);
+                    Find(path, created: true);
                     if (entry.Folder && !entry.Link && Kept(path))
                     {
-                        WatchFrom(path, file => Found(file, created: true));
+                        WatchFrom(path, file => Find(file, created: true));
                     }
                 }
                 else if (!entry.Folder && entry.Written >= since && !(heard.TryGetValue(PathNames.Canonical(path), out DateTime last) && last >= entry.Written))
                 {
-                    Found(path, created: false);
+                    Find(path, created: false);
                 }
             }
         }
-        IdeErrors.Write($"{Shown} listed {Plural.Of(listing.Count, "folder")} again after a burst of changes at risk of some lost unsaid, "
-            + $"{Plural.Of(heard.Count, "path")} heard in its last moments: {Plural.Of(found, "change")} not heard found");
+        IdeErrors.Write($"{Shown} listed {Plural.Of(listing.Count, "folder")} again after a burst of changes at risk of some lost unsaid: "
+            + $"{Plural.Of(found, "change")} found, {unheard} at a path neither heard nor found in its last moments ({Plural.Of(heard.Count, "path")})");
 
-        void Found(string path, bool created)
+        void Find(string path, bool created)
         {
             string canonical = PathNames.Canonical(path);
-            found += heard.ContainsKey(canonical) ? 0 : 1;
-            lock (gate)
-            {
-                handed[canonical] = (Written(path), DateTime.UtcNow);
-            }
-            Note(path, created, heard: false);
+            found++;
+            unheard += heard.ContainsKey(canonical) ? 0 : 1;
+            Found(path, canonical, created);
         }
+    }
+
+    /// <summary>Takes in a change found by listing or walking rather than heard, marked handed over, so its own change heard
+    /// later is not handed over twice.</summary>
+    private void Found(string path, bool created) => Found(path, PathNames.Canonical(path), created);
+
+    /// <inheritdoc cref="Found(string, bool)"/>
+    private void Found(string path, string canonical, bool created)
+    {
+        lock (gate)
+        {
+            handed[canonical] = (Written(path), DateTime.UtcNow);
+        }
+        Note(path, created, heard: false);
     }
 
     /// <summary>Changes lost (too many at once) or a watch that failed: everything is read again and recorded anew, and
@@ -808,7 +850,7 @@ public abstract class WatchedTree : IDisposable
             }
             else
             {
-                HandOver();
+                Follow(HandOver);
             }
             held.Dispose();
         }, TaskScheduler.Default));
