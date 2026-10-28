@@ -357,12 +357,12 @@ public sealed partial class BuildRunController
     public Task<string?> RestartServiceAsync(string name) => RestartServiceAsync(Containers, name);
 
     /// <summary>Restart of one .NET service from its window or an agent, through its run: its session ended first,
-    /// restarted (held again where it is debugged), and attached to again; one the run left unstarted started. Null once
-    /// done, else why not.</summary>
-    public Task<string?> RestartServiceAsync(ServiceRun? run, string name) => OnServiceAsync(run, name, AppActions.ContainerRestart, $"Restarting {name}…", async (run, service, work) =>
-        run.LeftUnstarted(service)
+    /// restarted (held again where it is debugged), and attached to again; one the run left unstarted started. The start
+    /// given (a replica its window chose), else the service of that name. Null once done, else why not.</summary>
+    public Task<string?> RestartServiceAsync(ServiceRun? run, string name, IRunService? start = null) => OnServiceAsync(run, name, AppActions.ContainerRestart, $"Restarting {name}…",
+        async (run, service, work) => run.LeftUnstarted(service)
             ? Done(await StartLaterAsync(run, service, work, "started from its window"), $"{run.Name}: started {name}")
-            : Done(await RestartServicesAsync(run, [service], work, "restarted from its window"), $"{run.Name}: restarted {name}"));
+            : Done(await RestartServicesAsync(run, [service], work, "restarted from its window"), $"{run.Name}: restarted {name}"), start);
 
     /// <summary>Profile of one .NET service of a run as it runs: its program where its kind runs it, recorded by the one
     /// recording of a service (<see cref="BuildRunParts.ProfileService"/>), which Stop, a restart and Rerun read first; one
@@ -398,15 +398,17 @@ public sealed partial class BuildRunController
     }
 
     /// <summary>One service's action under its own <see cref="Working"/>, Stop ending it: refused saying why when there is no
-    /// run, the run has no such service, or the action is under way.</summary>
-    private async Task<string?> OnServiceAsync(ServiceRun? run, string name, string action, string stage, Func<ServiceRun, IRunService, Working, Task<string?>> act)
+    /// run, the run has no such service, or the action is under way. On the start given while its run runs it, else on the
+    /// service of that name.</summary>
+    private async Task<string?> OnServiceAsync(ServiceRun? run, string name, string action, string stage, Func<ServiceRun, IRunService, Working, Task<string?>> act,
+        IRunService? start = null)
     {
         UiThread.Check();
         if (run is null)
         {
             return Said(ServiceOfRun(name).WhyNot!);
         }
-        if (ServiceOf(run, name) is not ({ } service, null))
+        if ((start is not null && !run.IsStopped && run.Services.Contains(start) ? (start, null) : ServiceOf(run, name)) is not ({ } service, null))
         {
             return Said(ServiceOf(run, name).WhyNot!);
         }

@@ -209,7 +209,7 @@ public partial class MainWindow
                 BackgroundWork.Track(next.Debug.ChooseAsync(tab));
             }
         };
-        next.Aspire.RestartCommand = (app, service, build, cancel) => RestartAspireCommandAsync(next, app, service, build, cancel);
+        next.Aspire.RestartCommand = (app, starts, build, cancel) => RestartAspireCommandAsync(next, app, starts, build, cancel);
         next.Aspire.Changed += (_, _) =>
         {
             FollowEngineForAspire(next);
@@ -295,7 +295,7 @@ public partial class MainWindow
         if (command is "restart" or "resource-restart" && current.Aspire.FindService(selection) is IRunService service
             && current.Aspire.FindApp(selection.AppHostPath) is { IsTest: false } app)
         {
-            return await buildRun.RestartServiceAsync(app, service.Name) is { } failed ? throw new InvalidOperationException(failed) : $"{app.Name}: restarted {service.Name}";
+            return await buildRun.RestartServiceAsync(app, service.Name, service) is { } failed ? throw new InvalidOperationException(failed) : $"{app.Name}: restarted {service.Name}";
         }
         return await ExecuteAspireCommandAsync(current, selection, command, isCurrent, cancel, forAgent);
     }
@@ -480,65 +480,79 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>How an Aspire service restarts, the run of services' restart of it (<see cref="AspireAppRun.RestartAsync"/>):
-    /// its AppHost's own commands, its stop, its project's build here and its start where <paramref name="build"/> asks it
-    /// (an edit's, never building over its running files), else its restart (or start, stopped); done once asked, throwing
-    /// why not.</summary>
-    private async Task RestartAspireCommandAsync(ProjectSession current, AspireAppRun app, AspireResourceRun service, bool build, CancellationToken cancel)
+    /// <summary>How starts of an Aspire service restart, the run of services' restart of them (<see cref="AspireAppRun.RestartAsync"/>):
+    /// each its own resource's commands (a replica's by its instance), each stopped, their projects built here and each started
+    /// where <paramref name="build"/> asks it (an edit's, never building over running files), else each restarted (or started,
+    /// stopped); done once asked, throwing why not.</summary>
+    private async Task RestartAspireCommandAsync(ProjectSession current, AspireAppRun app, IReadOnlyList<AspireResourceRun> starts, bool build, CancellationToken cancel)
     {
-        // By its name and project, whether it runs or not: a session ended first may have ended its program with it.
+        // By its name, project and instance, whether it runs or not: a session ended first may have ended its program with it.
         IReadOnlyList<AspireResource> resources = await ReadAspireResourcesAsync(app.Configuration.Project, cancel);
         if (session != current || current.IsEnded || app.Stopping)
         {
             throw new InvalidOperationException("The selected AppHost is no longer running");
         }
-        string name = ((IRunService)service).Name;
-        AspireSelection selected = new(app.Configuration.Project, One(resources, candidate => candidate.Source is { } source && PathNames.Same(source, service.Project)
-                && candidate.IsNamed(name))
-            ?? throw new InvalidOperationException($"{name} is not one resource of {app.Configuration.Name}"));
-        AspireResource resource = selected.Resource;
+        (AspireResourceRun Start, AspireSelection Selected)[] each = [.. starts.Select(start => (start, new AspireSelection(app.Configuration.Project,
+            start.ResourceIn(resources) ?? throw new InvalidOperationException($"{((IRunService)start).Name} is not one resource of {app.Configuration.Name}"))))];
         if (!build)
         {
-            AspireResourceCommand again = resource.Commands.FirstOrDefault(command => command.Name is "restart" or "resource-restart" && command.Enabled)
-                ?? resource.Commands.FirstOrDefault(command => command.Name is "start" or "resource-start" && command.Enabled)
-                ?? throw new InvalidOperationException($"{resource.DisplayName} advertises no enabled restart or start command");
-            await ExecuteAspireCommandAsync(current, selected, again.Name, () => !app.Stopping, cancel);
+            foreach ((_, AspireSelection selected) in each)
+            {
+                AspireResourceCommand again = selected.Resource.Commands.FirstOrDefault(command => command.Name is "restart" or "resource-restart" && command.Enabled)
+                    ?? selected.Resource.Commands.FirstOrDefault(command => command.Name is "start" or "resource-start" && command.Enabled)
+                    ?? throw new InvalidOperationException($"{selected.Resource.DisplayName} advertises no enabled restart or start command");
+                await ExecuteAspireCommandAsync(current, selected, again.Name, () => !app.Stopping, cancel);
+            }
             return;
         }
-        AspireResourceCommand stop = resource.Commands.FirstOrDefault(command => command.Name is "stop" or "resource-stop" && command.Enabled)
-            ?? throw new InvalidOperationException($"{resource.DisplayName} advertises no enabled stop command");
-        await ExecuteAspireCommandAsync(current, selected, stop.Name, () => !app.Stopping, cancel);
-        // Its program gone before the build writes over its files, which Windows locks while it runs.
-        if (service.Runner is { } runner)
+        foreach ((_, AspireSelection selected) in each)
         {
-            TimeSpan limit = Waits.Of(TimeSpan.FromSeconds(30));
-            try
+            AspireResourceCommand stop = selected.Resource.Commands.FirstOrDefault(command => command.Name is "stop" or "resource-stop" && command.Enabled)
+                ?? throw new InvalidOperationException($"{selected.Resource.DisplayName} advertises no enabled stop command");
+            await ExecuteAspireCommandAsync(current, selected, stop.Name, () => !app.Stopping, cancel);
+        }
+        // Their programs gone before the build writes over their files, which Windows locks while they run.
+        foreach ((AspireResourceRun start, _) in each)
+        {
+            if (start.Runner is { } runner)
             {
-                await runner.Ended.WaitAsync(limit, cancel);
-            }
-            catch (TimeoutException)
-            {
-                throw new InvalidOperationException($"{name} did not stop within {limit.TotalSeconds:0} s of its AppHost's stop command");
+                TimeSpan limit = Waits.Of(TimeSpan.FromSeconds(30));
+                try
+                {
+                    await runner.Ended.WaitAsync(limit, cancel);
+                }
+                catch (TimeoutException)
+                {
+                    throw new InvalidOperationException($"{((IRunService)start).Name} did not stop within {limit.TotalSeconds:0} s of its AppHost's stop command");
+                }
             }
         }
         if (session != current || current.IsEnded)
         {
             throw new InvalidOperationException(Refusals.SolutionClosed);
         }
-        app.Rebuilt[service.Project] = DateTime.UtcNow;
-        if (await buildRun.BuildForAsync(new BuildStep(service.Project, service.Plan.Framework), cancel) is { Succeeded: false } failed)
+        foreach (AspireResourceRun start in starts.DistinctBy(start => (start.Project, start.Plan.Framework)))
         {
-            throw new InvalidOperationException(failed.Message);
+            app.Rebuilt[start.Project] = DateTime.UtcNow;
+            if (await buildRun.BuildForAsync(new BuildStep(start.Project, start.Plan.Framework), cancel) is { Succeeded: false } failed)
+            {
+                throw new InvalidOperationException(failed.Message);
+            }
         }
-        AspireResource fresh = One(await ReadAspireResourcesAsync(app.Configuration.Project, cancel), candidate => candidate.Name == resource.Name && candidate.Uid == resource.Uid
-                && AspireJson.String(candidate.Data, "type") == AspireJson.String(resource.Data, "type")
-                && candidate.Source is { } source && PathNames.Same(source, service.Project))
-            ?? throw new InvalidOperationException($"{name} is no longer one resource of {app.Configuration.Name} to start again after its build");
-        AspireResourceCommand start = fresh.Commands.FirstOrDefault(command => command.Name is "start" or "resource-start" && command.Enabled)
-            ?? fresh.Commands.FirstOrDefault(command => command.Name is "restart" or "resource-restart" && command.Enabled)
-            ?? throw new InvalidOperationException($"{resource.DisplayName} advertises no enabled start command");
-        await ExecuteAspireCommandAsync(current, new(app.Configuration.Project, fresh), start.Name,
-            () => !app.Stopping && current.Aspire.FindApp(app.Configuration.Project) == app, cancel);
+        IReadOnlyList<AspireResource> built = await ReadAspireResourcesAsync(app.Configuration.Project, cancel);
+        foreach ((AspireResourceRun start, AspireSelection selected) in each)
+        {
+            AspireResource resource = selected.Resource;
+            AspireResource fresh = One(built, candidate => candidate.Name == resource.Name && candidate.Uid == resource.Uid
+                    && AspireJson.String(candidate.Data, "type") == AspireJson.String(resource.Data, "type")
+                    && candidate.Source is { } source && PathNames.Same(source, start.Project))
+                ?? throw new InvalidOperationException($"{((IRunService)start).Name} is no longer one resource of {app.Configuration.Name} to start again after its build");
+            AspireResourceCommand again = fresh.Commands.FirstOrDefault(command => command.Name is "start" or "resource-start" && command.Enabled)
+                ?? fresh.Commands.FirstOrDefault(command => command.Name is "restart" or "resource-restart" && command.Enabled)
+                ?? throw new InvalidOperationException($"{resource.DisplayName} advertises no enabled start command");
+            await ExecuteAspireCommandAsync(current, new(app.Configuration.Project, fresh), again.Name,
+                () => !app.Stopping && current.Aspire.FindApp(app.Configuration.Project) == app, cancel);
+        }
     }
 
     private async Task<AspireSelection> OwnedAspireSelectionAsync(ProjectSession current, AspireAppRun app, AspireResourceRun service, CancellationToken cancel)

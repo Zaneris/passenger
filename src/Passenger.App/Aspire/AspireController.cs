@@ -90,9 +90,9 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         });
     }
 
-    /// <summary>Restarts a service through its AppHost (the window's resource commands): stopped, its project built again
-    /// when asked, and started, or restarted; done once asked.</summary>
-    public Func<AspireAppRun, AspireResourceRun, bool, CancellationToken, Task>? RestartCommand { get; set; }
+    /// <summary>Restarts starts of a service through its AppHost (the window's resource commands): stopped, their project
+    /// built again when asked, and started, or restarted; done once asked.</summary>
+    public Func<AspireAppRun, IReadOnlyList<AspireResourceRun>, bool, CancellationToken, Task>? RestartCommand { get; set; }
 
     /// <summary>Attaches to a service held at its start as the start comes, once: the run of services' one attach
     /// (BuildRunController's), null once attached, else why not.</summary>
@@ -368,7 +368,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             ProfileTarget = profileTarget,
             BuildBegan = began,
             OverHttp = https.OverHttp is not null,
-            Restarting = (run, resource, build, cancel) => (RestartCommand ?? throw new InvalidOperationException("Aspire resource restart is unavailable"))(run, resource, build, cancel),
+            Restarting = (run, starts, build, cancel) => (RestartCommand ?? throw new InvalidOperationException("Aspire resource restart is unavailable"))(run, starts, build, cancel),
         };
         if (https.OverHttp is { } note)
         {
@@ -1219,7 +1219,8 @@ public sealed class AspireAppRun : ServiceRun
 
     public override bool LeftUnstarted(string name) => unstarted.Contains(name);
 
-    /// <summary>Each service's next start, as a restart waits for it: its failure, or null once started and attached to.</summary>
+    /// <summary>Each replica's next start (by <see cref="AspireResourceRun.IdentityKey"/>), as a restart waits for it: its
+    /// failure, or null once started and attached to.</summary>
     private readonly Dictionary<string, TaskCompletionSource<string?>> nextStarts = new(StringComparer.Ordinal);
 
     private long started;
@@ -1286,9 +1287,9 @@ public sealed class AspireAppRun : ServiceRun
     internal TaskCompletionSource Stopped { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal bool Stopping { get; set; }
 
-    /// <summary>Restarts a service through its AppHost (the controller's, the window's resource commands): its stop, its
-    /// project's build when asked, and its start, or its restart; done once asked.</summary>
-    internal Func<AspireAppRun, AspireResourceRun, bool, CancellationToken, Task>? Restarting { get; set; }
+    /// <summary>Restarts starts of a service through its AppHost (the controller's, the window's resource commands): their
+    /// stops, their project's build when asked, and their starts, or their restarts; done once asked.</summary>
+    internal Func<AspireAppRun, IReadOnlyList<AspireResourceRun>, bool, CancellationToken, Task>? Restarting { get; set; }
 
     public override bool IsStopped => Stopping;
 
@@ -1363,9 +1364,11 @@ public sealed class AspireAppRun : ServiceRun
     }
 
     /// <summary>Restarts services through the AppHost, one after another, each waited for until its next start has started
-    /// and been attached to (a held one) as it started; built between its stop and its start when asked.</summary>
+    /// and been attached to (a held one) as it started; built between its stop and its start when asked, the replicas of a
+    /// project given together stopped before its one build, so none runs over the files it writes.</summary>
     public override async Task<string?> RestartAsync(IReadOnlyList<IRunService> services, CancellationToken cancel, string? why = null, bool build = false)
     {
+        List<AspireResourceRun> starts = [];
         foreach (IRunService service in services)
         {
             // The start given, whose program its ended session may have ended with it, else the newest of its name.
@@ -1373,20 +1376,32 @@ public sealed class AspireAppRun : ServiceRun
             {
                 return $"{service.Name} of {Name} is not running";
             }
-            Console.Append($"Restarting {service.Name}{(why is null ? string.Empty : $": {why}")}\n");
-            Task<string?> next = NextStart(service.Name);
-            await (Restarting ?? throw new InvalidOperationException("Aspire resource restart is unavailable"))(this, running, build, cancel);
-            TimeSpan limit = Waits.Of(StartLimit);
-            try
+            starts.Add(running);
+        }
+        IEnumerable<AspireResourceRun[]> rounds = build ? starts.GroupBy(start => start.Project, PathNames.Comparer).Select(project => project.ToArray())
+            : starts.Select(start => new[] { start });
+        foreach (AspireResourceRun[] round in rounds)
+        {
+            (string Name, Task<string?> Next)[] nexts = [.. round.Select(start => (((IRunService)start).Name, NextStart(start)))];
+            foreach ((string name, _) in nexts)
             {
-                if (await next.WaitAsync(limit, cancel) is { } failed)
-                {
-                    return $"{service.Name} did not start again: {failed}";
-                }
+                Console.Append($"Restarting {name}{(why is null ? string.Empty : $": {why}")}\n");
             }
-            catch (TimeoutException)
+            await (Restarting ?? throw new InvalidOperationException("Aspire resource restart is unavailable"))(this, round, build, cancel);
+            TimeSpan limit = Waits.Of(StartLimit);
+            foreach ((string name, Task<string?> next) in nexts)
             {
-                return $"{service.Name} did not start again within {limit.TotalMinutes:0.#} minutes of its restart";
+                try
+                {
+                    if (await next.WaitAsync(limit, cancel) is { } failed)
+                    {
+                        return $"{name} did not start again: {failed}";
+                    }
+                }
+                catch (TimeoutException)
+                {
+                    return $"{name} did not start again within {limit.TotalMinutes:0.#} minutes of its restart";
+                }
             }
         }
         return null;
@@ -1395,12 +1410,13 @@ public sealed class AspireAppRun : ServiceRun
     /// <summary>How long a restart waits for its service's next start, which DCP may take a while to ask for.</summary>
     private static readonly TimeSpan StartLimit = TimeSpan.FromMinutes(3);
 
-    /// <summary>A service's next start, its failure or null.</summary>
-    private Task<string?> NextStart(string name)
+    /// <summary>The next start of a service's replica (the start given's, <see cref="AspireResourceRun.IdentityKey"/>), its
+    /// failure or null.</summary>
+    private Task<string?> NextStart(AspireResourceRun start)
     {
-        if (!nextStarts.TryGetValue(name, out TaskCompletionSource<string?>? next))
+        if (!nextStarts.TryGetValue(start.IdentityKey, out TaskCompletionSource<string?>? next))
         {
-            nextStarts[name] = next = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            nextStarts[start.IdentityKey] = next = new(TaskCreationOptions.RunContinuationsAsynchronously);
         }
         return next.Task;
     }
@@ -1448,7 +1464,7 @@ public sealed class AspireAppRun : ServiceRun
     /// <summary>A service's start has landed: started, attached to where held, or failed (<paramref name="failure"/>).</summary>
     internal void Landed(AspireResourceRun resource, string? failure)
     {
-        if (nextStarts.Remove(((IRunService)resource).Name, out TaskCompletionSource<string?>? next))
+        if (nextStarts.Remove(resource.IdentityKey, out TaskCompletionSource<string?>? next))
         {
             next.TrySetResult(failure);
         }
@@ -1509,6 +1525,25 @@ public sealed class AspireResourceRun(string id, string instanceId, string proje
     public string? ResourceName { get; internal set; }
     internal string IdentityKey => Plan.Environment.GetValueOrDefault("OTEL_RESOURCE_ATTRIBUTES") is { Length: > 0 } attributes
         ? $"{Project}\n{attributes}" : ResourceName ?? Project;
+
+    /// <summary>The replica its start is, as DCP told it (<c>service.instance.id</c> in OTEL_RESOURCE_ATTRIBUTES, which its
+    /// restarts keep): DCP's name for its resource, or that name's suffix after the service's name; null where none is told.</summary>
+    internal string? Instance => Plan.Environment.GetValueOrDefault("OTEL_RESOURCE_ATTRIBUTES")?.Split(',').Select(attribute => attribute.Split('=', 2))
+        .FirstOrDefault(pair => pair.Length == 2 && pair[0].Trim() == "service.instance.id")?[1].Trim() is { Length: > 0 } instance ? instance : null;
+
+    /// <summary>Its resource among its AppHost's: the one of its project and name, or of several (replicas, which share the
+    /// name) the one its <see cref="Instance"/> names; null for none, or several it cannot tell apart.</summary>
+    internal AspireResource? ResourceIn(IEnumerable<AspireResource> resources)
+    {
+        string name = ((IRunService)this).Name;
+        AspireResource[] named = [.. resources.Where(resource => resource.Source is { } source && PathNames.Same(source, Project) && resource.IsNamed(name))];
+        if (named.Length > 1 && Instance is { } instance)
+        {
+            named = [.. named.Where(resource => resource.Name == instance || resource.Name == $"{name}-{instance}")];
+        }
+        return named is [{ } one] ? one : null;
+    }
+
     public int? ProcessId { get; internal set; }
     public DebugTab? DebugTab { get; internal set; }
 

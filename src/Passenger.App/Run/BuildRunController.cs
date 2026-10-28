@@ -1290,7 +1290,9 @@ public sealed partial class BuildRunController
                         {
                             return Said(failed);
                         }
-                        restarted.AddRange(changes.Select(s => ((IRunService)s).Name));
+                        // Replicas share their service's name, said once with their count.
+                        restarted.AddRange(changes.GroupBy(s => ((IRunService)s).Name).Select(named => named.Count() == 1 ? named.Key
+                            : $"{named.Key} ({Plural.Of(named.Count(), "replica")})"));
                     }
                     parts.Say(Reran(chosen.Name, restarted));
                     return null;

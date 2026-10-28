@@ -990,6 +990,118 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
+    /// <summary>A service its AppHost runs as two replicas, which share the service's name and each tell its own instance
+    /// (service.instance.id, the suffix of DCP's name for its resource), restarts each by its own resource: Rerun after an
+    /// edit has the AppHost stop both, builds the project once and has each started again, and Restart of one replica
+    /// restarts it alone.</summary>
+    [AvaloniaFact]
+    public void Each_replica_of_a_service_restarts_by_its_own_resource()
+    {
+        project.Reset();
+        project.BuildApi();
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        MainWindow window = OpenRunning(backend);
+        string[] instances = ["aaaaaaaa", "bbbbbbbb"];
+        // Each replica's program as the stand-in AppHost's commands act on it, and the starts they ask for.
+        System.Collections.Concurrent.ConcurrentDictionary<string, int> running = new(StringComparer.Ordinal);
+        System.Collections.Concurrent.ConcurrentQueue<Task<(System.Net.WebSockets.ClientWebSocket Notified, HttpStatusCode Answer)>> starts = new();
+        System.Net.WebSockets.ClientWebSocket? subscribed = null;
+        try
+        {
+            (subscribed, HttpStatusCode answer) = project.AskToStartApi("apiservice", environment: Replica(instances[0]));
+            Assert.True((int)answer is >= 200 and < 300, $"The IDE refused the first replica's run session: {answer}");
+            (System.Net.WebSockets.ClientWebSocket second, answer) = Ui.Await(Waiting.Apart(() => project.StartApiAsync("apiservice", environment: Replica(instances[1]),
+                subscribe: false)), "the IDE's answer to the second replica's run session");
+            second.Dispose();
+            Assert.True((int)answer is >= 200 and < 300, $"The IDE refused the second replica's run session: {answer}");
+            Dictionary<string, int> first = Replicas();
+            Show(first);
+            backend.OnCommand = command =>
+            {
+                string instance = command.ResourceName["apiservice-".Length..];
+                if (command.CommandName is "resource-stop" or "resource-restart")
+                {
+                    Processes.Kill(running[instance]);
+                }
+                if (command.CommandName is "resource-start" or "resource-restart")
+                {
+                    starts.Enqueue(Waiting.Apart(() => project.StartApiAsync("apiservice", environment: Replica(instance), subscribe: false)));
+                }
+            };
+
+            File.AppendAllText(project.PathOf($"{StandInAppHost.Api}/Program.cs"), "// Changed for Rerun.\n");
+            Ui.Run(window, AppActions.Rerun);
+            Ui.WaitFor(() => window.Status is { } status && (status.StartsWith($"{StandInAppHost.Configuration}: restarted", StringComparison.Ordinal)
+                || status.Contains("could not be restarted", StringComparison.Ordinal)),
+                () => $"Rerun to restart the API, whose code changed ({window.Status})", TimeSpan.FromMinutes(3));
+            Assert.Equal($"{StandInAppHost.Configuration}: restarted apiservice (2 replicas) with the new build", window.Status);
+            Dictionary<string, int> rerun = Replicas();
+            Assert.All(instances, instance => Assert.False(Processes.IsRunning(first[instance]) || rerun[instance] == first[instance],
+                $"Replica {instance} was not restarted by Rerun"));
+            Assert.Equal([.. instances.Select(instance => ("resource-stop", $"apiservice-{instance}")), .. instances.Select(instance => ("resource-start", $"apiservice-{instance}"))],
+                backend.Commands.Select(command => (command.CommandName, command.ResourceName)));
+
+            Show(rerun);
+            string said = Ui.Await(window.ExecuteAspireResourceCommandAsync(PathNames.Canonical(project.ProjectFile), $"apiservice-{instances[1]}", "resource-restart"),
+                "Restart of the second replica");
+            Assert.EndsWith(": restarted apiservice", said, StringComparison.Ordinal);
+            Dictionary<string, int> restarted = Replicas();
+            Assert.True(restarted[instances[0]] == rerun[instances[0]] && Processes.IsRunning(rerun[instances[0]]), "Restart of the second replica restarted the first");
+            Assert.False(Processes.IsRunning(rerun[instances[1]]) || restarted[instances[1]] == rerun[instances[1]], "Restart of the second replica did not restart it");
+            Assert.Equal(("resource-restart", $"apiservice-{instances[1]}"), backend.Commands.Select(command => (command.CommandName, command.ResourceName)).Last());
+            Assert.Empty(backend.Errors);
+        }
+        finally
+        {
+            window.Close();
+            subscribed?.Dispose();
+            while (starts.TryDequeue(out Task<(System.Net.WebSockets.ClientWebSocket Notified, HttpStatusCode Answer)>? start))
+            {
+                Ui.Await(start, "a replica's start request").Notified.Dispose();
+            }
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+
+        static Dictionary<string, string> Replica(string instance) => new() { ["OTEL_RESOURCE_ATTRIBUTES"] = $"service.instance.id={instance}" };
+
+        // Each replica's one program running, as the IDE started it.
+        Dictionary<string, int> Replicas()
+        {
+            int[] Of(string instance) => [.. window.AspireRuntime.Apps.Single().Services
+                .Where(service => service.Plan.Environment.GetValueOrDefault("OTEL_RESOURCE_ATTRIBUTES") == $"service.instance.id={instance}")
+                .Select(service => service.ProcessId).OfType<int>()];
+            Ui.WaitFor(() => instances.All(instance => Of(instance) is [int one] && Processes.IsRunning(one)), "each replica's one program running");
+            return instances.ToDictionary(instance => instance, instance => Of(instance)[0]);
+        }
+
+        // Each replica's resource as its AppHost says it runs, with its program and its commands.
+        void Show(Dictionary<string, int> programs)
+        {
+            foreach ((string instance, int program) in programs)
+            {
+                running[instance] = program;
+                backend.PushResource(new Resource
+                {
+                    Name = $"apiservice-{instance}", DisplayName = "apiservice", Uid = $"api-{instance}", ResourceType = "Project", State = "Running",
+                    Properties =
+                    {
+                        new ResourceProperty { Name = "project.path", Value = Google.Protobuf.WellKnownTypes.Value.ForString(PathNames.Canonical(project.ApiProject)) },
+                        new ResourceProperty { Name = "executable.pid", Value = Google.Protobuf.WellKnownTypes.Value.ForNumber(program) },
+                    },
+                    Commands =
+                    {
+                        new ResourceCommand { Name = "resource-stop", DisplayName = "Stop", State = ResourceCommandState.Enabled },
+                        new ResourceCommand { Name = "resource-start", DisplayName = "Start", State = ResourceCommandState.Enabled },
+                        new ResourceCommand { Name = "resource-restart", DisplayName = "Restart", State = ResourceCommandState.Enabled },
+                    },
+                });
+            }
+            Ui.WaitFor(() => programs.All(replica => window.Aspire.ResourceSnapshots.Any(shown => shown.Name == $"apiservice-{replica.Key}"
+                && shown.Data.TryGetProperty("properties", out JsonElement properties) && properties.TryGetProperty("executable.pid", out JsonElement pid)
+                && pid.ToString() == replica.Value.ToString(System.Globalization.CultureInfo.InvariantCulture))), "each replica's resource with its program");
+        }
+    }
+
     /// <summary>Profile of an AppHost waits as long as the AppHost takes to ask for the service it records, then gives that
     /// service its time to reach the profiler, counted from the ask: past it, the start is given up as the time limit it is,
     /// never as a stop nobody pressed, and the AppHost is stopped. Here the window's limit is a moment, which no start meets.</summary>
