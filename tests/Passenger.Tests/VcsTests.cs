@@ -1061,6 +1061,45 @@ public sealed class VcsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Unstash Changes acts on the stash chosen, by its commit: another program stashing while the list is open
+    /// moves it down the list, and Drop and Pop still take that one, never the newer stash in its old place; one another
+    /// program dropped meanwhile is refused, saying so.</summary>
+    [AvaloniaFact]
+    public void Unstash_changes_takes_the_stash_chosen_though_another_program_stashed_or_dropped_since_the_list_was_read()
+    {
+        string shop = Path.Combine(folder, "Shop.cs");
+        File.AppendAllText(shop, "// older\n");
+        Git("stash", "push", "-m", "Older");
+        MainWindow window = Open();
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+
+        UnstashPopup dropping = Ui.Landed(window.ShowUnstashAsync(), "the stashes")!;
+        Assert.Equal("On main: Older", Assert.Single(dropping.Stashes).Message);
+        File.AppendAllText(shop, "// newer\n");
+        Git("stash", "push", "-m", "Newer");
+        Task dropped = dropping.DropAsync();
+        Ui.Landed(() => dropped.IsCompleted, "the drop");
+        Assert.True(Stashes() is ["On main: Newer"], $"Drop of Older, after another program stashed Newer, left [{string.Join(", ", Stashes())}]");
+        Assert.Equal("Dropped On main: Older", window.Status);
+
+        UnstashPopup popping = Ui.Landed(window.ShowUnstashAsync(), "the stashes again")!;
+        Assert.Equal("On main: Newer", Assert.Single(popping.Stashes).Message);
+        File.AppendAllText(shop, "// newest\n");
+        Git("stash", "push", "-m", "Newest");
+        Task popped = popping.PopAsync();
+        Ui.Landed(() => popped.IsCompleted, "the pop");
+        Assert.True(Stashes() is ["On main: Newest"], $"Pop of Newer, after another program stashed Newest, left [{string.Join(", ", Stashes())}]");
+        Assert.Equal(Original + "// newer\n", File.ReadAllText(shop));
+
+        UnstashPopup gone = Ui.Landed(window.ShowUnstashAsync(), "the stashes once more")!;
+        Git("stash", "drop");
+        Task refused = gone.DropAsync();
+        Ui.Landed(() => refused.IsCompleted, "the drop's refusal");
+        Assert.Empty(Stashes());
+        Assert.Equal("The stash \"On main: Newest\" is no longer in the list: it was popped or dropped since the list was read", window.Status);
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void Stashing_a_change_and_a_new_file_leaves_the_git_log_as_it_was()
     {

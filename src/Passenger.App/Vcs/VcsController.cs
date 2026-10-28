@@ -812,19 +812,19 @@ public sealed class VcsController : IDisposable
 
     /// <summary>Unstash Changes: a stash's changes back in the files, the stash dropped after with
     /// <paramref name="pop"/>.</summary>
-    public Task<VcsOutcome> UnstashAsync(StashInfo stash, bool pop)
+    public Task<VcsOutcome> UnstashAsync(StashInfo stash, bool pop) => SwitchAsync(async repository =>
     {
         // Git keeps no record of an unstash that stopped for conflicts: the stash names their sides until they are resolved.
-        if (Conflicts.Count == 0)
+        if (Conflicts.Count == 0 && await repository.StashNowAsync(stash) is { } now)
         {
-            unstashed = $"stash@{{{stash.Index}}}";
+            unstashed = $"stash@{{{now.Index}}}";
         }
-        return SwitchAsync(repository => repository.UnstashAsync(stash.Index, pop), pop ? $"Unstashed {stash.Message}" : $"Applied {stash.Message}", "Git unstash",
-            "Unstashed with conflicts");
-    }
+        return await repository.UnstashAsync(stash, pop);
+    }, pop ? $"Unstashed {stash.Message}" : $"Applied {stash.Message}", "Git unstash", "Unstashed with conflicts");
 
+    /// <summary>Drops a stash, the one of its commit wherever the list now has it.</summary>
     public Task<VcsOutcome> DropStashAsync(StashInfo stash) =>
-        SwitchAsync(repository => repository.DropStashAsync(stash.Index), $"Dropped {stash.Message}", "Git stash");
+        SwitchAsync(repository => repository.DropStashAsync(stash), $"Dropped {stash.Message}", "Git stash");
 
     /// <summary>Puts files back as the last commit has them; the open ones take their text from disk again.</summary>
     public async Task<VcsOutcome> RollbackAsync(IReadOnlyList<FileChange> changes)

@@ -92,8 +92,9 @@ public sealed record GitConflict(string Path, bool HasBase, bool HasOurs, bool H
     public bool CanMerge => HasOurs && HasTheirs;
 }
 
-/// <summary>A stash: its place in the list (stash@{Index}), what it says, and when it was made.</summary>
-public sealed record StashInfo(int Index, string Message, DateTimeOffset Time);
+/// <summary>A stash: its place in the list (stash@{Index}) when the list was read, its commit, what it says, and when it
+/// was made.</summary>
+public sealed record StashInfo(int Index, string Commit, string Message, DateTimeOffset Time);
 
 /// <summary>What `git` says, and whether it said it without failing.</summary>
 public sealed record GitResult(int Code, string Output, string Error)
@@ -1121,7 +1122,7 @@ public sealed class Git
     /// <summary>The stashes, the newest first.</summary>
     public async Task<IReadOnlyList<StashInfo>> StashesAsync()
     {
-        GitResult list = await RunAsync(Root, ["stash", "list", "--format=%gd%x1f%gs%x1f%ct"]);
+        GitResult list = await RunAsync(Root, ["stash", "list", "--format=%gd%x1f%H%x1f%gs%x1f%ct"]);
         if (!list.Succeeded)
         {
             return [];
@@ -1130,10 +1131,10 @@ public sealed class Git
         foreach (string line in list.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
         {
             string[] parts = line.Split('\x1f');
-            if (parts.Length == 3 && parts[0].StartsWith("stash@{", StringComparison.Ordinal) && int.TryParse(parts[0][7..^1], out int index)
-                && long.TryParse(parts[2], out long seconds))
+            if (parts.Length == 4 && parts[0].StartsWith("stash@{", StringComparison.Ordinal) && int.TryParse(parts[0][7..^1], out int index)
+                && long.TryParse(parts[3], out long seconds))
             {
-                stashes.Add(new StashInfo(index, parts[1], DateTimeOffset.FromUnixTimeSeconds(seconds)));
+                stashes.Add(new StashInfo(index, parts[1], parts[2], DateTimeOffset.FromUnixTimeSeconds(seconds)));
             }
         }
         return stashes;
@@ -1143,10 +1144,26 @@ public sealed class Git
     public Task<GitResult> StashAsync(string message) =>
         RunAsync(Root, ["stash", "push", "--include-untracked", .. message.Length > 0 ? new[] { "-m", message } : []]);
 
-    /// <summary>Applies a stash to the files, and with <paramref name="pop"/> drops it once it applied.</summary>
-    public Task<GitResult> UnstashAsync(int index, bool pop) => RunAsync(Root, ["stash", pop ? "pop" : "apply", $"stash@{{{index}}}"]);
+    /// <summary>The stash of this one's commit where the list has it now, another program having perhaps stashed or
+    /// dropped one since it was read; null once it has left the list.</summary>
+    public async Task<StashInfo?> StashNowAsync(StashInfo stash) => (await StashesAsync()).FirstOrDefault(s => s.Commit == stash.Commit);
 
-    public Task<GitResult> DropStashAsync(int index) => RunAsync(Root, ["stash", "drop", $"stash@{{{index}}}"]);
+    /// <summary>Applies a stash to the files, and with <paramref name="pop"/> drops it once it applied: the stash of its
+    /// commit, wherever the list has it now, one no longer listed refused saying so.</summary>
+    public async Task<GitResult> UnstashAsync(StashInfo stash, bool pop) => await StashNowAsync(stash) is { } now
+        ? await RunAsync(Root, ["stash", pop ? "pop" : "apply", pop ? Place(now) : now.Commit])
+        : Gone(stash);
+
+    /// <summary>Throws a stash away: the one of its commit, wherever the list has it now, one no longer listed refused
+    /// saying so.</summary>
+    public async Task<GitResult> DropStashAsync(StashInfo stash) => await StashNowAsync(stash) is { } now
+        ? await RunAsync(Root, ["stash", "drop", Place(now)])
+        : Gone(stash);
+
+    private static string Place(StashInfo stash) => $"stash@{{{stash.Index}}}";
+
+    private static GitResult Gone(StashInfo stash) =>
+        new(1, string.Empty, $"The stash \"{stash.Message}\" is no longer in the list: it was popped or dropped since the list was read");
 
     /// <summary>A new branch from the head, checked out. -c takes the next word as the name, whatever it is, and git
     /// refuses a name that starts with a dash.</summary>

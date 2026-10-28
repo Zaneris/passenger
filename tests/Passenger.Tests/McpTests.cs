@@ -295,6 +295,34 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             .Select(c => $"{c.GetProperty("path").GetString()} {c.GetProperty("kind").GetString()}").Order(StringComparer.Ordinal));
     }
 
+    /// <summary>vcs_stash lists each stash with its commit, and an agent's drop by that commit takes that stash wherever it
+    /// now is, though another program stashed after the list was read; asked again, it is refused as gone.</summary>
+    [Fact]
+    public async Task An_agents_drop_of_a_stash_by_its_commit_takes_that_stash_though_another_program_stashed_since_the_list()
+    {
+        string repository = TestFolders.Create("mcp-stash-");
+        DeleteAtEnd(repository);
+        string notes = Path.Combine(repository, "Notes.txt");
+        File.WriteAllText(notes, "one\n");
+        await TestGit.InitAsync(repository);
+        File.AppendAllText(notes, "older\n");
+        await TestGit.RunAsync(repository, "stash", "push", "-m", "Older");
+
+        await using McpClient client = await Start(["--mcp", repository], languageServer: false);
+        JsonElement older = Assert.Single((await Call(client, McpTools.VcsStash)).EnumerateArray());
+        string commit = older.GetProperty("commit").GetString()!;
+        Assert.StartsWith(commit, (await TestGit.RunAsync(repository, "rev-parse", "stash@{0}")).Trim(), StringComparison.Ordinal);
+        File.AppendAllText(notes, "newer\n");
+        await TestGit.RunAsync(repository, "stash", "push", "-m", "Newer");
+
+        Dictionary<string, object?> drop = new() { ["action"] = "drop", ["commit"] = commit };
+        string[] left = [.. (await Call(client, McpTools.VcsStash, drop)).EnumerateArray().Select(s => s.GetProperty("message").GetString()!)];
+        Assert.True(left is ["On main: Newer"], $"vcs_stash's drop of Older by its commit, after another program stashed Newer, left [{string.Join(", ", left)}]");
+        CallToolResult again = await Result(client, McpTools.VcsStash, drop);
+        Assert.True(again.IsError == true && Text(again).Contains("No stash in the list has commit", StringComparison.Ordinal), $"A drop of a stash gone from the list answered: {Text(again)}");
+        Assert.Equal("On main: Newer", (await TestGit.RunAsync(repository, "stash", "list", "--format=%gs")).Trim());
+    }
+
     /// <summary>Commit and Push to a remote that refuses every push: the agent hears the refusal, in git's words, as the
     /// tool's error, and the commit stays made.</summary>
     [Gate]
