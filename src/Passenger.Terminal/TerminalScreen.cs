@@ -1676,18 +1676,25 @@ public sealed class TerminalScreen
 
     /// <summary>A CSI's parameters, read as their bytes arrive: groups apart at semicolons, each group's parts apart at
     /// colons (SGR's 38:2:R:G:B), each part a number up to 65535, or -1 when it is empty, holds a byte other than a digit
-    /// or is past an int's range. Its arrays are kept from one sequence to the next, grown only past sixteen parts.</summary>
+    /// or is past an int's range. A sequence keeps its first <see cref="Most"/> parts and drops the rest, so millions of
+    /// separators (a binary file written out) take no more memory or work than those.</summary>
     private sealed class Parameters
     {
-        private int[] values = new int[16];
+        /// <summary>The most parts a sequence keeps, its groups' together.</summary>
+        private const int Most = 32;
+
+        private readonly int[] values = new int[Most];
 
         /// <summary>Where each group's parts start among <see cref="values"/>.</summary>
-        private int[] starts = new int[16];
+        private readonly int[] starts = new int[Most];
 
         private int count;
         private long number;
         private bool digits;
         private bool bad;
+
+        /// <summary>Whether the sequence has <see cref="Most"/> parts, so what comes after them is dropped.</summary>
+        private bool full;
 
         /// <summary>How many groups the sequence has: none until a parameter byte comes.</summary>
         public int Count { get; private set; }
@@ -1707,6 +1714,7 @@ public sealed class TerminalScreen
             number = 0;
             digits = false;
             bad = false;
+            full = false;
         }
 
         /// <summary>Takes a parameter byte, 0x30 to 0x3F.</summary>
@@ -1715,6 +1723,10 @@ public sealed class TerminalScreen
             if (Count == 0)
             {
                 Open();
+            }
+            if (full)
+            {
+                return;
             }
             switch (c)
             {
@@ -1728,7 +1740,10 @@ public sealed class TerminalScreen
                     break;
                 case ';':
                     EndPart();
-                    Open();
+                    if (!full)
+                    {
+                        Open();
+                    }
                     break;
                 case ':':
                     EndPart();
@@ -1739,34 +1754,24 @@ public sealed class TerminalScreen
             }
         }
 
-        /// <summary>The sequence's final byte has come: its last part ends.</summary>
+        /// <summary>The sequence's final byte has come: its last part ends, unless it was dropped.</summary>
         public void End()
         {
-            if (Count > 0)
+            if (Count > 0 && !full)
             {
                 EndPart();
             }
         }
 
-        private void Open()
-        {
-            if (Count == starts.Length)
-            {
-                Array.Resize(ref starts, starts.Length * 2);
-            }
-            starts[Count++] = count;
-        }
+        private void Open() => starts[Count++] = count;
 
         private void EndPart()
         {
-            if (count == values.Length)
-            {
-                Array.Resize(ref values, values.Length * 2);
-            }
             values[count++] = digits && !bad ? (int)Math.Min(number, 65535) : -1;
             number = 0;
             digits = false;
             bad = false;
+            full = count == Most;
         }
     }
 }

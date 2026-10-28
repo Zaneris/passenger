@@ -18,6 +18,7 @@
     <ProjectReference Include="../../src/Passenger.Core/Passenger.Core.csproj" />
     <ProjectReference Include="../../src/Passenger.Dap/Passenger.Dap.csproj" />
     <ProjectReference Include="../../src/Passenger.Debugger/Passenger.Debugger.csproj" />
+    <ProjectReference Include="../../src/Passenger.Terminal/Passenger.Terminal.csproj" />
     <ProjectReference Include="../../src/Passenger.Text/Passenger.Text.csproj" />
     <ProjectReference Include="../../src/Passenger.Workspace/Passenger.Workspace.csproj" />
     <ProjectReference Include="../../src/Passenger.Xaml/Passenger.Xaml.csproj" />
