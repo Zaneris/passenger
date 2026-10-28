@@ -694,6 +694,9 @@ public sealed class LanguageServer : IAsyncDisposable
             || a.EndsWith(".cjs", StringComparison.OrdinalIgnoreCase)) is { } program
             ? Path.GetFileNameWithoutExtension(program) : Path.GetFileNameWithoutExtension(start.FileName);
 
+    /// <summary>LSP's error for a request the server refuses as made of a document it has changed since.</summary>
+    private const int ContentModified = -32801;
+
     /// <summary>The connection's exception as the server's failure: gone (it crashed, was ended for hanging or let go for
     /// one started again, the connection disposed or its pipe closed), refused (an error it answered with), or cancelled
     /// by the server rather than the caller (Roslyn cancels what a change made stale). Null for anything else: the
@@ -704,7 +707,10 @@ public sealed class LanguageServer : IAsyncDisposable
         OperationCanceledException => new LanguageServerFailed("the language server cancelled it", method, error),
         ConnectionLostException or ObjectDisposedException or IOException => new LanguageServerFailed(
             killed ? "the language server stopped responding, so it was ended" : "the language server stopped before it answered", method, error) { Ended = true },
-        RemoteRpcException refused => new LanguageServerFailed($"the language server refused it: {refused.Message.Split('\n')[0].Trim()}", method, error),
+        RemoteRpcException refused => new LanguageServerFailed($"the language server refused it: {refused.Message.Split('\n')[0].Trim()}", method, error)
+        {
+            Outdated = refused is RemoteInvocationException { ErrorCode: ContentModified },
+        },
         _ => null,
     };
 

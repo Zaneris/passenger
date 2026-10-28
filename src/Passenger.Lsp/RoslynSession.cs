@@ -726,8 +726,26 @@ public sealed class LspDocument : IDisposable
     }
 
     /// <summary>What the server says of a hint it gave (a type's description, a parameter's), as markdown; empty when it
-    /// says nothing.</summary>
+    /// says nothing. A hint given before the server read the document again (an .editorconfig, or what a build writes,
+    /// changed its options) it refuses, so the hint it gives now at that place with those words is asked instead.</summary>
     public async Task<string> InlayHintTooltipAsync(LspInlayHint hint, CancellationToken cancel = default)
+    {
+        try
+        {
+            return await TooltipAsync(hint, cancel);
+        }
+        catch (LanguageServerFailed failed) when (failed.Outdated)
+        {
+            IReadOnlyList<LspInlayHint> now = (await InlayHintsAsync(cancel)).Hints;
+            if (now.FirstOrDefault(h => h.Position == hint.Position && h.Label == hint.Label && h.Kind == hint.Kind) is not { } same)
+            {
+                throw;
+            }
+            return await TooltipAsync(same, cancel);
+        }
+    }
+
+    private async Task<string> TooltipAsync(LspInlayHint hint, CancellationToken cancel)
     {
         JsonElement result = await Read(Server.RequestAsync<JsonElement>(LspMethods.InlayHintResolve,
             new { position = hint.Position, label = hint.Label, kind = hint.Kind, data = hint.Data }, cancel));

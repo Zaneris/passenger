@@ -16,4 +16,8 @@ public sealed class LanguageServerFailed(string reason, string? method = null, E
     /// <summary>Whether the server had ended, or was ended, so nothing answered: not a refusal of its own. One started again
     /// may answer.</summary>
     public bool Ended { get; init; }
+
+    /// <summary>Whether the server refused it as asked of a document it has since read again (LSP's ContentModified): what
+    /// it gave for the document before, asked again of what it gives now, it may answer.</summary>
+    public bool Outdated { get; init; }
 }

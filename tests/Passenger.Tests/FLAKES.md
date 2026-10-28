@@ -30,6 +30,15 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-10-28
 
+- `CodeAssistTests`' type and parameter name hints, the Mac under 14 burners beside FolderWatchTests and ProblemsTests'
+  thousand rewrites (#610): "Waited 135 s for the hint's hover card". As the window opened, its design-time build
+  rewrote the project's generated .editorconfig; told of it, Roslyn read every document again, the text the same but its
+  version new, after it gave the file's hints and before the refresh it sent brought the next, and refused to describe a
+  hint given for the earlier version (ContentModified: "Request resolve version … does not match current version …"),
+  so no card came for a pointer that never moved: 2 and 7 of 20 windows opened in a loop under load met it. A person
+  resting on a hint as a window opens on a busy machine, or just after an .editorconfig changes, met the same. **The
+  IDE**: a hint the server refuses as outdated is asked of the hints it gives now, and the one at that place with those
+  words described (#610, in this commit, with a test that holds the hints after an .editorconfig's change).
 - `ProblemsTests`' thousand files rewritten on disk, the Mac under 14 burners beside CodeAssistTests before #604 landed:
   the server told of 980 of the 1,000. FSEvents dropped the rest and said so (`MustScanSubDirs|UserDropped` on the
   watched folder), but .NET 11's macOS watcher skips any event on the watched folder before it looks for that flag, so

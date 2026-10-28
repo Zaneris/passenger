@@ -1788,6 +1788,38 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    /// <summary>A hint's card shows though the server has read the project's options again since it gave the hint, the
+    /// file's text the same: here an .editorconfig changed on disk, with the hints the server gives after that held
+    /// unanswered, so the editor still shows those it gave before, which the server refuses to describe.</summary>
+    [AvaloniaFact]
+    public void A_hints_card_shows_when_the_server_has_read_an_editorconfig_since_it_gave_the_hint()
+    {
+        MainWindow window = project.Open("Inferred.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        int name = editor.Document.Snapshot.ToString().IndexOf("var total", StringComparison.Ordinal) + "var total".Length;
+        Ui.WaitFor(() => editor.InlayHints.Any(h => h.Kind == InlayHintKind.Type && h.Offset == name), "the hint after 'total'");
+        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
+        TaskCompletionSource answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task held = server.HoldNextAnswer(Passenger.Lsp.LspMethods.InlayHint, _ => true, answered.Task);
+        try
+        {
+            project.Rewrite("Tabs/.editorconfig", "[*.cs]\nindent_style = tab\n\n[*.md]\nindent_size = 3\n");
+            Ui.AwaitPumped(held, "the hints the server gives once it has read the .editorconfig, held unanswered");
+            double character = editor.PointOf(name - 1).X - editor.PointOf(name - 2).X;
+            Point hint = editor.PointOf(name) + new Point(character * 1.5, editor.LineHeight / 2);
+            window.MouseMove(editor.TranslatePoint(hint, window)!.Value, Avalonia.Input.RawInputModifiers.None);
+            Ui.PumpUntil(() => window.Assist.HoverText is not null, "the card of a hint the server gave before it read the .editorconfig");
+        }
+        finally
+        {
+            answered.SetResult();
+        }
+        Assert.Contains("Int32", window.Assist.HoverText, StringComparison.Ordinal);
+        window.MouseMove(new Point(1, 1), Avalonia.Input.RawInputModifiers.None);
+        Ui.Settle();
+        window.Close();
+    }
+
     /// <summary>With Settings showing neither kind of hint, typing with pauses asks the server for none, though each pause
     /// still pulls the file's diagnostics; turning parameter name hints on brings them at once, the server asked for that
     /// kind alone, and turning type name hints on brings those too. Counted in the protocol's own trace.</summary>
