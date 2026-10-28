@@ -241,6 +241,75 @@ public sealed class FileColoursTests : FileColoursFolder
         window.Close();
     }
 
+    /// <summary>Razor's grammar includes both HTML and C#: colouring a standalone file must not depend on a
+    /// language server, a Blazor project, or the SDK's project templates.</summary>
+    [AvaloniaFact]
+    public void A_standalone_Razor_file_colours_its_markup_and_embedded_CSharp()
+    {
+        MainWindow window = Window();
+        try
+        {
+            CodeEditor editor = Open(window, "Greeting.razor", """
+                <h1 class="greeting">@Title</h1>
+                @code {
+                    // The greeting.
+                    private string Title = "Hello";
+                }
+                """);
+            Assert.Equal(TokenKind.Tag, KindOf(editor, "<h1"));
+            Assert.Equal(TokenKind.AttributeName, KindOf(editor, "class"));
+            Assert.Equal(TokenKind.AttributeValue, KindOf(editor, "\"greeting\""));
+            Assert.Equal(TokenKind.Comment, KindOf(editor, "// The greeting."));
+            Assert.Equal(TokenKind.Keyword, KindOf(editor, "private"));
+            Assert.Equal(TokenKind.String, KindOf(editor, "\"Hello\""));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A shared tokenizer's scratch buffers must not become a document's saved state or colours. Leave
+    /// a comment open in one file, then edit both files before comparing their colours with fresh passes.</summary>
+    [AvaloniaFact]
+    public void Two_JSON_documents_keep_independent_states_when_their_tokenizer_is_shared()
+    {
+        MainWindow first = Window();
+        MainWindow second = Window();
+        try
+        {
+            CodeEditor comment = Open(first, "Comment.json", "/* Open comment\n{ \"closed\": false }\n");
+            CodeEditor settings = Open(second, "Settings.json", "{ \"ready\": true, \"count\": 1 }\n");
+            Assert.Equal(TokenKind.Comment, KindOf(comment, "false"));
+            Assert.Equal(TokenKind.JsonKey, KindOf(settings, "\"ready\""));
+            Assert.Equal(TokenKind.Keyword, KindOf(settings, "true"));
+
+            comment.Focus();
+            comment.Selections = SelectionSet.Single(comment.Document.Snapshot.ToString().IndexOf('{'));
+            first.KeyTextInput("*/\n");
+            settings.Focus();
+            settings.Selections = SelectionSet.Single(settings.Document.Snapshot.ToString().IndexOf('1'));
+            second.KeyTextInput("2");
+            Ui.Settle();
+            Assert.Null(((TextMateHighlighter)comment.Highlighter!).Failure);
+            Assert.Null(((TextMateHighlighter)settings.Highlighter!).Failure);
+            Assert.Equal(TokenKind.Keyword, KindOf(comment, "false"));
+            Assert.Equal(TokenKind.Number, KindOf(settings, "21"));
+
+            string commentText = comment.Document.Snapshot.ToString();
+            string settingsText = settings.Document.Snapshot.ToString();
+            string commentColours = Colours(comment);
+            string settingsColours = Colours(settings);
+            Assert.Equal(commentColours, Colours(Open(first, "FreshComment.json", commentText)));
+            Assert.Equal(settingsColours, Colours(Open(second, "FreshSettings.json", settingsText)));
+        }
+        finally
+        {
+            first.Close();
+            second.Close();
+        }
+    }
+
     /// <summary>SCSS and Less coloured by their own grammars, as CSS is, with their variables, mixins and nesting, and
     /// commented with <c>//</c>; an Avalonia file of the old extension (.paml) as the XAML it is. A Less variable ends
     /// with its value.</summary>

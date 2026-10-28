@@ -33,8 +33,8 @@ out; dbgshim's musl Linux natives are the container tools' (below), which the ap
 | `SkiaSharp`, `SkiaSharp.NativeAssets.macOS`, `SkiaSharp.NativeAssets.Win32`, `SkiaSharp.NativeAssets.Linux` | drawing, with Skia (BSD-3-Clause) | MIT | © Microsoft Corporation. All rights reserved. |
 | `HarfBuzzSharp`, `HarfBuzzSharp.NativeAssets.macOS`, `HarfBuzzSharp.NativeAssets.Win32`, `HarfBuzzSharp.NativeAssets.Linux` | text shaping, with HarfBuzz (Old MIT) | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.CodeAnalysis.CSharp`, `Microsoft.CodeAnalysis.Common` | Roslyn: colour before the server answers, and the debugger's expressions | MIT | © Microsoft Corporation. All rights reserved. |
-| `TextMateSharp` | TextMate grammars read a line at a time: colour for the files beside the C# (the grammars it reads are listed below) | MIT | no copyright line; its authors: Daniel Peñalba |
-| `Onigwrap` | TextMateSharp's regular expressions: Oniguruma (BSD-2-Clause, Copyright (c) 2002-2021 K.Kosako, in the package's THIRD-PARTY-NOTICES.TXT, which the app's notices carry) in a native library per system (`libonigwrap`) | MIT | Copyright (c) 2024 Aikawa Yataro |
+| `Tint` | TextMate grammar tokenization and colour mapping | MIT | Copyright (c) 2026 Sébastien Ros |
+| `GregsEx` | Tint's managed Oniguruma-compatible regular expressions | MIT | Copyright (c) 2026 Sébastien Ros |
 | `roslyn-language-server.osx-arm64`, `roslyn-language-server.osx-x64`, `roslyn-language-server.win-x64`, `roslyn-language-server.win-arm64`, `roslyn-language-server.linux-x64`, `roslyn-language-server.linux-arm64` | Roslyn's language server, one per system, copied under `roslyn/` with the package's own `ThirdPartyNotices.rtf`, less four assemblies under Visual Studio's terms; what it carries is listed below | MIT | © Microsoft Corporation. All rights reserved. |
 | `StreamJsonRpc` | JSON-RPC with the language server, the debug adapter and Microsoft.Testing.Platform's test hosts | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.VisualStudio.Threading.Only` | StreamJsonRpc's, whose NonConcurrentSynchronizationContext keeps the language server's and the test hosts' messages in order, and whose JoinableTaskFactory runs async work to its end where a caller must stay synchronous | MIT | © Microsoft Corporation. All rights reserved. |
@@ -716,8 +716,7 @@ Foundation and Contributors) at the commit Roslyn's server is built from (dc1db3
   Copyright (c) 2016 .NET Foundation, as its header says; it colours a Markdown file's C# code blocks too.
 
 Reading them, Passenger leaves out what VS Code's reader passes over (a capture that is not a rule) and lets a rule
-that begins with no end never end, as VS Code does, writes a class of every character past one (`[^\x{00}-\x{7F}]`,
-which its regular expressions misread inside another class, as Less's are) as the range it is, and takes YAML's typed
+that begins with no end never end, as VS Code does, and takes YAML's typed
 scalars (booleans, numbers, null) out of a block mapping's keys, so a key such as a workflow's `on` is read as a key.
 
 ```

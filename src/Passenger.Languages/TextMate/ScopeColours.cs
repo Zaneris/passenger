@@ -5,7 +5,7 @@ namespace Passenger.Languages.TextMate;
 /// <summary>Which kind of token each grammar's scopes are; the colour scheme in force colours each kind. A selector
 /// names a scope and every scope under it ("string" is "string.quoted.double.json" too), the longest that names a
 /// token's innermost scope wins, and a scope no rule names takes its parent's kind. A selector never names a scope's
-/// ancestors (TextMateSharp's theme never matches those), so a language's exceptions name its own scopes in full.</summary>
+/// ancestors; language exceptions retain their full scope names from the original colour mapping.</summary>
 internal static class ScopeColours
 {
     public static readonly IReadOnlyList<(string Selector, TokenKind Kind)> Rules =
