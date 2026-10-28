@@ -339,22 +339,25 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
                         break;
                     case ILOpCode.Ldelema:
                     {
-                        int element = stack.Pop().AsInt32();
-                        stack.Push(CilValue.FromLocation(new CorDebugLocation(GetArrayValue(stack.Pop()).GetElementAtPosition(element))));
+                        CilValue element = stack.Pop();
+                        ICorDebugArrayValue array = GetArrayValue(stack.Pop());
+                        stack.Push(CilValue.FromLocation(new CorDebugLocation(array.GetElementAtPosition(Position(array, element)))));
                         break;
                     }
                     case ILOpCode.Ldelem or >= ILOpCode.Ldelem_i1 and <= ILOpCode.Ldelem_ref:
                     {
-                        int element = stack.Pop().AsInt32();
-                        stack.Push(handles.Root(new CorDebugLocation(GetArrayValue(stack.Pop()).GetElementAtPosition(element)).Read()));
+                        CilValue element = stack.Pop();
+                        ICorDebugArrayValue array = GetArrayValue(stack.Pop());
+                        stack.Push(handles.Root(new CorDebugLocation(array.GetElementAtPosition(Position(array, element))).Read()));
                         break;
                     }
                     case ILOpCode.Stelem or >= ILOpCode.Stelem_i and <= ILOpCode.Stelem_ref:
                     {
                         CilValue value = stack.Pop();
-                        int element = stack.Pop().AsInt32();
+                        CilValue element = stack.Pop();
                         ICorDebugArrayValue array = GetArrayValue(stack.Pop());
-                        new CorDebugLocation(array.GetElementAtPosition(element)).Write(await MaterializeForStoreAsync(value, context, handles));
+                        int position = Position(array, element);
+                        new CorDebugLocation(array.GetElementAtPosition(position)).Write(await MaterializeForStoreAsync(value, context, handles));
                         break;
                     }
                     case ILOpCode.Isinst or ILOpCode.Castclass:
@@ -397,8 +400,7 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
             }
             catch (ArithmeticException thrown)
             {
-                // What the program would throw running the instruction itself, told as code run in the program throws.
-                throw new ManagedDebugger.EvalException($"Evaluation threw {thrown.GetType().FullName}: {thrown.Message}");
+                throw ThrownAsInTheProgram(thrown);
             }
             catch (Exception ex) when (ex is not NotSupportedException and not ManagedDebugger.EvalException)
             {
@@ -410,6 +412,17 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
 
         void Load(ICilLocation location) => stack.Push(handles.Root(location.Read()).WithSourceLocation(location));
     }
+
+    /// <summary>What the program would throw running an instruction itself, told as code run in the program throws.</summary>
+    private static ManagedDebugger.EvalException ThrownAsInTheProgram(Exception thrown) =>
+        new ManagedDebugger.EvalException($"Evaluation threw {thrown.GetType().FullName}: {thrown.Message}");
+
+    /// <summary>The position an index names in a vector, an int's or a native integer's: outside the vector, ldelem, stelem
+    /// and ldelema throw the IndexOutOfRangeException the program's would.</summary>
+    private static int Position(ICorDebugArrayValue array, CilValue index) =>
+        index.AsInt64() is >= 0 and long position && position < array.Count
+            ? (int)position
+            : throw ThrownAsInTheProgram(new IndexOutOfRangeException());
 
     private async Task<CilValue> CastAsync(CilInstruction instruction, CilValue source, Interpretation run)
     {
@@ -1285,7 +1298,7 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
             long index = indices[dimension].AsInt32();
             if (index < (int)lowest[dimension] || index - (int)lowest[dimension] >= dimensions[dimension])
             {
-                throw new IndexOutOfRangeException("Index was outside the bounds of the array.");
+                throw ThrownAsInTheProgram(new IndexOutOfRangeException());
             }
             at[dimension] = unchecked((uint)index);
         }

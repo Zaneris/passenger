@@ -258,7 +258,7 @@ internal static class Interpreter
 
 // What an evaluation reads and leaves as it was: a record struct and a tuple a with copies, a char joined to a string,
 // a box a pattern takes apart, read again each round, native integers wider than an int, and floats cast to integers
-// they do not fit, with what the runtime makes of each cast.
+// they do not fit, with what the runtime makes of each cast, and what the exceptions the program catches say.
 internal static class Reading
 {
 	public static void Run()
@@ -282,13 +282,22 @@ internal static class Reading
 		{
 			outOfRange = thrown.Message;
 		}
+		string outsideArray = "";
+		try
+		{
+			_ = casts[casts.Length + 2];
+		}
+		catch (IndexOutOfRangeException thrown)
+		{
+			outsideArray = thrown.Message;
+		}
 		for (int round = 0; round < 3; round++)
 		{
 			Console.WriteLine($"reading round {round}");
 			Console.WriteLine($"read round {round}");
 		}
 		Console.WriteLine("reading");
-		Console.WriteLine($"read {spot}, {tuple}, {word}{letter}, {boxed}, {native}, {unsignedNative}, {string.Join(", ", casts)} and {outOfRange}");
+		Console.WriteLine($"read {spot}, {tuple}, {word}{letter}, {boxed}, {native}, {unsignedNative}, {string.Join(", ", casts)}, {outOfRange} and {outsideArray}");
 	}
 }
 

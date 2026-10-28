@@ -273,6 +273,27 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
             $"int.Parse(word) answered \"{parsed}\", where the program's FormatException names the text it could not read");
     }
 
+    /// <summary>An index outside an array throws the IndexOutOfRangeException the program would, named with what the
+    /// program's own catch reads: past the end or before the start, read, written or an element's field read, of a
+    /// vector, a multi-dimensional array or an array of structs, by an int or a native integer.</summary>
+    [Fact]
+    public async Task An_index_outside_an_array_throws_the_IndexOutOfRangeException_the_program_would()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        int frame = await StoppedInReadingAsync(host);
+
+        string caught = (await Evaluate(host, frame, "outsideArray")).Value;
+        string expected = $"error: Evaluation threw System.IndexOutOfRangeException: {caught.Trim('"')}";
+        foreach (string expression in (string[])["casts[10]", "casts[-1]", "casts[^9]", "casts[native]", "casts[8] = word",
+            "new[] { spot, spot }[2]", "new[] { spot, spot }[-1].X", "new int[,] { { 1, 2 }, { 3, 4 } }[0, 2]"])
+        {
+            string thrown = (await Evaluate(host, frame, expression)).Value;
+            Assert.True(thrown == expected, $"{expression} answered \"{thrown}\", where the program's catch read the exception's message as {caught}");
+        }
+        Assert.Equal((await Evaluate(host, frame, "casts[7]")).Value, (await Evaluate(host, frame, "casts[unsignedNative]")).Value);
+        Assert.Equal("4", (await Evaluate(host, frame, "new[] { spot, spot }[1].Y")).Value);
+    }
+
     private static int Line(string code) => Debuggees.Line("PassengerCases", code);
 
     /// <summary>PassengerCases launched and stopped in Reading.Run once its rounds are done; the top frame.</summary>
