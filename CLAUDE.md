@@ -292,8 +292,11 @@ site-shots` retakes its images.
   past its time is aborted only where the abort takes (never rude: one left pending fires later inside a lock, #238).
   Before letting a program go the engine runs it off patch and step stops (CET would fault it) and waits out abandoned
   evaluations. A decompile never runs under the lock. After a Hot Reload update, read a method's points, locals and IL
-  only at the frame's version (`Points`, `DebugOf`, `MethodIL`). A runtime-async await (.NET 11) steps by a breakpoint where its method goes on
-  (`AsyncStepper_RuntimeAsync`), which a Just My Code stepper on the thread passes by, so a step over one turns it off.
+  only at the frame's version (`Points`, `DebugOf`, `MethodIL`). A runtime-async await (.NET 11) steps by a breakpoint
+  where its method goes on (`AsyncStepper_RuntimeAsync`), which a Just My Code stepper on the thread passes by, so a
+  step over one turns it off. A func-eval passes a by-ref value with no home of its own as a copy gone once the call
+  returns: a callee that may keep the reference gets a home of the evaluation's (`PinnedArrayOfOneAsync`), or the
+  evaluation refuses; a struct the evaluation stores is its own copy (`OwnAsync`), never the frame's.
 - **Hot Reload** drives the server's `EditAndContinueService` from the extension; a session takes edits only for the
   projects of modules its program has loaded (others frozen), and `StaleCallers` blocks an update that leaves loaded code
   calling a deleted body. The runtime offers a frame left in old code a remap at every statement, unstoppable: a running
