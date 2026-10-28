@@ -138,10 +138,11 @@ public static class TestsAtCaret
     public static FileTests Read(string text, CSharpParseOptions options) =>
         Read(new ParsedText(CSharpSyntaxTree.ParseText(text, options.WithDocumentationMode(DocumentationMode.None)), TextSnapshot.From(text)));
 
-    /// <summary>Whether a test's full name (a theory's rows, NUnit's cases included) belongs to a type and method.</summary>
+    /// <summary>Whether a test's full name (a theory's rows, NUnit's cases and fixtures' instances included) belongs to a
+    /// type and method.</summary>
     public static bool Matches(string fullyQualifiedName, string type, string? method)
     {
-        string name = fullyQualifiedName.Split('(')[0];
+        string name = TestItem.MethodOf(fullyQualifiedName);
         string normalized = name.Replace('+', '.');
         string owner = type.Replace('+', '.');
         return method is null ? normalized.StartsWith(owner + ".", StringComparison.Ordinal) : normalized == $"{owner}.{method}";

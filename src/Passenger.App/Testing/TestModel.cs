@@ -21,7 +21,8 @@ public sealed record TestItem(string Project, string FullyQualifiedName, string 
     /// <summary>Its traits, categories included, as name and value.</summary>
     public IReadOnlyList<KeyValuePair<string, string>> Traits { get; init; } = [];
 
-    /// <summary>The method it is or runs: its full name without NUnit's arguments.</summary>
+    /// <summary>The method it is or runs: its full name without the arguments NUnit names a case or a fixture's
+    /// instance by.</summary>
     public string Method => MethodOf(FullyQualifiedName);
 
     /// <summary>The id of the method it is or belongs to, which a test found in the code has as its own.</summary>
@@ -33,30 +34,113 @@ public sealed record TestItem(string Project, string FullyQualifiedName, string 
     internal string Key => $"{Framework}|{Id}";
 
     /// <summary>The length of its <see cref="Key"/>.</summary>
-    internal int KeyLength => (Framework?.Length ?? 0) + 1 + Project.Length + 2 + MethodLength + (Row is null ? 0 : 2 + Row.Length);
+    internal int KeyLength => (Framework?.Length ?? 0) + 1 + Project.Length + 2 + Unargued(FullyQualifiedName, []) + (Row is null ? 0 : 2 + Row.Length);
 
     /// <summary>Its <see cref="Key"/> written into <paramref name="into"/>, which <see cref="KeyLength"/> fits.</summary>
     internal void WriteKey(Span<char> into)
     {
-        ReadOnlySpan<char> method = FullyQualifiedName.AsSpan(0, MethodLength);
-        _ = Row is null ? into.TryWrite($"{Framework}|{Project}::{method}", out _) : into.TryWrite($"{Framework}|{Project}::{method}::{Row}", out _);
+        _ = into.TryWrite($"{Framework}|{Project}::", out int at);
+        at += Unargued(FullyQualifiedName, into[at..]);
+        if (Row is not null)
+        {
+            _ = into[at..].TryWrite($"::{Row}", out _);
+        }
     }
 
-    private int MethodLength => FullyQualifiedName.IndexOf('(') is var arguments and >= 0 ? arguments : FullyQualifiedName.Length;
-
-    /// <summary>"A.B.Class.Method(1, 2)" as "A.B.Class.Method".</summary>
+    /// <summary>"A.B.Class.Method(1, 2)" as "A.B.Class.Method", and a fixture's instance's "A.B.Fixture(1).Method" or
+    /// "A.B.Fixture&lt;Int32&gt;.Method" as "A.B.Fixture.Method".</summary>
     public static string MethodOf(string fullyQualifiedName) =>
-        fullyQualifiedName.IndexOf('(') is var arguments and >= 0 ? fullyQualifiedName[..arguments] : fullyQualifiedName;
+        fullyQualifiedName.AsSpan().IndexOfAny('(', '<') < 0 ? fullyQualifiedName
+            : string.Create(Unargued(fullyQualifiedName, []), fullyQualifiedName, (into, name) => Unargued(name, into));
 
-    /// <summary>The data row a runner's name for a test or a result says it is, as the tree names it: its display name
-    /// less its type's ("Doubles(value: 1)" for xUnit, "Doubles(1)" for NUnit, "Doubles (1)" for MSTest); null for a
-    /// test that is its method, whose name is the method's or has no arguments.</summary>
+    /// <summary>The data row a runner's name for a test or a result says it is, as the tree names it: a fixture's
+    /// instance's class and method ("Fixture(1).Method(2)"), else its display name less its type's ("Doubles(value: 1)"
+    /// for xUnit, "Doubles(1)" for NUnit, "Doubles (1)" for MSTest); null for a test that is its method, whose name is the
+    /// method's or has no arguments.</summary>
     public static string? RowOf(string fullyQualifiedName, string displayName)
     {
+        if (Instance(fullyQualifiedName) is { } instance)
+        {
+            return instance;
+        }
         string method = MethodOf(fullyQualifiedName);
         int dot = method.LastIndexOf('.');
         string shown = dot > 0 && displayName.StartsWith(method[..(dot + 1)], StringComparison.Ordinal) ? displayName[(dot + 1)..] : displayName;
         return shown == method[(dot + 1)..] || shown == method || (!shown.Contains('(', StringComparison.Ordinal) && method.Length == fullyQualifiedName.Length) ? null : shown;
+    }
+
+    /// <summary>A test of a fixture's instance, its class named with the arguments or type arguments it was made with, as
+    /// its class and method from its full name ("Fixture(1).Method" of "A.B.Fixture(1).Method"); null for any other.</summary>
+    private static string? Instance(string fullyQualifiedName)
+    {
+        int type = -1;
+        int method = -1;
+        (int Depth, char Quote) inside = default;
+        for (int at = 0; at < fullyQualifiedName.Length; at++)
+        {
+            if (Outside(fullyQualifiedName, ref at, ref inside) && fullyQualifiedName[at] == '.')
+            {
+                (type, method) = (method, at);
+            }
+        }
+        return method > 0 && fullyQualifiedName.AsSpan(type + 1, method - type - 1).IndexOfAny('(', '<') >= 0 ? fullyQualifiedName[(type + 1)..] : null;
+    }
+
+    /// <summary>The length of a runner's name less its argument lists ("(1, \"a)\")", "&lt;Int32&gt;"), wherever they are,
+    /// that much written into <paramref name="into"/> as far as it holds; a list never closed takes the rest of the name.</summary>
+    private static int Unargued(ReadOnlySpan<char> name, Span<char> into)
+    {
+        int written = 0;
+        (int Depth, char Quote) inside = default;
+        for (int at = 0; at < name.Length; at++)
+        {
+            if (Outside(name, ref at, ref inside))
+            {
+                if (written < into.Length)
+                {
+                    into[written] = name[at];
+                }
+                written++;
+            }
+        }
+        return written;
+    }
+
+    /// <summary>Whether a name's character is outside its argument lists, counting the lists and quoted words it goes into
+    /// and out of; an escaped character in quotes is passed over with its backslash.</summary>
+    private static bool Outside(ReadOnlySpan<char> name, ref int at, ref (int Depth, char Quote) inside)
+    {
+        char c = name[at];
+        if (inside.Quote != '\0')
+        {
+            if (c == '\\')
+            {
+                at++;
+            }
+            else if (c == inside.Quote)
+            {
+                inside.Quote = '\0';
+            }
+            return false;
+        }
+        if (c is '(' or '<')
+        {
+            inside.Depth++;
+            return false;
+        }
+        if (inside.Depth == 0)
+        {
+            return true;
+        }
+        if (c is ')' or '>')
+        {
+            inside.Depth--;
+        }
+        else if (c is '"' or '\'')
+        {
+            inside.Quote = c;
+        }
+        return false;
     }
 }
 

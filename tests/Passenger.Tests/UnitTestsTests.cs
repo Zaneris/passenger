@@ -506,6 +506,79 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
+    /// <summary>NUnit's fixtures made with arguments or type arguments: each instance's test is a row under the method its
+    /// code declares, with its own result, counted by Run All's tally and the outcome filters and marked in the gutter; the
+    /// test at the caret and the method's row run every instance, and an instance's row, found by Find, runs alone.</summary>
+    [AvaloniaFact]
+    public void Each_instance_of_an_nunit_fixture_made_with_arguments_is_a_row_of_its_method_that_runs_and_counts()
+    {
+        string solution = NewFolder();
+        Write(solution, "Fixtures.Tests/Fixtures.Tests.csproj",
+            $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n" +
+            "    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"18.10.1\" />\n    <PackageReference Include=\"NUnit\" Version=\"4.4.0\" />\n" +
+            "    <PackageReference Include=\"NUnit3TestAdapter\" Version=\"5.2.0\" />\n  </ItemGroup>\n</Project>\n");
+        Write(solution, "Fixtures.Tests/FixtureTests.cs",
+            "using NUnit.Framework;\n\nnamespace Fixtures.Tests;\n\n[TestFixture(1)]\n[TestFixture(-1)]\npublic class Parameterised(int value)\n{\n" +
+            "    [Test]\n    public void Positive() => Assert.That(value, Is.GreaterThan(0));\n}\n\n" +
+            "[TestFixture(typeof(int))]\n[TestFixture(typeof(string))]\npublic class Typed<T>\n{\n    [Test]\n    public void Named() => Assert.That(typeof(T).Name, Is.Not.Empty);\n}\n\n" +
+            "[TestFixture(\"a.b\")]\n[TestFixture(\"x(y\")]\npublic class Worded(string word)\n{\n    [TestCase(1)]\n    [TestCase(2)]\n" +
+            "    public void Long(int at) => Assert.That(word.Length, Is.GreaterThan(at));\n}\n");
+        Restore.Run(Path.Combine(solution, "Fixtures.Tests"));
+        MainWindow window = Ui.OpenFolder(solution, languageServer: false);
+        ListBox tree = Tree(window);
+        Ui.WaitFor(() => Method(window, "Positive") is not null, "the fixture's test read from its code");
+
+        Assert.True(window.Perform(AppActions.RunAllTests));
+        Ui.WaitFor(() => !window.Tests.IsBusy && Method(window, "Named") is not null, "the run of every test", TimeSpan.FromSeconds(180));
+        Assert.Equal("Tests passed: 7, failed: 1 of 8", System.Text.RegularExpressions.Regex.Replace(window.BottomPanel.Tests.Status, @" in \d+\.\d s$", string.Empty));
+        Assert.Equal("8", Count(window, "All Tests"));
+        Assert.Equal(["Fixtures.Tests", "  Fixtures.Tests", "    Parameterised", "      Positive", "    Typed", "      Named", "    Worded", "      Long"], Shown(window));
+        TestNode positive = Method(window, "Positive")!;
+        Assert.Equal(["Parameterised(-1).Positive", "Parameterised(1).Positive"], positive.Children.Select(r => r.Name));
+        Assert.Equal([TestState.Failed, TestState.Passed], positive.Children.Select(r => r.State));
+        Assert.Contains("Parameterised(-1).Positive: Failed", positive.Details, StringComparison.Ordinal);
+        Assert.Equal(["Typed<Int32>.Named", "Typed<String>.Named"], Method(window, "Named")!.Children.Select(r => r.Name));
+        Assert.Equal(["Worded(\"a.b\").Long(1)", "Worded(\"a.b\").Long(2)", "Worded(\"x(y\").Long(1)", "Worded(\"x(y\").Long(2)"],
+            Method(window, "Long")!.Children.Select(r => r.Name));
+        Assert.All(Method(window, "Long")!.Children, r => Assert.Equal(TestState.Passed, r.State));
+
+        window.OpenFile(Path.Combine(solution, "Fixtures.Tests", "FixtureTests.cs"));
+        Ui.Settle();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Assert.Contains(new TestMark(9, TestMarkKind.Failed), editor.TestMarks);
+        Assert.Contains(new TestMark(14, TestMarkKind.Passed), editor.TestMarks);
+        Assert.Contains(new TestMark(17, TestMarkKind.Passed), editor.TestMarks);
+        TestNode typed = Method(window, "Named")!.Children[1];
+        TestOutcome before = typed.Results[0];
+        editor.GoTo(new TextPosition(17, 8));
+        Ui.Run(window, AppActions.RunTests);
+        Ui.WaitFor(() => !window.Tests.IsBusy && typed.Results.FirstOrDefault() is { } fresh && fresh != before, "the run of the generic fixture's test at the caret", TimeSpan.FromSeconds(120));
+        Assert.Equal("Tests passed: 2, failed: 0 of 2", System.Text.RegularExpressions.Regex.Replace(window.BottomPanel.Tests.Status, @" in \d+\.\d s$", string.Empty));
+
+        TestNode failing = positive.Children[0];
+        TestNode passing = positive.Children[1];
+        TestOutcome failed = failing.Results[0];
+        tree.SelectedItem = positive;
+        Ui.ChooseFromMenu(tree, "Run");
+        Ui.WaitFor(() => !window.Tests.IsBusy && failing.Results.FirstOrDefault() is { } fresh && fresh != failed, "the run of the fixture's method", TimeSpan.FromSeconds(120));
+        Assert.Equal("Tests passed: 1, failed: 1 of 2", System.Text.RegularExpressions.Regex.Replace(window.BottomPanel.Tests.Status, @" in \d+\.\d s$", string.Empty));
+
+        failed = failing.Results[0];
+        TestOutcome passed = passing.Results[0];
+        Ui.Click(tree.ContainerFromItem(window.Tests.Tree.Rows.Single(r => r.Name == "Parameterised"))!);
+        Ui.Run(window, AppActions.Find);
+        window.KeyTextInput("Parameterised(1)");
+        Ui.Settle();
+        Assert.Equal(["Fixtures.Tests", "  Fixtures.Tests", "    Parameterised", "      Positive", "        Parameterised(1).Positive"], Shown(window));
+        tree.SelectedItem = passing;
+        Ui.ChooseFromMenu(tree, "Run");
+        Ui.WaitFor(() => !window.Tests.IsBusy && passing.Results.FirstOrDefault() is { } fresh && fresh != passed, "the run of the instance found", TimeSpan.FromSeconds(120));
+        Assert.Equal("Tests passed: 1, failed: 0 of 1", System.Text.RegularExpressions.Regex.Replace(window.BottomPanel.Tests.Status, @" in \d+\.\d s$", string.Empty));
+        Assert.Same(failed, failing.Results[0]);
+        Assert.Equal(TestState.Failed, failing.State);
+        window.Close();
+    }
+
     [Gate]
     [AvaloniaFact]
     public void Typing_a_test_adds_it_to_the_tree_renaming_or_removing_one_follows_and_a_test_that_ran_keeps_its_result()

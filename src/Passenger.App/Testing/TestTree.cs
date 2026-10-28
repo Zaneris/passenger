@@ -108,9 +108,10 @@ public sealed class TestNode : Observable, ITreeRow
     /// <summary>A method's full name, Namespace.Class.Method, nested types after a '+'.</summary>
     public string? FullName => FromCode?.Method ?? Items.FirstOrDefault()?.Method ?? Item?.Method;
 
-    public string? Path => Located?.Path ?? (Kind == TestNodeKind.Row ? Parent?.Path : Children.Select(c => c.Path).FirstOrDefault(p => p is not null));
+    /// <summary>Where it is: a data row the runner found no file for is where its method is, if anything says so.</summary>
+    public string? Path => Located?.Path ?? (Kind == TestNodeKind.Row ? Parent?.Located?.Path : Children.Select(c => c.Path).FirstOrDefault(p => p is not null));
 
-    public int Line => Located?.Line ?? (Kind == TestNodeKind.Row ? Parent?.Line ?? 0 : Children.Select(c => c.Line).FirstOrDefault(l => l > 0));
+    public int Line => Located?.Line ?? (Kind == TestNodeKind.Row ? Parent?.Located?.Line ?? 0 : Children.Select(c => c.Line).FirstOrDefault(l => l > 0));
 
     public TestState State
     {
