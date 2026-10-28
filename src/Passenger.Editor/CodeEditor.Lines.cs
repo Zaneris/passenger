@@ -686,6 +686,13 @@ public sealed partial class CodeEditor
         }
     }
 
+    /// <summary>The parts of a pixel widths are summed in: every bit of a width from a pixel up, so a sum is exact and the
+    /// same however it is grouped.</summary>
+    private const double Unit = 4503599627370496.0;
+
+    /// <summary>A width in <see cref="Unit"/>s.</summary>
+    private static Int128 Fixed(double pixels) => pixels < 2048 ? (long)(pixels * Unit) : (Int128)(pixels * Unit);
+
     /// <summary>The length of the grapheme at a place: one for printable ASCII that no mark follows.</summary>
     private static int Grapheme(ReadOnlySpan<char> chars, int at) =>
         chars[at] is >= ' ' and <= '~' && (at + 1 == chars.Length || chars[at + 1] < '\u0080') ? 1
@@ -704,10 +711,6 @@ public sealed partial class CodeEditor
 
         /// <summary>The longest a grapheme is read: one longer is cut there, wherever it starts.</summary>
         private const int Overrun = 64;
-
-        /// <summary>The parts of a pixel widths are summed in: every bit of a width from a pixel up, so a sum is exact and the
-        /// same however it is grouped.</summary>
-        private const double Unit = 4503599627370496.0;
 
         private readonly CodeEditor editor;
         private readonly Advances advances;
@@ -1161,8 +1164,6 @@ public sealed partial class CodeEditor
             grapheme is ['\t'] ? tab
             : uniform >= 0 && grapheme is [>= ' ' and <= '~'] ? uniform
             : Fixed(advances.Of(grapheme));
-
-        private static Int128 Fixed(double pixels) => pixels < 2048 ? (long)(pixels * Unit) : (Int128)(pixels * Unit);
 
         private static double ToDouble(Int128 units) => (double)units / Unit;
 

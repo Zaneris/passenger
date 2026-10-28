@@ -121,10 +121,8 @@ public sealed partial class CodeEditor
 
     /// <summary>A line wrapped again where it stands (an edit or a hint on it): one taking another number of rows moves the
     /// lines after it; one whose rows break elsewhere moves only what is within it.</summary>
-    private void Rewrapped(LineWrap? was, LineWrap? now, int line)
+    private void Rewrapped(ReadOnlySpan<int> before, ReadOnlySpan<int> after, int line)
     {
-        ReadOnlySpan<int> before = was is null ? [] : was.Starts;
-        ReadOnlySpan<int> after = now is null ? [] : now.Starts;
         if (before.Length != after.Length)
         {
             rowShape++;

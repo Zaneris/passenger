@@ -157,7 +157,6 @@ public sealed partial class CodeEditor
             count += Shows(hints[i]) ? 1 : 0;
         }
         Gap[] gaps = count == 0 ? [] : new Gap[count];
-        double pad = metrics.CharWidth / 2;
         int at = 0;
         for (int i = low; i < hints.Count && hints[i].Offset <= end; i++)
         {
@@ -166,12 +165,29 @@ public sealed partial class CodeEditor
             {
                 continue;
             }
-            TextLine label = labels.TryGet((hint.Label, -6), out TextLine? known) ? known : labels.Add((hint.Label, -6), Format(hint.Label, [], hintRun ??= HintRun()));
-            double width = label.WidthIncludingTrailingWhitespace + pad + (hint.PadLeft ? pad : 0) + (hint.PadRight ? pad : 0);
+            double width = HintWidth(hint, out TextLine label);
             gaps[at++] = new Gap(hint.Offset - span.Start, width, label, hint.PadLeft, Trails(hint), hint);
         }
         rowGaps[(span.Start, span.End)] = gaps;
         return gaps;
+    }
+
+    /// <summary>The room a hint takes on its row, its label padded, and the label.</summary>
+    private double HintWidth(InlayHint hint, out TextLine label)
+    {
+        label = labels.TryGet((hint.Label, -6), out TextLine? known) ? known : labels.Add((hint.Label, -6), Format(hint.Label, [], hintRun ??= HintRun()));
+        double pad = metrics.CharWidth / 2;
+        return label.WidthIncludingTrailingWhitespace + pad + (hint.PadLeft ? pad : 0) + (hint.PadRight ? pad : 0);
+    }
+
+    /// <summary>The first hint shown from an index of the hints on.</summary>
+    private int ShownHintFrom(HintList hints, int index)
+    {
+        while (index < hints.Count && !Shows(hints[index]))
+        {
+            index++;
+        }
+        return index;
     }
 
     /// <summary>Whether a row's hints kept have their labels still, kept on for this frame: a frame lets go of the labels it
@@ -284,7 +300,7 @@ public sealed partial class CodeEditor
             return false;
         }
         int line = text.GetLineFromOffset(offset);
-        return map[line] is { } wrap && Array.BinarySearch(wrap.Starts, offset - text.GetLineStart(line)) >= 0;
+        return map[line] is { } wrap && wrap.Starts.BinarySearch(offset - text.GetLineStart(line)) >= 0;
     }
 
     /// <summary>Whether a point on the text is past the middle of the hints at the offset it falls at, where a click
