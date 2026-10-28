@@ -34,9 +34,10 @@ public static class LaunchSettingsEdits
         {
             changes.Add(new Change("executablePath", null, JsonValue.Create(edited.Program)));
         }
-        if (!container && edited.WorkingDirectory != source.WorkingDirectory && edited.WorkingDirectory.Trim().Length > 0)
+        if (!container && edited.WorkingDirectory != source.WorkingDirectory && edited.WorkingDirectory.Trim() is { Length: > 0 } folder)
         {
-            changes.Add(new Change("workingDirectory", null, JsonValue.Create(edited.WorkingDirectory)));
+            // Where dotnet run runs it is where a profile naming none runs.
+            changes.Add(new Change("workingDirectory", null, folder == RunConfiguration.DotnetRunFolder ? null : JsonValue.Create(edited.WorkingDirectory)));
         }
         if (edited.LaunchBrowser != source.LaunchBrowser)
         {
@@ -108,7 +109,7 @@ public static class LaunchSettingsEdits
     }
 
     /// <summary>The profile a configuration of a project run here is saved as, its values as dotnet run and Passenger read them:
-    /// its program, arguments, working folder (none for the project's), browser and variables, ASP.NET Core's addresses as
+    /// its program, arguments, working folder (none for dotnet run's), browser and variables, ASP.NET Core's addresses as
     /// the <c>applicationUrl</c> its browser's address is made from, when it has one. What a profile has no place for (a
     /// framework, the console, building first, the output folder to run in) is left for the folder to keep.</summary>
     public static JsonObject ProfileOf(RunConfiguration configuration)
@@ -123,7 +124,7 @@ public static class LaunchSettingsEdits
         {
             profile["commandLineArgs"] = configuration.Arguments;
         }
-        if (configuration.WorkingDirectory.Trim() is { Length: > 0 } folder && folder != "$(ProjectDir)")
+        if (configuration.WorkingDirectory.Trim() is { Length: > 0 } folder && folder != RunConfiguration.DotnetRunFolder)
         {
             profile["workingDirectory"] = folder;
         }

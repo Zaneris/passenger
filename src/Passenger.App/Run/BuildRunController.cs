@@ -1043,8 +1043,9 @@ public sealed partial class BuildRunController
     }
 
     /// <summary>dotnet watch's command line for a plan: the project (a file-based program's C# file) for its framework, no
-    /// launch profile (the plan has its values already), the program's own arguments after <c>--</c>. It runs the program in
-    /// its own working folder, which is the plan's.</summary>
+    /// launch profile (the plan has its values already), the program's own arguments after <c>--</c>, but none that are the
+    /// project's RunArguments, which dotnet watch gives it itself. It runs the program in its own working folder, which is
+    /// the plan's.</summary>
     private static List<string> Watch(LaunchPlan plan)
     {
         List<string> watch = ["watch", "--non-interactive", "run", Passenger.Host.ProgramFiles.IsProgram(plan.Project!) ? "--file" : "--project", plan.Project!, "--no-launch-profile"];
@@ -1053,7 +1054,10 @@ public sealed partial class BuildRunController
             watch.AddRange(["--framework", framework]);
         }
         watch.Add("--");
-        watch.AddRange(plan.Built is { } assembly && plan.Arguments.Count > 0 && plan.Arguments[0] == assembly ? plan.Arguments.Skip(1) : plan.Arguments);
+        if (!plan.ArgumentsOfProject)
+        {
+            watch.AddRange(plan.Built is { } assembly && plan.Arguments.Count > 0 && plan.Arguments[0] == assembly ? plan.Arguments.Skip(1) : plan.Arguments);
+        }
         return watch;
     }
 

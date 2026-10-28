@@ -29,6 +29,10 @@ public sealed partial record LaunchPlan
     /// <summary>The program's arguments, the assembly first when it runs under <c>dotnet</c>.</summary>
     public IReadOnlyList<string> Arguments { get; init; } = [];
 
+    /// <summary>Whether the program's arguments are the project's own (its RunArguments, the configuration naming none),
+    /// which dotnet watch gives it itself.</summary>
+    public bool ArgumentsOfProject { get; init; }
+
     public required string WorkingDirectory { get; init; }
 
     /// <summary>Set over the IDE's own environment, which the program inherits.</summary>
@@ -71,10 +75,10 @@ public sealed partial record LaunchPlan
     public bool WorksWhereBuilt => Built is { } file && System.IO.Path.GetDirectoryName(file) is { } output && PathNames.Same(output, WorkingDirectory);
 
     /// <summary>Works out what a configuration launches among the open folder's projects (of <paramref name="workspace"/>,
-    /// whose solution's properties MSBuild is given), asking MSBuild where the project builds (and any property its values
-    /// name), which needs no build. A Passenger it launches keeps its state in the launching one's state folder's sandbox/
-    /// (<see cref="SandboxedState"/>). Throws a <see cref="LaunchException"/> saying why it cannot: a kind of profile
-    /// Passenger does not run, a project gone or unloaded, MSBuild's refusal.</summary>
+    /// whose solution's properties MSBuild is given), asking MSBuild, with no build, where the project builds, where and with
+    /// what arguments dotnet run runs it, and any property its values name. A Passenger it launches keeps its state in the
+    /// launching one's sandbox/ (<see cref="SandboxedState"/>). Throws a <see cref="LaunchException"/> saying why it cannot:
+    /// a kind of profile Passenger does not run, a project gone or unloaded, MSBuild's refusal.</summary>
     public static async Task<LaunchPlan> ResolveAsync(RunConfiguration configuration, IReadOnlyList<ProjectModel> projects, WorkspaceModel? workspace, string stateFolder,
         CancellationToken cancel = default)
     {
@@ -95,7 +99,7 @@ public sealed partial record LaunchPlan
         {
             throw new LaunchException($"{configuration.Name} cannot run here: {windows}");
         }
-        HashSet<string> names = new(StringComparer.OrdinalIgnoreCase) { "TargetPath", "ProjectDir" };
+        HashSet<string> names = new(StringComparer.OrdinalIgnoreCase) { "TargetPath", "ProjectDir", RunWorkingDirectory, RunArguments, RunCommand };
         foreach (string text in (string[])[configuration.Program, configuration.Arguments, configuration.WorkingDirectory, .. configuration.Environment.Values])
         {
             foreach (Match macro in Macro().Matches(text))
@@ -111,6 +115,8 @@ public sealed partial record LaunchPlan
             ? path
             : throw new LaunchException($"MSBuild could not say what {project.Name} builds"));
         List<string> arguments = [.. CommandLine.Split(Expand(configuration.Arguments))];
+        IReadOnlyList<string> ofProject = arguments.Count == 0 && configuration.Program.Length == 0 ? ProjectArguments(properties, target) : [];
+        arguments.AddRange(ofProject);
         string program;
         string? built = null;
         if (configuration.Program is { Length: > 0 } named)
@@ -127,19 +133,25 @@ public sealed partial record LaunchPlan
         {
             program = built = target;
         }
-        string working = configuration.WorkingDirectory is { Length: > 0 } folder
-            ? System.IO.Path.TrimEndingDirectorySeparator(PathNames.Canonical(System.IO.Path.Combine(project.Folder, Expand(folder))))
+        string? folder = configuration.WorkingDirectory is { Length: > 0 } own ? Expand(own) : properties.GetValueOrDefault(RunWorkingDirectory);
+        string working = folder is not null
+            ? System.IO.Path.TrimEndingDirectorySeparator(PathNames.Canonical(System.IO.Path.Combine(project.Folder, folder)))
             : System.IO.Path.GetDirectoryName(target)!;
         Dictionary<string, string> environment = configuration.Environment.ToDictionary(v => v.Key, v => Expand(v.Value));
         if (SandboxedState(built ?? program, environment, stateFolder) is { } sandbox)
         {
             environment[StateStore.Variable] = sandbox;
         }
+        if (configuration.LaunchProfile.Length > 0 && !environment.Keys.Any(k => string.Equals(k, LaunchProfile.NameVariable, StringComparison.OrdinalIgnoreCase)))
+        {
+            environment[LaunchProfile.NameVariable] = configuration.LaunchProfile;
+        }
         return new LaunchPlan
         {
             Name = configuration.Name,
             Program = program,
             Arguments = arguments,
+            ArgumentsOfProject = ofProject.Count > 0,
             WorkingDirectory = working,
             Environment = environment,
             Project = project.Path,
@@ -164,6 +176,31 @@ public sealed partial record LaunchPlan
         && !environment.Keys.Any(k => string.Equals(k, StateStore.Variable, StringComparison.OrdinalIgnoreCase))
             ? System.IO.Path.Combine(stateFolder, "sandbox")
             : null;
+
+    /// <summary>The SDK's properties for where dotnet run runs a project (StartWorkingDirectory's when it sets only that), with
+    /// what arguments (StartArguments' too), and the program it starts.</summary>
+    private const string RunWorkingDirectory = "RunWorkingDirectory";
+
+    private const string RunArguments = "RunArguments";
+
+    private const string RunCommand = "RunCommand";
+
+    /// <summary>The program's arguments dotnet run gives it from the project's evaluation: its RunArguments, after the SDK's
+    /// own <c>exec "assembly"</c> when the project runs under dotnet; none when its RunCommand starts another program
+    /// (a development server), whose arguments they are.</summary>
+    private static IReadOnlyList<string> ProjectArguments(IReadOnlyDictionary<string, string> properties, string target)
+    {
+        IReadOnlyList<string> given = CommandLine.Split(properties.GetValueOrDefault(RunArguments));
+        string command = properties.GetValueOrDefault(RunCommand) ?? string.Empty;
+        if (string.Equals(System.IO.Path.GetFileNameWithoutExtension(command), "dotnet", StringComparison.OrdinalIgnoreCase))
+        {
+            return given is ["exec", { } assembly, ..] && PathNames.Same(PathNames.Canonical(assembly), target) ? [.. given.Skip(2)] : [];
+        }
+        // The apphost the SDK makes beside the assembly, which runs it.
+        return System.IO.Path.GetDirectoryName(command) is { Length: > 0 } folder && PathNames.Same(PathNames.Canonical(folder), System.IO.Path.GetDirectoryName(target)!)
+            && string.Equals(System.IO.Path.GetFileNameWithoutExtension(command), System.IO.Path.GetFileNameWithoutExtension(target), PathNames.Comparison)
+            ? given : [];
+    }
 
     /// <summary>A program a configuration names: the .NET command line by name is the one the IDE builds with, a path is
     /// the project folder's when relative, and a bare name is looked for on the PATH as a shell would.</summary>

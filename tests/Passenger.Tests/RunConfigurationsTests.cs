@@ -242,6 +242,73 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         }
     }
 
+    /// <summary>A launch profile that names no working folder runs where dotnet run runs it, in the project's
+    /// RunWorkingDirectory, and its program is told the profile's name in DOTNET_LAUNCH_PROFILE, as dotnet run tells it; one
+    /// that names no arguments gives the program the project's RunArguments, which dotnet watch gives it under Hot Reload,
+    /// once. So a program that reads a file of its working folder finds it however it is run.</summary>
+    [AvaloniaFact]
+    public void A_launch_profile_runs_in_the_projects_RunWorkingDirectory_told_its_name_and_given_RunArguments_when_it_names_none()
+    {
+        Restored();
+        Write("Hello/Hello.csproj", TestProjects.Console("<ImplicitUsings>enable</ImplicitUsings>",
+            "<RunWorkingDirectory>$(MSBuildProjectDirectory)/data</RunWorkingDirectory>", "<RunArguments>alpha \"beta gamma\"</RunArguments>"));
+        Write("Hello/Program.cs", "Console.WriteLine($\"args={string.Join(\"|\", args)}\");\n"
+            + "Console.WriteLine($\"cwd={Environment.CurrentDirectory}\");\n"
+            + "Console.WriteLine($\"profile={Environment.GetEnvironmentVariable(\"DOTNET_LAUNCH_PROFILE\")}\");\n"
+            + "Console.WriteLine($\"marker={File.Exists(\"marker.txt\")}\");\n");
+        Write("Hello/data/marker.txt", "here\n");
+        Write("Hello/Properties/launchSettings.json", """
+            {
+              "profiles": {
+                "Sample": { "commandName": "Project", "commandLineArgs": "one \"two three\"" },
+                "Bare": { "commandName": "Project" }
+              }
+            }
+            """);
+        string data = Path.Combine(project, "data");
+        MainWindow window = Keeping();
+        try
+        {
+            Assert.Equal(["Hello: Sample", "Hello: Bare"], Names(window));
+            Assert.Equal(RunConfiguration.DotnetRunFolder, window.Configurations[0].WorkingDirectory);
+            Assert.True(window.SelectConfiguration("Hello: Sample"));
+            Said(window, "Hello: Sample", ["args=one|two three", $"cwd={data}", "profile=Sample", "marker=True"]);
+            Assert.True(window.SelectConfiguration("Hello: Bare"));
+            Said(window, "Hello: Bare", ["args=alpha|beta gamma", $"cwd={data}", "profile=Bare", "marker=True"]);
+
+            window.ApplySettings(window.Settings with { HotReload = true });
+            Ui.Launched(window, window.RunAsync(), "Hello: Bare under dotnet watch to start", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => Lines(window).Contains("marker=True"), () => $"Hello: Bare to run under dotnet watch, the Run window saying:\n{Run(window)}", TimeSpan.FromMinutes(2));
+            Assert.True(Told(window).SequenceEqual(["args=alpha|beta gamma", $"cwd={data}", "profile=Bare", "marker=True"]),
+                $"Under dotnet watch the program was not given the project's RunArguments once, in its RunWorkingDirectory, told its profile:\n{Run(window)}");
+        }
+        finally
+        {
+            if (window.IsRunning)
+            {
+                window.Perform(AppActions.Stop);
+                Ui.WaitFor(() => !window.IsRunning, "the run under dotnet watch to stop");
+            }
+            window.ApplySettings(new Passenger.App.Settings.AppSettings());
+            window.Close();
+        }
+
+        static void Said(MainWindow window, string name, string[] expected)
+        {
+            Ui.Launched(window, window.RunAsync(), $"{name} to start", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => window.Runner.Ended.IsCompleted, $"{name} to end");
+            Assert.True(Told(window).SequenceEqual(expected), $"{name} did not run with what dotnet run gives it, its Run window saying:\n{Run(window)}");
+        }
+
+        // The lines the program writes, among the run's own.
+        static string[] Told(MainWindow window) =>
+            [.. Lines(window).Where(line => ((string[])["args=", "cwd=", "profile=", "marker="]).Any(key => line.StartsWith(key, StringComparison.Ordinal)))];
+
+        static string Run(MainWindow window) => window.BottomPanel.Run.Document.Snapshot.ToString();
+
+        static string[] Lines(MainWindow window) => Run(window).Split('\n', StringSplitOptions.TrimEntries);
+    }
+
     /// <summary>A generated configuration's arguments changed in place, with no copy, are what Run gives the program, and are
     /// there when the folder opens again; its launch profile's environment changed on disk then reaches it while the
     /// arguments stay the person's, the Explorer left as it was, and the dialog marks the arguments alone as changed.</summary>
@@ -427,7 +494,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
             Assert.Equal("Hello's launchSettings.json has a profile named Greet already", ToolTip.GetTip(dialog.SaveAsProfileButton));
             Type(dialog.NameBox, "Hello: Staging");
             Type(dialog.ArgumentsBox, "one \"two three\"");
-            Type(dialog.WorkingDirectoryBox, "$(ProjectDir)");
+            Type(dialog.WorkingDirectoryBox, RunConfiguration.DotnetRunFolder);
             Ui.Click(dialog.AddVariableButton);
             (TextBox name, TextBox value) = Assert.Single(dialog.Variables);
             Type(name, "GREETING");
@@ -518,7 +585,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
             Add(dialog);
             Type(dialog.NameBox, "Greeting");
             Type(dialog.ArgumentsBox, "--name Grace");
-            Type(dialog.WorkingDirectoryBox, "$(ProjectDir)");
+            Type(dialog.WorkingDirectoryBox, RunConfiguration.DotnetRunFolder);
             Ui.Click(dialog.AddVariableButton);
             (TextBox name, TextBox value) = Assert.Single(dialog.Variables);
             Type(name, "GREETING");

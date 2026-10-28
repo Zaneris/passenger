@@ -74,13 +74,18 @@ public sealed record RunConfiguration
     /// MSBuild's <c>$(Property)</c> and the environment's <c>%NAME%</c> are expanded, as below.</summary>
     public string Program { get; init; } = string.Empty;
 
-    /// <summary>The program's arguments as one command line.</summary>
+    /// <summary>The program's arguments as one command line; empty for the project's RunArguments, if it has any.</summary>
     public string Arguments { get; init; } = string.Empty;
 
     public Dictionary<string, string> Environment { get; init; } = [];
 
-    /// <summary>Where the program runs, relative to the project's folder; empty for the project's output folder.</summary>
+    /// <summary>Where the program runs, relative to the project's folder; empty for the project's RunWorkingDirectory, else
+    /// its output folder.</summary>
     public string WorkingDirectory { get; init; } = string.Empty;
+
+    /// <summary>The working folder of one made from a launch profile that names none, and of a file-based program's: where
+    /// dotnet run runs it, the project's RunWorkingDirectory, which when empty leaves the project's own folder.</summary>
+    public const string DotnetRunFolder = "$(RunWorkingDirectory)";
 
     public bool BuildBeforeLaunch { get; init; } = true;
 
@@ -195,7 +200,7 @@ public sealed record RunConfiguration
                     Aspire = project.IsAspireHost,
                     Generated = true,
                     // A program runs beside its C# file, as dotnet run there runs it: what it builds lies out of sight.
-                    WorkingDirectory = project.IsProgram ? "$(ProjectDir)" : string.Empty,
+                    WorkingDirectory = project.IsProgram ? DotnetRunFolder : string.Empty,
                 });
             }
             generated.AddRange(profiles.Select(p => From(project, p) with { Name = NameOf(project, p.Name), Generated = true }));
@@ -240,8 +245,8 @@ public sealed record RunConfiguration
     public static string NameOf(ProjectModel project, string profile) => $"{NameOf(project)}: {profile}";
 
     /// <summary>A configuration with a launch profile's values: what generating one makes, and what choosing a profile in
-    /// Edit Configurations fills in. A profile's own folder, else the project's, as <c>dotnet run</c> runs it; a container
-    /// profile's (Docker, SdkContainer) a container configuration of its project.</summary>
+    /// Edit Configurations fills in. A profile's own folder, else where <c>dotnet run</c> runs it (<see cref="DotnetRunFolder"/>);
+    /// a container profile's (Docker, SdkContainer) a container configuration of its project.</summary>
     public static RunConfiguration From(ProjectModel project, LaunchProfile profile) => profile.RunsInContainer
         ? Containers.ContainerConfigurations.From(project, profile)
         : new()
@@ -253,7 +258,7 @@ public sealed record RunConfiguration
             Program = profile.RunsProject ? string.Empty : profile.ExecutablePath ?? string.Empty,
             Arguments = profile.CommandLineArgs ?? string.Empty,
             Environment = profile.Environment(),
-            WorkingDirectory = string.IsNullOrWhiteSpace(profile.WorkingDirectory) ? "$(ProjectDir)" : profile.WorkingDirectory,
+            WorkingDirectory = string.IsNullOrWhiteSpace(profile.WorkingDirectory) ? DotnetRunFolder : profile.WorkingDirectory,
             LaunchBrowser = profile.LaunchBrowser,
             BrowserUrl = profile.BrowserUrl(),
             Unsupported = profile.Unsupported,

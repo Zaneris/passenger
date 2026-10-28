@@ -99,9 +99,9 @@ public sealed class RunConfigurationsDialog : Window
         });
         ProgramBox = Field("The project's own program");
         // Named, as the boxes a screenshot's --click-name reaches.
-        ArgumentsBox = Field();
+        ArgumentsBox = Field("The project's RunArguments, if it has any");
         ArgumentsBox.Name = "ArgumentsBox";
-        WorkingDirectoryBox = Field("The project's output folder");
+        WorkingDirectoryBox = Field("The project's RunWorkingDirectory, else its output folder");
         BuildBox = new CheckBox { Content = "Build the project first" };
         // Its words a TextBlock of their own, which a change from the source marks as a row's label is marked.
         TextBlock consoleWords = new() { Text = "Use external console" };

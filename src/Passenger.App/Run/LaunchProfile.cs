@@ -84,6 +84,9 @@ public sealed record LaunchProfile(
     /// <summary>The file a project's launch profiles are in, under its folder's Properties.</summary>
     public const string SettingsFile = "launchSettings.json";
 
+    /// <summary>The variable a program run from a launch profile is told the profile's name in, as dotnet run tells it.</summary>
+    public const string NameVariable = "DOTNET_LAUNCH_PROFILE";
+
     /// <summary>The file a project's launch profiles are in; a file-based program's, as <see cref="FileSettingsPath"/> finds it.</summary>
     public static string SettingsPath(ProjectModel project) => project.IsProgram ? FileSettingsPath(project.Path) : SettingsIn(project.Folder);
 

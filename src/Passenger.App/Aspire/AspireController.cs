@@ -729,8 +729,9 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         };
     }
 
-    /// <summary>A single-file AppHost's configuration with its launch profile's values (the one it names, else the first),
-    /// what the configuration sets itself kept; as it is with no profile to read and none named.</summary>
+    /// <summary>A single-file AppHost's configuration with its launch profile's values (the one it names, else the first) and
+    /// the profile's name in <see cref="LaunchProfile.NameVariable"/>, as dotnet run gives them, what the configuration sets
+    /// itself kept; as it is with no profile to read and none named.</summary>
     internal static RunConfiguration ReadFileProfile(RunConfiguration configuration)
     {
         IReadOnlyList<LaunchProfile> profiles = LaunchProfile.Read(LaunchProfile.FileSettingsPath(configuration.Project));
@@ -746,6 +747,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             throw new LaunchException("Single-file AppHosts require a Project launch profile");
         }
         Dictionary<string, string> environment = profile.Environment();
+        environment.TryAdd(LaunchProfile.NameVariable, chosen.Name);
         foreach ((string name, string text) in configuration.Environment)
         {
             environment[name] = text;
@@ -829,7 +831,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             throw new LaunchException("The Aspire app is stopping or its service limit was reached");
         }
         RunConfiguration configuration = profile is null
-            ? new RunConfiguration { Name = project.Name, Project = path, WorkingDirectory = "$(ProjectDir)" }
+            ? new RunConfiguration { Name = project.Name, Project = path, WorkingDirectory = RunConfiguration.DotnetRunFolder }
             : RunConfiguration.From(project, profile) with { Name = project.Name };
         configuration = configuration with { BuildBeforeLaunch = false, LaunchBrowser = false, Console = ConsoleKind.Internal };
         LaunchPlan plan = await LaunchPlan.ResolveAsync(configuration,
