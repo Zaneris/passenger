@@ -27,6 +27,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Passenger.Tests/Passenger.Tests.csproj" />
+    <Project Path="tests/Passenger.UnitTests/Passenger.UnitTests.csproj" />
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/Passenger.NodePackages/Passenger.NodePackages.csproj" />

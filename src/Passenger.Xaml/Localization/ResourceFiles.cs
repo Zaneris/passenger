@@ -312,9 +312,10 @@ public static class ResourceFiles
         return raw.StartsWith("<![CDATA[", StringComparison.Ordinal) && raw.EndsWith("]]>", StringComparison.Ordinal) ? raw[9..^3] : XmlEntities.Decode(raw);
     }
 
-    /// <summary>A .resx's text with a key given a value: a new <c>&lt;data&gt;</c> after its last, written as that one is (on one
-    /// line or three, its indentation, xml:space) with no comment, or on three lines with xml:space where it has none; every other
-    /// character kept. Null where the text has no <c>&lt;root&gt;</c> to hold it, or has the key already.</summary>
+    /// <summary>A .resx's text with a key given a value: a new <c>&lt;data&gt;</c> after its last string's, written as that one is
+    /// (on one line or three, its indentation, xml:space) with no comment, or on three lines with xml:space where it has none (a
+    /// file's or an image's type is never copied); every other character kept. Null where the text has no <c>&lt;root&gt;</c> to
+    /// hold it, or has the key already.</summary>
     public static string? WithEntry(string text, string key, string value)
     {
         XmlTree tree = XmlTree.Parse(text);
@@ -326,7 +327,8 @@ public static class ResourceFiles
         string newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
         string name = XmlEntities.Encode(key, '"');
         string written = Escaped(value);
-        XmlElement? last = root.Children.LastOrDefault(c => c.Name == "data" && c.Attribute("name") is { HasValue: true } && c.Children.Any(v => v.Name == "value") && c.IsClosed);
+        XmlElement? last = root.Children.LastOrDefault(c => c.Name == "data" && c.Attribute("name") is { HasValue: true } && c.Attribute("type") is null
+            && c.Attribute("mimetype") is null && c.Children.Any(v => v.Name == "value") && c.IsClosed);
         if (last is not null)
         {
             XmlAttribute named = last.Attribute("name")!;

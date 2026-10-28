@@ -8,6 +8,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- The rope's nodes, whose shape its unit tests hold after every edit. -->
+    <InternalsVisibleTo Include="Passenger.UnitTests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- AtomicFile, which every save writes through. -->
     <ProjectReference Include="../Passenger.Core/Passenger.Core.csproj" />
   </ItemGroup>
