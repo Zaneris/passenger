@@ -7,7 +7,7 @@ description of what the code does.
 
 ## What this is
 
-**Passenger** is an IDE for C# and modern .NET (CoreCLR only: no .NET Framework, Mono or Unity), written in C# on .NET 11
+**Passenger** is an IDE for C# and modern .NET (CoreCLR only: no .NET Framework, Mono or Unity; the one exception, Blazor's WebAssembly half debugged through the runtime's browser debug proxy, #586), written in C# on .NET 11
 with an Avalonia 12 UI, for Windows, macOS and Linux. v0.2.0 shipped; the work now is bug fixes and code cleanup only, no
 new features, on main toward 0.2.3 (https://github.com/Zaneris/passenger/milestone/5), features waiting in the Backlog
 (https://github.com/Zaneris/passenger/milestone/2). Each issue says **Now:**, **The aim:** and **Done when:**;
