@@ -117,6 +117,10 @@ public sealed class ActionContext(OpenDocument? file, CodeEditor editor, object?
     /// launch in place of the Explorer row's or the open file's.</summary>
     public Run.RunConfiguration? Configuration { get; init; }
 
+    /// <summary>The request of an .http file whose gutter menu this is, with its file as the editor has it, which Test
+    /// Request sends in place of the one chosen in the Endpoints window.</summary>
+    public (Endpoints.EndpointRequest Request, Endpoints.HttpFile File)? Request { get; init; }
+
     /// <summary>The same place with a tool window's own button asking, which runs its action on that window without taking
     /// the keys.</summary>
     public ActionContext In(ToolWindow window) => new(file, editor, focused, window, debugging)
@@ -125,6 +129,7 @@ public sealed class ActionContext(OpenDocument? file, CodeEditor editor, object?
         ExplorerRow = ExplorerRow,
         Service = Service,
         Configuration = Configuration,
+        Request = Request,
     };
 
     private static string? SymbolAt(CodeEditor editor)

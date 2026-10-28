@@ -544,6 +544,24 @@ public sealed class FileColoursTests : FileColoursFolder
         window.Close();
     }
 
+    /// <summary>An .http file is HTTP: its request's method coloured a keyword, its comments comments, and a line commented
+    /// with '#'.</summary>
+    [AvaloniaFact]
+    public void An_http_file_is_coloured_as_HTTP_and_comments_a_line_with_a_hash()
+    {
+        MainWindow window = Window();
+        const string Requests = "### All items\n# Every item there is\nGET https://example.com/items\nAccept: application/json\n";
+        CodeEditor editor = Open(window, "api.http", Requests);
+        editor.Focus();
+        Assert.Equal("HTTP", window.LanguageShown);
+        Assert.Equal(TokenKind.Keyword, KindOf(editor, "GET"));
+        Assert.Equal(TokenKind.Comment, KindOf(editor, "# Every item there is"));
+        editor.Selections = SelectionSet.Single(Requests.IndexOf("Accept", StringComparison.Ordinal));
+        Ui.Run(window, EditorActions.ToggleLineComment);
+        Assert.Contains("\n# Accept: application/json\n", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void Comment_with_line_comment_writes_each_languages_own_comment_and_block_comment_wraps_XML_in_its_own()
     {

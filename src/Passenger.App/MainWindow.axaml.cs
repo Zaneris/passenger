@@ -87,6 +87,7 @@ public partial class MainWindow : Window
         AddBookmarks();
         AddEndpoints();
         AddRoutes();
+        AddRequestMarks();
         AddRequests();
         AddMigrations();
         AddContainers();
@@ -829,8 +830,8 @@ public partial class MainWindow : Window
         Dispatcher.UIThread.Post(popup.Properties.FocusCondition, DispatcherPriority.Loaded);
     }
 
-    /// <summary>A press on an icon of the gutter's marks: a test's menu, a route's, a run configuration's or a colour's
-    /// picker; false where the line has none of these.</summary>
+    /// <summary>A press on an icon of the gutter's marks: a test's menu, a route's or an .http request's, a run
+    /// configuration's or a colour's picker; false where the line has none of these.</summary>
     private bool PressMark(CodeEditor editor, OpenDocument document, GutterClick click)
     {
         if (document.TestMarks.Any(m => m.Line == click.Line))
@@ -840,7 +841,14 @@ public partial class MainWindow : Window
         }
         if (document.RouteMarks.Any(m => m.Line == click.Line))
         {
-            ShowRouteMarkMenu(editor, document, click.Line);
+            if (Passenger.App.Endpoints.HttpFile.Is(document.Path))
+            {
+                ShowRequestMarkMenu(editor, document, click.Line);
+            }
+            else
+            {
+                ShowRouteMarkMenu(editor, document, click.Line);
+            }
             return true;
         }
         if (document.RunMarks.Any(m => m.Line == click.Line))

@@ -7,6 +7,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.Editors;
 using Passenger.App.Endpoints;
 using Passenger.App.State;
 using Passenger.Roslyn.Extension;
@@ -104,6 +105,31 @@ public sealed class EndpointsTests : IDisposable
         Ui.WaitFor(() => window.Endpoints.Response.Response is not null, "the second answer");
         Assert.False(window.Endpoints.Response.Passed, "A 404 passed a test that expects an answer below 400");
         Assert.False(window.Endpoints.Outcome(window.Endpoints.Requests[2]));
+        window.Close();
+    }
+
+    /// <summary>The send icon on an .http file's request line sends that request as Test does, with the environment the
+    /// Endpoints window chooses, though the window was never shown before.</summary>
+    [AvaloniaFact]
+    public void The_icon_on_an_http_files_request_line_sends_that_request()
+    {
+        string folder = Folder();
+        MainWindow window = Open(folder);
+        Assert.Null(window.OpenFile(Path.Combine(folder, "api.http")));
+        Ui.Settle();
+        Passenger.App.Workspace.OpenDocument document = window.EditorArea.Active!;
+        int line = Array.IndexOf(document.Text.Snapshot.ToString().Split('\n'), "GET {{base}}/items");
+        Ui.WaitFor(() => document.RouteMarks.Any(m => m.Line == line),
+            () => $"the send icon beside GET {{{{base}}}}/items; there are icons on lines [{string.Join(", ", document.RouteMarks.Select(m => m.Line))}]");
+        Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
+        double x = Enumerable.Range(0, 400).First(x => editor.IsOnGutterColumn(editor.Gutter!.Marks, new Point(x, 0))) + 3;
+        Ui.Click(editor, new Point(x, editor.PointOf(document.Text.Snapshot.GetLineStart(line)).Y + (editor.LineHeight / 2)));
+        Assert.Empty(api.Received);
+        Ui.Choose(window.RouteMarkMenu, "Send 'All items'");
+        Ui.WaitFor(() => api.Received.Count == 1 && window.Endpoints.Response.Response is not null,
+            () => $"the request's answer; the Endpoints window says {window.Endpoints.Response.Summary}");
+        Assert.Equal("GET /items", api.Received[0].Line);
+        Assert.True(window.Endpoints.Response.Passed, $"The answer met none of its criteria: {window.Endpoints.Response.Summary}");
         window.Close();
     }
 

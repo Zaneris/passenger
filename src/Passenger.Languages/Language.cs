@@ -143,6 +143,11 @@ public sealed class Language
     public static readonly Language Shell = new("shellscript", "Shell", ["*.sh", "*.bash", "*.zsh"], line: "#",
         grammar: new("source.shell", "shell-unix-bash.tmLanguage.json"));
 
+    /// <summary>HTTP requests, as the Endpoints window reads them, coloured by REST Client's grammar, which colours a JSON or
+    /// XML body and a curl line by the grammars here (a GraphQL body's not being carried, it stays plain).</summary>
+    public static readonly Language Http = new("http", "HTTP", ["*.http", "*.rest"], line: "#",
+        grammar: new("source.http", "http.tmLanguage.json"));
+
     /// <summary>Languages with no grammar here, commented as C's are or as scripts are.</summary>
     public static readonly Language Code = new("code", "Code", ["*.rs", "*.go", "*.java", "*.kt", "*.swift", "*.c", "*.h", "*.cpp"],
         line: "//", block: ("/*", "*/"));

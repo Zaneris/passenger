@@ -27,7 +27,7 @@ public partial class MainWindow
     private CSharpService? routesFrom;
     private readonly Dictionary<OpenDocument, (int Version, string Hash)> routeHashes = [];
 
-    /// <summary>The route icon's menu last opened.</summary>
+    /// <summary>The send icon's menu last opened, a route's or an .http file's request's.</summary>
     public MenuFlyout? RouteMarkMenu { get; private set; }
 
     private void AddRoutes()
@@ -101,7 +101,7 @@ public partial class MainWindow
         routesFrom = null;
         routeHashes.Clear();
         endpoints?.ShowRoutes(next.Routes.All);
-        foreach (OpenDocument document in Editors.Documents)
+        foreach (OpenDocument document in Editors.Documents.Where(d => !HttpFile.Is(d.Path)))
         {
             document.RouteMarks = [];
         }

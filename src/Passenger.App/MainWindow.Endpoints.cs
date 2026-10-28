@@ -36,15 +36,25 @@ public partial class MainWindow
             Menus = [new MenuPlace("Tools", 0, 3)],
             Chosen = () => endpoints?.Chosen,
         });
-        // The row's Test button, Enter and its menu test it as this does; an agent or Find Action tests the row chosen.
         actions!.Add(new IdeAction(AppActions.EndpointsRefresh, "Refresh Endpoints", "Endpoints", _ => Endpoints.Reload(session.Folder))
         {
             WhyNot = NeedsFolder,
             Words = ["Read the .http files again"],
         });
-        actions.Add(new IdeAction(AppActions.TestEndpoint, "Test Request", "Endpoints", context => IdeErrors.Observe(Endpoints.TestAsync(Endpoints.Chosen!)))
+        // A row's Test, Enter and menu, an agent and Find Action test the row chosen; an .http file's icon, its line's request.
+        actions.Add(new IdeAction(AppActions.TestEndpoint, "Test Request", "Endpoints", context =>
         {
-            WhyNot = _ => endpoints?.Chosen is null ? "No request is chosen in the Endpoints window" : null,
+            if (context.Request is { } sending)
+            {
+                ShowToolWindow(ToolWindowIds.Endpoints);
+                IdeErrors.Observe(Endpoints.TestAsync(sending.Request, null, sending.File));
+                return;
+            }
+            IdeErrors.Observe(Endpoints.TestAsync(Endpoints.Chosen!));
+        })
+        {
+            WhyNot = c => c.Request is null && endpoints?.Chosen is null ? "No request is chosen in the Endpoints window" : null,
+            TitleIn = c => c.Request is { Request: var request } ? request.Name.Length > 0 ? $"Send '{request.Name}'" : $"Send {request.Method} {request.Url}" : "Test Request",
             Words = ["HTTP Client", "Send Request"],
         });
     }

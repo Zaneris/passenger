@@ -403,7 +403,8 @@ public sealed class OpenDocument : Observable
         set => Set(ref testMarks, value);
     }
 
-    /// <summary>The run icons beside what a run configuration runs from it: a compose file's services, a Dockerfile's image.</summary>
+    /// <summary>The run icons beside what a run configuration runs from it: a program's entry point, a launch profile, a
+    /// compose file's services, a Dockerfile's image.</summary>
     public IReadOnlyList<RunMark> RunMarks
     {
         get => runMarks;
@@ -416,7 +417,8 @@ public sealed class OpenDocument : Observable
 
     private IReadOnlyList<RunMark> runMarks = [];
 
-    /// <summary>The icons beside the web routes it declares, each sending its route's request; drawn as the run icons are.</summary>
+    /// <summary>The icons beside the web routes it declares, or an .http file's requests, each sending its request; drawn as
+    /// the run icons are.</summary>
     public IReadOnlyList<RunMark> RouteMarks
     {
         get => routeMarks;

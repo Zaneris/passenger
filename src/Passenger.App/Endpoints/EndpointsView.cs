@@ -49,6 +49,9 @@ public sealed class EndpointsView : DockPanel
     private bool stale;
     private CancellationTokenSource? sending;
 
+    /// <summary>The last read of the folder's files, whose environments a send waits for.</summary>
+    private Task reading = Task.CompletedTask;
+
     public EndpointsView(EndpointsParts parts)
     {
         this.parts = parts;
@@ -187,7 +190,8 @@ public sealed class EndpointsView : DockPanel
         {
             return;
         }
-        IdeErrors.Observe(ReadAsync(folder, read));
+        reading = ReadAsync(folder, read);
+        IdeErrors.Observe(reading);
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
@@ -298,6 +302,18 @@ public sealed class EndpointsView : DockPanel
         sending = mine;
         try
         {
+            if (stale && root is { } due)
+            {
+                // Sent before the window was shown (from an .http file's icon): the read it put off chooses the environment.
+                stale = false;
+                reading = ReadAsync(due, ++reads);
+                IdeErrors.Observe(reading);
+            }
+            if (!reading.IsCompleted)
+            {
+                testing.Say("Reading the folder's environments…");
+                await reading;
+            }
             HttpFile file = written ?? FileOf(request);
             string? environment = Environment;
             string? folder = root;

@@ -717,6 +717,10 @@ Foundation and Contributors) at the commit Roslyn's server is built from (dc1db3
 - `csharp.tmLanguage.json`: converted from dotnet/csharp-tmLanguage (https://github.com/dotnet/csharp-tmLanguage), MIT,
   Copyright (c) 2016 .NET Foundation, as its header says; it colours a Markdown file's C# code blocks too.
 
+And one that colours .http and .rest files: `http.tmLanguage.json`, REST Client's grammar, the file
+`syntaxes/http.tmLanguage.json` of Huachao/vscode-restclient (https://github.com/Huachao/vscode-restclient, MIT,
+Copyright (c) 2016 - present Huachao Mao) at commit 0773d56b, unchanged.
+
 Reading them, Passenger leaves out what VS Code's reader passes over (a capture that is not a rule) and lets a rule
 that begins with no end never end, as VS Code does, and takes YAML's typed
 scalars (booleans, numbers, null) out of a block mapping's keys, so a key such as a workflow's `on` is read as a key.
@@ -735,6 +739,7 @@ Copyright (c) 2017 John Kreitlow
 Copyright (c) 2019 Jeff Hykin
 Copyright (c) .NET Foundation and Contributors
 Copyright (c) 2016 .NET Foundation
+Copyright (c) 2016 - present Huachao Mao
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
