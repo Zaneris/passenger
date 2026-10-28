@@ -451,7 +451,9 @@ public sealed class FolderWatchTests : IDisposable
     }
 
     /// <summary>A large checkout overflows the system's buffer of changes: those it lost are never heard of, so the window
-    /// reads again what it shows. Its watchers stop while the files change, so the changes are lost as an overflow loses them.</summary>
+    /// reads again what it shows, and a file the watcher's record held that is gone is named among the changes, for the
+    /// language server to be told it went. Its watchers stop while the files change, so the changes are lost as an
+    /// overflow loses them.</summary>
     [AvaloniaTheory]
     [InlineData(false)]
     [InlineData(true)]
@@ -459,15 +461,19 @@ public sealed class FolderWatchTests : IDisposable
     {
         Write("One.cs", "class One { }\n");
         Write("Old/Old.cs", "class Old { }\n");
+        Write("Old/Gone.cs", "class Gone { }\n");
         MainWindow window = Open(eachFolder ? FolderWatching.Inotify : FolderWatching.WholeTree);
         window.OpenFile("One.cs");
         window.OpenFile("Old/Old.cs");
         Ui.Settle();
-        List<FileSystemWatcher> watchers = [.. window.FolderWatcher!.Watches.Values];
+        bool goneNamed = false;
+        window.FolderWatcher!.Changed += (_, changes) => goneNamed |= changes.Paths.Any(p => Path.GetFileName(p) == "Gone.cs");
+        List<FileSystemWatcher> watchers = [.. window.FolderWatcher.Watches.Values];
         watchers.ForEach(w => w.EnableRaisingEvents = false);
 
         Write("One.cs", "class One { int changed; }\n");
         Write("Old/Old.cs", "class Old { int changed; }\n");
+        File.Delete(Path.Combine(folder, "Old", "Gone.cs"));
         Write("Fresh/Fresh.cs", "class Fresh { }\n");
         RaiseError(window.FolderWatcher.Watches[folder], new InternalBufferOverflowException("Too many changes at once; directory listing is required."));
         Ui.WaitFor(() => window.EditorArea.Documents.All(d => d.Text.Snapshot.ToString().Contains("int changed;", StringComparison.Ordinal)),
@@ -476,6 +482,7 @@ public sealed class FolderWatchTests : IDisposable
         Ui.WaitFor(() => window.ExplorerView.Tree.Rows.Any(r => r.Name == "Fresh"),
             $"the folder made meanwhile in the Explorer (it shows {string.Join(", ", window.ExplorerView.Tree.Rows.Select(r => r.Name))})");
         Ui.WaitFor(() => window.FileIndex.Files.Contains(Path.Combine("Fresh", "Fresh.cs")), "the file made meanwhile in Go to File");
+        Ui.WaitFor(() => goneNamed, "the file deleted meanwhile, which the watcher's record held, named among the changes handed over");
 
         // Started only now: a watcher started at once can still be told of the changes just made.
         watchers.ForEach(w => w.EnableRaisingEvents = true);

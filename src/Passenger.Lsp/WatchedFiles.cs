@@ -222,18 +222,20 @@ public sealed record FileWatch(string? Folder, string Pattern, WatchKinds Kinds)
             FileChangeType.Deleted => WatchKinds.Delete,
             _ => WatchKinds.Change,
         };
-        if ((Kinds & kind) == 0)
-        {
-            return false;
-        }
+        return (Kinds & kind) != 0 && Matches(change.Path);
+    }
+
+    /// <summary>Whether the watcher's glob matches a path, whatever changed there.</summary>
+    public bool Matches(string path)
+    {
         string named;
         if (Folder is null)
         {
-            named = change.Path;
+            named = path;
         }
-        else if (PathNames.IsUnder(change.Path, Folder))
+        else if (PathNames.IsUnder(path, Folder))
         {
-            named = PathNames.Below(change.Path, Folder).ToString();
+            named = PathNames.Below(path, Folder).ToString();
         }
         else
         {
@@ -245,6 +247,34 @@ public sealed record FileWatch(string? Folder, string Pattern, WatchKinds Kinds)
         return PathNames.Comparison == StringComparison.OrdinalIgnoreCase
             ? EditorConfig.Matches(glob.ToLowerInvariant(), relative.ToLowerInvariant())
             : EditorConfig.Matches(glob, relative);
+    }
+
+    /// <summary>Whether a folder may hold a path the watcher matches, or lies on the way down to its folder: one under its
+    /// folder no deeper than the glob's names reach (any depth past a <c>**</c>), or one over it.</summary>
+    public bool Reaches(string folder)
+    {
+        if (Folder is null)
+        {
+            return Recursive;
+        }
+        if (PathNames.Within(Folder, folder))
+        {
+            return true;
+        }
+        if (!PathNames.IsUnder(folder, Folder))
+        {
+            return false;
+        }
+        if (Pattern.Contains("**", StringComparison.Ordinal))
+        {
+            return true;
+        }
+        int names = 1;
+        foreach (char at in PathNames.Below(folder, Folder))
+        {
+            names += PathNames.Separators.Contains(at) ? 1 : 0;
+        }
+        return names <= Pattern.Trim('/').Count('/');
     }
 
     /// <summary>A watcher as the protocol gives it: its glob a string, or a pattern relative to a folder or workspace
