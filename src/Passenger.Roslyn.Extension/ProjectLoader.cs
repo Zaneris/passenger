@@ -6,6 +6,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.LanguageServer;
 using Microsoft.CodeAnalysis.LanguageServer.Handler;
 using Microsoft.CodeAnalysis.LanguageServer.HostWorkspace;
+using Microsoft.CodeAnalysis.LanguageServer.HostWorkspace.FileWatching;
 using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.CodeAnalysis.Options;
 using Microsoft.CodeAnalysis.Shared.TestHooks;
@@ -60,6 +61,38 @@ internal sealed class PassengerProjectLoader : LanguageServerProjectLoader, ILsp
         await WaitForProjectsToFinishLoadingAsync().ConfigureAwait(false);
         await ProjectInitializationHandler.SendProjectInitializationCompleteNotificationAsync(client).ConfigureAwait(false);
     }
+
+    /// <summary>Loads again the projects that hold any of the files as documents, which lets go of those gone from disk, and
+    /// says how many once they have.</summary>
+    public async Task<int> LetGoAsync(IReadOnlyList<string> paths)
+    {
+        Solution solution = _workspaceFactory.HostWorkspace.CurrentSolution;
+        HashSet<string> holding = new(StringComparer.Ordinal);
+        foreach (string path in paths)
+        {
+            foreach (DocumentId document in solution.GetDocumentIdsWithFilePath(path))
+            {
+                if (solution.GetProject(document.ProjectId)?.FilePath is { } project)
+                {
+                    holding.Add(project);
+                }
+            }
+        }
+        if (holding.Count == 0)
+        {
+            return 0;
+        }
+        foreach (string project in holding)
+        {
+            _projectsToReload.AddWork(new Microsoft.CodeAnalysis.LanguageServer.HostWorkspace.ProjectToLoad(project, null, ReportTelemetry: false));
+        }
+        await WaitForProjectsToFinishLoadingAsync().ConfigureAwait(false);
+        return holding.Count;
+    }
+
+    /// <summary>Says in the server's log what a deletion's projects did before the server was told of it.</summary>
+    public void LetGo(int projects, int files, TimeSpan took) =>
+        _logger.LogInformation("{Projects} project(s) holding {Files} file(s) gone from disk loaded again without them in {Seconds:0.00} s, then told they are gone", projects, files, took.TotalSeconds);
 
     /// <summary>What a load restores: the projects of the solution open restored with the solution, whose restore leaves
     /// its MSBuild nodes with the server, and the rest on their own.</summary>
@@ -173,6 +206,49 @@ internal sealed class LoadProjectsHandlerFactory : ILspServiceFactory
 
     public ILspService CreateILspService(LspServices lspServices, WellKnownLspServerKinds serverKind) =>
         new LoadProjectsHandler(lspServices.GetRequiredService<PassengerProjectLoader>(), lspServices.GetRequiredService<WorkDoneProgressManager>());
+}
+
+/// <summary><see cref="ProjectMethods.Deleted"/>: files gone from disk taken as workspace/didChangeWatchedFiles once the
+/// projects holding them have loaded again without them (<see cref="PassengerProjectLoader.LetGoAsync"/>).</summary>
+[Method(ProjectMethods.Deleted)]
+internal sealed class FilesDeletedHandler(PassengerProjectLoader loader, LspDidChangeWatchedFilesHandler watched)
+    : ILspServiceNotificationHandler<global::Roslyn.LanguageServer.Protocol.DidChangeWatchedFilesParams>
+{
+    public bool MutatesSolutionState => false;
+
+    public bool RequiresLSPSolution => false;
+
+    public async Task HandleNotificationAsync(global::Roslyn.LanguageServer.Protocol.DidChangeWatchedFilesParams request, RequestContext requestContext, CancellationToken cancellationToken)
+    {
+        long began = System.Diagnostics.Stopwatch.GetTimestamp();
+        try
+        {
+            int projects = await loader.LetGoAsync([.. request.Changes.Select(change => change.Uri.GetRequiredParsedUri().LocalPath)]).ConfigureAwait(false);
+            if (projects > 0)
+            {
+                loader.LetGo(projects, request.Changes.Length, System.Diagnostics.Stopwatch.GetElapsedTime(began));
+            }
+        }
+        finally
+        {
+            // Taken as gone whatever the loads came to.
+            await ((Microsoft.CommonLanguageServerProtocol.Framework.INotificationHandler<global::Roslyn.LanguageServer.Protocol.DidChangeWatchedFilesParams, RequestContext>)watched)
+                .HandleNotificationAsync(request, requestContext, cancellationToken).ConfigureAwait(false);
+        }
+    }
+}
+
+[ExportCSharpVisualBasicLspServiceFactory(typeof(FilesDeletedHandler), WellKnownLspServerKinds.Any)]
+[Shared]
+internal sealed class FilesDeletedHandlerFactory : ILspServiceFactory
+{
+    [ImportingConstructor]
+    public FilesDeletedHandlerFactory()
+    {
+    }
+
+    public ILspService CreateILspService(LspServices lspServices, WellKnownLspServerKinds serverKind) =>
+        new FilesDeletedHandler(lspServices.GetRequiredService<PassengerProjectLoader>(), lspServices.GetRequiredService<LspDidChangeWatchedFilesHandler>());
 }
 
 /// <summary><see cref="ProjectMethods.Ready"/>: true, from a server that has Passenger's loader.</summary>

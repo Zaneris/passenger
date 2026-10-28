@@ -118,6 +118,7 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
             {
                 server.Feed = feed;
                 session.Fed = true;
+                server.WatchedFiles.HasLoader = true;
                 (IReadOnlyList<ProjectToOpen> before, IReadOnlyList<ProjectToOpen> rest) = fed;
                 if (before.Count > 0)
                 {

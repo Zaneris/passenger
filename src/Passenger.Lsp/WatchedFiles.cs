@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Passenger.Core;
+using Passenger.Roslyn.Extension;
 using Passenger.Text;
 
 namespace Passenger.Lsp;
@@ -7,10 +8,11 @@ namespace Passenger.Lsp;
 /// <summary>The files a server registered to hear of as they change on disk (<c>workspace/didChangeWatchedFiles</c>),
 /// which the client watches for it in place of a watcher of the server's own: each registration's watchers, a glob from a
 /// folder (or over whole paths) with the kinds of change it asks for, until the server unregisters it. What is told
-/// (<see cref="Tell"/>) goes to the server as one notification of the changes some watcher covers, in the order told;
-/// one told while the server loads projects that no watcher covers yet is kept for the registration its load sends, which
-/// may arrive after it. Every registration and notification is written in the server's log. Thread-safe;
-/// <see cref="Changed"/> is raised on the thread that registered or unregistered, <see cref="Sent"/> on the telling one.</summary>
+/// (<see cref="Tell"/>) goes to the server as one notification of the changes some watcher covers, in the order told,
+/// files gone in one of their own to a server with Passenger's loader (<see cref="HasLoader"/>); one told while the server
+/// loads projects that no watcher covers yet is kept for the registration its load sends, which may arrive after it.
+/// Every registration and notification is written in the server's log. Thread-safe; <see cref="Changed"/> is raised on
+/// the thread that registered or unregistered, <see cref="Sent"/> on the telling one.</summary>
 public sealed class WatchedFiles
 {
     /// <summary>How many changes are kept for a registration still to come: past it they are let go, said in the log.</summary>
@@ -29,6 +31,10 @@ public sealed class WatchedFiles
     private bool overflowed;
 
     internal WatchedFiles(LanguageServer server) => this.server = server;
+
+    /// <summary>Whether the server has Passenger's project loader, which takes files gone from disk once the projects holding
+    /// them have let go of them (<see cref="ProjectMethods.Deleted"/>).</summary>
+    internal bool HasLoader { get; set; }
 
     /// <summary>When the server started: a file written since may have changed after it read it.</summary>
     public DateTime Started { get; } = DateTime.UtcNow;
@@ -151,16 +157,30 @@ public sealed class WatchedFiles
         return covered.Count;
     }
 
-    /// <summary>The notification itself, under the gate, so what is told reaches the server in the order told.</summary>
+    /// <summary>The notification itself, under the gate, so what is told reaches the server in the order told; files gone
+    /// in one of their own to a server with Passenger's loader.</summary>
     private void Send(List<FileEvent> changes, string? why)
     {
         if (changes.Count == 0)
         {
             return;
         }
-        server.Notify(LspMethods.DidChangeWatchedFiles, new { changes = changes.Select(c => new { uri = new Uri(c.Path).AbsoluteUri, type = (int)c.Change }).ToList() });
-        server.Note($"Told the server of {Plural.Of(changes.Count, "file")} changed on disk{(why is null ? string.Empty : ", " + why)}, {changes[0].Path} first");
+        List<FileEvent> gone = HasLoader ? [.. changes.Where(c => c.Change == FileChangeType.Deleted)] : [];
+        List<FileEvent> rest = gone.Count == 0 ? changes : [.. changes.Where(c => c.Change != FileChangeType.Deleted)];
+        if (rest.Count > 0)
+        {
+            server.Notify(LspMethods.DidChangeWatchedFiles, Notified(rest));
+        }
+        if (gone.Count > 0)
+        {
+            server.Notify(ProjectMethods.Deleted, Notified(gone));
+        }
+        server.Note($"Told the server of {Plural.Of(changes.Count, "file")} changed on disk{(why is null ? string.Empty : ", " + why)}, {changes[0].Path} first"
+            + (gone.Count > 0 ? $", {gone.Count} of them gone, taken once the projects holding them have let go of them" : string.Empty));
     }
+
+    private static object Notified(List<FileEvent> changes) =>
+        new { changes = changes.Select(c => new { uri = new Uri(c.Path).AbsoluteUri, type = (int)c.Change }).ToList() };
 
     private void Said(List<FileEvent> changes)
     {

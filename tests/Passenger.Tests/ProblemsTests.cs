@@ -588,6 +588,67 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         window.Close();
     }
 
+    /// <summary>A thousand warned files nobody has open deleted at once, as a checkout deletes them, with solution-wide
+    /// analysis on and the project's design-time build held, as a large project's takes a while: the open file's completion
+    /// and the error a key makes there are answered while the removal is under way, and once the build lands the Solution
+    /// tab lists none of their warnings.</summary>
+    [AvaloniaFact]
+    public void A_thousand_warned_files_deleted_at_once_leave_the_open_files_answers_unstalled()
+    {
+        const int Files = 1000;
+        static string Gone(int i) => $"static class Gone{i}\n{{\n    static void All()\n    {{\n        int unused;\n    }}\n}}\n";
+        project.Write([("Typed.cs", Typed), .. Enumerable.Range(0, Files).Select(i => ($"Gone{i}.cs", Gone(i)))]);
+        MainWindow window = project.Open("Typed.cs", w => w.Perform(AppActions.ShowProblems));
+        ProblemsModel problems = window.BottomPanel.Problems;
+        window.Perform(AppActions.ToggleSolutionAnalysis);
+        int Warned() => problems.SolutionProblems?.Count(p => Path.GetFileName(p.Path)!.StartsWith("Gone", StringComparison.Ordinal)) ?? 0;
+        Ui.WaitFor(() => Warned() == Files, $"the {Files} files' warnings", TimeSpan.FromMinutes(3));
+        Passenger.Lsp.WatchedFiles watched = window.CSharpService!.Session!.Server.WatchedFiles;
+        int told = 0;
+        EventHandler<IReadOnlyList<Passenger.Lsp.FileEvent>> sent = (_, changes) => Interlocked.Add(ref told, changes.Count(c => c.Change == Passenger.Lsp.FileChangeType.Deleted));
+        watched.Sent += sent;
+        bool heard = false;
+        window.FolderWatcher!.Changed += (_, changes) => heard |= changes.Lost || changes.Paths.Any(p => Path.GetFileName(p).StartsWith("Gone", StringComparison.Ordinal));
+        Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
+        long deleted = System.Diagnostics.Stopwatch.GetTimestamp();
+        double completed;
+        double erred;
+        (IDisposable held, _) = window.Session.DesignTimeBuilds.HoldOff(project.Folder);
+        try
+        {
+            for (int i = 0; i < Files; i++)
+            {
+                File.Delete(project.PathOf($"Gone{i}.cs"));
+            }
+            // Pumped, not settled: the removal waits on the design-time build held.
+            Ui.PumpUntil(() => heard, "the folder's watcher to hear of the files deleted");
+            Ui.PlaceAfter(editor, "return value");
+            editor.Focus();
+            window.KeyTextInput(".");
+            Ui.PumpUntil(() => window.Assist.IsCompletionOpen && window.Assist.CompletionLabels.Contains("CompareTo"),
+                "int's members offered in the open file as the deleted files go", TimeSpan.FromSeconds(30));
+            completed = System.Diagnostics.Stopwatch.GetElapsedTime(deleted).TotalSeconds;
+            Ui.Press(window, "ESCAPE", settle: false);
+            Ui.Press(window, "BACK_SPACE", settle: false);
+            Ui.PlaceAfter(editor, "int value = 1");
+            window.KeyTextInput(" + missing");
+            Ui.PumpUntil(() => problems.FileProblems.Any(p => p.Severity == ProblemSeverity.Error),
+                "the error the key made listed in the open file as the deleted files go", TimeSpan.FromSeconds(30));
+            erred = System.Diagnostics.Stopwatch.GetElapsedTime(deleted).TotalSeconds;
+        }
+        finally
+        {
+            held.Dispose();
+        }
+        Ui.WaitFor(() => Warned() == 0, "the deleted files' warnings gone from the Solution tab", TimeSpan.FromMinutes(1));
+        double listed = System.Diagnostics.Stopwatch.GetElapsedTime(deleted).TotalSeconds;
+        watched.Sent -= sent;
+        TestContext.Current.TestOutputHelper?.WriteLine(
+            $"{Files} warned files deleted: the open file's completion opened {completed:0.00} s after, the error a key made was listed {erred:0.00} s after, "
+            + $"and the Solution tab listed none of their warnings {listed:0.00} s after, the design-time build held until then; the language server was told of {told} files gone");
+        window.Close();
+    }
+
     /// <summary>What the server's log says of its files watched and told, and the IDE's of the folders watched for it, last.</summary>
     private static string WatchLog(Passenger.Lsp.LanguageServer server)
     {
