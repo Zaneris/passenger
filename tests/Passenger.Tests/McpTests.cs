@@ -270,6 +270,31 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>An agent's amend with no paths changes the last commit's message alone: a rename and a change staged in the
+    /// index (as the IDE's own rename and another program's git add leave them) go into no commit and stay changes.</summary>
+    [Fact]
+    public async Task An_agents_amend_with_no_paths_rewords_the_last_commit_and_leaves_what_the_index_holds_out_of_it()
+    {
+        string repository = TestFolders.Create("mcp-amend-");
+        DeleteAtEnd(repository);
+        File.WriteAllText(Path.Combine(repository, "Notes.txt"), "one\n");
+        File.WriteAllText(Path.Combine(repository, "Shop.txt"), "shop\n");
+        await TestGit.InitAsync(repository);
+        await TestGit.RunAsync(repository, "mv", "Shop.txt", "Store.txt");
+        File.WriteAllText(Path.Combine(repository, "Notes.txt"), "one\ntwo\n");
+        await TestGit.RunAsync(repository, "add", "Notes.txt");
+
+        await using McpClient client = await Start(["--mcp", repository], languageServer: false);
+        Dictionary<string, object?> amend = new() { ["message"] = "First, reworded", ["paths"] = Array.Empty<string>(), ["amend"] = true };
+        Assert.EndsWith(" First, reworded", (await Call(client, McpTools.VcsCommit, amend)).GetString(), StringComparison.Ordinal);
+        Assert.Equal("1", (await TestGit.RunAsync(repository, "rev-list", "--count", "HEAD")).Trim());
+        string held = (await TestGit.RunAsync(repository, "show", "--name-status", "--format=", "HEAD")).Trim().Replace("\r", string.Empty, StringComparison.Ordinal);
+        Assert.True(held == "A\tNotes.txt\nA\tShop.txt", $"vcs_commit's amend with no paths took what the index holds into the last commit, which now holds [{held}]");
+        Assert.Equal("one\n", await TestGit.RunAsync(repository, "show", "HEAD:Notes.txt"));
+        Assert.Equal(["Notes.txt modified", "Store.txt renamed"], (await Call(client, McpTools.VcsStatus)).GetProperty("changes").EnumerateArray()
+            .Select(c => $"{c.GetProperty("path").GetString()} {c.GetProperty("kind").GetString()}").Order(StringComparer.Ordinal));
+    }
+
     /// <summary>Commit and Push to a remote that refuses every push: the agent hears the refusal, in git's words, as the
     /// tool's error, and the commit stays made.</summary>
     [Gate]

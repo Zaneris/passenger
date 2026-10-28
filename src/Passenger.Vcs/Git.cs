@@ -1018,8 +1018,8 @@ public sealed class Git
         return log.Succeeded ? log.Output.TrimEnd() : null;
     }
 
-    /// <summary>Commits these files' changes (new ones added first) with a message, amending the last commit when asked.
-    /// Finishing a merge (or a cherry-pick or a revert stopped for conflicts), which git commits only whole, the files
+    /// <summary>Commits these files' changes (new ones added first) and nothing else the index holds, with a message,
+    /// amending the last commit when asked (with no files, its message alone). Finishing a merge (or a cherry-pick or a revert stopped for conflicts), which git commits only whole, the files
     /// <paramref name="excluded"/> are taken out of it and kept as changes.</summary>
     public async Task<GitResult> CommitAsync(IReadOnlyList<string> paths, string message, bool amend = false, bool merging = false, IReadOnlyList<string>? excluded = null)
     {
@@ -1046,7 +1046,8 @@ public sealed class Git
         AtomicFile.Write(file, Encoding.UTF8.GetBytes(message), UnixFileMode.UserRead | UnixFileMode.UserWrite);
         try
         {
-            string[] only = relative.Length > 0 && !merging ? ["--only", "--", .. relative.Select(Literal)] : [];
+            // --only with no paths amends the message alone, leaving out what else the index holds (an IDE rename, a git add).
+            string[] only = merging ? [] : relative.Length > 0 ? ["--only", "--", .. relative.Select(Literal)] : amend ? ["--only"] : [];
             return await RunAsync(Root, ["commit", "-F", file, .. amend ? new[] { "--amend" } : [], .. only]);
         }
         finally

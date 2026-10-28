@@ -83,7 +83,7 @@ public sealed partial class PassengerTools
 
     [McpServerTool(Name = McpTools.VcsCommit, Title = "Commit", Destructive = true), Description(
         "Commits the paths given, else every changed file but the unversioned (saved first), with message; amend changes the " +
-        "last commit, push pushes after. Returns the commit and how the push went; a push the remote refuses is an error with " +
+        "last commit (with paths [], its message alone), push pushes after. Returns the commit and how the push went; a push the remote refuses is an error with " +
         "git's reason, the commit made all the same.")]
     public Task<string> VcsCommit(string message, IReadOnlyList<string>? paths = null, bool amend = false, bool push = false, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {

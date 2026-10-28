@@ -198,6 +198,34 @@ public sealed class VcsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Amend with no file chosen changes the last commit's message alone: the rename the Explorer made in the
+    /// index goes into no commit and stays listed.</summary>
+    [AvaloniaFact]
+    public void Amend_with_no_file_chosen_rewords_the_last_commit_and_leaves_a_rename_out_of_it()
+    {
+        MainWindow window = Open();
+        Assert.Null(Ui.Await(window.RenameAsync(PathNames.Canonical(Path.Combine(folder, "Shop.cs")), "Store.cs"), "the rename"));
+        CommitView commit = window.CommitView;
+        window.Perform(AppActions.Commit);
+        Ui.Landed(() => commit.Rows.OfType<CommitRow>().Any(r => r.Change.Name == "Store.cs" && r.Change.Kind == ChangeKind.Renamed), "the rename in the Commit window");
+        foreach (CommitRow row in commit.Rows.OfType<CommitRow>())
+        {
+            row.IsChosen = false;
+        }
+        Ui.ClickButton(commit, "Amend");
+        Ui.Landed(() => commit.Message == "First", "Amend's message, the last commit's");
+        commit.Message = "First, reworded";
+        Ui.ClickButton(commit, "Commit");
+        Ui.Landed(() => Git("log", "-1", "--format=%s").Trim() == "First, reworded", "the amended commit");
+
+        Assert.Equal("1", Git("rev-list", "--count", "HEAD").Trim());
+        string held = Git("show", "--name-status", "--format=", "HEAD").Trim();
+        Assert.True(held == "A\tShop.cs", $"Amend with no file chosen took the index's rename into the last commit, which now holds [{held}]");
+        string listed = string.Join(", ", window.Vcs.Changes.Select(c => $"{c.Name} ({c.Kind})"));
+        Assert.True(window.Vcs.Changes.Any(c => c.Name == "Store.cs" && c.Kind == ChangeKind.Renamed), $"After the amend the rename is no change: Git lists [{listed}]");
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void Rollback_lines_puts_the_change_under_the_caret_back_as_the_last_commit_has_it()
     {
