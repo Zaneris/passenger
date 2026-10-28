@@ -132,7 +132,10 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
   another program holds the file lands in the background, in order (`FileText.Landed`; `FileText.Read` gives its bytes
   meanwhile), and what hands the files to another program (a build, Git, a restore, an agent) waits for it
   (`SaveAllLandedAsync`); a change of several files says it is done only once its own writes have landed
-  (`WorkspaceEdits.LandedAsync`, `EditorArea.LandedAsync(paths, …)`).
+  (`WorkspaceEdits.LandedAsync`, `EditorArea.LandedAsync(paths, …)`; its command takes the open files' changes before
+  the wait, `Recording.TakeOpen`, and leaves out a file never written, `Unwritten`). A file shown read-only refuses
+  every change to its text (`TextDocument.IsReadOnly`, set only by `OpenDocument`), and an action on it greys with
+  `Refusals.ReadOnly`.
 - **State is a `StateDocument`** in the one `StateStore` (versioned `Upgrades`, `Clamped`, written debounced and merged,
   a bad file set aside as `.bad`), read off the UI thread; never a file of its own. Per-folder state lives under
   `workspaces/<name>-<hash>/` and is made in `ProjectSession`. A new setting: an `AppSettings` property, its row and
@@ -172,10 +175,12 @@ Projects in `src/`; `find_symbol` finds the rest:
   offset becomes a place through `Rows`/`RowSpan`. Wraps, rows, folds, hints and built lines are runs an edit moves only
   where it reaches, so a key costs what it changed, not the file's size: keep it so. Row views are carried so too, a
   highlighter carrying the colours of lines an edit didn't reach (`IHighlighter.Showing`, `KeptColours`).
-- `Passenger.Languages`: C# coloured by Roslyn's parser in-process (`CSharpHighlighter`, also each open file's one syntax
-  service, `OpenDocument.Syntax`: never a fresh parse), the rest by VS Code's TextMate grammars. A new language: one
-  `Language` entry, its grammar file and a notices entry; compare entries, never names. A finder never tells its answer
-  inside a document's `Changed` (the open file moves its regions in a later handler).
+- `Passenger.Languages`: C# coloured by Roslyn's parser in-process (`CSharpHighlighter`, also each open file's one
+  syntax service, `OpenDocument.Syntax`: never a fresh parse; every in-process parse takes its options from
+  `CSharpParsing`, a folder's file's through `CompilationSymbols`, `EditorArea.ParseOptions`, never its own), the rest
+  by VS Code's TextMate grammars. A new language: one `Language` entry, its grammar file and a notices entry; compare
+  entries, never names. A finder never tells its answer inside a document's `Changed` (the open file moves its regions
+  in a later handler).
 - `Passenger.Xaml`: Passenger's own XAML core (no Avalonia; WPF shares it; not Avalonia.Ide.CompletionEngine).
 - `Passenger.Lsp`: the LSP client (StreamJsonRpc, whose types never leave the project; `JsonRpcPeer` for any other
   JSON-RPC peer, the Testing Platform's test hosts), Roslyn's server downloaded per
