@@ -78,7 +78,7 @@ public partial class ModuleMetadataReader : IDisposable
         }
     }
 
-    private static bool HasAttribute(MetadataReader reader, CustomAttributeHandleCollection attributes, string[] names)
+    internal static bool HasAttribute(MetadataReader reader, CustomAttributeHandleCollection attributes, string[] names)
     {
         foreach (CustomAttributeHandle handle in attributes)
         {

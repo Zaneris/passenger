@@ -119,6 +119,26 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("Spot { X = 1, Y = 5 }", (await Evaluate(host, frame, "new Spot(1, 2) with { Y = 5 }")).Value);
     }
 
+    /// <summary>A char joined to a string, after it, before it and twice, answers the string the program would make: the
+    /// span over the char the compiler makes keeps a value of the evaluation's own. An out argument the expression
+    /// discards passes as the int it is, and a call that may keep a reference to a char the debugger lends it only for the
+    /// call is refused, saying why, the program evaluating on.</summary>
+    [Fact]
+    public async Task A_char_joined_to_a_string_answers_the_string_the_program_would_make()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        int frame = await StoppedInReadingAsync(host);
+
+        Assert.Equal("\"helloA\"", (await Evaluate(host, frame, "word + letter")).Value);
+        Assert.Equal("\"Ahello\"", (await Evaluate(host, frame, "letter + word")).Value);
+        Assert.Equal("\"helloAA\"", (await Evaluate(host, frame, "word + letter + letter")).Value);
+        Assert.True((await Evaluate(host, frame, "int.TryParse(\"5\", out _)")).Value == "true",
+            "An out argument into a variable of the evaluation's own did not pass the int it is, which the program could not live through");
+        string kept = (await Evaluate(host, frame, "System.Runtime.InteropServices.MemoryMarshal.CreateReadOnlySpan(ref letter, 1).Length")).Value;
+        Assert.True(kept.Contains("Not evaluated:", StringComparison.Ordinal) && kept.Contains("may keep a reference", StringComparison.Ordinal),
+            $"A span over the char the debugger lends only for the call answered \"{kept}\", where it is refused, saying why");
+    }
+
     private static int Line(string code) => Debuggees.Line("PassengerCases", code);
 
     /// <summary>PassengerCases launched and stopped in Reading.Run once its rounds are done; the top frame.</summary>

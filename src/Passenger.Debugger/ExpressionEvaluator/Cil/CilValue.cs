@@ -388,11 +388,22 @@ internal sealed class CorDebugLocation(ICorDebugValue value) : IDebuggeeLocation
         CorElementType.U;
 }
 
-internal sealed class TemporaryLocation(CilValue initialValue) : ICilLocation
+/// <summary>A variable or argument of the evaluation's own, or a field of an object its compilation made.</summary>
+internal sealed class TemporaryLocation(CilValue initialValue, Func<ResolvedCilType?>? declaredType = null) : ICilLocation
 {
     private CilValue _value = initialValue;
     public CilValue Read() => _value;
-    public void Write(CilValue value) => _value = value;
+    public void Write(CilValue value)
+    {
+        _value = value;
+        Written = true;
+    }
+
+    /// <summary>Whether anything has been stored in it: a local holds its type's zero until then, as the runtime's do.</summary>
+    public bool Written { get; private set; }
+
+    /// <summary>The type a local of the evaluation's own is declared as, when the debugger can resolve it.</summary>
+    public ResolvedCilType? DeclaredType => declaredType?.Invoke();
 }
 
 internal sealed class SyntheticVariableLocation(ICorDebugValue arrayReference) : ICilLocation

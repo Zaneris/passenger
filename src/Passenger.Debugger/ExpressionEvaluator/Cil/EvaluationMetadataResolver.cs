@@ -36,6 +36,7 @@ internal sealed class EvaluationMetadataResolver(ManagedDebugger debugger, Metad
     private readonly Dictionary<int, ResolvedCilType> _typeTokenCache = new();
     private readonly Dictionary<string, ResolvedRuntimeMethod> _runtimeMethodCache = new();
     private readonly Dictionary<string, ResolvedRuntimeType> _runtimeTypeCache = new();
+    private readonly Dictionary<StandaloneSignatureHandle, ImmutableArray<ResolvedCilType>?> _localTypesCache = new();
 
     public string ResolveUserString(int token) => evaluationReader.GetUserString(MetadataTokens.UserStringHandle(token));
 
@@ -282,6 +283,25 @@ internal sealed class EvaluationMetadataResolver(ManagedDebugger debugger, Metad
         ? 0
         : evaluationReader.GetStandaloneSignature(handle).DecodeLocalSignature(LocalCountSignatureProvider.Instance, genericContext: null).Length;
 
+    /// <summary>The type an evaluation method's local is declared as, a ref local's as what it refers to; null where a type
+    /// of its signature is one the debugger cannot resolve.</summary>
+    public ResolvedCilType? ResolveEvaluationLocalType(StandaloneSignatureHandle handle, int index)
+    {
+        if (!_localTypesCache.TryGetValue(handle, out ImmutableArray<ResolvedCilType>? types))
+        {
+            try
+            {
+                types = evaluationReader.GetStandaloneSignature(handle).DecodeLocalSignature(new RuntimeTypeSignatureProvider(this), genericContext: null);
+            }
+            catch (Exception error) when (error is TypeLoadException or NotSupportedException or MissingMemberException or BadImageFormatException)
+            {
+                types = null;
+            }
+            _localTypesCache[handle] = types;
+        }
+        return types is { } declared && index < declared.Length ? declared[index] : null;
+    }
+
     public ICorDebugType GetCorDebugType(ResolvedRuntimeType type)
     {
         CorElementType elementType = IsValueType(type) ? CorElementType.VALUETYPE : CorElementType.CLASS;
@@ -349,9 +369,17 @@ internal sealed class EvaluationMetadataResolver(ManagedDebugger debugger, Metad
             return cached;
         }
 
-        ResolvedRuntimeType declaringType = FindRuntimeType(@namespace, typeName);
-        MetadataReader reader = declaringType.Module.MetadataReader.PeMetadataReader;
-        foreach (MethodDefinitionHandle handle in reader.GetTypeDefinition(declaringType.Handle).GetMethods())
+        ResolvedRuntimeMethod result = ResolveMethodOf(FindRuntimeType(@namespace, typeName), methodName, parameterTypes);
+        _runtimeMethodCache[cacheKey] = result;
+        return result;
+    }
+
+    /// <summary>A method of a type, by its name and its parameters' signature keys (<see cref="SignatureKeyProvider"/>): of
+    /// a generic type's instance as the type gives it.</summary>
+    public static ResolvedRuntimeMethod ResolveMethodOf(ResolvedRuntimeType type, string methodName, params string[] parameterTypes)
+    {
+        MetadataReader reader = type.Module.MetadataReader.PeMetadataReader;
+        foreach (MethodDefinitionHandle handle in reader.GetTypeDefinition(type.Handle).GetMethods())
         {
             MethodDefinition method = reader.GetMethodDefinition(handle);
             if (reader.GetString(method.Name) != methodName)
@@ -362,13 +390,21 @@ internal sealed class EvaluationMetadataResolver(ManagedDebugger debugger, Metad
             MethodSignature<string> signature = method.DecodeSignature(SignatureKeyProvider.Instance, genericContext: null);
             if (signature.ParameterTypes.SequenceEqual(parameterTypes))
             {
-                ResolvedRuntimeMethod result = new ResolvedRuntimeMethod(declaringType, handle, methodName, signature, (method.Attributes & MethodAttributes.Static) != 0);
-                _runtimeMethodCache[cacheKey] = result;
-                return result;
+                return new ResolvedRuntimeMethod(type, handle, methodName, signature, (method.Attributes & MethodAttributes.Static) != 0);
             }
         }
-        throw new MissingMethodException($"{@namespace}.{typeName}", methodName);
+        throw new MissingMethodException(GetTypeName(type), methodName);
     }
+
+    /// <summary>Whether a type is a ref struct, whose value may hold a reference to where another value lives.</summary>
+    internal static bool IsByRefLike(ResolvedRuntimeType type)
+    {
+        MetadataReader reader = type.Module.MetadataReader.PeMetadataReader;
+        return ModuleMetadataReader.HasAttribute(reader, reader.GetTypeDefinition(type.Handle).GetCustomAttributes(), [ByRefLikeAttribute]);
+    }
+
+    /// <summary>The attribute the compiler marks a ref struct with.</summary>
+    internal const string ByRefLikeAttribute = "System.Runtime.CompilerServices.IsByRefLikeAttribute";
 
     private ResolvedRuntimeType ResolveType(EntityHandle handle)
     {
