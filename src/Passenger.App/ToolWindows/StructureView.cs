@@ -59,7 +59,8 @@ public sealed class StructureView : DockPanel
                 e.Handled = true;
             }
         };
-        placeholder = new TextBlock { Classes = { "emptyText" }, Text = "The open file's outline shows here" };
+        placeholder = new TextBlock { Classes = { "emptyText" } };
+        ActionTips.SetWords(placeholder, AppActions.GoToFile, keys => $"The open file's outline shows here: open one with {ActionTips.Named("Go to File", keys)}");
         settle = new Debounce(Pause, Refresh);
         ListMenus.Attach(list, () => list.SelectedItem is not SymbolRow chosen ? [] :
         [

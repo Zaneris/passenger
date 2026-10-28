@@ -99,7 +99,8 @@ public sealed class FindView : DockPanel
         body.Children.Add(list);
         body.Children.Add(divider);
         body.Children.Add(preview);
-        placeholder = new TextBlock { Text = "Find Usages lists a symbol's usages here", Classes = { "emptyText" } };
+        placeholder = new TextBlock { Classes = { "emptyText" } };
+        ActionTips.SetWords(placeholder, AppActions.FindUsages, keys => $"{ActionTips.Named("Find Usages", keys)} lists a symbol's usages here");
         body.IsVisible = false;
         Children.Add(new Panel { Children = { body, placeholder } });
         Body = body;

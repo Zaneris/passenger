@@ -570,6 +570,59 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
     }
 
+    /// <summary>Every button that runs one of the window's actions, the toolbar's and every tool window's, names in its tip
+    /// the keys the keymap in force gives that action (<see cref="ActionTips"/>), and every tool window's Hide names Hide Tool
+    /// Window's keys or none: under Visual Studio's keymap and VS Code's, each chosen in turn, so no tip names a key that
+    /// does not run what it says.</summary>
+    [AvaloniaFact]
+    public void Every_action_buttons_tip_names_the_keys_the_keymap_in_force_gives_its_action()
+    {
+        MainWindow window = Open(1400, 880);
+        try
+        {
+            window.TerminalPanel.Shell = OperatingSystem.IsWindows() ? ("cmd.exe", []) : ("/bin/sh", []);
+            foreach (Passenger.Editor.KeymapPreset preset in (Passenger.Editor.KeymapPreset[])[Passenger.Editor.KeymapPreset.VisualStudio, Passenger.Editor.KeymapPreset.VSCode])
+            {
+                window.ApplySettings(window.Settings with { Keymap = preset });
+                Ui.Settle();
+                Passenger.Editor.Keymap keymap = AppActions.Keymap();
+                string? KeysOf(string action) => keymap.ShortcutsFor(AppActions.KeysIn(action)).FirstOrDefault()?.Display();
+                HashSet<Button> seen = [];
+                int hides = 0;
+                foreach (Passenger.App.Docking.ToolWindow tool in window.DockHost.Windows.ToList())
+                {
+                    window.DockHost.Show(tool.Id);
+                    Ui.Settle();
+                    foreach (Button button in window.GetVisualDescendants().OfType<Button>().Where(seen.Add))
+                    {
+                        string tip = ToolTip.GetTip(button) as string ?? string.Empty;
+                        if (button.Name == AppActions.HideToolWindow)
+                        {
+                            hides++;
+                            string? hide = KeysOf(AppActions.HideToolWindow);
+                            Assert.True(tip == ActionTips.Named("Hide", hide),
+                                $"Under {preset}'s keymap, {tool.Title}'s Hide says \"{tip}\", where the keys that hide it are {hide ?? "none"}");
+                        }
+                        else if ((ActionButtons.GetAction(button) ?? ActionTips.ActionOf(button)) is { } action && KeysOf(action) is { } keys)
+                        {
+                            Assert.True(tip.Contains($"({keys})", StringComparison.Ordinal),
+                                $"Under {preset}'s keymap, {tool.Title}'s button for {action} says \"{tip}\", never the {keys} that runs it");
+                        }
+                    }
+                }
+                Assert.True(hides >= 4, $"Only {hides} tool windows' Hide buttons were found under {preset}'s keymap");
+                Button run = Named<Button>(window, "RunButton");
+                Assert.True(seen.Contains(run) && ToolTip.GetTip(run) is string runTip && runTip.Contains($"({KeysOf(AppActions.RunProgram)})", StringComparison.Ordinal),
+                    $"The toolbar's Run says \"{ToolTip.GetTip(run)}\" under {preset}'s keymap");
+            }
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+    }
+
     /// <summary>A label that asks more before it acts ends in one ellipsis everywhere, "…": every action's title, as the
     /// menus, Find Action and the keymap list it and as a menu opened where it runs words it, macOS's application menu, a
     /// row's menu in the Explorer, and every button and menu item the tool windows show.</summary>

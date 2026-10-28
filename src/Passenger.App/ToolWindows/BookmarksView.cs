@@ -39,7 +39,8 @@ public sealed class BookmarksView : DockPanel
                 e.Handled = true;
             }
         };
-        placeholder = new TextBlock { Text = "Toggle Bookmark marks the caret's line", Classes = { "emptyText" } };
+        placeholder = new TextBlock { Classes = { "emptyText" } };
+        ActionTips.SetWords(placeholder, AppActions.ToggleBookmark, keys => $"{ActionTips.Named("Toggle Bookmark", keys)} marks the caret's line");
         Children.Add(new Panel { Children = { list, placeholder } });
         store.Changed += OnChanged;
         ListMenus.Attach(list, () => list.SelectedItem is not Bookmark chosen ? [] :

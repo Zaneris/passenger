@@ -196,7 +196,7 @@ public sealed partial class EditorArea : UserControl
     {
         folderName = Path.GetFileName(folder);
         emptyTitle.Text = folderName;
-        emptyHint.Text = "Open a file from the Explorer.";
+        ActionTips.SetWords(emptyHint, AppActions.GoToFile, keys => $"Open a file from the Explorer or with {ActionTips.Named("Go to File", keys)}.");
         emptyState.Content = folderHint;
         TitleWindows();
     }

@@ -23,8 +23,17 @@ public sealed class OutputView : DockPanel
     private readonly Button stop;
     private readonly Button hotReload;
     private readonly ConsoleColours colours = new();
+
+    /// <summary>The editor, under what the console says while it is empty.</summary>
+    private readonly Panel body = new();
+
+    /// <summary>What the console says while it is empty and nothing runs in it, once given words (<see cref="SayWhenEmpty"/>).</summary>
+    private readonly TextBlock empty = new() { Classes = { "emptyText" }, IsVisible = false };
+
     private int limit = DefaultLimitKb * 1024;
     private ConsoleInput? input;
+    private bool running;
+    private bool saysEmpty;
 
     /// <summary>Where the line being typed begins, at the end when none is: output goes in before it.</summary>
     private int typedFrom;
@@ -58,6 +67,8 @@ public sealed class OutputView : DockPanel
         {
             Children.Add(tools);
         }
+        body.Children.Add(empty);
+        Children.Add(body);
         Document.Changed += (_, change) =>
         {
             if (!editing)
@@ -70,6 +81,7 @@ public sealed class OutputView : DockPanel
                 typedFrom = Document.Snapshot.Length;
             }
             editor?.ScrollToEnd();
+            ShowEmpty();
         };
     }
 
@@ -102,7 +114,7 @@ public sealed class OutputView : DockPanel
         // Ahead of the editor's own handling, which a read-only editor gives nothing to.
         made.AddHandler(KeyDownEvent, OnKey, RoutingStrategies.Tunnel);
         made.AddHandler(TextInputEvent, OnText, RoutingStrategies.Tunnel);
-        Children.Add(made);
+        body.Children.Insert(0, made);
         made.Selections = SelectionSet.Single(typedFrom);
         made.ScrollToEnd();
         return made;
@@ -132,6 +144,17 @@ public sealed class OutputView : DockPanel
         ActionTips.Set(stop, stopAction, "Stop");
         ActionTips.Set(hotReload, hotReloadAction, "Apply Hot Reload Changes");
     }
+
+    /// <summary>Has the console say, while it is empty and nothing runs in it, what fills it: words naming an action's keys
+    /// as the keymap in force has them (<see cref="ActionTips.SetWords(Control, string, Func{string?, string})"/>).</summary>
+    public void SayWhenEmpty(string action, Func<string?, string> words)
+    {
+        ActionTips.SetWords(empty, action, words);
+        saysEmpty = true;
+        ShowEmpty();
+    }
+
+    private void ShowEmpty() => empty.IsVisible = saysEmpty && !running && Document.Snapshot.Length == 0;
 
     /// <summary>Shows Apply Hot Reload Changes while the program runs with Hot Reload.</summary>
     public void ShowHotReload(bool on) => hotReload.IsVisible = on;
@@ -258,8 +281,10 @@ public sealed class OutputView : DockPanel
 
     public void SetRunning(bool running)
     {
+        this.running = running;
         stop.IsEnabled = running;
         rerun.IsEnabled = !running || RerunsWhileRunning;
+        ShowEmpty();
     }
 
     /// <summary>Puts text in before the line being typed (at the end when there is none), its error runs coloured, and

@@ -64,6 +64,10 @@ public sealed class HierarchyView : DockPanel
     private readonly ToggleButton first;
     private readonly ToggleButton second;
     private readonly TextBlock placeholder;
+
+    /// <summary>The symbol's name and the toggles, shown only once there is a hierarchy: an empty bar says nothing.</summary>
+    private readonly Border bar;
+
     private (HierarchyDirection First, HierarchyDirection Second)? directions;
     private HierarchyNode? root;
 
@@ -79,7 +83,9 @@ public sealed class HierarchyView : DockPanel
         DockPanel.SetDock(toggles, Dock.Right);
         top.Children.Add(toggles);
         top.Children.Add(title);
-        Children.Add(ToolBars.Top(top));
+        bar = ToolBars.Top(top);
+        bar.IsVisible = false;
+        Children.Add(bar);
         list = new ListBox
         {
             Classes = { "tree" },
@@ -92,9 +98,10 @@ public sealed class HierarchyView : DockPanel
             GoToRequested?.Invoke(this, row.Node);
             return true;
         });
-        placeholder = new TextBlock { Text = "Call Hierarchy and Type Hierarchy show the symbol at the caret here", Classes = { "emptyText" } };
+        placeholder = new TextBlock { Classes = { "emptyText" } };
+        ActionTips.SetWords(placeholder, keys =>
+            $"{ActionTips.Named("Call Hierarchy", keys(AppActions.CallHierarchy))} and {ActionTips.Named("Type Hierarchy", keys(AppActions.TypeHierarchy))} show the symbol at the caret here");
         Children.Add(new Panel { Children = { list, placeholder } });
-        first.IsVisible = second.IsVisible = false;
     }
 
     /// <summary>A row to go to.</summary>
@@ -120,7 +127,7 @@ public sealed class HierarchyView : DockPanel
         directions = (one, other);
         first.Content = one.Label;
         second.Content = other.Label;
-        first.IsVisible = second.IsVisible = true;
+        bar.IsVisible = true;
         placeholder.IsVisible = false;
         return ChooseAsync(first: true);
     }

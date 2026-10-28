@@ -18,7 +18,8 @@ public sealed class LocalHistoryView : DockPanel
 
     public LocalHistoryView()
     {
-        empty = new TextBlock { Text = "Show History on a file or folder lists its versions here", Classes = { "emptyText" } };
+        empty = new TextBlock { Classes = { "emptyText" } };
+        ActionTips.SetWords(empty, AppActions.ShowLocalHistory, keys => $"{ActionTips.Named("Show Local History", keys)} on a file or folder lists its versions here");
         body.Content = empty;
         Children.Add(body);
     }

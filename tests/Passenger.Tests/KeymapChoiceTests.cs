@@ -178,6 +178,50 @@ public sealed class KeymapChoiceTests : IDisposable
         }
     }
 
+    /// <summary>The toolbar's Run names the keys that run, a tool window's Hide the keys that hide it in the keymap chosen
+    /// (VS Code's, never Visual Studio's left behind), and the Run window, empty before anything has run, says what fills it
+    /// and with which keys, until it has text and again once it is cleared.</summary>
+    [AvaloniaFact]
+    public void The_toolbars_Run_and_Hide_name_their_keys_and_the_empty_Run_window_says_how_to_run()
+    {
+        MainWindow window = Open();
+        try
+        {
+            string run = Shortcut.Parse("control F5").Display();
+            Button runButton = window.FindControl<Button>("RunButton")!;
+            Assert.Equal($"Run ({run})", ToolTip.GetTip(runButton));
+            window.ShowToolWindow(ToolWindowIds.Run);
+            Ui.Settle();
+            Button hide = window.BottomPanel.Run.GetVisualAncestors().OfType<DockPanel>().First(p => p.Classes.Contains("toolPane"))
+                .GetVisualDescendants().OfType<Button>().Single(b => b.Name == AppActions.HideToolWindow);
+            Assert.Equal($"Hide ({Shortcut.Parse("shift ESCAPE").Display()})", ToolTip.GetTip(hide));
+            string? Said() => window.BottomPanel.Run.GetVisualDescendants().OfType<TextBlock>().SingleOrDefault(t => t.Classes.Contains("emptyText") && t.IsEffectivelyVisible)?.Text;
+            Assert.Equal($"Run ({run}) shows a program's output here", Said());
+
+            window.ApplySettings(window.Settings with { Keymap = KeymapPreset.VSCode });
+            Ui.Settle();
+            Assert.Equal($"Hide ({Shortcut.Parse($"{Cmd} J").Display()})", ToolTip.GetTip(hide));
+            Assert.Equal($"Run ({run})", ToolTip.GetTip(runButton));
+            window.ApplySettings(window.Settings with { VSCodeShortcuts = new() { [AppActions.RunProgram] = ["shift F9"] } });
+            Ui.Settle();
+            string own = Shortcut.Parse("shift F9").Display();
+            Assert.Equal($"Run ({own})", ToolTip.GetTip(runButton));
+            Assert.Equal($"Run ({own}) shows a program's output here", Said());
+
+            window.BottomPanel.Run.Append("Hello\n");
+            Ui.Settle();
+            Assert.True(Said() is null, $"The Run window still says \"{Said()}\" over a program's output");
+            window.BottomPanel.Run.Clear();
+            Ui.Settle();
+            Assert.Equal($"Run ({own}) shows a program's output here", Said());
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+    }
+
     /// <summary>The Debug window's evaluate box names the keys that add a watch there in the keymap in force: Complete
     /// Statement's in Visual Studio's, Start New Line Before's in VS Code's (Ctrl+Shift+Enter in each, Cmd on the Mac),
     /// Add to Watches' own once the person sets some, and none once they take them all away.</summary>
