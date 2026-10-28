@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.VisualTree;
 using Passenger.App.Run;
+using Passenger.App.Workspace;
 using Passenger.Editor;
 using E = Passenger.Editor.EditorActions;
 using A = Passenger.App.AppActions;
@@ -342,24 +343,42 @@ public partial class MainWindow
         Add(A.RerunFailedTests, "Rerun Failed Tests", "Unit Tests", _ => RunTests(() => session.Tests.RerunFailedAsync(Folder!)), NeedsFolder, ("Tests", 1, 1));
         Add(A.StopTests, "Stop Unit Tests", "Unit Tests", _ => session.Tests.Stop(), NothingRunning, ("Tests", 1, 2));
 
+        // Where the Explorer has the keys, its rows say what to run, never the editor's caret.
         string? NoTestHere(ActionContext context) => NeedsFolder(context)
-            ?? (ChosenTests(context) is null && ChosenProjects(context) is null && TestAtCaret(context) is null ? "No test is at the caret" : null);
+            ?? (ChosenTests(context) is not null || ChosenProjects(context) is not null ? null
+                : ExplorerHasKeys(context) ? "No project chosen in the Explorer holds tests"
+                : TestAtCaret(context) is null ? "No test is at the caret" : null);
 
         // Stop is disabled with no run to end, its toolbar's button and its menu item alike.
         string? NothingRunning(ActionContext context) => NeedsFolder(context) ?? (session.Tests.IsBusy ? null : "No unit tests are running");
     }
 
-    /// <summary>The projects chosen in the Explorer, a solution folder's those under it, while it has the keys.</summary>
+    /// <summary>The projects holding tests chosen in the Explorer, while it has the keys (<see cref="TestProjectsOf"/>).</summary>
     private IReadOnlyList<string>? ChosenProjects(ActionContext context) =>
         context.ToolWindow?.Id == ToolWindowIds.Explorer && context.Row is IReadOnlyList<Explorer.ExplorerNode> rows
-            && rows.SelectMany(Explorer.Tree.ProjectsOf).Distinct().ToList() is { Count: > 0 } projects ? projects : null;
+            && rows.SelectMany(TestProjectsOf).Distinct().ToList() is { Count: > 0 } projects ? projects : null;
+
+    /// <summary>The projects a row stands for that hold tests: a project, those under a solution folder, the solution's
+    /// loaded ones.</summary>
+    private IEnumerable<string> TestProjectsOf(Explorer.ExplorerNode row)
+    {
+        HashSet<string> testing = new(session.Tests.Finder.Projects.Select(p => p.Path), Core.PathNames.Comparer);
+        testing.UnionWith(session.Tests.Tree.Methods.Select(m => m.ProjectPath).OfType<string>());
+        IEnumerable<string> projects = row.Kind == Passenger.App.Explorer.NodeKind.Solution
+            ? session.Tests.Finder.Projects.Select(p => p.Path).Where(p => !Explorer.Tree.Unloaded.Contains(p))
+            : Explorer.Tree.ProjectsOf(row);
+        return projects.Where(testing.Contains);
+    }
 
     /// <summary>The Unit Tests window's chosen rows, while it has the keys.</summary>
     private static IReadOnlyList<Testing.TestNode>? ChosenTests(ActionContext context) =>
         context.ToolWindow?.Id == ToolWindowIds.Tests && context.Row is IReadOnlyList<Testing.TestNode> { Count: > 0 } chosen ? chosen : null;
 
-    private static (string Type, string? Method)? TestAtCaret(ActionContext context) =>
-        context.File?.Syntax is { } syntax ? Testing.TestsAtCaret.At(syntax.Current, context.Caret.Line) : null;
+    private (string Type, string? Method)? TestAtCaret(ActionContext context) => context.File is { } file ? TestAt(file, context.Caret.Line) : null;
+
+    /// <summary>The test a file's line is in, as its code declares it or a runner found it; null where there is none.</summary>
+    private (string Type, string? Method)? TestAt(OpenDocument file, int line) =>
+        file.Syntax is { } syntax ? Testing.TestsAtCaret.At(syntax.Current, line, testGutter.Knows) : null;
 
     /// <summary>Adds one of the window's actions, listed in one place of the menus if given.</summary>
     private void Add(string id, string title, string group, Action<ActionContext> run, Func<ActionContext, string?>? whyNot = null, (string Path, int Group, int Order)? menu = null,

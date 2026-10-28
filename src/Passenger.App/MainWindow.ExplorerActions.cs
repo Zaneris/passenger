@@ -178,7 +178,7 @@ public partial class MainWindow
     }
 
     /// <summary>A row's menu, its items the window's actions run on the row: Build, Rebuild and Clean for the solution
-    /// or the projects chosen, their unit tests, a project's packages, file and unloading, Add where things can go,
+    /// or the projects chosen, their unit tests where they hold any, a project's packages, file and unloading, Add where things can go,
     /// Edit (the clipboard's actions, Delete or for the solution's own Remove, Rename, Find and Replace in Files), the
     /// path of what is on disk, Open In, Tools' Compare, Local History and Git's history. A project's Dependencies add
     /// a reference, and a project reference is removed. None for a row with nothing to do (a package).</summary>
@@ -213,7 +213,7 @@ public partial class MainWindow
             }
             entries.Add(separator);
         }
-        if (node.Kind is NodeKind.Project or NodeKind.SolutionFolder)
+        if (TestProjectsOf(node).Any())
         {
             entries.AddRange([Item(A.RunTests), Item(A.DebugTests), separator]);
         }

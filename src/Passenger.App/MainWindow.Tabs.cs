@@ -9,19 +9,25 @@ namespace Passenger.App;
 /// <summary>The editor tab actions, in Window > Editor Tabs and each tab's own menu: the next and previous tab, Pin
 /// Tab, the closes (the tab, the others, all, all but pinned, those to one side), Reopen Closed Tab, the splits and
 /// Unsplit, and a tab moved to the opposite group or a window of its own. From a tab's menu they act on that tab, else
-/// on the one the active group shows; Restore Default Layout is beside them, in Window > Layout Settings.</summary>
+/// on the one the active group shows; Restore Default Layout is beside them, in Window > Layout Settings. A tab's menu
+/// also copies its file's path and shows it in the file manager or a terminal.</summary>
 public partial class MainWindow
 {
     private const string Tabs = "Editor Tabs";
     private const string TabsMenu = "Window/Editor Tabs";
 
-    /// <summary>The tab menu's items, in their order.</summary>
-    private static readonly string?[] TabMenuItems =
+    /// <summary>A tab's menu items, in their order: the file's path and Open In as the Explorer's row has them, an HTML
+    /// page's browser too.</summary>
+    private static MenuEntry[] TabMenuItems(OpenDocument file) =>
     [
-        A.CloseTab, A.CloseOtherTabs, A.CloseAllTabs, A.CloseUnpinned, A.CloseTabsLeft, A.CloseTabsRight, null,
-        A.SplitRight, A.SplitDown, A.MoveToOppositeGroup, A.Unsplit, A.UnsplitAll, null,
-        A.PinTab, A.OpenInNewWindow, null,
-        A.ReopenClosedTab,
+        .. Items(A.CloseTab, A.CloseOtherTabs, A.CloseAllTabs, A.CloseUnpinned, A.CloseTabsLeft, A.CloseTabsRight, null,
+            A.SplitRight, A.SplitDown, A.MoveToOppositeGroup, A.Unsplit, A.UnsplitAll, null,
+            A.PinTab, A.OpenInNewWindow, null,
+            A.CopyPath),
+        new MenuEntry(null, "Open In", Languages.Language.ForPath(file.Path) == Languages.Language.Html
+            ? Items(A.RevealInFileManager, A.OpenInTerminal, A.OpenInBrowser)
+            : Items(A.RevealInFileManager, A.OpenInTerminal)),
+        .. Items(null, A.ReopenClosedTab),
     ];
 
     private void AddTabActions()
@@ -103,6 +109,8 @@ public partial class MainWindow
         {
             Tab = (opening.Group, opening.Document),
         };
-        opening.Menu.ItemsSource = TabMenuItems.Select(id => FlyoutEntry(new MenuEntry(id), context)).ToList();
+        opening.Menu.ItemsSource = TabMenuItems(opening.Document).Select(entry => FlyoutEntry(entry, context)).ToList();
     }
+
+    private static MenuEntry[] Items(params string?[] ids) => [.. ids.Select(id => new MenuEntry(id))];
 }

@@ -47,6 +47,9 @@ public sealed class GitView : DockPanel
     /// <summary>A file as a commit of its history had it, to compare with the file now (its path now first).</summary>
     public event EventHandler<(string Local, CommitInfo Commit, FileChange File)>? CompareRequested;
 
+    /// <summary>A commit's file to open as it is now, from any tab.</summary>
+    public event EventHandler<string>? OpenRequested;
+
     public event EventHandler<CommitInfo>? NewBranchRequested;
 
     public event EventHandler<(CommitInfo Commit, ResetMode Mode)>? ResetRequested;
@@ -145,7 +148,8 @@ public sealed class GitView : DockPanel
     private GitLogView Take(GitLogView view)
     {
         view.DiffRequested += (_, chosen) => DiffRequested?.Invoke(this, chosen);
-        view.CompareRequested += (_, chosen) => CompareRequested?.Invoke(this, (view.Scope!.Path, chosen.Commit, chosen.File));
+        view.CompareRequested += (_, chosen) => CompareRequested?.Invoke(this, chosen);
+        view.OpenRequested += (_, path) => OpenRequested?.Invoke(this, path);
         view.NewBranchRequested += (_, commit) => NewBranchRequested?.Invoke(this, commit);
         view.ResetRequested += (_, reset) => ResetRequested?.Invoke(this, reset);
         return view;

@@ -1096,6 +1096,32 @@ public sealed class VcsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A commit's file in the Git log offers what a changed file in the Commit window does: its diff, its file
+    /// now, its path.</summary>
+    [AvaloniaFact]
+    public void A_commits_file_in_the_log_jumps_to_its_source_and_copies_its_path_from_its_menu()
+    {
+        string shop = Path.Combine(folder, "Shop.cs");
+        File.WriteAllText(shop, Original.Replace("count++", "count += 2", StringComparison.Ordinal));
+        Git("commit", "-q", "-am", "Twice");
+        File.WriteAllText(Path.Combine(folder, "notes.md"), "notes\n");
+        MainWindow window = Open();
+        window.Perform(AppActions.ShowGit);
+        GitLogView log = window.GitLog;
+        Ui.Landed(() => log.Rows.Any(r => r.Commit.Subject == "Twice"), "the log");
+        log.Select(log.Rows.First(r => r.Commit.Subject == "Twice").Commit);
+        Ui.Landed(() => log.Files.Count == 1, "the commit's file");
+        Avalonia.Controls.ListBox files = Find(log, log.Files);
+        files.SelectedItem = log.Files[0];
+        window.OpenFile(Path.Combine(folder, "notes.md"));
+        Ui.Settle();
+        Ui.ChooseFromMenu(files, "Copy Path");
+        Ui.WaitFor(() => Ui.Clipboard(window) == PathNames.Canonical(shop), "the file's path on the clipboard");
+        Ui.ChooseFromMenu(files, "Jump to Source");
+        Assert.Equal(PathNames.Canonical(shop), window.EditorArea.Active?.Path);
+        window.Close();
+    }
+
     [Gate]
     [AvaloniaFact]
     public void Open_files_are_saved_before_a_checkout_or_a_rollback_and_take_what_git_puts_there_with_no_question()

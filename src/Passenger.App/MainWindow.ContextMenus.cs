@@ -60,7 +60,7 @@ public partial class MainWindow
         {
             Add(separator, Item(A.OpenInBrowser));
         }
-        if (active.Syntax is { } syntax && Testing.TestsAtCaret.At(syntax.Current, editor.CaretPosition.Line) is { } test)
+        if (TestAt(active, editor.CaretPosition.Line) is { } test)
         {
             string name = test.Method ?? test.Type[(test.Type.LastIndexOfAny(['.', '+']) + 1)..];
             items.Add(new Separator());

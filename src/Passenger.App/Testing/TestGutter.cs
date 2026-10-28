@@ -108,6 +108,16 @@ public sealed class TestGutter
         return null;
     }
 
+    /// <summary>Whether the Unit Tests window knows a test of a type, or the test a method is: one its code declares, or one
+    /// a runner found (an attribute of the project's own, a test its base type declares).</summary>
+    public bool Knows(string type, string? method)
+    {
+        UiThread.Check();
+        Index();
+        return byType.TryGetValue(type.Replace('+', '.'), out HashSet<TestNode>? tests)
+            && (method is null || tests.Any(t => t.FullName is { } name && TestsAtCaret.Matches(name, type, method)));
+    }
+
     private void ReadParse(OpenDocument document, ParsedText parsed)
     {
         if (files.TryGetValue(document, out Declared? file))

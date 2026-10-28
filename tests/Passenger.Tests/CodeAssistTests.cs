@@ -2023,6 +2023,37 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    /// <summary>The Find and Hierarchy windows' rows have the menu every list of results has: Go to (F4) and Copy.</summary>
+    [AvaloniaFact]
+    public void A_usages_and_a_callers_menu_goes_to_it_and_copies_its_path()
+    {
+        MainWindow window = project.Open("Loop.cs");
+        FindView find = window.Find;
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "int tot");
+        Ui.Run(window, AppActions.FindUsages);
+        Ui.WaitFor(() => find.Rows.Count(r => r.Usage is not null) == 3, "the usages in the Find window");
+        find.Selected = find.Rows.Last(r => r.Usage is not null);
+        window.OpenFile(project.PathOf("Program.cs"));
+        Ui.Settle();
+        Avalonia.Controls.ListBox usages = find.GetVisualDescendants().OfType<Avalonia.Controls.ListBox>().Single();
+        Ui.ChooseFromMenu(usages, "Go to");
+        Assert.Equal("Loop.cs", window.EditorArea.Active?.Name);
+        Assert.Equal(new TextPosition(9, 15), window.EditorArea.CodeEditor.CaretPosition);
+        Ui.ChooseFromMenu(usages, "Copy Path");
+        Ui.WaitFor(() => Ui.Clipboard(window) == PathNames.Canonical(project.PathOf("Loop.cs")), "the usage's path on the clipboard");
+
+        window.OpenFile(project.PathOf("Helper.cs"));
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "static int Tw");
+        Assert.Null(Ui.Await(window.ShowCallHierarchyAsync(), "the call hierarchy"));
+        HierarchyRow caller = window.Hierarchy.Rows[1];
+        Avalonia.Controls.ListBox callers = window.Hierarchy.GetVisualDescendants().OfType<Avalonia.Controls.ListBox>().Single();
+        callers.SelectedItem = caller;
+        Ui.ChooseFromMenu(callers, "Go to");
+        Assert.True(window.EditorArea.Active?.Path == caller.Node.Path, "Go to in a caller's menu in the Hierarchy window did not go to its call");
+        Assert.Equal(caller.Node.Where.Line, window.EditorArea.CodeEditor.CaretPosition.Line);
+        window.Close();
+    }
+
     [Gate]
     [AvaloniaFact]
     public void Call_and_type_hierarchies_show_who_calls_a_method_and_what_derives_from_a_type()

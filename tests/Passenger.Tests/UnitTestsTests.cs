@@ -323,6 +323,68 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
+    /// <summary>Run Unit Tests is offered only where there is a test: never on a console's Main, on a test method and on a
+    /// test class's other members (its class's tests), never on a project without tests, on a test project and on the
+    /// solution, whose row runs its tests.</summary>
+    [AvaloniaFact]
+    public void Test_actions_are_offered_only_where_tests_are_and_the_solution_row_runs_its_tests()
+    {
+        string solution = NewFolder();
+        Write(solution, "App/App.csproj", TestProjects.Console());
+        Write(solution, "App/Program.cs", "namespace App;\n\npublic static class Program\n{\n    public static void Main()\n    {\n    }\n}\n");
+        Write(solution, "App.Tests/App.Tests.csproj", TestProject(TestProjects.Framework));
+        Write(solution, "App.Tests/SumTests.cs",
+            "using Xunit;\n\nnamespace App.Tests;\n\npublic class SumTests\n{\n    [Fact]\n    public void Adds() => Assert.Equal(4, Two() + Two());\n\n    private static int Two() => 2;\n}\n");
+        Write(solution, "Both.slnx", "<Solution>\n  <Project Path=\"App/App.csproj\" />\n  <Project Path=\"App.Tests/App.Tests.csproj\" />\n</Solution>\n");
+        Restore.Run(Path.Combine(solution, "Both.slnx"));
+        MainWindow window = Ui.OpenFolder(solution, languageServer: false);
+        Ui.WaitFor(() => Method(window, "Adds") is not null, "the test from its code in the Unit Tests window");
+
+        window.OpenFile(Path.Combine(solution, "App", "Program.cs"));
+        Ui.Settle();
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "void Ma");
+        Assert.True(TestItems(window) is [], $"The editor's menu on Main offers {string.Join(", ", TestItems(window))}, where Main is no test");
+        Assert.Equal("No test is at the caret", window.Actions[AppActions.RunTests]!.WhyNot(window.Actions.Context()));
+        window.OpenFile(Path.Combine(solution, "App.Tests", "SumTests.cs"));
+        Ui.Settle();
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "void Ad");
+        Assert.Equal(["Run 'Adds'", "Debug 'Adds'", "Run 'Adds' Until Failure"], TestItems(window));
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "int Tw");
+        Assert.Equal(["Run 'SumTests'", "Debug 'SumTests'", "Run 'SumTests' Until Failure"], TestItems(window));
+
+        Passenger.App.Explorer.ExplorerNode Row(Passenger.App.Explorer.NodeKind kind, string name) =>
+            window.ExplorerView.Tree.Rows.First(r => r.Kind == kind && r.Name == name);
+        Assert.DoesNotContain("Run Unit Tests", RowMenu(window, Row(Passenger.App.Explorer.NodeKind.Project, "App")));
+        Assert.Contains("Run Unit Tests", RowMenu(window, Row(Passenger.App.Explorer.NodeKind.Project, "App.Tests")));
+        Ui.ChooseFromRowMenu(window, Row(Passenger.App.Explorer.NodeKind.Solution, "Both"), "Run Unit Tests");
+        Ui.WaitFor(() => !window.Tests.IsBusy && Method(window, "Adds")?.State == TestState.Passed, "the solution's tests to run", TimeSpan.FromSeconds(180));
+        window.Close();
+
+        // The editor's menu at the caret: its items that run a test.
+        static List<string> TestItems(MainWindow window)
+        {
+            window.EditorArea.CodeEditor.RequestContextMenu();
+            Ui.Settle();
+            Avalonia.Controls.ContextMenu menu = window.OpenContextMenu ?? throw new InvalidOperationException("The editor's menu did not open");
+            List<string> items = [.. menu.Items.OfType<Avalonia.Controls.MenuItem>().Select(i => i.Header as string ?? string.Empty)
+                .Where(h => h.StartsWith("Run '", StringComparison.Ordinal) || h.StartsWith("Debug '", StringComparison.Ordinal))];
+            menu.Close();
+            Ui.Settle();
+            return items;
+        }
+
+        // A row's menu as its right-click opens it, by its items' titles.
+        static List<string> RowMenu(MainWindow window, Passenger.App.Explorer.ExplorerNode row)
+        {
+            Ui.RightClick(Ui.Row(window.ExplorerView, row));
+            Avalonia.Controls.ContextMenu menu = window.ExplorerView.OpenMenu ?? throw new InvalidOperationException($"A right-click on {row.Name} opened no menu");
+            List<string> items = [.. menu.Items.OfType<Avalonia.Controls.MenuItem>().Select(i => i.Header as string ?? string.Empty)];
+            menu.Close();
+            Ui.Settle();
+            return items;
+        }
+    }
+
     [Gate]
     [AvaloniaFact]
     public void A_solution_never_built_shows_its_xunit_nunit_and_mstest_tests_from_their_code_as_it_opens()

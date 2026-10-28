@@ -510,8 +510,13 @@ public sealed class SolutionViewTests : IDisposable
         Write("Shop.App/Notes/b.txt", "one\n2\nthree\nfour\n");
         string a = Path.Combine(folder, "Shop.App", "Notes", "a.txt");
         string b = Path.Combine(folder, "Shop.App", "Notes", "b.txt");
+        // Run Unit Tests is offered only on a project holding tests.
+        Write("Shop.Tests/Shop.Tests.csproj", TestProjects.Library().With("  <ItemGroup>\n    <PackageReference Include=\"xunit\" Version=\"2.9.3\" />\n  </ItemGroup>\n"));
+        Write("Shop.Tests/ProductTests.cs", "using Xunit;\n\nnamespace Shop.Tests;\n\npublic class ProductTests\n{\n    [Fact]\n    public void Lists() { }\n}\n");
+        Write("Shop.slnx", "<Solution>\n  <Project Path=\"Shop.App/Shop.App.csproj\" />\n  <Project Path=\"Shop.Core/Shop.Core.csproj\" />\n  <Project Path=\"Shop.Tests/Shop.Tests.csproj\" />\n</Solution>\n");
         MainWindow window = Open();
         window.PickFiles = (_, _, _) => Task.FromResult<IReadOnlyList<string>>([b]);
+        Ui.WaitFor(() => window.Tests.Tree.Methods.Any(m => m.Name == "Lists"), "the test project's test from its code");
 
         Keymap keymap = window.Actions.Keymap;
         Ui.RightClick(Ui.Row(window.ExplorerView, Row(window, NodeKind.Solution, "Shop")));
@@ -522,7 +527,7 @@ public sealed class SolutionViewTests : IDisposable
             $"The solution's Build Solution shows {shown?.ToString() ?? "no keys"}, not Build Solution's {build.Display()} as the main menu does");
         Ui.Settle();
 
-        Ui.RightClick(Ui.Row(window.ExplorerView, Row(window, NodeKind.Project, "Shop.Core")));
+        Ui.RightClick(Ui.Row(window.ExplorerView, Row(window, NodeKind.Project, "Shop.Tests")));
         Shortcut chord = keymap.ShortcutsFor(AppActions.RunTests)[0];
         string? keys = MenuItemOf(window, "Run Unit Tests").GetVisualDescendants().OfType<TextBlock>().FirstOrDefault(t => t.Name == "PART_InputGestureText")?.Text;
         window.ExplorerView.OpenMenu?.Close();

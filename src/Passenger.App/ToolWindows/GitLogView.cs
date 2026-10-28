@@ -77,7 +77,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
             .. FileChangeOf(commit) is { } change ? new Control[]
             {
                 ListMenus.Item("Show Diff", null, () => DiffRequested?.Invoke(this, (commit, change))),
-                ListMenus.Item("Compare with Local", null, () => CompareRequested?.Invoke(this, (commit, change))),
+                ListMenus.Item("Compare with Local", null, () => CompareRequested?.Invoke(this, (Scope!.Path, commit, change))),
                 new Separator(),
             } : [],
             ListMenus.Item("Copy Revision Number", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, commit.Hash))),
@@ -106,7 +106,21 @@ public sealed class GitLogView : DockPanel, IOwnKeys
                 RequestDiff();
                 e.Handled = true;
             }
+            else if (e.Key == Key.F4 && e.KeyModifiers == KeyModifiers.None && fileList.SelectedItem is FileChange { Kind: not ChangeKind.Deleted } shown)
+            {
+                OpenRequested?.Invoke(this, shown.Path);
+                e.Handled = true;
+            }
         };
+        // A commit's file offers what the Commit window's changed files do.
+        ListMenus.Attach(fileList, () => Selected is not { } commit || fileList.SelectedItem is not FileChange change ? [] :
+        [
+            ListMenus.Item("Show Diff", "Enter", () => DiffRequested?.Invoke(this, (commit, change))),
+            ListMenus.Item("Compare with Local", null, () => CompareRequested?.Invoke(this, (change.Path, commit, change)), change.Kind is not ChangeKind.Deleted),
+            ListMenus.Item("Jump to Source", "F4", () => OpenRequested?.Invoke(this, change.Path), change.Kind is not ChangeKind.Deleted),
+            new Separator(),
+            ListMenus.Item("Copy Path", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, change.Path))),
+        ]);
         details = new TextBox
         {
             IsReadOnly = true,
@@ -236,8 +250,11 @@ public sealed class GitLogView : DockPanel, IOwnKeys
     /// <summary>A file of a commit whose change to show: the commit and the file.</summary>
     public event EventHandler<(CommitInfo Commit, FileChange File)>? DiffRequested;
 
-    /// <summary>A file as a commit of its history had it, to compare with the file as it is now.</summary>
-    public event EventHandler<(CommitInfo Commit, FileChange File)>? CompareRequested;
+    /// <summary>A file as a commit had it, to compare with the file as it is now (its path now first).</summary>
+    public event EventHandler<(string Local, CommitInfo Commit, FileChange File)>? CompareRequested;
+
+    /// <summary>A commit's file to open as it is now.</summary>
+    public event EventHandler<string>? OpenRequested;
 
     /// <summary>A branch to make at a commit, its name to be asked for.</summary>
     public event EventHandler<CommitInfo>? NewBranchRequested;

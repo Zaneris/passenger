@@ -54,8 +54,8 @@ public sealed class HierarchyRow(HierarchyNode node, int depth) : Observable, IT
 
 /// <summary>The Hierarchy window, for calls (Ctrl+Alt+H) and types (Ctrl+E, H): the symbol at the top, and under it
 /// a tree going one way, callers or callees, supertypes or subtypes, each level asked of the language server as it is
-/// opened. The toggles switch the direction; Enter or a double-click goes to a row, Right and Left open and close
-/// (<see cref="TreeKeys"/>).</summary>
+/// opened. The toggles switch the direction; Enter, F4, a double-click or a row's menu goes to a row, Right and Left
+/// open and close (<see cref="TreeKeys"/>).</summary>
 public sealed class HierarchyView : DockPanel
 {
     private readonly TreeRows<HierarchyRow> rows = [];
@@ -98,6 +98,12 @@ public sealed class HierarchyView : DockPanel
             GoToRequested?.Invoke(this, row.Node);
             return true;
         });
+        ListMenus.Attach(list, () => list.SelectedItem is not HierarchyRow chosen ? [] :
+        [
+            ListMenus.Item("Go to", "F4", () => GoToRequested?.Invoke(this, chosen.Node)),
+            ListMenus.Item("Copy Name", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Node.Item.Name))),
+            ListMenus.Item("Copy Path", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Node.Path))),
+        ]);
         placeholder = new TextBlock { Classes = { "emptyText" } };
         ActionTips.SetWords(placeholder, keys =>
             $"{ActionTips.Named("Call Hierarchy", keys(AppActions.CallHierarchy))} and {ActionTips.Named("Type Hierarchy", keys(AppActions.TypeHierarchy))} show the symbol at the caret here");
