@@ -194,6 +194,34 @@ public sealed class MarkdownPreviewTests
         window.Close();
     }
 
+    /// <summary>A page in a folder of its own links to the guide and draws a picture from the open folder's root, a slash
+    /// first, as GitHub resolves them: on macOS and Linux too, where such a target also reads as a file's address.</summary>
+    [AvaloniaFact]
+    public void A_link_and_an_image_written_from_the_folders_root_open_and_draw_the_root_folders_files_on_every_system()
+    {
+        (string folder, _) = Shop();
+        string notes = Path.Combine(folder, "notes", "README.md");
+        Directory.CreateDirectory(Path.GetDirectoryName(notes)!);
+        File.WriteAllText(notes, "# Notes\n\nRead [the guide](/docs/guide.md) first.\n\n![the inside picture](/images/inside.png)\n");
+        MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
+        Assert.Null(window.OpenFile(PathNames.Canonical(notes)));
+        Ui.Settle();
+        MarkdownPreview preview = Shown(window.EditorArea.ActiveGroup);
+
+        MarkdownText said = preview.GetLogicalDescendants().OfType<MarkdownText>().First(w => w.Shown.StartsWith("Read", StringComparison.Ordinal));
+        Uri guide = new("/docs/guide.md", UriKind.Relative);
+        Assert.True(said.Links.Any(l => l.Words == "the guide" && l.Target == guide),
+            $"The link written from the folder's root is drawn as words, not a link: [{string.Join(", ", said.Links.Select(l => $"{l.Words} -> {l.Target}"))}]");
+        MarkdownPicture picture = preview.GetLogicalDescendants().OfType<MarkdownPicture>().SingleOrDefault()
+            ?? throw new Xunit.Sdk.XunitException($"The picture written from the folder's root is not drawn:\n{preview.Text}");
+        Assert.True(PathNames.Same(picture.File, PathNames.Canonical(Path.Combine(folder, "images", "inside.png"))), $"The picture drawn is {picture.File}, not the root's images/inside.png");
+
+        Ui.Click(said, said.PointOf(guide));
+        Assert.True(PathNames.Same(window.EditorArea.Active?.Path ?? "", PathNames.Canonical(Path.Combine(folder, "docs", "guide.md"))),
+            $"The link to /docs/guide.md opened {window.EditorArea.Active?.Path ?? "nothing"}, not the root's docs/guide.md");
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void The_toggle_hides_and_shows_the_preview_each_split_has_its_own_and_the_next_window_keeps_the_choice()
     {

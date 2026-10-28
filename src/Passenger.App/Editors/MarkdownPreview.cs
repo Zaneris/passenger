@@ -380,9 +380,7 @@ public sealed class MarkdownPreview : ScrollViewer
     /// are resolved; never a web address, which nothing here fetches.</summary>
     private string? ImageFile(string target)
     {
-        string written = target.Trim().Trim('<', '>');
-        if (area.Root() is not { } root || written.Length == 0 || written.StartsWith("//", StringComparison.Ordinal)
-            || (!written.StartsWith('/') && Uri.TryCreate(written, UriKind.Absolute, out _)))
+        if (area.Root() is not { } root || MarkdownPage.Local(target) is not { } written)
         {
             return null;
         }

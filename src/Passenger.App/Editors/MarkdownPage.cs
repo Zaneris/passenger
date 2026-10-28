@@ -36,10 +36,18 @@ internal sealed class MarkdownPage(Action<Uri> follow)
         {
             return web;
         }
+        return LocalLinks && Local(target) is { } written && Uri.TryCreate(written, UriKind.Relative, out Uri? local) ? local : null;
+    }
+
+    /// <summary>A link's or image's target as written when it names a place in the open folder: a path from the page's file,
+    /// one from the folder's root (a single slash first, which macOS and Linux would take for an absolute file address), or
+    /// a heading; null for an address of any scheme and for one beginning with two slashes (another host's).</summary>
+    public static string? Local(string target)
+    {
         string written = target.Trim().Trim('<', '>');
-        return LocalLinks && written.Length > 0 && !written.StartsWith("//", StringComparison.Ordinal)
-            && !Uri.TryCreate(written, UriKind.Absolute, out _) && Uri.TryCreate(written, UriKind.Relative, out Uri? local)
-            ? local
+        return written.Length > 0 && !written.StartsWith("//", StringComparison.Ordinal)
+            && (written.StartsWith('/') || !Uri.TryCreate(written, UriKind.Absolute, out _))
+            ? written
             : null;
     }
 
