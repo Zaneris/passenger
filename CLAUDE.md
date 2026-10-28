@@ -285,6 +285,8 @@ site-shots` retakes its images.
   ours. A file deleted reaches it only once the projects holding it loaded again without it (`ProjectMethods.Deleted`):
   told first, it reads the missing file for its document, a second each, before any answer needing the compilation
   (dotnet/roslyn#86236).
+- **Roslyn's server passes over an option answered empty** when told its configuration changed, so a null never takes an
+  option back to its default (#651); `LanguageServer.TakesOptions` names what a running server can't take.
 - **Roslyn's server writes its MEF caches beside its DLLs** (`roslyn/cache/`, no option for elsewhere), so where that
   folder is in a macOS bundle (a file added breaks the seal: "damaged", #450) or read-only, it runs from a copy in the
   state's `cache/roslyn/` (`RoslynServerFolder`); nothing a Passenger runs may write inside the app.
@@ -318,7 +320,8 @@ site-shots` retakes its images.
 - **Aspire's CLI and AppHosts** keep running AppHosts in `$HOME/.aspire/cli/bch` whatever ASPIRE_HOME says; on Windows
   in the profile whatever the environment says (those tests skip there). An Aspire service's replicas share
   `OTEL_SERVICE_NAME` and its display name: a start's own resource is found by `service.instance.id`
-  (`AspireResourceRun.ResourceIn`), never by name alone.
+  (`AspireResourceRun.ResourceIn`), never by name alone; a service action takes the start chosen, and a start's hold,
+  attach and recording are kept by `ServiceRun.KeyOf`.
 - **Windows**: a folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
   outlive it, so a child whose descendants must end with it is held with `ChildProcesses.HoldFamily`; a write waits out a
   reader that shares no writes for up to 2 s, off the window's thread (`FileText.WhileHeldAsync`); closing a socket
