@@ -356,6 +356,43 @@ public sealed class VcsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Rollback of a new file another program added to Git (git add, or a merge's), which no commit holds, keeps
+    /// it on disk as it is now, unversioned, as the question says first; the changed file beside it goes back.</summary>
+    [AvaloniaFact]
+    public void Rollback_keeps_a_new_file_another_program_added_to_git_on_disk_and_says_so_first()
+    {
+        MainWindow window = Open();
+        string shop = Path.Combine(folder, "Shop.cs");
+        string prices = Path.Combine(folder, "Prices.cs");
+        File.WriteAllText(prices, "class Prices { }\n");
+        Git("add", "Prices.cs");
+        File.AppendAllText(prices, "// changed since the add\n");
+        window.EditorArea.CodeEditor.GoTo(new TextPosition(0, 0));
+        window.KeyTextInput("sealed ");
+        window.Perform(AppActions.Save);
+        _ = window.Vcs.RefreshAsync();
+        Ui.Landed(() => window.Vcs.Changes.Count == 2 && window.Vcs.Changes.Any(c => c.Name == "Prices.cs" && c.Kind == ChangeKind.Added), "the added file and the changed one listed");
+        string? asked = null;
+        window.Confirm = (title, text, yes) =>
+        {
+            asked = text;
+            return Task.FromResult(true);
+        };
+
+        RollbackChosen(window);
+        Ui.Settle();
+        Assert.True(asked is not null && asked.Contains("Files added to Git stay on disk", StringComparison.Ordinal) && !asked.Contains("deleted", StringComparison.Ordinal),
+            $"Rollback asked \"{asked}\"");
+        Assert.True(File.Exists(prices), $"Rollback deleted Prices.cs, which Git was given to add, though it asked \"{asked}\"");
+        Assert.Equal("class Prices { }\n// changed since the add\n", File.ReadAllText(prices));
+        Assert.Empty(Git("ls-files", "--", "Prices.cs").Trim());
+        Assert.Equal(Original, File.ReadAllText(shop));
+        string listed = string.Join(", ", window.Vcs.Changes.Select(c => $"{c.Name} ({c.Kind})"));
+        Assert.True(listed == "Prices.cs (Unversioned)", $"After the rollback Git lists [{listed}]");
+        Assert.Equal("Rolled back 2 files", window.Status);
+        window.Close();
+    }
+
     [Gate]
     [AvaloniaFact]
     public void Show_diff_puts_the_last_commit_beside_the_open_file_and_its_arrow_puts_a_change_back()

@@ -552,12 +552,12 @@ public partial class MainWindow
             status.Text = "No files are chosen to roll back";
             return;
         }
-        // The files are listed, so what goes back is seen before it does.
+        // The files are listed, so what goes back is seen before it does, and every file a rollback deletes is said to be.
         string what = changes.Count == 1 ? changes[0].Name : $"these {changes.Count} files";
-        bool added = changes.Any(c => c.Kind is ChangeKind.Unversioned);
-        string text = added
-            ? $"Roll back the changes to {what}? New files are deleted, and this cannot be undone."
-            : $"Roll back the changes to {what}? This cannot be undone.";
+        string kept = changes.Any(c => c.Kind is ChangeKind.Added) ? " Files added to Git stay on disk, unversioned." : string.Empty;
+        string lost = changes.Any(c => c.Kind is ChangeKind.Unversioned) ? " Unversioned files are deleted, and this cannot be undone."
+            : changes.All(c => c.Kind is ChangeKind.Added) ? string.Empty : " This cannot be undone.";
+        string text = $"Roll back the changes to {what}?{kept}{lost}";
         if (await ConfirmAsync("Rollback Changes", text, "Rollback", ToolWindows.CommitView.FileList(changes, session.Vcs.Repository)))
         {
             await session.Vcs.RollbackAsync(changes);

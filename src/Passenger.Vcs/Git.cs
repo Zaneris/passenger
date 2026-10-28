@@ -1166,17 +1166,22 @@ public sealed class Git
     /// <summary>The branch moved to a commit: soft keeps the changes staged, mixed keeps them in the files, hard drops them.</summary>
     public Task<GitResult> ResetAsync(string hash, ResetMode mode) => RunAsync(Root, ["reset", $"--{mode.ToString().ToLowerInvariant()}", "--end-of-options", hash]);
 
-    /// <summary>Puts files back as the last commit has them (Rollback); new files are deleted. A file another
-    /// program holds is tried again (<see cref="Attempts"/>), and one it never lets go of is named in the result, the
-    /// rest rolled back all the same.</summary>
+    /// <summary>Puts files back as the last commit has them (Rollback): an unversioned file is deleted, and one added to
+    /// the index but in no commit is taken out of the index and kept on disk, unversioned, since nothing else holds it.
+    /// A file another program holds is tried again (<see cref="Attempts"/>), and one it never lets go of is named in the
+    /// result, the rest rolled back all the same.</summary>
     public async Task<GitResult> RollbackAsync(IReadOnlyList<FileChange> changes)
     {
-        string[] tracked = [.. changes.Where(c => c.Kind is not ChangeKind.Unversioned).SelectMany(c => c.From is { } from ? new[] { c.Path, from } : [c.Path]).Select(Relative)];
+        string[] tracked = [.. changes.Where(c => c.Kind is not (ChangeKind.Unversioned or ChangeKind.Added)).SelectMany(c => c.From is { } from ? new[] { c.Path, from } : [c.Path]).Select(Relative)];
+        string[] staged = [.. changes.Where(c => c.Kind is ChangeKind.Added).Select(c => Literal(Relative(c.Path)))];
         GitResult restored = tracked.Length == 0 ? new GitResult(0, string.Empty, string.Empty) : await RestoreAsync(tracked);
+        // -f takes out a file changed again since it was added too, which --cached leaves on disk as it is now.
+        GitResult unadded = staged.Length == 0 ? restored : await RunAsync(Root, ["rm", "--cached", "-q", "-f", "--ignore-unmatch", "--", .. staged]);
+        restored = restored.Succeeded ? unadded : restored;
         List<string> kept = [];
-        foreach (FileChange added in changes.Where(c => c.Kind is ChangeKind.Unversioned))
+        foreach (FileChange unversioned in changes.Where(c => c.Kind is ChangeKind.Unversioned))
         {
-            if (await DeleteAsync(added.Path) is { } refused)
+            if (await DeleteAsync(unversioned.Path) is { } refused)
             {
                 kept.Add(refused);
             }
