@@ -119,7 +119,7 @@ internal sealed partial class WebAssist
                 context.Say($"{what}: ESLint has nothing to give for {document.Name} yet");
                 return null;
             }
-            if (!actions.ApplyWorkspace(edit, asked, what))
+            if (!await actions.ApplyWorkspaceAsync(edit, asked, what))
             {
                 return null;
             }

@@ -1,3 +1,4 @@
+using Passenger.App.Editors;
 using Passenger.App.Explorer;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -200,9 +201,9 @@ public partial class MainWindow
 
     /// <summary>Replaces a query's matches in the files Find in Files found them in, each searched off the UI thread first:
     /// an open one as one undoable step changing only its matches, so its carets, folds and breakpoints stay put; a closed
-    /// one written in its own encoding, or as UTF-8 when that cannot hold the replacement, said of each. A file the system
-    /// refuses (read-only, access denied, held), one a regex ran too long in, or an open one edited while it was searched
-    /// is left as it was and named with why, and the rest are replaced all the same.</summary>
+    /// one written in its own encoding (UTF-8 when that cannot hold the replacement, said of each), answered for once it has
+    /// landed. A file the system refuses (read-only, access denied, held past the save's wait), one a regex ran too long in,
+    /// or an open one edited while it was searched is left as it was and named with why; the rest are replaced all the same.</summary>
     public async Task<FilesReplaced> ReplaceInFilesAsync(SearchQuery query, string replacement, FilesFound found)
     {
         SearchPattern pattern = SearchPattern.For(query, TextSearch.Apart);
@@ -219,7 +220,7 @@ public partial class MainWindow
             files.Add((path, open?.Text.Snapshot));
         }
         List<FileSearch.Replacing> planned = await BackgroundWork.Run(() => files.Select(f => FileSearch.Plan(f.Path, f.Open, pattern, replacement)).ToList());
-        List<string> converted = [];
+        List<(string Path, string? Note)> written = [];
         foreach (FileSearch.Replacing plan in planned)
         {
             if (plan.Why is { } why)
@@ -243,10 +244,7 @@ public partial class MainWindow
             {
                 try
                 {
-                    if (FileText.Save(plan.Path, after, file.Encoding, file.HasBom, file.CrBreaks).Converted is { } note)
-                    {
-                        converted.Add(note);
-                    }
+                    written.Add((plan.Path, FileText.Save(plan.Path, after, file.Encoding, file.HasBom, file.CrBreaks).Converted));
                 }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException)
                 {
@@ -254,7 +252,9 @@ public partial class MainWindow
                 }
             }
         }
-        return new FilesReplaced(converted, refused);
+        IReadOnlyList<(string Path, Exception Refused)> unlanded = await EditorArea.LandedAsync(written.Select(w => w.Path), waiting => status.Text = waiting);
+        refused.AddRange(unlanded.Select(u => (u.Path, FileSearch.Refusal(u.Refused))));
+        return new FilesReplaced([.. written.Where(w => !unlanded.Any(u => u.Path == w.Path)).Select(w => w.Note).OfType<string>()], refused);
     }
 
     /// <summary>Recent Files (Ctrl+,): the files opened last, the latest first, narrowed as a name is typed; a file

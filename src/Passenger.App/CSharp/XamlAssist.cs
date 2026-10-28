@@ -589,8 +589,8 @@ internal sealed partial class XamlAssist : LanguageAssist
     }
 
     /// <summary>An element's name renamed where the file names it and where its code-behind uses its field, as one command
-    /// undone whole: the files it changed (none where the name cannot be a field's) and the words for it; null when the
-    /// project's XAML is not read.</summary>
+    /// undone whole: the files it changed, once written (none where the name cannot be a field's or a file could not be
+    /// written), and the words for it; null when the project's XAML is not read.</summary>
     internal async Task<(IReadOnlyList<string> Files, string Said)?> XamlRenameAsync(XamlDocument xaml, string old, string name)
     {
         if (!Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsValidIdentifier(name))
@@ -622,7 +622,16 @@ internal sealed partial class XamlAssist : LanguageAssist
         }
         JsonElement edit = JsonSerializer.SerializeToElement(new { changes }, Json.Options);
         List<string> dropped = [];
-        int files = TypeRename.Apply(context.Editors, edit, [], $"Rename {old} to {name}", asked, dropped);
+        int files;
+        try
+        {
+            files = TypeRename.Apply(context.Editors, edit, [], $"Rename {old} to {name}", asked, dropped);
+            await WorkspaceEdits.LandedAsync(context.Editors, edit, context.Say);
+        }
+        catch (WorkspaceEditFailed failed)
+        {
+            return ([], $"Rename failed: {failed.Message}");
+        }
         return ([.. changes.Keys.Select(DocumentUris.ToPath)], dropped.Count > 0 ? $"Renamed, but not in {string.Join(", ", dropped)}: it was edited meanwhile"
             : files > 1 ? $"Renamed in {files} files" : "Renamed");
     }

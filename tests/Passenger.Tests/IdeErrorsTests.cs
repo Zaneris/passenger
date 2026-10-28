@@ -722,25 +722,87 @@ public sealed class IdeErrorsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A rename whose write to a file it changes is refused says so, the file left as it was: at once where the disk
+    /// refuses it, and on Windows, where another program holding the file refuses it, once the write has waited for the
+    /// file to be let go and given up, the status bar saying meanwhile that it waits for that file, never that it renamed.</summary>
     [AvaloniaFact]
     public void A_rename_that_cannot_write_a_file_it_changes_says_so_in_the_status_bar()
     {
-        string library = Path.Combine(folder, "Library");
-        Directory.CreateDirectory(library);
-        File.WriteAllText(Path.Combine(library, "Helper.cs"), "static class Helper\n{\n    public static int Twice(int value) => value * 2;\n}\n");
-        MainWindow window = OpenProgram("class Program\n{\n    static void Main()\n    {\n        int result = Helper.Twice(2);\n    }\n}\n");
-        Ui.PlaceAfter(window.EditorArea.CodeEditor, "Helper.Tw");
-        using (Unwritable(Path.Combine(library, "Helper.cs")))
+        string helper = HelperOfProgram(out MainWindow window);
+        List<string> said = [];
+        using (Unwritable(helper))
         {
-            Ui.Run(window, AppActions.Rename);
-            Ui.Settle();
-            window.KeyTextInput("Double");
-            Ui.Press(window, "ENTER");
-            Ui.Settle();
+            Rename(window, "Double");
+            SaidUntil(window, said, s => s.StartsWith("Rename failed", StringComparison.Ordinal), "the rename to say it failed");
             Assert.StartsWith("Rename failed: Helper.cs could not be written", window.Status, StringComparison.Ordinal);
         }
-        Assert.Contains("Twice", File.ReadAllText(Path.Combine(library, "Helper.cs")), StringComparison.Ordinal);
+        Assert.DoesNotContain(said, s => s.StartsWith("Renamed", StringComparison.Ordinal));
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Contains("Waiting for Helper.cs to be saved…", said);
+        }
+        Assert.Contains("Twice", File.ReadAllText(helper), StringComparison.Ordinal);
+        Assert.Empty(Directory.EnumerateFiles(Path.GetDirectoryName(helper)!, "*" + Passenger.Text.FileText.SaveSuffix));
+        Assert.StartsWith("Rename failed: Helper.cs could not be written", window.Status, StringComparison.Ordinal);
         window.Close();
+    }
+
+    /// <summary>On Windows a rename's write to a file another program holds waits for it off the window's thread: while it
+    /// is held the status bar says the rename waits for that file, never that it renamed, and once the program lets go the
+    /// write lands and the rename says it renamed in every file.</summary>
+    [AvaloniaFact]
+    public void A_rename_into_a_file_another_program_holds_says_it_waits_and_renamed_once_the_file_is_let_go()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses to replace or write a file another program holds");
+        string helper = HelperOfProgram(out MainWindow window);
+        List<string> said = [];
+        using (new FileStream(helper, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            Rename(window, "Double");
+            SaidUntil(window, said, s => s == "Waiting for Helper.cs to be saved…", "the rename to say it waits for the held Helper.cs");
+            Assert.Contains("Twice", File.ReadAllText(helper), StringComparison.Ordinal);
+        }
+        SaidUntil(window, said, s => s.StartsWith("Renamed", StringComparison.Ordinal), "the rename to say it renamed once Helper.cs was let go");
+        Assert.Equal("Renamed in 2 files", window.Status);
+        Assert.Equal(["Waiting for Helper.cs to be saved…", "Renamed in 2 files"], said.Where(s => s.StartsWith("Waiting", StringComparison.Ordinal) || s.StartsWith("Renamed", StringComparison.Ordinal)));
+        Assert.Contains("public static int Double(int value)", File.ReadAllText(helper), StringComparison.Ordinal);
+        Assert.Empty(Directory.EnumerateFiles(Path.GetDirectoryName(helper)!, "*" + Passenger.Text.FileText.SaveSuffix));
+        window.Close();
+    }
+
+    /// <summary>A program calling Helper.Twice, declared in a file not open (whose path this is), the caret on the call.</summary>
+    private string HelperOfProgram(out MainWindow window)
+    {
+        string library = Path.Combine(folder, "Library");
+        Directory.CreateDirectory(library);
+        string helper = Path.Combine(library, "Helper.cs");
+        File.WriteAllText(helper, "static class Helper\n{\n    public static int Twice(int value) => value * 2;\n}\n");
+        window = OpenProgram("class Program\n{\n    static void Main()\n    {\n        int result = Helper.Twice(2);\n    }\n}\n");
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "Helper.Tw");
+        return helper;
+    }
+
+    /// <summary>Rename at the caret, the new name typed into its box and Enter pressed, the rename left to run.</summary>
+    private static void Rename(MainWindow window, string name)
+    {
+        Ui.Run(window, AppActions.Rename);
+        Ui.Settle();
+        window.KeyTextInput(name);
+        Ui.Press(window, "ENTER", settle: false);
+    }
+
+    /// <summary>Each thing the status bar says, in turn, as a person reads it while the window runs, added to
+    /// <paramref name="said"/> until it says what <paramref name="until"/> waits for.</summary>
+    private static void SaidUntil(MainWindow window, List<string> said, Func<string, bool> until, string what)
+    {
+        Ui.PumpUntil(() =>
+        {
+            if (window.Status is { Length: > 0 } now && (said.Count == 0 || said[^1] != now))
+            {
+                said.Add(now);
+            }
+            return said.Count > 0 && until(said[^1]);
+        }, what);
     }
 
     /// <summary>Three methods, each calling the next.</summary>

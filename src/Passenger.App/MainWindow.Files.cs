@@ -274,6 +274,7 @@ public partial class MainWindow
                 () => TypeRename.Apply(Editors, made, moves, $"Rename {type.Name} to {renamed}", asked, dropped,
                     recording => FollowMoved([.. moves.Select(m => (m.From, PathNames.Canonical(m.To)))], recording)));
             Explorer.Reveal(PathNames.Canonical(target));
+            await WorkspaceEdits.LandedAsync(Editors, made, waiting => status.Text = waiting);
             status.Text = $"Renamed {Path.GetFileName(path)} to {name}, and {type.Name} to {renamed} in {Plural.Of(files, "file")}"
                 + (dropped.Count > 0 ? $", but not in {string.Join(", ", dropped)}: it was edited meanwhile" : string.Empty);
             return null;

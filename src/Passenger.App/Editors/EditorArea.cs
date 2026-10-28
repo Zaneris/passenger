@@ -599,7 +599,7 @@ public sealed partial class EditorArea : UserControl
             if (!landing.IsCompleted && work is not null)
             {
                 stage ??= work.Stage;
-                work.Say($"Waiting for {name} to be saved…");
+                work.Say(Waiting([path]));
             }
             Exception? refused;
             try
@@ -621,6 +621,37 @@ public sealed partial class EditorArea : UserControl
         }
         return null;
     }
+
+    /// <summary>Waits for the saves still landing of the files a change of several wrote (<see cref="FileText.Landed(string)"/>),
+    /// so what the change then says it did is what the disk holds: <paramref name="waiting"/> is told meanwhile which, in
+    /// <see cref="Waiting"/>'s words. Each file whose save never landed, with why; none once every one has.</summary>
+    public static async Task<IReadOnlyList<(string Path, Exception Refused)>> LandedAsync(IEnumerable<string> paths, Action<string>? waiting)
+    {
+        List<(string Path, Task<Exception?> Last)> landing = [];
+        foreach (string path in paths.Distinct(PathNames.Comparer))
+        {
+            if (FileText.Landed(path) is { } last)
+            {
+                landing.Add((path, last));
+            }
+        }
+        if (landing.Where(l => !l.Last.IsCompleted).Select(l => l.Path).ToList() is { Count: > 0 } held)
+        {
+            waiting?.Invoke(Waiting(held));
+        }
+        List<(string Path, Exception Refused)> refused = [];
+        foreach ((string path, Task<Exception?> last) in landing)
+        {
+            if (await last is { } why)
+            {
+                refused.Add((path, why));
+            }
+        }
+        return refused;
+    }
+
+    /// <summary>What the status bar says while saves of these files are still landing.</summary>
+    public static string Waiting(IReadOnlyCollection<string> paths) => $"Waiting for {string.Join(", ", paths.Select(Path.GetFileName))} to be saved…";
 
     /// <summary>Writes a file even over a version on disk newer than its own, for Keep Memory Changes.</summary>
     public bool SaveOver(OpenDocument document) => TrySave(document, overDisk: true);

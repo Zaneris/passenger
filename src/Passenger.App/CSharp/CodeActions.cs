@@ -205,8 +205,9 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
 
     /// <summary>A code action's change made, as <see cref="Apply"/> makes it, for the status bar or an agent: why not, else
     /// the files it changed, those left as edited meanwhile, and what to say beyond its being done (a command it carries
-    /// that Passenger cannot run, or that it changed nothing); and whether every file took it. An agent's call's refusal for
-    /// files the server had yet to read is told its <paramref name="patience"/>.</summary>
+    /// that Passenger cannot run, that it changed nothing, or that it is done after the status bar said it waited for a file
+    /// to land); and whether every file took it. An agent's refusal for files the server had yet to read is told its
+    /// <paramref name="patience"/>.</summary>
     public async Task<(RefactorOutcome Outcome, bool Applied)> ApplyAsync(OpenDocument document, CodeAction action, string? scope, string what, Asked? listed, Patience? patience = null)
     {
         bool resolve = (action.Edit is null && action.Data is not null) || scope is not null;
@@ -226,12 +227,12 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         {
             return (RefactorOutcome.Refused($"{what} was not applied: {stale}"), false);
         }
-        RefactorOutcome made = chosen.Edit is { } edit ? ApplyEdit(edit, asked, what) : new RefactorOutcome(string.Empty, null, [], []);
+        RefactorOutcome made = chosen.Edit is { } edit ? await ApplyEditAsync(edit, asked, what) : new RefactorOutcome(string.Empty, null, [], []);
         if (made.Problem is not null)
         {
             return (made, false);
         }
-        string said = chosen.Command is { } command ? NotRun(what, command) : chosen.Edit is null ? $"{what} changed nothing" : string.Empty;
+        string said = chosen.Command is { } command ? NotRun(what, command) : chosen.Edit is null ? $"{what} changed nothing" : made.Said;
         return (made with { Said = said }, chosen.Edit is not null && made.Left.Count == 0);
     }
 
@@ -350,8 +351,9 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
 
     /// <summary>A name renamed through the language server at an offset of a file, with the type's files given renamed
     /// after it, as one command of global undo: the window's Rename and an agent's alike. Why not, else the files it
-    /// changed and moved, those it left as edited meanwhile, and the status bar's words; an agent's call is told its
-    /// <paramref name="patience"/> for files the server has yet to read again.</summary>
+    /// changed and moved, those it left as edited meanwhile, and the status bar's words, once the files not open it wrote
+    /// have landed (<see cref="WorkspaceEdits.LandedAsync"/>); an agent's call is told its <paramref name="patience"/> for
+    /// files the server has yet to read again.</summary>
     internal async Task<RefactorOutcome> RenameSymbolAsync(OpenDocument document, int offset, string name, IReadOnlyList<string> typeFiles, Patience? patience)
     {
         TextSnapshot text = document.Text.Snapshot;
@@ -373,6 +375,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         try
         {
             TypeRename.Apply(context.Editors, edit, moves, $"Rename {old} to {name}", asked, dropped);
+            await WorkspaceEdits.LandedAsync(context.Editors, edit, context.Say);
         }
         catch (WorkspaceEditFailed failed)
         {
@@ -553,10 +556,10 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
 
     /// <summary>A workspace edit applied, its open files' edits carried through what was typed since the request, as one
     /// command that Undo takes back whole (a fix all's files not open with it); one whose edited text changed meanwhile is
-    /// left alone and named in the status bar. Whether every file took it.</summary>
-    internal bool ApplyWorkspace(System.Text.Json.JsonElement edit, Asked? asked, string what)
+    /// left alone and named in the status bar. Whether every file took it, once those not open have landed.</summary>
+    internal async Task<bool> ApplyWorkspaceAsync(System.Text.Json.JsonElement edit, Asked? asked, string what)
     {
-        RefactorOutcome made = ApplyEdit(edit, asked, what);
+        RefactorOutcome made = await ApplyEditAsync(edit, asked, what);
         if (made.Problem is not null)
         {
             context.Say(made.Problem);
@@ -569,19 +572,22 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         return made.Left.Count == 0;
     }
 
-    /// <summary><see cref="ApplyWorkspace"/>'s change made: the files it changed and those it left, or why not.</summary>
-    private RefactorOutcome ApplyEdit(System.Text.Json.JsonElement edit, Asked? asked, string what)
+    /// <summary><see cref="ApplyWorkspaceAsync"/>'s change made, once the files it wrote have landed: the files it changed
+    /// and those it left, with that it is done when the status bar said it was waiting for one, or why not.</summary>
+    private async Task<RefactorOutcome> ApplyEditAsync(System.Text.Json.JsonElement edit, Asked? asked, string what)
     {
         List<string> dropped = [];
         IReadOnlyList<RefactoredFile> files = WorkspaceEdits.Files(edit, WorkspaceEdits.Answered(context.Editors, asked));
+        bool waited;
         try
         {
             WorkspaceEdits.ApplyAsCommand(context.Editors, edit, what, asked, dropped);
+            waited = await WorkspaceEdits.LandedAsync(context.Editors, edit, context.Say);
         }
         catch (WorkspaceEditFailed failed)
         {
             return RefactorOutcome.Refused($"{what} was not applied: {failed.Message}");
         }
-        return new RefactorOutcome(string.Empty, null, files, dropped);
+        return new RefactorOutcome(waited ? $"{what} done" : string.Empty, null, files, dropped);
     }
 }

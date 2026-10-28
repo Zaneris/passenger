@@ -37,15 +37,15 @@ internal sealed partial class CodeActions
             }
             Func<string, string?> texts = context.Editors.Texts().Text;
             IReadOnlyList<ResourcePlace> places = await BackgroundWork.Run(() => XamlRefactorings.Places(file, styles: false, texts));
-            dialog = new ExtractResourceDialog(value, places, key => XamlRefactorings.KeyProblem(file, key), (key, place, everywhere) =>
+            dialog = new ExtractResourceDialog(value, places, key => XamlRefactorings.KeyProblem(file, key), async (key, place, everywhere) =>
             {
-                string? refused = ApplyFileChanges(name, XamlRefactorings.ExtractResource(file, value, key, place, everywhere));
+                string? refused = await ApplyFileChangesAsync(name, XamlRefactorings.ExtractResource(file, value, key, place, everywhere));
                 if (refused is null)
                 {
                     int replaced = everywhere ? value.Uses.Count : 1;
                     context.Say($"Extracted resource '{key}' to {place.Title}{(replaced > 1 ? $", used in {replaced} places" : string.Empty)}");
                 }
-                return Task.FromResult(refused);
+                return refused;
             });
         }
         if (dialog is not null)
@@ -74,14 +74,14 @@ internal sealed partial class CodeActions
             }
             Func<string, string?> texts = context.Editors.Texts().Text;
             IReadOnlyList<ResourcePlace> places = await BackgroundWork.Run(() => XamlRefactorings.Places(file, styles: source.ByClass, texts));
-            dialog = new ExtractStyleDialog(source, places, styleName => XamlRefactorings.StyleNameProblem(file, source, styleName), (styleName, chosen, place) =>
+            dialog = new ExtractStyleDialog(source, places, styleName => XamlRefactorings.StyleNameProblem(file, source, styleName), async (styleName, chosen, place) =>
             {
-                string? refused = ApplyFileChanges(name, XamlRefactorings.ExtractStyle(file, source, styleName, chosen, place));
+                string? refused = await ApplyFileChangesAsync(name, XamlRefactorings.ExtractStyle(file, source, styleName, chosen, place));
                 if (refused is null)
                 {
                     context.Say($"Extracted {Core.Plural.Of(chosen.Count, "property", "properties")} of {source.ElementName} to style '{styleName}' in {place.Title}");
                 }
-                return Task.FromResult(refused);
+                return refused;
             });
         }
         if (dialog is not null)
@@ -145,6 +145,19 @@ internal sealed partial class CodeActions
             return failed.Message;
         }
         return dropped.Count > 0 ? $"{name} was not applied to {string.Join(", ", dropped)}: it was edited meanwhile" : null;
+    }
+
+    /// <summary><see cref="ApplyFileChanges"/> answered once the files not open it wrote have landed, the status bar saying
+    /// meanwhile which another program holds (<see cref="EditorArea.LandedAsync(IEnumerable{string}, Action{string}?)"/>).
+    /// Null once made; else why not.</summary>
+    internal async Task<string?> ApplyFileChangesAsync(string name, IReadOnlyList<XamlFileChange> changes)
+    {
+        List<string> closed = [.. changes.Select(c => c.Path).Where(p => context.Editors.Find(p) is null)];
+        if (ApplyFileChanges(name, changes) is { } refused)
+        {
+            return refused;
+        }
+        return await EditorArea.LandedAsync(closed, context.Say) is [(string path, Exception why), ..] ? WorkspaceEdits.Unwritten(path, why) : null;
     }
 
     /// <summary>The refactorings offered at the caret of a XAML file (Refactor This, and after the fixes in Show

@@ -211,7 +211,7 @@ internal sealed class ComposeAssist(AssistContext context, PopupPlacement popups
                 files.Add(new RefactoredFile(file, "changed", [.. edits.Select(e => written.GetLineFromOffset(e.Start) + 1).Distinct()]));
             }
         }
-        if (actions.ApplyFileChanges($"Rename {old} to {name}", changes) is { } refused)
+        if (await actions.ApplyFileChangesAsync($"Rename {old} to {name}", changes) is { } refused)
         {
             return RefactorOutcome.Refused(refused);
         }

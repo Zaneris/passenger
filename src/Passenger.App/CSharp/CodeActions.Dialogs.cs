@@ -214,8 +214,9 @@ internal sealed partial class CodeActions
     }
 
     /// <summary>A refactoring computed by Passenger's extension for a file and applied as one command, which Undo takes back
-    /// whole: every file it changes, open or not, and every file it makes. What it came to: the files it changed and what
-    /// to say of it, or why it was not made (for an agent's call, told its <paramref name="patience"/>).</summary>
+    /// whole: every file it changes, open or not, and every file it makes. What it came to once the files not open it wrote
+    /// have landed (<see cref="WorkspaceEdits.LandedAsync"/>): the files it changed and what to say of it, or why it was
+    /// not made (for an agent's call, told its <paramref name="patience"/>).</summary>
     internal async Task<RefactorOutcome> MakeAsync(string name, OpenDocument document, Func<LspDocument, Task<Refactored>> ask, Func<int, string> done, Patience? patience)
     {
         try
@@ -247,6 +248,7 @@ internal sealed partial class CodeActions
                 }
                 _ = WorkspaceEdits.Apply(context.Editors, edit, asked, dropped);
             });
+            await WorkspaceEdits.LandedAsync(context.Editors, edit, context.Say);
             // Counted by file: a file made is its creation and its text, which the edit counts apart.
             string said = done(made.Changes.Count - dropped.Count) + (dropped.Count > 0 ? $", but not in {string.Join(", ", dropped)}: it was edited meanwhile" : string.Empty);
             return new RefactorOutcome(said, null, files, dropped);

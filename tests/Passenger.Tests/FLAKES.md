@@ -57,6 +57,16 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   were looked at), where that came before the server's start (#613, in this commit). The test now dates the arriving
   assets a minute back, before any server's start, so on main it fails alone too.
 
+- `IdeErrorsTests`' rename that cannot write a file it changes, Windows x64 report lane of run 40704117907 (#614):
+  "String: "Renamed in 2 files", Expected start: "Rename failed: Helper.cs could not be written"". The test holds
+  Helper.cs open sharing only reads. Since #577 a save Windows refuses while another program holds the file lands in the
+  background, so the rename's write to that file, not open, returned at once: the status bar said it renamed in both
+  files while the write waited, and when the write gave up two seconds later nothing said so, Helper.cs keeping Twice
+  while Program.cs called Double. A person renaming into a file a build or a scanner held met the same. **The IDE**: a
+  change of several files (a rename, a refactoring, a code action, Replace in Files, and an agent's calls of each)
+  waits for its writes to land, the status bar saying "Waiting for Helper.cs to be saved…", then says it is done, or
+  that it failed and why (in this commit, with a test of a held file let go in time).
+
 - `CodeAssistTests`' type and parameter name hints, the Mac under 14 burners beside FolderWatchTests and ProblemsTests'
   thousand rewrites (#610): "Waited 135 s for the hint's hover card". As the window opened, its design-time build
   rewrote the project's generated .editorconfig; told of it, Roslyn read every document again, the text the same but its

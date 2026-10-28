@@ -150,13 +150,31 @@ public static class WorkspaceEdits
                 }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException)
                 {
-                    throw new WorkspaceEditFailed($"{Path.GetFileName(path)} could not be written: {error.Message}");
+                    throw new WorkspaceEditFailed(Unwritten(path, error));
                 }
             }
             files++;
         }
         return files;
     }
+
+    /// <summary>Waits for the saves an applied edit made of its files not open that are still landing, another program
+    /// holding them (<see cref="EditorArea.LandedAsync(IEnumerable{string}, Action{string}?)"/>), <paramref name="waiting"/>
+    /// told meanwhile which; one that never lands throws <see cref="WorkspaceEditFailed"/>, as <see cref="Apply"/> does for a
+    /// file the disk refuses at once. Whether any was landing.</summary>
+    public static async Task<bool> LandedAsync(EditorArea editors, JsonElement edit, Action<string>? waiting)
+    {
+        List<string> written = [.. Paths(edit).Where(p => editors.Find(p) is null)];
+        bool landing = written.Any(p => FileText.Landed(p) is { IsCompleted: false });
+        if (await EditorArea.LandedAsync(written, waiting) is [(string path, Exception refused), ..])
+        {
+            throw new WorkspaceEditFailed(Unwritten(path, refused));
+        }
+        return landing;
+    }
+
+    /// <summary>What a change says of a file the disk would not take.</summary>
+    internal static string Unwritten(string path, Exception error) => $"{Path.GetFileName(path)} could not be written: {error.Message}";
 
     /// <summary>The edit applied as one command of <see cref="EditorArea.Commands"/> under a name (a fix all's title):
     /// the files not open that it writes or makes are followed, so Undo takes all of it back at once, where they could

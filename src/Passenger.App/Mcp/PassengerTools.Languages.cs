@@ -442,7 +442,7 @@ public sealed partial class PassengerTools
                 return await ApplyOwnFix(xaml.Document, fix, value: name);
             case XamlFix fix:
                 IReadOnlyList<XamlFileChange> changes = [new XamlFileChange(fix.Path, fix.Edits), .. fix.Others];
-                refused = window.Assist.Actions.ApplyFileChanges(fix.Title, changes);
+                refused = await window.Assist.Actions.ApplyFileChangesAsync(fix.Title, changes);
                 if (refused is not null)
                 {
                     throw new InvalidOperationException($"{what} was not applied: {refused}");
@@ -459,7 +459,7 @@ public sealed partial class PassengerTools
             {
                 throw new InvalidOperationException($"{what} cannot name the resource '{key}': {problem}");
             }
-            refused = window.Assist.Actions.ApplyFileChanges("Extract Resource", XamlRefactorings.ExtractResource(xaml.File, value, key, place, everywhere: true));
+            refused = await window.Assist.Actions.ApplyFileChangesAsync("Extract Resource", XamlRefactorings.ExtractResource(xaml.File, value, key, place, everywhere: true));
             if (refused is not null)
             {
                 throw new InvalidOperationException($"{what} was not applied: {refused}");
@@ -479,7 +479,7 @@ public sealed partial class PassengerTools
         {
             throw new InvalidOperationException($"{what} cannot name the style '{style}': {named}");
         }
-        refused = window.Assist.Actions.ApplyFileChanges("Extract Style", XamlRefactorings.ExtractStyle(xaml.File, source, style, properties, into));
+        refused = await window.Assist.Actions.ApplyFileChangesAsync("Extract Style", XamlRefactorings.ExtractStyle(xaml.File, source, style, properties, into));
         if (refused is not null)
         {
             throw new InvalidOperationException($"{what} was not applied: {refused}");

@@ -542,7 +542,16 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             throw new InvalidOperationException($"{what} was not applied: {stale}");
         }
         List<string> dropped = [];
-        int files = WorkspaceEdits.ApplyAsCommand(Editors, edit, title, asked, dropped);
+        int files;
+        try
+        {
+            files = WorkspaceEdits.ApplyAsCommand(Editors, edit, title, asked, dropped);
+            await WorkspaceEdits.LandedAsync(Editors, edit, null);
+        }
+        catch (WorkspaceEditFailed failed)
+        {
+            throw new InvalidOperationException($"{what} was not applied: {failed.Message}");
+        }
         await SaveLandedAsync(cancel);
         return $"Applied {what} to {Plural.Of(files, "file")}{unrun}{(dropped.Count > 0 ? $", but not to {string.Join(", ", dropped)}, edited meanwhile" : string.Empty)}";
     }, cancel));
