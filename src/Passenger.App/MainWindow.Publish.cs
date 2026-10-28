@@ -140,7 +140,7 @@ public partial class MainWindow
 
     /// <summary>Writes a profile as the Publish dialog asks, as one step of global undo: a new one made, one there changed in
     /// place (what else it says kept, its encoding and line breaks too) once the person agrees, nothing written when nothing
-    /// changed. Null once written, else why not.</summary>
+    /// changed. Null once written and landed, else why not.</summary>
     private async Task<string?> SaveProfileAsync(PublishChoice choice, Window owner)
     {
         string file = choice.File;
@@ -176,11 +176,11 @@ public partial class MainWindow
         {
             return $"{shownName} was left as it was";
         }
+        using CommandHistory.Recording made = Editors.Commands.Record($"Save Publish Profile {choice.Profile}");
         try
         {
             Following([file], () =>
             {
-                using CommandHistory.Recording made = Editors.Commands.Record($"Save Publish Profile {choice.Profile}");
                 try
                 {
                     if (had is null)
@@ -203,6 +203,10 @@ public partial class MainWindow
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             return $"{shownName} could not be written: {error.Message}";
+        }
+        if (await UnlandedAsync(made) is { } unlanded)
+        {
+            return $"{shownName} could not be written: {unlanded.Message}";
         }
         status.Text = $"Saved the publish profile {choice.Profile} of {Path.GetFileNameWithoutExtension(choice.Project)}";
         return null;

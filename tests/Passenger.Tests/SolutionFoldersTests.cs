@@ -272,7 +272,7 @@ public sealed class SolutionFoldersTests : IDisposable
         Assert.Equal(renamed, Read(solution, "the rename was redone"));
         Assert.Equal(referencing.Replace("Shop.Core.csproj", "Shop.Domain.csproj", StringComparison.Ordinal), File.ReadAllText(web));
 
-        Edit(() => Assert.Null(window.Rename(PathNames.Canonical(Path.Combine(folder, "README.md")), "Shop.md")));
+        Edit(() => Assert.Null(Ui.Await(window.RenameAsync(PathNames.Canonical(Path.Combine(folder, "README.md")), "Shop.md"), "the rename")));
         Assert.Equal(renamed.Replace(format == "slnx" ? "<File Path=\"README.md\" />" : "\t\tREADME.md = README.md", format == "slnx" ? "<File Path=\"Shop.md\" />" : "\t\tShop.md = Shop.md", StringComparison.Ordinal),
             Read(solution, "a file it lists was renamed"));
         window.Close();

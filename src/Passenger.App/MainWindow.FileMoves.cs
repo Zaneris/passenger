@@ -152,9 +152,14 @@ public partial class MainWindow
                 }
             }
         }
-        if (FollowMoved(moved) is { } unfollowed)
+        List<string> followed = [];
+        if (FollowMoved(moved, written: followed) is { } unfollowed)
         {
             refused.Add(unfollowed);
+        }
+        else if (await EditorArea.LandedAsync(followed, waiting => status.Text = waiting) is [(string unwritten, Exception notLanded), ..])
+        {
+            refused.Add($"{Path.GetFileName(unwritten)} could not follow the files moved: {notLanded.Message}");
         }
         if (put.Count > 0)
         {
@@ -210,9 +215,9 @@ public partial class MainWindow
 
     /// <summary>What names the files moved follows them: the solution's projects and files, and every project's items
     /// naming one (an Update or Remove, a DependentUpon, a reference to a project moved), each file watched first when
-    /// a command is recording, for its undo. A project moved is read again at its new path. Null once they follow, else
-    /// why one could not.</summary>
-    private string? FollowMoved(IReadOnlyList<(string From, string To)> moved, CommandHistory.Recording? recording = null)
+    /// a command is recording, for its undo, else added to <paramref name="written"/>. A project moved is read again at its
+    /// new path. Null once they follow, else why one could not.</summary>
+    private string? FollowMoved(IReadOnlyList<(string From, string To)> moved, CommandHistory.Recording? recording = null, List<string>? written = null)
     {
         string Now(string path) => moved.FirstOrDefault(m => PathNames.Within(path, m.From)) is { From: not null } move ? PathNames.Moved(path, move.From, move.To) : path;
         // A file naming one moved names it, or the folder it was in, by name: those that cannot are never read further.
@@ -245,6 +250,7 @@ public partial class MainWindow
                 }
                 if (follow(path))
                 {
+                    written?.Add(path);
                     // Open, it takes the text now, inside the command, so the command's undo takes it back too.
                     FollowWritten([path]);
                     reread |= WorkspaceModel.IsSolution(path);

@@ -33,14 +33,14 @@ public partial class MainWindow
         {
             if (await dialog.ShowDialog<IReadOnlyList<string>?>(this) is { } chosen)
             {
-                SetReferences(project, chosen);
+                await SetReferencesAsync(project, chosen);
             }
         }
     }
 
     /// <summary>Makes a project reference the solution's projects given and no others of them: those not referenced yet are
-    /// added, those no longer given taken out. Null once done, else why not, which the status bar says too.</summary>
-    public string? SetReferences(string project, IReadOnlyCollection<string> wanted)
+    /// added, those no longer given taken out. Null once done and landed, else why not, which the status bar says too.</summary>
+    public async Task<string?> SetReferencesAsync(string project, IReadOnlyCollection<string> wanted)
     {
         string name = Path.GetFileNameWithoutExtension(project);
         IReadOnlyList<string> had = session.Workspace?.Projects.FirstOrDefault(p => PathNames.Same(p.Path, project))?.ProjectReferences ?? [];
@@ -57,6 +57,7 @@ public partial class MainWindow
             return unsaved;
         }
         List<string> said = [];
+        Exception? refused = null;
         try
         {
             foreach (string added in adding)
@@ -70,16 +71,22 @@ public partial class MainWindow
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            said.Add($"{name} could not be changed: {error.Message}");
-            FollowWritten([project]);
-            ReloadSolution();
-            status.Text = string.Join("; ", said);
-            return error.Message;
+            refused = error;
+        }
+        // The project file's last write holds every change, so once it never lands none of them is made.
+        if (refused is null && await UnlandedAsync([project]) is { } unlanded)
+        {
+            said.Clear();
+            refused = unlanded;
+        }
+        if (refused is not null)
+        {
+            said.Add($"{name} could not be changed: {refused.Message}");
         }
         FollowWritten([project]);
         ReloadSolution();
         status.Text = string.Join("; ", said);
-        return null;
+        return refused?.Message;
     }
 
     /// <summary>Remove on a project reference under Dependencies, once asked: the project file loses it.</summary>
@@ -99,6 +106,10 @@ public partial class MainWindow
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             problem = error.Message;
+        }
+        if (problem is null && await UnlandedAsync([project]) is { } unlanded)
+        {
+            problem = unlanded.Message;
         }
         FollowWritten([project]);
         if (problem is null)

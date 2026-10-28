@@ -1,3 +1,4 @@
+using Passenger.App.Editors;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Text;
@@ -188,6 +189,17 @@ public partial class MainWindow
             FollowDisk(document);
         }
     }
+
+    /// <summary>Waits for the saves still landing of files the IDE just wrote (<see cref="EditorArea.LandedAsync(IEnumerable{string}, Action{string}?)"/>),
+    /// the status bar saying meanwhile which another program holds: why the first that never landed did not, or null once
+    /// each has, so the change says what the disk holds in the words a write refused at once gets.</summary>
+    private async Task<Exception?> UnlandedAsync(IEnumerable<string> paths) =>
+        await EditorArea.LandedAsync(paths, waiting => status.Text = waiting) is [(_, Exception refused), ..] ? refused : null;
+
+    /// <summary>As <see cref="UnlandedAsync(IEnumerable{string})"/> for the files not open a command wrote, within its recording,
+    /// a file never written left out of its Undo (<see cref="CommandHistory.Recording.LandedAsync"/>).</summary>
+    private async Task<Exception?> UnlandedAsync(CommandHistory.Recording recording) =>
+        await recording.LandedAsync(waiting => status.Text = waiting) is [(_, Exception refused), ..] ? refused : null;
 
     /// <summary>Files the IDE itself is about to write on disk (a project's references or items, the solution's entries):
     /// those open with unsaved edits are saved first, so what is written holds the edits and no File Cache Conflict asks

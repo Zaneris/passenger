@@ -204,7 +204,7 @@ public sealed class NuGetSourcesView : Grid
         string[] targets = enabled
             ? [.. sources.Files.Where(f => !f.ReadOnly && f.Disables(name)).Select(f => f.Path)]
             : [file.Path];
-        await WriteAsync(() =>
+        await WriteAsync(targets, () =>
         {
             foreach (string target in targets)
             {
@@ -217,7 +217,7 @@ public sealed class NuGetSourcesView : Grid
     {
         if (await AskAsync(new FeedDialog(file, null)) is { } added)
         {
-            await WriteAsync(() => NuGetConfigEditor.Add(file.Path, added));
+            await WriteAsync([file.Path], () => NuGetConfigEditor.Add(file.Path, added));
         }
     }
 
@@ -225,7 +225,7 @@ public sealed class NuGetSourcesView : Grid
     {
         if (await AskAsync(new FeedDialog(file, feed)) is { } edited)
         {
-            await WriteAsync(() => NuGetConfigEditor.Update(file.Path, feed.Name, edited));
+            await WriteAsync([file.Path], () => NuGetConfigEditor.Update(file.Path, feed.Name, edited));
         }
     }
 
@@ -238,16 +238,16 @@ public sealed class NuGetSourcesView : Grid
         ConfirmDialog confirm = new("Deleting Feed", $"Are you sure you want to delete feed {feed.Name}?", "Delete Feed");
         if (await confirm.ShowDialog<bool>(window))
         {
-            await WriteAsync(() => NuGetConfigEditor.Remove(file.Path, feed.Name));
+            await WriteAsync([file.Path], () => NuGetConfigEditor.Remove(file.Path, feed.Name));
         }
     }
 
     private async Task<FeedEdit?> AskAsync(FeedDialog dialog) =>
         TopLevel.GetTopLevel(this) is Window window && await dialog.ShowDialog<bool>(window) ? dialog.Result : null;
 
-    /// <summary>Writes the change off the window's thread, then reads the sources again; a file that will not take it
-    /// says why under the tab.</summary>
-    private async Task WriteAsync(Action change)
+    /// <summary>Writes the change to <paramref name="paths"/> off the window's thread, then, once they have landed (saying
+    /// meanwhile which another program holds), reads the sources again; a file that will not take it says why under the tab.</summary>
+    private async Task WriteAsync(IReadOnlyList<string> paths, Action change)
     {
         problem.IsVisible = false;
         try
@@ -257,6 +257,11 @@ public sealed class NuGetSourcesView : Grid
                 throw new IOException(unsaved);
             }
             await BackgroundWork.Run(change);
+            if (await Editors.EditorArea.LandedAsync(paths, Waiting) is [(_, Exception unlanded), ..])
+            {
+                throw unlanded;
+            }
+            problem.IsVisible = false;
         }
         catch (Exception failed) when (failed is IOException or UnauthorizedAccessException or XmlException or InvalidOperationException)
         {
@@ -264,6 +269,12 @@ public sealed class NuGetSourcesView : Grid
             problem.IsVisible = true;
         }
         await owner.ReloadSourcesAsync();
+
+        void Waiting(string said)
+        {
+            problem.Text = said;
+            problem.IsVisible = true;
+        }
     }
 
     /// <summary>A row for whichever file the list hands its container: its icon, its name and folder, and where it

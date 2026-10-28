@@ -985,8 +985,8 @@ public sealed class VcsController : IDisposable
     }
 
     /// <summary>The merge window's Apply: the result written to the file in the encoding, byte order mark and line breaks
-    /// the working tree has it in (CRLF under core.autocrlf, as git checked it out), and the file marked resolved; the open
-    /// files show it.</summary>
+    /// the working tree has it in (CRLF under core.autocrlf, as git checked it out), and once it has landed the file marked
+    /// resolved; the open files show it.</summary>
     public async Task<VcsOutcome> ResolveAsync(string path, string text)
     {
         if (git is not { } repository)
@@ -1009,6 +1009,11 @@ public sealed class VcsController : IDisposable
             catch (Exception refused) when (refused is IOException or UnauthorizedAccessException)
             {
                 return Report(false, refused.Message);
+            }
+            // Marked resolved only once it holds the result: git stages what the disk has.
+            if (await Editors.EditorArea.LandedAsync([path], waiting => Message?.Invoke(this, waiting)) is [(_, Exception unlanded), ..])
+            {
+                return Report(false, unlanded.Message);
             }
             GitResult marked = await repository.MarkResolvedAsync(path);
             ReloadOpenFiles();

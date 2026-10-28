@@ -415,7 +415,13 @@ public sealed class NewProjectDialog : Window
                 await FailedAsync($"dotnet new {template.ShortName} made no project in {plan.ProjectFolder}", plan, existed);
                 return;
             }
-            await BackgroundWork.Run(() => DeveloperTools.TakeOut(plan.ProjectFolder), cancel.Token);
+            IReadOnlyList<string> takenOut = await BackgroundWork.Run(() => DeveloperTools.TakeOut(plan.ProjectFolder), cancel.Token);
+            // The restore and the solution read the files once they hold what was taken out.
+            if (await Editors.EditorArea.LandedAsync(takenOut, said => progress.Text = said) is [(string unwritten, Exception notLanded), ..])
+            {
+                await FailedAsync($"{NameGiven} could not be created: {CSharp.WorkspaceEdits.Unwritten(unwritten, notLanded)}", plan, existed);
+                return;
+            }
             if (Variant().SkipRestoreOption is not null)
             {
                 // The template's own restore, after the take-out; one that fails, as its own may, leaves the build to say why.

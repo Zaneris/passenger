@@ -44,7 +44,7 @@ public partial class MainWindow
         {
             if (dialog.Created is { Solution: { } solution } made)
             {
-                OpenNewSolution(solution, made.Projects);
+                IdeErrors.Observe(OpenNewSolutionAsync(solution, made.Projects));
             }
         };
         IdeErrors.Observe(dialog.ShowDialog(this));
@@ -64,23 +64,34 @@ public partial class MainWindow
         NewProjectDialog dialog = new(ProjectFolderFor(solution, into), target);
         dialog.Closed += (_, _) =>
         {
-            if (dialog.Created is { } made && Solution?.Path == solution.Path
-                && AddEach(made.Projects, (file, project) => SolutionEdits.AddProject(file, into, project), Path.GetFileNameWithoutExtension) is { } last)
+            if (dialog.Created is { } made && Solution?.Path == solution.Path)
             {
-                Reveal(into, last);
+                IdeErrors.Observe(AddMadeAsync(made.Projects));
             }
         };
         IdeErrors.Observe(dialog.ShowDialog(this));
         return dialog;
+
+        async Task AddMadeAsync(IReadOnlyList<string> projects)
+        {
+            if (await AddEachAsync(projects, (file, project) => SolutionEdits.AddProject(file, into, project), Path.GetFileNameWithoutExtension) is { } last)
+            {
+                Reveal(into, last);
+            }
+        }
     }
 
     /// <summary>The new solution with its project in it, opened as the workspace and built, ready to run: by the window
     /// it opens in once its session there has begun, since Open may first ask where, open it in another window, or
-    /// leave this one's solution first.</summary>
-    private void OpenNewSolution(string solution, IReadOnlyList<string> projects)
+    /// leave this one's solution first, once the solution's file holds them.</summary>
+    private async Task OpenNewSolutionAsync(string solution, IReadOnlyList<string> projects)
     {
         List<string> refused = [.. projects.Select(project => Change(() => SolutionEdits.AddProject(solution, null, project), Path.GetFileNameWithoutExtension(solution)))
             .OfType<string>().Where(problem => !problem.EndsWith("is already in the solution", StringComparison.Ordinal))];
+        if (await UnlandedAsync([solution]) is { } unlanded)
+        {
+            refused.Add($"{Path.GetFileNameWithoutExtension(solution)} could not be changed: {unlanded.Message}");
+        }
         Open(solution, opened =>
         {
             if (refused.Count > 0)

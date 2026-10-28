@@ -189,7 +189,7 @@ public sealed class VcsTests : IDisposable
         window.KeyTextInput("long ");
         Ui.Landed(() => Marks(window).Any(m => m.Kind == ChangeMarkKind.Modified && m.Line == 2), "a modified bar on line 3");
 
-        Assert.Null(window.Rename(PathNames.Canonical(Path.Combine(folder, "Shop.cs")), "Store.cs"));
+        Assert.Null(Ui.Await(window.RenameAsync(PathNames.Canonical(Path.Combine(folder, "Shop.cs")), "Store.cs"), "the rename"));
         editor.GoTo(new TextPosition(0, 0));
         window.KeyTextInput("sealed ");
         Ui.Landed(() => Marks(window).Any(m => m.Line == 0), "a bar for the line typed after the rename, against the last commit's Shop.cs");
@@ -1049,6 +1049,38 @@ public sealed class VcsTests : IDisposable
         Passenger.App.Workspace.OpenDocument shown = window.EditorArea.Documents.Single(d => d.Name == ".gitignore");
         Assert.Equal("# out bin/\r\nobj/\r\nnotes.txt\r\n", shown.Text.Snapshot.ToString());
         Assert.False(shown.IsModified, "The open .gitignore shows unsaved changes it does not have");
+        window.Close();
+    }
+
+    /// <summary>On Windows Add to .gitignore into a .gitignore another program holds waits for it: while it is held the
+    /// status bar says it waits for that file, never that it added the line, and once the program lets go the line is in the
+    /// file and the status bar says it was added.</summary>
+    [AvaloniaFact]
+    public void Add_to_gitignore_into_a_gitignore_another_program_holds_says_it_waits_and_added_once_the_file_is_let_go()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses to replace or write a file another program holds");
+        string ignore = Path.Combine(folder, ".gitignore");
+        File.WriteAllText(ignore, "bin/\nobj/\n");
+        File.WriteAllText(Path.Combine(folder, "notes.txt"), "scratch\n");
+        MainWindow window = Open();
+        window.Perform(AppActions.ShowCommit);
+        Avalonia.Controls.ListBox changes = Find(window.CommitView, window.CommitView.Rows);
+        Ui.Landed(() => window.CommitView.Rows.OfType<CommitRow>().Any(r => r.Change.Name == "notes.txt"), "the unversioned file listed");
+        changes.SelectedItem = window.CommitView.Rows.OfType<CommitRow>().First(r => r.Change.Name == "notes.txt");
+        List<string> said = [];
+        using IDisposable following = Ui.FollowStatus(window, said);
+        using (new FileStream(ignore, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            Ui.ChooseFromMenu(changes, false, "Add to .gitignore");
+            Ui.PumpUntil(() => said.Any(s => s.StartsWith("Waiting", StringComparison.Ordinal) || s.StartsWith("Added", StringComparison.Ordinal)),
+                "Add to .gitignore to say it waits for the held .gitignore");
+            Assert.Equal("bin/\nobj/\n", File.ReadAllText(ignore));
+        }
+        Ui.PumpUntil(() => said.Any(s => s.StartsWith("Added", StringComparison.Ordinal) || s.StartsWith(".gitignore was not changed", StringComparison.Ordinal)),
+            "Add to .gitignore to say it added the line once .gitignore was let go");
+        Assert.Equal(["Waiting for .gitignore to be saved…", "Added notes.txt to .gitignore"],
+            said.Where(s => s.StartsWith("Waiting", StringComparison.Ordinal) || s.StartsWith("Added", StringComparison.Ordinal) || s.StartsWith(".gitignore", StringComparison.Ordinal)));
+        Assert.Equal("bin/\nobj/\nnotes.txt\n", File.ReadAllText(ignore));
         window.Close();
     }
 

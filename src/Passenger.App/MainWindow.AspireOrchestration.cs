@@ -84,6 +84,11 @@ public partial class MainWindow
                     {
                         FollowWritten(writes.Select(w => w.Path));
                     }
+                    // The solution is read again only once it and its projects hold what was written.
+                    if (await UnlandedAsync(recording) is { } unlanded)
+                    {
+                        throw unlanded;
+                    }
                 }
                 ReloadSolution();
                 return status.Text = writes.Count == 0 ? "Aspire orchestration is already configured" : "Added Aspire orchestration";

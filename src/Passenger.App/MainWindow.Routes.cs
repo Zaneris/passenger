@@ -292,7 +292,7 @@ public partial class MainWindow
         }
         if (found is null)
         {
-            if (Generate(route) is not { } made)
+            if (await GenerateAsync(route) is not { } made)
             {
                 return status.Text;
             }
@@ -337,8 +337,9 @@ public partial class MainWindow
     private static IEnumerable<string> HttpFilesUnder(string folder) => FolderWalk.Files(folder).Where(HttpFile.Is);
 
     /// <summary>A route's request written at the end of its project's .http file (made beside the project when it has
-    /// none): in the editor as its own undo step when the file is open, else as a command Undo takes back whole.</summary>
-    private (EndpointRequest Request, HttpFile File)? Generate(WebRoute route)
+    /// none): in the editor as its own undo step when the file is open, else as a command Undo takes back whole, said once
+    /// the file has landed.</summary>
+    private async Task<(EndpointRequest Request, HttpFile File)?> GenerateAsync(WebRoute route)
     {
         string path = PathNames.Canonical(RouteRequests.FileFor(route.Project));
         string? address = ProfileAddress(route.Project);
@@ -365,6 +366,10 @@ public partial class MainWindow
             {
                 made.Watch(path);
                 FileText.Save(path, text, had?.Encoding ?? new UTF8Encoding(false), had?.HasBom ?? false);
+                if (await UnlandedAsync(made) is { } unlanded)
+                {
+                    throw unlanded;
+                }
             }
             endpoints?.Reload(session.Folder);
             return Written(path, text, existing);

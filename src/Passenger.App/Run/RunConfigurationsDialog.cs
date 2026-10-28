@@ -230,7 +230,7 @@ public sealed class RunConfigurationsDialog : Window
 
         WriteButton = new Button { Content = "Write to Launch Profile", Name = "WriteButton" };
         ResetButton = new Button { Content = "Reset to Launch Profile", Name = "ResetButton" };
-        WriteButton.Click += (_, _) => WriteToLaunchProfile();
+        WriteButton.Click += (_, _) => IdeErrors.Observe(WriteToLaunchProfileAsync());
         ResetButton.Click += (_, _) => Reset();
         changes.Children.Add(changesText);
         changes.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { WriteButton, ResetButton } });
@@ -301,7 +301,7 @@ public sealed class RunConfigurationsDialog : Window
 
     /// <summary>Writes the changes of the generated configuration of that name, as applied, into its launch profile (the
     /// window's, as one command Undo takes back): the configuration as it then stands, or why not.</summary>
-    public Func<string, (RunConfiguration? Configuration, string? Problem)>? WriteToProfile { get; init; }
+    public Func<string, Task<(RunConfiguration? Configuration, string? Problem)>>? WriteToProfile { get; init; }
 
     /// <summary>What the chosen generated configuration has changed from its source (or what Write to Launch Profile did),
     /// or empty.</summary>
@@ -615,14 +615,14 @@ public sealed class RunConfigurationsDialog : Window
 
     /// <summary>Write to Launch Profile: the dialog applied as Apply does, then the chosen generated configuration's changes
     /// its launch profile has a place for written there; the dialog says what was written and what stays kept here.</summary>
-    private void WriteToLaunchProfile()
+    private async Task WriteToLaunchProfileAsync()
     {
         if (list.SelectedItem is not Entry { Source: { } before } row || WriteToProfile is not { } write || !Apply())
         {
             return;
         }
         IReadOnlyList<string> changed = ConfigurationEdit.Changed(before, row.Configuration);
-        (RunConfiguration? now, string? failed) = write(row.Configuration.Name);
+        (RunConfiguration? now, string? failed) = await write(row.Configuration.Name);
         if (now is null)
         {
             problem.Text = failed ?? $"{row.Configuration.Name} could not be written to its launch profile";

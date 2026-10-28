@@ -1448,12 +1448,21 @@ public static class Ui
 
     /// <summary>Opens a control's right-click menu for what it has chosen, as the menu key does, and chooses an item as
     /// <see cref="Choose"/> does.</summary>
-    public static void ChooseFromMenu(Control owner, params string[] path)
+    public static void ChooseFromMenu(Control owner, params string[] path) => ChooseFromMenu(owner, true, path);
+
+    /// <summary>As <see cref="ChooseFromMenu(Control, string[])"/>, settled after the choice only when <paramref name="settle"/>
+    /// says: a test that holds what the choice waits for goes on while it waits.</summary>
+    public static void ChooseFromMenu(Control owner, bool settle, params string[] path)
     {
         ContextMenu menu = owner.ContextMenu ?? throw new InvalidOperationException($"{owner.GetType().Name} has no menu");
         owner.RaiseEvent(new ContextRequestedEventArgs());
         Settle();
-        Choose(menu, path);
+        ChooseIn(menu.Items, path, settle);
+        menu.Close();
+        if (settle)
+        {
+            Settle();
+        }
     }
 
     /// <summary>Opens the shown editor's menu at its caret, as the menu key does, and chooses an item as
@@ -1529,7 +1538,7 @@ public static class Ui
         Settle();
     }
 
-    private static void ChooseIn(System.Collections.IEnumerable? shown, string[] path)
+    private static void ChooseIn(System.Collections.IEnumerable? shown, string[] path, bool settle = true)
     {
         ArgumentOutOfRangeException.ThrowIfZero(path.Length);
         if (shown is null)
@@ -1549,7 +1558,7 @@ public static class Ui
             }
             if (i == path.Length - 1)
             {
-                Click(item);
+                Click(item, settle: settle);
                 break;
             }
             if (!item.IsSubMenuOpen)

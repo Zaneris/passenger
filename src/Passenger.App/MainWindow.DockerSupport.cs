@@ -38,14 +38,15 @@ public partial class MainWindow
         {
             if (await dialog.ShowDialog<DockerSupportKind?>(this) is { } kind)
             {
-                AddDockerSupport(project, kind);
+                await AddDockerSupportAsync(project, kind);
             }
         }
     }
 
     /// <summary>Gives a project its image: a Dockerfile beside it (and a .dockerignore at the context unless one is there),
-    /// or the SDK's container properties in its project file. Null once done, else why not, which the status bar says too.</summary>
-    public string? AddDockerSupport(string project, DockerSupportKind kind)
+    /// or the SDK's container properties in its project file. Null once done and landed, else why not, which the status bar
+    /// says too.</summary>
+    public async Task<string?> AddDockerSupportAsync(string project, DockerSupportKind kind)
     {
         if (SolutionProject(project) is not { } model || DockerContext is not { } context)
         {
@@ -58,7 +59,7 @@ public partial class MainWindow
         DockerProject described = DockerFiles.Describe(model, session.Workspace?.Projects ?? []);
         if (kind == DockerSupportKind.Sdk)
         {
-            return AddContainerProperties(described);
+            return await AddContainerPropertiesAsync(described);
         }
         if (described.ExistingDockerfile is { } had)
         {
@@ -66,11 +67,11 @@ public partial class MainWindow
         }
         string ignore = Path.Combine(context, ".dockerignore");
         bool ignoring = !File.Exists(ignore);
+        using CommandHistory.Recording made = Editors.Commands.Record("Add Docker Support");
         try
         {
             Following([described.Dockerfile, ignore], () =>
             {
-                using CommandHistory.Recording made = Editors.Commands.Record("Add Docker Support");
                 WriteNew(made, described.Dockerfile, DockerFiles.Dockerfile(described, context));
                 if (ignoring)
                 {
@@ -82,13 +83,17 @@ public partial class MainWindow
         {
             return DockerSaid($"Docker Support could not be added to {described.Name}: {error.Message}");
         }
+        if (await UnlandedAsync(made) is { } unlanded)
+        {
+            return DockerSaid($"Docker Support could not be added to {described.Name}: {unlanded.Message}");
+        }
         OpenFile(described.Dockerfile);
         return DockerSaid(null, ignoring ? $"Added a Dockerfile to {described.Name}, and a .dockerignore at {(Solution is { } solution ? $"{solution.Name}'s folder" : DockerShown(context))}" : $"Added a Dockerfile to {described.Name}");
     }
 
     /// <summary>The SDK's container support in a project file: EnableSdkContainerSupport where the SDK does not turn it on
     /// itself (a project that is not ASP.NET Core's), and the image's repository, its service name.</summary>
-    private string? AddContainerProperties(DockerProject project)
+    private async Task<string?> AddContainerPropertiesAsync(DockerProject project)
     {
         if (SaveBeforeWriting([project.Path]) is { } unsaved)
         {
@@ -111,6 +116,10 @@ public partial class MainWindow
             {
                 // Open, it takes the text now, inside the command, so the command's undo takes it back too.
                 FollowWritten([project.Path]);
+            }
+            if (problem is null && await UnlandedAsync(made) is { } unlanded)
+            {
+                problem = unlanded.Message;
             }
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
@@ -166,15 +175,15 @@ public partial class MainWindow
         {
             if (await dialog.ShowDialog<bool?>(this) == true)
             {
-                AddDockerCompose([.. dialog.Projects.Where(p => p.IsChosen).Select(p => (string)p.Value)], [.. dialog.Services.Where(s => s.IsChosen).Select(s => (string)s.Value)]);
+                await AddDockerComposeAsync([.. dialog.Projects.Where(p => p.IsChosen).Select(p => (string)p.Value)], [.. dialog.Services.Where(s => s.IsChosen).Select(s => (string)s.Value)]);
             }
         }
     }
 
     /// <summary>Writes the solution's compose.yaml for the projects given, beside the backing services named (postgres,
     /// redis...) that their packages point to, listed in the solution's Solution Items; a project with no Dockerfile gets
-    /// one, and the context a .dockerignore unless it has one. Null once done, else why not.</summary>
-    public string? AddDockerCompose(IReadOnlyList<string> projects, IReadOnlyList<string> services)
+    /// one, and the context a .dockerignore unless it has one. Null once done and landed, else why not.</summary>
+    public async Task<string?> AddDockerComposeAsync(IReadOnlyList<string> projects, IReadOnlyList<string> services)
     {
         if (Solution is not { } solution || DockerContext is not { } context)
         {
@@ -208,11 +217,11 @@ public partial class MainWindow
         string ignore = Path.Combine(context, ".dockerignore");
         List<string> dockerfiles = [];
         string? problem = null;
+        using CommandHistory.Recording made = Editors.Commands.Record("Add Docker Compose");
         try
         {
             Following([.. composed.Select(c => c.Project.Dockerfile), ignore, compose, solution.Path], () =>
             {
-                using CommandHistory.Recording made = Editors.Commands.Record("Add Docker Compose");
                 foreach ((DockerProject project, _, _) in composed.Where(c => c.Existing is null))
                 {
                     WriteNew(made, project.Dockerfile, DockerFiles.Dockerfile(project, context));
@@ -238,6 +247,10 @@ public partial class MainWindow
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             problem = error.Message;
+        }
+        if (problem is null && await UnlandedAsync(made) is { } unlanded)
+        {
+            problem = unlanded.Message;
         }
         ReloadSolution();
         if (problem is not null)

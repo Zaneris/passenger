@@ -421,7 +421,7 @@ public sealed class LocalHistoryTests : IDisposable
                 new { textDocument = new { uri, version = (int?)null }, edits = new[] { new { range = new { start = new { line = 0, character = 0 }, end = new { line = 0, character = 0 } }, newText = Made } } },
             },
         });
-        Passenger.App.CSharp.WorkspaceEdits.ApplyAsCommand(window.EditorArea, edit, "Move to File");
+        MoveToFile(window, edit);
         Assert.Equal(Made, File.ReadAllText(notes));
 
         window.Confirm = (_, _, _) => Task.FromResult(true);
@@ -439,7 +439,7 @@ public sealed class LocalHistoryTests : IDisposable
         try
         {
             Passenger.App.CSharp.WorkspaceEditFailed refused = Assert.Throws<Passenger.App.CSharp.WorkspaceEditFailed>(
-                () => Passenger.App.CSharp.WorkspaceEdits.ApplyAsCommand(window.EditorArea, edit, "Move to File"));
+                () => MoveToFile(window, edit));
             Assert.Equal("Notes.cs is read-only", refused.Message);
             Assert.Equal(Original, File.ReadAllText(notes));
         }
@@ -448,6 +448,13 @@ public sealed class LocalHistoryTests : IDisposable
             new FileInfo(notes).IsReadOnly = false;
         }
         window.Close();
+    }
+
+    /// <summary>A server's edit applied as Move to File applies its own: one command of Undo.</summary>
+    private static void MoveToFile(MainWindow window, System.Text.Json.JsonElement edit)
+    {
+        using Passenger.App.Editors.CommandHistory.Recording recording = window.EditorArea.Commands.Record("Move to File");
+        Passenger.App.CSharp.WorkspaceEdits.ApplyAsCommand(window.EditorArea, edit, recording);
     }
 
     [AvaloniaFact]

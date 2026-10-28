@@ -40,9 +40,12 @@ public partial class MainWindow
         }
     }
 
-    private void AskName(string title, string initial, Func<string, string?> attempt)
+    private void AskName(string title, string initial, Func<string, string?> attempt) => AskName(title, initial, name => Task.FromResult(attempt(name)));
+
+    /// <summary>Asks for a name in a popup, which stays open saying why while <paramref name="attempt"/> refuses it.</summary>
+    private void AskName(string title, string initial, Func<string, Task<string?>> attempt)
     {
-        Vcs.NamePopup popup = new(title, initial, name => Task.FromResult(attempt(name)));
+        Vcs.NamePopup popup = new(title, initial, attempt);
         popups.Show(popup, _ => { });
     }
 
@@ -199,7 +202,7 @@ public partial class MainWindow
     {
         if (TypeRename.NamedAfterFile(Editors, path) is not { } type)
         {
-            AskName("Rename", Path.GetFileName(path), name => Rename(path, name));
+            AskName("Rename", Path.GetFileName(path), name => RenameAsync(path, name));
             return;
         }
         Vcs.NamePopup? popup = null;
@@ -217,7 +220,7 @@ public partial class MainWindow
         string renamed = TypeRename.Stem(name);
         if (!renameType || renamed == type.Name)
         {
-            return Rename(path, name);
+            return await RenameAsync(path, name);
         }
         if (Invalid(name) is { } problem)
         {
@@ -270,11 +273,13 @@ public partial class MainWindow
             // The files nested under it go with it too (Form1.resx with Form1.cs), those that are parts of the type once.
             moves.AddRange(WithDependents(path, name).Where(d => !moves.Any(m => m.From == d.From)));
             List<string> dropped = [];
+            string command = $"Rename {type.Name} to {renamed}";
+            using CommandHistory.Recording recording = Editors.Commands.Record(command);
             int files = Following([.. moves.SelectMany(m => new[] { m.From, m.To }), .. WorkspaceEdits.Paths(made)],
-                () => TypeRename.Apply(Editors, made, moves, $"Rename {type.Name} to {renamed}", asked, dropped,
-                    recording => FollowMoved([.. moves.Select(m => (m.From, PathNames.Canonical(m.To)))], recording)));
+                () => TypeRename.Apply(Editors, made, moves, command, asked, dropped,
+                    moving => FollowMoved([.. moves.Select(m => (m.From, PathNames.Canonical(m.To)))], moving), into: recording));
             Explorer.Reveal(PathNames.Canonical(target));
-            await WorkspaceEdits.LandedAsync(Editors, made, waiting => status.Text = waiting);
+            await WorkspaceEdits.LandedAsync(recording, waiting => status.Text = waiting);
             status.Text = $"Renamed {Path.GetFileName(path)} to {name}, and {type.Name} to {renamed} in {Plural.Of(files, "file")}"
                 + (dropped.Count > 0 ? $", but not in {string.Join(", ", dropped)}: it was edited meanwhile" : string.Empty);
             return null;
@@ -295,18 +300,18 @@ public partial class MainWindow
     }
 
     /// <summary>Rename on a project: its file takes the name, its extension kept, and the solution and the projects
-    /// referencing it follow (<see cref="Rename"/>). Null once renamed, else why not.</summary>
-    public string? RenameProject(string project, string name)
+    /// referencing it follow (<see cref="RenameAsync"/>). Null once renamed, else why not.</summary>
+    public async Task<string?> RenameProjectAsync(string project, string name)
     {
         string extension = Path.GetExtension(project);
-        return Invalid(name) ?? Rename(project, name.EndsWith(extension, StringComparison.OrdinalIgnoreCase) ? name : name + extension);
+        return Invalid(name) ?? await RenameAsync(project, name.EndsWith(extension, StringComparison.OrdinalIgnoreCase) ? name : name + extension);
     }
 
     /// <summary>Renames a file or folder in place, and the files nested under a file with it (Counter.razor.cs going
     /// with Counter.razor). Its open files keep their tabs, splits and undo, saved first, its bookmarks and breakpoints
     /// go with it, and what names it follows (projects' items, the solution, references to a project). Undo in the
-    /// Solution view renames it all back.</summary>
-    public string? Rename(string path, string name)
+    /// Solution view renames it all back, once what it wrote of the files that follow it has landed.</summary>
+    public async Task<string?> RenameAsync(string path, string name)
     {
         if (Invalid(name) is { } problem)
         {
@@ -322,9 +327,9 @@ public partial class MainWindow
         {
             return $"{Path.GetFileName(taken.To)} is already there";
         }
+        using CommandHistory.Recording recording = Editors.Commands.Record($"Rename {Path.GetFileName(path)} to {name}");
         string? failed = Following([.. moves.SelectMany(m => new[] { m.From, m.To })], () =>
         {
-            using CommandHistory.Recording recording = Editors.Commands.Record($"Rename {Path.GetFileName(path)} to {name}");
             foreach ((string from, string to) in moves)
             {
                 if (Editors.MoveFile(from, to) is { } refused)
@@ -343,6 +348,10 @@ public partial class MainWindow
             return failed;
         }
         Explorer.Reveal(PathNames.Canonical(target));
+        if (await recording.LandedAsync(waiting => status.Text = waiting) is [(string unfollowed, Exception refused), ..])
+        {
+            status.Text = $"{Path.GetFileName(unfollowed)} could not follow the files moved: {refused.Message}";
+        }
         return null;
     }
 
@@ -385,7 +394,7 @@ public partial class MainWindow
         {
             return false;
         }
-        if (EditSolution(file => SolutionEdits.RemoveProject(file, project), $"Removed {name} from {solution.Name}") is { } problem)
+        if (await EditSolutionAsync(file => SolutionEdits.RemoveProject(file, project), $"Removed {name} from {solution.Name}") is { } problem)
         {
             status.Text = $"{name} could not be removed: {problem}";
             return false;

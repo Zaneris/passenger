@@ -289,7 +289,7 @@ public sealed class SolutionViewTests : IDisposable
         Assert.DoesNotContain(window.ExplorerView.Tree.Rows, r => r.Kind == NodeKind.ProjectReference);
         Ui.WaitFor(() => problems.FileProblems.Any(p => p.Severity == ProblemSeverity.Error), "the language server's error once the reference is gone", TimeSpan.FromMinutes(2));
 
-        Heard(window, core, () => Assert.Null(window.SetReferences(core, [app])));
+        Heard(window, core, () => Assert.Null(Ui.Await(window.SetReferencesAsync(core, [app]), "the references set")));
         Ui.ChooseFromRowMenu(window, Dependencies(window, "Shop.App"), "Add Reference…");
         dialog = Assert.Single(window.OwnedWindows.OfType<AddReferenceDialog>());
         Assert.False(Assert.Single(dialog.Choices).CanChoose, "A project that references this one was offered, which would make a cycle");
@@ -297,6 +297,34 @@ public sealed class SolutionViewTests : IDisposable
         Ui.Settle();
         Assert.False(dialog.IsVisible, "Escape left the dialog open");
         Assert.True(original.AsSpan().SequenceEqual(File.ReadAllBytes(app)), "Cancelling the dialog changed the project file");
+        window.Close();
+    }
+
+    /// <summary>On Windows Add Reference to a project file another program holds waits for it: while it is held the status
+    /// bar says it waits for that file, never that it added the reference, and once the program lets go the reference is in
+    /// the file and the status bar says it was added.</summary>
+    [AvaloniaFact]
+    public void Add_reference_to_a_project_file_another_program_holds_says_it_waits_and_added_once_the_file_is_let_go()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses to replace or write a file another program holds");
+        string app = Path.Combine(folder, "Shop.App", "Shop.App.csproj");
+        string core = Path.Combine(folder, "Shop.Core", "Shop.Core.csproj");
+        MainWindow window = Open();
+        Ui.WaitFor(() => window.Projects.Any(p => p.Path == PathNames.Canonical(app) && p.IsEvaluated), "MSBuild to evaluate Shop.App");
+        List<string> said = [];
+        using IDisposable following = Ui.FollowStatus(window, said);
+        Task<string?> adding;
+        using (new FileStream(app, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            adding = window.SetReferencesAsync(app, [core]);
+            Ui.PumpUntil(() => said.Any(s => s.StartsWith("Waiting", StringComparison.Ordinal) || s.StartsWith("Added", StringComparison.Ordinal)),
+                "Add Reference to say it waits for the held Shop.App.csproj");
+            Assert.DoesNotContain("Shop.Core.csproj", File.ReadAllText(app), StringComparison.Ordinal);
+        }
+        Assert.Null(Ui.Await(adding, "the reference added once Shop.App.csproj was let go"));
+        Assert.Equal(["Waiting for Shop.App.csproj to be saved…", "Added a reference to Shop.Core to Shop.App"],
+            said.Where(s => s.StartsWith("Waiting", StringComparison.Ordinal) || s.StartsWith("Added", StringComparison.Ordinal) || s.Contains("could not be changed", StringComparison.Ordinal)));
+        Assert.Contains("Shop.Core.csproj", File.ReadAllText(app), StringComparison.Ordinal);
         window.Close();
     }
 
@@ -322,8 +350,8 @@ public sealed class SolutionViewTests : IDisposable
         ProjectModel Project(string path) => window.Projects.First(p => p.Path == PathNames.Canonical(path));
         Ui.WaitFor(() => Project(app).IsEvaluated && Project(core).IsEvaluated, "MSBuild to evaluate the projects as written");
 
-        Heard(window, app, () => Assert.Null(window.SetReferences(app, [lib, core])));
-        Heard(window, core, () => Assert.Null(window.SetReferences(core, [lib, data])));
+        Heard(window, app, () => Assert.Null(Ui.Await(window.SetReferencesAsync(app, [lib, core]), "the references set")));
+        Heard(window, core, () => Assert.Null(Ui.Await(window.SetReferencesAsync(core, [lib, data]), "the references set")));
         Assert.Equal(program.Replace("</Project>", $"  <ItemGroup>{reference}<ProjectReference Include=\"..\\Shop.Core\\Shop.Core.csproj\" /></ItemGroup>\n</Project>", StringComparison.Ordinal),
             File.ReadAllText(app));
         Assert.Equal(Library.Replace("</Project>", $"  <ItemGroup>\n    {reference}<ProjectReference Include=\"..\\Shop.Data\\Shop.Data.csproj\" /></ItemGroup>\n</Project>", StringComparison.Ordinal),
@@ -335,8 +363,8 @@ public sealed class SolutionViewTests : IDisposable
                 $"MSBuild does not load {Path.GetFileName(project)} with the reference added: {Project(project).Problem}");
         }
 
-        Heard(window, app, () => Assert.Null(window.SetReferences(app, [lib])));
-        Heard(window, core, () => Assert.Null(window.SetReferences(core, [lib])));
+        Heard(window, app, () => Assert.Null(Ui.Await(window.SetReferencesAsync(app, [lib]), "the references set")));
+        Heard(window, core, () => Assert.Null(Ui.Await(window.SetReferencesAsync(core, [lib]), "the references set")));
         Assert.Equal<string>(written, [File.ReadAllText(app), File.ReadAllText(core)]);
         window.Close();
     }
@@ -364,7 +392,7 @@ public sealed class SolutionViewTests : IDisposable
         Typing.Replace(window, ">Exe<", ">WinExe<");
         OpenDocument project = window.EditorArea.Active!;
         Assert.True(project.IsModified);
-        Heard(window, app, () => Assert.Null(window.SetReferences(app, [core])));
+        Heard(window, app, () => Assert.Null(Ui.Await(window.SetReferencesAsync(app, [core]), "the references set")));
         Quiet(window);
         string written = File.ReadAllText(app);
         Assert.True(conflicts.Count == 0, $"Passenger's own Add Reference asked which to keep of {string.Join(", ", conflicts)}, as if another program had changed it");
@@ -376,7 +404,7 @@ public sealed class SolutionViewTests : IDisposable
         window.OpenFile(solution);
         Typing.Replace(window, "<Solution>", "<Solution><!-- shop -->");
         OpenDocument slnx = window.EditorArea.Active!;
-        Heard(window, solution, () => Assert.Null(window.AddSolutionFolder(null, "docs")));
+        Heard(window, solution, () => Assert.Null(Ui.Await(window.AddSolutionFolderAsync(null, "docs"), "the solution folder added")));
         Quiet(window);
         written = File.ReadAllText(solution);
         Assert.True(conflicts.Count == 0, $"Passenger's own New Solution Folder asked which to keep of {string.Join(", ", conflicts)}");
@@ -388,7 +416,7 @@ public sealed class SolutionViewTests : IDisposable
         window.OpenFile(app);
         List<string> undoing = Answer(window);
         string notes = Path.Combine(folder, "Shop.App", "notes.txt");
-        Heard(window, app, () => Assert.Null(window.Rename(notes, "readme.txt")));
+        Heard(window, app, () => Assert.Null(Ui.Await(window.RenameAsync(notes, "readme.txt"), "the rename")));
         Quiet(window);
         Assert.Empty(conflicts);
         Assert.Contains("<None Update=\"readme.txt\"", project.Text.Snapshot.ToString(), StringComparison.Ordinal);
@@ -600,7 +628,7 @@ public sealed class SolutionViewTests : IDisposable
         Assert.Equal(["Lines", "Order.cs", "order.cs"], Held(upper));
         Assert.Equal(["Invoice.cs"], Held(lower));
 
-        Assert.Equal("order.cs is already there", window.Rename(order, "order.cs"));
+        Assert.Equal("order.cs is already there", Ui.Await(window.RenameAsync(order, "order.cs"), "the rename"));
         int type = File.ReadAllText(order).IndexOf("Order", StringComparison.Ordinal);
         Assert.Equal("order.cs is already there", Ui.Await(window.RenameWithTypeAsync(order, "order.cs", ("Order", type), renameType: true), "the rename with its type"));
         Assert.Equal(Order, File.ReadAllText(order));
@@ -626,7 +654,7 @@ public sealed class SolutionViewTests : IDisposable
         byte[] original = System.Text.Encoding.Latin1.GetBytes("<?xml version=\"1.0\" encoding=\"windows-1252\"?>\n" + Library.Replace("  <PropertyGroup>", comment + "  <PropertyGroup>", StringComparison.Ordinal));
         File.WriteAllBytes(core, original);
         MainWindow window = Open();
-        Heard(window, core, () => Assert.Null(window.SetReferences(core, [app])));
+        Heard(window, core, () => Assert.Null(Ui.Await(window.SetReferencesAsync(core, [app]), "the references set")));
 
         string written = System.Text.Encoding.Latin1.GetString(File.ReadAllBytes(core));
         Assert.True(written.Contains(comment, StringComparison.Ordinal), $"Adding a reference rewrote the project's Windows-1252 comment:\n{written}");

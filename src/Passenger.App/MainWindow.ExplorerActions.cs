@@ -26,7 +26,7 @@ public partial class MainWindow
         Row(A.NewFolder, "New Folder…", row => AskName("New Folder", string.Empty, name => CreateFolder(NewGoesIn(row)!, name)), Holds);
         // Class, Interface, Record, Struct and Enum share this place, chosen in its popup.
         Row(A.NewType, "Class/Interface…", row => AskType(NewGoesIn(row)!), Holds);
-        Row(A.NewSolutionFolder, "New Solution Folder…", row => AskName("New Solution Folder", string.Empty, name => AddSolutionFolder(row.SolutionPath, name)),
+        Row(A.NewSolutionFolder, "New Solution Folder…", row => AskName("New Solution Folder", string.Empty, name => AddSolutionFolderAsync(row.SolutionPath, name)),
             row => row.Kind is NodeKind.Solution or NodeKind.SolutionFolder ? null : "A solution folder goes in the solution or one of its folders");
         Row(A.AddExistingProject, "Add Existing Project…", row => IdeErrors.Observe(AddExistingProjectsAsync(row.SolutionPath)),
             row => row.Kind is NodeKind.Solution or NodeKind.SolutionFolder ? null : "A project is added to the solution or one of its folders", _ => "Existing Project…");
@@ -133,10 +133,10 @@ public partial class MainWindow
         switch (row)
         {
             case { Kind: NodeKind.SolutionFolder, SolutionPath: { } renaming }:
-                AskName("Rename Solution Folder", row.Name, name => RenameSolutionFolder(renaming, name));
+                AskName("Rename Solution Folder", row.Name, name => RenameSolutionFolderAsync(renaming, name));
                 break;
             case { Kind: NodeKind.Project, Path: { } project }:
-                AskName("Rename Project", Path.GetFileNameWithoutExtension(project), name => RenameProject(project, name));
+                AskName("Rename Project", Path.GetFileNameWithoutExtension(project), name => RenameProjectAsync(project, name));
                 break;
             case { Path: { } path }:
                 AskRename(path);

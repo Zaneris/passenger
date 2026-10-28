@@ -802,6 +802,38 @@ public sealed class IdeErrorsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A rename whose write to a file it changes never lands (refused at once, or on Windows held by another program
+    /// past the save's wait) leaves that file out of its Undo: Undo takes the rest back, the open file's change, with nothing
+    /// to ask, and the file stays as the disk has it.</summary>
+    [AvaloniaFact]
+    public void A_rename_whose_write_to_a_file_never_lands_leaves_that_file_out_of_its_Undo()
+    {
+        string helper = HelperOfProgram(out MainWindow window);
+        List<string> asked = [];
+        window.Confirm = (_, question, _) =>
+        {
+            asked.Add(question);
+            return Task.FromResult(true);
+        };
+        List<string> said = [];
+        using (Unwritable(helper))
+        {
+            Rename(window, "Double");
+            SaidUntil(window, said, s => s.StartsWith("Rename failed", StringComparison.Ordinal), "the rename to say it failed");
+        }
+        Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Contains("Helper.Double(2)", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        }
+        Ui.Run(window, Passenger.Editor.EditorActions.Undo);
+        Assert.True(editor.Document.Snapshot.ToString().Contains("Helper.Twice(2)", StringComparison.Ordinal),
+            $"Undo left the call renamed, the rename's Undo still holding Helper.cs, which it never wrote: {window.Status}");
+        Assert.Empty(asked);
+        Assert.Contains("public static int Twice(int value)", File.ReadAllText(helper), StringComparison.Ordinal);
+        window.Close();
+    }
+
     /// <summary>A program calling Helper.Twice, declared in a file not open (whose path this is), the caret on the call.</summary>
     private string HelperOfProgram(out MainWindow window)
     {

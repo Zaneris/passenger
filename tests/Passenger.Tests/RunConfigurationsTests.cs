@@ -303,6 +303,43 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         }
     }
 
+    /// <summary>On Windows Write to Launch Profile into a launchSettings.json another program holds waits for it: while it
+    /// is held the status bar says it waits for that file and the dialog never says it was written, and once the program
+    /// lets go the arguments are in the profile and the dialog says so.</summary>
+    [AvaloniaFact]
+    public void Write_to_launch_profile_into_a_file_another_program_holds_says_it_waits_and_written_once_the_file_is_let_go()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses to replace or write a file another program holds");
+        string settingsFile = Path.Combine(project, "Properties", "launchSettings.json");
+        Write("Hello/Properties/launchSettings.json", Profiles);
+        MainWindow window = Keeping();
+        List<string> said = [];
+        using IDisposable following = Ui.FollowStatus(window, said);
+        try
+        {
+            RunConfigurationsDialog dialog = window.ShowRunConfigurations();
+            Assert.True(dialog.Choose("Hello: Greet"));
+            Type(dialog.ArgumentsBox, "--name \"Grace Hopper\"");
+            using (new FileStream(settingsFile, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                Ui.Click(dialog.WriteButton, settle: false);
+                Ui.PumpUntil(() => said.Any(s => s.StartsWith("Waiting", StringComparison.Ordinal)) || dialog.Changes.StartsWith("Written", StringComparison.Ordinal),
+                    "Write to Launch Profile to say it waits for the held launchSettings.json");
+                Assert.Equal(Profiles, File.ReadAllText(settingsFile));
+                Assert.False(dialog.Changes.StartsWith("Written", StringComparison.Ordinal), $"The dialog said it wrote the profile while the file was held: {dialog.Changes}");
+            }
+            Ui.PumpUntil(() => dialog.Changes.StartsWith("Written", StringComparison.Ordinal), "the dialog to say it wrote the profile once launchSettings.json was let go");
+            Assert.Equal(["Waiting for launchSettings.json to be saved…"], said.Where(s => s.StartsWith("Waiting", StringComparison.Ordinal)));
+            Assert.Equal("Written to its launch profile in launchSettings.json: Program arguments.", dialog.Changes);
+            Assert.Contains("\"commandLineArgs\": \"--name \\\"Grace Hopper\\\"\"", File.ReadAllText(settingsFile), StringComparison.Ordinal);
+            Ui.Click(dialog.OkButton);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>Write to Launch Profile puts the arguments and a variable changed in place into the profile, the rest of
     /// launchSettings.json (the other profile, a comment, the spacing) byte for byte, and keeps here what the file has no
     /// place for; Undo takes the write back whole: the file as it was, the changes kept with the folder as they were.</summary>

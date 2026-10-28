@@ -543,14 +543,17 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         List<string> dropped = [];
         int files;
-        try
+        using (Passenger.App.Editors.CommandHistory.Recording recording = Editors.Commands.Record(title))
         {
-            files = WorkspaceEdits.ApplyAsCommand(Editors, edit, title, asked, dropped);
-            await WorkspaceEdits.LandedAsync(Editors, edit, null);
-        }
-        catch (WorkspaceEditFailed failed)
-        {
-            throw new InvalidOperationException($"{what} was not applied: {failed.Message}");
+            try
+            {
+                files = WorkspaceEdits.ApplyAsCommand(Editors, edit, recording, asked, dropped);
+                await WorkspaceEdits.LandedAsync(recording, null);
+            }
+            catch (WorkspaceEditFailed failed)
+            {
+                throw new InvalidOperationException($"{what} was not applied: {failed.Message}");
+            }
         }
         await SaveLandedAsync(cancel);
         return $"Applied {what} to {Plural.Of(files, "file")}{unrun}{(dropped.Count > 0 ? $", but not to {string.Join(", ", dropped)}, edited meanwhile" : string.Empty)}";
@@ -1605,7 +1608,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "says why it cannot. input: app.migrations.add's name, updateTo's target; app.saveAsLaunchProfile's configuration (else the chosen one).")]
     public Task<string> IdeAction(string action, string? input = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
         action.StartsWith("app.migrations.", StringComparison.Ordinal) && window.Actions[action] is not null ? await window.MigrationsForAgentAsync(action, input, cancel)
-        : action == AppActions.SaveAsLaunchProfile ? window.SaveAsLaunchProfileForAgent(input)
+        : action == AppActions.SaveAsLaunchProfile ? await window.SaveAsLaunchProfileForAgentAsync(input)
         : input is not null ? throw new InvalidOperationException($"{action} takes no input")
         : window.Actions.Run(action) is { } why ? throw new InvalidOperationException($"{action} did not run: {why}") : $"Ran {action}");
 

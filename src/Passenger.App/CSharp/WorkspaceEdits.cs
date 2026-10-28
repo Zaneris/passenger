@@ -173,15 +173,33 @@ public static class WorkspaceEdits
         return landing;
     }
 
+    /// <summary>Waits within a command's recording for the saves it made of its files not open that are still landing
+    /// (<see cref="CommandHistory.Recording.LandedAsync"/>: a file never written is left out of its Undo),
+    /// <paramref name="waiting"/> told meanwhile which; one that never lands throws <see cref="WorkspaceEditFailed"/>, as
+    /// <see cref="Apply"/> does for a file the disk refuses at once. Whether any was landing.</summary>
+    public static async Task<bool> LandedAsync(CommandHistory.Recording recording, Action<string>? waiting)
+    {
+        bool landing = false;
+        if (await recording.LandedAsync(said =>
+            {
+                landing = true;
+                waiting?.Invoke(said);
+            }) is [(string path, Exception refused), ..])
+        {
+            throw new WorkspaceEditFailed(Unwritten(path, refused));
+        }
+        return landing;
+    }
+
     /// <summary>What a change says of a file the disk would not take.</summary>
     internal static string Unwritten(string path, Exception error) => $"{Path.GetFileName(path)} could not be written: {error.Message}";
 
-    /// <summary>The edit applied as one command of <see cref="EditorArea.Commands"/> under a name (a fix all's title):
+    /// <summary>The edit applied within a command of <see cref="EditorArea.Commands"/> its caller records (a fix all's,
+    /// under its title), which waits for its writes before it ends (<see cref="LandedAsync(CommandHistory.Recording, Action{string}?)"/>):
     /// the files not open that it writes or makes are followed, so Undo takes all of it back at once, where they could
     /// otherwise come back only from Local History. The number of files changed.</summary>
-    public static int ApplyAsCommand(EditorArea editors, JsonElement edit, string name, Asked? asked = null, List<string>? dropped = null)
+    public static int ApplyAsCommand(EditorArea editors, JsonElement edit, CommandHistory.Recording recording, Asked? asked = null, List<string>? dropped = null)
     {
-        using CommandHistory.Recording recording = editors.Commands.Record(name);
         foreach (FileEdits change in Shapes.WorkspaceEdit(edit))
         {
             if (change.Operation is not { } operation)

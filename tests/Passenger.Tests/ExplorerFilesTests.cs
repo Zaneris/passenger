@@ -52,13 +52,13 @@ public sealed class ExplorerFilesTests : IDisposable
         Assert.Contains(window.ExplorerView.Tree.Rows, r => r.Name == "Order.cs");
         Assert.Equal("Order.cs is already there", window.CreateFile(models, "Order.cs", string.Empty));
 
-        Assert.Null(window.Rename(order, "Purchase.cs"));
+        Assert.Null(Ui.Await(window.RenameAsync(order, "Purchase.cs"), "the rename"));
         string purchase = Path.Combine(models, "Purchase.cs");
         Assert.True(File.Exists(purchase));
         Assert.False(File.Exists(order));
         Assert.Equal(["Purchase.cs"], window.EditorArea.Documents.Select(d => d.Name));
 
-        Assert.Null(window.Rename(models, "Domain"));
+        Assert.Null(Ui.Await(window.RenameAsync(models, "Domain"), "the rename"));
         Assert.Equal(PathNames.Canonical(Path.Combine(folder, "Domain", "Purchase.cs")), Assert.Single(window.EditorArea.Documents).Path);
 
         window.Confirm = (_, _, _) => Task.FromResult(true);
@@ -77,7 +77,7 @@ public sealed class ExplorerFilesTests : IDisposable
         window.OpenFile(Path.Combine(domain, "Beta.cs"));
         window.OpenFile(Path.Combine(domain, "Alpha.cs"));
         Ui.Settle();
-        Assert.Null(window.Rename(domain, "Models"));
+        Assert.Null(Ui.Await(window.RenameAsync(domain, "Models"), "the rename"));
         Assert.Equal(PathNames.Canonical(Path.Combine(folder, "Models", "Alpha.cs")), window.EditorArea.Active?.Path);
         Assert.Equal(2, window.EditorArea.Documents.Count);
 
@@ -236,7 +236,7 @@ public sealed class ExplorerFilesTests : IDisposable
 
         bool heard = false;
         window.FolderWatcher!.Changed += (_, changes) => heard |= changes.Paths.Any(p => Path.GetFileName(p) is "Order.cs" or "Purchase.cs");
-        Assert.Null(window.Rename(order, "Purchase.cs"));
+        Assert.Null(Ui.Await(window.RenameAsync(order, "Purchase.cs"), "the rename"));
         // The folder watcher hears of the move after it, and must not take it for the file deleted.
         Ui.WaitFor(() => heard, "the folder watcher to hear of the move");
         Ui.Settle();

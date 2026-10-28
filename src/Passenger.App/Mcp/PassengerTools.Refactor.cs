@@ -421,6 +421,11 @@ public sealed partial class PassengerTools
                     }
                 }
             }
+            foreach ((string unsaved, Exception refused) in await recording.LandedAsync(null))
+            {
+                tidied.RemoveAll(t => t.Path == Relative(unsaved));
+                left.Add($"{Relative(unsaved)}: it could not be saved: {refused.Message}");
+            }
         }
         await LandedAsync(cancel);
         return new RefactorAnswer(kind, $"{name} changed {tidied.Count} of the {Plural.Of(files.Count, "C# file")} of the {scope}", tidied, left);

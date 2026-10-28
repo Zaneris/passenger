@@ -49,7 +49,7 @@ public partial class MainWindow
         {
             Folder = Folder,
             ReadServices = ReadServices(Projects, Engine),
-            WriteToProfile = WriteToLaunchProfile,
+            WriteToProfile = WriteToLaunchProfileAsync,
             Actions = Actions,
             ReadAspireServices = ReadAspireConfigurationResourcesAsync,
         };
@@ -69,8 +69,8 @@ public partial class MainWindow
     /// <summary>Edit Configurations' Write to Launch Profile: what of a generated configuration's changes its launch profile
     /// has a place for written into the project's launchSettings.json (saved first if open, taken in after), the rest still
     /// kept with the folder; one command Undo takes back whole, the file and the changes kept here as they were. The
-    /// configuration as it then stands, or why not.</summary>
-    public (RunConfiguration? Configuration, string? Problem) WriteToLaunchProfile(string name)
+    /// configuration as it then stands once the file has landed, or why not.</summary>
+    public async Task<(RunConfiguration? Configuration, string? Problem)> WriteToLaunchProfileAsync(string name)
     {
         RunConfigurations configurations = session.Configurations;
         if (configurations.All.FirstOrDefault(c => c.Generated && string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase)) is not { Source: { } source } edited)
@@ -108,6 +108,10 @@ public partial class MainWindow
         {
             // Open, it takes the text now, inside the command, so the command's undo takes it back too.
             FollowWritten([path]);
+        }
+        if (problem is null && await UnlandedAsync(made) is { } unlanded)
+        {
+            problem = unlanded.Message;
         }
         if (problem is not null)
         {
@@ -171,13 +175,13 @@ public partial class MainWindow
 
     /// <summary>Save as Launch Profile, from Edit Configurations (the dialog applied first, then shown as it then stands) or
     /// Find Action (the toolbar's configuration, what was done said in the status bar).</summary>
-    private void ShareChosen()
+    private async Task ShareChosenAsync()
     {
         if (RunConfigurationsDialog is not { } dialog)
         {
             if (Configuration is { } chosen)
             {
-                (RunConfiguration? shared, string said) = SaveAsLaunchProfile(chosen.Name);
+                (RunConfiguration? shared, string said) = await SaveAsLaunchProfileAsync(chosen.Name);
                 status.Text = shared is null ? said : said + KeptOf(shared);
             }
             return;
@@ -186,7 +190,7 @@ public partial class MainWindow
         {
             return;
         }
-        (RunConfiguration? now, string done) = SaveAsLaunchProfile(listed.Name);
+        (RunConfiguration? now, string done) = await SaveAsLaunchProfileAsync(listed.Name);
         RunConfigurations configurations = session.Configurations;
         dialog.Took([.. configurations.All.Where(c => c.Generated)], configurations.Own, now, done);
     }
@@ -199,7 +203,7 @@ public partial class MainWindow
 
     /// <summary>An agent's Save as Launch Profile (ide_action) of one of the folder's own configurations by name, else the
     /// one chosen: what was done, or why not as an <see cref="InvalidOperationException"/>.</summary>
-    public string SaveAsLaunchProfileForAgent(string? name)
+    public async Task<string> SaveAsLaunchProfileForAgentAsync(string? name)
     {
         string? why = RunConfigurationsDialog is not null ? "Run/Debug Configurations is open in the window, its changes not yet applied"
             : name is null && Configuration is null ? "No run configuration is chosen"
@@ -208,7 +212,7 @@ public partial class MainWindow
         {
             throw new InvalidOperationException($"{AppActions.SaveAsLaunchProfile} did not run: {why}");
         }
-        (RunConfiguration? shared, string said) = SaveAsLaunchProfile(name ?? Configuration!.Name);
+        (RunConfiguration? shared, string said) = await SaveAsLaunchProfileAsync(name ?? Configuration!.Name);
         return shared is null ? throw new InvalidOperationException($"{AppActions.SaveAsLaunchProfile} did not run: {said}") : said + KeptOf(shared);
     }
 
@@ -216,8 +220,8 @@ public partial class MainWindow
     /// project's launchSettings.json (saved first if open, taken in after; made in dotnet new's shape if the project has
     /// none), and from then on the configuration that profile generates, what the profile has no place for kept with the
     /// folder as its change; one command Undo takes back whole. The configuration as it then stands, with what was done,
-    /// or null with why not.</summary>
-    public (RunConfiguration? Configuration, string Said) SaveAsLaunchProfile(string name)
+    /// or null with why not, once the file has landed.</summary>
+    public async Task<(RunConfiguration? Configuration, string Said)> SaveAsLaunchProfileAsync(string name)
     {
         RunConfigurations configurations = session.Configurations;
         if (configurations.Own.FirstOrDefault(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase)) is not { } mine)
@@ -258,6 +262,10 @@ public partial class MainWindow
         {
             // Open, it takes the text now, inside the command, so the command's undo takes it back too.
             FollowWritten([path]);
+        }
+        if (problem is null && await UnlandedAsync(made) is { } unlanded)
+        {
+            problem = unlanded.Message;
         }
         if (problem is not null)
         {

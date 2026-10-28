@@ -106,7 +106,7 @@ public partial class MainWindow
         view.DiffRequested += (_, path) => IdeErrors.Observe(ShowDiffAsync(path));
         view.RollbackRequested += (_, changes) => IdeErrors.Observe(RollbackAsync(changes));
         view.DeleteRequested += (_, path) => IdeErrors.Observe(DeleteAsync(path));
-        view.IgnoreRequested += (_, path) => Ignore(path);
+        view.IgnoreRequested += (_, path) => IdeErrors.Observe(IgnoreAsync(path));
         view.ResolveRequested += (_, _) => ShowConflicts();
         view.MergeRequested += (_, path) => IdeErrors.Observe(MergeAsync(path));
         view.Confirm = (title, text, yes) => Confirm(title, text, yes);
@@ -614,8 +614,8 @@ public partial class MainWindow
 
     /// <summary>Add to .gitignore: the file's path from the repository's top, a line of its .gitignore, which keeps its
     /// encoding, byte order mark and line breaks and is written as a save writes (through a temporary file, to Local
-    /// History); open with unsaved edits, it is saved first, and shows the line after.</summary>
-    private void Ignore(string path)
+    /// History); open with unsaved edits, it is saved first, and shows the line after; said once the write has landed.</summary>
+    private async Task IgnoreAsync(string path)
     {
         if (session.Vcs.Repository is not { } repository)
         {
@@ -639,6 +639,11 @@ public partial class MainWindow
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             status.Text = $".gitignore was not changed: {error.Message}";
+            return;
+        }
+        if (await UnlandedAsync([ignore]) is { } refused)
+        {
+            status.Text = $".gitignore was not changed: {refused.Message}";
             return;
         }
         FollowWritten([ignore]);

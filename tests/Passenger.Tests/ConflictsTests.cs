@@ -402,6 +402,52 @@ public sealed class ConflictsTests : IDisposable
         return dialog;
     }
 
+    /// <summary>On Windows the merge window's Apply into a file another program holds waits for it before git marks it
+    /// resolved: while it is held the status bar says it waits for that file and git still has it in conflict, and once the
+    /// program lets go the file holds the result, resolved.</summary>
+    [AvaloniaFact]
+    public void Merge_apply_into_a_file_another_program_holds_says_it_waits_and_resolves_it_once_the_file_is_let_go()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses to replace or write a file another program holds");
+        Git("switch", "-q", "-c", "feature");
+        Write("Prices.cs", Prices.Replace("Base() => 10", "Base() => 12", StringComparison.Ordinal));
+        Git("commit", "-q", "-am", "Feature prices");
+        Git("switch", "-q", "main");
+        Write("Prices.cs", Prices.Replace("Base() => 10", "Base() => 11", StringComparison.Ordinal));
+        Git("commit", "-q", "-am", "Main prices");
+        Conflicting("merge", "feature");
+
+        MainWindow window = Open();
+        Assert.True(window.Perform(AppActions.ResolveConflicts), window.Status);
+        Ui.Settle();
+        ConflictsDialog dialog = Assert.IsType<ConflictsDialog>(window.Frontmost);
+        dialog.Chosen = [dialog.Rows.Single(r => r.Conflict.Name == "Prices.cs")];
+        Press(dialog, "Merge…");
+        Ui.Landed(() => window.Frontmost is MergeWindow, "the merge window");
+        MergeWindow merge = (MergeWindow)window.Frontmost!;
+        MergeView view = merge.View;
+        Click(merge, view, view.IconAt(0, MergeSide.Left, ignore: false));
+        Click(merge, view, view.IconAt(0, MergeSide.Right, ignore: true));
+        Assert.Equal((0, 0), (view.UnresolvedChanges, view.UnresolvedConflicts));
+        string merged = Prices.Replace("Base() => 10", "Base() => 11", StringComparison.Ordinal);
+        List<string> said = [];
+        using IDisposable following = Ui.FollowStatus(window, said);
+        using (new FileStream(Path.Combine(folder, "Prices.cs"), FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            Button apply = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(merge).OfType<Button>().First(b => (b.Content as string) == "Apply Changes");
+            Ui.Click(apply, settle: false);
+            Ui.PumpUntil(() => said.Any(s => s.StartsWith("Waiting", StringComparison.Ordinal) || s.EndsWith("resolved", StringComparison.Ordinal)),
+                "Apply to say it waits for the held Prices.cs");
+            Assert.Equal(["Prices.cs"], Unmerged());
+        }
+        Ui.Landed(() => !merge.IsVisible, "the merge window closed once Prices.cs was let go");
+        Assert.Equal(["Waiting for Prices.cs to be saved…", "Prices.cs resolved"],
+            said.Where(s => s.StartsWith("Waiting", StringComparison.Ordinal) || s.StartsWith("Prices.cs", StringComparison.Ordinal)));
+        Assert.Equal(merged, Read("Prices.cs"));
+        Assert.Empty(Unmerged());
+        window.Close();
+    }
+
     /// <summary>Clicks a merge window where its view draws something (a change's arrow or X), as the person clicks it.</summary>
     private static void Click(MergeWindow merge, MergeView view, Point? at)
     {

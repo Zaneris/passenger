@@ -623,10 +623,12 @@ internal sealed partial class XamlAssist : LanguageAssist
         JsonElement edit = JsonSerializer.SerializeToElement(new { changes }, Json.Options);
         List<string> dropped = [];
         int files;
+        string named = $"Rename {old} to {name}";
+        using CommandHistory.Recording recording = context.Editors.Commands.Record(named);
         try
         {
-            files = TypeRename.Apply(context.Editors, edit, [], $"Rename {old} to {name}", asked, dropped);
-            await WorkspaceEdits.LandedAsync(context.Editors, edit, context.Say);
+            files = TypeRename.Apply(context.Editors, edit, [], named, asked, dropped, into: recording);
+            await WorkspaceEdits.LandedAsync(recording, context.Say);
         }
         catch (WorkspaceEditFailed failed)
         {
