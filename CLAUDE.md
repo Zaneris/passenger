@@ -127,7 +127,9 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
   Directory.Packages.props before writing it and loads what it wrote after (`SaveBeforeWriting`, `FollowWritten`). A
   change of several files, or one that moves a file, is one command of global undo (`EditorArea.Commands.Record`), and
   the window follows only what a change of files made, moved or deleted (`Following`, `CameOrWent`), never a whole
-  re-read of the folder. Server edits pass `LineEndings.Fit` then `Indentation.Fit`.
+  re-read of the folder. Server edits pass `LineEndings.Fit` then `Indentation.Fit`. A save Windows refuses while another
+  program holds the file lands in the background, in order (`FileText.Landed`; `FileText.Read` gives its bytes meanwhile),
+  and what hands the files to another program (a build, Git, a restore, an agent) waits for it (`SaveAllLandedAsync`).
 - **State is a `StateDocument`** in the one `StateStore` (versioned `Upgrades`, `Clamped`, written debounced and merged,
   a bad file set aside as `.bad`), read off the UI thread; never a file of its own. Per-folder state lives under
   `workspaces/<name>-<hash>/` and is made in `ProjectSession`. A new setting: an `AppSettings` property, its row and
@@ -292,7 +294,7 @@ site-shots` retakes its images.
   the profile whatever the environment says (those tests skip there).
 - **Windows**: a folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
   outlive it, so a child whose descendants must end with it is held with `ChildProcesses.HoldFamily`; a write waits out a
-  reader that shares no writes for up to 2 s (`FileText.WhileHeld`); closing a socket
+  reader that shares no writes for up to 2 s, off the window's thread (`FileText.WhileHeldAsync`); closing a socket
   with unread input resets it, losing what was written (servers shut their side and drain first); the diagnostics library
   leaves a profiler pipe open after its listener goes (`ProfilingSession.CloseLeftListener` closes it, by reflection).
 - **macOS**: a variadic libc call through P/Invoke (`fcntl`, `ioctl` with an argument) loses its variadic arguments on

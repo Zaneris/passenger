@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Passenger.App.Discord;
 using Passenger.Core;
+using Passenger.Text;
 using Passenger.Workspace;
 
 namespace Passenger.App;
@@ -188,7 +189,7 @@ public static class PassengerApp
                 window.Close();
                 if (window.IsVisible)
                 {
-                    if (window.AsksBeforeClosing)
+                    if (window.ClosesLater)
                     {
                         quitGivenUp += givenUp;
                     }
@@ -262,8 +263,8 @@ public static class PassengerApp
         {
             ending = [.. Ending];
         }
-        // Main's last act before the process ends, with no loop left to await on.
-        Synchronously.Run(() => Task.WhenAll(ending));
+        // Main's last act before the process ends, with no loop left to await on; a save still landing is never cut short.
+        Synchronously.Run(() => Task.WhenAll([.. ending, FileText.AllLanded()]));
         updates?.InstallUpdate();
     }
 

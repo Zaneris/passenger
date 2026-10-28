@@ -140,7 +140,7 @@ public partial class MainWindow
         VcsController vcs = next.Vcs;
         commitView?.Bind(vcs);
         gitView?.Bind(vcs);
-        vcs.SaveFirst = () => Editors.SaveAll();
+        vcs.SaveFirst = Editors.SaveAllLandedAsync;
         vcs.Message += (_, message) =>
         {
             if (session == next)

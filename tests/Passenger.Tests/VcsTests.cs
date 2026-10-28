@@ -1191,6 +1191,35 @@ public sealed class VcsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Windows refuses a save while another program holds the file sharing neither writes nor its deletion, and
+    /// a commit is made at once: the commit waits for the save to land, saying so, and commits the saved text, never the
+    /// file as it was on disk.</summary>
+    [AvaloniaFact]
+    public void A_commit_made_while_a_held_files_save_lands_waits_for_it_and_commits_the_saved_text()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses to replace or write a file another program holds");
+        string shop = Path.Combine(folder, "Shop.cs");
+        File.WriteAllText(shop, "public " + Original);
+        MainWindow window = Open();
+        Ui.Landed(() => window.Vcs.Changes.Any(c => c.Name == "Shop.cs"), "Shop.cs listed as changed");
+        window.EditorArea.CodeEditor.Selections = SelectionSet.Single(0);
+        window.KeyTextInput("sealed ");
+        Ui.Settle();
+        Task<CommitResult> commit;
+        using (new FileStream(shop, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            Ui.Press(window, Ui.Shortcut(AppActions.Save), settle: false);
+            Ui.PumpUntil(() => !window.EditorArea.Active!.IsModified, "the window to take the held file's save", TimeSpan.FromSeconds(10));
+            commit = window.Vcs.CommitAsync([.. window.Vcs.Changes.Where(c => c.Name == "Shop.cs")], "Sealed", amend: false, push: false);
+            Ui.PumpUntil(() => window.Actions.Work.Latest?.Stage == "Waiting for Shop.cs to be saved…", "the commit to wait for Shop.cs's save", TimeSpan.FromSeconds(10));
+        }
+        CommitResult made = Ui.Landed(commit, "the commit made once Shop.cs was saved");
+        Assert.True(made.Succeeded, made.Commit.Message);
+        string committed = Git("show", "HEAD:Shop.cs").ReplaceLineEndings("\n");
+        Assert.True(committed == "sealed public " + Original, $"The commit took Shop.cs as it was before the save: '{committed}'");
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void A_save_leaves_the_explorers_chosen_rows_the_git_log_and_go_to_file_as_they_were()
     {

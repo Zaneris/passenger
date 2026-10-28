@@ -272,8 +272,17 @@ public sealed class OpenDocument : Observable
         EncodingWarning = unheld is null ? null : $"{EncodingName} cannot hold '{unheld}': the next save writes {Name} as UTF-8";
     }
 
-    /// <summary>Raised after a save, so the language server hears of it.</summary>
+    /// <summary>Raised after a save, once the file holds what it wrote, so the language server hears of it.</summary>
     public event EventHandler? Saved;
+
+    /// <summary>The last save still on its way to the disk, Windows having refused it at first while another program held
+    /// the file (<see cref="FileText.Landed(string)"/>): ends once it lands (true), or once its text is taken for unsaved
+    /// again. Null, or ended, when every save has landed.</summary>
+    public Task<bool>? Landing { get; private set; }
+
+    /// <summary>Where the text was saved before the saves still landing, which the text is taken as saved at again when
+    /// the last of them never lands.</summary>
+    private SaveMark landingFrom;
 
     /// <summary>A parse of the C# text as it stands landed (<see cref="CSharpHighlighter.Parsed"/>), for work on its
     /// syntax off the UI thread.</summary>
@@ -287,8 +296,9 @@ public sealed class OpenDocument : Observable
     /// the status bar says of it.</summary>
     public event EventHandler<string>? Converted;
 
-    /// <summary>Raised when an undo or redo of a line separator or encoding change could not write the file, with what the
-    /// status bar says; the file is left modified, for the next save to try again.</summary>
+    /// <summary>Raised when an undo or redo of a line separator or encoding change could not write the file, or a save never
+    /// landed (<see cref="Landing"/>), with what the status bar says; the file is left modified, for the next save to try
+    /// again.</summary>
     public event EventHandler<string>? WriteFailed;
 
     /// <summary>Colours from the in-process parser, replaced by the language server's layered over it
@@ -1278,20 +1288,48 @@ public sealed class OpenDocument : Observable
     private void Write(Encoding encoding, bool bom, bool makeFolder = false) =>
         Wrote(FileText.Save(Path, Text.Snapshot.ToString(), encoding, bom, crBreaks, makeFolder));
 
-    /// <summary>Takes how a write stored the file, which now holds the text.</summary>
+    /// <summary>Takes how a write stored the file, which now holds the text, or will once the save lands.</summary>
     private void Wrote((FileText Written, string? Converted) write)
     {
         (FileText written, string? converted) = write;
         StoreAs(written);
         // Written, the text is in the encoding it was written in.
         EncodingWarning = null;
+        SaveMark was = Landing is { IsCompleted: false } ? landingFrom : Text.LastSave;
         Text.MarkSaved();
         Raise(nameof(IsModified));
-        Saved?.Invoke(this, EventArgs.Empty);
+        if (FileText.Landed(Path) is { } landing)
+        {
+            landingFrom = was;
+            Landing = LandedAsync(landing, was, Text.Saved);
+            IdeErrors.Observe(Landing);
+        }
+        else
+        {
+            Saved?.Invoke(this, EventArgs.Empty);
+        }
         if (converted is not null)
         {
             Converted?.Invoke(this, converted);
         }
+    }
+
+    /// <summary>A save on its way to the disk: once it lands, the save is told; once it never will, the text it wrote is
+    /// unsaved again and why is said, unless a later save is on its way after it.</summary>
+    private async Task<bool> LandedAsync(Task<Exception?> landing, SaveMark was, TextSnapshot written)
+    {
+        if (await landing is not { } refused)
+        {
+            Saved?.Invoke(this, EventArgs.Empty);
+            return true;
+        }
+        if (ReferenceEquals(Text.Saved, written))
+        {
+            Text.MarkSaved(was);
+            Raise(nameof(IsModified));
+            WriteFailed?.Invoke(this, $"{Name} could not be saved: {refused.Message}");
+        }
+        return false;
     }
 
     /// <summary>Takes how the file is stored now, unless that is what it has already in all but name (ASCII reads as

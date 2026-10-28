@@ -238,11 +238,71 @@ public sealed class FileTests : IDisposable
         using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
         {
             window.Close();
-            Assert.False(window.IsVisible, $"Quitting stopped at a file another program was reading: {window.Status}");
+            Ui.WaitFor(() => !window.IsVisible, () => $"Quitting stopped at a file another program was reading: {window.Status}");
         }
         Assert.Equal("public class One { }\n", File.ReadAllText(path));
         Assert.Empty(Directory.EnumerateFiles(folder, "*" + FileText.SaveSuffix));
     }
+
+    /// <summary>Windows refuses a save while another program holds the file sharing neither writes nor its deletion, as a
+    /// build reading it does: the save lands once the program lets go, the window's thread running on meanwhile, a save
+    /// made meanwhile landing after it, and Local History keeping each one's old bytes.</summary>
+    [AvaloniaFact]
+    public void A_save_of_a_file_another_program_holds_lands_once_it_lets_go_the_windows_thread_free_and_a_later_save_after_it()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses to replace or write a file another program holds");
+        string path = Path.Combine(folder, "One.cs");
+        File.WriteAllText(path, "class One { }\n");
+        MainWindow window = Open();
+        Edit(window, "One.cs", "public ");
+        using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            Ui.Press(window, Ui.Shortcut(AppActions.Save), settle: false);
+            Ui.PumpUntil(() => !window.EditorArea.Active!.IsModified, "the window to take the held file's save and run on", TimeSpan.FromSeconds(10));
+            window.EditorArea.CodeEditor.Selections = Text.SelectionSet.Single(0);
+            window.KeyTextInput("sealed ");
+            Ui.Press(window, Ui.Shortcut(AppActions.Save), settle: false);
+            Ui.PumpUntil(() => !window.EditorArea.Active!.IsModified, "the window to take the second save", TimeSpan.FromSeconds(10));
+            Assert.True(File.ReadAllText(path) == "class One { }\n", "A save landed in a file another program held, sharing no writes");
+        }
+        Ui.WaitFor(() => File.ReadAllText(path) == "sealed public class One { }\n", () => $"the saves to land once the file was let go: '{File.ReadAllText(path)}', {window.Status}");
+        Assert.Empty(Directory.EnumerateFiles(folder, "*" + FileText.SaveSuffix));
+        Passenger.App.History.LocalHistory history = window.LocalHistory!;
+        string canonical = PathNames.Canonical(path);
+        Ui.WaitFor(() => history.Snapshot().Events.Count(e => e.Kind == Passenger.App.History.HistoryKind.Changed && e.Path == canonical) >= 2, "Local History to keep both saves");
+        List<string> kept = [.. history.Snapshot().Events.Where(e => e.Kind == Passenger.App.History.HistoryKind.Changed && e.Path == canonical)
+            .Select(e => $"{Kept(history, e.Before)} -> {Kept(history, e.After)}")];
+        Assert.Equal(["class One { }\n -> public class One { }\n", "public class One { }\n -> sealed public class One { }\n"], kept);
+        window.Close();
+    }
+
+    /// <summary>A save another program holds the file against for longer than the save waits never lands: its changes are
+    /// unsaved again, and the status bar says why.</summary>
+    [AvaloniaFact]
+    public void A_save_of_a_file_held_past_its_wait_leaves_its_changes_unsaved_and_says_why()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses to replace or write a file another program holds");
+        string path = Path.Combine(folder, "One.cs");
+        File.WriteAllText(path, "class One { }\n");
+        MainWindow window = Open();
+        Edit(window, "One.cs", "public ");
+        using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            Ui.Press(window, Ui.Shortcut(AppActions.Save), settle: false);
+            Ui.PumpUntil(() => !window.EditorArea.Active!.IsModified, "the window to take the held file's save", TimeSpan.FromSeconds(10));
+            Ui.PumpUntil(() => window.EditorArea.Active!.IsModified, "the held save to give up and leave its changes unsaved");
+        }
+        Assert.StartsWith("One.cs could not be saved: ", window.Status, StringComparison.Ordinal);
+        Assert.Equal("class One { }\n", File.ReadAllText(path));
+        Assert.Empty(Directory.EnumerateFiles(folder, "*" + FileText.SaveSuffix));
+        window.Close();
+        Ui.WaitFor(() => !window.IsVisible, () => $"the window to close, saving the file let go: {window.Status}");
+        Assert.Equal("public class One { }\n", File.ReadAllText(path));
+    }
+
+    /// <summary>The text of bytes Local History kept, by their hash.</summary>
+    private static string? Kept(Passenger.App.History.LocalHistory history, string? hash) =>
+        hash is not null && history.Content(hash) is { } bytes ? Encoding.UTF8.GetString(bytes) : null;
 
     /// <summary>A save writes its temporary file under a name of its own, made new, so a link a cloned repository
     /// carries under a fixed name (One.cs.passenger-save) never takes the save elsewhere.</summary>

@@ -340,7 +340,33 @@ public sealed partial class BuildRunController
         BackgroundWork.Track(building.Task);
         // A build is a start Stop ends, as the Build window's Stop does; held until it ends, whoever began it.
         buildWork = work ?? parts.Work.Begin(AppActions.Build, $"Building {together?.Shown ?? Path.GetFileName(buildQueue.Peek())}…");
-        BuildNext(first: true);
+        if (FileText.Landings().Count == 0)
+        {
+            BuildNext(first: true);
+        }
+        else
+        {
+            IdeErrors.Observe(BuildLandedAsync());
+        }
+    }
+
+    /// <summary>Starts the build once the saves still landing have (<see cref="EditorArea.LandedAsync"/>), so it compiles what
+    /// was saved: one that never lands, or a stop meanwhile, ends the build unstarted, saying why.</summary>
+    private async Task BuildLandedAsync()
+    {
+        Working? work = buildWork;
+        if (await EditorArea.LandedAsync(work, work?.Stopping ?? CancellationToken.None) is { } unsaved)
+        {
+            FinishBuild(work is { IsStopped: true } ? new BuildOutcome(BuildStatus.Stopped, "Build stopped") : new BuildOutcome(BuildStatus.NotStarted, unsaved));
+        }
+        else if (session.IsEnded)
+        {
+            FinishBuild(new BuildOutcome(BuildStatus.NotStarted, "Nothing to build: no folder is open"));
+        }
+        else
+        {
+            BuildNext(first: true);
+        }
     }
 
     /// <summary>Whether a build opens the Build window as it starts, as Settings says: a test run's never; the status bar
@@ -626,7 +652,10 @@ public sealed partial class BuildRunController
                 }
                 continue;
             }
-            parts.Editors.SaveAll();
+            if (await parts.Editors.SaveAllLandedAsync(work, stopping) is { } unsaved)
+            {
+                return stopping.IsCancellationRequested ? new BuildOutcome(BuildStatus.Stopped, "Build stopped") : new BuildOutcome(BuildStatus.NotStarted, unsaved);
+            }
             bool windows = WindowsTargeting(projects);
             string state = parts.StateFolder();
             (UpToDate.Check?[] found, side) = await BackgroundWork.Run(async () => (
@@ -725,7 +754,10 @@ public sealed partial class BuildRunController
         using IDisposable held = BackgroundWork.Scope();
         try
         {
-            parts.Editors.SaveAll();
+            if (await parts.Editors.SaveAllLandedAsync(work, work.Stopping) is { } unsaved)
+            {
+                return Said(unsaved);
+            }
             parts.Views.Run.Clear();
             // dotnet watch builds the project itself, and runs it again after an edit it cannot apply.
             bool watched = (hotReload ?? parts.Settings().HotReload) && chosen.Program.Length == 0;
@@ -961,7 +993,10 @@ public sealed partial class BuildRunController
             using CancellationTokenRegistration requestedStop = cancellation.Register(work.Cancel);
             try
             {
-                parts.Editors.SaveAll();
+                if (await parts.Editors.SaveAllLandedAsync(work, work.Stopping) is { } unsaved)
+                {
+                    return Said(unsaved);
+                }
                 RunConfiguration configuration = arguments is null ? chosen : chosen with { Arguments = arguments };
                 // A start of the same AppHosts under way (Run's, as Debug begins) ends first.
                 using StartTaken? taken = await TakeStartAsync([configuration.Project, .. configuration.LinkedAppHosts], work);
@@ -1118,7 +1153,10 @@ public sealed partial class BuildRunController
         {
             try
             {
-                parts.Editors.SaveAll();
+                if (await parts.Editors.SaveAllLandedAsync(work, work.Stopping) is { } unsaved)
+                {
+                    return Said(unsaved);
+                }
                 AspireAppRun[] apps = session.Aspire.Apps.Where(app => app.Group == main.Group && !app.Stopping).ToArray();
                 // Each service with when the build it runs began: its own restart's, else its AppHost's.
                 (AspireAppRun App, (AspireResourceRun Service, DateTime Since)[] Running)[] runs = [.. apps.Select(app => (app,

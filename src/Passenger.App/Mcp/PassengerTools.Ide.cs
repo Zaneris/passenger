@@ -228,6 +228,10 @@ public sealed partial class PassengerTools
                 said.Add($"{Relative(open.Path)} is changed in the editor but could not be saved");
             }
         }
+        if (await Passenger.App.Editors.EditorArea.LandedAsync(null, cancel) is { } unlanded)
+        {
+            said.Add(unlanded);
+        }
         if (done.NotReplaced(Relative) is { } refused)
         {
             said.Add(refused);
@@ -279,6 +283,10 @@ public sealed partial class PassengerTools
         document.Text.Edit(edits, document.Selections, TextEditing.MapThrough(document.Selections, edits));
         document.Text.BreakUndoGroup();
         string saved = Editors.Save(document) ? "saved" : FileText.IsReadOnly(document.Path) ? "not saved: the file is read-only" : "not saved: the system refused";
+        if (saved == "saved" && await Passenger.App.Editors.EditorArea.LandedAsync(null, cancel) is { } unlanded)
+        {
+            saved = $"not saved: {unlanded}";
+        }
         // Each edit's lines as they are now: offsets move by what the edits before it added.
         TextSnapshot after = document.Text.Snapshot;
         List<(int First, int Last)> spans = [];

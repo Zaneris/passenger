@@ -86,7 +86,11 @@ public partial class MainWindow
             return false;
         }
         // What the editors show is on disk before the merge reads and writes it.
-        Editors.SaveAll();
+        if (await Editors.SaveAllLandedAsync(null, CancellationToken.None) is { } unsaved)
+        {
+            status.Text = unsaved;
+            return false;
+        }
         if (await session.Vcs.MergeTextsAsync(path) is not { } texts)
         {
             return false;

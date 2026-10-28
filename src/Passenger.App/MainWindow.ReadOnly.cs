@@ -15,8 +15,9 @@ public partial class MainWindow
 
     private bool askingWritable;
 
-    /// <summary>Whether the window, closed with changes it could not save, is asking the person what to do with them.</summary>
-    internal bool AsksBeforeClosing { get; private set; }
+    /// <summary>Whether the window, closed, holds its close until the person says what to do with changes it could not save,
+    /// or until its saves still landing have landed, then closing or not itself (a quit it held carries on or is given up).</summary>
+    internal bool ClosesLater { get; private set; }
 
     private void AddReadOnly() => Editors.Opened += (_, document) =>
     {
@@ -105,7 +106,7 @@ public partial class MainWindow
             return;
         }
         askingWritable = true;
-        AsksBeforeClosing = true;
+        ClosesLater = true;
         string? answer;
         List<OpenDocument> locked = [.. unsaved.Where(d => FileText.IsReadOnly(d.Path))];
         try
@@ -118,7 +119,7 @@ public partial class MainWindow
         finally
         {
             askingWritable = false;
-            AsksBeforeClosing = false;
+            ClosesLater = false;
         }
         bool closes = answer == "Close Without Saving" || (answer == "Make Writable" && MakeWritable(locked));
         if (answer == "Close Without Saving")

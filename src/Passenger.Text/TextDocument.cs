@@ -1,5 +1,8 @@
 namespace Passenger.Text;
 
+/// <summary>Where a document's text was saved: the text then and its place in the history.</summary>
+public readonly record struct SaveMark(TextSnapshot Text, long Place);
+
 /// <summary>What an edit was, so consecutive edits of one kind can undo as one.</summary>
 public enum EditKind
 {
@@ -296,6 +299,16 @@ public sealed class TextDocument
     {
         saved = Snapshot;
         savedAt = Place;
+    }
+
+    /// <summary>Where the text was last loaded or saved, which <see cref="MarkSaved(SaveMark)"/> puts back.</summary>
+    public SaveMark LastSave => new(saved, savedAt);
+
+    /// <summary>Takes the text as saved where an earlier mark says, for a save taken for done that never reached the disk.</summary>
+    public void MarkSaved(SaveMark mark)
+    {
+        saved = mark.Text;
+        savedAt = mark.Place;
     }
 
     /// <summary>Where the history stands: the step the next undo takes back, or the place before the oldest kept.</summary>

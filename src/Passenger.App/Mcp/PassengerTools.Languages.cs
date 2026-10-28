@@ -218,6 +218,7 @@ public sealed partial class PassengerTools
         }
         WorkspaceEdits.ApplyTo(Editors, document, placed);
         document.Save();
+        await LandedAsync(CancellationToken.None);
         int runs = placed.Count - 1;
         return $"Renamed {old} to {newName} in {Relative(document.Path)}{(runs == 0 ? string.Empty : $", and in {Plural.Of(runs, "script")} that run{(runs == 1 ? "s" : "")} it")}";
     }
@@ -245,7 +246,7 @@ public sealed partial class PassengerTools
         {
             return $"'{fix.Title}' changed nothing";
         }
-        Editors.SaveAll();
+        await SaveLandedAsync(CancellationToken.None);
         return $"Applied '{fix.Title}' to {Relative(web.Document.Path)}";
     }
 
@@ -325,7 +326,7 @@ public sealed partial class PassengerTools
         {
             throw new InvalidOperationException(renamed.Said);
         }
-        Editors.SaveAll();
+        await SaveLandedAsync(cancel);
         return $"Renamed {named.Value} to {newName} in {Plural.Of(renamed.Files.Count, "file")}: {string.Join(", ", renamed.Files.Select(Relative))}";
     }
 
@@ -372,7 +373,7 @@ public sealed partial class PassengerTools
             {
                 throw new InvalidOperationException(refused);
             }
-            Editors.SaveAll();
+            await SaveLandedAsync(CancellationToken.None);
             return set.Said;
         }
         if (now.Elsewhere is { } elsewhere)
@@ -382,11 +383,11 @@ public sealed partial class PassengerTools
             {
                 throw new InvalidOperationException(problem);
             }
-            Editors.SaveAll();
+            await SaveLandedAsync(CancellationToken.None);
             return $"Applied '{fix.Title}' to {string.Join(", ", made.Files.Select(f => Relative(f.Path)).Distinct())}";
         }
         WorkspaceEdits.ApplyTo(Editors, document, [new TextEdit(now.Range.Start, now.Range.Length, now.Text)]);
-        Editors.SaveAll();
+        await SaveLandedAsync(CancellationToken.None);
         return $"Applied '{fix.Title}' to {Relative(document.Path)}";
     }
 
@@ -446,7 +447,7 @@ public sealed partial class PassengerTools
                 {
                     throw new InvalidOperationException($"{what} was not applied: {refused}");
                 }
-                Editors.SaveAll();
+                await SaveLandedAsync(CancellationToken.None);
                 return $"Applied {what} to {string.Join(", ", changes.Select(c => Relative(c.Path)).Distinct())}";
         }
         Func<string, string?> texts = Editors.Texts().Text;
@@ -463,7 +464,7 @@ public sealed partial class PassengerTools
             {
                 throw new InvalidOperationException($"{what} was not applied: {refused}");
             }
-            Editors.SaveAll();
+            await SaveLandedAsync(CancellationToken.None);
             return $"Extracted resource '{key}' to {place.Title}{(value.Uses.Count > 1 ? $", used in {value.Uses.Count} places" : string.Empty)}";
         }
         StyleSource source = (StyleSource)chosen.Made;
@@ -483,7 +484,7 @@ public sealed partial class PassengerTools
         {
             throw new InvalidOperationException($"{what} was not applied: {refused}");
         }
-        Editors.SaveAll();
+        await SaveLandedAsync(CancellationToken.None);
         return $"Extracted {Plural.Of(properties.Count, "property", "properties")} of {source.ElementName} ({string.Join(", ", properties)}) to style '{style}' in {into.Title}";
 
         ResourcePlace PlaceChosen(IReadOnlyList<ResourcePlace> places) => choice is null

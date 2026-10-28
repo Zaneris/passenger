@@ -100,6 +100,37 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         }
     }
 
+    /// <summary>Windows refuses a save while another program holds the file sharing neither writes nor its deletion, and
+    /// Build is pressed at once: the build waits for the save to land, saying so, and compiles the saved text (an error
+    /// typed into it), never the file as it was.</summary>
+    [AvaloniaFact]
+    public void A_build_pressed_while_a_held_files_save_lands_waits_for_it_and_compiles_the_saved_text()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses to replace or write a file another program holds");
+        string shop = TestFolders.Create("build-held-");
+        TestFolders.Write(shop, "Shop.csproj", TestProjects.Console("<ImplicitUsings>enable</ImplicitUsings>"));
+        string program = TestFolders.Write(shop, "Program.cs", "Console.WriteLine(\"Hello\");\n");
+        MainWindow window = Ui.OpenFolder(shop, languageServer: false);
+        window.OpenFile(program);
+        Ui.Settle();
+        window.EditorArea.CodeEditor.Selections = SelectionSet.Single(window.EditorArea.Active!.Text.Snapshot.Length);
+        window.KeyTextInput("int count = true;");
+        Ui.Settle();
+        using (new FileStream(program, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            Ui.Press(window, Ui.Shortcut(AppActions.Save), settle: false);
+            Ui.PumpUntil(() => !window.EditorArea.Active!.IsModified, "the window to take the held file's save", TimeSpan.FromSeconds(10));
+            Ui.Press(window, Ui.Shortcut(AppActions.Build), settle: false);
+            Ui.PumpUntil(() => window.Actions.Work.Of(AppActions.Build)?.Stage == "Waiting for Program.cs to be saved…",
+                "the build to wait for Program.cs's save", TimeSpan.FromSeconds(10));
+        }
+        Ui.WaitFor(() => !window.IsBuilding, () => $"the build to end once Program.cs was saved: {window.Status}", TimeSpan.FromMinutes(2));
+        Assert.True(window.BottomPanel.Problems.Problems.Any(p => p.Code == "CS0029"),
+            $"The build compiled Program.cs as it was before the save, not the error saved into it: {window.Status}");
+        Assert.StartsWith("Build failed: 1 error", window.Status, StringComparison.Ordinal);
+        window.Close();
+    }
+
     /// <summary>One program with a compiler's error, in a folder named as Finder and Explorer name a copy, built once: its error
     /// listed in Problems at its file and line, the status bar's word a link there, the Build window's line of it a link to
     /// its file, line and column; and Run, whose build fails on it too, brings the Build window forward with it and runs

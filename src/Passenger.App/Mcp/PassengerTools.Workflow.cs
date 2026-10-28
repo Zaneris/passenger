@@ -171,7 +171,7 @@ public sealed partial class PassengerTools
             {
                 throw new InvalidOperationException($"No stash {index}; there are {before.Count}");
             }
-            Editors.SaveAll();
+            await SaveLandedAsync(cancel);
             VcsOutcome done = action switch
             {
                 "push" => await vcs.StashAsync(message),

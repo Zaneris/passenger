@@ -63,7 +63,8 @@ public partial class MainWindow
 
     /// <summary>Saves before anything else hears of the close, so the language server and the rest go only once the
     /// edits are on disk; a file that cannot be written keeps the window open, its edits with it, and asks whether to make
-    /// it writable or close without it (<see cref="CloseUnsavedAsync"/>).</summary>
+    /// it writable or close without it (<see cref="CloseUnsavedAsync"/>). A save still landing holds the close until it
+    /// has (<see cref="CloseLandedAsync"/>).</summary>
     protected override void OnClosing(WindowClosingEventArgs e)
     {
         // Passenger's quit (File, Exit; Restart to Update) and the system's (the application menu's Quit) keep each solution.
@@ -74,8 +75,43 @@ public partial class MainWindow
             IdeErrors.Observe(CloseUnsavedAsync(quit));
             return;
         }
+        if (Editors.Documents.Select(d => d.Landing).OfType<Task<bool>>().Where(t => !t.IsCompleted).ToList() is { Count: > 0 } landing)
+        {
+            e.Cancel = true;
+            IdeErrors.Observe(CloseLandedAsync(landing, quit));
+            return;
+        }
         quitting = quit;
         base.OnClosing(e);
+    }
+
+    /// <summary>The window was closed while saves another program held their files against were still landing: it closes
+    /// once they have, its thread free meanwhile, saving what was typed since, or asks about the changes of those that
+    /// never did (<see cref="CloseUnsavedAsync"/>).</summary>
+    private async Task CloseLandedAsync(IReadOnlyList<Task<bool>> landing, bool quit)
+    {
+        bool[] landed;
+        ClosesLater = true;
+        try
+        {
+            landed = await Task.WhenAll(landing);
+        }
+        finally
+        {
+            ClosesLater = false;
+        }
+        if (landed.Contains(false))
+        {
+            await CloseUnsavedAsync(quit);
+        }
+        else if (quit)
+        {
+            PassengerApp.Answered(carryOn: true);
+        }
+        else
+        {
+            Close();
+        }
     }
 
     /// <summary>File, Save (the file shown as it is pressed) or Save All: each changed file first gets what Settings

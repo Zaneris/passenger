@@ -86,7 +86,10 @@ public sealed partial class BuildRunController
 
     private async Task<string?> StartContainersAsync(RunConfiguration chosen, Working work, RunStart how)
     {
-        parts.Editors.SaveAll();
+        if (await parts.Editors.SaveAllLandedAsync(work, work.Stopping) is { } unsaved)
+        {
+            return Said(unsaved);
+        }
         parts.Views.Run.Clear();
         // The configuration's own fault first: a Dockerfile one with none would send the person to start an engine for nothing.
         if (chosen.Kind == RunKind.Dockerfile && chosen.Dockerfile.Length == 0
@@ -468,7 +471,10 @@ public sealed partial class BuildRunController
         using (work)
         {
             using IDisposable held = BackgroundWork.Scope();
-            parts.Editors.SaveAll();
+            if (await parts.Editors.SaveAllLandedAsync(work, work.Stopping) is { } unsaved)
+            {
+                return Said(unsaved);
+            }
             BuildOutcome built = await BuildForAsync(run.Plan.Builds, work.Stopping, work);
             if (!built.Succeeded)
             {

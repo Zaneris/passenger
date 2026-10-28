@@ -149,10 +149,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     // Not ide_action's app.saveAll: never asked on a person's window (#278), and its answer names what was left unsaved.
     [McpServerTool(Name = McpTools.SaveAll, Title = "Save every file", Destructive = false), Description("Saves every open file with unsaved changes.")]
-    public Task<string> SaveAll(CancellationToken cancel = default) => OnUi(cancel, () =>
+    public Task<string> SaveAll(CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         int unsaved = Editors.Documents.Count(d => d.IsModified);
-        Editors.SaveAll();
+        await SaveLandedAsync(cancel);
         // A read-only file, or one the system refused, keeps its changes, and the agent is told so rather than "Saved".
         List<OpenDocument> left = [.. Editors.Documents.Where(d => d.IsModified)];
         if (left.Count > 0)
@@ -160,8 +160,26 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             string names = string.Join(", ", left.Select(d => FileText.IsReadOnly(d.Path) ? $"{Relative(d.Path)} (read-only)" : Relative(d.Path)));
             throw new InvalidOperationException($"Saved {unsaved - left.Count} of {unsaved} files; not saved: {names}");
         }
-        return Task.FromResult(unsaved == 0 ? "Nothing to save" : $"Saved {Plural.Of(unsaved, "file")}");
+        return unsaved == 0 ? "Nothing to save" : $"Saved {Plural.Of(unsaved, "file")}";
     });
+
+    /// <summary>Saves every changed file and comes back once each save has landed (<see cref="Passenger.App.Editors.EditorArea.LandedAsync"/>), so
+    /// the agent, its shell and what it starts read what was saved; a save that never lands fails the call, saying why.</summary>
+    private async Task SaveLandedAsync(CancellationToken cancel)
+    {
+        Editors.SaveAll();
+        await LandedAsync(cancel);
+    }
+
+    /// <summary>Comes back once each save still landing has (<see cref="Passenger.App.Editors.EditorArea.LandedAsync"/>); one that never lands
+    /// fails the call, saying why.</summary>
+    private static async Task LandedAsync(CancellationToken cancel)
+    {
+        if (await Passenger.App.Editors.EditorArea.LandedAsync(null, cancel) is { } unsaved)
+        {
+            throw new InvalidOperationException(unsaved);
+        }
+    }
 
     // Code: the language server's
 
@@ -379,7 +397,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             {
                 throw new InvalidOperationException(refused);
             }
-            Editors.SaveAll();
+            await SaveLandedAsync(cancel);
             return $"{compose.Said}: {string.Join(", ", compose.Files.Select(f => Relative(f.Path)))}";
         }
         switch (served)
@@ -401,7 +419,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             {
                 throw new InvalidOperationException(problem);
             }
-            Editors.SaveAll();
+            await SaveLandedAsync(cancel);
             return $"{made.Said}: {string.Join(", ", made.Files.Select(f => Relative(f.Path)).Distinct())}";
         }
         (string Type, IReadOnlyList<string> Files)? named = renameFiles && server.Web is null && Session.CSharp?.Session?.Folder is { } folder
@@ -415,7 +433,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             return renaming.Said;
         }
-        Editors.SaveAll();
+        await SaveLandedAsync(cancel);
         List<string> changed = [.. renaming.Files.Where(f => f.Change == "changed").Select(f => Relative(f.Path))];
         List<string> moved = [.. renaming.Files.Where(f => f.Change == "moved").Select(f => $"{Relative(f.Path)} to {Relative(f.To!)}")];
         string renamed = moved.Count > 0 ? $"; renamed {string.Join(", ", moved)}" : string.Empty;
@@ -525,7 +543,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         List<string> dropped = [];
         int files = WorkspaceEdits.ApplyAsCommand(Editors, edit, title, asked, dropped);
-        Editors.SaveAll();
+        await SaveLandedAsync(cancel);
         return $"Applied {what} to {Plural.Of(files, "file")}{unrun}{(dropped.Count > 0 ? $", but not to {string.Join(", ", dropped)}, edited meanwhile" : string.Empty)}";
     }, cancel));
 
@@ -560,20 +578,20 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         CSharp.CodeActions.Reformatted done = await window.Assist.Actions.ReformatAsync(document, null, () => lsp)
             ?? throw new InvalidOperationException($"Reformat Code was not applied: {Relative(document.Path)} was closed as it was reformatted");
-        return Saved(done, document);
+        return await SavedAsync(done, document, cancel);
     });
 
     /// <summary>A XAML file reformatted as the window's Reformat Code and Code Cleanup reformat it, then saved.</summary>
     private async Task<CSharp.CodeActions.Reformatted> FormatXamlAsync(OpenDocument markup, string what)
     {
         CSharp.CodeActions.Reformatted done = await window.Assist.Languages.Xaml.ReformatXamlAsync(markup, null, what);
-        _ = Saved(done, markup);
+        await SavedAsync(done, markup, CancellationToken.None);
         return done;
     }
 
     /// <summary>What a reformat came to, as an agent is told it, the file saved once it is applied and the file holds
     /// what is not saved; one not applied refused, saying why.</summary>
-    private static string Saved(CSharp.CodeActions.Reformatted done, OpenDocument document)
+    private async Task<string> SavedAsync(CSharp.CodeActions.Reformatted done, OpenDocument document, CancellationToken cancel)
     {
         if (!done.Applied)
         {
@@ -582,6 +600,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         if (document.IsModified)
         {
             document.Save();
+            await LandedAsync(cancel);
         }
         return done.Said;
     }

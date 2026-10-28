@@ -83,7 +83,7 @@ public sealed partial class PassengerTools
         };
         if (answer.Files.Count > 0)
         {
-            Editors.SaveAll();
+            await SaveLandedAsync(cancel);
         }
         return answer;
     }, cancel));
@@ -374,6 +374,7 @@ public sealed partial class PassengerTools
             int before = document.Text.Version;
             string done = await TidyOne(lsp, document, cleanup);
             document.Save();
+            await LandedAsync(cancel);
             return new RefactorAnswer(kind, $"{Relative(document.Path)}: {done}",
                 document.Text.Version == before ? [] : [new RefactorFile(Relative(document.Path), "changed", [], done)], []);
         }
@@ -421,6 +422,7 @@ public sealed partial class PassengerTools
                 }
             }
         }
+        await LandedAsync(cancel);
         return new RefactorAnswer(kind, $"{name} changed {tidied.Count} of the {Plural.Of(files.Count, "C# file")} of the {scope}", tidied, left);
 
         async Task Tidied(OpenDocument document, LspDocument? lsp)

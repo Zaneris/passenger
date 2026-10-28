@@ -120,10 +120,14 @@ public sealed class VcsController : IDisposable
 
     private TaskCompletionSource? idle;
 
-    /// <summary>Saves every open file, run before anything git does to the files (a commit, a checkout, a stash, a
-    /// rollback, an update): what is committed is what the editor shows, and nothing unsaved is left behind for the next
-    /// save to write over what git put there.</summary>
-    public Action? SaveFirst { get; set; }
+    /// <summary>Saves every open file and waits for the saves still landing, run before anything git does to the files (a
+    /// commit, a checkout, a stash, a rollback, an update): what is committed is what the editor shows, and nothing unsaved
+    /// is left behind for the next save to write over what git put there. Null once all are on disk, else why not, and git
+    /// is not run.</summary>
+    public Func<Working?, CancellationToken, Task<string?>>? SaveFirst { get; set; }
+
+    private Task<string?> SavedFirstAsync(Working? work = null) =>
+        SaveFirst?.Invoke(work, work?.Stopping ?? CancellationToken.None) ?? Task.FromResult<string?>(null);
 
     /// <summary>Names what an operation does to the files, for Local History, by its activity's name (Git checkout,
     /// Rollback, Update from VCS): what it changes is kept under that name until the hold is disposed.</summary>
@@ -522,7 +526,10 @@ public sealed class VcsController : IDisposable
         using Working? held = work;
         return await OneAtATimeAsync(async () =>
         {
-            SaveFirst?.Invoke();
+            if (await SavedFirstAsync(work) is { } unsaved)
+            {
+                return new CommitResult(Report(false, unsaved), null, null);
+            }
             string[] paths = [.. Paths(chosen)];
             string[] excluded = merging ? [.. Paths(Changes.Where(c => c.Kind is not ChangeKind.Unversioned && !chosen.Contains(c)))] : [];
             GitResult commit = await repository.CommitAsync(paths, message, amend, merging, excluded);
@@ -581,7 +588,10 @@ public sealed class VcsController : IDisposable
             return Report(false, UnderWay(AppActions.UpdateProject));
         }
         using Working? held = work;
-        SaveFirst?.Invoke();
+        if (await SavedFirstAsync(work) is { } unsaved)
+        {
+            return Report(false, unsaved);
+        }
         // Named until Git is read again, so the folder watcher has heard of what it changed.
         using IDisposable? named = Activity?.Invoke("Update from VCS");
         GitResult pulled = await repository.PullAsync();
@@ -829,7 +839,10 @@ public sealed class VcsController : IDisposable
         }
         return await OneAtATimeAsync(async () =>
         {
-            SaveFirst?.Invoke();
+            if (await SavedFirstAsync() is { } unsaved)
+            {
+                return Report(false, unsaved);
+            }
             using IDisposable? named = Activity?.Invoke("Rollback");
             GitResult rolled = await repository.RollbackAsync(changes);
             ReloadOpenFiles();
@@ -886,7 +899,10 @@ public sealed class VcsController : IDisposable
         }
         return await OneAtATimeAsync(async () =>
         {
-            SaveFirst?.Invoke();
+            if (await SavedFirstAsync() is { } unsaved)
+            {
+                return Report(false, unsaved);
+            }
             bool already = Conflicts.Count > 0;
             using IDisposable? named = Activity?.Invoke(activity);
             GitResult switched = await change(repository);
@@ -924,7 +940,10 @@ public sealed class VcsController : IDisposable
         bool theirs = yours == Sides.Swapped;
         return await OneAtATimeAsync(async () =>
         {
-            SaveFirst?.Invoke();
+            if (await SavedFirstAsync() is { } unsaved)
+            {
+                return Report(false, unsaved);
+            }
             GitResult accepted = await repository.AcceptAsync(conflicts, theirs);
             ReloadOpenFiles();
             await RefreshAsync();
@@ -976,7 +995,10 @@ public sealed class VcsController : IDisposable
         }
         return await OneAtATimeAsync(async () =>
         {
-            SaveFirst?.Invoke();
+            if (await SavedFirstAsync() is { } unsaved)
+            {
+                return Report(false, unsaved);
+            }
             try
             {
                 FileText? before = InConflict(path);

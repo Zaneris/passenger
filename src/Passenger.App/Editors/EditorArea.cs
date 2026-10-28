@@ -578,6 +578,50 @@ public sealed partial class EditorArea : UserControl
         return all;
     }
 
+    /// <summary>Saves every changed file, then waits for the saves still landing (<see cref="LandedAsync"/>): what the IDE
+    /// does before it hands the files to another program. Null once each is on disk, else why not.</summary>
+    public Task<string?> SaveAllLandedAsync(Working? work, CancellationToken stopping)
+    {
+        SaveAll();
+        return LandedAsync(work, stopping);
+    }
+
+    /// <summary>Waits off the window's thread for every save still landing (<see cref="FileText.Landed(string)"/>), so the
+    /// program the IDE hands the files to next (a build, Git, a restore, an agent's shell) reads what was saved, never the
+    /// file before it: <paramref name="work"/> says which file meanwhile, and <paramref name="stopping"/> gives the wait
+    /// up. Null once each has landed, else why not: the file that could not be saved and why, or the stop.</summary>
+    public static async Task<string?> LandedAsync(Working? work, CancellationToken stopping)
+    {
+        string? stage = null;
+        foreach ((string path, Task<Exception?> landing) in FileText.Landings())
+        {
+            string name = Path.GetFileName(path);
+            if (!landing.IsCompleted && work is not null)
+            {
+                stage ??= work.Stage;
+                work.Say($"Waiting for {name} to be saved…");
+            }
+            Exception? refused;
+            try
+            {
+                refused = await landing.WaitAsync(stopping);
+            }
+            catch (OperationCanceledException) when (stopping.IsCancellationRequested)
+            {
+                return $"Stopped while {name} was being saved";
+            }
+            if (refused is not null)
+            {
+                return $"{name} could not be saved: {refused.Message}";
+            }
+        }
+        if (stage is not null && work is { IsStopped: false })
+        {
+            work.Say(stage);
+        }
+        return null;
+    }
+
     /// <summary>Writes a file even over a version on disk newer than its own, for Keep Memory Changes.</summary>
     public bool SaveOver(OpenDocument document) => TrySave(document, overDisk: true);
 

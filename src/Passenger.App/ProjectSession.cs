@@ -131,7 +131,7 @@ public sealed class ProjectSession : IAsyncDisposable
         Packages = new FolderPackages(() => Projects, () => Solution?.Path is { } solution ? Path.GetDirectoryName(solution) : Folder)
         {
             Work = setup.Work,
-            SaveFirst = () => setup.Editors.SaveAll(),
+            SaveFirst = setup.Editors.SaveAllLandedAsync,
         };
         MSBuild = new MSBuild.MSBuildService(() => Folder, () => Workspace)
         {

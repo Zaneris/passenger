@@ -252,7 +252,10 @@ public sealed class NuGetSourcesView : Grid
         problem.IsVisible = false;
         try
         {
-            owner.Packages.SaveFirst?.Invoke();
+            if (owner.Packages.SaveFirst is { } save && await save(null, CancellationToken.None) is { } unsaved)
+            {
+                throw new IOException(unsaved);
+            }
             await BackgroundWork.Run(change);
         }
         catch (Exception failed) when (failed is IOException or UnauthorizedAccessException or XmlException or InvalidOperationException)
