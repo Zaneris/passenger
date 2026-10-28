@@ -17,11 +17,11 @@ public static class ProgramProjects
         Stamp head = Stamps.Head(path);
         string folder = Path.GetDirectoryName(path)!;
         string asked = JsonSerializer.Serialize(new Dictionary<string, string> { ["$type"] = "GetProject", ["EntryPointFileFullPath"] = path });
-        ChildResult answer = await ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["run-api"], folder), asked, cancel: cancel).ConfigureAwait(false);
+        // Its answer is its line of JSON, taken as it comes: the SDK's first run in a new home writes its welcome before it.
+        ChildAnswer answer = await ChildProcesses.AnswerAsync(ChildProcesses.DotnetCommand(["run-api"], folder), l => l.TrimStart().StartsWith('{'), asked,
+            cancel: cancel).ConfigureAwait(false);
         string name = Path.GetFileName(path);
-        // Its answer is its last line: the SDK's first run in a new home writes its welcome before it.
-        string? line = answer.Output.Split('\n').Select(l => l.Trim()).LastOrDefault(l => l.StartsWith('{'));
-        if (line is null)
+        if (answer.Answer?.Trim() is not { } line)
         {
             return (new ProgramParams(path, null, null, $"{name}: the .NET SDK made no project for it: {answer.Said}"), [head], []);
         }

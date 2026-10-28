@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Explorer;
@@ -219,6 +221,83 @@ public sealed class LaunchUpToDateTests
         Ui.WaitFor(() => !window.IsBuilding, $"{what} to end", Slow);
         Assert.True(window.Status?.StartsWith("Build succeeded", StringComparison.Ordinal) == succeeds,
             $"{what} {(succeeds ? "did not succeed" : "succeeded")}: {Ui.Said(window)}");
+    }
+
+    /// <summary>Run takes the SDK's version as dotnet names it, never waiting for what dotnet does after (the SDK sends its
+    /// telemetry before it exits): here dotnet --version's stand-in names it, then leaves a child holding its output and
+    /// goes on itself until the test lets both go, and a second Run with nothing changed still finds the first one's
+    /// build standing, its check having had its answer.</summary>
+    [AvaloniaFact]
+    public void A_run_takes_the_SDKs_version_as_dotnet_names_it_never_waiting_for_what_dotnet_does_after()
+    {
+        string folder = TestFolders.Create("uptodate-sdk-");
+        TestFolders.Write(folder, "App/App.csproj", TestProjects.Console());
+        TestFolders.Write(folder, "App/Program.cs", "System.Console.WriteLine(\"said: ran\");\n");
+        Restore.Run(PathNames.Canonical(Path.Combine(folder, "App", "App.csproj")));
+        string go = Path.Combine(folder, "go");
+        string standIn = SdkStandIn(folder, go);
+        List<string> builds = [];
+        int standIns = 0;
+        ConcurrentDictionary<int, bool> asked = new();
+        EventHandler<ChildStart> started = (_, child) =>
+        {
+            if (child.Command.Contains(standIn, StringComparison.Ordinal))
+            {
+                asked[child.ProcessId] = false;
+                Interlocked.Increment(ref standIns);
+            }
+            if (child.Command.Contains(" build ", StringComparison.Ordinal) && child.Command.Contains("App.csproj", StringComparison.Ordinal))
+            {
+                lock (builds)
+                {
+                    builds.Add(child.Command);
+                }
+            }
+        };
+        EventHandler<ChildEnd> ended = (_, child) =>
+        {
+            if (asked.ContainsKey(child.ProcessId))
+            {
+                asked[child.ProcessId] = true;
+            }
+        };
+        Func<string, ProcessStartInfo> question = Dotnet.SdkQuestion;
+        Dotnet.SdkQuestion = at => ChildProcesses.Command(standIn, [], at);
+        ChildProcesses.Started += started;
+        ChildProcesses.Ended += ended;
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "App"), "App's run configuration");
+            Assert.True(window.SelectConfiguration("App"));
+            Ran(window, builds, built: true, "ran", "its first run");
+            Ran(window, builds, built: false, "ran", "a run with nothing changed, after one whose SDK's dotnet went on once it named it");
+            Assert.True(Volatile.Read(ref standIns) > 0, "Run never asked dotnet --version's stand-in for the SDK, so this test tests nothing");
+        }
+        finally
+        {
+            Dotnet.SdkQuestion = question;
+            File.WriteAllText(go, string.Empty);
+            Ui.WaitFor(() => asked.Values.All(end => end), "dotnet --version's stand-in, let go, to end", Slow);
+            ChildProcesses.Started -= started;
+            ChildProcesses.Ended -= ended;
+            window.Close();
+        }
+    }
+
+    /// <summary>A dotnet --version that names the SDK as dotnet does, then, as the SDK goes on to send its telemetry, goes on
+    /// until <paramref name="go"/> is there (ten minutes at most), a child it leaves holding its output going on as long.</summary>
+    private static string SdkStandIn(string folder, string go)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            string wait = $"powershell -NoProfile -Command \"$n = 0; while (-not (Test-Path '{go}') -and $n -lt 2400) {{ Start-Sleep -Milliseconds 250; $n++ }}\"";
+            return TestFolders.Write(folder, "sdk.cmd", $"@echo off\r\n\"{Dotnet.Host()}\" --version\r\nstart \"\" /b {wait}\r\n{wait}\r\n");
+        }
+        string loop = $"n=0; while [ ! -f '{go}' ] && [ $n -lt 2400 ]; do sleep 0.25; n=$((n+1)); done";
+        string script = TestFolders.Write(folder, "sdk", $"#!/bin/sh\n'{Dotnet.Host()}' --version\n( {loop} ) &\n{loop}\n");
+        File.SetUnixFileMode(script, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        return script;
     }
 
     /// <summary>A console app, App, that says what each of its inputs gave it: its C#, the library it references, a
