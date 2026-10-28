@@ -28,7 +28,7 @@ public static class WorkspaceEdits
     }
 
     /// <summary>How long after a file changes on disk the language server may still hold it as it was: it reads a file
-    /// not open again only once its own watcher hears of the change.</summary>
+    /// not open again only once the folder's watcher has told it of the change.</summary>
     public static readonly TimeSpan Catching = TimeSpan.FromSeconds(2);
 
     /// <summary>Why an edit the language server worked out must not be applied to the files not open it changes, found

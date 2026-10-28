@@ -510,6 +510,93 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         window.Close();
     }
 
+    /// <summary>A thousand files rewritten on disk as a checkout writes them, one of them open with an edit: the language
+    /// server, which registered its files for the IDE to watch and so watches none itself, hears of them from the folder's
+    /// watcher, in batches rather than file by file, and solution-wide analysis lists the problems of the closed files'
+    /// new text and the open file's edit, until the open file takes the disk's text.</summary>
+    [AvaloniaFact]
+    public void A_thousand_files_rewritten_on_disk_reach_the_server_from_the_folders_watcher_and_their_new_problems_are_listed()
+    {
+        const int Files = 1000;
+        static string Checked(int i, string variable) => $"static class Checked{i}\n{{\n    static void All()\n    {{\n        int {variable};\n    }}\n}}\n";
+        project.Write([.. Enumerable.Range(0, Files).Select(i => ($"Checked{i}.cs", Checked(i, "before")))]);
+        MainWindow window = project.Open("Checked0.cs", w => w.Perform(AppActions.ShowProblems));
+        ProblemsModel problems = window.BottomPanel.Problems;
+        window.Perform(AppActions.ToggleSolutionAnalysis);
+        string open = window.EditorArea.Active!.Path;
+        int Saying(string variable, bool closed = true) => problems.SolutionProblems?.Count(p => p.Path!.Contains("Checked", StringComparison.Ordinal)
+            && (p.Path == open) != closed && p.Message.Contains($"'{variable}'", StringComparison.Ordinal)) ?? 0;
+        Ui.WaitFor(() => Saying("before") == Files - 1 && Saying("before", closed: false) == 1, $"the {Files} files' warnings", TimeSpan.FromMinutes(3));
+        Passenger.Lsp.WatchedFiles watched = window.CSharpService!.Session!.Server.WatchedFiles;
+        Assert.True(watched.Watches.Count > 0, "The language server registered no file for the IDE to watch, so it watches the folder itself");
+
+        string text = window.EditorArea.CodeEditor.Document.Snapshot.ToString();
+        int at = text.IndexOf("before", StringComparison.Ordinal);
+        window.EditorArea.CodeEditor.Selections = SelectionSet.Single(new Selection(at, at + "before".Length));
+        window.KeyTextInput("typed");
+        Ui.WaitFor(() => Saying("typed", closed: false) == 1, "the open file's edit's warning");
+        TaskCompletionSource<bool> fromDisk = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        window.AskConflict = _ => fromDisk.Task;
+
+        Passenger.Lsp.LanguageServer server = window.CSharpService.Session.Server;
+        bool Replaced() => window.CSharpService.Session?.Server != server;
+        int batches = 0;
+        int named = 0;
+        window.FolderWatcher!.Changed += (_, changes) =>
+        {
+            batches++;
+            named += changes.Paths.Count(p => Path.GetFileName(p).StartsWith("Checked", StringComparison.Ordinal));
+        };
+        HashSet<string> told = new(StringComparer.Ordinal);
+        int notifications = 0;
+        EventHandler<IReadOnlyList<Passenger.Lsp.FileEvent>> sent = (_, changes) =>
+        {
+            lock (told)
+            {
+                notifications++;
+                told.UnionWith(changes.Select(c => Path.GetFileName(c.Path)).Where(name => name.StartsWith("Checked", StringComparison.Ordinal)));
+            }
+        };
+        int Told()
+        {
+            lock (told)
+            {
+                return told.Count;
+            }
+        }
+        watched.Sent += sent;
+        long rewritten = System.Diagnostics.Stopwatch.GetTimestamp();
+        Parallel.For(0, Files, i => File.WriteAllText(project.PathOf($"Checked{i}.cs"), Checked(i, "after")));
+        // Pumped, not settled, so each time is when it happened, not when the work after it ended.
+        bool heard = Ui.Pumped(() => Told() == Files || Replaced(), TimeSpan.FromSeconds(90));
+        double toldAfter = System.Diagnostics.Stopwatch.GetElapsedTime(rewritten).TotalSeconds;
+        Assert.False(Replaced(), $"The language server was replaced as the files changed on disk (it ended or stopped answering), so it never heard of them: {WatchLog(server)}");
+        Assert.True(heard, $"The language server was told of {Told()} of the {Files} files rewritten on disk, the folder's watcher handing over {batches} batches naming {named} of them: {WatchLog(server)}");
+        Assert.True(Ui.Pumped(() => Saying("after") == Files - 1 && Saying("before") == 0, TimeSpan.FromMinutes(2)),
+            $"The closed files' warnings were not those of their new text after 2 minutes ({Saying("after")} of the new, {Saying("before")} of the old)");
+        double listedAfter = System.Diagnostics.Stopwatch.GetElapsedTime(rewritten).TotalSeconds;
+        watched.Sent -= sent;
+        TestContext.Current.TestOutputHelper?.WriteLine(
+            $"{Files} files rewritten on disk: the language server was told of them {toldAfter:0.00} s after, in {notifications} notifications (the folder's watcher handed over {batches} batches), "
+            + $"and solution-wide analysis listed the closed files' new problems {listedAfter:0.00} s after; it registered {watched.Watches.Count} watchers, {window.CSharpService.Watching?.Watching.Count} folders watched beside the folder's watcher");
+        Assert.True(notifications < Files / 10, $"The language server was told of the {Files} files changed on disk in {notifications} notifications, as if file by file");
+        Assert.True(Saying("typed", closed: false) == 1 && Saying("after", closed: false) == 0,
+            "The open file's problems were those of its text on disk once the server heard it changed there, not those of its edit");
+
+        fromDisk.SetResult(true);
+        Ui.WaitFor(() => Saying("after", closed: false) == 1, "the open file's warning of the disk's text once it took it");
+        window.Close();
+    }
+
+    /// <summary>What the server's log says of its files watched and told, and the IDE's of the folders watched for it, last.</summary>
+    private static string WatchLog(Passenger.Lsp.LanguageServer server)
+    {
+        string? log = Directory.EnumerateFiles(server.LogFolder, $"server-*-{server.ProcessId}.log").FirstOrDefault();
+        IEnumerable<string> lines = (log is null ? [] : Ui.Shared(log).Split('\n').Where(l => l.Contains("watched for the server", StringComparison.Ordinal) || l.Contains("Told the server", StringComparison.Ordinal)))
+            .Concat(Ui.Shared(Passenger.App.IdeLog.PathOf(Passenger.App.IdeLog.Ide)).Split('\n').Where(l => l.Contains($"(process {server.ProcessId})", StringComparison.Ordinal) && l.Contains("watch", StringComparison.Ordinal)));
+        return string.Join(" | ", lines.TakeLast(12));
+    }
+
     /// <summary>A problem's row chosen in the tab shown and gone to from its menu, as a person goes to it.</summary>
     private static void Choose(MainWindow window, ProblemsModel problems, string path)
     {

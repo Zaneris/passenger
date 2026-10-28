@@ -167,7 +167,7 @@ public abstract class SharedProject : IAsyncLifetime
     }
 
     /// <summary>Rewrites one of the project's own files for a test: the warm server is kept once it holds the file as
-    /// written, read through its own watcher as it reads a file changed on disk (<see cref="WarmServer.HoldsAsync"/>), and
+    /// written, read again as it is told of a file changed on disk (<see cref="WarmServer.HoldsAsync"/>), and
     /// ended if it does not within <see cref="Rereading"/>; <see cref="Reset"/> puts the file back for the next test. A file
     /// the project does not have goes through <see cref="Write(string, string)"/>.</summary>
     public string Rewrite(string name, string text)
@@ -187,7 +187,7 @@ public abstract class SharedProject : IAsyncLifetime
 
     /// <summary>The project as written for the test about to run (<see cref="Restored"/>): the shared server is ended if a
     /// file came or went, or one it holds no document of changed (a project file); one whose documents a test only rewrote
-    /// is kept once it holds them as written again, read through its own watcher (<see cref="WarmServer.HoldsAsync"/>), and
+    /// is kept once it holds them as written again, read as it is told of them (<see cref="WarmServer.HoldsAsync"/>), and
     /// ended if it does not within <see cref="Rereading"/>. From the UI thread (a window test's constructor), the window's
     /// loop running as it waits for the server; elsewhere a test awaits <see cref="ResetAsync"/>.</summary>
     public void Reset()
@@ -275,7 +275,7 @@ public abstract class SharedProject : IAsyncLifetime
         return structure ? null : rewritten.ToDictionary(file => file, File.ReadAllText, StringComparer.Ordinal);
     }
 
-    /// <summary>How long a kept server has to read again the files a test rewrote, through its own watcher.</summary>
+    /// <summary>How long a kept server has to read again the files a test rewrote, as it is told of them.</summary>
     private static readonly TimeSpan Rereading = TimeSpan.FromSeconds(10);
 
     /// <summary>How long a kept server has to hear of the files a test writes, which it reads in half a second or not for

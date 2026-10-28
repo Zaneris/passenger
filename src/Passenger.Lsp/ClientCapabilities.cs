@@ -9,7 +9,8 @@ namespace Passenger.Lsp;
 /// positions, which are what the editor's columns already are. Not workspace/applyEdit: Roslyn never
 /// asks it, leaving the edits its commands make to the client (<see cref="ClientCommands"/>). The features a dynamic
 /// registration is taken for are those Razor registers for .razor and .cshtml files at startup, its colours' legend
-/// among them; Roslyn's own C# ones are its static capabilities either way.</summary>
+/// among them; Roslyn's own C# ones are its static capabilities either way. Files changed on disk are watched for the
+/// server (<see cref="WatchedFiles"/>), which then runs no watcher of its own.</summary>
 public static class ClientCapabilities
 {
     public static readonly JsonElement Value = JsonDocument.Parse("""
@@ -23,7 +24,7 @@ public static class ClientCapabilities
         "semanticTokens": { "refreshSupport": true },
         "diagnostics": { "refreshSupport": true },
         "inlayHint": { "refreshSupport": true },
-        "didChangeWatchedFiles": { "dynamicRegistration": false },
+        "didChangeWatchedFiles": { "dynamicRegistration": true, "relativePatternSupport": true },
         "symbol": {}
       },
       "textDocument": {
@@ -89,7 +90,8 @@ public static class ClientCapabilities
 
     /// <summary>What Passenger tells the web language servers (TypeScript's, and VS Code's for HTML, CSS and JSON): the
     /// same, but completion takes snippets (the JSON server offers no completion to a client without them, and the
-    /// others write an attribute's or a property's value with the caret inside), and a document's colours are asked for.</summary>
+    /// others write an attribute's or a property's value with the caret inside), a document's colours are asked for, and
+    /// no file is watched for them: each watches its own.</summary>
     public static readonly JsonElement Web = WebCapabilities();
 
     private static JsonElement WebCapabilities()
@@ -98,6 +100,7 @@ public static class ClientCapabilities
         capabilities["textDocument"]!["completion"]!["completionItem"]!["snippetSupport"] = true;
         capabilities["textDocument"]!["colorProvider"] = new JsonObject { ["dynamicRegistration"] = false };
         capabilities["textDocument"]!["publishDiagnostics"]!["versionSupport"] = true;
+        capabilities["workspace"]!["didChangeWatchedFiles"] = new JsonObject { ["dynamicRegistration"] = false };
         return JsonDocument.Parse(capabilities.ToJsonString()).RootElement.Clone();
     }
 }

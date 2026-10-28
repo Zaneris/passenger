@@ -7,13 +7,17 @@ namespace Passenger.App.CSharp;
 /// the same solution or projects to take up, loaded and warm, with that window's options, rather than start and load its
 /// own: what a test class gives its windows on one project (<see cref="MainWindow.WarmServer"/>). The problems its projects
 /// loaded with go with it, for the window that takes it up to hear as one that loaded them would; files that came meanwhile
-/// (<see cref="HeardAsync"/>) are loaded by that window first. One no window takes is ended by the next one
-/// kept, by <see cref="Drop"/> or with the holder. The IDE's windows have none.</summary>
+/// (<see cref="HeardAsync"/>) are loaded by that window first, and what changes on disk meanwhile it hears of from
+/// watchers of the holder's own over what it registered, as a window's server does from the window's. One no window takes
+/// is ended by the next one kept, by <see cref="Drop"/> or with the holder. The IDE's windows have none.</summary>
 public sealed class WarmServer : IAsyncDisposable
 {
     private readonly Lock gate = new();
     private RoslynSession? kept;
     private IReadOnlyList<ProjectLoadProblem> keptProblems = [];
+
+    /// <summary>What the server kept registered to hear of, watched for it.</summary>
+    private ServerWatches? watching;
 
     /// <summary>Files of its projects came since it was kept, which it has not loaded.</summary>
     private bool unloaded;
@@ -21,7 +25,7 @@ public sealed class WarmServer : IAsyncDisposable
     /// <summary>The server kept, with the problems its projects loaded with, if it loaded what a window opens and is still
     /// running, and whether the window must have it load its projects again (files came since); it is the window's
     /// from then on, its options made the window's. One that does not match stays until another is kept or it is dropped.</summary>
-    internal (RoslynSession Session, IReadOnlyList<ProjectLoadProblem> Problems, bool LoadAgain)? Take(string folder, string? solution, IReadOnlyList<string> projects)
+    internal (RoslynSession Session, IReadOnlyList<ProjectLoadProblem> Problems, bool LoadAgain, ServerWatches? Watches)? Take(string folder, string? solution, IReadOnlyList<string> projects)
     {
         lock (gate)
         {
@@ -32,22 +36,31 @@ public sealed class WarmServer : IAsyncDisposable
                 return null;
             }
             kept = null;
-            return (session, keptProblems, unloaded);
+            ServerWatches? handed = watching;
+            watching = null;
+            return (session, keptProblems, unloaded, handed);
         }
     }
 
     /// <summary>Keeps a window's server, and the problems its projects loaded with, for the next window, ending the one
-    /// kept before, which no window took.</summary>
-    internal Task Keep(RoslynSession session, IReadOnlyList<ProjectLoadProblem> problems)
+    /// kept before, which no window took; what it registered goes on being watched by the window's watches given, alone.</summary>
+    internal Task Keep(RoslynSession session, IReadOnlyList<ProjectLoadProblem> problems, ServerWatches? watches)
     {
         RoslynSession? before;
+        ServerWatches alone;
         lock (gate)
         {
             before = kept;
             kept = session;
             keptProblems = problems;
             unloaded = false;
+            if (watching != watches)
+            {
+                StopWatching();
+            }
+            alone = watching = watches ?? new ServerWatches(session.Server, folder: null);
         }
+        alone.Follow(null);
         // Not held: the window's end waits for it with no UI thread to come back to (MainWindow.Ended).
         return before is null || before == session ? Task.CompletedTask : BackgroundWork.Unheld(() => before.DisposeAsync().AsTask());
     }
@@ -60,13 +73,21 @@ public sealed class WarmServer : IAsyncDisposable
         {
             ending = kept;
             kept = null;
+            StopWatching();
         }
         // Not held: the window's end waits for it with no UI thread to come back to (MainWindow.Ended).
         return ending is null ? Task.CompletedTask : BackgroundWork.Unheld(() => ending.DisposeAsync().AsTask());
     }
 
+    /// <summary>Lets go of the watching for the server kept, under the gate.</summary>
+    private void StopWatching()
+    {
+        watching?.Dispose();
+        watching = null;
+    }
+
     /// <summary>Whether the server kept holds these files written as the texts given or has yet to load them, waited for
-    /// until the limit: those it has documents of read again through its own watcher, as it reads a file changed on disk,
+    /// until the limit: those it has documents of read again as the watcher tells it of a file changed on disk,
     /// and those it has none of loaded by the window that takes it up (<see cref="Take"/>); false when none is kept, or it
     /// still held another text at the limit.</summary>
     public async Task<bool> HeardAsync(IReadOnlyDictionary<string, string> texts, TimeSpan limit)

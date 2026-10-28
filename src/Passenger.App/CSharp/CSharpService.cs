@@ -33,6 +33,13 @@ public sealed class CSharpService : IAsyncDisposable
     /// <summary>What this service hung on its server's events, undone when the server is kept for another window.</summary>
     private readonly List<Action> unhooks = [];
     private RoslynSession? session;
+
+    /// <summary>What the server registered to hear of as files change on disk, watched for it while it is this service's.</summary>
+    private ServerWatches? watching;
+
+    /// <summary>What the folder's watcher saw before the watches were made (the server starting, or started again), told
+    /// once they are.</summary>
+    private HeldChanges? unheard;
     private CancellationTokenSource? starting;
     private WorkspaceModel? workspace;
     private bool disposed;
@@ -92,11 +99,26 @@ public sealed class CSharpService : IAsyncDisposable
     private readonly List<string> found = [];
 
     /// <summary>Has the server load projects again whose files or imports changed (a Directory.Build.props edited), which
-    /// it watches only in part; one that builds its own projects finds what it watches itself.</summary>
+    /// it registers to hear of only in part; one that builds its own projects reloads those it hears of.</summary>
     public void Reload(IReadOnlyList<string> projects)
     {
         UiThread.Check();
         session?.Reload(projects);
+    }
+
+    /// <summary>What the folder's watcher saw change on disk, which the server hears of as it registered to: the files not
+    /// open are read again from it, never an open one, whose text is the editor's.</summary>
+    public void FilesChanged(FolderChanges changes)
+    {
+        UiThread.Check();
+        if (watching is { } watches)
+        {
+            watches.Heard(changes);
+        }
+        else if (!disposed && workspace is { } opened)
+        {
+            (unheard ??= new HeldChanges(opened.Folder)).Add(changes);
+        }
     }
 
     /// <summary>The state changed (starting, loading projects, ready, failed); raised on the UI thread.</summary>
@@ -121,6 +143,9 @@ public sealed class CSharpService : IAsyncDisposable
     public string State { get; private set; } = string.Empty;
     public bool IsReady => session is { IsLoaded: true };
     public RoslynSession? Session => session;
+
+    /// <summary>What the server registered to hear of as files change on disk, watched for it; null with no server.</summary>
+    public ServerWatches? Watching => watching;
 
     /// <summary>Whether servers ended too often, so the last was left stopped, until it is started again
     /// (<see cref="Restart"/>).</summary>
@@ -778,11 +803,15 @@ public sealed class CSharpService : IAsyncDisposable
         documents.Clear();
         RoslynSession? ending = session;
         Unhook();
+        ServerWatches? watches = watching;
+        watching = null;
+        unheard = null;
         // Kept once its projects loaded, never in a load under way, whose problems are still coming.
         if (warm is not null && ending is { IsLoaded: true } && !ending.Server.HasExited && batch.Count == 0)
         {
-            return new ValueTask(warm.Keep(ending, ProjectProblems));
+            return new ValueTask(warm.Keep(ending, ProjectProblems, watches));
         }
+        watches?.Dispose();
         // Not held: the window's end waits for it with no UI thread to come back to (MainWindow.Ended).
         return ending is null ? ValueTask.CompletedTask : new ValueTask(BackgroundWork.Unheld(() => ending.DisposeAsync().AsTask()));
     }
@@ -823,6 +852,7 @@ public sealed class CSharpService : IAsyncDisposable
             (bool, bool) hintedWith = hints;
             Dictionary<string, object?> options = StartOptions(startedWith, solutionWide, hintedWith);
             RoslynSession started;
+            ServerWatches? handed = null;
             bool loadAgain = false;
             string loading = solution is not null ? Path.GetFileName(solution) : Plural.Of(projects.Length, "project");
             Func<CancellationToken, Task<RoslynSession?>>? startedAhead = warm is null ? headStart?.TakeServer(opening.Folder, solution, projects, options) : null;
@@ -854,6 +884,7 @@ public sealed class CSharpService : IAsyncDisposable
                 }
                 started.Server.ReplaceOptions(options);
                 loadAgain = taken.LoadAgain;
+                handed = taken.Watches;
                 IdeErrors.Write($"C# language server (process {started.Server.ProcessId}) taken up warm for {opening.Folder}, {loading} loaded{(loadAgain ? ", to load again" : string.Empty)}");
             }
             else
@@ -920,6 +951,16 @@ public sealed class CSharpService : IAsyncDisposable
                 started.Server.NotResponding -= onHung;
             });
             session = started;
+            watching?.Dispose();
+            if (handed is not null)
+            {
+                handed.Follow(opening.Folder);
+            }
+            watching = handed ?? new ServerWatches(started.Server, opening.Folder);
+            foreach (FolderChanges held in unheard?.Take() ?? [])
+            {
+                watching.Heard(held);
+            }
             if (loadAgain)
             {
                 // Files came since it loaded them: waited for as its load is.
@@ -1341,6 +1382,8 @@ public sealed class CSharpService : IAsyncDisposable
     private void LetGo(RoslynSession lost)
     {
         session = null;
+        watching?.Dispose();
+        watching = null;
         Progress = null;
         works.Clear();
         shownWork = null;

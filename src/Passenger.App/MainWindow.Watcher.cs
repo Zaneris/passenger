@@ -42,6 +42,7 @@ public partial class MainWindow
         }
         session.LocalHistory?.Noticed(changes.Paths);
         session.DesignTimeBuilds.FolderChanged(changes);
+        session.FilesChanged(changes);
         (bool programsMade, bool programsWritten) = ProgramsChanged(changes.Paths);
         if (changes.Projects || changes.Lost || programsMade)
         {

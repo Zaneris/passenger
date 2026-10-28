@@ -215,6 +215,7 @@ Projects in `src/`; `find_symbol` finds the rest:
 - **C#.** `CSharpService`, `ServerDiagnostics` (one pull at a time after a pause), `CodeAssist` (the window's wiring) over
   its parts; each language's answers a `LanguageAssist`, asked in `LanguageAssists`' one order. `WorkspaceEdits`: a
   server's edit to a file not open is refused if it was written in the last 2 s (an agent's call waits, `Patience`).
+  `ServerWatches` watches for the server what it registers (`WatchedFiles`), beside the folder's watcher.
 - **Web languages.** `WebLanguages` (one Node.js server per kind; every per-kind switch names each kind), `JsonSchemas`
   (downloads only while Settings allows); in a macOS bundle the servers live under `Contents/Resources/web`.
 - **Build and run.** `BuildRunController` (partials), `ConsoleSink` (every console through one `PumpAsync`),
@@ -264,6 +265,7 @@ site-shots` retakes its images.
   sent while it loads is one more load to wait for (`RoslynSession`): the server's word that a load ended names none. A server
   that ends during its start is started again within `ServerRestarts`; StreamJsonRpc then drops a faulted answer, which
   `IdeErrors` passes over (`LanguageServer.IsDroppedAnswer`).
+- **Roslyn's server takes file watching all or nothing**: offered it, it watches nothing itself; all it registers is ours.
 - **Roslyn's server writes its MEF caches beside its DLLs** (`roslyn/cache/`, no option for elsewhere), so where that
   folder is in a macOS bundle (a file added breaks the seal: "damaged", #450) or read-only, it runs from a copy in the
   state's `cache/roslyn/` (`RoslynServerFolder`); nothing a Passenger runs may write inside the app.

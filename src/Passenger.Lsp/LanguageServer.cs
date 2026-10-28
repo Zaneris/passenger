@@ -75,6 +75,7 @@ public sealed class LanguageServer : IAsyncDisposable
         this.client = client;
         this.log = log;
         LogFolder = logFolder;
+        WatchedFiles = new WatchedFiles(this);
         ProcessId = process.Id;
         who = $"{Named(process.StartInfo)}, process {process.Id}";
         rpc.Disconnected += (_, e) =>
@@ -219,6 +220,12 @@ public sealed class LanguageServer : IAsyncDisposable
     }
 
     public string LogFolder { get; }
+
+    /// <summary>The files the server asked the client to watch for it, rather than watch them itself.</summary>
+    public WatchedFiles WatchedFiles { get; }
+
+    /// <summary>A line of the client's own in the server's log, timed as the server's are.</summary>
+    internal void Note(string line) => log.Write($"{DateTime.Now:HH:mm:ss.fff} {line}");
 
     /// <summary>Why Passenger's extension to the server (<see cref="RoslynExtension"/>) cannot be asked, or null when every
     /// handler of it is active.</summary>
@@ -1164,6 +1171,10 @@ public sealed class LanguageServer : IAsyncDisposable
         [JsonRpcMethod(LspMethods.RegisterCapability)]
         public object? RegisterCapability(RegistrationParams request)
         {
+            foreach (Registration registration in request.Registrations.Where(r => r.Method == LspMethods.DidChangeWatchedFiles))
+            {
+                Owner?.WatchedFiles.Register(registration.Id, registration.RegisterOptions);
+            }
             foreach (Registration registration in request.Registrations.Where(ForRazor))
             {
                 if (registration.Method == LspMethods.SemanticTokens && registration.RegisterOptions is { } options
@@ -1194,8 +1205,26 @@ public sealed class LanguageServer : IAsyncDisposable
             return null;
         }
 
+        /// <summary>Registrations the server takes back: its files watched, by the protocol's own spelling of the list
+        /// (<c>unregisterations</c>) or the plain one.</summary>
         [JsonRpcMethod(LspMethods.UnregisterCapability)]
-        public object? UnregisterCapability(JsonElement? request = null) => null;
+        public object? UnregisterCapability(JsonElement? request = null)
+        {
+            if (request is { ValueKind: JsonValueKind.Object } given
+                && (given.TryGetProperty("unregisterations", out JsonElement list) || given.TryGetProperty("unregistrations", out list))
+                && list.ValueKind == JsonValueKind.Array)
+            {
+                foreach (JsonElement taken in list.EnumerateArray())
+                {
+                    if (taken.ValueKind == JsonValueKind.Object && taken.TryGetProperty("id", out JsonElement id) && id.ValueKind == JsonValueKind.String
+                        && taken.TryGetProperty("method", out JsonElement method) && method.GetString() == LspMethods.DidChangeWatchedFiles)
+                    {
+                        Owner?.WatchedFiles.Unregister(id.GetString()!);
+                    }
+                }
+            }
+            return null;
+        }
 
         [JsonRpcMethod(LspMethods.WorkDoneProgressCreate)]
         public object? CreateProgress(JsonElement? request = null) => null;
@@ -1222,7 +1251,11 @@ public sealed class LanguageServer : IAsyncDisposable
         }
 
         [JsonRpcMethod(LspMethods.ProjectInitializationComplete)]
-        public void ProjectsLoaded(JsonElement? message = null) => Owner?.ProjectsLoaded?.Invoke(Owner, EventArgs.Empty);
+        public void ProjectsLoaded(JsonElement? message = null)
+        {
+            Owner?.WatchedFiles.Loaded();
+            Owner?.ProjectsLoaded?.Invoke(Owner, EventArgs.Empty);
+        }
 
         /// <summary>Passenger's project loader in the server asking for a project's design-time builds, from the client's
         /// feed (its project host's builds); awaited apart from the messages that follow, which go on being handled.</summary>

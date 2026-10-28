@@ -85,6 +85,10 @@ public sealed class ProjectSession : IAsyncDisposable
     /// what the session has not taken of it by then is ended.</summary>
     private HeadStart? ahead;
 
+    /// <summary>What the folder's watcher saw before the session made its C# service, while a server started ahead (which
+    /// may have read the files already) waited for it.</summary>
+    private HeldChanges? unheardAhead;
+
     private ProjectSession(SessionSetup setup, string? folder)
     {
         this.setup = setup;
@@ -967,6 +971,20 @@ public sealed class ProjectSession : IAsyncDisposable
         Evaluate();
     }
 
+    /// <summary>What the folder's watcher saw, for the C# language server: told through its service, or kept for the one the
+    /// session makes while a server started ahead waits for it.</summary>
+    public void FilesChanged(FolderChanges changes)
+    {
+        if (CSharp is { } csharp)
+        {
+            csharp.FilesChanged(changes);
+        }
+        else if (ahead is not null && Folder is { } folder)
+        {
+            (unheardAhead ??= new HeldChanges(folder)).Add(changes);
+        }
+    }
+
     /// <summary>The language server on the workspace, in place of the one before, the files open its too; none for a
     /// folder with neither a solution nor a project, nor in a window that starts none.</summary>
     private void StartCSharp()
@@ -1004,6 +1022,10 @@ public sealed class ProjectSession : IAsyncDisposable
                 }
             };
             CSharp.Start(opening);
+            foreach (FolderChanges held in unheardAhead?.Take() ?? [])
+            {
+                CSharp.FilesChanged(held);
+            }
             foreach (OpenDocument open in setup.Editors.Documents)
             {
                 CSharp.Attach(open);
