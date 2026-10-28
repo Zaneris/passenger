@@ -388,4 +388,50 @@ public static class DockerFiles
         }
         return text.ToString();
     }
+
+    /// <summary>A compose file's text with a service's lines (those under <c>services:</c> of a file <see cref="Compose"/>
+    /// wrote for it) after the last line of its services, indented as its services are, every other character as it was;
+    /// null with why when it has no block of services or one of that name.</summary>
+    public static (string? Text, string? Problem) WithService(string text, string service, string made)
+    {
+        if (ComposeText.Of(text).Entries.Any(e => e.Path.Count == 2 && e.Path[0] == "services" && e.Path[1] == service))
+        {
+            return (null, $"it has a service named {service} already");
+        }
+        int begins = made.IndexOf("services:\n", StringComparison.Ordinal);
+        string[] lines = made[(begins + "services:\n".Length)..].Split('\n');
+        string newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        string[] have = text.Split('\n');
+        int at = Array.FindIndex(have, l => l.TrimEnd('\r').TrimEnd() == "services:");
+        if (at < 0)
+        {
+            return (null, "it has no block of services");
+        }
+        int last = at;
+        int indent = -1;
+        for (int i = at + 1; i < have.Length; i++)
+        {
+            string line = have[i].TrimEnd('\r');
+            if (line.Trim().Length == 0)
+            {
+                continue;
+            }
+            if (!char.IsWhiteSpace(line[0]))
+            {
+                break;
+            }
+            // A comment indented under the services is theirs, though its column sets none.
+            indent = indent < 0 && !line.TrimStart().StartsWith('#') ? line.Length - line.TrimStart().Length : indent;
+            last = i;
+        }
+        string shift = new(' ', Math.Max(0, (indent < 0 ? 2 : indent) - 2));
+        IEnumerable<string> added = lines.TakeWhile(l => l.Length == 0 || char.IsWhiteSpace(l[0])).Where(l => l.Length > 0).Select(l => shift + l);
+        int end = 0;
+        for (int i = 0; i <= last; i++)
+        {
+            end += have[i].Length + 1;
+        }
+        string before = end > text.Length ? text + newline : text[..end];
+        return (before + string.Concat(added.Select(l => l + newline)) + (end > text.Length ? string.Empty : text[end..]), null);
+    }
 }

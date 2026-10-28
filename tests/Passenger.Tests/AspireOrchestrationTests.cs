@@ -201,6 +201,86 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
         window.Close();
     }
 
+    /// <summary>New Project into a solution with an AppHost, with Aspire: the new web project joins that AppHost as a
+    /// resource, with the ServiceDefaults of its framework the solution has, nothing else made, and the AppHost's
+    /// configuration is chosen.</summary>
+    [AvaloniaFact]
+    public void New_Project_with_Aspire_joins_the_solutions_AppHost_with_its_ServiceDefaults_and_the_AppHost_is_chosen()
+    {
+        MainWindow window = Open();
+        try
+        {
+            Ui.Run(window, AppActions.NewProject);
+            NewProjectDialog dialog = NewServiceSetupTests.Opened(window);
+            NewServiceSetupTests.Choose(dialog, "web");
+            dialog.ProjectName = "Orders";
+            dialog.Framework = TestProjects.Framework;
+            dialog.SetupChooser.SelectedIndex = (int)ProjectSetup.Aspire;
+            Ui.Settle();
+            Assert.StartsWith("It joins Host as a resource", dialog.SetupNote, StringComparison.Ordinal);
+            NewServiceSetupTests.Created(dialog, "the web project");
+
+            Assert.Null(NewServiceSetupTests.SetUp(window));
+            Assert.Contains("../Orders/Orders.csproj", File.ReadAllText(project.PathOf("Host/Host.csproj")).Replace('\\', '/'), StringComparison.Ordinal);
+            Assert.Contains("\"../Orders/Orders.csproj\"", File.ReadAllText(project.PathOf("Host/Program.cs")), StringComparison.Ordinal);
+            Assert.Contains("../Defaults/Defaults.csproj", File.ReadAllText(project.PathOf("Orders/Orders.csproj")).Replace('\\', '/'), StringComparison.Ordinal);
+            Assert.Contains("AddServiceDefaults()", File.ReadAllText(project.PathOf("Orders/Program.cs")), StringComparison.Ordinal);
+            Assert.False(Directory.Exists(project.PathOf("Shop.ServiceDefaults")) || Directory.Exists(project.PathOf("Shop.AppHost")),
+                "Aspire made an AppHost or ServiceDefaults beside those the solution has");
+            Assert.True(window.Configuration is { Aspire: true } chosen && PathNames.Same(chosen.Project, PathNames.Canonical(project.PathOf("Host/Host.csproj"))),
+                $"The configuration chosen is {window.Configuration?.Name}, not the AppHost's: [{string.Join(", ", window.Configurations.Select(c => c.Name))}]");
+        }
+        finally
+        {
+            NewProjectDialog.Remembered = ProjectSetup.None;
+            window.Close();
+        }
+    }
+
+    /// <summary>New Solution of a web project with Aspire: an AppHost and a ServiceDefaults are made with it as the AppHost's
+    /// resource, and the AppHost's configuration is chosen.</summary>
+    [AvaloniaFact]
+    public void New_Solution_with_Aspire_has_an_AppHost_and_ServiceDefaults_and_the_AppHost_is_chosen()
+    {
+        string place = TestFolders.Create("aspire-new-");
+        string settings = TestFolders.Create("settings-");
+        TestFolders.Write(place, "Directory.Build.props", "<Project><PropertyGroup><AspireUseCliBundle>false</AspireUseCliBundle></PropertyGroup></Project>");
+        AspireApp.UseFeed(place);
+        MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings, StartsLanguageServer = false };
+        window.Show();
+        window.KeepLayout();
+        try
+        {
+            Ui.Click(window.Welcome.NewSolutionButton);
+            NewProjectDialog dialog = NewServiceSetupTests.Opened(window);
+            dialog.Folder = place;
+            NewServiceSetupTests.Choose(dialog, "web");
+            dialog.SolutionName = "Mall";
+            dialog.ProjectName = "Api";
+            dialog.Framework = TestProjects.Framework;
+            dialog.SetupChooser.SelectedIndex = (int)ProjectSetup.Aspire;
+            Ui.Settle();
+            Assert.StartsWith("An AppHost and ServiceDefaults made", dialog.SetupNote, StringComparison.Ordinal);
+            NewServiceSetupTests.Created(dialog, "the web project");
+
+            Assert.Null(NewServiceSetupTests.SetUp(window));
+            string folder = PathNames.Canonical(Path.Combine(place, "Mall"));
+            string host = Path.Combine(folder, "Mall.AppHost", "Mall.AppHost.csproj");
+            Assert.Contains("../Api/Api.csproj", File.ReadAllText(host).Replace('\\', '/'), StringComparison.Ordinal);
+            Assert.True(File.Exists(Path.Combine(folder, "Mall.ServiceDefaults", "Mall.ServiceDefaults.csproj")), "No ServiceDefaults was made");
+            Assert.Contains("AddServiceDefaults()", File.ReadAllText(Path.Combine(folder, "Api", "Program.cs")), StringComparison.Ordinal);
+            Assert.True(window.Configuration is { Aspire: true } chosen && PathNames.Same(chosen.Project, host),
+                $"The configuration chosen is {window.Configuration?.Name}, not the AppHost's: [{string.Join(", ", window.Configurations.Select(c => c.Name))}]");
+        }
+        finally
+        {
+            NewProjectDialog.Remembered = ProjectSetup.None;
+            window.Close();
+            TestFolders.Delete(settings);
+            TestFolders.Delete(place);
+        }
+    }
+
     private MainWindow Open()
     {
         MainWindow window = project.Open(project.PathOf("Api/Program.cs"));

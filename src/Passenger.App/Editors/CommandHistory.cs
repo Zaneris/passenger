@@ -340,6 +340,16 @@ public sealed class CommandHistory
         /// <summary>A file not open the command watched left out of it: its write never landed, so it changed nothing.</summary>
         public void Unwritten(string path) => closed.Remove(Began(path));
 
+        /// <summary>The files not open it watched under a folder the command made whole, which a part of its own takes
+        /// away and makes again (<see cref="Also"/>), left out of its texts and the files it made.</summary>
+        public void Leave(string folder)
+        {
+            foreach (string path in closed.Keys.Where(p => PathNames.IsUnder(p, folder)).ToList())
+            {
+                closed.Remove(path);
+            }
+        }
+
         /// <summary>What the command changed in the open files, taken as it stands now: what is typed later, while it waits
         /// for its writes to files not open to land, is no part of it.</summary>
         public void TakeOpen() => openTaken = OpenChanges();
