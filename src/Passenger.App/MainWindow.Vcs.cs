@@ -102,6 +102,7 @@ public partial class MainWindow
     {
         ToolWindows.CommitView view = commitView = new ToolWindows.CommitView(session.Vcs);
         view.OpenRequested += (_, path) => OpenFile(path);
+        view.ActionRequested += (_, action) => Request(action);
         view.DiffRequested += (_, path) => IdeErrors.Observe(ShowDiffAsync(path));
         view.RollbackRequested += (_, changes) => IdeErrors.Observe(RollbackAsync(changes));
         view.DeleteRequested += (_, path) => IdeErrors.Observe(DeleteAsync(path));
@@ -120,6 +121,7 @@ public partial class MainWindow
         view.DiffRequested += (_, chosen) => IdeErrors.Observe(ShowCommitDiffAsync(chosen.Commit, chosen.File));
         view.CompareRequested += (_, chosen) => IdeErrors.Observe(CompareWithAsync(chosen.Local, chosen.Commit.Hash, chosen.Commit.Short, chosen.File.Path));
         view.OpenRequested += (_, path) => OpenFile(path);
+        view.ActionRequested += (_, action) => Request(action);
         view.NewBranchRequested += (_, commit) =>
         {
             NamePopup popup = new($"New Branch from {commit.Short}", string.Empty, async name => (await session.Vcs.NewBranchAtAsync(name, commit.Hash)).Problem);
@@ -514,6 +516,11 @@ public partial class MainWindow
         {
             WhyNot = context => DiffWithKeys(context) is { } diff ? WhyNotJump(diff) : NoDiff,
         });
+        // The Commit and Git windows' Refresh: the working tree's changes, and the log shown, read again.
+        actions.Add(new IdeAction(AppActions.CommitRefresh, "Refresh Changes", "Git", _ => IdeErrors.Observe(session.Vcs.RefreshAsync())) { WhyNot = NeedsRepository });
+        actions.Add(new IdeAction(AppActions.GitLogRefresh, "Refresh Git Log", "Git", _ => IdeErrors.Observe(GitWindow.RefreshAsync())) { WhyNot = NeedsRepository });
+
+        string? NeedsRepository(ActionContext context) => NeedsFolder(context) ?? (session.Vcs.Repository is null ? Refusals.NoRepository : null);
 
         void Add(string id, string title, Action<ActionContext> run, MenuPlace menu, bool onFile = false) =>
             actions!.Add(new IdeAction(id, title, "Git", run)

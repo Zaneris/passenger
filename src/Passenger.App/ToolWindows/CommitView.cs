@@ -188,7 +188,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
             VerticalAlignment = VerticalAlignment.Center,
             Children =
             {
-                ToolButtons.Of(IconKeys.Rerun, "Refresh", () => IdeErrors.Observe(vcs.RefreshAsync())),
+                ToolButtons.Of(AppActions.CommitRefresh, IconKeys.Rerun, "Refresh", action => ActionRequested?.Invoke(this, action)),
                 ToolButtons.Of(IconKeys.Rollback, "Rollback", () => RollbackRequested?.Invoke(this, ChosenOrSelected())),
                 ToolButtons.Of(AppActions.ShowDiff, IconKeys.Diff, "Show Diff", _ =>
                 {
@@ -271,6 +271,9 @@ public sealed class CommitView : DockPanel, IOwnKeys
 
     /// <summary>A file to open in the editor.</summary>
     public event EventHandler<string>? OpenRequested;
+
+    /// <summary>One of the window's actions asked for by its button.</summary>
+    public event EventHandler<string>? ActionRequested;
 
     /// <summary>A changed file to move to the Trash, from its menu.</summary>
     public event EventHandler<string>? DeleteRequested;

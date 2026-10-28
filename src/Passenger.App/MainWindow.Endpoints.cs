@@ -25,6 +25,7 @@ public partial class MainWindow
             endpoints = view;
             view.GoToRequested += (_, request) => NavigateTo(request.File, new TextPosition(request.Line, 0));
             view.InteractiveRequested += (_, request) => OpenInteractiveTest(request);
+            view.ActionRequested += (_, action) => Request(action);
             FollowRoutes(view);
             view.Reload(session.Folder);
             view.ShowRoutes(session.Routes.All);
@@ -36,7 +37,12 @@ public partial class MainWindow
             Chosen = () => endpoints?.Chosen,
         });
         // The row's Test button, Enter and its menu test it as this does; an agent or Find Action tests the row chosen.
-        actions!.Add(new IdeAction(AppActions.TestEndpoint, "Test Request", "Endpoints", context => IdeErrors.Observe(Endpoints.TestAsync(Endpoints.Chosen!)))
+        actions!.Add(new IdeAction(AppActions.EndpointsRefresh, "Refresh Endpoints", "Endpoints", _ => Endpoints.Reload(session.Folder))
+        {
+            WhyNot = NeedsFolder,
+            Words = ["Read the .http files again"],
+        });
+        actions.Add(new IdeAction(AppActions.TestEndpoint, "Test Request", "Endpoints", context => IdeErrors.Observe(Endpoints.TestAsync(Endpoints.Chosen!)))
         {
             WhyNot = _ => endpoints?.Chosen is null ? "No request is chosen in the Endpoints window" : null,
             Words = ["HTTP Client", "Send Request"],

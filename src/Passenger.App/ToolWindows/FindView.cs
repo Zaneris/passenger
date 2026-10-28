@@ -203,6 +203,30 @@ public sealed class FindView : DockPanel
         Choose(row);
     }
 
+    /// <summary>Opens every group of the search shown, the chosen row kept chosen.</summary>
+    public void ExpandAll() => ShowAll(expanded: true);
+
+    /// <summary>Closes every group of the search shown down to the kinds of usage, the first chosen where the chosen row
+    /// is under one.</summary>
+    public void CollapseAll() => ShowAll(expanded: false);
+
+    private void ShowAll(bool expanded)
+    {
+        if (current is null)
+        {
+            return;
+        }
+        FindRow? chosen = Selected;
+        foreach (FindRow row in Every(current.Roots))
+        {
+            row.IsExpanded = expanded && row.Expands;
+        }
+        rows.Show([.. TreeRows<FindRow>.Shown(current.Roots, r => r.Children)]);
+        list.SelectedItem = chosen is not null && rows.Contains(chosen) ? chosen : rows.FirstOrDefault();
+
+        static IEnumerable<FindRow> Every(IEnumerable<FindRow> level) => level.SelectMany(row => Every(row.Children).Prepend(row));
+    }
+
     /// <summary>Opens a group, or closes it, as a click on its chevron does.</summary>
     public void Toggle(FindRow row)
     {

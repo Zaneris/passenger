@@ -113,6 +113,10 @@ public sealed class ActionContext(OpenDocument? file, CodeEditor editor, object?
     /// chosen in the Containers or Aspire window.</summary>
     public Run.ChosenService? Service { get; init; }
 
+    /// <summary>The same place with a tool window's own button asking, which runs its action on that window without taking
+    /// the keys.</summary>
+    public ActionContext In(ToolWindow window) => new(file, editor, focused, window, debugging) { Tab = Tab, ExplorerRow = ExplorerRow, Service = Service };
+
     private static string? SymbolAt(CodeEditor editor)
     {
         Selection primary = editor.Selections.Primary;

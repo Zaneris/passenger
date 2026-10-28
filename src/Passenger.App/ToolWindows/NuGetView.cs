@@ -71,7 +71,7 @@ public sealed class NuGetView : DockPanel
         prerelease = new CheckBox { Content = "Prerelease", VerticalAlignment = VerticalAlignment.Center };
         status = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0), TextTrimming = TextTrimming.CharacterEllipsis };
         status.Classes.Add("muted");
-        Button refresh = ToolButtons.Of(IconKeys.Rerun, "Refresh", () => IdeErrors.Observe(ReloadSourcesAsync()));
+        Button refresh = ToolButtons.Of(AppActions.NuGetRefresh, IconKeys.Rerun, "Refresh", action => ActionRequested?.Invoke(this, action));
         refresh.Margin = new Thickness(6, 0, 0, 0);
         typing = new Debounce(Pause, RefreshAsync);
         search.TextChanged += (_, _) => typing.Restart();
@@ -182,6 +182,9 @@ public sealed class NuGetView : DockPanel
         status.Text = outcome.Done ? "Done" : "The change failed; the log says why";
         IdeErrors.Observe(RefreshAsync());
     }
+
+    /// <summary>One of the window's actions asked for by its button.</summary>
+    public event EventHandler<string>? ActionRequested;
 
     /// <summary>An advisory's link clicked, for the browser.</summary>
     public event EventHandler<Uri>? LinkClicked;

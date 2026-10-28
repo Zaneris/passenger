@@ -142,6 +142,9 @@ public sealed class DockHost : Grid
     /// the stripe buttons' tips.</summary>
     public ActionRegistry? Actions { get; set; }
 
+    /// <summary>Asks for one of the window's actions where it runs, saying why one cannot: a pane's header buttons'.</summary>
+    public Func<string, ActionContext, bool>? Request { get; set; }
+
     public void Add(ToolWindow window)
     {
         window.Order = windows.Count(w => w.Anchor == window.Anchor);

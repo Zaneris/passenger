@@ -10,7 +10,7 @@ using Passenger.Text;
 namespace Passenger.App.ToolWindows;
 
 /// <summary>A program's or a build's console: the code editor, read-only, following the end while the output grows, with
-/// the run toolbar down its left side (rerun, stop, clear). Output comes through its <see cref="Sink"/> from any thread;
+/// the run toolbar down its left side (rerun, stop, clear) and Find over its text. Output comes through its <see cref="Sink"/> from any thread;
 /// standard error is drawn in the error colour, a build's error and warning lines in their severities' colours, and what a
 /// person types goes to the program's <see cref="Input"/> a line at a time, in the input colour. It keeps a cycle buffer of
 /// text, the oldest lines dropped past it. Its file locations and web addresses are links (<see cref="Links"/>).</summary>
@@ -169,6 +169,27 @@ public sealed class OutputView : DockPanel
 
     /// <summary>The console's editor, made the first time it is shown or asked for.</summary>
     public CodeEditor Editor => editor ?? MakeEditor();
+
+    private Editors.FindBar? find;
+
+    /// <summary>The editor's own Find over the console's text (case, whole words, regular expressions, every match marked),
+    /// made over it the first time it is asked for.</summary>
+    public Editors.FindBar Find
+    {
+        get
+        {
+            if (find is null)
+            {
+                find = new Editors.FindBar { [DockProperty] = Dock.Top };
+                Children.Insert(Children.IndexOf(body), find);
+                find.Attach(Editor);
+            }
+            return find;
+        }
+    }
+
+    /// <summary>Opens Find over the console.</summary>
+    public void OpenFind() => Find.Open(replace: false);
 
     /// <summary>Where programs write to this console, from any thread.</summary>
     public ConsoleSink Sink { get; }

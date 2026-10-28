@@ -85,6 +85,21 @@ public partial class MainWindow
 
     private string? NeedsFolder(ActionContext _) => Folder is null ? Refusals.NoFolder : null;
 
+    /// <summary>Why Expand All or Collapse All cannot run: no tool window with rows to open or close has the keys.</summary>
+    private static string? NoTree(ActionContext context, Action? does, string verb) =>
+        does is not null ? null : context.ToolWindow is { } window ? $"{window.Title} has no rows to {verb}" : $"No tool window with rows to {verb} has the keys";
+
+    /// <summary>Find over the console of the tool window with the keys: the Run and Build windows', the Containers' and
+    /// Aspire's logs'.</summary>
+    private Editors.FindBar? ConsoleFind(ActionContext context) => context.ToolWindow?.Id switch
+    {
+        ToolWindowIds.Run => Bottom.Run.Find,
+        ToolWindowIds.Build => Bottom.Build.Find,
+        ToolWindowIds.Containers => ContainersWindow.Log.Find,
+        ToolWindowIds.Aspire => aspireView?.Find,
+        _ => null,
+    };
+
     /// <summary>The scope of the rows chosen in the Explorer while it has the keys; null elsewhere, for the scope
     /// kept.</summary>
     private Workspace.SearchScope? ExplorerScope(ActionContext context) =>
@@ -95,6 +110,7 @@ public partial class MainWindow
     {
         actions = new ActionRegistry(Context, () => keys.Keymap, work);
         Dock.Actions = actions;
+        Dock.Request = Request;
         foreach ((Button button, string id) in (ReadOnlySpan<(Button, string)>)[(BuildButton, A.Build), (RunButton, A.RunProgram), (DebugButton, A.Debug),
             (ProfileButton, A.Profile), (HotReloadButton, A.ApplyHotReloadChanges), (StopButton, A.Stop), (SearchButton, A.GoToEverything), (SettingsButton, A.ShowSettings)])
         {
@@ -114,51 +130,30 @@ public partial class MainWindow
         Add(A.Exit, "Exit", "IDE", _ => PassengerApp.Quit(), menu: OperatingSystem.IsMacOS() ? null : ("File", 4, 0));
         Add(A.FindAction, "Find Action…", "IDE", _ => ShowFindAction(), menu: ("Help", 0, 0));
 
-        // The Unit Tests window takes Find's keys for its search while it has them.
+        // The Unit Tests window takes Find's keys for its search while it has them, a console's window for its text.
         Add(A.Find, "Find", "IDE", c =>
         {
             if (c.ToolWindow?.Id == ToolWindowIds.Tests)
             {
                 Bottom.Tests.FocusSearch();
             }
-            else if (c.ToolWindow?.Id == ToolWindowIds.Containers)
-            {
-                ContainersWindow.Log.OpenFind();
-            }
             else if (c.ToolWindow?.Id == ToolWindowIds.Aspire)
             {
                 actions!.Run(A.AspireLogFind, c);
+            }
+            else if (ConsoleFind(c) is { } console)
+            {
+                console.Open(replace: false);
             }
             else
             {
                 Editors.ShowFind(replace: false);
             }
-        }, c => c.ToolWindow?.Id is ToolWindowIds.Tests or ToolWindowIds.Containers or ToolWindowIds.Aspire ? null : Refusals.NeedsFile(c), ("Edit/Find", 0, 0));
+        }, c => c.ToolWindow?.Id == ToolWindowIds.Tests || ConsoleFind(c) is not null ? null : Refusals.NeedsFile(c), ("Edit/Find", 0, 0));
         Add(A.Replace, "Replace", "IDE", _ => Editors.ShowFind(replace: true), Refusals.NeedsFile, ("Edit/Find", 0, 1));
-        Add(A.FindNext, "Find Next", "IDE", c =>
-        {
-            if (c.ToolWindow?.Id == ToolWindowIds.Aspire)
-            {
-                aspireView?.Find.Next();
-            }
-            else
-            {
-                Editors.FindBar.Next();
-            }
-        },
-            c => c.ToolWindow?.Id == ToolWindowIds.Aspire ? null : Refusals.NeedsFile(c), ("Edit/Find", 0, 2));
-        Add(A.FindPrevious, "Find Previous", "IDE", c =>
-        {
-            if (c.ToolWindow?.Id == ToolWindowIds.Aspire)
-            {
-                aspireView?.Find.Previous();
-            }
-            else
-            {
-                Editors.FindBar.Previous();
-            }
-        },
-            c => c.ToolWindow?.Id == ToolWindowIds.Aspire ? null : Refusals.NeedsFile(c), ("Edit/Find", 0, 3));
+        Add(A.FindNext, "Find Next", "IDE", c => (ConsoleFind(c) ?? Editors.FindBar).Next(), c => ConsoleFind(c) is not null ? null : Refusals.NeedsFile(c), ("Edit/Find", 0, 2));
+        Add(A.FindPrevious, "Find Previous", "IDE", c => (ConsoleFind(c) ?? Editors.FindBar).Previous(), c => ConsoleFind(c) is not null ? null : Refusals.NeedsFile(c),
+            ("Edit/Find", 0, 3));
         Add(A.FindInFiles, "Find in Files…", "IDE", c => ShowFindInFiles(replace: false, ExplorerScope(c)), NeedsFolder, ("Edit/Find", 1, 0));
         Add(A.ReplaceInFiles, "Replace in Files…", "IDE", c => ShowFindInFiles(replace: true, ExplorerScope(c)), NeedsFolder, ("Edit/Find", 1, 1));
         Add(A.ExtendSelection, "Extend Selection", "Editor", _ => ExtendSelection(), Refusals.NeedsFile, ("Edit", 2, 1));
@@ -188,6 +183,8 @@ public partial class MainWindow
         actions.Add(new IdeAction(A.MaximizeToolWindow, "Maximize Tool Window", "Tool Windows", _ => Dock.ToggleMaximize()) { Menus = [new("View", 3, 0)], FromTerminal = true });
         actions.Add(new IdeAction(A.HideAllToolWindows, "Hide All Tool Windows", "Tool Windows", _ => Dock.ToggleHideAll()) { Menus = [new("View", 3, 1)], FromTerminal = true });
         actions.Add(new IdeAction(A.HideToolWindow, "Hide Active Tool Window", "Tool Windows", _ => HideToolWindow()) { Menus = [new("View", 3, 2)], FromTerminal = true });
+        actions.Add(new IdeAction(A.ExpandAll, "Expand All", "Tool Windows", c => c.ToolWindow!.ExpandAll!()) { WhyNot = c => NoTree(c, c.ToolWindow?.ExpandAll, "open") });
+        actions.Add(new IdeAction(A.CollapseAll, "Collapse All", "Tool Windows", c => c.ToolWindow!.CollapseAll!()) { WhyNot = c => NoTree(c, c.ToolWindow?.CollapseAll, "close") });
         Add(A.FocusEditor, "Focus Editor", "IDE", _ => FocusEditor(), Refusals.NeedsFile);
         Add(A.ToggleSolutionAnalysis, "Toggle Solution-Wide Analysis", "IDE", _ => ToggleSolutionAnalysis(),
             _ => session.CSharp is null ? Refusals.NoCSharp : null, ("Code", 4, 0));

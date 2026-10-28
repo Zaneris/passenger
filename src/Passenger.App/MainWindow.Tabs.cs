@@ -10,7 +10,8 @@ namespace Passenger.App;
 /// Tab, the closes (the tab, the others, all, all but pinned, those to one side), Reopen Closed Tab, the splits and
 /// Unsplit, and a tab moved to the opposite group or a window of its own. From a tab's menu they act on that tab, else
 /// on the one the active group shows; Restore Default Layout is beside them, in Window > Layout Settings. A tab's menu
-/// also copies its file's path and shows it in the file manager or a terminal.</summary>
+/// also copies its file's path and shows it in the file manager or a terminal; a double-click on a tab hides the tool
+/// windows, or brings them back.</summary>
 public partial class MainWindow
 {
     private const string Tabs = "Editor Tabs";
@@ -33,6 +34,7 @@ public partial class MainWindow
     private void AddTabActions()
     {
         Editors.TabMenuOpening += (_, opening) => FillTabMenu(opening);
+        Editors.MaximizeRequested += (_, _) => Request(A.HideAllToolWindows);
         Tab(A.NextTab, "Next Tab", _ => Editors.Cycle(1), Refusals.NeedsFile, (0, 0));
         Tab(A.PreviousTab, "Previous Tab", _ => Editors.Cycle(-1), Refusals.NeedsFile, (0, 1));
         actions!.Add(new IdeAction(A.PinTab, "Pin Tab", Tabs, c => TabOf(c)!.Value.Group.Pin(TabOf(c)!.Value.File, !Pinned(c)))

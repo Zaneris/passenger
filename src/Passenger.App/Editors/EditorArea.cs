@@ -52,6 +52,9 @@ public sealed partial class EditorArea : UserControl
     /// <summary>A tab's menu opening, for the window to fill with its tab actions, run on that tab.</summary>
     public event EventHandler<TabMenu>? TabMenuOpening;
 
+    /// <summary>A tab double-clicked: the editors to have the whole frame, or to give it back.</summary>
+    public event EventHandler? MaximizeRequested;
+
     /// <summary>A file opened in a tab, before it is shown; and one closed, its last tab gone and nothing holding it.</summary>
     public event EventHandler<OpenDocument>? Opened;
 
@@ -533,6 +536,8 @@ public sealed partial class EditorArea : UserControl
     }
 
     internal void OpenTabMenu(EditorGroup group, OpenDocument document, ContextMenu menu) => TabMenuOpening?.Invoke(this, new TabMenu(group, document, menu));
+
+    internal void RequestMaximize() => MaximizeRequested?.Invoke(this, EventArgs.Empty);
 
     /// <summary>A tab of a group was shown by a click on it.</summary>
     internal void Activated(EditorGroup group)

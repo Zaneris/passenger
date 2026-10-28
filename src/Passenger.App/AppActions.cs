@@ -388,12 +388,22 @@ public static class AppActions
     public const string CloseSolution = "app.closeSolution";
     public const string RestoreDefaultLayout = "app.window.restoreDefaultLayout";
 
-    // The terminal: a shell per tab in the open folder.
+    // The terminal: a shell per tab in the open folder, and its New Session: no key of Rider's outside its terminal.
     public const string ShowTerminal = "app.showTerminal";
+    public const string NewTerminalSession = "app.terminal.newSession";
 
-    // The tool windows' frame.
+    // The tool windows' frame, and a tree's Expand All and Collapse All in its header: no keys of Rider's there.
     public const string MaximizeToolWindow = "app.window.maximize";
     public const string HideAllToolWindows = "app.window.hideAll";
+    public const string ExpandAll = "app.window.expandAll";
+    public const string CollapseAll = "app.window.collapseAll";
+
+    // The Refresh of the windows that read what they show again on asking: no keys of Rider's.
+    public const string EndpointsRefresh = "app.endpoints.refresh";
+    public const string GitLogRefresh = "app.vcs.refreshLog";
+    public const string CommitRefresh = "app.vcs.refreshChanges";
+    public const string NuGetRefresh = "app.nuget.refresh";
+    public const string LiveTreeRefresh = "app.liveTree.refresh";
 
     // The breakpoints' windows, the window's to show.
     public const string EditBreakpoint = "app.breakpoints.edit";

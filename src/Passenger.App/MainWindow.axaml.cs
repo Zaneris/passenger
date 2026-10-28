@@ -557,6 +557,8 @@ public partial class MainWindow : Window
             HeaderTools = Explorer.TakeHeaderTools(),
             Options = Explorer.Options,
             Chosen = () => Explorer.SelectedNodes,
+            // Opening every row would read every folder on disk, build output and packages too: it closes them alone.
+            CollapseAll = Explorer.Tree.CollapseAll,
             Activate = () =>
             {
                 Dock.Show(ToolWindowIds.Explorer);
@@ -584,6 +586,8 @@ public partial class MainWindow : Window
             Action = AppActions.ShowTests,
             Menus = [new MenuPlace("Tests", 2, 0)],
             Chosen = () => Bottom.Tests.Selected,
+            ExpandAll = Bottom.TestTree.ExpandAll,
+            CollapseAll = Bottom.TestTree.CollapseAll,
         });
         Dock.Add(new Docking.ToolWindow(ToolWindowIds.Build, "Build", IconKeys.Build, Bottom.Build, Docking.ToolAnchor.BottomLeft) { Action = AppActions.ShowBuild, ActionTitle = "Build Tool Window" });
         Dock.Add(new Docking.ToolWindow(ToolWindowIds.Problems, "Problems", IconKeys.Problems, () => new ToolWindows.ProblemsView(Bottom.Problems), Docking.ToolAnchor.BottomLeft)

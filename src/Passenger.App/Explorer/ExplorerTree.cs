@@ -231,6 +231,24 @@ public sealed class ExplorerTree
         Rows.Close(node);
     }
 
+    /// <summary>Closes every row but the top one, the rows out of sight under a closed one too, so none opens again with
+    /// its own rows open.</summary>
+    public void CollapseAll()
+    {
+        if (Root is null)
+        {
+            return;
+        }
+        foreach (ExplorerNode row in Rows.Reverse().Where(r => r != Root && r.IsExpanded).ToList())
+        {
+            Collapse(row);
+        }
+        foreach (ExplorerNode hidden in Loaded(Root, n => n != Root && n.IsExpanded))
+        {
+            hidden.IsExpanded = false;
+        }
+    }
+
     /// <summary>Reads again only the folders (and projects) that hold these, keeping the rows still there as they were (open,
     /// chosen), and puts the rows that came or went in their places.</summary>
     public void RefreshFolders(IEnumerable<string> folders)

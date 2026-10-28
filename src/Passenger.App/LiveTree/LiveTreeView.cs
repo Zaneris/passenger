@@ -73,7 +73,7 @@ public sealed class LiveTreeView : DockPanel
     {
         SelectElement = ToolButtons.Toggle(IconKeys.SelectElement, "Select Element: point at a control in the app and click it");
         SelectElement.Click += (_, _) => PickRequested?.Invoke(this, SelectElement.IsChecked == true);
-        Button refresh = ToolButtons.Of(IconKeys.Rerun, "Refresh", () => RefreshRequested?.Invoke(this, EventArgs.Empty));
+        Button refresh = ToolButtons.Of(AppActions.LiveTreeRefresh, IconKeys.Rerun, "Refresh", _ => RefreshRequested?.Invoke(this, EventArgs.Empty));
         status = new TextBlock { Classes = { "muted" }, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0), TextTrimming = TextTrimming.CharacterEllipsis };
         DockPanel top = new() { Margin = new Thickness(6, 0) };
         StackPanel buttons = new() { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center, Children = { SelectElement, refresh } };
@@ -179,6 +179,7 @@ public sealed class LiveTreeView : DockPanel
     /// <summary>Select Element pressed (on) or let go (off).</summary>
     public event EventHandler<bool>? PickRequested;
 
+    /// <summary>Refresh pressed: its action asked for.</summary>
     public event EventHandler? RefreshRequested;
 
     /// <summary>A link to XAML followed: a control's element, a style's selector, a setter.</summary>

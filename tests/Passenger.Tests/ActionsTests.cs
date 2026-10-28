@@ -157,6 +157,31 @@ public sealed class ActionsTests : IDisposable
         }
     }
 
+    /// <summary>Every tool window's Refresh and the Terminal's New Session are actions: Find Action lists each by its title,
+    /// and its button in the window is that action's.</summary>
+    [AvaloniaFact]
+    public void Each_tool_windows_Refresh_and_the_terminals_new_session_are_in_Find_Action()
+    {
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            foreach (string id in (string[])[AppActions.EndpointsRefresh, AppActions.GitLogRefresh, AppActions.CommitRefresh, AppActions.NuGetRefresh,
+                AppActions.LiveTreeRefresh, AppActions.NewTerminalSession, AppActions.ContainersRefresh, AppActions.ExpandAll, AppActions.CollapseAll])
+            {
+                IdeAction action = window.Actions[id] ?? throw new Xunit.Sdk.XunitException($"No action is {id}");
+                ActionPopup popup = FindAction(window);
+                popup.Query = action.Title;
+                Ui.Settle();
+                Assert.True(popup.Rows.Any(a => a.Id == id), $"Find Action does not list {action.Title} ({id}) by its title");
+                Ui.Press(window, "ESCAPE");
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>Find Action as its shortcut opens it, waiting with the keys in its query.</summary>
     private static ActionPopup FindAction(MainWindow window)
     {

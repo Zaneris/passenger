@@ -553,8 +553,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                         continue;
                     }
                     seen++;
-                    bool frames = button.GetVisualParent() is StackPanel own && DockPanel.GetDock(own) == Dock.Right
-                        && own.GetVisualParent()?.GetVisualParent() is Border { Classes: var classes } && classes.Contains("toolHeader");
+                    bool frames = (button.Name == AppActions.HideToolWindow || ToolTip.GetTip(button) is "Options")
+                        && button.FindAncestorOfType<Border>() is { Classes: var classes } && classes.Contains("toolHeader");
                     double size = frames ? 10 : 16;
                     string what = $"{tool.Title}'s {ToolTip.GetTip(button)}";
                     Assert.False(button.Focusable, $"{what} takes the keys when clicked, where a toolbar's button leaves them with what it acts on");
@@ -619,6 +619,44 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         finally
         {
             window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+    }
+
+    /// <summary>Every tool window's Refresh, Expand All, Collapse All and New Session is one of the window's actions, as Find
+    /// Action and the keymap reach it: a button doing one of those that runs no action fails here, naming its window.</summary>
+    [AvaloniaFact]
+    public void Every_tool_windows_refresh_expand_collapse_and_new_session_button_is_one_of_the_windows_actions()
+    {
+        string[] kinds = ["Refresh", "Read the .http files again", "Expand All", "Collapse All", "New Session"];
+        MainWindow window = Open(1400, 880);
+        try
+        {
+            window.TerminalPanel.Shell = OperatingSystem.IsWindows() ? ("cmd.exe", []) : ("/bin/sh", []);
+            List<string> bare = [];
+            HashSet<string> seen = [];
+            foreach (Passenger.App.Docking.ToolWindow tool in window.DockHost.Windows.ToList())
+            {
+                window.DockHost.Show(tool.Id);
+                Ui.Settle();
+                foreach (Button button in ToolWindowParts(window).OfType<Button>().Where(b => b.Classes.Contains("tool")))
+                {
+                    if (ToolTip.GetTip(button) is not string tip || kinds.FirstOrDefault(k => tip.StartsWith(k, StringComparison.Ordinal)) is not { } kind)
+                    {
+                        continue;
+                    }
+                    seen.Add(kind);
+                    if (button.Name is not { } name || window.Actions[name] is null || Passenger.App.ActionButtons.GetAction(button) != name)
+                    {
+                        bare.Add($"{tool.Title}'s {tip}");
+                    }
+                }
+            }
+            Assert.True(bare.Count == 0, $"These buttons run no action, so Find Action, the keymap and agents cannot reach them: {string.Join(", ", bare)}");
+            Assert.True(seen.Count == kinds.Length, $"Only {string.Join(", ", seen)} were found among the tool windows' buttons");
+        }
+        finally
+        {
             window.Close();
         }
     }

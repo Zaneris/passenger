@@ -149,8 +149,6 @@ public sealed class TestsView : DockPanel
             VerticalAlignment = VerticalAlignment.Center,
             Children =
             {
-                ToolButtons.Of(IconKeys.ExpandAll, "Expand All", model.ExpandAll),
-                ToolButtons.Of(IconKeys.CollapseAll, "Collapse All", model.CollapseAll),
                 groupBy,
                 Divider(),
                 all,

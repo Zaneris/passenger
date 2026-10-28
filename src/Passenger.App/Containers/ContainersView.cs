@@ -562,6 +562,22 @@ public sealed class ContainersView : DockPanel
         new(ContainerRowKind.Container, depth, $"container:{container.Name}", container.Name) { Detail = container.Image, Container = container };
 
 
+    /// <summary>Opens every group, project, AppHost and service of several containers.</summary>
+    public void ExpandAll()
+    {
+        collapsed.Clear();
+        Fill();
+    }
+
+    /// <summary>Closes every row with rows under it, those of a closed group too, leaving the groups.</summary>
+    public void CollapseAll()
+    {
+        collapsed.Clear();
+        Fill();
+        collapsed.UnionWith(items.Select(item => item.Data).Where(row => row.Expands).Select(row => row.Key));
+        Fill();
+    }
+
     /// <summary>Expands or collapses a row with rows under it.</summary>
     public void Toggle(ContainerRow? row)
     {

@@ -105,7 +105,7 @@ public sealed class EndpointsView : DockPanel
         environments = new ComboBox { MinWidth = 140, VerticalAlignment = VerticalAlignment.Center };
         environments.SelectionChanged += (_, _) => EnvironmentChanged?.Invoke(this, EventArgs.Empty);
         ToolTip.SetTip(environments, $"The environment of {HttpVariables.PublicFile} whose variables the requests use");
-        Button refresh = ToolButtons.Of(IconKeys.Rerun, "Read the .http files again", () => Reload(root));
+        Button refresh = ToolButtons.Of(AppActions.EndpointsRefresh, IconKeys.Rerun, "Read the .http files again", action => ActionRequested?.Invoke(this, action));
         TextBlock label = new() { Text = "Environment", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
         StackPanel bar = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(8, 4), Spacing = 4, Children = { label, environments, refresh } };
         DockPanel.SetDock(bar, Dock.Top);
@@ -127,6 +127,9 @@ public sealed class EndpointsView : DockPanel
 
     /// <summary>A request to open in the editor at its request line.</summary>
     public event EventHandler<EndpointRequest>? GoToRequested;
+
+    /// <summary>One of the window's actions asked for by its button.</summary>
+    public event EventHandler<string>? ActionRequested;
 
     /// <summary>A route whose request is to be sent, from its row.</summary>
     public event EventHandler<WebRoute>? RouteSendRequested;

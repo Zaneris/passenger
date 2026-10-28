@@ -70,12 +70,15 @@ public sealed class TerminalPanel : DockPanel
             }
             FocusView();
         };
-        Button add = ToolButtons.Of(IconKeys.Add, "New Session", () => IdeErrors.Observe(NewSessionAsync()));
+        Button add = ToolButtons.Of(AppActions.NewTerminalSession, IconKeys.Add, "New Session", action => ActionRequested?.Invoke(this, action));
         HeaderTools = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { strip, add } };
     }
 
     /// <summary>Raised when the last shell has ended, so the window can hide.</summary>
     public event EventHandler? Emptied;
+
+    /// <summary>One of the window's actions asked for by its button.</summary>
+    public event EventHandler<string>? ActionRequested;
 
     /// <summary>The window header's own tools: New Session.</summary>
     public Control HeaderTools { get; }

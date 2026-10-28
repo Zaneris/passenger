@@ -1198,6 +1198,10 @@ public static class Ui
     /// the menu of what is there.</summary>
     public static void RightClick(Control control, Point? at = null) => Click(control, at, MouseButton.Right, RawInputModifiers.None, settle: true);
 
+    /// <summary>A middle click as <see cref="Click(Control, Point?, RawInputModifiers, bool)"/> makes a click, which closes a
+    /// tab.</summary>
+    public static void MiddleClick(Control control, Point? at = null) => Click(control, at, MouseButton.Middle, RawInputModifiers.None, settle: true);
+
     /// <summary>Two clicks in quick succession at the same place, as a person opens what a row holds.</summary>
     public static void DoubleClick(Control control, Point? at = null)
     {

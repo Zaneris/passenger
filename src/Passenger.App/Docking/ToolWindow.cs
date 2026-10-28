@@ -106,6 +106,12 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
     /// <summary>What is chosen in it (its rows), for actions that run on them while it has the keys.</summary>
     public Func<object?>? Chosen { get; init; }
 
+    /// <summary>Opens every row of its tree, for Expand All, its button in the header.</summary>
+    public Action? ExpandAll { get; init; }
+
+    /// <summary>Closes every row of its tree but the top ones, for Collapse All, its button in the header.</summary>
+    public Action? CollapseAll { get; init; }
+
     /// <summary>Open in the layout the IDE starts with (the Explorer), and so after Restore Default Layout.</summary>
     public bool OpenAtFirst { get; init; }
 

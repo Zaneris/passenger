@@ -135,7 +135,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
 
         filter = new TextBox { Classes = { "search" }, PlaceholderText = "Text or hash", Width = 240, Margin = new Thickness(8, 0) };
         filter.TextChanged += (_, _) => Filter();
-        Button refresh = ToolButtons.Of(IconKeys.Rerun, "Refresh", () => IdeErrors.Observe(LoadAsync()));
+        Button refresh = ToolButtons.Of(AppActions.GitLogRefresh, IconKeys.Rerun, "Refresh", action => ActionRequested?.Invoke(this, action));
         // The Branch filter, shown while the log is filtered to a branch, its x showing every branch again.
         branchFilterText = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
         PathIcon clearGlyph = new() { Classes = { "small" } };
@@ -255,6 +255,9 @@ public sealed class GitLogView : DockPanel, IOwnKeys
 
     /// <summary>A commit's file to open as it is now.</summary>
     public event EventHandler<string>? OpenRequested;
+
+    /// <summary>One of the window's actions asked for by its button.</summary>
+    public event EventHandler<string>? ActionRequested;
 
     /// <summary>A branch to make at a commit, its name to be asked for.</summary>
     public event EventHandler<CommitInfo>? NewBranchRequested;

@@ -416,6 +416,13 @@ public sealed class ContainersTests
         view.Log.Find.FindControl<TextBox>("Query")!.Text = @"worker tick \d+$";
         Ui.Settle();
         Assert.Matches(@"^\d+/([2-9]|\d\d+)$", view.Log.Find.CountText);
+        // Find Next's keys in the log step its own matches, never the editor's Find.
+        view.Log.Find.FindControl<TextBox>("Query")!.Focus();
+        Ui.Settle();
+        Passenger.Text.Selection matched = console.Editor.Selections.Primary;
+        Ui.Press(window, Ui.Shortcut(AppActions.FindNext));
+        Assert.True(console.Editor.Selections.Primary != matched, "Find Next's keys in the Containers log left its match where it was");
+        Assert.False(window.EditorArea.FindBar.IsVisible, "Find Next's keys in the Containers log went to the editor's Find");
         window.Close();
 
         static int Ticks(OutputView console) => Text(console).Split('\n').Count(l => l.Contains("worker tick", StringComparison.Ordinal));

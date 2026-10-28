@@ -22,12 +22,22 @@ public partial class MainWindow
             Menus = [new MenuPlace("Tools", 0, 2)],
             Activate = ToggleTerminal,
         });
+        actions!.Add(new IdeAction(AppActions.NewTerminalSession, "New Terminal Session", "Terminal", _ => IdeErrors.Observe(NewTerminalSessionAsync())) { FromTerminal = true });
+    }
+
+    /// <summary>A shell of its own in the open folder, its tab made before the window shows, so showing it starts no other.</summary>
+    private Task<Terminal.TerminalSession> NewTerminalSessionAsync()
+    {
+        Task<Terminal.TerminalSession> starting = TerminalPanel.NewSessionAsync();
+        ShowToolWindow(ToolWindowIds.Terminal);
+        return starting;
     }
 
     /// <summary>The Terminal window's view, as it is first shown or asked for, with the settings in force then.</summary>
     private ToolWindows.TerminalPanel MakeTerminal()
     {
         ToolWindows.TerminalPanel panel = terminal = new ToolWindows.TerminalPanel(() => Folder ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+        panel.ActionRequested += (_, action) => Request(action);
         panel.Emptied += (_, _) =>
         {
             Dock.Hide(ToolWindowIds.Terminal);

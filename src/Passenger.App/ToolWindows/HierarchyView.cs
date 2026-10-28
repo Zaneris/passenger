@@ -58,6 +58,9 @@ public sealed class HierarchyRow(HierarchyNode node, int depth) : Observable, IT
 /// open and close (<see cref="TreeKeys"/>).</summary>
 public sealed class HierarchyView : DockPanel
 {
+    /// <summary>How many levels below the top Expand All opens.</summary>
+    private const int ExpandAllDepth = 5;
+
     private readonly TreeRows<HierarchyRow> rows = [];
     private readonly ListBox list;
     private readonly TextBlock title;
@@ -179,6 +182,41 @@ public sealed class HierarchyView : DockPanel
         row.IsExpanded = true;
         rows.Open(row, TreeRows<HierarchyRow>.Shown(row.Below ?? [], r => r.Below));
         Choose(row);
+    }
+
+    /// <summary>Opens every row down to <see cref="ExpandAllDepth"/> levels below the top, asking for each level not yet
+    /// listed, a level at a time: a call hierarchy goes on without end where a method calls itself.</summary>
+    public async Task ExpandAllAsync()
+    {
+        object? chosen = list.SelectedItem;
+        for (int depth = 0; depth < ExpandAllDepth; depth++)
+        {
+            foreach (HierarchyRow row in rows.Where(r => r.Depth == depth && r.Expands && !r.IsExpanded).ToList())
+            {
+                await ExpandAsync(row);
+            }
+        }
+        list.SelectedItem = chosen is HierarchyRow kept && rows.Contains(kept) ? kept : rows.FirstOrDefault();
+    }
+
+    /// <summary>Closes every row below the top, so none opens again with its own rows open.</summary>
+    public void CollapseAll()
+    {
+        if (rows.FirstOrDefault() is not { } top)
+        {
+            return;
+        }
+        foreach (HierarchyRow row in rows.Reverse().Where(r => r != top && r.IsExpanded).ToList())
+        {
+            Collapse(row);
+        }
+        foreach (HierarchyRow hidden in Every(top.Below ?? []).Where(r => r.IsExpanded))
+        {
+            hidden.IsExpanded = false;
+        }
+        Choose(top);
+
+        static IEnumerable<HierarchyRow> Every(IEnumerable<HierarchyRow> level) => level.SelectMany(row => Every(row.Below ?? []).Prepend(row));
     }
 
     public void Collapse(HierarchyRow row)

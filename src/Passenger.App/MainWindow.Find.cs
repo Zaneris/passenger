@@ -24,7 +24,13 @@ public partial class MainWindow
             find = new FindView(path => Editors.TextOf(path)?.ToString());
             find.GoToRequested += (_, usage) => NavigateTo(usage.Path, new TextPosition(usage.Line, usage.Column));
             return find;
-        }, Docking.ToolAnchor.BottomLeft) { Action = AppActions.ShowFind, ActionTitle = "Find Tool Window" });
+        }, Docking.ToolAnchor.BottomLeft)
+        {
+            Action = AppActions.ShowFind,
+            ActionTitle = "Find Tool Window",
+            ExpandAll = () => Find.ExpandAll(),
+            CollapseAll = () => Find.CollapseAll(),
+        });
         assist.UsagesFound += (_, found) => ShowUsages(found.Title, found.Usages);
     }
 

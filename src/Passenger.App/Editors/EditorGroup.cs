@@ -747,6 +747,12 @@ public sealed class EditorGroup : DockPanel
                 area.CloseTab(this, document);
                 e.Handled = true;
             }
+            // Each second press of a run of clicks, so double-clicks in quick turn each toggle.
+            else if (pressed.IsLeftButtonPressed && e.ClickCount % 2 == 0)
+            {
+                area.RequestMaximize();
+                e.Handled = true;
+            }
             else if (pressed.IsLeftButtonPressed)
             {
                 area.SetActiveGroup(this);
