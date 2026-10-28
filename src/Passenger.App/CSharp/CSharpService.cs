@@ -900,6 +900,8 @@ public sealed partial class CSharpService : IAsyncDisposable
             {
                 started = takenAhead;
                 Hear(started.Server);
+                // Started with the default settings: this window's from now on.
+                started.Server.ReplaceOptions(options);
                 // What it said while no window listened, its projects' load among it, heard now in order.
                 started.Server.ReleaseSaid();
                 // What it asks for from now on is this window's to answer.

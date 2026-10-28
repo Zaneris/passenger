@@ -9,6 +9,8 @@ using ModelContextProtocol.Protocol;
 using Passenger.App;
 using Passenger.App.Mcp;
 using Passenger.App.Settings;
+using Passenger.App.ToolWindows;
+using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
 
@@ -110,6 +112,41 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"The answer came from a language server the window started once built, not the one started as Passenger did:\n{log}");
         Assert.False(Regex.IsMatch(log, @"evaluated \d+ of the \d+ projects of"), $"The window evaluated the folder's project again once built:\n{log}");
         Assert.False(log.Contains("at design time in", StringComparison.Ordinal), $"The window built the folder's project at design time again once built:\n{log}");
+    }
+
+    /// <summary>An agent's own Passenger, its window built over the folder's head start as <c>--mcp</c> builds it, whose
+    /// settings as its C# starts are not the defaults the server started ahead has (solution-wide analysis turned on before
+    /// its projects were found) takes that server up, telling it the settings, and starts no second one: Problems' Solution
+    /// tab lists the warning of a file nobody opened.</summary>
+    [AvaloniaFact]
+    public void An_agents_own_passenger_whose_settings_are_not_the_defaults_takes_up_the_server_started_ahead_and_starts_no_second()
+    {
+        string folder = PathNames.Canonical(Folder);
+        LaunchOptions launch = LaunchOptions.Parse([folder]);
+        MainWindow window = new() { Width = 1200, Height = 800, AgentsAllowed = false, AgentsOwn = true, HeadStart = HeadStart.Begin(launch, languageServer: true) };
+        window.Show();
+        window.ApplySettings(window.Settings with { SolutionWideAnalysis = true });
+        window.Start(launch);
+        ProblemsModel problems = window.BottomPanel.Problems;
+        Ui.WaitFor(() => problems.SolutionProblems?.Any(p => p.Code == "CS0219") == true,
+            () => $"the warning of Helper.cs, a file nobody opened, listed by solution-wide analysis on as C# started (listed: {string.Join("; ", problems.SolutionProblems?.Select(p => p.Code) ?? [])})",
+            TimeSpan.FromMinutes(2));
+        problems.Shown = ProblemsTab.Solution;
+        Assert.Contains("Helper.cs", problems.Rows.Where(r => r.Problem is null).Select(r => r.Label));
+
+        string logged = Path.Combine(TestRun.Settings, "logs", "passenger.log");
+        string log = string.Empty;
+        Regex second = new($@"C# language server \(process \d+\) started for {Regex.Escape(folder)} ");
+        Ui.WaitFor(() => (log = Ui.Shared(logged)).Contains($"started ahead taken up for {folder}", StringComparison.Ordinal) || second.IsMatch(log),
+            "the log to say which language server the window took");
+        string[] ahead = [.. Regex.Matches(log, $@"C# language server \(process (\d+)\) started ahead for {Regex.Escape(folder)} ").Select(m => m.Groups[1].Value)];
+        Assert.True(ahead.Length == 1 && log.Contains($"C# language server (process {ahead[0]}) started ahead taken up for {folder}", StringComparison.Ordinal),
+            $"The language server started ahead with the default settings was not taken up by a window whose settings differ:\n{Ours(log, folder)}");
+        Assert.False(second.IsMatch(log),
+            $"A second language server started beside the one started ahead, loading the same project again:\n{Ours(log, folder)}");
+        window.Close();
+
+        static string Ours(string log, string folder) => string.Join('\n', log.Split('\n').Where(line => line.Contains(folder, StringComparison.Ordinal)));
     }
 
     /// <summary>A load that runs past its limit (the agent's Passenger's own, 2 s) is said to be still loading, in the

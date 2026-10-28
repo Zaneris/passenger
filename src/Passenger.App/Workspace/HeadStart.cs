@@ -12,9 +12,9 @@ namespace Passenger.App.Workspace;
 /// while its window is still being built: the folder read for its solution and projects, the project host started, the
 /// projects evaluated and built at design time there, and a C# language server started and loading them. The window's
 /// session takes each part up as it opens that folder, in place of beginning it (an evaluation or build as from a cache,
-/// its stamps checked, so what changed since is done again; the server only if it loads what the session would, with the
-/// same options, everything it said meanwhile held for the session to hear), and <see cref="EndAsync"/> ends the server
-/// it did not take. A part that cannot be done is left to the session, which says why. Not a UI-thread object.</summary>
+/// its stamps checked, so what changed since is done again; the server only if it loads what the session would, given
+/// the session's options, everything it said meanwhile held for the session to hear), and <see cref="EndAsync"/> ends the
+/// server it did not take. A part that cannot be done is left to the session, which says why. Not a UI-thread object.</summary>
 public sealed class HeadStart
 {
     private readonly Lock gate = new();
@@ -193,17 +193,18 @@ public sealed class HeadStart
         return started;
     }
 
-    /// <summary>The server started for the folder with these options, for a session to take once: how it waits for that
-    /// start, which its cancellation stops, to the server when it loads the solution or projects given, else to none (it
-    /// loads others, its start failed or it ended), the session then starting its own. Null when it was taken or ended, or
-    /// has another folder or options.</summary>
+    /// <summary>The server started for the folder, for a session to take once and give these options: how it waits for
+    /// that start, which its cancellation stops, to the server when it loads the solution or projects given, else to none
+    /// (it loads others, its start failed or it ended), the session then starting its own. Null when it was taken or ended,
+    /// has another folder, or started with an option these leave to the server's default, which it never goes back to
+    /// (<see cref="LanguageServer.TakesOptions"/>).</summary>
     internal Func<CancellationToken, Task<RoslynSession?>>? TakeServer(string folder, string? solution, IReadOnlyList<string> projects,
         IReadOnlyDictionary<string, object?> options)
     {
         Task<RoslynSession?> started;
         lock (gate)
         {
-            if (ended || server is not { } held || !PathNames.Same(folder, Folder) || !Same(held.Options, options))
+            if (ended || server is not { } held || !PathNames.Same(folder, Folder) || !LanguageServer.TakesOptions(held.Options, options))
             {
                 return null;
             }
@@ -269,10 +270,6 @@ public sealed class HeadStart
             await started.DisposeAsync();
         }
     }
-
-    /// <summary>Whether two sets of options are the same, one set to its default (null) not one never set.</summary>
-    private static bool Same(IReadOnlyDictionary<string, object?> set, IReadOnlyDictionary<string, object?> wanted) =>
-        set.Count == wanted.Count && set.All(option => wanted.TryGetValue(option.Key, out object? value) && Equals(option.Value, value));
 
     /// <summary>The design-time builds begun ahead, as the server started ahead asks for them until a session takes it up
     /// and answers in their place: none when the host could not build them, and the server builds its projects itself.</summary>

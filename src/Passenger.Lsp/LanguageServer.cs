@@ -284,7 +284,7 @@ public sealed class LanguageServer : IAsyncDisposable
     }
 
     /// <summary>Makes the server's options these alone, as one started with them has them, which it asks for again if
-    /// they changed: a server another window leaves takes its new window's.</summary>
+    /// they changed: a server another window leaves, or one started ahead of its window, takes its window's.</summary>
     public void ReplaceOptions(IReadOnlyDictionary<string, object?> wanted)
     {
         lock (options)
@@ -342,13 +342,19 @@ public sealed class LanguageServer : IAsyncDisposable
     {
         lock (options)
         {
-            if (options.TryGetValue(name, out object? set))
-            {
-                return set;
-            }
+            return Answered(options, name);
         }
-        return Settings.TryGetValue(name, out object? value) ? value : null;
     }
+
+    /// <summary>Whether a Roslyn server started with the options <paramref name="set"/> takes <paramref name="wanted"/> as it
+    /// runs (<see cref="ReplaceOptions"/>): told they changed, it asks again for every option Passenger sets, but passes
+    /// over one answered empty, so an option set at its start never goes back to the server's own default.</summary>
+    public static bool TakesOptions(IReadOnlyDictionary<string, object?> set, IReadOnlyDictionary<string, object?> wanted) =>
+        set.Keys.All(name => Answered(set, name) is null || Answered(wanted, name) is not null);
+
+    /// <summary>What the server is answered for an option with these set: their value, else Passenger's own, else null.</summary>
+    private static object? Answered(IReadOnlyDictionary<string, object?> set, string name) =>
+        set.TryGetValue(name, out object? value) ? value : Settings.TryGetValue(name, out object? own) ? own : null;
 
     /// <summary>The process has ended, or been ended by <see cref="Kill"/>, or let go of (<see cref="DisposeAsync"/>).</summary>
     public bool HasExited
