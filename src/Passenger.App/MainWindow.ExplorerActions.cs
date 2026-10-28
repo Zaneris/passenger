@@ -177,11 +177,11 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>A row's menu, its items the window's actions run on the row: Build, Rebuild and Clean for the solution
-    /// or the projects chosen, their unit tests where they hold any, a project's packages, file and unloading, Add where things can go,
-    /// Edit (the clipboard's actions, Delete or for the solution's own Remove, Rename, Find and Replace in Files), the
-    /// path of what is on disk, Open In, Tools' Compare, Local History and Git's history. A project's Dependencies add
-    /// a reference, and a project reference is removed. None for a row with nothing to do (a package).</summary>
+    /// <summary>A row's menu, its items the window's actions run on the row: Build, Rebuild and Clean for the solution or
+    /// the projects chosen, a program's Run and Debug, unit tests where they hold any, a project's packages, file and
+    /// unloading, Add where things go, Edit (the clipboard's actions, Delete or the solution's Remove, Rename, Find and
+    /// Replace in Files), the path of what is on disk, Open In, Tools' Compare, Local History and Git's history. A project's
+    /// Dependencies add a reference, and a project reference is removed. None for a row with nothing to do.</summary>
     private IReadOnlyList<Control>? ExplorerMenu(ExplorerNode node)
     {
         bool onDisk = node.Kind is NodeKind.File or NodeKind.Folder or NodeKind.Project;
@@ -212,6 +212,10 @@ public partial class MainWindow
                 entries.Add(Item(A.Publish));
             }
             entries.Add(separator);
+        }
+        if (node is { Kind: NodeKind.Project, Path: { } runs } && ProgramConfiguration(runs) is not null)
+        {
+            entries.AddRange([Item(A.RunHere), Item(A.DebugHere), separator]);
         }
         if (TestProjectsOf(node).Any())
         {
