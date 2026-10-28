@@ -26,6 +26,7 @@ public sealed class MigrationsTests
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         System.Text.StringBuilder programs = new();
         window.BottomPanel.Build.Written += (_, text) => programs.Append(text);
+        using EfRuns runs = new(folder);
         try
         {
             window.ShowToolWindow(ToolWindowIds.Migrations);
@@ -33,16 +34,20 @@ public sealed class MigrationsTests
             Assert.True(window.Migrations.Migrations.Count == 0, $"A context with no migration listed {window.Migrations.Migrations.Count}");
             Assert.Equal("ShopContext", window.Migrations.Context);
 
+            runs.Ran("Listing the migrations as the window is first shown", "dbcontext list", "migrations list");
             Add(window, "Initial");
             Assert.Equal([("Initial", (bool?)false)], Rows(window));
+            window.BottomPanel.Build.Flush();
+            Assert.DoesNotContain(window.BottomPanel.Build.Document.Snapshot.ToString().Split('\n'), line => EfRun.Split(line).Kind == "data");
+            runs.Ran("Adding the first migration", "migrations add");
+
+            Tool(window, AppActions.UpdateDatabase);
+            Ui.WaitFor(() => Rows(window) is [(_, true)], $"Initial applied to the database ({window.Status})", Slow);
             window.BottomPanel.Build.Flush();
             string console = window.BottomPanel.Build.Document.Snapshot.ToString();
             Assert.True(programs.ToString().Split('\n').Any(line => EfRun.Split(line).Kind is "info" or "warn"),
                 $"dotnet ef's lines did not reach the Build window as a program's output, which was:\n{programs}\nThe window's:\n{console}");
-            Assert.DoesNotContain(console.Split('\n'), line => EfRun.Split(line).Kind == "data");
-
-            Tool(window, AppActions.UpdateDatabase);
-            Ui.WaitFor(() => Rows(window) is [(_, true)], $"Initial applied to the database ({window.Status})", Slow);
+            runs.Ran("Updating the database after Add Migration", "database update");
 
             // A model change no migration covers, which the build after it says in Problems at the context.
             ShopApp.AddPrice(folder);
@@ -50,6 +55,7 @@ public sealed class MigrationsTests
             string said = "ShopContext's model has changes no migration covers: Add Migration… makes one";
             Passenger.App.ToolWindows.ProblemsModel problems = window.BottomPanel.Problems;
             Ui.WaitFor(() => problems.Problems.Any(p => p.Message == said) && window.Migrations.Busy is null, $"the pending model changes in Problems after the build ({window.Status})", Slow);
+            runs.Ran("Reading the migrations again after a build that changed the model", "dbcontext list", "migrations list", "migrations has-pending-model-changes");
             Passenger.App.Run.Problem pending = problems.Problems.Single(p => p.Message == said);
             Assert.Equal(Passenger.Core.PathNames.Canonical(Path.Combine(folder, "Program.cs")), pending.Path);
             window.ShowToolWindow(ToolWindowIds.Problems);
@@ -62,9 +68,11 @@ public sealed class MigrationsTests
             Ui.Press(window, "ENTER");
             Name(window, "AddPrice");
             Ui.WaitFor(() => window.Migrations.Busy is null && Rows(window) is [(_, true), ("AddPrice", false)], $"AddPrice added and listed ({window.Status})", Slow);
+            runs.Ran("Adding a migration from Problems", "migrations add");
             Assert.DoesNotContain(problems.Problems, p => p.Message == said);
             Tool(window, AppActions.UpdateDatabase);
             Ui.WaitFor(() => Rows(window) is [(_, true), (_, true)], $"both applied ({window.Status})", Slow);
+            runs.Ran("Updating the database after Add Migration", "database update");
 
             ListBox list = window.MigrationsView.GetVisualDescendants().OfType<ListBox>().Single(l => l.Name == "MigrationsList");
             Ui.RightClick(Assert.IsType<ListBoxItem>(list.ContainerFromItem(window.Migrations.Migrations.Single(m => m.Name == "Initial"))));
@@ -73,11 +81,13 @@ public sealed class MigrationsTests
             Assert.Contains("AddPrice", string.Join(' ', asked.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text)), StringComparison.Ordinal);
             Ui.ClickButton(asked, "Roll Back");
             Ui.WaitFor(() => Rows(window) is [(_, true), (_, false)], $"AddPrice rolled back ({window.Status})", Slow);
+            runs.Ran("Rolling the database back to a listed migration", "database update");
 
             Tool(window, AppActions.ScriptMigrations);
             MigrationScriptDialog script = Asked<MigrationScriptDialog>(window, "Script Migrations' question");
             Ui.ClickButton(script, "Script");
             Ui.WaitFor(() => window.EditorArea.Active?.Path.EndsWith(".sql", StringComparison.Ordinal) == true, $"the script open in a tab ({window.Status})", Slow);
+            runs.Ran("Scripting the migrations", "migrations script");
             string sql = window.EditorArea.Active!.Text.Snapshot.ToString();
             Assert.Contains("CREATE TABLE \"Products\"", sql, StringComparison.Ordinal);
             Assert.Contains("\"Price\"", sql, StringComparison.Ordinal);
@@ -427,6 +437,56 @@ public sealed class MigrationsTests
         Ui.WaitFor(() => window.OwnedWindows.OfType<T>().Any(d => d.IsVisible), $"{what} (status: {window.Status}; gaps: {Gaps(window)})", limit);
         return DialogButtonsTests.Check(window.OwnedWindows.OfType<T>().Single(d => d.IsVisible));
     }
+}
+
+/// <summary>The dotnet ef commands the IDE starts on a folder's projects, by their verbs ("migrations list"), and its
+/// builds there, each a process a person waits on: what each step of a test ran held to what that step needs.</summary>
+internal sealed class EfRuns : IDisposable
+{
+    private static readonly string[] Verbs = ["migrations", "dbcontext", "database"];
+    private readonly List<string> started = [];
+    private readonly EventHandler<Passenger.Core.ChildStart> heard;
+
+    public EfRuns(string folder)
+    {
+        string under = Passenger.Core.PathNames.Canonical(folder);
+        heard = (_, child) =>
+        {
+            if (child.Start is not { } start || !start.ArgumentList.Any(a => a.Contains(under, StringComparison.Ordinal)))
+            {
+                return;
+            }
+            List<string> words = [.. start.ArgumentList];
+            int verb = words.FindIndex(w => Verbs.Contains(w));
+            string? ran = words is ["build", ..] ? "build"
+                : verb >= 0 && verb + 1 < words.Count && words.Any(w => w is "--startup-project" or "--startup-assembly") ? $"{words[verb]} {words[verb + 1]}" : null;
+            if (ran is not null)
+            {
+                lock (started)
+                {
+                    started.Add(ran);
+                }
+            }
+        };
+        Passenger.Core.ChildProcesses.Started += heard;
+    }
+
+    /// <summary>Holds what ran since the last step to the dotnet ef commands given, in any order; builds are told, not held.</summary>
+    public void Ran(string step, params string[] needed)
+    {
+        string[] ran;
+        lock (started)
+        {
+            ran = [.. started];
+            started.Clear();
+        }
+        string[] ef = [.. ran.Where(r => r != "build").Order(StringComparer.Ordinal)];
+        Assert.True(ef.SequenceEqual(needed.Order(StringComparer.Ordinal)),
+            $"{step} ran dotnet ef {ef.Length} times ({string.Join(", ", ef)}) where it needs {string.Join(", ", needed)}: "
+            + $"a person waits on each. Everything it started, in order: {string.Join(", ", ran)}");
+    }
+
+    public void Dispose() => Passenger.Core.ChildProcesses.Started -= heard;
 }
 
 /// <summary>A console app with a SQLite context, as a test of migrations writes it: EF Core's SQLite provider at the
