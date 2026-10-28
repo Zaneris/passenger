@@ -136,6 +136,43 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         }
     }
 
+    /// <summary>Stop while a restart's up is under way (api, left unstarted by the run, started by its Run, its up held by a
+    /// docker over the real one until Stop ends it) leaves no container of the run, not even one the engine finishes after
+    /// Compose has ended, just after the take-down listed them.</summary>
+    [AvaloniaFact]
+    public void Stop_during_a_restarts_up_leaves_no_container_even_one_the_engine_finishes_after_Compose_ended()
+    {
+        Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The docker over the real one is a shell script");
+        (string folder, string project) = Restored("restop");
+        string engine = TestFolders.Create("ctr-restop-engine-");
+        MainWindow window = Open(folder, engine: new ContainerEngine(cli: OverEngine(engine)));
+        RunConfiguration later = window.Configurations.First(c => c.Kind == RunKind.Compose).Copied() with
+        {
+            Name = "Later", ServiceActions = new Dictionary<string, ServiceStart> { ["api"] = ServiceStart.DontStart }, Generated = false,
+        };
+        window.SetConfigurations([later], later.Name);
+        try
+        {
+            Launched(window, "web and the cache to come up");
+            Assert.False(States(project).ContainsKey("api"), "The run started api, which it was to leave unstarted");
+            File.WriteAllText(Path.Combine(engine, "hold-up"), string.Empty);
+            Task<string?> starting = window.Builds.RunServiceAsync("api");
+            // api's start holds the window's work while its up is held, so the wait runs the window's loop without waiting it out.
+            Ui.PumpUntil(() => starting.IsCompleted || File.Exists(Path.Combine(engine, "held")), "api's start to reach its up", TimeSpan.FromMinutes(4));
+            Assert.False(starting.IsCompleted, $"api's start ended before its up: {(starting.IsCompleted ? starting.Result : null)}");
+            Assert.True(window.Perform(AppActions.Stop), "Stop could not run");
+            Assert.Equal("Later's restart was stopped", Ui.Await(starting, "api's start to end with Stop", TimeSpan.FromMinutes(1)));
+            Docker.TakenDown(project, "Stop to take every container of the run down, the one the engine finished after Compose ended too");
+            Assert.True(File.Exists(Path.Combine(engine, "late")), "No container was made as the take-down listed them, so the test showed nothing");
+        }
+        finally
+        {
+            Docker.Stopped(window, project, "Stop to take every container down");
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void With_a_fast_mode_run_up_builds_and_a_configurations_plan_each_finish()
     {
@@ -1095,8 +1132,11 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         return (PathNames.Canonical(folder), project);
     }
 
-    /// <summary>A docker of the test's own over the real one, passing on every command but Compose's <c>restart</c>, which fails
-    /// once while a file <c>fail-restart</c> is beside it. The CLI.</summary>
+    /// <summary>A docker of the test's own over the real one, passing on every command but two, each once a file beside it asks:
+    /// Compose's <c>restart</c> fails once <c>fail-restart</c> is there; an <c>up</c> making a service anew once <c>hold-up</c>
+    /// is there is held until ended, <c>held</c> naming the service, and the next take-down's list (<c>ps -aq</c>) is the
+    /// engine's, a container of that service labelled as the list asked made just after it (<c>late</c>), as the engine
+    /// finishes one it was making as Compose ended. The CLI.</summary>
     private static string OverEngine(string folder)
     {
         string cli = Path.Combine(folder, "docker");
@@ -1111,7 +1151,24 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
             "      echo 'Error response from daemon: the stand-in refused the restart' >&2",
             "      exit 1",
             "    fi",
+            "    if [ \"$word\" = --force-recreate ] && [ -f \"$here/hold-up\" ]; then",
+            "      rm -f \"$here/hold-up\"",
+            "      eval \"service=\\${$#}\"",
+            "      echo \"$service\" > \"$here/held\"",
+            "      while true; do sleep 0.2; done",
+            "    fi",
             "  done",
+            "fi",
+            "if [ \"$1 $2\" = 'ps -aq' ] && [ -f \"$here/held\" ] && [ ! -f \"$here/late\" ]; then",
+            "  listed=$(\"$real\" \"$@\") || exit $?",
+            $"  labels='--label {Docker.RunLabel} --label {ComposeLabels.Service}='$(cat \"$here/held\")",
+            "  for word in \"$@\"; do",
+            "    case \"$word\" in label=*) labels=\"$labels --label ${word#label=}\" ;; esac",
+            "  done",
+            $"  \"$real\" run -d {string.Join(' ', Docker.AnyPids)} $labels {Docker.Image} sleep 600 > /dev/null || exit 1",
+            "  touch \"$here/late\"",
+            "  [ -z \"$listed\" ] || echo \"$listed\"",
+            "  exit 0",
             "fi",
             "exec \"$real\" \"$@\"",
             string.Empty]));

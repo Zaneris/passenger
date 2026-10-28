@@ -960,18 +960,16 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
     /// <c>up</c>, publish and restarts end with it, whichever start or action began them.</summary>
     private readonly CancellationTokenSource ending = new();
 
-    /// <summary>Whether <c>up</c> was ended before it had made all it would: the engine may finish a container it was making.</summary>
+    /// <summary>Whether an <c>up</c>, the start's or a restart's, was ended before it had made all it would: the engine may
+    /// finish a container it was making.</summary>
     private bool cut;
 
-    /// <summary>Done once <c>up</c> has ended, having made all it would make or been ended; never begun, done already.</summary>
-    private TaskCompletionSource upEnded = Done();
+    /// <summary>The <c>up</c> commands under way, the start's and restarts', each done once it has ended, having made all it
+    /// would make or been ended; on the UI thread.</summary>
+    private readonly List<Task> ups = [];
 
-    private static TaskCompletionSource Done()
-    {
-        TaskCompletionSource done = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        done.SetResult();
-        return done;
-    }
+    /// <summary>Done once every <c>up</c> under way now has ended.</summary>
+    private Task UpsEnded => Task.WhenAll([.. ups]);
 
     public ContainerPlan Plan { get; private set; } = plan;
 
@@ -1213,12 +1211,7 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
         }
         words.AddRange(Plan.Start.Count > 0 ? ["--", .. Plan.Start] : []);
         using CancellationTokenSource upEnding = CancellationTokenSource.CreateLinkedTokenSource(cancel, ending.Token);
-        upEnded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        if (ending.IsCancellationRequested)
-        {
-            upEnded.TrySetResult();
-            throw new OperationCanceledException(ending.Token);
-        }
+        ending.Token.ThrowIfCancellationRequested();
         Task<ChildResult> coming = UpCommandAsync(words, upEnding.Token);
         ChildResult up;
         try
@@ -1235,10 +1228,6 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
             // Stopped as it came up: Compose ends first, or it would go on making containers after Stop took the others.
             await EndedAsync();
             throw;
-        }
-        finally
-        {
-            upEnded.TrySetResult();
         }
 
         async Task EndedAsync()
@@ -1281,31 +1270,49 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
     /// <summary>An <c>up</c> run into the console, run again while it fails naming a port Passenger chose, which something on
     /// this machine bound after it was chosen: each such port chosen again (<see cref="ChosenPorts.Again"/>), said in the
     /// console, and the override written again, so <c>up</c> makes those services anew on their new ports and leaves the rest
-    /// as it made them, their images as it built them. Tried <see cref="UpTries"/> times at most, the last one's failure the run's.</summary>
+    /// as it made them, their images as it built them. Tried <see cref="UpTries"/> times at most, the last one's failure the run's.
+    /// Under way until it ends (<see cref="ups"/>), which Stop and the folder's end wait out; never begun once canceled.</summary>
     private async Task<ChildResult> UpCommandAsync(IReadOnlyList<string> words, CancellationToken cancel)
     {
-        for (int tried = 1; ; tried++)
+        cancel.ThrowIfCancellationRequested();
+        TaskCompletionSource ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ups.Add(ended.Task);
+        try
         {
-            ChildResult up = await StreamAsync(tried == 1 ? words : [.. words.Take(Plan.Compose.Count + 1), "--no-build", .. words.Skip(Plan.Compose.Count + 1).Where(w => w != "--build")],
-                cancel);
-            if (up.Succeeded || tried == UpTries || Plan.Ports?.Again(up.Output) is not { Count: > 0 } again)
+            for (int tried = 1; ; tried++)
             {
-                return up;
+                ChildResult up = await StreamAsync(tried == 1 ? words : [.. words.Take(Plan.Compose.Count + 1), "--no-build", .. words.Skip(Plan.Compose.Count + 1).Where(w => w != "--build")],
+                    cancel);
+                if (up.Succeeded || tried == UpTries || Plan.Ports?.Again(up.Output) is not { Count: > 0 } again)
+                {
+                    return up;
+                }
+                foreach ((string service, int was, int now) in again)
+                {
+                    console.Write($"{service}'s port {was.ToString(CultureInfo.InvariantCulture)} was taken before the engine could publish it: "
+                        + $"published on {now.ToString(CultureInfo.InvariantCulture)} instead\n");
+                }
+                try
+                {
+                    await Plan.WriteOverrideAgain(cancel);
+                }
+                catch (Exception unwritten) when (unwritten is IOException or UnauthorizedAccessException)
+                {
+                    console.Write($"Passenger's override could not be written again: {unwritten.Message}\n", ConsoleStream.Error);
+                    return up;
+                }
             }
-            foreach ((string service, int was, int now) in again)
-            {
-                console.Write($"{service}'s port {was.ToString(CultureInfo.InvariantCulture)} was taken before the engine could publish it: "
-                    + $"published on {now.ToString(CultureInfo.InvariantCulture)} instead\n");
-            }
-            try
-            {
-                await Plan.WriteOverrideAgain(cancel);
-            }
-            catch (Exception unwritten) when (unwritten is IOException or UnauthorizedAccessException)
-            {
-                console.Write($"Passenger's override could not be written again: {unwritten.Message}\n", ConsoleStream.Error);
-                return up;
-            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Ended before it had made all it would: a take-down after it looks again.
+            cut = true;
+            throw;
+        }
+        finally
+        {
+            ups.Remove(ended.Task);
+            ended.TrySetResult();
         }
     }
 
@@ -1386,16 +1393,16 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
         }
         IReadOnlyList<string>? only = Plan.KeepBacking && Plan.Backing.Count > 0
             ? [.. Plan.Dotnet.Select(d => d.Service), .. Plan.Telemetry is null ? [] : (string[])[ContainerTelemetry.Service]] : null;
-        Task up = upEnded.Task;
+        Task up = UpsEnded;
         bool coming = !up.IsCompleted || cut;
         stopping = BackgroundWork.Run(async () =>
         {
-            // Compose still bringing it up (ended just below, whoever started it) makes no container after the take-down's look.
+            // Compose still bringing it up or making a service anew (ended just below) makes no container after the take-down's look.
             await Task.WhenAny(Task.WhenAll(first ?? Task.CompletedTask, up), Task.Delay(TimeSpan.FromSeconds(10)));
             await FolderContainers.TakeDownAsync(engine, Plan.Compose, LabelledFor, $"as {Plan.Name} stopped", only);
             if (coming)
             {
-                // Stopped as it came up: a container the engine was still making as Compose ended is taken too.
+                // Stopped as an up made containers: one the engine was still making as Compose ended is taken too.
                 await Task.Delay(TimeSpan.FromSeconds(2));
                 await FolderContainers.TakeDownAsync(engine, Plan.Compose, LabelledFor, $"as {Plan.Name} stopped", only);
             }
@@ -1407,7 +1414,8 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
 
     /// <summary>Lets go of what the run started on this machine (Compose's watch, and its <c>up</c> or restart under way,
     /// ended) as the folder ends; its containers go with the folder's (<see cref="FolderContainers"/>), once the task given
-    /// back is done: <c>up</c> has ended, making nothing after their take-down looks.</summary>
+    /// back is done: every <c>up</c> under way, the start's or a restart's, has ended, making nothing after their take-down
+    /// looks.</summary>
     public Task Abandon()
     {
         if (watching is { } watch)
@@ -1415,8 +1423,9 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
             ChildProcesses.Kill(watch);
             watching = null;
         }
+        Task up = UpsEnded;
         ending.Cancel();
-        return upEnded.Task;
+        return up;
     }
 
     /// <summary>The .NET services whose build changed since they started (or were last restarted), Rerun's to restart.</summary>
