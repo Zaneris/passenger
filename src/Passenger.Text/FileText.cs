@@ -333,18 +333,25 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
 
     /// <summary>Writes the temporary file and puts it in the target's place: null once it is there, else the temporary
     /// file, left for a later try, Windows having refused it while another program holds the target (a virus scanner, a
-    /// build reading it). A failed write leaves the old file as it was, and nothing of its own beside it.</summary>
+    /// build reading it). A failed write leaves the old file as it was, and nothing of its own beside it. A target another
+    /// hard link names is written in place on macOS and Linux (<see cref="AtomicFile"/>), keeping all it had.</summary>
     private static string? Put(string target, byte[] bytes, UnixFileMode? mode, Encoding? encoding)
     {
         string? held = null;
+        bool moved = false;
         AtomicFile.Write(target, bytes, mode, SaveSuffix, (temporary, at) =>
         {
+            moved = true;
             if (mode is not null && OperatingSystem.IsMacOS())
             {
                 MacFileMetadata.Copy(at, temporary, encoding);
             }
             held = Placed(temporary, at) ? null : temporary;
         });
+        if (!moved && OperatingSystem.IsMacOS())
+        {
+            MacFileMetadata.Encoded(target, encoding);
+        }
         return held;
     }
 

@@ -3,7 +3,9 @@ namespace Passenger.Core;
 /// <summary>A file written whole or not at all: its bytes go to a temporary file beside it, made new under a name of its
 /// own (on macOS and Linux with its mode from the moment it is made, so a secret is never another user's to read), flushed
 /// to disk and renamed over it, so a crash, a full disk or a write cut short leaves the file as it was and no reader finds
-/// half of the new one.</summary>
+/// half of the new one. On macOS and Linux the file it replaces gives it first what it keeps (<see cref="UnixFileMetadata"/>),
+/// and one another hard link also names is written in place once the temporary file holds its bytes, so the link goes on
+/// naming it.</summary>
 public static class AtomicFile
 {
     /// <summary>What a temporary file's name ends with unless its writer names its own: one left behind is a write that
@@ -32,7 +34,9 @@ public static class AtomicFile
         where TState : allows ref struct
     {
         // A name of its own, made new: one already there by a known name (a link a cloned repository holds) took the write wherever it led.
-        string temporary = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path))!, Guid.NewGuid().ToString("N") + suffix);
+        string full = Path.GetFullPath(path);
+        string temporary = Path.Combine(Path.GetDirectoryName(full)!, Guid.NewGuid().ToString("N") + suffix);
+        UnixFile? replaced = OperatingSystem.IsWindows() ? null : UnixFileMetadata.Of(full);
         bool made = false;
         try
         {
@@ -44,15 +48,27 @@ public static class AtomicFile
             using (FileStream stream = new(temporary, options))
             {
                 made = true;
+                if (replaced is { Links: 1 } kept)
+                {
+                    UnixFileMetadata.Give(full, kept, stream.SafeFileHandle, temporary);
+                }
                 if (mode is { } exact && !OperatingSystem.IsWindows())
                 {
-                    // The umask may have taken bits the file is to have (a script's group write): its mode exactly, before any byte is in.
+                    // The umask, an ACL given or an owner changed may have taken bits the file is to have: its mode exactly, before any byte is in.
                     File.SetUnixFileMode(stream.SafeFileHandle, exact);
                 }
                 fill(stream, state);
                 stream.Flush(flushToDisk: true);
             }
-            put(temporary, path);
+            if (replaced is { Links: > 1 })
+            {
+                InPlace(temporary, full, mode);
+                Delete(temporary);
+            }
+            else
+            {
+                put(temporary, path);
+            }
         }
         catch
         {
@@ -62,6 +78,21 @@ public static class AtomicFile
             }
             throw;
         }
+    }
+
+    /// <summary>The temporary file's bytes written into the file itself, which another hard link names as well: its mode set
+    /// first where it is to have another (a secret's), then its bytes, its length and the disk.</summary>
+    private static void InPlace(string temporary, string path, UnixFileMode? mode)
+    {
+        using FileStream from = new(temporary, FileMode.Open, FileAccess.Read, FileShare.Read);
+        using FileStream to = new(path, FileMode.Open, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
+        if (mode is { } exact && !OperatingSystem.IsWindows() && File.GetUnixFileMode(to.SafeFileHandle) != exact)
+        {
+            File.SetUnixFileMode(to.SafeFileHandle, exact);
+        }
+        from.CopyTo(to);
+        to.SetLength(to.Position);
+        to.Flush(flushToDisk: true);
     }
 
     private static void Delete(string temporary)

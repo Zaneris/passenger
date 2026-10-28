@@ -12,7 +12,7 @@ namespace Passenger.Tests;
 
 /// <summary>Files through the whole window: opened from a folder or dropped from the file manager, edited, saved with the
 /// platform's own Save shortcut, and written back the way they were stored, or as UTF-8 when that would lose a character.</summary>
-public sealed class FileTests : IDisposable
+public sealed partial class FileTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("test-");
 
@@ -391,6 +391,65 @@ public sealed class FileTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A file with a note of its own as a user.* attribute, an ACL entry letting user 65534 (nobody) read it and,
+    /// where the person is in another group, that group: a save keeps all three, as an edit in place would. The ACL is
+    /// checked where the volume holds one, the group where there is another.</summary>
+    [AvaloniaFact]
+    public void A_save_on_Linux_keeps_the_files_extended_attributes_its_access_control_list_and_its_group()
+    {
+        Assert.SkipUnless(OperatingSystem.IsLinux(), "user.* attributes, and a POSIX ACL as an extended attribute, are Linux's");
+        string path = Path.Combine(folder, "Noted.cs");
+        File.WriteAllText(path, "class Noted { }\n");
+        Assert.SkipWhen(SetAttribute(path, "user.passenger.note", "kept"u8.ToArray()) != 0,
+            $"The test folder's volume takes no user.* attribute (errno {System.Runtime.InteropServices.Marshal.GetLastPInvokeError()})");
+        byte[]? acl = SetAttribute(path, PosixAcl, ReadableBy(65534)) == 0 ? Attribute(path, PosixAcl) : null;
+        string? group = Run("id", "-G").Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault(g => g != Run("stat", "-c", "%g", path).Trim());
+        if (group is not null)
+        {
+            Run("chgrp", group, path);
+        }
+        MainWindow window = Open();
+        Edit(window, "Noted.cs", "public ");
+        Ui.Press(window, Ui.Shortcut(AppActions.Save));
+
+        Assert.Equal("public class Noted { }\n", File.ReadAllText(path));
+        Assert.False(window.EditorArea.Active!.IsModified, $"The noted file was not saved: {window.Status}");
+        Assert.True(Attribute(path, "user.passenger.note") is { } note && note.AsSpan().SequenceEqual("kept"u8), "The save took the file's user.passenger.note attribute away");
+        Assert.True(acl is null || Attribute(path, PosixAcl) is { } kept && kept.AsSpan().SequenceEqual(acl),
+            "The save took the file's own ACL away, which let user 65534 read it");
+        Assert.True(group is null || Run("stat", "-c", "%g", path).Trim() == group, $"The save gave the file the person's own group, not its {group}");
+        window.Close();
+    }
+
+    /// <summary>A file a second hard link outside the folder also names, as a dotfiles folder or a build's copy shares
+    /// one: a save writes it in place, so the link reads what was saved rather than the text before it.</summary>
+    [AvaloniaFact]
+    public void A_save_on_macOS_and_Linux_of_a_file_another_hard_link_names_is_read_through_that_link()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "A save on Windows replaces the file with ReplaceFile, which a hard link does not follow either");
+        string path = Path.Combine(folder, "Shared.cs");
+        File.WriteAllText(path, "class Shared { }\n");
+        string elsewhere = TestFolders.Create("linked-");
+        try
+        {
+            string link = Path.Combine(elsewhere, "Shared.cs");
+            Run("ln", path, link);
+            MainWindow window = Open();
+            Edit(window, "Shared.cs", "public ");
+            Ui.Press(window, Ui.Shortcut(AppActions.Save));
+
+            Assert.Equal("public class Shared { }\n", File.ReadAllText(path));
+            Assert.False(window.EditorArea.Active!.IsModified, $"The linked file was not saved: {window.Status}");
+            Assert.True(File.ReadAllText(link) == "public class Shared { }\n", "The save made the file anew, leaving its other hard link naming the text before it");
+            window.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(elsewhere);
+        }
+    }
+
     [AvaloniaFact]
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     public void A_save_on_Windows_keeps_the_files_attributes_its_explicit_access_control_list_and_its_alternate_data_streams()
@@ -519,6 +578,47 @@ public sealed class FileTests : IDisposable
     }
 
     private MainWindow Open() => Ui.OpenFolder(folder);
+
+    /// <summary>Linux's name for a file's own POSIX ACL as an extended attribute.</summary>
+    private const string PosixAcl = "system.posix_acl_access";
+
+    /// <summary>A POSIX ACL as Linux stores it (version 2, then each entry's tag, permissions and id, little-endian, by
+    /// tag): the owner reads and writes, one more user, its group and the mask read, others nothing.</summary>
+    private static byte[] ReadableBy(uint user)
+    {
+        const uint Undefined = uint.MaxValue;
+        (ushort Tag, ushort Allowed, uint Id)[] entries = [(0x01, 6, Undefined), (0x02, 4, user), (0x04, 4, Undefined), (0x10, 4, Undefined), (0x20, 0, Undefined)];
+        byte[] acl = new byte[4 + (entries.Length * 8)];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(acl, 2);
+        for (int i = 0; i < entries.Length; i++)
+        {
+            Span<byte> entry = acl.AsSpan(4 + (i * 8), 8);
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(entry, entries[i].Tag);
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(entry[2..], entries[i].Allowed);
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(entry[4..], entries[i].Id);
+        }
+        return acl;
+    }
+
+    private static int SetAttribute(string path, string name, byte[] value) => SetXattr(path, name, value, (nuint)value.Length, 0);
+
+    /// <summary>A Linux file's extended attribute, or null when it has none of that name.</summary>
+    private static byte[]? Attribute(string path, string name)
+    {
+        nint size = GetXattr(path, name, null, 0);
+        if (size < 0)
+        {
+            return null;
+        }
+        byte[] value = new byte[size];
+        return GetXattr(path, name, value, (nuint)value.Length) == size ? value : null;
+    }
+
+    [System.Runtime.InteropServices.LibraryImport("libc", EntryPoint = "setxattr", SetLastError = true, StringMarshalling = System.Runtime.InteropServices.StringMarshalling.Utf8)]
+    private static partial int SetXattr(string path, string name, byte[] value, nuint size, int flags);
+
+    [System.Runtime.InteropServices.LibraryImport("libc", EntryPoint = "getxattr", StringMarshalling = System.Runtime.InteropServices.StringMarshalling.Utf8)]
+    private static partial nint GetXattr(string path, string name, byte[]? value, nuint size);
 
     private static string? EncodingShown(MainWindow window) => Avalonia.Controls.ControlExtensions.FindControl<Avalonia.Controls.TextBlock>(window, "EncodingText")!.Text;
 

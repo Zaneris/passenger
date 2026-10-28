@@ -4,8 +4,9 @@
        tools they run are found. No Avalonia, so the boundary is the project's own. -->
   <PropertyGroup>
     <RootNamespace>Passenger.Core</RootNamespace>
-    <!-- The system's own calls, through LibraryImport: kill for a child's process group, and what describes another
-         process (proc_pidinfo, sysctl, NtQueryInformationProcess) for the .NET programs a debugger can attach to. -->
+    <!-- The system's own calls, through LibraryImport: kill for a child's process group, what describes another
+         process (proc_pidinfo, sysctl, NtQueryInformationProcess) for the .NET programs a debugger can attach to, and
+         what a file a write replaces keeps (statx, fchown, extended attributes, copyfile). -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
