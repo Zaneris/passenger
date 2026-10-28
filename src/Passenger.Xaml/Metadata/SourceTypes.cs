@@ -10,17 +10,20 @@ namespace Passenger.Xaml.Metadata;
 /// with the scope they are read in, for the type system to resolve.</summary>
 public sealed class SourceTypes
 {
-    private static readonly CSharpParseOptions Options = new(LanguageVersion.Preview, DocumentationMode.None);
-
-    private SourceTypes(string path, IReadOnlyList<ClrType> types, IReadOnlyList<string> globalUsings, IReadOnlyList<ClrAttribute> attributes)
+    private SourceTypes(string path, IReadOnlyList<ClrType> types, IReadOnlyList<string> globalUsings, IReadOnlyList<ClrAttribute> attributes, CSharpParseOptions? parsing)
     {
         Path = path;
         Types = types;
         GlobalUsings = globalUsings;
         Attributes = attributes;
+        Parsing = parsing;
     }
 
     public string Path { get; }
+
+    /// <summary>What the file was parsed with: its project's preprocessor symbols and C# version. Null for types declared
+    /// other than in C#.</summary>
+    public CSharpParseOptions? Parsing { get; }
 
     /// <summary>Every type the file declares, nested ones included, each part of a partial type on its own.</summary>
     public IReadOnlyList<ClrType> Types { get; }
@@ -33,15 +36,17 @@ public sealed class SourceTypes
 
     /// <summary>Types a file declares other than in C#: the class a XAML file's <c>x:Class</c> names, which its XAML compiler
     /// makes when no C# does.</summary>
-    public static SourceTypes Declaring(string path, IReadOnlyList<ClrType> types) => new(path, types, [], []);
+    public static SourceTypes Declaring(string path, IReadOnlyList<ClrType> types) => new(path, types, [], [], null);
 
-    public static SourceTypes Read(string path, string text, string assemblyName)
+    /// <summary>A C# file's, parsed with what its project compiles it with (<paramref name="parsing"/>), its documentation
+    /// comments passed over.</summary>
+    public static SourceTypes Read(string path, string text, string assemblyName, CSharpParseOptions parsing)
     {
-        SyntaxTree tree = CSharpSyntaxTree.ParseText(text, Options, path);
+        SyntaxTree tree = CSharpSyntaxTree.ParseText(text, parsing.WithDocumentationMode(DocumentationMode.None), path);
         CompilationUnitSyntax root = tree.GetCompilationUnitRoot();
         Reader reader = new(path, tree, assemblyName);
         reader.Unit(root);
-        return new SourceTypes(path, reader.Types, reader.GlobalUsings, reader.AssemblyAttributes);
+        return new SourceTypes(path, reader.Types, reader.GlobalUsings, reader.AssemblyAttributes, parsing);
     }
 
     private sealed class Reader(string path, SyntaxTree tree, string assemblyName)

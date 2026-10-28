@@ -60,6 +60,10 @@ public sealed class LiveTreeController
         {
             WhyNot = _ => WhyNotAsk(),
         });
+        parts.Actions.Add(new IdeAction(AppActions.LiveTreeRefresh, "Refresh Live Visual Tree", "Debug", context => IdeErrors.Observe(RefreshAsync()))
+        {
+            WhyNot = _ => WhyNotAsk(),
+        });
         ShowState();
     }
 
@@ -72,7 +76,13 @@ public sealed class LiveTreeController
         LiveTreeView made = view = new LiveTreeView();
         made.ElementChosen += (_, id) => IdeErrors.Observe(ChooseAsync(id));
         made.PickRequested += (_, on) => IdeErrors.Observe(PickAsync(on));
-        made.RefreshRequested += (_, _) => IdeErrors.Observe(RefreshAsync());
+        made.RefreshRequested += (_, _) =>
+        {
+            if (parts.Actions.Run(AppActions.LiveTreeRefresh) is { } why)
+            {
+                parts.Say(why);
+            }
+        };
         made.GoToRequested += (_, place) => GoTo(place);
         made.BreakRequested += (_, value) => ToggleBreak(value);
         made.Watched = value => details.Details is { } shown && Debugged() is { } debugged && session!.Debug.Breakpoints.FindProperty(debugged, shown.Id, value.Name) is not null;

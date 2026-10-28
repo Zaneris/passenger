@@ -42,6 +42,8 @@ public sealed class WorkingActionsTests : WorkingActionsFolders, IClassFixture<R
         window.Builder.Exited += (_, _) => builds++;
 
         IReadOnlyList<string> said = Said(window);
+        // Held until the second click has been answered, so the first Run is under way then however fast the machine builds.
+        using BuildHold held = HoldNextBuild();
         Ui.Click(run, settle: false);
         Assert.True(ActionButtons.IsWorking(run), "Run should show it is working the moment it is clicked");
         Assert.True(said.Count > 0 && said[0].StartsWith("Working out how to run Hello", StringComparison.Ordinal),
@@ -58,6 +60,9 @@ public sealed class WorkingActionsTests : WorkingActionsFolders, IClassFixture<R
         Ui.Click(run, settle: false);
         Assert.True(said.Skip(before).Any(s => s.StartsWith("Already under way: ", StringComparison.Ordinal)),
             $"A second click on Run should be told it is under way, but the status bar said: {string.Join(" | ", said.Skip(before))}");
+        held.Reached();
+        Assert.Equal("Already under way: Building Hello…", window.Actions.WhyNot(AppActions.RunProgram, window.Actions.Context()));
+        held.LetGo();
         Ui.WaitFor(() => Output(window).Contains("Process finished", StringComparison.Ordinal), "the program to run to its end", TimeSpan.FromMinutes(2));
         Assert.True(builds == 1, $"Two clicks on Run built {builds} times, where the second should have started nothing");
         Assert.Single(Lines(Output(window)), l => l == "Hello from the run");
@@ -167,20 +172,23 @@ public sealed class WorkingActionsDebuggingTests : WorkingActionsFolders, IClass
         };
         IReadOnlyList<string> said = Said(window);
 
+        // Held until the second click has been answered, so the first Debug is under way then however fast the machine builds.
+        using BuildHold held = HoldNextBuild();
         Ui.Click(debug, settle: false);
         Ui.Click(debug, settle: false);
         // Told the stage the first click's work had reached, which may have gone on to its build before the second came.
         Assert.True(stages.Count > 0 && stages[0].StartsWith("Working out how to debug Hello", StringComparison.Ordinal)
             && said.Any(s => stages.Any(stage => s == $"Already under way: {stage}")),
             $"A second click on Debug should be told the first's stage is under way; Debug said {string.Join(" | ", stages)}, the status bar {string.Join(" | ", said)}");
+        held.LetGo();
         Ui.WaitFor(() => !ActionButtons.IsWorking(debug) && !window.Debugger.IsDebugging, "the debugged program to start and end", TimeSpan.FromMinutes(3));
         Assert.True(builds == 1 && sessions.Count == 1, $"A double click on Debug built {builds} times and opened {sessions.Count} sessions, where it should have done each once");
         window.Close();
     }
 }
 
-/// <summary>The solution each working action's test opens, restored, and the helpers that read the toolbar and the Run
-/// window.</summary>
+/// <summary>The solution each working action's test opens, restored, the hold its build waits at, and the helpers that read
+/// the toolbar and the Run window.</summary>
 public abstract class WorkingActionsFolders : IDisposable
 {
     private readonly RestoredFolders folders;
@@ -188,10 +196,20 @@ public abstract class WorkingActionsFolders : IDisposable
 
     protected WorkingActionsFolders(RestoredFolders folders) => this.folders = folders;
 
-    /// <summary>The test's own solution's folder, restored, taken as its window opens: Fetch's test opens a repository instead.</summary>
+    /// <summary>The test's own solution's folder, restored, taken as its window opens: Fetch's test opens a repository instead.
+    /// Its build waits at its compile while the test holds it (<see cref="HoldNextBuild"/>).</summary>
     protected string Folder => taken ??= folders.Take("working-", made =>
     {
         Write(made, "Sample.slnx", "<Solution>\n  <Project Path=\"Hello/Hello.csproj\" />\n</Solution>\n");
+        // A build, not a design-time one, held once the test puts "hold" there until it puts "go" (ten minutes at most).
+        Write(made, "Directory.Build.targets", """
+            <Project>
+              <Target Name="Held" BeforeTargets="CoreCompile" Condition="'$(DesignTimeBuild)' != 'true' And Exists('$(MSBuildThisFileDirectory)hold')">
+                <Exec Condition="'$(OS)' != 'Windows_NT'" WorkingDirectory="$(MSBuildThisFileDirectory)" Command="rm -f hold; touch held; n=0; while [ ! -f go ] &amp;&amp; [ $n -lt 2400 ]; do sleep 0.25; n=`expr $n + 1`; done" />
+                <Exec Condition="'$(OS)' == 'Windows_NT'" WorkingDirectory="$(MSBuildThisFileDirectory)" Command="powershell -NoProfile -Command &quot;Remove-Item hold; New-Item held -ItemType File | Out-Null; $n = 0; while (-not (Test-Path go) -and $n -lt 2400) { Start-Sleep -Milliseconds 250; $n++ }&quot;" />
+              </Target>
+            </Project>
+            """);
         Write(made, "Hello/Hello.csproj",
             TestProjects.Console("<ImplicitUsings>enable</ImplicitUsings>"));
         Write(made, "Hello/Program.cs", "Console.WriteLine(\"Hello from the run\");\n");
@@ -209,17 +227,49 @@ public abstract class WorkingActionsFolders : IDisposable
     /// <summary>A window on the test's solution, with no C# language server, which its actions ask nothing of.</summary>
     protected MainWindow Open() => Ui.OpenFolder(Folder, languageServer: false);
 
+    /// <summary>The next build of the test's solution held at its compile until the test lets it go, so a start that builds
+    /// stays under way for as long as the test likes.</summary>
+    protected BuildHold HoldNextBuild() => new(Folder);
+
+    /// <summary>A build of the test's solution held at its compile (<see cref="HoldNextBuild"/>), let go at the latest as the
+    /// hold is disposed, however the test ends.</summary>
+    protected sealed class BuildHold : IDisposable
+    {
+        private readonly string folder;
+
+        public BuildHold(string folder)
+        {
+            this.folder = folder;
+            Write(folder, "hold", string.Empty);
+        }
+
+        /// <summary>Waits for the build to reach the hold, failing unless it does: a start whose build never got there was
+        /// never held by it.</summary>
+        public void Reached() =>
+            Ui.PumpUntil(() => File.Exists(Path.Combine(folder, "held")), "the build to reach its hold", TimeSpan.FromMinutes(2));
+
+        /// <summary>Lets the build go once it has reached the hold.</summary>
+        public void LetGo()
+        {
+            Reached();
+            Dispose();
+        }
+
+        public void Dispose() => Write(folder, "go", string.Empty);
+    }
+
     protected static Button Toolbar(MainWindow window, string name) =>
         window.FindControl<Button>(name) ?? throw new InvalidOperationException($"The toolbar has no {name}");
 
-    /// <summary>The window's pixels at sixteen points of the circle the ring round a button's icon is drawn on.</summary>
+    /// <summary>The window's pixels at sixteen points of the circle the ring round a button's icon is drawn on, all from one
+    /// frame.</summary>
     protected static Color[] Ring(MainWindow window, Button button)
     {
         WorkingRing ring = button.GetVisualDescendants().OfType<WorkingRing>().SingleOrDefault()
             ?? throw new InvalidOperationException($"{button.Name} shows no ring");
         double radius = (Math.Min(ring.Bounds.Width, ring.Bounds.Height) - WorkingRing.Stroke) / 2 - 1;
         Point centre = ring.TranslatePoint(new Point(ring.Bounds.Width / 2, ring.Bounds.Height / 2), window)!.Value;
-        return [.. Enumerable.Range(0, 16).Select(i => Ui.Pixel(window, new Point(centre.X + radius * Math.Cos(i * Math.PI / 8), centre.Y + radius * Math.Sin(i * Math.PI / 8))))];
+        return Ui.Pixels(window, [.. Enumerable.Range(0, 16).Select(i => new Point(centre.X + radius * Math.Cos(i * Math.PI / 8), centre.Y + radius * Math.Sin(i * Math.PI / 8)))]);
     }
 
     protected static string Output(MainWindow window) => window.BottomPanel.Run.Document.Snapshot.ToString();

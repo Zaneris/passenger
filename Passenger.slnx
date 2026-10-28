@@ -27,6 +27,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Passenger.Tests/Passenger.Tests.csproj" />
+    <Project Path="tests/Passenger.UnitTests/Passenger.UnitTests.csproj" />
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/Passenger.NodePackages/Passenger.NodePackages.csproj" />
@@ -44,6 +45,7 @@
     <Project Path="tests/EfGraphs/Npgsql/EfGraphs.Npgsql.csproj" />
     <Project Path="tests/EfGraphs/Sqlite/EfGraphs.Sqlite.csproj" />
     <Project Path="tests/EfGraphs/SqliteOlder/EfGraphs.SqliteOlder.csproj" />
+    <Project Path="tests/EfGraphs/Sqlite11/EfGraphs.Sqlite11.csproj" />
   </Folder>
   <Folder Name="/tests/Debuggees/">
     <Project Path="tests/Debuggees/AsyncEntryConsoleApp/AsyncEntryConsoleApp.csproj" />
@@ -53,6 +55,8 @@
     <Project Path="tests/Debuggees/PassengerCases/PassengerCases.csproj" />
     <Project Path="tests/Debuggees/ReadsInputConsoleApp/ReadsInputConsoleApp.csproj" />
     <Project Path="tests/Debuggees/ReadsInputConsoleAppNoCet/ReadsInputConsoleAppNoCet.csproj" />
+    <Project Path="tests/Debuggees/RuntimeAsyncConsoleApp/RuntimeAsyncConsoleApp.csproj" />
+    <Project Path="tests/Debuggees/StateMachineAsyncConsoleApp/StateMachineAsyncConsoleApp.csproj" />
     <Project Path="tests/Debuggees/SteppingConsoleApp/SteppingConsoleApp.csproj" />
     <Project Path="tests/Debuggees/TerminalCases/TerminalCases.csproj" />
     <Project Path="tests/Debuggees/TerminalConsoleApp/TerminalConsoleApp.csproj" />

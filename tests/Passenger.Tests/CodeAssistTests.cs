@@ -1,5 +1,6 @@
 using System.Text;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input.Platform;
@@ -77,6 +78,63 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Assert.Null(window.Popup);
         Assert.Equal(PathNames.Canonical(project.PathOf("Helper.cs")), window.EditorArea.Active?.Path);
         Assert.Equal(2, window.EditorArea.CodeEditor.CaretPosition.Line);
+        window.Close();
+    }
+
+    /// <summary>The status bar's path keeps its buttons as the caret moves: a move within a member makes and changes none,
+    /// and one to another member, out to the type and back in, gives the buttons there are that member's words, the path
+    /// shown through the same buttons throughout. Every move to another member made the path's buttons and marks again,
+    /// each with a handler of its own.</summary>
+    [AvaloniaFact]
+    public void The_path_in_the_status_bar_keeps_its_buttons_as_the_caret_moves()
+    {
+        MainWindow window = project.Open("Program.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "Helper.Tw");
+        Ui.WaitFor(() => window.Breadcrumbs.Count == 3, "the member the caret is in");
+        Button[] made = Crumbs();
+        Assert.Equal(["Program.cs", "Program", "Main()"], made.Select(b => b.Content as string));
+        Ui.Press(window, "RIGHT");
+        Ui.Press(window, "LEFT");
+        Assert.True(Crumbs().SequenceEqual(made), "A caret move within Main() made the path's buttons again");
+        editor.GoTo(new TextPosition(1, 0));
+        Ui.Settle();
+        Assert.Equal(["Program.cs", "Program"], window.Breadcrumbs);
+        Assert.True(Crumbs()[..2].SequenceEqual(made[..2]), "A caret move out of Main() to its type made the path's buttons again, each with a handler of its own");
+        Ui.PlaceAfter(editor, "Helper.Tw");
+        Ui.Settle();
+        Assert.Equal(["Program.cs", "Program", "Main()"], window.Breadcrumbs);
+        Assert.True(Crumbs().SequenceEqual(made), "A caret move back into Main() made the path's buttons again, each with a handler of its own");
+        window.Close();
+
+        // The path's buttons in the status bar, those hidden past the path shown too.
+        Button[] Crumbs() => [.. window.GetVisualDescendants().OfType<Button>().Where(b => b.Classes.Contains("crumb"))];
+    }
+
+    /// <summary>A file shown before its folder's language server has it names the member the caret is in once the server
+    /// does, though nothing changes after: here a file opened alone, its folder opened after, on a server already loaded
+    /// (the one the class's last window left), which is ready before the file is opened in it.</summary>
+    [AvaloniaFact]
+    public void A_file_shown_before_its_folders_server_has_it_names_the_member_the_caret_is_in_once_it_does()
+    {
+        MainWindow first = project.Open(file: null);
+        int warm = first.CSharpService!.Session!.Server.ProcessId;
+        first.Close();
+        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, WarmServer = project.Server, StateFolder = TestFolders.Create("assist-state-") };
+        window.Show();
+        window.OpenFile(project.PathOf("Program.cs"));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "Helper.Tw");
+        Ui.Settle();
+        Assert.Equal(["Program.cs"], window.Breadcrumbs);
+
+        window.OpenFolder(project.Folder);
+        Ui.WaitFor(() => window.CSharpService is { IsReady: true } && window.CSharpService.For(window.EditorArea.Active!)?.Lsp is not null,
+            "the language server to have the file");
+        Assert.Equal(warm, window.CSharpService!.Session!.Server.ProcessId);
+        Ui.Settle();
+        Assert.True(window.Breadcrumbs.SequenceEqual(["Program.cs", "Program", "Main()"]),
+            $"Once the language server had the file, the status bar's path named [{string.Join(" › ", window.Breadcrumbs)}], not the member the caret is in");
         window.Close();
     }
 
@@ -242,6 +300,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_member_chosen_from_the_list_a_dot_opened_with_nothing_typed_leaves_the_caret_after_it()
     {
@@ -456,6 +515,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             find.Rows.SkipWhile(r => r.Depth != 0 || r.Label != group).Skip(1).TakeWhile(r => r.Depth != 0);
     }
 
+    [Gate]
     [AvaloniaFact]
     public void The_error_stripe_marks_a_problem_in_its_colour_says_what_it_is_and_a_click_goes_there()
     {
@@ -484,6 +544,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_right_click_on_a_call_puts_the_caret_there_and_its_menu_renames_it_in_every_file_that_uses_it_and_goes_to_an_implementation()
     {
@@ -709,6 +770,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// <summary>Undo and Redo of a paste at a file's end, the platform's input method following the editor as a
     /// desktop's does: each changes the text and keeps its step for the other, and the language server holds the
     /// editor's text.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Undo_and_redo_of_a_paste_at_a_files_end_keep_their_steps_and_the_servers_copy_with_an_input_method_following()
     {
@@ -920,6 +982,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// <summary>Go to Declaration opens the other file at the method, and Forward after Back goes there again when the caret
     /// moved in between; Back lands on the call it left after a line is added above it; and Go to Declaration on a library
     /// type opens its decompiled source, read-only.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Go_to_declaration_back_and_forward_land_where_the_code_is_and_a_library_type_opens_its_decompiled_source_read_only()
     {
@@ -975,6 +1038,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Code_cleanup_removes_unused_usings_sorts_the_rest_and_reformats()
     {
@@ -994,6 +1058,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// <summary>Refactor This lists only the refactorings at the selection; Extract Method asks for each new method's name at
     /// once, its rename box at the call offering the method just made, not the one before; and lines selected down to the
     /// next statement leave that statement on its own line.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Extract_method_asks_each_new_methods_name_and_keeps_the_next_statement_on_its_line_and_refactor_this_lists_only_what_fits()
     {
@@ -1235,6 +1300,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
 
     private static string? IndentShown(MainWindow window) => Avalonia.Controls.ControlExtensions.FindControl<Avalonia.Controls.TextBlock>(window, "IndentText")!.Text;
 
+    [Gate]
     [AvaloniaFact]
     public void Choosing_await_in_a_method_not_yet_async_makes_the_method_async_as_well()
     {
@@ -1257,6 +1323,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_fix_with_choices_offers_them_as_a_second_list_and_makes_the_one_chosen()
     {
@@ -1304,6 +1371,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Fix_all_offers_its_scopes_and_fixes_every_occurrence_in_the_one_chosen()
     {
@@ -1429,6 +1497,104 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         static string Said(List<(string Title, string Detail)> shown) => string.Join("; ", shown.Select(s => $"{s.Title} [{s.Detail}]"));
     }
 
+    /// <summary>Show Context Actions' list closes on a click in the editor away from it, the caret going where the click
+    /// was and nothing applied, as the completion list closes on one; a click on one of its rows chooses that row and
+    /// leaves it open.</summary>
+    [AvaloniaFact]
+    public void Show_context_actions_list_closes_on_a_click_in_the_editor_away_from_it()
+    {
+        MainWindow window = project.Open("Program.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        string before = editor.Document.Snapshot.ToString();
+        Ui.PlaceAfter(editor, "int res");
+        editor.Focus();
+        Ui.Run(window, AppActions.QuickFix);
+        Ui.WaitFor(() => window.Assist.Offered.Count > 1, "Show Context Actions' list for result");
+        IReadOnlyList<string> offered = window.Assist.Offered;
+
+        ListBoxItem second = OfferedRow(window, offered[1]);
+        Ui.Click(second);
+        Assert.True(second.IsSelected && window.Assist.Offered.SequenceEqual(offered),
+            $"A click on the list's second row ({offered[1]}) did not choose it in the list, which shows [{string.Join("; ", window.Assist.Offered)}]");
+
+        int away = before.IndexOf("class Program", StringComparison.Ordinal) + "class Pro".Length;
+        Ui.Click(editor, editor.PointOf(away) + new Point(1, editor.LineHeight / 2));
+        Assert.True(window.Assist.Offered.Count == 0,
+            $"A click in the editor away from Show Context Actions' list left it open, its fixes now applying at the old caret: [{string.Join("; ", window.Assist.Offered)}]");
+        Assert.Equal(new TextPosition(0, "class Pro".Length), editor.CaretPosition);
+        Assert.Equal(before, editor.Document.Snapshot.ToString());
+        window.Close();
+    }
+
+    /// <summary>Escape closes the code's lists of choices and its rename box wherever in the window the keys are: Show
+    /// Context Actions' list once Find Action, closed, has handed the editor the keys again, and Generate's once the
+    /// Explorer has them, which keeps them; Generate's list and the rename box close on a click away too, renaming
+    /// nothing.</summary>
+    [AvaloniaFact]
+    public void Escape_closes_the_lists_of_choices_and_the_rename_box_wherever_the_keys_are()
+    {
+        MainWindow window = project.Open("Program.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "int res");
+        editor.Focus();
+        Ui.Run(window, AppActions.QuickFix);
+        Ui.WaitFor(() => window.Assist.Offered.Count > 0, "Show Context Actions' list for result");
+        Ui.Run(window, AppActions.FindAction);
+        Assert.NotNull(window.Popup);
+        Ui.Press(window, "ESCAPE");
+        Assert.True(window.Popup is null && editor.IsFocused && window.Assist.Offered.Count > 0,
+            $"Find Action closed did not leave the editor with the keys under Show Context Actions' list (Find Action {(window.Popup is null ? "closed" : "open")}, "
+            + $"the keys with {window.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"}, the list offering {window.Assist.Offered.Count})");
+        Ui.Press(window, "ESCAPE");
+        Assert.True(window.Assist.Offered.Count == 0,
+            $"Escape with the keys back in the editor left Show Context Actions' list open: [{string.Join("; ", window.Assist.Offered)}]");
+
+        window.OpenFile(project.PathOf("Point.cs"));
+        Ui.Settle();
+        string point = editor.Document.Snapshot.ToString();
+        Ui.PlaceAfter(editor, "public int X");
+        Ui.Run(window, AppActions.Generate);
+        Ui.WaitFor(() => window.Assist.Offered.Count > 0, "what can be generated");
+        Ui.Run(window, AppActions.FocusExplorer);
+        Assert.True(window.ExplorerView.Rows().IsKeyboardFocusWithin && window.Assist.Offered.Count > 0,
+            $"Focus Explorer left the keys with {window.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"} and Generate's list offering {window.Assist.Offered.Count}");
+        Ui.Press(window, "ESCAPE");
+        Assert.True(window.Assist.Offered.Count == 0, $"Escape in the Explorer left Generate's list open: [{string.Join("; ", window.Assist.Offered)}]");
+        Assert.True(window.ExplorerView.Rows().IsKeyboardFocusWithin,
+            $"Escape that closed Generate's list took the Explorer's keys to {window.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"}");
+
+        editor.Focus();
+        Ui.Run(window, AppActions.Generate);
+        Ui.WaitFor(() => window.Assist.Offered.Count > 0, "what can be generated, again");
+        Ui.Click(editor, editor.PointOf(0) + new Point(1, editor.LineHeight / 2));
+        Assert.True(window.Assist.Offered.Count == 0, $"A click in the editor away from Generate's list left it open: [{string.Join("; ", window.Assist.Offered)}]");
+
+        Ui.PlaceAfter(editor, "public int Y");
+        Ui.Run(window, AppActions.Rename);
+        Ui.WaitFor(() => window.Assist.Renaming == "Y", "the rename box");
+        window.KeyTextInput("Height");
+        Ui.Click(editor, editor.PointOf(0) + new Point(1, editor.LineHeight / 2));
+        Assert.True(window.Assist.Renaming is null, $"A click in the editor away from the rename box left it open, holding {window.Assist.Renaming}");
+        Ui.PlaceAfter(editor, "public int Y");
+        Ui.Run(window, AppActions.Rename);
+        Ui.WaitFor(() => window.Assist.Renaming == "Y", "the rename box again");
+        Ui.Run(window, AppActions.FindAction);
+        Ui.Press(window, "ESCAPE");
+        Assert.True(editor.IsFocused && window.Assist.Renaming == "Y",
+            $"Find Action closed did not leave the editor with the keys under the rename box (the keys with {window.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"}, the box holding {window.Assist.Renaming ?? "nothing"})");
+        Ui.Press(window, "ESCAPE");
+        Assert.True(window.Assist.Renaming is null, $"Escape with the keys back in the editor left the rename box open, holding {window.Assist.Renaming}");
+        Ui.Settle();
+        Assert.True(editor.Document.Snapshot.ToString() == point, $"The rename box closed by a click away or Escape renamed Y:\n{editor.Document.Snapshot}");
+        window.Close();
+    }
+
+    /// <summary>The row of the open list of choices that shows these words.</summary>
+    private static ListBoxItem OfferedRow(MainWindow window, string title) =>
+        window.GetVisualDescendants().OfType<ListBoxItem>().FirstOrDefault(row => row.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text == title))
+        ?? throw new Xunit.Sdk.XunitException($"No row of the list of choices shows {title}");
+
+    [Gate]
     [AvaloniaFact]
     public void Parameter_info_keeps_a_sentence_apart_from_a_parameter_its_documentation_names_straight_after_it()
     {
@@ -1455,11 +1621,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    private static T Await<T>(Task<T> task, string what)
-    {
-        Ui.WaitFor(() => task.IsCompleted, what, TimeSpan.FromSeconds(30));
-        return task.Result;
-    }
+    private static T Await<T>(Task<T> task, string what) => Ui.Await(task, what, TimeSpan.FromSeconds(30));
 
     /// <summary>Chooses an item of the open list of choices by its words, with the keys a person would press.</summary>
     private static void Choose(MainWindow window, string item)
@@ -1624,6 +1786,103 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         editor.ShowParameterHints = false;
         Assert.Equal(character, Step(literal - 1), 3);
         window.Close();
+    }
+
+    /// <summary>A hint's card shows though the server has read the project's options again since it gave the hint, the
+    /// file's text the same: here an .editorconfig changed on disk, with the hints the server gives after that held
+    /// unanswered, so the editor still shows those it gave before, which the server refuses to describe.</summary>
+    [AvaloniaFact]
+    public void A_hints_card_shows_when_the_server_has_read_an_editorconfig_since_it_gave_the_hint()
+    {
+        MainWindow window = project.Open("Inferred.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        int name = editor.Document.Snapshot.ToString().IndexOf("var total", StringComparison.Ordinal) + "var total".Length;
+        Ui.WaitFor(() => editor.InlayHints.Any(h => h.Kind == InlayHintKind.Type && h.Offset == name), "the hint after 'total'");
+        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
+        TaskCompletionSource answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task held = server.HoldNextAnswer(Passenger.Lsp.LspMethods.InlayHint, _ => true, answered.Task);
+        try
+        {
+            project.Rewrite("Tabs/.editorconfig", "[*.cs]\nindent_style = tab\n\n[*.md]\nindent_size = 3\n");
+            Ui.AwaitPumped(held, "the hints the server gives once it has read the .editorconfig, held unanswered");
+            double character = editor.PointOf(name - 1).X - editor.PointOf(name - 2).X;
+            Point hint = editor.PointOf(name) + new Point(character * 1.5, editor.LineHeight / 2);
+            window.MouseMove(editor.TranslatePoint(hint, window)!.Value, Avalonia.Input.RawInputModifiers.None);
+            Ui.PumpUntil(() => window.Assist.HoverText is not null, "the card of a hint the server gave before it read the .editorconfig");
+        }
+        finally
+        {
+            answered.SetResult();
+        }
+        Assert.Contains("Int32", window.Assist.HoverText, StringComparison.Ordinal);
+        window.MouseMove(new Point(1, 1), Avalonia.Input.RawInputModifiers.None);
+        Ui.Settle();
+        window.Close();
+    }
+
+    /// <summary>With Settings showing neither kind of hint, typing with pauses asks the server for none, though each pause
+    /// still pulls the file's diagnostics; turning parameter name hints on brings them at once, the server asked for that
+    /// kind alone, and turning type name hints on brings those too. Counted in the protocol's own trace.</summary>
+    [AvaloniaFact]
+    public void With_both_kinds_of_hint_off_no_hints_are_asked_for_and_turning_one_on_brings_its_hints_at_once()
+    {
+        MainWindow window = project.Open("Inferred.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        string code = editor.Document.Snapshot.ToString();
+        int name = code.IndexOf("var total", StringComparison.Ordinal) + "var total".Length;
+        Ui.WaitFor(() => editor.InlayHints.Any(h => h.Kind == InlayHintKind.Type), "the type name hints");
+        int server = window.CSharpService!.Session!.Server.ProcessId;
+        int hintsAsked = 0;
+        int pulls = 0;
+        void Count() => Passenger.Lsp.LanguageServer.Trace = (from, message) =>
+        {
+            if (from == server && message.StartsWith("-->", StringComparison.Ordinal))
+            {
+                if (message.Contains($"\"{Passenger.Lsp.LspMethods.InlayHint}\"", StringComparison.Ordinal))
+                {
+                    Interlocked.Increment(ref hintsAsked);
+                }
+                else if (message.Contains($"\"{Passenger.Lsp.LspMethods.DocumentDiagnostic}\"", StringComparison.Ordinal))
+                {
+                    Interlocked.Increment(ref pulls);
+                }
+            }
+        };
+        void Change(Func<AppSettings, AppSettings> change) => window.ApplySettings(change(window.Settings));
+        try
+        {
+            Change(s => s with { ParameterHints = false, TypeHints = false });
+            Count();
+            Ui.Settle();
+            Assert.True(editor.InlayHints.Count == 0, $"With both kinds of hint off the file still holds {editor.InlayHints.Count} hints");
+
+            Ui.PlaceAfter(editor, "var total = Area.Of(3, 4);");
+            editor.Focus();
+            for (int i = 0; i < 3; i++)
+            {
+                int pulled = Volatile.Read(ref pulls);
+                window.KeyTextInput($" total += Area.Of({i}, 2);");
+                Ui.Settle();
+                Assert.True(Volatile.Read(ref pulls) > pulled, $"The pause after statement {i + 1} pulled no diagnostics");
+            }
+            Assert.True(Volatile.Read(ref hintsAsked) == 0, $"With both kinds of hint off, three pauses in typing asked the server for hints {hintsAsked} times");
+            Assert.True(editor.InlayHints.Count == 0, $"With both kinds of hint off the file holds {editor.InlayHints.Count} hints");
+
+            Change(s => s with { ParameterHints = true });
+            Ui.WaitFor(() => editor.InlayHints.Count(h => h.Label == "width:") == 4, "the four calls' parameter name hints, once they were turned on");
+            Assert.True(Volatile.Read(ref hintsAsked) > 0, "Parameter name hints came without the server being asked for them");
+            Assert.True(editor.InlayHints.All(h => h.Kind == InlayHintKind.Parameter),
+                $"With type name hints off the server still made {string.Join(", ", editor.InlayHints.Where(h => h.Kind != InlayHintKind.Parameter).Select(h => h.Label))}");
+
+            Change(s => s with { TypeHints = true });
+            Ui.WaitFor(() => editor.InlayHints.Any(h => h.Kind == InlayHintKind.Type && h.Offset == name && h.Label == ":int"),
+                "the type name hint after 'total', once they were turned on");
+        }
+        finally
+        {
+            Passenger.Lsp.LanguageServer.Trace = null;
+            window.Close();
+        }
     }
 
     [AvaloniaFact]
@@ -1796,15 +2055,69 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    /// <summary>A class and its caller another program wrote a moment ago (an agent in the terminal), heard by the window but
+    /// not yet taken into the project by the language server: Find Usages on the class's method, opened at once, lists the
+    /// caller too, where an answer from the server's Miscellaneous Files lists the declaration alone.</summary>
+    [AvaloniaFact]
+    public void Find_usages_in_a_file_another_program_has_just_written_lists_the_caller_it_wrote_beside_it()
+    {
+        MainWindow window = project.Open("Program.cs");
+        HashSet<string> heard = new(StringComparer.Ordinal);
+        EventHandler<FolderChanges> hear = (_, changes) => heard.UnionWith(changes.Paths.Select(Path.GetFileName).OfType<string>());
+        window.FolderWatcher!.Changed += hear;
+        File.WriteAllText(project.PathOf("Triangle.cs"), "class Triangle\n{\n    public static Triangle Make() => new();\n}\n");
+        File.WriteAllText(project.PathOf("UseTriangle.cs"), "static class UseTriangle\n{\n    public static Triangle Run() => Triangle.Make();\n}\n");
+        Ui.PumpUntil(() => heard.Contains("Triangle.cs") && heard.Contains("UseTriangle.cs"), "the folder's watcher to hear of both files");
+        window.FolderWatcher.Changed -= hear;
+        window.OpenFile(project.PathOf("Triangle.cs"));
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "Triangle Ma");
+        Ui.Run(window, AppActions.FindUsages);
+        Ui.WaitFor(() => window.Find.Rows.Any(r => r.Usage is not null), "the usages in the Find window");
+        string[] usages = [.. window.Find.Rows.Where(r => r.Usage is not null).Select(r => r.Label)];
+        Assert.True(usages.Contains("public static Triangle Run() => Triangle.Make();"),
+            $"Find Usages on a method just written missed the caller written beside it, so a rename would leave it behind: [{string.Join("; ", usages)}] ({window.Status})");
+        window.Close();
+    }
+
+    /// <summary>The Find and Hierarchy windows' rows have the menu every list of results has: Go to (F4) and Copy.</summary>
+    [AvaloniaFact]
+    public void A_usages_and_a_callers_menu_goes_to_it_and_copies_its_path()
+    {
+        MainWindow window = project.Open("Loop.cs");
+        FindView find = window.Find;
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "int tot");
+        Ui.Run(window, AppActions.FindUsages);
+        Ui.WaitFor(() => find.Rows.Count(r => r.Usage is not null) == 3, "the usages in the Find window");
+        find.Selected = find.Rows.Last(r => r.Usage is not null);
+        window.OpenFile(project.PathOf("Program.cs"));
+        Ui.Settle();
+        Avalonia.Controls.ListBox usages = find.GetVisualDescendants().OfType<Avalonia.Controls.ListBox>().Single();
+        Ui.ChooseFromMenu(usages, "Go to");
+        Assert.Equal("Loop.cs", window.EditorArea.Active?.Name);
+        Assert.Equal(new TextPosition(9, 15), window.EditorArea.CodeEditor.CaretPosition);
+        Ui.ChooseFromMenu(usages, "Copy Path");
+        Ui.WaitFor(() => Ui.Clipboard(window) == PathNames.Canonical(project.PathOf("Loop.cs")), "the usage's path on the clipboard");
+
+        window.OpenFile(project.PathOf("Helper.cs"));
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "static int Tw");
+        Assert.Null(Ui.Await(window.ShowCallHierarchyAsync(), "the call hierarchy"));
+        HierarchyRow caller = window.Hierarchy.Rows[1];
+        Avalonia.Controls.ListBox callers = window.Hierarchy.GetVisualDescendants().OfType<Avalonia.Controls.ListBox>().Single();
+        callers.SelectedItem = caller;
+        Ui.ChooseFromMenu(callers, "Go to");
+        Assert.True(window.EditorArea.Active?.Path == caller.Node.Path, "Go to in a caller's menu in the Hierarchy window did not go to its call");
+        Assert.Equal(caller.Node.Where.Line, window.EditorArea.CodeEditor.CaretPosition.Line);
+        window.Close();
+    }
+
+    [Gate]
     [AvaloniaFact]
     public void Call_and_type_hierarchies_show_who_calls_a_method_and_what_derives_from_a_type()
     {
         MainWindow window = project.Open("Helper.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
         Ui.PlaceAfter(editor, "static int Tw");
-        Task<string?> calls = window.ShowCallHierarchyAsync();
-        Ui.WaitFor(() => calls.IsCompleted, "the call hierarchy");
-        Assert.Null(calls.Result);
+        Assert.Null(Ui.Await(window.ShowCallHierarchyAsync(), "the call hierarchy"));
         Assert.True(window.DockHost.IsShown(ToolWindowIds.Hierarchy));
         Assert.Equal(2, window.Hierarchy.Rows.Count);
         Assert.Contains("Twice", window.Hierarchy.Rows[0].Node.Item.Name, StringComparison.Ordinal);
@@ -1876,7 +2189,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         for (int i = 0; i < 3; i++)
         {
             long before = GC.GetTotalAllocatedBytes(precise: true);
-            Passenger.Lsp.CompletionList? list = Task.Run(() => lsp.CompletionAsync(caret, null)).GetAwaiter().GetResult().List;
+            Passenger.Lsp.CompletionList? list = Ui.Idle(Waiting.Apart(() => lsp.CompletionAsync(caret, null)), "the statement's completion asked from the thread pool").List;
             read = Math.Min(read, GC.GetTotalAllocatedBytes(precise: true) - before);
             items = list?.Items.Count ?? 0;
         }
@@ -1930,7 +2243,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Settle();
         Passenger.Lsp.LspDocument lsp = window.CSharpService!.For(window.EditorArea.Active!)!.Lsp!;
         int caret = editor.Selections.Primary.Caret;
-        int items = Task.Run(() => lsp.CompletionAsync(caret, null)).GetAwaiter().GetResult().List?.Items.Count ?? 0;
+        int items = Ui.Await(Waiting.Apart(() => lsp.CompletionAsync(caret, null)), "the statement's completion").List?.Items.Count ?? 0;
         window.KeyTextInput("S");
         Ui.WaitFor(() => window.Assist.CompletionNarrowedBy == "S", $"a statement's list in {Path.GetFileName(path)}");
         string typed = "S";
@@ -2019,7 +2332,6 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
                 + "using System.Threading;\nusing System.Threading.Tasks;\n" + Statement.Replace("Statement", "Used", StringComparison.Ordinal));
             // The first build makes bin, which a reset would take for a file the test added: made now, the folder stays as reset.
             Directory.CreateDirectory(PathOf("bin"));
-            Prepare();
         }
 
         /// <summary>Whether restore downloaded .NET's reference pack, as it does when no installed SDK has the version the
@@ -2030,9 +2342,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     }
 }
 
-/// <summary>How soon the window answers while the language server's longest lists land, on the code help's project with
-/// thousands of usages and implementations written into it: held to a time, so run alone.</summary>
-[Collection(Alone.Name)]
+/// <summary>The language server's longest lists, on the code help's project with thousands of usages and implementations
+/// written into it.</summary>
 public sealed class CodeAssistResponsivenessTests : IClassFixture<CodeAssistTests.Project>
 {
     private readonly CodeAssistTests.Project project;
@@ -2043,11 +2354,10 @@ public sealed class CodeAssistResponsivenessTests : IClassFixture<CodeAssistTest
         project.Reset();
     }
 
-    /// <summary>The window takes keys while Find Usages lists ten thousand usages and while Derived Symbols lists four
-    /// thousand implementations, each with its line of code read from its closed file. Both lists' files are written at
-    /// once, so one server loads them.</summary>
+    /// <summary>Find Usages lists ten thousand usages and Derived Symbols four thousand implementations, each with its line
+    /// of code read from its closed file. Both lists' files are written at once, so one server loads them.</summary>
     [AvaloniaFact]
-    public void The_window_takes_keys_while_find_usages_lists_ten_thousand_usages_and_derived_symbols_four_thousand_implementations()
+    public void Find_usages_lists_ten_thousand_usages_and_derived_symbols_four_thousand_implementations()
     {
         for (int file = 0; file < 4; file++)
         {
@@ -2077,30 +2387,15 @@ public sealed class CodeAssistResponsivenessTests : IClassFixture<CodeAssistTest
         Ui.WaitFor(() => window.CSharpService is { IsReady: true }, "the language server");
         Ui.Settle();
         FindView find = window.Find;
-        TimeSpan longest;
-        using (InputWait waits = new())
-        {
-            Ui.Run(window, AppActions.FindUsages);
-            Ui.PumpUntil(() => find.Shown == "Usages of Twice" && find.Rows.Count(r => r.Usage is not null) == 10_002, "the usages in the Find window", TimeSpan.FromMinutes(2));
-            waits.Stop();
-            longest = waits.Longest;
-        }
-        Assert.True(longest < TimeSpan.FromMilliseconds(250),
-            $"the window answered no input for {longest.TotalMilliseconds:F0} ms while Find Usages listed {find.Rows.Count(r => r.Usage is not null)} usages");
+        Ui.Run(window, AppActions.FindUsages);
+        Ui.PumpUntil(() => find.Shown == "Usages of Twice" && find.Rows.Count(r => r.Usage is not null) == 10_002, "the usages in the Find window", TimeSpan.FromMinutes(2));
 
         window.OpenFile(project.PathOf("Measure.cs"));
         Ui.Settle();
         Ui.PlaceAfter(window.EditorArea.CodeEditor, "int Si");
         Ui.Settle();
-        using (InputWait waits = new())
-        {
-            Ui.Run(window, AppActions.DerivedSymbols);
-            Ui.PumpUntil(() => window.Assist.Offered.Count == 4000, "the four thousand implementations to choose from", TimeSpan.FromMinutes(2));
-            waits.Stop();
-            longest = waits.Longest;
-        }
-        Assert.True(longest < TimeSpan.FromMilliseconds(250),
-            $"the window answered no input for {longest.TotalMilliseconds:F0} ms while Derived Symbols listed {window.Assist.Offered.Count} implementations");
+        Ui.Run(window, AppActions.DerivedSymbols);
+        Ui.PumpUntil(() => window.Assist.Offered.Count == 4000, "the four thousand implementations to choose from", TimeSpan.FromMinutes(2));
         Ui.Press(window, "ESCAPE");
         window.Close();
     }

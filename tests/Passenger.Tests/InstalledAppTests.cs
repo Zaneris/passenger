@@ -125,6 +125,7 @@ public sealed class InstalledAppTests : McpRig, IClassFixture<RestoredFolders>
         Directory.CreateDirectory(stale);
         File.WriteAllText(Path.Combine(stale, ".used"), string.Empty);
         File.SetLastWriteTimeUtc(Path.Combine(stale, ".used"), DateTime.UtcNow - TimeSpan.FromDays(2));
+        await TakeFolderAsync();
         await using (McpClient client = throughDotnet
             ? await Start([Path.Combine(app, "Passenger.dll"), "--mcp", Folder], executable: Dotnet.Host())
             : await Start(["--mcp", Folder], executable: Path.Combine(app, "Passenger")))

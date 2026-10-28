@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -54,7 +53,7 @@ public sealed class LiveTemplatesPane : DockPanel
         CloneButton.Click += (_, _) => Clone();
         DeleteButton.Click += (_, _) => Delete();
         RestoreButton.Click += (_, _) => Restore();
-        list.ItemTemplate = new FuncDataTemplate<LiveTemplate>((template, _) => template is null ? new Panel() : RowView(template), supportsRecycling: false);
+        ReusedRows.Use(list, RowView);
         list.SelectionChanged += (_, _) => ShowChosen();
 
         ShortcutBox = Field();
@@ -410,30 +409,38 @@ public sealed class LiveTemplatesPane : DockPanel
         RestoreButton.IsEnabled = shown.BuiltIn && LiveTemplates.BuiltIn.FirstOrDefault(t => t.Key == shown.Key) is { } shipped && !shipped.SameAs(shown);
     }
 
-    /// <summary>A list row: the check box that turns the template off or on, its shortcut in bold and its description.</summary>
-    private Control RowView(LiveTemplate template)
+    /// <summary>A row for whichever template the list hands its container: its box, which turns the one it shows on or
+    /// off, and its abbreviation in bold with its description after it, muted while it is off.</summary>
+    private Control RowView()
     {
-        StackPanel line = new() { Orientation = Orientation.Horizontal, Spacing = 6 };
-        CheckBox enabled = new() { IsChecked = template.Enabled, VerticalAlignment = VerticalAlignment.Center };
-        ToolTip.SetTip(enabled, template.Enabled ? "On: turn it off" : "Off: turn it on");
-        enabled.IsCheckedChanged += (_, _) => Turn(template.Key, enabled.IsChecked == true);
-        line.Children.Add(enabled);
+        CheckBox enabled = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        string title = template.Abbreviation.Length > 0 ? template.Abbreviation : template.Description.Length > 0 ? template.Description : "<No Name>";
-        name.Inlines!.Add(new Avalonia.Controls.Documents.Run(title) { FontWeight = FontWeight.Bold });
-        if (template.Abbreviation.Length > 0 && template.Description.Length > 0)
+        StackPanel line = new() { Orientation = Orientation.Horizontal, Spacing = 6, Children = { enabled, name } };
+        bool setting = false;
+        enabled.IsCheckedChanged += (_, _) =>
         {
-            name.Inlines.Add(new Avalonia.Controls.Documents.Run($" ({template.Description})"));
-        }
-        if (!template.Enabled)
+            if (!setting && line.DataContext is LiveTemplate template)
+            {
+                Turn(template.Key, enabled.IsChecked == true);
+            }
+        };
+        return line.Showing<LiveTemplate>(template =>
         {
-            name.Classes.Add("muted");
-        }
-        line.Children.Add(name);
-        return line;
+            setting = true;
+            enabled.IsChecked = template.Enabled;
+            setting = false;
+            ToolTip.SetTip(enabled, template.Enabled ? "On: turn it off" : "Off: turn it on");
+            string title = template.Abbreviation.Length > 0 ? template.Abbreviation : template.Description.Length > 0 ? template.Description : "<No Name>";
+            name.Inlines!.Clear();
+            name.Inlines.Add(new Avalonia.Controls.Documents.Run(title) { FontWeight = FontWeight.Bold });
+            if (template.Abbreviation.Length > 0 && template.Description.Length > 0)
+            {
+                name.Inlines.Add(new Avalonia.Controls.Documents.Run($" ({template.Description})"));
+            }
+            name.Classes.Set("muted", !template.Enabled);
+        });
     }
 
-    /// <summary>Turns a template on or off, as its check box says.</summary>
     private void Turn(string key, bool on)
     {
         int at = templates.FindIndex(t => t.Key == key);

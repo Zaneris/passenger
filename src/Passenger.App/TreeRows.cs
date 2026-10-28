@@ -108,19 +108,40 @@ public sealed class TreeRows<T> : ObservableCollection<T>
 
     /// <summary>Shows these rows: the runs of rows that went are taken out and the runs that came put in, so the rows that
     /// stay are the same rows, chosen if they were; rows that moved are shown again whole.</summary>
-    public void Show(IReadOnlyList<T> wanted)
+    public void Show(IReadOnlyList<T> wanted) => Show(0, Count, wanted);
+
+    /// <summary>Shows these rows under a row, where it is shown, as <see cref="Show(IReadOnlyList{T})"/> shows them all:
+    /// what the rest of the tree shows is left as it is, and costs nothing however many rows it holds.</summary>
+    public void ShowUnder(T row, IReadOnlyList<T> wanted)
+    {
+        int at = IndexOf(row);
+        if (at >= 0)
+        {
+            Show(at + 1, End(at), wanted);
+        }
+    }
+
+    /// <summary>Shows these rows in place of those from one index to before another.</summary>
+    private void Show(int from, int to, IReadOnlyList<T> wanted)
     {
         HashSet<T> keep = new(wanted, ReferenceEqualityComparer.Instance);
-        HashSet<T> staying = new(Items.Where(keep.Contains), ReferenceEqualityComparer.Instance);
-        if (!Items.Where(keep.Contains).SequenceEqual(wanted.Where(staying.Contains)))
+        List<T> shown = ((List<T>)Items).GetRange(from, to - from);
+        HashSet<T> staying = new(shown.Where(keep.Contains), ReferenceEqualityComparer.Instance);
+        if (!shown.Where(keep.Contains).SequenceEqual(wanted.Where(staying.Contains)))
         {
-            CheckReentrancy();
-            Items.Clear();
-            ((List<T>)Items).AddRange(wanted);
-            Changed(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
+            if (from == 0 && to == Count)
+            {
+                CheckReentrancy();
+                Items.Clear();
+                ((List<T>)Items).AddRange(wanted);
+                Changed(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
+                return;
+            }
+            RemoveRange(from, to - from);
+            InsertRange(from, wanted);
             return;
         }
-        for (int at = Count - 1; at >= 0;)
+        for (int at = to - 1; at >= from;)
         {
             if (keep.Contains(this[at]))
             {
@@ -128,7 +149,7 @@ public sealed class TreeRows<T> : ObservableCollection<T>
                 continue;
             }
             int end = at;
-            while (at >= 0 && !keep.Contains(this[at]))
+            while (at >= from && !keep.Contains(this[at]))
             {
                 at--;
             }
@@ -142,7 +163,10 @@ public sealed class TreeRows<T> : ObservableCollection<T>
             {
                 end++;
             }
-            InsertRange(at, wanted.Skip(at).Take(end - at));
+            if (end > at)
+            {
+                InsertRange(from + at, wanted.Skip(at).Take(end - at));
+            }
             at = end + 1;
         }
     }

@@ -92,6 +92,8 @@ public partial class MainWindow
             Action = AppActions.ShowContainers,
             Menus = [new MenuPlace("Tools", 0, 4)],
             Chosen = () => containersView?.Chosen,
+            ExpandAll = () => ContainersWindow.ExpandAll(),
+            CollapseAll = () => ContainersWindow.CollapseAll(),
         });
     }
 

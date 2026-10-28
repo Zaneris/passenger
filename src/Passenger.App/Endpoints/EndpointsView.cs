@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -50,6 +49,9 @@ public sealed class EndpointsView : DockPanel
     private bool stale;
     private CancellationTokenSource? sending;
 
+    /// <summary>The last read of the folder's files, whose environments a send waits for.</summary>
+    private Task reading = Task.CompletedTask;
+
     public EndpointsView(EndpointsParts parts)
     {
         this.parts = parts;
@@ -57,15 +59,8 @@ public sealed class EndpointsView : DockPanel
         list = new ListBox
         {
             Classes = { "tree" },
-            ItemTemplate = new FuncDataTemplate<object>((row, _) => row switch
-            {
-                FileRow file => FileHeading(file.Name, file.Path, IconKeys.DocumentText),
-                ProjectRow project => FileHeading(project.Name, project.Path, IconKeys.Endpoints),
-                EndpointRequest request => Row(request),
-                WebRoute route => RouteRow(route),
-                _ => new TextBlock(),
-            }, supportsRecycling: false),
         };
+        ReusedRows.Use(list, Row);
         list.DoubleTapped += (_, _) =>
         {
             if (list.SelectedItem is WebRoute route)
@@ -113,7 +108,7 @@ public sealed class EndpointsView : DockPanel
         environments = new ComboBox { MinWidth = 140, VerticalAlignment = VerticalAlignment.Center };
         environments.SelectionChanged += (_, _) => EnvironmentChanged?.Invoke(this, EventArgs.Empty);
         ToolTip.SetTip(environments, $"The environment of {HttpVariables.PublicFile} whose variables the requests use");
-        Button refresh = ToolButtons.Of(IconKeys.Rerun, "Read the .http files again", () => Reload(root));
+        Button refresh = ToolButtons.Of(AppActions.EndpointsRefresh, IconKeys.Rerun, "Read the .http files again", action => ActionRequested?.Invoke(this, action));
         TextBlock label = new() { Text = "Environment", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
         StackPanel bar = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(8, 4), Spacing = 4, Children = { label, environments, refresh } };
         DockPanel.SetDock(bar, Dock.Top);
@@ -135,6 +130,9 @@ public sealed class EndpointsView : DockPanel
 
     /// <summary>A request to open in the editor at its request line.</summary>
     public event EventHandler<EndpointRequest>? GoToRequested;
+
+    /// <summary>One of the window's actions asked for by its button.</summary>
+    public event EventHandler<string>? ActionRequested;
 
     /// <summary>A route whose request is to be sent, from its row.</summary>
     public event EventHandler<WebRoute>? RouteSendRequested;
@@ -192,7 +190,8 @@ public sealed class EndpointsView : DockPanel
         {
             return;
         }
-        IdeErrors.Observe(ReadAsync(folder, read));
+        reading = ReadAsync(folder, read);
+        IdeErrors.Observe(reading);
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
@@ -303,6 +302,18 @@ public sealed class EndpointsView : DockPanel
         sending = mine;
         try
         {
+            if (stale && root is { } due)
+            {
+                // Sent before the window was shown (from an .http file's icon): the read it put off chooses the environment.
+                stale = false;
+                reading = ReadAsync(due, ++reads);
+                IdeErrors.Observe(reading);
+            }
+            if (!reading.IsCompleted)
+            {
+                testing.Say("Reading the folder's environments…");
+                await reading;
+            }
             HttpFile file = written ?? FileOf(request);
             string? environment = Environment;
             string? folder = root;
@@ -398,79 +409,134 @@ public sealed class EndpointsView : DockPanel
         }
     }
 
-    private static Control FileHeading(string shown, string path, string iconKey)
+    /// <summary>A row for whichever heading, request or route the list hands its container: a file's or project's icon and
+    /// name; a request's Test and Interactive Test, its last outcome, its method and title (a named one's URL after it,
+    /// muted); a route's method, template, what declares it (muted) and Send where a request can reach it.</summary>
+    private Control Row()
     {
-        PathIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(0, 0, 6, 0) };
-        icon.Bind(PathIcon.DataProperty, icon.GetResourceObservable(iconKey));
-        TextBlock name = new() { Text = shown, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        ToolTip.SetTip(name, path);
-        return new StackPanel { Orientation = Orientation.Horizontal, Height = ListRow.Height, Margin = new Thickness(8, 0), IsHitTestVisible = false, Children = { icon, name } };
+        RowIcon headingIcon = new() { Width = 14, Height = 14, Margin = new Thickness(0, 0, 6, 0) };
+        TextBlock headingName = new() { FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        StackPanel heading = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Margin = new Thickness(8, 0), Children = { headingIcon, headingName } };
+        Panel row = new();
+        (DockPanel request, Action<EndpointRequest> showRequest) = RequestRow(row);
+        (DockPanel route, Action<WebRoute> showRoute) = RouteRow(row);
+        row.Children.Add(heading);
+        row.Children.Add(request);
+        row.Children.Add(route);
+        return row.Showing<object>(item =>
+        {
+            heading.IsVisible = item is FileRow or ProjectRow;
+            request.IsVisible = item is EndpointRequest;
+            route.IsVisible = item is WebRoute;
+            switch (item)
+            {
+                case FileRow file:
+                    headingIcon.DataKey = IconKeys.DocumentText;
+                    headingName.Text = file.Name;
+                    ToolTip.SetTip(heading, file.Path);
+                    break;
+                case ProjectRow project:
+                    headingIcon.DataKey = IconKeys.Endpoints;
+                    headingName.Text = project.Name;
+                    ToolTip.SetTip(heading, project.Path);
+                    break;
+                case EndpointRequest shown:
+                    showRequest(shown);
+                    break;
+                case WebRoute shown:
+                    showRoute(shown);
+                    break;
+            }
+        });
     }
 
-    private Control Row(EndpointRequest request)
+    /// <summary>A request's line in a row, and what shows a request in it; its buttons act on the request the row shows.</summary>
+    private (DockPanel Line, Action<EndpointRequest> Show) RequestRow(Control row)
     {
-        Button test = ToolButtons.Of(IconKeys.Run, "Test", () => IdeErrors.Observe(TestAsync(request)));
-        Button interactive = ToolButtons.Of(IconKeys.Edit, "Interactive Test…", () => InteractiveRequested?.Invoke(this, request));
+        Button test = ToolButtons.Of(IconKeys.Run, "Test", () =>
+        {
+            if (row.DataContext is EndpointRequest request)
+            {
+                IdeErrors.Observe(TestAsync(request));
+            }
+        });
+        Button interactive = ToolButtons.Of(IconKeys.Edit, "Interactive Test…", () =>
+        {
+            if (row.DataContext is EndpointRequest request)
+            {
+                InteractiveRequested?.Invoke(this, request);
+            }
+        });
         test.Name = "endpointTest";
         ((PathIcon)test.Content!).Bind(PathIcon.ForegroundProperty, test.GetResourceObservable(TokenKeys.Run));
         interactive.Name = "endpointInteractive";
         StackPanel buttons = new() { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center, Children = { test, interactive } };
         DockPanel.SetDock(buttons, Dock.Right);
-
-        PathIcon outcome = new() { Width = 12, Height = 12, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
-        if (Outcome(request) is { } passed)
-        {
-            outcome.Bind(PathIcon.DataProperty, outcome.GetResourceObservable(passed ? IconKeys.TestPassed : IconKeys.TestFailed));
-            outcome.Bind(PathIcon.ForegroundProperty, outcome.GetResourceObservable(passed ? TokenKeys.Test_Passed : TokenKeys.Test_Failed));
-        }
+        RowIcon outcome = new() { Width = 12, Height = 12, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
         DockPanel.SetDock(outcome, Dock.Left);
-        Border method = MethodTag(request.Method);
+        Border method = MethodTag(string.Empty);
         DockPanel.SetDock(method, Dock.Left);
-        TextBlock title = new() { Text = request.Title, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        DockPanel row = new() { Height = ListRow.Height, Margin = new Thickness(22, 0, 4, 0), Children = { buttons, outcome, method } };
-        ToolTip.SetTip(row, $"{request.Method} {request.Url}");
-        if (request.Name.Length > 0)
-        {
-            // A named request shows its URL after the name, muted, ending in an ellipsis first.
-            TextBlock url = new() { Text = request.Url, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, FontSize = 12, Margin = new Thickness(8, 0, 0, 0) };
-            url.Classes.Add("muted");
-            title.MaxWidth = 220;
-            DockPanel.SetDock(title, Dock.Left);
-            row.Children.Add(title);
-            row.Children.Add(url);
-        }
-        else
-        {
-            row.Children.Add(title);
-        }
+        TextBlock title = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        // A named request shows its URL after the name, muted, ending in an ellipsis first.
+        TextBlock url = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, FontSize = 12, Margin = new Thickness(8, 0, 0, 0) };
+        url.Classes.Add("muted");
         // The title takes what the row leaves, so a narrow window ends it in an ellipsis and keeps the buttons.
-        return row;
+        DockPanel line = new() { Height = ListRow.Height, Margin = new Thickness(22, 0, 4, 0), Children = { buttons, outcome, method, title, url } };
+        string? methodColour = MethodColour(string.Empty);
+        return (line, request =>
+        {
+            bool? passed = Outcome(request);
+            outcome.DataKey = passed is not { } done ? null : done ? IconKeys.TestPassed : IconKeys.TestFailed;
+            outcome.ForegroundKey = passed is not { } ran ? null : ran ? TokenKeys.Test_Passed : TokenKeys.Test_Failed;
+            ShowMethod(method, ref methodColour, request.Method);
+            title.Text = request.Title;
+            ToolTip.SetTip(line, $"{request.Method} {request.Url}");
+            bool named = request.Name.Length > 0;
+            title.MaxWidth = named ? 220 : double.PositiveInfinity;
+            url.IsVisible = named;
+            url.Text = named ? request.Url : string.Empty;
+        });
     }
 
-    /// <summary>A route's row: its method, its template, what declares it (muted), and Send where a request can reach it.</summary>
-    private Control RouteRow(WebRoute route)
+    /// <summary>A route's line in a row, and what shows a route in it: its method, its template, what declares it (muted),
+    /// and Send where a request can reach it, which sends the route the row shows.</summary>
+    private (DockPanel Line, Action<WebRoute> Show) RouteRow(Control row)
     {
-        DockPanel row = new() { Height = ListRow.Height, Margin = new Thickness(22, 0, 4, 0) };
-        if (RouteRequests.Sendable(route))
+        Button send = ToolButtons.Of(IconKeys.Run, "Send Request", () =>
         {
-            Button send = ToolButtons.Of(IconKeys.Run, "Send Request", () => RouteSendRequested?.Invoke(this, route));
-            send.Name = "routeSend";
-            ((PathIcon)send.Content!).Bind(PathIcon.ForegroundProperty, send.GetResourceObservable(TokenKeys.Run));
-            DockPanel.SetDock(send, Dock.Right);
-            row.Children.Add(send);
-        }
-        Border method = MethodTag(route.Kind == RouteKinds.SignalR ? "HUB" : route.Methods.Count == 0 ? "ANY" : route.Methods[0]);
+            if (row.DataContext is WebRoute route)
+            {
+                RouteSendRequested?.Invoke(this, route);
+            }
+        });
+        send.Name = "routeSend";
+        ((PathIcon)send.Content!).Bind(PathIcon.ForegroundProperty, send.GetResourceObservable(TokenKeys.Run));
+        DockPanel.SetDock(send, Dock.Right);
+        Border method = MethodTag(string.Empty);
         DockPanel.SetDock(method, Dock.Left);
-        row.Children.Add(method);
         // The template first: what declares it takes the room it leaves, and goes before the template ends in an ellipsis.
-        TextBlock template = new() { Text = route.Template + (route.Query is { } query ? "?" + query : string.Empty), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock template = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         DockPanel.SetDock(template, Dock.Left);
-        row.Children.Add(template);
-        TextBlock kind = new() { Text = route.Kind, VerticalAlignment = VerticalAlignment.Center, FontSize = 12, Margin = new Thickness(8, 0, 4, 0), TextAlignment = TextAlignment.Right, TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock kind = new() { VerticalAlignment = VerticalAlignment.Center, FontSize = 12, Margin = new Thickness(8, 0, 4, 0), TextAlignment = TextAlignment.Right, TextTrimming = TextTrimming.CharacterEllipsis };
         kind.Classes.Add("muted");
-        row.Children.Add(kind);
-        ToolTip.SetTip(row, $"{RouteRequests.Title(route)}: {route.Handler}");
-        return row;
+        DockPanel line = new() { Height = ListRow.Height, Margin = new Thickness(22, 0, 4, 0), Children = { send, method, template, kind } };
+        string? methodColour = MethodColour(string.Empty);
+        return (line, route =>
+        {
+            send.IsVisible = RouteRequests.Sendable(route);
+            ShowMethod(method, ref methodColour, route.Kind == RouteKinds.SignalR ? "HUB" : route.Methods.Count == 0 ? "ANY" : route.Methods[0]);
+            template.Text = route.Template + (route.Query is { } query ? "?" + query : string.Empty);
+            kind.Text = route.Kind;
+            ToolTip.SetTip(line, $"{RouteRequests.Title(route)}: {route.Handler}");
+        });
+    }
+
+    /// <summary>Shows a method in a tag <see cref="MethodTag"/> made, its colour bound anew only for another colour.</summary>
+    private static void ShowMethod(Border tag, ref string? colour, string method)
+    {
+        TextBlock text = (TextBlock)tag.Child!;
+        text.Text = method;
+        text.Resource(TextBlock.ForegroundProperty, ref colour, MethodColour(method));
     }
 
     /// <summary>A method's tag, in its method's colour.</summary>
@@ -481,13 +547,15 @@ public sealed class EndpointsView : DockPanel
         return new Border { Classes = { "tag" }, MinWidth = 52, Padding = new Thickness(4, 1), Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center, Child = text };
     }
 
-    private static string MethodColour(string method) => method switch
+    /// <summary>The colour a method's tag shows its name in.</summary>
+    internal static string MethodColour(string method) => method switch
     {
         "GET" => TokenKeys.Test_Passed,
         "POST" => TokenKeys.Link,
         "PUT" => TokenKeys.Warning,
         "PATCH" => TokenKeys.Syntax_Number,
         "DELETE" => TokenKeys.Error,
+        "QUERY" => TokenKeys.Syntax_Method,
         _ => TokenKeys.TextMuted,
     };
 }

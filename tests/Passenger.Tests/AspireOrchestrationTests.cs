@@ -143,6 +143,22 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
         window.Close();
     }
 
+    /// <summary>Each project's code is read as it compiles: a ServiceDefaults whose extensions are declared under
+    /// #if NET8_0_OR_GREATER is taken for one, and an AppHost's second builder, in a file under #if !NET8_0_OR_GREATER that
+    /// its project never compiles, leaves its one builder's file the one the resource is added to.</summary>
+    [AvaloniaFact]
+    public void Orchestration_reads_each_projects_code_as_it_compiles_taking_extensions_under_its_frameworks_symbols_and_passing_over_a_builder_it_never_compiles()
+    {
+        string extensions = File.ReadAllText(project.PathOf("Defaults/Extensions.cs"));
+        project.Rewrite("Defaults/Extensions.cs", "#if NET8_0_OR_GREATER\n" + extensions + "\n#endif\n");
+        project.Write("Host/Legacy.cs", "#if !NET8_0_OR_GREATER\nusing Aspire.Hosting;\nvar legacy = DistributedApplication.CreateBuilder(args);\nlegacy.Build().Run();\n#endif\n");
+        MainWindow window = Open();
+        Assert.Equal("Added Aspire orchestration", Add(window, "Api", existing: true));
+        Assert.Contains("AddServiceDefaults()", File.ReadAllText(project.PathOf("Api/Program.cs")), StringComparison.Ordinal);
+        Assert.Contains("Defaults", File.ReadAllText(project.PathOf("Api/Api.csproj")), StringComparison.Ordinal);
+        window.Close();
+    }
+
     [AvaloniaTheory]
     [InlineData(false)]
     [InlineData(true)]
@@ -183,6 +199,86 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
         Assert.Contains("not compatible", result, StringComparison.Ordinal);
         AssertSnapshot(before);
         window.Close();
+    }
+
+    /// <summary>New Project into a solution with an AppHost, with Aspire: the new web project joins that AppHost as a
+    /// resource, with the ServiceDefaults of its framework the solution has, nothing else made, and the AppHost's
+    /// configuration is chosen.</summary>
+    [AvaloniaFact]
+    public void New_Project_with_Aspire_joins_the_solutions_AppHost_with_its_ServiceDefaults_and_the_AppHost_is_chosen()
+    {
+        MainWindow window = Open();
+        try
+        {
+            Ui.Run(window, AppActions.NewProject);
+            NewProjectDialog dialog = NewServiceSetupTests.Opened(window);
+            NewServiceSetupTests.Choose(dialog, "web");
+            dialog.ProjectName = "Orders";
+            dialog.Framework = TestProjects.Framework;
+            dialog.SetupChooser.SelectedIndex = (int)ProjectSetup.Aspire;
+            Ui.Settle();
+            Assert.StartsWith("It joins Host as a resource", dialog.SetupNote, StringComparison.Ordinal);
+            NewServiceSetupTests.Created(dialog, "the web project");
+
+            Assert.Null(NewServiceSetupTests.SetUp(window));
+            Assert.Contains("../Orders/Orders.csproj", File.ReadAllText(project.PathOf("Host/Host.csproj")).Replace('\\', '/'), StringComparison.Ordinal);
+            Assert.Contains("\"../Orders/Orders.csproj\"", File.ReadAllText(project.PathOf("Host/Program.cs")), StringComparison.Ordinal);
+            Assert.Contains("../Defaults/Defaults.csproj", File.ReadAllText(project.PathOf("Orders/Orders.csproj")).Replace('\\', '/'), StringComparison.Ordinal);
+            Assert.Contains("AddServiceDefaults()", File.ReadAllText(project.PathOf("Orders/Program.cs")), StringComparison.Ordinal);
+            Assert.False(Directory.Exists(project.PathOf("Shop.ServiceDefaults")) || Directory.Exists(project.PathOf("Shop.AppHost")),
+                "Aspire made an AppHost or ServiceDefaults beside those the solution has");
+            Assert.True(window.Configuration is { Aspire: true } chosen && PathNames.Same(chosen.Project, PathNames.Canonical(project.PathOf("Host/Host.csproj"))),
+                $"The configuration chosen is {window.Configuration?.Name}, not the AppHost's: [{string.Join(", ", window.Configurations.Select(c => c.Name))}]");
+        }
+        finally
+        {
+            NewProjectDialog.Remembered = ProjectSetup.None;
+            window.Close();
+        }
+    }
+
+    /// <summary>New Solution of a web project with Aspire: an AppHost and a ServiceDefaults are made with it as the AppHost's
+    /// resource, and the AppHost's configuration is chosen.</summary>
+    [AvaloniaFact]
+    public void New_Solution_with_Aspire_has_an_AppHost_and_ServiceDefaults_and_the_AppHost_is_chosen()
+    {
+        string place = TestFolders.Create("aspire-new-");
+        string settings = TestFolders.Create("settings-");
+        TestFolders.Write(place, "Directory.Build.props", "<Project><PropertyGroup><AspireUseCliBundle>false</AspireUseCliBundle></PropertyGroup></Project>");
+        AspireApp.UseFeed(place);
+        MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings, StartsLanguageServer = false };
+        window.Show();
+        window.KeepLayout();
+        try
+        {
+            Ui.Click(window.Welcome.NewSolutionButton);
+            NewProjectDialog dialog = NewServiceSetupTests.Opened(window);
+            dialog.Folder = place;
+            NewServiceSetupTests.Choose(dialog, "web");
+            dialog.SolutionName = "Mall";
+            dialog.ProjectName = "Api";
+            dialog.Framework = TestProjects.Framework;
+            dialog.SetupChooser.SelectedIndex = (int)ProjectSetup.Aspire;
+            Ui.Settle();
+            Assert.StartsWith("An AppHost and ServiceDefaults made", dialog.SetupNote, StringComparison.Ordinal);
+            NewServiceSetupTests.Created(dialog, "the web project");
+
+            Assert.Null(NewServiceSetupTests.SetUp(window));
+            string folder = PathNames.Canonical(Path.Combine(place, "Mall"));
+            string host = Path.Combine(folder, "Mall.AppHost", "Mall.AppHost.csproj");
+            Assert.Contains("../Api/Api.csproj", File.ReadAllText(host).Replace('\\', '/'), StringComparison.Ordinal);
+            Assert.True(File.Exists(Path.Combine(folder, "Mall.ServiceDefaults", "Mall.ServiceDefaults.csproj")), "No ServiceDefaults was made");
+            Assert.Contains("AddServiceDefaults()", File.ReadAllText(Path.Combine(folder, "Api", "Program.cs")), StringComparison.Ordinal);
+            Assert.True(window.Configuration is { Aspire: true } chosen && PathNames.Same(chosen.Project, host),
+                $"The configuration chosen is {window.Configuration?.Name}, not the AppHost's: [{string.Join(", ", window.Configurations.Select(c => c.Name))}]");
+        }
+        finally
+        {
+            NewProjectDialog.Remembered = ProjectSetup.None;
+            window.Close();
+            TestFolders.Delete(settings);
+            TestFolders.Delete(place);
+        }
     }
 
     private MainWindow Open()
@@ -260,7 +356,6 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
     {
         public Project() : base("aspire-orchestration-")
         {
-            InstallTemplates();
             Put("Directory.Build.props", "<Project><PropertyGroup><AspireUseCliBundle>false</AspireUseCliBundle></PropertyGroup></Project>");
             Put("Shop.slnx", "<Solution><Project Path=\"Api/Api.csproj\" /><Project Path=\"Plain/Plain.csproj\" /><Project Path=\"Host/Host.csproj\" /><Project Path=\"Defaults/Defaults.csproj\" /><Project Path=\"WindowsDefaults/WindowsDefaults.csproj\" /></Solution>");
             foreach (string name in (string[])["Api", "Plain"])
@@ -276,27 +371,33 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
                 </Project>
                 """);
             Put("Host/Program.cs", "using Aspire.Hosting;\nvar builder = DistributedApplication.CreateBuilder(args);\nvar api = builder.AddProject(projectPath: \"../Api/Api.csproj\", name: \"api\");\nbuilder.Build().Run();\n");
+        }
+
+        /// <summary>The pinned Aspire templates installed, the ServiceDefaults projects made by them, and the solution restored.</summary>
+        public override async ValueTask InitializeAsync()
+        {
+            await InstallTemplates();
             foreach ((string name, string framework) in new[] { ("Defaults", TestProjects.Framework), ("WindowsDefaults", TestProjects.Framework + "-windows") })
             {
-                ChildResult made = Task.Run(() => ChildProcesses.RunAsync(ProjectTemplates.NewCommand(
+                ChildResult made = await ChildProcesses.RunAsync(ProjectTemplates.NewCommand(
                     ["aspire-servicedefaults", "--name", name, "--output", PathOf(name), "--framework", TestProjects.Framework, "--no-restore", "--no-update-check"], Folder),
-                    limit: TimeSpan.FromMinutes(3))).GetAwaiter().GetResult();
+                    limit: TimeSpan.FromMinutes(3));
                 Assert.True(made.Succeeded, $"Could not create real ServiceDefaults fixture: {made.Output}{made.Error}");
                 string path = PathOf($"{name}/{name}.csproj");
                 string text = File.ReadAllText(path);
                 File.WriteAllText(path, text.Replace($">{TestProjects.Framework}<", $">{framework}<", StringComparison.Ordinal));
             }
             AspireApp.UseFeed(Folder);
-            Prepare(byRealPath: true);
+            await PrepareAsync(byRealPath: true);
         }
 
-        private void InstallTemplates()
+        private async Task InstallTemplates()
         {
             string version = AvaloniaApp.Metadata("AspireTemplatesVersion").ToLowerInvariant();
             string package = Path.Combine(AvaloniaApp.Metadata("NuGetPackageRoot"), "aspire.projecttemplates", version, $"aspire.projecttemplates.{version}.nupkg");
             Assert.True(File.Exists(package), $"Restore the test project first: pinned Aspire templates are missing at {package}");
-            ChildResult installed = Task.Run(() => ChildProcesses.RunAsync(ProjectTemplates.NewCommand(
-                ["install", package, "--force"], Folder), limit: TimeSpan.FromMinutes(3))).GetAwaiter().GetResult();
+            ChildResult installed = await ChildProcesses.RunAsync(ProjectTemplates.NewCommand(
+                ["install", package, "--force"], Folder), limit: TimeSpan.FromMinutes(3));
             Assert.True(installed.Succeeded, $"Could not install pinned Aspire templates in the test sandbox: {installed.Output}{installed.Error}");
             ProjectTemplates.Forget();
         }

@@ -61,12 +61,18 @@ public struct Cell
 
     /// <summary>Whether the cell's grapheme is more than its first code point.</summary>
     public readonly bool IsJoined => Joined != 0;
+
+    /// <summary>Whether another cell shows what this one does: its code point, colours, flags and width, neither one's
+    /// grapheme more than that code point.</summary>
+    internal readonly bool Shows(Cell other) =>
+        Rune == other.Rune && fore == other.fore && back == other.back && flags == other.flags && Width == other.Width && Joined == 0 && other.Joined == 0;
 }
 
 /// <summary>A row of cells, and whether the text went on to the next row by wrapping (so a copy joins them).</summary>
 public sealed class TerminalLine
 {
     private List<string>? graphemes;
+    private bool wrapped;
 
     public TerminalLine(int columns, CellStyle style)
     {
@@ -77,22 +83,61 @@ public sealed class TerminalLine
     internal TerminalLine(Cell[] cells, bool wrapped)
     {
         Cells = cells;
-        Wrapped = wrapped;
+        this.wrapped = wrapped;
     }
 
     public Cell[] Cells { get; private set; }
 
-    public bool Wrapped { get; set; }
+    public bool Wrapped
+    {
+        get => wrapped;
+        set
+        {
+            if (wrapped != value)
+            {
+                wrapped = value;
+                Writes++;
+            }
+        }
+    }
+
+    /// <summary>How many times the line has been written (its cells, graphemes or wrap): what a view drew of it still
+    /// shows it while this stays the same.</summary>
+    internal long Writes { get; private set; }
+
+    /// <summary>The cells, to be written: the write counted.</summary>
+    internal Cell[] Writing()
+    {
+        Writes++;
+        return Cells;
+    }
 
     /// <summary>The graphemes the line's joined cells show, by their <see cref="Cell.Joined"/> less one.</summary>
     internal List<string>? Graphemes => graphemes;
 
     public void Clear(int from, int to, CellStyle style)
     {
-        for (int i = Math.Max(0, from); i < Math.Min(to, Cells.Length); i++)
+        int start = Math.Max(0, from);
+        int end = Math.Min(to, Cells.Length);
+        if (start < end)
         {
-            Cells[i] = Cell.Blank(style);
+            Cells.AsSpan(start, end - start).Fill(Cell.Blank(style));
+            Writes++;
         }
+    }
+
+    /// <summary>The line blank again at a width, to come onto the screen as a new row once it has left for good.</summary>
+    internal TerminalLine Reuse(int columns, CellStyle style)
+    {
+        if (Cells.Length != columns)
+        {
+            Cells = new Cell[columns];
+        }
+        Clear(0, columns, style);
+        Wrapped = false;
+        graphemes?.Clear();
+        Writes++;
+        return this;
     }
 
     public void Resize(int columns, CellStyle style)
@@ -108,6 +153,7 @@ public sealed class TerminalLine
             cells[i] = Cell.Blank(style);
         }
         Cells = cells;
+        Writes++;
     }
 
     /// <summary>What the cell at a column shows: its whole grapheme, a space for a blank.</summary>
@@ -126,12 +172,14 @@ public sealed class TerminalLine
         }
         graphemes.Add(grapheme);
         Cells[column].Joined = (ushort)graphemes.Count;
+        Writes++;
     }
 
     /// <summary>The row's text, trailing blanks and spaces left out.</summary>
     public string Text(int from = 0, int to = int.MaxValue)
     {
         System.Text.StringBuilder text = new();
+        Span<char> scratch = stackalloc char[2];
         int end = Math.Min(to, Cells.Length);
         int last = end - 1;
         while (last >= from && Cells[last] is { Rune: 0 or ' ', Joined: 0 })
@@ -140,12 +188,10 @@ public sealed class TerminalLine
         }
         for (int i = Math.Max(0, from); i <= last; i++)
         {
-            Cell cell = Cells[i];
-            if (cell.Width == 0)
+            if (Cells[i].Width != 0)
             {
-                continue;
+                text.Append(TextOf(i, scratch));
             }
-            text.Append(TextOf(cell));
         }
         return text.ToString();
     }
@@ -165,6 +211,23 @@ public sealed class TerminalLine
             // A wide character ends where its second half does.
             return last >= 0 && Cells[last].Width == 2 ? Math.Min(last + 2, Cells.Length) : last + 1;
         }
+    }
+
+    /// <summary>What the cell at a column shows, as <see cref="TextOf(int)"/> gives it but with no string made: its
+    /// grapheme's own characters, or its code point written into <paramref name="scratch"/>, which takes two.</summary>
+    internal ReadOnlySpan<char> TextOf(int column, Span<char> scratch)
+    {
+        Cell cell = Cells[column];
+        if (cell.Joined != 0 && graphemes is not null)
+        {
+            return graphemes[cell.Joined - 1];
+        }
+        if (cell.Rune == 0)
+        {
+            scratch[0] = ' ';
+            return scratch[..1];
+        }
+        return scratch[..new System.Text.Rune(cell.Rune).EncodeToUtf16(scratch)];
     }
 
     private string TextOf(Cell cell) =>

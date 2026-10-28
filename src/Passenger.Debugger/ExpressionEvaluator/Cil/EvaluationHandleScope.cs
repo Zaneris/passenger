@@ -22,7 +22,8 @@ internal sealed class EvaluationHandleScope : IDisposable
             return value;
         }
 
-        if (value.CorValue is not ICorDebugReferenceValue { IsNull: false, Type: not CorElementType.BYREF } reference)
+        // A by-ref or a pointer points at no object a handle could hold.
+        if (value.CorValue is not ICorDebugReferenceValue { IsNull: false, Type: not (CorElementType.BYREF or CorElementType.PTR) } reference)
         {
             return value;
         }

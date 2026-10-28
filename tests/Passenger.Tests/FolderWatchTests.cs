@@ -451,7 +451,9 @@ public sealed class FolderWatchTests : IDisposable
     }
 
     /// <summary>A large checkout overflows the system's buffer of changes: those it lost are never heard of, so the window
-    /// reads again what it shows. Its watchers stop while the files change, so the changes are lost as an overflow loses them.</summary>
+    /// reads again what it shows, and a file the watcher's record held that is gone is named among the changes, for the
+    /// language server to be told it went. Its watchers stop while the files change, so the changes are lost as an
+    /// overflow loses them.</summary>
     [AvaloniaTheory]
     [InlineData(false)]
     [InlineData(true)]
@@ -459,15 +461,19 @@ public sealed class FolderWatchTests : IDisposable
     {
         Write("One.cs", "class One { }\n");
         Write("Old/Old.cs", "class Old { }\n");
+        Write("Old/Gone.cs", "class Gone { }\n");
         MainWindow window = Open(eachFolder ? FolderWatching.Inotify : FolderWatching.WholeTree);
         window.OpenFile("One.cs");
         window.OpenFile("Old/Old.cs");
         Ui.Settle();
-        List<FileSystemWatcher> watchers = [.. window.FolderWatcher!.Watches.Values];
+        bool goneNamed = false;
+        window.FolderWatcher!.Changed += (_, changes) => goneNamed |= changes.Paths.Any(p => Path.GetFileName(p) == "Gone.cs");
+        List<FileSystemWatcher> watchers = [.. window.FolderWatcher.Watches.Values];
         watchers.ForEach(w => w.EnableRaisingEvents = false);
 
         Write("One.cs", "class One { int changed; }\n");
         Write("Old/Old.cs", "class Old { int changed; }\n");
+        File.Delete(Path.Combine(folder, "Old", "Gone.cs"));
         Write("Fresh/Fresh.cs", "class Fresh { }\n");
         RaiseError(window.FolderWatcher.Watches[folder], new InternalBufferOverflowException("Too many changes at once; directory listing is required."));
         Ui.WaitFor(() => window.EditorArea.Documents.All(d => d.Text.Snapshot.ToString().Contains("int changed;", StringComparison.Ordinal)),
@@ -476,6 +482,7 @@ public sealed class FolderWatchTests : IDisposable
         Ui.WaitFor(() => window.ExplorerView.Tree.Rows.Any(r => r.Name == "Fresh"),
             $"the folder made meanwhile in the Explorer (it shows {string.Join(", ", window.ExplorerView.Tree.Rows.Select(r => r.Name))})");
         Ui.WaitFor(() => window.FileIndex.Files.Contains(Path.Combine("Fresh", "Fresh.cs")), "the file made meanwhile in Go to File");
+        Ui.WaitFor(() => goneNamed, "the file deleted meanwhile, which the watcher's record held, named among the changes handed over");
 
         // Started only now: a watcher started at once can still be told of the changes just made.
         watchers.ForEach(w => w.EnableRaisingEvents = true);
@@ -484,11 +491,290 @@ public sealed class FolderWatchTests : IDisposable
         window.Close();
     }
 
+    /// <summary>The system's buffer of changes overflows, as a large checkout makes it, a while after the folder opened:
+    /// what it lost is found by listing again the folders whose entries changed, against what the watcher last knew of
+    /// them, rather than by reading the whole folder again. Its watchers stop while the files change, so the changes are
+    /// lost as an overflow loses them.</summary>
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Changes_an_overflow_lost_are_found_by_listing_again_the_folders_they_changed(bool eachFolder)
+    {
+        Write("One.cs", "class One { }\n");
+        Write("Old/Old.cs", "class Old { }\n");
+        Write("Old/Gone.cs", "class Gone { }\n");
+        MainWindow window = Open(eachFolder ? FolderWatching.Inotify : FolderWatching.WholeTree, languageServer: false);
+        window.OpenFile("One.cs");
+        window.OpenFile("Old/Old.cs");
+        Ui.Hold(TimeSpan.FromSeconds(3.5), "the watcher's record of the folder to be older than what an overflow may have lost");
+        bool lost = false;
+        window.FolderWatcher!.Changed += (_, changes) => lost |= changes.Lost;
+        List<FileSystemWatcher> watchers = [.. window.FolderWatcher.Watches.Values];
+        watchers.ForEach(w => w.EnableRaisingEvents = false);
+
+        Write("One.cs", "class One { int changed; }\n");
+        Write("Old/Old.cs", "class Old { int changed; }\n");
+        File.Delete(Path.Combine(folder, "Old", "Gone.cs"));
+        Write("Fresh/Fresh.cs", "class Fresh { }\n");
+        RaiseError(window.FolderWatcher.Watches[folder], new InternalBufferOverflowException("Too many changes at once; directory listing is required."));
+        Ui.WaitFor(() => window.EditorArea.Documents.All(d => d.Text.Snapshot.ToString().Contains("int changed;", StringComparison.Ordinal)),
+            $"every open file to take the text on disk, where they hold [{string.Join(" | ", window.EditorArea.Documents.Select(d => d.Text.Snapshot.ToString().Trim()))}]");
+        Ui.WaitFor(() => window.FileIndex.Files.Contains(Path.Combine("Fresh", "Fresh.cs")) && !window.FileIndex.Files.Contains(Path.Combine("Old", "Gone.cs")),
+            $"Go to File to gain the file made and lose the one deleted meanwhile (it lists {string.Join(", ", window.FileIndex.Files)})");
+        Ui.WaitFor(() => window.ExplorerView.Tree.Rows.Any(r => r.Name == "Fresh"),
+            $"the folder made meanwhile in the Explorer (it shows {string.Join(", ", window.ExplorerView.Tree.Rows.Select(r => r.Name))})");
+        Assert.False(lost, "The folder's watcher read the whole folder again after the overflow rather than the folders whose entries changed");
+
+        watchers.ForEach(w => w.EnableRaisingEvents = true);
+        Write("Fresh/Later.cs", "class Later { }\n");
+        Ui.WaitFor(() => window.FileIndex.Files.Contains(Path.Combine("Fresh", "Later.cs")), "a file made after in the folder found in Go to File");
+        window.Close();
+    }
+
+    /// <summary>A file made, which Go to File lists, then deleted unheard, as a burst on a busy machine drops the deletion's
+    /// event: the folder's watcher took the file into its record as it handed it over, so the listing after the burst
+    /// finds it gone, and Go to File lets it go. A batch's hand-over, looking at what came or went in it on disk, needs
+    /// nothing of the window's thread: the record takes in a file made while that thread runs nothing.</summary>
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_file_made_then_deleted_unheard_is_found_gone_after_a_burst(bool eachFolder)
+    {
+        Write("One.cs", "class One { }\n");
+        MainWindow window = Open(eachFolder ? FolderWatching.Inotify : FolderWatching.WholeTree, languageServer: false);
+        Ui.Hold(TimeSpan.FromSeconds(3.5), "the watcher's record of the folder to be older than what an overflow may have lost");
+        FolderWatcher watcher = window.FolderWatcher!;
+        int entries = watcher.RecordSize.Entries;
+        Write("Brief.cs", "class Brief { }\n");
+        Assert.True(Ui.Idle(Waiting.Apart(() => Waiting.Until(() => watcher.RecordSize.Entries > entries, TimeSpan.FromSeconds(10))), "the record to take in a file made"),
+            "The folder's watcher took a file made into its record only once the window's thread ran, so a batch's hand-over looked at the disk there");
+        Ui.PumpUntil(() => window.FileIndex.Files.Contains("Brief.cs"), "the file made in Go to File");
+        List<FileSystemWatcher> watchers = [.. watcher.Watches.Values];
+        try
+        {
+            watchers.ForEach(w => w.EnableRaisingEvents = false);
+            File.Delete(Path.Combine(folder, "Brief.cs"));
+            RaiseError(watcher.Watches[folder], new InternalBufferOverflowException("Too many changes at once; directory listing is required."));
+            Ui.PumpUntil(() => !window.FileIndex.Files.Contains("Brief.cs"),
+                $"Go to File to let go of the file deleted unheard, which it still lists among {string.Join(", ", window.FileIndex.Files)}", TimeSpan.FromSeconds(30));
+        }
+        finally
+        {
+            watchers.ForEach(w => w.EnableRaisingEvents = true);
+        }
+        window.Close();
+    }
+
+    /// <summary>A folder of fifty files moved into the folder from elsewhere, then out again, as a person's mv or file
+    /// manager moves one: each of its files is handed over with it, come and then gone, in the batch the folder comes or
+    /// goes in, the folder never read again whole, and Go to File follows.</summary>
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_folder_moved_in_or_out_hands_over_each_of_its_files_in_the_batch_it_comes_or_goes_in(bool eachFolder)
+    {
+        Write("One.cs", "class One { }\n");
+        MainWindow window = Open(eachFolder ? FolderWatching.Inotify : FolderWatching.WholeTree, languageServer: false);
+        string elsewhere = TestFolders.Create("elsewhere-");
+        TestFolders.WriteAll(elsewhere, Enumerable.Range(0, 50).Select(i => (Path.Combine("Moving", $"Moving{i}.cs"), $"class Moving{i} {{ }}\n")));
+        string inside = Path.Combine(folder, "Moving");
+        string[] files = [.. Enumerable.Range(0, 50).Select(i => Path.Combine(inside, $"Moving{i}.cs"))];
+        List<FolderChanges> batches = [];
+        window.FolderWatcher!.Changed += (_, changes) => batches.Add(changes);
+
+        Directory.Move(Path.Combine(elsewhere, "Moving"), inside);
+        Ui.PumpUntil(() => batches.Any(b => b.ComeOrGone.Contains(inside)), "the folder moved in handed over");
+        FolderChanges came = batches.First(b => b.ComeOrGone.Contains(inside));
+        Assert.True(files.All(came.ComeOrGone.Contains), $"The batch the folder moved in came in named {files.Count(came.ComeOrGone.Contains)} of its 50 files as come");
+        Ui.PumpUntil(() => files.All(f => window.FileIndex.Files.Contains(Path.GetRelativePath(folder, f))), "the files moved in in Go to File");
+
+        batches.Clear();
+        Directory.Move(inside, Path.Combine(elsewhere, "Moved"));
+        Ui.PumpUntil(() => batches.Any(b => b.ComeOrGone.Contains(inside)), "the folder moved out handed over");
+        FolderChanges went = batches.First(b => b.ComeOrGone.Contains(inside));
+        Assert.True(files.All(went.ComeOrGone.Contains), $"The batch the folder moved out went in named {files.Count(went.ComeOrGone.Contains)} of its 50 files as gone");
+        Ui.PumpUntil(() => !window.FileIndex.Files.Any(f => f.StartsWith("Moving", StringComparison.Ordinal)), "the files moved out gone from Go to File");
+        Assert.False(batches.Any(b => b.Lost), "The folder's watcher read the whole folder again for a folder moved out");
+        window.Close();
+    }
+
+    /// <summary>A file made in the folder joins Go to File, and one deleted leaves it, without a walk of the folder: over
+    /// 20,000 files each batch allocates (on every thread, the least of three) under 8 bytes for each file more than over
+    /// 2,000, where walking the folder again cost hundreds; and Go to File then lists what a walk lists, in its order.</summary>
+    [AvaloniaFact]
+    public void A_file_made_or_deleted_among_twenty_thousand_costs_go_to_file_what_it_does_among_two_thousand()
+    {
+        string few = PathNames.Canonical(TestFolders.Create("watch-few-"));
+        string many = PathNames.Canonical(TestFolders.Create("watch-many-"));
+        try
+        {
+            Areas(few, 10);
+            Areas(many, 100);
+            (long Made, long Deleted, TimeSpan Took) small = Batches(few, 2000);
+            (long Made, long Deleted, TimeSpan Took) large = Batches(many, 20_000);
+            TestContext.Current.TestOutputHelper?.WriteLine($"A file made: {small.Made / 1024:N0} KB over 2,000 files, {large.Made / 1024:N0} KB over 20,000; "
+                + $"deleted: {small.Deleted / 1024:N0} KB and {large.Deleted / 1024:N0} KB; the quickest batch {small.Took.TotalMilliseconds:N0} ms and {large.Took.TotalMilliseconds:N0} ms");
+            Assert.True(large.Made - small.Made < 8 * 18_000,
+                $"A file made among 20,000 allocated {large.Made / 1024:N0} KB on its way into Go to File, against {small.Made / 1024:N0} KB among 2,000: 8 bytes or more for each file more, as if the folder were walked again");
+            Assert.True(large.Deleted - small.Deleted < 8 * 18_000,
+                $"A file deleted among 20,000 allocated {large.Deleted / 1024:N0} KB on its way out of Go to File, against {small.Deleted / 1024:N0} KB among 2,000: 8 bytes or more for each file more");
+        }
+        finally
+        {
+            TestFolders.Delete(few);
+            TestFolders.Delete(many);
+        }
+
+        // Areas of 200 empty files each.
+        static void Areas(string root, int areas) => TestFolders.WriteAll(root, Enumerable.Range(0, areas * 200)
+            .Select(file => (Path.Combine($"Area{file / 200}", "Features", $"Feature{file / 200}x{file % 200}.cs"), string.Empty)));
+    }
+
+    /// <summary>What a file made and a file deleted in a folder allocate from the change to the IDE quiet again, the least of
+    /// three of each, and the quickest of them; each checked in Go to File, which then lists what a window opened on the
+    /// folder afresh lists.</summary>
+    private static (long Made, long Deleted, TimeSpan Took) Batches(string root, int files)
+    {
+        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
+        window.Show();
+        window.OpenFolder(root);
+        Ui.WaitFor(() => window.FileIndex.Count >= files && !window.FileIndex.IsWalking, $"the folder's {files} files indexed");
+        bool heard = false;
+        window.FolderWatcher!.Changed += (_, changes) => heard |= changes.Structure;
+        long made = long.MaxValue;
+        long deleted = long.MaxValue;
+        TimeSpan took = TimeSpan.MaxValue;
+        for (int time = 0; time < 3; time++)
+        {
+            string relative = Path.Combine("Area0", "Features", $"Made{time}.cs");
+            string file = Path.Combine(root, relative);
+            made = Math.Min(made, Batch(() => File.WriteAllText(file, "class Made { }\n")));
+            Assert.True(window.FileIndex.Files.Contains(relative), $"{relative} made is not in Go to File");
+            if (time < 2)
+            {
+                deleted = Math.Min(deleted, Batch(() => File.Delete(file)));
+                Assert.False(window.FileIndex.Files.Contains(relative), $"{relative} deleted is still in Go to File");
+            }
+        }
+        deleted = Math.Min(deleted, Batch(() => File.Delete(Path.Combine(root, "Area1", "Features", "Feature1x0.cs"))));
+        Assert.Equal(files, window.FileIndex.Count);
+        Assert.Equal(Walked(root), window.FileIndex.Files);
+        window.Close();
+        return (made, deleted, took);
+
+        long Batch(Action change)
+        {
+            Ui.Settle();
+            heard = false;
+            long before = GC.GetTotalAllocatedBytes(precise: true);
+            long began = Stopwatch.GetTimestamp();
+            change();
+            Ui.WaitFor(() => heard, "the folder watcher to hear of the change");
+            Ui.Settle();
+            took = TimeSpan.FromTicks(Math.Min(took.Ticks, Stopwatch.GetElapsedTime(began).Ticks));
+            return GC.GetTotalAllocatedBytes(precise: true) - before;
+        }
+    }
+
+    /// <summary>Go to File follows what another program makes, moves, renames and deletes, files and folders, a link, a
+    /// letter's case and a save's temporary file among them, to list after each what a window opened on the folder afresh
+    /// lists, in the same order (which Find in Files searches in).</summary>
+    [AvaloniaFact]
+    public void Go_to_file_follows_files_and_folders_come_and_gone_to_list_what_a_walk_of_the_folder_lists()
+    {
+        Write("App/App.cs", "class App { }\n");
+        Write("App/Sub/Deep.cs", "class Deep { }\n");
+        Write("a-b/c.cs", "// a dash sorts before a slash\n");
+        Write("a/c.cs", "// and a name before a longer one\n");
+        MainWindow window = Open(languageServer: false);
+        (string What, Action Change)[] changes =
+        [
+            ("a file made", () => Write("App/New.cs", "class New { }\n")),
+            ("a folder made with folders and files in it", () =>
+            {
+                Write("Made/One.cs", "class One { }\n");
+                Write("Made/Inner/Two.cs", "class Two { }\n");
+                Write("Made/Inner/obj/built.cs", "// build output\n");
+                Write("Made/.hidden/Three.cs", "class Three { }\n");
+            }),
+            ("a folder renamed", () => Directory.Move(Path.Combine(folder, "Made"), Path.Combine(folder, "Moved"))),
+            ("a file renamed", () => File.Move(Path.Combine(folder, "App", "New.cs"), Path.Combine(folder, "App", "Renamed.cs"))),
+            ("a file's case changed", () => File.Move(Path.Combine(folder, "App", "Renamed.cs"), Path.Combine(folder, "App", "renamed.cs"))),
+            ("a folder's case changed", () => Directory.Move(Path.Combine(folder, "Moved", "Inner"), Path.Combine(folder, "Moved", "inner"))),
+            ("a link to a folder made", () => TestFolders.LinkFolder(Path.Combine(folder, "Alias"), Path.Combine(folder, "App"))),
+            ("a save's temporary file and the system's own", () =>
+            {
+                Write("App/Sub/Deep.cs" + FileText.SaveSuffix, "class Deep { int saving; }\n");
+                Write("Moved/.DS_Store", "the system's own\n");
+            }),
+            ("a folder deleted", () => Directory.Delete(Path.Combine(folder, "Moved"), recursive: true)),
+            ("a file deleted and a folder made in its place", () =>
+            {
+                File.Delete(Path.Combine(folder, "a", "c.cs"));
+                Write("a/c.cs/d.cs", "// a file's name is a folder's now\n");
+            }),
+            ("build output made", () => Write("App/bin/Debug/App.dll", string.Empty)),
+        ];
+        bool heard = false;
+        window.FolderWatcher!.Changed += (_, changed) => heard |= changed.Structure;
+        foreach ((string what, Action change) in changes)
+        {
+            heard = false;
+            change();
+            Ui.WaitFor(() => heard, $"the folder watcher to hear of {what}");
+            Ui.Settle();
+            string[] walked = Walked(folder);
+            Ui.WaitFor(() => walked.SequenceEqual(window.FileIndex.Files),
+                () => $"Go to File after {what} to list [{string.Join(", ", walked)}], not [{string.Join(", ", window.FileIndex.Files)}]");
+        }
+        window.Close();
+    }
+
+    /// <summary>Names with a '~' that is no 8.3 alias's come and go without Go to File's index walking the folder again: another
+    /// program's save, whose old file is set aside under the name Windows' ReplaceFile gives it, and an owner file beside
+    /// a workbook. The index then lists what a walk lists.</summary>
+    [AvaloniaFact]
+    public void A_tilde_in_the_names_another_program_saves_through_walks_nothing_again_for_go_to_file()
+    {
+        Write("App/App.cs", "class App { }\n");
+        Write("App/Book.xlsx", "a workbook\n");
+        MainWindow window = Open(languageServer: false);
+        string app = Path.Combine(folder, "App", "App.cs");
+        string written = Path.Combine(folder, "App", "App.cs.new");
+        string setAside = app + "~RF71cb1793.TMP";
+        FilesFollowed.Check(window, "A save that set App.cs aside as ReplaceFile does", [app, written, setAside], () =>
+        {
+            Write("App/App.cs.new", "class App { int saved; }\n");
+            File.Move(app, setAside);
+            File.Move(written, app);
+            File.Delete(setAside);
+        });
+        string owner = Path.Combine(folder, "App", "~$Book.xlsx");
+        FilesFollowed.Check(window, "An owner file made beside Book.xlsx", [owner], () => Write("App/~$Book.xlsx", "its owner\n"));
+        FilesFollowed.Check(window, "The owner file deleted", [owner], () => File.Delete(owner));
+        string[] walked = Walked(folder);
+        Ui.WaitFor(() => walked.SequenceEqual(window.FileIndex.Files),
+            () => $"Go to File to list [{string.Join(", ", walked)}], not [{string.Join(", ", window.FileIndex.Files)}]");
+        window.Close();
+    }
+
+    /// <summary>The files a window opened on a folder afresh lists for Go to File, in their order.</summary>
+    private static string[] Walked(string root)
+    {
+        MainWindow fresh = new() { Width = 800, Height = 600, StartsLanguageServer = false };
+        fresh.Show();
+        fresh.OpenFolder(root);
+        Ui.WaitFor(() => !fresh.FileIndex.IsWalking, "a fresh window's walk of the folder");
+        string[] listed = [.. fresh.FileIndex.Files];
+        fresh.Close();
+        return listed;
+    }
+
     private static IOException OutOfWatches() =>
         new("The configured user limit (8192) on the number of inotify watches has been reached, or the operating system failed to allocate a required resource.", 28);
 
     /// <summary>A watcher's error raised as the system's watcher raises it, which no kernel but Linux's gives for this.</summary>
-    private static void RaiseError(FileSystemWatcher watcher, Exception error) =>
+    internal static void RaiseError(FileSystemWatcher watcher, Exception error) =>
         typeof(FileSystemWatcher).GetMethod("OnError", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(watcher, [new ErrorEventArgs(error)]);
 
     /// <summary>The folders watched, from the open folder, with forward slashes.</summary>
@@ -520,6 +806,25 @@ public sealed class FolderWatchTests : IDisposable
         Assert.Equal(2, window.Solution!.Projects.Count());
         Assert.True(window.ExplorerView.Tree.IsSolutionView);
         Ui.WaitFor(() => window.ExplorerView.Tree.Rows.Any(r => r.Name == "Tool"), "the new project in the Solution view");
+        window.Close();
+    }
+
+    /// <summary>A project and a program each written with its folder at once (as <c>dotnet new -o</c> and an agent write
+    /// them) are the folder's, each with its run configuration, watched the system's way and as on Linux, each folder on
+    /// its own, whose watch on a new folder begins only once the files are written in it.</summary>
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_project_and_a_program_written_each_with_its_folder_are_found_with_their_run_configurations(bool asOnLinux)
+    {
+        Write("App/App.csproj", Project);
+        MainWindow window = Open(asOnLinux ? FolderWatching.Inotify : FolderWatching.Platform, languageServer: false);
+        Assert.Equal(["App"], window.Configurations.Select(c => c.Name));
+
+        Write("Tool/Tool.csproj", Project);
+        Write("scripts/hello.cs", "#:property PublishAot=false\nConsole.WriteLine(\"hello\");\n");
+        Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "Tool") && window.Configurations.Any(c => c.Name == "hello"),
+            () => $"Tool.csproj and hello.cs, written with their folders, to have run configurations; there are {string.Join(", ", window.Configurations.Select(c => c.Name))}");
         window.Close();
     }
 

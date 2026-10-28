@@ -47,12 +47,13 @@ public sealed record HotReloadActiveStatement(
     [property: JsonPropertyName("endColumn")] int EndColumn,
     [property: JsonPropertyName("flags")] int Flags);
 
-/// <summary>What the edits since the session's start (or its last update taken) come to: the program paused or running,
-/// the edits its runtime can take (as it says them now), the modules it has loaded whose code can be edited (by their
-/// MVIDs) and, paused, the statements its threads are in.</summary>
+/// <summary>What the edits since the session's start (or its last update taken) come to: the program paused, or running and
+/// held stopped for the update, or running; the edits its runtime can take (as it says them now), the modules it has
+/// loaded whose code can be edited (by their MVIDs) and, paused or held, the statements its threads are in.</summary>
 public sealed record HotReloadEmit(
     [property: JsonPropertyName("session")] int Session,
     [property: JsonPropertyName("paused")] bool Paused,
+    [property: JsonPropertyName("held")] bool Held,
     [property: JsonPropertyName("capabilities")] IReadOnlyList<string> Capabilities,
     [property: JsonPropertyName("modules")] IReadOnlyList<Guid> Modules,
     [property: JsonPropertyName("activeStatements")] IReadOnlyList<HotReloadActiveStatement> ActiveStatements,
@@ -85,8 +86,15 @@ public sealed record HotReloadStatementUpdate(
     [property: JsonPropertyName("endLine")] int EndLine,
     [property: JsonPropertyName("endColumn")] int EndColumn);
 
+/// <summary>A document an update edits and the first of its lines the edit changed (from zero), as it read before: the
+/// lines above it read as they did.</summary>
+public sealed record HotReloadFirstChange(
+    [property: JsonPropertyName("document")] string Document,
+    [property: JsonPropertyName("line")] int Line);
+
 /// <summary>One module's update: the metadata, IL and PDB deltas, the methods and types it changes (their tokens), the
-/// lines that moved, where the active statements went, and the runtime capabilities it needs.</summary>
+/// lines that moved, where the active statements went, the runtime capabilities it needs, and the first line it changed
+/// in each document it edits.</summary>
 public sealed record HotReloadModuleUpdate(
     [property: JsonPropertyName("module")] Guid Module,
     [property: JsonPropertyName("name")] string Name,
@@ -97,7 +105,8 @@ public sealed record HotReloadModuleUpdate(
     [property: JsonPropertyName("updatedTypes")] IReadOnlyList<int> UpdatedTypes,
     [property: JsonPropertyName("lines")] IReadOnlyList<HotReloadLines> Lines,
     [property: JsonPropertyName("activeStatements")] IReadOnlyList<HotReloadStatementUpdate> ActiveStatements,
-    [property: JsonPropertyName("requiredCapabilities")] IReadOnlyList<string> RequiredCapabilities);
+    [property: JsonPropertyName("requiredCapabilities")] IReadOnlyList<string> RequiredCapabilities,
+    [property: JsonPropertyName("firstChanges")] IReadOnlyList<HotReloadFirstChange> FirstChanges);
 
 /// <summary>An edit the update could not take, or a warning about one: Roslyn's id (ENC0020 for a rude edit, CS1002 for a
 /// compile error) and words, whether it stops the update, whether restarting the program would take it, and its place

@@ -22,10 +22,11 @@ public static class ActionButtons
     public static bool IsWorking(Button button) => button.Classes.Contains("working");
 
     /// <summary>Makes the button run the action through <paramref name="request"/> (the window's, which says why one cannot
-    /// run) and show its work.</summary>
+    /// run) and show its work, its tip naming the action's keys (<see cref="ActionTips"/>).</summary>
     public static void Bind(Button button, string id, ActionRegistry actions, Func<string, bool> request)
     {
         button.Click += (_, _) => request(id);
+        ActionTips.Set(button, id, ToolTip.GetTip(button) as string ?? actions[id]?.Title ?? id);
         Show(button, id, actions);
     }
 

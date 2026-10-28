@@ -6,10 +6,11 @@ using Passenger.Workspace;
 namespace Passenger.App.Run;
 
 /// <summary>The check before a launch's build: a project whose build would read only files stamped as they were before its
-/// last build here, the same command line under the same SDK, and whose outputs are as that build left them (its own and
-/// its references' assemblies), launches with no build. Anything the project host's evaluations cannot account for builds
-/// (<see cref="BuildInputs.Unknown"/>), as does a file changed, come or gone, and outputs another build rewrote. What a
-/// build left is kept for the process only, so an IDE started again builds first.</summary>
+/// last build here (a launch's, or a person's Build of it or of its solution), the same command line under the same SDK,
+/// and whose outputs are as that build left them (its own and its references' assemblies), launches with no build.
+/// Anything the project host's evaluations cannot account for builds (<see cref="BuildInputs.Unknown"/>), as does a file
+/// changed, come or gone, and outputs another build rewrote. What a build left is kept for the process only, so an IDE
+/// started again builds first.</summary>
 public static class UpToDate
 {
     /// <summary>What a build read before it began and what it left once it succeeded, by its command line and SDK.</summary>
@@ -22,25 +23,35 @@ public static class UpToDate
     /// was asked (its folder, the project, the build's global properties).</summary>
     public sealed record Check(string Key, BuildInputs Inputs, bool Holds, string Folder, string Project, IReadOnlyDictionary<string, string> Properties);
 
-    /// <summary>What a build of a project (a .csproj, built where its own build puts it) would read now, asked of the host
-    /// for the folder the build runs in, with whether its last build here stands; null for one that cannot be checked, or a
-    /// host that could not say. On any thread.</summary>
-    public static async Task<Check?> CheckAsync(BuildStep step, IReadOnlyList<string> arguments, bool windowsTargeting, string folder, CancellationToken cancel)
+    /// <summary>What a build of a project (a .csproj, or a file-based program's C# file, built where its own build puts it)
+    /// would read now, asked of the host for the folder the build runs in, with whether its last build here stands; null for
+    /// one that cannot be checked, or a host that could not say. On any thread.</summary>
+    public static async Task<Check?> CheckAsync(BuildStep step, IReadOnlyList<string> arguments, bool windowsTargeting, string folder, CancellationToken cancel) =>
+        (await CheckAsync([step], [arguments], windowsTargeting, folder, cancel))[0];
+
+    /// <summary>What builds of several projects of one framework (or none) would read now, as a build of each is checked
+    /// (<see cref="CheckAsync(BuildStep, IReadOnlyList{string}, bool, string, CancellationToken)"/>), with each one's
+    /// command line: asked of the host at once, so each project they reach is evaluated once. On any thread.</summary>
+    public static async Task<IReadOnlyList<Check?>> CheckAsync(IReadOnlyList<BuildStep> steps, IReadOnlyList<IReadOnlyList<string>> arguments, bool windowsTargeting,
+        string folder, CancellationToken cancel)
     {
-        if (step.Output is not null || !step.Project.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+        Check?[] checks = new Check?[steps.Count];
+        List<int> asked = [.. Enumerable.Range(0, steps.Count).Where(i => steps[i].Output is null
+            && (steps[i].Project.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase) || ProgramFiles.IsProgram(steps[i].Project)))];
+        if (asked.Count == 0)
         {
-            return null;
+            return checks;
         }
         Dictionary<string, string> properties = new(StringComparer.OrdinalIgnoreCase);
-        if (step.Framework is not null)
+        if (steps[asked[0]].Framework is { } framework)
         {
-            properties["TargetFramework"] = step.Framework;
+            properties["TargetFramework"] = framework;
         }
         if (windowsTargeting)
         {
             properties["EnableWindowsTargeting"] = "true";
         }
-        BuildInputs inputs;
+        IReadOnlyList<BuildInputs> inputs;
         string sdk;
         using CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(cancel);
         bounded.CancelAfter(Waits.Of(Answering));
@@ -48,17 +59,21 @@ public static class UpToDate
         {
             sdk = await Dotnet.SdkAsync(folder, bounded.Token);
             ProjectHost host = await ProjectHosts.ForAsync(folder, bounded.Token);
-            inputs = await host.InputsAsync(step.Project, properties, bounded.Token);
+            inputs = await host.InputsAsync([.. asked.Select(i => steps[i].Project)], properties, bounded.Token);
         }
         catch (Exception unknown) when (unknown is ProjectHostFailed or InvalidOperationException or IOException or TimeoutException
             || (unknown is OperationCanceledException && bounded.IsCancellationRequested))
         {
-            return null;
+            return checks;
         }
-        string key = $"{sdk}\n{folder}\n{string.Join('\n', arguments)}";
-        bool holds = inputs.Unknown is null && Builds.TryGetValue(key, out (IReadOnlyList<Stamp> Reads, IReadOnlyList<Stamp> Made) last)
-            && last.Reads.SequenceEqual(inputs.Reads) && last.Made.Count > 0 && last.Made.All(Stamps.Holds);
-        return new Check(key, inputs, holds, folder, step.Project, properties);
+        foreach ((int index, BuildInputs read) in asked.Zip(inputs))
+        {
+            string key = $"{sdk}\n{folder}\n{string.Join('\n', arguments[index])}";
+            bool holds = read.Unknown is null && Builds.TryGetValue(key, out (IReadOnlyList<Stamp> Reads, IReadOnlyList<Stamp> Made) last)
+                && last.Reads.SequenceEqual(read.Reads) && last.Made.Count > 0 && last.Made.All(Stamps.Holds);
+            checks[index] = new Check(key, read, holds, folder, steps[index].Project, properties);
+        }
+        return checks;
     }
 
     /// <summary>Keeps what a build that succeeded read before it began, but the restore's outputs its own restore wrote (read

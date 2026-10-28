@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
 using Avalonia.Headless.XUnit;
+using Passenger.App.Editors;
 using Passenger.App;
 using Passenger.App.Debugging;
 using Passenger.App.Docking;
@@ -59,6 +60,7 @@ public sealed class StateTests : IDisposable
         Assert.Empty(Directory.GetFiles(settings, "*.tmp"));
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_settings_file_a_hand_edit_left_not_reading_is_set_aside_by_the_next_change_and_the_status_bar_says_where_it_went()
     {
@@ -83,6 +85,7 @@ public sealed class StateTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_later_builds_values_and_a_hand_edit_out_of_range_stay_in_the_file_while_the_window_uses_what_it_can()
     {
@@ -118,6 +121,7 @@ public sealed class StateTests : IDisposable
         Assert.Equal(1.5, (double)written["editorLineSpacing"]!);
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Settings_kept_in_a_dotfiles_folder_through_a_symlink_take_each_change_there_and_the_link_stays()
     {
@@ -179,6 +183,7 @@ public sealed class StateTests : IDisposable
         Assert.True(File.Exists(former), "The workspace file an older build reads was taken away");
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Breakpoints_and_bookmarks_come_back_when_the_folder_opens_again_and_go_when_another_opens()
     {
@@ -261,6 +266,7 @@ public sealed class StateTests : IDisposable
 
     /// <summary>A file open with no folder never keeps the next folder's tabs from coming back, and leaving that folder keeps
     /// its own tabs, not the file open before it.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_folder_opens_with_its_own_tabs_whatever_was_open_before_it_which_stays_beside_them()
     {
@@ -296,6 +302,7 @@ public sealed class StateTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Each_folder_opens_on_its_own_layout_and_one_without_on_the_one_there_was()
     {
@@ -321,6 +328,7 @@ public sealed class StateTests : IDisposable
         second.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_layout_kept_for_a_screen_no_longer_there_or_by_a_later_build_opens_every_tool_window_where_it_can_be_reached()
     {

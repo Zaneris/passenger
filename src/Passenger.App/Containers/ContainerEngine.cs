@@ -40,8 +40,8 @@ public sealed record EngineState(EngineStatus Status, string? Cli, string? Probl
     /// Podman's flags and answer in Podman's JSON.</summary>
     public bool PodmanCli { get; init; }
 
-    /// <summary>Whether the engine runs rootless, a container's users mapped onto the person's subordinate ids, so a
-    /// container's user other than root is not the person on the host (Podman's <c>keep-id</c> makes it so).</summary>
+    /// <summary>Whether the engine runs rootless, Docker or Podman: a container's root is the person on the host, its other
+    /// users the person's subordinate ids, which can read none of what the person keeps for themselves.</summary>
     public bool Rootless { get; init; }
 
     /// <summary>The engine's processor, docker's name for it (amd64, arm64).</summary>
@@ -141,11 +141,6 @@ public sealed class ContainerEngine
     {
         string cli = Cli ?? throw new FileNotFoundException(NoCliProblem);
         ProcessStartInfo start = ChildProcesses.Command(cli, arguments, folder);
-        if (folder is not null)
-        {
-            // Compose reads $PWD from the PWD it inherits, which is wherever Passenger was started, not its working folder.
-            start.Environment["PWD"] = folder;
-        }
         // What the CLI says the IDE reads; no colours, nor a prompt to sign in.
         start.Environment["NO_COLOR"] = "1";
         start.Environment["DOCKER_CLI_HINTS"] = "false";
@@ -287,7 +282,7 @@ public sealed class ContainerEngine
                 return under.WaitAsync(cancel);
             }
             // Not held: what draws the answer holds its own wait for it (a BackgroundWork.Run round StateAsync).
-            asking = Task.Run(AskStateAsync, CancellationToken.None);
+            asking = BackgroundWork.Unheld(AskStateAsync, CancellationToken.None);
             return asking.WaitAsync(cancel);
         }
     }
@@ -357,8 +352,15 @@ public sealed class ContainerEngine
                 (serverVersion, serverOs, serverArch) = (Text(read, "Client", "Version"), Text(read, "Client", "Os"), ArchOf(Text(read, "Client", "OsArch")));
             }
         }
-        string?[] answers = await Task.WhenAll(EndpointAsync(), ComposeAsync(), BuildxAsync());
-        (string? endpoint, string? compose, string? buildx) = (answers[0], answers[1], answers[2]);
+        // The engine's info asked beside the rest, once it answers: Docker's and Podman's alike say whether it runs rootless.
+        Task<(bool Rootless, string? Socket, bool SocketThere)> infoAsked = version.Succeeded && serverVersion is not null ? InfoAsync()
+            : Task.FromResult<(bool, string?, bool)>((false, null, true));
+        Task<string?> endpointAsked = EndpointAsync();
+        Task<string?> composeAsked = ComposeAsync();
+        Task<string?> buildxAsked = BuildxAsync();
+        await Task.WhenAll(infoAsked, endpointAsked, composeAsked, buildxAsked);
+        (string? endpoint, string? compose, string? buildx) = (await endpointAsked, await composeAsked, await buildxAsked);
+        (bool rootless, string? remoteSocket, bool socket) = await infoAsked;
         // A Podman that does not answer says so, through Docker's CLI too, as does the socket a context names.
         podman |= Said(version).Contains("Podman", StringComparison.Ordinal) || endpoint?.Contains("podman", StringComparison.OrdinalIgnoreCase) == true;
         string name = podman ? "Podman" : "Docker";
@@ -370,13 +372,7 @@ public sealed class ContainerEngine
             return new EngineState(EngineStatus.NotRunning, cli, $"{name} isn't running{(context is null ? string.Empty : $" (context {context})")}: {start}",
                 null, null, context, endpoint, compose, buildx) { IsPodman = podman, PodmanCli = podmanCli };
         }
-        bool rootless = false;
-        bool socket = true;
-        if (podman)
-        {
-            (rootless, string? remoteSocket, socket) = await PodmanInfoAsync();
-            endpoint ??= remoteSocket;
-        }
+        endpoint ??= remoteSocket;
         EngineState Made(EngineStatus status, string? problem) =>
             new(status, cli, problem, serverVersion, serverOs, context, endpoint, compose, buildx)
             {
@@ -398,8 +394,8 @@ public sealed class ContainerEngine
         }
         return Made(EngineStatus.Ready, null);
 
-        // Whether Podman runs rootless, and where its own command's API socket is: Docker's info through its CLI, Podman's through its own.
-        async Task<(bool Rootless, string? Socket, bool SocketThere)> PodmanInfoAsync()
+        // Whether the engine runs rootless, Docker's and Podman's info alike, and where Podman's own command's API socket is.
+        async Task<(bool Rootless, string? Socket, bool SocketThere)> InfoAsync()
         {
             try
             {
@@ -522,7 +518,7 @@ public sealed class ContainerEngine
             {
                 keeping = true;
                 // Not held: it runs for as long as anyone follows, and what it tells the window holds its own work.
-                IdeErrors.Observe(Task.Run(FollowAsync));
+                IdeErrors.Observe(BackgroundWork.Unheld(FollowAsync));
             }
         }
         return new Following(this, follower);

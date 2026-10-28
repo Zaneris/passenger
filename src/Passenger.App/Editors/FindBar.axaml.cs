@@ -10,10 +10,13 @@ using Passenger.Text;
 namespace Passenger.App.Editors;
 
 /// <summary>Find and replace in the open file. Matches are found as the query is typed and drawn in
-/// the editor; the one nearest after the caret is selected, and the count says which of how many. While a table lies
-/// over the editor, its cells are searched instead (read-only: replacing is the Text view's).</summary>
+/// the editor; the one nearest after the caret is selected, and the count says which of how many. A regex too slow for
+/// the UI thread's moment is searched again off it, the count saying so meanwhile. While a table lies over the editor,
+/// its cells are searched instead (read-only: replacing is the Text view's); a read-only file's replace row is greyed.</summary>
 public partial class FindBar : UserControl
 {
+    private const string Searching = "Searching…";
+
     private CodeEditor? editor;
     private TextDocument? document;
     private SearchResult result = SearchResult.None;
@@ -24,8 +27,14 @@ public partial class FindBar : UserControl
     /// <summary>Whether a search off the UI thread is out, and whether the text changed again since it began.</summary>
     private bool finding;
     private bool findAgain;
+
+    /// <summary>Whether the search off the UI thread selects the match it lands on: one typed, which stopped on it.</summary>
+    private bool jumpApart;
     private int current = -1;
     private CellGrid? grid;
+
+    /// <summary>Why the file shown takes no replacement (it is read-only), or null.</summary>
+    private string? unchangeable;
     private TableSearch cells = TableSearch.None;
     private CancellationTokenSource? searching;
 
@@ -53,10 +62,12 @@ public partial class FindBar : UserControl
     public SearchQuery CurrentQuery => new(Query.Text ?? string.Empty, MatchCase.IsChecked == true, WholeWords.IsChecked == true, UseRegex.IsChecked == true);
 
     /// <summary>Follows whichever document the editor shows, or the table over it when there is one; called when a tab is
-    /// activated and when a table file switches between its table and its text.</summary>
-    public void Attach(CodeEditor shown, CellGrid? table = null)
+    /// activated and when a table file switches between its table and its text. A file shown read-only says why
+    /// (<paramref name="readOnly"/>) on its replace row, greyed.</summary>
+    public void Attach(CodeEditor shown, CellGrid? table = null, string? readOnly = null)
     {
         editor = shown;
+        unchangeable = readOnly;
         Follow(table);
         if (document is not null)
         {
@@ -101,8 +112,8 @@ public partial class FindBar : UserControl
         {
             grid.TableChanged += OnTableChanged;
         }
-        ReplaceWith.IsEnabled = ReplaceButton.IsEnabled = ReplaceAllButton.IsEnabled = grid is null;
-        ToolTip.SetTip(ReplaceRow, grid is null ? null : "Show the file's Text to replace in it");
+        ReplaceWith.IsEnabled = ReplaceButton.IsEnabled = ReplaceAllButton.IsEnabled = Replaces;
+        ToolTip.SetTip(ReplaceRow, unchangeable ?? (grid is null ? null : "Show the file's Text to replace in it"));
     }
 
     /// <summary>Opens the bar (with the replace row if <paramref name="replace"/>), its query the
@@ -187,7 +198,13 @@ public partial class FindBar : UserControl
             return;
         }
         TextSnapshot text = editor.Document.Snapshot;
-        Found(TextSearch.FindAll(text, CurrentQuery), text, jump);
+        SearchResult found = TextSearch.FindAll(text, CurrentQuery, TextSearch.AtOnce);
+        Found(found, text, jump);
+        if (found.Stopped)
+        {
+            jumpApart |= jump;
+            SearchApart();
+        }
     }
 
     /// <summary>Shows what a search of a text found, the match at or after the caret the current one.</summary>
@@ -279,9 +296,12 @@ public partial class FindBar : UserControl
         Show();
     }
 
+    /// <summary>Whether the text shown takes a replacement: neither a table's cells nor a read-only file's.</summary>
+    private bool Replaces => grid is null && unchangeable is null;
+
     private void ReplaceCurrent()
     {
-        if (editor is null || grid is not null)
+        if (editor is null || !Replaces)
         {
             return;
         }
@@ -304,22 +324,79 @@ public partial class FindBar : UserControl
         Step(forward: true);
     }
 
-    private void ReplaceAll()
+    /// <summary>Replaces every match, never only some: a regex too slow for the UI thread's moment is searched off it, and
+    /// its matches replaced once found if the text is still the one searched.</summary>
+    private void ReplaceAll() => ReplaceAll(CurrentQuery, ReplaceWith.Text ?? string.Empty);
+
+    private void ReplaceAll(SearchQuery query, string replacement)
     {
-        if (editor is null || grid is not null)
+        if (editor is null || !Replaces)
         {
             return;
         }
-        IReadOnlyList<TextEdit> edits = TextSearch.FindAll(editor.Document.Snapshot, CurrentQuery, int.MaxValue).Replacements(ReplaceWith.Text ?? string.Empty);
-        editor.ApplyEdits(edits);
+        TextSnapshot text = editor.Document.Snapshot;
+        SearchResult found = TextSearch.FindAll(text, query, TextSearch.AtOnce, int.MaxValue);
+        if (found.Stopped)
+        {
+            IdeErrors.Observe(ReplaceAllApartAsync(editor, text, query, replacement));
+            return;
+        }
+        (IReadOnlyList<TextEdit> edits, string? why) = Replacing(found, replacement);
+        Replace(editor, edits, why);
+    }
+
+    /// <summary>Every match's replacement as an edit, or why none is made: the text it makes would be too long, said
+    /// before any is made.</summary>
+    private static (IReadOnlyList<TextEdit> Edits, string? Why) Replacing(SearchResult found, string replacement) =>
+        Refusals.TooLongReplaced(found, replacement) is { } why ? ([], why) : (found.Replacements(replacement), null);
+
+    private async Task ReplaceAllApartAsync(CodeEditor shown, TextSnapshot text, SearchQuery query, string replacement)
+    {
+        Count.Text = Searching;
+        // Each match's groups are found again where it stood, as long as the search took: off the UI thread too.
+        (SearchResult found, (IReadOnlyList<TextEdit> edits, string? why)) = await BackgroundWork.Run(() =>
+        {
+            SearchResult searched = TextSearch.FindAll(text, query, TextSearch.Apart, int.MaxValue);
+            return (searched, searched.Stopped ? ([], null) : Replacing(searched, replacement));
+        });
+        if (editor != shown || !IsVisible || !Replaces)
+        {
+            return;
+        }
+        if (!ReferenceEquals(shown.Document.Snapshot, text))
+        {
+            // Edited while it was searched: the text as it stands is replaced in.
+            ReplaceAll(query, replacement);
+            return;
+        }
+        if (found.Stopped)
+        {
+            Count.Text = $"{found.Problem} Nothing was replaced.";
+            return;
+        }
+        Replace(shown, edits, why);
+    }
+
+    private void Replace(CodeEditor shown, IReadOnlyList<TextEdit> edits, string? why)
+    {
+        if (why is not null)
+        {
+            Count.Text = $"Nothing was replaced: {why}.";
+            return;
+        }
+        shown.ApplyEdits(edits);
         Count.Text = $"Replaced {edits.Count}";
     }
 
     private void Show()
     {
         editor?.SetHighlights(result.Matches, current);
-        Count.Text = Counted(result.Problem, result.Matches.Count, result.Truncated);
+        ShowCount();
     }
+
+    /// <summary>The count, or that a regex too slow for the UI thread is being searched off it.</summary>
+    private void ShowCount() =>
+        Count.Text = result.Stopped && finding ? Searching : Counted(result.Problem, result.Matches.Count, result.Truncated);
 
     private string Counted(string? problem, int count, bool truncated) =>
         problem ?? (string.IsNullOrEmpty(Query.Text) ? string.Empty
@@ -340,17 +417,27 @@ public partial class FindBar : UserControl
             Search(jump: false);
             return;
         }
+        SearchApart();
+    }
+
+    /// <summary>Starts the search off the UI thread, or has the one out search again once it lands.</summary>
+    private void SearchApart()
+    {
         if (finding)
         {
             findAgain = true;
             return;
         }
         finding = true;
+        if (result.Stopped)
+        {
+            ShowCount();
+        }
         IdeErrors.Observe(FindAgainAsync());
     }
 
     /// <summary>Searches the text as it stands off the UI thread, again while it changed meanwhile, one search at a time;
-    /// a search lands only for the text and query still shown, and not when one on the UI thread found them first.</summary>
+    /// a search lands only for the text and query still shown, and not when one on the UI thread found them all first.</summary>
     private async Task FindAgainAsync()
     {
         try
@@ -364,11 +451,12 @@ public partial class FindBar : UserControl
                 }
                 TextSnapshot text = shown.Document.Snapshot;
                 SearchQuery query = CurrentQuery;
-                SearchResult found = await BackgroundWork.Run(() => TextSearch.FindAll(text, query));
+                SearchResult found = await BackgroundWork.Run(() => TextSearch.FindAll(text, query, TextSearch.Apart));
                 if (!findAgain && editor == shown && IsVisible && grid is null && ReferenceEquals(shown.Document.Snapshot, text)
-                    && !ReferenceEquals(searched, text) && query == CurrentQuery)
+                    && !(ReferenceEquals(searched, text) && !result.Stopped) && query == CurrentQuery)
                 {
-                    Found(found, text, jump: false);
+                    Found(found, text, jump: jumpApart);
+                    jumpApart = false;
                 }
             }
             while (findAgain);
@@ -376,6 +464,12 @@ public partial class FindBar : UserControl
         finally
         {
             finding = false;
+            jumpApart = false;
+            if (result.Stopped && IsVisible && grid is null)
+            {
+                // No longer searching: a regex that stopped off the UI thread too says so.
+                ShowCount();
+            }
         }
     }
 
@@ -393,7 +487,7 @@ public partial class FindBar : UserControl
     {
         switch (e.Key)
         {
-            case Key.Enter when sender == ReplaceWith && grid is null:
+            case Key.Enter when sender == ReplaceWith && Replaces:
                 ReplaceCurrent();
                 e.Handled = true;
                 break;

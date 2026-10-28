@@ -2,7 +2,6 @@ using System.Collections.ObjectModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -57,7 +56,7 @@ public sealed record RunRow(int Depth, string Label)
 /// <summary>A row of a list of what runs as the list holds it, kept by its key while the list is read again (a resource's
 /// health streaming in, an engine's event): the same item, so its control, a press under way on it and the list's choice of
 /// it stay, told what it stands for now.</summary>
-public sealed class RunItem<T>(string key, T data)
+public sealed class RunItem<T>(string key, T data) : System.ComponentModel.INotifyPropertyChanged
     where T : class
 {
     public string Key { get; } = key;
@@ -65,8 +64,8 @@ public sealed class RunItem<T>(string key, T data)
     /// <summary>What it stands for as last read.</summary>
     public T Data { get; private set; } = data;
 
-    /// <summary>What it stands for changed: its control shows it anew in place.</summary>
-    public event EventHandler? Changed;
+    /// <summary>What it stands for changed (<see cref="Data"/>): the row made once that shows it shows it anew in place.</summary>
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
 
     /// <summary>What it stands for read again: its control drawn anew only when that differs from what it drew (an AppHost's
     /// update keeps each resource it did not change, whose row then costs nothing).</summary>
@@ -77,7 +76,7 @@ public sealed class RunItem<T>(string key, T data)
             return;
         }
         Data = data;
-        Changed?.Invoke(this, EventArgs.Empty);
+        PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(Data)));
     }
 
     public override string ToString() => Key;
@@ -134,30 +133,23 @@ public static class RunRows
         }
     }
 
-    /// <summary>A list's rows: each item drawn by <paramref name="draw"/> as a <see cref="RunRowView"/>, shown anew in place
-    /// as its item changes; <paramref name="toggle"/> runs on a chevron's press and <paramref name="browse"/> on a link's
-    /// click, each link named <paramref name="linkName"/>.</summary>
-    public static FuncDataTemplate<RunItem<T>> Template<T>(Func<T, RunRow> draw, Action<T> toggle, Action<Uri> browse, string linkName)
+    /// <summary>A list's rows: each a <see cref="RunRowView"/> made once with its container, showing the item it is handed
+    /// as <paramref name="draw"/> draws it and anew in place as the item changes; <paramref name="toggle"/> runs on a
+    /// chevron's press and <paramref name="browse"/> on a link's click, each link named <paramref name="linkName"/>.</summary>
+    public static void Use<T>(ListBox list, Func<T, RunRow> draw, Action<T> toggle, Action<Uri> browse, string linkName)
         where T : class =>
-        new((item, _) =>
+        ReusedRows.Use(list, () =>
         {
-            if (item is null)
+            RunRowView? view = null;
+            view = new RunRowView(() =>
             {
-                return new Panel();
-            }
-            RunRowView view = new(() => toggle(item.Data), browse, linkName);
-            void Show(object? sender, EventArgs e) => view.Show(draw(item.Data));
-            view.Show(draw(item.Data));
-            // Followed while shown: a row scrolled away or taken out holds no handler on its item.
-            view.AttachedToVisualTree += (_, _) =>
-            {
-                item.Changed -= Show;
-                item.Changed += Show;
-                view.Show(draw(item.Data));
-            };
-            view.DetachedFromVisualTree += (_, _) => item.Changed -= Show;
-            return view;
-        }, supportsRecycling: false);
+                if (view?.DataContext is RunItem<T> item)
+                {
+                    toggle(item.Data);
+                }
+            }, browse, linkName);
+            return view.Showing<RunItem<T>>(item => view.Show(draw(item.Data)));
+        });
 
     /// <summary>A list of such rows opens and closes a row by a double click, and takes a tree's keys (<see cref="TreeKeys"/>).</summary>
     public static void Toggles<T>(ListBox list, Action<T> toggle)
@@ -205,7 +197,7 @@ public sealed class RunRowView : DockPanel
 {
     private readonly Action<Uri> browse;
     private readonly string linkName;
-    private readonly PathIcon chevron;
+    private readonly RowIcon chevron;
     private readonly Ellipse dot = new() { Width = 8, Height = 8, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
     private readonly StackPanel right = new() { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
     private readonly StackPanel links = new() { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
@@ -222,12 +214,11 @@ public sealed class RunRowView : DockPanel
         this.linkName = linkName;
         Height = ListRow.Height;
         // Its whole box takes a press, not only the glyph's thin strokes.
-        chevron = new PathIcon
+        chevron = new RowIcon
         {
             Width = 12, Height = 12, Margin = new Thickness(0, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center,
-            Background = Brushes.Transparent, Name = "rowChevron",
+            ForegroundKey = TokenKeys.TextMuted, Name = "rowChevron",
         };
-        chevron.Bind(PathIcon.ForegroundProperty, chevron.GetResourceObservable(TokenKeys.TextMuted));
         chevron.PointerPressed += (_, e) =>
         {
             // The press's capture let go first, or rows moved under the pointer would take the next press from the chevron.
@@ -261,10 +252,7 @@ public sealed class RunRowView : DockPanel
         shown = row;
         Margin = new Thickness(6 + (row.Depth * 16), 0, 6, 0);
         chevron.IsVisible = row.Expands;
-        if (was is null || was.Expanded != row.Expanded)
-        {
-            chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(row.Expanded ? IconKeys.ChevronDown : IconKeys.ChevronRight));
-        }
+        chevron.DataKey = row.Expanded ? IconKeys.ChevronDown : IconKeys.ChevronRight;
         dot.IsVisible = !row.Heading && row.State != RunState.None;
         if (was is null || was.State != row.State)
         {

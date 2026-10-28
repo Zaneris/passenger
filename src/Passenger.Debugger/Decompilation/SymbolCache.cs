@@ -35,15 +35,30 @@ public sealed class SymbolCache
     private readonly UsedCache cache;
     private readonly Action<string>? log;
 
-    /// <summary>The prune begun as the cache was opened, which every read and write waits for.</summary>
+    /// <summary>The prune begun as the cache was opened, which every write waits for.</summary>
     private readonly Task pruned;
+
+    /// <summary>Opened as the prune ends, for every read to wait on: a read comes from the frames' synchronous reads under the
+    /// engine's lock, which cannot await the prune's task.</summary>
+    private readonly ManualResetEventSlim prunedGate = new();
 
     public SymbolCache(string folder, Action<string>? log = null)
     {
         this.log = log;
         cache = new UsedCache(folder, UsedEntries.Files(3, ".pdb"), new UsedLimits(UnusedFor, InUse, MostBytes, Abandoned),
             log is null ? null : line => log($"Symbol cache: {line}"));
-        pruned = Task.Run(() => cache.Prune(DateTime.UtcNow));
+        // Not held: the cache's own chore, which the first write waits for.
+        pruned = Core.BackgroundWork.Unheld(() =>
+        {
+            try
+            {
+                cache.Prune(DateTime.UtcNow);
+            }
+            finally
+            {
+                prunedGate.Set();
+            }
+        });
     }
 
     public string Folder => cache.Folder;
@@ -54,7 +69,7 @@ public sealed class SymbolCache
     /// <summary>An assembly version's decompiled PDB, marked as used now, or null when the cache has none.</summary>
     public string? Find(string name, Guid mvid)
     {
-        pruned.Wait();
+        prunedGate.Wait();
         string pdb = PathOf(name, mvid);
         if (!File.Exists(pdb))
         {
@@ -74,11 +89,18 @@ public sealed class SymbolCache
         }
     }
 
-    /// <summary>Decompiles an assembly into its entry, written whole as it is made. False when it could not be decompiled
-    /// or the session ended first (<paramref name="cancel"/>), its temporary file then deleted.</summary>
-    public bool Write(string assemblyPath, string name, Guid mvid, IReadOnlyList<string> references, CancellationToken cancel)
+    /// <summary>Decompiles an assembly into its entry once the prune has ended, on a thread of its own (CoreLib's takes many
+    /// seconds), written whole as it is made. False when it could not be decompiled or the session ended first
+    /// (<paramref name="cancel"/>), its temporary file then deleted.</summary>
+    public async Task<bool> WriteAsync(string assemblyPath, string name, Guid mvid, IReadOnlyList<string> references, CancellationToken cancel)
     {
-        pruned.Wait();
+        await pruned.ConfigureAwait(false);
+        // Not held, on a thread of its own: a decompile blocks it for seconds.
+        return await Core.BackgroundWork.UnheldThread(() => Write(assemblyPath, name, mvid, references, cancel)).ConfigureAwait(false);
+    }
+
+    private bool Write(string assemblyPath, string name, Guid mvid, IReadOnlyList<string> references, CancellationToken cancel)
+    {
         string pdb = PathOf(name, mvid);
         try
         {

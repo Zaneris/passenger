@@ -9,7 +9,8 @@ namespace Passenger.Tests;
 /// without a source generator's, the name itself first, usages read by file with the symbol the place took and a
 /// generator's place named for what it is, a place with no symbol said to be one, or the symbol its line declares taken;
 /// symbols named rather than placed, found exactly, each overload told apart by its documentation id, an indexer by this[]
-/// or Item; a hover card as plain text, and a fix's Suppress and Configure choices counted until asked for.</summary>
+/// or Item; a hover card as plain text, and a fix's Suppress and Configure choices counted until asked for; and calls on
+/// many files leaving open, in the IDE and the language server, only the file the agent opened and the one it left unsaved.</summary>
 public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
 {
     public McpNavigationTests(RestoredFolders folders)
@@ -28,6 +29,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     [Fact]
     public async Task An_agent_finds_the_solutions_own_symbols_reads_usages_in_order_and_hears_when_no_symbol_is_where_it_asked()
     {
+        await TakeFolderAsync();
         Write("Words.cs", Words);
         Write("Aaa.cs", Tally);
         await using McpClient client = await Start(["--mcp", Folder]);
@@ -61,6 +63,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     [Fact]
     public async Task An_agent_names_a_symbol_in_place_of_its_place_finds_names_exactly_and_tells_overloads_apart_by_their_documentation_ids()
     {
+        await TakeFolderAsync();
         Write("Words.cs", Words);
         Write("Aaa.cs", Tally);
         await using McpClient client = await Start(["--mcp", Folder]);
@@ -99,6 +102,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     [Fact]
     public async Task An_agent_finds_a_name_itself_first_an_indexer_by_name_reads_a_card_as_plain_text_and_a_fixs_suppressions_counted()
     {
+        await TakeFolderAsync();
         Write("Words.cs", Words);
         Write("Aaa.cs", Tally);
         Write("Shelf.cs", Shelf);
@@ -129,5 +133,75 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         string title = suppress[..suppress.IndexOf(" [", StringComparison.Ordinal)];
         string listed = Assert.Single((await Call(client, McpTools.CodeActions, new(unused) { ["title"] = title })).EnumerateArray()).GetString()!;
         Assert.Contains("Suppress CS0219 → in Source", listed, StringComparison.Ordinal);
+    }
+
+    /// <summary>A call holds its files open only while it runs and a moment after: once reads of many files pause, the IDE
+    /// has open, and the language server was last told open, only the file the agent opened in the editor and the one its
+    /// edit could not save (a read-only file), so a long session holds no more than it is working on.</summary>
+    [Fact]
+    public async Task An_agents_calls_on_many_files_leave_open_only_the_file_it_opened_and_the_one_its_edit_left_unsaved()
+    {
+        await TakeFolderAsync();
+        string[] parts = [.. Enumerable.Range(1, 12).Select(i => $"Part{i:00}.cs")];
+        foreach (string part in parts)
+        {
+            Write(part, $"static class {Path.GetFileNameWithoutExtension(part)}\n{{\n    public static int Of(int value) => Helper.Twice(value) + 1;\n}}\n");
+        }
+        Write("Locked.cs", "static class Locked\n{\n    public static int Of(int value) => value;\n}\n");
+        File.SetAttributes(Path.Combine(Folder, "Locked.cs"), FileAttributes.ReadOnly);
+        await using McpClient client = await Start(["--mcp", Folder]);
+        await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["traceProtocols"] = true } });
+
+        await Call(client, McpTools.Open, new() { ["path"] = "Program.cs" });
+        foreach (string file in parts.Append("Program.cs").Append("Helper.cs"))
+        {
+            await Call(client, McpTools.Outline, new() { ["path"] = file });
+            await Call(client, McpTools.Diagnostics, new() { ["path"] = file });
+            await Call(client, McpTools.EditorText, new() { ["path"] = file, ["to"] = 2 });
+            if (file.StartsWith("Part", StringComparison.Ordinal))
+            {
+                await Call(client, McpTools.SymbolInfo, new() { ["path"] = file, ["line"] = 3, ["column"] = 23 });
+                await Call(client, McpTools.Usages, new() { ["path"] = file, ["line"] = 3, ["column"] = 44 });
+            }
+        }
+        string edited = Text(await Call(client, McpTools.Edit, new() { ["path"] = "Locked.cs", ["oldText"] = "=> value;", ["newText"] = "=> value + 1;" }));
+        Assert.Contains("not saved: the file is read-only", edited, StringComparison.Ordinal);
+
+        // The last call's files are let go once calls pause.
+        string[] open = [];
+        Assert.True(await Waiting.UntilAsync(async () =>
+            {
+                open = [.. (await Call(client, McpTools.Workspace)).GetProperty("openFiles").EnumerateArray().Select(f => f.GetString()!)];
+                return open.SequenceEqual(["Program.cs", "Locked.cs (unsaved)"]);
+            }, TimeSpan.FromSeconds(10).Scaled(), Cancel),
+            $"The IDE has open {string.Join(", ", open)}, where the agent left open only Program.cs and the unsaved Locked.cs");
+        string[] kept = ["Locked.cs", "Program.cs"];
+        string trace = Path.Combine(OwnState, "logs", "lsp.log");
+        Assert.True(await Waiting.UntilAsync(() => ServerOpen(trace).SequenceEqual(kept), TimeSpan.FromSeconds(10).Scaled(), Cancel),
+            $"The language server was last told open {string.Join(", ", ServerOpen(trace))}, where the agent left open only {string.Join(", ", kept)}");
+    }
+
+    /// <summary>The names of the files the language server was told open and not since closed, by lsp.log's trace of what it
+    /// was sent.</summary>
+    private static string[] ServerOpen(string trace)
+    {
+        Dictionary<string, int> open = new(StringComparer.Ordinal);
+        string text;
+        using (FileStream read = new(trace, FileMode.OpenOrCreate, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+        using (StreamReader reader = new(read))
+        {
+            text = reader.ReadToEnd();
+        }
+        foreach (string line in text.Split('\n'))
+        {
+            int change = !line.Contains("] --> ", StringComparison.Ordinal) ? 0
+                : line.Contains("\"method\":\"textDocument/didOpen\"", StringComparison.Ordinal) ? 1
+                : line.Contains("\"method\":\"textDocument/didClose\"", StringComparison.Ordinal) ? -1 : 0;
+            if (change != 0 && System.Text.RegularExpressions.Regex.Match(line, "\"uri\":\"([^\"]+)\"") is { Success: true } uri)
+            {
+                open[uri.Groups[1].Value] = open.GetValueOrDefault(uri.Groups[1].Value) + change;
+            }
+        }
+        return [.. open.Where(o => o.Value > 0).Select(o => Path.GetFileName(new Uri(o.Key).LocalPath)).Order(StringComparer.Ordinal)];
     }
 }

@@ -69,7 +69,7 @@ public sealed partial class CodeEditor
         public ContextSwitcher(CodeEditor editor)
         {
             this.editor = editor;
-            Cursor = new Cursor(StandardCursorType.Hand);
+            Cursor = HandCursor;
         }
 
         protected override Size MeasureOverride(Size availableSize) =>

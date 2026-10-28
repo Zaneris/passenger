@@ -12,6 +12,7 @@ public enum StoredReferenceKind
     EnumerableResults,
     ArrayRange,
     QuerySql, // An EF Core query's SQL row, read only as it is opened
+    Pointer, // A pointer, opening to the value it points at
 }
 
 public readonly record struct ThreadId
@@ -42,7 +43,7 @@ public readonly record struct FrameStackDepth
         Value = value;
     }
 };
-public record struct VariablesReference(StoredReferenceKind ReferenceKind, ICorDebugValue? ObjectValue, ThreadId ThreadId, FrameStackDepth FrameStackDepth, ICorDebugValue? DebuggerProxyInstance, uint[]? ArrayIndices = null, uint? ArrayStartOffset = null, uint? ArrayCount = null);
+public record struct VariablesReference(StoredReferenceKind ReferenceKind, ICorDebugValue? ObjectValue, ThreadId ThreadId, FrameStackDepth FrameStackDepth, ICorDebugValue? DebuggerProxyInstance, uint[]? ArrayIndices = null, uint? ArrayStartOffset = null, uint? ArrayCount = null, string? Name = null);
 /// <summary>The references of a stop's scopes and values. Each is numbered above every one before it in the session, and a
 /// stop's are let go when the program goes on, so one from an earlier stop is refused rather than naming whatever value
 /// took its number at this one.</summary>

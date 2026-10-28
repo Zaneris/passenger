@@ -352,7 +352,8 @@ public sealed class ProfilingSession : IAsyncDisposable
         TaskCompletionSource recording = new(TaskCreationOptions.RunContinuationsAsynchronously);
         // The last line the tools said, all that is kept of what a container writes there.
         string? said = null;
-        Task reading = Task.Run(() => ErrorLines.ReadAsync(tools.StandardError, line =>
+        // Not held: read for as long as the tools run.
+        Task reading = BackgroundWork.Unheld(() => ErrorLines.ReadAsync(tools.StandardError, line =>
         {
             if (line.Trim() == InContainer.Recording)
             {
@@ -363,7 +364,8 @@ public sealed class ProfilingSession : IAsyncDisposable
                 Volatile.Write(ref said, words);
             }
         }), CancellationToken.None);
-        Task copying = Task.Run(async () =>
+        // Not held: copied for as long as the recording lasts.
+        Task copying = BackgroundWork.Unheld(async () =>
         {
             await using (file)
             {
@@ -420,7 +422,8 @@ public sealed class ProfilingSession : IAsyncDisposable
     private static Task Copy(EventPipeSession session, string trace)
     {
         FileStream file = new(trace, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
-        return Task.Run(async () =>
+        // Not held: written for as long as the session lasts.
+        return BackgroundWork.Unheld(async () =>
         {
             await using (file)
             {
@@ -518,7 +521,7 @@ public sealed class ProfilingSession : IAsyncDisposable
         {
             await LetGoAsync();
         }
-        return await Task.Run(Read);
+        return await BackgroundWork.Run(Read);
     }
 
     /// <summary>The run's trace read, knowing where it ran.</summary>
@@ -548,12 +551,13 @@ public sealed class ProfilingSession : IAsyncDisposable
         await process.WaitForExitAsync(cancellation);
         Interlocked.Exchange(ref stopped, 1);
         await copying.WaitAsync(TimeSpan.FromSeconds(30), cancellation);
-        return await Task.Run(Read, cancellation);
+        return await BackgroundWork.Run(Read, cancellation);
     }
 
     /// <summary>What the program's heap holds now, comparable object by object with the run's earlier ones; the run
-    /// goes on.</summary>
-    public Task<MemorySnapshot> TakeMemorySnapshotAsync(CancellationToken cancellation = default)
+    /// goes on. Where only the program's runtime can write it, putting createdump's lines into the program's output, it
+    /// is taken only <paramref name="intoOutput"/>, else a <see cref="DumpIntoOutputException"/> says so first.</summary>
+    public Task<MemorySnapshot> TakeMemorySnapshotAsync(bool intoOutput = false, CancellationToken cancellation = default)
     {
         if (process.HasExited)
         {
@@ -562,10 +566,10 @@ public sealed class ProfilingSession : IAsyncDisposable
         if (Place is { } place)
         {
             containerHeap ??= new ContainerHeap(place, ProcessId);
-            return containerHeap.TakeAsync(cancellation);
+            return containerHeap.TakeAsync(intoOutput, cancellation);
         }
         heapHistory ??= new HeapHistory(process.Id);
-        return heapHistory.TakeAsync(cancellation);
+        return heapHistory.TakeAsync(intoOutput, cancellation);
     }
 
     /// <summary>Finishes when the program has ended, by itself or killed, and what it wrote has been read: all of it, unless

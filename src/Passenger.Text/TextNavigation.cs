@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Globalization;
 
 namespace Passenger.Text;
@@ -19,6 +20,15 @@ public static class TextNavigation
     /// begin; past it (a long run of marks and symbols with no space or Latin letter in it), reading begins that far back.</summary>
     private const int Lookback = 1024;
 
+    /// <summary>How far back a move looks first, which nearly every line's text holds such a character within.</summary>
+    private const int Near = 64;
+
+    /// <summary>The most a step forward reads on the stack.</summary>
+    private const int Stacked = 512;
+
+    /// <summary>The offset after the grapheme at an offset: printable ASCII that no mark follows is one character, read
+    /// alone; anything else is read into a buffer on the stack (a pooled one past it), a little more each time a grapheme
+    /// runs to the end of what was read.</summary>
     public static int NextGrapheme(TextSnapshot text, int offset)
     {
         LineSpan line = text.GetLine(text.GetLineFromOffset(offset));
@@ -27,10 +37,22 @@ public static class TextNavigation
             return line.Line == text.LineCount - 1 ? line.End : line.EndIncludingBreak;
         }
         int available = line.End - offset;
+        if (text[offset] is >= ' ' and <= '~' && (available == 1 || text[offset + 1] < '\u0080'))
+        {
+            return offset + 1;
+        }
+        Span<char> stack = stackalloc char[Stacked];
         for (int read = Math.Min(available, 32); ; read = Math.Min(available, read * 4))
         {
+            char[]? pooled = read > Stacked ? ArrayPool<char>.Shared.Rent(read) : null;
+            Span<char> chars = (pooled ?? stack)[..read];
+            text.CopyTo(offset, chars);
             // A grapheme as long as what was read may go on past it.
-            int length = StringInfo.GetNextTextElementLength(text.GetText(offset, read));
+            int length = StringInfo.GetNextTextElementLength(chars);
+            if (pooled is not null)
+            {
+                ArrayPool<char>.Shared.Return(pooled);
+            }
             if (length < read || read == available)
             {
                 return offset + length;
@@ -38,6 +60,9 @@ public static class TextNavigation
         }
     }
 
+    /// <summary>The offset of the grapheme before an offset: the character before it when no grapheme reaches back over
+    /// that one, read alone; otherwise what is before it is read onto the stack from the last such character, a short
+    /// stretch first and <see cref="Lookback"/> where that holds none.</summary>
     public static int PreviousGrapheme(TextSnapshot text, int offset)
     {
         LineSpan line = text.GetLine(text.GetLineFromOffset(offset));
@@ -46,20 +71,41 @@ public static class TextNavigation
             return line.Line == 0 ? 0 : text.GetLine(line.Line - 1).End;
         }
         int end = Math.Min(offset, line.End);
-        int from = Math.Max(line.Start, end - Lookback);
-        string content = text.GetText(from, end - from);
+        if (BeginsGrapheme(text[end - 1]))
+        {
+            return end - 1;
+        }
+        Span<char> chars = stackalloc char[Lookback];
+        int from = Math.Max(line.Start, end - Near);
+        int at = BeginningBefore(text, from, end, chars);
+        if (at == 0 && from > line.Start)
+        {
+            // Nothing in the short stretch begins a grapheme for sure: read as far back as a move looks.
+            from = Math.Max(line.Start, end - Lookback);
+            at = BeginningBefore(text, from, end, chars);
+        }
+        ReadOnlySpan<char> content = chars[..(end - from)];
+        int previous = at;
+        while (at < content.Length)
+        {
+            previous = at;
+            at += StringInfo.GetNextTextElementLength(content[at..]);
+        }
+        return from + previous;
+    }
+
+    /// <summary>Reads the text from <paramref name="from"/> to <paramref name="end"/> into <paramref name="chars"/>, and
+    /// finds the last place after its first character that begins a grapheme for sure, or 0 with none.</summary>
+    private static int BeginningBefore(TextSnapshot text, int from, int end, Span<char> chars)
+    {
+        Span<char> content = chars[..(end - from)];
+        text.CopyTo(from, content);
         int at = content.Length - 1;
         while (at > 0 && !BeginsGrapheme(content[at]))
         {
             at--;
         }
-        int previous = at;
-        while (at < content.Length)
-        {
-            previous = at;
-            at += StringInfo.GetNextTextElementLength(content, at);
-        }
-        return from + previous;
+        return at;
     }
 
     public static int NextWord(TextSnapshot text, int offset, WordStop stop)

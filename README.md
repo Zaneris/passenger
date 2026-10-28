@@ -7,7 +7,7 @@ Windows, macOS and Linux ([how to install it there](https://passenger-ide.net/li
 <p align="center">
   <a href="https://passenger-ide.net">Website</a> •
   <a href="https://passenger-ide.net/#download">Download</a> •
-  <a href="https://github.com/Zaneris/passenger/releases/tag/v0.2.0">What's new in 0.2.0</a> •
+  <a href="https://github.com/Zaneris/passenger/releases/tag/v0.2.2">What's new in 0.2.2</a> •
   <a href="#what-it-does">What it does</a> •
   <a href="#your-coding-agent-using-the-ide-as-you-do">Your coding agent</a> •
   <a href="#building">Building</a> •
@@ -99,7 +99,8 @@ N+1) or a slow one is marked, and a request opens at its handler or at the excep
 The Migrations window lists each DbContext's migrations and whether the database has them, with Add Migration, Remove
 Last, Update Database, Script and Bundle. Before a command runs it finds what would stop `dotnet ef` and offers the fix:
 the tool missing or of another version, the Design package missing, a database provider behind your EF Core, a context
-the tools can't make. During a compose run or an AppHost, it works on the database that run uses.
+the tools can't make. It takes its project, startup project and context from EF Core 11's `.config/dotnet-ef.json`
+as `dotnet ef` does, and during a compose run or an AppHost it works on the database that run uses.
 
 The Endpoints window lists the requests in your `.http` files and each web project's routes, read from its code with no
 build (minimal APIs, controllers, Razor Pages, Blazor, SignalR and gRPC), each sent to the running app from an icon on
@@ -152,11 +153,12 @@ that keep it alive; two snapshots compared say which objects are new, which died
 ### Debugging
 
 Passenger's own debugger (started from SharpDbg and ICorDebugSharp, over ICorDebug): breakpoints with conditions, hit
-counts and log messages, exception breakpoints, stepping through async code, Smart Step Into, the values methods
-returned, Run to Cursor and Set Next Statement, the call stack and threads, variables you can open and set, watches and
-evaluation, and the values each line used drawn after it; resting on an object while paused opens it into its members.
-Several programs debug at once, each in a tab of its own with your breakpoints sent to all. A frame in a library
-without symbols shows its code, decompiled. Data breakpoints work on Windows x64, where the runtime supports them.
+counts and log messages, exception breakpoints, stepping through async code (.NET 11's runtime async too), Smart Step
+Into, the values methods returned, Run to Cursor and Set Next Statement, the call stack and threads, variables you can
+open and set, watches and evaluation, and the values each line used drawn after it; resting on an object while paused
+opens it into its members. Several programs debug at once, each in a tab of its own with your breakpoints sent to all.
+A frame in a library without symbols shows its code, decompiled. Data breakpoints work on Windows x64, where the
+runtime supports them.
 
 Edit the code while debugging and Hot Reload puts it in the program, paused or running. An edit it can't apply is
 listed in Problems with why, and by default the program restarts to take it. Without the debugger, Hot Reload runs
@@ -192,6 +194,11 @@ signature help, quick fixes and refactorings (Change Signature, Extract Interfac
 and more), a rename that renames the type's file, Go to Declaration, Implementation and Base Symbols, Find Usages, call
 and type hierarchies and decompiled library sources. Problems lists the whole solution's without a build. Razor and
 Blazor files get C# and HTML help together.
+
+.NET 11 and C# 15 as they ship: a file-based program (`dotnet run app.cs`) opens as a project of its own, with C# across
+the files it includes, its run configurations, tests, Run, Debug, Profile and Hot Reload; a solution filter (`.slnf`)
+opens its solution with only the projects it names loaded; and a union's name is coloured, its value shown by the
+debugger as what it holds.
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="site/images/editor-light.webp">
@@ -377,7 +384,7 @@ the files under the agent's IDE.
 
 ## Building
 
-Building needs the .NET 11 SDK (11.0.100-rc.2 or later, as [`global.json`](global.json) asks, until .NET 11 ships in
+Building needs the .NET 11 SDK (11.0.100-rc.3 or later, as [`global.json`](global.json) asks, until .NET 11 ships in
 November 2026) and [just](https://github.com/casey/just). The tests need more:
 
 - **the .NET 10 SDK** beside it, since the programs the debugger's tests debug ([`tests/Debuggees`](tests/Debuggees))

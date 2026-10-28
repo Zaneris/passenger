@@ -30,7 +30,7 @@ internal static class DiagnosticMarks
         {
             return null;
         }
-        string code = diagnostic.Code?.ToString() is { Length: > 0 } c ? $"{c}: " : string.Empty;
+        string code = diagnostic.Code is { Length: > 0 } c ? $"{c}: " : string.Empty;
         return new Marker(range, k, code + diagnostic.Message);
     }
 
@@ -66,6 +66,7 @@ internal static class DiagnosticMarks
                 Range = new LspRange(lines.PositionOf(Math.Min(now.Start, length)), lines.PositionOf(Math.Min(now.End, length))),
                 Severity = diagnostic.Severity,
                 Code = diagnostic.Code,
+                CodeIsNumber = diagnostic.CodeIsNumber,
                 CodeDescription = diagnostic.CodeDescription,
                 Source = diagnostic.Source,
                 Message = diagnostic.Message,
@@ -84,11 +85,23 @@ internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
 {
     private CancellationTokenSource? pulling;
 
+    /// <summary>The ask under way while it waits out its delay; null once it asks, or when it had none.</summary>
+    private CancellationTokenSource? pausing;
+
+    /// <summary>Whether the ask under way still waits out its delay (typing's pause), after which it asks for the text as it
+    /// stands then.</summary>
+    public bool Pausing => pausing is { IsCancellationRequested: false } && pausing == pulling;
+
     /// <summary>The diagnostics as reported, and each one's range in the text as it stands, which the text carries.</summary>
     private Diagnostic[] found = [];
     private AnchoredRange[] ranges = [];
 
-    /// <summary>The markers last given, each on the range that carries it.</summary>
+    /// <summary>How many of the diagnostics, at the end of <see cref="found"/>, a project-wide pull reported
+    /// (<see cref="DiagnosticPull.ProjectWide"/>), which answers after the file's own.</summary>
+    private int late;
+
+    /// <summary>The markers last given, each on the range that carries it, in the order of their starts, which the ranges
+    /// keep through every edit.</summary>
     private (AnchoredRange Range, Marker Marker)[] shown = [];
 
     /// <summary>The diagnostics placed on the server's lines of the text as it stands, made when first asked for after an
@@ -98,11 +111,25 @@ internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
     /// <summary>The diagnostics last reported, moved with the text since, so their lines are the text's as it is now.</summary>
     public IReadOnlyList<Diagnostic> Placed => placed ??= DiagnosticMarks.Placed(document.Text.Snapshot, found, [.. ranges.Select(r => r.Range)]);
 
+    /// <summary>What the last project-wide pull reported, placed so: carried with the file's own until the next one answers.</summary>
+    public IReadOnlyList<Diagnostic> Late => late == 0 ? [] : [.. Placed.Skip(found.Length - late)];
+
     /// <summary>The diagnostics placed so, each with its range in the text as it stands.</summary>
     public IEnumerable<(Diagnostic Diagnostic, TextRange Range)> PlacedRanges => Placed.Zip(ranges.Select(r => r.Range));
 
-    /// <summary>The markers last given, where the text has carried them since.</summary>
-    public IReadOnlyList<Marker> Markers => [.. shown.Select(s => s.Marker with { Range = s.Range.Range })];
+    /// <summary>The markers last given, where the text has carried them since: read to show them with another source's.</summary>
+    public IReadOnlyList<Marker> Markers
+    {
+        get
+        {
+            Marker[] markers = new Marker[shown.Length];
+            for (int i = 0; i < markers.Length; i++)
+            {
+                markers[i] = shown[i].Marker with { Range = shown[i].Range.Range };
+            }
+            return markers;
+        }
+    }
 
     /// <summary>The text changed: the diagnostics' ranges moved with it, and are placed on the server's lines again when
     /// next asked for.</summary>
@@ -118,15 +145,17 @@ internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
     public void Adopt(IReadOnlyList<Marker> markers)
     {
         Release();
-        shown = [.. markers.Select(m => (Anchored(m.Range), m))];
+        shown = [.. markers.OrderBy(m => m.Range.Start).Select(m => (Anchored(m.Range), m))];
     }
 
-    /// <summary>Takes diagnostics reported for the text as it stands, and gives the markers they draw as.</summary>
-    public IReadOnlyList<Marker> Take(IReadOnlyList<Diagnostic> diagnostics, Func<Diagnostic, TextRange, Marker?> marker)
+    /// <summary>Takes diagnostics reported for the text as it stands, the last <paramref name="late"/> of them a project-wide
+    /// pull's (<see cref="Late"/>), and gives the markers they draw as.</summary>
+    public IReadOnlyList<Marker> Take(IReadOnlyList<Diagnostic> diagnostics, Func<Diagnostic, TextRange, Marker?> marker, int late = 0)
     {
         ServerLines lines = ServerLines.Of(document.Text.Snapshot);
         Release();
         found = [.. diagnostics];
+        this.late = late;
         ranges = [.. found.Select(d => Anchored(DiagnosticMarks.Offsets(lines, d.Range)))];
         placed = diagnostics;
         return Show(marker);
@@ -141,6 +170,7 @@ internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
             return null;
         }
         int[] kept = [.. Enumerable.Range(0, found.Length).Where(i => !which(found[i]))];
+        late = kept.Count(i => i >= found.Length - late);
         foreach (AnchoredRange dropped in ranges.Except(kept.Select(i => ranges[i])).Concat(shown.Select(s => s.Range).Except(ranges)))
         {
             dropped.Remove();
@@ -151,7 +181,8 @@ internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
         return Show(marker);
     }
 
-    /// <summary>The markers the diagnostics draw as, on their ranges as they stand.</summary>
+    /// <summary>The markers the diagnostics draw as, on their ranges as they stand, put in order once here (the server's
+    /// sources and Passenger's own each give theirs apart) so a key carries them in order.</summary>
     private IReadOnlyList<Marker> Show(Func<Diagnostic, TextRange, Marker?> marker)
     {
         List<(AnchoredRange, Marker)> drawn = [];
@@ -162,40 +193,50 @@ internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
                 drawn.Add((ranges[i], made));
             }
         }
-        shown = [.. drawn];
-        return [.. shown.Select(s => s.Marker)];
+        shown = [.. drawn.OrderBy(d => d.Item2.Range.Start)];
+        Marker[] markers = new Marker[shown.Length];
+        for (int i = 0; i < markers.Length; i++)
+        {
+            markers[i] = shown[i].Marker;
+        }
+        return markers;
     }
 
     /// <summary>A range of the text, carried as a squiggle is: what is typed at its end goes inside it while it holds text.</summary>
     private AnchoredRange Anchored(TextRange range) => document.Text.RangeAt(range, AnchorGravity.Before, AnchorGravity.After, empty: AnchorGravity.Before);
 
-    /// <summary>Lets every range go, the text no longer carrying them.</summary>
+    /// <summary>Lets every range go, the text no longer carrying them, and the diagnostics they carried.</summary>
     private void Release()
     {
         foreach (AnchoredRange range in ranges.Concat(shown.Select(s => s.Range)))
         {
             range.Remove();
         }
+        found = [];
         ranges = [];
+        placed = [];
         shown = [];
+        late = 0;
     }
 
     /// <summary>Asks the server again after <paramref name="delay"/>, ending the ask under way: <paramref name="ask"/> pulls
     /// (<see cref="PulledAsync"/>) and shows what answers, a server that fails or a later ask leaving the markers as they
-    /// stand; when it <c>holdsChecks</c>, the file's checks are held until the ask ends.</summary>
-    public void Pull(TimeSpan delay, Func<CancellationToken, Task> ask)
+    /// stand; when it <c>holdsChecks</c>, the file's checks are held until the ask ends, as is <paramref name="held"/>.</summary>
+    public void Pull(TimeSpan delay, Func<CancellationToken, Task> ask, IDisposable? held = null)
     {
         pulling?.Cancel();
         CancellationTokenSource cancel = new();
         pulling = cancel;
+        pausing = delay > TimeSpan.Zero ? cancel : null;
         BackgroundWork.Begin();
-        IdeErrors.Observe(PullAsync(delay, ask, cancel.Token, holdsChecks ? document.Checking() : null));
+        IdeErrors.Observe(PullAsync(delay, ask, cancel, holdsChecks ? document.Checking() : null, held));
     }
 
-    /// <summary>The server's diagnostics of the file, when they answer the text as it stands and no later ask has begun.</summary>
-    public async Task<IReadOnlyList<Diagnostic>?> PulledAsync(LspDocument lsp, CancellationToken cancel)
+    /// <summary>The server's diagnostics of the file from the sources <paramref name="part"/> names, when they answer the
+    /// text as it stands and no later ask has begun.</summary>
+    public async Task<IReadOnlyList<Diagnostic>?> PulledAsync(LspDocument lsp, CancellationToken cancel, DiagnosticPull part = DiagnosticPull.All)
     {
-        (IReadOnlyList<Diagnostic> diagnostics, int version) = await lsp.DiagnosticsAsync(cancel);
+        (IReadOnlyList<Diagnostic> diagnostics, int version) = await lsp.DiagnosticsAsync(part, cancel);
         return !cancel.IsCancellationRequested && version == document.Text.Version ? diagnostics : null;
     }
 
@@ -206,15 +247,19 @@ internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
         Release();
     }
 
-    private static async Task PullAsync(TimeSpan delay, Func<CancellationToken, Task> ask, CancellationToken cancel, IDisposable? checking)
+    private async Task PullAsync(TimeSpan delay, Func<CancellationToken, Task> ask, CancellationTokenSource cancel, IDisposable? checking, IDisposable? held)
     {
         try
         {
             if (delay > TimeSpan.Zero)
             {
-                await Task.Delay(delay, cancel);
+                await Task.Delay(delay, cancel.Token);
+                if (pausing == cancel)
+                {
+                    pausing = null;
+                }
             }
-            await ask(cancel);
+            await ask(cancel.Token);
         }
         catch (OperationCanceledException)
         {
@@ -229,6 +274,7 @@ internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
             Dispatcher.UIThread.Post(() =>
             {
                 checking?.Dispose();
+                held?.Dispose();
                 BackgroundWork.End();
             });
         }

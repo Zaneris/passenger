@@ -1,23 +1,35 @@
+using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Avalonia.Controls;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Passenger.App.Editors;
 using Passenger.App.Run;
 using Passenger.App.Workspace;
 using Passenger.App.Aspire;
 using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Languages.CSharp;
 using Passenger.Roslyn.Extension;
 using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.App;
 
 /// <summary>Something a run configuration runs from a line of an open file: a Compose configuration's service on its line
-/// of a compose file the configuration reads, or a Dockerfile configuration's image on its Dockerfile's final FROM.</summary>
-public sealed record RunTarget(int Line, RunConfiguration Configuration, string? Service, AspireRunResource? Declaration = null);
+/// of a compose file the configuration reads, or a Dockerfile configuration's image on its Dockerfile's final FROM; or,
+/// <paramref name="Whole"/>, the configuration itself, as Run launches it (a program's from its entry point, a launch
+/// profile's from its profile, a Compose configuration's from its <c>services:</c>).</summary>
+public sealed record RunTarget(int Line, RunConfiguration Configuration, string? Service, AspireRunResource? Declaration = null, bool Whole = false);
 
-/// <summary>The gutter's run icons beside what the folder's run configurations run: each service of a compose file a Compose
-/// configuration reads, the final FROM of a Dockerfile a Dockerfile configuration builds, only in files a configuration
-/// uses, and each project resource an open AppHost file declares. A click opens the menu that runs or debugs it. A compose
-/// file's and a Dockerfile's are read from the text as typed, once typing pauses, and again as the configurations change; an
+/// <summary>The gutter's run icons beside what the folder's run configurations run: a program's entry point (its Main or
+/// top-level statements; a file-based program's first line), each profile of a launch profiles' file, each service of a
+/// compose file a Compose configuration reads and its <c>services:</c>, the final FROM of a Dockerfile a Dockerfile
+/// configuration builds, only in files a configuration uses, and each project resource an open AppHost file declares. A
+/// click opens the menu that runs or debugs it. A C# file's entry point is read from each parse of it, off the UI thread;
+/// the other files' are read from the text as typed, once typing pauses, and again as the configurations change; an
 /// AppHost's are asked of the language server for that AppHost alone, as one of its open files opens or its text pauses,
 /// and stand while they were read from the text the file has (by its hash), so no other file's key costs them anything.</summary>
 public partial class MainWindow
@@ -36,6 +48,9 @@ public partial class MainWindow
 
     /// <summary>The language server the AppHosts' resources were read from: one started again reads them again.</summary>
     private CSharp.CSharpService? aspireMarksFrom;
+
+    /// <summary>The line each open C# file declares its program's entry point on, as its last parse read it.</summary>
+    private readonly Dictionary<OpenDocument, int> entryLines = [];
 
     private void AddRunMarks()
     {
@@ -64,6 +79,14 @@ public partial class MainWindow
                 }
             };
             ShowRunMarks(document);
+            if (document.Syntax is { } syntax)
+            {
+                document.Parsed += (_, parsed) => IdeErrors.Observe(ReadEntryAsync(document, parsed));
+                if (syntax.Newest is { } now)
+                {
+                    IdeErrors.Observe(ReadEntryAsync(document, now));
+                }
+            }
             if (AspireAppHostOf(document) is { } opened)
             {
                 aspireMarksToRead.Add(opened);
@@ -74,11 +97,79 @@ public partial class MainWindow
                 runMarksLater.Restart();
             }
         };
-        Editors.Closed += (_, document) => aspireHashes.Remove(document);
+        Editors.Closed += (_, document) =>
+        {
+            aspireHashes.Remove(document);
+            entryLines.Remove(document);
+        };
     }
 
-    /// <summary>Whether a file is a compose file or a Dockerfile, where a container configuration's run icon may stand.</summary>
-    private static bool IsRunFile(string path) => Web.ComposeDeclarations.IsCompose(path) || Languages.Language.ForPath(path) == Languages.Language.Dockerfile;
+    /// <summary>Whether a file is a compose file, a Dockerfile or a launch profiles' file, where a run icon may stand.</summary>
+    private static bool IsRunFile(string path) =>
+        Web.ComposeDeclarations.IsCompose(path) || Languages.Language.ForPath(path) == Languages.Language.Dockerfile || IsProfilesFile(path);
+
+    /// <summary>Whether a file may hold launch profiles: a project's launchSettings.json, a file-based program's .run.json.</summary>
+    private static bool IsProfilesFile(string path) =>
+        Path.GetFileName(path).Equals(LaunchProfile.SettingsFile, StringComparison.OrdinalIgnoreCase) || path.EndsWith(".run.json", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>A C# file's entry point read from a parse of it off the UI thread, its icon shown again where its line moved;
+    /// passed over when the text has moved on since, a later parse landing for it.</summary>
+    private async Task ReadEntryAsync(OpenDocument document, ParsedText parsed)
+    {
+        int? line = await BackgroundWork.Run(() => EntryLine(parsed));
+        if (!ReferenceEquals(document.Text.Snapshot, parsed.Text) || !Editors.Documents.Contains(document))
+        {
+            return;
+        }
+        int? was = entryLines.TryGetValue(document, out int known) ? known : null;
+        if (line == was)
+        {
+            return;
+        }
+        if (line is int at)
+        {
+            entryLines[document] = at;
+        }
+        else
+        {
+            entryLines.Remove(document);
+        }
+        ShowRunMarks(document);
+    }
+
+    /// <summary>The line of a C# file's entry point: its first top-level statement, else a static Main's name; null for
+    /// neither.</summary>
+    private static int? EntryLine(ParsedText parsed)
+    {
+        if (parsed.Root is not CompilationUnitSyntax unit)
+        {
+            return null;
+        }
+        if (unit.Members.OfType<GlobalStatementSyntax>().FirstOrDefault() is { } first)
+        {
+            return parsed.Text.GetLineFromOffset(first.SpanStart);
+        }
+        return Main(unit.Members) is { } main ? parsed.Text.GetLineFromOffset(main.Identifier.SpanStart) : null;
+
+        static MethodDeclarationSyntax? Main(SyntaxList<MemberDeclarationSyntax> members)
+        {
+            foreach (MemberDeclarationSyntax member in members)
+            {
+                MethodDeclarationSyntax? found = member switch
+                {
+                    MethodDeclarationSyntax { Identifier.ValueText: "Main" } method when method.Modifiers.Any(SyntaxKind.StaticKeyword) => method,
+                    BaseNamespaceDeclarationSyntax space => Main(space.Members),
+                    TypeDeclarationSyntax type => Main(type.Members),
+                    _ => null,
+                };
+                if (found is not null)
+                {
+                    return found;
+                }
+            }
+            return null;
+        }
+    }
 
     /// <summary>The AppHost an open C# file is a source of, as a configuration names it; null for any other file, whose keys
     /// read no AppHost's resources.</summary>
@@ -102,7 +193,7 @@ public partial class MainWindow
             {
                 aspireMarksToRead.Add(appHost);
             }
-            marked |= appHost is not null || document.RunMarks.Count > 0 || IsRunFile(document.Path);
+            marked |= appHost is not null || document.RunMarks.Count > 0 || IsRunFile(document.Path) || document.Syntax is not null;
         }
         if (marked || aspireMarksToRead.Count > 0)
         {
@@ -201,13 +292,18 @@ public partial class MainWindow
     public IReadOnlyList<RunTarget> RunTargets(OpenDocument document)
     {
         string path = document.Path;
+        List<RunTarget>? entry = EntryTargets(document);
         string? appHost = AspireAppHostOf(document);
         if (appHost is null && !IsRunFile(path))
         {
-            return [];
+            return entry ?? (IReadOnlyList<RunTarget>)[];
         }
         TextSnapshot text = document.Text.Snapshot;
-        List<RunTarget> targets = [];
+        List<RunTarget> targets = entry ?? [];
+        if (IsProfilesFile(path))
+        {
+            targets.AddRange(ProfileTargets(path, text));
+        }
         foreach (RunConfiguration configuration in Configurations)
         {
             if (appHost is not null)
@@ -223,6 +319,10 @@ public partial class MainWindow
             }
             else if (configuration.Kind == RunKind.Compose && configuration.ComposeFiles.Any(f => Core.PathNames.Same(f, path)))
             {
+                if (ServicesLine(text) is int services)
+                {
+                    targets.Add(new RunTarget(services, configuration, null, Whole: true));
+                }
                 targets.AddRange(ServiceLines(text).Select(s => new RunTarget(s.Line, configuration, s.Service)));
             }
             else if (configuration.Kind == RunKind.Dockerfile && DockerfileOf(configuration) is { } dockerfile && Core.PathNames.Same(dockerfile, path)
@@ -232,6 +332,92 @@ public partial class MainWindow
             }
         }
         return targets;
+    }
+
+    /// <summary>The configurations of the program whose entry point an open file declares, on its line: a file-based
+    /// program's own file on its first, a project's (not an AppHost's, whose icons are its resources') where its last parse
+    /// found Main or the top-level statements; null for none.</summary>
+    private List<RunTarget>? EntryTargets(OpenDocument document)
+    {
+        if (document.Syntax is null || session.ProjectOf(document.Path) is not { IsRunnable: true, IsAspireHost: false } program)
+        {
+            return null;
+        }
+        int line;
+        if (program.IsProgram)
+        {
+            if (!Core.PathNames.Same(program.Path, document.Path))
+            {
+                return null;
+            }
+            line = 0;
+        }
+        else if (!entryLines.TryGetValue(document, out line))
+        {
+            return null;
+        }
+        List<RunTarget> targets = [.. Configurations.Where(c => Core.PathNames.Same(c.Project, program.Path)).Select(c => new RunTarget(line, c, null, Whole: true))];
+        return targets.Count > 0 ? targets : null;
+    }
+
+    /// <summary>Each launch profile of a profiles' file a runnable project reads, on its name's line, with the configurations
+    /// made from it.</summary>
+    private IEnumerable<RunTarget> ProfileTargets(string path, TextSnapshot text)
+    {
+        ProjectModel[] owners = [.. Projects.Where(p => p.Exists && p.IsRunnable && Core.PathNames.Same(LaunchProfile.SettingsPath(p), path))];
+        if (owners.Length == 0)
+        {
+            yield break;
+        }
+        foreach ((int line, string name) in ProfileLines(text))
+        {
+            foreach (ProjectModel owner in owners)
+            {
+                foreach (RunConfiguration configuration in Configurations.Where(c => Core.PathNames.Same(c.Project, owner.Path)
+                    && (c.LaunchProfile == name || c.Generated && c.Name == RunConfiguration.NameOf(owner, name))))
+                {
+                    yield return new RunTarget(line, configuration, null, Whole: true);
+                }
+            }
+        }
+    }
+
+    /// <summary>Each profile's name and its line, as the <c>profiles</c> object of a launch profiles' file names them, up to
+    /// where its text stops being JSON.</summary>
+    private static List<(int Line, string Name)> ProfileLines(TextSnapshot text)
+    {
+        List<(int, string)> found = [];
+        byte[] bytes = Encoding.UTF8.GetBytes(text.ToString());
+        Utf8JsonReader reader = new(bytes, new JsonReaderOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
+        bool inProfiles = false;
+        int counted = 0;
+        int characters = 0;
+        try
+        {
+            while (reader.Read())
+            {
+                if (reader.TokenType != JsonTokenType.PropertyName)
+                {
+                    continue;
+                }
+                if (reader.CurrentDepth == 1)
+                {
+                    inProfiles = reader.ValueTextEquals("profiles");
+                }
+                else if (reader.CurrentDepth == 2 && inProfiles)
+                {
+                    int at = (int)reader.TokenStartIndex;
+                    characters += Encoding.UTF8.GetCharCount(bytes, counted, at - counted);
+                    counted = at;
+                    found.Add((text.GetLineFromOffset(Math.Min(characters, text.Length)), reader.GetString()!));
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            // Half typed: the profiles before where it stops being JSON stand.
+        }
+        return found;
     }
 
     /// <summary>An open AppHost file's text hash, as the language server's reading of its resources names it.</summary>
@@ -284,6 +470,19 @@ public partial class MainWindow
         }
     }
 
+    /// <summary>A compose file's top-level <c>services:</c> line.</summary>
+    private static int? ServicesLine(TextSnapshot text)
+    {
+        for (int line = 0; line < text.LineCount; line++)
+        {
+            if (TopKey().Match(text.GetLineText(line)) is { Success: true } top && top.Groups["key"].Value == "services")
+            {
+                return line;
+            }
+        }
+        return null;
+    }
+
     /// <summary>A Dockerfile's final FROM, the image it makes.</summary>
     private static int? FinalFrom(TextSnapshot text)
     {
@@ -299,7 +498,8 @@ public partial class MainWindow
     }
 
     /// <summary>The run icon's menu: Run of each configuration that runs the line (one service of a Compose
-    /// configuration, or a Dockerfile's, or one project an AppHost declares), Debug and Profile of it; for a .NET service of a
+    /// configuration, a Dockerfile's, one project an AppHost declares, or the configuration whole as the program at hand),
+    /// Debug and Profile of it; for a .NET service of a
     /// run under way that reads the line (the container run's, an AppHost's that runs), the service actions on that run
     /// instead, as the Containers and Aspire windows' rows give them (greyed with why), which leave the run up.</summary>
     private void ShowRunMarkMenu(CodeEditor editor, OpenDocument document, int line)
@@ -313,6 +513,16 @@ public partial class MainWindow
         HashSet<string> joined = new(StringComparer.Ordinal);
         foreach (RunTarget target in here)
         {
+            if (target.Whole)
+            {
+                ActionContext launching = new(Editors.Active, Editors.CodeEditor, FocusManager?.GetFocusedElement(), null,
+                    session.Debug.IsDebugging ? session.Debug.Session?.State : null) { Configuration = target.Configuration };
+                foreach (string id in (ReadOnlySpan<string>)[AppActions.RunHere, AppActions.DebugHere, AppActions.ProfileHere])
+                {
+                    menu.Items.Add(FlyoutEntry(new MenuEntry(id), launching));
+                }
+                continue;
+            }
             string what = target.Service ?? target.Configuration.Name;
             if (target.Service is { } service && RunOf(document.Path, target) is { } running)
             {

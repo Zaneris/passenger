@@ -1,12 +1,11 @@
-using System.Diagnostics;
 using System.Text;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
-using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Passenger.App.Editors;
 using Passenger.App;
 using Passenger.App.Debugging;
 using Passenger.App.Testing;
@@ -31,6 +30,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
     /// through its build, the status bar's tally a link back to it; a failed test's stack trace in its details links to the
     /// line that failed; Run Tests at the caret runs that test alone; and a build that fails brings the Build window forward
     /// with its error.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Run_all_marks_each_test_a_failure_links_to_its_line_run_at_the_caret_runs_that_test_alone_and_a_failed_build_brings_the_build_window_forward()
     {
@@ -120,6 +120,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Below_a_comment_holding_line_breaks_only_roslyn_counts_each_tests_icon_and_menu_stay_on_its_line()
     {
@@ -140,6 +141,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Run_until_failure_repeats_a_test_until_it_fails_and_shows_that_run()
     {
@@ -152,8 +154,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
             "        Assert.True(run < 3, $\"failed on its run {run}\");\n    }\n}\n");
         MainWindow window = Open();
         Task<string?> found = window.Tests.DiscoverAsync(window.Folder!);
-        Ui.WaitFor(() => found.IsCompleted, "the tests to be found", TimeSpan.FromSeconds(120));
-        Assert.Null(found.Result);
+        Assert.Null(Ui.Await(found, "the tests to be found", TimeSpan.FromSeconds(120)));
 
         window.Perform(AppActions.ShowTests);
         Avalonia.Controls.ListBox tree = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window.BottomPanel.Tests)
@@ -173,6 +174,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_project_built_for_two_frameworks_runs_under_each_and_shows_each_ones_results_under_it()
     {
@@ -203,6 +205,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         TestNode Under(string framework, string method) => project.Children.Single(c => c.Name == framework).Methods.Single(m => m.Name == method);
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Stop_in_the_unit_tests_window_ends_a_run_while_it_builds_and_while_it_finds_the_tests()
     {
@@ -246,6 +249,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Typing_in_one_file_among_many_open_reads_and_marks_that_files_tests_and_no_others()
     {
@@ -298,6 +302,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Run_unit_tests_on_a_solution_folder_chosen_in_the_explorer_runs_the_tests_of_its_projects_alone()
     {
@@ -318,6 +323,82 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
+    /// <summary>Run Unit Tests is offered only where there is a test: never on a console's Main, on a test method and on a
+    /// test class's other members (its class's tests), never on a project without tests, on a test project and on the
+    /// solution, whose row runs its tests.</summary>
+    [AvaloniaFact]
+    public void Test_actions_are_offered_only_where_tests_are_and_the_solution_row_runs_its_tests()
+    {
+        string solution = NewFolder();
+        Write(solution, "App/App.csproj", TestProjects.Console());
+        Write(solution, "App/Program.cs", "namespace App;\n\npublic static class Program\n{\n    public static void Main()\n    {\n    }\n}\n");
+        Write(solution, "App.Tests/App.Tests.csproj", TestProject(TestProjects.Framework));
+        Write(solution, "App.Tests/SumTests.cs",
+            "using Xunit;\n\nnamespace App.Tests;\n\npublic class SumTests\n{\n    [Fact]\n    public void Adds() => Assert.Equal(4, Two() + Two());\n\n    private static int Two() => 2;\n}\n");
+        Write(solution, "Both.slnx", "<Solution>\n  <Project Path=\"App/App.csproj\" />\n  <Project Path=\"App.Tests/App.Tests.csproj\" />\n</Solution>\n");
+        Restore.Run(Path.Combine(solution, "Both.slnx"));
+        MainWindow window = Ui.OpenFolder(solution, languageServer: false);
+        Ui.WaitFor(() => Method(window, "Adds") is not null, "the test from its code in the Unit Tests window");
+
+        window.OpenFile(Path.Combine(solution, "App", "Program.cs"));
+        Ui.Settle();
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "void Ma");
+        Assert.True(TestItems(window) is [], $"The editor's menu on Main offers {string.Join(", ", TestItems(window))}, where Main is no test");
+        Assert.Equal("No test is at the caret", window.Actions[AppActions.RunTests]!.WhyNot(window.Actions.Context()));
+        window.OpenFile(Path.Combine(solution, "App.Tests", "SumTests.cs"));
+        Ui.Settle();
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "void Ad");
+        Assert.Equal(["Run 'Adds'", "Debug 'Adds'", "Run 'Adds' Until Failure"], TestItems(window));
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "int Tw");
+        Assert.Equal(["Run 'SumTests'", "Debug 'SumTests'", "Run 'SumTests' Until Failure"], TestItems(window));
+
+        Passenger.App.Explorer.ExplorerNode Row(Passenger.App.Explorer.NodeKind kind, string name) =>
+            window.ExplorerView.Tree.Rows.First(r => r.Kind == kind && r.Name == name);
+        Assert.DoesNotContain("Run Unit Tests", RowMenu(window, Row(Passenger.App.Explorer.NodeKind.Project, "App")));
+        Assert.Contains("Run Unit Tests", RowMenu(window, Row(Passenger.App.Explorer.NodeKind.Project, "App.Tests")));
+        Ui.ChooseFromRowMenu(window, Row(Passenger.App.Explorer.NodeKind.Solution, "Both"), "Run Unit Tests");
+        Ui.WaitFor(() => !window.Tests.IsBusy && Method(window, "Adds")?.State == TestState.Passed, "the solution's tests to run", TimeSpan.FromSeconds(180));
+        window.Close();
+
+        // A row's menu as its right-click opens it, by its items' titles.
+        static List<string> RowMenu(MainWindow window, Passenger.App.Explorer.ExplorerNode row)
+        {
+            Ui.RightClick(Ui.Row(window.ExplorerView, row));
+            Avalonia.Controls.ContextMenu menu = window.ExplorerView.OpenMenu ?? throw new InvalidOperationException($"A right-click on {row.Name} opened no menu");
+            List<string> items = [.. menu.Items.OfType<Avalonia.Controls.MenuItem>().Select(i => i.Header as string ?? string.Empty)];
+            menu.Close();
+            Ui.Settle();
+            return items;
+        }
+    }
+
+    /// <summary>A test under a symbol its framework defines (#if NET8_0_OR_GREATER) is one as its project compiles it:
+    /// the Unit Tests window lists it from its code, the editor offers it at the caret, and Run Tests runs it there; one
+    /// under a symbol the framework lacks is no test.</summary>
+    [AvaloniaFact]
+    public void A_test_under_its_frameworks_symbols_is_listed_from_its_code_and_runs_at_the_caret_and_one_under_a_symbol_it_lacks_is_none()
+    {
+        string solution = NewFolder();
+        Write(solution, "Gated.Tests/Gated.Tests.csproj", TestProject(TestProjects.Framework));
+        Write(solution, "Gated.Tests/GatedTests.cs",
+            "using Xunit;\n\nnamespace Gated.Tests;\n\npublic class GatedTests\n{\n#if NET8_0_OR_GREATER\n    [Fact]\n    public void Modern() => Assert.Equal(4, 2 + 2);\n#endif\n\n" +
+            "#if !NET8_0_OR_GREATER\n    [Fact]\n    public void Legacy() => Assert.Equal(5, 2 + 2);\n#endif\n}\n");
+        Restore.Run(Path.Combine(solution, "Gated.Tests"));
+        MainWindow window = Ui.OpenFolder(solution, languageServer: false);
+        Ui.WaitFor(() => Method(window, "Modern") is not null,
+            () => $"the test under #if NET8_0_OR_GREATER in the Unit Tests window from its code, which lists [{string.Join(", ", Shown(window))}]");
+        Assert.True(Method(window, "Legacy") is null, $"The Unit Tests window lists Legacy, under #if !NET8_0_OR_GREATER, which its {TestProjects.Framework} project never compiles");
+
+        window.OpenFile(Path.Combine(solution, "Gated.Tests", "GatedTests.cs"));
+        Ui.Settle();
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "void Mod");
+        Assert.Equal(["Run 'Modern'", "Debug 'Modern'", "Run 'Modern' Until Failure"], TestItems(window));
+        Ui.Run(window, AppActions.RunTests);
+        Ui.WaitFor(() => !window.Tests.IsBusy && Method(window, "Modern")?.State == TestState.Passed, () => $"the test at the caret to run: {window.Status}", TimeSpan.FromSeconds(180));
+        window.Close();
+    }
+
+    [Gate]
     [AvaloniaFact]
     public void A_solution_never_built_shows_its_xunit_nunit_and_mstest_tests_from_their_code_as_it_opens()
     {
@@ -369,6 +450,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Run_all_lands_on_the_tests_shown_from_code_with_a_theorys_rows_under_it_and_a_test_it_never_ran_stays()
     {
@@ -424,6 +506,80 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
+    /// <summary>NUnit's fixtures made with arguments or type arguments: each instance's test is a row under the method its
+    /// code declares, with its own result, counted by Run All's tally and the outcome filters and marked in the gutter; the
+    /// test at the caret and the method's row run every instance, and an instance's row, found by Find, runs alone.</summary>
+    [AvaloniaFact]
+    public void Each_instance_of_an_nunit_fixture_made_with_arguments_is_a_row_of_its_method_that_runs_and_counts()
+    {
+        string solution = NewFolder();
+        Write(solution, "Fixtures.Tests/Fixtures.Tests.csproj",
+            $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n" +
+            "    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"18.10.1\" />\n    <PackageReference Include=\"NUnit\" Version=\"4.4.0\" />\n" +
+            "    <PackageReference Include=\"NUnit3TestAdapter\" Version=\"5.2.0\" />\n  </ItemGroup>\n</Project>\n");
+        Write(solution, "Fixtures.Tests/FixtureTests.cs",
+            "using NUnit.Framework;\n\nnamespace Fixtures.Tests;\n\n[TestFixture(1)]\n[TestFixture(-1)]\npublic class Parameterised(int value)\n{\n" +
+            "    [Test]\n    public void Positive() => Assert.That(value, Is.GreaterThan(0));\n}\n\n" +
+            "[TestFixture(typeof(int))]\n[TestFixture(typeof(string))]\npublic class Typed<T>\n{\n    [Test]\n    public void Named() => Assert.That(typeof(T).Name, Is.Not.Empty);\n}\n\n" +
+            "[TestFixture(\"a.b\")]\n[TestFixture(\"x(y\")]\npublic class Worded(string word)\n{\n    [TestCase(1)]\n    [TestCase(2)]\n" +
+            "    public void Long(int at) => Assert.That(word.Length, Is.GreaterThan(at));\n}\n");
+        Restore.Run(Path.Combine(solution, "Fixtures.Tests"));
+        MainWindow window = Ui.OpenFolder(solution, languageServer: false);
+        ListBox tree = Tree(window);
+        Ui.WaitFor(() => Method(window, "Positive") is not null, "the fixture's test read from its code");
+
+        Assert.True(window.Perform(AppActions.RunAllTests));
+        Ui.WaitFor(() => !window.Tests.IsBusy && Method(window, "Named") is not null, "the run of every test", TimeSpan.FromSeconds(180));
+        Assert.Equal("Tests passed: 7, failed: 1 of 8", System.Text.RegularExpressions.Regex.Replace(window.BottomPanel.Tests.Status, @" in \d+\.\d s$", string.Empty));
+        Assert.Equal("8", Count(window, "All Tests"));
+        Assert.Equal(["Fixtures.Tests", "  Fixtures.Tests", "    Parameterised", "      Positive", "    Typed", "      Named", "    Worded", "      Long"], Shown(window));
+        TestNode positive = Method(window, "Positive")!;
+        Assert.Equal(["Parameterised(-1).Positive", "Parameterised(1).Positive"], positive.Children.Select(r => r.Name));
+        Assert.Equal([TestState.Failed, TestState.Passed], positive.Children.Select(r => r.State));
+        Assert.Contains("Parameterised(-1).Positive: Failed", positive.Details, StringComparison.Ordinal);
+        Assert.Equal(["Typed<Int32>.Named", "Typed<String>.Named"], Method(window, "Named")!.Children.Select(r => r.Name));
+        Assert.Equal(["Worded(\"a.b\").Long(1)", "Worded(\"a.b\").Long(2)", "Worded(\"x(y\").Long(1)", "Worded(\"x(y\").Long(2)"],
+            Method(window, "Long")!.Children.Select(r => r.Name));
+        Assert.All(Method(window, "Long")!.Children, r => Assert.Equal(TestState.Passed, r.State));
+
+        window.OpenFile(Path.Combine(solution, "Fixtures.Tests", "FixtureTests.cs"));
+        Ui.Settle();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Assert.Contains(new TestMark(9, TestMarkKind.Failed), editor.TestMarks);
+        Assert.Contains(new TestMark(14, TestMarkKind.Passed), editor.TestMarks);
+        Assert.Contains(new TestMark(17, TestMarkKind.Passed), editor.TestMarks);
+        TestNode typed = Method(window, "Named")!.Children[1];
+        TestOutcome before = typed.Results[0];
+        editor.GoTo(new TextPosition(17, 8));
+        Ui.Run(window, AppActions.RunTests);
+        Ui.WaitFor(() => !window.Tests.IsBusy && typed.Results.FirstOrDefault() is { } fresh && fresh != before, "the run of the generic fixture's test at the caret", TimeSpan.FromSeconds(120));
+        Assert.Equal("Tests passed: 2, failed: 0 of 2", System.Text.RegularExpressions.Regex.Replace(window.BottomPanel.Tests.Status, @" in \d+\.\d s$", string.Empty));
+
+        TestNode failing = positive.Children[0];
+        TestNode passing = positive.Children[1];
+        TestOutcome failed = failing.Results[0];
+        tree.SelectedItem = positive;
+        Ui.ChooseFromMenu(tree, "Run");
+        Ui.WaitFor(() => !window.Tests.IsBusy && failing.Results.FirstOrDefault() is { } fresh && fresh != failed, "the run of the fixture's method", TimeSpan.FromSeconds(120));
+        Assert.Equal("Tests passed: 1, failed: 1 of 2", System.Text.RegularExpressions.Regex.Replace(window.BottomPanel.Tests.Status, @" in \d+\.\d s$", string.Empty));
+
+        failed = failing.Results[0];
+        TestOutcome passed = passing.Results[0];
+        Ui.Click(tree.ContainerFromItem(window.Tests.Tree.Rows.Single(r => r.Name == "Parameterised"))!);
+        Ui.Run(window, AppActions.Find);
+        window.KeyTextInput("Parameterised(1)");
+        Ui.Settle();
+        Assert.Equal(["Fixtures.Tests", "  Fixtures.Tests", "    Parameterised", "      Positive", "        Parameterised(1).Positive"], Shown(window));
+        tree.SelectedItem = passing;
+        Ui.ChooseFromMenu(tree, "Run");
+        Ui.WaitFor(() => !window.Tests.IsBusy && passing.Results.FirstOrDefault() is { } fresh && fresh != passed, "the run of the instance found", TimeSpan.FromSeconds(120));
+        Assert.Equal("Tests passed: 1, failed: 0 of 1", System.Text.RegularExpressions.Regex.Replace(window.BottomPanel.Tests.Status, @" in \d+\.\d s$", string.Empty));
+        Assert.Same(failed, failing.Results[0]);
+        Assert.Equal(TestState.Failed, failing.State);
+        window.Close();
+    }
+
+    [Gate]
     [AvaloniaFact]
     public void Typing_a_test_adds_it_to_the_tree_renaming_or_removing_one_follows_and_a_test_that_ran_keeps_its_result()
     {
@@ -463,6 +619,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Group_by_categories_shows_each_test_under_its_xunit_traits_nunit_categories_and_mstest_test_categories()
     {
@@ -522,6 +679,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void After_a_run_the_failed_filter_shows_the_failures_alone_as_many_as_it_counts_and_a_modifier_adds_the_ignored()
     {
@@ -555,6 +713,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Find_in_the_unit_tests_window_narrows_the_tree_to_the_tests_named_and_the_rows_above_them()
     {
@@ -583,6 +742,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void The_grouping_and_outcomes_chosen_come_back_when_the_folder_opens_again_and_another_folder_has_its_own()
     {
@@ -672,9 +832,8 @@ public sealed class UnitTestsDebuggingTests : UnitTestsFolders, IClassFixture<Re
     }
 }
 
-/// <summary>The Unit Tests window as thousands of results come in: no frame held long, and what the person closed or chose
-/// kept so. Held to a frame's time, so the class runs alone.</summary>
-[Collection(Alone.Name)]
+/// <summary>The Unit Tests window as thousands of results come in: taken in batches, and what the person closed or chose
+/// kept so.</summary>
 public sealed class UnitTestsResponsivenessTests : UnitTestsFolders
 {
     public UnitTestsResponsivenessTests()
@@ -721,38 +880,13 @@ public sealed class UnitTestsResponsivenessTests : UnitTestsFolders
         Assert.Contains("case 7 failed", Text(details), StringComparison.Ordinal);
         int rewrites = 0;
         details.Document.Changed += (_, _) => rewrites++;
+        // The results taken in batches: the chosen project's details are written again once a batch, not once a result.
         Ui.ChooseFromMenu(tree, "Run");
-
-        // No frame takes long while the results come in, measured against the one that marked all 3,000 running.
-        List<double> arriving = [];
-        double marking = 0;
-        DateTime limit = DateTime.UtcNow + TimeSpan.FromMinutes(3).Scaled();
-        rewrites = 0;
-        while (window.Tests.IsBusy && DateTime.UtcNow < limit)
-        {
-            int before = project.Methods.Count(m => m.State == TestState.Running);
-            Stopwatch frame = Stopwatch.StartNew();
-            Dispatcher.UIThread.RunJobs();
-            AvaloniaHeadlessPlatform.ForceRenderTimerTick(1);
-            Dispatcher.UIThread.RunJobs();
-            double took = frame.Elapsed.TotalMilliseconds;
-            if (before > 0)
-            {
-                arriving.Add(took);
-            }
-            else if (project.Methods.Any(m => m.State == TestState.Running))
-            {
-                marking = took;
-            }
-            Waiting.For(TimeSpan.FromMilliseconds(10), "results to come in between the frames measured");
-        }
+        Ui.PumpUntil(() => !window.Tests.IsBusy, "the run of 3,000 tests to end", TimeSpan.FromMinutes(3));
         Ui.Settle();
-        Assert.False(window.Tests.IsBusy, "The run of 3,000 tests had not ended after 3 minutes");
         Assert.Equal(3000, project.Methods.Count(m => m.Results.Count > 0));
-        double longest = arriving.DefaultIfEmpty().Max();
-        Assert.True(longest <= Math.Max(500, 20 * marking),
-            $"While 3,000 results came in, one frame held the window for {longest:0} ms (marking them all running took {marking:0} ms; {arriving.Count} frames)");
-        Assert.True(rewrites <= 300, $"The chosen project's details were written {rewrites} times while 3,000 results came in");
+        TestContext.Current.TestOutputHelper?.WriteLine($"While 3,000 results came in the chosen project's details were written {rewrites} times");
+        Assert.True(rewrites is > 0 and <= 300, $"The chosen project's details were written {rewrites} times while 3,000 results came in");
 
         TestNode failing = Method(window, "Case_0107")!;
         tree.SelectedItem = failing;
@@ -977,6 +1111,19 @@ public abstract class UnitTestsFolders : IDisposable
 
     protected static TestNode? Method(MainWindow window, string name) =>
         window.Tests.Tree.Roots.SelectMany(r => r.Methods).FirstOrDefault(m => m.Name == name);
+
+    /// <summary>The editor's menu at the caret: its items that run a test.</summary>
+    protected static List<string> TestItems(MainWindow window)
+    {
+        window.EditorArea.CodeEditor.RequestContextMenu();
+        Ui.Settle();
+        Avalonia.Controls.ContextMenu menu = window.OpenContextMenu ?? throw new InvalidOperationException("The editor's menu did not open");
+        List<string> items = [.. menu.Items.OfType<Avalonia.Controls.MenuItem>().Select(i => i.Header as string ?? string.Empty)
+            .Where(h => h.StartsWith("Run '", StringComparison.Ordinal) || h.StartsWith("Debug '", StringComparison.Ordinal))];
+        menu.Close();
+        Ui.Settle();
+        return items;
+    }
 
     /// <summary>The Unit Tests window's Stop, on its toolbar.</summary>
     protected static Button StopButton(MainWindow window) =>

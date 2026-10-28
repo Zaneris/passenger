@@ -85,7 +85,8 @@ public sealed partial class DiskImageUpdater : Updater
         }
         string folder = Path.Combine(Staging, release.Version);
         string app = Path.Combine(folder, Staged);
-        await Task.Run(() => Clean(keep: release.Version), cancel).ConfigureAwait(false);
+        // Not held: removing old copies is the disk's work, which nothing drawn waits for.
+        await BackgroundWork.Unheld(() => CleanAsync(keep: release.Version), cancel).ConfigureAwait(false);
         string identifier = await PlistAsync(Bundle, "CFBundleIdentifier", cancel).ConfigureAwait(false)
             ?? throw new UpdateFailedException($"{Bundle} names no bundle identifier");
         string? team = await TeamAsync(Bundle, cancel).ConfigureAwait(false);
@@ -99,7 +100,8 @@ public sealed partial class DiskImageUpdater : Updater
             }
             catch (UpdateRefusedException)
             {
-                await Task.Run(() => Clean(keep: null), cancel).ConfigureAwait(false);
+                // Not held: removing old copies is the disk's work, which nothing drawn waits for.
+                await BackgroundWork.Unheld(() => CleanAsync(keep: null), cancel).ConfigureAwait(false);
             }
         }
         Directory.CreateDirectory(folder);
@@ -119,6 +121,18 @@ public sealed partial class DiskImageUpdater : Updater
 
     public override void Install(bool restart)
     {
+        try
+        {
+            InstallReady(restart);
+        }
+        finally
+        {
+            LetRelaysGo();
+        }
+    }
+
+    private void InstallReady(bool restart)
+    {
         if (Ready is not { } version)
         {
             return;
@@ -129,12 +143,16 @@ public sealed partial class DiskImageUpdater : Updater
             IdeErrors.Write($"Updates: Passenger {version} was not installed: {app} is gone");
             return;
         }
-        if (OthersRunning())
+        IReadOnlyList<OtherCopy> others = Others();
+        if (others.Any(other => !other.Relay))
         {
-            IdeErrors.Write($"Updates: Passenger {version} waits to install: another Passenger runs from {Bundle}");
+            IdeErrors.Write($"Updates: Passenger {version} waits to install: another Passenger runs from {Bundle}: {Listed(others.Where(other => !other.Relay))}");
             return;
         }
+        FollowRelays(others, version);
         (string? why, string? old) = Replace(app, version);
+        // The app is in place, or the old one still is: either way the relays start again from it.
+        LetRelaysGo();
         if (why is not null)
         {
             IdeErrors.Write($"Updates: Passenger {version} was not installed: {app} could not take the place of {Bundle}: {why}");
@@ -148,7 +166,8 @@ public sealed partial class DiskImageUpdater : Updater
         Restart(restart);
         Remove(old);
         Ready = null;
-        Clean(keep: null);
+        // As the process ends, after its last window: nothing is left to await it.
+        Synchronously.Run(() => CleanAsync(keep: null));
         IdeErrors.Flush();
     }
 
@@ -208,27 +227,28 @@ public sealed partial class DiskImageUpdater : Updater
         }
     }
 
-    public override void Discard()
+    public override async Task DiscardAsync()
     {
         Ready = null;
-        Clean(keep: null);
+        await CleanAsync(keep: null).ConfigureAwait(false);
     }
 
-    public override bool OthersRunning()
+    protected override IReadOnlyList<int> RunningHere()
     {
         // As the system names a process's executable, links resolved.
         string executable = PathNames.Canonical(Path.Combine(Bundle, "Contents", "MacOS", "Passenger"));
+        List<int> here = [];
         foreach (Process running in Process.GetProcessesByName("Passenger"))
         {
             using (running)
             {
                 if (running.Id != Environment.ProcessId && ExecutableOf(running.Id) is { } path && PathNames.Same(path, executable))
                 {
-                    return true;
+                    here.Add(running.Id);
                 }
             }
         }
-        return false;
+        return here;
     }
 
     /// <summary>The app at the image's top, copied out of it mounted read-only (hdiutil checks the image's own checksums
@@ -257,7 +277,7 @@ public sealed partial class DiskImageUpdater : Updater
         }
         finally
         {
-            Detach(mount);
+            await DetachAsync(mount).ConfigureAwait(false);
         }
     }
 
@@ -302,7 +322,7 @@ public sealed partial class DiskImageUpdater : Updater
             ?.Groups[1].Value.ToLowerInvariant();
 
     /// <summary>Every download made ready but <paramref name="keep"/>'s, an image still mounted let go of first.</summary>
-    private void Clean(string? keep)
+    private async Task CleanAsync(string? keep)
     {
         if (!Directory.Exists(Staging))
         {
@@ -316,17 +336,17 @@ public sealed partial class DiskImageUpdater : Updater
             }
             if (Directory.Exists(Path.Combine(folder, "mount")))
             {
-                Detach(Path.Combine(folder, "mount"));
+                await DetachAsync(Path.Combine(folder, "mount")).ConfigureAwait(false);
             }
             Remove(folder);
         }
     }
 
-    private static void Detach(string mount)
+    private static async Task DetachAsync(string mount)
     {
-        if (!Run("hdiutil", ["detach", mount, "-quiet"]).Succeeded)
+        if (!(await ToolAsync("hdiutil", ["detach", mount, "-quiet"]).ConfigureAwait(false)).Succeeded)
         {
-            Run("hdiutil", ["detach", mount, "-force", "-quiet"]);
+            await ToolAsync("hdiutil", ["detach", mount, "-force", "-quiet"]).ConfigureAwait(false);
         }
         try
         {
@@ -361,7 +381,8 @@ public sealed partial class DiskImageUpdater : Updater
         }
         try
         {
-            Task.Run(() => start(Bundle)).GetAwaiter().GetResult();
+            // As the process ends, after its last window: nothing is left to await it.
+            Synchronously.Run(() => start(Bundle));
         }
         catch (Exception error) when (error is IOException or System.ComponentModel.Win32Exception or TimeoutException or InvalidOperationException)
         {
@@ -392,13 +413,15 @@ public sealed partial class DiskImageUpdater : Updater
     private static Task<ChildResult> RunAsync(string tool, IEnumerable<string> arguments, CancellationToken cancel) =>
         ChildProcesses.RunAsync(ChildProcesses.Command(Path.Combine("/usr/bin", tool), arguments), limit: ToolLimit, cancel: cancel);
 
-    /// <summary>A tool waited for where nothing awaits (the process ending, a clean-up), off the caller's context, whose
-    /// thread may never run its continuations again.</summary>
-    private static ChildResult Run(string tool, IEnumerable<string> arguments)
+    /// <summary>A tool waited for where nothing awaits: the install, as the process ends.</summary>
+    private static ChildResult Run(string tool, IEnumerable<string> arguments) => Synchronously.Run(() => ToolAsync(tool, arguments));
+
+    /// <summary>A tool run where nothing can be given up: one that could not start or finish is an exit code of -1 saying why.</summary>
+    private static async Task<ChildResult> ToolAsync(string tool, IEnumerable<string> arguments)
     {
         try
         {
-            return Task.Run(() => RunAsync(tool, arguments, CancellationToken.None)).GetAwaiter().GetResult();
+            return await RunAsync(tool, arguments, CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception error) when (error is TimeoutException or System.ComponentModel.Win32Exception)
         {

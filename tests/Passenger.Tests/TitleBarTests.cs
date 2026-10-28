@@ -44,7 +44,7 @@ public sealed class TitleBarTests : IDisposable
             Assert.True(ChromeAt(window, Ui.Centre(button, window)) == WindowDecorationsElementRole.User,
                 $"Windows would take a press on the toolbar's {button.Name ?? ToolTip.GetTip(button)} as one on its caption, moving the window instead of clicking it");
         }
-        Button settings = Bar(window).GetVisualDescendants().OfType<Button>().Single(b => ToolTip.GetTip(b) as string == "Settings");
+        Button settings = Bar(window).GetVisualDescendants().OfType<Button>().Single(b => b.Name == "SettingsButton");
         Click(window, Ui.Centre(settings, window));
         Assert.IsType<SettingsDialog>(window.Frontmost);
         Assert.True(window.MovesStarted == 1, "A click on the toolbar's Settings moved the window");
@@ -177,7 +177,7 @@ public sealed class TitleBarTests : IDisposable
         Click(window, EmptySpace(window));
         Assert.True(window.MovesStarted == 1, "The merged title bar's empty space did not move the window");
         RightClick(window, EmptySpace(window));
-        Button settings = Bar(window).GetVisualDescendants().OfType<Button>().Single(b => ToolTip.GetTip(b) as string == "Settings");
+        Button settings = Bar(window).GetVisualDescendants().OfType<Button>().Single(b => b.Name == "SettingsButton");
         RightClick(window, Ui.Centre(settings, window));
         Assert.True(window.WindowMenusAsked == 1, $"Right presses on the merged bar asked for the window manager's menu {window.WindowMenusAsked} times, not once (on its empty space)");
         Assert.True(window.MovesStarted == 1, "A right press on the merged bar moved the window");

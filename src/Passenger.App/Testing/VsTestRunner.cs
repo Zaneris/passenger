@@ -82,7 +82,7 @@ public sealed class VsTestRunner : ITestRunner
         if (cancellation.IsCancellationRequested)
         {
             // Stopped while it started: it ends now, rather than run idle until the IDE does.
-            IdeErrors.Observe(Task.Run(runner.Dispose));
+            IdeErrors.Observe(BackgroundWork.Unheld(runner.Dispose));
             cancellation.ThrowIfCancellationRequested();
         }
         return runner;
@@ -97,7 +97,8 @@ public sealed class VsTestRunner : ITestRunner
         Discovery handler = new(log);
         // The blocking call returns once VSTest has told the handler discovery is complete, stopped or not.
         Task discovering = BackgroundWork.Run(() => console.DiscoverTests([.. assemblies.Select(a => a.Path)], RunSettings, new TestPlatformOptions(), handler));
-        using (cancel.Register(() => IdeErrors.Observe(Task.Run(console.CancelDiscovery))))
+        // Not held, off the canceller's thread: the stop is said by discovery's own end.
+        using (cancel.Register(() => IdeErrors.Observe(BackgroundWork.Unheld(console.CancelDiscovery))))
         {
             try
             {
@@ -136,16 +137,17 @@ public sealed class VsTestRunner : ITestRunner
         List<TestCase> chosen = [];
         foreach (TestItem test in tests)
         {
-            if (cases.Of(test.Key) is { } found && running.TryAdd((found.Id, found.Source), test))
+            if (cases.Of(test) is { } found && running.TryAdd((found.Id, found.Source), test))
             {
                 chosen.Add(found);
             }
         }
         Run handler = new(running, outcomes, log);
-        using (cancel.Register(() => IdeErrors.Observe(Task.Run(console.CancelTestRun))))
+        // Not held, off the canceller's thread: the stop is said by the run's own end.
+        using (cancel.Register(() => IdeErrors.Observe(BackgroundWork.Unheld(console.CancelTestRun))))
         {
             // Not held: a debugged run waits here while stopped at a breakpoint.
-            await Told(Task.Run(() =>
+            await Told(BackgroundWork.Unheld(() =>
             {
                 if (debugger is null)
                 {
@@ -330,13 +332,13 @@ public sealed class VsTestRunner : ITestRunner
 
         public int LaunchTestHost(TestProcessStartInfo defaultTestHostStartInfo) => LaunchTestHost(defaultTestHostStartInfo, CancellationToken.None);
 
+        // VSTest's interface answers with the process id, on VSTest's own thread.
         public int LaunchTestHost(TestProcessStartInfo defaultTestHostStartInfo, CancellationToken cancellationToken) =>
-            debugger.LaunchAsync(new TestHostStart(
+            Synchronously.Run(() => debugger.LaunchAsync(new TestHostStart(
                 defaultTestHostStartInfo.FileName ?? throw new InvalidOperationException("VSTest gave no test host"),
                 Passenger.App.Run.CommandLine.Split(defaultTestHostStartInfo.Arguments),
                 defaultTestHostStartInfo.WorkingDirectory,
-                EnvironmentOf(defaultTestHostStartInfo)))
-            .GetAwaiter().GetResult();
+                EnvironmentOf(defaultTestHostStartInfo))));
 
         private Dictionary<string, string> EnvironmentOf(TestProcessStartInfo start)
         {
@@ -351,8 +353,8 @@ public sealed class VsTestRunner : ITestRunner
 
         public bool AttachDebuggerToProcess(int pid) => AttachDebuggerToProcess(pid, CancellationToken.None);
 
-        // VSTest starts a .NET test host itself and waits on this before it runs a test in it.
-        public bool AttachDebuggerToProcess(int pid, CancellationToken cancellationToken) => debugger.AttachAsync(pid).GetAwaiter().GetResult();
+        // VSTest starts a .NET test host itself and waits on this, on its own thread, before it runs a test in it.
+        public bool AttachDebuggerToProcess(int pid, CancellationToken cancellationToken) => Synchronously.Run(() => debugger.AttachAsync(pid));
 
         public bool AttachDebuggerToProcess(AttachDebuggerInfo attachDebuggerInfo, CancellationToken cancellationToken) =>
             AttachDebuggerToProcess(attachDebuggerInfo.ProcessId, cancellationToken);

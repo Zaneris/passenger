@@ -33,11 +33,11 @@ out; dbgshim's musl Linux natives are the container tools' (below), which the ap
 | `SkiaSharp`, `SkiaSharp.NativeAssets.macOS`, `SkiaSharp.NativeAssets.Win32`, `SkiaSharp.NativeAssets.Linux` | drawing, with Skia (BSD-3-Clause) | MIT | © Microsoft Corporation. All rights reserved. |
 | `HarfBuzzSharp`, `HarfBuzzSharp.NativeAssets.macOS`, `HarfBuzzSharp.NativeAssets.Win32`, `HarfBuzzSharp.NativeAssets.Linux` | text shaping, with HarfBuzz (Old MIT) | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.CodeAnalysis.CSharp`, `Microsoft.CodeAnalysis.Common` | Roslyn: colour before the server answers, and the debugger's expressions | MIT | © Microsoft Corporation. All rights reserved. |
-| `TextMateSharp` | TextMate grammars read a line at a time: colour for the files beside the C# (the grammars it reads are listed below) | MIT | no copyright line; its authors: Daniel Peñalba |
-| `Onigwrap` | TextMateSharp's regular expressions: Oniguruma (BSD-2-Clause, Copyright (c) 2002-2021 K.Kosako, in the package's THIRD-PARTY-NOTICES.TXT, which the app's notices carry) in a native library per system (`libonigwrap`) | MIT | Copyright (c) 2024 Aikawa Yataro |
+| `Tint` | TextMate grammar tokenization and colour mapping | MIT | Copyright (c) 2026 Sébastien Ros |
+| `GregsEx` | Tint's managed Oniguruma-compatible regular expressions | MIT | Copyright (c) 2026 Sébastien Ros |
 | `roslyn-language-server.osx-arm64`, `roslyn-language-server.osx-x64`, `roslyn-language-server.win-x64`, `roslyn-language-server.win-arm64`, `roslyn-language-server.linux-x64`, `roslyn-language-server.linux-arm64` | Roslyn's language server, one per system, copied under `roslyn/` with the package's own `ThirdPartyNotices.rtf`, less four assemblies under Visual Studio's terms; what it carries is listed below | MIT | © Microsoft Corporation. All rights reserved. |
 | `StreamJsonRpc` | JSON-RPC with the language server, the debug adapter and Microsoft.Testing.Platform's test hosts | MIT | © Microsoft Corporation. All rights reserved. |
-| `Microsoft.VisualStudio.Threading.Only` | StreamJsonRpc's, whose NonConcurrentSynchronizationContext keeps the language server's and the test hosts' messages in order | MIT | © Microsoft Corporation. All rights reserved. |
+| `Microsoft.VisualStudio.Threading.Only` | StreamJsonRpc's, whose NonConcurrentSynchronizationContext keeps the language server's and the test hosts' messages in order, and whose JoinableTaskFactory runs async work to its end where a caller must stay synchronous | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.VisualStudio.Validation` | StreamJsonRpc's | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.NET.StringTools` | StreamJsonRpc's | MIT | © Microsoft Corporation. All rights reserved. |
 | `Nerdbank.Streams`, `Nerdbank.MessagePack` | StreamJsonRpc's | MIT | © Andrew Arnott. All rights reserved. |
@@ -216,9 +216,11 @@ Packages the build or the tests use that no app carries.
 | `Polly.RateLimiting` | starters' resilience dependency, restored for the tests' local feed | BSD-3-Clause | Copyright (c) 2024, App vNext |
 | `Polly.Core` | starters' resilience dependency, restored for the tests' local feed | BSD-3-Clause | Copyright (c) 2015-2026, App vNext |
 | `Microsoft.EntityFrameworkCore`, `Microsoft.EntityFrameworkCore.Abstractions`, `Microsoft.EntityFrameworkCore.Analyzers`, `Microsoft.EntityFrameworkCore.Relational`, `Microsoft.EntityFrameworkCore.Sqlite`, `Microsoft.EntityFrameworkCore.Sqlite.Core`, `Microsoft.EntityFrameworkCore.Design`, `Microsoft.Data.Sqlite.Core`, `Microsoft.Extensions.Caching.Memory`, `Microsoft.Extensions.DependencyModel`, `Microsoft.CodeAnalysis.CSharp.Workspaces`, `Microsoft.CodeAnalysis.Workspaces.Common`, `Microsoft.CodeAnalysis.Workspaces.MSBuild`, `System.Composition` | EF Core with SQLite and the Design package dotnet ef loads, and what they depend on: the graph of the projects the Migrations window's tests write, restored for the tests' local feed (tests/EfGraphs); Passenger never carries them | MIT | © Microsoft Corporation. All rights reserved. |
-| `dotnet-ef` | EF Core's command-line tool at the tests' EF Core version and the one before, downloaded for the tests' local feed, from which the Migrations window's tests install it as a local tool; Passenger never carries it, and installs it only when asked | MIT | © Microsoft Corporation. All rights reserved. |
+| `dotnet-ef` | EF Core's command-line tool at the tests' EF Core version, the one before and EF Core 11's, downloaded for the tests' local feed, from which the Migrations window's tests install it as a local tool; Passenger never carries it, and installs it only when asked | MIT | © Microsoft Corporation. All rights reserved. |
 | `Mono.TextTemplating` | the EF Core Design package's template engine, restored for the tests' local feed | MIT | no copyright line; its author: Mikayla Hutchinson |
 | `SQLitePCLRaw.bundle_e_sqlite3`, `SQLitePCLRaw.lib.e_sqlite3`, `SQLitePCLRaw.provider.e_sqlite3` | SQLite for EF Core's SQLite provider, restored for the tests' local feed | Apache-2.0 | Copyright 2014-2024 SourceGear, LLC |
+| `SQLitePCLRaw.config.e_sqlite3` | SQLite's configuration for EF Core 11's SQLite provider, restored for the tests' local feed (tests/EfGraphs) | Apache-2.0 | Copyright 2014-2026 SourceGear, LLC |
+| `SQLite` | SQLite's native builds under EF Core 11's SQLite provider, restored for the tests' local feed (tests/EfGraphs) | public domain (the package's LICENSE.txt: "SQLite is Public Domain", https://sqlite.org/copyright.html) | Copyright 2014-2026 SourceGear, LLC (the package's builds) |
 | `Npgsql.EntityFrameworkCore.PostgreSQL`, `Npgsql` | EF Core's PostgreSQL provider and the driver under it: the graph of the web app the Migrations window's compose run test writes, restored for the tests' local feed (tests/EfGraphs); Passenger never carries them | PostgreSQL | Copyright 2025 © The Npgsql Development Team |
 | `Polly.Extensions` | starters' resilience dependency, restored for the tests' local feed | BSD-3-Clause | Copyright (c) 2024, App vNext |
 | `System.Drawing.Common` | Aspire hosting's dependency, restored for the tests' local feed | MIT | © Microsoft Corporation. All rights reserved. |
@@ -703,6 +705,8 @@ Microsoft Corporation), unchanged, from the project its header names:
 - `docker.tmLanguage.json` (VS Code 1.142.0, `extensions/docker`): from moby/moby's
   `contrib/syntax/textmate/Docker.tmbundle` (https://github.com/moby/moby), under the Apache License 2.0 below, with
   Docker's NOTICE.
+- `ini.tmLanguage.json` (VS Code 1.142.0, `extensions/ini`): converted from textmate/ini.tmbundle
+  (https://github.com/textmate/ini.tmbundle), under the TextMate bundle licence below; it colours .editorconfig files.
 
 And two that colour Razor's .razor and .cshtml files before the language server answers, files of Razor's tooling in
 dotnet/roslyn (https://github.com/dotnet/roslyn, where Razor's tooling moved from dotnet/razor; MIT, Copyright (c) .NET
@@ -713,9 +717,12 @@ Foundation and Contributors) at the commit Roslyn's server is built from (dc1db3
 - `csharp.tmLanguage.json`: converted from dotnet/csharp-tmLanguage (https://github.com/dotnet/csharp-tmLanguage), MIT,
   Copyright (c) 2016 .NET Foundation, as its header says; it colours a Markdown file's C# code blocks too.
 
+And one that colours .http and .rest files: `http.tmLanguage.json`, REST Client's grammar, the file
+`syntaxes/http.tmLanguage.json` of Huachao/vscode-restclient (https://github.com/Huachao/vscode-restclient, MIT,
+Copyright (c) 2016 - present Huachao Mao) at commit 0773d56b, unchanged.
+
 Reading them, Passenger leaves out what VS Code's reader passes over (a capture that is not a rule) and lets a rule
-that begins with no end never end, as VS Code does, writes a class of every character past one (`[^\x{00}-\x{7F}]`,
-which its regular expressions misread inside another class, as Less's are) as the range it is, and takes YAML's typed
+that begins with no end never end, as VS Code does, and takes YAML's typed
 scalars (booleans, numbers, null) out of a block mapping's keys, so a key such as a workflow's `on` is read as a key.
 
 ```
@@ -732,6 +739,7 @@ Copyright (c) 2017 John Kreitlow
 Copyright (c) 2019 Jeff Hykin
 Copyright (c) .NET Foundation and Contributors
 Copyright (c) 2016 .NET Foundation
+Copyright (c) 2016 - present Huachao Mao
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

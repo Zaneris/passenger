@@ -272,7 +272,7 @@ public sealed class SolutionFoldersTests : IDisposable
         Assert.Equal(renamed, Read(solution, "the rename was redone"));
         Assert.Equal(referencing.Replace("Shop.Core.csproj", "Shop.Domain.csproj", StringComparison.Ordinal), File.ReadAllText(web));
 
-        Edit(() => Assert.Null(window.Rename(PathNames.Canonical(Path.Combine(folder, "README.md")), "Shop.md")));
+        Edit(() => Assert.Null(Ui.Await(window.RenameAsync(PathNames.Canonical(Path.Combine(folder, "README.md")), "Shop.md"), "the rename")));
         Assert.Equal(renamed.Replace(format == "slnx" ? "<File Path=\"README.md\" />" : "\t\tREADME.md = README.md", format == "slnx" ? "<File Path=\"Shop.md\" />" : "\t\tShop.md = Shop.md", StringComparison.Ordinal),
             Read(solution, "a file it lists was renamed"));
         window.Close();
@@ -389,7 +389,8 @@ public sealed class SolutionFoldersTests : IDisposable
     /// <summary>dotnet build of the solution as it is on disk now, which fails the test naming what was done to it.</summary>
     private static void Builds(string solution, string after)
     {
-        ChildResult built = Task.Run(() => ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", solution]), limit: Restore.Limit)).GetAwaiter().GetResult();
+        ChildResult built = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", solution]), limit: Restore.Limit)),
+            $"dotnet build {solution}", Restore.Limit + TestFolders.Spare);
         Assert.True(built.Succeeded, $"Once {after}, dotnet build no longer builds the solution:\n{built.Output}{built.Error}");
     }
 

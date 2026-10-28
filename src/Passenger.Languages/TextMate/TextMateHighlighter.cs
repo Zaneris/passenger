@@ -2,8 +2,7 @@ using System.Diagnostics;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
-using TextMateSharp.Grammars;
-using TextMateSharp.Internal.Grammars;
+using Tint;
 
 namespace Passenger.Languages.TextMate;
 
@@ -139,8 +138,9 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
             first = Math.Min(first, batch.First);
             tail = Math.Min(tail, batch.Tail);
         }
+        // Held from here, the pass's own start holding nothing, until what it coloured lands on the UI thread.
         BackgroundWork.Begin();
-        UnawaitedWork.Observe(Task.Run(() => Pass(old, text, first, tail, passVersion)).ContinueWith(done => OnUi(() =>
+        UnawaitedWork.Observe(BackgroundWork.Unheld(() => Pass(old, text, first, tail, passVersion)).ContinueWith(done => OnUi(() =>
         {
             try
             {
@@ -171,7 +171,7 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
     private LineTable Pass(LineTable? old, TextSnapshot text, int first, int tail, int passVersion)
     {
         long began = Stopwatch.GetTimestamp();
-        IGrammar rules = grammar.Rules;
+        Tokenizer rules = grammar.Rules;
         int count = text.LineCount;
         int oldCount = old?.Count ?? 0;
         int delta = count - oldCount;
@@ -182,11 +182,12 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
         {
             built.AddRange(old, 0, first);
         }
-        IStateStack? state = first == 0 ? null : old![first - 1].End;
+        StateStack? state = first == 0 ? null : old![first - 1].End;
         int staleFrom = count;
         int line = first;
         long shown = began;
         List<SyntaxSpan> scratch = [];
+        char[] buffer = [];
         while (line < count)
         {
             int until = Math.Min(count, line + LinesAtATime);
@@ -196,7 +197,7 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
             {
                 for (; line < until; line++)
                 {
-                    TokenLine read = Read(rules, text, line, state, scratch);
+                    TokenLine read = Read(rules, text, line, state, scratch, ref buffer);
                     built.Add(read);
                     state = read.End;
                     int next = line + 1;
@@ -263,26 +264,28 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>One line's colours and the state it ends in.</summary>
-    private TokenLine Read(IGrammar rules, TextSnapshot text, int line, IStateStack? state, List<SyntaxSpan> scratch)
+    /// <summary>One line's colours and the state it ends in, reusing the pass's buffer between lines.</summary>
+    private TokenLine Read(Tokenizer rules, TextSnapshot text, int line, StateStack? state, List<SyntaxSpan> scratch, ref char[] buffer)
     {
         LineSpan span = text.GetLine(line);
         if (span.Length > LongestLine)
         {
             return new TokenLine([], state);
         }
-        // The grammar reads a line with its break, which it would otherwise copy the line to add.
-        char[] chars = new char[span.Length + 1];
-        text.CopyTo(span.Start, chars.AsSpan(0, span.Length));
-        chars[span.Length] = '\n';
-        ITokenizeLineResult2 result = rules.TokenizeLine2(new LineText(chars.AsMemory()), state, LineLimit);
-        int[] tokens = result.Tokens;
-        scratch.Clear();
-        for (int i = 0; i < tokens.Length; i += 2)
+        if (buffer.Length < span.Length)
         {
-            int start = tokens[i];
-            int end = Math.Min(i + 2 < tokens.Length ? tokens[i + 2] : span.Length, span.Length);
-            TokenKind kind = grammar.KindOf(EncodedTokenAttributes.GetForeground(tokens[i + 1]));
+            buffer = new char[Math.Max(span.Length, Math.Min(LongestLine, buffer.Length * 2))];
+        }
+        // Tint accepts the line without its break and appends it in a reusable buffer.
+        text.CopyTo(span.Start, buffer.AsSpan(0, span.Length));
+        rules.TimeBudget = LineLimit;
+        ReadOnlySpan<EncodedToken> tokens = rules.TokenizeLineEncoded(buffer.AsSpan(0, span.Length), state ?? StateStack.Initial, out StateStack next);
+        scratch.Clear();
+        for (int i = 0; i < tokens.Length; i++)
+        {
+            int start = tokens[i].Start;
+            int end = Math.Min(i + 1 < tokens.Length ? tokens[i + 1].Start : span.Length, span.Length);
+            TokenKind kind = grammar.KindOf(EncodedTokenAttributes.GetForeground(tokens[i].Metadata));
             if (end <= start || kind == TokenKind.Text)
             {
                 continue;
@@ -296,7 +299,7 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
                 scratch.Add(new SyntaxSpan(start, end - start, kind));
             }
         }
-        return new TokenLine(scratch.Count == 0 ? [] : [.. scratch], result.RuleStack);
+        return new TokenLine(scratch.Count == 0 ? [] : [.. scratch], next);
     }
 
     private void OnUi(Action action)

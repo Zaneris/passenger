@@ -1,6 +1,10 @@
+using System.Runtime.CompilerServices;
+using Avalonia.Threading;
+using Passenger.App.Editors;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Languages.CSharp;
 using Passenger.Text;
 using Passenger.Workspace;
 using Passenger.Xaml;
@@ -35,8 +39,12 @@ public sealed class XamlService : IDisposable
 
     private readonly Dictionary<string, XamlLoading> projects = new(StringComparer.Ordinal);
     private readonly Dictionary<OpenDocument, XamlDocument> documents = [];
-    private readonly Dictionary<OpenDocument, (EventHandler<DocumentChangedEventArgs> Handler, Debounce Wait)> sources = [];
+    private readonly Dictionary<OpenDocument, TypedSource> sources = [];
     private bool disposed;
+
+    /// <summary>The next text of an open C# file held by a test (<see cref="HoldNextText"/>): what it waits for, and done
+    /// once it waits.</summary>
+    private (Task Until, TaskCompletionSource Holding)? textHeld;
 
     /// <summary>A project's types or XAML files were read again; raised on the UI thread.</summary>
     public event EventHandler<XamlProject>? ProjectChanged;
@@ -129,7 +137,7 @@ public sealed class XamlService : IDisposable
             };
             document.Text.Changed += handler;
             document.Parsed += OnParsed;
-            sources[document] = (handler, wait);
+            sources[document] = new TypedSource(handler, wait);
         }
     }
 
@@ -140,7 +148,7 @@ public sealed class XamlService : IDisposable
         {
             xaml.Dispose();
         }
-        if (sources.Remove(document, out (EventHandler<DocumentChangedEventArgs> Handler, Debounce Wait) source))
+        if (sources.Remove(document, out TypedSource? source))
         {
             document.Text.Changed -= source.Handler;
             document.Parsed -= OnParsed;
@@ -164,6 +172,11 @@ public sealed class XamlService : IDisposable
                 continue;
             }
             HashSet<string> open = [.. documents.Keys.Select(d => d.Path)];
+            Dictionary<string, (TypedSource Source, TextSnapshot Text, int Version)> typed = new(StringComparer.Ordinal);
+            foreach ((OpenDocument document, TypedSource source) in sources)
+            {
+                typed[document.Path] = (source, document.Text.Snapshot, document.Text.Version);
+            }
             IdeErrors.Observe(UpdateAsync(loading, builder =>
             {
                 XamlProject? made = null;
@@ -171,7 +184,10 @@ public sealed class XamlService : IDisposable
                 {
                     if (file.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
                     {
-                        made = builder.SourceChanged(file, null) ?? made;
+                        // An open file's types are its editor's text, which the disk's may be behind; a file deleted goes.
+                        made = (typed.TryGetValue(file, out (TypedSource Source, TextSnapshot Text, int Version) editor) && File.Exists(file)
+                            ? editor.Source.Give(builder, file, editor.Text, editor.Version)
+                            : builder.SourceChanged(file, null)) ?? made;
                     }
                     else if (builder.Owns(file) && !open.Contains(file))
                     {
@@ -248,12 +264,21 @@ public sealed class XamlService : IDisposable
             return loading;
         }
         Dictionary<string, TextSnapshot> texts = OpenTexts();
-        Func<string, ProjectEvaluation?>? evaluations = Evaluations;
-        Task<XamlProjectBuilder?> builder = BackgroundWork.Run(() => XamlProjectBuilder.For(project, DotnetRoot.Value, IdeErrors.Report, evaluations));
+        Task<XamlProjectBuilder?> builder = BuilderAsync(project, Evaluations);
         loading = new XamlLoading(project, builder, LoadAsync(builder, texts));
         projects[project] = loading;
         IdeErrors.Observe(AnnounceAsync(loading));
         return loading;
+    }
+
+    /// <summary>A project's builder, made on the thread pool once the window has laid out and drawn what it had to (the
+    /// file whose opening asked for it): the read that follows keeps every processor and the collector busy for a while,
+    /// which that first frame would otherwise wait behind. None for a session ended meanwhile.</summary>
+    private async Task<XamlProjectBuilder?> BuilderAsync(string project, Func<string, ProjectEvaluation?>? evaluations)
+    {
+        using IDisposable held = BackgroundWork.Scope();
+        await Dispatcher.Yield(DispatcherPriority.Background);
+        return disposed ? null : await BackgroundWork.Run(() => XamlProjectBuilder.For(project, DotnetRoot.Value, CSharpParsing.Default, IdeErrors.Report, evaluations));
     }
 
     private static async Task<XamlProject?> LoadAsync(Task<XamlProjectBuilder?> made, Dictionary<string, TextSnapshot> texts)
@@ -325,8 +350,7 @@ public sealed class XamlService : IDisposable
     private void Reload(XamlLoading loading)
     {
         Dictionary<string, TextSnapshot> texts = OpenTexts();
-        Func<string, ProjectEvaluation?>? evaluations = Evaluations;
-        Task<XamlProjectBuilder?> builder = BackgroundWork.Run(() => XamlProjectBuilder.For(loading.ProjectPath, DotnetRoot.Value, IdeErrors.Report, evaluations));
+        Task<XamlProjectBuilder?> builder = BuilderAsync(loading.ProjectPath, Evaluations);
         XamlLoading again = loading with { Builder = builder, Loaded = LoadAsync(builder, texts) };
         projects[loading.ProjectPath] = again;
         foreach (XamlDocument document in documents.Values.Where(d => d.Loading.ProjectPath == loading.ProjectPath))
@@ -346,12 +370,34 @@ public sealed class XamlService : IDisposable
         return texts;
     }
 
-    /// <summary>A C# file typed in: its types read again from its text as it stands, by every project that reads it.</summary>
-    private Task SourceTypedAsync(OpenDocument document)
+    /// <summary>A C# file typed in: its types read again from its text as it stands, by every project that reads it, which
+    /// takes it only when it took no newer text of the file meanwhile (<see cref="TypedSource.Give"/>).</summary>
+    private async Task SourceTypedAsync(OpenDocument document)
     {
+        if (!sources.TryGetValue(document, out TypedSource? source))
+        {
+            return;
+        }
         string path = document.Path;
         TextSnapshot text = document.Text.Snapshot;
-        return Task.WhenAll(Reading(path).ToList().Select(loading => UpdateAsync(loading, builder => builder.SourceChanged(path, text.ToString()))));
+        int version = document.Text.Version;
+        if (textHeld is { } held)
+        {
+            textHeld = null;
+            held.Holding.SetResult();
+            await held.Until;
+        }
+        await Task.WhenAll(Reading(path).ToList().Select(loading => UpdateAsync(loading, builder => source.Give(builder, path, text, version))));
+    }
+
+    /// <summary>Holds the next text of an open C# file, taken as its typing pauses, from the projects that read it until
+    /// <paramref name="until"/> ends, for a test to land a file's texts out of order. Done once it is held.</summary>
+    public Task HoldNextText(Task until)
+    {
+        UiThread.Check();
+        TaskCompletionSource holding = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        textHeld = (until, holding);
+        return holding.Task;
     }
 
     /// <summary>A change made to a loaded project off the UI thread; its open XAML files read against the result.</summary>
@@ -445,6 +491,36 @@ public sealed class XamlService : IDisposable
             Detach(document);
         }
         projects.Clear();
+    }
+
+    /// <summary>An open C# file a XAML project may read, followed as it is typed: its texts given to each project's builder
+    /// one at a time, by the document's version, so an older one never lands after a newer one.</summary>
+    private sealed class TypedSource(EventHandler<DocumentChangedEventArgs> handler, Debounce wait)
+    {
+        private readonly object gate = new();
+
+        /// <summary>The version of the file's text each builder took last.</summary>
+        private readonly ConditionalWeakTable<XamlProjectBuilder, StrongBox<int>> taken = [];
+
+        public EventHandler<DocumentChangedEventArgs> Handler { get; } = handler;
+
+        public Debounce Wait { get; } = wait;
+
+        /// <summary>Gives a builder the file's text of a version, off the UI thread, unless it took that version or a newer one
+        /// already: the project it then makes, or null when it makes none.</summary>
+        public XamlProject? Give(XamlProjectBuilder builder, string path, TextSnapshot text, int version)
+        {
+            lock (gate)
+            {
+                if (taken.TryGetValue(builder, out StrongBox<int>? last) && last.Value >= version)
+                {
+                    return null;
+                }
+                XamlProject? made = builder.SourceChanged(path, text.ToString());
+                taken.AddOrUpdate(builder, new StrongBox<int>(version));
+                return made;
+            }
+        }
     }
 }
 

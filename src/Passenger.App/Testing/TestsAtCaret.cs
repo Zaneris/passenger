@@ -61,17 +61,16 @@ public sealed record FileTests(IReadOnlyList<(string Type, int Line)> Types, IRe
 /// closed file's own; lines are the editor's.</summary>
 public static class TestsAtCaret
 {
-    /// <summary>A closed file's parse: preprocessor symbols as the editor's (a Debug build's), no documentation comments.</summary>
-    private static readonly CSharpParseOptions ClosedFile = new(LanguageVersion.Preview, DocumentationMode.None, preprocessorSymbols: ["DEBUG", "TRACE", "NET", "NETCOREAPP"]);
-
     private static readonly HashSet<string> TestAttributes = new(StringComparer.Ordinal)
     {
         "Fact", "Theory", "AvaloniaFact", "AvaloniaTheory", "Test", "TestCase", "TestCaseSource", "TestMethod", "DataTestMethod",
     };
 
-    /// <summary>The type (its full name, nested types after a '+') and method the caret's line (from zero, the editor's
-    /// line, which Roslyn may count as several) is in; the method is null in a type but outside its methods.</summary>
-    public static (string Type, string? Method)? At(ParsedText syntax, int line)
+    /// <summary>The test the caret's line (from zero, the editor's line, which Roslyn may count as several) is in: its
+    /// test method, else the nearest type around it holding tests, its own or its nested types' (its full name, nested
+    /// types after a '+'; the method null). A test is one by its attributes or one a runner found there
+    /// (<paramref name="found"/>, given a type and a method or null); null where there is none.</summary>
+    public static (string Type, string? Method)? At(ParsedText syntax, int line, Func<string, string?, bool>? found = null)
     {
         TextSnapshot text = syntax.Text;
         if (line < 0 || line >= text.LineCount)
@@ -83,7 +82,23 @@ public static class TestsAtCaret
         SyntaxNode? node = root.FindToken(Math.Min(text.GetLineStart(line) + (content.Length - content.TrimStart().Length), root.FullSpan.End)).Parent;
         MethodDeclarationSyntax? method = node?.AncestorsAndSelf().OfType<MethodDeclarationSyntax>().FirstOrDefault();
         TypeDeclarationSyntax? type = (method?.Parent as TypeDeclarationSyntax) ?? node?.AncestorsAndSelf().OfType<TypeDeclarationSyntax>().FirstOrDefault();
-        return type is null ? null : (FullName(type), method?.Identifier.ValueText);
+        if (type is null)
+        {
+            return null;
+        }
+        if (method is not null && (IsTest(method) || found?.Invoke(FullName(type), method.Identifier.ValueText) == true))
+        {
+            return (FullName(type), method.Identifier.ValueText);
+        }
+        foreach (TypeDeclarationSyntax around in type.AncestorsAndSelf().OfType<TypeDeclarationSyntax>())
+        {
+            string name = FullName(around);
+            if (HoldsTests(around) || found?.Invoke(name, null) == true)
+            {
+                return (name, null);
+            }
+        }
+        return null;
     }
 
     /// <summary>Everything a file declares for testing, read without going into any member's body.</summary>
@@ -118,14 +133,16 @@ public static class TestsAtCaret
         return new FileTests(types, tests, methods);
     }
 
-    /// <summary>A file not open in an editor, parsed on its own: an open one's tests are read from its shared parse.</summary>
-    public static FileTests Read(string text) =>
-        Read(new ParsedText(CSharpSyntaxTree.ParseText(text, ClosedFile), TextSnapshot.From(text)));
+    /// <summary>A file not open in an editor, parsed on its own with its project's symbols (<see cref="CSharpParsing"/>),
+    /// its documentation comments passed over: an open one's tests are read from its shared parse.</summary>
+    public static FileTests Read(string text, CSharpParseOptions options) =>
+        Read(new ParsedText(CSharpSyntaxTree.ParseText(text, options.WithDocumentationMode(DocumentationMode.None)), TextSnapshot.From(text)));
 
-    /// <summary>Whether a test's full name (a theory's rows, NUnit's cases included) belongs to a type and method.</summary>
+    /// <summary>Whether a test's full name (a theory's rows, NUnit's cases and fixtures' instances included) belongs to a
+    /// type and method.</summary>
     public static bool Matches(string fullyQualifiedName, string type, string? method)
     {
-        string name = fullyQualifiedName.Split('(')[0];
+        string name = TestItem.MethodOf(fullyQualifiedName);
         string normalized = name.Replace('+', '.');
         string owner = type.Replace('+', '.');
         return method is null ? normalized.StartsWith(owner + ".", StringComparison.Ordinal) : normalized == $"{owner}.{method}";
@@ -136,6 +153,10 @@ public static class TestsAtCaret
         root.DescendantNodes(n => n is CompilationUnitSyntax or BaseNamespaceDeclarationSyntax or TypeDeclarationSyntax).OfType<TypeDeclarationSyntax>();
 
     private static bool IsTest(MethodDeclarationSyntax method) => method.AttributeLists.SelectMany(l => l.Attributes).Any(a => TestAttributes.Contains(Name(a)));
+
+    /// <summary>Whether a type or a type nested in it declares a test, found without going into any member's body.</summary>
+    private static bool HoldsTests(TypeDeclarationSyntax type) =>
+        type.DescendantNodesAndSelf(n => n is TypeDeclarationSyntax).OfType<TypeDeclarationSyntax>().Any(t => t.Members.OfType<MethodDeclarationSyntax>().Any(IsTest));
 
     /// <summary>An abstract or generic type, or one inside such a type: a runner runs its tests as a derived type's.</summary>
     private static bool InheritedOnly(TypeDeclarationSyntax type) =>

@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Passenger.App.Editors;
 using Passenger.App;
 using Passenger.App.Debugging;
 using Passenger.App.Workspace;
@@ -341,7 +342,7 @@ public sealed class RazorDebuggingTests : IDisposable
         Ui.Run(window, AppActions.Debug);
         Ui.WaitFor(() => window.Browsed.Count > 0, "the app to listen at its launch profile's address", TimeSpan.FromMinutes(4));
         using HttpClient client = new() { Timeout = TimeSpan.FromMinutes(3) };
-        Task<string> page = Task.Run(() => client.GetStringAsync($"http://localhost:{port}/visits"));
+        Task<string> page = Waiting.Apart(() => client.GetStringAsync($"http://localhost:{port}/visits"));
         Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused, "the app to stop at the breakpoint in @code as the page is asked for");
         Ui.WaitFor(() => editor.LineMarks.Contains(new LineMark(9, LineMarkKind.ExecutionPoint)), "the stop shown on the breakpoint's line");
         Assert.Contains(new LineMark(9, LineMarkKind.BreakpointBound), editor.LineMarks);
@@ -360,7 +361,7 @@ public sealed class RazorDebuggingTests : IDisposable
         string html = Ui.Await(page, "the page once the app goes on");
         Assert.Contains("Visits: 42", html, StringComparison.Ordinal);
 
-        Task<string> tally = Task.Run(() => client.GetStringAsync($"http://localhost:{port}/tally"));
+        Task<string> tally = Waiting.Apart(() => client.GetStringAsync($"http://localhost:{port}/tally"));
         Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && window.EditorArea.Active?.Path == code,
             "the app to stop at the breakpoint in the code-behind as the page is asked for");
         Ui.WaitFor(() => window.EditorArea.CodeEditor.LineMarks.Contains(new LineMark(18, LineMarkKind.ExecutionPoint)), "the stop shown on the code-behind's line");
@@ -388,11 +389,19 @@ internal static class BlazorApp
         + "    [Parameter]\n    public int Start { get; set; }\n\n    private int clicks;\n\n    private void AddClick()\n    {\n        clicks++;\n    }\n\n"
         + "    protected override void OnInitialized()\n    {\n        clicks = Start + 41 + 1;\n    }\n}\n";
 
-    public static void Create(string folder)
+    /// <summary>The longest dotnet new may take.</summary>
+    private static readonly TimeSpan Limit = TimeSpan.FromMinutes(3);
+
+    /// <summary><see cref="CreateAsync"/> from the UI thread (a window test's constructor), run on the thread pool and waited
+    /// for with the window's loop running (<see cref="Ui.AwaitPumped{T}"/>), never for its work to land.</summary>
+    public static void Create(string folder) =>
+        Ui.AwaitPumped(Waiting.Apart(() => CreateAsync(folder)), "dotnet new blazor to make the test's app", Limit + TestFolders.Spare);
+
+    public static async Task CreateAsync(string folder)
     {
-        ChildResult made = Task.Run(() => ChildProcesses.RunAsync(
+        ChildResult made = await ChildProcesses.RunAsync(
             ChildProcesses.DotnetCommand(["new", "blazor", "--output", folder, "--name", "Shop", "--framework", TestProjects.Framework, "--no-https", "--no-restore"]),
-            limit: TimeSpan.FromMinutes(3))).GetAwaiter().GetResult();
+            limit: Limit);
         Assert.True(made.Succeeded, $"dotnet new blazor did not make the test's app (exit code {made.ExitCode}):\n{made.Output}{made.Error}");
     }
 }
@@ -457,9 +466,13 @@ public sealed class BlazorShop : SharedProject
     public BlazorShop()
         : base("blazor-")
     {
-        TestFolders.Prepare(() =>
+    }
+
+    public override async ValueTask InitializeAsync()
+    {
+        await TestFolders.PrepareAsync(async () =>
         {
-            BlazorApp.Create(Folder);
+            await BlazorApp.CreateAsync(Folder);
             foreach ((string path, string text) in Files)
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(PathOf(path))!);
@@ -468,7 +481,7 @@ public sealed class BlazorShop : SharedProject
             // The first window's design-time build makes bin, which a reset would take for a file the test added: made now, it stays.
             Directory.CreateDirectory(PathOf("bin"));
         }, Folder);
-        Prepare();
+        await PrepareAsync();
     }
 
     /// <summary>A file's path as the IDE names it: canonical, its '/' Windows' '\' there, so it compares with an open file's.</summary>

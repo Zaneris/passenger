@@ -143,13 +143,20 @@ internal sealed class CilExpressionCompiler(ManagedDebugger debugger)
         try
         {
             ImmutableArray<Alias> aliases = GetAliases(exception, returnValues);
+            string scoped = ScopeDeclaredVariables(expression);
             CompileResult? result = evaluationContext.CompileExpression(
-                expression,
+                scoped,
                 DkmEvaluationFlags.TreatAsExpression,
                 aliases,
                 diagnostics,
                 out _,
                 testData: null);
+            if ((result is null || diagnostics.HasAnyErrors()) && scoped != expression)
+            {
+                // The expression as written, whose errors (or success) name what was written.
+                diagnostics.Clear();
+                result = evaluationContext.CompileExpression(expression, DkmEvaluationFlags.TreatAsExpression, aliases, diagnostics, out _, testData: null);
+            }
 
             if (result is null || diagnostics.HasAnyErrors())
             {
@@ -458,6 +465,29 @@ internal sealed class CilExpressionCompiler(ManagedDebugger debugger)
             throw new InvalidOperationException(string.Join("; ", result.Diagnostics.Select(diagnostic => diagnostic.GetMessage())));
         }
         return ImmutableArray.Create(stream.ToArray());
+    }
+
+    /// <summary>An expression that declares variables (a pattern's, an out argument's) as the one arm of a switch,
+    /// <c>0 switch { _ => (e) }</c>, any format specifiers after it kept: a variable declared at an expression's top
+    /// compiles as a debugger variable, which a pattern never assigns, and one an arm declares as a local of the
+    /// expression's own. A deconstruction that declares its variables stays as written, no arm taking a declaration.</summary>
+    private static string ScopeDeclaredVariables(string expression)
+    {
+        DiagnosticBag diagnostics = DiagnosticBag.GetInstance();
+        try
+        {
+            ExpressionSyntax? syntax = SyntaxHelpers.ParseExpression(expression, isInFieldKeywordContext: false, diagnostics, allowFormatSpecifiers: true, out _);
+            if (syntax is null || syntax is AssignmentExpressionSyntax { Left: DeclarationExpressionSyntax }
+                || !syntax.DescendantNodesAndSelf().OfType<SingleVariableDesignationSyntax>().Any())
+            {
+                return expression;
+            }
+            return $"0 switch {{ _ => ({expression[..syntax.FullWidth]}) }}{expression[syntax.FullWidth..]}";
+        }
+        finally
+        {
+            diagnostics.Free();
+        }
     }
 
     // Takes off an interpolation's alignment that is no number: a DebuggerDisplay fragment's format specifier (nq).

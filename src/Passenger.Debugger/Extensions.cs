@@ -219,8 +219,9 @@ public static class Extensions
     public static TimeSpan EvaluationTimeout { get; set; } = Dap.AdapterEnvironment.DefaultEvaluationTimeout;
 
     /// <summary>How long an evaluation past its time is looked at for a moment it runs managed code, and how long an abort
-    /// asked then may take, before the evaluation is left to run on to its own end: 2 s of the 5 s.</summary>
-    internal static TimeSpan AbortWait => EvaluationTimeout * 0.4;
+    /// asked then may take, before the evaluation is left to run on to its own end: 2 s of the 5 s, longer on a slower
+    /// machine by <see cref="Core.Waits.Scale"/>, as both wait on the program.</summary>
+    internal static TimeSpan AbortWait => Core.Waits.Of(EvaluationTimeout * 0.4);
 
     /// <summary>How often an evaluation past its time is looked at, the program held a moment each time.</summary>
     internal static readonly TimeSpan LookEvery = TimeSpan.FromMilliseconds(25);
@@ -285,8 +286,9 @@ public static class Extensions
                         ended = true;
                         break;
                     }
-                    if (process.TryStop(0) is not Cor.S_OK)
+                    if (process.TryStop(0) is var held and not Cor.S_OK)
                     {
+                        evalStatus.Log?.Invoke($"The program could not be held to look at the evaluation on thread {thread.Id}: 0x{held:X8}");
                         break;
                     }
                     string? why = asked ? null : evalStatus.WhyNoAbortTakes(thread);
@@ -338,7 +340,7 @@ public static class Extensions
                 {
                     throw new ManagedDebugger.EvalException(aborted
                         ? $"The evaluation took longer than {EvaluationTimeout.TotalSeconds:0.#} s and was stopped: it may wait on another thread, which stays paused while it runs"
-                        : $"The evaluation took longer than {EvaluationTimeout.TotalSeconds:0.#} s and could not be stopped, as {lastWhy ?? "the abort asked of it has not taken"}: it runs on in the program until it returns, the program paused meanwhile");
+                        : $"The evaluation took longer than {EvaluationTimeout.TotalSeconds:0.#} s and could not be stopped, as {(asked ? "the abort asked of it has not taken" : lastWhy ?? "the program could not be held to look at it")}: it runs on in the program until it returns, the program paused meanwhile");
                 }
                 // It ended of itself as it was looked at: its value is read as any other's.
             }

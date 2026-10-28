@@ -1,3 +1,4 @@
+using Microsoft.CodeAnalysis.CSharp;
 using Passenger.App.CSharp;
 using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
@@ -21,10 +22,16 @@ public partial class MainWindow
     {
         Dock.Add(new Docking.ToolWindow(ToolWindowIds.Find, "Find", IconKeys.Search, () =>
         {
-            find = new FindView(path => Editors.TextOf(path)?.ToString());
+            find = new FindView(path => Editors.TextOf(path)?.ToString(), path => Editors.ParseOptions(path));
             find.GoToRequested += (_, usage) => NavigateTo(usage.Path, new TextPosition(usage.Line, usage.Column));
             return find;
-        }, Docking.ToolAnchor.BottomLeft) { Action = AppActions.ShowFind, ActionTitle = "Find Tool Window" });
+        }, Docking.ToolAnchor.BottomLeft)
+        {
+            Action = AppActions.ShowFind,
+            ActionTitle = "Find Tool Window",
+            ExpandAll = () => Find.ExpandAll(),
+            CollapseAll = () => Find.CollapseAll(),
+        });
         assist.UsagesFound += (_, found) => ShowUsages(found.Title, found.Usages);
     }
 
@@ -40,16 +47,16 @@ public partial class MainWindow
         int search = ++usageSearches;
         // Each file's path made canonical once, not once a usage: that asks the disk.
         Dictionary<string, string> paths = locations.Select(l => l.Uri).Distinct(StringComparer.Ordinal).ToDictionary(u => u, DocumentUris.ToPath, StringComparer.Ordinal);
-        List<(string Path, TextSnapshot? Open, ParsedText? Syntax, string Project, List<LspLocation> Here)> files =
+        List<(string Path, TextSnapshot? Open, ParsedText? Syntax, CSharpParseOptions Parse, string Project, List<LspLocation> Here)> files =
             [.. locations.GroupBy(l => paths[l.Uri], StringComparer.Ordinal).Select(file =>
             {
                 OpenDocument? open = Editors.Find(file.Key);
-                return (file.Key, open?.Text.Snapshot, open?.Syntax?.Current, ProjectNameOf(file.Key), file.ToList());
+                return (file.Key, open?.Text.Snapshot, open?.Syntax?.Current, Editors.ParseOptions(file.Key), ProjectNameOf(file.Key), file.ToList());
             })];
         List<Usage> usages = await BackgroundWork.Run(() =>
         {
             List<Usage> found = [];
-            foreach ((string path, TextSnapshot? open, ParsedText? syntax, string project, List<LspLocation> here) in files)
+            foreach ((string path, TextSnapshot? open, ParsedText? syntax, CSharpParseOptions parse, string project, List<LspLocation> here) in files)
             {
                 if ((syntax?.Text ?? open ?? ServerPlaces.Read(path)) is not { } snapshot)
                 {
@@ -61,7 +68,7 @@ public partial class MainWindow
                 ServerLines lines = ServerLines.Of(snapshot);
                 List<int> offsets = [.. here.Select(l => lines.OffsetOf(l.Range.Start))];
                 IReadOnlyList<UsageKind> kinds = path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)
-                    ? UsageKinds.Classify(syntax?.Root ?? Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(snapshot.ToString()).GetRoot(), offsets)
+                    ? UsageKinds.Classify(syntax?.Root ?? CSharpSyntaxTree.ParseText(snapshot.ToString(), parse).GetRoot(), offsets)
                     : [.. here.Select(_ => UsageKind.Other)];
                 for (int i = 0; i < here.Count; i++)
                 {

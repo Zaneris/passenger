@@ -29,7 +29,7 @@ keyboard shortcuts follow Rider's keymaps.
 
 ## Setting up
 
-You need the .NET 11 SDK (11.0.100-rc.2 or later, as `global.json` asks, until .NET 11 ships in November 2026),
+You need the .NET 11 SDK (11.0.100-rc.3 or later, as `global.json` asks, until .NET 11 ships in November 2026),
 [just](https://github.com/casey/just) and Git, and for the tests the .NET 10 SDK too, which the programs they debug and
 most projects they write run on (on Linux also the X11 and fontconfig libraries
 [Passenger's Linux page](https://passenger-ide.net/linux) names). Node.js runs the web languages' tests and a container

@@ -64,8 +64,8 @@ public sealed class TestsView : DockPanel
             Classes = { "tree" },
             ItemsSource = model.Rows,
             SelectionMode = SelectionMode.Multiple,
-            ItemTemplate = new FuncDataTemplate<TestNode>((_, _) => new TestRow(model), supportsRecycling: true),
         };
+        ReusedRows.Use(tree, () => new TestRow(model));
         tree.SelectionChanged += (_, _) => ShowDetails();
         tree.DoubleTapped += (_, _) =>
         {
@@ -149,8 +149,6 @@ public sealed class TestsView : DockPanel
             VerticalAlignment = VerticalAlignment.Center,
             Children =
             {
-                ToolButtons.Of(IconKeys.ExpandAll, "Expand All", model.ExpandAll),
-                ToolButtons.Of(IconKeys.CollapseAll, "Collapse All", model.CollapseAll),
                 groupBy,
                 Divider(),
                 all,
@@ -481,15 +479,13 @@ public sealed class TestsView : DockPanel
     private static string Format(TimeSpan duration) =>
         duration.TotalSeconds >= 1 ? $"{duration.TotalSeconds:0.0} s" : $"{Math.Max(1, (int)duration.TotalMilliseconds)} ms";
 
-    /// <summary>A row of the tree for whichever node the list gives it, recycled as the list scrolls: it follows its node's
-    /// changes only while it is shown, and lets go of them when the list takes it away or gives it another node.</summary>
+    /// <summary>A row of the tree for whichever node the list gives its container, handed another as the list scrolls: it
+    /// follows its node's changes only while it is shown, and lets go of them when the list takes it away or gives it
+    /// another node.</summary>
     private sealed class TestRow : StackPanel
     {
-        private static readonly string[] StateClasses = ["running", "passed", "failed", "skipped"];
-
-        private readonly PathIcon chevron;
-        private readonly RotateTransform turn = new();
-        private readonly PathIcon state;
+        private readonly RowIcon chevron;
+        private readonly RowIcon state;
         private readonly TextBlock label;
         private readonly TextBlock duration;
         private TestNode? followed;
@@ -499,8 +495,7 @@ public sealed class TestsView : DockPanel
         {
             Orientation = Orientation.Horizontal;
             Height = ListRow.Height;
-            chevron = new PathIcon { Classes = { "chevron" }, RenderTransformOrigin = RelativePoint.Center, RenderTransform = turn };
-            chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(IconKeys.ChevronRight));
+            chevron = RowIcon.Chevron();
             Border toggle = new() { Width = 18, Height = ListRow.Height, Background = Brushes.Transparent, Child = chevron };
             toggle.PointerPressed += (_, e) =>
             {
@@ -510,7 +505,7 @@ public sealed class TestsView : DockPanel
                     e.Handled = true;
                 }
             };
-            state = new PathIcon { Classes = { "testState" }, VerticalAlignment = VerticalAlignment.Center };
+            state = new RowIcon { VerticalAlignment = VerticalAlignment.Center };
             label = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
             duration = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0), FontSize = 12 };
             duration.Classes.Add("muted");
@@ -590,22 +585,25 @@ public sealed class TestsView : DockPanel
             }
         }
 
-        private void ShowExpanded(TestNode node) => turn.Angle = node.IsExpanded ? 90 : 0;
+        private void ShowExpanded(TestNode node) => chevron.Turned = node.IsExpanded;
 
+        /// <summary>A test's mark, a grey ring not run, a blue dot running, a green tick passed, a red cross failed, a grey
+        /// dash skipped, and how long it took once it ran.</summary>
         private void ShowState(TestNode node)
         {
-            string? mark = node.State switch
+            // Each mark centred in the same 16 wide: the dot running a size smaller, the tick passed a size larger.
+            (string icon, string brush, double size) = node.State switch
             {
-                TestState.Running => "running",
-                TestState.Passed => "passed",
-                TestState.Failed => "failed",
-                TestState.Skipped => "skipped",
-                _ => null,
+                TestState.Running => (IconKeys.TestRunning, TokenKeys.Test_Running, 9.0),
+                TestState.Passed => (IconKeys.TestPassed, TokenKeys.Test_Passed, 12.0),
+                TestState.Failed => (IconKeys.TestFailed, TokenKeys.Test_Failed, 10.0),
+                TestState.Skipped => (IconKeys.TestSkipped, TokenKeys.Test_Skipped, 10.0),
+                _ => (IconKeys.TestNotRun, TokenKeys.Test_NotRun, 10.0),
             };
-            foreach (string each in StateClasses)
-            {
-                state.Classes.Set(each, each == mark);
-            }
+            state.DataKey = icon;
+            state.ForegroundKey = brush;
+            state.Width = state.Height = size;
+            state.Margin = new Thickness((16 - size) / 2, 0, ((16 - size) / 2) + 6, 0);
             duration.Text = node.State is TestState.Passed or TestState.Failed && node.Duration > TimeSpan.Zero ? Format(node.Duration) : string.Empty;
         }
     }

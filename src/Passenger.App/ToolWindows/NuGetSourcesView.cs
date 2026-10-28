@@ -1,7 +1,6 @@
 using System.Xml;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.App.Packages;
@@ -29,11 +28,8 @@ public sealed class NuGetSourcesView : Grid
     {
         this.owner = owner;
         ColumnDefinitions = new ColumnDefinitions("2*,1,5*");
-        files = new ListBox
-        {
-            Classes = { "tree" },
-            ItemTemplate = new FuncDataTemplate<ConfigFile>((file, _) => file is null ? new TextBlock() : FileRow(file), supportsRecycling: false),
-        };
+        files = new ListBox { Classes = { "tree" } };
+        ReusedRows.Use(files, FileRow);
         files.SelectionChanged += (_, _) =>
         {
             if (!drawing)
@@ -208,7 +204,7 @@ public sealed class NuGetSourcesView : Grid
         string[] targets = enabled
             ? [.. sources.Files.Where(f => !f.ReadOnly && f.Disables(name)).Select(f => f.Path)]
             : [file.Path];
-        await WriteAsync(() =>
+        await WriteAsync(targets, () =>
         {
             foreach (string target in targets)
             {
@@ -221,7 +217,7 @@ public sealed class NuGetSourcesView : Grid
     {
         if (await AskAsync(new FeedDialog(file, null)) is { } added)
         {
-            await WriteAsync(() => NuGetConfigEditor.Add(file.Path, added));
+            await WriteAsync([file.Path], () => NuGetConfigEditor.Add(file.Path, added));
         }
     }
 
@@ -229,7 +225,7 @@ public sealed class NuGetSourcesView : Grid
     {
         if (await AskAsync(new FeedDialog(file, feed)) is { } edited)
         {
-            await WriteAsync(() => NuGetConfigEditor.Update(file.Path, feed.Name, edited));
+            await WriteAsync([file.Path], () => NuGetConfigEditor.Update(file.Path, feed.Name, edited));
         }
     }
 
@@ -242,22 +238,30 @@ public sealed class NuGetSourcesView : Grid
         ConfirmDialog confirm = new("Deleting Feed", $"Are you sure you want to delete feed {feed.Name}?", "Delete Feed");
         if (await confirm.ShowDialog<bool>(window))
         {
-            await WriteAsync(() => NuGetConfigEditor.Remove(file.Path, feed.Name));
+            await WriteAsync([file.Path], () => NuGetConfigEditor.Remove(file.Path, feed.Name));
         }
     }
 
     private async Task<FeedEdit?> AskAsync(FeedDialog dialog) =>
         TopLevel.GetTopLevel(this) is Window window && await dialog.ShowDialog<bool>(window) ? dialog.Result : null;
 
-    /// <summary>Writes the change off the window's thread, then reads the sources again; a file that will not take it
-    /// says why under the tab.</summary>
-    private async Task WriteAsync(Action change)
+    /// <summary>Writes the change to <paramref name="paths"/> off the window's thread, then, once they have landed (saying
+    /// meanwhile which another program holds), reads the sources again; a file that will not take it says why under the tab.</summary>
+    private async Task WriteAsync(IReadOnlyList<string> paths, Action change)
     {
         problem.IsVisible = false;
         try
         {
-            owner.Packages.SaveFirst?.Invoke();
+            if (owner.Packages.SaveFirst is { } save && await save(null, CancellationToken.None) is { } unsaved)
+            {
+                throw new IOException(unsaved);
+            }
             await BackgroundWork.Run(change);
+            if (await Editors.EditorArea.LandedAsync(paths, Waiting) is [(_, Exception unlanded), ..])
+            {
+                throw unlanded;
+            }
+            problem.IsVisible = false;
         }
         catch (Exception failed) when (failed is IOException or UnauthorizedAccessException or XmlException or InvalidOperationException)
         {
@@ -265,29 +269,36 @@ public sealed class NuGetSourcesView : Grid
             problem.IsVisible = true;
         }
         await owner.ReloadSourcesAsync();
+
+        void Waiting(string said)
+        {
+            problem.Text = said;
+            problem.IsVisible = true;
+        }
     }
 
-    private static Control FileRow(ConfigFile file)
+    /// <summary>A row for whichever file the list hands its container: its icon, its name and folder, and where it
+    /// applies (the solution, the folder, the user or the machine), its path in its tip.</summary>
+    private static Control FileRow()
     {
-        PathIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(6, 0, 6, 0) };
-        icon.Bind(PathIcon.DataProperty, icon.GetResourceObservable(IconKeys.DocumentText));
-        TextBlock place = new()
-        {
-            Classes = { "muted" },
-            Text = file.Place switch { ConfigPlace.Solution => "solution", ConfigPlace.Folder => "folder", ConfigPlace.User => "user", _ => "machine" },
-            FontSize = 12,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(8, 0, 8, 0),
-        };
+        RowIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(6, 0, 6, 0) };
+        icon.DataKey = IconKeys.DocumentText;
+        TextBlock place = new() { Classes = { "muted" }, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 8, 0) };
         // Its name, then its folder, which gives way first in a narrow pane so the name stays whole.
-        TextBlock folder = new() { Classes = { "muted" }, Text = RecentRow.Home(Path.GetDirectoryName(file.Path) ?? string.Empty), FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
-        ShrinkingRow path = new() { Children = { new TextBlock { Text = Path.GetFileName(file.Path), VerticalAlignment = VerticalAlignment.Center }, folder } };
+        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
+        TextBlock folder = new() { Classes = { "muted" }, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
+        ShrinkingRow path = new() { Children = { name, folder } };
         Grid line = new() { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), Height = ListRow.Height };
         Add(line, icon, 0);
         Add(line, path, 1);
         Add(line, place, 2);
-        ToolTip.SetTip(line, file.Path);
-        return line;
+        return line.Showing<ConfigFile>(file =>
+        {
+            place.Text = file.Place switch { ConfigPlace.Solution => "solution", ConfigPlace.Folder => "folder", ConfigPlace.User => "user", _ => "machine" };
+            name.Text = Path.GetFileName(file.Path);
+            folder.Text = RecentRow.Home(Path.GetDirectoryName(file.Path) ?? string.Empty);
+            ToolTip.SetTip(line, file.Path);
+        });
     }
 
     private static void Add(Grid grid, Control control, int column)

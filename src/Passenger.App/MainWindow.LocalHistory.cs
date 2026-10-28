@@ -192,6 +192,9 @@ public partial class MainWindow
             return Refusals.NoFolder;
         }
         List<string> refused = [];
+        // A file deleted then is followed as its delete goes; one written may come back, with the folders it was in.
+        List<string> written = [.. files.Where(f => f.Version is not null).Select(f => f.Path)];
+        Dictionary<string, bool> stood = Standing(written);
         using (history.During(activity))
         {
             foreach ((string path, string? version) in files)
@@ -238,7 +241,7 @@ public partial class MainWindow
                 }
             }
         }
-        FilesChanged();
+        Followed(stood, [], written);
         string? problem = refused.Count == 0 ? null : $"Cannot revert because {string.Join(", ", refused)} could not be written";
         status.Text = problem ?? activity;
         return problem;

@@ -52,8 +52,7 @@ public sealed class ContainerRunStopsTests(ContainerRunDebuggingTests.Tools tool
             Assert.False(running.IsCompleted, $"Run ended before its services came up: {(running.IsCompleted ? running.Result : null)}");
             Task<string?> debugging = window.DebugAsync();
             // Debug's start holds the window's work until the gate opens, so the wait runs the window's loop without waiting it out.
-            Ui.PumpUntil(() => running.IsCompleted, "Run's start to end as Debug takes its place", TimeSpan.FromMinutes(2));
-            Assert.Equal("Compose: compose.yaml was stopped as it started", running.Result);
+            Assert.Equal("Compose: compose.yaml was stopped as it started", Ui.AwaitPumped(running, "Run's start to end as Debug takes its place", TimeSpan.FromMinutes(2)));
             Open(folder);
             string? refused = Ui.Await(debugging, "Debug's run to come up", TimeSpan.FromMinutes(5));
             Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{ContainerRunsTests.Run(window)}");
@@ -153,7 +152,7 @@ public sealed class ContainerRunStopsTests(ContainerRunDebuggingTests.Tools tool
         {
             return [];
         }
-        ChildResult listed = Task.Run(() => ChildProcesses.RunAsync(ChildProcesses.Command("ps", ["-axo", "command"], Environment.CurrentDirectory))).GetAwaiter().GetResult();
+        ChildResult listed = Ui.AwaitPumped(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command("ps", ["-axo", "command"], Environment.CurrentDirectory))), "the processes running here");
         return [.. listed.Output.Split('\n').Where(l => l.Contains("passenger-tools", StringComparison.Ordinal) && l.Contains(" dap", StringComparison.Ordinal)
             && containers.Any(c => l.Contains(c, StringComparison.Ordinal)))];
     }

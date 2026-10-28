@@ -56,6 +56,7 @@ public sealed class SolutionViewTests : IDisposable
         TestFolders.Delete(trash);
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_file_cut_and_pasted_into_another_projects_folder_moves_there_with_its_open_tab_its_undo_and_its_edit()
     {
@@ -99,6 +100,7 @@ public sealed class SolutionViewTests : IDisposable
 
     /// <summary>Every file of a folder of 400 chosen and cut allocates on the UI thread, for each file, under twice what every
     /// file of a folder of 40 does, each row dimmed and a file's dependent going with it.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Cutting_every_file_of_a_folder_of_four_hundred_costs_each_file_about_what_it_does_in_a_folder_of_forty()
     {
@@ -149,6 +151,7 @@ public sealed class SolutionViewTests : IDisposable
     }
 
     /// <summary>A folder copied and pasted, and files dragged, in one window: what each leaves is checked before the next.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_folder_copied_and_pasted_copies_all_it_holds_named_as_Riders_Duplicate_asks_and_a_file_dragged_moves_or_with_the_copy_key_copies()
     {
@@ -286,7 +289,7 @@ public sealed class SolutionViewTests : IDisposable
         Assert.DoesNotContain(window.ExplorerView.Tree.Rows, r => r.Kind == NodeKind.ProjectReference);
         Ui.WaitFor(() => problems.FileProblems.Any(p => p.Severity == ProblemSeverity.Error), "the language server's error once the reference is gone", TimeSpan.FromMinutes(2));
 
-        Heard(window, core, () => Assert.Null(window.SetReferences(core, [app])));
+        Heard(window, core, () => Assert.Null(Ui.Await(window.SetReferencesAsync(core, [app]), "the references set")));
         Ui.ChooseFromRowMenu(window, Dependencies(window, "Shop.App"), "Add Reference…");
         dialog = Assert.Single(window.OwnedWindows.OfType<AddReferenceDialog>());
         Assert.False(Assert.Single(dialog.Choices).CanChoose, "A project that references this one was offered, which would make a cycle");
@@ -297,6 +300,35 @@ public sealed class SolutionViewTests : IDisposable
         window.Close();
     }
 
+    /// <summary>On Windows Add Reference to a project file another program holds waits for it: while it is held the status
+    /// bar says it waits for that file, never that it added the reference, and once the program lets go the reference is in
+    /// the file and the status bar says it was added.</summary>
+    [AvaloniaFact]
+    public void Add_reference_to_a_project_file_another_program_holds_says_it_waits_and_added_once_the_file_is_let_go()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses to replace or write a file another program holds");
+        string app = Path.Combine(folder, "Shop.App", "Shop.App.csproj");
+        string core = Path.Combine(folder, "Shop.Core", "Shop.Core.csproj");
+        MainWindow window = Open();
+        Ui.WaitFor(() => window.Projects.Any(p => p.Path == PathNames.Canonical(app) && p.IsEvaluated), "MSBuild to evaluate Shop.App");
+        List<string> said = [];
+        using IDisposable following = Ui.FollowStatus(window, said);
+        Task<string?> adding;
+        using (new FileStream(app, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            adding = window.SetReferencesAsync(app, [core]);
+            Ui.PumpUntil(() => said.Any(s => s.StartsWith("Waiting", StringComparison.Ordinal) || s.StartsWith("Added", StringComparison.Ordinal)),
+                "Add Reference to say it waits for the held Shop.App.csproj");
+            Assert.DoesNotContain("Shop.Core.csproj", File.ReadAllText(app), StringComparison.Ordinal);
+        }
+        Assert.Null(Ui.Await(adding, "the reference added once Shop.App.csproj was let go"));
+        Assert.Equal(["Waiting for Shop.App.csproj to be saved…", "Added a reference to Shop.Core to Shop.App"],
+            said.Where(s => s.StartsWith("Waiting", StringComparison.Ordinal) || s.StartsWith("Added", StringComparison.Ordinal) || s.Contains("could not be changed", StringComparison.Ordinal)));
+        Assert.Contains("Shop.Core.csproj", File.ReadAllText(app), StringComparison.Ordinal);
+        window.Close();
+    }
+
+    [Gate]
     [AvaloniaFact]
     public void Add_reference_beside_one_that_shares_its_line_with_its_groups_tags_writes_a_project_MSBuild_loads_and_remove_puts_it_back()
     {
@@ -318,8 +350,8 @@ public sealed class SolutionViewTests : IDisposable
         ProjectModel Project(string path) => window.Projects.First(p => p.Path == PathNames.Canonical(path));
         Ui.WaitFor(() => Project(app).IsEvaluated && Project(core).IsEvaluated, "MSBuild to evaluate the projects as written");
 
-        Heard(window, app, () => Assert.Null(window.SetReferences(app, [lib, core])));
-        Heard(window, core, () => Assert.Null(window.SetReferences(core, [lib, data])));
+        Heard(window, app, () => Assert.Null(Ui.Await(window.SetReferencesAsync(app, [lib, core]), "the references set")));
+        Heard(window, core, () => Assert.Null(Ui.Await(window.SetReferencesAsync(core, [lib, data]), "the references set")));
         Assert.Equal(program.Replace("</Project>", $"  <ItemGroup>{reference}<ProjectReference Include=\"..\\Shop.Core\\Shop.Core.csproj\" /></ItemGroup>\n</Project>", StringComparison.Ordinal),
             File.ReadAllText(app));
         Assert.Equal(Library.Replace("</Project>", $"  <ItemGroup>\n    {reference}<ProjectReference Include=\"..\\Shop.Data\\Shop.Data.csproj\" /></ItemGroup>\n</Project>", StringComparison.Ordinal),
@@ -331,12 +363,13 @@ public sealed class SolutionViewTests : IDisposable
                 $"MSBuild does not load {Path.GetFileName(project)} with the reference added: {Project(project).Problem}");
         }
 
-        Heard(window, app, () => Assert.Null(window.SetReferences(app, [lib])));
-        Heard(window, core, () => Assert.Null(window.SetReferences(core, [lib])));
+        Heard(window, app, () => Assert.Null(Ui.Await(window.SetReferencesAsync(app, [lib]), "the references set")));
+        Heard(window, core, () => Assert.Null(Ui.Await(window.SetReferencesAsync(core, [lib]), "the references set")));
         Assert.Equal<string>(written, [File.ReadAllText(app), File.ReadAllText(core)]);
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_project_file_and_the_solution_open_with_unsaved_edits_keep_them_through_add_reference_and_new_solution_folder_with_no_question()
     {
@@ -359,7 +392,7 @@ public sealed class SolutionViewTests : IDisposable
         Typing.Replace(window, ">Exe<", ">WinExe<");
         OpenDocument project = window.EditorArea.Active!;
         Assert.True(project.IsModified);
-        Heard(window, app, () => Assert.Null(window.SetReferences(app, [core])));
+        Heard(window, app, () => Assert.Null(Ui.Await(window.SetReferencesAsync(app, [core]), "the references set")));
         Quiet(window);
         string written = File.ReadAllText(app);
         Assert.True(conflicts.Count == 0, $"Passenger's own Add Reference asked which to keep of {string.Join(", ", conflicts)}, as if another program had changed it");
@@ -371,7 +404,7 @@ public sealed class SolutionViewTests : IDisposable
         window.OpenFile(solution);
         Typing.Replace(window, "<Solution>", "<Solution><!-- shop -->");
         OpenDocument slnx = window.EditorArea.Active!;
-        Heard(window, solution, () => Assert.Null(window.AddSolutionFolder(null, "docs")));
+        Heard(window, solution, () => Assert.Null(Ui.Await(window.AddSolutionFolderAsync(null, "docs"), "the solution folder added")));
         Quiet(window);
         written = File.ReadAllText(solution);
         Assert.True(conflicts.Count == 0, $"Passenger's own New Solution Folder asked which to keep of {string.Join(", ", conflicts)}");
@@ -383,7 +416,7 @@ public sealed class SolutionViewTests : IDisposable
         window.OpenFile(app);
         List<string> undoing = Answer(window);
         string notes = Path.Combine(folder, "Shop.App", "notes.txt");
-        Heard(window, app, () => Assert.Null(window.Rename(notes, "readme.txt")));
+        Heard(window, app, () => Assert.Null(Ui.Await(window.RenameAsync(notes, "readme.txt"), "the rename")));
         Quiet(window);
         Assert.Empty(conflicts);
         Assert.Contains("<None Update=\"readme.txt\"", project.Text.Snapshot.ToString(), StringComparison.Ordinal);
@@ -399,6 +432,7 @@ public sealed class SolutionViewTests : IDisposable
 
     /// <summary>A file, folder or class its folder refuses is refused in the popup saying why, with no IDE error; once the
     /// folder takes them, Add, Class/Interface... writes each kind of type in its folder's namespace.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Add_refused_by_its_folder_says_why_with_no_ide_error_and_add_class_interface_writes_each_of_Riders_kinds_of_type_in_its_folders_namespace()
     {
@@ -496,6 +530,7 @@ public sealed class SolutionViewTests : IDisposable
     /// <summary>Three of the Solution view's menus in one window: the solution's and a project's menus show the keys of the
     /// actions their items run, Compare With and Compare Files show two files' differences, and Open In, Terminal starts a
     /// shell in the folder in a tab of its own (sh's pwd is Unix's, so not on Windows).</summary>
+    [Gate]
     [AvaloniaFact]
     public void The_menus_show_their_actions_keys_compare_shows_two_files_differences_and_open_in_terminal_starts_a_shell_in_the_folder()
     {
@@ -503,8 +538,13 @@ public sealed class SolutionViewTests : IDisposable
         Write("Shop.App/Notes/b.txt", "one\n2\nthree\nfour\n");
         string a = Path.Combine(folder, "Shop.App", "Notes", "a.txt");
         string b = Path.Combine(folder, "Shop.App", "Notes", "b.txt");
+        // Run Unit Tests is offered only on a project holding tests.
+        Write("Shop.Tests/Shop.Tests.csproj", TestProjects.Library().With("  <ItemGroup>\n    <PackageReference Include=\"xunit\" Version=\"2.9.3\" />\n  </ItemGroup>\n"));
+        Write("Shop.Tests/ProductTests.cs", "using Xunit;\n\nnamespace Shop.Tests;\n\npublic class ProductTests\n{\n    [Fact]\n    public void Lists() { }\n}\n");
+        Write("Shop.slnx", "<Solution>\n  <Project Path=\"Shop.App/Shop.App.csproj\" />\n  <Project Path=\"Shop.Core/Shop.Core.csproj\" />\n  <Project Path=\"Shop.Tests/Shop.Tests.csproj\" />\n</Solution>\n");
         MainWindow window = Open();
         window.PickFiles = (_, _, _) => Task.FromResult<IReadOnlyList<string>>([b]);
+        Ui.WaitFor(() => window.Tests.Tree.Methods.Any(m => m.Name == "Lists"), "the test project's test from its code");
 
         Keymap keymap = window.Actions.Keymap;
         Ui.RightClick(Ui.Row(window.ExplorerView, Row(window, NodeKind.Solution, "Shop")));
@@ -515,7 +555,7 @@ public sealed class SolutionViewTests : IDisposable
             $"The solution's Build Solution shows {shown?.ToString() ?? "no keys"}, not Build Solution's {build.Display()} as the main menu does");
         Ui.Settle();
 
-        Ui.RightClick(Ui.Row(window.ExplorerView, Row(window, NodeKind.Project, "Shop.Core")));
+        Ui.RightClick(Ui.Row(window.ExplorerView, Row(window, NodeKind.Project, "Shop.Tests")));
         Shortcut chord = keymap.ShortcutsFor(AppActions.RunTests)[0];
         string? keys = MenuItemOf(window, "Run Unit Tests").GetVisualDescendants().OfType<TextBlock>().FirstOrDefault(t => t.Name == "PART_InputGestureText")?.Text;
         window.ExplorerView.OpenMenu?.Close();
@@ -588,7 +628,7 @@ public sealed class SolutionViewTests : IDisposable
         Assert.Equal(["Lines", "Order.cs", "order.cs"], Held(upper));
         Assert.Equal(["Invoice.cs"], Held(lower));
 
-        Assert.Equal("order.cs is already there", window.Rename(order, "order.cs"));
+        Assert.Equal("order.cs is already there", Ui.Await(window.RenameAsync(order, "order.cs"), "the rename"));
         int type = File.ReadAllText(order).IndexOf("Order", StringComparison.Ordinal);
         Assert.Equal("order.cs is already there", Ui.Await(window.RenameWithTypeAsync(order, "order.cs", ("Order", type), renameType: true), "the rename with its type"));
         Assert.Equal(Order, File.ReadAllText(order));
@@ -614,7 +654,7 @@ public sealed class SolutionViewTests : IDisposable
         byte[] original = System.Text.Encoding.Latin1.GetBytes("<?xml version=\"1.0\" encoding=\"windows-1252\"?>\n" + Library.Replace("  <PropertyGroup>", comment + "  <PropertyGroup>", StringComparison.Ordinal));
         File.WriteAllBytes(core, original);
         MainWindow window = Open();
-        Heard(window, core, () => Assert.Null(window.SetReferences(core, [app])));
+        Heard(window, core, () => Assert.Null(Ui.Await(window.SetReferencesAsync(core, [app]), "the references set")));
 
         string written = System.Text.Encoding.Latin1.GetString(File.ReadAllBytes(core));
         Assert.True(written.Contains(comment, StringComparison.Ordinal), $"Adding a reference rewrote the project's Windows-1252 comment:\n{written}");
@@ -622,6 +662,231 @@ public sealed class SolutionViewTests : IDisposable
         Ui.WaitFor(() => window.LocalHistory!.Snapshot().Events.Any(e => e.Path == core && e.Before is { } hash && window.LocalHistory.Content(hash) is { } before && before.AsSpan().SequenceEqual(original)),
             "Local History to keep the project as it was before the reference went in");
         window.Close();
+    }
+
+    /// <summary>A file added (a refresh of the Explorer) leaves open the Dependencies that were open, Shop.Core's, and
+    /// closed Shop.App's above it, which a key by the row's depth, kind and name alone took for it.</summary>
+    [Gate]
+    [AvaloniaFact]
+    public void A_file_added_keeps_the_open_dependencies_open_and_opens_no_other_projects()
+    {
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        Dependencies(window, "Shop.App");
+        ExplorerNode core = Dependencies(window, "Shop.Core");
+        Ui.ClickRow(window, core);
+        Ui.Press(window, "RIGHT");
+        Assert.True(core.IsExpanded, "Shop.Core's Dependencies did not open");
+
+        Ui.ChooseFromRowMenu(window, Show(window, Path.Combine(folder, "Shop.Core", "Catalog")), "Add", "New File…");
+        Assert.IsType<NamePopup>(window.Popup);
+        window.KeyTextInput("Notes.txt");
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => File.Exists(Path.Combine(folder, "Shop.Core", "Catalog", "Notes.txt")), "Notes.txt to be made");
+        string Opened(string project) =>
+            window.ExplorerView.Tree.Rows.First(r => r.Kind == NodeKind.Dependencies && r.Owner == Row(window, NodeKind.Project, project).Path).IsExpanded ? "open" : "closed";
+        Assert.True((Opened("Shop.App"), Opened("Shop.Core")) == ("closed", "open"),
+            $"After a file was added, Shop.App's Dependencies are {Opened("Shop.App")} and Shop.Core's {Opened("Shop.Core")}, where only Shop.Core's were open");
+        window.Close();
+    }
+
+    /// <summary>A solution filter naming one project of the solution, opened: its solution with that project alone loaded,
+    /// the other shown unloaded, Build building the one and the language server loading the one; the filter changed on
+    /// disk to name the other swaps them, and Reload Project loads the one it left out, none of which the folder keeps
+    /// as the person's own unloading.</summary>
+    [Gate]
+    [AvaloniaFact]
+    public void A_solution_filter_opens_its_solution_with_its_projects_alone_built_and_analysed_and_a_change_to_it_is_followed()
+    {
+        string filter = Path.Combine(folder, "Shop.App.slnf");
+        Write("Shop.App.slnf", "{\n  \"solution\": {\n    \"path\": \"Shop.slnx\",\n    \"projects\": [\n      \"Shop.App\\\\Shop.App.csproj\"\n    ]\n  }\n}\n");
+        Restore.Run(Path.Combine(folder, "Shop.slnx"));
+        string app = PathNames.Canonical(Path.Combine(folder, "Shop.App", "Shop.App.csproj"));
+        string core = PathNames.Canonical(Path.Combine(folder, "Shop.Core", "Shop.Core.csproj"));
+        MainWindow window = Ui.OpenFolder(filter);
+        try
+        {
+            Assert.Equal(("Shop.App", PathNames.Canonical(filter)), (window.Session.Workspace?.Name, window.Session.Workspace?.OpenedAs));
+            string Loaded() => string.Join(", ", window.ExplorerView.Tree.Rows.Where(r => r.Kind == NodeKind.Project).Select(r => $"{r.Name} {(r.IsDimmed ? "unloaded" : "loaded")}"));
+            Assert.Equal("Shop.App loaded, Shop.Core unloaded", Loaded());
+            Assert.Equal("(unloaded)", Row(window, NodeKind.Project, "Shop.Core").Detail);
+
+            Ui.WaitFor(() => window.CSharpService?.Session is { IsLoaded: true }, "the language server to load the filter's project", TimeSpan.FromMinutes(2));
+            int Found(string name) => Ui.Await(window.CSharpService!.Session!.SymbolsNamedAsync(name, 5), $"the language server's symbols named {name}", TimeSpan.FromMinutes(1)).Symbols.Count;
+            Assert.True((window.Session.DesignTimeBuilds.Builds, Found("Order"), Found("Product")) == (1, 1, 0),
+                $"The language server loaded {window.Session.DesignTimeBuilds.Builds} project(s), found {Found("Order")} Order (Shop.App's) and {Found("Product")} Product (Shop.Core's), "
+                + "where it loads Shop.App alone");
+
+            window.Perform(AppActions.Build);
+            Ui.WaitFor(() => !window.IsBuilding, "the filter's build", TimeSpan.FromMinutes(2));
+            Assert.StartsWith("Build succeeded", window.Status, StringComparison.Ordinal);
+            Assert.True(File.Exists(Path.Combine(folder, "Shop.App", "bin", "Debug", TestProjects.Framework, "Shop.App.dll")) && !Directory.Exists(Path.Combine(folder, "Shop.Core", "bin")),
+                $"Build built {(Directory.Exists(Path.Combine(folder, "Shop.Core", "bin")) ? "Shop.Core, which the filter leaves out" : "no Shop.App")}:\n{window.BottomPanel.Build.Document.Snapshot}");
+
+            Heard(window, filter, () => File.WriteAllText(filter, "{\n  \"solution\": {\n    \"path\": \"Shop.slnx\",\n    \"projects\": [ \"Shop.Core/Shop.Core.csproj\" ]\n  }\n}\n"));
+            Ui.WaitFor(() => Loaded() == "Shop.App unloaded, Shop.Core loaded", () => $"the Explorer to follow the filter naming Shop.Core instead ({Loaded()})");
+            Ui.WaitFor(() => window.CSharpService?.Session is { IsLoaded: true } && Found("Product") == 1 && Found("Order") == 0,
+                () => "the language server to load Shop.Core in Shop.App's place", TimeSpan.FromMinutes(2));
+
+            window.SetUnloaded(app, unloaded: false);
+            Assert.Equal("Shop.App loaded, Shop.Core loaded", Loaded());
+            Ui.WaitFor(() => Found("Order") == 1, "the language server to load Shop.App once reloaded", TimeSpan.FromMinutes(2));
+            Assert.Equal(["Shop.App", "Shop.Core"], window.Session.Projects.Select(p => p.Name).Order(StringComparer.Ordinal));
+            Assert.Empty(window.Session.KeptUnloaded);
+            window.SetUnloaded(core, unloaded: true);
+            Assert.Equal([core], window.Session.KeptUnloaded);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A file-based program beside the solution: Add Reference never offers it, since no project reference can name
+    /// a C# file; and the solution's filter, opened over the solution or in a window of its own, unloads the solution's
+    /// project it leaves out alone, the program loaded with its run configuration either way.</summary>
+    [AvaloniaFact]
+    public void A_program_beside_the_solution_is_never_offered_as_a_reference_and_stays_loaded_however_a_solution_filter_opens()
+    {
+        Write("scripts/tool.cs", "#!/usr/bin/env dotnet\nSystem.Console.WriteLine(\"tool\");\n");
+        string filter = PathNames.Canonical(Path.Combine(folder, "Shop.App.slnf"));
+        Write("Shop.App.slnf", "{\n  \"solution\": {\n    \"path\": \"Shop.slnx\",\n    \"projects\": [\n      \"Shop.App\\\\Shop.App.csproj\"\n    ]\n  }\n}\n");
+        string tool = PathNames.Canonical(Path.Combine(folder, "scripts", "tool.cs"));
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => window.Projects.Any(p => p.Path == tool), "scripts/tool.cs beside the solution to be a program of the folder's");
+            Ui.ChooseFromRowMenu(window, Row(window, NodeKind.Project, "Shop.App"), "Add", "Reference…");
+            AddReferenceDialog dialog = Assert.Single(window.OwnedWindows.OfType<AddReferenceDialog>());
+            Assert.True(dialog.Choices.Select(c => c.Name).SequenceEqual(["Shop.Core"]),
+                $"Add Reference offered [{string.Join(", ", dialog.Choices.Select(c => c.Detail))}], where a program chosen would write a ProjectReference no build can load");
+            dialog.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.None, null);
+            Ui.Settle();
+
+            Assert.Null(window.Open(filter));
+            Ui.Settle();
+            Assert.Equal(filter, window.Session.Workspace?.OpenedAs);
+            Loaded(window, "the filter opened over the solution");
+        }
+        finally
+        {
+            window.Close();
+        }
+        window = Ui.OpenFolder(filter, languageServer: false);
+        try
+        {
+            Loaded(window, "the filter opened in a window of its own");
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        void Loaded(MainWindow shown, string after)
+        {
+            string Said() => string.Join(", ", shown.ExplorerView.Tree.Rows.Where(r => r.Kind == NodeKind.Project).Select(r => $"{r.Name} {(r.IsDimmed ? "unloaded" : "loaded")}"));
+            Ui.WaitFor(() => Said() == "Shop.App loaded, Shop.Core unloaded, tool loaded", () => $"after {after}, the Explorer to show the program loaded beside Shop.App ({Said()})");
+            Assert.True(shown.Configurations.Any(c => c.Name == "tool") && shown.Session.Projects.Any(p => p.Path == tool),
+                $"After {after}, the program is lost to Run and Build: its run configurations are [{string.Join(", ", shown.Configurations.Select(c => c.Name))}]");
+        }
+    }
+
+    /// <summary>A file deleted takes its own row out, and Unload Project and Reload Project make the project's row again,
+    /// dimmed and then open to open: every other row shown stays the row it was, rather than every row of the tree being
+    /// made again for one.</summary>
+    [Gate]
+    [AvaloniaFact]
+    public void Delete_unload_and_reload_make_again_only_the_rows_they_touch()
+    {
+        string order = PathNames.Canonical(Path.Combine(folder, "Shop.App", "Models", "Order.cs"));
+        string core = PathNames.Canonical(Path.Combine(folder, "Shop.Core", "Shop.Core.csproj"));
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+        Show(window, order);
+        Show(window, Path.Combine(folder, "Shop.Core", "Catalog", "Product.cs"));
+        TreeRows<ExplorerNode> rows = window.ExplorerView.Tree.Rows;
+        List<ExplorerNode> before = [.. rows];
+
+        Ui.ClickRow(window, Show(window, order));
+        Ui.Press(window, "BACK_SPACE");
+        Ui.WaitFor(() => !File.Exists(order) && !rows.Any(r => r.Path == order), "Order.cs deleted and its row gone");
+        Assert.True(rows.SequenceEqual(before.Where(r => r.Path != order), ReferenceEqualityComparer.Instance),
+            $"Deleting Order.cs made rows other than its own again: [{string.Join(", ", rows.Where(r => !before.Contains(r, ReferenceEqualityComparer.Instance)).Select(r => r.Name))}] are new");
+
+        before = [.. rows];
+        ExplorerNode loaded = Row(window, NodeKind.Project, "Shop.Core");
+        Ui.ChooseFromRowMenu(window, loaded, "Unload Project");
+        ExplorerNode unloaded = Row(window, NodeKind.Project, "Shop.Core");
+        Assert.True(unloaded.IsDimmed && !unloaded.HasChildren, "Unload Project left Shop.Core's row loaded");
+        Assert.True(rows.SequenceEqual(before.Where(r => r == loaded || !PathNames.IsUnder(r.Path ?? r.Owner ?? string.Empty, Path.GetDirectoryName(core)!))
+            .Select(r => r == loaded ? unloaded : r), ReferenceEqualityComparer.Instance),
+            "Unload Project made rows other than the project's own again, or left what was under it");
+        Assert.Same(unloaded, window.ExplorerView.Selected);
+
+        before = [.. rows];
+        Ui.ChooseFromRowMenu(window, unloaded, "Reload Project");
+        ExplorerNode reloaded = Row(window, NodeKind.Project, "Shop.Core");
+        Assert.True(!reloaded.IsDimmed && reloaded.HasChildren, "Reload Project left Shop.Core's row unloaded");
+        Assert.True(rows.SequenceEqual(before.Select(r => r == unloaded ? reloaded : r), ReferenceEqualityComparer.Instance),
+            "Reload Project made rows other than the project's own again");
+        window.Close();
+    }
+
+    /// <summary>New File (its folder made with it), New Folder, a file copied and pasted and a file cut and pasted each put in
+    /// or take out the rows of what they made or moved alone: every other row shown stays the row it was, with Go to File's
+    /// folder never walked again.</summary>
+    [Gate]
+    [AvaloniaFact]
+    public void New_file_new_folder_and_paste_make_again_only_the_rows_of_what_they_make_or_move()
+    {
+        string models = Path.Combine(folder, "Shop.App", "Models");
+        string catalog = Path.Combine(folder, "Shop.Core", "Catalog");
+        string order = Path.Combine(models, "Order.cs");
+        string line = Path.Combine(models, "Lines", "Line.cs");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        Show(window, order);
+        Show(window, line);
+        Show(window, Path.Combine(catalog, "Product.cs"));
+        Show(window, Path.Combine(folder, "Shop.App", "Program.cs"));
+
+        string drafts = Path.Combine(catalog, "Drafts");
+        FilesFollowed.Check(window, "New File", [drafts], () => Add(Show(window, catalog), "New File…", "Drafts/Notes.txt"));
+        Assert.True(File.Exists(Path.Combine(drafts, "Notes.txt")), $"New File made no Drafts/Notes.txt: {window.Status}");
+        Assert.Contains(window.FileIndex.Files, f => f.EndsWith("Notes.txt", StringComparison.Ordinal));
+
+        string archive = Path.Combine(models, "Archive");
+        FilesFollowed.Check(window, "New Folder", [archive], () => Add(Show(window, models), "New Folder…", "Archive"));
+        Assert.True(Directory.Exists(archive), $"New Folder made no Archive: {window.Status}");
+
+        FilesFollowed.Check(window, "Copy and Paste", [Path.Combine(catalog, "Order.cs")], () =>
+        {
+            Ui.ClickRow(window, Show(window, order));
+            Ui.Run(window, EditorActions.Copy);
+            Ui.ClickRow(window, Show(window, catalog));
+            Ui.Run(window, EditorActions.Paste);
+        });
+        Assert.Equal("Copied Order.cs to Catalog", window.Status);
+
+        FilesFollowed.Check(window, "Cut and Paste", [line, Path.Combine(archive, "Line.cs")], () =>
+        {
+            Ui.ClickRow(window, Show(window, line));
+            Ui.Run(window, EditorActions.Cut);
+            Ui.ClickRow(window, Show(window, archive));
+            Ui.Run(window, EditorActions.Paste);
+        });
+        Assert.Equal("Moved Line.cs to Archive", window.Status);
+        Assert.Contains(window.FileIndex.Files, f => f.EndsWith(Path.Combine("Archive", "Line.cs"), StringComparison.Ordinal));
+        Assert.DoesNotContain(window.FileIndex.Files, f => f.EndsWith(Path.Combine("Lines", "Line.cs"), StringComparison.Ordinal));
+        window.Close();
+
+        // Add, then the item, with the name typed into its popup and Enter pressed.
+        void Add(ExplorerNode row, string item, string name)
+        {
+            Ui.ChooseFromRowMenu(window, row, "Add", item);
+            Assert.IsType<NamePopup>(window.Popup);
+            window.KeyTextInput(name);
+            Ui.Press(window, "ENTER");
+            Assert.False(window.IsPopupOpen, $"{item} refused {name}: {(window.Popup as NamePopup)?.Problem}");
+        }
     }
 
     private MainWindow Open() => Ui.OpenFolder(folder);
@@ -711,7 +976,8 @@ public sealed class SolutionViewTests : IDisposable
     /// <summary>dotnet build of the solution as it is on disk now, which fails the test naming what was done to it.</summary>
     private static void Builds(string solution, string after)
     {
-        ChildResult built = Task.Run(() => ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", solution]), limit: Restore.Limit)).GetAwaiter().GetResult();
+        ChildResult built = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", solution]), limit: Restore.Limit)),
+            $"dotnet build {solution}", Restore.Limit + TestFolders.Spare);
         Assert.True(built.Succeeded, $"Once {after}, dotnet build no longer builds the solution:\n{built.Output}{built.Error}");
     }
 

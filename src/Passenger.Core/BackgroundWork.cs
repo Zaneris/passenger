@@ -167,6 +167,28 @@ public static class BackgroundWork
         }
     }
 
+    /// <summary>Work for the thread pool that holds nothing, for what no screenshot or test may wait on: a loop as
+    /// long-lived as what it serves (a stream read to its end, a socket's accepts), an end the UI thread may block on, or
+    /// work whose answer goes elsewhere than the window. Each caller says which.</summary>
+    public static Task<T> Unheld<T>(Func<T> work, CancellationToken cancel = default) => Task.Run(work, cancel);
+
+    /// <inheritdoc cref="Unheld{T}(Func{T}, CancellationToken)"/>
+    public static Task<T> Unheld<T>(Func<Task<T>> work, CancellationToken cancel = default) => Task.Run(work, cancel);
+
+    /// <inheritdoc cref="Unheld{T}(Func{T}, CancellationToken)"/>
+    public static Task Unheld(Action work, CancellationToken cancel = default) => Task.Run(work, cancel);
+
+    /// <inheritdoc cref="Unheld{T}(Func{T}, CancellationToken)"/>
+    public static Task Unheld(Func<Task> work, CancellationToken cancel = default) => Task.Run(work, cancel);
+
+    /// <summary>Unheld work on a thread of its own, for work that blocks its thread for long (a trace read to its end).</summary>
+    public static Task<T> UnheldThread<T>(Func<T> work) =>
+        Task.Factory.StartNew(work, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+
+    /// <inheritdoc cref="UnheldThread{T}(Func{T})"/>
+    public static Task UnheldThread(Action work) =>
+        Task.Factory.StartNew(work, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+
     /// <summary>Takes one hold off the count, if there is one and, for a scope's, the count is still of its generation.</summary>
     private static void Release(long? generation)
     {

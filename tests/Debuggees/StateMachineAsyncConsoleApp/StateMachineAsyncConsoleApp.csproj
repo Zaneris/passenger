@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<!-- RuntimeAsyncConsoleApp's program compiled with state machines, where its steps stop alike. -->
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Compile Include="../RuntimeAsyncConsoleApp/Program.cs" />
+	</ItemGroup>
+
+</Project>

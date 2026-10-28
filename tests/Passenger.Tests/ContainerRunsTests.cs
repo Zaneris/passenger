@@ -5,6 +5,7 @@ using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
+using Passenger.App.Editors;
 using Passenger.App;
 using Passenger.App.Containers;
 using Passenger.App.Run;
@@ -126,6 +127,33 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
             Docker.Stopped(window, project, "Stop to take every container down");
         }
         window.Close();
+    }
+
+    /// <summary>A compose service whose project targets two frameworks runs in fast mode from its first framework's build,
+    /// as Run runs such a project on this machine, the image's runtime that framework's.</summary>
+    [AvaloniaFact]
+    public void A_compose_service_of_a_multi_targeted_project_runs_in_fast_mode_from_its_first_frameworks_build()
+    {
+        Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
+        (string folder, string project) = Restored("multi");
+        TestFolders.Write(folder, "Web/Web.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>")
+            .Replace($"<TargetFramework>{TestProjects.Framework}</TargetFramework>", $"<TargetFrameworks>{TestProjects.Framework};net11.0</TargetFrameworks>", StringComparison.Ordinal));
+        MainWindow window = Open(folder);
+        RunConfiguration web = window.Configurations.First(c => c.Kind == RunKind.Compose).Copied() with { Name = "Web of two frameworks", Services = ["web"], Generated = false };
+        window.SetConfigurations([web], web.Name);
+        try
+        {
+            Launched(window, "web, of two frameworks, to come up in fast mode");
+            Assert.Equal("web 1", Served(window, project, "web"));
+            string built = Docker.Run("inspect", "-f", $"{{{{range .Mounts}}}}{{{{if eq .Destination \"{ContainerPlans.AppFolder}\"}}}}{{{{.Source}}}}{{{{end}}}}{{{{end}}}}", Container(project, "web"));
+            Assert.True(PathNames.Same(Path.Combine(folder, "Web", "bin", "Debug", TestProjects.Framework), built.Trim()),
+                $"web was to run {TestProjects.Framework}'s build, its first framework's, but {ContainerPlans.AppFolder} is {built}");
+        }
+        finally
+        {
+            Docker.Stopped(window, project, "Stop to take web down");
+            window.Close();
+        }
     }
 
     /// <summary>A compose run builds its .NET services side by side in one dotnet build: with an error in each, it starts
@@ -367,6 +395,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         window.Close();
     }
 
+    /// <summary>The compose file's <c>services:</c> has a run icon too, whose menu runs its configuration whole.</summary>
     [AvaloniaFact]
     public void A_compose_files_services_and_a_Dockerfiles_final_FROM_have_run_icons_whose_menu_runs_that_service()
     {
@@ -377,8 +406,15 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         Ui.Settle();
         Passenger.App.Workspace.OpenDocument compose = window.EditorArea.Active!;
         string[] lines = compose.Text.Snapshot.ToString().Split('\n');
-        int[] services = [.. new[] { "  web:", "  api:", "  cache:" }.Select(s => Array.IndexOf(lines, s))];
-        Ui.WaitFor(() => compose.RunMarks.Select(m => m.Line).Order().SequenceEqual(services.Order()), "the services' run icons");
+        int[] services = [.. new[] { "services:", "  web:", "  api:", "  cache:" }.Select(s => Array.IndexOf(lines, s))];
+        Ui.WaitFor(() => compose.RunMarks.Select(m => m.Line).Order().SequenceEqual(services.Order()), "the run icons of services: and of each service");
+        Passenger.Editor.CodeEditor whole = window.EditorArea.CodeEditor;
+        double gutter = Enumerable.Range(0, 400).First(x => whole.IsOnGutterColumn(whole.Gutter!.Marks, new Avalonia.Point(x, 0))) + 3;
+        Ui.Click(whole, new Avalonia.Point(gutter, whole.PointOf(compose.Text.Snapshot.GetLineStart(services[0])).Y + (whole.LineHeight / 2)));
+        string[] runs = [.. window.Configurations.Where(c => c.Kind == RunKind.Compose && c.ComposeFiles.Any(f => PathNames.Same(f, compose.Path)))
+            .SelectMany(c => new[] { $"Run '{c.Name}'", $"Debug '{c.Name}'", $"Profile '{c.Name}'" })];
+        Assert.Equal(runs, Assert.IsType<Avalonia.Controls.MenuFlyout>(window.RunMarkMenu).Items.OfType<Avalonia.Controls.MenuItem>().Select(i => (string?)i.Header));
+        window.RunMarkMenu!.Hide();
         window.OpenFile(Path.Combine(folder, "Web", "Dockerfile"));
         Ui.Settle();
         Passenger.App.Workspace.OpenDocument dockerfile = window.EditorArea.Active!;
@@ -389,7 +425,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         Ui.Settle();
         int cache = Array.IndexOf(lines, "  cache:");
         Passenger.Editor.CodeEditor shown = window.EditorArea.CodeEditor;
-        double x = Enumerable.Range(0, 400).First(x => shown.IsInMarkColumn(new Avalonia.Point(x, 0))) + 3;
+        double x = Enumerable.Range(0, 400).First(x => shown.IsOnGutterColumn(shown.Gutter!.Marks, new Avalonia.Point(x, 0))) + 3;
         Ui.Click(shown, new Avalonia.Point(x, shown.PointOf(compose.Text.Snapshot.GetLineStart(cache)).Y + (shown.LineHeight / 2)));
         Avalonia.Controls.MenuItem[] items = [.. Assert.IsType<Avalonia.Controls.MenuFlyout>(window.RunMarkMenu).Items.OfType<Avalonia.Controls.MenuItem>()];
         Assert.Equal(["Run 'cache'", "Debug 'cache'", "Profile 'cache'"], items.Select(i => (string?)i.Header));
@@ -476,6 +512,67 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         }
     }
 
+    /// <summary>A Compose run's output costs the same small amount for each line however many come: 10,000 lines of its image's
+    /// build through the Run console, its secrets masked as they come, and 10,000 of its service's log after it, allocate no
+    /// more for each line off the window's thread, where they are read and masked, than <see cref="AspireStandInTests.PumpBytes"/>
+    /// over what 1,000 do.</summary>
+    [AvaloniaFact]
+    public void A_compose_runs_build_and_log_cost_a_small_constant_for_each_line_however_many_come()
+    {
+        Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
+        string folder = TestFolders.Create("ctr-lines-");
+        string project = ProjectNamed("lines");
+        // 20 steps 0.2 s apart however many lines, so runs last alike; a build clips what it ran past 200 KiB a second.
+        TestFolders.Write(folder, "lines.sh", """
+            [ "$1" = build ] && { echo 'connecting with DB_PASSWORD=hunter2-not-shown'; echo 'sent Authorization: Bearer abc.def-not-shown'; }
+            n=$(cat /lines)
+            step=$((n / 20))
+            [ "$step" -gt 0 ] || step=1
+            i=0
+            while [ "$i" -lt "$n" ]; do
+                awk -v from="$i" -v n="$n" -v step="$step" 'BEGIN { for (j = from + 1; j <= from + step && j <= n; j++) printf "info: request %06d served in 4 ms by worker %d\n", j, j % 8 }'
+                i=$((i + step))
+                sleep 0.2
+            done
+            echo "wrote $n lines"
+
+            """);
+        TestFolders.Write(folder, "Dockerfile", $"FROM {Docker.Image}\nCOPY lines lines.sh /\nRUN sh /lines.sh build\n");
+        TestFolders.Write(folder, "compose.yaml", $"name: {project}\nservices:\n  lines:\n    build: {{ context: ., no_cache: true }}\n    pull_policy: build\n"
+            + "    init: true\n    command: [\"sh\", \"-c\", \"sh /lines.sh; sleep 600\"]\n");
+        TestFolders.Write(folder, "lines", "1");
+        MainWindow window = Open(folder);
+        Assert.True(window.SelectConfiguration("Compose: compose.yaml"));
+        try
+        {
+            (long, long) Ran(int count)
+            {
+                File.WriteAllText(Path.Combine(folder, "lines"), count.ToString(CultureInfo.InvariantCulture));
+                Task<string?> running = Task.FromResult<string?>(null);
+                (long, long) allocated = AspireStandInTests.Streamed(window.BottomPanel.Run, [$"wrote {count} lines\n", $"wrote {count} lines\n"], () => running = window.RunAsync());
+                string? refused = Ui.Await(running, "the service to come up", TimeSpan.FromMinutes(5));
+                Assert.True(refused is null, $"{refused}\n{Run(window)}");
+                // The console keeps the last megabyte of what came, which after 10,000 lines of each is past the build's first lines.
+                string shown = Run(window);
+                Assert.True((count > 1_000 || (shown.Contains("DB_PASSWORD=" + ContainerSecrets.Masked, StringComparison.Ordinal)
+                    && shown.Contains("Authorization: " + ContainerSecrets.Masked, StringComparison.Ordinal))) && !shown.Contains("not-shown", StringComparison.Ordinal),
+                    $"The build's secrets were not masked as they came:\n{string.Join('\n', shown.Split('\n').Where(line => line.Contains("DB_PASSWORD", StringComparison.Ordinal) || line.Contains("Authorization", StringComparison.Ordinal)))}");
+                Docker.Stopped(window, project, "Stop to take the service down");
+                Ui.WaitFor(() => !window.IsRunning, "the log to stop being followed");
+                return allocated;
+            }
+            AspireStandInTests.LineCost each = AspireStandInTests.PerLine(Ran, 2);
+            TestContext.Current.TestOutputHelper?.WriteLine($"For each line more: {each}");
+            Assert.True(each.Pumps < AspireStandInTests.PumpBytes,
+                $"A Compose run's build and log allocated {each.Pumps:N0} bytes off the window's thread for each line of 10,000 more than of 1,000, as if each read or line were copied again to be masked");
+        }
+        finally
+        {
+            Docker.Stopped(window, project, "Stop to take the service down");
+            window.Close();
+        }
+    }
+
     /// <summary>A service that serves HTTPS serves the development certificate exported for it, as PEM with its key and no
     /// password (a certificate made for the test, which dev-certs' stand-in writes, the machine's store never read), with the
     /// project's user secrets mounted; no command line the run started names a password.</summary>
@@ -558,7 +655,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         {
             try
             {
-                return Task.Run(() => client.GetStringAsync(address)).GetAwaiter().GetResult();
+                return Ui.AwaitPumped(Waiting.Apart(() => client.GetStringAsync(address)), $"the answer at {address}", client.Timeout + TestFolders.Spare);
             }
             catch (Exception failed) when (failed is HttpRequestException or TaskCanceledException)
             {
@@ -786,8 +883,8 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
             File.SetUnixFileMode(Path.GetDirectoryName(secrets)!, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         }
         // As deployed: web published (no static web assets of this machine's to look for) into the runtime's image, run as its own user.
-        ChildResult built = Task.Run(() => ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["publish", Path.Combine(folder, "Web", "Web.csproj"), "-c", "Debug",
-            "-o", Path.Combine(folder, "deployed"), "-nologo", "-v:q"], folder), null, TimeSpan.FromMinutes(5).Scaled(), CancellationToken.None)).GetAwaiter().GetResult();
+        ChildResult built = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["publish", Path.Combine(folder, "Web", "Web.csproj"), "-c", "Debug",
+            "-o", Path.Combine(folder, "deployed"), "-nologo", "-v:q"], folder), null, TimeSpan.FromMinutes(5).Scaled(), CancellationToken.None)), "web's publish", TimeSpan.FromMinutes(5) + TestFolders.Spare);
         Assert.True(built.Succeeded, $"web did not build: {built.Output}{built.Error}");
         // Its files readable by any user whatever the mode the run made them with: in the image they are root's.
         TestFolders.Write(folder, "Web/Deployed.Dockerfile", "FROM mcr.microsoft.com/dotnet/aspnet:10.0\nUSER $APP_UID\nWORKDIR /app\nCOPY --chmod=755 deployed .\nEXPOSE 8080\nENTRYPOINT [\"dotnet\", \"Web.dll\"]\n");
@@ -1026,12 +1123,16 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
     }
 
     /// <summary>Each service's container's state, by service, failing the test when docker cannot say.</summary>
-    internal static Dictionary<string, string> States(string project) =>
-        StatesOf(Docker.Run("compose", "-p", project, "ps", "--all", "--format", "{{.Service}} {{.State}}"));
+    internal static Dictionary<string, string> States(string project) => StatesOf(Docker.Run(StatesAsked(project)));
+
+    /// <inheritdoc cref="States"/>
+    internal static async Task<Dictionary<string, string>> StatesAsync(string project) => StatesOf(await Docker.RunAsync(StatesAsked(project)));
+
+    private static string[] StatesAsked(string project) => ["compose", "-p", project, "ps", "--all", "--format", "{{.Service}} {{.State}}"];
 
     /// <summary>Each service's container's state as a wait looks at them: null while docker cannot say.</summary>
     internal static Dictionary<string, string>? StatesNow(string project) =>
-        Docker.Said("compose", "-p", project, "ps", "--all", "--format", "{{.Service}} {{.State}}") is { } said ? StatesOf(said) : null;
+        Docker.Said(StatesAsked(project)) is { } said ? StatesOf(said) : null;
 
     /// <summary>Compose's lines of services and states; a service with two containers for a moment (one made anew beside the
     /// one it replaces) has both states, joined, which no single state equals.</summary>
@@ -1041,15 +1142,25 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
             .GroupBy(p => p[0], StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => string.Join('+', g.Select(p => p[1])), StringComparer.Ordinal);
 
-    internal static string Container(string project, string service) =>
-        Docker.Run("ps", "-q", "--filter", $"label=com.docker.compose.project={project}", "--filter", $"label=com.docker.compose.service={service}");
+    internal static string Container(string project, string service) => Docker.Run(ContainerAsked(project, service, all: false));
+
+    /// <inheritdoc cref="Container"/>
+    internal static Task<string> ContainerAsync(string project, string service) => Docker.RunAsync(ContainerAsked(project, service, all: false));
+
+    private static string[] ContainerAsked(string project, string service, bool all) =>
+        ["ps", all ? "-aq" : "-q", "--filter", $"label=com.docker.compose.project={project}", "--filter", $"label=com.docker.compose.service={service}"];
 
     /// <summary>When a service's container last started; empty while it has none, stopped or not (a restart between its
     /// stop and its start, a container made anew), which a wait reads as not yet.</summary>
     internal static string Started(string project, string service) =>
-        Docker.Ask(["ps", "-aq", "--filter", $"label=com.docker.compose.project={project}", "--filter", $"label=com.docker.compose.service={service}"]).Trim() is { Length: > 0 } container
-            && !container.Contains('\n', StringComparison.Ordinal)
+        Docker.Ask(ContainerAsked(project, service, all: true)).Trim() is { Length: > 0 } container && !container.Contains('\n', StringComparison.Ordinal)
             ? Docker.Ask(["inspect", "-f", "{{.State.StartedAt}}", container]).Trim()
+            : string.Empty;
+
+    /// <inheritdoc cref="Started"/>
+    internal static async Task<string> StartedAsync(string project, string service) =>
+        (await Docker.AskAsync(ContainerAsked(project, service, all: true))).Trim() is { Length: > 0 } container && !container.Contains('\n', StringComparison.Ordinal)
+            ? (await Docker.AskAsync(["inspect", "-f", "{{.State.StartedAt}}", container])).Trim()
             : string.Empty;
 
     /// <summary>The host's port a service's port inside (8080 unless given) is published on.</summary>
@@ -1089,7 +1200,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
     {
         try
         {
-            return Task.Run(() => Http.GetStringAsync(new Uri($"http://localhost:{port}/"))).GetAwaiter().GetResult();
+            return Ui.AwaitPumped(Waiting.Apart(() => Http.GetStringAsync(new Uri($"http://localhost:{port}/"))), $"the answer on port {port}", Http.Timeout + TestFolders.Spare);
         }
         catch (Exception failed) when (failed is HttpRequestException or TaskCanceledException)
         {

@@ -1,5 +1,9 @@
 using System.Text;
 using Avalonia;
+using Microsoft.CodeAnalysis.CSharp;
+using Passenger.App.Debugging;
+using Passenger.App.Editors;
+using Passenger.App.Testing;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Languages;
@@ -17,7 +21,6 @@ public sealed class OpenDocument : Observable
 {
     private IHighlighter? parser;
     private IHighlighter? highlighter;
-    private IReadOnlyList<Marker> markers = [];
     private IReadOnlyList<string> projectContexts = [];
     private string? projectContext;
     private IReadOnlyList<LineMark> lineMarks = [];
@@ -27,13 +30,11 @@ public sealed class OpenDocument : Observable
     /// <summary>The line of each of <see cref="lineAnnotations"/> and of <see cref="liveValues"/>, carried by the text.</summary>
     private AnchoredLine[] annotationLines = [];
     private AnchoredLine[] liveLines = [];
-    private IReadOnlyList<InlayHint> inlayHints = [];
     private IReadOnlyList<TestMark> testMarks = [];
     private IReadOnlyList<ColourMark> colourMarks = [];
     private IReadOnlyList<ChangeMark> changeMarks = [];
     private IReadOnlyList<string?> gutterAnnotations = [];
     private IReadOnlyList<int> bookmarks = [];
-    private IReadOnlyList<FoldRegion> foldRegions = [];
     private IFoldFinder? finder;
     private bool softWrap;
     private bool showWhitespaces;
@@ -53,7 +54,17 @@ public sealed class OpenDocument : Observable
 
     /// <summary>The image or font owned by this document, null for text: a stand-in (<see cref="AssetPreview.IsPending"/>)
     /// until its first decode lands, then the decoded one, replaced only after a successful reload.</summary>
-    public AssetPreview? Asset { get; private set; }
+    public AssetPreview? Asset
+    {
+        get => asset;
+        private set
+        {
+            asset = value;
+            FollowReadOnly();
+        }
+    }
+
+    private AssetPreview? asset;
 
     /// <summary>The asset's decode under way off the UI thread, until what it came to has landed.</summary>
     private Task? decoding;
@@ -86,8 +97,8 @@ public sealed class OpenDocument : Observable
     /// An asset's tab shows it loading until its decode lands off the UI thread; a missing, empty or oversized one is
     /// refused at once. Other binary content opens as its bytes' text, read-only and never written
     /// (<see cref="FileText.Bytes"/>), or, unless <paramref name="asBytes"/> (for what would edit it), is refused with an
-    /// <see cref="IOException"/>, as is one past <see cref="LargestText"/>.</summary>
-    public static OpenDocument Load(string path, bool asBytes = true)
+    /// <see cref="IOException"/>, as is one past <see cref="LargestText"/>. C# is parsed with its project's symbols.</summary>
+    public static OpenDocument Load(string path, bool asBytes = true, CSharpParseOptions? options = null)
     {
         if (AssetPreview.KindOf(path) is { } kind)
         {
@@ -112,7 +123,7 @@ public sealed class OpenDocument : Observable
             throw new IOException($"{name} is {length / (1024.0 * 1024):0.#} MB: the editor opens a file of up to {LargestText / (1024 * 1024)} MB as text");
         }
         FileText file = FileText.Load(path) ?? (asBytes ? FileText.Bytes(path) : throw new IOException($"{name} looks like a binary file."));
-        OpenDocument document = new(path, file);
+        OpenDocument document = new(path, file, options);
         document.ReadAt(stamp);
         return document;
     }
@@ -192,10 +203,12 @@ public sealed class OpenDocument : Observable
     }
 
     /// <summary>Opens text with the encoding and line endings read from disk, and the conventions its path supplies.</summary>
-    public OpenDocument(string path, FileText file)
+    /// <param name="options">A C# file's preprocessor symbols (<see cref="CSharpParsing"/>), a Debug build's when not given.</param>
+    public OpenDocument(string path, FileText file, CSharpParseOptions? options = null)
     {
         Path = path;
         Text = new TextDocument(file.Text);
+        Decorations = new DocumentDecorations(Text);
         Encoding = file.Encoding;
         HasBom = file.HasBom;
         EncodingName = file.EncodingName;
@@ -206,7 +219,7 @@ public sealed class OpenDocument : Observable
         Conventions = EditorConfig.For(path);
         Indentation = Choose();
         FollowLineEnding(file.Text.Contains('\n', StringComparison.Ordinal));
-        parser = Parser();
+        parser = Parser(options);
         highlighter = parser;
         finder = Finder();
         Text.Changed += (_, change) =>
@@ -214,27 +227,23 @@ public sealed class OpenDocument : Observable
             // Ahead of what moves with the change (the caret, then the breadcrumbs), which found afresh would read the file.
             ServerLines.After(change);
             Selections = TextEditing.MapThrough(Selections, change.Edits).Clamp(change.After.Length);
-            if (foldRegions.Count > 0)
+            if (lineAnnotations.Count > 0 && Set(ref lineAnnotations, Carried(lineAnnotations, annotationLines), nameof(LineAnnotations)))
             {
-                // Moved where the edit reaches them, the runs of regions past it shifted whole.
-                FoldRegions = FoldList.Of(foldRegions).Through(change.Edits);
+                Decorations.SetLineAnnotations(ShownAnnotations);
             }
-            if (inlayHints.Count > 0)
+            if (liveValues.Count > 0 && Set(ref liveValues, Carried(liveValues, liveLines), nameof(LiveValues)))
             {
-                // The same way: each editor has carried its own already, which this draws alike, so none wraps a line again.
-                InlayHints = HintList.Of(inlayHints).Through(change.Edits);
-            }
-            if (lineAnnotations.Count > 0)
-            {
-                Set(ref lineAnnotations, Carried(lineAnnotations, annotationLines), nameof(LineAnnotations));
-            }
-            if (liveValues.Count > 0)
-            {
-                Set(ref liveValues, Carried(liveValues, liveLines), nameof(LiveValues));
+                Decorations.SetLineAnnotations(ShownAnnotations);
             }
             FollowHeld(change.Edits);
+            if (Markers.Count > 0)
+            {
+                // Moved with the text, so what lists them follows.
+                Raise(nameof(Markers));
+            }
             Raise(nameof(IsModified));
         };
+        FollowReadOnly();
     }
 
     private string? encodingWarning;
@@ -276,8 +285,17 @@ public sealed class OpenDocument : Observable
         EncodingWarning = unheld is null ? null : $"{EncodingName} cannot hold '{unheld}': the next save writes {Name} as UTF-8";
     }
 
-    /// <summary>Raised after a save, so the language server hears of it.</summary>
+    /// <summary>Raised after a save, once the file holds what it wrote, so the language server hears of it.</summary>
     public event EventHandler? Saved;
+
+    /// <summary>The last save still on its way to the disk, Windows having refused it at first while another program held
+    /// the file (<see cref="FileText.Landed(string)"/>): ends once it lands (true), or once its text is taken for unsaved
+    /// again. Null, or ended, when every save has landed.</summary>
+    public Task<bool>? Landing { get; private set; }
+
+    /// <summary>Where the text was saved before the saves still landing, which the text is taken as saved at again when
+    /// the last of them never lands.</summary>
+    private SaveMark landingFrom;
 
     /// <summary>A parse of the C# text as it stands landed (<see cref="CSharpHighlighter.Parsed"/>), for work on its
     /// syntax off the UI thread.</summary>
@@ -291,8 +309,9 @@ public sealed class OpenDocument : Observable
     /// the status bar says of it.</summary>
     public event EventHandler<string>? Converted;
 
-    /// <summary>Raised when an undo or redo of a line separator or encoding change could not write the file, with what the
-    /// status bar says; the file is left modified, for the next save to try again.</summary>
+    /// <summary>Raised when an undo or redo of a line separator or encoding change could not write the file, or a save never
+    /// landed (<see cref="Landing"/>), with what the status bar says; the file is left modified, for the next save to try
+    /// again.</summary>
     public event EventHandler<string>? WriteFailed;
 
     /// <summary>Colours from the in-process parser, replaced by the language server's layered over it
@@ -303,11 +322,23 @@ public sealed class OpenDocument : Observable
         set => Set(ref highlighter, value);
     }
 
-    /// <summary>The language service's markers (diagnostics), in this text's offsets.</summary>
+    /// <summary>What every editor showing the file draws on its text: its markers, hints, folds, annotations, change bars
+    /// and bookmarks, which the properties here set.</summary>
+    public DocumentDecorations Decorations { get; }
+
+    /// <summary>The language service's markers (diagnostics), in this text's offsets: set when a service reports, and
+    /// carried with the text between reports (<see cref="DocumentDecorations.Markers"/>).</summary>
     public IReadOnlyList<Marker> Markers
     {
-        get => markers;
-        set => Set(ref markers, value);
+        get => Decorations.Markers;
+        set
+        {
+            if (!ReferenceEquals(Decorations.Markers, value))
+            {
+                Decorations.SetMarkers(value);
+                Raise();
+            }
+        }
     }
 
     private int checks;
@@ -395,26 +426,37 @@ public sealed class OpenDocument : Observable
         set => Set(ref testMarks, value);
     }
 
-    /// <summary>The run icons beside what a run configuration runs from it: a compose file's services, a Dockerfile's image.</summary>
+    /// <summary>The run icons beside what a run configuration runs from it: a program's entry point, a launch profile, a
+    /// compose file's services, a Dockerfile's image.</summary>
     public IReadOnlyList<RunMark> RunMarks
     {
         get => runMarks;
-        set => Set(ref runMarks, value);
+        set
+        {
+            gutterRunMarks = null;
+            Set(ref runMarks, value);
+        }
     }
 
     private IReadOnlyList<RunMark> runMarks = [];
 
-    /// <summary>The icons beside the web routes it declares, each sending its route's request; drawn as the run icons are.</summary>
+    /// <summary>The icons beside the web routes it declares, or an .http file's requests, each sending its request; drawn as
+    /// the run icons are.</summary>
     public IReadOnlyList<RunMark> RouteMarks
     {
         get => routeMarks;
-        set => Set(ref routeMarks, value);
+        set
+        {
+            gutterRunMarks = null;
+            Set(ref routeMarks, value);
+        }
     }
 
     private IReadOnlyList<RunMark> routeMarks = [];
+    private IReadOnlyList<RunMark>? gutterRunMarks;
 
-    /// <summary>Every run icon its gutter draws: a run configuration's and a route's.</summary>
-    public IReadOnlyList<RunMark> GutterRunMarks => routeMarks.Count == 0 ? runMarks : [.. runMarks, .. routeMarks];
+    /// <summary>Every run icon its gutter draws: a run configuration's and a route's, put together once for each of theirs.</summary>
+    public IReadOnlyList<RunMark> GutterRunMarks => gutterRunMarks ??= routeMarks.Count == 0 ? runMarks : [.. runMarks, .. routeMarks];
 
     /// <summary>The colours its lines write or name (XAML's, C#'s), each a swatch in the gutter.</summary>
     public IReadOnlyList<ColourMark> ColourMarks
@@ -427,14 +469,23 @@ public sealed class OpenDocument : Observable
     public IReadOnlyList<ChangeMark> ChangeMarks
     {
         get => changeMarks;
-        set => Set(ref changeMarks, value);
+        set
+        {
+            if (!ReferenceEquals(changeMarks, value))
+            {
+                changeMarks = value;
+                Decorations.SetChangeMarks(value);
+                Raise();
+            }
+        }
     }
 
-    /// <summary>What folds in the text and which of it is folded, in this text's offsets.</summary>
+    /// <summary>What folds in the text and which of it is folded, in this text's offsets: the decorations', which a fold
+    /// in any editor of the file changes and the text carries through its changes.</summary>
     public IReadOnlyList<FoldRegion> FoldRegions
     {
-        get => foldRegions;
-        set => Set(ref foldRegions, value);
+        get => Decorations.FoldRegions;
+        set => Decorations.SetFoldRegions(value);
     }
 
     /// <summary>Which of the regions first found in the file fold as it opens (the window's: those folded as it last
@@ -451,7 +502,15 @@ public sealed class OpenDocument : Observable
     public IReadOnlyList<int> Bookmarks
     {
         get => bookmarks;
-        set => Set(ref bookmarks, value);
+        set
+        {
+            if (!ReferenceEquals(bookmarks, value))
+            {
+                bookmarks = value;
+                Decorations.SetBookmarks(value);
+                Raise();
+            }
+        }
     }
 
     /// <summary>Text per line at the gutter's left (Git blame's), empty for none.</summary>
@@ -461,12 +520,12 @@ public sealed class OpenDocument : Observable
         set => Set(ref gutterAnnotations, value);
     }
 
-    /// <summary>The language service's words inside lines (parameter names before arguments), in this text's offsets: a
-    /// <see cref="HintList"/>, which the text carries through each edit, as its editors carry theirs.</summary>
+    /// <summary>The language service's words inside lines (parameter names before arguments), in this text's offsets: the
+    /// decorations' <see cref="HintList"/>, which the text carries through each edit.</summary>
     public IReadOnlyList<InlayHint> InlayHints
     {
-        get => inlayHints;
-        set => Set(ref inlayHints, HintList.Of(value));
+        get => Decorations.InlayHints;
+        set => Decorations.SetInlayHints(value);
     }
 
     /// <summary>The debugger's text after lines: inline values, the exception it stopped on. Each goes with its line as
@@ -477,7 +536,10 @@ public sealed class OpenDocument : Observable
         set
         {
             annotationLines = Anchored(value, annotationLines);
-            Set(ref lineAnnotations, value);
+            if (Set(ref lineAnnotations, value))
+            {
+                Decorations.SetLineAnnotations(ShownAnnotations);
+            }
         }
     }
 
@@ -489,7 +551,10 @@ public sealed class OpenDocument : Observable
         set
         {
             liveLines = Anchored(value, liveLines);
-            Set(ref liveValues, value);
+            if (Set(ref liveValues, value))
+            {
+                Decorations.SetLineAnnotations(ShownAnnotations);
+            }
         }
     }
 
@@ -568,6 +633,7 @@ public sealed class OpenDocument : Observable
     public void MoveTo(string path)
     {
         Path = path;
+        FollowReadOnly();
         Language language = Asset is null && !IsBinary ? Language.ForPath(path) : Language;
         if (language != Language)
         {
@@ -602,10 +668,28 @@ public sealed class OpenDocument : Observable
         Choose(raise: true);
     }
 
-    /// <summary>The indentation from the .editorconfig, else the file's own lines, else its language; raised as changed.</summary>
+    /// <summary>The indentation chosen for the file on the indent widget, over every other, until the file closes; null
+    /// to follow its .editorconfig, its own lines and its language.</summary>
+    public IndentOptions? ChosenIndent
+    {
+        get => chosenIndent;
+        set
+        {
+            chosenIndent = value;
+            Choose(raise: true);
+        }
+    }
+
+    private IndentOptions? chosenIndent;
+
+    /// <summary>The indentation the file has with none chosen.</summary>
+    public FileIndent Unchosen => FileIndent.Choose(Conventions, detected, Language.Indent);
+
+    /// <summary>The indentation chosen, else from the .editorconfig, else the file's own lines, else its language; raised as
+    /// changed.</summary>
     private FileIndent Choose(bool raise = false)
     {
-        FileIndent chosen = FileIndent.Choose(Conventions, detected, Language.Indent);
+        FileIndent chosen = FileIndent.Choose(Conventions, detected, Language.Indent, chosenIndent);
         if (raise && chosen != Indentation)
         {
             Indentation = chosen;
@@ -772,6 +856,10 @@ public sealed class OpenDocument : Observable
         {
             return;
         }
+        if (IsReadOnly)
+        {
+            throw new IOException(Refusals.ReadOnly(Name));
+        }
         Stored before = Current;
         SelectionSet carets = Selections;
         TextEdit[] sorted = [.. edits.OrderBy(e => e.Start)];
@@ -855,11 +943,11 @@ public sealed class OpenDocument : Observable
         }
     }
 
-    /// <summary>The in-process parser's colours and folds for the file's language (C#'s parse, another language's TextMate
-    /// grammar); null for a language with neither.</summary>
-    private IHighlighter? Parser()
+    /// <summary>The in-process parser's colours and folds for the file's language (C#'s parse, with the file's
+    /// <paramref name="options"/>, another language's TextMate grammar); null for a language with neither.</summary>
+    private IHighlighter? Parser(CSharpParseOptions? options = null)
     {
-        IHighlighter? colours = Highlighters.For(Language, Text);
+        IHighlighter? colours = Highlighters.For(Language, Text, options);
         if (colours is CSharpHighlighter csharp)
         {
             csharp.Parsed += (_, parsed) => Parsed?.Invoke(this, parsed);
@@ -899,16 +987,17 @@ public sealed class OpenDocument : Observable
             FoldRegions = Opening(found);
             return;
         }
-        if (Same(foldRegions, found))
+        if (Same(FoldRegions, found))
         {
             return;
         }
         HashSet<int>? folded = null;
-        for (int i = 0; i < foldRegions.Count; i++)
+        IReadOnlyList<FoldRegion> regions = FoldRegions;
+        for (int i = 0; i < regions.Count; i++)
         {
-            if (foldRegions[i].Folded)
+            if (regions[i].Folded)
             {
-                (folded ??= []).Add(foldRegions[i].Start);
+                (folded ??= []).Add(regions[i].Start);
             }
         }
         if (folded is null)
@@ -971,6 +1060,9 @@ public sealed class OpenDocument : Observable
     /// SDK or a package that Go to Declaration went into, or a copy of a container's file or of what the engine says of one.</summary>
     public bool IsReadOnly => Asset is not null || IsDecompiled || IsWorkbook || IsBinary || Product.Carries(Path) || IsReleaseNotes
         || MSBuild.MSBuildFiles.IsInstalled(Path) || Containers.ContainerFilesPane.IsCopy(Path) || Endpoints.RequestLog.IsCommandCopy(Path);
+
+    /// <summary>The text refuses every change while the file is read-only, whatever asks it: the one place that holds it so.</summary>
+    private void FollowReadOnly() => Text.IsReadOnly = IsReadOnly;
 
     /// <summary>Whether this is an Excel workbook, shown as its sheets' cells: its tab holds no text, and nothing is ever
     /// written over it.</summary>
@@ -1159,7 +1251,16 @@ public sealed class OpenDocument : Observable
         {
             return false;
         }
-        Text.SetText(file.Text, Selections);
+        // What the disk holds now is what even a read-only file shows.
+        Text.IsReadOnly = false;
+        try
+        {
+            Text.SetText(file.Text, Selections);
+        }
+        finally
+        {
+            FollowReadOnly();
+        }
         Text.MarkSaved();
         if (file.Text.Contains('\n', StringComparison.Ordinal))
         {
@@ -1176,9 +1277,9 @@ public sealed class OpenDocument : Observable
     /// <summary>Writes the file, first doing to its text what its .editorconfig asks of a save (trailing whitespace off
     /// every line without one of <paramref name="carets"/>, a final line break, every break its <c>end_of_line</c>, as
     /// one undoable step) and in its <c>charset</c>; a line separator or encoding the person chose stays. Its folder, once
-    /// another program moved or deleted it, is made again only when <paramref name="makeFolder"/> (the person's Save). An
-    /// asset preview is never written, even when Save is called directly.</summary>
-    public void Save(SelectionSet? carets = null, bool makeFolder = false)
+    /// another program moved or deleted it, is made again only when <paramref name="makeFolder"/> (the person's Save). A
+    /// file with no changes is written only <paramref name="overDisk"/>; a read-only one never, refused with why.</summary>
+    public void Save(SelectionSet? carets = null, bool makeFolder = false, bool overDisk = false)
     {
         if (Asset is not null)
         {
@@ -1193,6 +1294,14 @@ public sealed class OpenDocument : Observable
         {
             // Its control characters are shown as signs: written, they would replace the bytes.
             throw new IOException($"{Name} is a binary file, shown read-only.");
+        }
+        if (IsReadOnly)
+        {
+            throw new IOException(Refusals.ReadOnly(Name));
+        }
+        if (!IsModified && !overDisk)
+        {
+            return;
         }
         ReadConventions();
         string text = Text.Snapshot.ToString();
@@ -1217,20 +1326,48 @@ public sealed class OpenDocument : Observable
     private void Write(Encoding encoding, bool bom, bool makeFolder = false) =>
         Wrote(FileText.Save(Path, Text.Snapshot.ToString(), encoding, bom, crBreaks, makeFolder));
 
-    /// <summary>Takes how a write stored the file, which now holds the text.</summary>
+    /// <summary>Takes how a write stored the file, which now holds the text, or will once the save lands.</summary>
     private void Wrote((FileText Written, string? Converted) write)
     {
         (FileText written, string? converted) = write;
         StoreAs(written);
         // Written, the text is in the encoding it was written in.
         EncodingWarning = null;
+        SaveMark was = Landing is { IsCompleted: false } ? landingFrom : Text.LastSave;
         Text.MarkSaved();
         Raise(nameof(IsModified));
-        Saved?.Invoke(this, EventArgs.Empty);
+        if (FileText.Landed(Path) is { } landing)
+        {
+            landingFrom = was;
+            Landing = LandedAsync(landing, was, Text.Saved);
+            IdeErrors.Observe(Landing);
+        }
+        else
+        {
+            Saved?.Invoke(this, EventArgs.Empty);
+        }
         if (converted is not null)
         {
             Converted?.Invoke(this, converted);
         }
+    }
+
+    /// <summary>A save on its way to the disk: once it lands, the save is told; once it never will, the text it wrote is
+    /// unsaved again and why is said, unless a later save is on its way after it.</summary>
+    private async Task<bool> LandedAsync(Task<Exception?> landing, SaveMark was, TextSnapshot written)
+    {
+        if (await landing is not { } refused)
+        {
+            Saved?.Invoke(this, EventArgs.Empty);
+            return true;
+        }
+        if (ReferenceEquals(Text.Saved, written))
+        {
+            Text.MarkSaved(was);
+            Raise(nameof(IsModified));
+            WriteFailed?.Invoke(this, $"{Name} could not be saved: {refused.Message}");
+        }
+        return false;
     }
 
     /// <summary>Takes how the file is stored now, unless that is what it has already in all but name (ASCII reads as

@@ -36,9 +36,9 @@ public partial class MainWindow
 
     /// <summary>New Solution Folder: a folder in a solution folder (by its path in the solution), or at the solution's
     /// top with none. Null once made, else why not.</summary>
-    public string? AddSolutionFolder(string? parent, string name)
+    public async Task<string?> AddSolutionFolderAsync(string? parent, string name)
     {
-        string? problem = EditSolution(file => SolutionEdits.AddFolder(file, parent, name), $"Added solution folder {name}");
+        string? problem = await EditSolutionAsync(file => SolutionEdits.AddFolder(file, parent, name), $"Added solution folder {name}");
         if (problem is null)
         {
             Explorer.RevealSolutionFolder($"{parent ?? "/"}{name}/");
@@ -47,11 +47,11 @@ public partial class MainWindow
     }
 
     /// <summary>Renames a solution folder, which stays open if it was.</summary>
-    public string? RenameSolutionFolder(string path, string name)
+    public async Task<string?> RenameSolutionFolderAsync(string path, string name)
     {
         string renamed = $"{path[..(path.TrimEnd('/').LastIndexOf('/') + 1)]}{name}/";
         bool open = Explorer.Tree.Rows.Any(r => r.SolutionPath == path && r.Kind == NodeKind.SolutionFolder && r.IsExpanded);
-        string? problem = EditSolution(file => SolutionEdits.RenameFolder(file, path, name), $"Renamed solution folder {FolderName(path)} to {name}");
+        string? problem = await EditSolutionAsync(file => SolutionEdits.RenameFolder(file, path, name), $"Renamed solution folder {FolderName(path)} to {name}");
         if (problem is null)
         {
             Explorer.RevealSolutionFolder(renamed, open);
@@ -79,7 +79,7 @@ public partial class MainWindow
         {
             return false;
         }
-        return EditSolution(file => SolutionEdits.RemoveFolder(file, path), $"Removed solution folder {removing.Name} from {solution.Name}") is null;
+        return await EditSolutionAsync(file => SolutionEdits.RemoveFolder(file, path), $"Removed solution folder {removing.Name} from {solution.Name}") is null;
 
         void Name(IEnumerable<SolutionEntry> entries, string kind)
         {
@@ -99,7 +99,7 @@ public partial class MainWindow
         {
             return false;
         }
-        return EditSolution(file => SolutionEdits.RemoveFile(file, holder, path), $"Removed {name} from {FolderName(holder)}") is null;
+        return await EditSolutionAsync(file => SolutionEdits.RemoveFile(file, holder, path), $"Removed {name} from {FolderName(holder)}") is null;
     }
 
     /// <summary>Add Existing Project: the projects the person picks, put in a solution folder, or at the solution's top
@@ -109,7 +109,7 @@ public partial class MainWindow
         string where = into is null ? "the Solution" : $"Solution Folder '{FolderName(into)}'";
         IReadOnlyList<string> picked = await PickFiles($"Add Existing Project to {where}",
             [new FilePickerFileType("Projects") { Patterns = ["*.csproj", "*.fsproj", "*.vbproj"] }], true);
-        if (AddEach(picked, (solution, project) => SolutionEdits.AddProject(solution, into, project), Path.GetFileNameWithoutExtension) is { } last)
+        if (await AddEachAsync(picked, (solution, project) => SolutionEdits.AddProject(solution, into, project), Path.GetFileNameWithoutExtension) is { } last)
         {
             Reveal(into, last);
         }
@@ -119,15 +119,15 @@ public partial class MainWindow
     public async Task AddExistingItemsAsync(string into)
     {
         IReadOnlyList<string> picked = await PickFiles($"Add Existing Item to '{FolderName(into)}'", null, true);
-        if (AddEach(picked, (solution, file) => SolutionEdits.AddFile(solution, into, file), Path.GetFileName) is { } last)
+        if (await AddEachAsync(picked, (solution, file) => SolutionEdits.AddFile(solution, into, file), Path.GetFileName) is { } last)
         {
             Reveal(into, last);
         }
     }
 
-    /// <summary>Adds each path picked, then reads the solution once: the last one added, or null with none, the status bar
-    /// saying what was added or why one was not.</summary>
-    private string? AddEach(IReadOnlyList<string> picked, Func<string, string, string?> add, Func<string, string> named)
+    /// <summary>Adds each path picked, then, once the solution's file has landed, reads the solution once: the last one
+    /// added, or null with none, the status bar saying what was added or why one was not.</summary>
+    private async Task<string?> AddEachAsync(IReadOnlyList<string> picked, Func<string, string, string?> add, Func<string, string> named)
     {
         if (Solution is not { } solution || picked.Count == 0)
         {
@@ -151,6 +151,11 @@ public partial class MainWindow
                 added.Add(path);
             }
         }
+        if (added.Count > 0 && await UnlandedAsync([solution.Path]) is { } unlanded)
+        {
+            added.Clear();
+            refused = [$"{solution.Name} could not be changed: {unlanded.Message}"];
+        }
         FollowWritten([solution.Path]);
         if (added.Count > 0)
         {
@@ -172,15 +177,19 @@ public partial class MainWindow
         Explorer.RevealSolutionFolder(into, child: added);
     }
 
-    /// <summary>Makes one change to the open solution's file and reads the solution again: null when it was made, else
-    /// why not, which the status bar says too.</summary>
-    private string? EditSolution(Func<string, string?> edit, string done)
+    /// <summary>Makes one change to the open solution's file and, once it has landed, reads the solution again: null when it
+    /// was made, else why not, which the status bar says too.</summary>
+    private async Task<string?> EditSolutionAsync(Func<string, string?> edit, string done)
     {
         if (Solution is not { } solution)
         {
             return Refusals.NoSolution;
         }
         string? problem = SaveBeforeWriting([solution.Path]) is { } unsaved ? $"{solution.Name} could not be changed: {unsaved}" : Change(() => edit(solution.Path), solution.Name);
+        if (problem is null && await UnlandedAsync([solution.Path]) is { } unlanded)
+        {
+            problem = $"{solution.Name} could not be changed: {unlanded.Message}";
+        }
         FollowWritten([solution.Path]);
         if (problem is null)
         {

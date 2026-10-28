@@ -7,16 +7,20 @@ app := "src/Passenger.App"
 # Avalonia's build task sends usage data from every build of an Avalonia project unless this is in the environment.
 export AVALONIA_TELEMETRY_OPTOUT := "1"
 
+# The checkout as the disk names it, for recipes' shells and dotnet, which take a PWD naming their folder as its path.
+export PWD := justfile_directory()
+
 # Build everything (Debug). Warnings are errors.
 build:
     dotnet build
 
 # The suite dealt to several test processes at once, then the Alone classes in one (tools/test-run.py; results in
 # artifacts/test-results/local). PROCESSES is PASSENGER_TEST_PROCESSES by default, else a quarter of the processors, at
-# most 4, and 1 runs one dotnet test in xunit's own order; --plan shows the deal and runs nothing.
-# Every test, headless: just test [FILTER] [PROCESSES] [--plan]
+# most 4, and 1 runs one dotnet test in xunit's own order; --gate or --report runs that lane alone (the gate: the [Gate]
+# tests and the unit tests); --plan shows the deal and runs nothing. A flag may stand in either argument's place.
+# Every test, headless: just test [FILTER] [PROCESSES] [--gate | --report] [--plan]
 test filter="" processes="" *args:
-    python3 -I tools/test-run.py {{ quote(filter) }} {{ if processes == "" { "" } else { "--processes " + processes } }} {{args}}
+    python3 -I tools/test-run.py {{ quote(filter) }} {{ quote(processes) }} {{args}}
 
 # Every comment held to its limit, a file's or type's 10 lines, a member's 5, a body's 1: just comments [PATH...]
 comments *paths:

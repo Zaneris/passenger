@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Text.RegularExpressions;
 using Passenger.Core;
 using Passenger.Editor;
@@ -28,9 +29,9 @@ public readonly record struct FoundLink(int Start, int Length, LinkTarget Target
 /// /path/File.cs:line 12"), and a compiler's message ("File.cs(12,5): error ..."). The terminal's (<see cref="FilePaths"/>)
 /// add any path to a file, with a line and column after it or not. A path is a link only to a file there is, a relative
 /// one found under the folders given (the project's first); a stack frame's <c>/_/</c>, a deterministic build's name for
-/// the source root, is relative too. A line's links are kept while its text is the same, so drawing it again and the
-/// pointer moving over it look for nothing. As a highlighter it colours them, for a view with no colours of its
-/// own.</summary>
+/// the source root, is relative too. A line's links are kept while its text is the same, found again by its characters, and
+/// the editor's for a line while it starts where it did, so drawing it again and the pointer moving over it copy and make
+/// nothing. As a highlighter it colours them, for a view with no colours of its own.</summary>
 public sealed partial class ConsoleLinks : IHighlighter
 {
     /// <summary>Lines longer than this have no links: output written without line breaks costs nothing more to draw.</summary>
@@ -42,7 +43,19 @@ public sealed partial class ConsoleLinks : IHighlighter
     private readonly Dictionary<string, FoundLink[]> lines = [];
     private readonly Dictionary<string, string?> files = new(PathNames.Comparer);
 
+    /// <summary><see cref="lines"/> read by a line's characters, so a line kept is found with no string made of it.</summary>
+    private readonly Dictionary<string, FoundLink[]>.AlternateLookup<ReadOnlySpan<char>> kept;
+
+    /// <summary>The editor's links last given for a line, by where it starts, with the links they were made from: the
+    /// same while the line's text and its place are.</summary>
+    private readonly Dictionary<int, (FoundLink[] Found, TextLink[] Links)> given = [];
+
+    public ConsoleLinks() => kept = lines.GetAlternateLookup<ReadOnlySpan<char>>();
+
     public event EventHandler? Changed;
+
+    /// <summary>How many lines' characters have been made a string to find their links: once for each line not kept.</summary>
+    public long LinesCopied { get; private set; }
 
     /// <summary>Where a relative path is looked for, in order: the project the output came from first.</summary>
     public Func<IReadOnlyList<string>> Folders { get; set; } = () => [];
@@ -60,6 +73,7 @@ public sealed partial class ConsoleLinks : IHighlighter
     {
         lines.Clear();
         files.Clear();
+        given.Clear();
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -81,7 +95,8 @@ public sealed partial class ConsoleLinks : IHighlighter
         return spans ?? (IReadOnlyList<SyntaxSpan>)[];
     }
 
-    /// <summary>The links on a line of a text, in its offsets, as the editor asks for them.</summary>
+    /// <summary>The links on a line of a text, in its offsets, as the editor asks for them: those it was given for the line
+    /// before while its text and start are the same, the line read into a pooled buffer to find them.</summary>
     public IReadOnlyList<TextLink> On(TextSnapshot text, int line)
     {
         LineSpan span = text.GetLine(line);
@@ -89,17 +104,52 @@ public sealed partial class ConsoleLinks : IHighlighter
         {
             return [];
         }
-        FoundLink[] found = In(text.GetText(span.Start, span.Length));
+        char[] chars = ArrayPool<char>.Shared.Rent(span.Length);
+        FoundLink[] found;
+        try
+        {
+            text.CopyTo(span.Start, chars.AsSpan(0, span.Length));
+            found = In(chars.AsSpan(0, span.Length));
+        }
+        finally
+        {
+            ArrayPool<char>.Shared.Return(chars);
+        }
         if (found.Length == 0)
         {
             return [];
+        }
+        if (given.TryGetValue(span.Start, out (FoundLink[] Found, TextLink[] Links) made) && ReferenceEquals(made.Found, found))
+        {
+            return made.Links;
         }
         TextLink[] links = new TextLink[found.Length];
         for (int i = 0; i < found.Length; i++)
         {
             links[i] = new TextLink(new TextRange(span.Start + found[i].Start, found[i].Length), found[i].Target);
         }
+        if (given.Count >= Kept)
+        {
+            given.Clear();
+        }
+        given[span.Start] = (found, links);
         return links;
+    }
+
+    /// <summary>The links in one line of text given by its characters (a terminal's row), as <see cref="In(string)"/>
+    /// finds them; a string is made of the line only when it is not kept.</summary>
+    public FoundLink[] In(ReadOnlySpan<char> line)
+    {
+        if (line.Length == 0 || line.Length > LongestLine)
+        {
+            return [];
+        }
+        if (kept.TryGetValue(line, out FoundLink[]? links))
+        {
+            return links;
+        }
+        LinesCopied++;
+        return In(line.ToString());
     }
 
     /// <summary>The links in one line of text, in order and apart.</summary>

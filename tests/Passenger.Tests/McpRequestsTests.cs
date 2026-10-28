@@ -15,7 +15,7 @@ public sealed class McpRequestsTests : McpRig
         using HeldPort port = new();
         string shop = TestFolders.Create("mcprequests-");
         DeleteAtEnd(shop);
-        LiveRequestsTests.WriteShop(shop, port.Port);
+        await LiveRequestsTests.WriteShopAsync(shop, port.Port);
         await using McpClient client = await Start(["--mcp", shop]);
         port.LetGo(Path.Combine(shop, "gate"));
         await Call(client, McpTools.Run, new() { ["configuration"] = "Shop: http", ["waitSeconds"] = 5 });
@@ -25,11 +25,11 @@ public sealed class McpRequestsTests : McpRig
             string following = (await Call(client, McpTools.Output, new() { ["requests"] = true })).GetString()!;
             Assert.True(following.StartsWith("Following Shop: http (process", StringComparison.Ordinal), $"output with requests did not follow the shop: {following}");
             using HttpClient http = new();
-            Assert.True(await Waiting.UntilAsync(() =>
+            Assert.True(await Waiting.UntilAsync(async () =>
             {
                 try
                 {
-                    return LiveRequestsTests.Get(http, $"http://127.0.0.1:{port.Port}/orders") == "Ada: 0, Grace: 0, Linus: 0";
+                    return await http.GetStringAsync($"http://127.0.0.1:{port.Port}/orders", TestContext.Current.CancellationToken) == "Ada: 0, Grace: 0, Linus: 0";
                 }
                 catch (HttpRequestException)
                 {
@@ -49,7 +49,7 @@ public sealed class McpRequestsTests : McpRig
             Assert.Contains("FROM \"Orders\"", said, StringComparison.Ordinal);
 
             // A sign-up's command parameters (@p0, @p1…) fill or meet the Password column, so their values read as dots.
-            Assert.Equal("signed up", LiveRequestsTests.Get(http, $"http://127.0.0.1:{port.Port}/sign-up/ada"));
+            Assert.Equal("signed up", await http.GetStringAsync($"http://127.0.0.1:{port.Port}/sign-up/ada", TestContext.Current.CancellationToken));
             string[] signUp = [];
             Assert.True(await Waiting.UntilAsync(async () =>
             {

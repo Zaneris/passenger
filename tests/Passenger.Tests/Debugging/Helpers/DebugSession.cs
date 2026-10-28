@@ -10,7 +10,7 @@ namespace Passenger.Tests.Debugging.Helpers;
 /// <summary>The debug adapter run as the IDE runs it, in its own process from the app's debugger/
 /// folder, and the requests the tests make of it, each answered before the next is sent. Stops and
 /// breakpoint changes queue in the order they came, for the tests to wait on one at a time.</summary>
-public sealed class DebugSession : IDisposable
+public sealed class DebugSession : IAsyncDisposable
 {
     /// <summary>The debug adapter's protocol tests run one at a time: each debuggee waits on timings (a suspended
     /// start, a breakpoint's binding) that a machine busy with others stretches. Beside the window tests, one at a time
@@ -97,8 +97,10 @@ public sealed class DebugSession : IDisposable
         return new DebugSession(output, debuggee, terminateDebuggee: false, symbolCache);
     }
 
-    /// <summary>The adapter, to attach to a program the test started; the program ends with the session.</summary>
-    public static DebugSession ForAttach(ITestOutputHelper output, Process program) => new(output, program, terminateDebuggee: false);
+    /// <summary>The adapter, to attach to a program the test started; the program ends with the session. The adapter has
+    /// <paramref name="environment"/> over the run's.</summary>
+    public static DebugSession ForAttach(ITestOutputHelper output, Process program, IReadOnlyDictionary<string, string>? environment = null) =>
+        new(output, program, terminateDebuggee: false, environment: environment);
 
     /// <summary>The adapter alone, to launch a program itself; the program ends with the session. Decompiled symbols go to
     /// <paramref name="symbolCache"/> when given, and the adapter has <paramref name="environment"/> over the run's.</summary>
@@ -133,38 +135,16 @@ public sealed class DebugSession : IDisposable
     {
         DebugSession host = ForLaunch(output);
         await host
-            .WithInitializeRequest()
-            .WithLaunchRequest(Debuggees.Program(debuggee), stopAtEntry: false, justMyCode: true)
+            .InitializeAsync()
+            .LaunchAsync(Debuggees.Program(debuggee), stopAtEntry: false, justMyCode: true)
             .WaitForInitializedEvent();
-        host.Request(DapCommands.SetExceptionBreakpoints, new SetExceptionBreakpointsArguments(exceptionFilters));
-        host.WithBreakpointsRequest(line, Debuggees.Source(debuggee, "Program.cs")).WithConfigurationDoneRequest();
+        await host.RequestAsync(DapCommands.SetExceptionBreakpoints, new SetExceptionBreakpointsArguments(exceptionFilters));
+        await host.BreakpointsAsync(line, Debuggees.Source(debuggee, "Program.cs")).ConfigurationDoneAsync();
         return host;
     }
 
-    /// <summary>The top frame's variables at a stop, by name; a failure quotes the engine's log, which says what the program
-    /// was doing meanwhile.</summary>
-    public List<DapVariable> Locals(StoppedEvent stop)
-    {
-        try
-        {
-            DapStackFrame top = GetTopStackFrame(stop.ThreadId!.Value);
-            WithScopesRequest(top.Id, out ScopesResponse scopes);
-            WithVariablesRequest(scopes.Scopes.Single().VariablesReference, out List<DapVariable> variables);
-            return variables;
-        }
-        catch (DapException failed)
-        {
-            throw new DapException(failed.Command, $"{failed.Reason}\n{Heard()}");
-        }
-    }
 
-    /// <summary>A request's answer, waited for no longer than <see cref="RequestLimit"/> (or the limit given): one the
-    /// adapter never answers fails the test naming the command, with what the adapter said last and where it waits.</summary>
-    public T Request<T>(string command, object? arguments = null, TimeSpan? limit = null) =>
-        Answer(command, Connection.RequestAsync<T>(command, arguments ?? new DapEmpty(), TestContext.Current.CancellationToken), limit);
 
-    public void Request(string command, object? arguments = null, TimeSpan? limit = null) =>
-        Answer(command, Answered(Connection.RequestAsync(command, arguments ?? new DapEmpty(), TestContext.Current.CancellationToken)), limit);
 
     /// <summary>A request sent without waiting for its answer, for the test to await when it wants it; one it never awaits
     /// (the adapter gone first) fails unseen by the window tests beside.</summary>
@@ -219,13 +199,6 @@ public sealed class DebugSession : IDisposable
         }
     }
 
-    /// <summary>A disconnect, answered or not within <paramref name="limit"/>: true when it was, the adapter then on its way out.</summary>
-    public bool Disconnect(TimeSpan limit)
-    {
-        Task disconnect = Connection.RequestAsync(DapCommands.Disconnect, new DisconnectArguments(TerminateDebuggee: terminateDebuggee));
-        Observe(disconnect);
-        return disconnect.Wait(limit, TestContext.Current.CancellationToken);
-    }
 
     private static async Task<bool> Answered(Task request)
     {
@@ -237,13 +210,23 @@ public sealed class DebugSession : IDisposable
     /// may run a method of it.</summary>
     public static readonly TimeSpan RequestLimit = TimeSpan.FromSeconds(60).Scaled();
 
-    private T Answer<T>(string command, Task<T> answer, TimeSpan? limit)
+
+    /// <summary>A request's answer, awaited no longer than <see cref="RequestLimit"/> (or the limit given): one the adapter
+    /// never answers fails the test naming the command, with what the adapter said last and where it waits.</summary>
+    public Task<T> RequestAsync<T>(string command, object? arguments = null, TimeSpan? limit = null) =>
+        AnswerAsync(command, Connection.RequestAsync<T>(command, arguments ?? new DapEmpty(), TestContext.Current.CancellationToken), limit);
+
+    /// <inheritdoc cref="RequestAsync{T}(string, object?, TimeSpan?)"/>
+    public Task RequestAsync(string command, object? arguments = null, TimeSpan? limit = null) =>
+        AnswerAsync(command, Answered(Connection.RequestAsync(command, arguments ?? new DapEmpty(), TestContext.Current.CancellationToken)), limit);
+
+    private async Task<T> AnswerAsync<T>(string command, Task<T> answer, TimeSpan? limit)
     {
         TimeSpan most = limit?.Scaled() ?? RequestLimit;
         Observe(answer);
         try
         {
-            return answer.WaitAsync(most, TestContext.Current.CancellationToken).GetAwaiter().GetResult();
+            return await answer.WaitAsync(most, TestContext.Current.CancellationToken);
         }
         catch (TimeoutException)
         {
@@ -251,11 +234,152 @@ public sealed class DebugSession : IDisposable
         }
     }
 
-    public DebugSession WithInitializeRequest()
+    /// <summary>A disconnect, answered or not within <paramref name="limit"/>: true when it was, the adapter then on its way out.</summary>
+    public async Task<bool> DisconnectAsync(TimeSpan limit)
     {
-        Request<DapCapabilities>(DapCommands.Initialize, InitializeArguments);
+        Task disconnect = Connection.RequestAsync(DapCommands.Disconnect, new DisconnectArguments(TerminateDebuggee: terminateDebuggee));
+        Observe(disconnect);
+        if (!await Waiting.Within(disconnect, limit, TestContext.Current.CancellationToken, scaled: false))
+        {
+            return false;
+        }
+        await disconnect;
+        return true;
+    }
+
+    /// <summary>The top frame's variables at a stop, by name; a failure quotes the engine's log, which says what the program
+    /// was doing meanwhile.</summary>
+    public async Task<List<DapVariable>> LocalsAsync(StoppedEvent stop)
+    {
+        try
+        {
+            DapStackFrame top = await TopFrameAsync(stop.ThreadId!.Value);
+            ScopesResponse scopes = await ScopesAsync(top.Id);
+            return await VariablesAsync(scopes.Scopes.Single().VariablesReference);
+        }
+        catch (DapException failed)
+        {
+            throw new DapException(failed.Command, $"{failed.Reason}\n{Heard()}");
+        }
+    }
+
+    public async Task<DebugSession> InitializeAsync()
+    {
+        await RequestAsync<DapCapabilities>(DapCommands.Initialize, InitializeArguments);
         return this;
     }
+
+    public async Task<DebugSession> AttachAsync(int processId, bool justMyCode = true)
+    {
+        await RequestAsync(DapCommands.Attach, new AttachArguments { ProcessId = processId, JustMyCode = justMyCode });
+        return this;
+    }
+
+    public async Task<DebugSession> LaunchAsync(string program, bool stopAtEntry, bool justMyCode, IReadOnlyList<string>? arguments = null, string console = "internalConsole",
+        IReadOnlyDictionary<string, string>? environment = null)
+    {
+        await RequestAsync(DapCommands.Launch, new LaunchArguments
+        {
+            Program = program,
+            Args = arguments,
+            Cwd = Path.GetDirectoryName(program),
+            Env = environment,
+            Console = console,
+            JustMyCode = justMyCode,
+            StopAtEntry = stopAtEntry,
+        });
+        return this;
+    }
+
+    /// <summary>A breakpoint on MyClass.MyMethod's last line (<see cref="Debuggees.MyMethodEnd"/>).</summary>
+    public Task<DebugSession> BreakpointsAsync() => BreakpointsAsync(Debuggees.MyMethodEnd);
+
+    /// <summary>A breakpoint on a line of DebuggableConsoleApp's MyClass.cs.</summary>
+    public Task<DebugSession> BreakpointsAsync(int line) => BreakpointsAsync(line, Debuggees.Source("DebuggableConsoleApp", "MyClass.cs"));
+
+    public Task<DebugSession> BreakpointsAsync(int line, string filePath) => BreakpointsAsync([line], filePath);
+
+    public Task<DebugSession> BreakpointsAsync(int[] lines, string filePath) => BreakpointsAsync(filePath, [.. lines.Select(line => new DapSourceBreakpoint(line))]);
+
+    public async Task<DebugSession> BreakpointsAsync(string filePath, List<DapSourceBreakpoint> breakpoints)
+    {
+        await SetBreakpointsAsync(filePath, breakpoints);
+        return this;
+    }
+
+    /// <summary>The breakpoints of a file set, each answered for.</summary>
+    public async Task<SetBreakpointsResponse> SetBreakpointsAsync(string filePath, List<DapSourceBreakpoint> breakpoints)
+    {
+        if (!File.Exists(filePath))
+        {
+            throw new FileNotFoundException("Source file for breakpoint not found", filePath);
+        }
+        SetBreakpointsResponse response = await RequestAsync<SetBreakpointsResponse>(DapCommands.SetBreakpoints, new SetBreakpointsArguments(new DapSource { Path = filePath }, breakpoints));
+        Assert.Equal(breakpoints.Count, response.Breakpoints.Count);
+        return response;
+    }
+
+    public Task<DebugSession> ClearBreakpointsAsync(string filePath) => BreakpointsAsync(filePath, []);
+
+    /// <summary>configurationDone, which launches or attaches; a failure quotes the engine's log, which says what failed where
+    /// (on CI, the only word of it).</summary>
+    public async Task<DebugSession> ConfigurationDoneAsync()
+    {
+        try
+        {
+            await RequestAsync(DapCommands.ConfigurationDone);
+        }
+        catch (DapException failed)
+        {
+            throw new DapException(failed.Command, $"{failed.Reason}\n{Heard()}");
+        }
+        return this;
+    }
+
+    /// <summary>Lets a program started suspended go on, as a client that held it does once configurationDone has answered.
+    /// The attach has let it go already, having taken hold of it first, so a breakpoint set before sees its every pass.</summary>
+    public async Task<DebugSession> ResumeRuntimeAsync(int processId, bool startSuspended)
+    {
+        if (!startSuspended)
+        {
+            return this;
+        }
+        string? why = await HeldStart.LetGoAsync(processId);
+        return why is null ? this : throw new TimeoutException($"The program started suspended (process {processId}) could not be let go: {why}. {Heard()}");
+    }
+
+    public async Task<DapStackFrame> TopFrameAsync(int threadId) =>
+        Assert.Single((await RequestAsync<StackTraceResponse>(DapCommands.StackTrace, new StackTraceArguments(threadId, 0, 1))).StackFrames);
+
+    public Task<StackTraceResponse> StackTraceAsync(int threadId, int? levels = 1) =>
+        RequestAsync<StackTraceResponse>(DapCommands.StackTrace, new StackTraceArguments(threadId, 0, levels));
+
+    public Task<ScopesResponse> ScopesAsync(int frameId) => RequestAsync<ScopesResponse>(DapCommands.Scopes, new ScopesArguments(frameId));
+
+    public async Task<List<DapVariable>> VariablesAsync(int variablesReference) =>
+        [.. (await RequestAsync<VariablesResponse>(DapCommands.Variables, new VariablesArguments(variablesReference))).Variables];
+
+    public Task<EvaluateResponse> EvaluateAsync(int frameId, string expression) =>
+        RequestAsync<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments(expression, frameId, "repl"));
+
+    public async Task<DebugSession> ContinueAsync()
+    {
+        await RequestAsync<ContinueResponse>(DapCommands.Continue, new ThreadArguments(0));
+        return this;
+    }
+
+    public Task<DebugSession> StepInAsync(int threadId) => StepAsync(DapCommands.StepIn, threadId);
+
+    public Task<DebugSession> StepOutAsync(int threadId) => StepAsync(DapCommands.StepOut, threadId);
+
+    public Task<DebugSession> StepOverAsync(int threadId) => StepAsync(DapCommands.Next, threadId);
+
+    private async Task<DebugSession> StepAsync(string command, int threadId)
+    {
+        await RequestAsync(command, new ThreadArguments(threadId));
+        return this;
+    }
+
 
     public static InitializeArguments InitializeArguments => new()
     {
@@ -271,27 +395,7 @@ public sealed class DebugSession : IDisposable
         SupportsRunInTerminalRequest = true,
     };
 
-    public DebugSession WithAttachRequest(int processId, bool justMyCode = true)
-    {
-        Request(DapCommands.Attach, new AttachArguments { ProcessId = processId, JustMyCode = justMyCode });
-        return this;
-    }
 
-    public DebugSession WithLaunchRequest(string program, bool stopAtEntry, bool justMyCode, IReadOnlyList<string>? arguments = null, string console = "internalConsole",
-        IReadOnlyDictionary<string, string>? environment = null)
-    {
-        Request(DapCommands.Launch, new LaunchArguments
-        {
-            Program = program,
-            Args = arguments,
-            Cwd = Path.GetDirectoryName(program),
-            Env = environment,
-            Console = console,
-            JustMyCode = justMyCode,
-            StopAtEntry = stopAtEntry,
-        });
-        return this;
-    }
 
     public async Task<DebugSession> WaitForInitializedEvent()
     {
@@ -299,46 +403,13 @@ public sealed class DebugSession : IDisposable
         return this;
     }
 
-    /// <summary>A breakpoint on MyClass.MyMethod's last line (<see cref="Debuggees.MyMethodEnd"/>).</summary>
-    public DebugSession WithBreakpointsRequest() => WithBreakpointsRequest(Debuggees.MyMethodEnd);
 
-    /// <summary>A breakpoint on a line of DebuggableConsoleApp's MyClass.cs.</summary>
-    public DebugSession WithBreakpointsRequest(int line) => WithBreakpointsRequest(line, Debuggees.Source("DebuggableConsoleApp", "MyClass.cs"));
 
-    public DebugSession WithBreakpointsRequest(int line, string filePath) => WithBreakpointsRequest([line], filePath);
 
-    public DebugSession WithBreakpointsRequest(int[] lines, string filePath) =>
-        WithBreakpointsRequest(filePath, [.. lines.Select(line => new DapSourceBreakpoint(line))], out _);
 
-    public DebugSession WithBreakpointsRequest(string filePath, List<DapSourceBreakpoint> breakpoints) => WithBreakpointsRequest(filePath, breakpoints, out _);
 
-    public DebugSession WithBreakpointsRequest(string filePath, List<DapSourceBreakpoint> breakpoints, out SetBreakpointsResponse response)
-    {
-        if (!File.Exists(filePath))
-        {
-            throw new FileNotFoundException("Source file for breakpoint not found", filePath);
-        }
-        response = Request<SetBreakpointsResponse>(DapCommands.SetBreakpoints, new SetBreakpointsArguments(new DapSource { Path = filePath }, breakpoints));
-        Assert.Equal(breakpoints.Count, response.Breakpoints.Count);
-        return this;
-    }
 
-    public DebugSession WithClearBreakpointsRequest(string filePath) => WithBreakpointsRequest(filePath, [], out _);
 
-    /// <summary>configurationDone, which launches or attaches; a failure quotes the engine's log, which says what failed where
-    /// (on CI, the only word of it).</summary>
-    public DebugSession WithConfigurationDoneRequest()
-    {
-        try
-        {
-            Request(DapCommands.ConfigurationDone);
-        }
-        catch (DapException failed)
-        {
-            throw new DapException(failed.Command, $"{failed.Reason}\n{Heard()}");
-        }
-        return this;
-    }
 
     /// <summary>What the program wrote to its standard output and how it ended (no exit code when none was told), read
     /// from the events to the session's end.</summary>
@@ -374,63 +445,22 @@ public sealed class DebugSession : IDisposable
         }
     }
 
-    /// <summary>Lets a program started suspended go on, as a client that held it does once configurationDone has answered.
-    /// The attach has let it go already, having taken hold of it first, so a breakpoint set before sees its every pass.</summary>
-    public DebugSession WithOptionalResumeRuntime(int processId, bool startSuspended)
-    {
-        if (!startSuspended)
-        {
-            return this;
-        }
-        string? why = HeldStart.LetGoAsync(processId).GetAwaiter().GetResult();
-        return why is null ? this : throw new TimeoutException($"The program started suspended (process {processId}) could not be let go: {why}. {Heard()}");
-    }
 
-    public DapStackFrame GetTopStackFrame(int threadId) =>
-        Assert.Single(Request<StackTraceResponse>(DapCommands.StackTrace, new StackTraceArguments(threadId, 0, 1)).StackFrames);
 
-    public DebugSession WithStackTraceRequest(int threadId, out StackTraceResponse response, int? levels = 1)
-    {
-        response = Request<StackTraceResponse>(DapCommands.StackTrace, new StackTraceArguments(threadId, 0, levels));
-        return this;
-    }
 
-    public DebugSession WithScopesRequest(int frameId, out ScopesResponse response)
-    {
-        response = Request<ScopesResponse>(DapCommands.Scopes, new ScopesArguments(frameId));
-        return this;
-    }
 
-    public DebugSession WithVariablesRequest(int variablesReference, out List<DapVariable> variables)
-    {
-        variables = [.. Request<VariablesResponse>(DapCommands.Variables, new VariablesArguments(variablesReference)).Variables];
-        return this;
-    }
 
-    public DebugSession WithEvaluateRequest(int frameId, string expression, out EvaluateResponse response)
-    {
-        response = Request<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments(expression, frameId, "repl"));
-        return this;
-    }
 
-    public DebugSession WithContinueRequest()
-    {
-        Request<ContinueResponse>(DapCommands.Continue, new ThreadArguments(0));
-        return this;
-    }
 
-    public DebugSession WithStepInRequest(int threadId) => Step(DapCommands.StepIn, threadId);
 
-    public DebugSession WithStepOutRequest(int threadId) => Step(DapCommands.StepOut, threadId);
 
-    public DebugSession WithStepOverRequest(int threadId) => Step(DapCommands.Next, threadId);
 
     /// <summary>The next stop, with where it is: a stop at a breakpoint or a step says so itself, any
     /// other (an exception, a pause) is wherever its thread's top frame is, if that has source.</summary>
     public async Task<StoppedEvent> WaitForStoppedEvent()
     {
         StoppedEvent stopped = await WaitForEvent<StoppedEvent>();
-        if (stopped.Source is null && stopped.ThreadId is int threadId && GetTopStackFrame(threadId) is { Source: { } source } top)
+        if (stopped.Source is null && stopped.ThreadId is int threadId && await TopFrameAsync(threadId) is { Source: { } source } top)
         {
             stopped = stopped with { Source = new DapSource { Path = source.Path }, Line = top.Line, Column = top.Column };
         }
@@ -479,18 +509,13 @@ public sealed class DebugSession : IDisposable
     private static void Observe(Task request) => request.ContinueWith(failed => _ = failed.Exception, CancellationToken.None,
         TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
 
-    public void Dispose()
+    /// <summary>The adapter disconnected (10 s at most), ended, and the program it launched with it.</summary>
+    public async ValueTask DisposeAsync()
     {
-        try
-        {
-            Task disconnect = Connection.RequestAsync(DapCommands.Disconnect, new DisconnectArguments(TerminateDebuggee: terminateDebuggee));
-            Observe(disconnect);
-            disconnect.Wait(TimeSpan.FromSeconds(10));
-        }
-        catch (AggregateException)
-        {
-            // An adapter that is gone already has nothing to disconnect.
-        }
+        Task disconnect = Connection.RequestAsync(DapCommands.Disconnect, new DisconnectArguments(TerminateDebuggee: terminateDebuggee));
+        Observe(disconnect);
+        // An adapter that is gone already has nothing to disconnect, and its fault is observed.
+        await Waiting.Within(disconnect, TimeSpan.FromSeconds(10), CancellationToken.None, scaled: false);
         if (!adapter.WaitForExit(TimeSpan.FromSeconds(10)))
         {
             ChildProcesses.Kill(adapter);
@@ -504,7 +529,17 @@ public sealed class DebugSession : IDisposable
             }
             debuggee.Dispose();
         }
-        Connection.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(5));
+        Task closed = Connection.DisposeAsync().AsTask();
+        if (await Waiting.Within(closed, TimeSpan.FromSeconds(5), CancellationToken.None, scaled: false))
+        {
+            await closed;
+        }
+        DeleteLog();
+    }
+
+
+    private void DeleteLog()
+    {
         if (ownLog)
         {
             try
@@ -564,11 +599,6 @@ public sealed class DebugSession : IDisposable
         return stacks;
     }
 
-    private DebugSession Step(string command, int threadId)
-    {
-        Request(command, new ThreadArguments(threadId));
-        return this;
-    }
 
     private static Process StartDebuggee(bool startSuspended)
     {
@@ -664,6 +694,12 @@ public static class Debuggees
         return project;
     }
 
+    /// <summary>What a program held at its start wrote, less the notice its runtime writes once it has waited there 5 s (its
+    /// attach slow to come on a busy machine): the notice's line, then the two variables that held it.</summary>
+    public static string HeldWrote(string written) => string.Join('\n', written.Split('\n').Select(line => line.TrimEnd('\r'))
+        .Where(line => !line.StartsWith("The runtime has been configured to pause during startup", StringComparison.Ordinal)
+            && !line.StartsWith("DOTNET_DiagnosticPorts=", StringComparison.Ordinal) && !line.StartsWith("DOTNET_DefaultDiagnosticPortSuspend=", StringComparison.Ordinal))).Trim();
+
     /// <summary>A program with no .NET in it, running a minute unless ended first: what an attach cannot take hold of.</summary>
     public static Process NotDotnet()
     {
@@ -673,4 +709,55 @@ public static class Debuggees
         start.RedirectStandardOutput = true;
         return ChildProcesses.Start(start);
     }
+}
+
+/// <summary>A session's requests chained as they are sent, each once the one before it was answered: the chain's await
+/// surfaces the first that failed, where the session's own call would have thrown it.</summary>
+public static class DebugSessionChain
+{
+    public static async Task<DebugSession> AttachAsync(this Task<DebugSession> chain, int processId, bool justMyCode = true) =>
+        await (await chain).AttachAsync(processId, justMyCode);
+
+    public static async Task<DebugSession> LaunchAsync(this Task<DebugSession> chain, string program, bool stopAtEntry, bool justMyCode,
+        IReadOnlyList<string>? arguments = null, string console = "internalConsole", IReadOnlyDictionary<string, string>? environment = null) =>
+        await (await chain).LaunchAsync(program, stopAtEntry, justMyCode, arguments, console, environment);
+
+    public static async Task<DebugSession> BreakpointsAsync(this Task<DebugSession> chain) => await (await chain).BreakpointsAsync();
+
+    public static async Task<DebugSession> BreakpointsAsync(this Task<DebugSession> chain, int line) => await (await chain).BreakpointsAsync(line);
+
+    public static async Task<DebugSession> BreakpointsAsync(this Task<DebugSession> chain, int line, string filePath) =>
+        await (await chain).BreakpointsAsync(line, filePath);
+
+    public static async Task<DebugSession> BreakpointsAsync(this Task<DebugSession> chain, int[] lines, string filePath) =>
+        await (await chain).BreakpointsAsync(lines, filePath);
+
+    public static async Task<DebugSession> BreakpointsAsync(this Task<DebugSession> chain, string filePath, List<DapSourceBreakpoint> breakpoints) =>
+        await (await chain).BreakpointsAsync(filePath, breakpoints);
+
+    public static async Task<DebugSession> ClearBreakpointsAsync(this Task<DebugSession> chain, string filePath) => await (await chain).ClearBreakpointsAsync(filePath);
+
+    public static async Task<DebugSession> ConfigurationDoneAsync(this Task<DebugSession> chain) => await (await chain).ConfigurationDoneAsync();
+
+    public static async Task<DebugSession> ResumeRuntimeAsync(this Task<DebugSession> chain, int processId, bool startSuspended) =>
+        await (await chain).ResumeRuntimeAsync(processId, startSuspended);
+
+    public static async Task<DebugSession> ContinueAsync(this Task<DebugSession> chain) => await (await chain).ContinueAsync();
+
+    public static async Task<DebugSession> StepInAsync(this Task<DebugSession> chain, int threadId) => await (await chain).StepInAsync(threadId);
+
+    public static async Task<DebugSession> StepOutAsync(this Task<DebugSession> chain, int threadId) => await (await chain).StepOutAsync(threadId);
+
+    public static async Task<DebugSession> StepOverAsync(this Task<DebugSession> chain, int threadId) => await (await chain).StepOverAsync(threadId);
+
+    public static async Task RequestAsync(this Task<DebugSession> chain, string command, object? arguments = null, TimeSpan? limit = null) =>
+        await (await chain).RequestAsync(command, arguments, limit);
+
+    public static async Task<DebugSession> WaitForInitializedEvent(this Task<DebugSession> chain) => await (await chain).WaitForInitializedEvent();
+
+    public static async Task<StoppedEvent> WaitForStoppedEvent(this Task<DebugSession> chain) => await (await chain).WaitForStoppedEvent();
+
+    public static async Task<T> WaitForEvent<T>(this Task<DebugSession> chain, Predicate<T>? condition = null) => await (await chain).WaitForEvent(condition);
+
+    public static async Task<(string Output, int? ExitCode)> WaitForEnd(this Task<DebugSession> chain) => await (await chain).WaitForEnd();
 }

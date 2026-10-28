@@ -1,3 +1,5 @@
+using System.Buffers;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -6,7 +8,7 @@ using Passenger.Core;
 namespace Passenger.App.Containers;
 
 /// <summary>Passenger's one rule for what is a secret, and its one mask: a value whose name says it is one
-/// (<see cref="Secret"/>) shows as the same dots whatever its length; in any other value, a URL's password
+/// (<see cref="Secret(string)"/>) shows as the same dots whatever its length; in any other value, a URL's password
 /// (<c>postgres://app:••••••@db</c>) and a connection string's part so named (<c>Password=••••••</c>). An empty value
 /// hides nothing and shows as it is.</summary>
 public static partial class ContainerSecrets
@@ -15,57 +17,116 @@ public static partial class ContainerSecrets
 
     /// <summary>What makes a name a secret's anywhere in it, its case, underscores, dashes and dots aside (DBPASSWORD,
     /// SECRETKEY, ConnectionStrings__Shop).</summary>
-    private static readonly string[] Anywhere = ["PASSWORD", "PASSWD", "SECRET", "TOKEN", "CREDENTIAL", "CONNECTIONSTRING"];
+    private static readonly SearchValues<string> Anywhere =
+        SearchValues.Create(["PASSWORD", "PASSWD", "SECRET", "TOKEN", "CREDENTIAL", "CONNECTIONSTRING"], StringComparison.Ordinal);
 
     /// <summary>What makes a name a secret's as a word of it (DB_PASS, MYSQL_PW, DB_PWD, API_KEY), or its plural.</summary>
-    private static readonly HashSet<string> Whole = new(StringComparer.Ordinal) { "PASS", "PW", "PWD", "KEY", "AUTHORIZATION" };
+    private static readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> Whole =
+        new HashSet<string>(StringComparer.Ordinal) { "PASS", "PW", "PWD", "KEY", "AUTHORIZATION" }.GetAlternateLookup<ReadOnlySpan<char>>();
 
     /// <summary>The words that end in KEY and name no key (a word ending in KEY otherwise is one: APIKEY, ACCESSKEY).</summary>
-    private static readonly HashSet<string> Ordinary = new(StringComparer.Ordinal)
+    private static readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> Ordinary = new HashSet<string>(StringComparer.Ordinal)
     {
         "MONKEY", "DONKEY", "TURKEY", "JOCKEY", "HOCKEY", "WHISKEY", "LACKEY", "FLUNKEY", "MALARKEY", "HOTKEY", "TURNKEY",
-    };
+    }.GetAlternateLookup<ReadOnlySpan<char>>();
 
     /// <summary>The shell's working folders, paths a compose file's volumes are written with, whose PWD is no password's.</summary>
-    private static readonly HashSet<string> Folders = new(StringComparer.Ordinal) { "PWD", "OLDPWD" };
+    private static readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> Folders =
+        new HashSet<string>(StringComparer.Ordinal) { "PWD", "OLDPWD" }.GetAlternateLookup<ReadOnlySpan<char>>();
+
+    /// <summary>What every mask but a Bearer's or Basic's credentials needs in a line to find anything there.</summary>
+    private static readonly SearchValues<char> Marks = SearchValues.Create("=:@");
+
+    /// <summary>The longest name read on the stack; a longer one is read in a rented buffer.</summary>
+    private const int OnStack = 128;
 
     /// <summary>Whether a name's value is a secret: it holds one of <see cref="Anywhere"/>, or a word of it (between
     /// underscores, dashes or dots, or where its case turns, as apiKey's Key) is one of <see cref="Whole"/> or its plural,
     /// or ends in KEY but for <see cref="Ordinary"/>'s words; so DBPASSWORD, APIKEY and DB_PASS are and MONKEY is not,
     /// nor the shell's own PWD and OLDPWD (<see cref="Folders"/>).</summary>
-    public static bool Secret(string name)
+    public static bool Secret(string name) => Secret(name.AsSpan());
+
+    /// <inheritdoc cref="Secret(string)"/>
+    public static bool Secret(ReadOnlySpan<char> name)
     {
         if (Folders.Contains(name))
         {
             return false;
         }
-        string squeezed = name.Replace("_", string.Empty, StringComparison.Ordinal).Replace("-", string.Empty, StringComparison.Ordinal)
-            .Replace(".", string.Empty, StringComparison.Ordinal).ToUpperInvariant();
-        if (Anywhere.Any(s => squeezed.Contains(s, StringComparison.Ordinal)))
+        char[]? rented = null;
+        // The name in capitals, then again without its underscores, dashes and dots.
+        Span<char> read = name.Length <= OnStack ? stackalloc char[2 * OnStack] : (rented = ArrayPool<char>.Shared.Rent(2 * name.Length));
+        try
         {
-            return true;
+            Span<char> upper = read[..name.Length];
+            name.ToUpperInvariant(upper);
+            Span<char> squeezed = read[name.Length..];
+            int length = 0;
+            foreach (char c in upper)
+            {
+                if (c is not ('_' or '-' or '.'))
+                {
+                    squeezed[length++] = c;
+                }
+            }
+            return squeezed[..length].ContainsAny(Anywhere) || AnyWord(name, upper);
         }
-        foreach (string word in Words().Split(name).Where(w => w.Length > 0).Select(w => w.ToUpperInvariant()))
+        finally
         {
-            string single = word.Length > 1 && word[^1] == 'S' ? word[..^1] : word;
-            if (Whole.Contains(word) || Whole.Contains(single)
-                || (word.EndsWith("KEY", StringComparison.Ordinal) && !Ordinary.Contains(word))
-                || (single.EndsWith("KEY", StringComparison.Ordinal) && !Ordinary.Contains(single)))
+            if (rented is not null)
+            {
+                ArrayPool<char>.Shared.Return(rented);
+            }
+        }
+    }
+
+    /// <summary>Whether a word of the name is a secret's (<see cref="Secret(string)"/>): its words end at a run of
+    /// underscores, dashes and dots, before a capital after a small letter or digit, and before a capital that begins a
+    /// word after capitals (APIKey's Key); each is read in <paramref name="upper"/>, the name in capitals.</summary>
+    private static bool AnyWord(ReadOnlySpan<char> name, ReadOnlySpan<char> upper)
+    {
+        int start = 0;
+        for (int i = 0; i <= name.Length; i++)
+        {
+            bool apart = i < name.Length && name[i] is '_' or '-' or '.';
+            if (!apart && i < name.Length && !Turns(name, i))
+            {
+                continue;
+            }
+            if (i > start && Names(upper[start..i]))
             {
                 return true;
             }
+            start = apart ? i + 1 : i;
         }
         return false;
+    }
+
+    /// <summary>Whether a word begins at a place where the name's case turns: a capital after a small letter or digit,
+    /// or a capital with a small letter after it following a capital (ASCII alone).</summary>
+    private static bool Turns(ReadOnlySpan<char> name, int at) =>
+        at > 0 && char.IsAsciiLetterUpper(name[at])
+            && (char.IsAsciiLetterLower(name[at - 1]) || char.IsAsciiDigit(name[at - 1])
+                || (char.IsAsciiLetterUpper(name[at - 1]) && at + 1 < name.Length && char.IsAsciiLetterLower(name[at + 1])));
+
+    /// <summary>Whether a word, in capitals, names a secret: it or its singular is one of <see cref="Whole"/>, or ends
+    /// in KEY but for <see cref="Ordinary"/>'s words.</summary>
+    private static bool Names(ReadOnlySpan<char> word)
+    {
+        ReadOnlySpan<char> single = word.Length > 1 && word[^1] == 'S' ? word[..^1] : word;
+        return Whole.Contains(word) || Whole.Contains(single)
+            || (word.EndsWith("KEY", StringComparison.Ordinal) && !Ordinary.Contains(word))
+            || (single.EndsWith("KEY", StringComparison.Ordinal) && !Ordinary.Contains(single));
     }
 
     /// <summary>A variable's value as it is shown.</summary>
     public static string Shown(string name, string value) => value.Length > 0 && Secret(name) ? Masked : InValue(value);
 
-    /// <summary>A value whose name says nothing, as it is shown: a URL's password and a connection string's part named as a
-    /// secret's masked, the rest as it is.</summary>
+    /// <summary>A value whose name says nothing, as it is shown: a URL's password and a connection string's part named
+    /// as a secret's masked, the rest as it is (the value itself when nothing is).</summary>
     public static string InValue(string value)
     {
-        if (value.Length == 0)
+        if (value.Length == 0 || !MasksInValue(value))
         {
             return value;
         }
@@ -73,6 +134,31 @@ public static partial class ContainerSecrets
         bare = UrlPassword().Replace(bare, $"${{head}}{Masked}@");
         return ConnectionPart().Replace(bare, part => Secret(part.Groups["name"].Value.Trim()) && part.Groups["value"].Length > 0
             ? $"{part.Groups["head"].Value}{Masked}" : part.Value);
+    }
+
+    /// <summary>Whether <see cref="InValue"/> may mask something in a value; when not, it gives the value back as it is.</summary>
+    public static bool InValueMasks(ReadOnlySpan<char> value) => value.Length > 0 && MasksInValue(value);
+
+    /// <summary>Whether <see cref="InValue"/> may mask something in a value: a Bearer's or Basic's credentials, a URL's
+    /// password, or a connection string's part whose name is a secret's and whose value is not empty.</summary>
+    private static bool MasksInValue(ReadOnlySpan<char> value)
+    {
+        if (AuthorizationCredentials().IsMatch(value) || UrlPassword().IsMatch(value))
+        {
+            return true;
+        }
+        foreach (ValueMatch part in ConnectionPart().EnumerateMatches(value))
+        {
+            // The part's name after the semicolon that begins it, to its '=', and its value after.
+            ReadOnlySpan<char> found = value.Slice(part.Index, part.Length);
+            int from = found[0] == ';' ? 1 : 0;
+            int equals = found[from..].IndexOf('=') + from;
+            if (equals + 1 < found.Length && Secret(found[from..equals].Trim()))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>The shortest value a secret's name holds that <see cref="InSaid"/> masks wherever it stands: a shorter one
@@ -92,8 +178,8 @@ public static partial class ContainerSecrets
     public static string CommandLine(System.Diagnostics.ProcessStartInfo start) =>
         ChildProcesses.Display(start, Masking(known: [.. start.Environment.Where(v => v.Value is { Length: > 0 } && Secret(v.Key)).Select(v => v.Value!)]));
 
-    /// <summary><see cref="InSaid"/> for much that is said a piece at a time (a CLI's output streamed into a console), the
-    /// secrets it knows read once.</summary>
+    /// <summary><see cref="InSaid"/> for much that is said a piece at a time (a CLI's output streamed into a console),
+    /// the secrets it knows read once. What it is given comes back as it was when nothing in it is masked.</summary>
     public static Func<string, string> Masking(string? folder = null, IEnumerable<string>? known = null)
     {
         string[] secrets = [.. Known(folder, known).Where(s => s.Length >= ShortestKnown).Distinct(StringComparer.Ordinal).OrderByDescending(s => s.Length)];
@@ -103,18 +189,94 @@ public static partial class ContainerSecrets
             {
                 said = said.Replace(secret, Masked, StringComparison.Ordinal);
             }
-            return string.Join('\n', said.Split('\n').Select(line =>
-            {
-                // A Bearer's token first, which a NAME=value would otherwise leave after the scheme it masked.
-                string bare = InValue(line);
-                bare = Assignment().Replace(bare, pair => Secret(pair.Groups["name"].Value) ? $"{pair.Groups["head"].Value}{Quoted(pair.Groups["value"].Value)}" : pair.Value);
-                bare = Member().Replace(bare, pair => Secret(pair.Groups["name"].Value) ? $"{pair.Groups["head"].Value}{Quoted(pair.Groups["value"].Value)}" : pair.Value);
-                bare = AuthorizationHeader().Replace(bare, $"${{head}}{Masked}");
-                return UrlUser().Replace(bare, $"${{scheme}}{Masked}@");
-            }));
+            return InLines(said);
         };
+    }
+
+    /// <summary>What was said with each of its lines masked (<see cref="InLine"/>); copied only from the first line
+    /// masked, the text itself when none is.</summary>
+    private static string InLines(string said)
+    {
+        StringBuilder? shown = null;
+        int start = 0;
+        while (true)
+        {
+            int end = said.IndexOf('\n', start);
+            int stop = end < 0 ? said.Length : end;
+            ReadOnlySpan<char> line = said.AsSpan(start, stop - start);
+            if (MasksLine(line))
+            {
+                string read = line.ToString();
+                string bare = InLine(read);
+                if (shown is null && !string.Equals(bare, read, StringComparison.Ordinal))
+                {
+                    shown = new StringBuilder(said.Length).Append(said, 0, start);
+                }
+                shown?.Append(bare);
+            }
+            else
+            {
+                shown?.Append(line);
+            }
+            if (end < 0)
+            {
+                return shown?.ToString() ?? said;
+            }
+            shown?.Append('\n');
+            start = end + 1;
+        }
+    }
+
+    /// <summary>A line of what was said, masked as <see cref="InSaid"/> says.</summary>
+    private static string InLine(string line)
+    {
+        // A Bearer's token first, which a NAME=value would otherwise leave after the scheme it masked.
+        string bare = InValue(line);
+        bare = Assignment().Replace(bare, pair => Secret(pair.Groups["name"].Value) ? $"{pair.Groups["head"].Value}{Quoted(pair.Groups["value"].Value)}" : pair.Value);
+        bare = Member().Replace(bare, pair => Secret(pair.Groups["name"].Value) ? $"{pair.Groups["head"].Value}{Quoted(pair.Groups["value"].Value)}" : pair.Value);
+        bare = AuthorizationHeader().Replace(bare, $"${{head}}{Masked}");
+        return UrlUser().Replace(bare, $"${{scheme}}{Masked}@");
 
         static string Quoted(string value) => value.Length > 1 && value[0] is '"' or '\'' && value[^1] == value[0] ? $"{value[0]}{Masked}{value[0]}" : Masked;
+    }
+
+    /// <summary>Whether <see cref="InLine"/> may mask something in a line: one with none of <see cref="Marks"/> only a
+    /// Bearer's or Basic's credentials, any other only where one of its masks finds what it masks, a name a secret's
+    /// where it asks.</summary>
+    private static bool MasksLine(ReadOnlySpan<char> line)
+    {
+        if (!line.ContainsAny(Marks))
+        {
+            return AuthorizationCredentials().IsMatch(line);
+        }
+        if (MasksInValue(line) || AuthorizationHeader().IsMatch(line) || UrlUser().IsMatch(line))
+        {
+            return true;
+        }
+        foreach (ValueMatch pair in Assignment().EnumerateMatches(line))
+        {
+            // Its name runs from where it begins to the space or '=' after it.
+            ReadOnlySpan<char> found = line.Slice(pair.Index, pair.Length);
+            int end = 0;
+            while (found[end] != '=' && !char.IsWhiteSpace(found[end]))
+            {
+                end++;
+            }
+            if (Secret(found[..end]))
+            {
+                return true;
+            }
+        }
+        foreach (ValueMatch pair in Member().EnumerateMatches(line))
+        {
+            // Its name is between the quotes it begins with.
+            ReadOnlySpan<char> found = line.Slice(pair.Index, pair.Length);
+            if (Secret(found[1..(found[1..].IndexOf(found[0]) + 1)]))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>The values a failure may echo that are known to be secrets: those given, this process's environment's whose

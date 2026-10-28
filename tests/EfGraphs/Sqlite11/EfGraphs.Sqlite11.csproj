@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The SQLite graph at EF Core 11, which targets .NET 11 alone: what the projects of the Migrations window's test of
+       EF Core 11's .config/dotnet-ef.json restore from the package cache. -->
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" VersionOverride="$(EfCore11Version)" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" VersionOverride="$(EfCore11Version)" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

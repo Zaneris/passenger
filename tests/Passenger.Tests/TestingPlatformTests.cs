@@ -1,12 +1,14 @@
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
+using Passenger.App.Editors;
 using Passenger.App;
 using Passenger.App.Debugging;
 using Passenger.App.Testing;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.Tests;
 
@@ -57,6 +59,7 @@ public sealed class TestingPlatformTests : TestingPlatformFolders, IClassFixture
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_theorys_rows_found_by_the_platform_and_made_by_its_run_land_under_their_method()
     {
@@ -87,6 +90,7 @@ public sealed class TestingPlatformTests : TestingPlatformFolders, IClassFixture
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Stop_ends_a_run_on_the_platform_and_its_test_host_keeping_what_ran()
     {
@@ -107,6 +111,7 @@ public sealed class TestingPlatformTests : TestingPlatformFolders, IClassFixture
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_solution_of_a_vstest_project_and_an_mstest_project_on_the_platform_shows_both_in_one_tree_and_run_all_runs_both()
     {
@@ -124,7 +129,9 @@ public sealed class TestingPlatformTests : TestingPlatformFolders, IClassFixture
         Write(solution, "Store.Tests/StoreTests.cs",
             "using Microsoft.VisualStudio.TestTools.UnitTesting;\n\nnamespace Store.Tests;\n\n[TestClass]\npublic class StoreTests\n{\n" +
             "    [TestMethod]\n    public void Keeps() => Assert.AreEqual(2, 1 + 1);\n\n" +
-            "    [TestMethod]\n    [DataRow(1)]\n    [DataRow(2)]\n    public void Counts(int items) => Assert.IsTrue(items > 0);\n}\n");
+            "    [TestMethod]\n    [DataRow(1)]\n    [DataRow(2)]\n    public void Counts(int items) => Assert.IsTrue(items > 0);\n\n" +
+            "    [TestMethod]\n    [DataRow(1, DisplayName = \"Repeats (same)\")]\n    [DataRow(2, DisplayName = \"Repeats (same)\")]\n" +
+            "    [DataRow(3, DisplayName = \"Repeats (same)\")]\n    public void Repeats(int items) => Assert.IsTrue(items > 0);\n}\n");
         Write(solution, "Suite.slnx", "<Solution>\n  <Project Path=\"Vs.Tests/Vs.Tests.csproj\" />\n  <Project Path=\"Store.Tests/Store.Tests.csproj\" />\n</Solution>\n");
         Restore.Run(Path.Combine(solution, "Suite.slnx"));
         MainWindow window = Ui.OpenFolder(solution, languageServer: false);
@@ -135,12 +142,15 @@ public sealed class TestingPlatformTests : TestingPlatformFolders, IClassFixture
         Ui.WaitFor(() => !window.Tests.IsBusy && Method(window, "Keeps")?.State is not (null or TestState.NotRun or TestState.Running), "the run of every test", TimeSpan.FromSeconds(240));
         Assert.True(Method(window, "Adds")!.State == TestState.Passed, $"The VSTest project's test did not pass:\n{Method(window, "Adds")!.Details}\n{window.BottomPanel.Tests.Status}");
         Assert.True(Method(window, "Keeps")!.State == TestState.Passed, $"The MSTest project on the platform's runner did not pass:\n{Method(window, "Keeps")!.Details}\n{window.BottomPanel.Tests.Status}");
-        Assert.Equal("Tests passed: 4, failed: 0 of 4", System.Text.RegularExpressions.Regex.Replace(window.BottomPanel.Tests.Status, @" in \d+\.\d s$", string.Empty));
+        Assert.Equal("Tests passed: 7, failed: 0 of 7", System.Text.RegularExpressions.Regex.Replace(window.BottomPanel.Tests.Status, @" in \d+\.\d s$", string.Empty));
         window.Tests.Tree.Toggle(Method(window, "Counts")!);
+        window.Tests.Tree.Toggle(Method(window, "Repeats")!);
+        // Rows of one name are told apart by the order they came in.
         Assert.Equal(
             [
                 "Vs.Tests", "  Vs.Tests", "    AddTests", "      Adds",
                 "Store.Tests", "  Store.Tests", "    StoreTests", "      Counts", "        Counts (1)", "        Counts (2)", "      Keeps",
+                "      Repeats", "        Repeats (same)", "        Repeats (same) (2)", "        Repeats (same) (3)",
             ],
             Shown(window));
         window.Close();
@@ -196,8 +206,7 @@ public sealed class TestingPlatformDebuggingTests : TestingPlatformFolders, ICla
         {
             // Not settled: the start holds the window's background work while the debugger waits for the test host.
             Assert.True(window.Perform(AppActions.DebugTests), $"Debug Tests did not start: {Ui.Said(window)}");
-            Ui.PumpUntil(() => held.IsCompleted, "the build, then the test host's runtime to come to the hold", TimeSpan.FromMinutes(3));
-            host = held.Result;
+            host = Ui.AwaitPumped(held, "the build, then the test host's runtime to come to the hold", TimeSpan.FromMinutes(3));
             TestNode four = Method(window, "Two_and_two_make_four")!;
             Assert.Equal(TestState.Running, four.State);
 
@@ -232,7 +241,7 @@ public sealed class TestingPlatformDebuggingTests : TestingPlatformFolders, ICla
 public abstract class TestingPlatformFolders : IDisposable
 {
     /// <summary>xUnit v3 on the platform alone: its own program, with no test SDK or VSTest adapter.</summary>
-    private const string XunitProject =
+    internal const string XunitProject =
         $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n    <OutputType>Exe</OutputType>\n" +
         "    <ImplicitUsings>enable</ImplicitUsings>\n  </PropertyGroup>\n  <ItemGroup>\n    <PackageReference Include=\"xunit.v3\" Version=\"4.0.2\" />\n  </ItemGroup>\n</Project>\n";
 
@@ -304,4 +313,82 @@ public abstract class TestingPlatformFolders : IDisposable
 
     protected static TestNode? Method(MainWindow window, string name) =>
         window.Tests.Tree.Roots.SelectMany(r => r.Methods).FirstOrDefault(m => m.Name == name);
+}
+
+/// <summary>What a test host's results cost the IDE to read, counted across the process, so the class runs alone.</summary>
+[Collection(Alone.Name)]
+public sealed class TestingPlatformBytesTests(ITestOutputHelper testOutput) : IDisposable
+{
+    private const int Rows = 2000;
+
+    private readonly string folder = PathNames.Canonical(TestFolders.Create("mtp-bytes-"));
+
+    public void Dispose() => TestFolders.Delete(folder);
+
+    /// <summary>A run of 2,000 tests, a tenth failing and a seventh writing output, is told by its test host as test nodes
+    /// read straight from the bytes they came in, each test looked up by its key without making it: the run costs the IDE
+    /// at most twice the JSON of its results, least of three, and every result reads as the run with protocol traces on
+    /// (whose trace gives the JSON) read it.</summary>
+    [Fact]
+    public async Task A_runs_results_cost_at_most_twice_their_JSON_to_read()
+    {
+        CancellationToken cancel = TestContext.Current.CancellationToken;
+        string project = TestFolders.Write(folder, "Sums.Tests.csproj", TestingPlatformFolders.XunitProject);
+        string source = TestFolders.Write(folder, "RowTests.cs",
+            "using Xunit;\n\nnamespace Sums.Tests;\n\npublic class RowTests(ITestOutputHelper output)\n{\n" +
+            $"    public static IEnumerable<object[]> Rows => Enumerable.Range(0, {Rows}).Select(i => new object[] {{ i }});\n\n" +
+            "    [Theory]\n    [MemberData(nameof(Rows))]\n    [Trait(\"Area\", \"Sums\")]\n    public void Adds_up(int row)\n    {\n" +
+            "        if (row % 7 == 0)\n        {\n            output.WriteLine($\"row {row} of the sums\");\n        }\n" +
+            "        Assert.True(row % 10 != 9, $\"row {row} does not add up\");\n    }\n}\n");
+        await Restore.RunAsync(project);
+        ChildResult built = await ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", project, "-nologo", "-v:q"]), limit: Restore.Limit.Scaled(), cancel: cancel);
+        Assert.True(built.Succeeded, $"The test project did not build:\n{built.Output}{built.Error}");
+        TestAssembly assembly = new(new ProjectModel(project, "Sums.Tests", "Exe", [TestProjects.Framework], [], [], true), TestProjects.Framework,
+            Path.Combine(folder, "bin", "Debug", TestProjects.Framework, "Sums.Tests.dll"));
+        using TestingPlatformRunner runner = new();
+        IReadOnlyList<TestItem> tests = await runner.DiscoverAsync([assembly], cancel: cancel);
+        Assert.Equal(Rows, tests.Count);
+        TestItem first = tests.Single(t => t.Row == "Adds_up(row: 9)");
+        Assert.Equal(("Sums.Tests.RowTests.Adds_up", source, KeyValuePair.Create("Area", "Sums")), (first.FullyQualifiedName, first.Path, Assert.Single(first.Traits)));
+
+        string log = IdeLog.PathOf(IdeLog.Tests);
+        IdeLog.Flush();
+        int logged = File.Exists(log) ? Ui.Shared(log).Length : 0;
+        bool tracing = IdeLog.Traces;
+        RunSummary traced;
+        IdeLog.Traces = true;
+        try
+        {
+            traced = await runner.RunAsync(tests, _ => { }, cancel: cancel);
+        }
+        finally
+        {
+            IdeLog.Traces = tracing;
+        }
+        IdeLog.Flush();
+        const string Told = "<-- testing/testUpdates/tests ";
+        long json = Ui.Shared(log)[logged..].Split('\n').Where(l => l.Contains(Told, StringComparison.Ordinal))
+            .Sum(l => (long)System.Text.Encoding.UTF8.GetByteCount(l[(l.IndexOf(Told, StringComparison.Ordinal) + Told.Length)..].TrimEnd('\r')));
+        long least = long.MaxValue;
+        RunSummary? ran = null;
+        for (int time = 0; time < 3; time++)
+        {
+            long before = GC.GetTotalAllocatedBytes(precise: true);
+            ran = await runner.RunAsync(tests, _ => { }, cancel: cancel);
+            least = Math.Min(least, GC.GetTotalAllocatedBytes(precise: true) - before);
+        }
+        Assert.Equal(Rows, ran!.Outcomes.Count);
+        Assert.Equal(Rows / 10, ran.Outcomes.Count(o => o.State == TestState.Failed));
+        TestOutcome failed = ran.Outcomes.Single(o => o.Test == first);
+        Assert.Equal((TestState.Failed, "row 9 does not add up"), (failed.State, failed.Message));
+        Assert.Contains("RowTests.cs:line", failed.StackTrace, StringComparison.Ordinal);
+        Assert.Equal("row 7 of the sums", ran.Outcomes.Single(o => o.Test.Row == "Adds_up(row: 7)").Output?.Trim());
+        Assert.Equal(Said(traced), Said(ran));
+        testOutput.WriteLine($"{json:N0} bytes of JSON, {least:N0} allocated ({(double)least / json:0.00}×), {least / Rows:N0} a result");
+        Assert.True(least <= json * 2,
+            $"Reading a run's {Rows:N0} results of {json:N0} bytes of JSON allocated {least:N0} bytes ({(double)least / json:0.0}× its JSON): every test a run reports costs the IDE that much more memory");
+
+        static List<string> Said(RunSummary run) =>
+            [.. run.Outcomes.Select(o => $"{o.Test.Id} {o.State} {o.DisplayName} {o.Message} {o.StackTrace} {o.Output}").Order(StringComparer.Ordinal)];
+    }
 }

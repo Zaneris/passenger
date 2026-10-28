@@ -26,9 +26,9 @@ public partial class MainWindow
     private void ToggleMarkdownPreview()
     {
         Editors.ShowsMarkdownPreview = !Editors.ShowsMarkdownPreview;
-        if (keepsWorkspace)
+        if (keepsWorkspace && state is not null)
         {
-            state?.Previews.Set(new State.PreviewsState { Markdown = Editors.ShowsMarkdownPreview });
+            state.Previews.Set(state.Previews.Value with { Markdown = Editors.ShowsMarkdownPreview });
         }
     }
 

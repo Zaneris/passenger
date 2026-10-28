@@ -34,17 +34,25 @@ public sealed class TerminalScreen
     /// <summary>The longest grapheme a cell holds, in UTF-16 units: a letter's marks beyond it are dropped.</summary>
     private const int MostJoined = 32;
 
+    /// <summary>The longest text an OSC keeps, in UTF-16 units: what a program writes past it is dropped.</summary>
+    private const int MostOsc = 8192;
+
     private readonly LineRing scrollback = new(ScrollbackLimit);
     private readonly Decoder utf8 = new UTF8Encoding(false).GetDecoder();
-    private readonly StringBuilder parameters = new();
-    private readonly StringBuilder intermediates = new();
-    private readonly StringBuilder osc = new();
+    private readonly Parameters parameters = new();
+    private char[] osc = new char[256];
+    private int oscLength;
     private char[] decoded = new char[4096];
     private TerminalLine[] main;
     private TerminalLine[]? alternate;
     private bool[] tabStops;
     private State state;
     private char privateMarker;
+
+    /// <summary>The sequence's first intermediate byte (ESC ( and CSI SP q's), and how many it has.</summary>
+    private int intermediate;
+    private int intermediates;
+
     private char highSurrogate;
     private CellStyle style = CellStyle.Plain;
     private int top;
@@ -54,6 +62,10 @@ public sealed class TerminalScreen
     private bool originMode;
     private bool insertMode;
     private bool lineDrawing;
+
+    /// <summary>Whether the decoder may hold the start of a character: the last bytes it took were not ASCII.</summary>
+    private bool utf8Open;
+
     private int lastRune = ' ';
     private Saved saved;
     private Saved savedMain;
@@ -120,6 +132,9 @@ public sealed class TerminalScreen
     /// <summary>The folder the shell said it is in (OSC 7), or null.</summary>
     public string? WorkingDirectory { get; private set; }
 
+    /// <summary>What the last OSC 7 said, as it said it.</summary>
+    private string? place;
+
     /// <summary>Counts every change, so a view knows to draw again.</summary>
     public int Version { get; private set; }
 
@@ -166,13 +181,53 @@ public sealed class TerminalScreen
     public string ScreenText() => string.Join('\n', Lines.Select(l => l.Text()));
 
     /// <summary>Takes the program's output, as many bytes as arrived; a character split between two calls is kept
-    /// until the rest comes.</summary>
+    /// until the rest comes. A run of printable ASCII outside any sequence, most of what a log is, goes into its rows a
+    /// row's worth at a time (<see cref="PrintText"/>); the rest a character at a time.</summary>
     public void Feed(ReadOnlySpan<byte> bytes)
     {
         if (bytes.IsEmpty)
         {
             return;
         }
+        int at = 0;
+        while (at < bytes.Length)
+        {
+            ReadOnlySpan<byte> rest = bytes[at..];
+            if (utf8Open || rest[0] >= 0x80)
+            {
+                // Decoded up to and with the next ASCII byte, which ends whatever sequence the decoder holds.
+                int ascii = rest.IndexOfAnyInRange((byte)0, (byte)0x7F);
+                int take = ascii < 0 ? rest.Length : ascii + 1;
+                utf8Open = ascii < 0;
+                Decode(rest[..take]);
+                at += take;
+                continue;
+            }
+            if (state == State.Ground)
+            {
+                int run = rest.IndexOfAnyExceptInRange((byte)0x20, (byte)0x7E);
+                if (run != 0)
+                {
+                    int take = run < 0 ? rest.Length : run;
+                    highSurrogate = '\0';
+                    PrintText(rest[..take]);
+                    at += take;
+                    continue;
+                }
+            }
+            highSurrogate = '\0';
+            Process(rest[0]);
+            at++;
+        }
+        Version++;
+    }
+
+    public void Feed(string text) => Feed(Encoding.UTF8.GetBytes(text));
+
+    /// <summary>Bytes through the UTF-8 decoder, each character they make through the state machine; a pair of
+    /// surrogates is one character.</summary>
+    private void Decode(ReadOnlySpan<byte> bytes)
+    {
         int most = utf8.GetCharCount(bytes, flush: false);
         if (decoded.Length < most)
         {
@@ -199,10 +254,7 @@ public sealed class TerminalScreen
             highSurrogate = '\0';
             Process(c);
         }
-        Version++;
     }
-
-    public void Feed(string text) => Feed(Encoding.UTF8.GetBytes(text));
 
     /// <summary>A new size. At a new width the main screen and its scrollback reflow: rows the text wrapped across join
     /// and wrap again, so a line a narrower window cut reads whole once it widens, and the cursor stays on its
@@ -504,14 +556,14 @@ public sealed class TerminalScreen
                         state = State.Csi;
                         break;
                     case ']':
-                        osc.Clear();
+                        oscLength = 0;
                         state = State.Osc;
                         break;
                     case 'P' or 'X' or '^' or '_':
                         state = State.Text;
                         break;
                     case >= 0x20 and <= 0x2f:
-                        intermediates.Append((char)rune);
+                        Intermediate(rune);
                         state = State.EscapeIntermediate;
                         break;
                     default:
@@ -527,7 +579,7 @@ public sealed class TerminalScreen
                 }
                 if (rune is >= 0x20 and <= 0x2f)
                 {
-                    intermediates.Append((char)rune);
+                    Intermediate(rune);
                 }
                 else
                 {
@@ -540,20 +592,21 @@ public sealed class TerminalScreen
                 {
                     break;
                 }
-                if (rune is '<' or '=' or '>' or '?' && parameters.Length == 0 && privateMarker == '\0')
+                if (rune is '<' or '=' or '>' or '?' && parameters.IsEmpty && privateMarker == '\0')
                 {
                     privateMarker = (char)rune;
                 }
                 else if (rune is >= 0x30 and <= 0x3f)
                 {
-                    parameters.Append((char)rune);
+                    parameters.Take(rune);
                 }
                 else if (rune is >= 0x20 and <= 0x2f)
                 {
-                    intermediates.Append((char)rune);
+                    Intermediate(rune);
                 }
                 else if (rune is >= 0x40 and <= 0x7e)
                 {
+                    parameters.End();
                     Csi((char)rune);
                     state = State.Ground;
                 }
@@ -568,9 +621,13 @@ public sealed class TerminalScreen
                 {
                     state = State.OscEscape;
                 }
-                else if (osc.Length < 8192)
+                else if (oscLength < MostOsc)
                 {
-                    osc.Append(char.ConvertFromUtf32(rune));
+                    if (osc.Length < oscLength + 2)
+                    {
+                        Array.Resize(ref osc, Math.Min(osc.Length * 2, MostOsc + 1));
+                    }
+                    oscLength += new Rune(rune).EncodeToUtf16(osc.AsSpan(oscLength));
                 }
                 break;
             case State.OscEscape:
@@ -635,10 +692,22 @@ public sealed class TerminalScreen
     private void Begin(State next)
     {
         parameters.Clear();
-        intermediates.Clear();
+        intermediate = 0;
+        intermediates = 0;
         privateMarker = '\0';
         state = next;
     }
+
+    private void Intermediate(int rune)
+    {
+        if (intermediates++ == 0)
+        {
+            intermediate = rune;
+        }
+    }
+
+    /// <summary>Whether the sequence's intermediates are just this one byte.</summary>
+    private bool Only(char middle) => intermediates == 1 && intermediate == middle;
 
     private void Control(int rune)
     {
@@ -692,12 +761,12 @@ public sealed class TerminalScreen
             {
                 return;
             }
-            Lines[CursorRow].Cells[CursorColumn] = Cell.Blank(style);
+            Lines[CursorRow].Writing()[CursorColumn] = Cell.Blank(style);
             Lines[CursorRow].Wrapped = true;
             CursorColumn = 0;
             LineFeed();
         }
-        Cell[] cells = Lines[CursorRow].Cells;
+        Cell[] cells = Lines[CursorRow].Writing();
         if (insertMode)
         {
             Array.Copy(cells, CursorColumn, cells, CursorColumn + width, Columns - CursorColumn - width);
@@ -721,6 +790,74 @@ public sealed class TerminalScreen
         }
     }
 
+    /// <summary>Printable ASCII written as <see cref="Print"/> writes each of its characters, a row's worth at a time: up
+    /// to the row's end, where it wraps (or, with wrapping off, writes on over the last column), in insert mode pushing
+    /// the row's rest right, and through the line-drawing set when it is chosen, each of whose characters is one column.</summary>
+    private void PrintText(ReadOnlySpan<byte> text)
+    {
+        while (!text.IsEmpty)
+        {
+            if (wrapPending && autoWrap)
+            {
+                Lines[CursorRow].Wrapped = true;
+                CursorColumn = 0;
+                LineFeed();
+            }
+            wrapPending = false;
+            int column = CursorColumn;
+            int take = Math.Min(text.Length, Math.Max(1, Columns - column));
+            Cell[] cells = Lines[CursorRow].Writing();
+            if (insertMode)
+            {
+                if (!Narrow(cells.AsSpan(column, Columns - column)))
+                {
+                    // A wide character's half in the way is pushed and blanked a character at a time.
+                    foreach (byte c in text[..take])
+                    {
+                        Print(c);
+                    }
+                    text = text[take..];
+                    continue;
+                }
+                Array.Copy(cells, column, cells, column + take, Columns - column - take);
+            }
+            Cell written = new() { Style = style, Width = 1 };
+            for (int i = 0; i < take; i++)
+            {
+                Overwrite(cells, column + i);
+                written.Rune = Shown(text[i]);
+                cells[column + i] = written;
+            }
+            lastRune = written.Rune;
+            if (column + take >= Columns)
+            {
+                CursorColumn = Columns - 1;
+                wrapPending = true;
+            }
+            else
+            {
+                CursorColumn = column + take;
+            }
+            text = text[take..];
+        }
+    }
+
+    /// <summary>The character a printable ASCII byte shows: its own, or the line-drawing set's.</summary>
+    private int Shown(byte c) => lineDrawing && c >= 0x5f ? LineDrawing[c - 0x5f] : c;
+
+    /// <summary>Whether every cell is one column, with no half of a wide character among them.</summary>
+    private static bool Narrow(ReadOnlySpan<Cell> cells)
+    {
+        foreach (Cell cell in cells)
+        {
+            if (cell.Width != 1)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /// <summary>A character with no column of its own (a combining mark, a joiner, a variation selector) joins the
     /// grapheme in the cell before the cursor, so é written as e and a combining acute shows and copies whole; at a
     /// row's start there is nothing to join, and it is dropped.</summary>
@@ -740,7 +877,7 @@ public sealed class TerminalScreen
         }
         if (line.Cells[column].Rune == 0)
         {
-            line.Cells[column].Rune = ' ';
+            line.Writing()[column].Rune = ' ';
         }
         line.SetGrapheme(column, joined);
     }
@@ -803,19 +940,20 @@ public sealed class TerminalScreen
     }
 
     /// <summary>The scroll region moves up: its top rows leave (into the scrollback when the region is the screen's
-    /// top on the main screen) and blank rows come in at its bottom.</summary>
+    /// top on the main screen) and blank rows come in at its bottom, each made of a line nothing keeps any more where
+    /// there is one: the row that left, or the scrollback's oldest, which a full scrollback lets go.</summary>
     private void ScrollUp(int count)
     {
         count = Math.Min(count, bottom - top + 1);
         for (int i = 0; i < count; i++)
         {
-            TerminalLine leaving = Lines[top];
+            TerminalLine? left = Lines[top];
             if (top == 0 && !IsAlternate)
             {
-                AddScrollback(leaving);
+                left = scrollback.Add(left);
             }
             Array.Copy(Lines, top + 1, Lines, top, bottom - top);
-            Lines[bottom] = new TerminalLine(Columns, Erasing);
+            Lines[bottom] = Blank(left);
         }
     }
 
@@ -824,10 +962,15 @@ public sealed class TerminalScreen
         count = Math.Min(count, bottom - top + 1);
         for (int i = 0; i < count; i++)
         {
+            TerminalLine left = Lines[bottom];
             Array.Copy(Lines, top, Lines, top + 1, bottom - top);
-            Lines[top] = new TerminalLine(Columns, Erasing);
+            Lines[top] = Blank(left);
         }
     }
+
+    /// <summary>A blank row in the current background: <paramref name="left"/>, a line that has left the screen with
+    /// nothing keeping it, cleared, or a new one.</summary>
+    private TerminalLine Blank(TerminalLine? left) => left?.Reuse(Columns, Erasing) ?? new TerminalLine(Columns, Erasing);
 
     private void AddScrollback(TerminalLine line) => scrollback.Add(line);
 
@@ -836,25 +979,25 @@ public sealed class TerminalScreen
 
     private void Escape(char final)
     {
-        string middle = intermediates.ToString();
-        if (middle == "(")
+        if (Only('('))
         {
             lineDrawing = final == '0';
             return;
         }
-        if (middle == "#" && final == '8')
+        if (Only('#') && final == '8')
         {
             // DECALN: the screen filled with Es, for aligning a display.
             foreach (TerminalLine line in Lines)
             {
+                Cell[] cells = line.Writing();
                 for (int i = 0; i < Columns; i++)
                 {
-                    line.Cells[i] = new Cell { Rune = 'E', Style = CellStyle.Plain, Width = 1 };
+                    cells[i] = new Cell { Rune = 'E', Style = CellStyle.Plain, Width = 1 };
                 }
             }
             return;
         }
-        if (middle.Length > 0)
+        if (intermediates > 0)
         {
             return;
         }
@@ -887,22 +1030,18 @@ public sealed class TerminalScreen
 
     private void Csi(char final)
     {
-        int[][] groups = Parameters();
-        int Get(int index, int fallback) => index < groups.Length && groups[index].Length > 0 && groups[index][0] > 0 ? groups[index][0] : fallback;
-        int Raw(int index) => index < groups.Length && groups[index].Length > 0 ? Math.Max(0, groups[index][0]) : 0;
-        string middle = intermediates.ToString();
+        Parameters groups = parameters;
+        int Get(int index, int fallback) => index < groups.Count && groups[index, 0] > 0 ? groups[index, 0] : fallback;
+        int Raw(int index) => index < groups.Count ? Math.Max(0, groups[index, 0]) : 0;
 
         if (privateMarker == '?')
         {
             switch (final)
             {
                 case 'h' or 'l':
-                    foreach (int[] group in groups)
+                    for (int group = 0; group < groups.Count; group++)
                     {
-                        if (group.Length > 0)
-                        {
-                            SetMode(group[0], final == 'h');
-                        }
+                        SetMode(groups[group, 0], final == 'h');
                     }
                     break;
                 case 'n' when Raw(0) == 6:
@@ -930,7 +1069,7 @@ public sealed class TerminalScreen
         {
             return;
         }
-        if (middle == " " && final == 'q')
+        if (Only(' ') && final == 'q')
         {
             int requested = Raw(0);
             if (requested is < 0 or > 6)
@@ -947,12 +1086,12 @@ public sealed class TerminalScreen
             RequestedCursorBlinking = requested == 0 ? null : requested % 2 == 1;
             return;
         }
-        if (middle == "!" && final == 'p')
+        if (Only('!') && final == 'p')
         {
             SoftReset();
             return;
         }
-        if (middle.Length > 0)
+        if (intermediates > 0)
         {
             return;
         }
@@ -1011,7 +1150,7 @@ public sealed class TerminalScreen
             case 'S':
                 ScrollUp(Get(0, 1));
                 break;
-            case 'T' when groups.Length <= 1:
+            case 'T' when groups.Count <= 1:
                 ScrollDown(Get(0, 1));
                 break;
             case 'X':
@@ -1041,9 +1180,9 @@ public sealed class TerminalScreen
                 }
                 break;
             case 'h' or 'l':
-                foreach (int[] group in groups)
+                for (int group = 0; group < groups.Count; group++)
                 {
-                    if (group.Length > 0 && group[0] == 4)
+                    if (groups[group, 0] == 4)
                     {
                         insertMode = final == 'h';
                     }
@@ -1082,28 +1221,6 @@ public sealed class TerminalScreen
                 Reply?.Invoke($"\x1b[8;{Rows};{Columns}t");
                 break;
         }
-    }
-
-    /// <summary>The CSI's parameters: groups split at semicolons, each group's parts at colons (as SGR's 38:2:r:g:b),
-    /// -1 for a part left empty.</summary>
-    private int[][] Parameters()
-    {
-        if (parameters.Length == 0)
-        {
-            return [];
-        }
-        string[] groups = parameters.ToString().Split(';');
-        int[][] parsed = new int[groups.Length][];
-        for (int i = 0; i < groups.Length; i++)
-        {
-            string[] parts = groups[i].Split(':');
-            parsed[i] = new int[parts.Length];
-            for (int j = 0; j < parts.Length; j++)
-            {
-                parsed[i][j] = int.TryParse(parts[j], NumberStyles.None, CultureInfo.InvariantCulture, out int value) ? Math.Min(value, 65535) : -1;
-            }
-        }
-        return parsed;
     }
 
     private void SetMode(int mode, bool on)
@@ -1179,17 +1296,16 @@ public sealed class TerminalScreen
         wrapPending = false;
     }
 
-    private void Sgr(int[][] groups)
+    private void Sgr(Parameters groups)
     {
-        if (groups.Length == 0)
+        if (groups.Count == 0)
         {
             style = CellStyle.Plain;
             return;
         }
-        for (int i = 0; i < groups.Length; i++)
+        for (int i = 0; i < groups.Count; i++)
         {
-            int[] group = groups[i];
-            int code = group.Length > 0 && group[0] >= 0 ? group[0] : 0;
+            int code = groups[i, 0] >= 0 ? groups[i, 0] : 0;
             CellFlags flags = style.Flags;
             switch (code)
             {
@@ -1206,7 +1322,7 @@ public sealed class TerminalScreen
                     flags |= CellFlags.Italic;
                     break;
                 case 4:
-                    flags = group.Length > 1 && group[1] == 0 ? flags & ~CellFlags.Underline : flags | CellFlags.Underline;
+                    flags = groups.Parts(i) > 1 && groups[i, 1] == 0 ? flags & ~CellFlags.Underline : flags | CellFlags.Underline;
                     break;
                 case 7:
                     flags |= CellFlags.Inverse;
@@ -1279,20 +1395,20 @@ public sealed class TerminalScreen
 
     /// <summary>A colour after 38 or 48: 5;N from the palette or 2;R;G;B, in its own group's parts (38:2::R:G:B) or in
     /// the groups after it (38;2;R;G;B), which it then consumes.</summary>
-    private static int? Extended(int[][] groups, ref int i)
+    private static int? Extended(Parameters groups, ref int i)
     {
-        int[] group = groups[i];
-        if (group.Length > 1)
+        int parts = groups.Parts(i);
+        if (parts > 1)
         {
-            if (group[1] == 5 && group.Length > 2)
+            if (groups[i, 1] == 5 && parts > 2)
             {
-                return Math.Clamp(group[2], 0, 255);
+                return Math.Clamp(groups[i, 2], 0, 255);
             }
-            if (group[1] == 2 && group.Length >= 5)
+            if (groups[i, 1] == 2 && parts >= 5)
             {
                 // 38:2:R:G:B, or 38:2:SPACE:R:G:B with a colour space first.
-                int first = group.Length >= 6 ? 3 : 2;
-                return CellStyle.FromRgb(Byte(group[first]), Byte(group[first + 1]), Byte(group[first + 2]));
+                int first = parts >= 6 ? 3 : 2;
+                return CellStyle.FromRgb(Byte(groups[i, first]), Byte(groups[i, first + 1]), Byte(groups[i, first + 2]));
             }
             return null;
         }
@@ -1313,25 +1429,32 @@ public sealed class TerminalScreen
                 return null;
         }
 
-        static int Next(int[][] groups, int index) => index < groups.Length && groups[index].Length > 0 ? groups[index][0] : -1;
+        static int Next(Parameters groups, int index) => index < groups.Count ? groups[index, 0] : -1;
 
         static int Byte(int value) => Math.Clamp(value, 0, 255);
     }
 
+    /// <summary>An OSC's text read where it was kept: a string is made only for a title or a folder that is new.</summary>
     private void Osc()
     {
-        string text = osc.ToString();
-        int semicolon = text.IndexOf(';', StringComparison.Ordinal);
-        string code = semicolon < 0 ? text : text[..semicolon];
-        string value = semicolon < 0 ? string.Empty : text[(semicolon + 1)..];
-        switch (code)
+        ReadOnlySpan<char> text = osc.AsSpan(0, oscLength);
+        int semicolon = text.IndexOf(';');
+        ReadOnlySpan<char> code = semicolon < 0 ? text : text[..semicolon];
+        ReadOnlySpan<char> value = semicolon < 0 ? [] : text[(semicolon + 1)..];
+        if (code is "0" or "2")
         {
-            case "0" or "2":
-                Title = value;
-                break;
-            case "7" when Uri.TryCreate(value, UriKind.Absolute, out Uri? folder) && folder.IsFile:
+            if (!value.SequenceEqual(Title))
+            {
+                Title = value.ToString();
+            }
+        }
+        else if (code is "7" && !value.SequenceEqual(place))
+        {
+            place = value.ToString();
+            if (Uri.TryCreate(place, UriKind.Absolute, out Uri? folder) && folder.IsFile)
+            {
                 WorkingDirectory = Uri.UnescapeDataString(folder.AbsolutePath);
-                break;
+            }
         }
     }
 
@@ -1437,8 +1560,9 @@ public sealed class TerminalScreen
         top = CursorRow;
         for (int i = 0; i < Math.Min(count, bottom - top + 1); i++)
         {
+            TerminalLine left = Lines[top];
             Array.Copy(Lines, top + 1, Lines, top, bottom - top);
-            Lines[bottom] = new TerminalLine(Columns, Erasing);
+            Lines[bottom] = Blank(left);
         }
         top = saveTop;
         CursorColumn = 0;
@@ -1448,7 +1572,7 @@ public sealed class TerminalScreen
     private void InsertCells(int count)
     {
         int column = Math.Min(CursorColumn, Columns - 1);
-        Cell[] cells = Lines[CursorRow].Cells;
+        Cell[] cells = Lines[CursorRow].Writing();
         count = Math.Min(count, Columns - column);
         Array.Copy(cells, column, cells, column + count, Columns - column - count);
         Lines[CursorRow].Clear(column, column + count, Erasing);
@@ -1458,7 +1582,7 @@ public sealed class TerminalScreen
     private void DeleteCells(int count)
     {
         int column = Math.Min(CursorColumn, Columns - 1);
-        Cell[] cells = Lines[CursorRow].Cells;
+        Cell[] cells = Lines[CursorRow].Writing();
         count = Math.Min(count, Columns - column);
         Array.Copy(cells, column + count, cells, column, Columns - column - count);
         Lines[CursorRow].Clear(Columns - count, Columns, Erasing);
@@ -1564,4 +1688,100 @@ public sealed class TerminalScreen
     ];
 
     private readonly record struct Saved(int Row, int Column, CellStyle Style, bool Origin, bool WrapPending, bool LineDrawing);
+
+    /// <summary>A CSI's parameters, read as their bytes arrive: groups apart at semicolons, each group's parts apart at
+    /// colons (SGR's 38:2:R:G:B), each part a number up to 65535, or -1 when it is empty, holds a byte other than a digit
+    /// or is past an int's range. Its arrays are kept from one sequence to the next, grown only past sixteen parts.</summary>
+    private sealed class Parameters
+    {
+        private int[] values = new int[16];
+
+        /// <summary>Where each group's parts start among <see cref="values"/>.</summary>
+        private int[] starts = new int[16];
+
+        private int count;
+        private long number;
+        private bool digits;
+        private bool bad;
+
+        /// <summary>How many groups the sequence has: none until a parameter byte comes.</summary>
+        public int Count { get; private set; }
+
+        /// <summary>Whether no parameter byte has come yet.</summary>
+        public bool IsEmpty => Count == 0;
+
+        /// <summary>A group's part; every group has its first.</summary>
+        public int this[int group, int part] => values[starts[group] + part];
+
+        public int Parts(int group) => (group + 1 < Count ? starts[group + 1] : count) - starts[group];
+
+        public void Clear()
+        {
+            Count = 0;
+            count = 0;
+            number = 0;
+            digits = false;
+            bad = false;
+        }
+
+        /// <summary>Takes a parameter byte, 0x30 to 0x3F.</summary>
+        public void Take(int c)
+        {
+            if (Count == 0)
+            {
+                Open();
+            }
+            switch (c)
+            {
+                case >= '0' and <= '9':
+                    digits = true;
+                    if (!bad)
+                    {
+                        number = (number * 10) + (c - '0');
+                        bad = number > int.MaxValue;
+                    }
+                    break;
+                case ';':
+                    EndPart();
+                    Open();
+                    break;
+                case ':':
+                    EndPart();
+                    break;
+                default:
+                    bad = true;
+                    break;
+            }
+        }
+
+        /// <summary>The sequence's final byte has come: its last part ends.</summary>
+        public void End()
+        {
+            if (Count > 0)
+            {
+                EndPart();
+            }
+        }
+
+        private void Open()
+        {
+            if (Count == starts.Length)
+            {
+                Array.Resize(ref starts, starts.Length * 2);
+            }
+            starts[Count++] = count;
+        }
+
+        private void EndPart()
+        {
+            if (count == values.Length)
+            {
+                Array.Resize(ref values, values.Length * 2);
+            }
+            values[count++] = digits && !bad ? (int)Math.Min(number, 65535) : -1;
+            number = 0;
+            digits = false;
+            bad = false;
+        }
+    }
 }

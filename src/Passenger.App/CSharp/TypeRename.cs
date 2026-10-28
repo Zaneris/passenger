@@ -85,12 +85,13 @@ public static class TypeRename
         return Path.Combine(Path.GetDirectoryName(path)!, type + name[Stem(path).Length..]);
     }
 
-    /// <summary>Applies a rename's edit and then moves the files it renames, as one command named for the person's undo,
-    /// with what else the command does once they have moved (the projects following them). A file the moves would put
-    /// where another file is stops the whole before anything changes, with why (<see cref="WorkspaceEditFailed"/>), as
-    /// does the edit's own refusal. The number of files changed.</summary>
+    /// <summary>Applies a rename's edit and then moves the files it renames, as one command named for the person's undo
+    /// (or within the caller's, <paramref name="into"/>, which waits for its writes before it ends), with what else the
+    /// command does once they have moved (the projects following them). A file the moves would put where another file is
+    /// stops the whole before anything changes, with why (<see cref="WorkspaceEditFailed"/>), as does the edit's own
+    /// refusal. The number of files changed.</summary>
     public static int Apply(EditorArea editors, JsonElement edit, IReadOnlyList<(string From, string To)> moves, string name, Asked? asked, List<string> dropped,
-        Action<CommandHistory.Recording>? moved = null)
+        Action<CommandHistory.Recording>? moved = null, CommandHistory.Recording? into = null)
     {
         foreach ((string from, string to) in moves)
         {
@@ -99,7 +100,8 @@ public static class TypeRename
                 throw new WorkspaceEditFailed($"{Path.GetFileName(to)} is already there");
             }
         }
-        using CommandHistory.Recording recording = editors.Commands.Record(name);
+        using CommandHistory.Recording? own = into is null ? editors.Commands.Record(name) : null;
+        CommandHistory.Recording recording = into ?? own!;
         foreach (FileEdits change in Shapes.WorkspaceEdit(edit).Where(c => c.Operation is null))
         {
             recording.Watch(DocumentUris.ToPath(change.Uri));
@@ -148,7 +150,7 @@ public static class TypeRename
         {
             return null;
         }
-        return (CSharpSyntaxTree.ParseText(file.Text).GetRoot(), TextSnapshot.From(file.Text));
+        return (CSharpSyntaxTree.ParseText(file.Text, editors.ParseOptions(path)).GetRoot(), TextSnapshot.From(file.Text));
     }
 
     private static bool IsCSharp(string path) => path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase);

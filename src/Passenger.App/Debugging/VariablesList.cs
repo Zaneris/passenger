@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -25,7 +24,7 @@ public sealed class VariablesList : ListBox
         Tree = tree;
         Classes.Add("tree");
         ItemsSource = tree.Rows;
-        ItemTemplate = new FuncDataTemplate<VariableNode>((node, _) => Row(node), supportsRecycling: false);
+        ReusedRows.Use(this, Row);
         DoubleTapped += (_, _) =>
         {
             // A double-click opens what has members, and sets what has none; a query's SQL opens its text.
@@ -199,7 +198,6 @@ public sealed class VariablesList : ListBox
         if (DataWatch is { } offer)
         {
             MenuItem watch = ListMenus.Item(DataWatchOffer.Set, null, () => DataBreakpointRequested?.Invoke(this, node), enabled: false);
-            ToolTip.SetShowOnDisabled(watch, true);
             items.Add(new Separator());
             items.Add(watch);
             IdeErrors.Observe(Offer(watch, offer(node)));
@@ -220,53 +218,38 @@ public sealed class VariablesList : ListBox
         ToolTip.SetTip(item, offered.WhyNot);
     }
 
-    private Control Row(VariableNode? node)
+    /// <summary>A row for whichever value the list hands its container: its chevron, its mark, name, type and value, and the
+    /// field its value is typed over in (Set Value).</summary>
+    private Control Row()
     {
-        if (node is null)
-        {
-            return new TextBlock();
-        }
-        PathIcon chevron = new() { Classes = { "chevron" }, IsVisible = node.HasChildren, RenderTransformOrigin = RelativePoint.Center };
-        chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(IconKeys.ChevronRight));
-        chevron.RenderTransform = new RotateTransform(node.ChevronAngle);
-        node.FollowWhileShown(chevron, (_, e) =>
-        {
-            if (e.PropertyName is null or nameof(VariableNode.ChevronAngle))
-            {
-                chevron.RenderTransform = new RotateTransform(node.ChevronAngle);
-            }
-        });
+        RowIcon chevron = RowIcon.Chevron();
         Border toggle = new() { Width = 18, Height = ListRow.Height, Background = Brushes.Transparent, Child = chevron };
+        RowIcon icon = new() { Margin = new Thickness(0, 0, 6, 0) };
+        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
+        TextBlock type = new() { VerticalAlignment = VerticalAlignment.Center };
+        type.Classes.Add("muted");
+        TextBlock value = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 900 };
+        TextBox editor = new() { Classes = { "search" }, MinHeight = 22, Height = 22, MinWidth = 240, Padding = new Thickness(6, 0), IsVisible = false, VerticalAlignment = VerticalAlignment.Center };
+        // Narrower than its row, the value gives way first, ending in an ellipsis, then its type.
+        ShrinkingRow row = new()
+        {
+            Height = ListRow.Height,
+            Children = { toggle, icon, name, new TextBlock { Text = " = ", VerticalAlignment = VerticalAlignment.Center }, type, value, editor },
+        };
         toggle.PointerPressed += (_, e) =>
         {
-            if (node.HasChildren)
+            if (row.DataContext is VariableNode { HasChildren: true } node)
             {
                 IdeErrors.Observe(Toggle(node));
                 e.Handled = true;
             }
         };
-        PathIcon icon = new() { Margin = new Thickness(0, 0, 6, 0) };
-        // Marks for what the debugger adds to a frame's values: a call's value, the exception stopped at, a query's SQL.
-        string iconKey = node switch
-        {
-            { Role: VariableRole.Watch } => IconKeys.Evaluate,
-            { IsReturnValue: true } => IconKeys.StepOut,
-            { IsException: true } => IconKeys.Error,
-            { IsQuerySql: true } => IconKeys.Database,
-            _ => IconKeys.Variable,
-        };
-        icon.Bind(PathIcon.DataProperty, icon.GetResourceObservable(iconKey));
-        TextBlock type = new() { Text = node.TypeLabel, VerticalAlignment = VerticalAlignment.Center };
-        type.Classes.Add("muted");
-        TextBlock value = new() { Text = node.Shown, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 900 };
-        if (node.Role == VariableRole.Error)
-        {
-            value.Bind(TextBlock.ForegroundProperty, value.GetResourceObservable(TokenKeys.Error));
-        }
-        ToolTip.SetTip(value, node.Lines);
-        TextBox editor = new() { Classes = { "search" }, MinHeight = 22, Height = 22, MinWidth = 240, Padding = new Thickness(6, 0), IsVisible = false, VerticalAlignment = VerticalAlignment.Center };
         editor.AddHandler(KeyDownEvent, (_, e) =>
         {
+            if (row.DataContext is not VariableNode node)
+            {
+                return;
+            }
             if (e.Key == Key.Enter)
             {
                 SetValueRequested?.Invoke(this, (node, editor.Text ?? string.Empty));
@@ -281,41 +264,63 @@ public sealed class VariablesList : ListBox
                 e.Handled = true;
             }
         }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
-        editor.LostFocus += (_, _) => node.IsEditing = false;
-        node.FollowWhileShown(editor, (_, e) =>
+        editor.LostFocus += (_, _) =>
         {
-            if (e.PropertyName != nameof(VariableNode.IsEditing))
+            if (row.DataContext is VariableNode node)
             {
-                return;
+                node.IsEditing = false;
             }
-            editor.IsVisible = node.IsEditing;
-            value.IsVisible = type.IsVisible = !node.IsEditing;
-            if (node.IsEditing)
+        };
+        VariableNode? drawn = null;
+        bool editing = false;
+        string? valueColour = null;
+        return row.Showing<VariableNode>(node =>
+        {
+            if (node != drawn)
             {
-                // It starts from the value as shown, all of it chosen, so typing replaces it and an arrow edits it.
-                editor.Text = node.Value;
-                Dispatcher.UIThread.Post(() =>
+                drawn = node;
+                editing = false;
+                Draw(node);
+            }
+            chevron.Turned = node.IsExpanded;
+            if (node.IsEditing != editing)
+            {
+                editing = node.IsEditing;
+                editor.IsVisible = editing;
+                value.IsVisible = type.IsVisible = !editing;
+                if (editing)
                 {
-                    editor.Focus();
-                    editor.SelectAll();
-                }, DispatcherPriority.Loaded);
+                    // It starts from the value as shown, all of it chosen, so typing replaces it and an arrow edits it.
+                    editor.Text = node.Value;
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        editor.Focus();
+                        editor.SelectAll();
+                    }, DispatcherPriority.Loaded);
+                }
             }
         });
-        // Narrower than its row, the value gives way first, ending in an ellipsis, then its type.
-        return new ShrinkingRow
+
+        void Draw(VariableNode node)
         {
-            Height = ListRow.Height,
-            Margin = node.Indent,
-            Children =
+            row.Margin = node.Indent;
+            chevron.IsVisible = node.HasChildren;
+            // Marks for what the debugger adds to a frame's values: a call's value, the exception stopped at, a query's SQL.
+            icon.DataKey = node switch
             {
-                toggle,
-                icon,
-                new TextBlock { Text = node.Name, VerticalAlignment = VerticalAlignment.Center },
-                new TextBlock { Text = " = ", VerticalAlignment = VerticalAlignment.Center },
-                type,
-                value,
-                editor,
-            },
-        };
+                { Role: VariableRole.Watch } => IconKeys.Evaluate,
+                { IsReturnValue: true } => IconKeys.StepOut,
+                { IsException: true } => IconKeys.Error,
+                { IsQuerySql: true } => IconKeys.Database,
+                _ => IconKeys.Variable,
+            };
+            name.Text = node.Name;
+            type.Text = node.TypeLabel;
+            value.Text = node.Shown;
+            value.Resource(TextBlock.ForegroundProperty, ref valueColour, node.Role == VariableRole.Error ? TokenKeys.Error : null);
+            ToolTip.SetTip(value, node.Lines);
+            editor.IsVisible = false;
+            value.IsVisible = type.IsVisible = true;
+        }
     }
 }

@@ -4,6 +4,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Media;
 using Avalonia.Media.TextFormatting;
 using Avalonia.VisualTree;
+using Passenger.App.Editors;
 using Passenger.App;
 using Passenger.App.Explorer;
 using Passenger.App.Navigation;
@@ -32,6 +33,7 @@ public sealed class FindInFilesTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    [Gate]
     [AvaloniaFact]
     public void The_options_narrow_the_matches_and_an_open_files_unsaved_text_is_searched()
     {
@@ -61,6 +63,7 @@ public sealed class FindInFilesTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Choosing_a_match_goes_to_it_and_replace_all_changes_open_and_closed_files()
     {
@@ -144,6 +147,93 @@ public sealed class FindInFilesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Find in Files reads as text only the files whose bytes may hold a match: over 2,000 files of 4 KB with a match
+    /// in a few, each search allocates (on every thread, the least of three) under 4 KB for each file more than over 20,
+    /// where reading one as text costs ten times that. It finds the same matches in UTF-8, UTF-8 with a BOM, UTF-16 and
+    /// 8-bit files, ignoring case as its regex does (a Kelvin sign is a k), matching case, by whole words and by regex.</summary>
+    [AvaloniaFact]
+    public void A_search_over_two_thousand_files_reads_as_text_only_those_whose_bytes_may_match()
+    {
+        (string Text, bool MatchCase, bool Words, bool Regex, string Found)[] queries =
+        [
+            ("needle", false, false, false, "Bom.cs:1:6, Found.cs:1:8, Latin.cs:1:13, Wide.cs:1:6"),
+            ("kelvin", false, false, false, "Kelvin.cs:1:4"),
+            ("Needle", true, false, false, "Found.cs:1:8"),
+            ("needle", false, true, false, "Bom.cs:1:6, Found.cs:1:8, Latin.cs:1:13, Wide.cs:1:6"),
+            (@"ne+dle\b", false, false, true, "Bom.cs:1:6, Found.cs:1:8, Latin.cs:1:13, Wide.cs:1:6"),
+        ];
+        string small = TestFolders.Create("find-few-");
+        string large = TestFolders.Create("find-many-");
+        try
+        {
+            Files(small, 20);
+            Files(large, 2000);
+            (long Bytes, string Found)[] few = Searches(small, queries);
+            (long Bytes, string Found)[] many = Searches(large, queries);
+            for (int i = 0; i < queries.Length; i++)
+            {
+                string asked = $"{queries[i].Text}{(queries[i].MatchCase ? " matching case" : string.Empty)}{(queries[i].Words ? " as a word" : string.Empty)}{(queries[i].Regex ? " as a regex" : string.Empty)}";
+                long each = (many[i].Bytes - few[i].Bytes) / 1980;
+                TestContext.Current.TestOutputHelper?.WriteLine($"{asked}: {few[i].Bytes / 1024:N0} KB over 20 files, {many[i].Bytes / 1024:N0} KB over 2,000, {each:N0} bytes a file more");
+                Assert.True(few[i].Found == queries[i].Found && many[i].Found == queries[i].Found,
+                    $"Find in Files for {asked} found [{few[i].Found}] over 20 files and [{many[i].Found}] over 2,000, not [{queries[i].Found}]");
+                Assert.True(each < 4096,
+                    $"Find in Files for {asked} allocated {many[i].Bytes / 1024:N0} KB over 2,000 files, {few[i].Bytes / 1024:N0} KB over 20: {each:N0} bytes for each file more, as if every file were read as text");
+            }
+        }
+        finally
+        {
+            TestFolders.Delete(small);
+            TestFolders.Delete(large);
+        }
+
+        // Files of code that hold no match, a hundred to a folder, and beside them a match in each encoding.
+        static void Files(string root, int count)
+        {
+            TestFolders.WriteAll(root, Enumerable.Range(0, count).Select(i => ($"src/Area{i / 100}/Filler{i}.cs",
+                $"class Filler{i}\n{{\n" + string.Concat(Enumerable.Range(0, 80).Select(j => $"    int field{j} = {j} * {i}; // a sum of the parts\n")) + "}\n")));
+            File.WriteAllText(Path.Combine(root, "Found.cs"), "// the Needle is here\nclass Found { }\n");
+            File.WriteAllText(Path.Combine(root, "Bom.cs"), "// a needle after a BOM\n", new System.Text.UTF8Encoding(true));
+            File.WriteAllText(Path.Combine(root, "Wide.cs"), "// a needle in UTF-16\n", System.Text.Encoding.Unicode);
+            File.WriteAllBytes(Path.Combine(root, "Latin.cs"), System.Text.Encoding.Latin1.GetBytes("// déjà une needle\n"));
+            File.WriteAllText(Path.Combine(root, "Kelvin.cs"), "// Kelvin's line\n");
+            File.WriteAllBytes(Path.Combine(root, "Blob.bin"), [.. System.Text.Encoding.ASCII.GetBytes("needle kelvin"), 0, 1, 2]);
+        }
+    }
+
+    /// <summary>What each search over a folder allocates on every thread from its query to its matches shown, the least of
+    /// three, as a test beside it may allocate meanwhile; and the matches as file:line:column, in order.</summary>
+    private static (long Bytes, string Found)[] Searches(string root, (string Text, bool MatchCase, bool Words, bool Regex, string Found)[] queries)
+    {
+        MainWindow window = Ui.OpenFolder(root, languageServer: false);
+        Ui.WaitFor(() => window.FileIndex.Count > 0 && !window.FileIndex.IsWalking, "the folder's files indexed");
+        FindInFilesPopup popup = window.ShowFindInFiles(replace: false)!;
+        List<(long Bytes, string Found)> searches = [];
+        foreach ((string text, bool matchCase, bool words, bool regex, _) in queries)
+        {
+            popup.MatchCase = matchCase;
+            popup.Words = words;
+            popup.Regex = regex;
+            long least = long.MaxValue;
+            for (int time = 0; time < 3; time++)
+            {
+                // The box tells of a new text after the frame, which puts the search off until a pause: told before searching now.
+                popup.Text = string.Empty;
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                long before = GC.GetTotalAllocatedBytes(precise: true);
+                popup.Text = text;
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                Task searching = popup.SearchAsync();
+                Ui.WaitFor(() => searching.IsCompleted, $"the search for {text}");
+                least = Math.Min(least, GC.GetTotalAllocatedBytes(precise: true) - before);
+            }
+            searches.Add((least, string.Join(", ", popup.Matches.Select(m => $"{m.Name}:{m.Line + 1}:{m.Column + 1}").Order(StringComparer.Ordinal))));
+        }
+        window.Close();
+        return [.. searches];
+    }
+
+    [Gate]
     [AvaloniaFact]
     public void Replace_all_across_a_read_only_file_replaces_in_the_rest_and_says_which_file_it_left_and_why()
     {
@@ -170,14 +260,215 @@ public sealed class FindInFilesTests : IDisposable
         Assert.Contains("void total()", window.EditorArea.Active!.Text.Snapshot.ToString(), StringComparison.Ordinal);
 
         Task<string> replacing = new Passenger.App.Mcp.PassengerTools(window).ReplaceInFiles("count|total", "sum", wholeWords: true, regex: true);
-        Ui.WaitFor(() => replacing.IsCompleted, "replace_in_files' answer");
-        Assert.Contains(replacing.Result, new[] { "Alpha.cs, Beta.cs", "Beta.cs, Alpha.cs" }.Select(files => $"Replaced 3 matches in 2 files: {files}; not replaced: Aardvark.cs (read-only)"));
+        Assert.Contains(Ui.Await(replacing, "replace_in_files' answer"), new[] { "Alpha.cs, Beta.cs", "Beta.cs, Alpha.cs" }.Select(files => $"Replaced 3 matches in 2 files: {files}; not replaced: Aardvark.cs (read-only)"));
         Assert.Equal("class Alpha\n{\n    int sum;\n}\n", File.ReadAllText(Path.Combine(folder, "Alpha.cs")));
         Assert.Contains("void sum()", File.ReadAllText(Path.Combine(folder, "Beta.cs")), StringComparison.Ordinal);
         Assert.Equal("class Aardvark { int count; }\n", File.ReadAllText(locked));
         window.Close();
     }
 
+    /// <summary>Replace All across an open file and closed ones is one command: one Undo, asked once, takes every file back,
+    /// on disk and in the editor, and one Redo makes it again; Local History keeps what it wrote as one change set named
+    /// for it, not a change of each file's own.</summary>
+    [AvaloniaFact]
+    public void Replace_all_across_open_and_closed_files_is_one_undo_and_one_change_set_named_for_it()
+    {
+        const string Named = "Replace 'count' with 'total'";
+        string alpha = Path.Combine(folder, "Alpha.cs");
+        string gamma = Path.Combine(folder, "Gamma.cs");
+        File.WriteAllText(gamma, "class Gamma { int count; }\n");
+        MainWindow window = Open();
+        window.OpenFile(Path.Combine(folder, "Beta.cs"));
+        Ui.Settle();
+        OpenDocument beta = window.EditorArea.Active!;
+        string before = beta.Text.Snapshot.ToString();
+        int asked = 0;
+        window.Confirm = (_, _, _) =>
+        {
+            asked++;
+            return Task.FromResult(true);
+        };
+        FindInFilesPopup popup = window.ShowFindInFiles(replace: true)!;
+        popup.Words = true;
+        Search(popup, "count");
+        popup.Replacement = "total";
+        popup.RequestReplace();
+        Ui.WaitFor(() => window.Status?.StartsWith("Replaced", StringComparison.Ordinal) == true, () => $"the replacement; the status says '{window.Status}'");
+        Assert.Equal("Replaced 4 matches in 3 files", window.Status);
+        Assert.Equal("class Alpha\n{\n    int total;\n}\n", File.ReadAllText(alpha));
+        Assert.Equal("class Gamma { int total; }\n", File.ReadAllText(gamma));
+        Assert.Equal(before.Replace("count", "total", StringComparison.Ordinal).Replace("Count", "total", StringComparison.Ordinal), beta.Text.Snapshot.ToString());
+        Ui.Press(window, "ESCAPE");
+
+        Assert.True(window.Perform(AppActions.ShowProjectHistory), "Show Project History did not run");
+        Passenger.App.History.HistoryTab history = window.LocalHistoryWindow.Shown!;
+        Ui.Landed(() => history.Rows.Any(r => r.Title == Named), "the replace's change set in Local History");
+        Assert.True(history.Rows.Count(r => r.Title == Named) == 1 && !history.Rows.Any(r => r.Title is "Modify Alpha.cs" or "Modify Gamma.cs"),
+            $"Local History lists the replace's files as [{string.Join(", ", history.Rows.Select(r => r.Title))}], not one change set named for it");
+
+        window.EditorArea.CodeEditor.Focus();
+        asked = 0;
+        Ui.Run(window, EditorActions.Undo);
+        Ui.WaitFor(() => File.ReadAllText(alpha).Contains("int count;", StringComparison.Ordinal) && beta.Text.Snapshot.ToString() == before,
+            () => $"one Undo to take the replace back in Alpha.cs and Beta.cs; Beta.cs reads '{beta.Text.Snapshot}', and the status says '{window.Status}'");
+        Assert.Equal(1, asked);
+        Assert.Equal("class Alpha\n{\n    int count;\n}\n", File.ReadAllText(alpha));
+        Assert.Equal("class Gamma { int count; }\n", File.ReadAllText(gamma));
+
+        Ui.Run(window, EditorActions.Redo);
+        Ui.WaitFor(() => File.ReadAllText(alpha).Contains("int total;", StringComparison.Ordinal) && beta.Text.Snapshot.ToString() != before,
+            () => $"one Redo to make the replace again in Alpha.cs and Beta.cs; the status says '{window.Status}'");
+        Assert.Equal(2, asked);
+        Assert.Equal("class Gamma { int total; }\n", File.ReadAllText(gamma));
+        Assert.Contains("void total()", beta.Text.Snapshot.ToString(), StringComparison.Ordinal);
+        window.Close();
+    }
+
+    /// <summary>With Local History shown, Undo and Redo of a Replace All across an open file and a closed one, and a revert
+    /// from the history, each say what they did, and the status bar still says so once the IDE is quiet, Local History
+    /// having followed their writes.</summary>
+    [AvaloniaFact]
+    public void Undo_redo_and_a_revert_with_local_history_shown_keep_saying_what_they_did()
+    {
+        const string Named = "Replace 'count' with 'total'";
+        string alpha = Path.Combine(folder, "Alpha.cs");
+        MainWindow window = Open();
+        window.OpenFile(Path.Combine(folder, "Beta.cs"));
+        Ui.Settle();
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+        Assert.True(window.Perform(AppActions.ShowProjectHistory), "Show Project History did not run");
+        Passenger.App.History.HistoryTab history = window.LocalHistoryWindow.Shown!;
+        FindInFilesPopup popup = window.ShowFindInFiles(replace: true)!;
+        popup.Words = true;
+        Search(popup, "count");
+        popup.Replacement = "total";
+        popup.RequestReplace();
+        Ui.WaitFor(() => window.Status?.StartsWith("Replaced", StringComparison.Ordinal) == true, () => $"the replacement; the status says '{window.Status}'");
+        Assert.Equal("Replaced 3 matches in 2 files", window.Status);
+        Ui.Press(window, "ESCAPE");
+        Ui.Landed(() => history.Rows.Any(r => r.Title == Named) && history.Diff is not null, "the replace's change set shown in Local History");
+
+        window.EditorArea.CodeEditor.Focus();
+        KeepsSaying(window, () => Ui.Run(window, EditorActions.Undo, settle: false), $"Undone: {Named}",
+            () => File.ReadAllText(alpha).Contains("int count;", StringComparison.Ordinal), "Undo");
+        KeepsSaying(window, () => Ui.Run(window, EditorActions.Redo, settle: false), $"Redone: {Named}",
+            () => File.ReadAllText(alpha).Contains("int total;", StringComparison.Ordinal), "Redo");
+
+        Passenger.App.History.HistoryRow replaced = history.Rows.Last(r => r.Title == Named);
+        history.Select(replaced);
+        Ui.Landed(() => history.Selected?.Set == replaced.Set && history.Diff is not null, "the replace's change set chosen in Local History");
+        Task? reverting = null;
+        KeepsSaying(window, () => reverting = history.RevertAsync(), Passenger.App.History.HistoryTab.RevertName(replaced),
+            () => reverting!.IsCompleted && File.ReadAllText(alpha).Contains("int count;", StringComparison.Ordinal), "The revert");
+        window.Close();
+    }
+
+    /// <summary>Does what <paramref name="act"/> does, waits for the status bar to say <paramref name="words"/> and then for
+    /// the IDE to be quiet, and checks it still says them, naming all it said meanwhile.</summary>
+    private static void KeepsSaying(MainWindow window, Action act, string words, Func<bool> done, string what)
+    {
+        TextBlock status = window.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Name == "StatusText");
+        List<string?> said = [];
+        EventHandler<Avalonia.AvaloniaPropertyChangedEventArgs> heard = (_, e) =>
+        {
+            if (e.Property == TextBlock.TextProperty)
+            {
+                said.Add(status.Text);
+            }
+        };
+        status.PropertyChanged += heard;
+        try
+        {
+            act();
+            Ui.PumpUntil(() => said.Contains(words) && done(), $"{what} to say '{words}'");
+            Ui.Settle();
+        }
+        finally
+        {
+            status.PropertyChanged -= heard;
+        }
+        Assert.True(window.Status == words,
+            $"{what}'s words were taken away with Local History shown, so the person isn't told what it did: the status bar says '{window.Status}' after saying [{string.Join(" | ", said)}]");
+    }
+
+    /// <summary>An agent's replace_in_files is the same one command, its open file saved: one Undo in the window takes every
+    /// file back.</summary>
+    [AvaloniaFact]
+    public void An_agents_replace_in_files_is_one_undo_across_the_files_it_changed()
+    {
+        string alpha = Path.Combine(folder, "Alpha.cs");
+        MainWindow window = Open();
+        window.OpenFile(Path.Combine(folder, "Beta.cs"));
+        Ui.Settle();
+        OpenDocument beta = window.EditorArea.Active!;
+        string before = beta.Text.Snapshot.ToString();
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+
+        Task<string> replacing = new Passenger.App.Mcp.PassengerTools(window).ReplaceInFiles("count", "total", wholeWords: true);
+        Assert.Contains(Ui.Await(replacing, "replace_in_files' answer"), new[] { "Alpha.cs, Beta.cs", "Beta.cs, Alpha.cs" }.Select(files => $"Replaced 3 matches in 2 files: {files}"));
+        Assert.Contains("void total()", File.ReadAllText(Path.Combine(folder, "Beta.cs")), StringComparison.Ordinal);
+
+        window.EditorArea.CodeEditor.Focus();
+        Ui.Run(window, EditorActions.Undo);
+        Ui.WaitFor(() => File.ReadAllText(alpha).Contains("int count;", StringComparison.Ordinal) && beta.Text.Snapshot.ToString() == before,
+            () => $"one Undo to take the agent's replace back in Alpha.cs and Beta.cs; Beta.cs reads '{beta.Text.Snapshot}', and the status says '{window.Status}'");
+        Assert.Equal("class Alpha\n{\n    int count;\n}\n", File.ReadAllText(alpha));
+        window.Close();
+    }
+
+    [Gate]
+    [AvaloniaFact]
+    public void A_regex_backtracking_without_end_in_a_file_is_said_to_stop_there_to_the_popup_and_an_agent_and_replace_all_leaves_that_file()
+    {
+        string runs = Path.Combine(folder, "Runs.txt");
+        string text = "ab\n" + new string('a', 3000) + "\n";
+        File.WriteAllText(runs, text);
+        MainWindow window = Open();
+        FindInFilesPopup popup = window.ShowFindInFiles(replace: true)!;
+        popup.Regex = true;
+        Search(popup, "(a+)+b|count");
+        Assert.True(popup.Status == "4 matches in 3 files; the regex took too long and stopped in Runs.txt", $"The popup says '{popup.Status}' of a regex that never ends in Runs.txt");
+        Assert.Contains(popup.Matches, m => m is { Name: "Runs.txt", Line: 0, Column: 0, Length: 2 });
+
+        Task<Passenger.App.Mcp.FindInFilesResult> asking = new Passenger.App.Mcp.PassengerTools(window).FindInFiles("(a+)+b|count", regex: true);
+        Passenger.App.Mcp.FindInFilesResult answer = Ui.Await(asking, "find_in_files' answer");
+        Assert.True(answer is { Count: 4, Stopped: ["Runs.txt"] }, $"find_in_files told an agent of {answer.Count} matches, stopped in {string.Join(", ", answer.Stopped ?? [])}");
+
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+        popup.Replacement = "x";
+        popup.RequestReplace();
+        Ui.WaitFor(() => window.Status?.StartsWith("Replaced", StringComparison.Ordinal) == true, () => $"the replacement; the status says '{window.Status}'");
+        Assert.Equal("Replaced 3 matches in 2 files; not replaced: Runs.txt (the regex took too long there)", window.Status);
+        Assert.True(File.ReadAllText(runs) == text, "Replace All replaced the match found in Runs.txt before its search stopped");
+        Assert.Equal("class Alpha\n{\n    int x;\n}\n", File.ReadAllText(Path.Combine(folder, "Alpha.cs")));
+        window.Close();
+    }
+
+    /// <summary>Replace in Files of every word's edge (\b) with the whole text ($_) in a file of 12,000 characters would
+    /// make it 144 million long: the file is named as left as it was, with how long its text would be.</summary>
+    [Gate]
+    [AvaloniaFact]
+    public void Replace_all_that_would_make_a_files_text_too_long_leaves_it_and_says_so()
+    {
+        string words = Path.Combine(folder, "Words.txt");
+        string text = string.Concat(Enumerable.Repeat("a a a a a a a a a a\n", 600));
+        File.WriteAllText(words, text);
+        MainWindow window = Open();
+        FindInFilesPopup popup = window.ShowFindInFiles(replace: true)!;
+        popup.Regex = true;
+        popup.FileMask = "*.txt";
+        Search(popup, @"\b");
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+        popup.Replacement = "$_";
+        popup.RequestReplace();
+        Ui.WaitFor(() => window.Status?.StartsWith("Nothing replaced", StringComparison.Ordinal) == true || window.Status?.StartsWith("Replaced", StringComparison.Ordinal) == true,
+            () => $"the replacement; the status says '{window.Status}'");
+        Assert.Equal("Nothing replaced; not replaced: Words.txt (the text replaced would be 144,012,000 characters long, more than 100,000,000)", window.Status);
+        Assert.True(File.ReadAllText(words) == text, "Replace in Files wrote a file whose replaced text it said was too long");
+        window.Close();
+    }
+
+    [Gate]
     [AvaloniaFact]
     public void Replace_all_over_an_open_file_keeps_its_caret_folds_and_breakpoints()
     {
@@ -223,6 +514,7 @@ public sealed class FindInFilesTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Replace_in_files_fills_a_regexs_groups_from_each_match_where_it_stands_and_words_take_an_alternation_whole()
     {
@@ -254,6 +546,7 @@ public sealed class FindInFilesTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Replacing_every_lines_start_in_files_comments_each_line_and_leaves_each_files_end_alone()
     {
@@ -279,6 +572,7 @@ public sealed class FindInFilesTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Recent_files_offers_the_files_behind_the_one_in_front_and_opens_one_where_it_was_left()
     {
@@ -298,6 +592,7 @@ public sealed class FindInFilesTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Bookmarks_toggle_move_with_their_lines_and_next_goes_round_the_files()
     {
@@ -339,6 +634,7 @@ public sealed class FindInFilesTests : IDisposable
 
     /// <summary>A file open with no folder stays open as a folder opens, and the session left lets go of all it carried in
     /// the file's text (its bookmark, breakpoint and places), so the text carries no more than it did before them.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_file_left_open_as_a_folder_opens_is_carried_by_nothing_of_the_session_left()
     {
@@ -377,6 +673,7 @@ public sealed class FindInFilesTests : IDisposable
     /// <summary>A breakpoint is an anchor its file's text carries, so a key moves those below it without touching each: the
     /// least of twenty keys typed above 2,000 breakpoints allocates on the UI thread under 2 bytes for each more than above
     /// none, and a line broken above them takes each one down with its line.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Keys_typed_above_two_thousand_breakpoints_carry_them_on_the_UI_thread_without_costing_each()
     {
@@ -430,6 +727,7 @@ public sealed class FindInFilesTests : IDisposable
         return least;
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_matched_lines_arrow_is_one_ligature_only_while_Settings_enables_ligatures()
     {
@@ -453,6 +751,7 @@ public sealed class FindInFilesTests : IDisposable
     /// names, and a packages folder NuGet restored into, in packages.config's layout or the global folder's; Git's
     /// store is not listed at all. A JavaScript monorepo's packages of source are searched, offered and shown as
     /// code.</summary>
+    [Gate]
     [AvaloniaFact]
     public void The_explorer_dims_what_find_in_files_and_go_to_file_pass_over_and_a_monorepos_packages_of_source_are_searched_and_shown_as_code()
     {
@@ -520,11 +819,14 @@ public sealed class FindInFilesTests : IDisposable
         return drawn.Contains(font.CharacterToGlyphMap['=']) && drawn.Contains(font.CharacterToGlyphMap['>']);
     }
 
+    /// <summary>Searches for a text and waits for the search in force to show its matches: the box tells of its new text
+    /// after the frame, before the search begins; another change that lands meanwhile searches again, cancelling this one.</summary>
     private static void Search(FindInFilesPopup popup, string text)
     {
         popup.Text = text;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Task searching = popup.SearchAsync();
-        Ui.WaitFor(() => searching.IsCompleted, $"the search for {text}");
+        Ui.WaitFor(() => searching.IsCompleted && popup.Searching.IsCompleted && popup.Status != "Searching…", $"the search for {text}");
     }
 
     private MainWindow Open() => Ui.OpenFolder(folder);

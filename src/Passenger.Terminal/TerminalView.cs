@@ -18,7 +18,7 @@ namespace Passenger.Terminal;
 /// whole cells. Web addresses and stack frames are drawn as links, opened by a click (one that drags selects instead);
 /// file paths are drawn as text, underlined faintly under the pointer and as links while Cmd (Ctrl elsewhere) is held.
 /// Cmd+click (Ctrl+click) opens either.</summary>
-public sealed class TerminalView : Control
+public sealed partial class TerminalView : Control
 {
     public static readonly FontFamily DefaultFontFamily = new("avares://Passenger.Editor/Fonts#JetBrains Mono");
 
@@ -94,6 +94,7 @@ public sealed class TerminalView : Control
         {
             attached = false;
             RestartBlink();
+            ForgetDrawings();
         };
         // A theme laid over the application's resources (Settings) changes the brushes, not the variant.
         ResourcesChanged += (_, _) =>
@@ -125,7 +126,7 @@ public sealed class TerminalView : Control
     /// <summary>Finds the links in a line's text (the rows a wrapped line takes, joined): where each starts in it, how
     /// long it is, what it opens (which only the host reads), and whether it is hidden until Cmd or Ctrl is held. Null for
     /// a terminal with none.</summary>
-    public Func<string, IReadOnlyList<(int Start, int Length, object Target, bool Hidden)>>? Links { get; set; }
+    public Func<ReadOnlySpan<char>, IReadOnlyList<(int Start, int Length, object Target, bool Hidden)>>? Links { get; set; }
 
     /// <summary>The link under the pointer; null when there is none.</summary>
     public TerminalLink? HoveredLink { get; private set; }
@@ -324,6 +325,7 @@ public sealed class TerminalView : Control
     private void Refresh()
     {
         palette.Clear();
+        pens.Clear();
         foreground = Find(TokenKeys.Terminal_Foreground) ?? Brushes.Transparent;
         background = Find(TokenKeys.Terminal_Background) ?? Brushes.Transparent;
         cursor = Find(TokenKeys.Terminal_Cursor) ?? foreground;
@@ -343,6 +345,7 @@ public sealed class TerminalView : Control
         cellWidth = probe.WidthIncludingTrailingWhitespace / 10;
         cellHeight = Math.Ceiling(FontSize * 1.25);
         glyphs = new Typeface(FontFamily).GlyphTypeface.CharacterToGlyphMap;
+        ForgetDrawings();
     }
 
     /// <summary>The screen as many whole cells as fit, the shell told of a change.</summary>
@@ -381,210 +384,9 @@ public sealed class TerminalView : Control
         RestartBlink();
     }
 
-    public override void Render(DrawingContext context)
-    {
-        context.FillRectangle(background, new Rect(Bounds.Size));
-        if (session is null)
-        {
-            return;
-        }
-        TerminalScreen screen = session.Screen;
-        Typeface plain = new(FontFamily);
-        long first = TopLine;
-        ((long Line, int Column) Start, (long Line, int Column) End)? range = Ordered();
-        List<TerminalLink> shown = ShownLinks(screen, first);
-        for (int row = 0; row < screen.Rows; row++)
-        {
-            long line = first + row;
-            if (line >= screen.ScreenTop + screen.Rows)
-            {
-                break;
-            }
-            DrawLine(context, screen.LineAt(line), line, Pad + (row * cellHeight), plain, range, LinkedOn(shown, line, screen.Columns));
-            DrawHiddenLink(context, line, Pad + (row * cellHeight), screen.Columns);
-        }
-        if (first == screen.ScreenTop && screen.CursorVisible)
-        {
-            DrawCursor(context, screen, plain);
-        }
-    }
-
-    private void DrawLine(DrawingContext context, TerminalLine line, long index, double y, Typeface plain, ((long Line, int Column), (long Line, int Column))? range,
-        List<(int From, int To)>? linked)
-    {
-        Cell[] cells = line.Cells;
-        int column = 0;
-        while (column < cells.Length)
-        {
-            Cell head = cells[column];
-            bool chosen = Within(range, index, column);
-            bool isLink = Linked(linked, column);
-            int end = column + 1;
-            bool alone = !InRun(head);
-            if (!alone)
-            {
-                // A run is cells drawn alike in the terminal's font, every glyph of which is a column wide, so it stays on the grid.
-                while (end < cells.Length && InRun(cells[end]) && cells[end].Style == head.Style && Within(range, index, end) == chosen && Linked(linked, end) == isLink)
-                {
-                    end++;
-                }
-            }
-            else
-            {
-                if (head.Width == 2 && end < cells.Length)
-                {
-                    end++;
-                }
-                // A spacing mark (a Devanagari vowel sign) has a column of its own, but is shaped with the letter before it.
-                while (end < cells.Length && cells[end].Width == 1 && CharUnicodeInfo.GetUnicodeCategory(cells[end].Rune) == UnicodeCategory.SpacingCombiningMark
-                    && cells[end].Style == head.Style && Within(range, index, end) == chosen)
-                {
-                    end++;
-                }
-            }
-            DrawRun(context, line, column, end, y, plain, chosen, alone, isLink);
-            column = end;
-        }
-    }
-
-    private static bool Linked(List<(int From, int To)>? linked, int column)
-    {
-        if (linked is null)
-        {
-            return false;
-        }
-        foreach ((int from, int to) in linked)
-        {
-            if (from <= column && column <= to)
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-
     /// <summary>Whether a cell is drawn in a run with its neighbours: one code point a column wide that the terminal's
     /// font has. A wide character, a letter with its marks or one another font draws is drawn alone, fitted to its cells.</summary>
     private bool InRun(Cell cell) => cell.Width == 1 && !cell.IsJoined && (cell.Rune < 0x7f || glyphs?.ContainsGlyph(cell.Rune) == true);
-
-    private void DrawRun(DrawingContext context, TerminalLine line, int from, int to, double y, Typeface plain, bool chosen, bool alone, bool isLink)
-    {
-        Cell[] cells = line.Cells;
-        CellStyle style = cells[from].Style;
-        bool inverse = style.Flags.HasFlag(CellFlags.Inverse);
-        IBrush fore = isLink && !inverse ? link : Colour(style.Fore, foreground);
-        IBrush back = Colour(style.Back, background);
-        if (inverse)
-        {
-            (fore, back) = (back, fore);
-        }
-        double x = Pad + (from * cellWidth);
-        Rect area = new(x, y, (to - from) * cellWidth, cellHeight);
-        if (chosen)
-        {
-            context.FillRectangle(selection, area);
-        }
-        else if (style.Back != CellStyle.Default || inverse)
-        {
-            context.FillRectangle(back, area);
-        }
-        StringBuilder text = new();
-        for (int i = from; i < to; i++)
-        {
-            if (cells[i].Width == 0)
-            {
-                continue;
-            }
-            text.Append(line.TextOf(i));
-        }
-        string shown = text.ToString();
-        if (style.Flags.HasFlag(CellFlags.Hidden) || shown.Trim().Length == 0)
-        {
-            return;
-        }
-        Typeface face = new(plain.FontFamily, style.Flags.HasFlag(CellFlags.Italic) ? FontStyle.Italic : FontStyle.Normal,
-            style.Flags.HasFlag(CellFlags.Bold) ? FontWeight.Bold : FontWeight.Normal);
-        using (context.PushOpacity(style.Flags.HasFlag(CellFlags.Dim) ? 0.6 : 1))
-        {
-            if (alone)
-            {
-                DrawFitted(context, shown, area, face, fore);
-            }
-            else
-            {
-                FormattedText formatted = new(shown, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, face, FontSize, fore);
-                context.DrawText(formatted, new Point(x, y + ((cellHeight - formatted.Height) / 2)));
-            }
-            if (isLink)
-            {
-                context.DrawLine(new Pen(linkUnderline, 1), new Point(x, y + cellHeight - 2.5), new Point(area.Right, y + cellHeight - 2.5));
-            }
-            else if (style.Flags.HasFlag(CellFlags.Underline))
-            {
-                context.DrawLine(new Pen(fore, 1), new Point(x, y + cellHeight - 2), new Point(area.Right, y + cellHeight - 2));
-            }
-            if (style.Flags.HasFlag(CellFlags.Strike))
-            {
-                context.DrawLine(new Pen(fore, 1), new Point(x, y + (cellHeight / 2)), new Point(area.Right, y + (cellHeight / 2)));
-            }
-        }
-    }
-
-    /// <summary>The links drawn as links on the rows shown: every one not hidden, and the hidden one under the pointer while
-    /// Cmd or Ctrl is held.</summary>
-    private List<TerminalLink> ShownLinks(TerminalScreen screen, long first)
-    {
-        List<TerminalLink> shown = [];
-        if (Links is null)
-        {
-            return shown;
-        }
-        long last = Math.Min(first + screen.Rows, screen.ScreenTop + screen.Rows) - 1;
-        for (long line = first; line <= last; line++)
-        {
-            List<TerminalLink> around = LinksAround(screen, line, out long end);
-            foreach (TerminalLink found in around)
-            {
-                if (!found.Hidden || (found == HoveredLink && held.HasFlag(LinkKey)))
-                {
-                    shown.Add(found);
-                }
-            }
-            line = end;
-        }
-        return shown;
-    }
-
-    /// <summary>The columns of a row that links cover.</summary>
-    private static List<(int From, int To)>? LinkedOn(List<TerminalLink> links, long line, int columns)
-    {
-        List<(int From, int To)>? linked = null;
-        foreach (TerminalLink each in links)
-        {
-            if (line >= each.FromLine && line <= each.ToLine)
-            {
-                (linked ??= []).Add((line == each.FromLine ? each.FromColumn : 0, line == each.ToLine ? each.ToColumn : columns - 1));
-            }
-        }
-        return linked;
-    }
-
-    /// <summary>A hidden link under the pointer with no key held: underlined faintly in the text's colour, so a file
-    /// path shows that a Cmd+click opens it.</summary>
-    private void DrawHiddenLink(DrawingContext context, long line, double y, int columns)
-    {
-        if (HoveredLink is not { Hidden: true } hovered || held.HasFlag(LinkKey) || line < hovered.FromLine || line > hovered.ToLine)
-        {
-            return;
-        }
-        int from = line == hovered.FromLine ? hovered.FromColumn : 0;
-        int to = line == hovered.ToLine ? hovered.ToColumn : columns - 1;
-        double under = y + cellHeight - 2.5;
-        using (context.PushOpacity(ActualThemeVariant == Avalonia.Styling.ThemeVariant.Light ? 0.4 : 0.5))
-        {
-            context.DrawLine(new Pen(foreground, 1), new Point(Pad + (from * cellWidth), under), new Point(Pad + ((to + 1) * cellWidth), under));
-        }
-    }
 
     /// <summary>The link holding the cell under a point, if any.</summary>
     private TerminalLink? LinkAt(Point at)
@@ -601,7 +403,8 @@ public sealed class TerminalView : Control
         {
             return null;
         }
-        foreach (TerminalLink found in LinksAround(screen, line, out _))
+        LinksAround(screen, line, out _);
+        foreach (TerminalLink found in foundLinks)
         {
             bool afterStart = line > found.FromLine || (line == found.FromLine && column >= found.FromColumn);
             bool beforeEnd = line < found.ToLine || (line == found.ToLine && column <= found.ToColumn);
@@ -611,60 +414,6 @@ public sealed class TerminalView : Control
             }
         }
         return null;
-    }
-
-    /// <summary>The links on the line a row is part of: its text is read with the rows it wrapped from and onto (sixteen
-    /// at most each way), so a long address wrapped across them is one link. <paramref name="end"/> is that line's last row.</summary>
-    private List<TerminalLink> LinksAround(TerminalScreen screen, long line, out long end)
-    {
-        const int Rows = 16;
-        long last = screen.ScreenTop + screen.Rows - 1;
-        long first = line;
-        while (first > screen.FirstLine && line - first < Rows && screen.LineAt(first - 1).Wrapped)
-        {
-            first--;
-        }
-        end = line;
-        while (end < last && end - line < Rows && screen.LineAt(end).Wrapped)
-        {
-            end++;
-        }
-        StringBuilder text = new();
-        List<(long Line, int From, int To)> cells = [];
-        for (long each = first; each <= end; each++)
-        {
-            TerminalLine shown = screen.LineAt(each);
-            int length = each == end ? shown.Length : shown.Cells.Length;
-            for (int c = 0; c < length; c++)
-            {
-                Cell cell = shown.Cells[c];
-                if (cell.Width == 0)
-                {
-                    continue;
-                }
-                int to = Math.Min(c + cell.Width - 1, shown.Cells.Length - 1);
-                foreach (char unit in shown.TextOf(c))
-                {
-                    text.Append(unit);
-                    cells.Add((each, c, to));
-                }
-            }
-        }
-        List<TerminalLink> links = [];
-        if (text.Length == 0)
-        {
-            return links;
-        }
-        foreach ((int start, int count, object target, bool hidden) in Links!(text.ToString()))
-        {
-            if (count > 0 && start + count <= cells.Count)
-            {
-                (long fromLine, int fromColumn, _) = cells[start];
-                (long toLine, _, int toColumn) = cells[start + count - 1];
-                links.Add(new TerminalLink(fromLine, fromColumn, toLine, toColumn, target, hidden));
-            }
-        }
-        return links;
     }
 
     /// <summary>The link under the pointer takes the hand when a click opens it: always for one drawn as a link, for a
@@ -682,58 +431,6 @@ public sealed class TerminalView : Control
         Cursor = new Cursor(hand ? StandardCursorType.Hand : StandardCursorType.Ibeam);
         HoveredLink = over;
         InvalidateVisual();
-    }
-
-    /// <summary>A grapheme drawn within its cells: another font's glyph (an emoji's, a Devanagari letter's) is made smaller
-    /// when it is wider than they are, so it never covers the next, and centred in them.</summary>
-    private void DrawFitted(DrawingContext context, string text, Rect cells, Typeface face, IBrush brush)
-    {
-        FormattedText formatted = new(text, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, face, FontSize, brush);
-        double width = formatted.WidthIncludingTrailingWhitespace;
-        if (width > cells.Width + 0.5 || formatted.Height > cells.Height * 1.4)
-        {
-            double scale = Math.Min(cells.Width / width, cells.Height * 1.25 / formatted.Height);
-            formatted = new(text, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, face, FontSize * scale, brush);
-            width = formatted.WidthIncludingTrailingWhitespace;
-        }
-        using (context.PushClip(cells))
-        {
-            context.DrawText(formatted, new Point(cells.X + Math.Max(0, (cells.Width - width) / 2), cells.Y + ((cells.Height - formatted.Height) / 2)));
-        }
-    }
-
-    private void DrawCursor(DrawingContext context, TerminalScreen screen, Typeface plain)
-    {
-        int column = Math.Min(screen.CursorColumn, screen.Columns - 1);
-        Cell cell = screen.Lines[screen.CursorRow].Cells[column];
-        double x = Pad + (column * cellWidth);
-        double y = Pad + (screen.CursorRow * cellHeight);
-        double width = cellWidth * Math.Max(1, (int)cell.Width);
-        if (!IsFocused)
-        {
-            context.DrawRectangle(null, new Pen(cursor, 1), new Rect(x + 0.5, y + 0.5, width - 1, cellHeight - 1));
-            return;
-        }
-        if (!cursorOn)
-        {
-            return;
-        }
-        switch (screen.RequestedCursorShape ?? CursorStyle)
-        {
-            case CursorShape.Bar:
-                context.FillRectangle(cursor, new Rect(x, y, 2, cellHeight));
-                break;
-            case CursorShape.Underline:
-                context.FillRectangle(cursor, new Rect(x, y + cellHeight - 2, width, 2));
-                break;
-            default:
-                context.FillRectangle(cursor, new Rect(x, y, width, cellHeight));
-                if (cell.Rune != 0)
-                {
-                    DrawFitted(context, screen.Lines[screen.CursorRow].TextOf(column), new Rect(x, y, width, cellHeight), plain, background);
-                }
-                break;
-        }
     }
 
     /// <summary>A cell's colour: the theme's for the sixteen named ones, xterm's 6x6x6 cube and grey ramp for the rest
@@ -780,9 +477,6 @@ public sealed class TerminalView : Control
         }
         return (a.Line, a.Column).CompareTo((b.Line, b.Column)) <= 0 ? (a, b) : (b, a);
     }
-
-    private static bool Within(((long Line, int Column) Start, (long Line, int Column) End)? range, long line, int column) =>
-        range is { } r && (line, column).CompareTo(r.Start) >= 0 && (line, column).CompareTo(r.End) <= 0;
 
     /// <summary>The line (by its number) and column under a point.</summary>
     private (long Line, int Column) CellAt(Point at)
@@ -892,7 +586,7 @@ public sealed class TerminalView : Control
         selectedWord = false;
         if (copy && CopyOnSelection)
         {
-            _ = CopyAsync();
+            Core.UnawaitedWork.Observe(CopyAsync());
         }
     }
 

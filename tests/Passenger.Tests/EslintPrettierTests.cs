@@ -29,6 +29,8 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
 
     public EslintPrettierTests(Project project) => this.project = project;
 
+    /// <summary>ESLint's problem shows as typed, with its rule's page, and its fix, which ESLint's server makes by handing
+    /// the window its edit, makes it go, the server told the edit was made, so it logs no failure.</summary>
     [AvaloniaFact]
     public void An_ESLint_problem_shows_as_it_is_typed_in_the_editor_the_stripe_and_Problems_with_its_rules_page_and_its_fix_makes_it_go()
     {
@@ -63,9 +65,18 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
             Ui.WaitFor(() => window.Assist.Offered.Count > 0, "the fixes for the line");
             Assert.Equal("ESLint: Fix 'prefer-const'", window.Assist.Offered[0]);
             Assert.Contains("ESLint: Suppress 'prefer-const' for current line", window.Assist.Offered);
+            IdeErrors.Flush();
+            int logged = Ui.Shared(IdeErrors.LogPath).Length;
             Ui.Press(window, "ENTER");
             Ui.WaitFor(() => editor.Document.Snapshot.ToString().Contains("const total = items.length;", StringComparison.Ordinal), "the let made a const by ESLint's fix");
             Ui.WaitFor(() => !document.Markers.Any(m => m.Message == PreferConst), "the problem gone once the code is fixed");
+            // The fix's command answered, after what the server logged of its edit's answer.
+            Ui.Settle();
+            IdeErrors.Flush();
+            string log = Ui.Shared(IdeErrors.LogPath);
+            string since = log.Length >= logged ? log[logged..] : log;
+            Assert.False(since.Contains("Failed to apply command", StringComparison.Ordinal),
+                $"ESLint was told its fix was not made though the window made it, so it logged a failure: {string.Join('\n', since.Split('\n').Where(l => l.Contains("ESLint", StringComparison.Ordinal)).Take(5))}");
             Ui.Run(window, EditorActions.Undo);
             Assert.Contains("let total = items.length;", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
         }
@@ -107,7 +118,7 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
         Project.SkipWithoutNode();
         project.AddFolder("future", ("app.js", "let total = 1;\nconsole.log(total);\n"));
         project.AddFolder("future/node_modules/eslint", ("package.json", "{ \"name\": \"eslint\", \"version\": \"99.0.0\", \"engines\": { \"node\": \">=99\" } }\n"));
-        NodeRuntime node = Task.Run(() => NodeRuntime.FindAsync(null)).GetAwaiter().GetResult();
+        NodeRuntime node = Ui.Await(Waiting.Apart(() => NodeRuntime.FindAsync(null)), "the PATH's Node.js");
         MainWindow window = project.Open("future/app.js");
         try
         {
@@ -124,6 +135,47 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
             Ui.Press(window, "ENTER");
             window.KeyTextInput("console.log(total);");
             Ui.WaitFor(() => checkedStill.Markers.Any(m => m.Message == PreferConst), "ESLint's problem in the file whose eslint runs on this Node.js");
+        }
+        finally
+        {
+            window.Close();
+            project.Reset();
+        }
+    }
+
+    /// <summary>ESLint's server, ending during every start before it has answered, is started again only as often as a
+    /// language server is, then left stopped, the status bar saying why; once what ended it is gone, those words start it
+    /// again with the file it checks, without the folder opened again.</summary>
+    [AvaloniaFact]
+    public void An_ESLint_server_that_ends_during_every_start_is_left_stopped_saying_so_and_its_words_start_it_again()
+    {
+        Project.SkipWithoutNode();
+        project.AddFolder("ending", ("app.js", "let total = 1;\nconsole.log(total);\n"));
+        const string LeftStopped = "The ESLint language server ended as it started 4 times in 5 minutes, so it was left stopped; click to start it again";
+        MainWindow window = Ui.OpenFolder(project.Folder, autosaves: false);
+        List<string> said = [];
+        using IDisposable following = Ui.FollowStatus(window, said);
+        try
+        {
+            OpenDocument document;
+            using (EndingAsTheyStart ending = new("eslintServer.js"))
+            {
+                window.OpenFile(project.PathOf("ending/app.js"));
+                document = window.EditorArea.Active!;
+                Ui.WaitFor(() => said.Contains(LeftStopped), () => $"ESLint to be left stopped after its server ended as it started {ending.Ended.Count} times (the status bar says {window.Status})");
+                Ui.Settle();
+                Assert.True(ending.Ended.Count == 4, $"ESLint's server was started {ending.Ended.Count} times, ending each time as it started, rather than once and then 3 times again");
+                Assert.True(said.Contains("The ESLint language server ended as it started; starting it again"),
+                    $"The status bar never said ESLint's server that ended as it started was started again; it said: {string.Join(" | ", said)}");
+                Assert.True(window.Status == LeftStopped, $"The status bar says \"{window.Status}\" of ESLint left stopped, having said: {string.Join(" | ", said)}");
+                Assert.Equal("start it again", window.StatusPlace?.Name);
+            }
+            Assert.DoesNotContain(document.Markers, m => m.Message.StartsWith("ESLint:", StringComparison.Ordinal));
+
+            Ui.Click(window.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "StatusMessage"));
+            Ui.WaitFor(() => document.Markers.Any(m => m.Message == PreferConst), () => $"ESLint's problem once the status bar's words started its server again (the status bar says {window.Status})");
+            Assert.True(said.Contains("Starting the ESLint language server again"),
+                $"The status bar never said ESLint left stopped was started again; it said: {string.Join(" | ", said)}");
         }
         finally
         {
@@ -622,10 +674,26 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
         /// needs.</summary>
         public static void SkipWithoutNode()
         {
-            Assert.SkipWhen(Programs.Node() is null, "Node.js is not on the PATH, and ESLint and Prettier run on it");
-            NodeRuntime node = Task.Run(() => NodeRuntime.FindAsync(null)).GetAwaiter().GetResult();
-            string? old = node.Problem ?? node.TooOldFor(Path.Combine(AppContext.BaseDirectory, "node-packages", "node_modules", "eslint", "package.json"), "ESLint");
+            Assert.SkipWhen(Programs.Node() is null, NoNode);
+            string? old = Ui.Await(Waiting.Apart(() => TooOldAsync()), "the PATH's Node.js to say its version");
             Assert.SkipWhen(old is not null, $"ESLint cannot run here: {old}");
+        }
+
+        /// <inheritdoc cref="SkipWithoutNode"/>
+        public static async Task SkipWithoutNodeAsync()
+        {
+            Assert.SkipWhen(Programs.Node() is null, NoNode);
+            string? old = await TooOldAsync();
+            Assert.SkipWhen(old is not null, $"ESLint cannot run here: {old}");
+        }
+
+        private const string NoNode = "Node.js is not on the PATH, and ESLint and Prettier run on it";
+
+        /// <summary>Why the PATH's Node.js cannot run the tests' ESLint, or null when it can.</summary>
+        private static async Task<string?> TooOldAsync()
+        {
+            NodeRuntime node = await NodeRuntime.FindAsync(null);
+            return node.Problem ?? node.TooOldFor(Path.Combine(AppContext.BaseDirectory, "node-packages", "node_modules", "eslint", "package.json"), "ESLint");
         }
 
         private static void CopyFolder(string from, string to)

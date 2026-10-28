@@ -138,6 +138,11 @@
           "Azure.Core": "1.53.0"
         }
       },
+      "GregsEx": {
+        "type": "Transitive",
+        "resolved": "0.5.3",
+        "contentHash": "Bqql6pbTEX5/xgMlxaTtKlXMWc8Se5i/WaugU+AXQ/Jo0wUo1jbZeMPyJXOobdLtQCA0BCZzo1gNSF1HtexSyw=="
+      },
       "Grpc.Core.Api": {
         "type": "Transitive",
         "resolved": "2.84.0",
@@ -307,14 +312,6 @@
           "Microsoft.TestPlatform.ObjectModel": "18.11.0"
         }
       },
-      "Microsoft.VisualStudio.Threading.Only": {
-        "type": "Transitive",
-        "resolved": "18.7.23",
-        "contentHash": "iOaVAQLPt1KxFyYqZqKxqNu8BgQUiPLNeT8XhX+549eWaGw49e1MxjlkjTIBwvlfrU4lPp+Nm99oRpmsgN7RJw==",
-        "dependencies": {
-          "Microsoft.VisualStudio.Validation": "17.13.22"
-        }
-      },
       "Microsoft.VisualStudio.Validation": {
         "type": "Transitive",
         "resolved": "17.13.22",
@@ -365,11 +362,6 @@
         "type": "Transitive",
         "resolved": "7.9.0",
         "contentHash": "w2adPmgUafmW9ON1MzDjuHmViN0vtiPV48Dz3OE6px8BiGSqrnWHOjwFEPOEPAZx20J1c7bxp90Hxo9l4xGWtw=="
-      },
-      "Onigwrap": {
-        "type": "Transitive",
-        "resolved": "1.0.11",
-        "contentHash": "5/WAxSYWfiiPzp1X13qqdqjFmYLKDD/U7Vh3WCkKxWG9BjqdrXnQE5fCKCFJX+xWvuYLTxwZIVWBwBWObViE8g=="
       },
       "PolyType": {
         "type": "Transitive",
@@ -509,6 +501,7 @@
           "Grpc.Net.Client": "[2.84.0, )",
           "ICSharpCode.Decompiler": "[11.1.0.9782, )",
           "Microsoft.TestPlatform.TranslationLayer": "[18.11.0, )",
+          "Microsoft.VisualStudio.Threading.Only": "[18.7.23, )",
           "ModelContextProtocol.Core": "[2.3.0, )",
           "NuGet.Configuration": "[7.9.0, )",
           "Passenger.Core": "[0.2.0, )",
@@ -523,7 +516,6 @@
           "Passenger.Vcs": "[0.2.0, )",
           "Passenger.Workspace": "[0.2.0, )",
           "Passenger.Xaml": "[0.2.0, )",
-          "StreamJsonRpc": "[2.26.150, )",
           "Velopack": "[1.2.161, )"
         }
       },
@@ -554,7 +546,7 @@
           "Passenger.Editor": "[0.2.0, )",
           "Passenger.Lsp": "[0.2.0, )",
           "Passenger.Text": "[0.2.0, )",
-          "TextMateSharp": "[2.0.4, )"
+          "Tint": "[0.1.2, )"
         }
       },
       "passenger.lsp": {
@@ -760,6 +752,15 @@
           "Microsoft.TestPlatform.ObjectModel": "18.11.0"
         }
       },
+      "Microsoft.VisualStudio.Threading.Only": {
+        "type": "CentralTransitive",
+        "requested": "[18.7.23, )",
+        "resolved": "18.7.23",
+        "contentHash": "iOaVAQLPt1KxFyYqZqKxqNu8BgQUiPLNeT8XhX+549eWaGw49e1MxjlkjTIBwvlfrU4lPp+Nm99oRpmsgN7RJw==",
+        "dependencies": {
+          "Microsoft.VisualStudio.Validation": "17.13.22"
+        }
+      },
       "NuGet.Configuration": {
         "type": "CentralTransitive",
         "requested": "[7.9.0, )",
@@ -793,13 +794,13 @@
           "Newtonsoft.Json": "13.0.4"
         }
       },
-      "TextMateSharp": {
+      "Tint": {
         "type": "CentralTransitive",
-        "requested": "[2.0.4, )",
-        "resolved": "2.0.4",
-        "contentHash": "5Pvn+A4zb1IF+ACAVhgw1aGf9kTyx6j7v5hdup7nCS89Nzby8KQAlCfQ54VC/GAsEoQwh4zKa5MKlAaql8nkPg==",
+        "requested": "[0.1.2, )",
+        "resolved": "0.1.2",
+        "contentHash": "BZCD9XlUE+lN3Qvq4ta9UrgY/FN4Q8D2rK0aBqnOIJO2ndHoIllNBEREsp93znXsrCP36zl+Z2/VnfTFAruDBA==",
         "dependencies": {
-          "Onigwrap": "1.0.11"
+          "GregsEx": "0.5.3"
         }
       },
       "Velopack": {
@@ -847,11 +848,6 @@
         "type": "Transitive",
         "resolved": "1.24.260710001",
         "contentHash": "JR1xAkZbNnAALBjzFpqSwEx7YZfD1LI228jF9j9cgKknBPCiFy9mpphlgH+TpTN8vajTUpcgg9Miy5Y8eUAH9g=="
-      },
-      "Onigwrap": {
-        "type": "Transitive",
-        "resolved": "1.0.11",
-        "contentHash": "5/WAxSYWfiiPzp1X13qqdqjFmYLKDD/U7Vh3WCkKxWG9BjqdrXnQE5fCKCFJX+xWvuYLTxwZIVWBwBWObViE8g=="
       },
       "SkiaSharp.NativeAssets.Linux": {
         "type": "Transitive",
@@ -917,11 +913,6 @@
         "resolved": "1.24.260710001",
         "contentHash": "JR1xAkZbNnAALBjzFpqSwEx7YZfD1LI228jF9j9cgKknBPCiFy9mpphlgH+TpTN8vajTUpcgg9Miy5Y8eUAH9g=="
       },
-      "Onigwrap": {
-        "type": "Transitive",
-        "resolved": "1.0.11",
-        "contentHash": "5/WAxSYWfiiPzp1X13qqdqjFmYLKDD/U7Vh3WCkKxWG9BjqdrXnQE5fCKCFJX+xWvuYLTxwZIVWBwBWObViE8g=="
-      },
       "SkiaSharp.NativeAssets.Linux": {
         "type": "Transitive",
         "resolved": "3.119.4",
@@ -985,11 +976,6 @@
         "type": "Transitive",
         "resolved": "1.24.260710001",
         "contentHash": "JR1xAkZbNnAALBjzFpqSwEx7YZfD1LI228jF9j9cgKknBPCiFy9mpphlgH+TpTN8vajTUpcgg9Miy5Y8eUAH9g=="
-      },
-      "Onigwrap": {
-        "type": "Transitive",
-        "resolved": "1.0.11",
-        "contentHash": "5/WAxSYWfiiPzp1X13qqdqjFmYLKDD/U7Vh3WCkKxWG9BjqdrXnQE5fCKCFJX+xWvuYLTxwZIVWBwBWObViE8g=="
       },
       "SkiaSharp.NativeAssets.Linux": {
         "type": "Transitive",
@@ -1055,11 +1041,6 @@
         "resolved": "1.24.260710001",
         "contentHash": "JR1xAkZbNnAALBjzFpqSwEx7YZfD1LI228jF9j9cgKknBPCiFy9mpphlgH+TpTN8vajTUpcgg9Miy5Y8eUAH9g=="
       },
-      "Onigwrap": {
-        "type": "Transitive",
-        "resolved": "1.0.11",
-        "contentHash": "5/WAxSYWfiiPzp1X13qqdqjFmYLKDD/U7Vh3WCkKxWG9BjqdrXnQE5fCKCFJX+xWvuYLTxwZIVWBwBWObViE8g=="
-      },
       "SkiaSharp.NativeAssets.Linux": {
         "type": "Transitive",
         "resolved": "3.119.4",
@@ -1123,11 +1104,6 @@
         "type": "Transitive",
         "resolved": "1.24.260710001",
         "contentHash": "JR1xAkZbNnAALBjzFpqSwEx7YZfD1LI228jF9j9cgKknBPCiFy9mpphlgH+TpTN8vajTUpcgg9Miy5Y8eUAH9g=="
-      },
-      "Onigwrap": {
-        "type": "Transitive",
-        "resolved": "1.0.11",
-        "contentHash": "5/WAxSYWfiiPzp1X13qqdqjFmYLKDD/U7Vh3WCkKxWG9BjqdrXnQE5fCKCFJX+xWvuYLTxwZIVWBwBWObViE8g=="
       },
       "SkiaSharp.NativeAssets.Linux": {
         "type": "Transitive",
@@ -1193,11 +1169,6 @@
         "resolved": "1.24.260710001",
         "contentHash": "JR1xAkZbNnAALBjzFpqSwEx7YZfD1LI228jF9j9cgKknBPCiFy9mpphlgH+TpTN8vajTUpcgg9Miy5Y8eUAH9g=="
       },
-      "Onigwrap": {
-        "type": "Transitive",
-        "resolved": "1.0.11",
-        "contentHash": "5/WAxSYWfiiPzp1X13qqdqjFmYLKDD/U7Vh3WCkKxWG9BjqdrXnQE5fCKCFJX+xWvuYLTxwZIVWBwBWObViE8g=="
-      },
       "SkiaSharp.NativeAssets.Linux": {
         "type": "Transitive",
         "resolved": "3.119.4",
@@ -1262,11 +1233,6 @@
         "resolved": "1.24.260710001",
         "contentHash": "JR1xAkZbNnAALBjzFpqSwEx7YZfD1LI228jF9j9cgKknBPCiFy9mpphlgH+TpTN8vajTUpcgg9Miy5Y8eUAH9g=="
       },
-      "Onigwrap": {
-        "type": "Transitive",
-        "resolved": "1.0.11",
-        "contentHash": "5/WAxSYWfiiPzp1X13qqdqjFmYLKDD/U7Vh3WCkKxWG9BjqdrXnQE5fCKCFJX+xWvuYLTxwZIVWBwBWObViE8g=="
-      },
       "SkiaSharp.NativeAssets.Linux": {
         "type": "Transitive",
         "resolved": "3.119.4",
@@ -1330,11 +1296,6 @@
         "type": "Transitive",
         "resolved": "1.24.260710001",
         "contentHash": "JR1xAkZbNnAALBjzFpqSwEx7YZfD1LI228jF9j9cgKknBPCiFy9mpphlgH+TpTN8vajTUpcgg9Miy5Y8eUAH9g=="
-      },
-      "Onigwrap": {
-        "type": "Transitive",
-        "resolved": "1.0.11",
-        "contentHash": "5/WAxSYWfiiPzp1X13qqdqjFmYLKDD/U7Vh3WCkKxWG9BjqdrXnQE5fCKCFJX+xWvuYLTxwZIVWBwBWObViE8g=="
       },
       "SkiaSharp.NativeAssets.Linux": {
         "type": "Transitive",

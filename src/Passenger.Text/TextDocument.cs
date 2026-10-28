@@ -1,5 +1,8 @@
 namespace Passenger.Text;
 
+/// <summary>Where a document's text was saved: the text then and its place in the history.</summary>
+public readonly record struct SaveMark(TextSnapshot Text, long Place);
+
 /// <summary>What an edit was, so consecutive edits of one kind can undo as one.</summary>
 public enum EditKind
 {
@@ -34,8 +37,18 @@ public sealed class DocumentChangedEventArgs(TextSnapshot before, TextSnapshot a
 /// (<see cref="Core.PassengerLog.Report"/>), and those after it still hear of the change.</summary>
 public sealed class TextDocument
 {
+    /// <summary>What the undo history keeps at most, in bytes (<see cref="HistoryBytes"/>), but for its newest
+    /// <see cref="KeptSteps"/>: about three thousand steps of a key each, or of a word typed.</summary>
+    public const long KeptBytes = 1 << 20;
+
+    /// <summary>The newest undo steps kept whatever they hold, so the last few changes of a large file stay undoable.</summary>
+    public const int KeptSteps = 100;
+
     /// <summary>How long a pause still lets typing join the previous undo step.</summary>
     private static readonly TimeSpan MergeWindow = TimeSpan.FromSeconds(2);
+
+    /// <summary>A place in the history no undo or redo comes back to.</summary>
+    private const long Nowhere = -1;
 
     private readonly List<UndoEntry> undo = [];
     private readonly List<UndoEntry> redo = [];
@@ -44,6 +57,15 @@ public sealed class TextDocument
     private readonly ChangeHandlers changed = new();
     private TextSnapshot saved;
     private bool mergeBroken = true;
+    private long kept;
+    private long lastId;
+
+    /// <summary>The place before the oldest step kept: the text as loaded, or as the newest step dropped left it.</summary>
+    private long oldest;
+
+    /// <summary>The place the history held when the text was last saved, where an undo or redo gives back that very
+    /// version, so the document reads as unmodified again.</summary>
+    private long savedAt;
 
     public TextDocument(string text = "")
     {
@@ -79,10 +101,17 @@ public sealed class TextDocument
 
     public bool IsModified => !ReferenceEquals(Snapshot, saved);
 
+    /// <summary>Whether the text refuses every change while it is set: an edit, an undo or redo, or a console's own each
+    /// leaves it as it is. Its owner (a file shown read-only) lifts it only for what the text must take.</summary>
+    public bool IsReadOnly { get; set; }
+
     /// <summary>The text as last loaded or saved: what the file on disk holds, unless something else changed it.</summary>
     public TextSnapshot Saved => saved;
     public bool CanUndo => undo.Count > 0;
     public bool CanRedo => redo.Count > 0;
+
+    /// <summary>About what the undo and redo steps keep, in bytes: the text each took out and put in, and its carets.</summary>
+    public long HistoryBytes => kept;
 
     /// <summary>The step the next <see cref="Undo"/> takes back, or null: the same object for as long as it is that step,
     /// so a change made in several files at once (a rename) knows whether it is still each one's latest.</summary>
@@ -109,7 +138,7 @@ public sealed class TextDocument
 
     /// <summary>A stretch carried as a mark on the text is (a squiggle, a match, a use): what is typed at its start stays
     /// out, what is typed at its end goes in while it holds text, and once its text is gone it stays empty.</summary>
-    public AnchoredRange MarkAt(TextRange range) => RangeAt(range, AnchorGravity.Before, AnchorGravity.After, empty: AnchorGravity.Before);
+    public AnchoredRange MarkAt(TextRange range) => RangeAt(range, AnchorGravity.After, AnchorGravity.After, empty: AnchorGravity.Before);
 
     public static string DetectLineEnding(string text)
     {
@@ -118,39 +147,41 @@ public sealed class TextDocument
     }
 
     /// <summary>Applies non-overlapping <paramref name="edits"/> (in the current snapshot's
-    /// coordinates) as one undo step, merged with the last if it continues the same kind of edit.</summary>
+    /// coordinates) as one undo step, merged with the last if it continues the same kind of edit; none while
+    /// <see cref="IsReadOnly"/>.</summary>
     public void Edit(IReadOnlyList<TextEdit> edits, SelectionSet selectionsBefore, SelectionSet selectionsAfter, EditKind kind = EditKind.Other)
     {
-        TextEdit[] sorted = edits.Where(e => e.Length > 0 || e.Text.Length > 0).OrderBy(e => e.Start).ToArray();
-        for (int i = 1; i < sorted.Length; i++)
+        if (IsReadOnly)
         {
-            if (sorted[i].Start < sorted[i - 1].End)
-            {
-                throw new ArgumentException("Edits overlap.", nameof(edits));
-            }
+            return;
         }
+        TextEdit[] sorted = Sorted(edits, apart: true);
         if (sorted.Length == 0)
         {
             return;
         }
 
         TextSnapshot before = Snapshot;
-        string[] removed = sorted.Select(e => before.GetText(e.Start, e.Length)).ToArray();
+        string[] removed = Removed(before, sorted);
         TextSnapshot after = before.Apply(sorted);
-        Step step = new(before, after, sorted, removed);
 
-        redo.Clear();
+        DropRedo();
         long now = Environment.TickCount64;
         if (undo.Count > 0 && Continues(undo[^1], kind, selectionsBefore, sorted, now))
         {
             UndoEntry last = undo[^1];
-            last.Steps.Add(step);
-            last.SelectionsAfter = selectionsAfter;
-            last.Time = now;
+            // The text saved lies inside the step now, where no undo or redo stops.
+            if (savedAt == last.Id)
+            {
+                savedAt = Nowhere;
+            }
+            kept -= last.Bytes;
+            last.Continue(sorted, removed, selectionsAfter, now);
+            kept += last.Bytes;
         }
         else
         {
-            undo.Add(new UndoEntry(kind, selectionsBefore, selectionsAfter, now, [step]));
+            Keep(new UndoEntry(++lastId, kind, Carried(selectionsBefore), selectionsAfter, now, sorted, removed));
         }
         mergeBroken = false;
         Raise(before, after, sorted, ChangeReason.Edit);
@@ -161,19 +192,23 @@ public sealed class TextDocument
     /// once Redo has made the edits again.</summary>
     public void Perform(IReadOnlyList<TextEdit> edits, SelectionSet selectionsBefore, SelectionSet selectionsAfter, Action undone, Action redone)
     {
-        TextEdit[] sorted = edits.Where(e => e.Length > 0 || e.Text.Length > 0).OrderBy(e => e.Start).ToArray();
+        if (IsReadOnly)
+        {
+            return;
+        }
+        TextEdit[] sorted = Sorted(edits, apart: false);
         TextSnapshot before = Snapshot;
-        List<Step> steps = [];
+        string[] removed = Removed(before, sorted);
+        DropRedo();
+        Keep(new UndoEntry(++lastId, EditKind.Other, Carried(selectionsBefore), selectionsAfter, Environment.TickCount64, sorted, removed)
+        {
+            Undone = undone,
+            Redone = redone,
+        });
+        mergeBroken = true;
         if (sorted.Length > 0)
         {
-            steps.Add(new Step(before, before.Apply(sorted), sorted, [.. sorted.Select(e => before.GetText(e.Start, e.Length))]));
-        }
-        redo.Clear();
-        undo.Add(new UndoEntry(EditKind.Other, selectionsBefore, selectionsAfter, Environment.TickCount64, steps) { Undone = undone, Redone = redone });
-        mergeBroken = true;
-        if (steps.Count > 0)
-        {
-            Raise(before, steps[0].After, sorted, ChangeReason.Edit);
+            Raise(before, before.Apply(sorted), sorted, ChangeReason.Edit);
         }
     }
 
@@ -191,42 +226,44 @@ public sealed class TextDocument
     /// what a program printed, and keeping it would hold every line twice.</summary>
     public void Append(string text)
     {
-        if (text.Length == 0)
+        if (text.Length == 0 || IsReadOnly)
         {
             return;
         }
         TextSnapshot before = Snapshot;
         TextEdit edit = new(before.Length, 0, text);
         Raise(before, before.Replace(before.Length, 0, text), [edit], ChangeReason.Edit);
-        saved = Snapshot;
+        MarkSaved();
     }
 
     /// <summary>Changes a stretch with no undo step, as a console's own edits are (its oldest output dropped, output put
     /// before the line a person is typing): any history no longer lines up with the text, so it goes.</summary>
     public void Rewrite(int start, int length, string text)
     {
-        if (length == 0 && text.Length == 0)
+        if ((length == 0 && text.Length == 0) || IsReadOnly)
         {
             return;
         }
         TextSnapshot before = Snapshot;
-        undo.Clear();
-        redo.Clear();
+        Forget();
         Raise(before, before.Replace(start, length, text), [new TextEdit(start, length, text)], ChangeReason.Edit);
-        saved = Snapshot;
+        MarkSaved();
     }
 
     /// <summary>Empties the document with no undo step (a console cleared), forgetting its history.</summary>
     public void Clear()
     {
+        if (IsReadOnly)
+        {
+            return;
+        }
         TextSnapshot before = Snapshot;
-        undo.Clear();
-        redo.Clear();
+        Forget();
         if (before.Length > 0)
         {
             Raise(before, TextSnapshot.Empty, [new TextEdit(0, before.Length, string.Empty)], ChangeReason.Edit);
         }
-        saved = Snapshot;
+        MarkSaved();
     }
 
     /// <summary>Stops the next edit joining the current undo step: a caret move, a click, a focus
@@ -234,10 +271,10 @@ public sealed class TextDocument
     public void BreakUndoGroup() => mergeBroken = true;
 
     /// <summary>Undoes the last step and returns the carets as they were before it, or null if there
-    /// was nothing to undo.</summary>
+    /// was nothing to undo or the text is read-only.</summary>
     public SelectionSet? Undo()
     {
-        if (undo.Count == 0)
+        if (undo.Count == 0 || IsReadOnly)
         {
             return null;
         }
@@ -246,11 +283,11 @@ public sealed class TextDocument
         // On the other stack before anyone hears of the change, so a handler that throws never loses the step.
         redo.Add(entry);
         mergeBroken = true;
-        for (int i = entry.Steps.Count - 1; i >= 0; i--)
+        if (entry.Edits.Length > 0)
         {
-            Step step = entry.Steps[i];
-            Snapshot = step.Before;
-            Raise(step.After, step.Before, step.Inverse(), ChangeReason.Undo);
+            TextSnapshot before = Snapshot;
+            TextEdit[] inverse = entry.Inverse();
+            Raise(before, Place == savedAt ? saved : before.Apply(inverse), inverse, ChangeReason.Undo);
         }
         entry.Undone?.Invoke();
         return entry.SelectionsBefore;
@@ -258,7 +295,7 @@ public sealed class TextDocument
 
     public SelectionSet? Redo()
     {
-        if (redo.Count == 0)
+        if (redo.Count == 0 || IsReadOnly)
         {
             return null;
         }
@@ -266,16 +303,138 @@ public sealed class TextDocument
         redo.RemoveAt(redo.Count - 1);
         undo.Add(entry);
         mergeBroken = true;
-        foreach (Step step in entry.Steps)
+        if (entry.Edits.Length > 0)
         {
-            Snapshot = step.After;
-            Raise(step.Before, step.After, step.Edits, ChangeReason.Redo);
+            TextSnapshot before = Snapshot;
+            Raise(before, Place == savedAt ? saved : before.Apply(entry.Edits), entry.Edits, ChangeReason.Redo);
         }
         entry.Redone?.Invoke();
         return entry.SelectionsAfter;
     }
 
-    public void MarkSaved() => saved = Snapshot;
+    public void MarkSaved()
+    {
+        saved = Snapshot;
+        savedAt = Place;
+    }
+
+    /// <summary>Where the text was last loaded or saved, which <see cref="MarkSaved(SaveMark)"/> puts back.</summary>
+    public SaveMark LastSave => new(saved, savedAt);
+
+    /// <summary>Takes the text as saved where an earlier mark says, for a save taken for done that never reached the disk.</summary>
+    public void MarkSaved(SaveMark mark)
+    {
+        saved = mark.Text;
+        savedAt = mark.Place;
+    }
+
+    /// <summary>Where the history stands: the step the next undo takes back, or the place before the oldest kept.</summary>
+    private long Place => undo.Count > 0 ? undo[^1].Id : oldest;
+
+    /// <summary>The edits that change something, sorted by where they start (those at one place kept in their order),
+    /// and refused when <paramref name="apart"/> and two overlap.</summary>
+    private static TextEdit[] Sorted(IReadOnlyList<TextEdit> edits, bool apart)
+    {
+        int count = 0;
+        bool ordered = true;
+        int last = int.MinValue;
+        for (int i = 0; i < edits.Count; i++)
+        {
+            TextEdit edit = edits[i];
+            if (edit.Length > 0 || edit.Text.Length > 0)
+            {
+                count++;
+                ordered &= edit.Start >= last;
+                last = edit.Start;
+            }
+        }
+        TextEdit[] sorted = new TextEdit[count];
+        long[] order = ordered ? [] : new long[count];
+        int at = 0;
+        for (int i = 0; i < edits.Count; i++)
+        {
+            TextEdit edit = edits[i];
+            if (edit.Length > 0 || edit.Text.Length > 0)
+            {
+                if (!ordered)
+                {
+                    order[at] = ((long)edit.Start << 32) | (uint)at;
+                }
+                sorted[at++] = edit;
+            }
+        }
+        if (!ordered)
+        {
+            Array.Sort(order, sorted);
+        }
+        for (int i = 1; apart && i < sorted.Length; i++)
+        {
+            if (sorted[i].Start < sorted[i - 1].End)
+            {
+                throw new ArgumentException("Edits overlap.", nameof(edits));
+            }
+        }
+        return sorted;
+    }
+
+    private static string[] Removed(TextSnapshot text, TextEdit[] edits)
+    {
+        string[] removed = new string[edits.Length];
+        for (int i = 0; i < edits.Length; i++)
+        {
+            removed[i] = text.GetText(edits[i].Start, edits[i].Length);
+        }
+        return removed;
+    }
+
+    /// <summary>The carets a new step starts from: the last step's own set when they are the same, so it is kept once.</summary>
+    private SelectionSet Carried(SelectionSet selections) =>
+        undo.Count > 0 && undo[^1].SelectionsAfter.SameAs(selections) ? undo[^1].SelectionsAfter : selections;
+
+    /// <summary>Adds a step, then drops the oldest while the history keeps more than <see cref="KeptBytes"/>, the newest
+    /// <see cref="KeptSteps"/> kept whatever they hold.</summary>
+    private void Keep(UndoEntry entry)
+    {
+        undo.Add(entry);
+        kept += entry.Bytes;
+        int drop = 0;
+        long over = kept - KeptBytes;
+        while (over > 0 && undo.Count - drop > KeptSteps)
+        {
+            UndoEntry dropped = undo[drop++];
+            over -= dropped.Bytes;
+            kept -= dropped.Bytes;
+            if (savedAt == oldest)
+            {
+                savedAt = Nowhere;
+            }
+            oldest = dropped.Id;
+        }
+        undo.RemoveRange(0, drop);
+    }
+
+    /// <summary>Forgets the steps a new one leaves no way to redo.</summary>
+    private void DropRedo()
+    {
+        foreach (UndoEntry entry in redo)
+        {
+            kept -= entry.Bytes;
+            if (savedAt == entry.Id)
+            {
+                savedAt = Nowhere;
+            }
+        }
+        redo.Clear();
+    }
+
+    /// <summary>Forgets every step, the text as it stands the history's start.</summary>
+    private void Forget()
+    {
+        undo.Clear();
+        redo.Clear();
+        kept = 0;
+        oldest = ++lastId;
+    }
 
     private bool Continues(UndoEntry last, EditKind kind, SelectionSet selectionsBefore, TextEdit[] edits, long now)
     {
@@ -291,10 +450,8 @@ public sealed class TextDocument
         if (kind == EditKind.Typing)
         {
             string typed = edits[0].Text;
-            string previous = last.Steps[^1].Edits[0].Text;
             bool startsGap = typed.Length > 0 && char.IsWhiteSpace(typed[0]);
-            bool endedGap = previous.Length > 0 && char.IsWhiteSpace(previous[^1]);
-            if ((startsGap && !endedGap) || typed.Contains('\n'))
+            if ((startsGap && !last.EndsGap) || typed.Contains('\n'))
             {
                 return false;
             }
@@ -310,36 +467,5 @@ public sealed class TextDocument
         anchors.Apply(change.Edits);
         first.Raise(this, change);
         changed.Raise(this, change);
-    }
-
-    private sealed class UndoEntry(EditKind kind, SelectionSet selectionsBefore, SelectionSet selectionsAfter, long time, List<Step> steps)
-    {
-        public EditKind Kind { get; } = kind;
-        public SelectionSet SelectionsBefore { get; } = selectionsBefore;
-        public SelectionSet SelectionsAfter { get; set; } = selectionsAfter;
-        public long Time { get; set; } = time;
-        public List<Step> Steps { get; } = steps;
-
-        /// <summary>What <see cref="Perform"/> was given to run after the step is undone, and after it is redone.</summary>
-        public Action? Undone { get; init; }
-        public Action? Redone { get; init; }
-    }
-
-    /// <summary>One applied batch: the snapshots on either side, the edits and the text each one
-    /// removed, which is what its inverse puts back.</summary>
-    private sealed record Step(TextSnapshot Before, TextSnapshot After, TextEdit[] Edits, string[] Removed)
-    {
-        public TextEdit[] Inverse()
-        {
-            TextEdit[] inverse = new TextEdit[Edits.Length];
-            int shift = 0;
-            for (int i = 0; i < Edits.Length; i++)
-            {
-                TextEdit edit = Edits[i];
-                inverse[i] = new TextEdit(edit.Start + shift, edit.Text.Length, Removed[i]);
-                shift += edit.Text.Length - edit.Length;
-            }
-            return inverse;
-        }
     }
 }

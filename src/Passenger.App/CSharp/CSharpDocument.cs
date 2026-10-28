@@ -16,7 +16,7 @@ namespace Passenger.App.CSharp;
 public sealed partial class CSharpDocument : IServerDocument, IDisposable
 {
     /// <summary>How long typing must pause before diagnostics are asked for again.</summary>
-    private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(600);
+    public static readonly TimeSpan Pause = TimeSpan.FromMilliseconds(600);
 
     /// <summary>Parameter names that say nothing an argument does not (Console.WriteLine's value, a list's item), whose
     /// hints are left off.</summary>
@@ -43,16 +43,18 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
     /// <summary>The diagnostics last pulled, moved with the text since, so their lines are the text's as it is now.</summary>
     public IReadOnlyList<Diagnostic> Diagnostics => diagnostics.Placed;
 
-    internal void Connect(RoslynSession session)
+    /// <summary>Opens the file in the server unless it is open there already; whether it was opened now.</summary>
+    internal bool Connect(RoslynSession session)
     {
         if (Lsp is not null)
         {
-            return;
+            return false;
         }
         Lsp = session.Open(document.Path, document.Text);
         Colour(Lsp, session.Server);
         Pull(TimeSpan.Zero);
         FindContexts();
+        return true;
     }
 
     /// <summary>The projects the server has the file in, by Roslyn's own <c>textDocument/_vs_getProjectContexts</c>,
@@ -186,13 +188,9 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
 
     private void OnChanged(object? sender, DocumentChangedEventArgs e)
     {
-        // The markers and the problems a fix asked for at the caret reads, where the text carried their ranges.
+        // The problems a fix asked for at the caret reads, where the text carried their ranges.
         diagnostics.Moved();
-        if (document.Markers.Count > 0)
-        {
-            document.Markers = diagnostics.Markers;
-        }
-        Pull(Settle);
+        Pull(Pause);
         // An AppHost's edit may change what its services are told is missing; any other file's changes only its own.
         if (AspireRole == Aspire.AspireRole.AppHost)
         {
@@ -202,47 +200,68 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
 
     private void OnSaved(object? sender, EventArgs e) => Lsp?.Saved();
 
+    /// <summary>Pulls after <paramref name="delay"/>. An ask for now (the server's refresh, a file the pull reads changed)
+    /// while a pull waits out typing's pause is left to that pull, which then asks for the text as it stands: typing
+    /// that goes on is never answered by a pull between its keys.</summary>
     private void Pull(TimeSpan delay)
     {
-        if (Lsp is not { } lsp || !service.IsReady && delay > TimeSpan.Zero)
+        if (Lsp is not { } lsp || !service.IsReady && delay > TimeSpan.Zero || delay == TimeSpan.Zero && diagnostics.Pausing)
         {
             return;
         }
-        diagnostics.Pull(delay, cancel => PullAsync(lsp, cancel));
+        diagnostics.Pull(delay, cancel => PullAsync(lsp, cancel), service.FilePulling());
     }
 
+    /// <summary>The file's inlay hints asked for again with its diagnostics: the kinds the editors show changed.</summary>
+    public void RefreshHints() => Pull(TimeSpan.Zero);
+
     /// <summary>The file's diagnostics, with Aspire's for a service's file (<see cref="AspireDiagnosticsAsync"/>) and an
-    /// AppHost's (<see cref="AspireUnsetParametersAsync"/>), then its
-    /// inlay hints, each for the text as it stands. A later pull (an AppHost's edit, the server's refresh) cancels this one.</summary>
+    /// AppHost's (<see cref="AspireUnsetParametersAsync"/>), then its inlay hints (<see cref="ShowHintsAsync"/>), then what
+    /// the project's whole analysis reports in it, each for the text as it stands. A later pull (an AppHost's edit, the
+    /// server's refresh) cancels this one.</summary>
     private async Task PullAsync(LspDocument lsp, CancellationToken cancel)
     {
-        if (!await ShowPulledAsync(lsp, cancel))
+        if (await ShowPulledAsync(lsp, cancel) is { } own && await ShowHintsAsync(lsp, cancel))
         {
-            return;
+            await ShowProjectWideAsync(lsp, own, cancel);
+        }
+    }
+
+    /// <summary>The file's inlay hints of the kinds the editors show, for the text as it stands, none asked for while they
+    /// show neither; whether the hints shown answer the text.</summary>
+    private async Task<bool> ShowHintsAsync(LspDocument lsp, CancellationToken cancel)
+    {
+        if (!service.AsksHints)
+        {
+            document.InlayHints = HintList.Empty;
+            return true;
         }
         (IReadOnlyList<LspInlayHint> hints, int hinted) = await lsp.InlayHintsAsync(cancel);
         if (cancel.IsCancellationRequested || hinted != document.Text.Version)
         {
-            return;
+            return false;
         }
         // Placed on the thread pool, in the text and syntax they were asked for: a file of thousands of calls has as many.
         TextSnapshot text = document.Text.Snapshot;
         ParsedText? syntax = hints.Any(h => h.Kind == Passenger.Lsp.InlayHintKind.Type) ? document.Syntax?.Current : null;
         bool razor = lsp.IsRazor;
         HintList shown = await BackgroundWork.Run(() => Shown(text, syntax, razor, hints), cancel);
-        if (!cancel.IsCancellationRequested && hinted == document.Text.Version)
-        {
-            document.InlayHints = shown;
-        }
-    }
-
-    /// <summary>The server's diagnostics, Aspire's and the open compose files' shown for the text as it stands; false when they
-    /// no longer answer it.</summary>
-    private async Task<bool> ShowPulledAsync(LspDocument lsp, CancellationToken cancel)
-    {
-        if (await diagnostics.PulledAsync(lsp, cancel) is not { } found)
+        if (cancel.IsCancellationRequested || hinted != document.Text.Version)
         {
             return false;
+        }
+        document.InlayHints = shown;
+        return true;
+    }
+
+    /// <summary>The server's diagnostics from the file's own sources, Aspire's and the open compose files' shown for the text
+    /// as it stands, with the project-wide ones carried until theirs answers; what was shown but those, or null when they no
+    /// longer answer it.</summary>
+    private async Task<IReadOnlyList<Diagnostic>?> ShowPulledAsync(LspDocument lsp, CancellationToken cancel)
+    {
+        if (await diagnostics.PulledAsync(lsp, cancel, DiagnosticPull.Own) is not { } found)
+        {
+            return null;
         }
         int version = document.Text.Version;
         // Read as the findings are asked (AspireFindingsAsync reads it before it awaits): a later change pulls again.
@@ -253,11 +272,27 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
         IReadOnlyList<Diagnostic> localization = await LocalizationFindingsAsync(cancel);
         if (cancel.IsCancellationRequested || version != document.Text.Version || Lsp != lsp)
         {
-            return false;
+            return null;
         }
-        document.Markers = diagnostics.Take([.. found, .. aspire, .. compose, .. configuration, .. localization], DiagnosticMarks.Marker);
+        IReadOnlyList<Diagnostic> own = [.. found, .. aspire, .. compose, .. configuration, .. localization];
+        IReadOnlyList<Diagnostic> carried = lsp.PullsProjectWide ? diagnostics.Late : [];
+        document.Markers = diagnostics.Take([.. own, .. carried], DiagnosticMarks.Marker, carried.Count);
         service.FileProblemsChanged(document);
-        return true;
+        return own;
+    }
+
+    /// <summary>What the project's whole analysis reports in the file, shown with its <paramref name="own"/> diagnostics once
+    /// it answers the text they were shown for: in a large project long after them, so they never wait for it.</summary>
+    private async Task ShowProjectWideAsync(LspDocument lsp, IReadOnlyList<Diagnostic> own, CancellationToken cancel)
+    {
+        int version = document.Text.Version;
+        if (!lsp.PullsProjectWide || await diagnostics.PulledAsync(lsp, cancel, DiagnosticPull.ProjectWide) is not { } late
+            || version != document.Text.Version || Lsp != lsp || late.Count == 0 && diagnostics.Late.Count == 0)
+        {
+            return;
+        }
+        document.Markers = diagnostics.Take([.. own, .. late], DiagnosticMarks.Marker, late.Count);
+        service.FileProblemsChanged(document);
     }
 
     /// <summary>Aspire's own diagnostics of the file for the text as it stands: a service's references its AppHost lacks, an
@@ -282,9 +317,9 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
     /// agent's call that reads Passenger's own fixes, which stand on them.</summary>
     internal async Task PullNowAsync(CancellationToken cancel)
     {
-        if (Lsp is { } lsp)
+        if (Lsp is { } lsp && await ShowPulledAsync(lsp, cancel) is { } own)
         {
-            await ShowPulledAsync(lsp, cancel);
+            await ShowProjectWideAsync(lsp, own, cancel);
         }
     }
 

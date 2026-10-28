@@ -27,7 +27,7 @@ public partial class MainWindow
     private CSharpService? routesFrom;
     private readonly Dictionary<OpenDocument, (int Version, string Hash)> routeHashes = [];
 
-    /// <summary>The route icon's menu last opened.</summary>
+    /// <summary>The send icon's menu last opened, a route's or an .http file's request's.</summary>
     public MenuFlyout? RouteMarkMenu { get; private set; }
 
     private void AddRoutes()
@@ -46,7 +46,8 @@ public partial class MainWindow
             }
             document.Text.Changed += (_, _) =>
             {
-                if (session.ProjectOf(document.Path) is { } project && session.Routes.IsWeb(project.Path))
+                // Until the routes are first read any project may be a web one, and a read under way may predate this change.
+                if (session.ProjectOf(document.Path) is { } project && (!session.Routes.HasRead || session.Routes.IsWeb(project.Path)))
                 {
                     session.Routes.Stale(project.Path);
                     // No longer the text its routes were read from: its icons go until the routes are read again.
@@ -76,7 +77,7 @@ public partial class MainWindow
     }
 
     /// <summary>Files whose text can declare a route.</summary>
-    private static bool IsRouteSource(string path) => Path.GetExtension(path).ToLowerInvariant() is ".cs" or ".razor" or ".cshtml" or ".proto";
+    private static bool IsRouteSource(string path) => PathNames.HasExtension(path, [".cs", ".razor", ".cshtml", ".proto"]);
 
     /// <summary>The routes are read once typing pauses when a read is due and someone looks: the Endpoints window shown, or a
     /// file open that could declare one (<paramref name="opening"/> one now, which the open files may not list yet).</summary>
@@ -100,7 +101,7 @@ public partial class MainWindow
         routesFrom = null;
         routeHashes.Clear();
         endpoints?.ShowRoutes(next.Routes.All);
-        foreach (OpenDocument document in Editors.Documents)
+        foreach (OpenDocument document in Editors.Documents.Where(d => !HttpFile.Is(d.Path)))
         {
             document.RouteMarks = [];
         }
@@ -117,11 +118,11 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>The server loaded projects (more of them, or one again): every project's routes are read again, a read before
-    /// having found none of a project it had yet to load.</summary>
+    /// <summary>The server loaded projects (more of them, or one again): every project's routes are read again, a read before,
+    /// or one under way, having found none of a project it had yet to load.</summary>
     private void RoutesProjectsLoaded(CSharpService service)
     {
-        if (service == session.CSharp && !session.IsEnded && session.Routes.HasRead)
+        if (service == session.CSharp && !session.IsEnded)
         {
             session.Routes.Forget();
             WantRoutes();
@@ -164,12 +165,12 @@ public partial class MainWindow
         {
             return;
         }
-        IReadOnlyList<string> asked = current.Routes.ToRead();
+        RoutesAsked asked = current.Routes.ToRead();
         RoutesFound? found = await BackgroundWork.Run(async () =>
         {
             try
             {
-                RoutesFound answer = await roslyn.ExtensionAsync<RoutesFound>(Handlers.WebRoutes, new RoutesRequest(asked)).ConfigureAwait(false);
+                RoutesFound answer = await roslyn.ExtensionAsync<RoutesFound>(Handlers.WebRoutes, new RoutesRequest(asked.Projects)).ConfigureAwait(false);
                 // Paths as the window compares them: canonical, which the server's need not be.
                 return new RoutesFound([.. answer.Routes.Select(r => r with
                 {
@@ -291,7 +292,7 @@ public partial class MainWindow
         }
         if (found is null)
         {
-            if (Generate(route) is not { } made)
+            if (await GenerateAsync(route) is not { } made)
             {
                 return status.Text;
             }
@@ -336,8 +337,9 @@ public partial class MainWindow
     private static IEnumerable<string> HttpFilesUnder(string folder) => FolderWalk.Files(folder).Where(HttpFile.Is);
 
     /// <summary>A route's request written at the end of its project's .http file (made beside the project when it has
-    /// none): in the editor as its own undo step when the file is open, else as a command Undo takes back whole.</summary>
-    private (EndpointRequest Request, HttpFile File)? Generate(WebRoute route)
+    /// none): in the editor as its own undo step when the file is open, else as a command Undo takes back whole, said once
+    /// the file has landed.</summary>
+    private async Task<(EndpointRequest Request, HttpFile File)?> GenerateAsync(WebRoute route)
     {
         string path = PathNames.Canonical(RouteRequests.FileFor(route.Project));
         string? address = ProfileAddress(route.Project);
@@ -347,7 +349,7 @@ public partial class MainWindow
             {
                 if (document.IsReadOnly)
                 {
-                    status.Text = $"{Path.GetFileName(path)} is read-only: no request could be written for {RouteRequests.Title(route)}";
+                    status.Text = $"{Refusals.ReadOnly(Path.GetFileName(path))}: no request could be written for {RouteRequests.Title(route)}";
                     return null;
                 }
                 string before = document.Text.Snapshot.ToString();
@@ -364,6 +366,10 @@ public partial class MainWindow
             {
                 made.Watch(path);
                 FileText.Save(path, text, had?.Encoding ?? new UTF8Encoding(false), had?.HasBom ?? false);
+                if (await UnlandedAsync(made) is { } unlanded)
+                {
+                    throw unlanded;
+                }
             }
             endpoints?.Reload(session.Folder);
             return Written(path, text, existing);

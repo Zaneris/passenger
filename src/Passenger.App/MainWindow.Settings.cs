@@ -103,6 +103,7 @@ public partial class MainWindow
             console.Limit = next.ConsoleBufferKb * 1024;
         }
         ApplyAnalysis();
+        session.CSharp?.Hints = (next.ParameterHints, next.TypeHints);
         session.Web?.UseNode(next.NodeInterpreter);
         session.Web?.UseTools();
         session.Web?.UseDockerHub(next.DockerHubTags);

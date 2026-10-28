@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -13,10 +12,11 @@ namespace Passenger.App.Run;
 /// Copy and Remove, the chosen one's fields on the right, OK, Cancel and Apply below. A generated one changes in place
 /// but for what makes it the one it is (its name, project and launch profile): each field changed from what its source gives
 /// is marked, and kept with the folder over that source, or written to its launch profile; Reset puts it back as its source
-/// makes it. It edits copies, which Apply and OK hand back with the one chosen.</summary>
+/// makes it. One of the folder's own is saved as a new launch profile of its project (the window's Save as Launch Profile),
+/// and is generated from it from then on. It edits copies, which Apply and OK hand back with the one chosen.</summary>
 public sealed class RunConfigurationsDialog : Window
 {
-    private readonly IReadOnlyList<Entry> generated;
+    private IReadOnlyList<Entry> generated;
     private readonly List<Entry> mine;
     private readonly IReadOnlyList<ProjectModel> projects;
     private readonly Action<IReadOnlyList<RunConfiguration>, IReadOnlyList<RunConfiguration>, string?> apply;
@@ -57,7 +57,7 @@ public sealed class RunConfigurationsDialog : Window
     {
         FormRows.Scope(this);
         IsRunning = isRunning ?? (_ => false);
-        this.generated = [.. generated.Select(c => new Entry(c with { Source = null }, c.Source ?? c with { Source = null }))];
+        this.generated = [.. generated.Select(Made)];
         mine = [.. own.Select(c => new Entry(c))];
         this.projects = projects;
         singleFileAppHosts = [.. generated.Concat(own).Where(c => c.Aspire && Path.GetExtension(c.Project).Equals(".cs", StringComparison.OrdinalIgnoreCase))
@@ -76,10 +76,7 @@ public sealed class RunConfigurationsDialog : Window
         AddButton.Click += (_, _) => ChooseKind();
         CopyButton.Click += (_, _) => Copy();
         RemoveButton.Click += (_, _) => Remove();
-        list.ItemTemplate = new FuncDataTemplate<Entry>((row, _) => RowView(row?.Configuration, row?.Configuration.WhyNotHere(projects),
-            row is null ? 0 : Math.Max(IsRunning(row.Configuration.Name) ? 1 : 0,
-                runningAppHosts.Count(path => Core.PathNames.Same(path, row.Configuration.Project)
-                    || row.Configuration.LinkedAppHosts.Any(linked => Core.PathNames.Same(linked, path)))), row?.IsChanged == true));
+        ReusedRows.Use(list, RowView);
         list.SelectionChanged += (_, _) =>
         {
             if (!showing)
@@ -93,12 +90,18 @@ public sealed class RunConfigurationsDialog : Window
         ProjectBox = new ComboBox { Classes = { "form" } };
         FrameworkBox = new ComboBox { Classes = { "form" } };
         ProfileBox = new ComboBox { Classes = { "form" } };
-        ProjectBox.ItemTemplate = new FuncDataTemplate<object>((item, _) => new TextBlock { Text = item is ProjectModel p ? p.Name : item?.ToString() });
+        SaveAsProfileButton = new Button { Name = "SaveAsProfileButton", IsVisible = false };
+        SaveAsProfileButton.Click += (_, _) => SaveAsLaunchProfile();
+        ReusedRows.Use(ProjectBox, () =>
+        {
+            TextBlock name = new();
+            return name.Showing<object>(item => name.Text = item is ProjectModel p ? p.Name : item.ToString());
+        });
         ProgramBox = Field("The project's own program");
         // Named, as the boxes a screenshot's --click-name reaches.
-        ArgumentsBox = Field();
+        ArgumentsBox = Field("The project's RunArguments, if it has any");
         ArgumentsBox.Name = "ArgumentsBox";
-        WorkingDirectoryBox = Field("The project's output folder");
+        WorkingDirectoryBox = Field("The project's RunWorkingDirectory, else its output folder");
         BuildBox = new CheckBox { Content = "Build the project first" };
         // Its words a TextBlock of their own, which a change from the source marks as a row's label is marked.
         TextBlock consoleWords = new() { Text = "Use external console" };
@@ -201,7 +204,7 @@ public sealed class RunConfigurationsDialog : Window
             (linkedRow, [RunKind.Project]),
             (aspireRow, [RunKind.Project]),
             (Row("Target framework", FrameworkBox, fields: ["framework"]), [RunKind.Project, RunKind.Dockerfile, RunKind.SdkContainer]),
-            (Row("Launch profile", ProfileBox), [RunKind.Project]),
+            (Row("Launch profile", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { ProfileBox, SaveAsProfileButton } }), [RunKind.Project]),
             (Row("Exe path", ProgramBox, fields: ["program"]), [RunKind.Project]),
             (Row("Program arguments", ArgumentsBox, fields: ["arguments"]), [RunKind.Project]),
             (Row("Working directory", WorkingDirectoryBox, fields: ["workingDirectory"]), [RunKind.Project]),
@@ -226,9 +229,8 @@ public sealed class RunConfigurationsDialog : Window
         ];
 
         WriteButton = new Button { Content = "Write to Launch Profile", Name = "WriteButton" };
-        ToolTip.SetShowOnDisabled(WriteButton, true);
         ResetButton = new Button { Content = "Reset to Launch Profile", Name = "ResetButton" };
-        WriteButton.Click += (_, _) => WriteToLaunchProfile();
+        WriteButton.Click += (_, _) => IdeErrors.Observe(WriteToLaunchProfileAsync());
         ResetButton.Click += (_, _) => Reset();
         changes.Children.Add(changesText);
         changes.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { WriteButton, ResetButton } });
@@ -279,9 +281,27 @@ public sealed class RunConfigurationsDialog : Window
     /// <summary>Puts a generated configuration back as its source makes it.</summary>
     public Button ResetButton { get; }
 
+    /// <summary>Save as Launch Profile, the window's action, on the configuration chosen: titled by it, greyed with its why.</summary>
+    public Button SaveAsProfileButton { get; }
+
+    private ActionRegistry? actions;
+
+    /// <summary>The window's actions, of which the dialog's buttons run Save as Launch Profile.</summary>
+    public ActionRegistry? Actions
+    {
+        get => actions;
+        init
+        {
+            actions = value;
+            SaveAsProfileButton.Content = value?[AppActions.SaveAsLaunchProfile]?.Title;
+            SaveAsProfileButton.IsVisible = value is not null;
+            Opened += (_, _) => ShowSaveAs();
+        }
+    }
+
     /// <summary>Writes the changes of the generated configuration of that name, as applied, into its launch profile (the
     /// window's, as one command Undo takes back): the configuration as it then stands, or why not.</summary>
-    public Func<string, (RunConfiguration? Configuration, string? Problem)>? WriteToProfile { get; init; }
+    public Func<string, Task<(RunConfiguration? Configuration, string? Problem)>>? WriteToProfile { get; init; }
 
     /// <summary>What the chosen generated configuration has changed from its source (or what Write to Launch Profile did),
     /// or empty.</summary>
@@ -485,8 +505,11 @@ public sealed class RunConfigurationsDialog : Window
 
     public TextBox RunArgumentsBox { get; }
 
-    private const string WriteTip = "Applies the changes here, then writes those its launch profile has a place for into the project's Properties/launchSettings.json, "
+    private const string WriteTip = "Applies the changes here, then writes those its launch profile has a place for into the project's Properties/launchSettings.json (a file-based program's .run.json), "
         + "as one step Undo takes back; the rest stay kept with the folder";
+
+    private const string SaveAsTip = "Applies the changes here, then saves this configuration as a new profile of its project's Properties/launchSettings.json (a file-based program's .run.json), "
+        + "which the repository shares and it is then generated from; what a profile has no place for stays kept with the folder. One step Undo takes back";
 
     private const string FastMode = "Fast, from Passenger's build";
 
@@ -573,6 +596,10 @@ public sealed class RunConfigurationsDialog : Window
         }
     }
 
+    /// <summary>The dialog applied, as Apply does before an action changes the configurations it hands back; false, with
+    /// why said below, when one cannot be kept.</summary>
+    public bool Applied() => Apply();
+
     private bool Apply()
     {
         if (Unkeepable() is { } why)
@@ -588,14 +615,14 @@ public sealed class RunConfigurationsDialog : Window
 
     /// <summary>Write to Launch Profile: the dialog applied as Apply does, then the chosen generated configuration's changes
     /// its launch profile has a place for written there; the dialog says what was written and what stays kept here.</summary>
-    private void WriteToLaunchProfile()
+    private async Task WriteToLaunchProfileAsync()
     {
         if (list.SelectedItem is not Entry { Source: { } before } row || WriteToProfile is not { } write || !Apply())
         {
             return;
         }
         IReadOnlyList<string> changed = ConfigurationEdit.Changed(before, row.Configuration);
-        (RunConfiguration? now, string? failed) = write(row.Configuration.Name);
+        (RunConfiguration? now, string? failed) = await write(row.Configuration.Name);
         if (now is null)
         {
             problem.Text = failed ?? $"{row.Configuration.Name} could not be written to its launch profile";
@@ -605,8 +632,9 @@ public sealed class RunConfigurationsDialog : Window
         row.Configuration = now with { Source = null };
         IReadOnlyList<string> left = ConfigurationEdit.Changed(row.Source, row.Configuration);
         string done = Titles(changed.Except(left));
-        written = (done.Length > 0 ? $"Written to its launch profile in launchSettings.json: {done}." : "Its launch profile in launchSettings.json was written.")
-            + (left.Count > 0 ? $" Kept here, as launchSettings.json has no place for it: {Titles(left)}." : string.Empty);
+        string file = LaunchProfile.SettingsName(now.Project);
+        written = (done.Length > 0 ? $"Written to its launch profile in {file}: {done}." : $"Its launch profile in {file} was written.")
+            + (left.Count > 0 ? $" Kept here, as {file} has no place for it: {Titles(left)}." : string.Empty);
         showing = true;
         try
         {
@@ -617,6 +645,58 @@ public sealed class RunConfigurationsDialog : Window
             showing = false;
         }
         ShowChosen();
+    }
+
+    /// <summary>Save as Launch Profile, through the window's action: why not said below when it cannot run.</summary>
+    private void SaveAsLaunchProfile()
+    {
+        if (actions?.Run(AppActions.SaveAsLaunchProfile) is { } why)
+        {
+            problem.Text = why;
+        }
+    }
+
+    /// <summary>Save as Launch Profile done, the dialog applied first: the configurations listed as the window then has them,
+    /// the one saved chosen as the profile now generates it, what was done and what stays kept here said in place of its
+    /// changes; refused (no configuration given), why said below.</summary>
+    public void Took(IReadOnlyList<RunConfiguration> generated, IReadOnlyList<RunConfiguration> own, RunConfiguration? now, string said)
+    {
+        if (now is null)
+        {
+            problem.Text = said;
+            return;
+        }
+        this.generated = [.. generated.Select(Made)];
+        mine.Clear();
+        mine.AddRange(own.Select(c => new Entry(c)));
+        showing = true;
+        try
+        {
+            List();
+            list.SelectedItem = Entries.FirstOrDefault(e => e.Configuration.Name == now.Name);
+        }
+        finally
+        {
+            showing = false;
+        }
+        IReadOnlyList<string> left = now.Source is { } source ? ConfigurationEdit.Changed(source, now) : [];
+        written = $"{said}." + (left.Count > 0 ? $" Kept here, as {LaunchProfile.SettingsName(now.Project)} has no place for it: {Titles(left)}." : string.Empty);
+        ShowChosen();
+    }
+
+    /// <summary>A generated configuration as the list holds it: apart from its source, which its fields are told apart from.</summary>
+    private static Entry Made(RunConfiguration generated) => new(generated with { Source = null }, generated.Source ?? generated with { Source = null });
+
+    /// <summary>Save as Launch Profile greyed, why in its tip, while the window's action says it cannot save the one chosen.</summary>
+    private void ShowSaveAs()
+    {
+        if (actions is null)
+        {
+            return;
+        }
+        string? why = actions.WhyNot(AppActions.SaveAsLaunchProfile, actions.Context());
+        SaveAsProfileButton.IsEnabled = why is null;
+        ToolTip.SetTip(SaveAsProfileButton, why ?? SaveAsTip);
     }
 
     /// <summary>Reset to Launch Profile (or its other source): every field of the chosen generated configuration as its
@@ -762,7 +842,8 @@ public sealed class RunConfigurationsDialog : Window
             return;
         }
         RunConfiguration after = change(row.Configuration);
-        if (ReferenceEquals(after, row.Configuration))
+        // A text box tells of its text after it is set, by when the fields may show another configuration: a change of nothing is none.
+        if (ReferenceEquals(after, row.Configuration) || ConfigurationEdit.Same(after, row.Configuration))
         {
             return;
         }
@@ -901,7 +982,6 @@ public sealed class RunConfigurationsDialog : Window
             foreach (Control identity in (Control[])[NameBox, ProjectBox, ProfileBox])
             {
                 identity.IsEnabled = !shown.Generated;
-                ToolTip.SetShowOnDisabled(identity, true);
                 ToolTip.SetTip(identity, shown.Generated ? $"Its link to its {SourceName(shown)}, which a copy can change" : null);
             }
         }
@@ -921,7 +1001,7 @@ public sealed class RunConfigurationsDialog : Window
         string name = project?.Name ?? Path.GetFileNameWithoutExtension(shown.Project);
         string origin = !shown.Generated ? string.Empty
             : shown.Origin is { } container ? container
-            : shown.LaunchProfile.Length > 0 ? $"Generated from the launch profile {shown.LaunchProfile} in {name}'s Properties/launchSettings.json"
+            : shown.LaunchProfile.Length > 0 ? $"Generated from the launch profile {shown.LaunchProfile} in {name}'s {LaunchProfile.SettingsShown(shown.Project)}"
             : $"Generated for the executable project {name}";
         if (shown.Generated)
         {
@@ -965,8 +1045,10 @@ public sealed class RunConfigurationsDialog : Window
                 && LaunchProfile.Read(project).FirstOrDefault(p => p.Name == row.Configuration.LaunchProfile) is { } profile
                 && LaunchSettingsEdits.For(project, profile, row.Source!, row.Configuration).Count > 0;
             WriteButton.IsEnabled = writable;
-            ToolTip.SetTip(WriteButton, writable ? WriteTip : "launchSettings.json has no place for these changes, which stay kept with the folder");
+            ToolTip.SetTip(WriteButton, writable ? WriteTip : $"{LaunchProfile.SettingsName(row.Configuration.Project)} has no place for these changes, which stay kept with the folder");
         }
+
+        ShowSaveAs();
 
         static string Capitalized(string words) => string.Join(' ', words.Split(' ').Select(w => w.Length > 0 && char.IsLower(w[0]) ? char.ToUpperInvariant(w[0]) + w[1..] : w));
     }
@@ -1041,31 +1123,28 @@ public sealed class RunConfigurationsDialog : Window
     /// <summary>Whether a run of a configuration (by its name) is up, which its row says; given as the rows are made.</summary>
     private Func<string, bool> IsRunning { get; }
 
-    /// <summary>A list row: the configuration's name ("(running)" after it while a run of it is up), greyed when it cannot run
-    /// here (why in its tip), marked as a changed field's row is when it is a generated one changed from its source, and for
-    /// a generated one where it came from, muted beside it; where came from gives way first, then the name, each to an ellipsis.</summary>
-    private static Control RowView(RunConfiguration? row, string? whyNot, int running, bool changed)
+    /// <summary>A list row for whichever configuration the list hands its container: its name ("(running)" after it while a
+    /// run of it is up), greyed when it cannot run here (why in its tip), marked as a changed field's row is when it is a
+    /// generated one changed from its source, and for a generated one where it came from, muted beside it; where it came
+    /// from gives way first, then the name, each to an ellipsis.</summary>
+    private Control RowView()
     {
-        ShrinkingRow line = new();
-        TextBlock name = new()
+        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
+        TextBlock from = new() { Classes = { "muted" }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
+        ShrinkingRow line = new() { Children = { name, from } };
+        return line.Showing<Entry>(entry =>
         {
-            Text = running switch { 0 => row?.Name, 1 => $"{row?.Name} (running)", _ => $"{row?.Name} ({running} apps running)" },
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        if (whyNot is not null)
-        {
-            name.Classes.Add("muted");
-            ToolTip.SetTip(line, $"{row?.Name} cannot run here: {whyNot}");
-        }
-        else if (changed)
-        {
-            name.Classes.Add("changed");
-            ToolTip.SetTip(line, $"{row?.Name} is changed here from what its {SourceName(row!)} gives");
-        }
-        line.Children.Add(name);
-        if (row is { Generated: true })
-        {
-            string from = row.Kind switch
+            RunConfiguration row = entry.Configuration;
+            string? whyNot = row.WhyNotHere(projects);
+            int running = Math.Max(IsRunning(row.Name) ? 1 : 0, runningAppHosts.Count(path => Core.PathNames.Same(path, row.Project)
+                || row.LinkedAppHosts.Any(linked => Core.PathNames.Same(linked, path))));
+            name.Text = running switch { 0 => row.Name, 1 => $"{row.Name} (running)", _ => $"{row.Name} ({running} apps running)" };
+            bool changed = whyNot is null && entry.IsChanged;
+            name.Classes.Set("muted", whyNot is not null);
+            name.Classes.Set("changed", changed);
+            ToolTip.SetTip(line, whyNot is not null ? $"{row.Name} cannot run here: {whyNot}" : changed ? $"{row.Name} is changed here from what its {SourceName(row)} gives" : null);
+            from.IsVisible = row.Generated;
+            from.Text = !row.Generated ? null : row.Kind switch
             {
                 RunKind.Project when row.Aspire => "Aspire",
                 RunKind.Compose when Containers.ContainerConfigurations.IsComposeProject(row.Project) => row.LaunchProfile.Length > 0 ? LaunchProfile.SettingsFile : ".dcproj",
@@ -1074,9 +1153,7 @@ public sealed class RunConfigurationsDialog : Window
                 RunKind.SdkContainer when row.LaunchProfile.Length == 0 => "SDK container",
                 _ => row.LaunchProfile.Length > 0 ? LaunchProfile.SettingsFile : "project",
             };
-            line.Children.Add(new TextBlock { Text = from, Classes = { "muted" }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) });
-        }
-        return line;
+        });
     }
 
     /// <summary>A configuration as the list holds it: the same row while its values change; a generated one's with the

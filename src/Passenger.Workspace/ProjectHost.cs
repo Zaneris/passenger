@@ -8,9 +8,14 @@ namespace Passenger.Workspace;
 /// <summary>The project host could not answer: it would not start (no SDK for the folder, no runtime that runs it), it
 /// ended while a request waited, or the request failed in it. The one failure a caller of <see cref="ProjectHost"/>
 /// catches.</summary>
-public sealed class ProjectHostFailed(string reason, Exception? inner = null) : Exception(reason, inner)
+public sealed class ProjectHostFailed(string reason, Exception? inner = null, bool hostEnded = false) : Exception(reason, inner)
 {
     public string Reason { get; } = reason;
+
+    /// <summary>The host's process ended under the request, by itself (it crashed, or was killed) or for a build in it
+    /// that could never end (<see cref="ProjectHost.End"/>): a host started anew (<see cref="ProjectHosts.ForAsync"/>)
+    /// may answer it.</summary>
+    public bool HostEnded { get; } = hostEnded;
 }
 
 /// <summary>One project host (Passenger.Host, carried under <c>host/</c>): MSBuild's evaluation in a process of its
@@ -21,8 +26,11 @@ public sealed class ProjectHost : IAsyncDisposable
 {
     private readonly Process process;
 
-    /// <summary>The requests waiting for their answers, each with what takes its partial answers.</summary>
-    private readonly PendingRequests<Action<JsonElement>?, JsonElement> pending = new();
+    /// <summary>The requests waiting for their answers, each with what reads its partial answers and its result.</summary>
+    private readonly PendingRequests<Asked, object?> pending = new();
+
+    /// <summary>The host's output, a line at a time.</summary>
+    private readonly Utf8Lines lines;
     private readonly object writing = new();
 
     /// <summary>The methods whose next answers are spoiled (<see cref="SpoilNext"/>), and the requests now asked of them.</summary>
@@ -31,12 +39,18 @@ public sealed class ProjectHost : IAsyncDisposable
 
     private volatile bool gone;
 
+    private int building;
+
+    /// <summary>The first line of what the runtime wrote as the host crashed, for the words of its end.</summary>
+    private volatile string? crashed;
+
     /// <summary>The folder the host was started for, with the global.json over it as it stood (<see cref="Dotnet.GlobalJsonOver"/>).</summary>
     private readonly (string Folder, string GlobalJson) startedFor;
 
-    private ProjectHost(Process process, HostReady ready, string folder, string globalJson)
+    private ProjectHost(Process process, Utf8Lines lines, HostReady ready, string folder, string globalJson)
     {
         this.process = process;
+        this.lines = lines;
         ProcessId = process.Id;
         Sdk = ready.Sdk;
         Version = ready.Version;
@@ -98,33 +112,35 @@ public sealed class ProjectHost : IAsyncDisposable
         {
             throw new ProjectHostFailed($"the project host could not start: {error.Message}", error);
         }
+        ProjectHost? started = null;
         process.ErrorDataReceived += (_, e) =>
         {
             if (e.Data is { Length: > 0 } line)
             {
                 PassengerLog.Write($"Project host (process {process.Id}): {line}");
+                if (started is { crashed: null } host && line.StartsWith("Unhandled exception.", StringComparison.Ordinal))
+                {
+                    host.crashed = line.Length > 300 ? line[..300] + "…" : line;
+                }
             }
         };
         process.BeginErrorReadLine();
+        Utf8Lines lines = new(process.StandardOutput.BaseStream);
         try
         {
-            string? first = await process.StandardOutput.ReadLineAsync(cancel).AsTask().WaitAsync(TimeSpan.FromMinutes(1), cancel);
-            HostReply reply = first is null
-                ? throw new ProjectHostFailed($"the project host ended as it started ({Ended(process)})")
-                : JsonSerializer.Deserialize<HostReply>(first, HostJson.Options) ?? throw new ProjectHostFailed("the project host said nothing as it started");
-            if (reply.Error is { } error)
-            {
-                throw new ProjectHostFailed(error);
-            }
-            HostReady ready = reply.Result?.Deserialize<HostReady>(HostJson.Options) ?? throw new ProjectHostFailed("the project host did not say which SDK it loaded");
-            ProjectHost host = new(process, ready, folder, globalJson);
-            UnawaitedWork.Observe(Task.Run(host.ReadAsync));
+            ReadOnlyMemory<byte> first = await lines.NextAsync(cancel).AsTask().WaitAsync(TimeSpan.FromMinutes(1), cancel)
+                ?? throw new ProjectHostFailed($"the project host ended as it started ({Ended(process)})");
+            HostReady ready = Ready(first.Span);
+            ProjectHost host = started = new(process, lines, ready, folder, globalJson);
+            // Not held: it reads the host's answers for as long as the host lives.
+            UnawaitedWork.Observe(BackgroundWork.Unheld(host.ReadAsync));
             return host;
         }
         catch (Exception error)
         {
             ChildProcesses.Kill(process);
             process.Dispose();
+            lines.Dispose();
             throw error switch
             {
                 ProjectHostFailed => error,
@@ -133,6 +149,16 @@ public sealed class ProjectHost : IAsyncDisposable
                 _ => error,
             };
         }
+    }
+
+    /// <summary>The SDK the host's first line says it loaded; a <see cref="ProjectHostFailed"/> when it says why it loaded none.</summary>
+    private static HostReady Ready(ReadOnlySpan<byte> first)
+    {
+        Reply reply = Reply.Read(first);
+        return reply.Error is { } error ? throw new ProjectHostFailed(error)
+            : reply.Value.IsEmpty || reply.Partial || JsonSerializer.Deserialize<HostReady>(reply.Value, HostJson.Options) is not { } ready
+                ? throw new ProjectHostFailed("the project host did not say which SDK it loaded")
+            : ready;
     }
 
     private static string Ended(Process process)
@@ -149,37 +175,110 @@ public sealed class ProjectHost : IAsyncDisposable
 
     /// <summary>Evaluates projects, handing each over as it is evaluated (a multi-targeted one twice: its outer evaluation,
     /// then complete), on the reader's thread; done once every one has been.</summary>
-    public async Task<EvaluateDone> EvaluateAsync(IReadOnlyList<string> projects, IReadOnlyDictionary<string, string> properties, Action<EvaluatedProject> evaluated, CancellationToken cancel = default) =>
-        (await AskAsync(HostMethods.Evaluate, new EvaluateParams(projects, properties),
-            partial => evaluated(partial.Deserialize<EvaluatedProject>(HostJson.Options)!), cancel)).Deserialize<EvaluateDone>(HostJson.Options)
+    public async Task<EvaluateDone> EvaluateAsync(IReadOnlyList<string> projects, IReadOnlyDictionary<string, string> properties, Action<EvaluatedProject> evaluated, CancellationToken cancel = default)
+    {
+        await GiveProgramsAsync(projects, cancel).ConfigureAwait(false);
+        return await AskAsync<EvaluateDone>(HostMethods.Evaluate, new EvaluateParams(projects, properties),
+            partial => evaluated(JsonSerializer.Deserialize<EvaluatedProject>(partial, HostJson.Options)!), cancel).ConfigureAwait(false)
             ?? throw new ProjectHostFailed("the project host gave no answer for its evaluation");
+    }
+
+    /// <summary>The heads each program's project was last given to the host from, and the programs it references, by its
+    /// C# file.</summary>
+    private readonly Dictionary<string, (IReadOnlyList<Stamp> Heads, IReadOnlyList<string> Referenced)> programs = new(PathNames.Comparer);
+
+    /// <summary>Gives the host the project the SDK makes of each file-based program among <paramref name="projects"/>
+    /// (<see cref="ProgramProjects"/>), and of each program they reference, before it is asked of them, a few read at once:
+    /// again only once the directives it was made from changed.</summary>
+    private async Task GiveProgramsAsync(IEnumerable<string> projects, CancellationToken cancel)
+    {
+        List<string> next = [.. projects.Where(ProgramFiles.IsProgram).Distinct(PathNames.Comparer)];
+        HashSet<string> seen = new(next, PathNames.Comparer);
+        while (next.Count > 0)
+        {
+            List<string> referenced = [];
+            foreach (string[] few in next.Chunk(4))
+            {
+                foreach (IReadOnlyList<string> named in await Task.WhenAll(few.Select(path => GiveProgramAsync(path, cancel))).ConfigureAwait(false))
+                {
+                    referenced.AddRange(named.Where(seen.Add));
+                }
+            }
+            next = referenced;
+        }
+    }
+
+    /// <summary>One program's project given to the host unless the one given still stands; the programs it references.</summary>
+    private async Task<IReadOnlyList<string>> GiveProgramAsync(string path, CancellationToken cancel)
+    {
+        lock (programs)
+        {
+            if (programs.TryGetValue(path, out (IReadOnlyList<Stamp> Heads, IReadOnlyList<string> Referenced) given) && given.Heads.All(Stamps.Holds))
+            {
+                return given.Referenced;
+            }
+        }
+        (ProgramParams program, IReadOnlyList<Stamp> heads, IReadOnlyList<string> referenced) = await ProgramProjects.ReadAsync(path, cancel).ConfigureAwait(false);
+        await AskAsync<bool?>(HostMethods.Program, program, null, cancel).ConfigureAwait(false);
+        lock (programs)
+        {
+            programs[path] = (heads, referenced);
+        }
+        return referenced;
+    }
 
     /// <summary>Builds projects at design time, handing each over as its builds end, on the reader's thread; done once
     /// every one has been.</summary>
-    public async Task<BuildDone> BuildAsync(IReadOnlyList<string> projects, IReadOnlyDictionary<string, string> properties, Action<BuiltProject> built, CancellationToken cancel = default) =>
-        (await AskAsync(HostMethods.Build, new BuildParams(projects, properties),
-            partial => built(partial.Deserialize<BuiltProject>(HostJson.Options)!), cancel)).Deserialize<BuildDone>(HostJson.Options)
-            ?? throw new ProjectHostFailed("the project host gave no answer for its builds");
+    public async Task<BuildDone> BuildAsync(IReadOnlyList<string> projects, IReadOnlyDictionary<string, string> properties, Action<BuiltProject> built, CancellationToken cancel = default)
+    {
+        Interlocked.Increment(ref building);
+        try
+        {
+            await GiveProgramsAsync(projects, cancel).ConfigureAwait(false);
+            return await AskAsync<BuildDone>(HostMethods.Build, new BuildParams(projects, properties),
+                partial => built(BuiltProject.Read(partial)), cancel).ConfigureAwait(false)
+                ?? throw new ProjectHostFailed("the project host gave no answer for its builds");
+        }
+        finally
+        {
+            Interlocked.Decrement(ref building);
+        }
+    }
+
+    /// <summary>The rounds of design-time builds asked and not yet done: the host builds one round at a time.</summary>
+    public int Building => Volatile.Read(ref building);
 
     /// <summary>Evaluates one project for the code help in its MSBuild files, the open files' unsaved texts read in
     /// place of the disk's.</summary>
     public async Task<ProjectInsight> InspectAsync(string project, IReadOnlyDictionary<string, string> properties, IReadOnlyDictionary<string, string> texts,
         CancellationToken cancel = default) =>
-        (await AskAsync(HostMethods.Inspect, new InspectParams(project, properties, texts), null, cancel)).Deserialize<ProjectInsight>(HostJson.Options)
+        await AskAsync<ProjectInsight>(HostMethods.Inspect, new InspectParams(project, properties, texts), null, cancel).ConfigureAwait(false)
             ?? throw new ProjectHostFailed("the project host gave no answer for the project's evaluation");
 
     /// <summary>Some properties of one project as a build with these global properties sees them (a publish profile's,
     /// imported by PublishProfile), each that has a value; or why the project did not evaluate.</summary>
     public async Task<PropertiesAnswer> PropertiesAsync(string project, IReadOnlyDictionary<string, string> properties, IReadOnlyList<string> names,
-        CancellationToken cancel = default) =>
-        (await AskAsync(HostMethods.Properties, new PropertiesParams(project, properties, names), null, cancel)).Deserialize<PropertiesAnswer>(HostJson.Options)
+        CancellationToken cancel = default)
+    {
+        await GiveProgramsAsync([project], cancel).ConfigureAwait(false);
+        return await AskAsync<PropertiesAnswer>(HostMethods.Properties, new PropertiesParams(project, properties, names), null, cancel).ConfigureAwait(false)
             ?? throw new ProjectHostFailed("the project host gave no answer for the project's properties");
+    }
 
     /// <summary>What a build of one project with these global properties reads and makes, as its evaluations say, or why a
     /// build of it reads more than that.</summary>
     public async Task<BuildInputs> InputsAsync(string project, IReadOnlyDictionary<string, string> properties, CancellationToken cancel = default) =>
-        (await AskAsync(HostMethods.Inputs, new InputsParams(project, properties), null, cancel)).Deserialize<BuildInputs>(HostJson.Options)
-            ?? throw new ProjectHostFailed("the project host gave no answer for what the project's build reads");
+        (await InputsAsync([project], properties, cancel).ConfigureAwait(false))[0];
+
+    /// <summary>What a build of each project with these global properties reads and makes (<see cref="InputsAsync(string,
+    /// IReadOnlyDictionary{string, string}, CancellationToken)"/>), in the order given, each project they reach evaluated once.</summary>
+    public async Task<IReadOnlyList<BuildInputs>> InputsAsync(IReadOnlyList<string> projects, IReadOnlyDictionary<string, string> properties,
+        CancellationToken cancel = default)
+    {
+        await GiveProgramsAsync(projects, cancel).ConfigureAwait(false);
+        return await AskAsync<IReadOnlyList<BuildInputs>>(HostMethods.Inputs, new InputsParams(projects, properties), null, cancel).ConfigureAwait(false) is { } inputs
+            && inputs.Count == projects.Count ? inputs : throw new ProjectHostFailed("the project host gave no answer for what the projects' builds read");
+    }
 
     /// <summary>Holds the host's design-time builds of WPF projects off for a build of the IDE's own: done once none runs,
     /// those still running named to <paramref name="waiting"/> first (on the reader's thread), and none starts again until
@@ -187,9 +286,9 @@ public sealed class ProjectHost : IAsyncDisposable
     public async Task HoldAsync(Action<IReadOnlyList<string>> waiting, CancellationToken release)
     {
         TaskCompletionSource held = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        Task<JsonElement> asked = AskAsync(HostMethods.Hold, new HoldParams(), partial =>
+        Task<bool?> asked = AskAsync<bool?>(HostMethods.Hold, new HoldParams(), partial =>
         {
-            HoldState state = partial.Deserialize<HoldState>(HostJson.Options)!;
+            HoldState state = JsonSerializer.Deserialize<HoldState>(partial, HostJson.Options)!;
             if (state.Held)
             {
                 held.TrySetResult();
@@ -214,9 +313,11 @@ public sealed class ProjectHost : IAsyncDisposable
         await held.Task;
     }
 
-    private async Task<JsonElement> AskAsync(string method, object parameters, Action<JsonElement>? partial, CancellationToken cancel)
+    /// <summary>A request's answer, read in place from its line as it comes: null when it has none. Its partial answers are
+    /// handed to <paramref name="partial"/> as they come, as their bytes, on the reader's thread.</summary>
+    private async Task<T?> AskAsync<T>(string method, object parameters, Action<ReadOnlySpan<byte>>? partial, CancellationToken cancel)
     {
-        (int id, Task<JsonElement> answered) = pending.Add(partial);
+        (int id, Task<object?> answered) = pending.Add(new Asked(partial, static result => result.IsEmpty ? null : JsonSerializer.Deserialize<T>(result, HostJson.Options)));
         lock (spoiling)
         {
             if (spoiling.GetValueOrDefault(method) > 0)
@@ -233,7 +334,70 @@ public sealed class ProjectHost : IAsyncDisposable
             Send(pending.NextId(), HostMethods.Cancel, new CancelParams(id));
         }))
         {
-            return await answered;
+            return (T?)await answered;
+        }
+    }
+
+    /// <summary>A request waiting for its answer: what takes its partial answers, and what reads its result (empty for none)
+    /// while its line is still in the buffer.</summary>
+    private readonly record struct Asked(Action<ReadOnlySpan<byte>>? Partial, Func<ReadOnlySpan<byte>, object?> Result);
+
+    /// <summary>A reply's line read in place (<see cref="HostReply"/>): its request's id, and its value's bytes, partial or
+    /// the result, or its error.</summary>
+    private readonly ref struct Reply(int id, bool partial, ReadOnlySpan<byte> value, string? error)
+    {
+        public int Id { get; } = id;
+
+        public bool Partial { get; } = partial;
+
+        public ReadOnlySpan<byte> Value { get; } = value;
+
+        public string? Error { get; } = error;
+
+        /// <summary>A line's reply; a <see cref="JsonException"/> when it is not one object.</summary>
+        public static Reply Read(ReadOnlySpan<byte> line)
+        {
+            Utf8JsonReader reader = new(line);
+            if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
+            {
+                throw new JsonException("a reply that is not an object");
+            }
+            int id = 0;
+            bool partial = false;
+            ReadOnlySpan<byte> value = default;
+            string? error = null;
+            while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
+            {
+                bool isId = reader.ValueTextEquals(HostReply.Id);
+                bool isPartial = reader.ValueTextEquals(HostReply.Partial);
+                bool isValue = isPartial || reader.ValueTextEquals(HostReply.Result);
+                bool isError = reader.ValueTextEquals(HostReply.Error);
+                reader.Read();
+                if (isId)
+                {
+                    id = reader.GetInt32();
+                }
+                else if (isValue && reader.TokenType != JsonTokenType.Null)
+                {
+                    int start = (int)reader.TokenStartIndex;
+                    reader.Skip();
+                    value = line[start..(int)reader.BytesConsumed];
+                    partial = isPartial;
+                }
+                else if (isError)
+                {
+                    error = reader.GetString();
+                }
+                else
+                {
+                    reader.Skip();
+                }
+            }
+            if (reader.TokenType != JsonTokenType.EndObject || reader.Read())
+            {
+                throw new JsonException("a reply with more than its one object");
+            }
+            return new Reply(id, partial, value, error);
         }
     }
 
@@ -270,34 +434,14 @@ public sealed class ProjectHost : IAsyncDisposable
     /// good: the host is ended, every request fails, and the next is asked of a host started anew.</summary>
     private async Task ReadAsync()
     {
-        string why = "the project host ended";
+        string? why = null;
         try
         {
-            // Taken once: a disposed process gives no reader, where the reader taken says it was closed.
-            StreamReader output = process.StandardOutput;
-            await foreach (HostReply reply in JsonLines.ReadAsync(output, HostJson.Reply, static (_, unread) => throw unread))
+            while (await lines.NextAsync().ConfigureAwait(false) is { } line)
             {
-                lock (spoiling)
+                if (!line.IsEmpty)
                 {
-                    if (spoiled.Contains(reply.Id))
-                    {
-                        throw new JsonException("the line was spoiled, as a test asked");
-                    }
-                }
-                if (reply.Partial is { } partial)
-                {
-                    if (pending.TryGet(reply.Id, out Action<JsonElement>? taken))
-                    {
-                        taken?.Invoke(partial);
-                    }
-                }
-                else if (reply.Error is { } error)
-                {
-                    pending.Fail(reply.Id, _ => new ProjectHostFailed(error));
-                }
-                else
-                {
-                    pending.Answer(reply.Id, reply.Result ?? default);
+                    Receive(line.Span);
                 }
             }
         }
@@ -308,23 +452,107 @@ public sealed class ProjectHost : IAsyncDisposable
         catch (Exception error)
         {
             why = $"the project host's answer could not be read ({error.GetType().Name}: {error.Message})";
-            PassengerLog.Write($"Project host (process {ProcessId}) was ended: {why}");
+            PassengerLog.Write($"Project host (process {ProcessId}) was ended: {why}: {error}");
             ChildProcesses.Kill(process);
         }
-        Fail(why);
+        finally
+        {
+            lines.Dispose();
+        }
+        if (why is not null)
+        {
+            Fail(why, ended: false);
+        }
+        else
+        {
+            Fail(gone ? "the project host has ended" : await EndedAsync().ConfigureAwait(false));
+        }
+    }
+
+    /// <summary>One reply, read in place: a partial answer handed to its request's reader, or its result read into what the
+    /// request waits for, a result that does not read failing that request alone.</summary>
+    private void Receive(ReadOnlySpan<byte> line)
+    {
+        Reply reply = Reply.Read(line);
+        lock (spoiling)
+        {
+            if (spoiled.Contains(reply.Id))
+            {
+                throw new JsonException("the line was spoiled, as a test asked");
+            }
+        }
+        if (reply.Partial)
+        {
+            if (pending.TryGet(reply.Id, out Asked taken))
+            {
+                taken.Partial?.Invoke(reply.Value);
+            }
+        }
+        else if (reply.Error is { } error)
+        {
+            pending.Fail(reply.Id, _ => new ProjectHostFailed(error));
+        }
+        else if (pending.TryGet(reply.Id, out Asked asked))
+        {
+            Exception? unread = null;
+            object? answer = null;
+            try
+            {
+                answer = asked.Result(reply.Value);
+            }
+            catch (Exception failed)
+            {
+                unread = failed;
+            }
+            if (unread is null)
+            {
+                pending.Answer(reply.Id, answer);
+            }
+            else
+            {
+                pending.Fail(reply.Id, _ => unread);
+            }
+        }
+    }
+
+    /// <summary>How the host's process ended by itself: its exit code, and the first line of what it wrote as it crashed.</summary>
+    private async Task<string> EndedAsync()
+    {
+        string how;
+        try
+        {
+            // Its error stream read to its end too, which holds what it wrote as it crashed.
+            using CancellationTokenSource limit = new(TimeSpan.FromSeconds(2));
+            await process.WaitForExitAsync(limit.Token).ConfigureAwait(false);
+            how = $"exit code {process.ExitCode}";
+        }
+        catch (Exception error) when (error is OperationCanceledException or InvalidOperationException)
+        {
+            how = "its output closed while it ran";
+        }
+        return crashed is { } said ? $"the project host ended ({how}): {said}" : $"the project host ended ({how})";
+    }
+
+    /// <summary>Ends the host now, for a build in it that can never end: every request waiting fails as at the host's own
+    /// end (<see cref="ProjectHostFailed.HostEnded"/>), so a host started anew may answer it.</summary>
+    public void End(string why)
+    {
+        PassengerLog.Write($"Project host (process {ProcessId}) was ended: {why}");
+        Fail($"the project host was ended: {why}");
+        ChildProcesses.Kill(process);
     }
 
     /// <summary>Fails every request waiting, and each asked from now on.</summary>
-    private void Fail(string why)
+    private void Fail(string why, bool ended = true)
     {
         gone = true;
-        pending.End(_ => new ProjectHostFailed(why));
+        pending.End(_ => new ProjectHostFailed(why, hostEnded: ended));
     }
 
     /// <summary>Closes the host's input, which ends it, and ends it outright if it has not gone a moment later.</summary>
     public async ValueTask DisposeAsync()
     {
-        Fail("the project host has ended");
+        Fail("the project host has ended", ended: false);
         ChildProcesses.Ending(process);
         try
         {
@@ -348,8 +576,14 @@ public static class ProjectHosts
     private static readonly SemaphoreSlim Gate = new(1, 1);
     private static readonly List<ProjectHost> Running = [];
 
-    /// <summary>The host for a folder's SDK: one running already, else one started for it.</summary>
-    public static async Task<ProjectHost> ForAsync(string folder, CancellationToken cancel = default)
+    /// <summary>The host for a folder's SDK: one running already, else one started for it, which a folder deleted since
+    /// is refused (<see cref="ProjectHostFailed"/>). Found on the thread pool, whoever asks: what the gate is held over
+    /// (the SDK asked, a host started) is every window's.</summary>
+    public static Task<ProjectHost> ForAsync(string folder, CancellationToken cancel = default) =>
+        // Not held, each caller holding its own wait: on a caller's thread, one busy or never running again would keep the gate.
+        BackgroundWork.Unheld(() => FindAsync(folder, cancel), cancel);
+
+    private static async Task<ProjectHost> FindAsync(string folder, CancellationToken cancel)
     {
         await Gate.WaitAsync(cancel).ConfigureAwait(false);
         try
@@ -358,6 +592,10 @@ public static class ProjectHosts
             if (Running.FirstOrDefault(h => h.StartedFor(folder)) is { } own)
             {
                 return own;
+            }
+            if (!Directory.Exists(folder))
+            {
+                throw new ProjectHostFailed($"{folder} has been deleted");
             }
             if (Running.Count > 0)
             {

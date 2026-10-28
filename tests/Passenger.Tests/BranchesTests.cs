@@ -44,6 +44,7 @@ public sealed class BranchesTests : IDisposable
         TestFolders.Delete(origin);
     }
 
+    [Gate]
     [AvaloniaFact]
     public void The_panel_lists_head_local_branches_by_directory_the_remotes_branches_and_the_tags_in_riders_order()
     {
@@ -80,6 +81,7 @@ public sealed class BranchesTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Enter_on_a_branch_filters_the_log_to_its_commits_and_the_filters_x_shows_every_branch_again()
     {
@@ -108,6 +110,7 @@ public sealed class BranchesTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Riders_keys_rename_make_a_branch_from_and_delete_the_chosen_branch()
     {
@@ -150,6 +153,7 @@ public sealed class BranchesTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Checkout_new_branch_from_rename_delete_update_and_push_do_what_they_say()
     {
@@ -216,6 +220,7 @@ public sealed class BranchesTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Merge_into_rebase_onto_and_checkout_and_rebase_onto_current_move_the_branches_as_git_would()
     {
@@ -246,6 +251,7 @@ public sealed class BranchesTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Compare_with_current_lists_each_branchs_commits_the_other_lacks_and_show_diff_with_working_tree_its_files()
     {
@@ -281,6 +287,7 @@ public sealed class BranchesTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_merge_from_the_panel_that_conflicts_opens_the_conflicts_dialog()
     {
@@ -307,6 +314,7 @@ public sealed class BranchesTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_branch_in_the_toolbars_branch_menu_opens_its_own_menu_and_is_checked_out_only_by_its_checkout()
     {
@@ -395,8 +403,8 @@ public sealed class BranchesTests : IDisposable
 
     private bool Ancestor(string ancestor, string of)
     {
-        Passenger.Core.ChildResult result = Task.Run(() => Passenger.Core.ChildProcesses.RunAsync(
-            Passenger.Core.ChildProcesses.Command("git", ["merge-base", "--is-ancestor", ancestor, of], folder), limit: TimeSpan.FromMinutes(1))).GetAwaiter().GetResult();
+        Passenger.Core.ChildResult result = Ui.Await(Waiting.Apart(() => Passenger.Core.ChildProcesses.RunAsync(
+            Passenger.Core.ChildProcesses.Command("git", ["merge-base", "--is-ancestor", ancestor, of], folder), limit: TimeSpan.FromMinutes(1))), $"git merge-base {ancestor} {of}");
         return result.Succeeded;
     }
 

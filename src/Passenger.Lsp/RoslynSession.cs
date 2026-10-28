@@ -21,20 +21,34 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
         Projects = solution is null ? projects : [];
         server.ProjectsLoaded += (_, _) =>
         {
-            // The server says so after each open it was sent: the projects opened first, then the rest.
-            if (Interlocked.Increment(ref completed) < opens)
+            // The server says so after each open it was sent: the projects opened first, the rest, and each reload meanwhile.
+            lock (counting)
             {
-                firstLoaded.TrySetResult();
-                return;
+                if (++completed < opens)
+                {
+                    firstLoaded.TrySetResult();
+                    return;
+                }
+                IsLoaded = true;
             }
-            IsLoaded = true;
             Loaded?.Invoke(this, EventArgs.Empty);
         };
     }
 
-    /// <summary>How many opens the server was sent, and how many it has said it finished.</summary>
+    /// <summary>How many opens the server was sent that its load waits for (a reload sent while it loads among them, as the
+    /// server's word that one ended names none), and how many it has said it finished.</summary>
     private int opens = 1;
     private int completed;
+    private readonly Lock counting = new();
+
+    /// <summary>The start's opens: the projects opened first and the rest.</summary>
+    private void Expect(int starting)
+    {
+        lock (counting)
+        {
+            opens = starting;
+        }
+    }
 
     /// <summary>Done once the projects opened first have loaded, after which the rest are opened.</summary>
     private readonly TaskCompletionSource firstLoaded = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -67,61 +81,100 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
     PushPace IDocumentHost.Pushes => PushPace.Latest;
 
     /// <summary>Starts a server on a folder and has it open the solution, else the projects, those <paramref name="first"/>
-    /// names loaded alone before the rest. <paramref name="started"/> is given the server before it opens anything, so
-    /// what it says of the load is heard from the start; with <paramref name="feed"/>, a server that has Passenger's
-    /// project loader loads the projects from its design-time builds. Cancelled or failed, it ends the server it started,
-    /// so one given up (another folder opened) never goes on loading this folder unseen.</summary>
+    /// names loaded alone before the rest. <paramref name="started"/> is given the server before it opens anything; with
+    /// <paramref name="feed"/>, a server that has Passenger's project loader loads the projects from their design-time
+    /// builds, asked for as it starts so they are built meanwhile. Cancelled or failed, it ends the server it started, so
+    /// one given up (another folder opened) never goes on loading this folder unseen.</summary>
     public static async Task<RoslynSession> StartAsync(string folder, string? solution, IReadOnlyList<string> projects, string logFolder,
         CancellationToken cancel = default, IReadOnlyDictionary<string, object?>? options = null, Action<LanguageServer>? started = null,
         Func<Task<IReadOnlyList<string>>>? first = null, IProjectFeed? feed = null, string? stateCache = null)
     {
-        LanguageServer server = await LanguageServer.StartRoslynAsync(folder, logFolder, cancel, options, stateCache).ConfigureAwait(false);
+        Task<FedProjects?>? feeding = feed?.ProjectsAsync(cancel);
+        LanguageServer server;
+        try
+        {
+            server = await LanguageServer.StartRoslynAsync(folder, logFolder, cancel, options, stateCache).ConfigureAwait(false);
+        }
+        catch
+        {
+            Observe(feeding);
+            throw;
+        }
         RoslynSession session = new(server, folder, solution, projects);
         try
         {
             cancel.ThrowIfCancellationRequested();
             started?.Invoke(server);
-            if (feed is not null && await HasLoaderAsync(server, cancel).ConfigureAwait(false) && await feed.ProjectsAsync(cancel).ConfigureAwait(false) is { } fed)
+            if (feeding is not null && !await HasLoaderAsync(server, cancel).ConfigureAwait(false))
+            {
+                // The server builds its projects itself; the builds asked for are kept for the folder's next opening.
+                Observe(feeding);
+                feeding = null;
+            }
+            // Awaited from here, its fault the start's own.
+            Task<FedProjects?>? asked = feeding;
+            feeding = null;
+            if (asked is not null && await asked.ConfigureAwait(false) is { } fed)
             {
                 server.Feed = feed;
                 session.Fed = true;
-                (IReadOnlyList<ProjectToOpen> before, IReadOnlyList<ProjectToOpen> rest) = fed;
+                server.WatchedFiles.HasLoader = true;
+                server.WatchedFiles.ReadFrom(fed.Read);
+                (IReadOnlyList<ProjectToOpen> before, IReadOnlyList<ProjectToOpen> rest) = (fed.First, fed.Later);
                 if (before.Count > 0)
                 {
-                    session.opens = 2;
-                    await server.NotifyAsync(ProjectMethods.Load, new LoadProjectsParams(before, solution)).ConfigureAwait(false);
-                    Core.UnawaitedWork.Observe(session.OpenRestAsync(() => server.NotifyAsync(ProjectMethods.Load, new LoadProjectsParams(rest, solution))));
+                    session.Expect(2);
+                    await LoadAsync(server, ProjectMethods.Load, new LoadProjectsParams(before, solution)).ConfigureAwait(false);
+                    Core.UnawaitedWork.Observe(session.OpenRestAsync(() => LoadAsync(server, ProjectMethods.Load, new LoadProjectsParams(rest, solution))));
                     return session;
                 }
-                await server.NotifyAsync(ProjectMethods.Load, new LoadProjectsParams(rest, solution)).ConfigureAwait(false);
+                await LoadAsync(server, ProjectMethods.Load, new LoadProjectsParams(rest, solution)).ConfigureAwait(false);
                 return session;
             }
             IReadOnlyList<string> ahead = first is null ? [] : await first().ConfigureAwait(false);
             if (ahead.Count > 0)
             {
-                session.opens = 2;
-                await server.NotifyAsync(LspMethods.ProjectOpen, new OpenProjectParams([.. ahead.Select(DocumentUris.FromPath)])).ConfigureAwait(false);
+                session.Expect(2);
+                await LoadAsync(server, LspMethods.ProjectOpen, new OpenProjectParams([.. ahead.Select(DocumentUris.FromPath)])).ConfigureAwait(false);
                 // The rest once those have loaded: opened at once, the server would take them all in one batch.
                 Core.UnawaitedWork.Observe(session.OpenRestAsync(() => solution is not null
-                    ? server.NotifyAsync(LspMethods.SolutionOpen, new OpenSolutionParams(DocumentUris.FromPath(solution)))
-                    : server.NotifyAsync(LspMethods.ProjectOpen, new OpenProjectParams([.. projects.Select(DocumentUris.FromPath)]))));
+                    ? LoadAsync(server, LspMethods.SolutionOpen, new OpenSolutionParams(DocumentUris.FromPath(solution)))
+                    : LoadAsync(server, LspMethods.ProjectOpen, new OpenProjectParams([.. projects.Select(DocumentUris.FromPath)]))));
                 return session;
             }
             if (solution is not null)
             {
-                await server.NotifyAsync(LspMethods.SolutionOpen, new OpenSolutionParams(DocumentUris.FromPath(solution))).ConfigureAwait(false);
+                await LoadAsync(server, LspMethods.SolutionOpen, new OpenSolutionParams(DocumentUris.FromPath(solution))).ConfigureAwait(false);
             }
             else
             {
-                await server.NotifyAsync(LspMethods.ProjectOpen, new OpenProjectParams([.. projects.Select(DocumentUris.FromPath)])).ConfigureAwait(false);
+                await LoadAsync(server, LspMethods.ProjectOpen, new OpenProjectParams([.. projects.Select(DocumentUris.FromPath)])).ConfigureAwait(false);
             }
         }
         catch
         {
+            Observe(feeding);
             await session.DisposeAsync().ConfigureAwait(false);
             throw;
         }
         return session;
+    }
+
+    /// <summary>Asks the server to load or open projects, its file watches counting the load as under way until it ends.</summary>
+    private static Task LoadAsync(LanguageServer server, string method, object parameters)
+    {
+        server.WatchedFiles.Loading();
+        return server.NotifyAsync(method, parameters);
+    }
+
+    /// <summary>The design-time builds asked for as a server started that will not load them: a fault in the asking is
+    /// said as it faults.</summary>
+    private static void Observe(Task? feeding)
+    {
+        if (feeding is not null)
+        {
+            Core.UnawaitedWork.Observe(feeding);
+        }
     }
 
     /// <summary>Opens the rest of the solution once the projects opened first have loaded; a server gone meanwhile opens
@@ -164,13 +217,40 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
     public bool Fed { get; private set; }
 
     /// <summary>Has a server fed by the client load projects again, from the design-time builds it asks for: their files
-    /// or what they import changed, which the server watches only in part.</summary>
+    /// or what they import changed, which the server watches only in part. One sent while the server loads is waited for
+    /// too, before <see cref="IsLoaded"/>.</summary>
     public void Reload(IReadOnlyList<string> projects)
     {
         if (Fed && projects.Count > 0)
         {
+            lock (counting)
+            {
+                if (!IsLoaded)
+                {
+                    opens++;
+                }
+            }
+            Server.WatchedFiles.Loading();
             Server.Notify(ProjectMethods.Load, new LoadProjectsParams([.. projects.Select(p => new ProjectToOpen(p, null))], Solution));
         }
+    }
+
+    /// <summary>Has a server fed by the client that has loaded its projects load them again, from the design-time builds
+    /// it asks for, and waits for that load as for its first: <see cref="IsLoaded"/> until it says it has. For a server
+    /// taken up after files came.</summary>
+    public void LoadAgain(IReadOnlyList<string> projects)
+    {
+        if (!Fed || projects.Count == 0)
+        {
+            return;
+        }
+        lock (counting)
+        {
+            IsLoaded = false;
+            opens = completed + 1;
+        }
+        Server.WatchedFiles.Loading();
+        Server.Notify(ProjectMethods.Load, new LoadProjectsParams([.. projects.Select(p => new ProjectToOpen(p, null))], Solution));
     }
 
     /// <summary>Starts following a document open in an editor: the server is sent its text, then every
@@ -647,29 +727,63 @@ public sealed class LspDocument : IDisposable
     }
 
     /// <summary>What the server says of a hint it gave (a type's description, a parameter's), as markdown; empty when it
-    /// says nothing.</summary>
+    /// says nothing. A hint given before the server read the document again (an .editorconfig, or what a build writes,
+    /// changed its options) it refuses, so the hint it gives now at that place with those words is asked instead.</summary>
     public async Task<string> InlayHintTooltipAsync(LspInlayHint hint, CancellationToken cancel = default)
+    {
+        try
+        {
+            return await TooltipAsync(hint, cancel);
+        }
+        catch (LanguageServerFailed failed) when (failed.Outdated)
+        {
+            IReadOnlyList<LspInlayHint> now = (await InlayHintsAsync(cancel)).Hints;
+            if (now.FirstOrDefault(h => h.Position == hint.Position && h.Label == hint.Label && h.Kind == hint.Kind) is not { } same)
+            {
+                throw;
+            }
+            return await TooltipAsync(same, cancel);
+        }
+    }
+
+    private async Task<string> TooltipAsync(LspInlayHint hint, CancellationToken cancel)
     {
         JsonElement result = await Read(Server.RequestAsync<JsonElement>(LspMethods.InlayHintResolve,
             new { position = hint.Position, label = hint.Label, kind = hint.Kind, data = hint.Data }, cancel));
         return result.ValueKind == JsonValueKind.Object && result.TryGetProperty("tooltip", out JsonElement tooltip) ? Shapes.Text(tooltip) : string.Empty;
     }
 
+    /// <summary>Roslyn's source of what analyzers report in a document from analysing its whole project, which it has with
+    /// solution-wide analysis on: in a large project it answers a change long after the document's own sources.</summary>
+    [IdentifierHome]
+    public const string ProjectWideSource = "NonLocal";
+
+    /// <summary>Whether the server has a source of the document's diagnostics that answers from its whole project's
+    /// analysis (<see cref="DiagnosticPull.ProjectWide"/>).</summary>
+    public bool PullsProjectWide => !IsRazor && session is RoslynSession && Server.DiagnosticSources.Contains(ProjectWideSource);
+
     /// <summary>Every diagnostic the server has for the document, pulled from each source it
     /// registered (a Razor file's from Razor's one, with its HTML's from the HTML server), and the version they are for;
     /// those it last pushed, from a server that pushes them.</summary>
-    public async Task<(IReadOnlyList<Diagnostic> Diagnostics, int Version)> DiagnosticsAsync(CancellationToken cancel = default)
+    public Task<(IReadOnlyList<Diagnostic> Diagnostics, int Version)> DiagnosticsAsync(CancellationToken cancel = default) =>
+        DiagnosticsAsync(DiagnosticPull.All, cancel);
+
+    /// <summary>The document's diagnostics from the sources <paramref name="part"/> names, as
+    /// <see cref="DiagnosticsAsync(CancellationToken)"/> pulls every one; the project-wide part of a server that pushes them,
+    /// or has no such source, is empty.</summary>
+    public async Task<(IReadOnlyList<Diagnostic> Diagnostics, int Version)> DiagnosticsAsync(DiagnosticPull part, CancellationToken cancel = default)
     {
+        int version = Text.Version;
         if (!session.PullsDiagnostics)
         {
-            return Pushed;
+            return part == DiagnosticPull.ProjectWide ? ([], version) : Pushed;
         }
-        int version = Text.Version;
         TextSnapshot text = Text.Snapshot;
         TextDocumentIdentifier identifier = Identifier;
         long asked = System.Diagnostics.Stopwatch.GetTimestamp();
         List<Diagnostic> all = [];
-        IReadOnlyList<string?> sources = IsRazor || session is not RoslynSession ? [null] : Server.DiagnosticSources;
+        IReadOnlyList<string?> sources = IsRazor || session is not RoslynSession ? (part == DiagnosticPull.ProjectWide ? [] : [null])
+            : [.. Server.DiagnosticSources.Where(s => part == DiagnosticPull.All || (s == ProjectWideSource) == (part == DiagnosticPull.ProjectWide))];
         // Gathered on the thread pool, so a file's thousands of warnings reach the caller as one list.
         foreach (string? source in sources)
         {
@@ -677,14 +791,14 @@ public sealed class LspDocument : IDisposable
                 new DocumentDiagnosticParams(identifier, source), cancel));
             all.AddRange(report?.Items ?? []);
         }
-        if (IsRazor && Server.HtmlServer is not null)
+        if (IsRazor && Server.HtmlServer is not null && part != DiagnosticPull.ProjectWide)
         {
             // Razor makes the file's HTML as a question needs it: a fold's, the cheapest, has the HTML server's copy current.
             await Read(Server.RequestAsync<JsonElement>(LspMethods.FoldingRange, new FoldingRangeParams(new TextDocumentIdentifier(Uri)), cancel));
             all.AddRange(await Server.RazorHtmlDiagnosticsAsync(DocumentUris.ToPath(Uri), text.ToString(), cancel).ConfigureAwait(false));
         }
         List<Diagnostic> distinct = all
-            .DistinctBy(d => (d.Range, d.Message, d.Code?.ToString()))
+            .DistinctBy(d => (d.Range, d.Message, d.Code))
             .ToList();
         Came(ref diagnosed, asked);
         return (distinct, version);

@@ -317,12 +317,11 @@ public sealed class AssetPreviewTests : IDisposable
         }
         // A pattern that matches an empty line finds the text file's lines, never the image's empty stand-in.
         Task<Passenger.App.Mcp.FindInFilesResult> finding = agent.FindInFiles("^", regex: true);
-        Ui.WaitFor(() => finding.IsCompleted, "find_in_files' answer");
-        Assert.DoesNotContain(finding.Result.Matches, m => m.Path == "picture.png");
-        Assert.Contains(finding.Result.Matches, m => m.Path == "notes.txt");
+        Passenger.App.Mcp.FindInFilesResult found = Ui.Await(finding, "find_in_files' answer");
+        Assert.DoesNotContain(found.Matches, m => m.Path == "picture.png");
+        Assert.Contains(found.Matches, m => m.Path == "notes.txt");
         Task<string> replacing = agent.ReplaceInFiles("^", "// ", regex: true);
-        Ui.WaitFor(() => replacing.IsCompleted, "replace_in_files' answer");
-        Assert.DoesNotContain("picture.png", replacing.Result, StringComparison.Ordinal);
+        Assert.DoesNotContain("picture.png", Ui.Await(replacing, "replace_in_files' answer"), StringComparison.Ordinal);
         Assert.Equal(original, File.ReadAllBytes(picture));
         Assert.Empty(window.EditorArea.Active!.Text.Snapshot.ToString());
         window.Close();

@@ -84,6 +84,108 @@ public static partial class DotnetProcesses
     /// null when it has gone or cannot be read.</summary>
     public static DotnetProcess? Describe(int id) => Read(id, null);
 
+    /// <summary>The folder of the CoreCLR a process runs on (its libcoreclr or coreclr.dll, where the runtime's own tools lie
+    /// beside it), read from the modules it has mapped; null when it has gone, is not readable, or maps none (a single-file
+    /// app's runtime is inside its executable).</summary>
+    public static string? RuntimeFolder(int id)
+    {
+        try
+        {
+            string? runtime = OperatingSystem.IsWindows() ? RuntimeWindows(id)
+                : OperatingSystem.IsMacOS() ? RuntimeMac(id)
+                : RuntimeLinux(id);
+            return Path.GetDirectoryName(runtime);
+        }
+        catch (Exception gone) when (gone is IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException
+            or System.ComponentModel.Win32Exception or NotSupportedException)
+        {
+            return null;
+        }
+    }
+
+    private static string? RuntimeLinux(int id)
+    {
+        foreach (string line in File.ReadLines($"/proc/{id}/maps"))
+        {
+            // A mapped file's path is the line's last field and its only slashes.
+            if (line.EndsWith("/libcoreclr.so", StringComparison.Ordinal))
+            {
+                return line[line.IndexOf('/', StringComparison.Ordinal)..];
+            }
+        }
+        return null;
+    }
+
+    private static string? RuntimeWindows(int id)
+    {
+        using System.Diagnostics.Process process = System.Diagnostics.Process.GetProcessById(id);
+        foreach (System.Diagnostics.ProcessModule module in process.Modules)
+        {
+            if (module.FileName.EndsWith(@"\coreclr.dll", StringComparison.OrdinalIgnoreCase))
+            {
+                return module.FileName;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>Writes a minidump of a Windows process's heap to <paramref name="path"/> as the runtime's createdump.exe
+    /// writes one (with its private memory, where the GC heap is), through the system's dbghelp, which holds the
+    /// process's threads while it writes: createdump.exe dumps only the process that started it. Throws a
+    /// <see cref="System.ComponentModel.Win32Exception"/> saying why when it cannot.</summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    public static void WriteHeapDump(int id, string path)
+    {
+        const uint ProcessQueryInformation = 0x0400;
+        const uint ProcessVmRead = 0x0010;
+        // MiniDumpWithPrivateReadWriteMemory, DataSegs, HandleData, UnloadedModules, FullMemoryInfo, ThreadInfo, TokenInformation.
+        const uint WithHeap = 0x200 | 0x1 | 0x4 | 0x20 | 0x800 | 0x1000 | 0x40000;
+        using SafeProcessHandle process = OpenProcess(ProcessQueryInformation | ProcessVmRead, false, (uint)id);
+        if (process.IsInvalid)
+        {
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastPInvokeError());
+        }
+        using SafeFileHandle file = File.OpenHandle(path, FileMode.Create, FileAccess.ReadWrite);
+        if (!MiniDumpWriteDump(process, (uint)id, file, WithHeap, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero))
+        {
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastPInvokeError());
+        }
+    }
+
+    // macOS: proc_pidinfo's regions with their files (struct proc_regionwithpathinfo), each given for a process of the
+    // same user: the region at or after an address, its start and size, then the file's vnode and path.
+    private const int ProcPidRegionPathInfo = 8;
+    private const int RegionPathInfoSize = 1272;
+    private const int RegionAddressOffset = 80;
+    private const int RegionSizeOffset = 88;
+    private const int RegionPathOffset = 248;
+
+    private static unsafe string? RuntimeMac(int id)
+    {
+        byte* info = stackalloc byte[RegionPathInfoSize];
+        ulong at = 0;
+        // Bounded by the regions a process can have, should a region ever be given back for an address past its end.
+        for (int regions = 0; regions < 1_000_000; regions++)
+        {
+            if (ProcPidInfo(id, ProcPidRegionPathInfo, at, info, RegionPathInfoSize) < RegionPathInfoSize)
+            {
+                return null;
+            }
+            ReadOnlySpan<byte> path = MemoryMarshal.CreateReadOnlySpanFromNullTerminated(info + RegionPathOffset);
+            if (path.EndsWith("/libcoreclr.dylib"u8))
+            {
+                return Encoding.UTF8.GetString(path);
+            }
+            ulong next = *(ulong*)(info + RegionAddressOffset) + *(ulong*)(info + RegionSizeOffset);
+            if (next <= at)
+            {
+                return null;
+            }
+            at = next;
+        }
+        return null;
+    }
+
     /// <summary>The .NET programs a debugger can attach to that a process started, or that those started in turn (the app
     /// dotnet watch runs, under the CLI's own processes), the nearest first. Read off the UI thread, as the list is.</summary>
     public static IReadOnlyList<DotnetProcess> Under(int ancestor)
@@ -444,8 +546,12 @@ public static partial class DotnetProcesses
     /// user's files allow); null on Windows.</summary>
     public static string? UserAndGroup => OperatingSystem.IsWindows() ? null : $"{GetEffectiveUserId()}:{GetEffectiveGroupId()}";
 
-    [LibraryImport("kernel32.dll", EntryPoint = "OpenProcess")]
+    [LibraryImport("kernel32.dll", EntryPoint = "OpenProcess", SetLastError = true)]
     private static partial SafeProcessHandle OpenProcess(uint access, [MarshalAs(UnmanagedType.Bool)] bool inherit, uint id);
+
+    [LibraryImport("dbghelp.dll", EntryPoint = "MiniDumpWriteDump", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool MiniDumpWriteDump(SafeProcessHandle process, uint id, SafeFileHandle file, uint type, IntPtr exception, IntPtr stream, IntPtr callback);
 
     [LibraryImport("kernel32.dll", EntryPoint = "QueryFullProcessImageNameW")]
     [return: MarshalAs(UnmanagedType.Bool)]

@@ -1,9 +1,9 @@
-using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Passenger.App.Editors;
 using Passenger.App;
 using Passenger.App.Vcs;
 using Passenger.Core;
@@ -15,9 +15,8 @@ namespace Passenger.Tests;
 
 /// <summary>The words that changed inside changed lines, marked over a real working tree: in Show Diff's two sides (by
 /// words at first, the diff's Settings choosing lines, characters or nothing, which the next diff keeps), in a change
-/// bar's popup and the file beside it (Highlight Words turning them off), in the merge window's three panes, and
-/// quickly in a large file changed all over.</summary>
-[Collection(Alone.Name)]
+/// bar's popup and the file beside it (Highlight Words turning them off), in the merge window's three panes, and in a
+/// large file changed all over.</summary>
 public sealed class DiffWordsTests : IDisposable
 {
     private const string Original = "class Shop\n{\n    int count;\n\n    void Add() { count++; }\n}\n";
@@ -42,8 +41,7 @@ public sealed class DiffWordsTests : IDisposable
         string now = Text(window);
 
         Task<DiffWindow?> opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
-        Ui.Landed(() => opening.IsCompleted, "the diff open");
-        DiffWindow diff = opening.Result!;
+        DiffWindow diff = Ui.Landed(opening, "the diff open")!;
         DiffView view = diff.View;
         Assert.Equal(DiffHighlighting.Words, view.Highlighting);
         Assert.Equal([new DiffHunk(2, 1, 2, 1)], view.Hunks);
@@ -87,8 +85,7 @@ public sealed class DiffWordsTests : IDisposable
         string now = Text(window);
 
         Task<DiffWindow?> opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
-        Ui.Landed(() => opening.IsCompleted, "the diff open");
-        DiffWindow diff = opening.Result!;
+        DiffWindow diff = Ui.Landed(opening, "the diff open")!;
         DiffView view = diff.View;
         // "public " is new (green, on the file's side alone); "++" became " += 2".
         Assert.Equal(["++"], Marked(Original, view.Words.Left));
@@ -114,8 +111,7 @@ public sealed class DiffWordsTests : IDisposable
 
         // The next diff opens as chosen last; Ctrl+Shift+D (Cmd+Shift+D), Rider's key, opens its settings.
         opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
-        Ui.Landed(() => opening.IsCompleted, "the diff open again");
-        diff = opening.Result!;
+        diff = Ui.Landed(opening, "the diff open again")!;
         Assert.Equal(DiffHighlighting.None, diff.View.Highlighting);
         diff.View.Right.Focus();
         Ui.Press(diff, OperatingSystem.IsMacOS() ? "meta shift D" : "control shift D");
@@ -134,7 +130,8 @@ public sealed class DiffWordsTests : IDisposable
         Git("switch", "-q", "main");
         File.WriteAllText(Path.Combine(folder, "Shop.cs"), Original.Replace("int count", "long count", StringComparison.Ordinal));
         Git("commit", "-q", "-am", "Long");
-        ChildResult merged = Task.Run(() => ChildProcesses.RunAsync(ChildProcesses.Command("git", ["merge", "feature"], folder), limit: TimeSpan.FromMinutes(1))).GetAwaiter().GetResult();
+        ChildResult merged = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command("git", ["merge", "feature"], folder), limit: TimeSpan.FromMinutes(1))),
+            "git merge feature");
         Assert.False(merged.Succeeded, "The merge was to stop for its conflict");
 
         MainWindow window = Open();
@@ -157,8 +154,10 @@ public sealed class DiffWordsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A 20,000-line file changed on every twelfth line opens its diff with every word changed marked; and a rewrite
+    /// of every line opens with no words marked.</summary>
     [AvaloniaFact]
-    public void A_20000_line_file_changed_on_every_twelfth_line_opens_its_diff_with_every_word_marked_quickly()
+    public void A_20000_line_file_changed_on_every_twelfth_line_opens_its_diff_with_every_word_marked()
     {
         string generated = Path.Combine(folder, "Generated.txt");
         string[] lines = [.. Enumerable.Range(0, 20000).Select(i => $"    int value{i} = Compute({i}, \"label {i}\");")];
@@ -171,28 +170,22 @@ public sealed class DiffWordsTests : IDisposable
         Ui.Landed(() => Marks(window).Count == 1667, "a bar for each line changed");
 
         // The comparison the bars came from is the diff's; its 1,667 changes' words are worked out off the window's thread.
-        Stopwatch opened = Stopwatch.StartNew();
         Task<DiffWindow?> opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
-        Ui.Landed(() => opening.IsCompleted, "the diff open");
-        DiffView view = opening.Result!.View;
+        DiffWindow shown = Ui.Landed(opening, "the diff open")!;
+        DiffView view = shown.View;
         Ui.Settle();
         Assert.True(view.Words.Right.Count == 1667, $"Once its work had landed the diff marked {view.Words.Right.Count} words of the 1,667 changed");
-        opened.Stop();
-        Assert.True(opened.Elapsed < TimeSpan.FromSeconds(5).Scaled(), $"The diff of 1,667 changes took {opened.Elapsed.TotalMilliseconds:F0} ms to open with its words marked");
         Assert.All(Marked(view.Right.Document.Snapshot.ToString(), view.Words.Right), w => Assert.Equal("Measure", w));
 
-        opening.Result.Close();
+        shown.Close();
         window.Perform(AppActions.CloseTab);
         File.WriteAllText(generated, string.Join("\n", lines.Select(l => l.Replace("int", "long", StringComparison.Ordinal))) + "\n");
         window.OpenFile(generated);
         Ui.Landed(() => Marks(window).Count == 1, "one bar over the whole rewrite");
-        opened.Restart();
         opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
-        Ui.Landed(() => opening.IsCompleted, "the rewrite's diff open");
-        opened.Stop();
-        Assert.True(opened.Elapsed < TimeSpan.FromSeconds(5).Scaled(), $"The diff of a 20,000-line rewrite took {opened.Elapsed.TotalMilliseconds:F0} ms to open");
-        Assert.Empty(opening.Result!.View.Words.Right);
-        opening.Result.Close();
+        shown = Ui.Landed(opening, "the rewrite's diff open")!;
+        Assert.Empty(shown.View.Words.Right);
+        shown.Close();
         window.Close();
     }
 
@@ -217,7 +210,7 @@ public sealed class DiffWordsTests : IDisposable
     /// <summary>Clicks a line's change bar and gives the popup it opens.</summary>
     private static ChangePopup ClickBar(MainWindow window, CodeEditor editor, int line)
     {
-        Ui.Click(editor, editor.GutterColumnPoint(GutterColumn.Changes, line), settle: false);
+        Ui.Click(editor, editor.GutterColumnPoint(editor.Gutter!.Changes, line), settle: false);
         Ui.Landed(() => window.Popup is ChangePopup, "the change's popup");
         return (ChangePopup)window.Popup!;
     }

@@ -12,10 +12,14 @@ using Passenger.App.ToolWindows;
 namespace Passenger.Tests;
 
 /// <summary>An error inside the IDE is caught, written to the log and shown, never the end of it; a language server
-/// that ends on its own, or stops answering, is started again with the open files, and one still starting when its
-/// folder closes is ended, as is one a window test that failed left loading.</summary>
+/// that ends on its own (as it starts too), or stops answering, is started again with the open files, one that keeps
+/// ending is left stopped until a person starts it again, and one still starting when its folder closes is ended, as is
+/// one a window test that failed left loading.</summary>
 public sealed class IdeErrorsTests : IDisposable
 {
+    /// <summary>What the C# language server's command line names it by.</summary>
+    private const string RoslynServer = "Microsoft.CodeAnalysis.LanguageServer";
+
     private readonly string folder = TestFolders.Create("errors-");
 
     /// <summary>The language servers' logs from before the test, in the log folder the whole run shares.</summary>
@@ -27,6 +31,7 @@ public sealed class IdeErrorsTests : IDisposable
         TestFolders.Delete(folder);
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_command_that_throws_leaves_the_window_up_with_the_error_in_the_log_and_the_status_bar()
     {
@@ -78,6 +83,7 @@ public sealed class IdeErrorsTests : IDisposable
 
     /// <summary>A handler of a file's changes that throws is an error the IDE shows, and every handler after it still hears
     /// of the change: the file's parse keeps up with the keys, the first of which the handler threw on.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_handler_of_a_files_changes_that_throws_leaves_those_after_it_in_step_with_the_text()
     {
@@ -156,8 +162,8 @@ public sealed class IdeErrorsTests : IDisposable
         TestGit.Run(folder, "switch", "-q", "main");
         File.WriteAllText(shop, "class Shop { long count; }\n");
         TestGit.Run(folder, "commit", "-q", "-am", "Long");
-        Passenger.Core.ChildResult merging = Task.Run(() => Passenger.Core.ChildProcesses.RunAsync(
-            Passenger.Core.ChildProcesses.Command("git", ["merge", "feature"], folder), limit: TimeSpan.FromMinutes(1).Scaled())).GetAwaiter().GetResult();
+        Passenger.Core.ChildResult merging = Ui.Await(Waiting.Apart(() => Passenger.Core.ChildProcesses.RunAsync(
+            Passenger.Core.ChildProcesses.Command("git", ["merge", "feature"], folder), limit: TimeSpan.FromMinutes(1).Scaled())), "git merge feature");
         Assert.False(merging.Succeeded, $"git merge was to stop for its conflict: {merging.Output}");
         MainWindow window = Ui.OpenFolder(folder);
         Ui.Landed(() => window.CommitView.Rows.OfType<CommitGroup>().Any(g => g.Name == "Merge Conflicts"), "the merge's conflict");
@@ -224,6 +230,7 @@ public sealed class IdeErrorsTests : IDisposable
     /// lambda for a delegate that returns nothing. Passed over: a continuation whose lambda only reads the task's
     /// Exception, which marks a fault seen and cannot fault itself, and a project not built, the container tools
     /// (only the solution's build and the release make them).</summary>
+    [Gate]
     [AvaloniaFact]
     public void Nothing_in_src_leaves_a_fault_in_the_work_it_starts_for_the_garbage_collector_to_find()
     {
@@ -256,6 +263,7 @@ public sealed class IdeErrorsTests : IDisposable
             + $"give it to IdeErrors.Observe (Core.UnawaitedWork.Observe below the app):\n{string.Join('\n', found.Order(StringComparer.Ordinal))}");
     }
 
+    [Gate]
     [AvaloniaFact]
     public void The_same_error_again_and_again_is_one_row_with_its_count_and_a_log_rotated_under_its_size_cap()
     {
@@ -308,6 +316,7 @@ public sealed class IdeErrorsTests : IDisposable
         }
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Past_a_hundred_different_errors_the_rest_are_only_in_the_log_and_the_count_says_there_are_more()
     {
@@ -335,6 +344,7 @@ public sealed class IdeErrorsTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_window_test_in_which_the_ide_caught_an_error_fails_naming_it()
     {
@@ -402,6 +412,7 @@ public sealed class IdeErrorsTests : IDisposable
 
     /// <summary>A folder without a solution has its projects found by a walk off the window's thread, and its language
     /// server starts once that walk lands: a window closed before then starts none, which nothing would end.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_window_closed_before_its_folders_projects_are_found_starts_no_language_server()
     {
@@ -442,6 +453,35 @@ public sealed class IdeErrorsTests : IDisposable
 
         Assert.True(Processes.Gone(server), $"The language server (process {server}) still runs after the window test that opened it failed, loading a folder for nobody into the next test");
         Assert.True(Core.BackgroundWork.Pending == 0, $"{Core.BackgroundWork.Pending} pieces of the failed test's work were still held for the next test to wait out");
+    }
+
+    /// <summary>A window test that closes its own window, as most do, is over only once what that window started has ended,
+    /// as one it left open is: here a language server that answers nothing, which the window's end kills at its limit. On
+    /// Windows a program still ending holds the DLLs it loaded, which the next test's reset of a shared project deletes.</summary>
+    [AvaloniaFact]
+    public void A_window_test_that_closes_its_own_window_is_over_once_what_the_window_started_has_ended()
+    {
+        MainWindow window = OpenProgram();
+        int server = window.CSharpService!.Session!.Server.ProcessId;
+        Processes.Suspend(server, "The language server");
+        try
+        {
+            window.Close();
+
+            // What runs after every window test, however it ended.
+            new TestsLeaveNothingBehindAttribute().After(
+                typeof(IdeErrorsTests).GetMethod(nameof(A_window_test_that_closes_its_own_window_is_over_once_what_the_window_started_has_ended))!,
+                (Xunit.v3.IXunitTest)TestContext.Current.Test!);
+
+            Assert.True(window.Ended is { IsCompleted: true },
+                $"The window test was over with what its closed window started still ending, its language server among it ({Processes.Describe(server)})");
+            Assert.True(Processes.Gone(server), $"The language server that answered nothing (process {server}) still runs after its window's end");
+        }
+        finally
+        {
+            // Stopped, it never ends by itself, whatever failed above.
+            Processes.Kill(server);
+        }
     }
 
     [AvaloniaFact]
@@ -502,14 +542,15 @@ public sealed class IdeErrorsTests : IDisposable
         string? missed = null;
         try
         {
-            // Its projects handed over, the window's thread is held until the log says the start came back and its server ended.
+            // From its projects' answer, which can come before the server started again has begun, the window's thread is held until that server's start came back and it ended.
             Assert.NotNull(csharp.Feed);
             csharp.Feed = new EndingOnce(csharp.Feed, () =>
             {
-                int server = Volatile.Read(ref next);
-                if (!Waiting.Until(() => Said($"C# language server (process {server}) started for {folder}") > 0, TimeSpan.FromMinutes(2), every: TimeSpan.FromMilliseconds(50)))
+                int server = 0;
+                if (!Waiting.Until(() => (server = Volatile.Read(ref next)) != 0 && Said($"C# language server (process {server}) started for {folder}") > 0,
+                    TimeSpan.FromMinutes(2), every: TimeSpan.FromMilliseconds(50)))
                 {
-                    missed = $"the start of the server (process {server}) never came back";
+                    missed = server == 0 ? "no language server was started again" : $"the start of the server (process {server}) never came back";
                     return;
                 }
                 int endedBefore = Said($"The C# language server (process {server}) ended");
@@ -524,7 +565,7 @@ public sealed class IdeErrorsTests : IDisposable
                 }
             });
             Process.GetProcessById(first).Kill();
-            Ui.WaitFor(() => next != 0 && !Running(next), "the server started again to be ended as its start came back");
+            Ui.WaitFor(() => missed is not null || (next != 0 && !Running(next)), "the server started again to be ended as its start came back");
             Assert.True(missed is null, $"The window's thread was let go before its server's start and end had both come: {missed}");
             Ui.WaitFor(() => csharp.Session is { IsLoaded: true } session && session.Server.ProcessId != first && session.Server.ProcessId != next,
                 $"the language server ended as it started to be started again ({csharp.State})");
@@ -545,9 +586,9 @@ public sealed class IdeErrorsTests : IDisposable
     {
         private int ended;
 
-        public async Task<(IReadOnlyList<Passenger.Roslyn.Extension.ProjectToOpen> First, IReadOnlyList<Passenger.Roslyn.Extension.ProjectToOpen> Later)?> ProjectsAsync(CancellationToken cancel)
+        public async Task<Passenger.Lsp.FedProjects?> ProjectsAsync(CancellationToken cancel)
         {
-            (IReadOnlyList<Passenger.Roslyn.Extension.ProjectToOpen> First, IReadOnlyList<Passenger.Roslyn.Extension.ProjectToOpen> Later)? projects = await feed.ProjectsAsync(cancel);
+            Passenger.Lsp.FedProjects? projects = await feed.ProjectsAsync(cancel);
             if (Interlocked.Exchange(ref ended, 1) == 0)
             {
                 Dispatcher.UIThread.Post(end);
@@ -555,7 +596,82 @@ public sealed class IdeErrorsTests : IDisposable
             return projects;
         }
 
-        public Task<Passenger.Roslyn.Extension.ProjectInfoResult> InfoAsync(string path, CancellationToken cancel) => feed.InfoAsync(path, cancel);
+        public Task<Passenger.Lsp.FedProject> InfoAsync(string path, CancellationToken cancel) => feed.InfoAsync(path, cancel);
+    }
+
+    /// <summary>A server whose process ends during its own start, before it has answered, is started again as one that ends
+    /// later is, the window saying so, and C# comes back for the file open; asked to, the IDE starts it again in place of
+    /// the one running.</summary>
+    [Gate]
+    [AvaloniaFact]
+    public void A_language_server_that_ends_during_its_start_is_started_again_saying_so()
+    {
+        WriteProgram(folder);
+        MainWindow window = new() { Width = 1200, Height = 800 };
+        window.Show();
+        List<string> said = [];
+        using IDisposable following = Ui.FollowStatus(window, said);
+        int ended;
+        using (EndingAsTheyStart ending = new(RoslynServer, times: 1))
+        {
+            window.OpenFolder(folder);
+            window.OpenFile("Program.cs");
+            Ui.WaitFor(() => window.CSharpService is { IsReady: true }, () => $"C# to come back after its language server ended as it started ({window.CSharpService?.State})");
+            ended = Assert.Single(ending.Ended);
+        }
+        Passenger.App.CSharp.CSharpService csharp = window.CSharpService!;
+        int running = csharp.Session!.Server.ProcessId;
+        Assert.True(running != ended, $"C# is ready on the server that was ended as it started (process {ended})");
+        Assert.True(said.Contains("The C# language server ended as it started; starting it again"),
+            $"The status bar never said the server that ended as it started was started again; it said: {string.Join(" | ", said)}");
+        Assert.Contains($"The C# language server ended as it started for {window.Folder}", Ui.IdeLog());
+        TypeAnErrorAndSeeItReported(window);
+
+        Assert.True(window.Perform(AppActions.RestartCSharpServer), $"Restart C# Language Server did not run on a server that runs: {window.Status}");
+        Ui.WaitFor(() => csharp.Session is { IsLoaded: true } session && session.Server.ProcessId != running,
+            () => $"the language server to be started again in place of the one running ({csharp.State})");
+        Ui.WaitFor(() => !Running(running), $"the server restarted in place of (process {running}) to be ended, not left behind");
+        window.Close();
+    }
+
+    /// <summary>A server that ends during every start is started again only as often as one that ends later is, then left
+    /// stopped, the window saying why and where to start it again; once what ended it is gone, its words start it again,
+    /// as Restart C# Language Server does, without the folder opened again.</summary>
+    [AvaloniaFact]
+    public void A_language_server_that_ends_during_every_start_is_left_stopped_saying_so_and_its_words_start_it_again()
+    {
+        WriteProgram(folder);
+        MainWindow window = new() { Width = 1200, Height = 800 };
+        window.Show();
+        List<string> said = [];
+        using IDisposable following = Ui.FollowStatus(window, said);
+        const string LeftStopped = "The C# language server ended as it started 4 times in 5 minutes, so it was left stopped; Restart C# Language Server starts it again";
+        using (EndingAsTheyStart ending = new(RoslynServer))
+        {
+            window.OpenFolder(folder);
+            window.OpenFile("Program.cs");
+            Ui.WaitFor(() => window.CSharpService is { IsStopped: true },
+                () => $"C# to be left stopped after its language server ended as it started {ending.Ended.Count} times ({window.CSharpService?.State})");
+            Ui.Settle();
+            Assert.True(ending.Ended.Count == 4, $"The language server was started {ending.Ended.Count} times, ending each time as it started, rather than once and then 3 times again");
+        }
+        Passenger.App.CSharp.CSharpService csharp = window.CSharpService!;
+        Assert.Equal("C# stopped", csharp.State);
+        Assert.Equal("C# · C# stopped", window.FindControl<TextBlock>("LanguageText")!.Text);
+        Assert.True(said.Contains("The C# language server ended as it started; starting it again"),
+            $"The status bar never said the server that ended as it started was started again; it said: {string.Join(" | ", said)}");
+        Assert.True(window.Status == LeftStopped, $"The status bar says \"{window.Status}\" of C# left stopped, having said: {string.Join(" | ", said)}");
+        Assert.Equal("start it again", window.StatusPlace?.Name);
+
+        Ui.Click(window.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "StatusMessage"));
+        Ui.WaitFor(() => csharp.IsReady, () => $"C# left stopped to be started again by the status bar's words ({csharp.State}; the status bar says {window.Status})");
+        Assert.False(csharp.IsStopped, "C# started again is still said to be left stopped");
+        Assert.True(said.Contains("Starting the C# language server again"),
+            $"The status bar never said C# left stopped was started again; it said: {string.Join(" | ", said)}");
+        // The words clicked have the keys: the editor takes them back as a person's click there does.
+        Ui.Click(window.EditorArea.CodeEditor);
+        TypeAnErrorAndSeeItReported(window);
+        window.Close();
     }
 
     /// <summary>Call Hierarchy asked of a server that stops before it answers says so, and asked while the next one starts
@@ -567,8 +683,7 @@ public sealed class IdeErrorsTests : IDisposable
         MainWindow window = OpenProgram(Calls);
         Ui.PlaceAfter(window.EditorArea.CodeEditor, "static void Ot");
         Task<string?> shown = window.ShowCallHierarchyAsync();
-        Ui.WaitFor(() => shown.IsCompleted, "the call hierarchy");
-        Assert.Null(shown.Result);
+        Assert.Null(Ui.Await(shown, "the call hierarchy"));
         HierarchyRow caller = Assert.Single(window.Hierarchy.Rows, r => r.Depth == 1);
         Assert.Contains("Helper", caller.Node.Item.Name, StringComparison.Ordinal);
         int first = window.CSharpService!.Session!.Server.ProcessId;
@@ -585,14 +700,14 @@ public sealed class IdeErrorsTests : IDisposable
         {
             End(first);
         }
-        Ui.PumpUntil(() => asked.IsCompleted, "Call Hierarchy to give up on the server that ended");
-        Assert.Equal("Call Hierarchy failed: the language server stopped before it answered", asked.Result);
+        Assert.Equal("Call Hierarchy failed: the language server stopped before it answered", Ui.AwaitPumped(asked, "Call Hierarchy to give up on the server that ended"));
 
         Ui.PumpUntil(() => window.CSharpService.Session is null, "the ended server to be let go");
         Task<string?> starting = window.ShowCallHierarchyAsync();
         Assert.True(starting.IsCompleted, "Call Hierarchy waited for a server that is not there");
-        Assert.StartsWith("Call Hierarchy needs the C# language server: ", starting.Result, StringComparison.Ordinal);
-        Assert.Equal(starting.Result, window.Status);
+        string? refused = Ui.Await(starting, "Call Hierarchy's refusal");
+        Assert.StartsWith("Call Hierarchy needs the C# language server: ", refused, StringComparison.Ordinal);
+        Assert.Equal(refused, window.Status);
         Ui.WaitFor(() => window.CSharpService.Session is { IsLoaded: true }, $"the language server to be started again ({window.CSharpService.State})");
 
         Task opening = window.Hierarchy.ExpandAsync(caller);
@@ -602,31 +717,156 @@ public sealed class IdeErrorsTests : IDisposable
         Assert.All(caller.Children!, c => Assert.Contains("Main", c.Item.Name, StringComparison.Ordinal));
 
         Task<string?> again = window.ShowCallHierarchyAsync();
-        Ui.WaitFor(() => again.IsCompleted, "the call hierarchy from the new server");
-        Assert.Null(again.Result);
+        Assert.Null(Ui.Await(again, "the call hierarchy from the new server"));
         Assert.Contains(window.Hierarchy.Rows, r => r.Depth == 1 && r.Node.Item.Name.Contains("Helper", StringComparison.Ordinal));
         window.Close();
     }
 
+    /// <summary>A rename whose write to a file it changes is refused says so, the file left as it was: at once where the disk
+    /// refuses it, and on Windows, where another program holding the file refuses it, once the write has waited for the
+    /// file to be let go and given up, the status bar saying meanwhile that it waits for that file, never that it renamed.</summary>
     [AvaloniaFact]
     public void A_rename_that_cannot_write_a_file_it_changes_says_so_in_the_status_bar()
     {
-        string library = Path.Combine(folder, "Library");
-        Directory.CreateDirectory(library);
-        File.WriteAllText(Path.Combine(library, "Helper.cs"), "static class Helper\n{\n    public static int Twice(int value) => value * 2;\n}\n");
-        MainWindow window = OpenProgram("class Program\n{\n    static void Main()\n    {\n        int result = Helper.Twice(2);\n    }\n}\n");
-        Ui.PlaceAfter(window.EditorArea.CodeEditor, "Helper.Tw");
-        using (Unwritable(Path.Combine(library, "Helper.cs")))
+        string helper = HelperOfProgram(out MainWindow window);
+        List<string> said = [];
+        using (Unwritable(helper))
         {
-            Ui.Run(window, AppActions.Rename);
-            Ui.Settle();
-            window.KeyTextInput("Double");
-            Ui.Press(window, "ENTER");
-            Ui.Settle();
+            Rename(window, "Double");
+            SaidUntil(window, said, s => s.StartsWith("Rename failed", StringComparison.Ordinal), "the rename to say it failed");
             Assert.StartsWith("Rename failed: Helper.cs could not be written", window.Status, StringComparison.Ordinal);
         }
-        Assert.Contains("Twice", File.ReadAllText(Path.Combine(library, "Helper.cs")), StringComparison.Ordinal);
+        Assert.DoesNotContain(said, s => s.StartsWith("Renamed", StringComparison.Ordinal));
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Contains("Waiting for Helper.cs to be saved…", said);
+        }
+        Assert.Contains("Twice", File.ReadAllText(helper), StringComparison.Ordinal);
+        Assert.Empty(Directory.EnumerateFiles(Path.GetDirectoryName(helper)!, "*" + Passenger.Text.FileText.SaveSuffix));
+        Assert.StartsWith("Rename failed: Helper.cs could not be written", window.Status, StringComparison.Ordinal);
         window.Close();
+    }
+
+    /// <summary>On Windows a rename's write to a file another program holds waits for it off the window's thread: while it
+    /// is held the status bar says the rename waits for that file, never that it renamed, and once the program lets go the
+    /// write lands and the rename says it renamed in every file.</summary>
+    [AvaloniaFact]
+    public void A_rename_into_a_file_another_program_holds_says_it_waits_and_renamed_once_the_file_is_let_go()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses to replace or write a file another program holds");
+        string helper = HelperOfProgram(out MainWindow window);
+        List<string> said = [];
+        using (new FileStream(helper, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            Rename(window, "Double");
+            SaidUntil(window, said, s => s == "Waiting for Helper.cs to be saved…", "the rename to say it waits for the held Helper.cs");
+            Assert.Contains("Twice", File.ReadAllText(helper), StringComparison.Ordinal);
+        }
+        SaidUntil(window, said, s => s.StartsWith("Renamed", StringComparison.Ordinal), "the rename to say it renamed once Helper.cs was let go");
+        Assert.Equal("Renamed in 2 files", window.Status);
+        Assert.Equal(["Waiting for Helper.cs to be saved…", "Renamed in 2 files"], said.Where(s => s.StartsWith("Waiting", StringComparison.Ordinal) || s.StartsWith("Renamed", StringComparison.Ordinal)));
+        Assert.Contains("public static int Double(int value)", File.ReadAllText(helper), StringComparison.Ordinal);
+        Assert.Empty(Directory.EnumerateFiles(Path.GetDirectoryName(helper)!, "*" + Passenger.Text.FileText.SaveSuffix));
+        window.Close();
+    }
+
+    /// <summary>On Windows Undo of a rename puts back a file not open that another program holds as the rename wrote it: while
+    /// it is held the status bar says Undo waits for that file, never that it undid the rename, and once the program lets go
+    /// the file has its old name back and Undo says it undid the rename.</summary>
+    [AvaloniaFact]
+    public void Undo_of_a_rename_whose_file_another_program_holds_says_it_waits_and_undone_once_the_file_is_let_go()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses to replace or write a file another program holds");
+        string helper = HelperOfProgram(out MainWindow window);
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+        List<string> said = [];
+        Rename(window, "Double");
+        SaidUntil(window, said, s => s.StartsWith("Renamed", StringComparison.Ordinal), "the rename to say it renamed");
+        Assert.Contains("public static int Double(int value)", File.ReadAllText(helper), StringComparison.Ordinal);
+        Ui.Settle();
+        said.Clear();
+        using (new FileStream(helper, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            Ui.Run(window, Passenger.Editor.EditorActions.Undo, settle: false);
+            SaidUntil(window, said, s => s.StartsWith("Waiting", StringComparison.Ordinal) || s.StartsWith("Undone", StringComparison.Ordinal),
+                "Undo to say it waits for the held Helper.cs");
+            Assert.Contains("Double", File.ReadAllText(helper), StringComparison.Ordinal);
+        }
+        SaidUntil(window, said, s => s.StartsWith("Undone", StringComparison.Ordinal) || s.StartsWith("Cannot undo", StringComparison.Ordinal),
+            "Undo to say it undid the rename once Helper.cs was let go");
+        Assert.Equal(["Waiting for Helper.cs to be saved…", "Undone: Rename Twice to Double"],
+            said.Where(s => s.StartsWith("Waiting", StringComparison.Ordinal) || s.StartsWith("Undone", StringComparison.Ordinal) || s.StartsWith("Cannot", StringComparison.Ordinal)));
+        Assert.Contains("public static int Twice(int value)", File.ReadAllText(helper), StringComparison.Ordinal);
+        Assert.Contains("Helper.Twice(2)", window.EditorArea.CodeEditor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        Assert.Empty(Directory.EnumerateFiles(Path.GetDirectoryName(helper)!, "*" + Passenger.Text.FileText.SaveSuffix));
+        window.Close();
+    }
+
+    /// <summary>A rename whose write to a file it changes never lands (refused at once, or on Windows held by another program
+    /// past the save's wait) leaves that file out of its Undo: Undo takes the rest back, the open file's change, with nothing
+    /// to ask, and the file stays as the disk has it.</summary>
+    [AvaloniaFact]
+    public void A_rename_whose_write_to_a_file_never_lands_leaves_that_file_out_of_its_Undo()
+    {
+        string helper = HelperOfProgram(out MainWindow window);
+        List<string> asked = [];
+        window.Confirm = (_, question, _) =>
+        {
+            asked.Add(question);
+            return Task.FromResult(true);
+        };
+        List<string> said = [];
+        using (Unwritable(helper))
+        {
+            Rename(window, "Double");
+            SaidUntil(window, said, s => s.StartsWith("Rename failed", StringComparison.Ordinal), "the rename to say it failed");
+        }
+        Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Contains("Helper.Double(2)", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        }
+        Ui.Run(window, Passenger.Editor.EditorActions.Undo);
+        Assert.True(editor.Document.Snapshot.ToString().Contains("Helper.Twice(2)", StringComparison.Ordinal),
+            $"Undo left the call renamed, the rename's Undo still holding Helper.cs, which it never wrote: {window.Status}");
+        Assert.Empty(asked);
+        Assert.Contains("public static int Twice(int value)", File.ReadAllText(helper), StringComparison.Ordinal);
+        window.Close();
+    }
+
+    /// <summary>A program calling Helper.Twice, declared in a file not open (whose path this is), the caret on the call.</summary>
+    private string HelperOfProgram(out MainWindow window)
+    {
+        string library = Path.Combine(folder, "Library");
+        Directory.CreateDirectory(library);
+        string helper = Path.Combine(library, "Helper.cs");
+        File.WriteAllText(helper, "static class Helper\n{\n    public static int Twice(int value) => value * 2;\n}\n");
+        window = OpenProgram("class Program\n{\n    static void Main()\n    {\n        int result = Helper.Twice(2);\n    }\n}\n");
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "Helper.Tw");
+        return helper;
+    }
+
+    /// <summary>Rename at the caret, the new name typed into its box and Enter pressed, the rename left to run.</summary>
+    private static void Rename(MainWindow window, string name)
+    {
+        Ui.Run(window, AppActions.Rename);
+        Ui.Settle();
+        window.KeyTextInput(name);
+        Ui.Press(window, "ENTER", settle: false);
+    }
+
+    /// <summary>Each thing the status bar says, in turn, as a person reads it while the window runs, added to
+    /// <paramref name="said"/> until it says what <paramref name="until"/> waits for.</summary>
+    private static void SaidUntil(MainWindow window, List<string> said, Func<string, bool> until, string what)
+    {
+        Ui.PumpUntil(() =>
+        {
+            if (window.Status is { Length: > 0 } now && (said.Count == 0 || said[^1] != now))
+            {
+                said.Add(now);
+            }
+            return said.Count > 0 && until(said[^1]);
+        }, what);
     }
 
     /// <summary>Three methods, each calling the next.</summary>

@@ -42,7 +42,7 @@ public sealed class McpContainerDebuggingTests(ContainerRunDebuggingTests.Tools 
             Assert.True(which.IsError == true && Text(which).Contains("web is a service of 2 configurations", StringComparison.Ordinal)
                 && Text(which).Contains("Compose: compose.yaml", StringComparison.Ordinal) && Text(which).Contains("Compose: Web/compose.yaml", StringComparison.Ordinal),
                 $"run of a service two configurations have answered: {Text(which)}");
-            Assert.True(Docker.NoneLeft(project), "A refused run started containers");
+            Assert.True(await Docker.NoneLeftAsync(project), "A refused run started containers");
 
             JsonElement stop = await Call(client, McpTools.DebugStart, new() { ["configuration"] = "Compose: compose.yaml", ["waitSeconds"] = 120 });
             Assert.True(stop.TryGetProperty("sessions", out JsonElement sessions), $"debug_start of two services answered no sessions: {stop}");
@@ -73,10 +73,10 @@ public sealed class McpContainerDebuggingTests(ContainerRunDebuggingTests.Tools 
                     TimeSpan.FromMinutes(1), test), $"{service} did not stop in Main: {paused}");
                 await Call(client, McpTools.DebugContinue, new() { ["session"] = service, ["waitSeconds"] = 2 });
             }
-            string before = await Task.Run(() => ContainerRunsTests.Started(project, "web"), test);
+            string before = await ContainerRunsTests.StartedAsync(project, "web");
 
             Assert.Equal($"{project}/web: restart done", Text(await Call(client, McpTools.ContainerAction, new() { ["container"] = $"{project}/web", ["action"] = "restart" })));
-            Assert.NotEqual(before, await Task.Run(() => ContainerRunsTests.Started(project, "web"), test));
+            Assert.NotEqual(before, await ContainerRunsTests.StartedAsync(project, "web"));
             JsonElement again = default;
             Assert.True(await Waiting.UntilAsync(async () => (again = await Call(client, McpTools.DebugState, new() { ["session"] = "web" })).GetProperty("state").GetString() == "paused",
                 TimeSpan.FromMinutes(1), test), $"web, restarted through the run, did not stop in Main again: {again}");
@@ -100,15 +100,15 @@ public sealed class McpContainerDebuggingTests(ContainerRunDebuggingTests.Tools 
                 $"telemetry of a run that collects none answered: {Text(uncollected)}");
 
             Assert.Equal($"{project}/api: stop done", Text(await Call(client, McpTools.ContainerAction, new() { ["container"] = $"{project}/api", ["action"] = "stop" })));
-            Assert.Equal("exited", ContainerRunsTests.States(project)["api"]);
+            Assert.Equal("exited", (await ContainerRunsTests.StatesAsync(project))["api"]);
             JsonElement state = await Call(client, McpTools.DebugState);
             Assert.True(!state.TryGetProperty("sessions", out JsonElement live) || !live.EnumerateArray().Any(s => s.GetString()!.StartsWith("api:", StringComparison.Ordinal)
                 && !s.GetString()!.Contains("ended", StringComparison.Ordinal)), $"api is still debugged after its container stopped: {state}");
             Assert.Equal("Stopped web", Text(await Call(client, McpTools.Stop, new() { ["resource"] = "web" })));
-            Assert.Equal("exited", ContainerRunsTests.States(project)["web"]);
+            Assert.Equal("exited", (await ContainerRunsTests.StatesAsync(project))["web"]);
 
             Assert.Equal("Stopped", Text(await Call(client, McpTools.Stop)));
-            Assert.True(await Waiting.UntilAsync(() => Docker.NoneLeft(project), TimeSpan.FromMinutes(2),
+            Assert.True(await Waiting.UntilAsync(() => Docker.NoneLeftAsync(project), TimeSpan.FromMinutes(2),
                 TestContext.Current.CancellationToken), "stop left the configuration's containers behind");
 
             // With no run, a resource starts the configuration that has it; debug_start of api, which it lacks, starts api's own.
@@ -117,19 +117,19 @@ public sealed class McpContainerDebuggingTests(ContainerRunDebuggingTests.Tools 
             Assert.True(started.GetProperty("stillRunning").GetBoolean() && up.StartsWith("web of Compose: compose.yaml: web is up\n", StringComparison.Ordinal)
                 && up.Contains("\n  cache: running (healthy)", StringComparison.Ordinal) && up.Contains("\n  api: Not started", StringComparison.Ordinal),
                 $"run of web with no run under way answered: {started}");
-            Assert.False(ContainerRunsTests.States(project).ContainsKey("api"), "run of web started api too");
+            Assert.False((await ContainerRunsTests.StatesAsync(project)).ContainsKey("api"), "run of web started api too");
             JsonElement apiStop = await Call(client, McpTools.DebugStart, new() { ["resource"] = "api", ["waitSeconds"] = 120 });
             Assert.True(apiStop.GetProperty("state").GetString() == "paused" && apiStop.GetProperty("location").GetString()!.Contains("Program.cs:1:", StringComparison.Ordinal),
                 $"debug_start of api with no run under way that starts it answered: {apiStop}");
-            Dictionary<string, string> states = ContainerRunsTests.States(project);
+            Dictionary<string, string> states = await ContainerRunsTests.StatesAsync(project);
             Assert.True(states.GetValueOrDefault("api") == "running" && !states.ContainsKey("web"), $"debug_start of api left these: {string.Join(", ", states)}");
             Assert.Equal("Stopped", Text(await Call(client, McpTools.Stop)));
-            Assert.True(await Waiting.UntilAsync(() => Docker.NoneLeft(project), TimeSpan.FromMinutes(2),
+            Assert.True(await Waiting.UntilAsync(() => Docker.NoneLeftAsync(project), TimeSpan.FromMinutes(2),
                 TestContext.Current.CancellationToken), "stop left the service's run's containers behind");
 
             string output = Path.Combine(shop, "Web", "bin", "Debug", TestProjects.Framework);
             attached = $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}agentattach";
-            Docker.Run(["run", "-d", .. Docker.AnyPids, "--name", attached, "--label", Docker.RunLabel, "-v", $"{output}:/app:ro", "mcr.microsoft.com/dotnet/aspnet:10.0",
+            await Docker.RunAsync(["run", "-d", .. Docker.AnyPids, "--name", attached, "--label", Docker.RunLabel, "-v", $"{output}:/app:ro", "mcr.microsoft.com/dotnet/aspnet:10.0",
                 "dotnet", "/app/Web.dll"]);
             JsonElement listed = default;
             Assert.True(await Waiting.UntilAsync(async () => (listed = await Call(client, McpTools.DebugState, new() { ["of"] = "processes" })).EnumerateArray()
@@ -138,19 +138,19 @@ public sealed class McpContainerDebuggingTests(ContainerRunDebuggingTests.Tools 
             JsonElement at = await Call(client, McpTools.DebugAttach, new() { ["program"] = "Web", ["container"] = attached, ["waitSeconds"] = 2 });
             Assert.True(at.GetProperty("state").GetString() is "running" or "paused", $"debug_attach in the container answered: {at}");
             await Call(client, McpTools.Stop, new() { ["detach"] = true });
-            Assert.Equal("running", Docker.State(attached));
+            Assert.Equal("running", await Docker.StateAsync(attached));
         }
         finally
         {
             if (attached is not null)
             {
-                Docker.Run("rm", "-f", attached);
+                await Docker.RunAsync("rm", "-f", attached);
             }
             await Call(client, McpTools.Stop);
             // The headless IDE's state is not the run's, whose end removes only its own images: these go here.
-            foreach (string image in Docker.Run("images", "-q", "--filter", $"label=com.docker.compose.project={project}").Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            foreach (string image in (await Docker.RunAsync("images", "-q", "--filter", $"label=com.docker.compose.project={project}")).Split('\n', StringSplitOptions.RemoveEmptyEntries))
             {
-                Docker.Run("rmi", "-f", image);
+                await Docker.RunAsync("rmi", "-f", image);
             }
         }
     }
@@ -193,31 +193,31 @@ public sealed class McpContainerDebuggingTests(ContainerRunDebuggingTests.Tools 
         try
         {
             JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = "docker-compose: Web later" });
-            Dictionary<string, string> states = await Task.Run(() => ContainerRunsTests.States(project), test);
+            Dictionary<string, string> states = await ContainerRunsTests.StatesAsync(project);
             Assert.True(states.GetValueOrDefault("api") == "running" && !states.ContainsKey("web"), $"The run left these: {string.Join(", ", states)}; it answered {ran}");
             JsonElement unstarted = (await Call(client, McpTools.Workspace)).GetProperty("containerRun").GetProperty("resources").EnumerateArray()
                 .Single(r => r.GetProperty("name").GetString() == "web");
             Assert.True(unstarted.GetProperty("state").GetString() == "Not started", $"workspace listed web, marked Don't start, as {unstarted}");
-            string apiStarted = await Task.Run(() => ContainerRunsTests.Started(project, "api"), test);
+            string apiStarted = await ContainerRunsTests.StartedAsync(project, "api");
 
             JsonElement stop = await Call(client, McpTools.DebugStart, new() { ["resource"] = "web", ["waitSeconds"] = 120 });
             Assert.True(stop.GetProperty("state").GetString() == "paused" && stop.GetProperty("location").GetString()!.Contains("Web/Program.cs:1:", StringComparison.Ordinal),
                 $"debug_start of web, marked Don't start, answered: {stop}");
-            states = await Task.Run(() => ContainerRunsTests.States(project), test);
+            states = await ContainerRunsTests.StatesAsync(project);
             Assert.True(states.GetValueOrDefault("web") == "running" && states.GetValueOrDefault("api") == "running", $"debug_start of web left these: {string.Join(", ", states)}");
-            Assert.Equal(apiStarted, await Task.Run(() => ContainerRunsTests.Started(project, "api"), test));
+            Assert.Equal(apiStarted, await ContainerRunsTests.StartedAsync(project, "api"));
 
             Assert.Equal("Stopped", Text(await Call(client, McpTools.Stop)));
-            Assert.True(await Waiting.UntilAsync(() => Docker.NoneLeft(project), TimeSpan.FromMinutes(2), test),
-                $"stop left the project's containers behind: {Docker.Run("ps", "-a", "--filter", $"label=com.docker.compose.project={project}", "--format", "{{.Names}} {{.Status}}")}");
+            Assert.True(await Waiting.UntilAsync(() => Docker.NoneLeftAsync(project), TimeSpan.FromMinutes(2), test),
+                $"stop left the project's containers behind: {await Docker.RunAsync("ps", "-a", "--filter", $"label=com.docker.compose.project={project}", "--format", "{{.Names}} {{.Status}}")}");
         }
         finally
         {
             await Call(client, McpTools.Stop);
             // The headless IDE's state is not the run's, whose end removes only its own images: these go here.
-            foreach (string image in Docker.Run("images", "-q", "--filter", $"label=com.docker.compose.project={project}").Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            foreach (string image in (await Docker.RunAsync("images", "-q", "--filter", $"label=com.docker.compose.project={project}")).Split('\n', StringSplitOptions.RemoveEmptyEntries))
             {
-                Docker.Run("rmi", "-f", image);
+                await Docker.RunAsync("rmi", "-f", image);
             }
         }
     }
@@ -232,55 +232,55 @@ public sealed class McpContainerDebuggingTests(ContainerRunDebuggingTests.Tools 
         CancellationToken test = TestContext.Current.CancellationToken;
         (string shop, string project) = ContainerRunsTests.Shop("agentgone");
         DeleteAtEnd(shop);
-        bool Up() => Docker.Said("ps", "-aq", "--filter", $"label=com.docker.compose.project={project}") is { Length: > 0 };
+        async Task<bool> Up() => await Docker.SaidAsync("ps", "-aq", "--filter", $"label=com.docker.compose.project={project}") is { Length: > 0 };
         McpClient client = await Start(["--mcp", shop], languageServer: false);
         try
         {
             // The person's own cache, from their own compose up.
             File.WriteAllText(Path.Combine(shop, "theirs.yaml"), $"services:\n  cache:\n    labels: [\"{Docker.RunLabel}\"]\n");
-            Docker.Run("compose", "-f", Path.Combine(shop, "compose.yaml"), "-f", Path.Combine(shop, "theirs.yaml"), "up", "-d", "cache");
-            string theirs = ContainerRunsTests.Container(project, "cache");
+            await Docker.RunAsync("compose", "-f", Path.Combine(shop, "compose.yaml"), "-f", Path.Combine(shop, "theirs.yaml"), "up", "-d", "cache");
+            string theirs = await ContainerRunsTests.ContainerAsync(project, "cache");
             ModelContextProtocol.Protocol.CallToolResult refused = await Result(client, McpTools.Run, new() { ["configuration"] = "Compose: compose.yaml" });
             Assert.True(refused.IsError == true && Text(refused).Contains($"would replace {project}-cache-1 of {project}, which Passenger did not make", StringComparison.Ordinal),
                 $"run answered: {Text(refused)}");
-            Assert.Equal(theirs, ContainerRunsTests.Container(project, "cache"));
-            Docker.Run("rm", "-f", theirs);
+            Assert.Equal(theirs, await ContainerRunsTests.ContainerAsync(project, "cache"));
+            await Docker.RunAsync("rm", "-f", theirs);
 
             Task<ModelContextProtocol.Protocol.CallToolResult> running = Result(client, McpTools.Run, new() { ["configuration"] = "Compose: compose.yaml" });
-            Assert.True(await Waiting.UntilAsync(() => Up() || running.IsCompleted, TimeSpan.FromMinutes(5), test), "run never brought a container up");
+            Assert.True(await Waiting.UntilAsync(async () => await Up() || running.IsCompleted, TimeSpan.FromMinutes(5), test), "run never brought a container up");
             Assert.False(running.IsCompleted, $"run answered before it could be stopped: {(running.IsCompleted ? Text(await running) : null)}");
             Assert.Equal("Stopped", Text(await Call(client, McpTools.Stop)));
             ModelContextProtocol.Protocol.CallToolResult stopped = await running;
             Assert.True(stopped.IsError == true && Text(stopped).Contains("was stopped as it started", StringComparison.Ordinal), $"The run stopped as it came up answered: {Text(stopped)}");
-            Assert.True(await Waiting.UntilAsync(() => !Up(), TimeSpan.FromMinutes(2), test), $"The run stopped as it came up left its containers up: "
-                + $"{Docker.Run("ps", "-a", "--filter", $"label=com.docker.compose.project={project}", "--format", "{{.Names}} {{.Status}} {{.Labels}}")}\n{LogTail()}");
+            Assert.True(await Waiting.UntilAsync(async () => !await Up(), TimeSpan.FromMinutes(2), test), $"The run stopped as it came up left its containers up: "
+                + $"{await Docker.RunAsync("ps", "-a", "--filter", $"label=com.docker.compose.project={project}", "--format", "{{.Names}} {{.Status}} {{.Labels}}")}\n{LogTail()}");
 
             using CancellationTokenSource giveUp = new();
             Task<ModelContextProtocol.Protocol.CallToolResult> starting = CallGivingUp(client, McpTools.DebugStart,
                 new() { ["configuration"] = "Compose: compose.yaml", ["waitSeconds"] = 120 }, giveUp.Token);
-            Assert.True(await Waiting.UntilAsync(() => Up() || starting.IsCompleted, TimeSpan.FromMinutes(5), test), "debug_start never brought a container up");
+            Assert.True(await Waiting.UntilAsync(async () => await Up() || starting.IsCompleted, TimeSpan.FromMinutes(5), test), "debug_start never brought a container up");
             Assert.False(starting.IsCompleted, "debug_start answered before it could be given up on");
             await giveUp.CancelAsync();
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => starting);
-            Assert.True(await Waiting.UntilAsync(() => !Up(), TimeSpan.FromMinutes(2), test), $"The start the agent gave up on left its containers up: "
-                + $"{Docker.Run("ps", "-a", "--filter", $"label=com.docker.compose.project={project}", "--format", "{{.Names}} {{.Status}} {{.Labels}}")}\n{LogTail()}");
+            Assert.True(await Waiting.UntilAsync(async () => !await Up(), TimeSpan.FromMinutes(2), test), $"The start the agent gave up on left its containers up: "
+                + $"{await Docker.RunAsync("ps", "-a", "--filter", $"label=com.docker.compose.project={project}", "--format", "{{.Names}} {{.Status}} {{.Labels}}")}\n{LogTail()}");
 
             await Call(client, McpTools.Run, new() { ["configuration"] = "Compose: compose.yaml" });
-            Assert.True(Up(), "run answered with no container up");
+            Assert.True(await Up(), "run answered with no container up");
         }
         finally
         {
             await client.DisposeAsync();
         }
-        bool gone = await Waiting.UntilAsync(() => !Up(), TimeSpan.FromMinutes(2), test);
-        foreach (string left in Docker.Run("ps", "-aq", "--filter", $"label=com.docker.compose.project={project}").Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        bool gone = await Waiting.UntilAsync(async () => !await Up(), TimeSpan.FromMinutes(2), test);
+        foreach (string left in (await Docker.RunAsync("ps", "-aq", "--filter", $"label=com.docker.compose.project={project}")).Split('\n', StringSplitOptions.RemoveEmptyEntries))
         {
-            Docker.Run("rm", "-f", left);
+            await Docker.RunAsync("rm", "-f", left);
         }
         // The headless IDE's state is not the run's, whose end removes only its own images: these go here.
-        foreach (string image in Docker.Run("images", "-q", "--filter", $"label=com.docker.compose.project={project}").Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        foreach (string image in (await Docker.RunAsync("images", "-q", "--filter", $"label=com.docker.compose.project={project}")).Split('\n', StringSplitOptions.RemoveEmptyEntries))
         {
-            Docker.Run("rmi", "-f", image);
+            await Docker.RunAsync("rmi", "-f", image);
         }
         Assert.True(gone, $"The --mcp IDE's end left its run's containers up: {LogTail()}");
 

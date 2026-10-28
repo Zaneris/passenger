@@ -69,7 +69,7 @@ internal sealed partial class WebAssist
         }
         if (fix.OpensDocumentation)
         {
-            if (lint.Diagnostics.FirstOrDefault(d => d.Code is { ValueKind: JsonValueKind.String } code && code.GetString() == fix.Rule)?.CodePage is { } page)
+            if (lint.Diagnostics.FirstOrDefault(d => !d.CodeIsNumber && d.Code == fix.Rule)?.CodePage is { } page)
             {
                 context.Browse(page);
             }
@@ -119,7 +119,7 @@ internal sealed partial class WebAssist
                 context.Say($"{what}: ESLint has nothing to give for {document.Name} yet");
                 return null;
             }
-            if (!actions.ApplyWorkspace(edit, asked, what))
+            if (!await actions.ApplyWorkspaceAsync(edit, asked, what))
             {
                 return null;
             }

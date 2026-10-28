@@ -208,7 +208,11 @@ internal static class FrameRecorder
             return;
         }
         Sync();
-        int at = Stack.FindLastIndex(o => o.Activity == activity);
+        int at = Stack.Count - 1;
+        while (at >= 0 && Stack[at].Activity != activity)
+        {
+            at--;
+        }
         if (at < 0)
         {
             return;

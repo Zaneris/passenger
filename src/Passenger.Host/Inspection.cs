@@ -90,7 +90,7 @@ internal static class Inspection
             return Failed(asked, file, problems, began);
         }
         // Stamped before they are read: a file come or gone once evaluation has begun changes the stamps too.
-        IReadOnlyList<Stamp> walked = Evaluation.Walked(Path.GetDirectoryName(asked.Project)!);
+        IReadOnlyList<Stamp> walked = Evaluation.Walked(asked.Project);
         List<Project> loaded = [];
         try
         {

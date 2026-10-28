@@ -49,7 +49,8 @@ public partial class MainWindow
         {
             Folder = Folder,
             ReadServices = ReadServices(Projects, Engine),
-            WriteToProfile = WriteToLaunchProfile,
+            WriteToProfile = WriteToLaunchProfileAsync,
+            Actions = Actions,
             ReadAspireServices = ReadAspireConfigurationResourcesAsync,
         };
         dialog.ShowRunningAppHosts(session.Aspire.Apps.Where(app => !app.IsTest && app.Runner.IsRunning).Select(app => app.Configuration.Project));
@@ -68,8 +69,8 @@ public partial class MainWindow
     /// <summary>Edit Configurations' Write to Launch Profile: what of a generated configuration's changes its launch profile
     /// has a place for written into the project's launchSettings.json (saved first if open, taken in after), the rest still
     /// kept with the folder; one command Undo takes back whole, the file and the changes kept here as they were. The
-    /// configuration as it then stands, or why not.</summary>
-    public (RunConfiguration? Configuration, string? Problem) WriteToLaunchProfile(string name)
+    /// configuration as it then stands once the file has landed, or why not.</summary>
+    public async Task<(RunConfiguration? Configuration, string? Problem)> WriteToLaunchProfileAsync(string name)
     {
         RunConfigurations configurations = session.Configurations;
         if (configurations.All.FirstOrDefault(c => c.Generated && string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase)) is not { Source: { } source } edited)
@@ -79,17 +80,17 @@ public partial class MainWindow
         if (Projects.FirstOrDefault(p => PathNames.Same(p.Path, edited.Project)) is not { } project
             || LaunchProfile.Read(project).FirstOrDefault(p => p.Name == edited.LaunchProfile) is not { } profile)
         {
-            return (null, $"The launch profile {edited.LaunchProfile} is no longer in its project's launchSettings.json");
+            return (null, $"The launch profile {edited.LaunchProfile} is no longer in its project's {LaunchProfile.SettingsName(edited.Project)}");
         }
         IReadOnlyList<LaunchSettingsEdits.Change> changes = LaunchSettingsEdits.For(project, profile, source, edited);
         if (changes.Count == 0)
         {
-            return (null, $"launchSettings.json has no place for {name}'s changes: they stay kept with the folder");
+            return (null, $"{LaunchProfile.SettingsName(project.Path)} has no place for {name}'s changes: they stay kept with the folder");
         }
         string path = LaunchProfile.SettingsPath(project);
         if (SaveBeforeWriting([path]) is { } unsaved)
         {
-            return (null, $"launchSettings.json could not be changed: {unsaved}");
+            return (null, $"{Path.GetFileName(path)} could not be changed: {unsaved}");
         }
         JsonObject? before = configurations.EditOf(name);
         using CommandHistory.Recording made = Editors.Commands.Record($"Write {name} to Its Launch Profile");
@@ -108,9 +109,13 @@ public partial class MainWindow
             // Open, it takes the text now, inside the command, so the command's undo takes it back too.
             FollowWritten([path]);
         }
+        if (problem is null && await UnlandedAsync(made) is { } unlanded)
+        {
+            problem = unlanded.Message;
+        }
         if (problem is not null)
         {
-            return (null, $"launchSettings.json could not be changed: {problem}");
+            return (null, $"{Path.GetFileName(path)} could not be changed: {problem}");
         }
         RunConfiguration? now = configurations.Rebase(name, edited);
         JsonObject? after = configurations.EditOf(name);
@@ -118,6 +123,190 @@ public partial class MainWindow
             redo => JsonNode.DeepEquals(configurations.EditOf(name), redo ? before : after) ? null : $"{name} has been changed since",
             redo => configurations.SetEdit(name, redo ? after : before)));
         return (now, null);
+    }
+
+    /// <summary>Why Save as Launch Profile cannot save the configuration it would (the one chosen in Edit Configurations
+    /// while it is open, else the toolbar's), among those listed there; null when it can.</summary>
+    private string? WhyNotShare() => RunConfigurationsDialog is { } dialog
+        ? WhyNotShare(dialog.Chosen, dialog.Rows)
+        : WhyNotShare(Configuration, Configurations);
+
+    /// <summary>Why a configuration cannot be saved as a launch profile: none is chosen, it is generated, it runs containers,
+    /// its project is not loaded, or its name, less its project's, is a profile's already or would make the name of another
+    /// listed; null when it can.</summary>
+    private string? WhyNotShare(RunConfiguration? shared, IReadOnlyList<RunConfiguration> listed)
+    {
+        if (Folder is null)
+        {
+            return Refusals.NoFolder;
+        }
+        if (shared is null)
+        {
+            return "No run configuration is chosen";
+        }
+        if (shared.Generated)
+        {
+            return shared.LaunchProfile.Length > 0 && !shared.IsContainer
+                ? $"{shared.Name} is generated from its launch profile already: Write to Launch Profile writes its changes there"
+                : $"{shared.Name} is generated, not one of the folder's own: a copy of it is";
+        }
+        if (shared.IsContainer)
+        {
+            return $"{shared.Name} runs containers: a launch profile saved here runs a project on this machine";
+        }
+        if (Projects.FirstOrDefault(p => p.Exists && p.IsRunnable && PathNames.Same(p.Path, shared.Project)) is not { } project)
+        {
+            return shared.Project.Length == 0 ? $"{shared.Name} has no project to run" : $"{shared.Name}'s project, {Path.GetFileNameWithoutExtension(shared.Project)}, is not loaded";
+        }
+        string profile = LaunchSettingsEdits.ProfileName(project, shared);
+        if (profile.Length == 0)
+        {
+            return "A configuration needs a name";
+        }
+        if (LaunchProfile.Read(project).FirstOrDefault(p => string.Equals(p.Name, profile, StringComparison.OrdinalIgnoreCase)) is { } taken)
+        {
+            return $"{project.Name}'s {LaunchProfile.SettingsName(project.Path)} has a profile named {taken.Name} already";
+        }
+        string generated = RunConfiguration.NameOf(project, profile);
+        return listed.FirstOrDefault(c => !ReferenceEquals(c, shared) && string.Equals(c.Name, generated, StringComparison.OrdinalIgnoreCase)) is { } named
+            ? $"Saved as the profile {profile}, it would be {generated}, as {named.Name} is named already"
+            : null;
+    }
+
+    /// <summary>Save as Launch Profile, from Edit Configurations (the dialog applied first, then shown as it then stands) or
+    /// Find Action (the toolbar's configuration, what was done said in the status bar).</summary>
+    private async Task ShareChosenAsync()
+    {
+        if (RunConfigurationsDialog is not { } dialog)
+        {
+            if (Configuration is { } chosen)
+            {
+                (RunConfiguration? shared, string said) = await SaveAsLaunchProfileAsync(chosen.Name);
+                status.Text = shared is null ? said : said + KeptOf(shared);
+            }
+            return;
+        }
+        if (dialog.Chosen is not { } listed || !dialog.Applied())
+        {
+            return;
+        }
+        (RunConfiguration? now, string done) = await SaveAsLaunchProfileAsync(listed.Name);
+        RunConfigurations configurations = session.Configurations;
+        dialog.Took([.. configurations.All.Where(c => c.Generated)], configurations.Own, now, done);
+    }
+
+    /// <summary>What a configuration saved as a launch profile keeps with the folder, by the store's names of its fields,
+    /// as the status bar and an agent are told it; empty for nothing.</summary>
+    private static string KeptOf(RunConfiguration shared) => shared.Source is { } source && ConfigurationEdit.Changed(source, shared) is { Count: > 0 } left
+        ? $"; kept here, as launchSettings.json has no place for it: {string.Join(", ", left)}"
+        : string.Empty;
+
+    /// <summary>An agent's Save as Launch Profile (ide_action) of one of the folder's own configurations by name, else the
+    /// one chosen: what was done, or why not as an <see cref="InvalidOperationException"/>.</summary>
+    public async Task<string> SaveAsLaunchProfileForAgentAsync(string? name)
+    {
+        string? why = RunConfigurationsDialog is not null ? "Run/Debug Configurations is open in the window, its changes not yet applied"
+            : name is null && Configuration is null ? "No run configuration is chosen"
+            : null;
+        if (why is not null)
+        {
+            throw new InvalidOperationException($"{AppActions.SaveAsLaunchProfile} did not run: {why}");
+        }
+        (RunConfiguration? shared, string said) = await SaveAsLaunchProfileAsync(name ?? Configuration!.Name);
+        return shared is null ? throw new InvalidOperationException($"{AppActions.SaveAsLaunchProfile} did not run: {said}") : said + KeptOf(shared);
+    }
+
+    /// <summary>Save as Launch Profile: one of the folder's own configurations, by name, written as a new profile of its
+    /// project's launchSettings.json (saved first if open, taken in after; made in dotnet new's shape if the project has
+    /// none), and from then on the configuration that profile generates, what the profile has no place for kept with the
+    /// folder as its change; one command Undo takes back whole. The configuration as it then stands, with what was done,
+    /// or null with why not, once the file has landed.</summary>
+    public async Task<(RunConfiguration? Configuration, string Said)> SaveAsLaunchProfileAsync(string name)
+    {
+        RunConfigurations configurations = session.Configurations;
+        if (configurations.Own.FirstOrDefault(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase)) is not { } mine)
+        {
+            return (null, configurations.All.FirstOrDefault(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase)) is { } other
+                ? WhyNotShare(other, configurations.All) ?? $"{other.Name} is not one of the folder's own"
+                : $"No run configuration is named {name}");
+        }
+        if (WhyNotShare(mine, configurations.All) is { } why)
+        {
+            return (null, why);
+        }
+        ProjectModel project = Projects.First(p => PathNames.Same(p.Path, mine.Project));
+        string profile = LaunchSettingsEdits.ProfileName(project, mine);
+        string path = LaunchProfile.SettingsPath(project);
+        if (SaveBeforeWriting([path]) is { } unsaved)
+        {
+            return (null, $"{Path.GetFileName(path)} could not be changed: {unsaved}");
+        }
+        string properties = Path.GetDirectoryName(path)!;
+        bool madeFolder = !Directory.Exists(properties);
+        bool madeFile = !File.Exists(path);
+        int at = configurations.Own.ToList().IndexOf(mine);
+        bool chosen = configurations.Chosen == mine;
+        JsonObject? before = configurations.EditOf(RunConfiguration.NameOf(project, profile));
+        using CommandHistory.Recording made = Editors.Commands.Record($"Save {mine.Name} as a Launch Profile");
+        made.Watch(path);
+        string? problem;
+        try
+        {
+            problem = LaunchSettingsEdits.Add(path, profile, LaunchSettingsEdits.ProfileOf(mine));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            problem = error.Message;
+        }
+        finally
+        {
+            // Open, it takes the text now, inside the command, so the command's undo takes it back too.
+            FollowWritten([path]);
+        }
+        if (problem is null && await UnlandedAsync(made) is { } unlanded)
+        {
+            problem = unlanded.Message;
+        }
+        if (problem is not null)
+        {
+            return (null, $"{Path.GetFileName(path)} could not be changed: {problem}");
+        }
+        if (madeFolder)
+        {
+            // Redo makes it again with the file; Undo, the file gone, takes it away if nothing else is in it.
+            made.Also(new CommandHistory.Part("the Properties folder", _ => null, redo =>
+            {
+                if (!redo && Directory.Exists(properties) && !Directory.EnumerateFileSystemEntries(properties).Any())
+                {
+                    Directory.Delete(properties);
+                }
+            }));
+        }
+        if (configurations.Share(mine.Name, project.Path, profile) is not { } now)
+        {
+            return (null, $"The launch profile {profile} was written, but makes no run configuration");
+        }
+        JsonObject? after = configurations.EditOf(now.Name);
+        made.Also(new CommandHistory.Part($"the run configuration {mine.Name}",
+            redo => redo
+                ? configurations.Own.FirstOrDefault(c => string.Equals(c.Name, mine.Name, StringComparison.OrdinalIgnoreCase)) is not { } back || !ConfigurationEdit.Same(back, mine)
+                    ? $"{mine.Name} has been changed since" : null
+                : !JsonNode.DeepEquals(configurations.EditOf(now.Name), after) ? $"{now.Name} has been changed since"
+                : configurations.Own.Any(c => string.Equals(c.Name, mine.Name, StringComparison.OrdinalIgnoreCase)) ? $"A configuration is named {mine.Name} again"
+                : null,
+            redo =>
+            {
+                if (redo)
+                {
+                    configurations.Share(mine.Name, project.Path, profile);
+                }
+                else
+                {
+                    configurations.Unshare(mine, at, now.Name, before, chosen);
+                }
+            }));
+        return (now, $"Saved as the launch profile {profile} in {project.Name}'s {LaunchProfile.SettingsShown(project.Path)}{(madeFile ? ", made for it" : string.Empty)}: "
+            + $"it is now {now.Name}, generated from that profile");
     }
 
     /// <summary>How Edit Configurations reads a Compose configuration's services: Compose's model through the window's engine,

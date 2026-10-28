@@ -140,7 +140,7 @@ public partial class MainWindow
 
     /// <summary>Writes a profile as the Publish dialog asks, as one step of global undo: a new one made, one there changed in
     /// place (what else it says kept, its encoding and line breaks too) once the person agrees, nothing written when nothing
-    /// changed. Null once written, else why not.</summary>
+    /// changed. Null once written and landed, else why not.</summary>
     private async Task<string?> SaveProfileAsync(PublishChoice choice, Window owner)
     {
         string file = choice.File;
@@ -176,34 +176,37 @@ public partial class MainWindow
         {
             return $"{shownName} was left as it was";
         }
+        using CommandHistory.Recording made = Editors.Commands.Record($"Save Publish Profile {choice.Profile}");
         try
         {
-            using CommandHistory.Recording made = Editors.Commands.Record($"Save Publish Profile {choice.Profile}");
-            try
+            Following([file], () =>
             {
-                if (had is null)
+                try
                 {
-                    WriteNew(made, file, text);
+                    if (had is null)
+                    {
+                        WriteNew(made, file, text);
+                    }
+                    else
+                    {
+                        made.Watch(file);
+                        FileText.Save(file, text, had.Encoding, had.HasBom, had.CrBreaks);
+                    }
                 }
-                else
+                finally
                 {
-                    made.Watch(file);
-                    FileText.Save(file, text, had.Encoding, had.HasBom, had.CrBreaks);
+                    // Open, it takes the text now, inside the command, so the command's undo takes it back too.
+                    FollowWritten([file]);
                 }
-            }
-            finally
-            {
-                // Open, it takes the text now, inside the command, so the command's undo takes it back too.
-                FollowWritten([file]);
-            }
+            });
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             return $"{shownName} could not be written: {error.Message}";
         }
-        if (had is null)
+        if (await UnlandedAsync(made) is { } unlanded)
         {
-            FilesChanged();
+            return $"{shownName} could not be written: {unlanded.Message}";
         }
         status.Text = $"Saved the publish profile {choice.Profile} of {Path.GetFileNameWithoutExtension(choice.Project)}";
         return null;

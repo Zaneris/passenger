@@ -21,24 +21,30 @@ namespace Passenger.Tests;
 /// <summary>Rules the whole window keeps, each decided once in a shared piece and held here across what the tests open: a
 /// menu's current value checked and still enabled (MenuChoice); every tool window's tabs one look (ToolTabs, Shell.axaml's
 /// panelTab); every popup's width from one scale, its title one size and its rows one height (PopupFrame); a menu opening
-/// against its widget; the scrollbars, thin and arrowless; the open editor tab's ×; the focus ring; and the window at half
-/// a 1366-wide screen with nothing cut, a stripe putting what has no room behind More. Each rule that a look could break
-/// is held under both looks in one window, the look switched in place as Settings switches it.</summary>
-public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
+/// against its widget; the scrollbars, thin and arrowless; the open editor tab's ×; the focus ring; every list's rows made
+/// once (ReusedRows); and the window at half a 1366-wide screen with nothing cut, a stripe putting what has no room behind
+/// More. Each rule that a look could break is held under both looks in one window, the look switched in place as Settings
+/// switches it.</summary>
+public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLifetime
 {
     private readonly Project project;
 
     public UiRulesTests(Project project)
     {
         this.project = project;
-        project.Reset();
     }
+
+    /// <summary>The project as written for the test, on whichever thread it runs (a window test's, or one of its own).</summary>
+    public ValueTask InitializeAsync() => new(project.ResetAsync());
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     /// <summary>The looks a window's rules are held under, in the order a window wears them: Passenger's and Harbour's, whose
     /// shapes are every other theme's (tools/themes.py gives each one or the other's), the rest's colours held by the rules
     /// of tokens alone (<see cref="EveryLook"/>) and their grounds' steps checked as tools/themes.py writes them.</summary>
     private static readonly Look[] Looks = [Look.Passenger, Look.Harbour];
 
+    [Gate]
     [AvaloniaFact]
     public void A_menus_current_value_is_checked_with_Rider_s_tick_and_can_still_be_chosen()
     {
@@ -62,6 +68,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
         }
     }
 
+    [Gate]
     [AvaloniaFact]
     public void The_open_editor_tab_shows_its_close_button_as_Rider_s_does_and_the_others_only_under_the_pointer()
     {
@@ -90,6 +97,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
         }
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Every_tool_windows_tabs_have_one_look_the_open_one_underlined_under_a_larger_title()
     {
@@ -160,6 +168,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
     /// <summary>The two windows that list a run's services, Containers and Aspire, have one layout: their tabs are of one
     /// vocabulary in one order, Log first and shown at first, and their toolbars' service actions are one group in one order
     /// right after their Refresh, as their rows' menus begin with them.</summary>
+    [Gate]
     [AvaloniaFact]
     public void The_Containers_and_Aspire_windows_share_their_tabs_order_and_their_toolbars_service_group()
     {
@@ -197,6 +206,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
         }
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Every_popup_takes_a_width_of_the_scale_one_title_size_and_rows_of_one_height()
     {
@@ -255,6 +265,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
         }
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Every_scrollbar_is_Rider_s_thin_and_arrowless_and_a_sideways_one_shows_only_for_what_is_wider()
     {
@@ -303,6 +314,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
     private static ScrollContentPresenter Presenter(ScrollViewer viewer) =>
         viewer.GetVisualDescendants().OfType<ScrollContentPresenter>().First(p => p.TemplatedParent == viewer);
 
+    [Gate]
     [AvaloniaFact]
     public void At_half_a_1366_wide_screen_the_window_cuts_nothing_and_a_stripe_too_short_puts_the_rest_behind_More()
     {
@@ -380,6 +392,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
 
     /// <summary>A window opens inside the working area of a screen smaller than its default size: centred when new; one
     /// placed past the area's edge is brought onto it.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_window_opens_inside_a_small_screens_working_area_centred_and_one_placed_past_its_edge_is_brought_onto_it()
     {
@@ -413,6 +426,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
 
     /// <summary>Every corner Passenger rounds is one of the look's radii (Shell.axaml's kindBadge, tag and box on them), so
     /// either look's reach it.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Every_rounded_corner_is_one_of_the_looks_radii()
     {
@@ -469,6 +483,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
 
     /// <summary>The Debug window's toolbar down its left keeps every button inside the window; a window too short for them
     /// all puts the rest behind More, which lists them.</summary>
+    [Gate]
     [AvaloniaFact]
     public void The_debug_windows_toolbar_fits_inside_it_and_puts_what_has_no_room_behind_More()
     {
@@ -516,6 +531,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
     /// <summary>Every tool window's toolbar buttons are made one way (ToolButtons): each icon of the one size every icon has,
     /// and none taking the keys from the list or editor it acts on; only the frame's own Options and Hide in a header are
     /// smaller.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Every_tool_windows_toolbar_buttons_have_the_one_icon_size_and_never_take_the_keys()
     {
@@ -537,8 +553,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
                         continue;
                     }
                     seen++;
-                    bool frames = button.GetVisualParent() is StackPanel own && DockPanel.GetDock(own) == Dock.Right
-                        && own.GetVisualParent()?.GetVisualParent() is Border { Classes: var classes } && classes.Contains("toolHeader");
+                    bool frames = (button.Name == AppActions.HideToolWindow || ToolTip.GetTip(button) is "Options")
+                        && button.FindAncestorOfType<Border>() is { Classes: var classes } && classes.Contains("toolHeader");
                     double size = frames ? 10 : 16;
                     string what = $"{tool.Title}'s {ToolTip.GetTip(button)}";
                     Assert.False(button.Focusable, $"{what} takes the keys when clicked, where a toolbar's button leaves them with what it acts on");
@@ -554,9 +570,101 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
         }
     }
 
+    /// <summary>Every button that runs one of the window's actions, the toolbar's and every tool window's, names in its tip
+    /// the keys the keymap in force gives that action (<see cref="ActionTips"/>), and every tool window's Hide names Hide Tool
+    /// Window's keys or none: under Visual Studio's keymap and VS Code's, each chosen in turn, so no tip names a key that
+    /// does not run what it says.</summary>
+    [AvaloniaFact]
+    public void Every_action_buttons_tip_names_the_keys_the_keymap_in_force_gives_its_action()
+    {
+        MainWindow window = Open(1400, 880);
+        try
+        {
+            window.TerminalPanel.Shell = OperatingSystem.IsWindows() ? ("cmd.exe", []) : ("/bin/sh", []);
+            foreach (Passenger.Editor.KeymapPreset preset in (Passenger.Editor.KeymapPreset[])[Passenger.Editor.KeymapPreset.VisualStudio, Passenger.Editor.KeymapPreset.VSCode])
+            {
+                window.ApplySettings(window.Settings with { Keymap = preset });
+                Ui.Settle();
+                Passenger.Editor.Keymap keymap = AppActions.Keymap();
+                string? KeysOf(string action) => keymap.ShortcutsFor(AppActions.KeysIn(action)).FirstOrDefault()?.Display();
+                HashSet<Button> seen = [];
+                int hides = 0;
+                foreach (Passenger.App.Docking.ToolWindow tool in window.DockHost.Windows.ToList())
+                {
+                    window.DockHost.Show(tool.Id);
+                    Ui.Settle();
+                    foreach (Button button in window.GetVisualDescendants().OfType<Button>().Where(seen.Add))
+                    {
+                        string tip = ToolTip.GetTip(button) as string ?? string.Empty;
+                        if (button.Name == AppActions.HideToolWindow)
+                        {
+                            hides++;
+                            string? hide = KeysOf(AppActions.HideToolWindow);
+                            Assert.True(tip == ActionTips.Named("Hide", hide),
+                                $"Under {preset}'s keymap, {tool.Title}'s Hide says \"{tip}\", where the keys that hide it are {hide ?? "none"}");
+                        }
+                        else if ((ActionButtons.GetAction(button) ?? ActionTips.ActionOf(button)) is { } action && KeysOf(action) is { } keys)
+                        {
+                            Assert.True(tip.Contains($"({keys})", StringComparison.Ordinal),
+                                $"Under {preset}'s keymap, {tool.Title}'s button for {action} says \"{tip}\", never the {keys} that runs it");
+                        }
+                    }
+                }
+                Assert.True(hides >= 4, $"Only {hides} tool windows' Hide buttons were found under {preset}'s keymap");
+                Button run = Named<Button>(window, "RunButton");
+                Assert.True(seen.Contains(run) && ToolTip.GetTip(run) is string runTip && runTip.Contains($"({KeysOf(AppActions.RunProgram)})", StringComparison.Ordinal),
+                    $"The toolbar's Run says \"{ToolTip.GetTip(run)}\" under {preset}'s keymap");
+            }
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+    }
+
+    /// <summary>Every tool window's Refresh, Expand All, Collapse All and New Session is one of the window's actions, as Find
+    /// Action and the keymap reach it: a button doing one of those that runs no action fails here, naming its window.</summary>
+    [AvaloniaFact]
+    public void Every_tool_windows_refresh_expand_collapse_and_new_session_button_is_one_of_the_windows_actions()
+    {
+        string[] kinds = ["Refresh", "Read the .http files again", "Expand All", "Collapse All", "New Session"];
+        MainWindow window = Open(1400, 880);
+        try
+        {
+            window.TerminalPanel.Shell = OperatingSystem.IsWindows() ? ("cmd.exe", []) : ("/bin/sh", []);
+            List<string> bare = [];
+            HashSet<string> seen = [];
+            foreach (Passenger.App.Docking.ToolWindow tool in window.DockHost.Windows.ToList())
+            {
+                window.DockHost.Show(tool.Id);
+                Ui.Settle();
+                foreach (Button button in ToolWindowParts(window).OfType<Button>().Where(b => b.Classes.Contains("tool")))
+                {
+                    if (ToolTip.GetTip(button) is not string tip || kinds.FirstOrDefault(k => tip.StartsWith(k, StringComparison.Ordinal)) is not { } kind)
+                    {
+                        continue;
+                    }
+                    seen.Add(kind);
+                    if (button.Name is not { } name || window.Actions[name] is null || Passenger.App.ActionButtons.GetAction(button) != name)
+                    {
+                        bare.Add($"{tool.Title}'s {tip}");
+                    }
+                }
+            }
+            Assert.True(bare.Count == 0, $"These buttons run no action, so Find Action, the keymap and agents cannot reach them: {string.Join(", ", bare)}");
+            Assert.True(seen.Count == kinds.Length, $"Only {string.Join(", ", seen)} were found among the tool windows' buttons");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A label that asks more before it acts ends in one ellipsis everywhere, "…": every action's title, as the
     /// menus, Find Action and the keymap list it and as a menu opened where it runs words it, macOS's application menu, a
     /// row's menu in the Explorer, and every button and menu item the tool windows show.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Every_label_that_asks_more_ends_in_the_one_ellipsis_never_three_dots()
     {
@@ -624,6 +732,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
             items.SelectMany(i => (IEnumerable<MenuItem>)[i, .. Items(i.Items.OfType<MenuItem>())]);
     }
 
+    [Gate]
     [AvaloniaFact]
     public void At_the_smallest_width_the_status_bars_path_never_draws_under_its_widgets()
     {
@@ -632,7 +741,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
         {
             window.OpenFile(project.PathOf(Project.Deep));
             Ui.Settle();
-            Rect widgets = Placed(window, (Visual)Named<TextBlock>(window, "CaretText").Parent!);
+            Rect widgets = Placed(window, (Visual)Named<Button>(window, "CaretButton").Parent!);
             Button[] crumbs = [.. Named<Control>(window, "BreadcrumbHost").GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible)];
             Assert.NotEmpty(crumbs);
             foreach (Button crumb in crumbs)
@@ -652,6 +761,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
     /// window's header gives its tabs' room up before its title's and never lays them under its buttons, a tab's name ends in
     /// an ellipsis, the Git log's files end theirs, a sideways scrollbar lies under the last row rather than over it and a
     /// text box's upright one beside its lines.</summary>
+    [Gate]
     [AvaloniaFact]
     public void In_narrow_panes_words_with_no_room_end_in_an_ellipsis_and_nothing_draws_over_anything()
     {
@@ -749,9 +859,89 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
         };
     }
 
+    /// <summary>A greyed button shows its tooltip under the pointer, which says why it is greyed: Live Templates' Delete,
+    /// greyed for a built-in template, says how one is turned off instead.</summary>
+    [AvaloniaFact]
+    public void A_greyed_button_shows_its_tooltip_under_the_pointer()
+    {
+        MainWindow window = Open(1200, 800);
+        SettingsDialog? dialog = null;
+        try
+        {
+            dialog = window.ShowSettings();
+            Ui.Settle();
+            dialog.Query = "live templates";
+            Ui.Settle();
+            Assert.True(dialog.Templates.Choose("cw"), "The Live Templates page does not list cw");
+            Ui.Settle();
+            Button delete = dialog.Templates.DeleteButton;
+            Assert.False(delete.IsEnabled, "Delete is not greyed for cw, a built-in template");
+            Rest(dialog, delete, "A built-in template is turned off by its check box, so it can be turned on again");
+        }
+        finally
+        {
+            dialog?.Close();
+            window.Close();
+        }
+    }
+
+    /// <summary>A greyed check box shows its tooltip under the pointer: in NuGet's Sources, a feed of the machine's
+    /// nuget.config, which NuGet never writes, has its check box greyed, saying what it is all the same. On Linux alone,
+    /// where NuGet takes the machine's folder from the run (NUGET_COMMON_APPLICATION_DATA).</summary>
+    [AvaloniaFact]
+    public void A_greyed_check_box_shows_its_tooltip_under_the_pointer()
+    {
+        Assert.SkipUnless(OperatingSystem.IsLinux(), "NuGet reads the machine's nuget.config from the system's own folder here, which a test does not write");
+        string machine = Directory.CreateDirectory(Path.Combine(Environment.GetEnvironmentVariable("NUGET_COMMON_APPLICATION_DATA")!, "NuGet", "Config")).FullName;
+        // Its feed turned off, so a restore beside the test uses none of it.
+        File.WriteAllText(Path.Combine(machine, "Team.config"), """
+            <?xml version="1.0" encoding="utf-8"?>
+            <configuration>
+              <packageSources>
+                <add key="team" value="https://team.invalid/v3/index.json" />
+              </packageSources>
+              <disabledPackageSources>
+                <add key="team" value="true" />
+              </disabledPackageSources>
+            </configuration>
+            """);
+        MainWindow window = Open(1200, 800);
+        try
+        {
+            window.Perform(AppActions.ShowNuGet);
+            Ui.Landed(() => window.NuGet.PackageSources.Feeds.Count > 0, "the package sources read");
+            Ui.Click(((Panel)window.NuGet.Tabs).Children.OfType<ToggleButton>().Single(t => (string?)t.Content == "Sources"), settle: false);
+            Ui.WaitFor(() => window.NuGet.ShowsSources && window.NuGet.Sources.Files.Any(f => f.Place == Passenger.Packages.ConfigPlace.Machine),
+                () => $"the Sources tab with the machine's nuget.config, where it lists [{string.Join(", ", window.NuGet.Sources.Files.Select(f => $"{f.Path} ({f.Place})"))}]");
+            Passenger.Packages.ConfigFile file = window.NuGet.Sources.Files.Single(f => f.Place == Passenger.Packages.ConfigPlace.Machine);
+            Ui.Click(Ui.Row(window.NuGet.Sources.GetVisualDescendants().OfType<ListBox>().First(l => l.Items.Contains(file)), file));
+            CheckBox? toggle = null;
+            Ui.WaitFor(() => (toggle = window.NuGet.Sources.GetVisualDescendants().OfType<Grid>().FirstOrDefault(g => g.Tag as string == "team")?.Children.OfType<CheckBox>().FirstOrDefault()) is not null,
+                "the machine's feed team, listed with its check box");
+            Assert.False(toggle!.IsEnabled, "The check box of a feed of the machine's nuget.config, which NuGet never writes, is not greyed");
+            Rest(window, toggle, "Enabled");
+        }
+        finally
+        {
+            window.Close();
+            File.Delete(Path.Combine(machine, "Team.config"));
+        }
+    }
+
+    /// <summary>Rests the pointer on a control and waits for the tooltip it opens to say what is given.</summary>
+    private static void Rest(TopLevel top, Control control, string tip)
+    {
+        top.MouseMove(control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), top)!.Value);
+        Ui.WaitFor(() => Shown(top) == tip, () => $"\"{tip}\" shown with the pointer resting on the greyed {control.GetType().Name}, where it shows {Shown(top) ?? "no tooltip"}",
+            TimeSpan.FromSeconds(5));
+
+        static string? Shown(TopLevel top) => top.GetVisualDescendants().OfType<ToolTip>().FirstOrDefault(t => t.IsEffectivelyVisible)?.Content as string;
+    }
+
     /// <summary>The status bar's words are a link while they have a place to go (an internal error's, IDE Internal Errors):
     /// the hand, a key's reach, and the link's colour underlined under the pointer, from the shared style in every look;
     /// words that go nowhere stay the bar's muted words under the pointer, and the keys pass them by.</summary>
+    [Gate]
     [AvaloniaFact]
     public void The_status_bars_words_are_a_link_under_the_pointer_only_while_they_have_a_place_to_go()
     {
@@ -820,6 +1010,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
         return seen;
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Focus_is_Rider_s_rounded_ring_centred_on_what_has_the_keys_a_check_box_s_round_its_box_alone()
     {
@@ -875,6 +1066,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
         Ui.Settle();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void The_windows_areas_are_told_apart_by_shade_with_a_line_only_where_two_tool_windows_meet()
     {
@@ -945,6 +1137,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
         picture.Seam("Structure and Problems", new Point(structure.Left + (structure.Width / 2), problems.Top), panel, line);
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_tooltip_and_a_drop_downs_list_are_the_themes_popups_and_a_field_stands_on_the_fields_ground()
     {
@@ -1019,6 +1212,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
     /// <summary>Every theme, for a rule held of its tokens alone, which costs no window.</summary>
     public static TheoryData<Look> EveryLook => [.. Enum.GetValues<Look>()];
 
+    [Gate]
     [AvaloniaTheory]
     [MemberData(nameof(EveryLook))]
     public void Text_icons_and_focus_rings_meet_WCAG_AA_on_what_they_are_drawn_on_dark_and_light(Look look)
@@ -1042,6 +1236,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
         Assert.True(below.Count == 0, $"In {look}, {below.Count} pairs fall below WCAG AA (text 4.5:1, icons, focus rings and the caret 3:1):\n" + string.Join("\n", below));
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Every_theme_gives_every_colour_in_Dark_and_Light_and_Rider_s_scheme_only_the_codes()
     {
@@ -1076,6 +1271,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
     /// <summary>Every colour, brush and corner Fluent gives is the look's own token in either look, Dark and Light
     /// (FluentKeys.axaml), so a control left to Fluent never shows another theme's colours or Fluent's greys. A key is left
     /// to Fluent only by the reasons below; an Avalonia update that adds one fails here until it is mapped.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Every_colour_and_corner_Fluent_gives_is_the_looks_own_token_dark_and_light()
     {
@@ -1227,6 +1423,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
     /// <summary>No colour and no rounded corner is written outside the theme files (Theme/): each is a token of the look in
     /// force, so a look draws the whole window. Where a colour is the content's, not the window's, it is allowed below,
     /// saying why.</summary>
+    [Gate]
     [Fact]
     public void No_colour_or_rounded_corner_is_written_outside_the_theme_files()
     {
@@ -1269,6 +1466,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
     /// resource in XAML) is one the app's resources give, dark and light: a misspelt or missing one finds nothing, drawn as
     /// nothing (Transparent, no icon) with no error. A literal of that shape naming something else (a project's assembly, a
     /// diagnostic's source) is passed over; a key made at run time ($"Icon.{kind}") is its own code's to check.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Every_theme_key_and_icon_the_code_names_is_one_the_resources_give_dark_and_light()
     {
@@ -1321,8 +1519,113 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
             Directory.Exists(Path.Combine(root, "src", string.Join('.', name.Split('.').Take(parts)))));
     }
 
+    /// <summary>Every list's rows, a drop-down's choices and a strip's tabs are made once by ReusedRows and handed each item
+    /// shown there, so scrolling builds no row again: rows from an item template (ItemTemplate, a data template of any
+    /// kind) or a container's template of its own fail here, naming the line.</summary>
+    [Gate]
+    [Fact]
+    public void Every_lists_rows_are_made_once_by_ReusedRows_never_by_an_item_template()
+    {
+        Regex made = new(@"\b(?:FuncDataTemplate|FuncTreeDataTemplate|IDataTemplate|IRecyclingDataTemplate|ITreeDataTemplate|DataTemplates)\b(?:<(?:[^<>]|<[^<>]*>)+>)?|<(?:DataTemplate|TreeDataTemplate)\b|\bFuncControlTemplate<(?:ListBoxItem|ComboBoxItem|TreeViewItem)>");
+        Regex given = new(@"\b(?:SelectionBox)?ItemTemplate\s*=\s*""?[\w.{} ]*(?:<(?:[^<>]|<[^<>]*>)+>)?|<\w+\.(?:SelectionBox)?ItemTemplate>");
+        Regex container = new(@"<Style Selector=""[^""]*(?:ListBoxItem|ComboBoxItem)""[^>]*>(?:(?!</Style>).)*?Property=""(?:Content)?Template""", RegexOptions.Singleline);
+        List<string> found = [];
+        foreach ((string path, string text) in UiFiles(theme: true).Where(f => !f.Path.EndsWith("/ReusedRows.cs", StringComparison.Ordinal)))
+        {
+            string[] lines = text.Split('\n');
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string trimmed = lines[i].TrimStart();
+                if (trimmed.StartsWith("//", StringComparison.Ordinal) || trimmed.StartsWith("<!--", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+                Match template = made.Match(lines[i]) is { Success: true } kind ? kind : given.Match(lines[i]);
+                if (template.Success)
+                {
+                    found.Add($"{path}:{i + 1}: {template.Value.Trim()}");
+                }
+            }
+            foreach (Match match in container.Matches(text))
+            {
+                found.Add($"{path}:{text.AsSpan(0, match.Index).Count('\n') + 1}: a ListBoxItem's Template");
+            }
+        }
+        Assert.True(found.Count == 0, $"{found.Count} lists make their rows from an item template, building a row for every item scrolled into view: "
+            + $"give each a row made once through ReusedRows.Use, showing its DataContext (Showing):\n{string.Join("\n", found)}");
+    }
+
+    /// <summary>A row a list reuses draws its icons with RowIcon, one control where a PathIcon is five that the list styles
+    /// again whole each time it brings the row back into view: a PathIcon made in a row's factory (the body that hands back
+    /// the row Showing its item) or in a row's own class fails here, naming its line; a button's glyph is the button's.</summary>
+    [Gate]
+    [Fact]
+    public void A_reused_rows_icons_are_RowIcons_never_PathIcons()
+    {
+        Regex rowClass = new(@"\bclass \w*Row\w*\s*:\s*(?:StackPanel|DockPanel|Grid|Panel|ShrinkingRow)\b");
+        List<string> found = [];
+        int rows = 0;
+        foreach ((string path, string text) in UiFiles().Where(f => f.Path.EndsWith(".cs", StringComparison.Ordinal)))
+        {
+            HashSet<int> seen = [];
+            IEnumerable<int> starts = Regex.Matches(text, @"\.Showing<").Select(m => Enclosing(text, m.Index))
+                .Concat(rowClass.Matches(text).Select(m => text.IndexOf('{', m.Index)));
+            foreach (int open in starts.Where(o => o >= 0 && seen.Add(o)))
+            {
+                rows++;
+                int close = Closing(text, open);
+                foreach (Match icon in Regex.Matches(text[open..close], @"\bPathIcon\b"))
+                {
+                    int at = open + icon.Index;
+                    int lineStart = text.LastIndexOf('\n', at) + 1;
+                    int lineEnd = text.IndexOf('\n', at);
+                    if (!text[lineStart..(lineEnd < 0 ? text.Length : lineEnd)].Contains(".Content", StringComparison.Ordinal))
+                    {
+                        found.Add($"{path}:{text.AsSpan(0, at).Count('\n') + 1}");
+                    }
+                }
+            }
+        }
+        Assert.True(rows > 40, $"Only {rows} rows a list reuses were found: the search no longer reads them");
+        Assert.True(found.Count == 0, $"{found.Count} PathIcons are made in rows a list reuses, each five controls styled again as its row comes back into view: "
+            + $"draw each with RowIcon:\n{string.Join("\n", found.Distinct())}");
+
+        // The opening brace of the innermost block holding a place, or -1.
+        static int Enclosing(string text, int at)
+        {
+            int depth = 0;
+            for (int i = at - 1; i >= 0; i--)
+            {
+                if (text[i] == '}')
+                {
+                    depth++;
+                }
+                else if (text[i] == '{' && depth-- == 0)
+                {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        static int Closing(string text, int open)
+        {
+            int depth = 0;
+            for (int i = open; i < text.Length; i++)
+            {
+                depth += text[i] switch { '{' => 1, '}' => -1, _ => 0 };
+                if (depth == 0)
+                {
+                    return i;
+                }
+            }
+            return text.Length;
+        }
+    }
+
     /// <summary>Muted words are made one way, by the muted class (MutedText, or the class on a TextBlock of its own), so a
     /// change to how muted words look is made once: a TextBlock's foreground bound by hand to the muted colour fails here.</summary>
+    [Gate]
     [Fact]
     public void Muted_words_take_the_muted_class_never_the_colour_bound_by_hand()
     {
@@ -1336,6 +1639,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
     /// <summary>Every tool window's bars are the shared pieces, ToolBars.Top along its top and ToolBars.Side down its left,
     /// so each is one height, one width and one rule: a bar built by hand (a fixed height over a rule, a strip down the left
     /// beside one, a ToolColumn of its own) fails here, naming its line.</summary>
+    [Gate]
     [Fact]
     public void Every_tool_windows_bars_are_the_shared_top_and_side_bars()
     {
@@ -1552,7 +1856,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
         pairs.Add((TokenKeys.Editor_Caret, TokenKeys.Editor_CurrentLine, Mark));
         foreach (string kind in (string[])["Keyword", "ControlKeyword", "Comment", "DocComment", "String", "StringEscape", "Number", "Preprocessor", "Class", "Interface",
             "Struct", "Enum", "Delegate", "TypeParameter", "Method", "Property", "Event", "Field", "Constant", "EnumMember", "ErrorOutput", "UserInput", "Link",
-            "Brace1", "Brace2", "Brace3", "Tag", "AttributeName", "AttributeValue", "Entity", "JsonKey", "YamlKey", "Heading", "Code", "Quote", "LinkDestination"])
+            "BuildError", "BuildWarning", "Brace1", "Brace2", "Brace3", "Tag", "AttributeName", "AttributeValue", "Entity", "JsonKey", "YamlKey", "Heading", "Code", "Quote", "LinkDestination"])
         {
             pairs.Add(($"Passenger.Syntax.{kind}", TokenKeys.Editor_Background, Text));
             pairs.Add(($"Passenger.Syntax.{kind}", TokenKeys.Editor_CurrentLine, Text));
@@ -1743,14 +2047,19 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>
             File.WriteAllText(PathOf("Notes.txt"), "one\ntwo\n");
             Directory.CreateDirectory(Path.GetDirectoryName(PathOf(Deep))!);
             File.WriteAllText(PathOf(Deep), "class RefundCalculator\n{\n}\n");
-            TestFolders.Prepare(() =>
+        }
+
+        /// <summary>A repository with a branch and a tag beside main; never restored, since no window of the class starts a
+        /// language server or builds, and the rules are the window's.</summary>
+        public override async ValueTask InitializeAsync()
+        {
+            await TestFolders.PrepareAsync(async () =>
             {
-                TestGit.Init(Folder);
-                TestGit.Run(Folder, "branch", "other");
-                TestGit.Run(Folder, "tag", "v1.0");
+                await TestGit.InitAsync(Folder);
+                await TestGit.RunAsync(Folder, "branch", "other");
+                await TestGit.RunAsync(Folder, "tag", "v1.0");
             }, Folder);
-            // Never restored: no window of the class starts a language server or builds, and the rules are the window's.
-            Prepare(restore: false);
+            await PrepareAsync(restore: false);
         }
     }
 }

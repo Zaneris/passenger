@@ -500,6 +500,91 @@ public sealed class DockingTests
     }
 
     /// <summary>A window, keeping its state in a folder of the test's own when it is given one.</summary>
+    /// <summary>Every tool window behaves alike: a tab that closes closes on a middle-click, a tree's rows close and open
+    /// from its header's Collapse All and Expand All, and a double-click on an editor's tab gives the editors the frame.</summary>
+    [AvaloniaFact]
+    public void A_tool_windows_tab_closes_on_a_middle_click_its_tree_closes_from_its_header_and_an_editor_tab_maximizes_the_editors()
+    {
+        string folder = TestFolders.Create("dock-alike-");
+        string one = TestFolders.Write(folder, "src/One.cs", "class One\n{\n    int a;\n    int b() => a;\n}\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.OpenFile(one);
+            Ui.Settle();
+            Passenger.App.Explorer.ExplorerNode src = window.ExplorerView.Tree.Rows.First(r => r.Name == "src");
+            Assert.True(src.IsExpanded, "The opened file's folder is not open in the Explorer");
+            Ui.Click(HeaderButton(window, ToolWindowIds.Explorer, AppActions.CollapseAll));
+            Assert.False(src.IsExpanded, "Collapse All left the Explorer's src open");
+            Assert.True(window.ExplorerView.Tree.Root!.IsExpanded, "Collapse All closed the Explorer's top row too");
+            Assert.False(HeaderButton(window, ToolWindowIds.Explorer, AppActions.ExpandAll).IsVisible, "The Explorer offers Expand All, which would read every folder on disk");
+
+            Passenger.App.ToolWindows.Usage Use(int line, string text) => new(window.EditorArea.Active!.Path, line, 4, 1, text, Passenger.Languages.CSharp.UsageKind.Read, "Sample");
+            window.Find.Show("Usages of a", [Use(2, "    int a;"), Use(3, "    int b() => a;")]);
+            window.Find.Show("Usages of b", [Use(3, "    int b() => a;")]);
+            window.ShowToolWindow(ToolWindowIds.Find);
+            Ui.Settle();
+            Ui.Click(HeaderButton(window, ToolWindowIds.Find, AppActions.CollapseAll));
+            Assert.Equal(["Read access"], window.Find.Rows.Select(r => r.Label));
+            Ui.Click(HeaderButton(window, ToolWindowIds.Find, AppActions.ExpandAll));
+            Assert.Equal(["Read access", "Sample", "One.cs", "int b() => a;"], window.Find.Rows.Select(r => r.Label));
+            ToggleButton tab = window.Find.GetVisualDescendants().OfType<ToggleButton>().First(t => t.GetVisualDescendants().OfType<TextBlock>().Any(b => b.Text == "Usages of b"));
+            Ui.MiddleClick(tab);
+            Assert.Equal(["Usages of a"], window.Find.Searches);
+
+            Control editorTab = window.EditorArea.ActiveGroup.GetVisualDescendants().OfType<TextBlock>()
+                .First(t => t.Text == "One.cs" && t.Classes.Contains("tabName")).FindAncestorOfType<Border>()!;
+            Ui.DoubleClick(editorTab);
+            Assert.False(window.DockHost.IsShown(ToolWindowIds.Explorer) || window.DockHost.IsShown(ToolWindowIds.Find),
+                "A double-click on the editor's tab left the tool windows open beside the editors");
+            Ui.DoubleClick(editorTab);
+            Assert.True(window.DockHost.IsShown(ToolWindowIds.Explorer) && window.DockHost.IsShown(ToolWindowIds.Find),
+                "A second double-click on the editor's tab did not bring the tool windows back");
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(folder);
+        }
+    }
+
+    /// <summary>Find's keys in the Run window's console find in its output, not in the file the editor shows.</summary>
+    [AvaloniaFact]
+    public void Find_in_the_Run_console_finds_in_its_output()
+    {
+        string folder = TestFolders.Create("dock-find-");
+        string one = TestFolders.Write(folder, "One.cs", "class One { }\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.OpenFile(one);
+            Passenger.App.ToolWindows.OutputView console = window.BottomPanel.Run;
+            console.Sink.Write("started\nticked once\nticked twice\n");
+            window.ShowToolWindow(ToolWindowIds.Run);
+            Ui.WaitFor(() => console.Document.Snapshot.ToString().Contains("ticked twice", StringComparison.Ordinal), "the program's output in the Run window");
+            console.Editor.Focus();
+            Ui.Settle();
+            Ui.Press(window, Ui.Shortcut(AppActions.Find));
+            window.KeyTextInput("ticked");
+            Ui.Settle();
+            Assert.True(console.Find.IsVisible, "Find's keys in the Run window opened no Find over its console");
+            Assert.False(window.EditorArea.FindBar.IsVisible, "Find's keys in the Run window opened Find over the editor's file");
+            Assert.Equal("1/2", console.Find.CountText);
+            Ui.Press(window, Ui.Shortcut(AppActions.FindNext));
+            Assert.Equal("2/2", console.Find.CountText);
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(folder);
+        }
+    }
+
+    /// <summary>A tool window's header button running one of the window's actions, shown in the pane its window is in.</summary>
+    private static Button HeaderButton(MainWindow window, string id, string action) =>
+        window.DockHost[id].Content.GetVisualAncestors().OfType<DockPanel>().First(p => p.Classes.Contains("toolPane"))
+            .GetVisualDescendants().OfType<Button>().First(b => b.Name == action);
+
     private static MainWindow Open(string? state = null)
     {
         MainWindow window = new() { Width = 1200, Height = 800, StateFolder = state ?? Passenger.App.State.StateStore.DefaultRoot };

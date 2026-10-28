@@ -233,7 +233,4 @@ public static class Colours
     private static string Rgb(string receiver, Argb colour) => colour.A == 255
         ? string.Create(CultureInfo.InvariantCulture, $"{receiver}.FromRgb({colour.R}, {colour.G}, {colour.B})")
         : string.Create(CultureInfo.InvariantCulture, $"{receiver}.FromArgb({colour.A}, {colour.R}, {colour.G}, {colour.B})");
-
-    /// <summary>A file's C# syntax, for a file with no parse to hand.</summary>
-    public static SyntaxNode Parse(string text) => CSharpSyntaxTree.ParseText(text).GetRoot();
 }

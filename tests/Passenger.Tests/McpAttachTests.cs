@@ -29,6 +29,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
     {
     }
 
+    [Gate]
     [Fact]
     public async Task An_agent_set_up_before_Passenger_runs_has_the_tools_and_its_first_call_starts_Passenger_on_its_folder_which_asks()
     {
@@ -113,6 +114,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Empty(Directory.Exists(sockets) ? Directory.GetFiles(sockets, "*.sock") : []);
     }
 
+    [Gate]
     [AvaloniaFact]
     public void An_agents_first_call_has_the_running_Passenger_open_its_folder_in_a_window_of_its_own_which_asks_first()
     {
@@ -124,10 +126,10 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
         first.KeepSettings();
         first.OpenFolder(unrelated);
         Ui.Settle();
-        McpClient client = Await(Task.Run(() => Start(["--mcp-attach", wanted])), "the agent's session starting");
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", wanted])), "the agent's session starting");
         try
         {
-            Task<CallToolResult> denied = Task.Run(() => Result(client, McpTools.Workspace));
+            Task<CallToolResult> denied = Waiting.Apart(() => Result(client, McpTools.Workspace));
             WaitFor(() => PassengerApp.Windows.Count == 2, "the running Passenger to open the agent's folder in a window of its own");
             MainWindow second = PassengerApp.Windows.Single(w => w != first);
             Assert.Equal(PathNames.Canonical(wanted), second.Folder);
@@ -141,7 +143,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
                 $"A call the person did not let in was answered: {Text(no)}");
             Assert.True(first.Agents == 0 && second.Agents == 0, "An agent the person did not let in is counted on a window");
 
-            Task<JsonElement> allowed = Task.Run(() => Call(client, McpTools.Workspace));
+            Task<JsonElement> allowed = Waiting.Apart(() => Call(client, McpTools.Workspace));
             AgentAdmissionDialog again = Admission(second, "the window to ask again at the next call");
             Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(again).OfType<CheckBox>().Single(c => (string?)c.Content == "Always for this folder").IsChecked = true;
             Press(again, AgentAdmissionDialog.Allow);
@@ -151,15 +153,15 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
 
             second.Close();
             Ui.Settle();
-            JsonElement reopened = Await(Task.Run(() => Call(client, McpTools.Workspace)), "the call after the agent's window closed");
+            JsonElement reopened = Await(Waiting.Apart(() => Call(client, McpTools.Workspace)), "the call after the agent's window closed");
             MainWindow third = PassengerApp.Windows.Single(w => w != first);
             Assert.Equal(third.Folder, reopened.GetProperty("folder").GetString());
             Assert.Empty(third.OwnedWindows.OfType<AgentAdmissionDialog>());
 
-            McpClient another = Await(Task.Run(() => Start(["--mcp-attach"], wanted)), "a second agent's session starting");
+            McpClient another = Await(Waiting.Apart(() => Start(["--mcp-attach"], wanted)), "a second agent's session starting");
             try
             {
-                Assert.Equal(third.Folder, Await(Task.Run(() => Call(another, McpTools.Workspace)), "the second agent's call").GetProperty("folder").GetString());
+                Assert.Equal(third.Folder, Await(Waiting.Apart(() => Call(another, McpTools.Workspace)), "the second agent's call").GetProperty("folder").GetString());
                 Assert.Equal(2, PassengerApp.Windows.Count);
                 WaitFor(() => third.AgentStatus == "2 agents connected", "the window to count both agents");
             }
@@ -179,7 +181,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
             taking.Ok();
             Ui.Settle();
             Assert.False(third.AlwaysLetsAgentsIn, "The folder taken back still lets agents in unasked");
-            Task<CallToolResult> afterwards = Task.Run(() => Result(client, McpTools.Workspace));
+            Task<CallToolResult> afterwards = Waiting.Apart(() => Result(client, McpTools.Workspace));
             Press(Admission(third, "the window to ask again once its folder was taken back"), AgentAdmissionDialog.DontAllow);
             Assert.True(Await(afterwards, "the call after the folder was taken back").IsError, "A call after the folder was taken back went on unasked");
         }
@@ -196,17 +198,18 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent that agreed an older protocol version with --mcp-attach (OpenCode's 2025-11-25) is answered in
     /// that version: the window is joined in it, so nothing of a later one (a result's serverInfo and resultType) reaches
     /// an agent that never asked for it.</summary>
+    [Gate]
     [AvaloniaFact]
     public void An_agent_on_an_older_protocol_is_answered_in_its_own_version_through_attach()
     {
         string older = Plain("mcp-older-");
         MainWindow window = Ui.OpenFolder(older, languageServer: false);
         window.ApplySettings(window.Settings with { McpServer = true });
-        McpClient client = Await(Task.Run(() => Start(["--mcp-attach", ProcessId], protocol: "2025-11-25")), "the agent attaching");
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId], protocol: "2025-11-25")), "the agent attaching");
         try
         {
             Assert.Equal("2025-11-25", client.NegotiatedProtocolVersion);
-            CallToolResult answer = Await(Task.Run(() => Result(client, McpTools.Workspace)), "the workspace call");
+            CallToolResult answer = Await(Waiting.Apart(() => Result(client, McpTools.Workspace)), "the workspace call");
             Assert.True(answer.IsError != true, $"workspace failed: {Text(answer)}");
             Assert.True(answer.Meta is null && answer.ResultType is null,
                 $"An agent on 2025-11-25 was answered with a later version's fields: _meta {answer.Meta?.ToJsonString()}, resultType {answer.ResultType}");
@@ -222,6 +225,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent that gives up on the call the window's let-in question holds takes the question away: nothing waits
     /// on it, and a later "Allow" would let in an agent that asked nothing. The window's limit is long, so only the giving up
     /// can close it within the wait.</summary>
+    [Gate]
     [AvaloniaFact]
     public void An_agent_giving_up_on_its_call_takes_the_windows_question_away()
     {
@@ -230,11 +234,11 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
         window.Show();
         window.OpenFolder(unattended);
         Ui.Settle();
-        McpClient client = Await(Task.Run(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
         try
         {
             using CancellationTokenSource giveUp = new();
-            Task<CallToolResult> givenUp = Task.Run(() => CallGivingUp(client, McpTools.Workspace, new(), giveUp.Token));
+            Task<CallToolResult> givenUp = Waiting.Apart(() => CallGivingUp(client, McpTools.Workspace, new(), giveUp.Token));
             WaitFor(() => window.OwnedWindows.OfType<AgentAdmissionDialog>().Any(d => d.IsVisible), "the window to ask whether the agent may work there");
             // Headless windows never lose activation, so only the words standing out can show a question waits.
             Button agent = window.FindControl<Button>("AgentButton")!;
@@ -254,6 +258,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>Settings' MCP Server page gives each agent its setup for this copy of Passenger, as the person pastes it: the
     /// running program's own path in every command and configuration, Claude Desktop's with the window's folder after
     /// --mcp-attach, the configurations JSON and TOML that read, and each Copy putting its text on the clipboard whole.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Settings_gives_each_agent_its_setup_for_this_copy_and_copies_it_whole()
     {
@@ -313,16 +318,17 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    [Gate]
     [AvaloniaFact]
     public void An_agents_open_of_another_folder_is_the_persons_to_allow_on_their_window_and_not_asked_on_the_agents_own()
     {
         string theirs = Plain("mcp-theirs-");
         string elsewhere = Plain("mcp-elsewhere-");
         MainWindow window = AgentsWindow(theirs, languageServer: false);
-        McpClient client = Await(Task.Run(() => Start(["--mcp-attach", theirs])), "the agent attaching");
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", theirs])), "the agent attaching");
         try
         {
-            Task<CallToolResult> refused = Task.Run(() => Result(client, McpTools.Open, new() { ["path"] = elsewhere }));
+            Task<CallToolResult> refused = Waiting.Apart(() => Result(client, McpTools.Open, new() { ["path"] = elsewhere }));
             ConfirmDialog asked = DialogButtonsTests.Check(Question(window, "the question for the agent's open"));
             Assert.Contains(Texts(asked), t => t.StartsWith("Test Agent wants to open ", StringComparison.Ordinal) && t.EndsWith($" here, replacing {window.Folder}.", StringComparison.Ordinal));
             Press(asked, AgentAdmissionDialog.DontAllow);
@@ -330,7 +336,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
             Assert.True(no.IsError == true && Text(no).Contains("did not let Test Agent open", StringComparison.Ordinal), $"An open the person did not allow was answered: {Text(no)}");
             Assert.Equal(PathNames.Canonical(theirs), window.Folder);
 
-            Task<JsonElement> opening = Task.Run(() => Call(client, McpTools.Open, new() { ["path"] = elsewhere }));
+            Task<JsonElement> opening = Waiting.Apart(() => Call(client, McpTools.Open, new() { ["path"] = elsewhere }));
             Press(Question(window, "the open asked again"), AgentAdmissionDialog.Allow);
             Assert.Equal(PathNames.Canonical(elsewhere), Await(opening, "the open the person allowed").GetProperty("folder").GetString());
             Assert.Equal(PathNames.Canonical(elsewhere), window.Folder);
@@ -342,10 +348,10 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
         }
 
         // The agent's own Passenger has nobody to ask.
-        McpClient own = Await(Task.Run(() => Start(["--mcp", theirs])), "the agent's own Passenger starting");
+        McpClient own = Await(Waiting.Apart(() => Start(["--mcp", theirs])), "the agent's own Passenger starting");
         try
         {
-            Assert.Equal(PathNames.Canonical(elsewhere), Await(Task.Run(() => Call(own, McpTools.Open, new() { ["path"] = elsewhere })), "the open on the agent's own Passenger")
+            Assert.Equal(PathNames.Canonical(elsewhere), Await(Waiting.Apart(() => Call(own, McpTools.Open, new() { ["path"] = elsewhere })), "the open on the agent's own Passenger")
                 .GetProperty("folder").GetString());
         }
         finally
@@ -357,6 +363,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent let in on one folder works there alone: the person opening another in its window shuts it out, and its
     /// next call is asked again, changing nothing in the folder the person opened meanwhile. The agent's own open of a
     /// folder, which the person allows, keeps it let in there, though its first change there is asked for again.</summary>
+    [Gate]
     [AvaloniaFact]
     public void An_agent_let_in_on_one_folder_is_asked_again_once_the_person_opens_another_in_its_window()
     {
@@ -364,10 +371,10 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
         string second = Plain("mcp-second-");
         string third = Plain("mcp-third-");
         MainWindow window = Ui.OpenFolder(first, languageServer: false);
-        McpClient client = Await(Task.Run(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
         try
         {
-            Task<JsonElement> editing = Task.Run(() => Call(client, McpTools.Edit, Note("first")));
+            Task<JsonElement> editing = Waiting.Apart(() => Call(client, McpTools.Edit, Note("first")));
             Press(Admission(window, "the window to ask whether the agent may work there"), AgentAdmissionDialog.Allow);
             Press(Question(window, "the question for the agent's edit"), "Allow");
             Await(editing, "the edit in the first folder");
@@ -377,7 +384,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
             window.OpenFolder(second);
             Ui.Settle();
             WaitFor(() => window.Agents == 0, "the agent let in on the first folder to be shut out as the window opened the second");
-            Task<CallToolResult> again = Task.Run(() => Result(client, McpTools.Edit, Note("second")));
+            Task<CallToolResult> again = Waiting.Apart(() => Result(client, McpTools.Edit, Note("second")));
             AgentAdmissionDialog asked = Admission(window, "the window to ask again on the folder the person opened");
             Assert.Contains(Texts(asked), t => t.Contains($"read and search {Path.GetFileName(second.TrimEnd(Path.DirectorySeparatorChar))},", StringComparison.Ordinal));
             Press(asked, AgentAdmissionDialog.DontAllow);
@@ -386,15 +393,15 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
                 $"The agent's edit after the person opened another folder was answered: {Text(refused)}");
             Assert.Equal("notes\n", File.ReadAllText(Path.Combine(second, "Notes.txt")));
 
-            Task<JsonElement> editingSecond = Task.Run(() => Call(client, McpTools.Edit, Note("second")));
+            Task<JsonElement> editingSecond = Waiting.Apart(() => Call(client, McpTools.Edit, Note("second")));
             Press(Admission(window, "the window to ask at the agent's next call"), AgentAdmissionDialog.Allow);
             Press(Question(window, "the question for the agent's edit in the second folder"), "Allow");
             Await(editingSecond, "the edit in the second folder");
             Assert.Equal("notes second\n", File.ReadAllText(Path.Combine(second, "Notes.txt")));
-            Task<JsonElement> opening = Task.Run(() => Call(client, McpTools.Open, new() { ["path"] = third }));
+            Task<JsonElement> opening = Waiting.Apart(() => Call(client, McpTools.Open, new() { ["path"] = third }));
             Press(Question(window, "the question for the agent's open"), AgentAdmissionDialog.Allow);
             Assert.Equal(PathNames.Canonical(third), Await(opening, "the agent's open the person allowed").GetProperty("folder").GetString());
-            Task<JsonElement> editingThird = Task.Run(() => Call(client, McpTools.Edit, Note("third")));
+            Task<JsonElement> editingThird = Waiting.Apart(() => Call(client, McpTools.Edit, Note("third")));
             ConfirmDialog allowing = Question(window, "the question for the agent's first edit in the folder it opened");
             Assert.Contains("Allow edit?", Texts(allowing));
             Assert.DoesNotContain(window.OwnedWindows.OfType<AgentAdmissionDialog>(), d => d.IsVisible);
@@ -413,6 +420,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>With Enable MCP Server on, a window keeps its agents as the person opens another folder there, but an agent
     /// set up in the first goes on in it: --mcp-attach joins a window on its own folder again (the running Passenger opening
     /// one), never the window now on the other.</summary>
+    [Gate]
     [AvaloniaFact]
     public void An_agent_set_up_in_a_folder_goes_on_there_once_its_window_opens_another()
     {
@@ -425,13 +433,13 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
         window.OpenFolder(own);
         Ui.Settle();
         window.ApplySettings(window.Settings with { McpServer = true });
-        McpClient client = Await(Task.Run(() => Start(["--mcp-attach", own])), "the agent attaching");
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", own])), "the agent attaching");
         try
         {
-            Assert.Equal(PathNames.Canonical(own), Await(Task.Run(() => Call(client, McpTools.Workspace)), "the agent's first call").GetProperty("folder").GetString());
+            Assert.Equal(PathNames.Canonical(own), Await(Waiting.Apart(() => Call(client, McpTools.Workspace)), "the agent's first call").GetProperty("folder").GetString());
             window.OpenFolder(other);
             Ui.Settle();
-            JsonElement after = Await(Task.Run(() => Call(client, McpTools.Workspace)), "the agent's call after its window opened another folder");
+            JsonElement after = Await(Waiting.Apart(() => Call(client, McpTools.Workspace)), "the agent's call after its window opened another folder");
             Assert.Equal(PathNames.Canonical(own), after.GetProperty("folder").GetString());
             MainWindow joined = PassengerApp.Windows.Single(w => w != window);
             Assert.Equal((PathNames.Canonical(own), PathNames.Canonical(other)), (joined.Folder, window.Folder));
@@ -448,6 +456,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>A folder let in always from one window stays let in when another window's Settings, open since before, take
     /// back a different one: the list merges what each changed.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_folder_let_in_always_from_one_window_stays_when_another_windows_settings_take_back_a_different_one()
     {
@@ -467,14 +476,14 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
         asking.OpenFolder(kept);
         Ui.Settle();
         SettingsDialog dialog = DialogButtonsTests.Check(settingsWindow.ShowSettings());
-        McpClient client = Await(Task.Run(() => Start(["--mcp-attach", kept])), "the agent attaching");
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", kept])), "the agent attaching");
         try
         {
             dialog.Page = SettingsDialog.McpPage;
             Ui.Settle();
             Assert.Equal([PathNames.Canonical(taken)], dialog.AgentFolderList.Items.OfType<string>());
 
-            Task<JsonElement> letIn = Task.Run(() => Call(client, McpTools.Workspace));
+            Task<JsonElement> letIn = Waiting.Apart(() => Call(client, McpTools.Workspace));
             AgentAdmissionDialog asked = Admission(asking, "the other window to ask whether the agent may work there");
             Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(asked).OfType<CheckBox>().Single(c => (string?)c.Content == "Always for this folder").IsChecked = true;
             Press(asked, AgentAdmissionDialog.Allow);
@@ -526,7 +535,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
 
 /// <summary>McpAttachTests' agents where what is tested is held to a time: an attach given up during initialization, one
 /// past a full socket backlog, an attached diagnostic on a suspended server given up or shut out, and a call nobody answers
-/// coming back at the window's limit. So the class runs alone.</summary>
+/// coming back at the window's limit, also while its word to a slow agent is still written. So the class runs alone.</summary>
 [Collection(Alone.Name)]
 public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders>
 {
@@ -546,11 +555,11 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
         try
         {
             using WithheldWindow fake = new(window);
-            client = Await(Task.Run(() => Start(["--mcp-attach", notes])), "the agent's session starting");
+            client = Await(Waiting.Apart(() => Start(["--mcp-attach", notes])), "the agent's session starting");
             using CancellationTokenSource acceptLimit = CancellationTokenSource.CreateLinkedTokenSource(Cancel);
             acceptLimit.CancelAfter(TimeSpan.FromSeconds(10).Scaled());
             Task<Socket> accepting = fake.Listener.AcceptAsync(acceptLimit.Token).AsTask();
-            Task<CallToolResult> first = Task.Run(() => CallGivingUp(client, McpTools.Workspace, new(), firstCancel.Token));
+            Task<CallToolResult> first = Waiting.Apart(() => CallGivingUp(client, McpTools.Workspace, new(), firstCancel.Token));
             using Socket accepted = Await(accepting, "the proxy connecting to the withheld window");
             using NetworkStream stream = new(accepted, ownsSocket: false);
             using StreamReader reader = new(stream, Encoding.UTF8, leaveOpen: true);
@@ -560,7 +569,7 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
             Assert.Contains(request.RootElement.GetProperty("method").GetString(), new[] { "server/discover", "initialize" });
 
             TaskCompletionSource queuedStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            Task<CallToolResult> queued = Task.Run(async () =>
+            Task<CallToolResult> queued = Waiting.Apart(async () =>
             {
                 Task<CallToolResult> call = CallGivingUp(client, McpTools.Workspace, new(), queuedCancel.Token);
                 queuedStarted.SetResult();
@@ -571,8 +580,8 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
             Assert.ThrowsAny<OperationCanceledException>(() => Await(queued.WaitAsync(TimeSpan.FromSeconds(3).Scaled(), Cancel), "the queued call giving up"));
             Assert.False(first.IsCompleted, "Cancelling a queued call ended the join another call still owns");
 
-            Task<JsonElement> retry = Task.Run(() => Call(client, McpTools.Workspace));
-            Assert.False(Await(Task.Run(() => Waiting.Until(() => fake.Listener.Poll(0, SelectMode.SelectRead), TimeSpan.FromSeconds(1))),
+            Task<JsonElement> retry = Waiting.Apart(() => Call(client, McpTools.Workspace));
+            Assert.False(Await(Waiting.Apart(() => Waiting.Until(() => fake.Listener.Poll(0, SelectMode.SelectRead), TimeSpan.FromSeconds(1))),
                 "checking whether the cancelled waiter let another join pass"), "Cancelling a queued call released another call's join lock");
             Assert.False(retry.IsCompleted, "A third call passed the join while initialization was still held");
             fake.Dispose();
@@ -628,8 +637,8 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
                 }
             }
             Assert.True(full, "Sixteen nonblocking connections did not fill the withheld window's backlog");
-            client = Await(Task.Run(() => Start(["--mcp-attach", notes])), "the agent's session starting");
-            Task<CallToolResult> workspace = Task.Run(() => CallGivingUp(client, McpTools.Workspace, new(), giveUp.Token));
+            client = Await(Waiting.Apart(() => Start(["--mcp-attach", notes])), "the agent's session starting");
+            Task<CallToolResult> workspace = Waiting.Apart(() => CallGivingUp(client, McpTools.Workspace, new(), giveUp.Token));
             CallToolResult result = Await(workspace.WaitAsync(TimeSpan.FromSeconds(15).Scaled(), Cancel), "the proxy passing the full backlog and joining the real window");
             Assert.False(result.IsError == true, Text(result));
             using JsonDocument seen = JsonDocument.Parse(Text(result));
@@ -669,8 +678,10 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
         {
             window.OpenFile(Path.Combine(window.Folder!, "Helper.cs"));
             Ui.Settle();
-            client = Await(Task.Run(() => Start(["--mcp-attach", Folder])), "the agent attaching");
-            Await(Task.Run(() => Call(client, McpTools.Diagnostics, new() { ["path"] = "Helper.cs" })), "the language server loading the sample");
+            // Taken here, on the UI thread, where the folder is restored.
+            string taken = Folder;
+            client = Await(Waiting.Apart(() => Start(["--mcp-attach", taken])), "the agent attaching");
+            Await(Waiting.Apart(() => Call(client, McpTools.Diagnostics, new() { ["path"] = "Helper.cs" })), "the language server loading the sample");
             Ui.Settle();
             Assert.DoesNotContain(InFlight.Now(), piece => piece.What.Contains(Passenger.Lsp.LspMethods.DocumentDiagnostic, StringComparison.Ordinal));
             Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
@@ -678,7 +689,7 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
             suspended = server.ProcessId;
             Processes.Suspend(suspended, "The test's language server");
 
-            Task<CallToolResult> diagnostic = Task.Run(() => revokeConnection
+            Task<CallToolResult> diagnostic = Waiting.Apart(() => revokeConnection
                 ? Result(client, McpTools.Diagnostics, new() { ["path"] = "Helper.cs" })
                 : CallGivingUp(client, McpTools.Diagnostics, new() { ["path"] = "Helper.cs" }, giveUp.Token));
             Ui.PumpUntil(() => InFlight.Now().Any(piece => piece.What.Contains(Passenger.Lsp.LspMethods.DocumentDiagnostic, StringComparison.Ordinal)),
@@ -686,8 +697,7 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
             if (revokeConnection)
             {
                 window.ApplySettings(window.Settings with { McpServer = false });
-                Ui.PumpUntil(() => diagnostic.IsCompleted, "the shut-out agent's diagnostic to return", TimeSpan.FromSeconds(10));
-                CallToolResult refused = diagnostic.GetAwaiter().GetResult();
+                CallToolResult refused = Ui.AwaitPumped(diagnostic, "the shut-out agent's diagnostic to return", TimeSpan.FromSeconds(10));
                 Assert.True(refused.IsError == true, Text(refused));
                 Assert.Contains("connection to the Passenger window ended", Text(refused), StringComparison.Ordinal);
                 Ui.PumpUntil(() => window.Agents == 0, "the still-open window to let the agent go", TimeSpan.FromSeconds(10));
@@ -697,7 +707,7 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
             {
                 giveUp.Cancel();
                 Ui.PumpUntil(() => diagnostic.IsCompleted, "the agent's diagnostic giving up", TimeSpan.FromSeconds(10));
-                Assert.ThrowsAny<OperationCanceledException>(() => diagnostic.GetAwaiter().GetResult());
+                Assert.ThrowsAny<OperationCanceledException>(() => Ui.AwaitPumped(diagnostic, "the agent's diagnostic giving up"));
             }
             Ui.PumpUntil(() => !InFlight.Now().Any(piece => piece.What.Contains(Passenger.Lsp.LspMethods.DocumentDiagnostic, StringComparison.Ordinal)),
                 "the diagnostic request to clear while its server is still suspended", TimeSpan.FromSeconds(10));
@@ -770,18 +780,16 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
         Ui.Settle();
         window.ApplySettings(window.Settings with { TraceProtocols = true });
         string where = $"the Passenger window on {window.Folder}";
-        McpClient client = Await(Task.Run(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
         try
         {
             Heard letIn = new();
-            Stopwatch asked = Stopwatch.StartNew();
-            Task<CallToolResult> unanswered = Task.Run(() => Result(client, McpTools.Workspace, heard: letIn));
+            Task<CallToolResult> unanswered = Waiting.Apart(() => Result(client, McpTools.Workspace, heard: letIn));
             string? said = null;
             WaitFor(() => window.OwnedWindows.OfType<AgentAdmissionDialog>().Any(d => d.IsVisible) && (said = window.AgentStatus) is not null,
                 "the window to ask whether the agent may work there");
             Assert.Equal("Test Agent waits for you: let it in?", said);
             CallToolResult notLetIn = Await(unanswered, "the call nobody let in");
-            Assert.True(asked.Elapsed < limit + TimeSpan.FromSeconds(30).Scaled(), $"The call nobody answered came back {asked.Elapsed.TotalSeconds:0} s after it was asked, its limit {limit.TotalSeconds:0} s");
             Assert.True(notLetIn.IsError == true && Text(notLetIn).Contains($"Nobody at {where} answered within {limit.TotalSeconds:0} s whether Test Agent may work there. A later call asks again.", StringComparison.Ordinal),
                 $"The call nobody answered was answered: {Text(notLetIn)}");
             Assert.DoesNotContain(window.OwnedWindows.OfType<AgentAdmissionDialog>(), d => d.IsVisible);
@@ -791,8 +799,7 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
 
             window.ApplySettings(window.Settings with { McpServer = true });
             Heard leave = new();
-            asked.Restart();
-            Task<CallToolResult> unallowed = Task.Run(() => Result(client, McpTools.Build, heard: leave));
+            Task<CallToolResult> unallowed = Waiting.Apart(() => Result(client, McpTools.Build, heard: leave));
             said = null;
             WaitFor(() => window.OwnedWindows.OfType<ConfirmDialog>().Any(d => d.IsVisible) && (said = window.AgentStatus) is not null,
                 "the window to ask whether the agent may build");
@@ -800,7 +807,6 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
             Assert.Contains(Texts(window.OwnedWindows.OfType<ConfirmDialog>().Single(d => d.IsVisible)),
                 t => t.StartsWith("Test Agent, connected through Passenger's MCP server, wants to build", StringComparison.Ordinal));
             CallToolResult notAllowed = Await(unallowed, "the build nobody allowed");
-            Assert.True(asked.Elapsed < limit + TimeSpan.FromSeconds(30).Scaled(), $"The build nobody allowed came back {asked.Elapsed.TotalSeconds:0} s after it was asked, its limit {limit.TotalSeconds:0} s");
             Assert.True(notAllowed.IsError == true && Text(notAllowed).Contains($"Nobody at {where} answered within {limit.TotalSeconds:0} s whether Test Agent may use build. A later call asks again.", StringComparison.Ordinal),
                 $"The build nobody allowed was answered: {Text(notAllowed)}");
             WaitFor(() => !window.OwnedWindows.OfType<ConfirmDialog>().Any(d => d.IsVisible) && window.AgentStatus == "Agent connected",
@@ -815,7 +821,7 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
             Assert.True(!told.Any(t => System.Text.RegularExpressions.Regex.IsMatch(t.Message ?? string.Empty, @"\(\d+\.\d s\) \(\d+\.\d s\)$")),
                 $"--mcp-attach told its own beat over the window's words: {leave}");
 
-            Task<CallToolResult> again = Task.Run(() => Result(client, McpTools.Build));
+            Task<CallToolResult> again = Waiting.Apart(() => Result(client, McpTools.Build));
             Press(Question(window, "the question asked again"), "Deny");
             Assert.Contains("did not allow build", Text(Await(again, "the build the person denied")), StringComparison.Ordinal);
 
@@ -835,6 +841,40 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
         finally
         {
             window.ApplySettings(window.Settings with { TraceProtocols = false });
+            Gone(client);
+            window.Close();
+        }
+    }
+
+    /// <summary>A slow agent: the window's word of what a call waits on is still being written to it when the call ends
+    /// at the window's limit. The word goes whole first and the answer after it, on a line of its own, so the agent hears
+    /// both; a word cut short as the call ended would have taken the answer with it, and the call would never come back.</summary>
+    [AvaloniaFact]
+    public void A_call_that_ends_while_its_word_to_a_slow_agent_is_still_written_comes_back_after_that_word()
+    {
+        TimeSpan limit = TimeSpan.FromSeconds(5).Scaled();
+        string unattended = Plain("mcp-stalled-");
+        MainWindow window = new() { Width = 1200, Height = 800, AgentAnswerLimit = limit, StartsLanguageServer = false };
+        window.Show();
+        window.OpenFolder(unattended);
+        Ui.Settle();
+        string where = $"the Passenger window on {window.Folder}";
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        try
+        {
+            Heard letIn = new();
+            Task<CallToolResult> unanswered = Waiting.Apart(() => Result(client, McpTools.Workspace, heard: letIn));
+            WaitFor(() => window.OwnedWindows.OfType<AgentAdmissionDialog>().Any(d => d.IsVisible), "the window to ask whether the agent may work there");
+            // The call's next beat stalls until well past the window's limit, which ends the call while the beat is written.
+            window.StallNextAgentLine(limit + TimeSpan.FromSeconds(5).Scaled());
+            CallToolResult notLetIn = Await(unanswered, "the call nobody let in, ended while its word to the agent was still written");
+            Assert.True(notLetIn.IsError == true && Text(notLetIn).Contains($"Nobody at {where} answered within {limit.TotalSeconds:0} s whether Test Agent may work there.", StringComparison.Ordinal),
+                $"The call nobody let in was answered: {Text(notLetIn)}");
+            Assert.True(letIn.Told.Any(t => t.Message?.StartsWith($"Waiting for the person at {where} to let Test Agent in", StringComparison.Ordinal) == true),
+                $"The agent never heard what its call waited on: {letIn}");
+        }
+        finally
+        {
             Gone(client);
             window.Close();
         }

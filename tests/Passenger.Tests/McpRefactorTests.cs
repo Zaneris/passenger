@@ -49,16 +49,26 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
 
     private const string Counter = "namespace Shop;\n\npublic class Counter\n{\n    public int count;\n\n    public void Add() => count++;\n}\n";
 
+    private const string Summer = "namespace Shop;\n\npublic static class Summer\n{\n    public static int Sum(string label, params ReadOnlySpan<int> values) => values.Length;\n}\n";
+
+    private const string Totals = "namespace Shop;\n\npublic static class Totals\n{\n    public static int All() => Summer.Sum(\"a\", 1, 2, 3) + Summer.Sum(\"b\", [4, 5]) + Summer.Sum(\"c\");\n}\n";
+
+    private const string Coins = "namespace Shop;\n\npublic class Coin\n{\n    public int Value;\n\n    /// <summary>A coin, as <see cref=\"Mint(int, string)\"/> makes it.</summary>\n"
+        + "    public static Coin Mint(int value, string metal = \"gold\") => new() { Value = value };\n\n    public void OnDropped(object? sender, EventArgs e)\n    {\n    }\n}\n";
+
+    private const string Purse = "namespace Shop;\n\npublic static class Purse\n{\n    public static event EventHandler? Dropped;\n\n    public static int Fill()\n    {\n"
+        + "        Func<int, string, Coin> mint = Coin.Mint;\n        Dropped += new Coin().OnDropped;\n        return Coin.Mint(1).Value + mint(2, \"silver\").Value;\n    }\n}\n";
+
     [AvaloniaFact]
     public void An_agent_changes_a_signature_for_every_caller_moves_types_and_extracts_an_interface_each_undone_whole_by_the_person()
     {
         Shop(("Calc.cs", Calc), ("Till.cs", Till), ("Report.cs", Report), ("Order.cs", Order), ("OrderBook.cs", OrderBook), ("Shapes.cs", Shapes));
         MainWindow window = AgentsWindow(Folder);
         List<string> asked = AnswerUndo(window);
-        McpClient client = Await(Task.Run(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
         try
         {
-            Task<JsonElement> describing = Task.Run(() => Call(client, McpTools.Refactor, Place("change_signature", "Calc.cs", Calc, "int Sca")));
+            Task<JsonElement> describing = Waiting.Apart(() => Call(client, McpTools.Refactor, Place("change_signature", "Calc.cs", Calc, "int Sca")));
             Press(Question(window, "the question for the agent's refactoring"), "Allow");
             JsonElement dialog = Await(describing, "Change Signature described").GetProperty("dialog");
             Assert.Equal("public static int Scale(int value, int factor, int unused)", dialog.GetProperty("preview").GetString());
@@ -107,7 +117,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
             Assert.Equal("namespace Shop;\n\npublic class Circle\n{\n    public double Area(double radius) => Math.PI * radius * radius;\n}\n", File.ReadAllText(PathOf("Circle.cs")).ReplaceLineEndings("\n"));
             Assert.Equal("namespace Shop;\n\npublic class Square\n{\n    public int Side;\n}\n", File.ReadAllText(PathOf("Shapes.cs")));
 
-            CallToolResult both = Await(Task.Run(() => Result(client, McpTools.Refactor, Place("move", "Shapes.cs", File.ReadAllText(PathOf("Shapes.cs")), "class Squ", new { file = "Square.cs", @namespace = "Shop.Shapes" }))), "a move to a file and a namespace at once");
+            CallToolResult both = Await(Waiting.Apart(() => Result(client, McpTools.Refactor, Place("move", "Shapes.cs", File.ReadAllText(PathOf("Shapes.cs")), "class Squ", new { file = "Square.cs", @namespace = "Shop.Shapes" }))), "a move to a file and a namespace at once");
             Assert.True(both.IsError == true && Text(both).Contains("one at a time", StringComparison.Ordinal), $"A move to a file and a namespace at once answered: {Text(both)}");
 
             UndoInSolutionView(window, "Shapes.cs");
@@ -128,10 +138,10 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
             ("Mega.cs", ScaleText.Replace("Kilo", "Mega", StringComparison.Ordinal)), ("Counter.cs", Counter));
         MainWindow window = AgentsWindow(Folder);
         List<string> asked = AnswerUndo(window);
-        McpClient client = Await(Task.Run(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
         try
         {
-            Task<CallToolResult> refusing = Task.Run(() => Result(client, McpTools.Refactor, Place("safe_delete", "Calc.cs", Calc, "int Sca")));
+            Task<CallToolResult> refusing = Waiting.Apart(() => Result(client, McpTools.Refactor, Place("safe_delete", "Calc.cs", Calc, "int Sca")));
             Press(Question(window, "the question for the agent's refactoring"), "Allow");
             CallToolResult refused = Await(refusing, "Safe Delete of a used method");
             Assert.True(refused.IsError == true && Text(refused).Contains("has 3 usages that would no longer compile", StringComparison.Ordinal)
@@ -199,6 +209,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
     [Fact]
     public async Task An_agent_that_writes_a_file_and_at_once_changes_a_signature_or_renames_what_it_calls_has_the_change_made_in_what_it_wrote()
     {
+        await TakeFolderAsync();
         Shop(("Calc.cs", Calc), ("Till.cs", Till), ("Report.cs", Report));
         await using McpClient client = await Start(["--mcp", Folder]);
         // Described first, so the server has read the files as the agent found them.
@@ -224,6 +235,77 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         Assert.DoesNotContain("Scale", File.ReadAllText(PathOf("Till.cs")), StringComparison.Ordinal);
     }
 
+    /// <summary>Change Signature passes a new parameter's value in every call of a method taking a params collection, the
+    /// values spread out or passed as one, gives a cref the new parameters, and names each method group it cannot change
+    /// with why (a delegate's, an event handler's): the delegate it makes no longer fits, which the agent would otherwise
+    /// hear of only as the build breaks.</summary>
+    [Fact]
+    public async Task An_agent_changing_a_signature_has_every_params_collection_call_changed_and_hears_of_each_method_group_left_as_it_was()
+    {
+        await TakeFolderAsync();
+        Shop(("Summer.cs", Summer), ("Totals.cs", Totals), ("Coins.cs", Coins), ("Purse.cs", Purse));
+        await using McpClient client = await Start(["--mcp", Folder]);
+
+        JsonElement summed = await Call(client, McpTools.Refactor, Place("change_signature", "Summer.cs", Summer, "int Su", new
+        {
+            parameters = new object[] { new { type = "int", name = "start", callValue = "0" }, new { from = "label" }, new { from = "values" } },
+        }));
+        Assert.Equal(["Summer.cs changed", "Totals.cs changed"], Files(summed));
+        Assert.Empty(summed.GetProperty("notApplied").EnumerateArray());
+        Assert.Equal(Totals.Replace("Summer.Sum(\"a\", 1, 2, 3) + Summer.Sum(\"b\", [4, 5]) + Summer.Sum(\"c\")",
+            "Summer.Sum(0, \"a\", 1, 2, 3) + Summer.Sum(0, \"b\", [4, 5]) + Summer.Sum(0, \"c\")", StringComparison.Ordinal), File.ReadAllText(PathOf("Totals.cs")));
+
+        JsonElement minted = await Call(client, McpTools.Refactor, Place("change_signature", "Coins.cs", Coins, "Coin Mi", new
+        {
+            parameters = new object[] { new { from = "value" }, new { type = "int", name = "year", callValue = "2026" }, new { from = "metal" } },
+        }));
+        (int line, int column) = LineColumn(Purse, "Mint;", Purse.IndexOf("Mint;", StringComparison.Ordinal));
+        const string why = "Coin.Mint as a Func<int, string, Coin>, which the new signature no longer fits";
+        Assert.Equal([$"Purse.cs:{line}:{column}: {why}, so it was left as it is"], minted.GetProperty("notApplied").EnumerateArray().Select(n => n.GetString()));
+        Assert.Equal($"Changed the signature of Coin.Mint in 2 files, but left 1 use as it was: Purse.cs:{line}, {why}", minted.GetProperty("said").GetString());
+        Assert.Equal(Purse.Replace("Coin.Mint(1)", "Coin.Mint(1, 2026)", StringComparison.Ordinal), File.ReadAllText(PathOf("Purse.cs")));
+        string coins = Coins.Replace("Mint(int, string)", "Mint(int, int, string)", StringComparison.Ordinal)
+            .Replace("Mint(int value, string metal", "Mint(int value, int year, string metal", StringComparison.Ordinal);
+        Assert.Equal(coins, File.ReadAllText(PathOf("Coins.cs")));
+
+        JsonElement handled = await Call(client, McpTools.Refactor, Place("change_signature", "Coins.cs", coins, "void OnDro", new { parameters = new object[] { new { from = "sender" } } }));
+        (line, column) = LineColumn(Purse, "OnDropped;", Purse.IndexOf("OnDropped;", StringComparison.Ordinal));
+        Assert.Equal([$"Purse.cs:{line}:{column}: Coin.OnDropped as an EventHandler, which the new signature no longer fits, so it was left as it is"],
+            handled.GetProperty("notApplied").EnumerateArray().Select(n => n.GetString()));
+        Assert.Equal(["Coins.cs changed"], Files(handled));
+    }
+
+    [Fact]
+    public async Task An_agent_that_writes_a_new_class_and_its_caller_and_at_once_renames_it_or_asks_its_usages_has_the_caller_counted()
+    {
+        await TakeFolderAsync();
+        Shop(("Calc.cs", Calc));
+        await using McpClient client = await Start(["--mcp", Folder]);
+        // The projects loaded first, so the files written next come after.
+        await Call(client, McpTools.Diagnostics, new() { ["path"] = "Calc.cs" });
+
+        // Both new, then at once the rename: the language server has yet to take either into the project.
+        const string Triangle = "namespace Shop;\n\npublic class Triangle\n{\n    public static Triangle Make() => new();\n}\n";
+        const string UseTriangle = "namespace Shop;\n\npublic static class UseTriangle\n{\n    public static Triangle Run() => Triangle.Make();\n}\n";
+        File.WriteAllText(PathOf("Triangle.cs"), Triangle);
+        File.WriteAllText(PathOf("UseTriangle.cs"), UseTriangle);
+        (int line, int column) = LineColumn(Triangle, "Make", Triangle.IndexOf("Make", StringComparison.Ordinal));
+        CallToolResult renaming = await Result(client, McpTools.Rename, new() { ["path"] = "Triangle.cs", ["line"] = line, ["column"] = column, ["newName"] = "Build" });
+        Assert.True(renaming.IsError != true, $"A rename right after the agent wrote Triangle.cs and its caller answered: {Text(renaming)}");
+        Assert.Equal(Triangle.Replace("Make()", "Build()", StringComparison.Ordinal), File.ReadAllText(PathOf("Triangle.cs")));
+        Assert.True(File.ReadAllText(PathOf("UseTriangle.cs")) == UseTriangle.Replace("Triangle.Make()", "Triangle.Build()", StringComparison.Ordinal),
+            $"The rename ({Text(renaming)}) left the caller the agent had just written calling a method that is no longer there:\n{File.ReadAllText(PathOf("UseTriangle.cs"))}");
+
+        const string Square = "namespace Shop;\n\npublic class Square\n{\n    public static Square Make() => new();\n}\n";
+        const string UseSquare = "namespace Shop;\n\npublic static class UseSquare\n{\n    public static Square Run() => Square.Make();\n}\n";
+        File.WriteAllText(PathOf("Square.cs"), Square);
+        File.WriteAllText(PathOf("UseSquare.cs"), UseSquare);
+        (line, column) = LineColumn(Square, "Make", Square.IndexOf("Make", StringComparison.Ordinal));
+        JsonElement usages = await Call(client, McpTools.Usages, new() { ["path"] = "Square.cs", ["line"] = line, ["column"] = column });
+        Assert.True(Used(usages).Select(u => u.Path).Order(StringComparer.Ordinal).SequenceEqual(["Square.cs", "UseSquare.cs"]),
+            $"usages right after the agent wrote Square.cs and its caller missed the caller, so a change made by it would leave the caller behind: {Text(usages)}");
+    }
+
     [AvaloniaFact]
     public void An_agent_optimizes_imports_and_cleans_up_a_file_a_project_and_the_solution_and_hears_what_other_files_have()
     {
@@ -233,11 +315,11 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         Shop(("Messy.cs", messy), ("Tidy.cs", tidy), ("Notes.txt", "notes\n"));
         MainWindow window = AgentsWindow(Folder);
         List<string> asked = AnswerUndo(window);
-        McpClient client = Await(Task.Run(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
         try
         {
             // System is the project's implicit using, so nothing needs it.
-            Task<JsonElement> optimizing = Task.Run(() => Call(client, McpTools.Refactor, new() { ["kind"] = "optimize_imports", ["path"] = "Tidy.cs" }));
+            Task<JsonElement> optimizing = Waiting.Apart(() => Call(client, McpTools.Refactor, new() { ["kind"] = "optimize_imports", ["path"] = "Tidy.cs" }));
             Press(Question(window, "the question for the agent's refactoring"), "Allow");
             JsonElement optimized = Await(optimizing, "Optimize Imports on a file");
             Assert.Equal(["Tidy.cs changed"], Files(optimized));
@@ -269,7 +351,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
                 (new() { ["kind"] = "inline_everything", ["path"] = "Tidy.cs", ["line"] = 1, ["column"] = 1 }, "there are change_signature, safe_delete, move"),
             })
             {
-                CallToolResult refused = Await(Task.Run(() => Result(client, McpTools.Refactor, arguments)), $"refactor {arguments["kind"]} on {arguments["path"]}");
+                CallToolResult refused = Await(Waiting.Apart(() => Result(client, McpTools.Refactor, arguments)), $"refactor {arguments["kind"]} on {arguments["path"]}");
                 Assert.True(refused.IsError == true && Text(refused).Contains(said, StringComparison.Ordinal), $"refactor {JsonSerializer.Serialize(arguments)} answered: {Text(refused)}");
             }
         }
@@ -328,7 +410,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         {
             sent["describe"] = true;
         }
-        return Await(Task.Run(() => Call(client, McpTools.Refactor, sent)), $"refactor {arguments["kind"]}");
+        return Await(Waiting.Apart(() => Call(client, McpTools.Refactor, sent)), $"refactor {arguments["kind"]}");
     }
 
     /// <summary>Each file a refactoring answered, as "path change".</summary>

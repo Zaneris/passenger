@@ -100,6 +100,8 @@ public sealed class ContainerRunProfilingTests(ContainerRunDebuggingTests.Tools 
             int port = ContainerRunsTests.Published(project, "web");
             Assert.True(Ui.Pumped(() => ContainerRunsTests.Answer(port) == "web 1", TimeSpan.FromMinutes(1)), "web, let go by the profiler, did not answer");
 
+            // Where only the runtime can write it, into the program's output (Linux's ptrace_scope), that is let.
+            window.Confirm = (_, _, _) => Task.FromResult(true);
             Ui.ClickButton(window.ProfilerView, "Get Memory Snapshot");
             Ui.WaitFor(() => window.ProfilerView.Memory is not null || window.Status?.StartsWith("No memory snapshot", StringComparison.Ordinal) == true,
                 "the memory snapshot of web", TimeSpan.FromMinutes(2));
@@ -142,7 +144,8 @@ public sealed class ContainerRunProfilingTests(ContainerRunDebuggingTests.Tools 
         {
             return "the snapshot names no container";
         }
-        ChildResult answered = Task.Run(() => ChildProcesses.RunAsync(place.Tools(["sources"]), $"{code.Token}\t{code.ModuleFile}\n", TimeSpan.FromSeconds(30))).GetAwaiter().GetResult();
+        ChildResult answered = Ui.AwaitPumped(Waiting.Apart(() => ChildProcesses.RunAsync(place.Tools(["sources"]), $"{code.Token}\t{code.ModuleFile}\n", TimeSpan.FromSeconds(30))),
+            "the tools' sources in the container", TimeSpan.FromSeconds(30) + TestFolders.Spare);
         return $"asked {code.Token} in {code.ModuleFile}; exit {answered.ExitCode}: '{answered.Output}' '{answered.Error}'";
     }
 

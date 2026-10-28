@@ -32,6 +32,7 @@ public sealed class CommandLineTests : IDisposable
         TestFolders.Delete(settings);
     }
 
+    [Gate]
     [Theory]
     [InlineData("--screenshot out.png --scale NaN", "--scale takes a number from 0.5 to 8, not 'NaN'")]
     [InlineData("--screenshot out.png --size 1600xInfinity", "--size takes WIDTHxHEIGHT, each a number of 0 or more, not '1600xInfinity'")]
@@ -75,10 +76,12 @@ public sealed class CommandLineTests : IDisposable
 
     /// <summary>A variable the IDE or its debug adapter reads is checked as Passenger starts, before any window or
     /// server, so a malformed one ends it at once rather than failing every Debug later.</summary>
+    [Gate]
     [Theory]
     [InlineData(global::Passenger.Dap.AdapterEnvironment.EvaluationTimeoutVariable, "3s", Milliseconds)]
     [InlineData(global::Passenger.Dap.AdapterEnvironment.EvaluationTimeoutVariable, "0", Milliseconds)]
     [InlineData(global::Passenger.App.Mcp.AgentCall.EveryVariable, "-1000", Milliseconds)]
+    [InlineData(global::Passenger.Text.TextSearch.ApartVariable, "5s", Milliseconds)]
     [InlineData(global::Passenger.App.Mcp.McpHost.LanguageServerVariable, "no", "off or on")]
     [InlineData(global::Passenger.Core.Waits.ScaleVariable, "0", "a number above 0")]
     public async Task A_malformed_variable_ends_Passenger_with_exit_code_2_and_the_reason_before_anything_starts(string variable, string value, string takes)
@@ -90,6 +93,7 @@ public sealed class CommandLineTests : IDisposable
             $"Passenger with {variable}={value} was to be refused with exit code 2 saying \"{reason}\"; it exited {code} and wrote:\n{error}");
     }
 
+    [Gate]
     [Fact]
     public async Task A_screenshot_named_with_the_file_before_its_folder_and_a_click_at_the_corner_is_taken_at_its_crop()
     {
@@ -101,6 +105,7 @@ public sealed class CommandLineTests : IDisposable
         Assert.Equal((400, 250), (BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(16)), BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(20))));
     }
 
+    [Gate]
     [Fact]
     public async Task A_screenshot_step_clicks_a_control_by_its_name_and_a_name_no_shown_control_has_ends_it_with_exit_code_2()
     {
@@ -117,6 +122,7 @@ public sealed class CommandLineTests : IDisposable
     /// --window-buttons draws them, where macOS puts them on the merged bar, at any scale. Windows and Linux draw the bar's
     /// own buttons, so there the flag changes nothing. The places and colours are AppKit's own drawing of an active Dark
     /// Aqua window made as Avalonia makes Passenger's, measured in points from its top-left and in sRGB.</summary>
+    [Gate]
     [Fact]
     public async Task A_screenshot_with_window_buttons_shows_the_traffic_lights_a_person_sees_on_macOS_and_changes_nothing_elsewhere()
     {
@@ -157,6 +163,7 @@ public sealed class CommandLineTests : IDisposable
     /// an agent's MCP client does. Typing into the editor is a tool a person's window asks about; nobody is at a capture,
     /// so it is used unasked, and the picture is taken once the agent has ended. An agent that fails ends the capture with
     /// exit code 2 and no picture.</summary>
+    [Gate]
     [Fact]
     public async Task A_screenshot_s_agent_uses_the_window_s_tools_unasked_through_mcp_attach_and_one_that_fails_takes_no_picture()
     {
@@ -235,6 +242,7 @@ public sealed class CommandLineTests : IDisposable
         }
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_solution_or_project_given_as_a_double_click_gives_it_opens_as_the_workspace_and_neither_as_text()
     {

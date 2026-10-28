@@ -17,11 +17,11 @@ public class SmartStepIntoTests(ITestOutputHelper testOutputHelper)
     {
         const string code = "int nested = Outer(Inner());";
         int line = Line(code);
-        using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, Stepping, line, []);
+        await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, Stepping, line, []);
         StoppedEvent stop = await host.WaitForStoppedEvent();
         int thread = stop.ThreadId!.Value;
 
-        IReadOnlyList<StepInTarget> targets = Targets(host, thread);
+        IReadOnlyList<StepInTarget> targets = await Targets(host, thread);
         Assert.Equal(["Inner()", "Outer(int)"], targets.Select(t => t.Label));
         string text = File.ReadAllLines(Debuggees.Source(Stepping, "Program.cs"))[line - 1];
         Assert.Equal((line, text.IndexOf("Inner", StringComparison.Ordinal) + 1, line, text.IndexOf("Inner", StringComparison.Ordinal) + 6),
@@ -31,23 +31,23 @@ public class SmartStepIntoTests(ITestOutputHelper testOutputHelper)
         // Inner has run by then, so Outer is given what it returned.
         stop = await host.Step(thread, targets[1]);
         Assert.Equal((StopReasons.Step, Line("static int Outer(int value)") + 1), (stop.Reason, stop.ReadStopInfo().line));
-        Assert.Contains("Outer", host.GetTopStackFrame(thread).Name, StringComparison.Ordinal);
-        Assert.Equal("20", Assert.Single(host.Locals(stop), v => v.Name == "value").Value);
+        Assert.Contains("Outer", (await host.TopFrameAsync(thread)).Name, StringComparison.Ordinal);
+        Assert.Equal("20", Assert.Single(await host.LocalsAsync(stop), v => v.Name == "value").Value);
     }
 
     [Fact]
     public async Task Of_two_calls_of_the_same_method_the_second_chosen_is_the_one_stepped_into()
     {
         int line = Line("int sum = Add(Add(1, 2), 3);");
-        using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, Stepping, line, []);
+        await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, Stepping, line, []);
         StoppedEvent stop = await host.WaitForStoppedEvent();
         int thread = stop.ThreadId!.Value;
 
-        IReadOnlyList<StepInTarget> targets = Targets(host, thread);
+        IReadOnlyList<StepInTarget> targets = await Targets(host, thread);
         Assert.Equal(["Add(int, int)", "Add(int, int)"], targets.Select(t => t.Label));
         Assert.True(targets[0].Column > targets[1].Column, "The inner call, which runs first, was not listed first");
         stop = await host.Step(thread, targets[1]);
-        List<DapVariable> locals = host.Locals(stop);
+        List<DapVariable> locals = await host.LocalsAsync(stop);
         Assert.Equal(("3", "3"), (Assert.Single(locals, v => v.Name == "a").Value, Assert.Single(locals, v => v.Name == "b").Value));
     }
 
@@ -58,47 +58,47 @@ public class SmartStepIntoTests(ITestOutputHelper testOutputHelper)
         int line = Line(code);
         // A breakpoint on the line alone binds to the lambda's body, which shares it.
         int column = File.ReadAllLines(Debuggees.Source(Stepping, "Program.cs"))[line - 1].IndexOf(code, StringComparison.Ordinal) + 1;
-        using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
-        await host.WithInitializeRequest().WithLaunchRequest(Debuggees.Program(Stepping), stopAtEntry: false, justMyCode: true).WaitForInitializedEvent();
-        host.WithBreakpointsRequest(Debuggees.Source(Stepping, "Program.cs"), [new DapSourceBreakpoint(line, column)]).WithConfigurationDoneRequest();
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await host.InitializeAsync().LaunchAsync(Debuggees.Program(Stepping), stopAtEntry: false, justMyCode: true).WaitForInitializedEvent();
+        await host.BreakpointsAsync(Debuggees.Source(Stepping, "Program.cs"), [new DapSourceBreakpoint(line, column)]).ConfigurationDoneAsync();
         StoppedEvent stop = await host.WaitForStoppedEvent();
         Assert.Equal((line, column), (stop.ReadStopInfo().line, stop.ReadStopInfo().column));
         int thread = stop.ThreadId!.Value;
 
         // Select is the framework's, so only the lambda's body is offered.
-        IReadOnlyList<StepInTarget> targets = Targets(host, thread);
+        IReadOnlyList<StepInTarget> targets = await Targets(host, thread);
         Assert.Equal(["Numbers()", "n => Twice(n)"], targets.Select(t => t.Label));
         stop = await host.Step(thread, targets[1]);
         Assert.Equal((StopReasons.Step, line), (stop.Reason, stop.ReadStopInfo().line));
-        Assert.Contains(">b__", host.GetTopStackFrame(thread).Name, StringComparison.Ordinal);
-        Assert.Equal("1", Assert.Single(host.Locals(stop), v => v.Name == "n").Value);
+        Assert.Contains(">b__", (await host.TopFrameAsync(thread)).Name, StringComparison.Ordinal);
+        Assert.Equal("1", Assert.Single(await host.LocalsAsync(stop), v => v.Name == "n").Value);
     }
 
     [Fact]
     public async Task An_awaited_async_method_is_stepped_into_at_its_first_line()
     {
         int line = Line("int computed = await ComputeAsync(Seed());");
-        using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, Stepping, line, []);
+        await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, Stepping, line, []);
         StoppedEvent stop = await host.WaitForStoppedEvent();
         int thread = stop.ThreadId!.Value;
 
-        IReadOnlyList<StepInTarget> targets = Targets(host, thread);
+        IReadOnlyList<StepInTarget> targets = await Targets(host, thread);
         Assert.Equal(["Seed()", "ComputeAsync(int)"], targets.Select(t => t.Label));
         stop = await host.Step(thread, targets[1]);
         Assert.Equal((StopReasons.Step, Line("static async Task<int> ComputeAsync(int value)") + 1), (stop.Reason, stop.ReadStopInfo().line));
-        Assert.Equal("4", Assert.Single(host.Locals(stop), v => v.Name == "value").Value);
+        Assert.Equal("4", Assert.Single(await host.LocalsAsync(stop), v => v.Name == "value").Value);
     }
 
-    private static IReadOnlyList<StepInTarget> Targets(DebugSession host, int thread) =>
-        host.Request<StepInTargetsResponse>(DapCommands.StepInTargets, new StepInTargetsArguments(host.GetTopStackFrame(thread).Id)).Targets;
+    private static async Task<IReadOnlyList<StepInTarget>> Targets(DebugSession host, int thread) =>
+        (await host.RequestAsync<StepInTargetsResponse>(DapCommands.StepInTargets, new StepInTargetsArguments((await host.TopFrameAsync(thread)).Id))).Targets;
 }
 
 internal static class SmartStepIntoRequests
 {
     /// <summary>Smart Step Into's step: straight into a target, and the stop it comes to.</summary>
-    public static Task<StoppedEvent> Step(this DebugSession host, int thread, StepInTarget target)
+    public static async Task<StoppedEvent> Step(this DebugSession host, int thread, StepInTarget target)
     {
-        host.Request(DapCommands.StepIn, new StepInArguments(thread, target.Id));
-        return host.WaitForStoppedEvent();
+        await host.RequestAsync(DapCommands.StepIn, new StepInArguments(thread, target.Id));
+        return await host.WaitForStoppedEvent();
     }
 }

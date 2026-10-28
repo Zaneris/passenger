@@ -576,8 +576,10 @@ public partial class MainWindow
     }
 
     /// <summary>The engine's state during an Aspire run, said where a container run's is (the status bar's place and
-    /// Problems' Containers tab, <see cref="ShowEngine"/>), in the same words, and on the Aspire window's line.</summary>
-    private void ShowAspireEngine(Containers.EngineState engine)
+    /// Problems' Containers tab, <see cref="ShowEngine"/>), in the same words, and on the Aspire window's line; with
+    /// <paramref name="changed"/>, only when it differs from what was said last, so an event that finds the engine as it
+    /// was leaves the status bar to what an action said since.</summary>
+    private void ShowAspireEngine(Containers.EngineState engine, bool changed = false)
     {
         UiThread.Check();
         // An AppHost's orchestrator needs no Compose: an engine without it serves the run.
@@ -585,6 +587,11 @@ public partial class MainWindow
         {
             engine = engine with { Status = Containers.EngineStatus.Ready, Problem = null };
         }
+        if (changed && engine.Problem == aspireEngineSaid)
+        {
+            return;
+        }
+        aspireEngineSaid = engine.Problem;
         ShowEngine(engine);
         Bottom.Aspire.SetContainerStatus(engine.Problem is { } problem ? $"Container resources cannot run: {problem}"
             : $"{engine.EngineName} is running; Aspire reports each container's state and health.");
@@ -592,6 +599,9 @@ public partial class MainWindow
 
     private IDisposable? aspireEngine;
     private ProjectSession? aspireEngineFor;
+
+    /// <summary>The engine's problem an Aspire run said last, null while the engine serves.</summary>
+    private string? aspireEngineSaid;
 
     /// <summary>The engine followed while the folder's AppHosts run (its events, ended by the engine's stop and started again
     /// as it comes back), each change of its state said as <see cref="ShowAspireEngine"/> says it; let go once none runs, its
@@ -629,7 +639,7 @@ public partial class MainWindow
             Containers.EngineState state = await BackgroundWork.Run(() => engine.StateAsync(again: true));
             if (session == current && !current.IsEnded && aspireEngine is not null)
             {
-                ShowAspireEngine(state);
+                ShowAspireEngine(state, changed: true);
             }
         }
     }

@@ -1,4 +1,4 @@
-using System.Globalization;
+using System.Buffers.Text;
 using System.Runtime.CompilerServices;
 using System.Text;
 
@@ -14,7 +14,9 @@ internal sealed class TracedStream(Stream inner, int server, string direction, T
     /// <summary>The most of one message a trace keeps: a completion list or a file's colours can be megabytes.</summary>
     private const int Kept = 64 * 1024;
 
-    private readonly List<byte> header = [];
+    /// <summary>The header read so far, in one buffer of the most a header may be: past it the frames no longer read.</summary>
+    private readonly byte[] header = new byte[4097];
+    private int headerLength;
     private readonly MemoryStream body = new();
     private readonly Lock gate = new();
     private int remaining = -1;
@@ -125,20 +127,23 @@ internal sealed class TracedStream(Stream inner, int server, string direction, T
             {
                 if (remaining < 0)
                 {
-                    int end = HeaderEnd(bytes);
-                    int taken = end < 0 ? bytes.Length : end;
-                    foreach (byte b in bytes[..taken])
-                    {
-                        header.Add(b);
-                    }
-                    bytes = bytes[taken..];
+                    int taken = Math.Min(header.Length - headerLength, bytes.Length);
+                    bytes[..taken].CopyTo(header.AsSpan(headerLength));
+                    // The blank line may begin in what was held before.
+                    int from = Math.Max(0, headerLength - 3);
+                    headerLength += taken;
+                    int end = header.AsSpan(from, headerLength - from).IndexOf("\r\n\r\n"u8);
                     if (end >= 0)
                     {
+                        int length = from + end + 4;
+                        bytes = bytes[(taken - (headerLength - length))..];
+                        headerLength = length;
                         Begin();
                     }
-                    else if (header.Count > 4096)
+                    else
                     {
-                        lost = true;
+                        bytes = bytes[taken..];
+                        lost = headerLength == header.Length;
                     }
                     continue;
                 }
@@ -157,35 +162,25 @@ internal sealed class TracedStream(Stream inner, int server, string direction, T
         }
     }
 
-    /// <summary>Where the header's blank line ends in these bytes, counting what the header holds already; -1 if not yet.</summary>
-    private int HeaderEnd(ReadOnlySpan<byte> bytes)
-    {
-        for (int i = 0; i < bytes.Length; i++)
-        {
-            int had = header.Count + i;
-            if (bytes[i] == '\n' && had >= 3 && At(bytes, i - 1) == '\r' && At(bytes, i - 2) == '\n' && At(bytes, i - 3) == '\r')
-            {
-                return i + 1;
-            }
-        }
-        return -1;
-    }
-
-    /// <summary>A byte before position <paramref name="i"/> of these bytes, reaching back into the header held.</summary>
-    private byte At(ReadOnlySpan<byte> bytes, int i) => i >= 0 ? bytes[i] : header[header.Count + i];
-
     private void Begin()
     {
-        string text = Encoding.ASCII.GetString([.. header]);
-        header.Clear();
+        ReadOnlySpan<byte> lines = header.AsSpan(0, headerLength);
+        headerLength = 0;
         length = -1;
-        foreach (string line in text.Split("\r\n"))
+        while (lines.Length > 0)
         {
-            int colon = line.IndexOf(':', StringComparison.Ordinal);
-            if (colon > 0 && line.AsSpan(0, colon).Trim().Equals("Content-Length", StringComparison.OrdinalIgnoreCase)
-                && int.TryParse(line.AsSpan(colon + 1).Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out int found))
+            int next = lines.IndexOf("\r\n"u8);
+            ReadOnlySpan<byte> line = next < 0 ? lines : lines[..next];
+            lines = next < 0 ? [] : lines[(next + 2)..];
+            int colon = line.IndexOf((byte)':');
+            if (colon > 0 && Ascii.EqualsIgnoreCase(line[..colon][Ascii.Trim(line[..colon])], "Content-Length"u8))
             {
-                length = found;
+                ReadOnlySpan<byte> value = line[(colon + 1)..];
+                value = value[Ascii.Trim(value)];
+                if (value.Length > 0 && !value.ContainsAnyExceptInRange((byte)'0', (byte)'9') && Utf8Parser.TryParse(value, out int found, out int read) && read == value.Length)
+                {
+                    length = found;
+                }
             }
         }
         if (length < 0)

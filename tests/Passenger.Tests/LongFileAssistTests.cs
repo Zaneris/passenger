@@ -1,6 +1,7 @@
 using System.Text;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -122,9 +123,8 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
         int near = document.Text.Snapshot.ToString().IndexOf("value0 * 3", StringComparison.Ordinal);
         int far = document.Text.Snapshot.ToString().LastIndexOf("value98 * 3", StringComparison.Ordinal);
         Ui.WaitFor(() => KindAt(near) == TokenKind.Local && KindAt(far) == TokenKind.Local, "the server's colours on the locals");
-        Task<(Passenger.Lsp.SemanticTokens? Tokens, int Version)> asking = csharp.Lsp!.SemanticTokensAsync();
-        Ui.WaitFor(() => asking.IsCompleted, "the whole file's tokens");
-        long decoded = asking.Result.Tokens!.Data.Length / 5 * System.Runtime.CompilerServices.Unsafe.SizeOf<SyntaxSpan>();
+        (Passenger.Lsp.SemanticTokens? Tokens, int Version) asked = Ui.Await(csharp.Lsp!.SemanticTokensAsync(), "the whole file's tokens");
+        long decoded = asked.Tokens!.Data.Length / 5 * System.Runtime.CompilerServices.Unsafe.SizeOf<SyntaxSpan>();
         Assert.True(decoded > 1_000_000, $"The file's tokens decode to only {decoded / 1024} KB");
 
         // Keys that open no completion, before the first statement's end: everything after them moves.
@@ -228,7 +228,8 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
     public void Until_the_parse_catches_up_a_key_classifies_again_only_the_line_it_changed()
     {
         string source = Project.Long;
-        MainWindow window = project.Open("Long.cs");
+        // The file's own parse alone, which the server's colours would only lay over.
+        MainWindow window = project.Open("Long.cs", languageServer: false);
         OpenDocument document = window.EditorArea.Active!;
         Passenger.Languages.CSharp.CSharpHighlighter syntax = document.Syntax!;
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -372,13 +373,16 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
         Passenger.Lsp.LspDocument lsp = window.CSharpService!.For(document)!.Lsp!;
         int declared = document.Text.Snapshot.ToString().IndexOf(declaration, StringComparison.Ordinal) + "int ".Length;
         long read = GC.GetTotalAllocatedBytes(precise: true);
-        int usages = Task.Run(() => lsp.ReferencesAsync(declared)).GetAwaiter().GetResult().Count;
+        int usages = Ui.Idle(Waiting.Apart(() => lsp.ReferencesAsync(declared)), $"the usages in {document.Name} asked from the thread pool").Count;
         read = GC.GetTotalAllocatedBytes(precise: true) - read;
         // What the wait above put off, done before the frames are counted.
         Ui.Settle();
         Task<IReadOnlyList<Passenger.Lsp.LspLocation>> asking = lsp.ReferencesAsync(declared);
         long landing = Frames(() => asking.IsCompleted, int.MaxValue);
-        Assert.True(asking.IsCompletedSuccessfully, $"The usages in {document.Name} never came");
+        if (!asking.IsCompletedSuccessfully)
+        {
+            throw new Xunit.Sdk.XunitException($"The usages in {document.Name} never came");
+        }
         Assert.Equal(usages, asking.Result.Count);
         return (usages, landing, read);
     }
@@ -418,6 +422,57 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
                 $"A key {how} above {many} hints wrapped {manyWrapped} characters, more than the {fewWrapped} it wraps above {few}: it wrapped the hinted lines again");
         }
         window.Close();
+    }
+
+    /// <summary>Keys typed above four thousand warnings, a local each that is never read, cost the UI thread what they do
+    /// above forty, the rest of that file's four thousand lines adding to a total: the document carries the server's
+    /// markers through a key, so the C# host sets them again only when the server reports, and each still stands under its
+    /// local.</summary>
+    [AvaloniaFact]
+    public void A_key_above_thousands_of_warnings_costs_what_it_does_above_a_few()
+    {
+        MainWindow window = project.Open("FewWarned.cs");
+        long few = WarnedKeys(window, "FewWarned.cs", 40);
+        long many = WarnedKeys(window, "Warned.cs", 4000);
+        TestContext.Current.TestOutputHelper?.WriteLine($"A key allocated {few / 1024} KB on the UI thread above 40 warnings, {many / 1024} KB above 4,000");
+        Assert.True(many <= few + (32 * 1024),
+            $"A key above 4,000 warnings allocated {many / 1024} KB on the UI thread, {(many - few) / 1024} KB more than above 40: the markers were copied for every key");
+        window.Close();
+    }
+
+    /// <summary>The bytes a key and the frame after it allocate on the UI thread, the middle of five, typed above a file's warnings
+    /// once they have come; every warning then still stands under its local.</summary>
+    private long WarnedKeys(MainWindow window, string file, int warned)
+    {
+        window.OpenFile(project.PathOf(file));
+        Ui.Settle();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument document = window.EditorArea.Active!;
+        Ui.WaitFor(() => editor.ProblemCount.Warnings == warned, $"the warnings of {file}'s {warned} locals never read");
+        Ui.PlaceAfter(editor, "int total = 0");
+        editor.Focus();
+        Ui.Settle();
+        const int Keys = 5;
+        long[] bytes = new long[Keys];
+        for (int i = 0; i < Keys; i++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            window.KeyTextInput("1");
+            Ui.Hold(TimeSpan.FromMilliseconds(10), "a frame after the key, whose allocations are measured");
+            bytes[i] = GC.GetAllocatedBytesForCurrentThread() - before;
+        }
+        TestContext.Current.TestOutputHelper?.WriteLine($"The keys above {warned} warnings allocated {string.Join(", ", bytes.Select(b => $"{b / 1024} KB"))}");
+        TextSnapshot text = document.Text.Snapshot;
+        List<Marker> warnings = [.. document.Markers.Where(m => m.Kind == MarkerKind.Warning)];
+        Assert.Equal(warned, warnings.Count);
+        foreach (Marker warning in warnings)
+        {
+            Assert.True(text.GetText(warning.Range.Start, "unused".Length) == "unused",
+                $"After {Keys} keys above them, a warning of {file} stands on '{text.GetText(warning.Range.Start, Math.Min(12, text.Length - warning.Range.Start))}' on line {text.GetLineFromOffset(warning.Range.Start) + 1}");
+        }
+        // The middle key's: an answer to an earlier request may land in another's frame.
+        Array.Sort(bytes);
+        return bytes[Keys / 2];
     }
 
     /// <summary>Keys typed above a file's calls once its hints have come, with soft wrap on or off: how many hints, and the
@@ -460,6 +515,92 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
         return (2 * calls, bytes / Keys, wrapped / Keys);
     }
 
+    /// <summary>The Structure window over a file of four thousand members is scrolled with the wheel as a person scrolls
+    /// it: its rows are handed other members, none made again, and a step costs the UI thread what one down a file of two
+    /// hundred does.</summary>
+    [AvaloniaFact]
+    public void A_scroll_step_down_the_structure_of_four_thousand_members_hands_the_rows_other_members_never_making_one_again()
+    {
+        (long fewStep, int fewMade) = StructureScrolled("Long.cs", 200);
+        (long manyStep, int manyMade) = StructureScrolled("Calls.cs", 4000);
+        TestContext.Current.TestOutputHelper?.WriteLine(
+            $"Structure: a wheel step allocated {fewStep / 1024} KB on the UI thread over Long.cs's members, {manyStep / 1024} KB over Calls.cs's; a scroll past the rows shown made {fewMade} and {manyMade} again");
+        Assert.True(fewMade == 0 && manyMade == 0,
+            $"Scrolling the Structure window made {fewMade} rows of Long.cs's members and {manyMade} of Calls.cs's again, where each row is kept and handed another: every member scrolled into view was built and styled anew");
+        Assert.True(manyStep <= fewStep + (64 * 1024),
+            $"A wheel step down the Structure window allocated {manyStep / 1024} KB on the UI thread over Calls.cs's members, against {fewStep / 1024} KB over Long.cs's: a step costs the list's length");
+    }
+
+    /// <summary>Typing through completion over a type of four thousand members (the best 200 listed), Down a row at a time
+    /// past its first screen and on into the list a letter narrows, hands the rows on screen the members they come to, none
+    /// made again.</summary>
+    [AvaloniaFact]
+    public void Typing_through_completion_over_four_thousand_members_hands_its_rows_other_members_never_making_one_again()
+    {
+        MainWindow window = project.Open("Program.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "    static void Main()\n    {");
+        editor.Focus();
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("Calls");
+        Ui.Settle();
+        Ui.Press(window, "ESCAPE");
+        window.KeyTextInput(".");
+        Ui.WaitFor(() => window.Assist.IsCompletionOpen && window.Assist.CompletionLabels.Count(l => l.StartsWith("Call", StringComparison.Ordinal)) > 100,
+            () => $"Calls's members, where the list shows [{string.Join(", ", window.Assist.CompletionLabels.Take(5))}] of {window.Assist.CompletionLabels.Count}");
+        HashSet<Avalonia.Controls.Control> containers = [];
+        HashSet<Avalonia.Controls.Control> rows = [];
+        void Seen()
+        {
+            foreach (Avalonia.Controls.Control row in window.Assist.CompletionRowControls)
+            {
+                rows.Add(row);
+                containers.Add(row.FindAncestorOfType<Avalonia.Controls.ListBoxItem>() ?? throw new Xunit.Sdk.XunitException("A completion row is in no container of the list"));
+            }
+        }
+        Seen();
+        // Each row looked at as the key's frame draws it, the next key coming before the chosen member's card would.
+        for (int i = 0; i < 30; i++)
+        {
+            Ui.Press(window, "DOWN", settle: false);
+            Ui.Draw();
+            Seen();
+        }
+        foreach (char letter in "Call1")
+        {
+            window.KeyTextInput(letter.ToString());
+            Ui.Settle();
+            Seen();
+        }
+        Assert.True(window.Assist.IsCompletionOpen && window.Assist.CompletionLabels.All(l => l.StartsWith("Call1", StringComparison.Ordinal)),
+            $"Narrowed by Call1 the list shows {string.Join(", ", window.Assist.CompletionLabels.Take(5))}");
+        for (int i = 0; i < 30; i++)
+        {
+            Ui.Press(window, "DOWN", settle: false);
+            Ui.Draw();
+            Seen();
+        }
+        Assert.False(window.Assist.CompletionRowControls.Count == 0, "No row of the list is on screen after the keys");
+        Assert.True(rows.Count == containers.Count,
+            $"Typing through the completion list made {rows.Count - containers.Count} rows again for its {containers.Count} containers, where each row is kept and handed another: every member scrolled into view was built and styled anew");
+        Ui.Press(window, "ESCAPE");
+        window.Close();
+    }
+
+    /// <summary>The least the UI thread allocated for a wheel step down the Structure window over a file's members, and
+    /// how many rows a scroll past those first shown made again.</summary>
+    private (long Least, int Made) StructureScrolled(string file, int members)
+    {
+        MainWindow window = project.Open(file);
+        window.Perform(AppActions.ShowStructure);
+        Passenger.App.ToolWindows.StructureView structure = window.StructureView;
+        Ui.WaitFor(() => structure.Rows.Count > members, () => $"{file}'s {members} members in Structure, where it lists {structure.Rows.Count}");
+        Ui.Settle();
+        (long, int) scrolled = LongListsTests.Scrolled(structure.GetVisualDescendants().OfType<Avalonia.Controls.ListBox>().Single());
+        window.Close();
+        return scrolled;
+    }
+
     /// <summary>A small console project on disk with two files of 20,000 lines and two of calls, restored once for every
     /// test, and the warm server they share on it, which loads and compiles the files once.</summary>
     public sealed class Project : SharedProject
@@ -470,6 +611,12 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
         public static readonly string Calls = Called("Calls", 4000, 4000);
 
         public static readonly string Few = Called("Few", 4000, 60);
+
+        /// <summary>Warned.cs: a method of four thousand locals each given a number and never read, a warning each; FewWarned.cs
+        /// the same, but for the first forty, the rest of its four thousand lines adding to the total it returns.</summary>
+        public static readonly string Warned = Locals("Warned", 4000, 4000);
+
+        public static readonly string FewWarned = Locals("FewWarned", 4000, 40);
 
         /// <summary>Long.cs: two hundred methods of a hundred lines and more, every fiftieth with an error, a string given a number.</summary>
         public static readonly string Long = TwentyThousandLines(errors: true, "Long", "}\n");
@@ -487,7 +634,10 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
             File.WriteAllText(PathOf("Dotted.cs"), Dotted);
             File.WriteAllText(PathOf("Calls.cs"), Calls);
             File.WriteAllText(PathOf("Few.cs"), Few);
-            Prepare();
+            File.WriteAllText(PathOf("Warned.cs"), Warned);
+            File.WriteAllText(PathOf("FewWarned.cs"), FewWarned);
+            // The server's first load makes bin, which a reset would take for a file the test added: made now, the folder stays as reset.
+            Directory.CreateDirectory(PathOf("bin"));
         }
 
         /// <summary>A method of two parameters and members calling it, each in one of its own, the first
@@ -500,6 +650,25 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
                 text.Append(System.Globalization.CultureInfo.InvariantCulture, $"    public static int Call{i}() => {(i < hinted ? "Of(3, 4)" : "Of(width: 3, height: 4)")};\n");
             }
             return text.Append("}\n").ToString();
+        }
+
+        /// <summary>A method of <paramref name="lines"/> statements, the first <paramref name="warned"/> a local never read,
+        /// the rest adding to a total it returns.</summary>
+        private static string Locals(string name, int lines, int warned)
+        {
+            StringBuilder text = new($"static class {name}\n{{\n    public static int Typed()\n    {{\n        int total = 0;\n");
+            for (int i = 0; i < lines; i++)
+            {
+                if (i < warned)
+                {
+                    text.Append(System.Globalization.CultureInfo.InvariantCulture, $"        int unused{i} = {i};\n");
+                }
+                else
+                {
+                    text.Append(System.Globalization.CultureInfo.InvariantCulture, $"        total += {i};\n");
+                }
+            }
+            return text.Append("        return total;\n    }\n}\n").ToString();
         }
 
         /// <summary>Two hundred methods of a hundred lines and more: 20,000 lines, as many as Roslyn parses fresh every time.</summary>

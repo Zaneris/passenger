@@ -1,3 +1,5 @@
+using System.Buffers;
+using Microsoft.Win32.SafeHandles;
 using Passenger.App.Editors;
 using Passenger.Core;
 using Passenger.Lsp;
@@ -42,6 +44,68 @@ public static class ServerPlaces
     public static ServerLines? Differing(TextSnapshot? text) =>
         text is not null && ServerLines.Of(text) is { } lines && lines.LineCount != text.LineCount ? lines : null;
 
+    /// <summary>A file's lines from disk as the server counts them where they are not the editor's (<see cref="Differing"/> of
+    /// <see cref="Read"/>), else null: its bytes looked over in a pooled buffer, and read as text only where they may hold
+    /// such a break, are not UTF-8 or could not be read. Safe from any thread.</summary>
+    public static ServerLines? DifferingOnDisk(string path) => MayBreakApart(path) ? Differing(Read(path)) : null;
+
+    /// <summary>Whether a file's bytes may hold a break the server counts and the editor does not, as the editor reads them
+    /// (<see cref="FileText.Load"/>): false for binary bytes, which it does not read, and for UTF-8 (after its BOM, or with
+    /// none and every byte UTF-8) that holds none; true for UTF-16, 8-bit text and a file that could not be read here.</summary>
+    private static bool MayBreakApart(string path)
+    {
+        try
+        {
+            if (!File.Exists(path))
+            {
+                return false;
+            }
+            using SafeFileHandle handle = File.OpenHandle(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            long length = RandomAccess.GetLength(handle);
+            if (length > Array.MaxLength - 1)
+            {
+                return true;
+            }
+            // A byte more than its length, to learn whether it grew since.
+            byte[] rented = ArrayPool<byte>.Shared.Rent((int)length + 1);
+            try
+            {
+                int filled = 0;
+                while (filled < rented.Length && RandomAccess.Read(handle, rented.AsSpan(filled), filled) is int read and > 0)
+                {
+                    filled += read;
+                }
+                return filled > length || MayBreakApart(rented.AsSpan(0, filled));
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(rented);
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return true;
+        }
+    }
+
+    /// <summary>Whether a file's bytes, as the editor reads them, may hold a break the server counts and the editor does not.</summary>
+    private static bool MayBreakApart(ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.StartsWith((ReadOnlySpan<byte>)[0xEF, 0xBB, 0xBF]))
+        {
+            return ServerLines.BreaksApart(bytes[3..]);
+        }
+        if (bytes.StartsWith((ReadOnlySpan<byte>)[0xFF, 0xFE]) || bytes.StartsWith((ReadOnlySpan<byte>)[0xFE, 0xFF]))
+        {
+            return true;
+        }
+        if (FileText.LooksBinary(bytes))
+        {
+            return false;
+        }
+        return !System.Text.Unicode.Utf8.IsValid(bytes) || ServerLines.BreaksApart(bytes);
+    }
+
     /// <summary>A server's position as the editor's line and column through lines kept by <see cref="Differing"/>.</summary>
     public static TextPosition PositionOf(ServerLines? lines, LspPosition at) =>
         lines is null ? new TextPosition(at.Line, at.Character) : lines.Text.GetPosition(lines.OffsetOf(at));
@@ -49,7 +113,7 @@ public static class ServerPlaces
     /// <summary>Whether Roslyn's compilers read the file (C#, Visual Basic, Razor), so the lines a compiler's message or a
     /// stack frame (its PDB's) names in it are counted as the server counts them, to be read through its text.</summary>
     public static bool CountedByRoslyn(string path) =>
-        Path.GetExtension(path).ToLowerInvariant() is ".cs" or ".csx" or ".vb" or ".razor" or ".cshtml";
+        PathNames.HasExtension(path, [".cs", ".csx", ".vb", ".razor", ".cshtml"]);
 
     /// <summary>Whether a file is XAML, whose compilers (Avalonia's XamlIl, WPF's markup compiler) count its lines as an XML
     /// reader does (<see cref="ServerLines.OfXml"/>) in the places they write: a PDB's sequence points, an element's own.</summary>

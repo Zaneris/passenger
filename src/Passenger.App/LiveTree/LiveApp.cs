@@ -87,7 +87,7 @@ public sealed class LiveApp : IDisposable
             Plan = plan with { Environment = environment };
         }
         // Not held: it waits as long as the app runs, which nothing drawn waits for.
-        IdeErrors.Observe(Task.Run(ServeAsync));
+        IdeErrors.Observe(BackgroundWork.Unheld(ServeAsync));
     }
 
     /// <summary>The inspector beside the app, as its build carries it.</summary>

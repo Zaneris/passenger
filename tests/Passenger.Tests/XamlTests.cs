@@ -3,6 +3,7 @@ using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Headless.XUnit;
+using Passenger.App.Editors;
 using Passenger.App;
 using Passenger.App.Run;
 using Passenger.App.Workspace;
@@ -50,6 +51,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         }
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Typing_a_tag_offers_the_controls_then_a_controls_properties_and_then_the_values_of_the_one_chosen()
     {
@@ -89,6 +91,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_value_chosen_with_nothing_typed_from_the_list_its_property_opened_leaves_the_caret_after_it_to_type_on()
     {
@@ -160,6 +163,41 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>An event's handlers come from the code-behind as its project compiles it: one declared under
+    /// #if NET8_0_OR_GREATER is offered, one under #if !NET8_0_OR_GREATER is not.</summary>
+    [AvaloniaFact]
+    public void An_events_handlers_are_the_code_behinds_methods_under_its_frameworks_symbols_and_not_those_it_never_compiles()
+    {
+        app.Rewrite("MainWindow.axaml.cs", Gallery.CodeBehind.Replace("    }\n}", """
+                }
+
+            #if NET8_0_OR_GREATER
+                private void OnGo(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+                {
+                }
+            #endif
+
+            #if !NET8_0_OR_GREATER
+                private void OnLegacyGo(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+                {
+                }
+            #endif
+            }
+            """, StringComparison.Ordinal));
+        MainWindow window = app.Open(app.PathOf("MainWindow.axaml"));
+        // The XAML read again with what the evaluation says the code-behind is compiled with, before the list is asked for.
+        Ui.WaitFor(() => window.WorkspaceModel!.Projects.All(p => p.IsEvaluated), "Gallery's project to be evaluated");
+        Ui.Settle();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "<Button Name=\"Go\" Content=\"Go\"");
+        window.KeyTextInput(" Click=");
+        window.KeyTextInput("\"");
+        Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("OnGo"),
+            () => $"OnGo, declared under #if NET8_0_OR_GREATER in the {TestProjects.Framework} project's code-behind, among Click's handlers [{string.Join(", ", window.Assist.CompletionLabels)}]");
+        Assert.DoesNotContain("OnLegacyGo", window.Assist.CompletionLabels);
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void Passengers_own_main_window_completes_its_theme_tokens_and_its_style_classes()
     {
@@ -190,6 +228,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_misspelt_property_enum_value_resource_and_binding_path_are_marked_as_typed_listed_in_problems_and_go_once_put_right()
     {
@@ -266,6 +305,46 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         Assert.Equal("Create property 'Subtitle'", window.Assist.Offered[0]);
         window.Close();
     }
+
+    /// <summary>A view model typed into as its project's XAML begins to load, the text of the first pause held from the
+    /// project until the next pause's text has landed: let go, the older text is passed over, and the XAML keeps the types
+    /// of the text typed last.</summary>
+    [AvaloniaFact]
+    public void A_view_models_text_typed_as_its_xaml_loads_is_never_replaced_by_an_older_one_landing_after_it()
+    {
+        MainWindow window = app.Open(null, languageServer: false);
+        Passenger.Xaml.XamlProject? latest = null;
+        window.XamlService.ProjectChanged += (_, project) => latest = project;
+        window.OpenFile(app.PathOf("MainWindow.axaml"));
+        OpenDocument view = window.EditorArea.Active!;
+        Replace(window.EditorArea.CodeEditor, "<TextBlock Text=\"{Binding #Go.Content}\" />",
+            "<TextBlock Text=\"{Binding #Go.Content}\" />\n        <TextBlock Text=\"{Binding Subtitle}\" />");
+        window.OpenFile(app.PathOf("ViewModels/MainViewModel.cs"));
+        CodeEditor code = window.EditorArea.CodeEditor;
+        TaskCompletionSource older = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task held = window.XamlService.HoldNextText(older.Task);
+        try
+        {
+            Replace(code, "public int Count { get; set; }\n", "public int Count { get; set; }\n\n    public string Caption { get; set; } = \"\";\n");
+            Ui.PumpUntil(() => held.IsCompleted, "the text with Caption, typing paused, held from the project");
+            Replace(code, "public string Caption", "public string Subtitle");
+            Ui.PumpUntil(() => ViewModelMembers(latest).Contains("Subtitle"), "the text typed next, with Subtitle, taken by the project");
+        }
+        finally
+        {
+            older.SetResult();
+        }
+        Ui.Settle();
+        string[] members = ViewModelMembers(latest);
+        Assert.True(members.Contains("Subtitle") && !members.Contains("Caption"),
+            $"The text typed first, landing last, took the XAML's view model back to an older text: [{string.Join(", ", members)}]");
+        Assert.True(view.Markers.Count == 0, $"The binding to the property typed last is marked: [{string.Join(", ", view.Markers.Select(m => m.Message))}]");
+        window.Close();
+    }
+
+    /// <summary>The names of the members of the app's view model as a project of its XAML reads them; none for no project.</summary>
+    private static string[] ViewModelMembers(Passenger.Xaml.XamlProject? project) =>
+        project?.Types.Find("Gallery.ViewModels.MainViewModel") is { } type ? [.. type.Members.Select(m => m.Name)] : [];
 
     [AvaloniaFact]
     public void A_character_reference_to_half_a_surrogate_pair_leaves_its_file_and_the_projects_others_with_their_help()
@@ -673,6 +752,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Passengers_own_xaml_which_compiles_is_marked_with_no_problem()
     {
@@ -745,6 +825,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void An_elements_name_renames_with_its_code_behinds_uses_and_go_to_declaration_from_the_code_lands_on_it()
     {
@@ -817,6 +898,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void An_avares_path_completes_from_the_projects_assets_is_warned_of_when_missing_and_goes_to_its_file()
     {
@@ -852,6 +934,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Colours_show_as_gutter_swatches_and_one_chosen_in_the_picker_is_written_back_as_it_was_written()
     {
@@ -862,7 +945,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         // The button's background names the palette's Accent: its swatch is the dark theme's, which the window shows.
         Ui.WaitFor(() => view.ColourMarks.Any(m => m.Line == button), "the swatch of the brush the button's background names");
         Assert.Equal(Color.Parse("#3D7BF5"), view.ColourMarks.Single(m => m.Line == button).Colour);
-        Point swatch = editor.TranslatePoint(editor.GutterColumnPoint(GutterColumn.Marks, button), window)!.Value;
+        Point swatch = editor.TranslatePoint(editor.GutterColumnPoint(editor.Gutter!.Marks, button), window)!.Value;
         Assert.Equal(Color.Parse("#3D7BF5"), Ui.Pixel(window, swatch));
 
         window.MouseDown(swatch, MouseButton.Left);
@@ -889,7 +972,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         int line = code.CaretPosition.Line;
         Ui.WaitFor(() => behind.ColourMarks.Any(m => m.Line == line), "the swatch of the colour FromRgb makes");
         Assert.Equal(Color.Parse("#336699"), behind.ColourMarks.Single(m => m.Line == line).Colour);
-        Ui.Click(code, code.GutterColumnPoint(GutterColumn.Marks, line));
+        Ui.Click(code, code.GutterColumnPoint(code.Gutter!.Marks, line));
         window.KeyTextInput("#AA0000");
         Ui.Press(window, "ENTER");
         Ui.Settle();
@@ -945,7 +1028,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         Passenger.App.Xaml.XamlDocument xaml = window.XamlService.For(window.EditorArea.Active!)!;
         Ui.WaitFor(() => xaml.IsLoaded, "the project's XAML read");
         // Fluent's control list as an earlier session's Source Link gave it, merging in a file five folders up.
-        Passenger.Xaml.Metadata.AssemblyTypes fluent = xaml.Loaded.Result!.Types.Assemblies.Single(a => a.Name == "Avalonia.Themes.Fluent");
+        Passenger.Xaml.Metadata.AssemblyTypes fluent = Ui.Await(xaml.Loaded, "the project's XAML")!.Types.Assemblies.Single(a => a.Name == "Avalonia.Themes.Fluent");
         string entry = Path.Combine(Passenger.App.Xaml.LibrarySources.Folder, "SourceLink", fluent.Name,
             Passenger.App.Xaml.LibrarySources.Stamp(Passenger.App.Xaml.LibrarySources.Implementation(fluent.Path)));
         string escaped = Path.Combine(Passenger.App.State.StateStore.DefaultRoot, "escaped");
@@ -1009,6 +1092,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         }
     }
 
+    [Gate]
     [AvaloniaFact]
     public void The_preview_draws_a_window_from_the_last_build_follows_its_text_as_it_is_typed_and_draws_styles_as_their_PreviewWith()
     {
@@ -1184,6 +1268,58 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>XAML Preview on or off is kept for the next window, as a Markdown file's preview is: turned on, the next
+    /// window shows a XAML file beside its preview; turned off from the tab strip, the next shows none.</summary>
+    [AvaloniaFact]
+    public void The_XAML_previews_on_or_off_is_kept_for_the_next_window()
+    {
+        string state = TestFolders.Create("xaml-state-");
+        try
+        {
+            MainWindow window = Started(state);
+            OpenDocument document = window.EditorArea.Active!;
+            Passenger.App.Editors.EditorGroup group = window.EditorArea.ActiveGroup;
+            Assert.True(group.PreviewToggle.IsChecked == false && window.PreviewOf(document) is null, "A first window showed the XAML preview before it was turned on");
+            Assert.True(window.Perform(AppActions.XamlPreview), $"XAML Preview could not run: {window.Status}");
+            Ui.Settle();
+            Assert.NotNull(window.PreviewOf(document));
+            window.Close();
+            Ui.Settle();
+
+            window = Started(state);
+            group = window.EditorArea.ActiveGroup;
+            Ui.WaitFor(() => window.PreviewOf(window.EditorArea.Active!) is not null, "the next window's preview beside the XAML file, the preview kept on");
+            Assert.True(group.PreviewToggle.IsChecked == true, "The tab strip's preview toggle stayed up in the window that kept the preview on");
+            Ui.Click(group.PreviewToggle);
+            Ui.Settle();
+            Assert.Null(window.PreviewOf(window.EditorArea.Active!));
+            window.Close();
+            Ui.Settle();
+
+            window = Started(state);
+            group = window.EditorArea.ActiveGroup;
+            Assert.True(group.PreviewToggle.IsChecked == false && window.PreviewOf(window.EditorArea.Active!) is null, "The next window showed the preview the last one turned off");
+            window.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(state);
+        }
+
+        // A window keeping its state in the test's own folder, the window's XAML open, with no C# language server.
+        MainWindow Started(string kept)
+        {
+            MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StateFolder = kept, StartsLanguageServer = false };
+            window.Show();
+            window.KeepLayout();
+            window.KeepSettings();
+            window.OpenFolder(app.Folder);
+            Assert.Null(window.OpenFile(app.PathOf("MainWindow.axaml")));
+            Ui.Settle();
+            return window;
+        }
+    }
+
     /// <summary>An Avalonia previewer that ends as it draws (a crash) has its end in passenger.log, with the last words the
     /// pane says it ended with, as the WPF previewer's is.</summary>
     [AvaloniaFact]
@@ -1271,14 +1407,18 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         public Gallery()
             : base("xaml-")
         {
-            TestFolders.Prepare(() => Make(Folder), Folder);
-            Prepare();
+        }
+
+        public override async ValueTask InitializeAsync()
+        {
+            await TestFolders.PrepareAsync(() => MakeAsync(Folder), Folder);
+            await PrepareAsync();
         }
 
         /// <summary>Makes the app in a folder, not yet restored.</summary>
-        internal static void Make(string folder)
+        internal static async Task MakeAsync(string folder)
         {
-            AvaloniaApp.Create(folder, "Gallery");
+            await AvaloniaApp.CreateAsync(folder, "Gallery");
             Directory.CreateDirectory(Path.Combine(folder, "ViewModels"));
             Directory.CreateDirectory(Path.Combine(folder, "Styles"));
             Directory.CreateDirectory(Path.Combine(folder, "Assets"));

@@ -20,7 +20,6 @@ public sealed class MergedLog : DockPanel
     public MergedLog(string findName, params Control[] own)
     {
         Console = new OutputView(toolbar: false);
-        find = new Editors.FindBar { [DockProperty] = Dock.Top };
         Button finding = ToolButtons.Of(IconKeys.Search, "Find in the log", OpenFind);
         finding.Name = findName;
         finding.VerticalAlignment = VerticalAlignment.Center;
@@ -33,29 +32,14 @@ public sealed class MergedLog : DockPanel
         bar.Children.Add(right);
         bar.Children.Add(sources);
         Children.Add(bar);
-        Children.Add(find);
         Children.Add(Console);
     }
 
     /// <summary>The console the sources' lines stream into.</summary>
     public OutputView Console { get; }
 
-    private readonly Editors.FindBar find;
-    private bool findAttached;
-
-    /// <summary>Find over the log, over the console's editor once the log is shown or Find asked for.</summary>
-    public Editors.FindBar Find
-    {
-        get
-        {
-            if (!findAttached)
-            {
-                findAttached = true;
-                find.Attach(Console.Editor);
-            }
-            return find;
-        }
-    }
+    /// <summary>Find over the log, the console's own, made once the log is shown or Find asked for.</summary>
+    public Editors.FindBar Find => Console.Find;
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
@@ -64,7 +48,7 @@ public sealed class MergedLog : DockPanel
     }
 
     /// <summary>Opens Find over the log.</summary>
-    public void OpenFind() => Find.Open(replace: false);
+    public void OpenFind() => Console.OpenFind();
 
     /// <summary>The sources' toggles, each on while its lines are shown.</summary>
     public IReadOnlyList<ToggleButton> Toggles => [.. sources.Children.OfType<ToggleButton>()];

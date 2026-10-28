@@ -240,7 +240,7 @@ public sealed partial class BuildRunController
         if (run.BuildsBeforeRestart)
         {
             work.Say($"Building {Path.GetFileNameWithoutExtension(service.Project)}…");
-            BuildOutcome built = await BuildForAsync([service.Project], work.Stopping);
+            BuildOutcome built = await BuildForAsync([service.Project], work.Stopping, work);
             work.Stopping.ThrowIfCancellationRequested();
             if (!built.Succeeded)
             {
@@ -458,9 +458,13 @@ public sealed partial class BuildRunController
         using (work)
         {
             using IDisposable held = BackgroundWork.Scope();
-            parts.Editors.SaveAll();
+            if (await parts.Editors.SaveAllLandedAsync(work, work.Stopping) is { } unsaved)
+            {
+                parts.Say(unsaved);
+                return false;
+            }
             List<string> projects = [.. services.Select(s => s.Project).Distinct(StringComparer.Ordinal)];
-            if (run.BuildsBeforeRestart && !(await BuildForAsync(projects, work.Stopping)).Succeeded)
+            if (run.BuildsBeforeRestart && !(await BuildForAsync(projects, work.Stopping, work)).Succeeded)
             {
                 return false;
             }

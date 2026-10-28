@@ -1,10 +1,10 @@
 using Passenger.Editor;
-using TextMateSharp.Grammars;
+using Tint;
 
 namespace Passenger.Languages.TextMate;
 
 /// <summary>A line's colours, each span from the line's start, and the grammar's state where it ends.</summary>
-internal readonly record struct TokenLine(SyntaxSpan[] Spans, IStateStack? End);
+internal readonly record struct TokenLine(SyntaxSpan[] Spans, StateStack? End);
 
 /// <summary>The colours of every line of one version of a text, as the grammar left them, never changed once made. Lines
 /// from <see cref="StaleFrom"/> on hold colours found from an earlier state (their text is the same, or they are blank),

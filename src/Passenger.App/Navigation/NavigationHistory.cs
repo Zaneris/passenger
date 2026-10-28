@@ -7,11 +7,11 @@ namespace Passenger.App.Navigation;
 public sealed record HistoryPlace(string Path, int Offset, int Line);
 
 /// <summary>Back and Forward, Last and Next Edit Location, and the places Recent Locations lists. A navigation (go to
-/// definition, a usage, a bookmark) puts the place it left behind and forgets what was ahead; Back puts the caret's
-/// place ahead. The caret moved by a key or a click changes neither, so Forward still goes where Back came from. An
-/// edit keeps its place among the places edited, which Last Edit Location steps back through and Next Edit Location
-/// forward. Each list keeps at most <see cref="Limit"/> places, and the places in an open file move with its
-/// text, each by an anchor in it.</summary>
+/// definition, a usage, a bookmark) puts the place it left behind and forgets what was ahead, and so does a file left
+/// for another, which keeps one such place behind, where it was left last; Back puts the caret's place ahead. The caret
+/// moved by a key or a click changes neither, so Forward still goes where Back came from. An edit keeps its place among
+/// the places edited, which Last Edit Location steps back through and Next Edit Location forward. Each list keeps at
+/// most <see cref="Limit"/> places, and the places in an open file move with its text, each by an anchor in it.</summary>
 public sealed class NavigationHistory
 {
     /// <summary>How many places each way.</summary>
@@ -43,7 +43,25 @@ public sealed class NavigationHistory
         Visited(from);
     }
 
-    /// <summary>A place left otherwise (another file shown): Recent Locations lists it, Back does not go there.</summary>
+    /// <summary>A file left for another, however that one came to be shown: its place goes behind in place of the one a
+    /// leaving of it put there before, and what was ahead is forgotten.</summary>
+    public void Switched(HistoryPlace from)
+    {
+        for (int i = behind.Count - 1; i >= 0; i--)
+        {
+            if (behind[i].Switched && behind[i].Place.Path == from.Path)
+            {
+                behind[i].Detach();
+                behind.RemoveAt(i);
+            }
+        }
+        PutBehind(from, switched: true);
+        Clear(ahead);
+        Visited(from);
+    }
+
+    /// <summary>A file's place as a navigation, Back or Forward left it, each keeping its own, or as it closed: Recent
+    /// Locations lists it.</summary>
     public void Visited(HistoryPlace place) => Merge(visited, place);
 
     /// <summary>A place edited: Last Edit Location goes back to it from anywhere else, starting again from the latest.</summary>
@@ -104,10 +122,15 @@ public sealed class NavigationHistory
     }
 
     /// <summary>Where Back goes from the caret's place, which goes ahead; null with nothing behind. A place whose file
-    /// is gone is passed over.</summary>
+    /// is gone is passed over, as is the caret's own (a file shown again as its tab closed), which would show nothing.</summary>
     public HistoryPlace? Back(HistoryPlace? here, Func<string, bool> exists)
     {
-        if (Take(behind, exists) is not { } target)
+        HistoryPlace? target = Take(behind, exists);
+        while (target is not null && here is not null && target.Path == here.Path && target.Offset == here.Offset)
+        {
+            target = Take(behind, exists);
+        }
+        if (target is null)
         {
             return null;
         }
@@ -199,9 +222,9 @@ public sealed class NavigationHistory
 
     private IEnumerable<Spot> Spots() => behind.Concat(ahead).Concat(visited.Select(k => k.Spot)).Concat(edited.Select(k => k.Spot));
 
-    private Spot Made(HistoryPlace place)
+    private Spot Made(HistoryPlace place, bool switched = false)
     {
-        Spot made = new(place);
+        Spot made = new(place, switched);
         if (open.TryGetValue(place.Path, out TextDocument? text))
         {
             made.Attach(text);
@@ -246,14 +269,16 @@ public sealed class NavigationHistory
         }
     }
 
-    private void PutBehind(HistoryPlace place)
+    /// <summary>Puts a place behind, in place of the last there when near it, which stays a navigation's if either was.</summary>
+    private void PutBehind(HistoryPlace place, bool switched = false)
     {
         if (behind.Count > 0 && Near(behind[^1].Place, place))
         {
+            switched &= behind[^1].Switched;
             behind[^1].Detach();
             behind.RemoveAt(behind.Count - 1);
         }
-        Keep(behind, Made(place));
+        Keep(behind, Made(place, switched));
     }
 
     private static bool Near(HistoryPlace one, HistoryPlace other) => one.Path == other.Path && Math.Abs(one.Line - other.Line) < NearLines;
@@ -288,11 +313,14 @@ public sealed class NavigationHistory
     private sealed record Kept(Spot Spot, long When);
 
     /// <summary>A place kept, read from its anchor while its file is open.</summary>
-    private sealed class Spot(HistoryPlace place)
+    private sealed class Spot(HistoryPlace place, bool switched)
     {
         private HistoryPlace place = place;
         private Anchor? anchor;
         private TextDocument? text;
+
+        /// <summary>Whether it went behind as its file was left for another, rather than by a navigation.</summary>
+        public bool Switched { get; } = switched;
 
         public HistoryPlace Place
         {

@@ -39,6 +39,6 @@ public static class DiagnosticClientHelper
     /// <summary>Lets go a process's runtime held at its start, as an attach would have: a runtime already running takes the
     /// word as done. Its port is waited for while the process lives, until it is <see cref="HeldStart.PortLimit"/> old, and
     /// within <paramref name="within"/> when given. Null once asked, else why it could not be.</summary>
-    public static string? Resume(int processId, TimeSpan? within = null) =>
-        HeldStart.LetGoAsync(processId, sinceItStarted: true, within: within).GetAwaiter().GetResult();
+    public static Task<string?> ResumeAsync(int processId, TimeSpan? within = null) =>
+        HeldStart.LetGoAsync(processId, sinceItStarted: true, within: within);
 }

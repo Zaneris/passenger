@@ -156,7 +156,7 @@ cat > "$app/Contents/Info.plist" <<EOF
     <array>
         <dict>
             <key>CFBundleTypeName</key><string>Solution File</string>
-            <key>CFBundleTypeExtensions</key><array><string>sln</string><string>slnx</string></array>
+            <key>CFBundleTypeExtensions</key><array><string>sln</string><string>slnx</string><string>slnf</string></array>
             <key>CFBundleTypeRole</key><string>Editor</string>
             <key>LSHandlerRank</key><string>Alternate</string>
         </dict>

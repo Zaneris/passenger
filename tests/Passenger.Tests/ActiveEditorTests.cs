@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using Avalonia;
@@ -10,6 +9,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.VisualTree;
+using Passenger.App.Editors;
 using Passenger.App;
 using Passenger.App.Settings;
 using Passenger.Editor;
@@ -273,7 +273,7 @@ public sealed class ActiveEditorTests : ActiveEditorFolders
         Assert.Equal(Token(window, TokenKeys.Editor_BreakpointLine), Ui.Pixel(window, tinted));
 
         // Rows shown: the six lines outside the fold and the comment's rows after its first.
-        Point chevron = editor.TranslatePoint(editor.GutterColumnPoint(GutterColumn.Folding, 3), window)!.Value;
+        Point chevron = editor.TranslatePoint(editor.FoldPoint(3), window)!.Value;
         window.MouseDown(chevron, MouseButton.Left);
         window.MouseUp(chevron, MouseButton.Left);
         Ui.Settle();
@@ -288,7 +288,7 @@ public sealed class ActiveEditorTests : ActiveEditorFolders
         Assert.Equal(8, editor.CaretPosition.Line);
 
         double secondRow = editor.PointOf(RowStarts(editor, comment)[0]).Y + (editor.LineHeight / 2);
-        Point beside = editor.TranslatePoint(new Point(editor.GutterColumnPoint(GutterColumn.Folding, 2).X, secondRow), window)!.Value;
+        Point beside = editor.TranslatePoint(new Point(editor.FoldPoint(2).X, secondRow), window)!.Value;
         window.MouseDown(beside, MouseButton.Left);
         window.MouseUp(beside, MouseButton.Left);
         Ui.Settle();
@@ -388,12 +388,11 @@ public sealed class ActiveEditorTests : ActiveEditorFolders
 }
 
 /// <summary>A key in a long soft-wrapped file costs the line it changed, never a wrap of the whole file, and about what it
-/// costs with soft wrap off. Held to times, so the class runs alone.</summary>
-[Collection(Alone.Name)]
+/// costs with soft wrap off, in the characters it wraps and the bytes it allocates on the UI thread.</summary>
 public sealed class ActiveEditorResponsivenessTests : ActiveEditorFolders
 {
     /// <summary>Twenty thousand lines of prose, each wrapping onto rows: a key costs the line it changed, never a wrap of the
-    /// whole file, and about what it costs with soft wrap off.</summary>
+    /// whole file, and allocates on the UI thread about what it does with soft wrap off.</summary>
     [AvaloniaFact]
     public void A_key_in_twenty_thousand_soft_wrapped_lines_wraps_only_the_line_it_changed()
     {
@@ -407,36 +406,33 @@ public sealed class ActiveEditorResponsivenessTests : ActiveEditorFolders
         int middle = rig.Document.Snapshot.GetLineStart(10_000) + 40;
         int line = rig.Document.Snapshot.GetLine(10_000).Length;
 
-        List<double> plainTimes = [];
-        List<double> wrappedTimes = [];
-        List<double> turnOn = [];
+        long plain = long.MaxValue;
+        long soft = long.MaxValue;
         long wrapped = 0;
         for (int round = 0; round < 3; round++)
         {
             rig.Editor.SoftWrap = false;
             Ui.Settle();
-            Keys(rig, middle, plainTimes);
-            long on = Stopwatch.GetTimestamp();
+            plain = Math.Min(plain, Keys(rig, middle));
             rig.Editor.SoftWrap = true;
             Ui.Settle();
-            turnOn.Add(Stopwatch.GetElapsedTime(on).TotalMilliseconds);
             Assert.True(rig.Editor.RowsShown > 40_000, $"Twenty thousand lines of 150 to 270 characters wrapped into only {rig.Editor.RowsShown} rows.");
             long before = rig.Editor.CharactersWrapped;
-            Keys(rig, middle, wrappedTimes);
+            soft = Math.Min(soft, Keys(rig, middle));
             wrapped = rig.Editor.CharactersWrapped - before;
         }
-        Assert.True(text == rig.Text, "The timed keys left the text changed.");
+        Assert.True(text == rig.Text, "The keys left the text changed.");
 
         // Six edits of a line of about two hundred characters: the whole file would be four million.
         Assert.True(wrapped <= 6 * (line + 2), $"Twelve keys, six of them edits of a line of {line} characters, wrapped {wrapped} characters.");
-        double plain = Median(plainTimes);
-        double soft = Median(wrappedTimes);
         TestContext.Current.TestOutputHelper?.WriteLine(
-            $"A key in 20,000 lines ({rig.Editor.RowsShown} rows): median {soft:F3} ms soft-wrapped, {plain:F3} ms not, "
-            + $"slowest {wrappedTimes.Max():F3} ms and {plainTimes.Max():F3} ms; twelve keys wrapped {wrapped} characters; "
-            + $"turning soft wrap on took {Median(turnOn):F1} ms.");
-        Assert.True(soft <= (3 * plain) + 1, $"A key took {soft:F2} ms soft-wrapped, against {plain:F2} ms with soft wrap off.");
+            $"Twelve keys in 20,000 lines ({rig.Editor.RowsShown} rows) allocated {soft:N0} bytes on the UI thread soft-wrapped, {plain:N0} not; they wrapped {wrapped} characters.");
+        Assert.True(soft <= plain + (SoftWrapSlack * Timed.Length),
+            $"Twelve keys in 20,000 soft-wrapped lines allocated {soft:N0} bytes on the UI thread, against {plain:N0} with soft wrap off: what every line or row has was made again");
     }
+
+    /// <summary>What a key may allocate on the UI thread soft-wrapped beyond what it does unwrapped: its line's rows.</summary>
+    private const long SoftWrapSlack = 16 * 1024;
 
     /// <summary>With soft wrap on, a key in an open C# file (which has folds) of 2,000 members, a wrapped comment over
     /// each, wraps the line it changed and no more, as in a file of 20, and allocates on the UI thread what a key there
@@ -507,6 +503,72 @@ public sealed class ActiveEditorResponsivenessTests : ActiveEditorFolders
             return (least, path);
         }
     }
+
+    /// <summary>A key in a screenful of coloured C# makes again only the row it changed: it asks for the colours of that
+    /// row alone, and what it allocates on the UI thread, its parse landing included, beyond what drawing the screen once
+    /// does, is under 256 bytes more for each row in an editor showing 67 rows than in one showing 19, the least of six
+    /// keys. Every row's view, colours and text were made again for each key, and every row's colours asked for again as
+    /// its parse landed: 2.6 KB for each row more.</summary>
+    [AvaloniaFact]
+    public void A_key_in_a_screen_of_coloured_code_makes_again_only_the_row_it_changed()
+    {
+        StringBuilder text = new("static class Coloured\n{\n");
+        for (int i = 0; i < 200; i++)
+        {
+            text.Append(System.Globalization.CultureInfo.InvariantCulture,
+                $"    public static string Name{i}(int value) => value > {i} ? \"large\" : $\"small {{value}}\"; // note {i}\n");
+        }
+        string source = text.Append("}\n").ToString();
+        string path = Path.Combine(folder, "Coloured.cs");
+        File.WriteAllText(path, source);
+        (long few, int fewRows) = Keys(200);
+        (long many, int manyRows) = Keys(1500);
+        TestContext.Current.TestOutputHelper?.WriteLine($"A key allocated {few:N0} bytes on the UI thread beyond its frame showing {fewRows} rows, {many:N0} showing {manyRows}");
+        Assert.True(manyRows >= fewRows + 40, $"The tall editor showed {manyRows} rows, the short one {fewRows}");
+        Assert.True(many - few < 256 * (manyRows - fewRows),
+            $"A key in coloured C# allocated {many:N0} bytes on the UI thread beyond its frame showing {manyRows} rows, against {few:N0} showing {fewRows}: {(many - few) / (manyRows - fewRows)} bytes for each row more, every row on screen made again");
+
+        // A key's least UI-thread bytes, at a mid-screen line's end, less a frame's with nothing changed; and the rows shown.
+        (long Bytes, int Rows) Keys(double height)
+        {
+            MainWindow window = new() { Width = 1100, Height = height, StartsLanguageServer = false };
+            window.Show();
+            window.OpenFile(path);
+            Ui.Settle();
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            (int first, int last) = editor.LinesShown;
+            int line = (first + last) / 2;
+            LineSpan typed = editor.Document.Snapshot.GetLine(line);
+            Assert.EndsWith($"// note {line - 2}", editor.Document.Snapshot.GetText(typed.Start, typed.Length), StringComparison.Ordinal);
+            editor.Selections = SelectionSet.Single(typed.End);
+            editor.Focus();
+            Ui.Settle();
+            long key = long.MaxValue;
+            long frame = long.MaxValue;
+            for (int i = 0; i < 6; i++)
+            {
+                long coloured = editor.CharactersColoured;
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                window.KeyTextInput("7");
+                Ui.Settle();
+                key = Math.Min(key, GC.GetAllocatedBytesForCurrentThread() - before);
+                coloured = editor.CharactersColoured - coloured;
+                Assert.True(coloured <= typed.Length + 16,
+                    $"A key on a line of {typed.Length + i + 1} characters showing {last - first + 1} rows had {coloured:N0} characters coloured: rows it did not change were coloured again");
+                editor.InvalidateVisual();
+                before = GC.GetAllocatedBytesForCurrentThread();
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                AvaloniaHeadlessPlatform.ForceRenderTimerTick(1);
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                frame = Math.Min(frame, GC.GetAllocatedBytesForCurrentThread() - before);
+            }
+            TestContext.Current.TestOutputHelper?.WriteLine($"A key allocated {key:N0} bytes on the UI thread, a frame {frame:N0}");
+            int rows = editor.LinesShown.Last - editor.LinesShown.First + 1;
+            Assert.Contains($"// note {line - 2}777777\n", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+            window.Close();
+            return (key - frame, rows);
+        }
+    }
 }
 
 /// <summary>The folders an Active Editor test writes its files and keeps its settings in, its texts, and the helpers that
@@ -570,14 +632,14 @@ public abstract class ActiveEditorFolders : IDisposable
     /// and six moves.</summary>
     protected static readonly string[] Timed = ["x", "y", "LEFT", "RIGHT", "DOWN", "UP", "BACK_SPACE", "BACK_SPACE", "meta RIGHT", "meta LEFT", "z", "BACK_SPACE"];
 
-    /// <summary>The timed keys at an offset, each timed.</summary>
-    protected static void Keys(EditorRig rig, int offset, List<double> times)
+    /// <summary>What <see cref="Timed"/>'s keys at an offset allocate on the UI thread, each with what it settled.</summary>
+    protected static long Keys(EditorRig rig, int offset)
     {
         rig.PlaceCaret(offset);
         Ui.Settle();
+        long before = GC.GetAllocatedBytesForCurrentThread();
         foreach (string key in Timed)
         {
-            long at = Stopwatch.GetTimestamp();
             if (key.Length == 1)
             {
                 rig.Type(key);
@@ -586,14 +648,8 @@ public abstract class ActiveEditorFolders : IDisposable
             {
                 rig.Press(key);
             }
-            times.Add(Stopwatch.GetElapsedTime(at).TotalMilliseconds);
         }
-    }
-
-    protected static double Median(List<double> times)
-    {
-        List<double> sorted = [.. times.Order()];
-        return sorted[sorted.Count / 2];
+        return GC.GetAllocatedBytesForCurrentThread() - before;
     }
 
     protected MainWindow Open(string name, string text)
@@ -661,7 +717,7 @@ public abstract class ActiveEditorFolders : IDisposable
     protected static HashSet<Color> GutterBeside(MainWindow window, CodeEditor editor, int offset)
     {
         double top = editor.PointOf(offset).Y;
-        double right = editor.GutterColumnPoint(GutterColumn.Changes, 0).X - 3;
+        double right = editor.GutterColumnPoint(editor.Gutter!.Changes, 0).X - 3;
         using Avalonia.Media.Imaging.WriteableBitmap frame = window.CaptureRenderedFrame()
             ?? throw new InvalidOperationException("The window has drawn no frame.");
         Point from = editor.TranslatePoint(new Point(1, top + 2), window)!.Value;

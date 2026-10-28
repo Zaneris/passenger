@@ -171,7 +171,7 @@ public sealed partial class PassengerTools
     [McpServerTool(Name = McpTools.FindInFiles, Title = "Find in Files", ReadOnly = true), Description(
         "Every match of text in the folder's files, as Find in Files finds them: an open file as the editor has it, every " +
         "other text file on disk (build output, version control, binary and very large files left out), each with its line's " +
-        "text, at most limit (1000; capped says so). scope: solution (the default), project (project's name or .csproj), " +
+        "text, at most limit (1000; capped says so); stopped names the files a regex ran too long in. scope: solution (the default), project (project's name or .csproj), " +
         "directory (directory, its subdirectories unless recursive is false), openFiles, currentFile or recentlyViewed. mask: " +
         "names by * and ?, comma-separated, ! leaving one out (\"*.cs, !*.g.cs\").")]
     public Task<FindInFilesResult> FindInFiles(string text, bool matchCase = false, bool wholeWords = false, bool regex = false,
@@ -185,14 +185,16 @@ public sealed partial class PassengerTools
         (SearchQuery query, SearchScope chosen) = Search(text, matchCase, wholeWords, regex, scope, project, directory, recursive, mask);
         // Looked at every 50 ms: an index cleared as its folder closes, or another folder's, says nothing to this wait.
         await Until(() => !Session.Index.IsWalking, IndexLimit, cancel);
-        IReadOnlyList<SearchMatch> found = await window.FindInFilesAsync(query, chosen, cancel);
+        FilesFound searched = await window.FindInFilesAsync(query, chosen, cancel);
+        IReadOnlyList<SearchMatch> found = searched.Matches;
         return new FindInFilesResult(found.Count, found.Count >= FileSearch.MostMatches,
-            [.. found.Take(Math.Clamp(limit, 1, FileSearch.MostMatches)).Select(m => new Place(Relative(m.Path), m.Line + 1, m.Column + 1, m.LineText.Trim()))]);
+            [.. found.Take(Math.Clamp(limit, 1, FileSearch.MostMatches)).Select(m => new Place(Relative(m.Path), m.Line + 1, m.Column + 1, m.LineText.Trim()))],
+            searched.Stopped.Count == 0 ? null : [.. searched.Stopped.Select(Relative)]);
     });
 
     [McpServerTool(Name = McpTools.ReplaceInFiles, Title = "Replace in Files", Destructive = true), Description(
-        "Replaces every match find_in_files finds (its text, options, scope and mask) with replacement, as Replace All does: an " +
-        "open file's as one undoable step, saved; a closed one's in its own encoding (UTF-8 where that cannot hold the " +
+        "Replaces every match find_in_files finds (its text, options, scope and mask) with replacement, as Replace All does, as " +
+        "one Undo step: an open file's saved; a closed one's in its own encoding (UTF-8 where that cannot hold the " +
         "replacement, as the answer says). A regex's replacement takes its groups ($1, ${name}). Returns how many matches in " +
         "which files, and each file left as it was with why.")]
     public Task<string> ReplaceInFiles(string text, string replacement, bool matchCase = false, bool wholeWords = false, bool regex = false,
@@ -206,17 +208,20 @@ public sealed partial class PassengerTools
         (SearchQuery query, SearchScope chosen) = Search(text, matchCase, wholeWords, regex, scope, project, directory, recursive, mask);
         // Looked at every 50 ms: an index cleared as its folder closes, or another folder's, says nothing to this wait.
         await Until(() => !Session.Index.IsWalking, IndexLimit, cancel);
-        IReadOnlyList<SearchMatch> found = await window.FindInFilesAsync(query, chosen, cancel);
+        FilesFound searched = await window.FindInFilesAsync(query, chosen, cancel);
+        IReadOnlyList<SearchMatch> found = searched.Matches;
         if (found.Count == 0)
         {
-            return "Nothing matches, so nothing was replaced";
+            return searched.StoppedIn(Relative) is { } stopped ? $"Nothing was replaced: {stopped}" : "Nothing matches, so nothing was replaced";
         }
         if (found.Count >= FileSearch.MostMatches)
         {
             throw new InvalidOperationException($"More than {FileSearch.MostMatches - 1} matches: narrow the scope or the mask, as Replace in Files lists no more");
         }
         List<string> files = [.. found.Select(m => m.Path).Distinct()];
-        FilesReplaced done = window.ReplaceInFiles(query, replacement, files);
+        // The open files' saves are the replace's too: one change set of Local History with what it wrote.
+        using IDisposable? activity = window.LocalHistory?.During(FilesReplaced.Title(query, replacement));
+        FilesReplaced done = await window.ReplaceInFilesAsync(query, replacement, searched);
         List<string> said = [.. done.Converted];
         foreach (OpenDocument open in Editors.Documents.Where(d => d.IsModified && files.Contains(d.Path)).ToList())
         {
@@ -224,6 +229,10 @@ public sealed partial class PassengerTools
             {
                 said.Add($"{Relative(open.Path)} is changed in the editor but could not be saved");
             }
+        }
+        if (await Passenger.App.Editors.EditorArea.LandedAsync(null, cancel) is { } unlanded)
+        {
+            said.Add(unlanded);
         }
         if (done.NotReplaced(Relative) is { } refused)
         {
@@ -261,6 +270,10 @@ public sealed partial class PassengerTools
         string needle = LineEndings.In(oldText, eol);
         List<int> found = [.. text.Occurrences(needle)];
         string name = Relative(document.Path);
+        if (document.IsReadOnly)
+        {
+            throw new InvalidOperationException($"{Refusals.ReadOnly(name)}, so nothing changed");
+        }
         if (found.Count == 0)
         {
             throw new InvalidOperationException($"{name} has no \"{Shorter(oldText)}\" as written (case, spaces and line breaks included), so nothing changed; editor_text shows the file as the editor has it");
@@ -276,6 +289,10 @@ public sealed partial class PassengerTools
         document.Text.Edit(edits, document.Selections, TextEditing.MapThrough(document.Selections, edits));
         document.Text.BreakUndoGroup();
         string saved = Editors.Save(document) ? "saved" : FileText.IsReadOnly(document.Path) ? "not saved: the file is read-only" : "not saved: the system refused";
+        if (saved == "saved" && await Passenger.App.Editors.EditorArea.LandedAsync(null, cancel) is { } unlanded)
+        {
+            saved = $"not saved: {unlanded}";
+        }
         // Each edit's lines as they are now: offsets move by what the edits before it added.
         TextSnapshot after = document.Text.Snapshot;
         List<(int First, int Last)> spans = [];
@@ -443,7 +460,7 @@ public sealed partial class PassengerTools
         }
         ToolWindows.ProblemsModel view = window.BottomPanel.Problems;
         return new ProblemsInfo([.. view.ToolsetProblems.Select(Found)], [.. view.Problems.Select(Found)],
-            Session.CSharp?.SolutionProblems is { } solution ? [.. solution.Select(p => new Finding(p.Diagnostic.Severity == Lsp.DiagnosticSeverity.Error ? "error" : "warning", p.Diagnostic.Code?.ToString(),
+            Session.CSharp?.SolutionProblems is { } solution ? [.. solution.Select(p => new Finding(p.Diagnostic.Severity == Lsp.DiagnosticSeverity.Error ? "error" : "warning", p.Diagnostic.Code,
                 p.Diagnostic.Message, Relative(p.Path), p.At.Line + 1, p.At.Column + 1))] : null);
 
         Finding Found(Problem p) => new(p.Severity == ProblemSeverity.Error ? "error" : "warning", p.Code, p.Message,
@@ -460,8 +477,9 @@ public sealed record SettingInfo(string Name, JsonElement Value, string Kind, IR
 /// <summary>A setting an agent changed: as it was, as it is now in force, and why that is not what was asked, when it is not.</summary>
 public sealed record SettingChange(string Name, JsonElement Before, JsonElement After, string? Note);
 
-/// <summary>Find in Files' matches: how many it found (at most 1000, capped then), and those returned.</summary>
-public sealed record FindInFilesResult(int Count, bool Capped, IReadOnlyList<Place> Matches);
+/// <summary>Find in Files' matches: how many it found (at most 1000, capped then), those returned, and the files a regex
+/// ran too long in, whose search stopped there.</summary>
+public sealed record FindInFilesResult(int Count, bool Capped, IReadOnlyList<Place> Matches, IReadOnlyList<string>? Stopped);
 
 /// <summary>A file's or folder's Local History; with a change set chosen, what was there before it.</summary>
 public sealed record LocalHistoryInfo(string Path, IReadOnlyList<HistoryRowInfo> Rows)

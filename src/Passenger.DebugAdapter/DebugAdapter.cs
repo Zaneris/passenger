@@ -78,7 +78,7 @@ public sealed partial class DebugAdapter
             }
             using (held)
             {
-                debugger.Abandon();
+                await debugger.AbandonAsync();
             }
         }
         catch (Exception error)
@@ -212,7 +212,7 @@ public sealed partial class DebugAdapter
         // Smart Step Into: the calls of the frame's statement, each placed where it is written.
         connection.Handle<StepInTargetsArguments, StepInTargetsResponse>(DapCommands.StepInTargets, async arguments =>
         {
-            List<StepInTargetInfo> targets = await Read(() => debugger.StepInTargets(arguments.FrameId));
+            List<StepInTargetInfo> targets = await Read(() => debugger.StepInTargets(arguments.FrameId, arguments.PreprocessorSymbols, arguments.LanguageVersion));
             return new StepInTargetsResponse
             {
                 Targets = [.. targets.Select(t => new StepInTarget
@@ -226,12 +226,14 @@ public sealed partial class DebugAdapter
                 })],
             };
         });
-        // Hot Reload: what the language's Edit and Continue needs of the program, and its updates applied.
-        connection.Handle<DapEmpty, HotReloadStateResponse>(DapCommands.HotReloadState, async _ => await Locked(() =>
+        // Hot Reload: what the language's Edit and Continue needs of the program (a running one held for it), and its updates applied.
+        connection.Handle<HotReloadStateArguments, HotReloadStateResponse>(DapCommands.HotReloadState, async arguments => await Locked(() =>
         {
+            bool held = arguments.Hold == true && debugger.HoldForHotReload();
             (IReadOnlyList<string>? capabilities, string? unknown) = debugger.HotReloadCapabilities();
             return new HotReloadStateResponse
             {
+                Held = held,
                 Capabilities = capabilities,
                 CapabilitiesUnknown = unknown,
                 Modules = [.. debugger.HotReloadModules().Select(m => new DapHotReloadModule(m.Mvid, m.Name, m.Path, m.Editable, m.WhyNot))],
@@ -243,30 +245,25 @@ public sealed partial class DebugAdapter
         {
             List<ModuleUpdate> updates = [.. arguments.Updates.Select(u => new ModuleUpdate(u.Module, u.Name, u.Metadata, u.IL, u.Pdb, u.UpdatedMethods, u.UpdatedTypes,
                 [.. u.Lines.Select(l => (l.Document, (IReadOnlyList<(int, int)>)[.. l.Updates.Select(x => (x.OldLine, x.NewLine))]))],
-                [.. u.ActiveStatements.Select(a => new StatementUpdate(a.Token, a.Version, a.ILOffset, a.StartLine, a.StartColumn, a.EndLine, a.EndColumn))]))];
+                [.. u.ActiveStatements.Select(a => new StatementUpdate(a.Token, a.Version, a.ILOffset, a.StartLine, a.StartColumn, a.EndLine, a.EndColumn))],
+                [.. u.FirstChanges.Select(c => (c.Document, c.Line))]))];
             IReadOnlyList<ModuleApplied> applied = await Locked(() => debugger.ApplyChanges(updates));
             return new ApplyChangesResponse([.. applied.Select(a => new DapModuleApplied(a.Module, a.Name, a.Applied, a.Message))]);
         });
+        connection.Handle<DapEmpty>(DapCommands.HotReloadRelease, _ => Locked(() => debugger.ReleaseHotReloadHold()));
         connection.Handle<ThreadArguments>(DapCommands.StepOut, arguments => Leave(() => debugger.Step(arguments.ThreadId, StepType.StepOut)));
         connection.Handle<ThreadArguments>(DapCommands.Pause, _ => Locked(() => debugger.Pause()));
         // A start still waiting for the program's runtime holds the engine's lock: told the session is ending, it lets go.
         connection.Handle<DisconnectArguments>(DapCommands.Disconnect, arguments =>
         {
             debugger.Ending();
-            return Leave(() =>
-            {
-                debugger.Disconnect(arguments.TerminateDebuggee ?? false, arguments.LetGoWithin is int within and > 0 ? TimeSpan.FromMilliseconds(within) : null);
-                return Task.CompletedTask;
-            });
+            return Leave(() => debugger.DisconnectAsync(arguments.TerminateDebuggee ?? false,
+                arguments.LetGoWithin is int within and > 0 ? TimeSpan.FromMilliseconds(within) : null));
         }, then: RequestShutdown);
         connection.Handle<TerminateArguments>(DapCommands.Terminate, _ =>
         {
             debugger.Ending();
-            return Leave(() =>
-            {
-                debugger.Terminate();
-                return Task.CompletedTask;
-            });
+            return Leave(debugger.TerminateAsync);
         });
         connection.Handle<ThreadArguments, ExceptionInfoResponse>(DapCommands.ExceptionInfo, ExceptionInfo);
         // Not under the engine's lock: a program waiting for input may be running, and the write is all.

@@ -56,14 +56,13 @@ public sealed partial class CodeEditor : Control
     private Palette palette;
     private bool rainbowBraces = true;
     private IndentOptions indent = new();
-    private (TextRunProperties Value, TextRunProperties Exception) annotationRuns;
-    private TextRunProperties? questionRun;
+    private (TextRunProperties Value, TextRunProperties Error) annotationRuns;
 
     public CodeEditor()
     {
         Focusable = true;
         ClipToBounds = true;
-        Cursor = new Cursor(StandardCursorType.Ibeam);
+        Cursor = IbeamCursor;
         stripe = new ErrorStripe(this);
         counts = new ProblemCounts(this);
         VisualChildren.Add(vertical);
@@ -82,6 +81,9 @@ public sealed partial class CodeEditor : Control
             Blinks++;
             InvalidateVisual();
         });
+        decorations = new DocumentDecorations(document);
+        ownsDecorations = true;
+        decorations.Changed += OnDecorationsChanged;
         document.ChangedFirst += OnChangedFirst;
         document.Changed += OnDocumentChanged;
         caretsText = document.Snapshot;
@@ -89,7 +91,7 @@ public sealed partial class CodeEditor : Control
         // A theme or a colour scheme laid over the application's resources (Settings) changes the brushes, not the variant.
         ResourcesChanged += (_, _) =>
         {
-            if (palette is not { } shown || !Palette.From(this).SameAs(shown))
+            if (palette is not { } shown || !Palette.From(this).SameAs(shown) || GutterBrushesChanged())
             {
                 RefreshStyle();
             }
@@ -100,7 +102,7 @@ public sealed partial class CodeEditor : Control
         numberRuns = (
             RunWith(palette.LineNumberCurrent),
             RunWith(palette.LineNumber));
-        annotationRuns = (ItalicRunWith(palette.InlineValue), ItalicRunWith(palette.Error));
+        annotationRuns = (ItalicRunWith(palette.Annotation), ItalicRunWith(palette.Error));
     }
 
     /// <summary>Raised when the view scrolls.</summary>
@@ -109,8 +111,9 @@ public sealed partial class CodeEditor : Control
     /// <summary>Raised when any caret or selection changes, by an edit or a move.</summary>
     public event EventHandler? SelectionChanged;
 
-    /// <summary>Cmd+click (Ctrl+click on Windows) at an offset: the host's go-to-definition.</summary>
-    public event EventHandler<int>? NavigateRequested;
+    /// <summary>A press on the text whose gesture the keymap gives an action not the editor's own (Cmd+click's): the caret
+    /// is put at the press first, for the host to run the action there.</summary>
+    public event EventHandler<string>? ActionRequested;
 
     /// <summary>The pointer has rested on the text: the offset under it and where it is, for a hover
     /// card. Raised once per rest; moving off clears it (<see cref="HoverEnded"/>).</summary>
@@ -129,65 +132,30 @@ public sealed partial class CodeEditor : Control
     /// signature help can decide whether to open.</summary>
     public event EventHandler<string>? Typed;
 
-    /// <summary>The markers drawn over the text (sorted), from the language service.</summary>
-    public IReadOnlyList<Marker> Markers { get; private set; } = [];
+    /// <summary>What is drawn on the text shown: the document's own when the host gave them with it (<see cref="Show"/>), so
+    /// every editor of the document reads the same, else this editor's for the text it was given.</summary>
+    public DocumentDecorations Decorations => decorations;
 
-    /// <summary>The furthest any marker up to each reaches, so a line finds its first marker by halving.</summary>
-    private int[] markerReach = [];
+    private DocumentDecorations decorations;
 
-    /// <summary>Sets the markers, taken as given when they are in order already, as a host carrying them through a key gives
-    /// them: thousands sorted again at every key cost it.</summary>
-    public void SetMarkers(IReadOnlyList<Marker> markers)
-    {
-        Markers = MarkersInOrder(markers) ? markers : [.. markers.OrderBy(m => m.Range.Start)];
-        if (markerReach.Length != Markers.Count)
-        {
-            markerReach = new int[Markers.Count];
-        }
-        for (int i = 0; i < Markers.Count; i++)
-        {
-            markerReach[i] = Math.Max(i > 0 ? markerReach[i - 1] : 0, Markers[i].Range.End);
-        }
-        ProblemCount = CountProblems(Markers);
-        counts.InvalidateMeasure();
-        InvalidateArrange();
-        InvalidateVisual();
-    }
+    /// <summary>Whether <see cref="decorations"/> were made for this editor alone, let go of with the text.</summary>
+    private bool ownsDecorations;
 
-    private static bool MarkersInOrder(IReadOnlyList<Marker> markers)
-    {
-        for (int i = 1; i < markers.Count; i++)
-        {
-            if (markers[i].Range.Start < markers[i - 1].Range.Start)
-            {
-                return false;
-            }
-        }
-        return true;
-    }
+    /// <summary>The markers drawn over the text (sorted), from the language service, carried with the text.</summary>
+    public MarkerList Markers => decorations.Markers;
 
-    /// <summary>The marks in the gutter (breakpoints, the execution point), from the host.</summary>
-    public IReadOnlyList<LineMark> LineMarks { get; private set; } = [];
+    public void SetMarkers(IReadOnlyList<Marker> markers) => decorations.SetMarkers(markers);
 
-    public void SetLineMarks(IReadOnlyList<LineMark> marks)
-    {
-        LineMarks = marks;
-        InvalidateVisual();
-    }
+    /// <summary>The lines that differ from another text, from the host: on the error stripe, and with
+    /// <see cref="ChangeBackgrounds"/> as the lines' tints.</summary>
+    public IReadOnlyList<ChangeMark> ChangeMarks => decorations.ChangeMarks;
 
-    /// <summary>The lines changed since the last commit, as bars against the code, from the host.</summary>
-    public IReadOnlyList<ChangeMark> ChangeMarks { get; private set; } = [];
-
-    public void SetChangeMarks(IReadOnlyList<ChangeMark> marks)
-    {
-        ChangeMarks = marks;
-        InvalidateVisual();
-    }
+    public void SetChangeMarks(IReadOnlyList<ChangeMark> marks) => decorations.SetChangeMarks(marks);
 
     private readonly AnchoredList<InlineChange> inlineChanges = new(c => c.Range, (c, range) => c with { Range = range });
 
     /// <summary>The words that changed inside changed lines (sorted), drawn over the lines' tint in a stronger colour; they
-    /// move with edits until the host sets them again.</summary>
+    /// move with edits until the host sets them again. This editor's own, as what a diff's side or a change's popup marks.</summary>
     public IReadOnlyList<InlineChange> InlineChanges => inlineChanges.Items;
 
     public void SetInlineChanges(IReadOnlyList<InlineChange> changes)
@@ -200,104 +168,91 @@ public sealed partial class CodeEditor : Control
         InvalidateVisual();
     }
 
-    /// <summary>The bookmarked lines, drawn as ribbons at the line numbers' left.</summary>
-    public IReadOnlyList<int> Bookmarks { get; private set; } = [];
+    /// <summary>The bookmarked lines, marked on the error stripe.</summary>
+    public IReadOnlyList<int> Bookmarks => decorations.Bookmarks;
 
-    public void SetBookmarks(IReadOnlyList<int> lines)
-    {
-        Bookmarks = lines;
-        InvalidateVisual();
-    }
+    public void SetBookmarks(IReadOnlyList<int> lines) => decorations.SetBookmarks(lines);
 
-    /// <summary>Text per line in a column at the gutter's left (Git blame's author and date), null for a line with none;
-    /// empty for no column.</summary>
-    public IReadOnlyList<string?> GutterAnnotations { get; private set; } = [];
-
-    private double annotationWidth;
-
-    public void SetGutterAnnotations(IReadOnlyList<string?> perLine)
-    {
-        GutterAnnotations = perLine;
-        int longest = perLine.Count == 0 ? 0 : perLine.Max(l => l?.Length ?? 0);
-        annotationWidth = longest == 0 ? 0 : (longest * metrics.CharWidth) + 18;
-        InvalidateArrange();
-        InvalidateVisual();
-    }
-
-    /// <summary>Whether a point (in this control) is on the annotation column.</summary>
-    public bool IsInAnnotationColumn(Point at) => annotationWidth > 0 && at.X < annotationWidth;
-
-    /// <summary>Whether the change marks tint whole lines rather than draw bars in the gutter; a mark with no lines is then
-    /// a rule between two.</summary>
+    /// <summary>Whether the change marks tint whole lines; a mark with no lines is then a rule between two.</summary>
     public bool ChangeBackgrounds { get; set; }
 
-    /// <summary>Whether a point (in this control) is on the change bars' strip at the gutter's edge.</summary>
-    public bool IsInChangeColumn(Point at) => ShowLineNumbers && at.X >= GutterWidth - FoldWidth - 8 && at.X < GutterWidth - FoldWidth;
+    /// <summary>Text after lines' code, from the host.</summary>
+    public IReadOnlyList<LineAnnotation> LineAnnotations => decorations.LineAnnotations;
 
-    /// <summary>The tests' run icons in the gutter, from the host.</summary>
-    public IReadOnlyList<TestMark> TestMarks { get; private set; } = [];
+    public void SetLineAnnotations(IReadOnlyList<LineAnnotation> annotations) => decorations.SetLineAnnotations(annotations);
 
-    public void SetTestMarks(IReadOnlyList<TestMark> marks)
+    /// <summary>Reads decorations other than the ones shown, letting go of those if they were this editor's alone, and draws
+    /// what they hold.</summary>
+    private void Decorate(DocumentDecorations shown, bool owned)
     {
-        TestMarks = marks;
+        if (!ReferenceEquals(shown, decorations))
+        {
+            decorations.Changed -= OnDecorationsChanged;
+            if (ownsDecorations)
+            {
+                decorations.Release();
+            }
+            decorations = shown;
+            decorations.Changed += OnDecorationsChanged;
+        }
+        ownsDecorations = owned;
+        wrappedHints = decorations.InlayHints;
+        stripeBuild = null;
+        counts.InvalidateMeasure();
+    }
+
+    /// <summary>Draws what the decorations were set to: other counts of problems measured again, lines with hints drawn
+    /// otherwise wrapped again, the rows of other folds.</summary>
+    private void OnDecorationsChanged(object? sender, DecorationKind kind)
+    {
+        switch (kind)
+        {
+            case DecorationKind.Markers:
+                if (counts.Stale)
+                {
+                    counts.InvalidateMeasure();
+                    InvalidateArrange();
+                }
+                break;
+            case DecorationKind.InlayHints:
+                HintList before = wrappedHints;
+                wrappedHints = decorations.InlayHints;
+                FollowHints(before, wrappedHints);
+                FollowInputMethod();
+                break;
+            case DecorationKind.Folds:
+                HideFoldPreview();
+                UpdateScrollBars();
+                ScrollWithinRows();
+                FollowInputMethod();
+                break;
+        }
         InvalidateVisual();
     }
 
-    /// <summary>The run icons in the gutter of what run configurations run (a compose file's services), from the host.</summary>
-    public IReadOnlyList<RunMark> RunMarks { get; private set; } = [];
-
-    public void SetRunMarks(IReadOnlyList<RunMark> marks)
-    {
-        RunMarks = marks;
-        InvalidateVisual();
-    }
-
-    /// <summary>The colours lines write, each a swatch in the gutter, from the host.</summary>
-    public IReadOnlyList<ColourMark> ColourMarks { get; private set; } = [];
-
-    public void SetColourMarks(IReadOnlyList<ColourMark> marks)
-    {
-        ColourMarks = marks;
-        InvalidateVisual();
-    }
-
-    /// <summary>Whether a point (in the editor's coordinates) is in the gutter's column of run icons and the
-    /// execution arrow, right of the line numbers.</summary>
-    public bool IsInMarkColumn(Point at) => ShowLineNumbers && at.X >= GutterWidth - FoldWidth - GutterPadRight && at.X < GutterWidth - FoldWidth;
-
-    /// <summary>Text after lines' code (the debugger's inline values, an exception), from the host.</summary>
-    public IReadOnlyList<LineAnnotation> LineAnnotations { get; private set; } = [];
-
-    public void SetLineAnnotations(IReadOnlyList<LineAnnotation> annotations)
-    {
-        LineAnnotations = annotations;
-        InvalidateVisual();
-    }
-
-    /// <summary>A click on a line's number (from zero): the host's breakpoint toggle. With a handler, a click there no
-    /// longer selects the line.</summary>
+    /// <summary>A press on the gutter at a line (from zero) that none of its columns took: the host's. With a handler, a
+    /// click there no longer selects the line.</summary>
     public event EventHandler<GutterClick>? GutterClicked;
 
-    /// <summary>The execution arrow was dragged to another line (from zero), to Set Next Statement there. With a
-    /// handler, a press on the arrow drags it; let go where it was, it is the gutter click it began as.</summary>
-    public event EventHandler<int>? ExecutionPointDragged;
-
-    /// <summary>Where a line's number is drawn, in the editor's coordinates: what a popup about its breakpoint
-    /// is placed beside.</summary>
+    /// <summary>Where a line's number is drawn, in the editor's coordinates: what a popup about the line is placed beside.</summary>
     public Point GutterPoint(int line) => new(GutterWidth, TopOf(line) + metrics.LineHeight - scroll.Y);
 
-    /// <summary>The middle of one of the gutter's columns at a line, in the editor's coordinates: where a click on the
-    /// execution arrow or a test's icon, a change bar or a fold's chevron lands.</summary>
-    public Point GutterColumnPoint(GutterColumn column, int line)
+    /// <summary>The middle of a host's column of the gutter at a line, in the editor's coordinates: where a click on what
+    /// it draws there lands.</summary>
+    public Point GutterColumnPoint(IGutterColumn column, int line)
     {
-        double right = GutterWidth - FoldWidth;
-        double x = column switch
-        {
-            GutterColumn.Folding => GutterWidth - (FoldWidth / 2),
-            GutterColumn.Changes => right - 4,
-            _ => right - (GutterPadRight / 2),
-        };
-        return new Point(x, TopOf(line) - scroll.Y + (metrics.LineHeight / 2));
+        (double left, double width) = StripOf(column);
+        return new Point(left + (width / 2), TopOf(line) - scroll.Y + (metrics.LineHeight / 2));
+    }
+
+    /// <summary>The middle of a fold's chevron at a line, in the editor's coordinates.</summary>
+    public Point FoldPoint(int line) => new(GutterWidth - (FoldWidth / 2), TopOf(line) - scroll.Y + (metrics.LineHeight / 2));
+
+    /// <summary>Whether a point (in the editor's coordinates) is on a host's column of the gutter.</summary>
+    public bool IsOnGutterColumn(IGutterColumn column, Point at)
+    {
+        (double left, double width) = StripOf(column);
+        return ShowLineNumbers && at.X >= left && at.X < left + width;
     }
 
     /// <summary>The markers at an offset, for a tooltip.</summary>
@@ -403,54 +358,66 @@ public sealed partial class CodeEditor : Control
         ScrollTo(new Vector(0, bottom));
     }
 
-    /// <summary>When set, the editor resolves its own key presses; an IDE leaves it null and sends
-    /// actions in through <see cref="TryExecute"/> from one window-wide keymap.</summary>
+    /// <summary>What a gesture of the mouse pressed on an editor's text runs, by the keymap of the window it is in: set on a
+    /// window, every editor there follows it, unless it has a <see cref="Keymap"/> of its own.</summary>
+    public static readonly AttachedProperty<Func<MouseShortcut, string?>?> GesturesProperty =
+        AvaloniaProperty.RegisterAttached<CodeEditor, AvaloniaObject, Func<MouseShortcut, string?>?>("Gestures", inherits: true);
+
+    public static Func<MouseShortcut, string?>? GetGestures(AvaloniaObject host) => host.GetValue(GesturesProperty);
+
+    public static void SetGestures(AvaloniaObject host, Func<MouseShortcut, string?>? gestures) => host.SetValue(GesturesProperty, gestures);
+
+    /// <summary>When set, the editor resolves its own key presses and gestures; an IDE leaves it null and sends actions in
+    /// through <see cref="TryExecute"/> from one window-wide keymap, whose gestures it gives (<see cref="GesturesProperty"/>).</summary>
     public Keymap? Keymap
     {
         get => ownKeys?.Keymap;
         set => ownKeys = value is null ? null : new KeymapDispatcher(value);
     }
 
+    /// <summary>The text shown, with decorations of this editor's own; <see cref="Show"/> shows a document's own.</summary>
     public TextDocument Document
     {
         get => document;
-        set
-        {
-            document.ChangedFirst -= OnChangedFirst;
-            document.Changed -= OnDocumentChanged;
-            document = value;
-            document.ChangedFirst += OnChangedFirst;
-            document.Changed += OnDocumentChanged;
-            lineShape++;
-            // A template's places, a composition, a GoTo waiting for layout and the folds are offsets in the text left behind.
-            EndSnippet();
-            CancelChoices();
-            pendingGoTo = null;
-            usages.Clear();
-            UsagesKept = false;
-            inlineChanges.Clear();
-            highlights.Clear();
-            hovered.Release();
-            pressed.Release();
-            HideFoldPreview();
-            folds = [];
-            EndComposition();
-            selections = SelectionSet.Single(0);
-            caretsText = value.Snapshot;
-            leaning = [];
-            wrapLeaning = [];
-            nextWrapLeaning = null;
-            wraps = null;
-            rowMap = null;
-            scroll = default;
-            widestLine = 0;
-            measuredWidth = 0;
-            ForgetLines();
-            InvalidateArrange();
-            InvalidateVisual();
-            FollowInputMethod();
-            SelectionChanged?.Invoke(this, EventArgs.Empty);
-        }
+        set => ShowText(value, null);
+    }
+
+    private void ShowText(TextDocument value, DocumentDecorations? shared)
+    {
+        document.ChangedFirst -= OnChangedFirst;
+        document.Changed -= OnDocumentChanged;
+        document = value;
+        document.ChangedFirst += OnChangedFirst;
+        document.Changed += OnDocumentChanged;
+        lineShape++;
+        // A template's places, a composition, a GoTo waiting for layout and the folds are offsets in the text left behind.
+        EndSnippet();
+        CancelChoices();
+        pendingGoTo = null;
+        usages.Clear();
+        UsagesKept = false;
+        inlineChanges.Clear();
+        highlights.Clear();
+        hovered.Release();
+        pressed.Release();
+        HideFoldPreview();
+        Decorate(shared ?? new DocumentDecorations(value), owned: shared is null);
+        EndComposition();
+        selections = SelectionSet.Single(0);
+        caretsText = value.Snapshot;
+        leaning = [];
+        wrapLeaning = [];
+        nextWrapLeaning = null;
+        wraps = null;
+        rowMap = null;
+        scroll = default;
+        widestLine = 0;
+        measuredWidth = 0;
+        ForgetLines();
+        InvalidateArrange();
+        InvalidateVisual();
+        FollowInputMethod();
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public IHighlighter? Highlighter
@@ -467,6 +434,7 @@ public sealed partial class CodeEditor : Control
             {
                 highlighter.Changed += OnHighlighterChanged;
             }
+            toldShowing = null;
             colouring++;
             InvalidateVisual();
         }
@@ -487,9 +455,10 @@ public sealed partial class CodeEditor : Control
 
     private Typeface Typeface => new(FontFamily);
 
-    private double GutterWidth => ShowLineNumbers
-        ? annotationWidth + GutterPadLeft + Math.Max(2, Digits(document.Snapshot.LineCount)) * metrics.CharWidth + GutterPadRight + FoldWidth
-        : 4;
+    private double GutterWidth => ShowLineNumbers ? NumbersRight + columnRoom.Right + FoldWidth : 4;
+
+    /// <summary>Where the line numbers end: past the columns left of them and the numbers' widest.</summary>
+    private double NumbersRight => columnRoom.Left + (Math.Max(2, Digits(document.Snapshot.LineCount)) * metrics.CharWidth);
 
     private double TextLeft => GutterWidth + TextPadLeft;
 
@@ -517,10 +486,11 @@ public sealed partial class CodeEditor : Control
     }
 
     /// <summary>Shows a document with the carets and scroll it was left at, as switching back to a
-    /// tab does, its lines wrapped or not as they were (the scroll is in its rows as they were).</summary>
-    public void Show(TextDocument shown, SelectionSet carets, Vector offset, bool wrapped = false)
+    /// tab does, its lines wrapped or not as they were (the scroll is in its rows as they were), drawn with its
+    /// decorations, which every editor showing it reads, or with ones of this editor's own.</summary>
+    public void Show(TextDocument shown, SelectionSet carets, Vector offset, bool wrapped = false, DocumentDecorations? decorated = null)
     {
-        Document = shown;
+        ShowText(shown, decorated);
         softWrap = wrapped;
         selections = carets.Clamp(shown.Snapshot.Length);
         caretsText = shown.Snapshot;
@@ -543,18 +513,6 @@ public sealed partial class CodeEditor : Control
         hover?.Stop();
         Highlighter = null;
         Document = new TextDocument();
-        SetMarkers([]);
-        SetLineMarks([]);
-        SetChangeMarks([]);
-        SetInlineChanges([]);
-        SetBookmarks([]);
-        SetGutterAnnotations([]);
-        SetTestMarks([]);
-        SetRunMarks([]);
-        SetColourMarks([]);
-        SetLineAnnotations([]);
-        SetInlayHints([]);
-        SetFoldRegions([]);
         SetHighlights([], -1);
         SetUsageHighlights([]);
         foldLines = null;
@@ -707,9 +665,9 @@ public sealed partial class CodeEditor : Control
             CaretLimitReached?.Invoke(this, EventArgs.Empty);
         }
         SelectionSet clamped = value.Clamp(document.Snapshot.Length);
-        leaning = nextLeaning ?? [];
+        leaning = nextLeaning ?? Emptied(leaning);
         nextLeaning = null;
-        wrapLeaning = nextWrapLeaning ?? [];
+        wrapLeaning = nextWrapLeaning ?? Emptied(wrapLeaning);
         nextWrapLeaning = null;
         UnfoldAroundCarets(clamped);
         bool changed = !clamped.SameAs(selections) || clamped.PrimaryIndex != selections.PrimaryIndex;
@@ -728,6 +686,9 @@ public sealed partial class CodeEditor : Control
             SelectionChanged?.Invoke(this, EventArgs.Empty);
         }
     }
+
+    /// <summary>A set of places a caret leans at, empty: the one given while it is, as most moves leave it.</summary>
+    private static HashSet<int> Emptied(HashSet<int> set) => set.Count == 0 ? set : [];
 
     /// <summary>Scrolls just enough to show <paramref name="offset"/>, keeping a few columns of room
     /// beside it.</summary>
@@ -799,18 +760,28 @@ public sealed partial class CodeEditor : Control
         InvalidateVisual();
     }
 
-    private void OnHighlighterChanged(object? sender, EventArgs e) => Dispatcher.UIThread.Post(Recolour);
+    private void OnHighlighterChanged(object? sender, EventArgs e)
+    {
+        coloursMoved |= highlighter is not { KeptColours: true };
+        Dispatcher.UIThread.Post(Recolour);
+    }
+
+    /// <summary>Whether the highlighter has been changed since the last <see cref="Recolour"/> without saying it kept every
+    /// colour it had given.</summary>
+    private bool coloursMoved;
 
     /// <summary>New colours for the same text: the lines are formatted again, each found again if its colours stayed. When
-    /// the lines drawn keep every colour they have (a parse that finds what a key carried them to), nothing is drawn again
-    /// but a bracket pair the parse told anew.</summary>
+    /// the lines drawn keep every colour they have (a parse that finds what a key carried them to, or that says so), nothing
+    /// is drawn again but a bracket pair the parse told anew.</summary>
     private void Recolour()
     {
         if (BracesChanged())
         {
             InvalidateVisual();
         }
-        if (views.Keep(document.Snapshot, Colours))
+        bool moved = coloursMoved;
+        coloursMoved = false;
+        if (!moved || views.Keep(document.Snapshot, Colours))
         {
             return;
         }
@@ -880,13 +851,13 @@ public sealed partial class CodeEditor : Control
         // The font and the tab are what the wraps measured with.
         look++;
         palette = Palette.From(this);
-        questionRun = null;
         hintRun = null;
         runProperties.Clear();
         numberRuns = (
             RunWith(palette.LineNumberCurrent),
             RunWith(palette.LineNumber));
-        annotationRuns = (ItalicRunWith(palette.InlineValue), ItalicRunWith(palette.Error));
+        annotationRuns = (ItalicRunWith(palette.Annotation), ItalicRunWith(palette.Error));
+        ForgetGutterLook();
         ForgetLines();
         // The stripe and the counts paint with the palette too, so they are drawn again with the next frame.
         stripeDrawn = default;

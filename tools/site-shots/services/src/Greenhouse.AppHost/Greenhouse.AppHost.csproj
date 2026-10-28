@@ -1,4 +1,4 @@
-<Project Sdk="Aspire.AppHost.Sdk/13.6.3">
+<Project Sdk="Aspire.AppHost.Sdk/13.6.4">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <!-- Aspire's orchestrator and dashboard from their packages, not the aspire command's bundle. -->

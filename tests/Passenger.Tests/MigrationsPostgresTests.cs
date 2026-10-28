@@ -71,11 +71,11 @@ public sealed class MigrationsPostgresTests
             {
                 commands = [.. ran];
             }
-            Assert.Contains(commands, c => c.Contains("dotnet-ef database update", StringComparison.Ordinal));
+            Assert.Contains(commands, c => c.Contains("ef.dll database update", StringComparison.Ordinal));
             Assert.True(!commands.Any(c => c.Contains(Password, StringComparison.Ordinal)),
                 $"A command line Passenger ran has the database's password:\n{string.Join('\n', commands.Where(c => c.Contains(Password, StringComparison.Ordinal)))}");
             string log = LogsTests.WholeIdeLog();
-            Assert.Contains("dotnet-ef database update", log, StringComparison.Ordinal);
+            Assert.Contains("ef.dll database update", log, StringComparison.Ordinal);
             Assert.True(!log.Contains(Password, StringComparison.Ordinal),
                 $"The IDE's log has the database's password:\n{string.Join('\n', log.Split('\n').Where(l => l.Contains(Password, StringComparison.Ordinal)))}");
             Assert.DoesNotContain(Password, window.BottomPanel.Build.Document.Snapshot.ToString(), StringComparison.Ordinal);

@@ -105,13 +105,14 @@ internal sealed partial class CSharpAssist
         {
             Again = _ => context.CSharp?.For(file)?.ConfigurationMissingOn(null).FirstOrDefault(m => m.Key == key) is { } now ? KeyFix(file, now.Range, key, secret) : null,
             Asks = new ValueAsked(secret ? $"The value of {key}, kept in the project's user secrets, out of its files" : $"The value of {key}, kept in the project's appsettings.json",
-                secret, (value, _) => Task.FromResult(SetKey(file, key, secret, value))),
+                secret, (value, _) => SetKeyAsync(file, key, secret, value)),
         };
 
     /// <summary>A configuration key set where its fix keeps it, as one command: the project's appsettings.json (made when it has
     /// none), or its user secrets as <c>dotnet user-secrets set</c> keeps them, giving the project a UserSecretsId first where it
-    /// has none; the file's text as the editor has it when open, the read's warning pulled again; what it says never holds the value.</summary>
-    private RefactorOutcome SetKey(OpenDocument file, string key, bool secret, string value)
+    /// has none; the file's text as the editor has it when open, said once a file not open has landed, the read's warning
+    /// pulled again; what it says never holds the value.</summary>
+    private async Task<RefactorOutcome> SetKeyAsync(OpenDocument file, string key, bool secret, string value)
     {
         if (ConfigurationOf?.Invoke(file.Path) is not { } project)
         {
@@ -167,7 +168,7 @@ internal sealed partial class CSharpAssist
             }
             changes.Add(new XamlFileChange(path, now => JsonText.SetKey(now, Where(now), written) is { Text: { } changed } && changed != now ? [TextEdit.Between(now, changed)] : []));
         }
-        if (actions.ApplyFileChanges($"Add {key}", changes) is { } refused)
+        if (await actions.ApplyFileChangesAsync($"Add {key}", changes) is { } refused)
         {
             return RefactorOutcome.Refused(refused);
         }

@@ -129,13 +129,13 @@ internal sealed partial class CSharpAssist
         {
             Again = _ => context.CSharp?.For(file)?.AspireUnsetOn(null).FirstOrDefault(p => p.Name == name) is { } now ? ParameterFix(file, now.Range, name, secret) : null,
             Asks = new ValueAsked(secret ? $"The value of {name}, kept in the AppHost's user secrets, out of the project's files"
-                : $"The value of {name}, kept in the AppHost's appsettings.json", secret, (value, _) => Task.FromResult(SetParameter(file, name, secret, value))),
+                : $"The value of {name}, kept in the AppHost's appsettings.json", secret, (value, _) => SetParameterAsync(file, name, secret, value)),
         };
 
     /// <summary>A parameter's value set in its AppHost's configuration (<see cref="AspireParameters.Setting"/>) as one command,
     /// a secret giving the AppHost a UserSecretsId first where it has none; its files' texts as the editor has them when open,
-    /// the AppHost's warnings pulled again; what it says never holds the value.</summary>
-    private RefactorOutcome SetParameter(OpenDocument file, string name, bool secret, string value)
+    /// said once those not open have landed, the AppHost's warnings pulled again; what it says never holds the value.</summary>
+    private async Task<RefactorOutcome> SetParameterAsync(OpenDocument file, string name, bool secret, string value)
     {
         if (context.CSharp is not { } csharp || csharp.AspireAppHostOf?.Invoke(file.Path) is not { } host)
         {
@@ -173,7 +173,7 @@ internal sealed partial class CSharpAssist
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         }
-        if (actions.ApplyFileChanges($"Set {name}", changes) is { } refused)
+        if (await actions.ApplyFileChangesAsync($"Set {name}", changes) is { } refused)
         {
             return RefactorOutcome.Refused(refused);
         }

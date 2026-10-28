@@ -329,7 +329,7 @@ public static partial class ContainerLabels
     /// process's start does its own state's, a window keeping its state elsewhere (a test's) its own as it first shows.
     /// Not held, and off the caller's way: an engine that answers slowly or not at all delays nothing. Any thread.</summary>
     public static Task LookForLeftovers(ContainerEngine engine, string stateFolder) =>
-        Looked.GetOrAdd(StateValueOf(stateFolder), _ => Task.Run(async () =>
+        Looked.GetOrAdd(StateValueOf(stateFolder), _ => BackgroundWork.Unheld(async () =>
         {
             try
             {
@@ -351,7 +351,7 @@ public static partial class ContainerLabels
         string folder = stateFolder ?? global::Passenger.App.State.StateStore.DefaultRoot;
         List<string> removed = [.. await Aspire.AspireContainerOwnership.RemoveLeftoversAsync(folder, engine, cancel)];
         // Not held: nothing it does is drawn; finding the CLI may wait on the login shell, never on the caller's thread.
-        if (!EverLabelledIn(folder) || await Task.Run(() => engine.Cli, cancel) is null)
+        if (!EverLabelledIn(folder) || await BackgroundWork.Unheld(() => engine.Cli, cancel) is null)
         {
             return removed;
         }

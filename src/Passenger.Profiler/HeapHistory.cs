@@ -3,6 +3,7 @@ using System.Diagnostics.Tracing;
 using Microsoft.Diagnostics.NETCore.Client;
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers.Clr;
+using Passenger.Core;
 
 namespace Passenger.Profiler;
 
@@ -35,13 +36,25 @@ internal sealed class HeapHistory(int processId) : IAsyncDisposable
     private EventPipeEventSource? source;
     private Task? listening;
 
-    /// <summary>Takes the next snapshot, and finds each earlier one's objects in it.</summary>
-    public async Task<MemorySnapshot> TakeAsync(CancellationToken cancel)
+    /// <summary>How Passenger writes the program's dump itself (<see cref="DumpTool.Find"/>), or why it cannot, found with
+    /// the first snapshot.</summary>
+    private (string? Tool, string? WhyNot)? dumpTool;
+
+    /// <summary>Takes the next snapshot, and finds each earlier one's objects in it. Where only the program's runtime can
+    /// write its dump, which puts createdump's lines into the program's output, that is done only
+    /// <paramref name="intoOutput"/>, else a <see cref="DumpIntoOutputException"/> says so before anything starts.</summary>
+    public async Task<MemorySnapshot> TakeAsync(bool intoOutput, CancellationToken cancel)
     {
         await taking.WaitAsync(cancel);
         try
         {
             Stopwatch clock = Stopwatch.StartNew();
+            dumpTool ??= await BackgroundWork.Run(() => DumpTool.Find(processId), cancel);
+            if (dumpTool is (_, string why) && !intoOutput)
+            {
+                throw new DumpIntoOutputException($"Only the program's runtime can write its memory snapshot, as {why}, and it writes "
+                    + "createdump's progress into the program's output, which a program speaking over its output (a language or MCP server) takes for its own");
+            }
             await ListenAsync(cancel);
             lock (gate)
             {
@@ -56,7 +69,7 @@ internal sealed class HeapHistory(int processId) : IAsyncDisposable
                     {
                         Dumped written = await DumpAsync(dump, cancel);
                         TimeSpan dumped = clock.Elapsed;
-                        Task<HeapGraph> reading = Task.Run(() => HeapGraph.Read(dump, cancel), cancel);
+                        Task<HeapGraph> reading = BackgroundWork.Run(() => HeapGraph.Read(dump, cancel), cancel);
                         int induced = await InduceAsync(cancel);
                         bool heard = induced >= 0 && await HeardAsync(induced, TimeSpan.FromSeconds(30));
                         HeapGraph graph;
@@ -97,16 +110,18 @@ internal sealed class HeapHistory(int processId) : IAsyncDisposable
         }
     }
 
-    /// <summary>Has the runtime write a dump of its heap (createdump, which holds every thread of the program while it
-    /// writes), and gives what shows when it held them: when it was asked for and answered, and the samples the runtime's
-    /// sampler took meanwhile, every thread each millisecond, its own thread held with the rest.</summary>
+    /// <summary>Has a dump of the program's heap written (by Passenger where it can, else by the runtime's createdump),
+    /// which holds every thread of the program while it writes, and gives what shows when it held them: when
+    /// it was asked for and answered, and the samples the runtime's sampler took meanwhile, every thread each
+    /// millisecond, its own thread held with the rest.</summary>
     private async Task<Dumped> DumpAsync(string dump, CancellationToken cancel)
     {
         DiagnosticsClient client = new(processId);
         List<DateTime> samples = [];
         EventPipeSession sampling = await client.StartEventPipeSessionAsync(
             [new EventPipeProvider(Snapshot.SampleProvider, EventLevel.Informational)], requestRundown: false, circularBufferMB: 64, cancel);
-        Task reading = Task.Run(() =>
+        // Not held: read until its session stops.
+        Task reading = BackgroundWork.Unheld(() =>
         {
             using EventPipeEventSource events = new(sampling.EventStream);
             events.AllEvents += e =>
@@ -121,7 +136,14 @@ internal sealed class HeapHistory(int processId) : IAsyncDisposable
         DateTime sent = DateTime.UtcNow;
         try
         {
-            await client.WriteDumpAsync(DumpType.WithHeap, dump, logDumpGeneration: false, cancel);
+            if (dumpTool is { WhyNot: null } own)
+            {
+                await DumpTool.WriteAsync(own.Tool, processId, dump, cancel);
+            }
+            else
+            {
+                await client.WriteDumpAsync(DumpType.WithHeap, dump, logDumpGeneration: false, cancel);
+            }
         }
         finally
         {
@@ -261,7 +283,7 @@ internal sealed class HeapHistory(int processId) : IAsyncDisposable
         source.Clr.GCStop += OnEnd;
         EventPipeEventSource events = source;
         // A thread of its own: the stream is read until the program ends or the run is put away.
-        listening = Task.Factory.StartNew(() =>
+        listening = BackgroundWork.UnheldThread(() =>
         {
             try
             {
@@ -279,7 +301,7 @@ internal sealed class HeapHistory(int processId) : IAsyncDisposable
                 }
                 waiting.Clear();
             }
-        }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        });
     }
 
     /// <summary>The collection under way that the events in between belong to: the innermost begun, as a background
@@ -360,7 +382,7 @@ internal sealed class HeapHistory(int processId) : IAsyncDisposable
             }
             waiting.Add((count, heard));
         }
-        return await Task.WhenAny(heard.Task, Task.Delay(limit)) == heard.Task && heard.Task.Result;
+        return await Task.WhenAny(heard.Task, Task.Delay(limit)) == heard.Task && await heard.Task;
     }
 
     /// <summary>Has the runtime collect in full (a session with the GCHeapCollect keyword), and gives that collection's
@@ -370,7 +392,8 @@ internal sealed class HeapHistory(int processId) : IAsyncDisposable
         int found = -1;
         using EventPipeSession inducing = await new DiagnosticsClient(processId).StartEventPipeSessionAsync(
             [new EventPipeProvider(Runtime, EventLevel.Informational, GcKeyword | CollectKeyword)], requestRundown: false, circularBufferMB: 16, cancel);
-        Task reading = Task.Run(() =>
+        // Not held: read until its session stops.
+        Task reading = BackgroundWork.Unheld(() =>
         {
             using EventPipeEventSource events = new(inducing.EventStream);
             events.Clr.GCStart += e =>

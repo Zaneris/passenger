@@ -45,18 +45,25 @@ public abstract class McpRig : IDisposable
     protected string OwnState { get; } = TestFolders.Create("agents-");
 
     /// <summary>The test's own Sum project, restored, taken as a test first names it: most of the tests work in folders of
-    /// their own and take none.</summary>
-    protected string Folder => sum ??= (folders ?? throw new InvalidOperationException($"{GetType().Name} takes no Sum project: its fixture is not RestoredFolders"))
-        .Take("mcp-", project =>
-        {
-            File.WriteAllText(Path.Combine(project, "Sum.csproj"),
-                TestProjects.Console("<ImplicitUsings>enable</ImplicitUsings>"));
-            File.WriteAllText(Path.Combine(project, "Program.cs"),
-                "int total = 0;\nfor (int i = 1; i <= 3; i++)\n{\n    total += Helper.Twice(i);\n}\nConsole.WriteLine($\"total {total}\");\nthrow new InvalidOperationException(\"the end\");\n");
-            File.WriteAllText(Path.Combine(project, "Helper.cs"),
-                "static class Helper\n{\n    public static int Twice(int value)\n    {\n        int unused = 1;\n        return value * 2;\n    }\n}\n");
-            return project;
-        });
+    /// their own and take none. A window test takes it here, on the UI thread; a test with no window takes it first
+    /// (<see cref="TakeFolderAsync"/>).</summary>
+    protected string Folder => sum ??= Folders.Take("mcp-", WriteSum);
+
+    /// <summary>Takes the test's own Sum project (<see cref="Folder"/>) for a test with no window, off the UI thread.</summary>
+    protected async Task<string> TakeFolderAsync() => sum ??= await Folders.TakeAsync("mcp-", WriteSum);
+
+    private RestoredFolders Folders => folders ?? throw new InvalidOperationException($"{GetType().Name} takes no Sum project: its fixture is not RestoredFolders");
+
+    private static string WriteSum(string project)
+    {
+        File.WriteAllText(Path.Combine(project, "Sum.csproj"),
+            TestProjects.Console("<ImplicitUsings>enable</ImplicitUsings>"));
+        File.WriteAllText(Path.Combine(project, "Program.cs"),
+            "int total = 0;\nfor (int i = 1; i <= 3; i++)\n{\n    total += Helper.Twice(i);\n}\nConsole.WriteLine($\"total {total}\");\nthrow new InvalidOperationException(\"the end\");\n");
+        File.WriteAllText(Path.Combine(project, "Helper.cs"),
+            "static class Helper\n{\n    public static int Twice(int value)\n    {\n        int unused = 1;\n        return value * 2;\n    }\n}\n");
+        return project;
+    }
 
     /// <summary>A folder a test made for itself, removed with the test once the Passengers that worked in it have gone.</summary>
     protected void DeleteAtEnd(string folder) => made.Add(folder);
@@ -254,7 +261,7 @@ public abstract class McpRig : IDisposable
     protected T Await<T>(Task<T> task, string what)
     {
         WaitFor(() => task.IsCompleted, what, AgentLimit);
-        return task.GetAwaiter().GetResult();
+        return task.IsCompleted ? task.GetAwaiter().GetResult() : throw new InvalidOperationException($"The wait for {what} came back before it ended");
     }
 
     /// <summary><see cref="Ui.WaitFor"/>, failing with what Passenger said meanwhile.</summary>
@@ -281,7 +288,7 @@ public abstract class McpRig : IDisposable
     /// allowed, the call's answer.</summary>
     protected JsonElement Asked(MainWindow window, McpClient client, [IdentifierOf(typeof(McpTools))] string tool, string what, Dictionary<string, object?>? arguments = null)
     {
-        Task<JsonElement> calling = Task.Run(() => Call(client, tool, arguments));
+        Task<JsonElement> calling = Waiting.Apart(() => Call(client, tool, arguments));
         ConfirmDialog asked = Question(window, $"the question for the agent's {tool}");
         string[] said = Texts(asked);
         Assert.True(said.Contains($"Allow {tool}?") && said.Any(t => t.Contains($"wants to {what} (its {tool} tool)", StringComparison.Ordinal)),
@@ -293,11 +300,11 @@ public abstract class McpRig : IDisposable
     /// <summary>An agent's call answered without a question to the person.</summary>
     protected JsonElement Unasked(MainWindow window, McpClient client, [IdentifierOf(typeof(McpTools))] string tool, Dictionary<string, object?>? arguments = null)
     {
-        Task<JsonElement> calling = Task.Run(() => Call(client, tool, arguments));
+        Task<JsonElement> calling = Waiting.Apart(() => Call(client, tool, arguments));
         WaitFor(() => calling.IsCompleted || window.OwnedWindows.OfType<ConfirmDialog>().Any(), $"the agent's {tool}", AgentLimit);
         Assert.True(!window.OwnedWindows.OfType<ConfirmDialog>().Any(),
             $"The agent's {tool} asked the person: {string.Join(" | ", window.OwnedWindows.OfType<ConfirmDialog>().SelectMany(Texts))}");
-        return calling.GetAwaiter().GetResult();
+        return Await(calling, $"the agent's {tool}");
     }
 
     protected static string[] Texts(Avalonia.Controls.Window dialog) =>
@@ -337,7 +344,7 @@ public abstract class McpRig : IDisposable
     /// <summary>A tool's whole result, an error's included, within the time the tool may take, or until the test gives up
     /// on it; with <paramref name="heard"/>, the call asks for progress and keeps what it is told.</summary>
     protected Task<CallToolResult> Result(McpClient client, [IdentifierOf(typeof(McpTools))] string tool, Dictionary<string, object?>? arguments = null, CancellationTokenSource? giveUp = null, Heard? heard = null) =>
-        Exchange($"The {tool} call", Limit(tool), cancel => client.CallToolAsync(tool, arguments, heard, cancellationToken: cancel).AsTask(), giveUp);
+        Exchange($"The {tool} call", Limit(tool, arguments), cancel => client.CallToolAsync(tool, arguments, heard, cancellationToken: cancel).AsTask(), giveUp);
 
     /// <summary>The progress an agent's call was told, as the SDK hands it over, on any thread.</summary>
     protected sealed class Heard : IProgress<ModelContextProtocol.ProgressNotificationValue>
@@ -391,16 +398,25 @@ public abstract class McpRig : IDisposable
         }
     }
 
-    /// <summary>How long a tool may take before the test calls it hung: minutes for one that builds first; for one that asks
-    /// the language server, longer than the 120 s Passenger waits for it to load the folder, so its own words come back;
-    /// a minute for any other.</summary>
-    protected static TimeSpan Limit([IdentifierOf(typeof(McpTools))] string tool) => tool switch
+    /// <summary>How long a tool may take before the test calls it hung: minutes for one that builds first (a Migrations
+    /// command's ide_action among them); for one that asks the language server, longer than the 120 s Passenger waits for it
+    /// to load the folder, so its own words come back; a minute for any other.</summary>
+    protected static TimeSpan Limit([IdentifierOf(typeof(McpTools))] string tool, Dictionary<string, object?>? arguments = null) => tool switch
     {
         McpTools.Build or McpTools.DebugStart or McpTools.Run or McpTools.TestsRun or McpTools.Profile or McpTools.NugetInstall => TimeSpan.FromMinutes(5),
+        McpTools.IdeAction when arguments?.GetValueOrDefault("action") is string action && Builds.Contains(action) => TimeSpan.FromMinutes(5),
         McpTools.Diagnostics or McpTools.SymbolInfo or McpTools.Definition or McpTools.Usages or McpTools.Hierarchy or McpTools.Rename or McpTools.CodeActions
             or McpTools.ApplyCodeAction or McpTools.Format or McpTools.FindSymbol or McpTools.Outline or McpTools.Refactor => TimeSpan.FromMinutes(3),
         _ => TimeSpan.FromMinutes(1),
     };
+
+    /// <summary>The actions whose ide_action builds before it runs: each Migrations command, which builds the project and its
+    /// startup project and then runs dotnet ef.</summary>
+    private static readonly HashSet<string> Builds =
+    [
+        AppActions.MigrationsRefresh, AppActions.AddMigration, AppActions.RemoveLastMigration, AppActions.UpdateDatabase,
+        AppActions.UpdateDatabaseTo, AppActions.ScriptMigrations, AppActions.BundleMigrations,
+    ];
 
     /// <summary>One exchange with Passenger, given up after a limit: one that runs out of time or fails ends the test naming
     /// it, with what Passenger said meanwhile, so a hang fails saying why rather than stopping the run in silence.</summary>
@@ -462,12 +478,12 @@ public abstract class McpRig : IDisposable
     /// <summary>A working tree under a folder (work), one commit in and Notes.txt changed since, whose origin is a bare
     /// repository beside it (remote.git) that refuses every push when <paramref name="refusing"/>, its pre-receive hook
     /// saying why.</summary>
-    protected static string Repository(string root, bool refusing)
+    protected static async Task<string> RepositoryAsync(string root, bool refusing)
     {
         string remote = Path.Combine(root, "remote.git");
         string work = Path.Combine(root, "work");
         Directory.CreateDirectory(work);
-        TestGit.Run(root, "init", "-q", "--bare", remote);
+        await TestGit.RunAsync(root, "init", "-q", "--bare", remote);
         if (refusing)
         {
             string hook = Path.Combine(remote, "hooks", "pre-receive");
@@ -478,11 +494,16 @@ public abstract class McpRig : IDisposable
             }
         }
         File.WriteAllText(Path.Combine(work, "Notes.txt"), "one\ntwo\nthree\n");
-        TestGit.Init(work);
-        TestGit.Run(work, "remote", "add", "origin", remote);
+        await TestGit.InitAsync(work);
+        await TestGit.RunAsync(work, "remote", "add", "origin", remote);
         File.WriteAllText(Path.Combine(work, "Notes.txt"), "one\n2\nthree\n");
         return work;
     }
+
+    /// <summary><see cref="RepositoryAsync"/> from the UI thread (a window test's body), git run on the thread pool and
+    /// waited for with the window's loop running, never for its work to land.</summary>
+    protected static string Repository(string root, bool refusing) =>
+        Ui.AwaitPumped(Waiting.Apart(() => RepositoryAsync(root, refusing)), $"the repositories made under {root}", TimeSpan.FromMinutes(5));
 
     /// <summary>A folder of the test's own with one text file, which opens with no language server to wait for.</summary>
     protected string Plain(string name)
@@ -501,7 +522,7 @@ public abstract class McpRig : IDisposable
     }
 
     /// <summary>The agent's session ended, the window's loop running meanwhile.</summary>
-    protected void Gone(McpClient client) => Await(Task.Run(async () =>
+    protected void Gone(McpClient client) => Await(Waiting.Apart(async () =>
     {
         await client.DisposeAsync();
         return true;
@@ -509,6 +530,16 @@ public abstract class McpRig : IDisposable
 
     /// <summary>Waits off the UI thread for a condition, failing with what Passenger said meanwhile.</summary>
     protected async Task Until(Func<bool> condition, string what)
+    {
+        TimeSpan limit = TimeSpan.FromMinutes(2);
+        if (!await Waiting.UntilAsync(condition, limit, Cancel, TimeSpan.FromMilliseconds(100)))
+        {
+            throw new TimeoutException($"Waited {limit.Scaled().TotalSeconds} s for {what}.{Said()}");
+        }
+    }
+
+    /// <inheritdoc cref="Until(Func{bool}, string)"/>
+    protected async Task Until(Func<Task<bool>> condition, string what)
     {
         TimeSpan limit = TimeSpan.FromMinutes(2);
         if (!await Waiting.UntilAsync(condition, limit, Cancel, TimeSpan.FromMilliseconds(100)))

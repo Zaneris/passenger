@@ -15,14 +15,23 @@ namespace Passenger.Tests;
 /// alike; the SQL opens whole in a read-only tab, and what keeps a query from SQL is said as its row's value. The tests
 /// share the program as written (<see cref="Shop"/>). Debugged, so run alone.</summary>
 [Collection(Alone.Name)]
-public sealed class QuerySqlTests : McpRig, IClassFixture<QuerySqlTests.Shop>
+public sealed class QuerySqlTests : McpRig, IClassFixture<QuerySqlTests.Shop>, IAsyncLifetime
 {
     private readonly Shop shop;
 
     public QuerySqlTests(Shop shop)
     {
         this.shop = shop;
-        shop.Reset();
+    }
+
+    /// <summary>The shop as written for the test, on whichever thread it runs (a window test's, or an agent's).</summary>
+    public ValueTask InitializeAsync() => new(shop.ResetAsync());
+
+    /// <summary>The agents' end (<see cref="McpRig.Dispose"/>), which xunit leaves to this once the class is async.</summary>
+    public ValueTask DisposeAsync()
+    {
+        Dispose();
+        return ValueTask.CompletedTask;
     }
 
     [AvaloniaFact]
@@ -183,7 +192,6 @@ public sealed class QuerySqlTests : McpRig, IClassFixture<QuerySqlTests.Shop>
             File.WriteAllText(PathOf("Program.cs"), Program);
             // The first build makes bin, which a reset would take for a file the test added: made now, the folder stays as reset.
             Directory.CreateDirectory(PathOf("bin"));
-            Prepare();
         }
     }
 }

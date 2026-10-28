@@ -1,6 +1,5 @@
 using System.Runtime.CompilerServices;
 using System.Text;
-using System.Text.Json;
 using Microsoft.Build.Locator;
 
 namespace Passenger.Host;
@@ -13,24 +12,24 @@ public static class Program
     public static int Main(string[] args)
     {
         Console.InputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
-        TextWriter protocol = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)) { AutoFlush = true };
+        Replies replies = new(Console.OpenStandardOutput());
         Console.SetOut(Console.Error);
         string folder = args is ["--folder", { } given] ? given : Environment.CurrentDirectory;
         VisualStudioInstance? sdk = Sdks.For(folder, out string? problem);
         if (sdk is null)
         {
-            protocol.WriteLine(JsonSerializer.Serialize(new HostReply { Id = 0, Error = problem }, HostJson.Options));
+            replies.Error(0, problem);
             return 2;
         }
         MSBuildLocator.RegisterInstance(sdk);
-        Serve(protocol, sdk);
+        Serve(replies, sdk);
         return 0;
     }
 
     /// <summary>In a method of its own, so no MSBuild type is resolved before the locator has said where MSBuild is.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void Serve(TextWriter protocol, VisualStudioInstance sdk) =>
-        new Server(protocol, new HostReady(sdk.MSBuildPath, sdk.Version.ToString())).Run(Console.In);
+    private static void Serve(Replies replies, VisualStudioInstance sdk) =>
+        new Server(replies, new HostReady(sdk.MSBuildPath, sdk.Version.ToString())).Run(Console.In);
 }
 
 /// <summary>Finding the SDK a folder's projects build with: the one its global.json picks, else the newest.</summary>

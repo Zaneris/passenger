@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -43,8 +42,8 @@ public abstract class SearchPopup<T> : UserControl, IAnswers<T?>
             Classes = { "tree" },
             MaxHeight = listHeight,
             Margin = new Thickness(0, 0, 0, 8),
-            ItemTemplate = new FuncDataTemplate<T>((item, _) => item is null ? new TextBlock() : Draw(item), supportsRecycling: false),
         };
+        ReusedRows.Use(results, Row);
         empty = new TextBlock { Classes = { "muted" }, Margin = new Thickness(12, 0, 12, 12), IsVisible = false };
         results.DoubleTapped += (_, _) => Choose();
         query.TextChanged += (_, _) => QueryChanged();
@@ -117,8 +116,9 @@ public abstract class SearchPopup<T> : UserControl, IAnswers<T?>
         }
     }
 
-    /// <summary>A row as the list draws it.</summary>
-    protected abstract Control Draw(T row);
+    /// <summary>A row made once for each of the list's containers, showing whichever found item the list hands it
+    /// (<see cref="ReusedRows.Showing{T}"/>).</summary>
+    protected abstract Control Row();
 
     /// <summary>The query changed: what it finds is listed again.</summary>
     protected abstract void QueryChanged();

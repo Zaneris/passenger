@@ -392,14 +392,18 @@ public sealed class WpfXamlTests : IClassFixture<WpfXamlTests.Gallery>
         public Gallery()
             : base("wpf-")
         {
-            TestFolders.Prepare(() => Make(Folder), Folder);
-            Prepare();
+        }
+
+        public override async ValueTask InitializeAsync()
+        {
+            await TestFolders.PrepareAsync(() => MakeAsync(Folder), Folder);
+            await PrepareAsync();
         }
 
         /// <summary>Makes the app in a folder, not yet restored.</summary>
-        internal static void Make(string folder)
+        internal static async Task MakeAsync(string folder)
         {
-            WpfApp.Create(folder, "Gallery");
+            await WpfApp.CreateAsync(folder, "Gallery");
             // The first build makes bin, which a reset would take for a file the test added: made now, the folder stays as reset.
             Directory.CreateDirectory(Path.Combine(folder, "bin"));
             Directory.CreateDirectory(Path.Combine(folder, "ViewModels"));

@@ -96,7 +96,11 @@ public partial class MainWindow
     {
         UnfollowWatch();
         // Before the following begins, which this save would end.
-        Editors.SaveAll();
+        if (await Editors.SaveAllLandedAsync(null, CancellationToken.None) is { } unsaved)
+        {
+            status.Text = $"Hot Reload: {unsaved}";
+            return null;
+        }
         status.Text = "Hot Reload: saved for dotnet watch to apply";
         ProjectSession current = session;
         ProcessRunner run = current.Runner;

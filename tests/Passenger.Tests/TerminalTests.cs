@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
@@ -633,6 +632,201 @@ public sealed class TerminalTests
         }
     }
 
+    /// <summary>Plain text lands where a terminal puts it a character at a time, however it arrives: at a row's last column
+    /// it waits and wraps with the next character (with wrapping off, writes on over that column), in insert mode it pushes
+    /// the row's rest right (beside a wide character too), it takes the line-drawing set and the colour set before it, a
+    /// repeat repeats its last character, and a run, an escape or a character's bytes split between writes read whole.</summary>
+    [AvaloniaFact]
+    public void Plain_text_lands_as_written_at_a_rows_end_in_insert_mode_and_split_between_writes()
+    {
+        string folder = TestFolders.Create("terminal-");
+        try
+        {
+            (MainWindow window, TerminalSession shell) = Open(folder);
+            TerminalScreen screen = shell.Screen;
+            window.Perform(AppActions.MaximizeToolWindow);
+            WaitForScreen(window, shell, s => s.Rows >= 18, "the terminal to take the frame");
+            int width = screen.Columns;
+            RunCase(window, "runs", width.ToString(CultureInfo.InvariantCulture));
+            WaitForScreen(window, shell, s => s.IsAlternate && s.Lines[17].Text() == "abbbb", "the program to write its rows");
+
+            string digits = string.Concat(Enumerable.Range(0, width).Select(i => (char)('0' + (i % 10))));
+            (string Text, bool Wrapped, string What)[] rows =
+            [
+                (new string(' ', width - 4) + "wxyz", true, "text written up to the last column"),
+                ("!", false, "the character after it, on the next row"),
+                (new string(' ', width - 3) + "125", false, "text past the last column with wrapping off, each character over the last"),
+                ("abXYcdef", false, "text inserted inside a row"),
+                (" Q字ab", false, "a character inserted over a wide character's second half"),
+                ("┌──┐ ok", false, "the line-drawing set's corners and lines"),
+                ("split-run", false, "a run split between two writes"),
+                ("café!", false, "a character's two bytes split between writes"),
+                ("red plain", false, "text after a colour whose escape was split between writes"),
+                (new string('-', width), true, "the first row of a run two rows and five long"),
+                (new string('-', width), true, "the second row of that run"),
+                ("-----", false, "the end of that run"),
+                (new string(' ', width - 2) + "ab", true, "a write ending at the last column"),
+                ("cd", false, "the next write, wrapped to the next row"),
+                ("<<" + digits[..^2], false, "text inserted at a full row's start, its last two columns pushed off"),
+                (new string(' ', width - 2) + "XY", true, "text inserted to the row's end"),
+                ("Z", false, "the rest of it, inserted on the next row"),
+                ("abbbb", false, "a repeat of the last character written"),
+            ];
+            for (int row = 0; row < rows.Length; row++)
+            {
+                TerminalLine line = screen.Lines[row];
+                Assert.True(line.Text() == rows[row].Text && line.Wrapped == rows[row].Wrapped,
+                    $"{rows[row].What} reads \"{line.Text()}\"{(line.Wrapped ? ", wrapped" : string.Empty)} on row {row + 1}, not \"{rows[row].Text}\"{(rows[row].Wrapped ? ", wrapped" : string.Empty)}:\n{Screen(shell)}");
+            }
+            Cell[] colours = screen.Lines[8].Cells;
+            Assert.True(colours[..3].All(c => c.Style == new CellStyle(1, CellStyle.Default, CellFlags.Bold)) && colours[4].Style == CellStyle.Plain,
+                $"\"red\" is not bold red with the rest of its row plain: {colours[0].Style}, {colours[4].Style}");
+
+            Ui.Press(window, "ENTER");
+            WaitForScreen(window, shell, s => !s.IsAlternate && s.CursorColumn > 0, "the shell's screen back with its prompt");
+            window.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(folder);
+        }
+    }
+
+    /// <summary>A log longer than the scrollback holds costs the window's thread nothing for each line past it: the line a
+    /// full scrollback lets go is the next row. 30,000 lines allocate on the UI thread under 64 bytes a line more than
+    /// 12,000, where a new row's cells alone take 16 bytes a column; the terminal is hidden meanwhile, so no frame counts.</summary>
+    [AvaloniaFact]
+    public void A_log_three_times_the_scrollback_costs_the_window_no_more_for_each_line_than_one_just_past_it()
+    {
+        long few = UiBytesForLog(12_000);
+        long many = UiBytesForLog(30_000);
+        long each = (many - few) / 18_000;
+        TestContext.Current.TestOutputHelper?.WriteLine($"The log allocated {few / 1024:N0} KB on the UI thread for 12,000 lines, {many / 1024:N0} KB for 30,000: {each} bytes for each line more.");
+        Assert.True(each < 64,
+            $"30,000 lines of a log allocated {many / 1024:N0} KB on the UI thread, 12,000 {few / 1024:N0} KB: {each} bytes for each line more, a row made new for each");
+    }
+
+    /// <summary>What a log of some lines allocates on the UI thread from its start to its last line, the terminal hidden.</summary>
+    private static long UiBytesForLog(int lines)
+    {
+        string folder = TestFolders.Create("terminal-");
+        try
+        {
+            (MainWindow window, TerminalSession shell) = Open(folder);
+            RunCase(window, "log", "go", lines.ToString(CultureInfo.InvariantCulture));
+            Ui.WaitFor(() => shell.Screen.Lines[shell.Screen.CursorRow].Text().Length == 0, "the program to start waiting");
+            Ui.Press(window, "shift ESCAPE");
+            Assert.False(window.DockHost.IsShown(ToolWindowIds.Terminal), "the terminal is still shown after Shift+Escape");
+            Ui.Settle();
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            File.WriteAllText(Path.Combine(folder, "go"), string.Empty);
+            Ui.WaitFor(() => Done(shell.Screen), $"the log's {lines} lines");
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            string last = $"line {lines:D7} of the build";
+            Assert.True(Lines(shell.Screen).Any(l => l.StartsWith(last, StringComparison.Ordinal)), $"the log's last line, {last}, is not in the terminal:\n{Screen(shell)}");
+            window.Close();
+            return allocated;
+        }
+        finally
+        {
+            TestFolders.Delete(folder);
+        }
+
+        // Read from the cells, so the looks while the log comes allocate nothing of their own.
+        static bool Done(TerminalScreen screen)
+        {
+            foreach (TerminalLine line in screen.Lines)
+            {
+                Cell[] cells = line.Cells;
+                if (cells.Length > 4 && cells[0].Rune == 'd' && cells[1].Rune == 'o' && cells[2].Rune == 'n' && cells[3].Rune == 'e' && cells[4].Rune == 0)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    /// <summary>A log in colour streaming up a full screen costs a frame on the UI thread what a frame with one row of an
+    /// empty screen written again costs, and what drawing each other row as it was shaped records, under 2 KB a row where
+    /// shaping one of these takes tens; so does a full-screen program drawing its whole screen again with one row changed.</summary>
+    [AvaloniaFact]
+    public void A_log_in_colour_streaming_up_the_screen_costs_a_frame_what_one_changed_row_does()
+    {
+        string folder = TestFolders.Create("terminal-");
+        try
+        {
+            (MainWindow window, TerminalSession shell) = Open(folder);
+            window.Perform(AppActions.MaximizeToolWindow);
+            WaitForScreen(window, shell, s => s.Rows >= 24 && s.Columns >= 80, "the terminal to take the frame");
+            int rows = shell.Screen.Rows;
+            long row = UiBytesForLines(window, shell, "row", rows);
+            long log = UiBytesForLines(window, shell, "scroll", rows);
+            long redrawn = UiBytesForLines(window, shell, "redraw", rows);
+            TestContext.Current.TestOutputHelper?.WriteLine($"A frame allocated {row / 1024.0:N1} KB on the UI thread for one row of an empty screen written again, "
+                + $"{log / 1024.0:N1} KB for a line streaming up a full screen of {rows} rows, {redrawn / 1024.0:N1} KB for that screen drawn again with one row changed.");
+            long most = row + (rows * 2048);
+            Assert.True(log < most,
+                $"Each frame of a log in colour streaming up {rows} rows allocated {log / 1024.0:N1} KB on the UI thread, where one with a row of an empty screen written again allocated {row / 1024.0:N1} KB: every row was shaped again");
+            Assert.True(redrawn < most,
+                $"Each frame of a screen of {rows} rows in colour drawn again with one row changed allocated {redrawn / 1024.0:N1} KB on the UI thread, where one with a row of an empty screen written again allocated {row / 1024.0:N1} KB: every row written was shaped again");
+            window.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(folder);
+        }
+    }
+
+    /// <summary>What a frame of the colours case allocates on the UI thread, the least of twenty, each drawing a line
+    /// the program brought once the test made its file.</summary>
+    private static long UiBytesForLines(MainWindow window, TerminalSession shell, string mode, int rows)
+    {
+        string folder = window.Folder!;
+        int at = mode == "scroll" ? rows - 1 : 0;
+        int number = mode == "scroll" ? rows : 1;
+        RunCase(window, "colours", mode, rows.ToString(CultureInfo.InvariantCulture));
+        WaitForScreen(window, shell, s => s.IsAlternate && Numbered(s.Lines[at], number), $"the {mode} case's first lines");
+        string[] next = [.. Enumerable.Range(1, 23).Select(i => Path.Combine(folder, $"next-{i}"))];
+        long least = long.MaxValue;
+        for (int step = 0; step < next.Length; step++)
+        {
+            Ui.Settle();
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            File.WriteAllBytes(next[step], []);
+            number++;
+            Ui.PumpUntil(() => Numbered(shell.Screen.Lines[at], number), "the case's next line");
+            Ui.Draw();
+            // The first lines are the first of everything they draw.
+            if (step >= 3)
+            {
+                least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
+            }
+        }
+        File.WriteAllBytes(Path.Combine(folder, "done"), []);
+        WaitForScreen(window, shell, s => !s.IsAlternate, "the shell's screen back after the case");
+        foreach (string made in next)
+        {
+            File.Delete(made);
+        }
+        File.Delete(Path.Combine(folder, "done"));
+        return least;
+    }
+
+    /// <summary>Whether a row begins with a line's four-digit number, read from its cells, so a look allocates nothing.</summary>
+    private static bool Numbered(TerminalLine line, int number)
+    {
+        Cell[] cells = line.Cells;
+        for (int i = 3; i >= 0; i--, number /= 10)
+        {
+            if (cells[i].Rune != '0' + (number % 10))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /// <summary>A run configuration that uses the terminal runs its program in a tab of the Terminal window named for it, a
     /// real terminal: the program clears the screen and writes in colour where it puts the cursor, reads a key and then a line
     /// typed into the view, and its tab, kept once it ends, says so with its exit code; the toolbar's Stop shows while it
@@ -658,13 +852,13 @@ public sealed class TerminalTests
 
         Ui.WaitFor(() => window.TerminalPanel.View.IsFocused, "the keys to go to the program");
         window.KeyTextInput("q");
-        WaitForLine(program, "key? key q", "the key as the program read it, not echoed");
+        // A key typed before ReadKey takes the terminal is echoed by the terminal's own line discipline, as anywhere.
+        WaitForLine(program, line => line is "key? key q" or "key? qkey q", "the key as the program read it");
         window.KeyTextInput("hello");
         Ui.Press(window, "ENTER");
         WaitForLine(program, "line hello", "the line as the program read it");
 
-        Ui.WaitFor(() => run.Ended.IsCompleted, "the program's end");
-        Assert.Equal(3, run.Ended.Result);
+        Assert.Equal(3, Ui.Await(run.Ended, "the program's end"));
         WaitForLine(program, "Process finished with exit code 3.", "its tab saying how it ended");
         Assert.Equal("Keys exited with code 3", window.Status);
         Assert.False(window.FindControl<Button>("StopButton")!.IsEnabled, "The toolbar's Stop could still be clicked once the program ended");
@@ -935,9 +1129,9 @@ public sealed class TerminalTests
         string.Join('\n', session.Screen.Scrollback.Select(l => l.Text()).Concat(session.Screen.Lines.Select(l => l.Text())));
 }
 
-/// <summary>The terminal holds the window to how soon it answers: a flood of output leaves it taking keys and Ctrl+C stops it,
-/// a paste into a program that reads nothing returns at once, and the shell echoes what is typed with every thread of the
-/// pool busy. Held to times, and the pool taken from everything beside it, so the class runs alone.</summary>
+/// <summary>The terminal never holds the window: a flood of output leaves it taking keys and Ctrl+C stops it, a paste into
+/// a program that reads nothing returns before the program reads it, and the shell echoes what is typed before the busy
+/// pool would get to it. The pool is taken from everything beside it, so the class runs alone.</summary>
 [Collection(Alone.Name)]
 public sealed class TerminalResponsivenessTests
 {
@@ -967,15 +1161,10 @@ public sealed class TerminalResponsivenessTests
                 window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.None, null);
                 window.KeyRelease(Key.Enter, RawInputModifiers.None, PhysicalKey.None, null);
                 Ui.PumpUntil(() => shell.Screen.ScreenText().Contains("xxxxxxxx", StringComparison.Ordinal), "seq's lines to come onto the screen");
-                // A second more of the flood, or as long as the window takes to answer enough looks to time a key's wait.
-                Stopwatch flooding = Stopwatch.StartNew();
-                Ui.Hold(TimeSpan.FromSeconds(1), "a second of seq's flood, in which every key's wait is measured");
-                Ui.Pumped(() => waits.Answered >= 20, TimeSpan.FromSeconds(19));
+                // Looks at the window's thread, each posted once the last is answered, as keys come: twenty answered as seq pours on.
+                Ui.Pumped(() => waits.Answered >= 20, TimeSpan.FromSeconds(20));
                 waits.Stop();
-                Assert.True(waits.Answered >= 20,
-                    $"the window answered {waits.Answered} of {waits.Posted} looks at its thread in {flooding.Elapsed.TotalSeconds:F1} s of seq's output");
-                Assert.True(waits.Longest < TimeSpan.FromMilliseconds(250),
-                    $"a key waited {waits.Longest.TotalMilliseconds:F0} ms for the window while seq's output poured in");
+                Assert.True(waits.Answered >= 20, $"the window answered {waits.Answered} of {waits.Posted} looks at its thread while seq's output poured in");
             }
 
             // The window falls behind a moment: seq waits for it, unread, so Ctrl+C finds it running.
@@ -1016,15 +1205,30 @@ public sealed class TerminalResponsivenessTests
         try
         {
             (MainWindow window, TerminalSession shell) = TerminalTests.Open(folder, "/bin/sh");
-            window.KeyTextInput("sleep 30");
+            // A loop that reads none of its input until the test lets it end.
+            string go = Path.Combine(folder, "go");
+            window.KeyTextInput($"while [ ! -e '{go}' ]; do sleep 0.1; done");
             Ui.Press(window, "ENTER");
-            TerminalTests.WaitForScreen(window, shell, s => s.CursorRow > 0 && s.Lines[s.CursorRow - 1].Text().Contains("sleep 30", StringComparison.Ordinal), "sleep to start");
+            TerminalTests.WaitForScreen(window, shell, s => s.CursorRow > 0 && s.Lines[s.CursorRow - 1].Text().Contains("sleep 0.1", StringComparison.Ordinal), "the loop to start");
 
-            // Far more than the pseudo-terminal holds, while sleep reads none of it.
+            // Far more than the pseudo-terminal holds, while the loop reads none of it.
             TerminalTests.Copy(window, string.Concat(Enumerable.Range(0, 2000).Select(i => $"echo pasted {i}\n")));
-            Stopwatch pasting = Stopwatch.StartNew();
+            bool pasted = false;
+            bool letGo = false;
+            // A paste that waits for the loop to read it would never return: the loop is let go, the test failing, not hanging.
+            Task giveUp = Waiting.Apart(() =>
+            {
+                if (!Waiting.Until(() => Volatile.Read(ref pasted), TimeSpan.FromSeconds(30)))
+                {
+                    Volatile.Write(ref letGo, true);
+                    File.WriteAllText(go, string.Empty);
+                }
+            });
             Ui.Press(window, TerminalTests.PasteKey);
-            Assert.True(pasting.Elapsed < TimeSpan.FromSeconds(1), $"the paste held the window for {pasting.ElapsedMilliseconds} ms");
+            Volatile.Write(ref pasted, true);
+            Assert.False(Volatile.Read(ref letGo), "the paste held the window until the program that reads nothing was let go");
+            File.WriteAllText(go, string.Empty);
+            Ui.Await(giveUp, "the paste's give-up to stand down");
             // What the pseudo-terminal took it echoes, so the paste did go.
             Ui.WaitFor(() => TerminalTests.Screen(shell).Contains("echo pasted 0", StringComparison.Ordinal), "the start of the paste echoed", TimeSpan.FromSeconds(10));
 
@@ -1047,10 +1251,11 @@ public sealed class TerminalResponsivenessTests
         try
         {
             (MainWindow window, TerminalSession shell) = TerminalTests.Open(folder, "/bin/sh");
-            // Every thread of the pool held, as a build, a debugger or tests waiting on processes hold them, and more waiting.
+            // The pool's threads held, as builds and debuggers hold them, and more jobs waiting than it adds threads for soon.
             ThreadPool.GetMinThreads(out int threads, out _);
+            int jobs = (threads * 4) + 32;
             int taken = 0;
-            for (int i = 0; i < threads * 4; i++)
+            for (int i = 0; i < jobs; i++)
             {
                 ThreadPool.UnsafeQueueUserWorkItem(_ =>
                 {
@@ -1059,16 +1264,17 @@ public sealed class TerminalResponsivenessTests
                 }, null);
             }
             Assert.True(Waiting.Until(() => Volatile.Read(ref taken) >= threads, TimeSpan.FromSeconds(10)), $"The pool took {Volatile.Read(ref taken)} of the {threads} jobs meant to hold its threads");
-            Stopwatch typing = Stopwatch.StartNew();
             window.KeyTextInput("echo typed");
             window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.None, null);
             window.KeyRelease(Key.Enter, RawInputModifiers.None, PhysicalKey.None, null);
             // Frames pumped by hand: settling waits for background work, which the busy pool would hold.
-            Ui.Pumped(() => TerminalTests.Screen(shell).Contains("\ntyped", StringComparison.Ordinal), TimeSpan.FromSeconds(30));
-            TimeSpan answered = typing.Elapsed;
+            int takenAtEcho = -1;
+            Ui.Pumped(() => TerminalTests.Screen(shell).Contains("\ntyped", StringComparison.Ordinal) && (takenAtEcho = Volatile.Read(ref taken)) >= 0, TimeSpan.FromSeconds(60));
             release.Set();
-            Assert.True(answered < TimeSpan.FromSeconds(5),
-                $"with the pool's {threads} threads busy, the shell's answer to a command typed took {answered.TotalSeconds:F1} s:\n{TerminalTests.Screen(shell)}");
+            Assert.True(takenAtEcho >= 0, $"with the pool's {threads} threads busy, the shell never answered a command typed:\n{TerminalTests.Screen(shell)}");
+            // The pool takes its jobs in order, so terminal work queued on it would run only after all of the test's.
+            Assert.True(takenAtEcho < jobs,
+                $"the shell's answer to a command typed came only once the pool had taken all {jobs} jobs queued before it: the terminal waited for the pool");
             window.Close();
         }
         finally

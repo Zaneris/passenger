@@ -149,7 +149,7 @@ public sealed class MSBuildService(Func<string?> folder, Func<WorkspaceModel?> w
     internal Dictionary<string, string> Properties() => workspace() is { } open ? ProjectModels.Properties(open) : [];
 
     /// <summary>The project host for the folder's SDK; null with no folder.</summary>
-    internal async Task<ProjectHost?> HostAsync() => folder() is { } open ? await Task.Run(() => ProjectHosts.ForAsync(open)) : null;
+    internal async Task<ProjectHost?> HostAsync() => folder() is { } open ? await BackgroundWork.Run(() => ProjectHosts.ForAsync(open)) : null;
 
     /// <summary>The SDKs the host's .NET SDK carries (its Sdks folder's), read once.</summary>
     internal Task<IReadOnlyList<string>> SdksAsync() => sdks ??= ReadSdksAsync();
@@ -162,7 +162,7 @@ public sealed class MSBuildService(Func<string?> folder, Func<WorkspaceModel?> w
             {
                 return [];
             }
-            return await Task.Run(() => (IReadOnlyList<string>)[.. Directory.EnumerateDirectories(Path.Combine(host.Sdk, "Sdks")).Select(Path.GetFileName).OfType<string>()
+            return await BackgroundWork.Run(() => (IReadOnlyList<string>)[.. Directory.EnumerateDirectories(Path.Combine(host.Sdk, "Sdks")).Select(Path.GetFileName).OfType<string>()
                 .Where(n => n.StartsWith("Microsoft.NET.Sdk", StringComparison.Ordinal)).Order(StringComparer.Ordinal)]);
         }
         catch (Exception error) when (error is ProjectHostFailed or IOException or UnauthorizedAccessException)

@@ -2,7 +2,6 @@ using System.Collections.Concurrent;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
-using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.App.Editors;
@@ -61,8 +60,8 @@ public sealed class HistoryTab : DockPanel
         list = new ListBox
         {
             Classes = { "tree" },
-            ItemTemplate = new FuncDataTemplate<HistoryRow>((row, _) => row is null ? new TextBlock() : Row(row), supportsRecycling: false),
         };
+        ReusedRows.Use(list, Row);
         list.SelectionChanged += (_, _) => IdeErrors.Observe(ShowAsync());
         ListMenus.Attach(list, () => Selected is null ? [] :
         [
@@ -89,8 +88,8 @@ public sealed class HistoryTab : DockPanel
             {
                 Classes = { "tree" },
                 SelectionMode = SelectionMode.Multiple,
-                ItemTemplate = new FuncDataTemplate<HistoryDifference>((file, _) => file is null ? new TextBlock() : FileRow(file), supportsRecycling: false),
             };
+            ReusedRows.Use(fileList, FileRow);
             fileList.SelectionChanged += (_, _) => IdeErrors.Observe(ShowFileAsync());
             ListMenus.Attach(fileList, () => fileList.SelectedItems?.Count > 0 ? [ListMenus.Item("Revert Selection", null, () => IdeErrors.Observe(RevertSelectionAsync()))] : []);
             Border fileBar = new()
@@ -384,51 +383,55 @@ public sealed class HistoryTab : DockPanel
     private string TextOf(string hash) =>
         texts.GetOrAdd(hash, h => store.Content(h) is { } bytes ? FileText.FromBytes(bytes)?.Text ?? string.Empty : string.Empty);
 
-    private Control Row(HistoryRow row)
+    /// <summary>A save's or label's row: its title (a label's strong, after its tag, the IDE's own muted beside the
+    /// person's), and when it was at the right.</summary>
+    private Control Row()
     {
         DockPanel line = new() { Height = RowHeight, LastChildFill = true };
-        TextBlock time = MutedText.Of(GitLogView.When(row.Time));
+        TextBlock time = MutedText.Of(string.Empty);
         time[DockProperty] = Dock.Right;
         time.Margin = new Thickness(8, 0, 4, 0);
+        RowIcon tag = new() { Width = 12, Height = 12, Margin = new Thickness(0, 0, 6, 0), [DockProperty] = Dock.Left };
+        TextBlock title = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         line.Children.Add(time);
-        if (row.IsLabel)
-        {
-            // The IDE's own labels (Tests Passed) muted beside the person's.
-            PathIcon tag = new() { Width = 12, Height = 12, Margin = new Thickness(0, 0, 6, 0), [DockProperty] = Dock.Left };
-            tag.Bind(PathIcon.DataProperty, tag.GetResourceObservable(IconKeys.Label));
-            tag.Bind(PathIcon.ForegroundProperty, tag.GetResourceObservable(row.System ? TokenKeys.TextMuted : TokenKeys.Accent));
-            line.Children.Add(tag);
-        }
-        TextBlock title = new() { Text = row.Title, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        if (row.IsLabel)
-        {
-            title.FontWeight = FontWeight.SemiBold;
-        }
+        line.Children.Add(tag);
         line.Children.Add(title);
-        return line;
+        return line.Showing<HistoryRow>(row =>
+        {
+            time.Text = GitLogView.When(row.Time);
+            tag.IsVisible = row.IsLabel;
+            tag.DataKey = row.IsLabel ? IconKeys.Label : null;
+            tag.ForegroundKey = !row.IsLabel ? null : row.System ? TokenKeys.TextMuted : TokenKeys.Accent;
+            title.Text = row.Title;
+            title.FontWeight = row.IsLabel ? FontWeight.SemiBold : FontWeight.Normal;
+        });
     }
 
-    private Control FileRow(HistoryDifference file)
+    /// <summary>A changed file's row: its icon, its name in its change's colour (struck through when deleted), and its
+    /// folder under the folder whose history this is.</summary>
+    private Control FileRow()
     {
-        PathIcon icon = new()
+        RowIcon icon = new()
         {
-            Data = Explorer.FileIcons.ForFile(file.Path),
-            Foreground = Explorer.FileIcons.BrushForFile(file.Path),
             Width = 14,
             Height = 14,
             Margin = new Thickness(4, 0, 6, 0),
         };
-        TextBlock name = new() { Text = file.Name, VerticalAlignment = VerticalAlignment.Center };
-        name.Bind(TextBlock.ForegroundProperty, name.GetResourceObservable(CommitView.KindToken(file.Kind)));
-        if (file.Kind is ChangeKind.Deleted)
-        {
-            name.TextDecorations = TextDecorations.Strikethrough;
-        }
-        string where = System.IO.Path.GetDirectoryName(PathNames.Shown(file.Path, Path))?.Replace('\\', '/') ?? string.Empty;
-        TextBlock folder = MutedText.Of(where);
+        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
+        TextBlock folder = MutedText.Of(string.Empty);
         folder.FontSize = 12;
         folder.Margin = new Thickness(8, 0, 0, 0);
-        return new StackPanel { Orientation = Orientation.Horizontal, Height = RowHeight, Children = { icon, name, folder } };
+        string? colour = null;
+        StackPanel row = new() { Orientation = Orientation.Horizontal, Height = RowHeight, Children = { icon, name, folder } };
+        return row.Showing<HistoryDifference>(file =>
+        {
+            icon.Data = Explorer.FileIcons.ForFile(file.Path);
+            icon.Foreground = Explorer.FileIcons.BrushForFile(file.Path);
+            name.Text = file.Name;
+            name.Resource(TextBlock.ForegroundProperty, ref colour, CommitView.KindToken(file.Kind));
+            name.TextDecorations = file.Kind is ChangeKind.Deleted ? TextDecorations.Strikethrough : null;
+            folder.Text = System.IO.Path.GetDirectoryName(PathNames.Shown(file.Path, Path))?.Replace('\\', '/') ?? string.Empty;
+        });
     }
 
 }

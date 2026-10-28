@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Pure logic tested alone, fast and the same on every run and system: no window, no Avalonia, no process, no network,
+       no clock, and no file system but a temporary folder where the logic is about paths. What a person does is tested
+       whole in Passenger.Tests. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RootNamespace>Passenger.UnitTests</RootNamespace>
+    <!-- dotnet test's results under artifacts/ with the builds, as Passenger.Tests' are. -->
+    <VSTestResultsDirectory>$([MSBuild]::NormalizeDirectory('$(ArtifactsPath)', 'test-results'))</VSTestResultsDirectory>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="xunit.v3" />
+    <ProjectReference Include="../../src/Passenger.Core/Passenger.Core.csproj" />
+    <ProjectReference Include="../../src/Passenger.Dap/Passenger.Dap.csproj" />
+    <ProjectReference Include="../../src/Passenger.Text/Passenger.Text.csproj" />
+    <ProjectReference Include="../../src/Passenger.Xaml/Passenger.Xaml.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+</Project>

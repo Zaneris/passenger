@@ -99,13 +99,6 @@ public sealed class CodeAssist
                     completion.CaretMoved();
                 }
             };
-            editor.NavigateRequested += (_, offset) =>
-            {
-                if (editor == Editor)
-                {
-                    IdeErrors.Observe(navigation.GoToDefinition(offset));
-                }
-            };
         });
         editors.ActiveChanged += (_, _) =>
         {
@@ -135,11 +128,12 @@ public sealed class CodeAssist
         remove => context.Message -= value;
     }
 
-    /// <summary>A refactoring changed files beyond the open ones, or made new ones, which the Explorer and Git then show.</summary>
-    public event EventHandler? FilesChanged
+    /// <summary>How a refactoring's change of files beyond the open ones is run: the window runs it and follows what it made,
+    /// moved or deleted among the paths given, and the projects that read a text it changed.</summary>
+    public Action<IReadOnlyCollection<string>, Action>? FilesChanging
     {
-        add => context.FilesChanged += value;
-        remove => context.FilesChanged -= value;
+        get => context.FilesChanging;
+        set => context.FilesChanging = value;
     }
 
     /// <summary>A page to open in the browser: an ESLint rule's, an image's registry page.</summary>
@@ -327,6 +321,10 @@ public sealed class CodeAssist
         return false;
     }
 
+    /// <summary>Closes the list of choices or rename box open in a window, as Escape there does wherever the keys are,
+    /// saying whether one was.</summary>
+    public bool Dismiss(Avalonia.Controls.TopLevel window) => popups.Dismiss(window);
+
     /// <summary>The code actions, on the active editor's caret: those that ask the language server need a C# file of a
     /// folder it runs for; the error steps and Quick Documentation (the problems there, a paused program's values) only a
     /// file.</summary>
@@ -434,8 +432,9 @@ public sealed class CodeAssist
 
     internal IReadOnlyList<EditorFix> OwnFixes(OpenDocument? file, int offset) => actions.OwnFixes(file, offset);
 
-    /// <summary>A fix's changes to files made as one command (<see cref="CodeActions.ApplyFileChanges"/>): null once made, else why not.</summary>
-    internal string? ApplyFileChanges(string name, IReadOnlyList<XamlFileChange> changes) => actions.ApplyFileChanges(name, changes);
+    /// <summary>A fix's changes to files made as one command, once the files not open it wrote have landed
+    /// (<see cref="CodeActions.ApplyFileChangesAsync"/>): null once made, else why not.</summary>
+    internal Task<string?> ApplyFileChangesAsync(string name, IReadOnlyList<XamlFileChange> changes) => actions.ApplyFileChangesAsync(name, changes);
 
     /// <summary>A XAML project was read anew: a list made from it as it was is asked again (<see cref="XamlAssist.ProjectRead"/>).</summary>
     internal void XamlProjectRead(XamlProject project) => context.Languages.Xaml.ProjectRead(project);

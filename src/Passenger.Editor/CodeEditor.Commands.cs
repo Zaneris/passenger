@@ -244,7 +244,7 @@ public sealed partial class CodeEditor
         {
             return;
         }
-        IReadOnlyList<FoldRegion> foldsBefore = folds;
+        IReadOnlyList<FoldRegion> foldsBefore = FoldRegions;
         editing = true;
         try
         {

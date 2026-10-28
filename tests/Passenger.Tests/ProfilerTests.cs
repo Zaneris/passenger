@@ -165,6 +165,214 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
         window.Close();
     }
 
+    /// <summary>Opening a profile costs a stack what keeping it takes, not a name made again for each frame: from a thousand
+    /// stacks about seventy frames deep to ten thousand, under 12 KB a stack more (on every thread, the least of three). Over
+    /// the larger, a drag's pointer move across the timeline costs the UI thread no more 2,400 wide than 800 wide, and under
+    /// 16 KB more than a pointer passing over it; a frame of the flame graph, under 400 bytes a bar more whole than zoomed
+    /// into a leaf, and under 400 too where every bar is labelled.</summary>
+    [AvaloniaFact]
+    public void A_profile_of_ten_thousand_stacks_reads_drags_and_draws_in_what_its_stacks_and_bars_keep()
+    {
+        // Each count forty calls deep, then a path of its own down a binary tree of calls, to a spin the sampler catches it in and a large array (an allocation tick).
+        string project = Project("Stacks", """
+            using System.Runtime.CompilerServices;
+            int count = int.Parse(args[0]);
+            int levels = 0;
+            while ((1 << levels) < count) { levels++; }
+            long made = 0;
+            for (int i = 0; i < count; i++) { made += Tree.Down(40, i, levels); }
+            Console.WriteLine($"made {made}");
+            static class Tree
+            {
+                public static byte[]? Kept;
+
+                [MethodImpl(MethodImplOptions.NoInlining)]
+                public static int Down(int depth, int path, int levels) => depth > 0 ? Down(depth - 1, path, levels) + 1 : Branch(path, levels) + 1;
+
+                [MethodImpl(MethodImplOptions.NoInlining)]
+                private static int Branch(int path, int level) => level == 0 ? Leaf() + 1 : (path & 1) == 0 ? Left(path >> 1, level - 1) + 1 : Right(path >> 1, level - 1) + 1;
+
+                [MethodImpl(MethodImplOptions.NoInlining)]
+                private static int Left(int path, int level) => Branch(path, level) + 1;
+
+                [MethodImpl(MethodImplOptions.NoInlining)]
+                private static int Right(int path, int level) => Branch(path, level) + 1;
+
+                [MethodImpl(MethodImplOptions.NoInlining)]
+                private static int Leaf()
+                {
+                    int spun = 0;
+                    for (int i = 0; i < 10_000; i++) { spun = (spun * 31) + i; }
+                    Kept = new byte[110_000];
+                    return (Kept.Length + spun) & 1;
+                }
+            }
+            """);
+        MainWindow window = new() { Width = 1200, Height = 800, StateFolder = TestFolders.Create("settings-"), StartsLanguageServer = false };
+        window.Show();
+        try
+        {
+            window.OpenFolder(project);
+            Ui.Settle();
+            Passenger.App.Profiling.ProfilerView view = window.ProfilerView;
+            Dictionary<int, string> traces = [];
+            foreach (int count in (int[])[1000, 10000])
+            {
+                string? before = view.Snapshot?.TracePath;
+                Ui.Launched(window, window.ProfileAsync($"{count}"), $"the program of {count} stacks to build and start under the profiler", TimeSpan.FromMinutes(3));
+                Ui.WaitFor(() => view.Snapshot is { } snapshot && snapshot.TracePath != before, () => $"the end of the program of {count} stacks to show its snapshot ({view.Status})",
+                    TimeSpan.FromMinutes(2));
+                traces[count] = view.Snapshot!.TracePath;
+            }
+
+            (long Bytes, int Stacks) few = Read(traces[1000]);
+            (long Bytes, int Stacks) many = Read(traces[10000]);
+            long each = (many.Bytes - few.Bytes) / Math.Max(1, many.Stacks - few.Stacks);
+            TestContext.Current.TestOutputHelper?.WriteLine(
+                $"Opening a profile of {few.Stacks:N0} stacks allocated {few.Bytes / 1024:N0} KB, one of {many.Stacks:N0} {many.Bytes / 1024:N0} KB: {each:N0} bytes for each stack more");
+            Assert.True(few.Stacks >= 1000 && many.Stacks >= 10000, $"The profiles kept {few.Stacks} and {many.Stacks} stacks, where the programs allocated from 1,000 and 10,000");
+            Assert.True(each < 12 * 1024,
+                $"Opening a profile of {many.Stacks:N0} stacks allocated {many.Bytes / 1024:N0} KB, one of {few.Stacks:N0} {few.Bytes / 1024:N0} KB: {each:N0} bytes for each stack more, as if each of its frames were named again");
+
+            (long Drag, long Hover) narrowMove = Moves(800);
+            (long Drag, long Hover) wideMove = Moves(2400);
+            TestContext.Current.TestOutputHelper?.WriteLine(
+                $"A pointer move of a drag across the timeline allocated {narrowMove.Drag:N0} bytes on the UI thread 800 wide, {wideMove.Drag:N0} 2,400 wide; one passing over it {narrowMove.Hover:N0} and {wideMove.Hover:N0}");
+            Assert.True(wideMove.Drag <= narrowMove.Drag + 2048,
+                $"A pointer move of a drag across the timeline allocated {wideMove.Drag:N0} bytes on the UI thread in a window 2,400 wide, {narrowMove.Drag:N0} in one 800 wide: every pixel's column of its rows was drawn again");
+            Assert.True(wideMove.Drag <= wideMove.Hover + (16 * 1024),
+                $"A pointer move of a drag across the timeline allocated {wideMove.Drag:N0} bytes on the UI thread, one passing over it {wideMove.Hover:N0}: the rows' words were laid out again for the stretch");
+
+            // The flame graph whole; zoomed where every bar is wide enough for its label, the most bars so; and into a leaf.
+            window.Width = 1200;
+            view.ShowPage(Passenger.App.Profiling.ProfilerPage.FlameGraph);
+            Passenger.App.Profiling.FlameGraph flame = view.Flame;
+            (long Bytes, int Bars) whole = Frame();
+            (CallNode? Node, int Bars) narrow = Narrowest(flame.Root!, 0, (int)(flame.Bounds.Width / 25));
+            CallNode leaf = flame.Root!;
+            while (leaf.Ordered.Count > 0)
+            {
+                leaf = leaf.Ordered[0];
+            }
+            flame.ZoomTo(narrow.Node ?? leaf);
+            (long Bytes, int Bars) labelled = Frame();
+            flame.ZoomTo(leaf);
+            (long Bytes, int Bars) zoomed = Frame();
+            long eachBar = (whole.Bytes - zoomed.Bytes) / Math.Max(1, whole.Bars - zoomed.Bars);
+            long eachLabelled = (labelled.Bytes - zoomed.Bytes) / Math.Max(1, labelled.Bars - zoomed.Bars);
+            TestContext.Current.TestOutputHelper?.WriteLine(
+                $"A frame of the flame graph allocated {whole.Bytes / 1024:N0} KB on the UI thread for {whole.Bars:N0} bars, {zoomed.Bytes / 1024:N0} KB for {zoomed.Bars:N0}: {eachBar:N0} bytes a bar; "
+                + $"{labelled.Bytes / 1024:N0} KB for {labelled.Bars:N0} bars each labelled: {eachLabelled:N0} bytes a bar");
+            Assert.True(whole.Bars > zoomed.Bars + 500, $"The flame graph drew {whole.Bars} bars whole and {zoomed.Bars} zoomed into a leaf, of {flame.Root!.Total} samples");
+            Assert.True(labelled.Bars > zoomed.Bars + 200,
+                $"The flame graph drew {labelled.Bars} bars zoomed into {narrow.Node?.Total} of its {flame.Root!.Total} samples, each with room for a label, and {zoomed.Bars} zoomed into a leaf");
+            Assert.True(eachBar < 400,
+                $"A frame of the flame graph allocated {whole.Bytes / 1024:N0} KB on the UI thread for {whole.Bars:N0} bars, {zoomed.Bytes / 1024:N0} KB for {zoomed.Bars:N0}: {eachBar:N0} bytes for each bar more, its colour and label worked out again");
+            Assert.True(eachLabelled < 400,
+                $"A frame of the flame graph allocated {labelled.Bytes / 1024:N0} KB on the UI thread for {labelled.Bars:N0} bars each labelled, {zoomed.Bytes / 1024:N0} KB for {zoomed.Bars:N0}: {eachLabelled:N0} bytes for each bar more, its label clipped or drawn as more than one glyph run");
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        // What opening a profile allocates on every thread to its views shown, the least of three, as a test beside it may allocate meanwhile.
+        (long Bytes, int Stacks) Read(string trace)
+        {
+            long least = long.MaxValue;
+            int stacks = 0;
+            for (int time = 0; time < 3; time++)
+            {
+                Ui.Settle();
+                long before = GC.GetTotalAllocatedBytes(precise: true);
+                Snapshot? opened = Ui.Await(window.OpenSnapshotAsync(trace), $"{Path.GetFileName(trace)} to open");
+                Ui.Settle();
+                least = Math.Min(least, GC.GetTotalAllocatedBytes(precise: true) - before);
+                stacks = opened?.Stacks ?? throw new Xunit.Sdk.XunitException($"{Path.GetFileName(trace)} did not open: {window.Status}");
+            }
+            return (least, stacks);
+        }
+
+        // What a pointer move of a drag across the timeline allocates on the UI thread to its frame drawn, and one passing over it, the least of eight.
+        (long Drag, long Hover) Moves(double width)
+        {
+            window.Width = width;
+            Ui.Settle();
+            Passenger.App.Profiling.Timeline timeline = window.ProfilerView.Timeline;
+            Assert.True(Math.Abs(timeline.Bounds.Width - width) < 100, $"The timeline is {timeline.Bounds.Width} wide in a window {width} wide");
+            Point start = timeline.TranslatePoint(new Point(200, 20), window) ?? throw new Xunit.Sdk.XunitException("The timeline is not shown");
+            window.MouseDown(start, Avalonia.Input.MouseButton.Left);
+            long least = long.MaxValue;
+            for (int step = 1; step <= 10; step++)
+            {
+                Ui.Draw();
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                window.MouseMove(start + new Vector(step * 20, 0), Avalonia.Input.RawInputModifiers.LeftMouseButton);
+                Ui.Draw();
+                if (step > 2)
+                {
+                    least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
+                }
+            }
+            window.MouseUp(start + new Vector(200, 0), Avalonia.Input.MouseButton.Left);
+            Ui.Settle();
+            Assert.NotNull(timeline.Selection);
+            long hover = long.MaxValue;
+            for (int step = 1; step <= 10; step++)
+            {
+                Ui.Draw();
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                window.MouseMove(start + new Vector(step * 20, 4));
+                Ui.Draw();
+                if (step > 2)
+                {
+                    hover = Math.Min(hover, GC.GetAllocatedBytesForCurrentThread() - before);
+                }
+            }
+            timeline.ClearSelection();
+            Ui.Settle();
+            return (least, hover);
+        }
+
+        // What a frame of the flame graph allocates on the UI thread, the least of five, and how many bars it drew.
+        (long Bytes, int Bars) Frame()
+        {
+            Ui.Settle();
+            Passenger.App.Profiling.FlameGraph flame = window.ProfilerView.Flame;
+            long least = long.MaxValue;
+            for (int frame = 0; frame < 6; frame++)
+            {
+                Ui.Draw();
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                flame.InvalidateVisual();
+                Ui.Draw();
+                if (frame > 0)
+                {
+                    least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
+                }
+            }
+            return (least, flame.BarsDrawn);
+        }
+
+        // Of the nodes of so few samples that zoomed into, each bar has room for a label, the one drawing the most bars.
+        static (CallNode? Node, int Bars) Narrowest(CallNode node, int callers, int samples)
+        {
+            if (node.Total <= samples)
+            {
+                return (node, callers + Bars(node));
+            }
+            (CallNode? Node, int Bars) most = (null, 0);
+            foreach (CallNode callee in node.Ordered)
+            {
+                (CallNode? Node, int Bars) below = Narrowest(callee, callers + 1, samples);
+                most = below.Bars > most.Bars ? below : most;
+            }
+            return most;
+        }
+
+        static int Bars(CallNode node) => 1 + node.Ordered.Sum(Bars);
+    }
+
     /// <summary>A profiled program that has not reached the profiler (its diagnostics off, so it never comes to the
     /// profiler's port): Profile pressed again starts no second program; Kill ends it at once; a configuration whose working
     /// folder is gone, and one that ends before it reaches the profiler, are said to in the profiler window; and Close
@@ -184,54 +392,52 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
             Ui.PumpUntil(() => Programs().Count > 0, "the program to run as the profiler waits for it", TimeSpan.FromMinutes(2));
             Assert.Equal("Already under way: Starting Starting: Undiagnosed under the profiler…", window.Actions.WhyNot(AppActions.Profile, window.Actions.Context()));
 
-            again = window.ProfileAsync();
-            Assert.True(Ui.Pumped(() => again.IsCompleted, TimeSpan.FromSeconds(10)), $"A second Profile while the first program started went on to start it again ({Programs().Count} programs)");
-            Assert.Equal("A run is already being profiled", again.Result);
+            Task<string?> second = window.ProfileAsync();
+            again = second;
+            Assert.True(Ui.Pumped(() => second.IsCompleted, TimeSpan.FromSeconds(10)), $"A second Profile while the first program started went on to start it again ({Programs().Count} programs)");
+            Assert.Equal("A run is already being profiled", Ui.AwaitPumped(second, "the second Profile's refusal"));
             Assert.Single(Programs());
-            Assert.False(started.IsCompleted, $"The first profile's start ended: {(started.IsCompleted ? started.Result : null)}");
+            Assert.False(started.IsCompleted, $"The first profile's start ended: {(started.IsCompleted ? Ui.AwaitPumped(started, "the first profile's start") : null)}");
 
             Passenger.App.Profiling.ProfilerView view = window.ProfilerView;
             Avalonia.Controls.Button kill = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(view).OfType<Avalonia.Controls.Button>()
                 .Single(b => b.Content as string == "Kill");
             Assert.True(kill.IsVisible, "The profiler window had no Kill while the program it started had not reached it");
             Ui.Click(kill, settle: false);
-            Ui.PumpUntil(() => started.IsCompleted, "Kill to end the profile's start", TimeSpan.FromSeconds(10));
-            Assert.Equal("Profiling Starting: Undiagnosed was stopped as it started", started.Result);
+            string? killed = Ui.AwaitPumped(started, "Kill to end the profile's start", TimeSpan.FromSeconds(10));
+            Assert.Equal("Profiling Starting: Undiagnosed was stopped as it started", killed);
             Assert.True(Processes.Gone(Programs()[0]), $"Kill left the program running: {Processes.Describe(Programs()[0])}");
             Assert.Null(window.Profiling);
-            Assert.Equal(started.Result, view.Status);
+            Assert.Equal(killed, view.Status);
             Assert.False(kill.IsVisible, "Kill stayed once the start was ended");
             Assert.Equal(before, Ports());
             Assert.Null(window.Actions.WhyNot(AppActions.Profile, window.Actions.Context()));
 
             Configure(window, "Elsewhere", pids, workingDirectory: "gone");
-            started = window.ProfileAsync();
-            Ui.WaitFor(() => started.IsCompleted, "the build and the start", TimeSpan.FromMinutes(3));
+            string? refused = Ui.Await(window.ProfileAsync(), "the build and the start", TimeSpan.FromMinutes(3));
             string gone = Path.Combine(window.Folder!, "gone");
-            Assert.Equal($"Could not profile Waits: its working folder {gone} does not exist", started.Result);
+            Assert.Equal($"Could not profile Waits: its working folder {gone} does not exist", refused);
             Assert.Null(window.Profiling);
             Assert.True(window.DockHost.IsShown(ToolWindowIds.Profiler));
-            Assert.Equal(started.Result, view.Status);
-            Assert.Equal(started.Result, view.Placeholder);
+            Assert.Equal(refused, view.Status);
+            Assert.Equal(refused, view.Placeholder);
             Assert.Equal(before, Ports());
 
             // A program that ends at once, its diagnostics off as a program that is not .NET never comes.
             Configure(window, "Ends first", pids: null, undiagnosed: true);
-            started = window.ProfileAsync();
-            Ui.WaitFor(() => started.IsCompleted, "the build and the start", TimeSpan.FromMinutes(3));
-            Assert.StartsWith("Waits never reached the profiler: it ended first, with exit code ", started.Result, StringComparison.Ordinal);
+            string? ended = Ui.Await(window.ProfileAsync(), "the build and the start", TimeSpan.FromMinutes(3));
+            Assert.StartsWith("Waits never reached the profiler: it ended first, with exit code ", ended, StringComparison.Ordinal);
             Assert.Null(window.Profiling);
-            Assert.Equal(started.Result, view.Status);
+            Assert.Equal(ended, view.Status);
             Assert.Equal(before, Ports());
 
             string closing = TestFolders.Create("pids-");
             Configure(window, "Closed: Undiagnosed", closing, undiagnosed: true);
-            started = window.ProfileAsync();
+            Task<string?> waiting = window.ProfileAsync();
             closed = Started(closing, "the program to run as the profiler waits for it");
-            Assert.False(started.IsCompleted, $"The profiler gave up on the program before the folder was closed: {(started.IsCompleted ? started.Result : null)}");
+            Assert.False(waiting.IsCompleted, $"The profiler gave up on the program before the folder was closed: {(waiting.IsCompleted ? Ui.AwaitPumped(waiting, "the profile's start") : null)}");
             Assert.Null(window.CloseSolution());
-            Ui.PumpUntil(() => started.IsCompleted, "the profile's start to end with its folder", TimeSpan.FromSeconds(10));
-            Assert.Equal(Refusals.SolutionClosed, started.Result);
+            Assert.Equal(Refusals.SolutionClosed, Ui.AwaitPumped(waiting, "the profile's start to end with its folder", TimeSpan.FromSeconds(10)));
             Assert.True(Processes.Gone(closed), $"Closing the folder left the program being profiled running: {Processes.Describe(closed)}");
             Assert.Equal(before, Ports());
             window.Close();
@@ -271,6 +477,8 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
 
             Avalonia.Controls.Button take = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(view).OfType<Avalonia.Controls.Button>()
                 .Single(b => b.Content as string == "Get Memory Snapshot");
+            // Where only the runtime can write it, into the program's output (Linux's ptrace_scope), that is let.
+            window.Confirm = (_, _, _) => Task.FromResult(true);
             Ui.Click(take, settle: false);
             // Bounded, so a createdump that never finishes fails here, not the run.
             Ui.WaitFor(() => view.Memory is not null || window.Status?.StartsWith("No memory snapshot", StringComparison.Ordinal) == true,
@@ -530,9 +738,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
     {
         // A snapshot of an Avalonia app's two frames, of 10 and 30 ms, as its inspector tells them.
         string trace = Path.Combine(folder, "TwoFrames.nettrace");
-        Task recording = Task.Run(() => RecordFrames(trace, [10, 30]));
-        Ui.WaitFor(() => recording.IsCompleted, "the two frames' trace");
-        recording.GetAwaiter().GetResult();
+        Ui.Await(Waiting.Apart(() => RecordFrames(trace, [10, 30])), "the two frames' trace");
         MainWindow window = new() { Width = 1300, Height = 900 };
         window.Show();
         try
@@ -553,12 +759,12 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
 
     /// <summary>Frames of these times on the UI thread, told by this process as the Live Visual Tree's inspector tells an
     /// app's, recorded by an EventPipe session of its own into a .nettrace.</summary>
-    private static void RecordFrames(string trace, double[] times)
+    private static async Task RecordFrames(string trace, double[] times)
     {
         Microsoft.Diagnostics.NETCore.Client.DiagnosticsClient client = new(Environment.ProcessId);
         using Microsoft.Diagnostics.NETCore.Client.EventPipeSession session = client.StartEventPipeSession(
             [new Microsoft.Diagnostics.NETCore.Client.EventPipeProvider(UiFrames.Provider, System.Diagnostics.Tracing.EventLevel.Informational)], requestRundown: false);
-        Task copying = Task.Run(() =>
+        Task copying = Waiting.Apart(() =>
         {
             using FileStream file = File.Create(trace);
             session.EventStream.CopyTo(file);
@@ -573,7 +779,8 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
             }
         }
         session.Stop();
-        Assert.True(copying.Wait(TimeSpan.FromSeconds(30)), "The EventPipe session's trace never ended");
+        Assert.True(await Waiting.Within(copying, TimeSpan.FromSeconds(30), scaled: false), "The EventPipe session's trace never ended");
+        await copying;
     }
 
     /// <summary>The inspector's frame event (Passenger.Inspector's FrameEvents), by the number and names the profiler reads.</summary>
@@ -663,7 +870,6 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
                 """);
             // The first build makes bin, which a reset would take for a file the test added: made now, the folder stays as reset.
             Directory.CreateDirectory(PathOf("bin"));
-            Prepare();
         }
     }
 

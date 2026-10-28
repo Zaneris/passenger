@@ -2,8 +2,8 @@ namespace Passenger.Dap;
 
 /// <summary>The requests the IDE and Passenger's debug adapter make of each other, by the protocol's names, each written once
 /// for both ends, so a name one end misspells is a build error rather than a request the other never answers. Passenger's
-/// own extend the protocol: <see cref="ResolveStackFrame"/>, <see cref="HotReloadState"/>, <see cref="ApplyChanges"/> and
-/// <see cref="Input"/>.</summary>
+/// own extend the protocol: <see cref="ResolveStackFrame"/>, <see cref="HotReloadState"/>, <see cref="ApplyChanges"/>,
+/// <see cref="HotReloadRelease"/> and <see cref="Input"/>.</summary>
 [IdentifierHome]
 public static class DapCommands
 {
@@ -45,6 +45,9 @@ public static class DapCommands
 
     /// <summary>Passenger's own: Hot Reload's updates applied to the program.</summary>
     public const string ApplyChanges = "applyChanges";
+
+    /// <summary>Passenger's own: a program held for an update (<see cref="HotReloadState"/>'s hold) let go.</summary>
+    public const string HotReloadRelease = "hotReloadRelease";
 
     /// <summary>Passenger's own: text for the program's standard input, or its input closed.</summary>
     public const string Input = "input";

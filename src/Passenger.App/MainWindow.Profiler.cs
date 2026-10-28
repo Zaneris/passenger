@@ -22,7 +22,7 @@ public partial class MainWindow
 
     private void AddProfiler() => profiler = new ProfilerCommands(new ProfilerParts(() => session, () => buildRun, Dock, actions!, Bottom.Run,
         text => status.Text = text, () => StateFolder, PickSnapshotAsync, NavigateTo, NavigateTo, (process, control) => liveTree?.Reveal(process, control) == true, Editors,
-        ChooseProfiledAsync, ProfiledInContainerAsync, ShowInFileManager, ProfileAspireAsync));
+        ChooseProfiledAsync, ProfiledInContainerAsync, ShowInFileManager, (title, text, yes) => Confirm(title, text, yes), ProfileAspireAsync));
 
     /// <summary>Profiles the chosen configuration as Profile does: null once it runs, else what stopped it.</summary>
     public Task<string?> ProfileAsync(string? arguments = null) => profiler!.ProfileAsync(arguments);
@@ -40,6 +40,10 @@ public partial class MainWindow
     /// <summary>Get Memory Snapshot of the program being profiled; one given up by <paramref name="cancel"/> (an agent's) is
     /// said so, and the tools taking it in a container are ended.</summary>
     public Task<MemorySnapshot?> MemorySnapshotAsync(CancellationToken cancel = default) => profiler!.MemorySnapshotAsync(cancel);
+
+    /// <summary>An agent's Get Memory Snapshot, asking no one, with why there is none, or what taking it put into the
+    /// program's output (one only the runtime could write).</summary>
+    public Task<(MemorySnapshot? Heap, string? Note)> MemorySnapshotUnaskedAsync(CancellationToken cancel) => profiler!.MemorySnapshotAsync(ask: false, cancel);
 
     /// <summary>Opens a snapshot written before in the profiler window.</summary>
     public Task<Snapshot?> OpenSnapshotAsync(string path) => profiler!.OpenSnapshotAsync(path);

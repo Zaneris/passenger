@@ -18,7 +18,8 @@ public static class ShellEnvironment
     /// <summary>What a shell sets for itself, never for the programs an IDE starts.</summary>
     private static readonly HashSet<string> Own = ["_", "SHLVL", "PWD", "OLDPWD", "TERM", "TERM_PROGRAM", "TERM_PROGRAM_VERSION", "TERM_SESSION_ID", "PS1", "PS2", Written];
 
-    private static Task? loading;
+    /// <summary>Set once the read has ended, however it ended; null while nothing reads it.</summary>
+    private static ManualResetEventSlim? readEnded;
 
     private static long began;
 
@@ -26,26 +27,28 @@ public static class ShellEnvironment
     /// or on Windows (where a program gets the user's whole environment).</summary>
     public static void Load()
     {
-        if (OperatingSystem.IsWindows() || Environment.GetEnvironmentVariable("TERM") is not null || loading is not null)
+        if (OperatingSystem.IsWindows() || Environment.GetEnvironmentVariable("TERM") is not null || readEnded is not null)
         {
             return;
         }
         began = Stopwatch.GetTimestamp();
-        loading = Task.Run(ReadAsync);
+        ManualResetEventSlim reading = readEnded = new();
+        // Not held: what needs the environment waits on its gate.
+        UnawaitedWork.Observe(BackgroundWork.Unheld(() => ReadAsync(reading)));
     }
 
     /// <summary>Waits for the shell's environment, if it is being read, before a program is looked for or started: until the
     /// limit from the read's start at most, so a profile that never finishes costs one wait, once.</summary>
     public static void Ready()
     {
-        if (loading is { IsCompleted: false } reading)
+        if (readEnded is { IsSet: false } reading)
         {
             TimeSpan left = Limit - Stopwatch.GetElapsedTime(began);
             reading.Wait(left > TimeSpan.Zero ? left : TimeSpan.Zero);
         }
     }
 
-    private static async Task ReadAsync()
+    private static async Task ReadAsync(ManualResetEventSlim reading)
     {
         string shell = Environment.GetEnvironmentVariable("SHELL") is { Length: > 0 } named && File.Exists(named) ? named
             : OperatingSystem.IsMacOS() ? "/bin/zsh" : "/bin/sh";
@@ -89,6 +92,7 @@ public static class ShellEnvironment
                     // The system's temporary folder is cleared in time.
                 }
             }
+            reading.Set();
         }
     }
 }

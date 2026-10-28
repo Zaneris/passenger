@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -37,8 +36,8 @@ public sealed class UnstashPopup : UserControl
             MaxHeight = ListRow.Height * 10,
             ItemsSource = stashes,
             SelectedIndex = stashes.Count > 0 ? 0 : -1,
-            ItemTemplate = new FuncDataTemplate<StashInfo>((stash, _) => stash is null ? new TextBlock() : Row(stash), supportsRecycling: false),
         };
+        ReusedRows.Use(list, Row);
         list.DoubleTapped += (_, _) => IdeErrors.Observe(PopAsync());
         Button pop = Action("Pop", () => PopAsync(), primary: true);
         Button apply = Action("Apply", () => ApplyAsync());
@@ -90,8 +89,7 @@ public sealed class UnstashPopup : UserControl
     public Task DropAsync() => Use(drop, stash => confirm(
         $"Remove Stash stash@{{{stash.Index}}}?", $"Do you want to remove stash@{{{stash.Index}}}?\n\"{stash.Message}\"", "Remove"));
 
-    /// <summary>Runs an action on the chosen stash unless one is running: a stash is named by its index as the list was
-    /// read, so a second drop begun before the first ends would drop the stash after it.</summary>
+    /// <summary>Runs an action on the chosen stash unless one is running, so a second press waits for the first to end.</summary>
     private async Task Use(Func<StashInfo, Task<bool>> action, Func<StashInfo, Task<bool>>? ask = null)
     {
         if (running || Selected is not { } stash)
@@ -175,14 +173,20 @@ public sealed class UnstashPopup : UserControl
         return button;
     }
 
-    private static Control Row(StashInfo stash)
+    /// <summary>A stash's row: its message, and when it was made at the right, muted.</summary>
+    private static Control Row()
     {
-        TextBlock when = new() { Text = ToolWindows.GitLogView.When(stash.Time), VerticalAlignment = VerticalAlignment.Center, FontSize = 12, Margin = new Thickness(12, 0, 4, 0) };
+        TextBlock when = new() { VerticalAlignment = VerticalAlignment.Center, FontSize = 12, Margin = new Thickness(12, 0, 4, 0) };
         when.Classes.Add("muted");
+        TextBlock message = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         DockPanel row = new() { Height = ListRow.Height, Margin = new Thickness(8, 0) };
         DockPanel.SetDock(when, Dock.Right);
         row.Children.Add(when);
-        row.Children.Add(new TextBlock { Text = stash.Message, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis });
-        return row;
+        row.Children.Add(message);
+        return row.Showing<StashInfo>(stash =>
+        {
+            when.Text = ToolWindows.GitLogView.When(stash.Time);
+            message.Text = stash.Message;
+        });
     }
 }

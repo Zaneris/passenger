@@ -499,7 +499,6 @@ public partial class MainWindow
         {
             // Greyed, it says why on hover, as running it would (a library's Publish..., a project's tests).
             ToolTip.SetTip(actionItem, why);
-            ToolTip.SetShowOnDisabled(actionItem, true);
         }
         actions.ShowKeys(actionItem, action.Id);
         if (action.IsChecked is { } isChecked)
@@ -519,7 +518,6 @@ public partial class MainWindow
         IdeAction action = actions![id]!;
         MenuItem item = new() { Header = action.Title };
         actions.ShowKeys(item, action.Id);
-        ToolTip.SetShowOnDisabled(item, true);
         item.AttachedToVisualTree += (_, _) =>
         {
             string? why = actions.WhyNot(action.Id, actions.Context());

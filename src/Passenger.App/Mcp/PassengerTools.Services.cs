@@ -254,7 +254,8 @@ public sealed partial class PassengerTools
     {
         IReadOnlyList<string> words = [.. run.Plan.Compose, "logs", "--no-color", "--no-log-prefix", "--tail",
             Math.Clamp(lines, 1, 10_000).ToString(CultureInfo.InvariantCulture), "--", service];
-        ChildResult result = await Task.Run(() => run.Engine.RunAsync(words, ContainerEngine.AskLimit, cancel), cancel);
+        // Not held: the agent's answer, which its call waits for; nothing drawn changes.
+        ChildResult result = await BackgroundWork.Unheld(() => run.Engine.RunAsync(words, ContainerEngine.AskLimit, cancel), cancel);
         return result.Succeeded ? result.Output.TrimEnd('\n')
             : throw new InvalidOperationException($"{service}'s log could not be read: {ContainerEngine.Said(result)}");
     }

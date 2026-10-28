@@ -1,3 +1,4 @@
+using Passenger.App.Editors;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Text;
@@ -6,8 +7,9 @@ using Passenger.Workspace;
 namespace Passenger.App;
 
 /// <summary>Changes made outside the IDE, seen at once: the Explorer, Go to File, Git and the open files follow what
-/// another program does in the folder, a project or solution changed on disk is read again, and an open file with
-/// unsaved edits that changed on disk asks which to keep (File Cache Conflict).</summary>
+/// another program does in the folder, a project or solution changed on disk is read again, an open file with unsaved
+/// edits that changed on disk asks which to keep (File Cache Conflict), and a project's folder deleted while the project
+/// host builds it ends that host.</summary>
 public partial class MainWindow
 {
     /// <summary>How long an open file found gone has to come back before it is taken for deleted: Git's checkout and
@@ -40,7 +42,10 @@ public partial class MainWindow
             return;
         }
         session.LocalHistory?.Noticed(changes.Paths);
-        if (changes.Projects || changes.Lost)
+        session.DesignTimeBuilds.FolderChanged(changes);
+        session.FilesChanged(changes);
+        (bool programsMade, bool programsWritten) = ProgramsChanged(changes.Paths);
+        if (changes.Projects || changes.Lost || programsMade)
         {
             // Lost changes may have been a project's or the solution's: read again, which shows the whole Explorer anew.
             ReloadSolution();
@@ -51,16 +56,25 @@ public partial class MainWindow
             // A file come or gone may be one a project's wildcards take in: its folder's stamp says which.
             session.Evaluate();
         }
-        else if (changes.Restored.Count > 0)
+        else if (changes.Restored.Count > 0 || programsWritten)
         {
-            // A restore writes the props and targets a project imports beside its assets.
+            // A restore writes the props and targets a project imports beside its assets; a program's directives make its project.
             session.Evaluate();
         }
-        // A C# file written may have gained or lost the AppHost SDK's line; one come or gone is the index's walk's to find.
+        if (changes.LaunchProfiles && !(changes.Projects || changes.Lost))
+        {
+            // Only the run configurations are made of launch profiles, so the solution and the Explorer stay as they are.
+            session.Configurations.Configure(Projects);
+        }
+        // A C# file written may have gained or lost the AppHost SDK's line; one come or gone is the index's to find.
         session.AspireFiles.Changed(changes.Paths, every: changes.Lost);
-        if (changes.Structure)
+        if (changes.Lost)
         {
             session.Index.Build(folder);
+        }
+        else if (changes.Structure)
+        {
+            session.Index.Apply(folder, changes.ComeOrGone);
         }
         // An .editorconfig written, made or deleted: each open file follows what the ones over it say now.
         if (changes.Paths.Any(p => Path.GetFileName(p) == EditorConfig.FileName))
@@ -71,8 +85,7 @@ public partial class MainWindow
             }
         }
         // A settings file, a launch profile or a compose file written: the reads of keys nothing gave are looked at again.
-        if (changes.Lost || changes.Paths.Any(p => ConfigurationFiles.IsSettings(p) || Path.GetFileName(p).Equals(Run.LaunchProfile.SettingsFile, StringComparison.OrdinalIgnoreCase)
-            || Web.ComposeDeclarations.IsCompose(p)))
+        if (changes.Lost || changes.LaunchProfiles || changes.Paths.Any(p => ConfigurationFiles.IsSettings(p) || Web.ComposeDeclarations.IsCompose(p)))
         {
             session.CSharp?.ConfigurationChanged();
         }
@@ -88,11 +101,38 @@ public partial class MainWindow
         session.MSBuild.FilesChanged(changes.Paths, changes.Structure);
         session.Web?.FilesChanged(changes.Paths);
         EndpointFilesChanged(changes);
-        FollowOpenFiles(changes.Paths, every: changes.Lost);
+        FollowOpenFiles(changes.Paths, every: changes.Lost || changes.Overflowed);
         if (changes.Paths.Count > 0 || changes.Git)
         {
-            IdeErrors.Observe(session.Vcs.RefreshAsync());
+            IdeErrors.Observe(session.Vcs.FolderChangedAsync(changes.Git || changes.Lost));
         }
+    }
+
+    /// <summary>What the C# files written, come or gone change of the folder's file-based programs: one that is a program
+    /// now and was not, or the reverse, has the folder read again; one a program compiles (its own file, or one it
+    /// includes) has the projects evaluated again, its directives being its project's.</summary>
+    private (bool Made, bool Written) ProgramsChanged(IEnumerable<string> paths)
+    {
+        if (session.Workspace is null)
+        {
+            return (false, false);
+        }
+        IReadOnlyList<ProjectModel> projects = Projects;
+        bool written = false;
+        foreach (string path in paths.Where(Passenger.Host.ProgramFiles.IsProgram))
+        {
+            bool known = projects.Any(p => p.IsProgram && PathNames.Same(p.Path, path));
+            bool now = File.Exists(path)
+                && !projects.Any(p => p.IsProgram ? !PathNames.Same(p.Path, path) && p.Holds(path) : PathNames.Within(path, p.Folder))
+                && (WorkspaceModel.IsProgram(path, Passenger.Host.ProgramFiles.Head(path))
+                    || projects.Any(p => p.IsProgram && p.ProjectReferences.Contains(path, PathNames.Comparer)));
+            if (known != now)
+            {
+                return (true, false);
+            }
+            written |= projects.Any(p => p.IsProgram && p.Holds(path));
+        }
+        return (false, written);
     }
 
     /// <summary>The open files a change names, or names a folder over (a folder moved, renamed or trashed is seen as that
@@ -149,6 +189,17 @@ public partial class MainWindow
             FollowDisk(document);
         }
     }
+
+    /// <summary>Waits for the saves still landing of files the IDE just wrote (<see cref="EditorArea.LandedAsync(IEnumerable{string}, Action{string}?)"/>),
+    /// the status bar saying meanwhile which another program holds: why the first that never landed did not, or null once
+    /// each has, so the change says what the disk holds in the words a write refused at once gets.</summary>
+    private async Task<Exception?> UnlandedAsync(IEnumerable<string> paths) =>
+        await EditorArea.LandedAsync(paths, waiting => status.Text = waiting) is [(_, Exception refused), ..] ? refused : null;
+
+    /// <summary>As <see cref="UnlandedAsync(IEnumerable{string})"/> for the files not open a command wrote, within its recording,
+    /// a file never written left out of its Undo (<see cref="CommandHistory.Recording.LandedAsync"/>).</summary>
+    private async Task<Exception?> UnlandedAsync(CommandHistory.Recording recording) =>
+        await recording.LandedAsync(waiting => status.Text = waiting) is [(_, Exception refused), ..] ? refused : null;
 
     /// <summary>Files the IDE itself is about to write on disk (a project's references or items, the solution's entries):
     /// those open with unsaved edits are saved first, so what is written holds the edits and no File Cache Conflict asks

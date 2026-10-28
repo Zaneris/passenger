@@ -34,6 +34,7 @@ public sealed class ConflictsTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    [Gate]
     [AvaloniaFact]
     public void A_merges_conflicts_are_listed_and_resolved_whole_or_in_the_merge_window_and_the_commit_finishes_the_merge()
     {
@@ -106,8 +107,7 @@ public sealed class ConflictsTests : IDisposable
 
         Assert.Equal("Merge branch 'feature'", commit.Message);
         Task<bool> committed = commit.CommitAsync(push: false);
-        Ui.Landed(() => committed.IsCompleted, "the merge committed");
-        Assert.True(committed.Result, window.Status);
+        Assert.True(Ui.Landed(committed, "the merge committed"), window.Status);
         Assert.Equal(3, Git("rev-list", "--parents", "-n", "1", "HEAD").Split(' ', StringSplitOptions.RemoveEmptyEntries).Length);
         Assert.False(File.Exists(Path.Combine(folder, ".git", "MERGE_HEAD")), "The merge was still under way after its commit");
         Assert.Equal("Merge branch 'feature'", Git("log", "-1", "--format=%s").Trim());
@@ -119,6 +119,7 @@ public sealed class ConflictsTests : IDisposable
     /// <summary>A file one side deleted, or that both renamed apart, has nothing to merge: the Commit window's double-click
     /// and its Merge... show it chosen in the Conflicts dialog, the status bar saying which side keeps it, and there it is
     /// kept or deleted whole, never written as an empty file.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_file_a_side_deleted_is_kept_or_deleted_whole_from_the_commit_window_never_merged_into_an_empty_file()
     {
@@ -177,8 +178,7 @@ public sealed class ConflictsTests : IDisposable
         Assert.True(window.Frontmost is not MergeWindow, "A merge window opened on a file a side lacks");
 
         Task<bool> committed = commit.CommitAsync(push: false);
-        Ui.Landed(() => committed.IsCompleted, "the merge committed");
-        Assert.True(committed.Result, window.Status);
+        Assert.True(Ui.Landed(committed, "the merge committed"), window.Status);
         Assert.Equal(["Main.cs", "Shop.cs"], Git("ls-files").Split('\n', StringSplitOptions.RemoveEmptyEntries));
         Assert.Equal(Old, Git("show", "HEAD:Main.cs"));
         window.Close();
@@ -218,8 +218,7 @@ public sealed class ConflictsTests : IDisposable
         Click(merge, view, view.IconAt(0, MergeSide.Left, ignore: false));
         Click(merge, view, view.IconAt(0, MergeSide.Right, ignore: true));
         Press(merge, "Apply Changes");
-        Ui.Landed(() => merging.IsCompleted, "the merge window closed");
-        Assert.True(merging.Result, window.Status);
+        Assert.True(Ui.Landed(merging, "the merge window closed"), window.Status);
         string merged = mine.Replace("Cake: 3", "Cake: 4", StringComparison.Ordinal);
         Assert.True(File.ReadAllBytes(menu).AsSpan().SequenceEqual(cp1252.GetBytes(merged)),
             $"The merge's result was not written in Windows-1252 with CRLF: {Convert.ToHexString(File.ReadAllBytes(menu))}");
@@ -227,6 +226,7 @@ public sealed class ConflictsTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Resolve_simple_conflicts_merges_a_lines_different_words_undo_takes_it_back_and_the_keys_take_a_side()
     {
@@ -283,6 +283,7 @@ public sealed class ConflictsTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Update_project_stopped_by_a_rebases_conflict_names_each_side_by_its_branch_and_the_rebase_goes_on_once_it_is_resolved()
     {
@@ -334,6 +335,7 @@ public sealed class ConflictsTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void An_unstash_that_conflicts_opens_the_conflicts_dialog_on_the_stash_and_accept_theirs_takes_the_stashed_change()
     {
@@ -344,8 +346,7 @@ public sealed class ConflictsTests : IDisposable
 
         MainWindow window = Open();
         Task<UnstashPopup?> showing = window.ShowUnstashAsync();
-        Ui.Landed(() => showing.IsCompleted, "the stashes");
-        Task popping = showing.Result!.PopAsync();
+        Task popping = Ui.Landed(showing, "the stashes")!.PopAsync();
         Ui.Landed(() => popping.IsCompleted && window.ConflictsWindow is not null, "the Conflicts dialog");
         Assert.Equal("Unstashed with conflicts: Shop.cs", window.Status);
         ConflictsDialog dialog = window.ConflictsWindow!;
@@ -377,8 +378,7 @@ public sealed class ConflictsTests : IDisposable
     private static string CommitRefused(MainWindow window)
     {
         Task<bool> committing = window.CommitView.CommitAsync(push: false);
-        Ui.Landed(() => committing.IsCompleted, "the commit's answer");
-        Assert.False(committing.Result, "A commit was made with files still in conflict");
+        Assert.False(Ui.Landed(committing, "the commit's answer"), "A commit was made with files still in conflict");
         return window.Status ?? string.Empty;
     }
 
@@ -400,6 +400,52 @@ public sealed class ConflictsTests : IDisposable
         Button merge = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(dialog).OfType<Button>().First(b => (b.Content as string) == "Merge…");
         Assert.False(merge.IsEffectivelyEnabled, $"The Conflicts dialog offers Merge… for {name}, which a side lacks");
         return dialog;
+    }
+
+    /// <summary>On Windows the merge window's Apply into a file another program holds waits for it before git marks it
+    /// resolved: while it is held the status bar says it waits for that file and git still has it in conflict, and once the
+    /// program lets go the file holds the result, resolved.</summary>
+    [AvaloniaFact]
+    public void Merge_apply_into_a_file_another_program_holds_says_it_waits_and_resolves_it_once_the_file_is_let_go()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses to replace or write a file another program holds");
+        Git("switch", "-q", "-c", "feature");
+        Write("Prices.cs", Prices.Replace("Base() => 10", "Base() => 12", StringComparison.Ordinal));
+        Git("commit", "-q", "-am", "Feature prices");
+        Git("switch", "-q", "main");
+        Write("Prices.cs", Prices.Replace("Base() => 10", "Base() => 11", StringComparison.Ordinal));
+        Git("commit", "-q", "-am", "Main prices");
+        Conflicting("merge", "feature");
+
+        MainWindow window = Open();
+        Assert.True(window.Perform(AppActions.ResolveConflicts), window.Status);
+        Ui.Settle();
+        ConflictsDialog dialog = Assert.IsType<ConflictsDialog>(window.Frontmost);
+        dialog.Chosen = [dialog.Rows.Single(r => r.Conflict.Name == "Prices.cs")];
+        Press(dialog, "Merge…");
+        Ui.Landed(() => window.Frontmost is MergeWindow, "the merge window");
+        MergeWindow merge = (MergeWindow)window.Frontmost!;
+        MergeView view = merge.View;
+        Click(merge, view, view.IconAt(0, MergeSide.Left, ignore: false));
+        Click(merge, view, view.IconAt(0, MergeSide.Right, ignore: true));
+        Assert.Equal((0, 0), (view.UnresolvedChanges, view.UnresolvedConflicts));
+        string merged = Prices.Replace("Base() => 10", "Base() => 11", StringComparison.Ordinal);
+        List<string> said = [];
+        using IDisposable following = Ui.FollowStatus(window, said);
+        using (new FileStream(Path.Combine(folder, "Prices.cs"), FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            Button apply = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(merge).OfType<Button>().First(b => (b.Content as string) == "Apply Changes");
+            Ui.Click(apply, settle: false);
+            Ui.PumpUntil(() => said.Any(s => s.StartsWith("Waiting", StringComparison.Ordinal) || s.EndsWith("resolved", StringComparison.Ordinal)),
+                "Apply to say it waits for the held Prices.cs");
+            Assert.Equal(["Prices.cs"], Unmerged());
+        }
+        Ui.Landed(() => !merge.IsVisible, "the merge window closed once Prices.cs was let go");
+        Assert.Equal(["Waiting for Prices.cs to be saved…", "Prices.cs resolved"],
+            said.Where(s => s.StartsWith("Waiting", StringComparison.Ordinal) || s.StartsWith("Prices.cs", StringComparison.Ordinal)));
+        Assert.Equal(merged, Read("Prices.cs"));
+        Assert.Empty(Unmerged());
+        window.Close();
     }
 
     /// <summary>Clicks a merge window where its view draws something (a change's arrow or X), as the person clicks it.</summary>
@@ -424,7 +470,8 @@ public sealed class ConflictsTests : IDisposable
     /// <summary>A git command that is to stop for conflicts, as a merge or a pull does.</summary>
     private void Conflicting(params string[] arguments)
     {
-        ChildResult result = Task.Run(() => ChildProcesses.RunAsync(ChildProcesses.Command("git", arguments, folder), limit: TimeSpan.FromMinutes(1))).GetAwaiter().GetResult();
+        ChildResult result = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command("git", arguments, folder), limit: TimeSpan.FromMinutes(1))),
+            $"git {string.Join(' ', arguments)}");
         Assert.True(!result.Succeeded && Unmerged().Length > 0, $"git {string.Join(' ', arguments)} was to stop for conflicts: {result.Error}{result.Output}");
     }
 

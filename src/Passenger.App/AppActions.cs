@@ -3,8 +3,8 @@ using Passenger.Editor;
 namespace Passenger.App;
 
 /// <summary>The ids of the IDE's own actions, beside the editor's (<see cref="EditorActions"/>), and the keymaps of each
-/// platform that bind both by id: Rider's Visual Studio keymaps for these too, and its VS Code keymaps. Each action is
-/// declared by its feature (<see cref="IdeAction"/>, in the window's <see cref="ActionRegistry"/>).</summary>
+/// platform that bind both by id, keys and mouse gestures: Rider's Visual Studio keymaps for these too, and its VS Code
+/// keymaps. Each action is declared by its feature (<see cref="IdeAction"/>, in the window's <see cref="ActionRegistry"/>).</summary>
 [IdentifierHome]
 public static class AppActions
 {
@@ -33,6 +33,9 @@ public static class AppActions
     public const string LineSeparatorsLf = "app.lineSeparators.lf";
     public const string LineSeparatorsCr = "app.lineSeparators.cr";
 
+    // The indent widget's menu, which no keys open.
+    public const string FileIndentation = "app.fileIndentation";
+
     // Rider's ChangeTargetFramework (Target Framework), the editor's context switcher, which its keymaps give no keys.
     public const string TargetFramework = "app.code.targetFramework";
     public const string Save = "app.save";
@@ -45,6 +48,10 @@ public static class AppActions
     public const string GoToSymbol = "app.goToSymbol";
     public const string GoToEverything = "app.goToEverything";
     public const string FileStructure = "app.fileStructure";
+
+    // Rider's GotoRelated (Related Symbol), here a XAML or Razor file's code-behind and back: its Visual Studio keymaps'
+    // Ctrl+Alt+F7 and Cmd+Shift+F7, its VS Code keymaps' (from their parents) Ctrl+Alt+Home and Ctrl+Cmd+Up.
+    public const string GoToRelated = "app.goToRelated";
     public const string FindAction = "app.findAction";
     public const string FindInFiles = "app.findInFiles";
     public const string RecentFiles = "app.recentFiles";
@@ -187,6 +194,10 @@ public static class AppActions
     public const string RevealInFileManager = "app.explorer.reveal";
     public const string OpenInTerminal = "app.explorer.openInTerminal";
 
+    // An HTML file opened in the person's browser (Rider's WebOpenInAction): its plugin's Alt+F2 for $default, which the
+    // Mac keymaps and VS Code's take from it, and Ctrl+Alt+F2 for Visual Studio's.
+    public const string OpenInBrowser = "app.explorer.openInBrowser";
+
     public const string Build = "app.build";
     public const string RebuildSolution = "app.build.rebuildSolution";
     public const string CleanSolution = "app.build.cleanSolution";
@@ -200,10 +211,19 @@ public static class AppActions
     public const string PublishAgain = "app.build.publishAgain";
     public const string RunProgram = "app.run";
     public const string Debug = "app.debug";
+
+    // Run, Debug and Profile of the program at hand (a gutter icon's, an Explorer row's, the open file's): no keys, Rider's
+    // RunClass key being Attach to Process's in its Visual Studio keymap.
+    public const string RunHere = "app.run.here";
+    public const string DebugHere = "app.debug.here";
+    public const string ProfileHere = "app.profile.here";
     public const string Stop = "app.stop";
     public const string StopAll = "app.stopAll";
     public const string Rerun = "app.rerun";
     public const string EditConfigurations = "app.editConfigurations";
+
+    // One of the folder's own run configurations saved as a launch profile of its project: no keys of Rider's.
+    public const string SaveAsLaunchProfile = "app.saveAsLaunchProfile";
     public const string ShowBuild = "app.showBuild";
     public const string ShowRun = "app.showRun";
     public const string ShowAspire = "app.showAspire";
@@ -225,6 +245,10 @@ public static class AppActions
     public const string ShowProblems = "app.showProblems";
     public const string ShowFind = "app.showFind";
     public const string ToggleSolutionAnalysis = "app.toggleSolutionAnalysis";
+
+    // The C# language server started again in place of the one running, or of one left stopped for ending too often: no
+    // key of Rider's.
+    public const string RestartCSharpServer = "app.restartCSharpServer";
     public const string ShowDebug = "app.showDebug";
     public const string HideToolWindow = "app.hideToolWindow";
     public const string Back = "app.back";
@@ -370,12 +394,22 @@ public static class AppActions
     public const string CloseSolution = "app.closeSolution";
     public const string RestoreDefaultLayout = "app.window.restoreDefaultLayout";
 
-    // The terminal: a shell per tab in the open folder.
+    // The terminal: a shell per tab in the open folder, and its New Session: no key of Rider's outside its terminal.
     public const string ShowTerminal = "app.showTerminal";
+    public const string NewTerminalSession = "app.terminal.newSession";
 
-    // The tool windows' frame.
+    // The tool windows' frame, and a tree's Expand All and Collapse All in its header: no keys of Rider's there.
     public const string MaximizeToolWindow = "app.window.maximize";
     public const string HideAllToolWindows = "app.window.hideAll";
+    public const string ExpandAll = "app.window.expandAll";
+    public const string CollapseAll = "app.window.collapseAll";
+
+    // The Refresh of the windows that read what they show again on asking: no keys of Rider's.
+    public const string EndpointsRefresh = "app.endpoints.refresh";
+    public const string GitLogRefresh = "app.vcs.refreshLog";
+    public const string CommitRefresh = "app.vcs.refreshChanges";
+    public const string NuGetRefresh = "app.nuget.refresh";
+    public const string LiveTreeRefresh = "app.liveTree.refresh";
 
     // The breakpoints' windows, the window's to show.
     public const string EditBreakpoint = "app.breakpoints.edit";
@@ -393,6 +427,10 @@ public static class AppActions
 
     // Rider's Diff.ShowSettingsPopup, a diff's Settings: $default's Ctrl+Shift+D, none in its VS Code keymaps.
     public const string DiffSettings = "app.vcs.diffSettings";
+
+    // Rider's EditSource in a diff, Jump to Source: F4 there, as in every list, no key of the keymap's (which would take F4
+    // from the lists).
+    public const string DiffJumpToSource = "app.vcs.diffJumpToSource";
     public const string ShowGit = "app.vcs.showGit";
     public const string Annotate = "app.vcs.annotate";
     public const string UpdateProject = "app.vcs.update";
@@ -522,6 +560,7 @@ public static class AppActions
                 .Bind(ShowSettings, "meta COMMA")
                 .Bind(ShowNuGet, "meta 7", "meta shift 7")
                 .Bind(FileStructure, "alt BACK_SLASH")
+                .Bind(GoToRelated, "meta shift F7")
                 .Bind(Find, "meta F")
                 .Bind(Replace, "control H")
                 .Bind(FindNext, "F3", "meta alt PAGE_DOWN")
@@ -530,6 +569,7 @@ public static class AppActions
                 // CopyPaths and CompareTwoFiles: $default's Ctrl+Shift+C and Ctrl+D as Mac OS X 10.5+ takes them; RevealIn has none.
                 .Bind(CopyPath, "meta shift C")
                 .Bind(CompareFiles, "meta D")
+                .Bind(OpenInBrowser, "alt F2")
                 .Bind(Build, "meta shift B")
                 .Bind(RunProgram, "control F5")
                 .Bind(Debug, "alt F5")
@@ -581,15 +621,15 @@ public static class AppActions
                 .Bind(ShowGit, "meta 9")
                 .Bind(ShowTerminal, "meta control 1")
                 .Bind(UpdateProject, "meta alt W")
-                .Bind(Back, "meta MINUS", "meta SUBTRACT")
-                .Bind(Forward, "meta shift MINUS", "meta shift SUBTRACT")
+                .Bind(Back, "meta MINUS", "meta SUBTRACT", "button4")
+                .Bind(Forward, "meta shift MINUS", "meta shift SUBTRACT", "button5")
                 .Bind(Complete, "control SPACE", "control J")
                 .Bind(QuickFix, "alt ENTER")
                 .Bind(Rename, "meta R , R", "meta R , meta R")
-                .Bind(GoToDeclaration, "F12")
+                .Bind(GoToDeclaration, "F12", "meta button1")
                 .Bind(GoToImplementation, "meta F12")
-                .Bind(DerivedSymbols, "alt END")
-                .Bind(GoToTypeDeclaration, "meta shift F11")
+                .Bind(DerivedSymbols, "alt END", "meta alt button1")
+                .Bind(GoToTypeDeclaration, "meta shift F11", "meta shift button1", "shift button2")
                 .Bind(BaseSymbols, "control alt LEFT", "alt HOME")
                 .Bind(FindUsages, "shift F12")
                 .Bind(HighlightUsages, "shift alt F11")
@@ -647,12 +687,14 @@ public static class AppActions
             .Bind(ShowSettings, "control alt S")
             .Bind(ShowNuGet, "alt 7", "alt shift 7")
             .Bind(FileStructure, "alt BACK_SLASH")
+            .Bind(GoToRelated, "control alt F7")
             .Bind(Find, "control F")
             .Bind(Replace, "control H")
             .Bind(FindNext, "F3", "control alt PAGE_DOWN")
             .Bind(FindPrevious, "shift F3", "control alt PAGE_UP")
             .Bind(FocusExplorer, "alt 1", "control alt L")
             .Bind(CopyPath, "control shift C")
+            .Bind(OpenInBrowser, "control alt F2")
             .Bind(Build, "control shift B")
             .Bind(RunProgram, "control F5")
             .Bind(Debug, "alt F5")
@@ -704,15 +746,15 @@ public static class AppActions
             .Bind(ShowGit, "alt 9")
             .Bind(ShowTerminal, "control alt 1")
             .Bind(UpdateProject, "control alt W")
-            .Bind(Back, "control MINUS", "control SUBTRACT")
-            .Bind(Forward, "control shift MINUS", "control shift SUBTRACT")
+            .Bind(Back, "control MINUS", "control SUBTRACT", "button4")
+            .Bind(Forward, "control shift MINUS", "control shift SUBTRACT", "button5")
             .Bind(Complete, "control SPACE", "control J")
             .Bind(QuickFix, "alt ENTER", "control PERIOD")
             .Bind(Rename, "control R , R", "control R , control R")
-            .Bind(GoToDeclaration, "F12")
+            .Bind(GoToDeclaration, "F12", "control button1", "button2")
             .Bind(GoToImplementation, "control F12")
             .Bind(DerivedSymbols, "alt END")
-            .Bind(GoToTypeDeclaration, "control shift F11")
+            .Bind(GoToTypeDeclaration, "control shift F11", "control shift button1")
             .Bind(BaseSymbols, "alt HOME")
             .Bind(FindUsages, "shift F12")
             .Bind(HighlightUsages, "shift alt F11")
@@ -766,6 +808,7 @@ public static class AppActions
                 .Bind(GoToLine, "control G")
                 .Bind(GoToSymbol, "meta T")
                 .Bind(FileStructure, "meta alt O", "meta shift O")
+                .Bind(GoToRelated, "control meta UP")
                 .Bind(FindAction, "F1", "meta shift P", "meta shift A")
                 .Bind(FindInFiles, "meta shift F")
                 .Bind(RecentFiles, "meta E")
@@ -781,6 +824,7 @@ public static class AppActions
                 .Bind(FocusExplorer, "meta shift E")
                 .Bind(CopyPath, "meta alt C", "meta K , P")
                 .Bind(RevealInFileManager, "meta K , R", "meta alt R")
+                .Bind(OpenInBrowser, "alt F2")
                 .Bind(Build, "meta shift B")
                 .Bind(RunProgram, "control F5")
                 .Bind(Stop, "shift F5")
@@ -790,13 +834,13 @@ public static class AppActions
                 .Bind(ShowFind, "meta 3")
                 .Bind(ShowDebug, "meta shift D", "meta shift Y")
                 .Bind(HideToolWindow, "meta J")
-                .Bind(Back, "control MINUS")
-                .Bind(Forward, "control shift MINUS")
+                .Bind(Back, "control MINUS", "button4")
+                .Bind(Forward, "control shift MINUS", "button5")
                 .Bind(Complete, "meta I", "alt ESCAPE", "control SPACE")
                 .Bind(QuickFix, "meta PERIOD", "alt ENTER")
                 .Bind(Rename, "F2")
-                .Bind(GoToDeclaration, "F12")
-                .Bind(GoToTypeDeclaration, "control shift B")
+                .Bind(GoToDeclaration, "F12", "meta button1", "button2")
+                .Bind(GoToTypeDeclaration, "control shift B", "shift meta button1")
                 .Bind(DerivedSymbols, "meta F12")
                 .Bind(FindUsages, "alt shift F12")
                 .Bind(HighlightUsages, "meta shift F7")
@@ -812,7 +856,7 @@ public static class AppActions
                 .Bind(OptimizeUsings, "alt shift O")
                 .Bind(IntroduceParameter, "meta alt P")
                 .Bind(ChangeSignature, "meta F6")
-                .Bind(QuickDocumentation, "meta K , meta I")
+                .Bind(QuickDocumentation, "meta K , meta I", "control button2")
                 .Bind(NextError, "alt F8")
                 .Bind(PreviousError, "shift F8", "alt shift F8")
                 .Bind(ToggleBreakpoint, "F9")
@@ -875,6 +919,7 @@ public static class AppActions
             .Bind(GoToSymbol, "control T")
             .Bind(GoToEverything, "F1", "control shift A")
             .Bind(FileStructure, "control shift O")
+            .Bind(GoToRelated, "control alt HOME")
             .Bind(FindAction, "control shift P")
             .Bind(FindInFiles, "control shift F")
             .Bind(RecentFiles, "control E")
@@ -889,6 +934,7 @@ public static class AppActions
             .Bind(FocusExplorer, "control shift E")
             .Bind(CopyPath, "shift alt C", "control K , P")
             .Bind(RevealInFileManager, "shift alt R", "control K , R")
+            .Bind(OpenInBrowser, "alt F2")
             .Bind(Build, "control shift B")
             .Bind(RunProgram, "control F5")
             .Bind(Stop, "shift F5")
@@ -898,12 +944,13 @@ public static class AppActions
             .Bind(ShowFind, "alt 3")
             .Bind(ShowDebug, "control shift Y", "control shift D")
             .Bind(HideToolWindow, "control J")
-            .Bind(Back, "alt LEFT")
-            .Bind(Forward, "alt RIGHT")
+            .Bind(Back, "alt LEFT", "button4")
+            .Bind(Forward, "alt RIGHT", "button5")
             .Bind(Complete, "control I", "control SPACE")
             .Bind(QuickFix, "control PERIOD")
             .Bind(Rename, "F2")
-            .Bind(GoToDeclaration, "F12")
+            .Bind(GoToDeclaration, "F12", "control button1")
+            .Bind(GoToTypeDeclaration, "shift control button1")
             .Bind(DerivedSymbols, "control F12")
             .Bind(FindUsages, "alt shift F12")
             .Bind(HighlightUsages, "control shift F7")

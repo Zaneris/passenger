@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Channels;
+using Passenger.App.Run;
 
 namespace Passenger.App.Aspire;
 
@@ -279,8 +280,14 @@ public sealed class AspireExecutionServer : IAsyncDisposable
         {
             await ErrorAsync(context, 400, "InvalidJson", "The request body is not a valid run session request.").ConfigureAwait(false);
         }
-        catch (Exception)
+        catch (LaunchException)
         {
+            // A start refused (a service marked Don't start), which its row says in the IDE's words.
+            await ErrorAsync(context, 500, "SessionOperationFailed", "The session operation failed.").ConfigureAwait(false);
+        }
+        catch (Exception error)
+        {
+            IdeErrors.Write($"Aspire's execution server: a session operation failed: {error}");
             await ErrorAsync(context, 500, "SessionOperationFailed", "The session operation failed.").ConfigureAwait(false);
         }
     }

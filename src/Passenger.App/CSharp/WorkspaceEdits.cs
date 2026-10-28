@@ -28,7 +28,7 @@ public static class WorkspaceEdits
     }
 
     /// <summary>How long after a file changes on disk the language server may still hold it as it was: it reads a file
-    /// not open again only once its own watcher hears of the change.</summary>
+    /// not open again only once the folder's watcher has told it of the change.</summary>
     public static readonly TimeSpan Catching = TimeSpan.FromSeconds(2);
 
     /// <summary>Why an edit the language server worked out must not be applied to the files not open it changes, found
@@ -150,7 +150,7 @@ public static class WorkspaceEdits
                 }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException)
                 {
-                    throw new WorkspaceEditFailed($"{Path.GetFileName(path)} could not be written: {error.Message}");
+                    throw new WorkspaceEditFailed(Unwritten(path, error));
                 }
             }
             files++;
@@ -158,12 +158,48 @@ public static class WorkspaceEdits
         return files;
     }
 
-    /// <summary>The edit applied as one command of <see cref="EditorArea.Commands"/> under a name (a fix all's title):
+    /// <summary>Waits for the saves an applied edit made of its files not open that are still landing, another program
+    /// holding them (<see cref="EditorArea.LandedAsync(IEnumerable{string}, Action{string}?)"/>), <paramref name="waiting"/>
+    /// told meanwhile which; one that never lands throws <see cref="WorkspaceEditFailed"/>, as <see cref="Apply"/> does for a
+    /// file the disk refuses at once. Whether any was landing.</summary>
+    public static async Task<bool> LandedAsync(EditorArea editors, JsonElement edit, Action<string>? waiting)
+    {
+        List<string> written = [.. Paths(edit).Where(p => editors.Find(p) is null)];
+        bool landing = written.Any(p => FileText.Landed(p) is { IsCompleted: false });
+        if (await EditorArea.LandedAsync(written, waiting) is [(string path, Exception refused), ..])
+        {
+            throw new WorkspaceEditFailed(Unwritten(path, refused));
+        }
+        return landing;
+    }
+
+    /// <summary>Waits within a command's recording for the saves it made of its files not open that are still landing
+    /// (<see cref="CommandHistory.Recording.LandedAsync"/>: a file never written is left out of its Undo),
+    /// <paramref name="waiting"/> told meanwhile which; one that never lands throws <see cref="WorkspaceEditFailed"/>, as
+    /// <see cref="Apply"/> does for a file the disk refuses at once. Whether any was landing.</summary>
+    public static async Task<bool> LandedAsync(CommandHistory.Recording recording, Action<string>? waiting)
+    {
+        bool landing = false;
+        if (await recording.LandedAsync(said =>
+            {
+                landing = true;
+                waiting?.Invoke(said);
+            }) is [(string path, Exception refused), ..])
+        {
+            throw new WorkspaceEditFailed(Unwritten(path, refused));
+        }
+        return landing;
+    }
+
+    /// <summary>What a change says of a file the disk would not take.</summary>
+    internal static string Unwritten(string path, Exception error) => $"{Path.GetFileName(path)} could not be written: {error.Message}";
+
+    /// <summary>The edit applied within a command of <see cref="EditorArea.Commands"/> its caller records (a fix all's,
+    /// under its title), which waits for its writes before it ends (<see cref="LandedAsync(CommandHistory.Recording, Action{string}?)"/>):
     /// the files not open that it writes or makes are followed, so Undo takes all of it back at once, where they could
     /// otherwise come back only from Local History. The number of files changed.</summary>
-    public static int ApplyAsCommand(EditorArea editors, JsonElement edit, string name, Asked? asked = null, List<string>? dropped = null)
+    public static int ApplyAsCommand(EditorArea editors, JsonElement edit, CommandHistory.Recording recording, Asked? asked = null, List<string>? dropped = null)
     {
-        using CommandHistory.Recording recording = editors.Commands.Record(name);
         foreach (FileEdits change in Shapes.WorkspaceEdit(edit))
         {
             if (change.Operation is not { } operation)
@@ -234,13 +270,13 @@ public static class WorkspaceEdits
     /// ones before it leave. The open files a rename moves are saved now, so one that cannot be stops it here too.</summary>
     private static string? Refusal(EditorArea editors, IReadOnlyList<FileEdits> changes)
     {
-        // A read-only file not open would be refused halfway through, the files before it already written.
+        // A read-only file would be refused halfway through, the files before it already changed.
         foreach (FileEdits change in changes.Where(c => c.Operation is null))
         {
             string path = DocumentUris.ToPath(change.Uri);
-            if (editors.Documents.All(d => d.Path != path) && FileText.IsReadOnly(path))
+            if (editors.Find(path) is { } open ? open.IsReadOnly : FileText.IsReadOnly(path))
             {
-                return $"{Path.GetFileName(path)} is read-only";
+                return Refusals.ReadOnly(Path.GetFileName(path));
             }
         }
         Dictionary<string, bool> there = [];
@@ -375,6 +411,27 @@ public static class WorkspaceEdits
         return files;
     }
 
+    /// <summary>Every file an edit changes, makes, moves (from and to) or deletes.</summary>
+    public static IReadOnlyList<string> Paths(JsonElement edit)
+    {
+        List<string> paths = [];
+        foreach (FileEdits change in Shapes.WorkspaceEdit(edit))
+        {
+            if (change.Operation is not { } operation)
+            {
+                paths.Add(DocumentUris.ToPath(change.Uri));
+                continue;
+            }
+            Resource resource = Resource.Read(operation);
+            paths.Add(resource.Path);
+            if (resource.To is { } to)
+            {
+                paths.Add(to);
+            }
+        }
+        return paths;
+    }
+
     /// <summary>One of an edit's file operations (create, rename or delete): its paths and its options.</summary>
     private sealed record Resource(string Kind, string Path, string? To, JsonElement Options)
     {
@@ -392,11 +449,18 @@ public static class WorkspaceEdits
 }
 
 /// <summary>What a refactoring came to, for its dialog, the status bar and an agent alike: what to say of it, why it was
-/// not made (then nothing changed), each file it changed, and the open files it left alone as edited meanwhile, by name.</summary>
+/// not made (then nothing changed), each file it changed, the open files it left alone as edited meanwhile, by name, and
+/// the uses it could not change, each with why.</summary>
 public sealed record RefactorOutcome(string Said, string? Problem, IReadOnlyList<RefactoredFile> Files, IReadOnlyList<string> Left)
 {
+    public IReadOnlyList<UnchangedUse> Unchanged { get; init; } = [];
+
     public static RefactorOutcome Refused(string problem) => new(problem, problem, [], []);
 }
+
+/// <summary>A use a refactoring left as it was, which the change leaves wrong: its file, its line and column from one as
+/// the editor counts the text as it was, and why.</summary>
+public sealed record UnchangedUse(string Path, int Line, int Column, string Why);
 
 /// <summary>A file a refactoring changed: created, changed, moved (to <paramref name="To"/>) or deleted, with the lines its
 /// edits start on, from one, as the editor counts the text as it was.</summary>

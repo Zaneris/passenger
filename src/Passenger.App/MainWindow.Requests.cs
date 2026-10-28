@@ -307,11 +307,27 @@ public partial class MainWindow
 
     /// <summary>The folder's route a request's method and path reach, as ASP.NET Core's matcher would: of the program's own
     /// project when known, the first whose template fits, a literal one before one with parameters.</summary>
-    private WebRoute? RouteReached(string method, string path, string? project) =>
-        session.Routes.All.Where(r => r.Kind != RouteKinds.Grpc && (project is null || PathNames.Same(r.Project, project))
-                && (r.Methods.Count == 0 || r.Methods.Contains(method, StringComparer.OrdinalIgnoreCase)) && RouteRequests.Fits(r.Template, path))
-            .OrderBy(r => r.Template.Count(c => c == '{'))
-            .FirstOrDefault();
+    private WebRoute? RouteReached(string method, string path, string? project)
+    {
+        IReadOnlyList<WebRoute> routes = session.Routes.All;
+        WebRoute? reached = null;
+        int fewest = int.MaxValue;
+        for (int i = 0; i < routes.Count; i++)
+        {
+            WebRoute route = routes[i];
+            if (route.Kind == RouteKinds.Grpc || (project is not null && !PathNames.Same(route.Project, project)) || !RouteRequests.Takes(route, method))
+            {
+                continue;
+            }
+            RouteTemplate template = RouteTemplate.Of(route.Template);
+            if (template.Braces < fewest && template.Fits(path))
+            {
+                reached = route;
+                fewest = template.Braces;
+            }
+        }
+        return reached;
+    }
 
     /// <summary>A request opened: where the exception that ended it was thrown in the folder's code, else its route's handler.</summary>
     private void OpenRequest(LiveRequest request)

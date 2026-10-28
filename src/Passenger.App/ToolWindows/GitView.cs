@@ -47,6 +47,16 @@ public sealed class GitView : DockPanel
     /// <summary>A file as a commit of its history had it, to compare with the file now (its path now first).</summary>
     public event EventHandler<(string Local, CommitInfo Commit, FileChange File)>? CompareRequested;
 
+    /// <summary>A commit's file to open as it is now, from any tab.</summary>
+    public event EventHandler<string>? OpenRequested;
+
+    /// <summary>One of the window's actions asked for by a tab's button.</summary>
+    public event EventHandler<string>? ActionRequested;
+
+    /// <summary>Reads the shown tab's logs again: a comparison's two.</summary>
+    public Task RefreshAsync() => Task.WhenAll(Avalonia.LogicalTree.LogicalExtensions.GetSelfAndLogicalDescendants((Control)body.Content!)
+        .OfType<GitLogView>().Select(log => log.LoadAsync()));
+
     public event EventHandler<CommitInfo>? NewBranchRequested;
 
     public event EventHandler<(CommitInfo Commit, ResetMode Mode)>? ResetRequested;
@@ -145,7 +155,9 @@ public sealed class GitView : DockPanel
     private GitLogView Take(GitLogView view)
     {
         view.DiffRequested += (_, chosen) => DiffRequested?.Invoke(this, chosen);
-        view.CompareRequested += (_, chosen) => CompareRequested?.Invoke(this, (view.Scope!.Path, chosen.Commit, chosen.File));
+        view.CompareRequested += (_, chosen) => CompareRequested?.Invoke(this, chosen);
+        view.OpenRequested += (_, path) => OpenRequested?.Invoke(this, path);
+        view.ActionRequested += (_, action) => ActionRequested?.Invoke(this, action);
         view.NewBranchRequested += (_, commit) => NewBranchRequested?.Invoke(this, commit);
         view.ResetRequested += (_, reset) => ResetRequested?.Invoke(this, reset);
         return view;

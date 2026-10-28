@@ -18,6 +18,11 @@ public static class ProjectMethods
 
     /// <summary>A request answered true by a server that has Passenger's loader, which a server without it refuses.</summary>
     public const string Ready = "passenger/projectLoader";
+
+    /// <summary>A notification of files gone from disk, as workspace/didChangeWatchedFiles gives them, which the server takes
+    /// as that once the projects holding them as documents have loaded again without them: so it never reads a document's
+    /// file that is gone, each such read waiting a second before it gives up.</summary>
+    public const string Deleted = "passenger/filesDeleted";
 }
 
 /// <summary>The projects to load (or load again), in order, and the solution they are of.</summary>

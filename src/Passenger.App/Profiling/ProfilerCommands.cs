@@ -33,6 +33,7 @@ public sealed record ProfilerParts(
     Func<Task<DotnetProcess?>> ChooseInContainer,
     Func<DotnetProcess, ContainerPaths, Action<string>, CancellationToken, Task<(DotnetProcess Target, ProfilePlace Place)>> InContainer,
     Action<string> ShowInFileManager,
+    Func<string, string, string, Task<bool>> Confirm,
     Func<RunConfiguration, string?, Task<string?>>? ProfileAspire = null);
 
 /// <summary>The window's profiler: Profile builds and starts the chosen configuration under the sampling profiler (an
@@ -56,6 +57,9 @@ public sealed class ProfilerCommands
     /// <summary>The folder's snapshots as last listed, which the view lists as it is built.</summary>
     private (string Folder, IReadOnlyList<SnapshotFile> Files)? listed;
     private string profilingName = string.Empty;
+
+    /// <summary>The run whose memory snapshots the person let the runtime write into its program's output.</summary>
+    private ProfilingSession? intoOutputAgreed;
 
     /// <summary>Ends the start under way, which waits for the program to reach the profiler: Kill while it starts.</summary>
     private CancellationTokenSource? starting;
@@ -154,7 +158,8 @@ public sealed class ProfilerCommands
         CancellationToken closing = profiled.Aspire.ClosingToken;
         string kept = SnapshotFolder;
         using IDisposable held = BackgroundWork.Scope();
-        IReadOnlyList<SnapshotFile> files = await Task.Run(() =>
+        // Held by the scope, and back on no thread of the window's, which may be gone by then.
+        IReadOnlyList<SnapshotFile> files = await BackgroundWork.Unheld(() =>
         {
             if (trim)
             {
@@ -522,7 +527,7 @@ public sealed class ProfilerCommands
             {
                 recording = program.Recorded is { } place
                     ? await ProfilingSession.AttachAsync(program.Id, file, snapshots, place, resume: true, stop)
-                    : await Task.Run(() => ProfilingSession.AttachAsync(program.Id, file, snapshots, stop, resume: true), stop);
+                    : await BackgroundWork.Run(() => ProfilingSession.AttachAsync(program.Id, file, snapshots, stop, resume: true), stop);
             }
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested)
@@ -702,10 +707,10 @@ public sealed class ProfilerCommands
         if (running.FirstOrDefault(p => p.Tab is { } tab && tab == current.Debug.Chosen) is { Tab.Session: { } debugging } debugged)
         {
             // A container's program, by its id there, recorded there through the debugger's own map of its paths.
-            if (debugging is { Elsewhere: true, Place: { } place, ProcessStarted.IsCompletedSuccessfully: true })
+            if (debugging is { Elsewhere: true, Place: { } place, ProcessStarted: { IsCompletedSuccessfully: true } started })
             {
-                string program = place.Program ?? $"process {debugging.ProcessStarted.Result}";
-                DotnetProcess there = new(debugging.ProcessStarted.Result, program, string.Empty, string.Empty, true) { Container = place.Where };
+                string program = place.Program ?? $"process {started.Result}";
+                DotnetProcess there = new(started.Result, program, string.Empty, string.Empty, true) { Container = place.Where };
                 return new AttachTarget(there.Id, debugged.Name, FileName(Path.GetFileNameWithoutExtension(program))) { Elsewhere = there, Paths = place.Paths };
             }
             // Its process on this machine: a container's process id names none of this one's.
@@ -803,14 +808,15 @@ public sealed class ProfilerCommands
         using IDisposable held = BackgroundWork.Scope();
         try
         {
-            Snapshot snapshot = await Task.Run(() => run.StopAsync()).ConfigureAwait(false);
+            // Held by the scope, and back on no thread of the window's, which may be gone by then.
+            Snapshot snapshot = await BackgroundWork.Unheld(() => run.StopAsync()).ConfigureAwait(false);
             string read = $"Snapshot of {name}: {snapshot.Samples:N0} samples, kept in {Path.GetDirectoryName(snapshot.TracePath)}";
             if (closing.IsCancellationRequested)
             {
                 // Its folder was left as it was read: it is that folder's to list when it opens again.
                 return new SnapshotRead(snapshot, read);
             }
-            IReadOnlyList<SnapshotFile> files = await Task.Run(() =>
+            IReadOnlyList<SnapshotFile> files = await BackgroundWork.Unheld(() =>
             {
                 Snapshots.Trim(kept);
                 return Snapshots.List(kept);
@@ -887,27 +893,49 @@ public sealed class ProfilerCommands
 
     /// <summary>Get Memory Snapshot: the running program's heap, listed on the Memory page with the run's earlier ones to
     /// compare it with; the run goes on. One given up (<paramref name="cancel"/>) is said so.</summary>
-    public async Task<MemorySnapshot?> MemorySnapshotAsync(CancellationToken cancel = default)
+    public async Task<MemorySnapshot?> MemorySnapshotAsync(CancellationToken cancel = default) => (await MemorySnapshotAsync(ask: true, cancel)).Heap;
+
+    /// <summary>Get Memory Snapshot, or why there is none. Where only the program's runtime can write it, putting
+    /// createdump's lines into the program's output, the person is asked first, once for the run; an agent's
+    /// (<paramref name="ask"/> false), which asked for it with no one to ask, is taken, its note saying so.</summary>
+    public async Task<(MemorySnapshot? Heap, string? Note)> MemorySnapshotAsync(bool ask, CancellationToken cancel = default)
     {
         if (Session.Profiling is not { } run)
         {
             parts.Say("A memory snapshot needs a program being profiled");
-            return null;
+            return (null, "no program is being profiled");
         }
         parts.Say($"Taking a memory snapshot of {profilingName}…");
         using IDisposable held = BackgroundWork.Scope();
         try
         {
-            MemorySnapshot heap = await run.TakeMemorySnapshotAsync(cancel);
+            MemorySnapshot heap;
+            string? note = null;
+            try
+            {
+                heap = await run.TakeMemorySnapshotAsync(intoOutput: run == intoOutputAgreed, cancel);
+            }
+            catch (DumpIntoOutputException only)
+            {
+                if (ask && !await parts.Confirm("Get Memory Snapshot", $"{only.Message}. Take it anyway?", "Take Snapshot"))
+                {
+                    parts.Say($"No memory snapshot of {profilingName}: its output would carry createdump's lines");
+                    return (null, only.Message);
+                }
+                intoOutputAgreed = run;
+                note = $"{only.Message}: it was taken so, and the program's output carries createdump's lines";
+                heap = await run.TakeMemorySnapshotAsync(intoOutput: true, cancel);
+            }
             View.ShowMemory(heap);
             parts.Say($"{heap.Name} of {profilingName}: {heap.Objects:N0} objects, {heap.Bytes / 1048576.0:N1} MB");
-            return heap;
+            return (heap, note);
         }
         catch (Exception error) when (error is InvalidOperationException or IOException or ServerNotAvailableException or DiagnosticsClientException
             or TimeoutException or HeapUnreadableException or ProfilingException or OperationCanceledException)
         {
-            parts.Say($"No memory snapshot: {(error is OperationCanceledException ? "it was stopped" : error.Message)}");
-            return null;
+            string why = error is OperationCanceledException ? "it was stopped" : error.Message;
+            parts.Say($"No memory snapshot: {why}");
+            return (null, why);
         }
     }
 

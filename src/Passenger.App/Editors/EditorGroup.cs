@@ -12,6 +12,7 @@ using Avalonia.VisualTree;
 using Passenger.App.Tables;
 using Passenger.App.Workspace;
 using Passenger.Editor;
+using Passenger.Lsp;
 using Passenger.Text;
 
 namespace Passenger.App.Editors;
@@ -48,6 +49,8 @@ public sealed class EditorGroup : DockPanel
     private readonly ObservableCollection<EditorTab> tabs = [];
     private readonly Dictionary<OpenDocument, (SelectionSet Selections, Vector Scroll)> views = [];
     private readonly Border tabBar;
+    private readonly ItemsControl strip;
+    private readonly ScrollViewer stripView;
     private readonly Grid body;
     private HairlineDivider? divider;
     private Control? side;
@@ -67,20 +70,14 @@ public sealed class EditorGroup : DockPanel
     {
         this.area = area;
         Editor = new CodeEditor { IsVisible = false };
-        Editor.FoldsToggled += (_, regions) =>
-        {
-            if (active is not null)
-            {
-                active.Document.FoldRegions = regions;
-            }
-        };
+        Gutter = new EditorGutter(Editor);
         Find = new FindBar { [DockProperty] = Dock.Top };
-        ItemsControl strip = new()
+        strip = new ItemsControl
         {
             ItemsSource = tabs,
             ItemsPanel = new FuncTemplate<Panel?>(() => new StackPanel { Orientation = Orientation.Horizontal }),
-            ItemTemplate = new FuncDataTemplate<EditorTab>((tab, _) => Tab(tab), supportsRecycling: false),
         };
+        ReusedRows.Use(strip, Tab);
         PreviewToggle = ToolButtons.Toggle(IconKeys.Preview, "Preview");
         PreviewToggle.Classes.Add("tabStripTool");
         PreviewToggle.IsVisible = false;
@@ -91,6 +88,9 @@ public sealed class EditorGroup : DockPanel
             // It says what is in force once its action ran, or was refused.
             FollowPreviewToggle();
         };
+        stripView = new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, Content = strip };
+        // A narrower strip may leave the active tab out of sight.
+        stripView.SizeChanged += (_, _) => RevealActive();
         tabBar = new Border
         {
             Classes = { "tabStrip" },
@@ -100,7 +100,7 @@ public sealed class EditorGroup : DockPanel
                 Children =
                 {
                     PreviewToggle,
-                    new ScrollViewer { HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Hidden, VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled, Content = strip },
+                    stripView,
                 },
             },
         };
@@ -174,6 +174,9 @@ public sealed class EditorGroup : DockPanel
     private event EventHandler? CurrentChanged;
 
     public CodeEditor Editor { get; }
+
+    /// <summary>The columns of the editor's gutter, fed from the file it shows.</summary>
+    public EditorGutter Gutter { get; }
 
     /// <summary>A pane beside the editor for the file it shows (a XAML file's preview), half the group's width at first and
     /// resized by the hairline between them; null for none.</summary>
@@ -320,6 +323,15 @@ public sealed class EditorGroup : DockPanel
     private Control PreviewOf(OpenDocument document) =>
         document.Asset is { } asset ? new AssetPreviewControl(asset) : new ReleaseNotesView(document, area.Browse);
 
+    /// <summary>The active tab scrolled into the strip's sight once it is laid out, however many tabs crowd the strip.</summary>
+    private void RevealActive() => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+    {
+        if (active is not null && strip.ContainerFromItem(active) is { } tab)
+        {
+            tab.BringIntoView();
+        }
+    }, Avalonia.Threading.DispatcherPriority.Loaded);
+
     /// <summary>Whether the editor shows the file, rather than a view of its own in the editor's place.</summary>
     private static bool InEditor(OpenDocument document) => document.Asset is null && !document.IsReleaseNotes;
 
@@ -354,12 +366,14 @@ public sealed class EditorGroup : DockPanel
         }
         active = tabs.First(t => t.Document == document);
         active.IsActive = true;
+        RevealActive();
         document.PropertyChanged += OnDocumentChanged;
         ClearPreview();
         if (document.Asset is not null || document.IsReleaseNotes)
         {
             Find.Detach();
             Editor.Detach();
+            Gutter.Clear();
             Editor.IsReadOnly = true;
             Editor.IsVisible = false;
             Side = null;
@@ -378,28 +392,24 @@ public sealed class EditorGroup : DockPanel
         Editor.Indent = document.Indentation.Options;
         Editor.ReindentsPaste = document.Language.ReindentsPaste;
         Editor.ShowWhitespaces = document.ShowWhitespaces;
-        Editor.Show(document.Text, selections, scroll, document.SoftWrap);
+        // Its decorations are the file's, which every editor showing it reads.
+        Editor.Show(document.Text, selections, scroll, document.SoftWrap, document.Decorations);
         Editor.Highlighter = document.Highlighter;
-        Editor.SetMarkers(document.Markers);
-        Editor.SetFoldRegions(document.FoldRegions);
-        Editor.SetInlayHints(document.InlayHints);
-        Editor.SetLineMarks(document.LineMarks);
-        Editor.SetLineAnnotations(document.ShownAnnotations);
-        Editor.SetTestMarks(document.TestMarks);
-        Editor.SetRunMarks(document.GutterRunMarks);
-        Editor.SetColourMarks(document.ColourMarks);
-        Editor.SetChangeMarks(document.ChangeMarks);
-        Editor.SetGutterAnnotations(document.GutterAnnotations);
-        Editor.SetBookmarks(document.Bookmarks);
+        Gutter.Show(document);
         Editor.ContextLabel = ContextShown(document);
         Editor.IsReadOnly = document.IsReadOnly;
         ShowBanner(document);
         Editor.IsVisible = true;
         tabBar.IsVisible = true;
         ShowTable(document);
-        Find.Attach(Editor, Table);
+        AttachFind();
         FollowMarkdown();
     }
+
+    /// <summary>The find bar on the file shown: its text, or its table while one lies over it; a read-only file's replace row
+    /// greyed, saying why.</summary>
+    private void AttachFind() =>
+        Find.Attach(Editor, Table, Active is { IsReadOnly: true } shown ? Refusals.ReadOnly(shown.Name) : null);
 
     /// <summary>The table of the file shown, while it is a CSV or a workbook, null otherwise.</summary>
     public CellGrid? Table => tables is { ShowsTable: true } ? tables.View : null;
@@ -420,7 +430,7 @@ public sealed class EditorGroup : DockPanel
             body.Children.Add(tables.Body);
             tables.Switched += (_, _) =>
             {
-                Find.Attach(Editor, Table);
+                AttachFind();
                 if (tables.ShowsTable)
                 {
                     tables.View.Focus();
@@ -486,10 +496,12 @@ public sealed class EditorGroup : DockPanel
                 // A split left empty goes, and nothing of the file it showed may keep it.
                 Find.Detach();
                 Editor.Detach();
+                Gutter.Clear();
                 Editor.IsVisible = false;
                 tabBar.IsVisible = false;
                 banner.IsVisible = false;
                 tables?.Hide();
+                Side = null;
                 FollowMarkdown();
             }
         }
@@ -578,41 +590,8 @@ public sealed class EditorGroup : DockPanel
             case nameof(OpenDocument.Highlighter):
                 Editor.Highlighter = document.Highlighter;
                 break;
-            case nameof(OpenDocument.LineMarks):
-                Editor.SetLineMarks(document.LineMarks);
-                break;
-            case nameof(OpenDocument.LineAnnotations) or nameof(OpenDocument.LiveValues):
-                Editor.SetLineAnnotations(document.ShownAnnotations);
-                break;
-            case nameof(OpenDocument.Markers):
-                Editor.SetMarkers(document.Markers);
-                break;
             case nameof(OpenDocument.Notice) or nameof(OpenDocument.NoticeAction) or nameof(OpenDocument.EncodingWarning):
                 ShowBanner(document);
-                break;
-            case nameof(OpenDocument.InlayHints):
-                Editor.SetInlayHints(document.InlayHints);
-                break;
-            case nameof(OpenDocument.FoldRegions):
-                Editor.SetFoldRegions(document.FoldRegions);
-                break;
-            case nameof(OpenDocument.TestMarks):
-                Editor.SetTestMarks(document.TestMarks);
-                break;
-            case nameof(OpenDocument.RunMarks) or nameof(OpenDocument.RouteMarks):
-                Editor.SetRunMarks(document.GutterRunMarks);
-                break;
-            case nameof(OpenDocument.ColourMarks):
-                Editor.SetColourMarks(document.ColourMarks);
-                break;
-            case nameof(OpenDocument.ChangeMarks):
-                Editor.SetChangeMarks(document.ChangeMarks);
-                break;
-            case nameof(OpenDocument.GutterAnnotations):
-                Editor.SetGutterAnnotations(document.GutterAnnotations);
-                break;
-            case nameof(OpenDocument.Bookmarks):
-                Editor.SetBookmarks(document.Bookmarks);
                 break;
             case nameof(OpenDocument.ProjectContexts):
             case nameof(OpenDocument.ProjectContext):
@@ -620,7 +599,9 @@ public sealed class EditorGroup : DockPanel
                 break;
             case nameof(OpenDocument.Path):
                 ShowTable(document);
-                Find.Attach(Editor, Table);
+                Editor.IsReadOnly = document.IsReadOnly;
+                ShowBanner(document);
+                AttachFind();
                 Editor.LineCommentPrefix = document.Language.LineComment;
                 Editor.BlockComment = document.Language.BlockComment;
                 Editor.Markup = document.Language.Markup;
@@ -650,34 +631,20 @@ public sealed class EditorGroup : DockPanel
         }
     }
 
-    private Control Tab(EditorTab? tab)
+    /// <summary>A tab for whichever file the strip hands it: its icon, its name, a pin while pinned, and its × or, while
+    /// changed, a dot; its menu, close, pin and presses act on the file it shows. It follows its file only while on the
+    /// strip, so a tab closed or moved to another group is held by nothing it showed.</summary>
+    private Control Tab()
     {
-        if (tab is null)
-        {
-            return new TextBlock();
-        }
-        OpenDocument document = tab.Document;
-        PathIcon icon = new();
+        RowIcon icon = new();
         TextBlock name = new() { Classes = { "tabName" }, VerticalAlignment = VerticalAlignment.Center };
         Ellipse modified = new() { Classes = { "modified" }, Width = 7, Height = 7 };
-        PathIcon closeGlyph = new() { Classes = { "small" } };
-        closeGlyph.Bind(PathIcon.DataProperty, closeGlyph.GetResourceObservable(IconKeys.Close));
+        RowIcon closeGlyph = new() { Width = 10, Height = 10, DataKey = IconKeys.Close };
         Button close = new() { Classes = { "tabClose" }, Content = closeGlyph };
         ToolTip.SetTip(close, "Close");
-        close.Click += (_, e) =>
-        {
-            area.CloseTab(this, document);
-            e.Handled = true;
-        };
-        PathIcon pinGlyph = new() { Classes = { "small" } };
-        pinGlyph.Bind(PathIcon.DataProperty, pinGlyph.GetResourceObservable(IconKeys.Pin));
+        RowIcon pinGlyph = new() { Width = 10, Height = 10, DataKey = IconKeys.Pin };
         Button pin = new() { Classes = { "tabPin" }, Content = pinGlyph };
         ToolTip.SetTip(pin, "Unpin Tab");
-        pin.Click += (_, e) =>
-        {
-            Pin(document, false);
-            e.Handled = true;
-        };
         Border border = new()
         {
             Classes = { "tab" },
@@ -689,8 +656,26 @@ public sealed class EditorGroup : DockPanel
                 Children = { icon, name, pin, new Panel { Width = 16, Height = 16, Children = { modified, close } } },
             },
         };
-        void Paint()
+        OpenDocument? Shown() => (border.DataContext as EditorTab)?.Document;
+        close.Click += (_, e) =>
         {
+            if (Shown() is { } document)
+            {
+                area.CloseTab(this, document);
+            }
+            e.Handled = true;
+        };
+        pin.Click += (_, e) =>
+        {
+            if (Shown() is { } document)
+            {
+                Pin(document, false);
+            }
+            e.Handled = true;
+        };
+        void Paint(EditorTab tab)
+        {
+            OpenDocument document = tab.Document;
             name.Text = document.Title;
             icon.Data = document.Icon;
             icon.Foreground = document.IconBrush;
@@ -701,46 +686,79 @@ public sealed class EditorGroup : DockPanel
             pin.IsVisible = tab.IsPinned;
         }
         void OnCurrentChanged(object? sender, EventArgs e) => border.Classes.Set("elsewhere", !IsCurrent);
-        void OnTabChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
-        {
-            border.Classes.Set("active", tab.IsActive);
-            pin.IsVisible = tab.IsPinned;
-        }
         void OnFileChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
+            if (border.DataContext is not EditorTab tab)
+            {
+                return;
+            }
             if (e.PropertyName == nameof(OpenDocument.IsModified))
             {
-                modified.IsVisible = document.IsModified;
+                modified.IsVisible = tab.Document.IsModified;
             }
             else if (e.PropertyName == nameof(OpenDocument.Path))
             {
-                Paint();
+                Paint(tab);
             }
         }
-        // Subscribed only while on the strip, so a tab closed or moved to another group is held by nothing it showed.
+        bool onStrip = false;
+        OpenDocument? followed = null;
+        void Follow()
+        {
+            OpenDocument? following = onStrip ? Shown() : null;
+            if (following == followed)
+            {
+                return;
+            }
+            if (followed is not null)
+            {
+                followed.PropertyChanged -= OnFileChanged;
+            }
+            followed = following;
+            if (following is not null)
+            {
+                following.PropertyChanged += OnFileChanged;
+            }
+        }
+        border.DataContextChanged += (_, _) => Follow();
         border.AttachedToVisualTree += (_, _) =>
         {
+            onStrip = true;
             CurrentChanged += OnCurrentChanged;
-            tab.PropertyChanged += OnTabChanged;
-            document.PropertyChanged += OnFileChanged;
-            Paint();
+            Follow();
+            border.Classes.Set("elsewhere", !IsCurrent);
         };
         border.DetachedFromVisualTree += (_, _) =>
         {
+            onStrip = false;
             CurrentChanged -= OnCurrentChanged;
-            tab.PropertyChanged -= OnTabChanged;
-            document.PropertyChanged -= OnFileChanged;
+            Follow();
         };
-        Paint();
         ContextMenu menu = new();
-        menu.Opening += (_, _) => area.OpenTabMenu(this, document, menu);
+        menu.Opening += (_, _) =>
+        {
+            if (Shown() is { } document)
+            {
+                area.OpenTabMenu(this, document, menu);
+            }
+        };
         border.ContextMenu = menu;
         border.PointerPressed += (_, e) =>
         {
+            if (Shown() is not { } document)
+            {
+                return;
+            }
             PointerPointProperties pressed = e.GetCurrentPoint(this).Properties;
             if (pressed.IsMiddleButtonPressed)
             {
                 area.CloseTab(this, document);
+                e.Handled = true;
+            }
+            // Each second press of a run of clicks, so double-clicks in quick turn each toggle.
+            else if (pressed.IsLeftButtonPressed && e.ClickCount % 2 == 0)
+            {
+                area.RequestMaximize();
                 e.Handled = true;
             }
             else if (pressed.IsLeftButtonPressed)
@@ -754,7 +772,7 @@ public sealed class EditorGroup : DockPanel
         };
         border.PointerMoved += (_, e) => area.TabDragOf(this)?.Continue(e);
         border.PointerReleased += (_, e) => area.TabDragOf(this)?.End(e);
-        return border;
+        return border.Showing<EditorTab>(Paint);
     }
 
     /// <summary>What the editor's context switcher shows for a file in several of the server's projects: the target
@@ -766,12 +784,7 @@ public sealed class EditorGroup : DockPanel
         {
             return null;
         }
-        return document.ProjectContexts.Select(ProjectOf).Distinct(StringComparer.Ordinal).Count() == 1 && FrameworkOf(chosen) is { } framework ? framework : chosen;
-
-        static string ProjectOf(string label) => FrameworkOf(label) is { } framework ? label[..^(framework.Length + 3)] : label;
+        return document.ProjectContexts.Select(ProjectContext.ProjectOf).Distinct(StringComparer.Ordinal).Count() == 1
+            && ProjectContext.FrameworkOf(chosen) is { } framework ? framework : chosen;
     }
-
-    /// <summary>The target framework a context's name ends with, in parentheses; null for a project's alone.</summary>
-    private static string? FrameworkOf(string label) =>
-        label.EndsWith(')') && label.LastIndexOf(" (", StringComparison.Ordinal) is int open and > 0 ? label[(open + 2)..^1] : null;
 }

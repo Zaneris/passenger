@@ -86,8 +86,8 @@ public sealed class AspireView : DockPanel, IDisposable
         ResourceList = new ListBox
         {
             Classes = { "tree" },
-            ItemTemplate = RunRows.Template<AspireRow>(Row, row => this.model.Toggle(row), uri => Browse?.Invoke(uri), "aspireUrl"),
         };
+        RunRows.Use<AspireRow>(ResourceList, Row, row => this.model.Toggle(row), uri => Browse?.Invoke(uri), "aspireUrl");
         AutomationProperties.SetName(ResourceList, "Aspire resources");
         ResourceList.SelectionChanged += (_, _) =>
         {

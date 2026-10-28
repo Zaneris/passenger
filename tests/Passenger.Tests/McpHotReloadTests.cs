@@ -23,6 +23,7 @@ public sealed class McpHotReloadTests : McpRig, IClassFixture<RestoredFolders>
     [Fact]
     public async Task An_agent_stops_at_an_exception_type_runs_to_a_line_moves_back_and_applies_hot_reload_changes_told_each_rude_edit_at_its_line()
     {
+        await TakeFolderAsync();
         Write("Program.cs", "int total = 0;\ntotal += 1;\ntotal += 10;\ntotal += 100;\nfor (int turn = 1; turn <= 2; turn++)\n{\n"
             + "    try { throw new ArgumentException(\"argument\"); } catch (ArgumentException) { }\n"
             + "    try { throw new InvalidOperationException($\"operation {turn}\"); } catch (InvalidOperationException) { }\n}\n"
@@ -116,8 +117,8 @@ public sealed class McpHotReloadTests : McpRig, IClassFixture<RestoredFolders>
             window.OpenFile(Path.Combine(Folder, "Helper.cs"));
             Typing.Replace(window, "value * 2", "value * 2 + 1");
 
-            client = Await(Task.Run(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
-            Task<JsonElement> applying = Task.Run(() => Call(client, McpTools.HotReload));
+            client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+            Task<JsonElement> applying = Waiting.Apart(() => Call(client, McpTools.HotReload));
             Press(Question(window, "the question for the agent's hot_reload"), "Allow");
             JsonElement applied = Await(applying, "the agent's hot_reload");
             Assert.True(applied.GetProperty("result").GetString() == "applied" && applied.GetProperty("methods").GetInt32() == 1, $"The agent's edit was not applied: {applied}");
@@ -145,6 +146,7 @@ public sealed class McpHotReloadTests : McpRig, IClassFixture<RestoredFolders>
     [Fact]
     public async Task An_agent_applies_hot_reload_changes_to_what_run_runs_under_dotnet_watch_and_is_told_what_dotnet_watch_made_of_them()
     {
+        await TakeFolderAsync();
         File.WriteAllText(Path.Combine(Folder, "Program.cs"),
             "while (true)\n{\n    Console.WriteLine(Talk.Say());\n    Thread.Sleep(200);\n}\n\nstatic class Talk\n{\n    public static string Say() => \"before the edit\";\n}\n");
         await using McpClient client = await Start(["--mcp", Folder]);

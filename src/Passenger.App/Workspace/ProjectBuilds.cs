@@ -43,6 +43,10 @@ public sealed class ProjectBuilds
     /// <summary>The hold on the host's design-time builds that a build of the IDE's own has until it ends.</summary>
     private CancellationTokenSource? holding;
 
+    /// <summary>The host building the folder's round while it builds, and the projects asked of it whose folders going
+    /// would hold it (<see cref="FolderChanged"/>).</summary>
+    private (ProjectHost Host, List<string> Projects)? inHost;
+
     /// <param name="projects">The open workspace's projects to load, those of the file shown (and those it references)
     /// apart, asked on the UI thread as the server is ready for them.</param>
     /// <param name="solution">The global properties the open solution gives its projects, as a build of it would.</param>
@@ -60,15 +64,19 @@ public sealed class ProjectBuilds
     /// builds none as it opens.</summary>
     public int Builds { get; private set; }
 
+    /// <summary>How many projects the language server is waiting for the builds of.</summary>
+    public int Awaited { get; private set; }
+
     /// <summary>Takes up a folder, with the store's cache of its builds when the window keeps one, read off the UI thread
-    /// as the folder opens.</summary>
-    public void Open(string opened, StateDocument<ProjectBuildCache>? cache)
+    /// as the folder opens, or the builds begun <paramref name="ahead"/> of the window, which the server's first question
+    /// waits for.</summary>
+    public void Open(string opened, StateDocument<ProjectBuildCache>? cache, Task<ProjectBuildCache>? ahead = null)
     {
         UiThread.Check();
         Close();
         folder = opened;
         kept = cache;
-        reading = cache?.ValueAsync();
+        reading = ahead ?? cache?.ValueAsync();
     }
 
     /// <summary>The cache, once read, in what the builds know.</summary>
@@ -93,7 +101,8 @@ public sealed class ProjectBuilds
         }
     }
 
-    /// <summary>Lets the folder go: what is still being built for it is dropped as it lands, and what waits for it fails.</summary>
+    /// <summary>Lets the folder go: what is still being built for it is dropped as it lands, and what waits for it, or asks
+    /// for it later, fails.</summary>
     public void Close()
     {
         UiThread.Check();
@@ -109,12 +118,16 @@ public sealed class ProjectBuilds
         known.Clear();
         queued.Clear();
         building = false;
+        inHost = null;
         foreach (TaskCompletionSource<BuiltProject> waiter in waiting.Values)
         {
-            waiter.TrySetResult(new BuiltProject(string.Empty, "[]", [], "the folder was closed"));
+            waiter.TrySetResult(new BuiltProject(string.Empty, RawJson.EmptyArray, [], Closed));
         }
         waiting.Clear();
     }
+
+    /// <summary>Why a project asked of a folder let go has no builds.</summary>
+    private const string Closed = "the folder was closed";
 
     /// <summary>Holds the project host's design-time builds of WPF and Avalonia projects off (every window's on that host)
     /// for a build of the IDE's own, which writes the generated code and resources they write in obj/: done once those running, named to
@@ -131,7 +144,7 @@ public sealed class ProjectBuilds
         CancellationToken released = hold.Token;
         try
         {
-            ProjectHost host = await Task.Run(() => ProjectHosts.ForAsync(following, released));
+            ProjectHost host = await BackgroundWork.Run(() => ProjectHosts.ForAsync(following, released));
             await host.HoldAsync(running => UiThread.Post(() => waiting(running)), released);
         }
         catch (ProjectHostFailed)
@@ -151,7 +164,7 @@ public sealed class ProjectBuilds
 
     /// <summary>The projects the server is to load: each with its builds when they stand, the rest built now, those the
     /// server opens first first; none to give when the host will not start for the folder.</summary>
-    private async Task<(IReadOnlyList<ProjectToOpen> First, IReadOnlyList<ProjectToOpen> Later)?> ProjectsAsync()
+    private async Task<FedProjects?> ProjectsAsync()
     {
         int mine = generation;
         await TakeCacheAsync();
@@ -160,7 +173,7 @@ public sealed class ProjectBuilds
         string? host = await HostSdkAsync();
         if (mine != generation)
         {
-            return ([], []);
+            return new FedProjects([], [], null);
         }
         if (host is null)
         {
@@ -175,13 +188,14 @@ public sealed class ProjectBuilds
             builtUnder = under;
         }
         Dictionary<string, KeptBuild> held = new(known, StringComparer.Ordinal);
+        DateTime looked = DateTime.UtcNow;
         // Read off the window's thread: a large solution's builds are megabytes.
-        Dictionary<string, ProjectToOpen> standing = await Task.Run(() => all
+        Dictionary<string, ProjectToOpen> standing = await BackgroundWork.Run(() => all
             .Where(p => held.TryGetValue(p, out KeptBuild? build) && build.Inputs.All(Stamps.Holds))
             .ToDictionary(p => p, p => new ProjectToOpen(p, held[p].Read(), Said(held[p].Diagnostics)), StringComparer.Ordinal));
         if (mine != generation)
         {
-            return ([], []);
+            return new FedProjects([], [], null);
         }
         foreach (string path in first.Where(p => !standing.ContainsKey(p)))
         {
@@ -198,12 +212,13 @@ public sealed class ProjectBuilds
         {
             IdeErrors.Write($"C# language server loads {string.Join(", ", first.Select(Path.GetFileNameWithoutExtension))} first, for the file shown ({first.Count(standing.ContainsKey)} of them as built before)");
         }
-        return ([.. first.Select(Open)], [.. rest.Select(Open)]);
+        return new FedProjects([.. first.Select(Open)], [.. rest.Select(Open)], standing.Count > 0 ? looked : null);
 
         ProjectToOpen Open(string path) => standing.GetValueOrDefault(path) ?? new(path, null);
     }
 
-    private static List<ProjectDiagnostic> Said(IReadOnlyList<BuildDiagnostic>? logged) =>
+    /// <summary>The errors and warnings a project's builds logged, as the server is given them.</summary>
+    internal static List<ProjectDiagnostic> Said(IReadOnlyList<BuildDiagnostic>? logged) =>
         [.. (logged ?? []).Select(d => new ProjectDiagnostic(d.Error, d.Message, d.Project))];
 
     /// <summary>The SDK the folder's host loads, which the builds kept were made with or not; null when it will not start.</summary>
@@ -215,7 +230,7 @@ public sealed class ProjectBuilds
         }
         try
         {
-            return (await Task.Run(() => ProjectHosts.ForAsync(following))).Sdk;
+            return (await BackgroundWork.Run(() => ProjectHosts.ForAsync(following))).Sdk;
         }
         catch (ProjectHostFailed)
         {
@@ -223,20 +238,53 @@ public sealed class ProjectBuilds
         }
     }
 
-    /// <summary>One project's builds as the server asks for them: those kept when they stand, else built now.</summary>
-    private async Task<ProjectInfoResult> InfoAsync(string path)
+    /// <summary>One project's builds as the server asks for them: those kept when they stand, else built now, with what
+    /// they read that changed as they were made.</summary>
+    private async Task<FedProject> InfoAsync(string path)
     {
         await TakeCacheAsync();
-        if (!waiting.ContainsKey(path) && known.TryGetValue(path, out KeptBuild? held) && await Task.Run(() => held.Inputs.All(Stamps.Holds)))
+        if (!waiting.ContainsKey(path) && known.TryGetValue(path, out KeptBuild? held) && await BackgroundWork.Run(() => held.Inputs.All(Stamps.Holds)))
         {
-            return new ProjectInfoResult(held.Read(), null, Said(held.Diagnostics));
+            return new FedProject(new ProjectInfoResult(held.Read(), null, Said(held.Diagnostics)), []);
         }
-        BuiltProject built = await Built(path);
-        return built.Problem is { } problem ? new ProjectInfoResult(null, problem) : new ProjectInfoResult(built.Infos, null, Said(built.Diagnostics));
+        BuiltProject built;
+        Awaited++;
+        try
+        {
+            built = await Built(path);
+        }
+        finally
+        {
+            Awaited--;
+        }
+        if (built.Problem is { } problem)
+        {
+            return new FedProject(new ProjectInfoResult(null, problem), []);
+        }
+        // Looked at off the window's thread: a project's inputs are files by the hundred.
+        return new FedProject(new ProjectInfoResult(built.Infos.ToString(), null, Said(built.Diagnostics)), await BackgroundWork.Run(() => Changed(built.Inputs)));
     }
 
+    /// <summary>The files among a build's inputs that are no longer as it found them, each as made, changed or gone (a
+    /// folder's names changing names no file).</summary>
+    internal static List<FileEvent> Changed(IReadOnlyList<Stamp> inputs)
+    {
+        List<FileEvent> changed = [];
+        foreach (Stamp input in inputs.Where(input => !input.Folder && !Stamps.Holds(input)))
+        {
+            string path = PathNames.Canonical(input.Path);
+            changed.Add(new FileEvent(path, !File.Exists(path) ? FileChangeType.Deleted : input.Length < 0 ? FileChangeType.Created : FileChangeType.Changed));
+        }
+        return changed;
+    }
+
+    /// <summary>A project's builds once the host has built them; asked once the folder was let go, no build at all, saying so.</summary>
     private Task<BuiltProject> Built(string path)
     {
+        if (folder is null)
+        {
+            return Task.FromResult(new BuiltProject(path, RawJson.EmptyArray, [], Closed));
+        }
         Queue(path);
         Pump();
         return waiting[path].Task;
@@ -282,6 +330,28 @@ public sealed class ProjectBuilds
         }
     }
 
+    /// <summary>Ends the host building the folder's round once the folder of a project in it is seen to go (deleted from
+    /// outside the IDE): MSBuild in the host never ends a build whose working folder was deleted under it, and every
+    /// window's design-time builds wait behind it. Each round it held is asked of a host started anew.</summary>
+    public void FolderChanged(FolderChanges changes)
+    {
+        UiThread.Check();
+        if (inHost is not ({ HasExited: false } host, List<string> asked) || !(changes.Structure || changes.Lost))
+        {
+            return;
+        }
+        foreach (string project in asked.Where(waiting.ContainsKey))
+        {
+            // Named by these changes too: a project missing all along fails at once in the host, holding nothing.
+            if (Path.GetDirectoryName(project) is { } place && !Directory.Exists(place)
+                && (changes.Lost || changes.Paths.Any(p => PathNames.Within(p, place) || PathNames.IsUnder(place, p))))
+            {
+                host.End($"the folder of {project} was deleted under its design-time build");
+                return;
+            }
+        }
+    }
+
     /// <summary>Has the host build what is queued, all of it at once, the next round once this one ends.</summary>
     private void Pump()
     {
@@ -292,14 +362,17 @@ public sealed class ProjectBuilds
         building = true;
         List<string> round = [.. queued.Where(p => !heldOff.Any(h => PathNames.Within(p, h)))];
         queued.RemoveAll(round.Contains);
-        Dictionary<string, string> properties = new(solution(), StringComparer.OrdinalIgnoreCase)
-        {
-            // What Roslyn's server gives its own build host, so Razor's generated C# is in the builds as it would be there.
-            ["RazorDesignTimeTargets"] = Path.Combine(RoslynServerFolder.Carried, "Targets", "Microsoft.NET.Sdk.Razor.DesignTime.targets"),
-        };
+        Dictionary<string, string> properties = Properties(solution());
         // Not background work: only the language server's load waits on it, and a large solution's round takes minutes.
         IdeErrors.Observe(RoundAsync(generation, folder, round, properties, ending.Token));
     }
+
+    /// <summary>The global properties the projects are built with at design time under a solution's.</summary>
+    public static Dictionary<string, string> Properties(IReadOnlyDictionary<string, string> solution) => new(solution, StringComparer.OrdinalIgnoreCase)
+    {
+        // What Roslyn's server gives its own build host, so Razor's generated C# is in the builds as it would be there.
+        ["RazorDesignTimeTargets"] = Path.Combine(RoslynServerFolder.Carried, "Targets", "Microsoft.NET.Sdk.Razor.DesignTime.targets"),
+    };
 
     /// <summary>The solution the projects are built under now, by the path its global properties give.</summary>
     private string? Under() => solution().GetValueOrDefault("SolutionPath");
@@ -307,10 +380,25 @@ public sealed class ProjectBuilds
     private async Task RoundAsync(int mine, string following, List<string> round, Dictionary<string, string> properties, CancellationToken cancel)
     {
         long began = Stopwatch.GetTimestamp();
+        HashSet<string> landed = new(StringComparer.Ordinal);
         try
         {
-            ProjectHost host = await Task.Run(() => ProjectHosts.ForAsync(following));
-            BuildDone done = await host.BuildAsync(round, properties, built => UiThread.Post(() => Land(mine, built)), cancel);
+            ProjectHost host = await BackgroundWork.Run(() => ProjectHosts.ForAsync(following));
+            BuildDone done;
+            try
+            {
+                done = await BuildAsync(host, round, round);
+            }
+            catch (ProjectHostFailed ended) when (ended.HostEnded && !cancel.IsCancellationRequested)
+            {
+                // Every window shares the host, which another folder's build may have ended: a host started anew builds the rest once.
+                List<string> left = Left();
+                IdeErrors.Write($"Project host (process {host.ProcessId}) building the projects of {following} at design time: {ended.Reason}. The {left.Count} not yet built are asked of a host started anew");
+                // A project whose folder has gone holds no host: it finds no project file there, and fails at once.
+                (host, List<string> standing) = await BackgroundWork.Run(async () =>
+                    (await ProjectHosts.ForAsync(following), left.Where(p => Directory.Exists(Path.GetDirectoryName(p))).ToList()));
+                done = await BuildAsync(host, left, standing);
+            }
             if (mine == generation)
             {
                 IdeErrors.Write($"Project host (process {host.ProcessId}) built {done.Built} projects of {following} at design time in {done.Seconds:0.00} s, {Stopwatch.GetElapsedTime(began).TotalSeconds:0.00} s after they were asked for");
@@ -327,9 +415,9 @@ public sealed class ProjectBuilds
             {
                 string why = error is ProjectHostFailed failed ? failed.Reason : error.Message;
                 IdeErrors.Write($"The project host could not build the projects of {following}: {why}");
-                foreach (string path in round)
+                foreach (string path in Left())
                 {
-                    Land(mine, new BuiltProject(path, "[]", [], why));
+                    Land(mine, new BuiltProject(path, RawJson.EmptyArray, [], why));
                 }
             }
         }
@@ -338,7 +426,32 @@ public sealed class ProjectBuilds
             if (mine == generation)
             {
                 building = false;
+                inHost = null;
                 Pump();
+            }
+        }
+
+        Task<BuildDone> BuildAsync(ProjectHost asked, List<string> projects, List<string> watched)
+        {
+            if (mine == generation)
+            {
+                inHost = (asked, watched);
+            }
+            return asked.BuildAsync(projects, properties, built =>
+            {
+                lock (landed)
+                {
+                    landed.Add(built.Path);
+                }
+                UiThread.Post(() => Land(mine, built));
+            }, cancel);
+        }
+
+        List<string> Left()
+        {
+            lock (landed)
+            {
+                return [.. round.Where(p => !landed.Contains(p))];
             }
         }
     }
@@ -376,10 +489,9 @@ public sealed class ProjectBuilds
     /// <summary>The server's client's way in: each question crosses to the UI thread, where the builds are.</summary>
     private sealed class Crossing(ProjectBuilds builds) : IProjectFeed
     {
-        public Task<(IReadOnlyList<ProjectToOpen> First, IReadOnlyList<ProjectToOpen> Later)?> ProjectsAsync(CancellationToken cancel) =>
-            UiThread.InvokeAsync(builds.ProjectsAsync);
+        public Task<FedProjects?> ProjectsAsync(CancellationToken cancel) => UiThread.InvokeAsync(builds.ProjectsAsync);
 
-        public Task<ProjectInfoResult> InfoAsync(string path, CancellationToken cancel) => UiThread.InvokeAsync(() => builds.InfoAsync(path));
+        public Task<FedProject> InfoAsync(string path, CancellationToken cancel) => UiThread.InvokeAsync(() => builds.InfoAsync(path));
     }
 }
 
@@ -441,11 +553,10 @@ public sealed record KeptBuild
 
     public static KeptBuild Of(BuiltProject built)
     {
-        byte[] text = Encoding.UTF8.GetBytes(built.Infos);
         using MemoryStream packed = new();
         using (BrotliStream brotli = new(packed, CompressionLevel.Fastest, leaveOpen: true))
         {
-            brotli.Write(text);
+            brotli.Write(built.Infos.Utf8.Span);
         }
         return new KeptBuild { Builds = Convert.ToBase64String(packed.ToArray()), Inputs = [.. built.Inputs], Diagnostics = [.. built.Diagnostics ?? []] };
     }

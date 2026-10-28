@@ -106,6 +106,12 @@ public sealed class SemanticHighlighter : IHighlighter, IBraceMatcher, IDisposab
         return merged;
     }
 
+    public void Showing(TextSnapshot snapshot, int start, int length)
+    {
+        Shown(start, length);
+        syntax.Showing(snapshot, start, length);
+    }
+
     /// <summary>The parser's colours this layers over, which stand alone again once the server is gone.</summary>
     public IHighlighter Syntax => syntax;
 
@@ -123,7 +129,16 @@ public sealed class SemanticHighlighter : IHighlighter, IBraceMatcher, IDisposab
         document.Text.Changed -= OnTextChanged;
     }
 
-    private void OnSyntaxChanged(object? sender, EventArgs e) => Changed?.Invoke(this, EventArgs.Empty);
+    private void OnSyntaxChanged(object? sender, EventArgs e)
+    {
+        KeptColours = syntax.KeptColours;
+        Changed?.Invoke(this, EventArgs.Empty);
+        KeptColours = false;
+    }
+
+    /// <summary>The parser's word that it kept every colour it had given, while it is raised: the server's tokens are as
+    /// they were.</summary>
+    public bool KeptColours { get; private set; }
 
     /// <summary>How many changes the colours shown are carried through to the text as it stands, each range drawn going
     /// through each: a run of typing in one place is one, however long the server takes to answer.</summary>
@@ -360,17 +375,33 @@ public sealed class SemanticHighlighter : IHighlighter, IBraceMatcher, IDisposab
         {
             covered = TextEditing.MapRange(covered, history[i].Edits);
         }
-        TextRange reach = covered;
         List<SyntaxSpan> spans = Carried(near, start, end);
-        spans.RemoveAll(s => s.Start < reach.Start || s.End > reach.End);
-        if (whole is not null && (start < reach.Start || end > reach.End))
+        Keep(spans, covered, inside: true);
+        if (whole is not null && (start < covered.Start || end > covered.End))
         {
             List<SyntaxSpan> around = Carried(whole, start, end);
-            around.RemoveAll(s => s.End > reach.Start && s.Start < reach.End);
+            Keep(around, covered, inside: false);
             spans.AddRange(around);
             spans.Sort((a, b) => a.Start.CompareTo(b.Start));
         }
         return spans;
+    }
+
+    /// <summary>Keeps the spans wholly inside a range, or (not <paramref name="inside"/>) those touching none of it, in order.</summary>
+    private static void Keep(List<SyntaxSpan> spans, TextRange range, bool inside)
+    {
+        int kept = 0;
+        for (int i = 0; i < spans.Count; i++)
+        {
+            SyntaxSpan span = spans[i];
+            bool within = span.Start >= range.Start && span.End <= range.End;
+            bool apart = span.End <= range.Start || span.Start >= range.End;
+            if (inside ? within : apart)
+            {
+                spans[kept++] = span;
+            }
+        }
+        spans.RemoveRange(kept, spans.Count - kept);
     }
 
     /// <summary>One answer's tokens near a range of the current text: found in the answer's own text by halving, then

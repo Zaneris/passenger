@@ -15,10 +15,10 @@ public partial class ManagedDebugger
         Continue(clearVariables: false);
     }
 
-    private void HandleProcessExited(object? sender, ExitProcessCorDebugManagedCallbackEventArgs exitProcessCorDebugManagedCallbackEventArgs)
+    private async Task HandleProcessExited(ExitProcessCorDebugManagedCallbackEventArgs exitProcessCorDebugManagedCallbackEventArgs)
     {
         _logger?.Invoke($"Process exited");
-        ReportExit(EndedWith());
+        await ReportExitAsync(await EndedWithAsync().ConfigureAwait(false)).ConfigureAwait(false);
         OnTerminated?.Invoke();
     }
 
@@ -92,7 +92,7 @@ public partial class ManagedDebugger
 
             _logger?.Invoke(metadataReader.HasSymbols ? $"  Symbols loaded for {moduleName}" : $"  No symbols found for {moduleName}");
         }
-        catch (Exception ex)
+        catch (Exception ex) when (Failures.OfRuntime(ex))
         {
             _logger?.Invoke($"  Error loading symbols for {moduleName}: {ex.Message}");
         }
@@ -310,6 +310,11 @@ public partial class ManagedDebugger
                     Continue(clearVariables: true);
                     return;
                 }
+                if (shouldStop is null)
+                {
+                    // The async step ended here and showed its stop.
+                    return;
+                }
 
                 if (_stepper is not null)
                 {
@@ -428,7 +433,7 @@ public partial class ManagedDebugger
             _entryBreakpoint = new EntryBreakpoint(corBreakpoint, moduleInfo.BaseAddress, entryPoint.MethodToken, entryPoint.ILOffset);
             _logger?.Invoke($"Entry breakpoint bound in {moduleInfo.ModuleName} at method 0x{entryPoint.MethodToken:X}, IL offset {entryPoint.ILOffset}");
         }
-        catch (Exception ex)
+        catch (Exception ex) when (Failures.OfRuntime(ex))
         {
             _logger?.Invoke($"Error binding entry breakpoint in {moduleInfo.ModuleName}: {ex.Message}");
         }
@@ -454,6 +459,14 @@ public partial class ManagedDebugger
             // A step that had completed when a stop (another thread's, a pause) ended it: its end, queued behind, stops nothing.
             _logger?.Invoke($"The end of a step on thread {corThread.Id} that a stop ended meanwhile is let go");
             Continue(clearVariables: false);
+            return;
+        }
+        if (_asyncStepper?.WaitsAtAwait(corThread) is true)
+        {
+            // The step's runtime-async method left at an await that suspended: the step goes on where its run does.
+            stepCompleteEventArgs.Stepper.Deactivate();
+            _stepper = null;
+            Continue(clearVariables: true);
             return;
         }
         ICorDebugILFrame ilFrame = (ICorDebugILFrame)corThread.ActiveFrame;
@@ -663,6 +676,10 @@ public partial class ManagedDebugger
             case CorDebugExceptionCallbackType.DEBUG_EXCEPTION_CATCH_HANDLER_FOUND:
                 {
                     bool handlerIsUserCode = IsUserCodeFrame(exceptionEventArgs.Frame);
+                    if (exceptionEventArgs.Frame is { } caughtIn)
+                    {
+                        _asyncStepper?.CaughtOn(corThread, caughtIn);
+                    }
                     bool seen = _exceptionStates.TryGetValue(threadId, out ExceptionPropagationState? state);
                     shouldStop = _justMyCode && handlerIsUserCode is false && seen && state!.HasReachedUserCode && MatchesExceptionBreakpoint(ExceptionBreakpointFilter.UserUnhandled, exceptionType);
                     // Without Just My Code every frame is the user's, so an exception is handled in user code or not at all.
@@ -811,7 +828,7 @@ public partial class ManagedDebugger
             return frame is not null && FindModule(frame.Function.Module) is { IsUserCode: true }
                 && (frame.Function is not ICorDebugFunction2 function || function.TryGetJMCStatus(out bool isJustMyCode) is not Cor.S_OK || isJustMyCode);
         }
-        catch
+        catch (Exception error) when (Failures.OfRuntime(error))
         {
             return false;
         }

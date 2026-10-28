@@ -39,23 +39,28 @@ public sealed class DebugView : DockPanel, IOwnKeys
         // What is typed into the console is the program's input.
         consolePane = new DockPanel { IsVisible = false, Children = { model.Console } };
         // The sessions' tabs are in the window's header, after its title.
-        HeaderTools = new ItemsControl
+        ItemsControl sessions = new()
         {
             ItemsSource = model.Sessions,
             VerticalAlignment = VerticalAlignment.Center,
             // In a narrow window the last tabs give way first, each name ending in an ellipsis.
             ItemsPanel = new FuncTemplate<Panel?>(() => new ShrinkingRow()),
-            ItemTemplate = new FuncDataTemplate<DebugTab>((tab, _) => tab is null ? new TextBlock() : SessionTab(tab), supportsRecycling: false),
         };
+        ReusedRows.Use(sessions, SessionTab);
+        HeaderTools = sessions;
 
         threads = new ComboBox
         {
             [DockProperty] = Dock.Top,
             Margin = new Thickness(6, 6, 6, 4),
             HorizontalAlignment = HorizontalAlignment.Stretch,
-            ItemTemplate = new FuncDataTemplate<DapThread>((thread, _) => new TextBlock { Text = thread is null ? "" : ThreadLabel(thread) }),
             ItemsSource = model.Threads,
         };
+        ReusedRows.Use(threads, () =>
+        {
+            TextBlock label = new();
+            return label.Showing<DapThread>(thread => label.Text = ThreadLabel(thread));
+        });
         threads.SelectionChanged += (_, _) =>
         {
             if (!showingFrames && threads.SelectedItem is DapThread thread)
@@ -67,8 +72,8 @@ public sealed class DebugView : DockPanel, IOwnKeys
         {
             Classes = { "tree" },
             ItemsSource = model.Frames,
-            ItemTemplate = new FuncDataTemplate<DapStackFrame>((frame, _) => FrameRow(frame), supportsRecycling: false),
         };
+        ReusedRows.Use(frames, FrameRow);
         frames.SelectionChanged += (_, _) =>
         {
             if (!showingFrames && frames.SelectedItem is DapStackFrame frame)
@@ -182,29 +187,34 @@ public sealed class DebugView : DockPanel, IOwnKeys
     /// <summary>The Variables view's list, whose rows are <see cref="DebugModel.Tree"/>'s.</summary>
     public VariablesList VariablesList => variables;
 
-    private Control SessionTab(DebugTab tab)
+    /// <summary>A session's tab for whichever session the strip hands it: its name, muted once the session has ended, and
+    /// its ×, which closes the session it shows.</summary>
+    private Control SessionTab()
     {
-        TextBlock name = new() { Text = tab.Name, VerticalAlignment = VerticalAlignment.Center };
-        name.Classes.Set("muted", tab.HasEnded);
-        ToggleButton button = ToolTabs.Tab(name, tab.IsChosen, () => model.Close(tab), "Close Session");
-        tab.PropertyChanged += (_, e) =>
+        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
+        ToggleButton button = null!;
+        button = ToolTabs.Tab(name, false, () =>
         {
-            if (e.PropertyName == nameof(DebugTab.IsChosen))
+            if (button.DataContext is DebugTab shown)
             {
-                button.IsChecked = tab.IsChosen;
+                model.Close(shown);
             }
-            else if (e.PropertyName == nameof(DebugTab.HasEnded))
-            {
-                name.Classes.Set("muted", tab.HasEnded);
-            }
-        };
+        }, "Close Session");
         // A press on the chosen tab leaves it chosen, where the toggle would let it go.
         button.Click += (_, _) =>
         {
-            model.Choose(tab);
-            button.IsChecked = tab.IsChosen;
+            if (button.DataContext is DebugTab shown)
+            {
+                model.Choose(shown);
+                button.IsChecked = shown.IsChosen;
+            }
         };
-        return button;
+        return button.Showing<DebugTab>(tab =>
+        {
+            name.Text = tab.Name;
+            name.Classes.Set("muted", tab.HasEnded);
+            button.IsChecked = tab.IsChosen;
+        });
     }
 
     /// <summary>The thread and frame the model chose, without raising the choice back.</summary>
@@ -325,39 +335,34 @@ public sealed class DebugView : DockPanel, IOwnKeys
         }
     }
 
-    private Control FrameRow(DapStackFrame? frame)
+    /// <summary>A frame's row: its method, then its place (its module where it has no source) muted, a frame the
+    /// adapter calls subtle faded.</summary>
+    private Control FrameRow()
     {
-        if (frame is null)
-        {
-            return new TextBlock();
-        }
-        // A frame shows as its method, its module after: the module tells user code from the framework's.
-        string name = frame.Name;
-        string module = string.Empty;
-        if (name.IndexOf('!', StringComparison.Ordinal) is int bang and > 0)
-        {
-            module = name[..bang];
-            name = name[(bang + 1)..];
-        }
+        TextBlock method = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock where = new()
         {
-            Tag = frame,
-            Text = frame.Source?.Name is { } file ? $"{file}:{model.LineOf(frame)}" : module,
             FontSize = 12,
             Margin = new Thickness(8, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
         };
         where.Classes.Add("muted");
         // Its place gives way first, then its name, each ending in an ellipsis.
-        return new ShrinkingRow
+        ShrinkingRow row = new() { Height = ListRow.Height, Children = { method, where } };
+        return row.Showing<DapStackFrame>(frame =>
         {
-            Height = ListRow.Height,
-            Opacity = frame.PresentationHint == "subtle" ? 0.55 : 1,
-            Children =
+            // A frame shows as its method, its module after: the module tells user code from the framework's.
+            string name = frame.Name;
+            string module = string.Empty;
+            if (name.IndexOf('!', StringComparison.Ordinal) is int bang and > 0)
             {
-                new TextBlock { Text = name, VerticalAlignment = VerticalAlignment.Center },
-                where,
-            },
-        };
+                module = name[..bang];
+                name = name[(bang + 1)..];
+            }
+            method.Text = name;
+            where.Tag = frame;
+            where.Text = frame.Source?.Name is { } file ? $"{file}:{model.LineOf(frame)}" : module;
+            row.Opacity = frame.PresentationHint == "subtle" ? 0.55 : 1;
+        });
     }
 }

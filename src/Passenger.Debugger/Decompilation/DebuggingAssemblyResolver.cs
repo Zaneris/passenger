@@ -102,7 +102,7 @@ internal sealed class DebuggingAssemblyResolver(List<string> modulePaths) : IAss
 
             return new AssemblyIdentity(name, version, publicKeyToken);
         }
-        catch
+        catch (Exception error) when (Failures.OfReading(error) || error is CryptographicException)
         {
             return null;
         }

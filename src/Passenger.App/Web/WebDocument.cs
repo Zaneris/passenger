@@ -1,4 +1,5 @@
 using Passenger.App.CSharp;
+using Passenger.App.Editors;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
@@ -82,24 +83,43 @@ public sealed class WebDocument : IServerDocument, IDisposable
     /// (<see cref="Containers.EngineChecks"/>).</summary>
     public void ShowEngine(IReadOnlyList<Marker> markers)
     {
-        engine.Set(document.Text, markers);
+        engine.Set(document.Text, [.. markers.OrderBy(m => m.Range.Start).Select(m => m with { StartGravity = AnchorGravity.After })]);
         document.Markers = Shown();
     }
 
-    /// <summary>Every source's markers where the text has carried them, but an engine's on a line the server already marks
-    /// as gravely: the engine's checks and the server's often find the same problem, so the line is marked once.</summary>
+    /// <summary>Every source's markers where the text has carried them, in the order of their starts, but an engine's on a
+    /// line the server already marks as gravely: the engine's checks and the server's often find the same problem, so the
+    /// line is marked once. Each source's are in order already, so a key merges them rather than sorting them.</summary>
     private IReadOnlyList<Marker> Shown()
     {
         IReadOnlyList<Marker> own = diagnostics.Markers;
         IReadOnlyList<Marker> lint = Lint?.Markers ?? [];
         if (engine.Count == 0)
         {
-            return [.. own, .. lint];
+            return Merged(own, lint);
         }
         TextSnapshot text = document.Text.Snapshot;
         int Line(Marker m) => text.GetLineFromOffset(Math.Min(m.Range.Start, text.Length));
         HashSet<(int, MarkerKind)> marked = [.. own.Select(m => (Line(m), m.Kind))];
-        return [.. own, .. lint, .. engine.Items.Where(m => !marked.Contains((Line(m), m.Kind)))];
+        return Merged(Merged(own, lint), [.. engine.Items.Where(m => !marked.Contains((Line(m), m.Kind)))]);
+    }
+
+    /// <summary>Two lists of markers each in the order of their starts as one in that order, the first's first where two
+    /// start together.</summary>
+    private static IReadOnlyList<Marker> Merged(IReadOnlyList<Marker> first, IReadOnlyList<Marker> second)
+    {
+        if (second.Count == 0)
+        {
+            return first;
+        }
+        Marker[] merged = new Marker[first.Count + second.Count];
+        int i = 0;
+        int j = 0;
+        for (int k = 0; k < merged.Length; k++)
+        {
+            merged[k] = j == second.Count || i < first.Count && first[i].Range.Start <= second[j].Range.Start ? first[i++] : second[j++];
+        }
+        return merged;
     }
 
     internal void Connect(LanguageSession started)
@@ -179,8 +199,8 @@ public sealed class WebDocument : IServerDocument, IDisposable
     private void OnChanged(object? sender, DocumentChangedEventArgs e)
     {
         diagnostics.Moved();
-        // What it shows is every marker of its own server's and ESLint's, so with none shown only the engine's can move.
-        if (document.Markers.Count + engine.Count > 0)
+        // An engine's markers are shown again, as a key may take one onto or off a line the server marks.
+        if (engine.Count > 0)
         {
             document.Markers = Shown();
         }
@@ -251,13 +271,12 @@ public sealed class WebDocument : IServerDocument, IDisposable
     /// server's script), none for the rest, whose codes are lint rules' names or the JSON server's numbers.</summary>
     private static Diagnostic Named(Diagnostic diagnostic)
     {
-        string? code = diagnostic.Code is { ValueKind: System.Text.Json.JsonValueKind.Number } number && diagnostic.Source is "typescript" or "ts" or "js"
-            ? $"TS{number}" : null;
+        string? code = diagnostic is { CodeIsNumber: true, Code: { } number } && diagnostic.Source is "typescript" or "ts" or "js" ? $"TS{number}" : null;
         return new Diagnostic
         {
             Range = diagnostic.Range,
             Severity = diagnostic.Severity,
-            Code = code is null ? null : System.Text.Json.JsonSerializer.SerializeToElement(code),
+            Code = code,
             CodeDescription = diagnostic.CodeDescription,
             Source = diagnostic.Source,
             Message = diagnostic.Message,

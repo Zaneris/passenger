@@ -38,8 +38,6 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
 
     public event EventHandler<string>? Message;
 
-    public event EventHandler? FilesChanged;
-
     public event EventHandler<Uri>? Browsed;
 
     public CodeEditor Editor => editors.CodeEditor;
@@ -97,6 +95,21 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
         WebOf(document) is not null ? "its language server is not running"
         : service() is { } csharp ? $"the C# language server is not ready: {csharp.State}" : Refusals.NoCSharp);
 
+    /// <summary>Waits until the C# server holds every C# file come under one of the folder's projects in its project, for up
+    /// to <see cref="Patience.Limit"/>, the status bar saying which meanwhile: a command answered before would leave each it
+    /// holds in none out (a rename its callers there). Why not when the time is up, else null; null at once, the caller's
+    /// offsets still standing, for a file of another server's or with none come.</summary>
+    public async Task<string?> TakenInAsync(OpenDocument document)
+    {
+        if (CSharp is not { IsReady: true } csharp || csharp.For(document) is null)
+        {
+            return null;
+        }
+        IReadOnlyList<(string Path, string Project)> left = await csharp.UnplacedAsync(Patience.Limit, looking: false,
+            waiting => Say(waiting is null ? string.Empty : $"Waiting for the C# language server to load {Path.GetFileName(waiting)} into its project…"), CancellationToken.None);
+        return left.Count == 0 ? null : Refusals.NotTakenIn(Path.GetFileName(left[0].Path), Path.GetFileNameWithoutExtension(left[0].Project));
+    }
+
     /// <summary>The folder the open file's places are named from: the C# server's, else the web servers'.</summary>
     public string? Root => service()?.Session?.Folder ?? Web?.Invoke()?.Folder;
 
@@ -112,8 +125,23 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
     /// <summary>Find Usages' answer, for the Find window: what was searched for and where it is used.</summary>
     public void ShowUsages((string Title, IReadOnlyList<LspLocation> Usages) found) => UsagesFound?.Invoke(this, found);
 
-    /// <summary>A refactoring changed files beyond the open ones, or made new ones, which the Explorer and Git then show.</summary>
-    public void ChangedFiles() => FilesChanged?.Invoke(this, EventArgs.Empty);
+    /// <summary>How the window runs a change of files beyond the open ones (<see cref="ChangeFiles"/>).</summary>
+    public Action<IReadOnlyCollection<string>, Action>? FilesChanging { get; set; }
+
+    /// <summary>Runs a refactoring's change of files beyond the open ones, which the window follows once it is done: what it
+    /// made, moved or deleted among <paramref name="paths"/>, which the Explorer and Git then show, and the projects that
+    /// read a text it changed.</summary>
+    public void ChangeFiles(IReadOnlyCollection<string> paths, Action change)
+    {
+        if (FilesChanging is { } following)
+        {
+            following(paths, change);
+        }
+        else
+        {
+            change();
+        }
+    }
 
     /// <summary>A page to open in the browser: an ESLint rule's, an image's registry page.</summary>
     public void Browse(Uri page) => Browsed?.Invoke(this, page);

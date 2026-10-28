@@ -13,10 +13,9 @@ public sealed record Removal(TextRange Range, string Name, string Kind, string? 
 /// <summary>Reads a declaration from a file's syntax for Safe Delete: what deleting it takes out.</summary>
 public static class SafeDeletion
 {
-    private static readonly CSharpParseOptions ClosedFile = new(LanguageVersion.Preview, DocumentationMode.Parse, preprocessorSymbols: ["DEBUG", "TRACE", "NET", "NETCOREAPP"]);
-
-    /// <summary>A file not open in the editor, parsed once for what is asked of it.</summary>
-    public static ParsedText Parse(string text) => new(CSharpSyntaxTree.ParseText(text, ClosedFile), TextSnapshot.From(text));
+    /// <summary>A file not open in the editor, parsed once for what is asked of it with its project's symbols
+    /// (<see cref="CSharpParsing"/>).</summary>
+    public static ParsedText Parse(string text, CSharpParseOptions options) => new(CSharpSyntaxTree.ParseText(text, options), TextSnapshot.From(text));
 
     /// <summary>What deleting the declaration whose name is at an offset takes out of its file, or null when no name of a
     /// declaration is there.</summary>
@@ -45,6 +44,7 @@ public static class SafeDeletion
             {
                 InterfaceDeclarationSyntax => "interface",
                 StructDeclarationSyntax => "struct",
+                TypeDeclarationSyntax { Keyword.ValueText: "union" } => "union",
                 RecordDeclarationSyntax => "record",
                 EnumDeclarationSyntax => "enum",
                 _ => "class",

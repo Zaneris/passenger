@@ -6,6 +6,7 @@ using Microsoft.CodeAnalysis.Editing;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Operations;
 using Microsoft.CodeAnalysis.Rename;
+using Microsoft.CodeAnalysis.Text;
 
 namespace Passenger.Roslyn.Extension;
 
@@ -66,12 +67,12 @@ internal static class Signatures
         List<MethodId> members = [.. family.Select(m => Identify(before, m))];
         Solution solution = await RenameParametersAsync(before, members, change, cancel).ConfigureAwait(false);
         SyntaxAnnotation marker = new();
-        solution = await RestructureAsync(solution, members, Identify(before, method), original, change, marker, cancel).ConfigureAwait(false);
+        (solution, IReadOnlyList<UseLeft> left) = await RestructureAsync(before, solution, members, Identify(before, method), original, change, marker, cancel).ConfigureAwait(false);
         if (method.MethodKind == MethodKind.Ordinary && change.Name != method.Name)
         {
             solution = await RenameMethodAsync(solution, marker, change.Name, cancel).ConfigureAwait(false);
         }
-        return await Changes.BetweenAsync(before, solution, cancel).ConfigureAwait(false);
+        return (await Changes.BetweenAsync(before, solution, cancel).ConfigureAwait(false)) with { Left = left };
     }
 
     /// <summary>The method or constructor at a place: the one named there, declared or called (a constructor by the type
@@ -160,7 +161,7 @@ internal static class Signatures
         {
             return change.Name.Trim().Length == 0 ? "Method name can not be empty" : $"'{change.Name}' is not a valid method name";
         }
-        if (method.MethodKind == MethodKind.Ordinary && !IsType(change.ReturnType))
+        if (method.MethodKind == MethodKind.Ordinary && !IsReturnType(change.ReturnType))
         {
             return "The return type is invalid";
         }
@@ -221,6 +222,9 @@ internal static class Signatures
     private static string Normalized(string modifier) => string.Join(" ", modifier.Split(' ', StringSplitOptions.RemoveEmptyEntries));
 
     private static bool IsType(string text) => text.Trim().Length > 0 && !SyntaxFactory.ParseTypeName(text).ContainsDiagnostics;
+
+    /// <summary>A type a method can return: any type, or void, which a type's parser takes for none.</summary>
+    private static bool IsReturnType(string text) => Normalized(text) == "void" || IsType(text);
 
     private static bool IsExpression(string text) => text.Trim().Length == 0 || !SyntaxFactory.ParseExpression(text).ContainsDiagnostics;
 
@@ -325,10 +329,13 @@ internal static class Signatures
         return solution;
     }
 
-    /// <summary>Every declaration's parameters and return type as asked, and every call's arguments in the new order with
-    /// the new parameters' values, each file through one editor of its own.</summary>
-    private static async Task<Solution> RestructureAsync(Solution solution, IReadOnlyList<MethodId> members, MethodId main, IReadOnlyList<Parameter> original,
-        SignatureChange change, SyntaxAnnotation marker, CancellationToken cancel)
+    /// <summary>Every declaration's parameters and return type as asked, every call's arguments in the new order with the
+    /// new parameters' values, and every cref's parameter types, each file through one editor of its own. Each use left
+    /// as it was that the new signature leaves wrong is named with why, at its place in <paramref name="before"/>: a call
+    /// whose arguments do not all bind, a method group the method no longer fits or whose delegate's calls would reach
+    /// other parameters, a call made without the method's name that no longer compiles.</summary>
+    private static async Task<(Solution Solution, IReadOnlyList<UseLeft> Left)> RestructureAsync(Solution before, Solution solution, IReadOnlyList<MethodId> members,
+        MethodId main, IReadOnlyList<Parameter> original, SignatureChange change, SyntaxAnnotation marker, CancellationToken cancel)
     {
         Dictionary<DocumentId, DocumentEditor> editors = [];
         async Task<DocumentEditor> EditorOf(Document document)
@@ -341,7 +348,15 @@ internal static class Signatures
             return editor;
         }
 
-        HashSet<(DocumentId, Microsoft.CodeAnalysis.Text.TextSpan)> calls = [];
+        HashSet<(DocumentId, TextSpan)> seen = [];
+        List<(Document Document, BaseMethodDeclarationSyntax Declaration, bool Marked)> declarations = [];
+        List<(Document Document, SyntaxNode Call, List<Passed> Plan)> calls = [];
+        List<(Document Document, NameMemberCrefSyntax Cref, IMethodSymbol Method)> crefs = [];
+        List<Held> held = [];
+        List<UseLeft> left = [];
+        bool sameTypes = SameTypes(original, change);
+        bool samePlaces = change.Parameters.Select((p, i) => p.From < 0 || p.From == i).All(kept => kept);
+        bool sameCalls = change.Parameters.Count == original.Count && change.Parameters.Select((p, i) => p.From == i).All(kept => kept);
         IMethodSymbol? primary = await ResolveAsync(solution, main, cancel).ConfigureAwait(false);
         foreach (MethodId member in members)
         {
@@ -352,48 +367,225 @@ internal static class Signatures
             bool first = SymbolEqualityComparer.Default.Equals(method, primary);
             foreach (BaseMethodDeclarationSyntax declaration in await DeclarationsAsync(method, cancel).ConfigureAwait(false))
             {
-                Document document = solution.GetDocument(declaration.SyntaxTree)!;
-                DocumentEditor editor = await EditorOf(document).ConfigureAwait(false);
-                bool marked = first;
+                declarations.Add((solution.GetDocument(declaration.SyntaxTree)!, declaration, first));
                 first = false;
-                editor.ReplaceNode(declaration, (current, _) =>
-                {
-                    BaseMethodDeclarationSyntax now = (BaseMethodDeclarationSyntax)current;
-                    now = now.WithParameterList(Parameters(now.ParameterList, original, change));
-                    if (now is MethodDeclarationSyntax named && Normalized(change.ReturnType) != Normalized(named.ReturnType.ToString()) && change.ReturnType.Trim().Length > 0)
-                    {
-                        now = named.WithReturnType(SyntaxFactory.ParseTypeName(change.ReturnType.Trim()).WithTriviaFrom(named.ReturnType));
-                    }
-                    return marked ? now.WithAdditionalAnnotations(marker) : now;
-                });
             }
             foreach (ReferencedSymbol referenced in await SymbolFinder.FindReferencesAsync(method, solution, cancel).ConfigureAwait(false))
             {
                 foreach (ReferenceLocation place in referenced.Locations)
                 {
-                    if (place.IsImplicit || !place.Location.IsInSource || place.Document is SourceGeneratedDocument || !calls.Add((place.Document.Id, place.Location.SourceSpan)))
+                    if (!place.Location.IsInSource || place.Document is SourceGeneratedDocument || !seen.Add((place.Document.Id, place.Location.SourceSpan)))
                     {
                         continue;
                     }
                     SyntaxNode root = (await place.Document.GetSyntaxRootAsync(cancel).ConfigureAwait(false))!;
-                    if (Called(root.FindNode(place.Location.SourceSpan, getInnermostNodeForTie: true)) is not { } call)
+                    SemanticModel model = (await place.Document.GetSemanticModelAsync(cancel).ConfigureAwait(false))!;
+                    int at = place.Location.SourceSpan.Start;
+                    if (root.FindToken(at, findInsideTrivia: true).Parent?.AncestorsAndSelf().OfType<NameMemberCrefSyntax>().FirstOrDefault() is { } cref)
                     {
+                        if (cref.Parameters is not null && !sameTypes)
+                        {
+                            crefs.Add((place.Document, cref, method));
+                        }
                         continue;
                     }
-                    SemanticModel model = (await place.Document.GetSemanticModelAsync(cancel).ConfigureAwait(false))!;
-                    if (Plan(model, call, method, change, cancel) is { } plan)
+                    SyntaxNode node = root.FindNode(place.Location.SourceSpan, getInnermostNodeForTie: true);
+                    if (place.IsImplicit)
                     {
-                        DocumentEditor editor = await EditorOf(place.Document).ConfigureAwait(false);
-                        editor.ReplaceNode(call, (current, _) => WithArguments(current, plan));
+                        SyntaxNode around = node.AncestorsAndSelf().FirstOrDefault(n => n is StatementSyntax or MemberDeclarationSyntax) ?? node;
+                        if (held.Any(h => h.Node == around))
+                        {
+                            continue;
+                        }
+                        int errors = Errors(model, around, cancel);
+                        held.Add(new Held(place.Document, around, at, (now, it) =>
+                            Errors(now, it, cancel) > errors ? $"{Named(method, change)}, called here without its name, which the new signature no longer fits" : null));
+                    }
+                    else if (Called(node) is { } call)
+                    {
+                        if (Plan(model, call, method, change, cancel) is { } plan)
+                        {
+                            calls.Add((place.Document, call, plan));
+                        }
+                        else if (!sameCalls)
+                        {
+                            string why = model.GetOperation(call, cancel) is IDynamicInvocationOperation or IDynamicObjectCreationOperation
+                                ? $"a call of {Named(method, change)} bound as the program runs, whose arguments are dynamic"
+                                : $"a call of {Named(method, change)} whose arguments do not all match its parameters";
+                            left.Add(await LeftAsync(before, place.Document, at, why, cancel).ConfigureAwait(false));
+                        }
+                    }
+                    else if (Grouped(node) is var group && !IsNameOf(model, group, cancel))
+                    {
+                        string made = DelegateOf(model, group, cancel);
+                        string what = $"{Named(method, change)} as {made}";
+                        held.Add(new Held(place.Document, group, at, (now, it) =>
+                            !Binds(now, it, cancel) ? $"{what}, which the new signature no longer fits"
+                            : DelegateOf(now, it, cancel) is var remade && remade != made ? $"{what}, which it now makes {remade} instead"
+                            : !samePlaces ? $"{what}, whose calls would pass their arguments to other parameters"
+                            : null));
                     }
                 }
             }
         }
+
+        // Marked first, so a call made after whose argument holds one carries the mark, or drops it with the argument.
+        foreach (Held use in held)
+        {
+            (await EditorOf(use.Document).ConfigureAwait(false)).ReplaceNode(use.Node, (current, _) => current.WithAdditionalAnnotations(use.Mark));
+        }
+        HashSet<DocumentId> edited = [.. declarations.Select(d => d.Document.Id), .. calls.Select(c => c.Document.Id)];
+        foreach ((Document document, NameMemberCrefSyntax cref, IMethodSymbol method) in crefs)
+        {
+            if (CrefParameters(cref.Parameters!, change) is { } made)
+            {
+                edited.Add(document.Id);
+                (await EditorOf(document).ConfigureAwait(false)).ReplaceNode(cref, (current, _) => ((NameMemberCrefSyntax)current).WithParameters(made));
+            }
+            else
+            {
+                left.Add(await LeftAsync(before, document, cref.SpanStart, $"a documentation comment's cref of {Named(method, change)}, whose new parameter types it could not write", cancel).ConfigureAwait(false));
+            }
+        }
+        foreach ((Document document, BaseMethodDeclarationSyntax declaration, bool marked) in declarations)
+        {
+            (await EditorOf(document).ConfigureAwait(false)).ReplaceNode(declaration, (current, _) =>
+            {
+                BaseMethodDeclarationSyntax now = (BaseMethodDeclarationSyntax)current;
+                now = now.WithParameterList(Parameters(now.ParameterList, original, change));
+                if (now is MethodDeclarationSyntax named && Normalized(change.ReturnType) != Normalized(named.ReturnType.ToString()) && change.ReturnType.Trim().Length > 0)
+                {
+                    now = named.WithReturnType(SyntaxFactory.ParseTypeName(change.ReturnType.Trim()).WithTriviaFrom(named.ReturnType));
+                }
+                return marked ? now.WithAdditionalAnnotations(marker) : now;
+            });
+        }
+        // The last first, so a call inside another's argument is changed before the argument is moved or dropped.
+        foreach ((Document document, SyntaxNode call, List<Passed> plan) in calls.OrderByDescending(c => c.Call.SpanStart))
+        {
+            (await EditorOf(document).ConfigureAwait(false)).ReplaceNode(call, (current, _) => WithArguments(current, plan));
+        }
+        // A file only marked is checked as changed but answered as it was, so it is no file the change makes.
+        Solution checking = solution;
         foreach ((DocumentId id, DocumentEditor editor) in editors)
         {
-            solution = solution.WithDocumentSyntaxRoot(id, editor.GetChangedRoot());
+            SyntaxNode root = editor.GetChangedRoot();
+            checking = checking.WithDocumentSyntaxRoot(id, root);
+            solution = edited.Contains(id) ? solution.WithDocumentSyntaxRoot(id, root) : solution;
         }
-        return solution;
+
+        foreach (Held use in held)
+        {
+            Document document = checking.GetDocument(use.Document.Id)!;
+            SyntaxNode root = (await document.GetSyntaxRootAsync(cancel).ConfigureAwait(false))!;
+            if (root.GetAnnotatedNodes(use.Mark).FirstOrDefault() is not { } now)
+            {
+                continue;
+            }
+            if (use.Why((await document.GetSemanticModelAsync(cancel).ConfigureAwait(false))!, now) is { } why)
+            {
+                left.Add(await LeftAsync(before, use.Document, use.At, why, cancel).ConfigureAwait(false));
+            }
+        }
+        return (solution, [.. left.DistinctBy(u => (u.Path, u.At)).OrderBy(u => u.Path, StringComparer.Ordinal).ThenBy(u => u.At.Line).ThenBy(u => u.At.Character)]);
+    }
+
+    /// <summary>A use that is no call to change, marked to be found again once the signature changed, and why the new
+    /// signature leaves it wrong there (null when it does not); <paramref name="At"/> is its name's offset.</summary>
+    private sealed record Held(Document Document, SyntaxNode Node, int At, Func<SemanticModel, SyntaxNode, string?> Why)
+    {
+        public SyntaxAnnotation Mark { get; } = new();
+    }
+
+    /// <summary>A method of the hierarchy as its words name it, by the name the change gives it.</summary>
+    private static string Named(IMethodSymbol method, SignatureChange change) => method.MethodKind == MethodKind.Constructor
+        ? $"{method.ContainingType.Name}'s constructor"
+        : $"{method.ContainingType.Name}.{(Changes.IsName(change.Name) ? change.Name : method.Name)}";
+
+    /// <summary>The expression a method's name stands in as a method group: the name, or the member access it ends.</summary>
+    private static SyntaxNode Grouped(SyntaxNode name)
+    {
+        SyntaxNode node = name;
+        while (node.Parent is MemberAccessExpressionSyntax access && access.Name == node
+            || node.Parent is MemberBindingExpressionSyntax binding && binding.Name == node
+            || node.Parent is QualifiedNameSyntax qualified && qualified.Right == node)
+        {
+            node = node.Parent;
+        }
+        return node;
+    }
+
+    private static bool IsNameOf(SemanticModel model, SyntaxNode group, CancellationToken cancel) =>
+        group.Parent is ArgumentSyntax { Parent.Parent: InvocationExpressionSyntax invocation } && model.GetOperation(invocation, cancel) is INameOfOperation;
+
+    /// <summary>The delegate or function pointer a method group is made into, as its words say it ("a Func&lt;int, int&gt;").</summary>
+    private static string DelegateOf(SemanticModel model, SyntaxNode group, CancellationToken cancel)
+    {
+        for (IOperation? operation = model.GetOperation(group, cancel); operation is not null; operation = operation.Parent)
+        {
+            if (operation.Type is { TypeKind: TypeKind.Delegate or TypeKind.FunctionPointer } type)
+            {
+                string name = type.IsAnonymousType ? "delegate" : type.ToMinimalDisplayString(model, group.SpanStart);
+                return ("AEIOUaeiou".Contains(name[0], StringComparison.Ordinal) ? "an " : "a ") + name;
+            }
+        }
+        return "a method group";
+    }
+
+    /// <summary>Whether a method group still makes the delegate it stands for: it names a method, with no error in it.</summary>
+    private static bool Binds(SemanticModel model, SyntaxNode group, CancellationToken cancel) =>
+        model.GetSymbolInfo(group, cancel).Symbol is IMethodSymbol && !model.GetDiagnostics(group.Span, cancel).Any(d => d.Severity == DiagnosticSeverity.Error);
+
+    private static int Errors(SemanticModel model, SyntaxNode node, CancellationToken cancel) =>
+        model.GetDiagnostics(node.Span, cancel).Count(d => d.Severity == DiagnosticSeverity.Error);
+
+    /// <summary>Whether the new signature takes the same types, ref kinds and order as the old, so a cref's parameters
+    /// still name it.</summary>
+    private static bool SameTypes(IReadOnlyList<Parameter> original, SignatureChange change) =>
+        change.Parameters.Count == original.Count && change.Parameters.Select((p, i) => p.From == i && Normalized(p.Type) == Normalized(original[i].Type)
+            && RefKindOf(p.Modifier) == RefKindOf(original[i].Modifier)).All(same => same);
+
+    /// <summary>A cref's parameters as the new signature's, a generic's type arguments in braces as a cref writes them; null
+    /// when they do not parse.</summary>
+    private static CrefParameterListSyntax? CrefParameters(CrefParameterListSyntax list, SignatureChange change)
+    {
+        string types = string.Join(", ", change.Parameters.Select(p => RefKindOf(p.Modifier) + p.Type.Trim().Replace('<', '{').Replace('>', '}')));
+        SyntaxTriviaList comment = SyntaxFactory.ParseLeadingTrivia($"/// <see cref=\"M({types})\"/>\n");
+        CrefParameterListSyntax? made = comment.Select(t => t.GetStructure()).OfType<DocumentationCommentTriviaSyntax>()
+            .SelectMany(d => d.DescendantNodes().OfType<NameMemberCrefSyntax>()).FirstOrDefault()?.Parameters;
+        return made is null || made.ContainsDiagnostics || made.Parameters.Count != change.Parameters.Count ? null : made.WithTriviaFrom(list);
+    }
+
+    /// <summary>The words a cref writes before a parameter's type for its modifier: "ref ", "out ", "in ", "ref readonly ".</summary>
+    private static string RefKindOf(string modifier)
+    {
+        string[] words = Normalized(modifier).Split(' ');
+        return words.Contains("out") ? "out " : words.Contains("readonly") ? "ref readonly " : words.Contains("ref") ? "ref " : words.Contains("in") ? "in " : string.Empty;
+    }
+
+    /// <summary>A use left as it was, at its place in the file as it was before its parameters were renamed.</summary>
+    private static async Task<UseLeft> LeftAsync(Solution before, Document renamed, int offset, string why, CancellationToken cancel)
+    {
+        Document was = before.GetDocument(renamed.Id) ?? renamed;
+        int delta = 0;
+        foreach (TextChange change in (await renamed.GetTextChangesAsync(was, cancel).ConfigureAwait(false)).OrderBy(c => c.Span.Start))
+        {
+            int start = change.Span.Start + delta;
+            int length = change.NewText?.Length ?? 0;
+            if (offset < start)
+            {
+                break;
+            }
+            if (offset < start + length)
+            {
+                offset = start;
+                break;
+            }
+            delta += length - change.Span.Length;
+        }
+        SourceText text = await was.GetTextAsync(cancel).ConfigureAwait(false);
+        LinePosition place = text.Lines.GetLinePosition(Math.Clamp(offset - delta, 0, text.Length));
+        return new UseLeft(was.FilePath ?? was.Name, new Place(place.Line, place.Character), why);
     }
 
     /// <summary>A declaration's parameters as asked: each kept one as it is in this declaration, given the type, modifier
@@ -443,9 +635,9 @@ internal static class Signatures
     }
 
     /// <summary>What a call passes in the new signature: for each place, the argument it already passes for that
-    /// parameter (by its index in the call, several for a params array spread out), or the value a new parameter is given;
-    /// every argument after a parameter left to its default is named. Null for a call whose arguments do not all bind,
-    /// which is left as it is.</summary>
+    /// parameter (by its index in the call, several for a params array or collection spread out), or the value a new
+    /// parameter is given; every argument after a parameter left to its default is named. Null for a call whose arguments
+    /// do not all bind, which is left as it is, and named where the calls change.</summary>
     private static List<Passed>? Plan(SemanticModel model, SyntaxNode call, IMethodSymbol method, SignatureChange change, CancellationToken cancel)
     {
         if (ArgumentsOf(call) is not { } list || model.GetOperation(call, cancel) is not { } operation)
@@ -468,14 +660,14 @@ internal static class Signatures
             {
                 bound[index] = ordinal;
             }
-            else if (argument.ArgumentKind == ArgumentKind.ParamArray && argument.Value is IArrayCreationOperation { Initializer: { } spread })
+            else if (argument.ArgumentKind is ArgumentKind.ParamArray or ArgumentKind.ParamCollection)
             {
-                foreach (IOperation element in spread.ElementValues)
+                // Spread out: each value the call passes is an element of the array or collection it makes, whatever its type.
+                foreach (IOperation element in argument.Value.DescendantsAndSelf())
                 {
-                    int index2 = list.Arguments.IndexOf(a => a.Expression == element.Syntax);
-                    if (index2 >= 0)
+                    if (list.Arguments.IndexOf(a => a.Expression == element.Syntax) is >= 0 and int spread)
                     {
-                        bound[index2] = ordinal;
+                        bound[spread] = ordinal;
                     }
                 }
             }

@@ -159,16 +159,21 @@
                             <TextBlock Name="AgentText" Classes="status" />
                         </StackPanel>
                     </Button>
-                    <TextBlock Name="CaretText" Classes="status" />
-                    <!-- The line separator and encoding widgets: a click offers the others. Their frames reach into the
-                         spacing, so their words stand where the other items' do. -->
+                    <!-- The file's widgets: a click on the caret's place goes to a line, on the line separator, encoding or
+                         indent offers the others. Their frames reach into the spacing, so their words stand where the
+                         other items' do. -->
+                    <Button Name="CaretButton" Classes="statusItem" Margin="-6,0" Focusable="False" IsVisible="False" Click="OnCaretClicked">
+                        <TextBlock Name="CaretText" Classes="status" />
+                    </Button>
                     <Button Name="LineSeparatorButton" Classes="statusItem" Margin="-6,0" Focusable="False" IsVisible="False" Click="OnLineSeparatorClicked">
                         <TextBlock Name="LineEndingText" Classes="status" />
                     </Button>
                     <Button Name="EncodingButton" Classes="statusItem" Margin="-6,0" Focusable="False" IsVisible="False" Click="OnEncodingClicked">
                         <TextBlock Name="EncodingText" Classes="status" />
                     </Button>
-                    <TextBlock Name="IndentText" Classes="status" />
+                    <Button Name="IndentButton" Classes="statusItem" Margin="-6,0" Focusable="False" IsVisible="False" Click="OnIndentClicked">
+                        <TextBlock Name="IndentText" Classes="status" />
+                    </Button>
                     <TextBlock Name="LanguageText" Classes="status" />
                 </StackPanel>
                 <!-- Cut where the widgets begin, so a deep file's path never runs on under them. -->

@@ -14,10 +14,10 @@ namespace Passenger.Tests;
 /// version starts after an update, once, in a tab of their own, rendered and read-only, in front of the folder it opens
 /// (whose own tabs come back behind them); never for a fresh state; and again from Help whenever asked. Each window keeps
 /// its state in the test's own folder, as the person's keeps theirs, and is the version whose notes the build carries
-/// (docs/release-notes/0.2.0.md), so each reads that real file.</summary>
+/// (docs/release-notes/0.2.2.md), so each reads that real file.</summary>
 public sealed class WhatsNewTests : IDisposable
 {
-    private const string Version = "0.2.0";
+    private const string Version = "0.2.2";
 
     private readonly string state = TestFolders.Create("whatsnew-state-");
     private readonly string folder = TestFolders.Create("whatsnew-folder-");

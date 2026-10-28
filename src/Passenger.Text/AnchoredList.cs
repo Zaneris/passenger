@@ -15,6 +15,10 @@ public sealed class AnchoredList<T>(Func<T, TextRange> rangeOf, Func<T, TextRang
 
     public int Count => ranges.Length;
 
+    /// <summary>How many times items were set, dropped or let go: while it stands, <see cref="Items"/> are the same items,
+    /// at most moved.</summary>
+    public int Given { get; private set; }
+
     /// <summary>The items, each on its range in the text as it stands.</summary>
     public IReadOnlyList<T> Items
     {
@@ -29,9 +33,14 @@ public sealed class AnchoredList<T>(Func<T, TextRange> rangeOf, Func<T, TextRang
         }
     }
 
-    /// <summary>Carries items given in the text as it stands, in place of the last ones.</summary>
+    /// <summary>Carries items given in the text as it stands, in place of the last ones; items equal to those carried, as
+    /// they stand, leave them carried, <see cref="Given"/> and all.</summary>
     public void Set(TextDocument text, IReadOnlyList<T> given)
     {
+        if (Holds(text, given))
+        {
+            return;
+        }
         Clear();
         if (given.Count == 0)
         {
@@ -45,6 +54,24 @@ public sealed class AnchoredList<T>(Func<T, TextRange> rangeOf, Func<T, TextRang
             ranges[i] = text.MarkAt(rangeOf(given[i]));
         }
         items = given;
+    }
+
+    /// <summary>Whether the items carried in a document's text are those given, one for one.</summary>
+    private bool Holds(TextDocument text, IReadOnlyList<T> given)
+    {
+        if (given.Count != ranges.Length || (given.Count > 0 && document != text))
+        {
+            return false;
+        }
+        IReadOnlyList<T> now = Items;
+        for (int i = 0; i < now.Count; i++)
+        {
+            if (!EqualityComparer<T>.Default.Equals(now[i], given[i]))
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     /// <summary>Lets the items <paramref name="drops"/> names go, with their ranges, the rest carried on; false when it named
@@ -77,6 +104,7 @@ public sealed class AnchoredList<T>(Func<T, TextRange> rangeOf, Func<T, TextRang
         }
         ranges = [.. keptRanges];
         items = keptItems;
+        Given++;
         if (ranges.Length == 0)
         {
             document = null;
@@ -87,6 +115,7 @@ public sealed class AnchoredList<T>(Func<T, TextRange> rangeOf, Func<T, TextRang
     /// <summary>Lets every range go: none is left.</summary>
     public void Clear()
     {
+        Given++;
         foreach (AnchoredRange range in ranges)
         {
             range.Remove();

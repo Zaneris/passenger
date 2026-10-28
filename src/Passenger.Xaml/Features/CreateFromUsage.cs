@@ -39,7 +39,8 @@ public static class CreateFromUsage
     public static XamlFix? Property(XamlFile file, ClrType owner, string name, XmlAttribute attribute, bool last)
     {
         if (!owner.IsFromSource || owner.Kind is not (ClrTypeKind.Class or ClrTypeKind.Struct) || !SyntaxFacts.IsValidIdentifier(name)
-            || SyntaxFacts.GetKeywordKind(name) != SyntaxKind.None || SourceFile(file, owner) is not { } path)
+            || SyntaxFacts.GetKeywordKind(name) != SyntaxKind.None || SourceFile(file, owner) is not { } path
+            || file.Types.ParsingOf(path) is not { } parsing)
         {
             return null;
         }
@@ -48,7 +49,7 @@ public static class CreateFromUsage
         {
             member = member with { Usings = [.. member.Usings.Where(u => !ImplicitUsings.Contains(u))] };
         }
-        return new XamlFix($"Create property '{name}'", path, text => Edits(text, owner, member))
+        return new XamlFix($"Create property '{name}'", path, text => Edits(text, owner, member, parsing))
         {
             Detail = $"{member.Said} in {Path.GetFileName(path)}",
         };
@@ -225,12 +226,12 @@ public static class CreateFromUsage
         return paths.FirstOrDefault(p => Path.GetFileNameWithoutExtension(p) == owner.Name) ?? paths.FirstOrDefault();
     }
 
-    /// <summary>The member put in its type's file as it is now: after the type's last field, property or member (a
-    /// property after the properties, a field after the fields), a blank line between, indented as the type's members
-    /// are; the class made partial and the usings added that it needs.</summary>
-    private static IReadOnlyList<TextEdit> Edits(string text, ClrType owner, Planned member)
+    /// <summary>The member put in its type's file as it is now, read as its project compiles it (<paramref name="parsing"/>):
+    /// after the type's last field, property or member (a property after the properties, a field after the fields), a
+    /// blank line between, indented as the type's members are; the class made partial and the usings added that it needs.</summary>
+    private static IReadOnlyList<TextEdit> Edits(string text, ClrType owner, Planned member, CSharpParseOptions parsing)
     {
-        SyntaxNode root = CSharpSyntaxTree.ParseText(text, new CSharpParseOptions(LanguageVersion.Preview)).GetRoot();
+        SyntaxNode root = CSharpSyntaxTree.ParseText(text, parsing).GetRoot();
         TypeDeclarationSyntax? type = root.DescendantNodes().OfType<TypeDeclarationSyntax>().FirstOrDefault(t => t.Identifier.ValueText == owner.Name
             && (t.TypeParameterList?.Parameters.Count ?? 0) == owner.Arity);
         if (type is null || type.OpenBraceToken.IsMissing)

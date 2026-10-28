@@ -23,7 +23,11 @@ public partial class MainWindow
             hierarchy.GoToRequested += (_, node) => NavigateTo(node.Path, node.Where);
             hierarchy.Failed += (_, why) => status.Text = why;
             return hierarchy;
-        }, Docking.ToolAnchor.RightTop));
+        }, Docking.ToolAnchor.RightTop)
+        {
+            ExpandAll = () => IdeErrors.Observe(Hierarchy.ExpandAllAsync()),
+            CollapseAll = () => Hierarchy.CollapseAll(),
+        });
         // What the server finds at the caret, or why it found nothing, the status bar says as it answers.
         actions!.Add(new IdeAction(AppActions.CallHierarchy, "Call Hierarchy", "IDE", context => IdeErrors.Observe(ShowCallHierarchyAsync()))
         {

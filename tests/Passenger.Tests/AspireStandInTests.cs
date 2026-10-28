@@ -1,3 +1,6 @@
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Avalonia;
@@ -175,19 +178,14 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
         project.Serve(backend);
         string folder = PathNames.Canonical(project.Folder);
-        List<string> onWindow = [];
-        int started = 0;
+        List<(string Command, bool OnWindow)> heard = [];
         void Heard(object? sender, ChildStart start)
         {
             if (start.Folder.Length > 0 && PathNames.Within(PathNames.Canonical(start.Folder), folder))
             {
-                Interlocked.Increment(ref started);
-                if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+                lock (heard)
                 {
-                    lock (onWindow)
-                    {
-                        onWindow.Add(start.Command);
-                    }
+                    heard.Add((start.Command, Avalonia.Threading.Dispatcher.UIThread.CheckAccess()));
                 }
             }
         }
@@ -207,12 +205,13 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             File.WriteAllText(project.Program, File.ReadAllText(project.Program).Replace("The stand-in AppHost is up\"", "The stand-in AppHost is up again\"", StringComparison.Ordinal));
             Ui.Run(window, AppActions.Rerun);
             Ui.WaitFor(() => window.AspireRuntime.Apps is [{ ProcessId: int again } app] && again != first && Said(app).Contains("The stand-in AppHost is up again", StringComparison.Ordinal),
-                "Rerun to run the changed AppHost again", TimeSpan.FromMinutes(3));
+                () => $"Rerun to run the changed AppHost again, the first as process {first}{Seen(window)}", TimeSpan.FromMinutes(3));
             Assert.False(Processes.IsRunning(first), "The AppHost that ran before Rerun still runs");
-            Assert.True(started >= 3, $"Only {started} programs were heard starting in the AppHost's folder: its two builds and runs were not");
-            lock (onWindow)
+            lock (heard)
             {
-                Assert.True(onWindow.Count == 0, $"{onWindow.Count} of the {started} programs started in the AppHost's folder started on the window's thread: {string.Join("; ", onWindow.Distinct())}");
+                Assert.True(heard.Count >= 3, $"Only {heard.Count} programs were heard starting in the AppHost's folder: its two builds and runs were not");
+                string[] onWindow = [.. heard.Where(start => start.OnWindow).Select(start => start.Command)];
+                Assert.True(onWindow.Length == 0, $"{onWindow.Length} of the {heard.Count} programs started in the AppHost's folder started on the window's thread: {string.Join("; ", onWindow.Distinct())}");
             }
         }
         finally
@@ -227,6 +226,24 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             app.Console.Flush();
             return app.Console.Document.Snapshot.ToString();
         }
+
+        // What a Rerun that never ran the change left, as the wait gives up.
+        string Seen(MainWindow window)
+        {
+            string apps = string.Join(string.Empty, window.AspireRuntime.Apps.Select(app =>
+                $"\nAn AppHost as process {app.ProcessId?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "none"}, "
+                + $"{(app.Runner.IsRunning ? "running" : "not running")}{(app.IsStopped ? ", stopping" : string.Empty)}, its console ending:\n{Tail(Said(app), 10)}"));
+            string programs;
+            lock (heard)
+            {
+                programs = string.Join(string.Empty, heard.Select(start => $"\n  {start.Command}"));
+            }
+            return $"\nThe status bar says: {window.Status}{(apps.Length == 0 ? "\nNo AppHost is listed" : apps)}"
+                + $"\nThe Build window ends:\n{Tail(window.BottomPanel.Build.Document.Snapshot.ToString(), 15)}"
+                + $"\nThe programs heard starting in the AppHost's folder:{(programs.Length == 0 ? " none" : programs)}";
+        }
+
+        static string Tail(string text, int lines) => string.Join('\n', text.Split('\n', StringSplitOptions.RemoveEmptyEntries).TakeLast(lines));
     }
 
     /// <summary>The question a start asked of its certificate, held to the dialogs' rules.</summary>
@@ -347,35 +364,74 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         // The least one log landing allocated on the UI thread, with as many kept as given (the first fill one envelope).
         long Costs(int kept)
         {
-            Send(kept - sent);
-            Ui.WaitFor(() => Landed(sent), $"the first {sent} logs to land");
+            sent = SendLogs(dashboard, sent, kept - sent);
+            Ui.WaitFor(() => LogLanded(window, sent), $"the first {sent} logs to land");
             Ui.Settle();
             long least = long.MaxValue;
             for (int round = 0; round < 5; round++)
             {
                 long before = GC.GetAllocatedBytesForCurrentThread();
-                Send(1);
-                Ui.WaitFor(() => Landed(sent), $"log {sent} to land");
+                sent = SendLogs(dashboard, sent, 1);
+                Ui.WaitFor(() => LogLanded(window, sent), $"log {sent} to land");
                 Ui.Settle();
                 least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
             }
             return least;
         }
-
-        void Send(int count)
-        {
-            dashboard.Send("logs", "{\"resourceLogs\":[{\"resource\":{\"attributes\":[{\"key\":\"service.name\",\"value\":{\"stringValue\":\"apiservice\"}}]},"
-                + "\"scopeLogs\":[{\"logRecords\":["
-                + string.Join(",", Enumerable.Range(sent + 1, count).Select(number =>
-                    $"{{\"timeUnixNano\":\"1760000000000000000\",\"severityText\":\"Information\",\"body\":{{\"stringValue\":\"log {number}\"}}}}"))
-                + "]}]}]}");
-            sent += count;
-        }
-
-        bool Landed(int last) => window.AspireWindow.StructuredLogs.ItemCount > 0
-            && window.AspireWindow.StructuredLogs.Items[window.AspireWindow.StructuredLogs.ItemCount - 1] is Passenger.App.ToolWindows.RunItem<AspireStructuredLog> item
-            && item.Data.Message == $"log {last}";
     }
+
+    /// <summary>An app's logs kept in the Telemetry tab, scrolled with the wheel as <see cref="LongListsTests"/> scrolls
+    /// the IDE's own lists: a step down the dashboard's bound of them allocates what one down a hundred does, and the rows
+    /// are handed other logs, none made again.</summary>
+    [AvaloniaFact]
+    public void A_scroll_step_down_a_thousand_logs_in_the_telemetry_tab_hands_the_rows_other_logs_never_making_one_again()
+    {
+        project.Reset();
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        backend.PushResource(new Resource { Name = "apiservice", DisplayName = "apiservice", Uid = "api", ResourceType = "Project", State = "Running" });
+        AspireDashboardHost dashboard = Ui.Await(AspireDashboardHost.StartAsync(), "the stand-in dashboard");
+        dashboard.Streams = true;
+        MainWindow window = OpenRunning(backend, dashboard.Endpoint);
+        int sent = 0;
+        try
+        {
+            FindAction(window, "Show Aspire Resources");
+            Ui.Click(Tab(window, "Telemetry"));
+            Ui.WaitFor(() => dashboard.Following("logs") == 1, "the Telemetry tab to follow the dashboard's logs");
+            LongListsTests.Holds("The Telemetry tab's logs", "logs", 100, AspireClient.LogLimit, count =>
+            {
+                sent = SendLogs(dashboard, sent, count - sent);
+                Ui.WaitFor(() => LogLanded(window, sent), $"the first {sent} logs to land");
+                Ui.Settle();
+                return (window.AspireWindow.StructuredLogs, () => { });
+            });
+            Assert.Equal(AspireClient.LogLimit, window.AspireWindow.Telemetry.Logs.Count);
+            Assert.Empty(backend.Errors);
+        }
+        finally
+        {
+            window.Close();
+            Ui.Await(Complete(dashboard.DisposeAsync().AsTask()), "the stand-in dashboard to stop");
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+    }
+
+    /// <summary>The apiservice's logs after the first <paramref name="sent"/>, as many as <paramref name="count"/>, sent by
+    /// the stand-in dashboard in one envelope, each saying its number: how many it has sent now.</summary>
+    private static int SendLogs(AspireDashboardHost dashboard, int sent, int count)
+    {
+        dashboard.Send("logs", "{\"resourceLogs\":[{\"resource\":{\"attributes\":[{\"key\":\"service.name\",\"value\":{\"stringValue\":\"apiservice\"}}]},"
+            + "\"scopeLogs\":[{\"logRecords\":["
+            + string.Join(",", Enumerable.Range(sent + 1, count).Select(number =>
+                $"{{\"timeUnixNano\":\"1760000000000000000\",\"severityText\":\"Information\",\"body\":{{\"stringValue\":\"log {number}\"}}}}"))
+            + "]}]}]}");
+        return sent + count;
+    }
+
+    /// <summary>Whether the Telemetry tab lists the log of this number last.</summary>
+    private static bool LogLanded(MainWindow window, int last) => window.AspireWindow.StructuredLogs.ItemCount > 0
+        && window.AspireWindow.StructuredLogs.Items[window.AspireWindow.StructuredLogs.ItemCount - 1] is Passenger.App.ToolWindows.RunItem<AspireStructuredLog> item
+        && item.Data.Message == $"log {last}";
 
     /// <summary>One resource's restart costs what it changed: with three resources' consoles merged and shown, a new
     /// generation of one ends its own stream alone and reads its lines again after those shown; the others' streams go
@@ -871,6 +927,69 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
+    /// <summary>Rerun after a service's scoped CSS changed, which its build makes into the app's styles, has its AppHost stop
+    /// it, builds it and has it started again; after a change to another CSS file, which the app serves from where it is,
+    /// it restarts nothing.</summary>
+    [AvaloniaFact]
+    public void Rerun_restarts_a_service_whose_scoped_CSS_changed_and_nothing_for_other_CSS()
+    {
+        project.Reset();
+        string scoped = $"{StandInAppHost.Api}/Counter.razor.css";
+        string served = $"{StandInAppHost.Api}/site.css";
+        project.Write([(scoped, "h1 { color: red; }\n"), (served, "body { color: red; }\n")]);
+        project.BuildApi();
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        MainWindow window = OpenRunning(backend);
+        Task<(System.Net.WebSockets.ClientWebSocket Notified, System.Net.HttpStatusCode Answer)>? again = null;
+        try
+        {
+            (System.Net.WebSockets.ClientWebSocket notified, System.Net.HttpStatusCode answer) = project.AskToStartApi("apiservice");
+            using System.Net.WebSockets.ClientWebSocket subscribed = notified;
+            Assert.True((int)answer is >= 200 and < 300, $"The IDE refused the run session: {answer}");
+            int first = Api(window);
+            Resource resource = ApiResource();
+            resource.Commands.Add(new ResourceCommand { Name = "resource-stop", DisplayName = "Stop", State = ResourceCommandState.Enabled });
+            resource.Commands.Add(new ResourceCommand { Name = "resource-start", DisplayName = "Start", State = ResourceCommandState.Enabled });
+            backend.PushResource(resource);
+            Ui.WaitFor(() => window.Aspire.ResourceSnapshots.Any(shown => shown.Name == "apiservice" && shown.Commands.Count == 2), "the API's resource and its commands");
+            backend.OnCommand = command =>
+            {
+                if (command.CommandName == "resource-stop")
+                {
+                    Processes.Kill(first);
+                }
+                else if (command.CommandName == "resource-start")
+                {
+                    again = Waiting.Apart(() => project.StartApiAsync("apiservice", subscribe: false));
+                }
+            };
+            string config = StandInAppHost.Configuration;
+
+            File.WriteAllText(project.PathOf(served), "body { color: blue; }\n");
+            Ui.Run(window, AppActions.Rerun);
+            Assert.Equal($"{config}: nothing changed, nothing restarted", window.Status);
+            Assert.True(Processes.IsRunning(first) && backend.Commands.Length == 0, "Rerun restarted the API for a CSS file its build makes nothing of");
+
+            File.WriteAllText(project.PathOf(scoped), "h1 { color: blue; }\n");
+            Ui.Run(window, AppActions.Rerun);
+            Ui.WaitFor(() => window.Status == $"{config}: restarted apiservice with the new build"
+                && window.AspireRuntime.Apps.Single().Services.SingleOrDefault() is { ProcessId: int restarted } && restarted != first,
+                () => $"Rerun to restart the API, whose scoped CSS changed ({window.Status})", TimeSpan.FromMinutes(3));
+            Assert.False(Processes.IsRunning(first), "The API that ran before Rerun still runs");
+            Assert.Equal(["resource-stop", "resource-start"], backend.Commands.Select(command => command.CommandName));
+            Assert.Empty(backend.Errors);
+        }
+        finally
+        {
+            window.Close();
+            if (again is not null)
+            {
+                Ui.Await(again, "the restart's start request").Notified.Dispose();
+            }
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+    }
+
     /// <summary>Profile of an AppHost waits as long as the AppHost takes to ask for the service it records, then gives that
     /// service its time to reach the profiler, counted from the ask: past it, the start is given up as the time limit it is,
     /// never as a stop nobody pressed, and the AppHost is stopped. Here the window's limit is a moment, which no start meets.</summary>
@@ -1001,7 +1120,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
                 if (command.CommandName == "resource-restart")
                 {
                     Processes.Kill(first);
-                    again = Task.Run(() => project.StartApiAsync("apiservice", subscribe: false));
+                    again = Waiting.Apart(() => project.StartApiAsync("apiservice", subscribe: false));
                 }
             };
             // Attach shows the Debug window: the Aspire window's resources are asked for again.
@@ -1292,8 +1411,8 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     internal static TextBlock Words(Control row, string words) => row.GetVisualDescendants().OfType<TextBlock>().First(text => text.Text == words);
 
     /// <summary>A row's chevron, which opens and closes it.</summary>
-    internal static PathIcon Chevron(MainWindow window, string name) =>
-        Row(window, name).GetVisualDescendants().OfType<PathIcon>().Single(icon => icon.Name == "rowChevron");
+    internal static RowIcon Chevron(MainWindow window, string name) =>
+        Row(window, name).GetVisualDescendants().OfType<RowIcon>().Single(icon => icon.Name == "rowChevron");
 
     /// <summary>A tab of the Aspire window's pages.</summary>
     internal static Avalonia.Controls.Primitives.ToggleButton Tab(MainWindow window, string page) => window.AspireWindow.GetVisualDescendants()
@@ -1363,6 +1482,48 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             Assert.False(backend.Answers[^1].ResponseUpdate);
             Assert.Equal("latest value", backend.Answers[^1].InputsDialog.InputItems[0].Value);
             CompleteInteraction(backend, window, 2);
+            Assert.Empty(backend.Errors);
+        }
+        finally
+        {
+            window.Close();
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+    }
+
+    /// <summary>A notification the AppHost sends whenever its start gets to it (a real AppHost's development certificate's)
+    /// shows over the window without taking its keys: what the person goes on typing in Find Action as it comes stays
+    /// there, and Enter runs the action they typed.</summary>
+    [AvaloniaFact]
+    public void A_notification_the_AppHost_sends_while_the_person_types_leaves_the_keys_where_they_are()
+    {
+        project.Reset();
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        MainWindow window = OpenRunning(backend);
+        try
+        {
+            Assert.NotEqual(Passenger.App.ToolWindows.RunWindows.DetailsTab, window.Aspire.ShownPage);
+            Ui.Run(window, AppActions.FindAction);
+            Passenger.App.Navigation.ActionPopup popup = Assert.IsType<Passenger.App.Navigation.ActionPopup>(window.Popup);
+            backend.Push(new WatchInteractionsResponseUpdate
+            {
+                InteractionId = 3,
+                Title = "No trusted development certificate",
+                Message = "No trusted development certificate was found.",
+                Notification = new InteractionNotification { Intent = MessageIntent.Error },
+            });
+            AspireInteractionDialog notification = Interaction(window, "No trusted development certificate");
+            Ui.Settle();
+            window.KeyTextInput("Show Aspire Resources");
+            Ui.Settle();
+            Assert.True(popup.Query == "Show Aspire Resources",
+                $"The AppHost's notification took the keys typed in Find Action as it came: Find Action holds \"{popup.Query}\", "
+                + $"the keys are with {window.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"}");
+            Ui.Press(window, "ENTER");
+            Assert.Null(window.Popup);
+            Assert.Equal(Passenger.App.ToolWindows.RunWindows.DetailsTab, window.Aspire.ShownPage);
+            Assert.True(notification.IsVisible, "The AppHost's notification went before the person answered it");
+            CompleteInteraction(backend, window, 3);
             Assert.Empty(backend.Errors);
         }
         finally
@@ -1782,6 +1943,53 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
+    /// <summary>An engine already down as an AppHost starts is said once, as the run begins: its events ending later, as a
+    /// slow CLI ends them, find it as it was and leave the status bar to the run's own words. A stand-in engine is held
+    /// down, its events let end once the run has said it runs.</summary>
+    [AvaloniaFact]
+    public void An_engine_down_as_an_AppHost_starts_is_said_once_and_its_events_ending_leave_the_runs_own_words()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
+        project.Reset();
+        string engineFolder = TestFolders.Create("aspire-engine-held-");
+        (string cli, string state) = ContainersTests.StandInEngine(engineFolder, up: false);
+        File.WriteAllText(state, "held");
+        string calls = Path.Combine(engineFolder, "calls");
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        project.Serve(backend);
+        MainWindow window = new()
+        {
+            Width = 1200, Height = 800, Autosaves = false, WarmServer = project.Server, StartsLanguageServer = false,
+            Engine = new Passenger.App.Containers.ContainerEngine(cli: cli),
+        };
+        window.Show();
+        window.OpenFolder(project.Folder);
+        Ui.Settle();
+        try
+        {
+            string config = StandInAppHost.Configuration;
+            Ui.WaitFor(() => window.Configurations.Any(configuration => configuration.Name == config), "the stand-in AppHost's Aspire configuration");
+            Assert.True(window.SelectConfiguration(config));
+            Ui.Launched(window, window.RunAsync(), "the stand-in AppHost to come up");
+            const string Down = "Docker isn't running (context stand-in)";
+            Assert.StartsWith(Down, Assert.Single(window.BottomPanel.Problems.ContainerProblems).Message, StringComparison.Ordinal);
+            Ui.WaitFor(() => File.ReadAllLines(calls).Contains("events"), "the run to follow the engine's events");
+            Assert.Equal($"Running {config}", window.Status);
+
+            File.WriteAllText(state, "down");
+            Ui.WaitFor(() => File.ReadAllLines(calls).SkipWhile(call => call != "events-ended").Contains("version"),
+                "the engine asked again as its events ended");
+            Ui.Settle();
+            Assert.Equal($"Running {config}", window.Status);
+            Assert.StartsWith(Down, Assert.Single(window.BottomPanel.Problems.ContainerProblems).Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+    }
+
     /// <summary>The Containers window's AppHost row has a merged Log and Stats over its containers: their lines each
     /// under its container's name, a toggle each, one turned off leaving its lines out, and each container's numbers, a
     /// reading changing its line in place. A stand-in engine lists the two containers the stand-in AppHost's resources
@@ -1864,6 +2072,192 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         {
             window.Close();
             Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+    }
+
+    /// <summary>A program's output costs the same small amount for each line however many come: 10,000 of the AppHost's own
+    /// lines through its console allocate no more for each line off the window's thread, where they are read, than
+    /// <see cref="PumpBytes"/> over what 1,000 do; and 10,000 from each of its two containers through the Containers
+    /// window's merged log, each under its container's name, no more on every thread than <see cref="LineBytes"/>. A
+    /// stand-in engine echoes the containers' lines.</summary>
+    [AvaloniaFact]
+    public void An_AppHosts_console_and_its_containers_merged_log_cost_a_small_constant_for_each_line_however_many_come()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
+        project.Reset();
+        string program = project.PathOf($"{StandInAppHost.Name}/Program.cs");
+        File.WriteAllText(program, File.ReadAllText(program).Replace("Thread.Sleep(Timeout.Infinite);", """
+            string asked = keyFile + ".lines";
+            while (true)
+            {
+                if (File.Exists(asked))
+                {
+                    int count = int.Parse(File.ReadAllText(asked));
+                    File.Delete(asked);
+                    for (int i = 1; i <= count; i++)
+                    {
+                        Console.WriteLine($"info: StandIn.AppHost[0] request {i:D6} served in 4 ms by worker {i % 8}");
+                    }
+                    Console.WriteLine($"wrote {count} lines");
+                }
+                Thread.Sleep(50);
+            }
+            """, StringComparison.Ordinal));
+        const string Cache = "5a5d0c0ffee6";
+        const string Queue = "5a5d0c0ffee7";
+        static string Listed(string id, string name) =>
+            $$"""{"ID":"{{id}}","Names":"{{name}}","Image":"redis:7","State":"running","Status":"Up 1 minute","Ports":"","Labels":"com.microsoft.developer.usvc-dev.uid=x"}""";
+        string engine = TestFolders.Create("aspire-host-lines-");
+        File.WriteAllText(Path.Combine(engine, "lines"), "1");
+        (string cli, _) = ContainersTests.StandInEngine(engine, up: true,
+            logs: """for word in "$@"; do last=$word; done; awk -v n="$(cat "$here/lines")" -v who="$last" 'BEGIN { for (i = 1; i <= n; i++) printf "%s info: request %06d served in 4 ms\n", substr(who, 1, 12), i; printf "%s wrote %d lines\n", substr(who, 1, 12), n }'; sleep 600""",
+            more: [Listed(Cache, "cache-abc"), Listed(Queue, "queue-def")]);
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        foreach ((string name, string id) in (ReadOnlySpan<(string, string)>)[("cache-abc", Cache), ("queue-def", Queue)])
+        {
+            backend.PushResource(new Resource
+            {
+                Name = name, DisplayName = name[..name.IndexOf('-')], Uid = name, ResourceType = "Container", State = "Running",
+                Properties =
+                {
+                    new ResourceProperty { Name = "container.id", Value = Google.Protobuf.WellKnownTypes.Value.ForString(id + new string('0', 52)) },
+                    new ResourceProperty { Name = "container.lifetime", Value = Google.Protobuf.WellKnownTypes.Value.ForString("Persistent") },
+                },
+            });
+        }
+        project.Serve(backend);
+        MainWindow window = new()
+        {
+            Width = 1200, Height = 800, Autosaves = false, WarmServer = project.Server, StartsLanguageServer = false,
+            Engine = new Passenger.App.Containers.ContainerEngine(cli: cli),
+        };
+        window.Show();
+        window.OpenFolder(project.Folder);
+        Ui.Settle();
+        try
+        {
+            Ui.WaitFor(() => window.Configurations.Any(configuration => configuration.Name == StandInAppHost.Configuration), "the stand-in AppHost's Aspire configuration");
+            Assert.True(window.SelectConfiguration(StandInAppHost.Configuration));
+            Ui.Run(window, AppActions.RunProgram);
+            Ui.WaitFor(() => backend.Connected.Task.IsCompleted && window.AspireRuntime.Apps.Count == 1, $"the stand-in AppHost's start ({window.Status})");
+            AspireAppRun app = window.AspireRuntime.Apps[0];
+            (long, long) AppHost(int count) => Streamed(app.Console, [$"wrote {count} lines\n"], () =>
+            {
+                File.WriteAllText(project.KeyFile + ".lines.part", count.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                File.Move(project.KeyFile + ".lines.part", project.KeyFile + ".lines");
+            });
+            LineCost host = PerLine(AppHost, 1);
+
+            window.ShowToolWindow(ToolWindowIds.Containers);
+            Ui.Settle();
+            Passenger.App.Containers.ContainersView view = window.ContainersWindow;
+            Ui.WaitFor(() => view.Rows.Any(row => row.Kind == Passenger.App.Containers.ContainerRowKind.AppHost && row.Containers.Count == 2),
+                $"the AppHost's row over its two containers, not [{string.Join(", ", view.Rows.Select(row => $"{row.Kind} {row.Label}"))}]");
+            Ui.Click(view.GetVisualDescendants().OfType<Passenger.App.ToolWindows.RunRowView>().Single(row => row.Shown?.Label == StandInAppHost.Configuration)
+                .GetVisualDescendants().OfType<TextBlock>().First(text => text.Text == StandInAppHost.Configuration));
+            Assert.Equal("Log", view.ShownTab);
+            Avalonia.Controls.Primitives.ToggleButton timestamps = view.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().Single(button => button.Name == "containerTimestamps");
+            // Each streams the containers' logs again from their start, which the stand-in engine echoes as many lines as asked.
+            (long, long) Merged(int count) => Streamed(view.Log.Console,
+                [$"[cache-abc] {Cache} info: request {count:D6} served in 4 ms\n[", $"[cache-abc] {Cache} wrote {count} lines\n",
+                    $"[queue-def] {Queue} info: request {count:D6} served in 4 ms\n[", $"[queue-def] {Queue} wrote {count} lines\n"], () =>
+            {
+                File.WriteAllText(Path.Combine(engine, "lines"), count.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                Ui.Click(timestamps, settle: false);
+            });
+            LineCost merged = PerLine(Merged, 2);
+            TestContext.Current.TestOutputHelper?.WriteLine($"For each line more: the AppHost's console {host}; the merged log {merged}");
+            Assert.True(host.Pumps < PumpBytes,
+                $"The AppHost's console allocated {host.Pumps:N0} bytes off the window's thread for each line of 10,000 more than of 1,000, as if each read were copied for no one");
+            Assert.True(merged.All < LineBytes,
+                $"The containers' merged log allocated {merged.All:N0} bytes for each line of 10,000 more than of 1,000, as if each container's lines filled a console of their own");
+        }
+        finally
+        {
+            window.Close();
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+            TestFolders.Delete(engine);
+        }
+    }
+
+    /// <summary>What a line of 60 to 70 characters of a program's output may allocate on its way into a console, on every
+    /// thread: its text kept there, with the batches it crosses in.</summary>
+    internal const int LineBytes = 800;
+
+    /// <summary>What such a line may allocate off the window's thread, where a program's output is read: its share of
+    /// what waits for the console, and of what a mask is given.</summary>
+    internal const int PumpBytes = 220;
+
+    /// <summary>What streaming each line of a program's output costs, in bytes: on every thread, and on every thread but
+    /// the window's.</summary>
+    internal readonly record struct LineCost(double All, double Pumps)
+    {
+        public override string ToString() => $"{All:N0} bytes, {Pumps:N0} off the window's thread";
+    }
+
+    /// <summary>What each line of 10,000 allocates more than each of 1,000, from <paramref name="streams"/> streams at once:
+    /// of two streams of each, the one that allocated least.</summary>
+    internal static LineCost PerLine(Func<int, (long All, long Window)> streamed, int streams)
+    {
+        (long All, long Window) few = Least(streamed(1_000), streamed(1_000));
+        (long All, long Window) many = Least(streamed(10_000), streamed(10_000));
+        return new LineCost((double)(many.All - few.All) / (streams * 9_000),
+            (double)(many.All - many.Window - (few.All - few.Window)) / (streams * 9_000));
+
+        static (long All, long Window) Least((long All, long Window) one, (long All, long Window) other) => one.All <= other.All ? one : other;
+    }
+
+    /// <summary>What the process allocated, on every thread and on the window's, from <paramref name="start"/> until a console
+    /// has taken in each of <paramref name="lines"/>, as often as it is listed (read as its batches come, one split between
+    /// two batches too), and the window is quiet again.</summary>
+    internal static (long All, long Window) Streamed(Passenger.App.ToolWindows.OutputView console, IReadOnlyList<string> lines, Action start)
+    {
+        Ui.Settle();
+        Dictionary<string, int> wanted = new(StringComparer.Ordinal);
+        foreach (string line in lines)
+        {
+            wanted[line] = wanted.GetValueOrDefault(line) + 1;
+        }
+        Dictionary<string, int> seen = wanted.Keys.ToDictionary(line => line, _ => 0, StringComparer.Ordinal);
+        int unseen = lines.Count;
+        int kept = lines.Max(line => line.Length) - 1;
+        string carry = string.Empty;
+        void Heard(object? sender, string batch)
+        {
+            foreach ((string line, int times) in wanted)
+            {
+                // Those begun in the batches before and ended in this one, then those inside it.
+                string across = carry[Math.Max(0, carry.Length - (line.Length - 1))..] + batch[..Math.Min(batch.Length, line.Length - 1)];
+                int found = Count(across, line) + Count(batch, line);
+                unseen -= Math.Max(0, Math.Min(found, times - seen[line]));
+                seen[line] += found;
+            }
+            string last = carry + batch[Math.Max(0, batch.Length - kept)..];
+            carry = last[Math.Max(0, last.Length - kept)..];
+        }
+        static int Count(string text, string line)
+        {
+            int found = 0;
+            for (int at = text.IndexOf(line, StringComparison.Ordinal); at >= 0; at = text.IndexOf(line, at + 1, StringComparison.Ordinal))
+            {
+                found++;
+            }
+            return found;
+        }
+        console.Written += Heard;
+        try
+        {
+            long before = GC.GetTotalAllocatedBytes(precise: true);
+            long window = GC.GetAllocatedBytesForCurrentThread();
+            start();
+            Ui.WaitFor(() => unseen == 0, () => "the console to take in, as its batches came, "
+                + string.Join(", ", wanted.Where(line => seen[line.Key] < line.Value).Select(line => $"\"{line.Key.TrimEnd('[', '\n')}\" {line.Value} times, not {seen[line.Key]}")));
+            Ui.Settle();
+            return (GC.GetTotalAllocatedBytes(precise: true) - before, GC.GetAllocatedBytesForCurrentThread() - window);
+        }
+        finally
+        {
+            console.Written -= Heard;
         }
     }
 
@@ -2041,7 +2435,6 @@ public sealed class StandInAppHost : SharedProject
 
             """);
         TestFolders.Write(Folder, "StandIn.slnx", $"<Solution>\n  <Project Path=\"{Name}/{Name}.csproj\" />\n  <Project Path=\"{Api}/{Api}.csproj\" />\n</Solution>\n");
-        Prepare();
     }
 
     public string ProjectFile => PathOf($"{Name}/{Name}.csproj");
@@ -2056,12 +2449,37 @@ public sealed class StandInAppHost : SharedProject
     /// <summary>Builds the stand-in's service, which the IDE starts as it is built, by its real path, as the IDE's
     /// builds of it (a restart's) name it: a build through the run folder's link (macOS's TMPDIR, under /var) after one
     /// of the IDE's would have MSBuild's IncrementalClean delete the runtimeconfig.json and deps.json the IDE's
-    /// wrote.</summary>
+    /// wrote. None when its files and what its last build here left are as they were then (<see cref="ApiBuilt"/>).</summary>
     internal void BuildApi()
     {
+        if (apiBuilt is { } last && last.SequenceEqual(ApiBuilt()))
+        {
+            return;
+        }
+        apiBuilt = null;
         ChildResult result = Ui.Await(ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", PathNames.Canonical(ApiProject), "-nologo", "-v:q"]),
             limit: TimeSpan.FromMinutes(3).Scaled()), "the stand-in API's build");
         Assert.True(result.Succeeded, $"The stand-in API did not build: {result.Output}{result.Error}");
+        apiBuilt = ApiBuilt();
+    }
+
+    /// <summary>What the service's last build by <see cref="BuildApi"/> found and left, or null before one.</summary>
+    private (string Path, DateTime Written, long Length)[]? apiBuilt;
+
+    /// <summary>The service's own files, MSBuild's beside the solution (a Directory.Build.props among them), its restore's
+    /// assets and what its build leaves for the IDE to start, each with its time and length (a file missing has neither):
+    /// a test that changed, added or removed one, or a build that wrote one, shows here.</summary>
+    private (string Path, DateTime Written, long Length)[] ApiBuilt()
+    {
+        string own = PathOf(Api);
+        string output = Path.Combine(own, "bin", "Debug", TestProjects.Framework);
+        IEnumerable<string> sources = Directory.EnumerateFiles(own, "*", SearchOption.AllDirectories)
+            .Where(path => Path.GetRelativePath(own, path).Split(Path.DirectorySeparatorChar)[0] is not ("bin" or "obj"));
+        IEnumerable<string> beside = Directory.EnumerateFiles(Folder).Where(path => Path.GetFileName(path).ToLowerInvariant() is "global.json" or "nuget.config"
+            || Path.GetFileName(path).StartsWith("Directory.", StringComparison.OrdinalIgnoreCase));
+        return [.. sources.Concat(beside).Order(StringComparer.Ordinal)
+            .Concat([Path.Combine(own, "obj", "project.assets.json"), Path.Combine(output, $"{Api}.dll"), Path.Combine(output, $"{Api}.runtimeconfig.json"), Path.Combine(output, $"{Api}.deps.json")])
+            .Select(path => new FileInfo(path)).Select(file => file.Exists ? (file.FullName, file.LastWriteTimeUtc, file.Length) : (file.FullName, DateTime.MinValue, -1L))];
     }
 
     /// <summary>Asks the IDE to start the stand-in's service as a resource of that name, as DCP starts a project resource: the
@@ -2069,7 +2487,7 @@ public sealed class StandInAppHost : SharedProject
     /// the execution endpoint the IDE gave the AppHost; with the IDE's answer.</summary>
     internal (System.Net.WebSockets.ClientWebSocket Notified, System.Net.HttpStatusCode Answer) AskToStartApi(string resource, string mode = "NoDebug",
         IReadOnlyDictionary<string, string>? environment = null, string? projectPath = null) =>
-        Ui.Await(Task.Run(() => StartApiAsync(resource, mode, environment, projectPath: projectPath)), "the IDE's answer to the run session");
+        Ui.Await(Waiting.Apart(() => StartApiAsync(resource, mode, environment, projectPath: projectPath)), "the IDE's answer to the run session");
 
     /// <summary>Writes tests/Debuggees/BindingErrorsApp into the stand-in's folder, restored from the run's feed and built by
     /// its real path, for the AppHost to start as a service of its own: an Avalonia app whose caption's binding fails. Its
@@ -2105,7 +2523,8 @@ public sealed class StandInAppHost : SharedProject
         {
             await notified.ConnectAsync(new Uri($"ws://{session[0]}/run_session/notify?api-version={version}"), CancellationToken.None);
         }
-        using HttpClient http = new();
+        // Past the waits on its answer, which say what the IDE was busy with as they give up; scaled, as they are.
+        using HttpClient http = new() { Timeout = TimeSpan.FromMinutes(2).Scaled() };
         using HttpRequestMessage start = new(HttpMethod.Put, $"http://{session[0]}/run_session?api-version={version}")
         {
             Content = new StringContent(JsonSerializer.Serialize(new
@@ -2165,10 +2584,17 @@ public sealed class StandInAppHost : SharedProject
     /// with <paramref name="https"/>, its dashboard served there as an https profile serves it, with no unsecured transport.</summary>
     internal void Serve(AspireInteractionHost backend, string? https = null) => Write($"{Name}/Properties/launchSettings.json", Profile(backend.Endpoint, https));
 
+    /// <inheritdoc cref="Serve(AspireInteractionHost, string?)"/>
+    internal Task ServeAsync(AspireInteractionHost backend) => WriteAsync($"{Name}/Properties/launchSettings.json", Profile(backend.Endpoint));
+
     /// <summary>The launch profile of <see cref="Serve(AspireInteractionHost, string?)"/>, the AppHost's own address
     /// (applicationUrl, where the IDE finds its dashboard) the stand-in dashboard's.</summary>
     internal void Serve(AspireInteractionHost backend, Uri dashboard) =>
         Write($"{Name}/Properties/launchSettings.json", Profile(backend.Endpoint, applicationUrl: dashboard.AbsoluteUri.TrimEnd('/')));
+
+    /// <inheritdoc cref="Serve(AspireInteractionHost, Uri)"/>
+    internal Task ServeAsync(AspireInteractionHost backend, Uri dashboard) =>
+        WriteAsync($"{Name}/Properties/launchSettings.json", Profile(backend.Endpoint, applicationUrl: dashboard.AbsoluteUri.TrimEnd('/')));
 
     private string Profile(Uri? resourceService, string? https = null, string? applicationUrl = null)
     {
@@ -2192,4 +2618,150 @@ public sealed class StandInAppHost : SharedProject
             ? JsonSerializer.Serialize(new { profiles = new { http = new { commandName = "Project", environmentVariables = environment } } })
             : JsonSerializer.Serialize(new { profiles = new { http = new { commandName = "Project", applicationUrl, environmentVariables = environment } } });
     }
+}
+
+/// <summary>What an AppHost's followed telemetry costs the IDE to read, counted across the process, so the class runs alone:
+/// the dashboard a stand-in on a socket of the test's own, writing envelopes made before they are counted.</summary>
+[Collection(Alone.Name)]
+public sealed class AspireTelemetryBytesTests(ITestOutputHelper testOutput)
+{
+    private const string Key = "dashboard-key-6f1c2a";
+    private const int Records = 200;
+
+    /// <summary>A followed stream's log records, each with its body, trace and span and the attributes .NET's logging gives
+    /// a request's end (its format, a status code, a time in milliseconds), headers with a credential in them, and every
+    /// tenth an exception's: an envelope of 200 costs the reader at most twice its JSON, least of six, and each log reads
+    /// as written, its credentials masked.</summary>
+    [Fact]
+    public async Task A_followed_streams_logs_cost_at_most_twice_their_JSON_to_read()
+    {
+        CancellationToken cancel = TestContext.Current.CancellationToken;
+        using TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+        Uri endpoint = new($"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/");
+        using SemaphoreSlim landed = new(0);
+        AspireLogBatch? last = null;
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+        Task watching = AspireTelemetry.WatchLogsAsync(endpoint, Key, batch =>
+        {
+            last = batch;
+            landed.Release();
+        }, stop.Token);
+        byte[][] envelopes = [.. Enumerable.Range(0, 6).Select(e => Encoding.UTF8.GetBytes(LogEnvelope(e) + "\n"))];
+        long least = await Measure(listener, "/api/telemetry/logs?follow=true", envelopes, landed, stop, watching);
+        Assert.Equal(Records, last!.Added.Count);
+        AspireStructuredLog log = last.Added[9];
+        Assert.Equal(("apiservice-1", "apiservice", "Request 5009 finished in 12.5 ms"), (log.ResourceName, log.ServiceName, log.Message));
+        Assert.Equal("••••••", log.Data.GetProperty("attributes").GetProperty("http.request.header.authorization").GetString());
+        Assert.Equal("Bearer ••••••", log.Data.GetProperty("attributes").GetProperty("Forwarded").GetString());
+        Assert.Equal("failed with ••••••", log.Data.GetProperty("exception").GetString());
+        Assert.Equal("200", log.Data.GetProperty("attributes").GetProperty("StatusCode").GetString());
+        Report("log", envelopes[0].Length - 1, least);
+    }
+
+    /// <summary>A followed stream's spans, ten to a trace, each with the attributes of an HTTP request and an event: an
+    /// envelope of 200 costs the reader at most twice its JSON, least of six, and each span reads as written.</summary>
+    [Fact]
+    public async Task A_followed_streams_spans_cost_at_most_twice_their_JSON_to_read()
+    {
+        CancellationToken cancel = TestContext.Current.CancellationToken;
+        using TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+        Uri endpoint = new($"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/");
+        using SemaphoreSlim landed = new(0);
+        IReadOnlyList<AspireTrace>? last = null;
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+        Task watching = AspireTelemetry.WatchTracesAsync(endpoint, Key, traces =>
+        {
+            last = traces;
+            landed.Release();
+        }, stop.Token);
+        byte[][] envelopes = [.. Enumerable.Range(0, 6).Select(e => Encoding.UTF8.GetBytes(SpanEnvelope(e) + "\n"))];
+        long least = await Measure(listener, "/api/telemetry/spans?follow=true", envelopes, landed, stop, watching);
+        AspireTrace trace = last!.First(t => t.TraceId == TraceId(5, 3));
+        Assert.Equal(10, trace.Spans.Count);
+        AspireSpan root = Assert.Single(trace.Spans, span => span.ParentSpanId is null);
+        Assert.Equal((SpanId(5, 3, 0), "apiservice-1", "apiservice"), (root.SpanId, root.Source, root.Service));
+        Assert.Equal("GET /orders/53", root.Data.GetProperty("name").GetString());
+        Assert.Equal("••••••", root.Data.GetProperty("attributes").GetProperty("db.password").GetString());
+        Report("span", envelopes[0].Length - 1, least);
+    }
+
+    /// <summary>The least the process allocated from writing an envelope to the reader's batch of it, its stream the
+    /// first connection's to the stand-in, the reader stopped before the connection ends.</summary>
+    private static async Task<long> Measure(TcpListener listener, string path, byte[][] envelopes, SemaphoreSlim landed, CancellationTokenSource stop, Task watching)
+    {
+        CancellationToken cancel = TestContext.Current.CancellationToken;
+        using TcpClient served = await listener.AcceptTcpClientAsync(cancel);
+        NetworkStream stream = served.GetStream();
+        byte[] head = new byte[8192];
+        int read = 0;
+        while (!Encoding.ASCII.GetString(head, 0, read).Contains("\r\n\r\n", StringComparison.Ordinal))
+        {
+            int more = await stream.ReadAsync(head.AsMemory(read), cancel);
+            Assert.True(more > 0, "The reader closed its connection before its request was whole");
+            read += more;
+        }
+        string request = Encoding.ASCII.GetString(head, 0, read);
+        Assert.StartsWith($"GET {path} HTTP/1.1", request, StringComparison.Ordinal);
+        Assert.Contains($"x-api-key: {Key}", request, StringComparison.OrdinalIgnoreCase);
+        await stream.WriteAsync("HTTP/1.1 200 OK\r\nContent-Type: application/x-ndjson\r\n\r\n"u8.ToArray(), cancel);
+        long least = long.MaxValue;
+        foreach (byte[] envelope in envelopes)
+        {
+            long before = GC.GetTotalAllocatedBytes(precise: true);
+            await stream.WriteAsync(envelope, cancel);
+            Assert.True(await landed.WaitAsync(TimeSpan.FromSeconds(30).Scaled(), cancel), "The reader did not hand over an envelope's records within 30 s");
+            least = Math.Min(least, GC.GetTotalAllocatedBytes(precise: true) - before);
+        }
+        stop.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => watching);
+        return least;
+    }
+
+    private void Report(string record, long json, long least)
+    {
+        testOutput.WriteLine($"{json:N0} bytes of JSON, {least:N0} allocated ({(double)least / json:0.00}×), {least / Records:N0} a {record}");
+        Assert.True(least <= json * 2,
+            $"Reading an envelope of {Records} {record}s of {json:N0} bytes of JSON allocated {least:N0} bytes ({(double)least / json:0.0}× its JSON): every {record} an app sends costs the IDE that much more memory");
+    }
+
+    private static string LogEnvelope(int envelope) =>
+        "{\"resourceLogs\":[{\"resource\":{\"attributes\":[{\"key\":\"service.name\",\"value\":{\"stringValue\":\"apiservice\"}},"
+        + "{\"key\":\"service.instance.id\",\"value\":{\"stringValue\":\"1\"}}]},\"scopeLogs\":[{\"scope\":{\"name\":\"Microsoft.AspNetCore.Hosting.Diagnostics\"},\"logRecords\":["
+        + string.Join(",", Enumerable.Range(0, Records).Select(i =>
+        {
+            int number = (envelope * 1000) + i;
+            string exception = i % 10 == 9 ? $",{{\"key\":\"exception.message\",\"value\":{{\"stringValue\":\"failed with {Key}\"}}}}" : string.Empty;
+            return $"{{\"timeUnixNano\":\"17600000000{number:D8}\",\"observedTimeUnixNano\":\"17600000000{number:D8}\",\"severityNumber\":9,\"severityText\":\"Information\","
+                + $"\"body\":{{\"stringValue\":\"Request {number:D4} finished in 12.5 ms\"}},\"attributes\":["
+                + "{\"key\":\"{OriginalFormat}\",\"value\":{\"stringValue\":\"Request {Number} finished in {ElapsedMilliseconds} ms\"}},"
+                + "{\"key\":\"ElapsedMilliseconds\",\"value\":{\"doubleValue\":12.5}},{\"key\":\"StatusCode\",\"value\":{\"intValue\":\"200\"}},"
+                + "{\"key\":\"http.request.header.authorization\",\"value\":{\"stringValue\":\"Bearer abc.def.ghi\"}},"
+                + "{\"key\":\"Forwarded\",\"value\":{\"stringValue\":\"Bearer abc.def.ghi\"}},"
+                + $"{{\"key\":\"Path\",\"value\":{{\"stringValue\":\"/orders/{number:D4}\"}}}}{exception}],\"flags\":1,"
+                + $"\"traceId\":\"{TraceId(envelope, i / 10)}\",\"spanId\":\"{SpanId(envelope, i / 10, i % 10)}\"}}";
+        }))
+        + "]}]}]}";
+
+    private static string SpanEnvelope(int envelope) =>
+        "{\"resourceSpans\":[{\"resource\":{\"attributes\":[{\"key\":\"service.name\",\"value\":{\"stringValue\":\"apiservice\"}},"
+        + "{\"key\":\"service.instance.id\",\"value\":{\"stringValue\":\"1\"}}]},\"scopeSpans\":[{\"scope\":{\"name\":\"Microsoft.AspNetCore\"},\"spans\":["
+        + string.Join(",", Enumerable.Range(0, Records).Select(i =>
+        {
+            int trace = i / 10, span = i % 10;
+            string parent = span == 0 ? string.Empty : $"\"parentSpanId\":\"{SpanId(envelope, trace, 0)}\",";
+            return $"{{\"traceId\":\"{TraceId(envelope, trace)}\",\"spanId\":\"{SpanId(envelope, trace, span)}\",{parent}\"name\":\"GET /orders/{envelope}{trace}\",\"kind\":2,"
+                + $"\"startTimeUnixNano\":\"17600000000{(envelope * 1000) + i:D8}\",\"endTimeUnixNano\":\"17600000001{(envelope * 1000) + i:D8}\",\"attributes\":["
+                + "{\"key\":\"http.request.method\",\"value\":{\"stringValue\":\"GET\"}},{\"key\":\"url.path\",\"value\":{\"stringValue\":\"/orders\"}},"
+                + "{\"key\":\"http.response.status_code\",\"value\":{\"intValue\":\"200\"}},{\"key\":\"server.address\",\"value\":{\"stringValue\":\"localhost\"}},"
+                + "{\"key\":\"server.port\",\"value\":{\"intValue\":\"5000\"}},{\"key\":\"db.password\",\"value\":{\"stringValue\":\"hunter2\"}}],"
+                + "\"events\":[{\"timeUnixNano\":\"1760000000500000000\",\"name\":\"retry\",\"attributes\":[{\"key\":\"attempt\",\"value\":{\"intValue\":\"1\"}}]}],"
+                + "\"status\":{\"code\":1},\"flags\":256}";
+        }))
+        + "]}]}]}";
+
+    private static string TraceId(int envelope, int trace) => $"{envelope:x4}{trace:x4}0af7651916cd43dd8448eb21";
+
+    private static string SpanId(int envelope, int trace, int span) => $"{envelope:x4}{trace:x4}{span:x4}b7ad";
 }

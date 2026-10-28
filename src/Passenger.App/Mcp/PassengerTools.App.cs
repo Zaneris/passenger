@@ -582,10 +582,10 @@ public sealed partial class PassengerTools
         {
             // Given up on: its answer comes once the program runs again, to no one.
         }
-        // Its stop chooses its tab, whose stop the debugger reads; looked at every 50 ms, a stop's reading raising nothing as it lands.
-        await Until(() => Session.Debug.Session == debugged && Session.Debug.Stop is not null, TimeSpan.FromSeconds(5), cancel);
-        DebugSnapshot stop = await DebugSnapshotAsync(debugged);
-        return (null, $"that paused the program{(stop.Reason is { } why ? $" ({why})" : string.Empty)}{(stop.Location is { } at ? $" at {at}" : string.Empty)} before it was done: "
+        // Its stop chooses its tab, whose stop the debugger reads, in as long as the adapter takes to answer what it asks.
+        await StopReadAsync(debugged, cancel);
+        (string? reason, string? location) = await StoppedAtAsync(debugged);
+        return (null, $"that paused the program{(reason is { } why ? $" ({why})" : string.Empty)}{(location is { } at ? $" at {at}" : string.Empty)} before it was done: "
             + "debug_state shows where, debug_continue lets it go on");
     }
 

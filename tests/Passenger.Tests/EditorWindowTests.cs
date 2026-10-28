@@ -86,6 +86,36 @@ public sealed class EditorWindowTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A file in the main window and an editor window is drawn from one set of decorations: what the IDE's services
+    /// set on it shows the same in the main window after an edit in the other, carried where the edit moved it, and a fold
+    /// toggled in one window folds the other.</summary>
+    [AvaloniaFact]
+    public void A_file_in_an_editor_window_shows_the_same_decorations_as_the_main_windows_after_an_edit_there_and_folds_in_both()
+    {
+        File.WriteAllText(Path.Combine(folder, "Marked.cs"), SameDecorations.Text);
+        MainWindow window = Ui.OpenFolder(folder, width: 1200, height: 800, languageServer: false);
+        window.OpenFile(Path.Combine(folder, "Marked.cs"));
+        Ui.Settle();
+        EditorArea area = window.EditorArea;
+        EditorGroup left = area.ActiveGroup;
+        SameDecorations.Decorate(window, left);
+        Assert.True(window.Perform(AppActions.SplitRight));
+        Ui.Settle();
+        Ui.Press(window, "shift F4");
+        Window editors = EditorWindow("Shift+F4");
+        EditorGroup there = Assert.Single(GroupsIn(editors));
+        Assert.Same(left.Active, there.Active);
+
+        there.Editor.GoTo(new TextPosition(0, 0));
+        editors.KeyTextInput("// note");
+        Ui.Press(editors, "ENTER");
+        Ui.Settle();
+        SameDecorations.Check(there.Editor, left.Editor, "after a line typed in the editor window");
+
+        SameDecorations.FoldMethod(there.Editor, left.Editor);
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void Closing_an_editor_window_closes_its_tabs_saving_each_as_closing_a_tab_does()
     {

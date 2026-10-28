@@ -29,13 +29,16 @@ public sealed class AgentSocket : IDisposable
     /// window closes, so an agent's next call finds the window gone rather than sending into its end.</summary>
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Socket, Served> clients = new();
 
+    /// <summary>How long the next line written to an agent stalls, in ticks, until a write takes it (<see cref="StallNextLine"/>).</summary>
+    private long nextLineStall;
+
     private AgentSocket(MainWindow window, string path, Socket listener)
     {
         this.window = window;
         this.listener = listener;
         Path = path;
         // Not held: it listens for as long as the window does.
-        IdeErrors.Observe(Task.Run(AcceptAsync));
+        IdeErrors.Observe(BackgroundWork.Unheld(AcceptAsync));
     }
 
     /// <summary>The socket's file.</summary>
@@ -112,6 +115,10 @@ public sealed class AgentSocket : IDisposable
         }
     }
 
+    /// <summary>A test's slow agent: the next line written to an agent stalls this long with its words written and its end
+    /// not, as a write into a full pipe stalls, its sender's cancellation cutting it short as it would that write.</summary>
+    public void StallNextLine(TimeSpan stall) => Interlocked.Exchange(ref nextLineStall, stall.Ticks);
+
     public void Dispose()
     {
         if (closed.IsCancellationRequested)
@@ -171,8 +178,8 @@ public sealed class AgentSocket : IDisposable
         {
             await using NetworkStream stream = new(client, ownsSocket: true);
             // Its tools are made once a process, off the UI thread, which the first connection's would hold; nothing drawn changes.
-            McpServerOptions options = await Task.Run(() => McpHost.Options(window, connection));
-            StreamServerTransport transport = new(stream, stream, "passenger");
+            McpServerOptions options = await BackgroundWork.Unheld(() => McpHost.Options(window, connection));
+            StreamServerTransport transport = new(stream, new Lines(stream, this), "passenger");
             await using McpServer server = McpServer.Create(new PeerTransport(transport), options);
             Task running = server.RunAsync(gone.Token);
             // The server waits out the calls still running when the agent goes, so its going is watched for here.
@@ -192,6 +199,57 @@ public sealed class AgentSocket : IDisposable
 
     /// <summary>An agent's connection as the socket serves it, and what ends its calls.</summary>
     private sealed record Served(AgentConnection Connection, CancellationTokenSource Gone);
+
+    /// <summary>What the window writes to an agent, passed on, but for the stall a test gives a line (<see cref="StallNextLine"/>).</summary>
+    private sealed class Lines(NetworkStream inner, AgentSocket socket) : Stream
+    {
+        public override bool CanRead => false;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => true;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override void Write(byte[] buffer, int offset, int count) => inner.Write(buffer, offset, count);
+
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            WriteAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+        public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            await inner.WriteAsync(buffer, cancellationToken);
+            if (buffer.Length > 0 && buffer.Span[^1] != (byte)'\n' && Interlocked.Exchange(ref socket.nextLineStall, 0) is > 0 and long stall)
+            {
+                await Task.Delay(TimeSpan.FromTicks(stall), cancellationToken);
+            }
+        }
+
+        public override void Flush() => inner.Flush();
+
+        public override Task FlushAsync(CancellationToken cancellationToken) => inner.FlushAsync(cancellationToken);
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                inner.Dispose();
+            }
+            base.Dispose(disposing);
+        }
+    }
 }
 
 /// <summary>What the person said to an agent's question: whether it may work in the window, use a tool, open a folder.</summary>
@@ -344,7 +402,7 @@ public sealed class AgentConnection(CancellationToken gone, bool attached)
         }
         finally
         {
-            call.Waited(asked.Answer.IsCompletedSuccessfully ? asked.Answer.Result.ToString() : "given up");
+            call.Waited(asked.Answer is { IsCompletedSuccessfully: true } answer ? answer.Result.ToString() : "given up");
             // The last call waiting gives the question up: it closes unanswered, and the next call asks again.
             if (--asked.Waiting == 0 && !asked.Answer.IsCompleted)
             {

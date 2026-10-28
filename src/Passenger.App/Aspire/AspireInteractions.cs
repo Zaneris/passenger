@@ -181,6 +181,8 @@ public sealed partial class AspireInteractions : IDisposable, IAsyncDisposable
             dialog.Closed += (_, _) => ReleaseDialog();
             if (update.Notification is not null)
             {
+                // It comes whenever the AppHost gets to it, so the keys stay with what the person is typing in.
+                dialog.ShowActivated = false;
                 dialog.Show(owner);
             }
             else

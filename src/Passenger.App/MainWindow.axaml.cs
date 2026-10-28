@@ -62,11 +62,12 @@ public partial class MainWindow : Window
         UiThread.Own();
         InitializeComponent();
         session = ProjectSession.None(Setup());
-        status = new StatusBar(StatusMessage, StatusText, StatusIcon, StatusWorking, CaretText, IndentText, LanguageText, LineSeparatorButton, LineEndingText, EncodingButton, EncodingText);
+        status = new StatusBar(StatusMessage, StatusText, StatusIcon, StatusWorking, CaretButton, CaretText, IndentButton, IndentText, LanguageText, LineSeparatorButton, LineEndingText,
+            EncodingButton, EncodingText);
         popups = new PopupHost(Overlay, OverlayHost, Editors, () => session.Debug.Breakpoints);
         navigator = new Navigation.Navigator(new Navigation.NavigatorParts(Editors, () => session, popups, status, path => OpenFile(path), Editors.TextOf));
         // One keymap for the whole window, seen before any control: editor actions go to the editor with the focus.
-        windowKeys = new IdeKeys(this, keys, popups, OnKey, OnActivity, OnLeft);
+        windowKeys = new IdeKeys(this, keys, popups, OnEscape, OnKey, OnSideButton, OnActivity, OnLeft);
         windowKeys.Attach(this);
         AddActions();
         AddTitleBar();
@@ -79,6 +80,7 @@ public partial class MainWindow : Window
         AddSettings();
         AddActiveEditor();
         AddFolding();
+        AddCompilationSymbols();
         AddPackages();
         AddProfiler();
         AddLiveTree();
@@ -86,10 +88,12 @@ public partial class MainWindow : Window
         AddBookmarks();
         AddEndpoints();
         AddRoutes();
+        AddRequestMarks();
         AddRequests();
         AddMigrations();
         AddContainers();
         AddRunMarks();
+        AddRunHere();
         AddPlaces();
         AddHierarchy();
         AddFileOperations();
@@ -148,48 +152,46 @@ public partial class MainWindow : Window
         Editors.Opened += (_, document) => session.Attach(document);
         Editors.Closed += (_, document) => session.Detach(document);
         Editors.ForEachEditor(editor => editor.ProblemsRequested += (_, _) => ShowToolWindow(ToolWindowIds.Problems));
+        // A gesture's action at its press in a file's editor (Cmd+click's Go to Declaration), the keymap's as a key's is.
+        Editors.ForEachEditor(editor => editor.ActionRequested += (_, action) =>
+        {
+            if (editor == Editors.CodeEditor)
+            {
+                Request(action);
+            }
+        });
         Editors.ForEachEditor(editor => editor.CaretLimitReached += (_, _) =>
             status.Text = string.Create(CultureInfo.InvariantCulture, $"Cannot create more than {SelectionSet.MaxCount:N0} carets"));
-        Editors.ForEachEditor(editor => editor.ExecutionPointDragged += (_, line) =>
+        Editors.ForEachGutter(gutter =>
         {
-            if (Editors.Active is { } active && session.Debug.Session is { State: DebugState.Paused } paused)
+            CodeEditor editor = gutter.Editor;
+            gutter.Marks.ExecutionPointDragged += (_, line) =>
             {
-                IdeErrors.Observe(session.Debug.SetNextStatementAsync(paused, active.Path, line));
-            }
+                if (Editors.Active is { } active && session.Debug.Session is { State: DebugState.Paused } paused)
+                {
+                    IdeErrors.Observe(session.Debug.SetNextStatementAsync(paused, active.Path, line));
+                }
+            };
+            gutter.Marks.Pressed = click => Editors.Active is { } active && PressMark(editor, active, click);
+            gutter.Blame.Pressed += (_, line) =>
+            {
+                if (Editors.Active is { } active)
+                {
+                    IdeErrors.Observe(ShowBlamedCommitAsync(active, line));
+                }
+            };
+            gutter.Changes.Pressed += (_, pressed) =>
+            {
+                if (Editors.Active is { } active)
+                {
+                    IdeErrors.Observe(ShowChangePopupAsync(editor, active, pressed.Change));
+                }
+            };
         });
         Editors.ForEachEditor(editor => editor.GutterClicked += (_, click) =>
         {
             if (Editors.Active is not { } active)
             {
-                return;
-            }
-            if (!click.Context && editor.IsInMarkColumn(click.Position) && active.TestMarks.Any(m => m.Line == click.Line))
-            {
-                ShowTestMenu(editor, active, click.Line);
-                return;
-            }
-            if (!click.Context && editor.IsInMarkColumn(click.Position) && active.RouteMarks.Any(m => m.Line == click.Line))
-            {
-                ShowRouteMarkMenu(editor, active, click.Line);
-                return;
-            }
-            if (!click.Context && editor.IsInMarkColumn(click.Position) && active.RunMarks.Any(m => m.Line == click.Line))
-            {
-                ShowRunMarkMenu(editor, active, click.Line);
-                return;
-            }
-            if (PickColour(editor, active, click))
-            {
-                return;
-            }
-            if (!click.Context && editor.IsInAnnotationColumn(click.Position))
-            {
-                IdeErrors.Observe(ShowBlamedCommitAsync(active, click.Line));
-                return;
-            }
-            if (!click.Context && editor.IsInChangeColumn(click.Position) && ChangeAt(active, click.Line) is { } change)
-            {
-                IdeErrors.Observe(ShowChangePopupAsync(editor, active, change));
                 return;
             }
             if (click.Context)
@@ -219,7 +221,7 @@ public partial class MainWindow : Window
         assist.Navigate += (_, target) => NavigateTo(target.Path, target.Position);
         assist.Message += (_, message) => status.Text = message;
         assist.Browse += (_, page) => Browse(page);
-        assist.FilesChanged += (_, _) => FilesChanged();
+        assist.FilesChanging = (paths, change) => Following(paths, change);
         assist.HttpRouteTargets = HttpRouteTargets;
         assist.RouteCallers = RouteCallers;
         usages =new UsageHighlighting(Editors, () => session.CSharp);
@@ -239,6 +241,8 @@ public partial class MainWindow : Window
         Bottom.Run.StopClicked += (_, _) => session.Runner.Stop();
         Bottom.Run.HotReloadClicked += (_, _) => Request(AppActions.ApplyHotReloadChanges);
         Bottom.Run.NameKeys(AppActions.Rerun, AppActions.Stop, AppActions.ApplyHotReloadChanges);
+        Bottom.Run.SayWhenEmpty(AppActions.RunProgram, keys => $"{ActionTips.Named("Run", keys)} shows a program's output here");
+        Bottom.Build.SayWhenEmpty(AppActions.Build, keys => $"{ActionTips.Named("Build Solution", keys)} shows the build's output here");
         AddUnitTests();
         AddLinks();
         AddLocalHistory();
@@ -412,6 +416,18 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>A side button pressed in one of the IDE's windows, over the editor, a tool window or anything else: the
+    /// keymap's action for it (Back, Forward) runs there, the window it was pressed in being the one worked in.</summary>
+    private void OnSideButton(TopLevel window, string action)
+    {
+        Editors.Front(window);
+        Request(action);
+    }
+
+    /// <summary>Escape in one of the IDE's windows with no popup over it: whether it closed the code's list of choices or
+    /// rename box there.</summary>
+    private bool OnEscape(TopLevel window) => assist.Dismiss(window);
+
     /// <summary>The editor a window's editor actions go to while it has the keys: a side of a diff or a merge, or the
     /// shown file's (the active group's, in this window or an editor window); none in a window whose keys are elsewhere.</summary>
     private CodeEditor? EditorWithKeys(TopLevel window, object? focused)
@@ -560,6 +576,8 @@ public partial class MainWindow : Window
             HeaderTools = Explorer.TakeHeaderTools(),
             Options = Explorer.Options,
             Chosen = () => Explorer.SelectedNodes,
+            // Opening every row would read every folder on disk, build output and packages too: it closes them alone.
+            CollapseAll = Explorer.Tree.CollapseAll,
             Activate = () =>
             {
                 Dock.Show(ToolWindowIds.Explorer);
@@ -587,6 +605,8 @@ public partial class MainWindow : Window
             Action = AppActions.ShowTests,
             Menus = [new MenuPlace("Tests", 2, 0)],
             Chosen = () => Bottom.Tests.Selected,
+            ExpandAll = Bottom.TestTree.ExpandAll,
+            CollapseAll = Bottom.TestTree.CollapseAll,
         });
         Dock.Add(new Docking.ToolWindow(ToolWindowIds.Build, "Build", IconKeys.Build, Bottom.Build, Docking.ToolAnchor.BottomLeft) { Action = AppActions.ShowBuild, ActionTitle = "Build Tool Window" });
         Dock.Add(new Docking.ToolWindow(ToolWindowIds.Problems, "Problems", IconKeys.Problems, () => new ToolWindows.ProblemsView(Bottom.Problems), Docking.ToolAnchor.BottomLeft)
@@ -608,6 +628,7 @@ public partial class MainWindow : Window
         Dock.LayoutChanged += (_, _) => KeepDock();
         findSettings = store.Find.Value;
         Editors.ShowsMarkdownPreview = store.Previews.Value.Markdown;
+        ShowPreviews(store.Previews.Value.Xaml);
         assist.RenameSettings = store.Refactorings.Value;
         assist.RenameSettingsChanged += (_, _) => state?.Refactorings.Set(assist.RenameSettings);
         keepsWorkspace = true;
@@ -692,7 +713,7 @@ public partial class MainWindow : Window
         Editors = Editors.Capture(),
         EditorWindows = Editors.CaptureWindows(),
         RecentFiles = [.. session.RecentFiles],
-        UnloadedProjects = [.. session.Unloaded],
+        UnloadedProjects = [.. session.KeptUnloaded],
         Folds = session.Folds.Capture(Editors.Documents),
     });
 
@@ -743,7 +764,7 @@ public partial class MainWindow : Window
     {
         structure = new ToolWindows.StructureView();
         structure.Follow(() => Editors.Active is { } shown
-            ? (shown.Path, session.CSharp?.For(shown)?.Lsp ?? session.Web?.For(shown)?.Lsp, Editors.CodeEditor.CaretPosition.Line)
+            ? (shown.Path, session.OutlineOf(shown), Editors.CodeEditor.CaretPosition.Line)
             : null);
         structure.GoToRequested += (_, row) => NavigateTo(row.Path, row.Position);
         structure.UsagesRequested += (_, row) =>
@@ -788,14 +809,19 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Unload Project: the project shows dimmed with nothing under it, and leaves the run configurations, the
-    /// solution's builds and the test runner until it is reloaded; the folder keeps the choice.</summary>
+    /// solution's builds and the test runner until it is reloaded, which the language server loads it for (one a solution
+    /// filter left out too); the folder keeps the choice.</summary>
     public void SetUnloaded(string project, bool unloaded)
     {
-        if (unloaded ? !session.Unloaded.Add(project) : !session.Unloaded.Remove(project))
+        if (!session.ChooseUnloaded(project, unloaded))
         {
             return;
         }
-        Explorer.Refresh();
+        if (!unloaded)
+        {
+            session.CSharp?.Reload([project]);
+        }
+        Explorer.ShowProjectAgain(project);
         session.Configurations.Configure(Projects);
         status.Text = $"{Path.GetFileNameWithoutExtension(project)} {(unloaded ? "unloaded" : "reloaded")}";
         FindTests();
@@ -819,6 +845,35 @@ public partial class MainWindow : Window
         };
         popups.Show(popup, at);
         Dispatcher.UIThread.Post(popup.Properties.FocusCondition, DispatcherPriority.Loaded);
+    }
+
+    /// <summary>A press on an icon of the gutter's marks: a test's menu, a route's or an .http request's, a run
+    /// configuration's or a colour's picker; false where the line has none of these.</summary>
+    private bool PressMark(CodeEditor editor, OpenDocument document, GutterClick click)
+    {
+        if (document.TestMarks.Any(m => m.Line == click.Line))
+        {
+            ShowTestMenu(editor, document, click.Line);
+            return true;
+        }
+        if (document.RouteMarks.Any(m => m.Line == click.Line))
+        {
+            if (Passenger.App.Endpoints.HttpFile.Is(document.Path))
+            {
+                ShowRequestMarkMenu(editor, document, click.Line);
+            }
+            else
+            {
+                ShowRouteMarkMenu(editor, document, click.Line);
+            }
+            return true;
+        }
+        if (document.RunMarks.Any(m => m.Line == click.Line))
+        {
+            ShowRunMarkMenu(editor, document, click.Line);
+            return true;
+        }
+        return PickColour(editor, document, click);
     }
 
     /// <summary>The Breakpoints window, a breakpoint chosen in it.</summary>

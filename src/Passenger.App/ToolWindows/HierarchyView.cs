@@ -1,7 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -55,16 +54,23 @@ public sealed class HierarchyRow(HierarchyNode node, int depth) : Observable, IT
 
 /// <summary>The Hierarchy window, for calls (Ctrl+Alt+H) and types (Ctrl+E, H): the symbol at the top, and under it
 /// a tree going one way, callers or callees, supertypes or subtypes, each level asked of the language server as it is
-/// opened. The toggles switch the direction; Enter or a double-click goes to a row, Right and Left open and close
-/// (<see cref="TreeKeys"/>).</summary>
+/// opened. The toggles switch the direction; Enter, F4, a double-click or a row's menu goes to a row, Right and Left
+/// open and close (<see cref="TreeKeys"/>).</summary>
 public sealed class HierarchyView : DockPanel
 {
+    /// <summary>How many levels below the top Expand All opens.</summary>
+    private const int ExpandAllDepth = 5;
+
     private readonly TreeRows<HierarchyRow> rows = [];
     private readonly ListBox list;
     private readonly TextBlock title;
     private readonly ToggleButton first;
     private readonly ToggleButton second;
     private readonly TextBlock placeholder;
+
+    /// <summary>The symbol's name and the toggles, shown only once there is a hierarchy: an empty bar says nothing.</summary>
+    private readonly Border bar;
+
     private (HierarchyDirection First, HierarchyDirection Second)? directions;
     private HierarchyNode? root;
 
@@ -80,22 +86,31 @@ public sealed class HierarchyView : DockPanel
         DockPanel.SetDock(toggles, Dock.Right);
         top.Children.Add(toggles);
         top.Children.Add(title);
-        Children.Add(ToolBars.Top(top));
+        bar = ToolBars.Top(top);
+        bar.IsVisible = false;
+        Children.Add(bar);
         list = new ListBox
         {
             Classes = { "tree" },
             ItemsSource = rows,
-            ItemTemplate = new FuncDataTemplate<HierarchyRow>((row, _) => row is null ? new TextBlock() : Row(row), supportsRecycling: false),
         };
+        ReusedRows.Use(list, Row);
         list.DoubleTapped += (_, _) => Go();
         TreeKeys.Attach<HierarchyRow>(list, Toggle, row =>
         {
             GoToRequested?.Invoke(this, row.Node);
             return true;
         });
-        placeholder = new TextBlock { Text = "Call Hierarchy and Type Hierarchy show the symbol at the caret here", Classes = { "emptyText" } };
+        ListMenus.Attach(list, () => list.SelectedItem is not HierarchyRow chosen ? [] :
+        [
+            ListMenus.Item("Go to", "F4", () => GoToRequested?.Invoke(this, chosen.Node)),
+            ListMenus.Item("Copy Name", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Node.Item.Name))),
+            ListMenus.Item("Copy Path", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Node.Path))),
+        ]);
+        placeholder = new TextBlock { Classes = { "emptyText" } };
+        ActionTips.SetWords(placeholder, keys =>
+            $"{ActionTips.Named("Call Hierarchy", keys(AppActions.CallHierarchy))} and {ActionTips.Named("Type Hierarchy", keys(AppActions.TypeHierarchy))} show the symbol at the caret here");
         Children.Add(new Panel { Children = { list, placeholder } });
-        first.IsVisible = second.IsVisible = false;
     }
 
     /// <summary>A row to go to.</summary>
@@ -121,7 +136,7 @@ public sealed class HierarchyView : DockPanel
         directions = (one, other);
         first.Content = one.Label;
         second.Content = other.Label;
-        first.IsVisible = second.IsVisible = true;
+        bar.IsVisible = true;
         placeholder.IsVisible = false;
         return ChooseAsync(first: true);
     }
@@ -169,6 +184,41 @@ public sealed class HierarchyView : DockPanel
         Choose(row);
     }
 
+    /// <summary>Opens every row down to <see cref="ExpandAllDepth"/> levels below the top, asking for each level not yet
+    /// listed, a level at a time: a call hierarchy goes on without end where a method calls itself.</summary>
+    public async Task ExpandAllAsync()
+    {
+        object? chosen = list.SelectedItem;
+        for (int depth = 0; depth < ExpandAllDepth; depth++)
+        {
+            foreach (HierarchyRow row in rows.Where(r => r.Depth == depth && r.Expands && !r.IsExpanded).ToList())
+            {
+                await ExpandAsync(row);
+            }
+        }
+        list.SelectedItem = chosen is HierarchyRow kept && rows.Contains(kept) ? kept : rows.FirstOrDefault();
+    }
+
+    /// <summary>Closes every row below the top, so none opens again with its own rows open.</summary>
+    public void CollapseAll()
+    {
+        if (rows.FirstOrDefault() is not { } top)
+        {
+            return;
+        }
+        foreach (HierarchyRow row in rows.Reverse().Where(r => r != top && r.IsExpanded).ToList())
+        {
+            Collapse(row);
+        }
+        foreach (HierarchyRow hidden in Every(top.Below ?? []).Where(r => r.IsExpanded))
+        {
+            hidden.IsExpanded = false;
+        }
+        Choose(top);
+
+        static IEnumerable<HierarchyRow> Every(IEnumerable<HierarchyRow> level) => level.SelectMany(row => Every(row.Below ?? []).Prepend(row));
+    }
+
     public void Collapse(HierarchyRow row)
     {
         if (!row.IsExpanded || !rows.Contains(row))
@@ -204,36 +254,37 @@ public sealed class HierarchyView : DockPanel
         }
     }
 
-    private Control Row(HierarchyRow row)
+    /// <summary>A row for whichever symbol the list hands its container: its chevron, name, and what and where it is.</summary>
+    private Control Row()
     {
-        PathIcon chevron = new() { Width = 10, Height = 10, Margin = new Thickness(0, 0, 4, 0) };
-        row.FollowWhileShown(chevron, (_, _) =>
-        {
-            chevron.IsVisible = row.Expands;
-            chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(row.IsExpanded ? IconKeys.ChevronDown : IconKeys.ChevronRight));
-        });
-        chevron.PointerPressed += (_, e) =>
-        {
-            Toggle(row);
-            e.Handled = true;
-        };
-        TextBlock name = new() { Text = row.Node.Item.Name, VerticalAlignment = VerticalAlignment.Center, FontWeight = row.Depth == 0 ? FontWeight.SemiBold : FontWeight.Normal };
+        RowIcon chevron = new() { Width = 10, Height = 10, Margin = new Thickness(0, 0, 4, 0) };
+        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock detail = new()
         {
-            Text = $"{row.Node.Item.Detail}  {System.IO.Path.GetFileName(row.Node.Path)}:{row.Node.Where.Line + 1}",
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(10, 0, 0, 0),
             FontSize = 12,
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
         detail.Classes.Add("muted");
-        return new StackPanel
+        StackPanel line = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { chevron, name, detail } };
+        chevron.PointerPressed += (_, e) =>
         {
-            Orientation = Orientation.Horizontal,
-            Height = ListRow.Height,
-            Margin = new Thickness(8 + (row.Depth * 16), 0, 8, 0),
-            Children = { chevron, name, detail },
+            if (line.DataContext is HierarchyRow row)
+            {
+                Toggle(row);
+                e.Handled = true;
+            }
         };
+        return line.Showing<HierarchyRow>(row =>
+        {
+            line.Margin = new Thickness(8 + (row.Depth * 16), 0, 8, 0);
+            chevron.IsVisible = row.Expands;
+            chevron.DataKey = row.IsExpanded ? IconKeys.ChevronDown : IconKeys.ChevronRight;
+            name.Text = row.Node.Item.Name;
+            name.FontWeight = row.Depth == 0 ? FontWeight.SemiBold : FontWeight.Normal;
+            detail.Text = $"{row.Node.Item.Detail}  {System.IO.Path.GetFileName(row.Node.Path)}:{row.Node.Where.Line + 1}";
+        });
     }
 
     // As wide as its words: an option toggle is otherwise an icon's square.

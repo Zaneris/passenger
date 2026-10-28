@@ -146,8 +146,9 @@ internal sealed class AspireContainerOwnership
             recordedAs[appHost] = signature;
             return;
         }
+        // Not held: what reaches the engine is only recorded, which nothing drawn waits for.
         Task<Identity?> readingIdentity = observingIdentity is { IsCompleted: false } pending
-            ? pending : observingIdentity = Task.Run(() => ReadIdentityAsync(engine, again: false));
+            ? pending : observingIdentity = BackgroundWork.Unheld(() => ReadIdentityAsync(engine, again: false));
         Identity? identity = await readingIdentity;
         if (closing.IsCancellationRequested || observations[appHost] != observation)
         {
@@ -332,7 +333,7 @@ internal sealed class AspireContainerOwnership
         }
         StateDocument<Manifest> kept = document;
         // Not held: nothing it does is drawn, and the folder's end waits for it once the window's loop may have stopped.
-        return Task.Run(async () =>
+        return BackgroundWork.Unheld(async () =>
         {
             if (after is not null)
             {
@@ -469,8 +470,8 @@ internal sealed class AspireContainerOwnership
         List<string> removed = [];
         foreach (IGrouping<string?, Entry> on in candidates.GroupBy(entry => entry.Runtime))
         {
-            // A runtime's own engine where the record names one (an orchestrator's beside Passenger's), else Passenger's.
-            ContainerEngine reaching = on.Key is { } runtime ? await Task.Run(() => RuntimeEngine(runtime), cancel).ConfigureAwait(false) ?? engine : engine;
+            // A runtime's own engine where the record names one (an orchestrator's beside Passenger's), else Passenger's; not held.
+            ContainerEngine reaching = on.Key is { } runtime ? await BackgroundWork.Unheld(() => RuntimeEngine(runtime), cancel).ConfigureAwait(false) ?? engine : engine;
             removed.AddRange(await RemoveLeftoversOnAsync(record, reaching, [.. on], cancel).ConfigureAwait(false));
         }
         return removed;

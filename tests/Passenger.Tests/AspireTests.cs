@@ -14,6 +14,7 @@ using Avalonia.Input.Platform;
 using Avalonia.VisualTree;
 using Grpc.Core;
 using Grpc.Net.Client;
+using Passenger.App.Editors;
 using Passenger.App;
 using Passenger.App.Aspire;
 using Passenger.App.Aspire.Protocol;
@@ -615,8 +616,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
         Ui.PumpUntil(() => window.Debugger.Stop?.Top?.Line == later + 1, "the breakpoint added after both service sessions started");
         Assert.Same(apiDebug, window.Debugger.Chosen);
         window.Perform(AppActions.Resume);
-        Ui.PumpUntil(() => apiRequest.IsCompleted, "the resumed API HTTP request");
-        Assert.Contains("temperatureC", apiRequest.GetAwaiter().GetResult(), StringComparison.Ordinal);
+        Assert.Contains("temperatureC", Ui.AwaitPumped(apiRequest, "the resumed API HTTP request"), StringComparison.Ordinal);
         Ui.Await(Complete(window.Debugger.ChooseAsync(webDebug)), "choosing the frontend to resume its request");
         window.Perform(AppActions.Resume);
         Ui.PumpUntil(() => webDebug.Session?.State != DebugState.Paused, "the frontend to leave its first stop");
@@ -625,8 +625,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
         window.Perform(AppActions.Resume);
         Ui.PumpUntil(() => window.Debugger.Stop?.Top?.Line == later + 1, "the later breakpoint on the frontend's API request");
         window.Perform(AppActions.Resume);
-        Ui.PumpUntil(() => webRequest.IsCompleted, "the resumed cross-service HTTP request");
-        Assert.Equal("5", webRequest.GetAwaiter().GetResult());
+        Assert.Equal("5", Ui.AwaitPumped(webRequest, "the resumed cross-service HTTP request"));
         Assert.True(apiDebug.IsLive && webDebug.IsLive);
         int[] owned = OwnedPids(window);
         window.Close();
@@ -825,7 +824,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
                 new { name = "PASSENGER_CANCELED_DCP_PID", value = marker },
             },
         });
-        Task disconnect = Task.Run(async () =>
+        Task disconnect = Waiting.Apart(async () =>
         {
             using TcpClient abandoned = new();
             await abandoned.ConnectAsync(IPAddress.Loopback, endpoint.Port, limit.Token);
@@ -842,8 +841,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
             abandoned.Client.LingerState = new LingerOption(true, 0);
         }, limit.Token);
         // Wait without pumping: no posted service launch may run before the peer has disconnected.
-        Assert.True(Waiting.Until(() => disconnect.IsCompleted, TimeSpan.FromSeconds(30)), "The real HTTP request did not send and disconnect while the UI was held");
-        disconnect.GetAwaiter().GetResult();
+        Ui.Idle(disconnect, "the real HTTP request to send and disconnect while the UI was held", TimeSpan.FromSeconds(30));
         int[] owned = OwnedPids(window);
         // Close before releasing the UI, so socket-abort scheduling cannot race a valid late launch.
         window.Close();
@@ -851,8 +849,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
         Assert.Empty(lateProcesses);
         Assert.False(File.Exists(marker), "A canceled service launch escaped into window shutdown");
         Task<HttpResponseMessage> closed = http.GetAsync(new Uri(root, "/info"));
-        Ui.PumpUntil(() => closed.IsCompleted, "the request-owning endpoint to stop listening");
-        Assert.Throws<HttpRequestException>(() => closed.GetAwaiter().GetResult());
+        Assert.Throws<HttpRequestException>(() => Ui.AwaitPumped(closed, "the request-owning endpoint to stop listening"));
     }
 
     [AvaloniaFact(Skip = AspireApp.AppHostSkipped, SkipType = typeof(AspireApp), SkipWhen = nameof(AspireApp.IsUnavailable))]
@@ -870,13 +867,11 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
         Assert.False(starting.IsCompleted, "Cancellation must happen during startup, not after a successful launch");
         int port = AspireApp.ReadConnectionInfo(project.Host).Port;
         cancel.Cancel();
-        Ui.PumpUntil(() => starting.IsCompleted, "the canceled window launch to finish");
-        Assert.NotNull(starting.GetAwaiter().GetResult());
+        Assert.NotNull(Ui.AwaitPumped(starting, "the canceled window launch to finish"));
         Ui.WaitFor(() => window.AspireRuntime.Apps.Count == 0 && observed.All(id => !Processes.IsRunning(id)), "cancellation to clean up the AppHost and every observed service");
         using HttpClient http = Client();
         Task<HttpResponseMessage> request = http.GetAsync($"http://127.0.0.1:{port}/info");
-        Ui.PumpUntil(() => request.IsCompleted, "the canceled start's listener to refuse HTTP");
-        Assert.Throws<HttpRequestException>(() => request.GetAwaiter().GetResult());
+        Assert.Throws<HttpRequestException>(() => Ui.AwaitPumped(request, "the canceled start's listener to refuse HTTP"));
         window.Close();
     }
 
@@ -973,7 +968,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
             && editor.PointOf(document.Text.Snapshot.GetLineStart(line)).Y >= 0
             && editor.PointOf(document.Text.Snapshot.GetLineStart(line)).Y + editor.LineHeight < editor.Bounds.Height,
             $"the visible {resource} run gutter mark");
-        double x = Enumerable.Range(0, 400).First(x => editor.IsInMarkColumn(new Point(x, 0))) + 3;
+        double x = Enumerable.Range(0, 400).First(x => editor.IsOnGutterColumn(editor.Gutter!.Marks, new Point(x, 0))) + 3;
         Ui.Click(editor, new Point(x, editor.PointOf(document.Text.Snapshot.GetLineStart(line)).Y + editor.LineHeight / 2));
         Assert.NotNull(window.RunMarkMenu);
     }
@@ -1025,11 +1020,12 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
         {
             Ui.PumpUntil(() =>
             {
-                if (!refresh.IsCompleted)
+                Task done = refresh;
+                if (!done.IsCompleted)
                 {
                     return false;
                 }
-                refresh.GetAwaiter().GetResult();
+                done.GetAwaiter().GetResult();
                 if (ready())
                 {
                     return true;

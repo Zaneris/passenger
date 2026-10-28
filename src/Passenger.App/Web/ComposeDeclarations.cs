@@ -29,14 +29,16 @@ public static partial class ComposeDeclarations
     /// docker-compose.override.yml and the like.</summary>
     public static bool IsCompose(string path)
     {
-        string name = Path.GetFileName(path).ToLowerInvariant();
-        string extension = Path.GetExtension(name);
-        if (extension is not (".yaml" or ".yml"))
+        ReadOnlySpan<char> file = Path.GetFileName(path.AsSpan());
+        Span<char> name = file.Length <= 256 ? stackalloc char[file.Length] : new char[file.Length];
+        file.ToLowerInvariant(name);
+        ReadOnlySpan<char> extension = Path.GetExtension((ReadOnlySpan<char>)name);
+        if (!extension.SequenceEqual(".yaml") && !extension.SequenceEqual(".yml"))
         {
             return false;
         }
-        string stem = name[..^extension.Length];
-        return stem is "compose" or "docker-compose" || stem.StartsWith("compose.", StringComparison.Ordinal) || stem.StartsWith("docker-compose.", StringComparison.Ordinal);
+        ReadOnlySpan<char> stem = name[..^extension.Length];
+        return stem.SequenceEqual("compose") || stem.SequenceEqual("docker-compose") || stem.StartsWith("compose.") || stem.StartsWith("docker-compose.");
     }
 
     /// <summary>Where Go to Declaration goes from an offset of a compose file whose outline the server gave for

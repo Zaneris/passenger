@@ -21,7 +21,7 @@ public sealed partial class CSharpDocument
     internal void AspireChanged()
     {
         ClearAspireDiagnostics();
-        Pull(Settle);
+        Pull(Pause);
     }
 
     /// <summary>The folder's projects as MSBuild evaluated them changed what the file is to Aspire since its last pull asked

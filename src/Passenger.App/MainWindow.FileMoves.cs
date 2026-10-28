@@ -1,3 +1,4 @@
+using Passenger.App.CSharp;
 using Passenger.App.Editors;
 using Passenger.App.Explorer;
 using Passenger.App.Workspace;
@@ -92,16 +93,21 @@ public partial class MainWindow
 
     /// <summary>Moves or copies files and folders into a folder: what is there already stays put, a folder never goes
     /// inside itself, a copy into its own folder is named by the person, and a name taken there is replaced (what had it
-    /// going to the Trash) only once they agree. The status bar says what went where and what could not; the last one put
-    /// is chosen in the Explorer. Answers with where each went.</summary>
+    /// going to the Trash) only once they agree. A move, with what follows it, is one command, which Undo in the Explorer
+    /// takes back whole. The status bar says what went where and what could not; the last one put is chosen in the
+    /// Explorer. Answers with where each went.</summary>
     public async Task<IReadOnlyList<string>> PutAsync(IReadOnlyList<string> paths, string into, bool copy)
     {
         into = PathNames.Canonical(into);
         // A file's dependents go with it, renamed as a copy's name asks; one chosen with its parent goes as the parent's.
         IReadOnlyDictionary<string, IReadOnlyList<string>> following = DependentsOf(paths);
         HashSet<string> dependents = [.. following.Values.SelectMany(d => d)];
+        using CommandHistory.Recording? recording = copy ? null
+            : Editors.Commands.Record($"Move {Together([.. paths.Where(p => !dependents.Contains(p)).Select(Path.GetFileName).OfType<string>()])} to {Path.GetFileName(into)}");
         List<string> put = [];
         List<(string From, string To)> moved = [];
+        // The ends of the moves, followed with the copies once all are put.
+        List<string> came = [];
         List<string> refused = [];
         foreach (string source in paths.Where(p => !dependents.Contains(p)))
         {
@@ -130,7 +136,7 @@ public partial class MainWindow
                 .Where(d => !PathNames.Same(d.Item1, d.Item2))];
             foreach ((string from, string to) in going)
             {
-                if (await PutOneAsync(from, to, into, copy) is { } problem)
+                if (await PutOneAsync(from, to, into, copy, came) is { } problem)
                 {
                     if (problem.Length > 0)
                     {
@@ -149,15 +155,19 @@ public partial class MainWindow
                 }
             }
         }
-        if (FollowMoved(moved) is { } unfollowed)
+        if (FollowMoved(moved, recording) is { } unfollowed)
         {
             refused.Add(unfollowed);
         }
+        else if (recording is not null && await recording.LandedAsync(waiting => status.Text = waiting) is [(string unwritten, Exception notLanded), ..])
+        {
+            refused.Add($"{Path.GetFileName(unwritten)} could not follow the files moved: {notLanded.Message}");
+        }
         if (put.Count > 0)
         {
-            FilesChanged();
+            CameOrWent([.. came, .. put]);
             Explorer.Reveal(put[^1]);
-            // Read again, the rows lost the keys; they take them back for the next Paste.
+            // The keys go with the choice to the row revealed, for the next Paste.
             Explorer.FocusRows();
             refused.Insert(0, $"{(copy ? "Copied" : "Moved")} {Together([.. put.Select(Path.GetFileName).OfType<string>()])} to {Path.GetFileName(into)}");
         }
@@ -166,8 +176,9 @@ public partial class MainWindow
     }
 
     /// <summary>Moves or copies one file or folder to where it goes, replacing what has its name there once the person
-    /// agrees; null once it is there, else why not ("" when they would not replace).</summary>
-    private async Task<string?> PutOneAsync(string source, string target, string into, bool copy)
+    /// agrees, a move's ends gathered into <paramref name="came"/>; null once it is there, else why not ("" when they would
+    /// not replace).</summary>
+    private async Task<string?> PutOneAsync(string source, string target, string into, bool copy, List<string> came)
     {
         string name = Path.GetFileName(source);
         if (!PathNames.Same(target, source) && (File.Exists(target) || Directory.Exists(target)))
@@ -178,7 +189,7 @@ public partial class MainWindow
                 return string.Empty;
             }
         }
-        return (copy ? CopyOnDisk(source, target) : Editors.MoveFile(source, target)) is { } problem
+        return (copy ? CopyOnDisk(source, target) : Gathering(came, () => Editors.MoveFile(source, target))) is { } problem
             ? $"{name} could not be {(copy ? "copied" : "moved")}: {problem}"
             : null;
     }
@@ -204,11 +215,11 @@ public partial class MainWindow
         return canonical.ToDictionary(p => p.Key, p => found.GetValueOrDefault(p.Value) ?? [], StringComparer.Ordinal);
     }
 
-    /// <summary>What names the files moved follows them: the solution's projects and files, and every project's items
-    /// naming one (an Update or Remove, a DependentUpon, a reference to a project moved), each file watched first when
-    /// a command is recording, for its undo. A project moved is read again at its new path. Null once they follow, else
-    /// why one could not.</summary>
-    private string? FollowMoved(IReadOnlyList<(string From, string To)> moved, CommandHistory.Recording? recording = null)
+    /// <summary>What names the files moved follows them: the solution's projects and files, every project's items naming
+    /// one (an Update or Remove, a DependentUpon, a reference to a project moved), and every program's directives naming
+    /// one (a <c>#:project</c>, <c>#:include</c> or <c>#:ref</c>), each file watched first by the command recording, for its
+    /// undo. A project or program moved is read again at its new path. Null once they follow, else why one could not.</summary>
+    private string? FollowMoved(IReadOnlyList<(string From, string To)> moved, CommandHistory.Recording? recording)
     {
         string Now(string path) => moved.FirstOrDefault(m => PathNames.Within(path, m.From)) is { From: not null } move ? PathNames.Moved(path, move.From, move.To) : path;
         // A file naming one moved names it, or the folder it was in, by name: those that cannot are never read further.
@@ -223,7 +234,7 @@ public partial class MainWindow
         foreach (ProjectModel project in session.Workspace?.Projects ?? [])
         {
             string now = Now(project.Path);
-            naming.Add((now, now != project.Path, path => ProjectEdits.MoveItems(path, moved)));
+            naming.Add((now, now != project.Path, project.IsProgram ? path => ProgramEdits.MoveDirectives(path, moved) : path => ProjectEdits.MoveItems(path, moved)));
         }
         bool reread = naming.Any(n => n.Moved);
         foreach ((string path, bool itself, Func<string, bool> follow) in naming)
@@ -365,8 +376,8 @@ public partial class MainWindow
     }
 
     /// <summary>Undo or Redo that reaches a command of several files or of a file moved (a rename) takes all of it back
-    /// or makes all of it again, once the person agrees; in an editor, only when that command is its file's next step.
-    /// False when Undo there is the file's own.</summary>
+    /// or makes all of it again, once the person agrees, said done once the files not open it wrote have landed; in an
+    /// editor, only when that command is its file's next step. False when Undo there is the file's own.</summary>
     private bool UndoCommand(bool redo, OpenDocument? document)
     {
         if ((redo ? Editors.Commands.ToRedo(document) : Editors.Commands.ToUndo(document)) is not { } command)
@@ -393,9 +404,17 @@ public partial class MainWindow
         {
             return;
         }
+        // What may come or go, with the folders over it, as they stand before: a part may make or take away a folder.
+        Dictionary<string, bool> stood = Standing(command.Moves.SelectMany(m => new[] { m.From, m.To }).Concat(command.Created.Select(c => c.Path)));
+        List<string> moved = [];
+        IReadOnlyList<string> written = Editors.Commands.Writes(command, redo);
         // Asked again: a file may have changed while the question was open.
-        string? failed = Editors.Commands.Blocked(command, redo) ?? (redo ? Editors.Commands.Redo(command) : Editors.Commands.Undo(command));
-        FilesChanged();
+        string? failed = Gathering(moved, () => Editors.Commands.Blocked(command, redo) ?? (redo ? Editors.Commands.Redo(command) : Editors.Commands.Undo(command)));
+        Followed(stood, moved, [.. command.Texts.Select(t => t.Document?.Path ?? (redo ? command.Moved(t.Path) : t.Path))]);
+        if (failed is null && await EditorArea.LandedAsync(written, waiting => status.Text = waiting) is [(string path, Exception why), ..])
+        {
+            failed = WorkspaceEdits.Unwritten(path, why);
+        }
         status.Text = failed is null ? $"{(redo ? "Redone" : "Undone")}: {command.Name}" : $"Cannot {verb.ToLowerInvariant()} {command.Name}: {failed}";
     }
 }

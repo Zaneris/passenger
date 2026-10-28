@@ -16,6 +16,10 @@ public sealed class ServerLines
     /// <summary>What ends a line for an XML reader and not for the editor: a lone '\r' alone, as XML 1.0 reads breaks.</summary>
     private static readonly SearchValues<char> XmlBreaks = SearchValues.Create("\r");
 
+    /// <summary>The first byte of each break in UTF-8 that the server counts and the editor may not: '\r', U+0085's 0xC2,
+    /// and U+2028's and U+2029's 0xE2.</summary>
+    private static readonly SearchValues<byte> BreakStarts = SearchValues.Create([0x0D, 0xC2, 0xE2]);
+
     private static readonly ConditionalWeakTable<TextSnapshot, ServerLines> Known = new();
 
     private static readonly ConditionalWeakTable<TextSnapshot, ServerLines> KnownXml = new();
@@ -43,6 +47,30 @@ public sealed class ServerLines
     /// <summary>How many characters this thread has read to find where the server's lines break: what a key costs here,
     /// counted rather than timed.</summary>
     public static long CharactersRead => read;
+
+    /// <summary>Whether UTF-8 text holds a break the server counts and the editor does not: a '\r' with no '\n' after it,
+    /// U+0085, U+2028 or U+2029. A vectorized look for each break's first byte, the rest of it confirmed where one is.</summary>
+    public static bool BreaksApart(ReadOnlySpan<byte> utf8)
+    {
+        int at = 0;
+        while (utf8[at..].IndexOfAny(BreakStarts) is int found and >= 0)
+        {
+            at += found;
+            ReadOnlySpan<byte> rest = utf8[at..];
+            bool counts = rest[0] switch
+            {
+                0x0D => rest.Length == 1 || rest[1] != 0x0A,
+                0xC2 => rest.Length > 1 && rest[1] == 0x85,
+                _ => rest.Length > 2 && rest[1] == 0x80 && rest[2] is 0xA8 or 0xA9,
+            };
+            if (counts)
+            {
+                return true;
+            }
+            at++;
+        }
+        return false;
+    }
 
     /// <summary>The lines of a snapshot, found once and kept with it; safe from any thread.</summary>
     public static ServerLines Of(TextSnapshot text) => Known.GetValue(text, static text => Find(text, Breaks));

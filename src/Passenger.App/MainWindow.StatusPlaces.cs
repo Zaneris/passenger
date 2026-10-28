@@ -6,8 +6,9 @@ namespace Passenger.App;
 
 /// <summary>Where what the status bar says has more to see: a project's load problem in Problems' Toolset, Environment, a
 /// build's problems in Problems' Build, Hot Reload's edits in its tab, a binding error stopped at in Bindings, a test run in
-/// Unit Tests, an internal error in IDE Internal Errors, a state file set aside in the file manager, and the log where the
-/// words say it says why. A click on the words, or Enter on them, goes there.</summary>
+/// Unit Tests, an internal error in IDE Internal Errors, a state file set aside in the file manager, the log where the
+/// words say it says why, and a language server left stopped started again. A click on the words, or Enter on them, goes
+/// there.</summary>
 public partial class MainWindow
 {
     /// <summary>Where a click on the status bar's words goes now, null when nowhere.</summary>
@@ -42,4 +43,10 @@ public partial class MainWindow
 
     /// <summary>Help, Show Log: the log chosen in the file manager.</summary>
     private StatusPlace LogPlace => new($"show the log in {FileManager.Name}", ShowLog);
+
+    /// <summary>Restart C# Language Server, run as its menu item runs it.</summary>
+    private StatusPlace RestartCSharpPlace => StartAgainPlace(() => Request(AppActions.RestartCSharpServer));
+
+    /// <summary>A language server left stopped, started again as <paramref name="again"/> starts it.</summary>
+    private static StatusPlace StartAgainPlace(Action again) => new("start it again", again);
 }

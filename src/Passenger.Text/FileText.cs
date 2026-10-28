@@ -16,8 +16,17 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
     private const int SharingViolation = unchecked((int)0x80070020);
     private const int LockViolation = unchecked((int)0x80070021);
 
-    /// <summary>How many times a write another program holds the file against is made, 50 ms apart: two seconds.</summary>
+    /// <summary>How many times a write another program holds the file against is made, <see cref="HeldPause"/> apart: two
+    /// seconds.</summary>
     private const int HeldAttempts = 40;
+
+    /// <summary>How long a save another program holds its file against waits before it tries again.</summary>
+    private static readonly TimeSpan HeldPause = TimeSpan.FromMilliseconds(50);
+
+    /// <summary>Saves still landing, by the file each writes (a link's target): one whose file another program held
+    /// (Windows), then each save of that file made meanwhile, which lands after it. Each has the last one's task, how many
+    /// are left, and the bytes the last one lands, which a read of the file gets meanwhile.</summary>
+    private static readonly Dictionary<string, (Task<Exception?> Last, int Count, byte[] Bytes)> Landing = new(PathNames.Comparer);
 
     private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
@@ -136,8 +145,65 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
     }
 
     /// <summary>A file's bytes, read sharing writes and deletes, so the read is never in another program's way (a
-    /// checkout that deletes the file first).</summary>
-    public static byte[] Read(string path)
+    /// checkout that deletes the file first); while a save of it is still landing, the bytes it lands, which the file is
+    /// about to hold (<see cref="Landed(string)"/>).</summary>
+    public static byte[] Read(string path) => LandingBytes(path) ?? FromDisk(path);
+
+    /// <summary>The bytes the last save of a file still landing lands, or null when none is.</summary>
+    private static byte[]? LandingBytes(string path)
+    {
+        lock (Landing)
+        {
+            if (Landing.Count == 0)
+            {
+                return null;
+            }
+        }
+        string target = Path.GetFullPath(Target(path));
+        lock (Landing)
+        {
+            return Landing.TryGetValue(target, out (Task<Exception?> Last, int Count, byte[] Bytes) landing) ? landing.Bytes : null;
+        }
+    }
+
+    /// <summary>The save of a file still landing last, which ends once it has, with what kept it from landing (or null);
+    /// null when none is. A save Windows refuses while another program holds the file lands off the caller's thread, the
+    /// saves of that file made meanwhile after it, in order.</summary>
+    public static Task<Exception?>? Landed(string path)
+    {
+        lock (Landing)
+        {
+            if (Landing.Count == 0)
+            {
+                return null;
+            }
+        }
+        string target = Path.GetFullPath(Target(path));
+        lock (Landing)
+        {
+            return Landing.TryGetValue(target, out (Task<Exception?> Last, int Count, byte[] Bytes) landing) ? landing.Last : null;
+        }
+    }
+
+    /// <summary>Each file with a save still landing (a link's target), and the last of its saves (<see cref="Landed(string)"/>).</summary>
+    public static IReadOnlyList<(string Path, Task<Exception?> Last)> Landings()
+    {
+        lock (Landing)
+        {
+            return [.. Landing.Select(l => (l.Key, l.Value.Last))];
+        }
+    }
+
+    /// <summary>Every save still landing, ended: the process's last wait, so none is cut short.</summary>
+    public static Task AllLanded()
+    {
+        lock (Landing)
+        {
+            return Task.WhenAll(Landing.Values.Select(l => l.Last));
+        }
+    }
+
+    private static byte[] FromDisk(string path)
     {
         using FileStream stream = new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         using MemoryStream bytes = new();
@@ -151,19 +217,24 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
     public static event Action<string>? Writing;
 
     /// <summary>A file a save wrote, once it holds the bytes written: its path as given, what it held before (null when
-    /// there was no file, or it was too large to keep or could not be read) and the bytes. Local History keeps both.</summary>
+    /// there was no file, or it was too large to keep or could not be read) and the bytes. Local History keeps both.
+    /// Raised on the saving thread, or the pool's for a save that landed later (<see cref="Landed(string)"/>).</summary>
     public static event Action<string, byte[]?, byte[]>? Wrote;
 
     /// <summary>How large a file's content Local History keeps, and so reads before a save writes over it.</summary>
     public const int KeptLimit = 20 * 1024 * 1024;
 
-    /// <summary>The temporary file a save writes first, which nothing but the save should see.</summary>
+    /// <summary>The temporary file a save writes first, and the old file a replace sets aside, which nothing but the save
+    /// should see.</summary>
     public const string SaveSuffix = ".passenger-save";
 
     /// <summary>Whether a path is a save's temporary file, there beside its file for the moment the save writes: what
     /// reads the folder meanwhile (the folder watcher, Git's status, Go to File's index, the Explorer) passes it over
     /// rather than take it for a new file.</summary>
-    public static bool IsSaving(string path) => path.EndsWith(SaveSuffix, StringComparison.Ordinal);
+    public static bool IsSaving(string path) => IsSaving(path.AsSpan());
+
+    /// <inheritdoc cref="IsSaving(string)"/>
+    public static bool IsSaving(ReadOnlySpan<char> path) => path.EndsWith(SaveSuffix, StringComparison.Ordinal);
 
     /// <summary>Writes through a temporary file beside the target, so a failed write never leaves a half-written one; a
     /// symlink is written through to its target, the file keeps what it was (<see cref="Over"/>), one deleted since it
@@ -234,19 +305,120 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
             // A move over it would replace it on macOS and Linux, where only its folder's permissions are asked.
             throw new ReadOnlyFileException(path);
         }
-        byte[]? before = Wrote is not null && there ? Before(target) : null;
         byte[] bytes = preamble.Length == 0 ? body : [.. preamble, .. body];
         UnixFileMode? mode = !OperatingSystem.IsWindows() && File.Exists(target) ? File.GetUnixFileMode(target) : null;
-        // A failed save leaves the old file as it was, and nothing of its own beside it.
+        target = Path.GetFullPath(target);
+        lock (Landing)
+        {
+            if (Landing.TryGetValue(target, out (Task<Exception?> Last, int Count, byte[] Bytes) earlier))
+            {
+                // After the save still landing, so the file takes them in order and Local History each one's old bytes.
+                Task<Exception?> after = BackgroundWork.Run(() => LandAsync(path, target, bytes, mode, encoding, earlier.Last, null));
+                Landing[target] = (after, earlier.Count + 1, bytes);
+                return;
+            }
+        }
+        byte[]? before = Wrote is not null && there ? Before(target) : null;
+        if (Put(target, bytes, mode, encoding) is { } held)
+        {
+            lock (Landing)
+            {
+                int racing = Landing.TryGetValue(target, out (Task<Exception?> Last, int Count, byte[] Bytes) other) ? other.Count : 0;
+                Landing[target] = (BackgroundWork.Run(() => LandAsync(path, target, bytes, mode, encoding, null, (held, before))), racing + 1, bytes);
+            }
+            return;
+        }
+        Wrote?.Invoke(path, before, bytes);
+    }
+
+    /// <summary>Writes the temporary file and puts it in the target's place: null once it is there, else the temporary
+    /// file, left for a later try, Windows having refused it while another program holds the target (a virus scanner, a
+    /// build reading it). A failed write leaves the old file as it was, and nothing of its own beside it. A target another
+    /// hard link names is written in place on macOS and Linux (<see cref="AtomicFile"/>), keeping all it had.</summary>
+    private static string? Put(string target, byte[] bytes, UnixFileMode? mode, Encoding? encoding)
+    {
+        string? held = null;
+        bool moved = false;
         AtomicFile.Write(target, bytes, mode, SaveSuffix, (temporary, at) =>
         {
+            moved = true;
             if (mode is not null && OperatingSystem.IsMacOS())
             {
                 MacFileMetadata.Copy(at, temporary, encoding);
             }
-            Replace(temporary, at, bytes);
+            held = Placed(temporary, at) ? null : temporary;
         });
-        Wrote?.Invoke(path, before, bytes);
+        if (!moved && OperatingSystem.IsMacOS())
+        {
+            MacFileMetadata.Encoded(target, encoding);
+        }
+        return held;
+    }
+
+    /// <summary>A save landing off the caller's thread: after the <paramref name="earlier"/> one, written whole (its old
+    /// bytes read then), or one whose temporary file is <paramref name="held"/>. The move is tried again for a moment,
+    /// then the target written in place, which a program holding it without sharing its deletion allows; one sharing no
+    /// writes either is waited out (<see cref="WhileHeldAsync"/>). What kept it from landing, or null.</summary>
+    private static async Task<Exception?> LandAsync(string path, string target, byte[] bytes, UnixFileMode? mode, Encoding? encoding,
+        Task<Exception?>? earlier, (string Temporary, byte[]? Before)? held)
+    {
+        string? temporary = held?.Temporary;
+        try
+        {
+            byte[]? before = held?.Before;
+            if (earlier is not null)
+            {
+                await earlier;
+                Writing?.Invoke(path);
+                before = Wrote is not null && File.Exists(target) ? Before(target) : null;
+                temporary = Put(target, bytes, mode, encoding);
+            }
+            for (int attempt = 2; temporary is not null && attempt <= 3; attempt++)
+            {
+                await Task.Delay(HeldPause);
+                temporary = Placed(temporary, target) ? null : temporary;
+            }
+            if (temporary is not null)
+            {
+                await WhileHeldAsync(() =>
+                {
+                    using FileStream stream = new(target, FileMode.Open, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
+                    stream.Write(bytes);
+                    stream.SetLength(stream.Position);
+                    stream.Flush(flushToDisk: true);
+                });
+                File.Delete(temporary);
+                temporary = null;
+            }
+            Wrote?.Invoke(path, before, bytes);
+            return null;
+        }
+        catch (Exception refused) when (refused is IOException or UnauthorizedAccessException)
+        {
+            if (temporary is not null)
+            {
+                Forget(temporary);
+            }
+            PassengerLog.Write($"A save of {target} did not land: {refused.Message}");
+            return refused;
+        }
+        finally
+        {
+            lock (Landing)
+            {
+                if (Landing.TryGetValue(target, out (Task<Exception?> Last, int Count, byte[] Bytes) left))
+                {
+                    if (left.Count == 1)
+                    {
+                        Landing.Remove(target);
+                    }
+                    else
+                    {
+                        Landing[target] = left with { Count = left.Count - 1 };
+                    }
+                }
+            }
+        }
     }
 
     /// <summary>What a file about to be written over holds, when Local History would keep it.</summary>
@@ -254,7 +426,7 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
     {
         try
         {
-            return new FileInfo(target).Length <= KeptLimit ? Read(target) : null;
+            return new FileInfo(target).Length <= KeptLimit ? FromDisk(target) : null;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -262,62 +434,68 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
         }
     }
 
-    /// <summary>Moves the written file over the target. Windows refuses that while another program holds the target
-    /// without sharing its deletion (a virus scanner, a build reading it): the move is tried again for a moment, then the
-    /// target is written in place, which such a program allows, so no save (nor the one quitting makes) fails for it; one
-    /// sharing no writes either is waited out (<see cref="WhileHeld"/>).</summary>
-    private static void Replace(string temporary, string target, byte[] bytes)
+    /// <summary>Moves the written file over the target, once; false when Windows refuses that while another program
+    /// holds the target without sharing its deletion, the written file left where it is.</summary>
+    private static bool Placed(string temporary, string target)
     {
-        for (int attempt = 1; ; attempt++)
+        try
         {
-            try
-            {
-                Over(temporary, target);
-                return;
-            }
-            catch (Exception refused) when (OperatingSystem.IsWindows() && refused is IOException or UnauthorizedAccessException && File.Exists(target))
-            {
-                if (attempt == 3)
-                {
-                    break;
-                }
-                Thread.Sleep(50);
-            }
+            Over(temporary, target);
+            return true;
         }
-        WhileHeld(() =>
+        catch (Exception refused) when (OperatingSystem.IsWindows() && refused is IOException or UnauthorizedAccessException && File.Exists(target))
         {
-            using FileStream stream = new(target, FileMode.Open, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
-            stream.Write(bytes);
-            stream.SetLength(stream.Position);
-            stream.Flush(flushToDisk: true);
-        });
-        File.Delete(temporary);
+            return false;
+        }
     }
 
-    /// <summary>Puts the written file in the target's place. On Windows that is ReplaceFile's, which keeps what the target
-    /// was (its attributes, Hidden and System among them, its explicit ACL, its alternate data streams, Zone.Identifier's
-    /// too, its creation date), where a move gives it the new file's attributes and the folder's inherited ACL.</summary>
+    /// <summary>Puts the written file in the target's place: a move, but on Windows over a target with what a move would
+    /// lose (<see cref="WindowsFileMetadata.MoveKeeps"/>: its attributes, its own ACL, its streams, Zone.Identifier's too),
+    /// where ReplaceFile keeps them. The old file it sets aside meanwhile is named as a save's own
+    /// (<see cref="IsSaving(string)"/>), never as a file come and gone, and deleted once the new one has its place.</summary>
     private static void Over(string temporary, string target)
     {
-        if (OperatingSystem.IsWindows() && File.Exists(target))
+        if (!OperatingSystem.IsWindows() || !File.Exists(target) || WindowsFileMetadata.MoveKeeps(target, temporary))
         {
-            try
+            File.Move(temporary, target, overwrite: true);
+            return;
+        }
+        string setAside = Path.Join(Path.GetDirectoryName(target), Guid.NewGuid().ToString("N") + SaveSuffix);
+        try
+        {
+            File.Replace(temporary, target, setAside, ignoreMetadataErrors: true);
+        }
+        catch (Exception refused) when (refused is IOException or UnauthorizedAccessException && !File.Exists(target) && File.Exists(temporary))
+        {
+            // ERROR_UNABLE_TO_MOVE_REPLACEMENT_2: the old file is set aside but the new one could not take its name; the move gives it.
+            File.Move(temporary, target, overwrite: true);
+        }
+        finally
+        {
+            // Kept while it is the only copy left.
+            if (File.Exists(target))
             {
-                File.Replace(temporary, target, destinationBackupFileName: null, ignoreMetadataErrors: true);
-                return;
-            }
-            catch (Exception refused) when (refused is IOException or UnauthorizedAccessException && !File.Exists(target) && File.Exists(temporary))
-            {
-                // ERROR_UNABLE_TO_MOVE_REPLACEMENT: the old file went but the new one could not take its name; the move gives it.
+                Forget(setAside);
             }
         }
-        File.Move(temporary, target, overwrite: true);
+    }
+
+    /// <summary>Deletes the file a replace set aside; one held a moment (Windows) is left beside the file.</summary>
+    private static void Forget(string setAside)
+    {
+        try
+        {
+            File.Delete(setAside);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+        }
     }
 
     /// <summary>A write made again while Windows refuses it because another program has the file open sharing no writes,
     /// as a build or a project load reading it does for a moment; any other failure, or that one past two seconds, is
-    /// thrown.</summary>
-    internal static void WhileHeld(Action write)
+    /// thrown. Off the caller's thread, which never waits for it.</summary>
+    internal static async Task WhileHeldAsync(Action write)
     {
         for (int attempt = 1; ; attempt++)
         {
@@ -328,8 +506,8 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
             }
             catch (IOException held) when (OperatingSystem.IsWindows() && attempt < HeldAttempts && held.HResult is SharingViolation or LockViolation)
             {
-                Thread.Sleep(50);
             }
+            await Task.Delay(HeldPause);
         }
     }
 

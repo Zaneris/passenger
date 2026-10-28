@@ -1,7 +1,9 @@
 using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.Navigation;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
@@ -14,7 +16,8 @@ namespace Passenger.Tests;
 /// own &lt;style&gt; and &lt;script&gt;: each gets completion, a problem, go to declaration and rename from the language
 /// servers Passenger carries under web/ (TypeScript's, and VS Code's for HTML, CSS and JSON), run on the machine's
 /// Node.js, a Razor file's through Razor's own forwarding to the HTML server. Without a Node.js the files keep their
-/// colours and say why. Each test opens its own window, with web servers of its own, on the app as written (<see
+/// colours and say why; a server that ends as it starts is started again, a few times at most, then left stopped until a
+/// person starts it again. Each test opens its own window, with web servers of its own, on the app as written (<see
 /// cref="SharedProject"/>): with no C# language server, which the scripts, stylesheets and JSON ask nothing of, but for the
 /// component's, whose Razor is Roslyn's, on the warm one the class shares; a test that cannot find Node.js skips, saying
 /// so.</summary>
@@ -216,6 +219,32 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
         window.Close();
     }
 
+    /// <summary>File Structure on a JSON file lists its keys, nested under the objects they are in, as its server outlines
+    /// them, and a key chosen is where the caret goes.</summary>
+    [AvaloniaFact]
+    public void File_structure_lists_a_JSON_files_keys_and_goes_to_the_one_chosen()
+    {
+        SkipWithoutNode();
+        MainWindow window = app.Open("package.json", languageServer: false);
+        OpenDocument document = window.EditorArea.Active!;
+        Ui.WaitFor(() => window.Session.Web?.For(document) is { Lsp: not null }, "the JSON server's document of package.json");
+        Ui.Run(window, AppActions.FileStructure);
+        SymbolPopup structure = window.Popup as SymbolPopup
+            ?? throw new Xunit.Sdk.XunitException($"File Structure on package.json opened {window.Popup?.GetType().Name ?? "nothing"}; the status bar said: {window.Status}");
+        Ui.WaitFor(() => structure.IsSettled && structure.Rows.Any(r => r.Name == "build"), "package.json's outline, its scripts' keys among it");
+        SymbolRow scripts = structure.Rows.First(r => r.Name == "scripts");
+        Assert.Equal(0, scripts.Depth);
+        Assert.Equal(1, structure.Rows.First(r => r.Name == "build").Depth);
+        window.KeyTextInput("build");
+        Ui.WaitFor(() => structure.IsSettled && structure.Rows.Select(r => r.Name).SequenceEqual(["scripts", "build"]), () => $"the outline filtered to the build script in its object, not [{string.Join(", ", structure.Rows.Select(r => r.Name))}]");
+        Ui.Press(window, "DOWN");
+        Assert.Equal("build", structure.Selected?.Name);
+        Ui.Press(window, "ENTER");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Assert.Contains("\"build\"", editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line), StringComparison.Ordinal);
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void Package_json_completes_and_checks_by_its_schema_goes_from_a_dependency_to_its_package_and_renames_a_script_with_its_runs()
     {
@@ -305,6 +334,8 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
         string missing = Path.Combine(TestRun.Root, "no-node-here", OperatingSystem.IsWindows() ? "node.exe" : "node");
         MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = false };
         window.Show();
+        List<string> said = [];
+        using IDisposable following = Ui.FollowStatus(window, said);
         try
         {
             window.ApplySettings(window.Settings with { NodeInterpreter = missing });
@@ -316,6 +347,9 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
             Assert.Equal($"JavaScript has its colours only: there is no Node.js at {missing}, which Settings | Languages & Frameworks | Node.js names.",
                 window.EditorArea.ActiveGroup.BannerText);
             Assert.Equal("JavaScript · no Node.js", window.LanguageShown);
+            Assert.True(window.EditorArea.ActiveGroup.BannerLink is null, $"The banner over a script with no Node.js to run its server offers '{window.EditorArea.ActiveGroup.BannerLink}'");
+            Assert.True(!said.Any(s => s.Contains("starting it again", StringComparison.Ordinal)),
+                $"A server with no Node.js to run on was tried again; the status bar said: {string.Join(" | ", said)}");
             Assert.Equal(TokenKind.Keyword, KindOf(editor, "function"));
 
             Ui.Run(window, AppActions.Rename);
@@ -335,6 +369,101 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
             window.Close();
         }
     }
+
+    /// <summary>A web language server whose process ends during its own start, before it has answered, is started again as
+    /// one that ends later is, the status bar saying so, and its language comes back for the file open.</summary>
+    [AvaloniaFact]
+    public void A_stylesheets_language_server_that_ends_as_it_starts_is_started_again_saying_so_and_checks_the_file()
+    {
+        SkipWithoutNode();
+        string folder = TestFolders.Create("css-ending-");
+        File.WriteAllText(Path.Combine(folder, "site.css"), Unknown);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false, autosaves: false);
+        List<string> said = [];
+        using IDisposable following = Ui.FollowStatus(window, said);
+        try
+        {
+            using (EndingAsTheyStart ending = new(CssServer, times: 1))
+            {
+                window.OpenFile(Path.Combine(PathNames.Canonical(folder), "site.css"));
+                OpenDocument document = window.EditorArea.Active!;
+                Ui.WaitFor(() => document.Markers.Any(Warned), () => $"the CSS server's warning once it was started again ({window.LanguageShown}; the status bar says {window.Status})");
+                Assert.True(ending.Ended.Count == 1, $"The CSS language server was ended {ending.Ended.Count} times as it started, not once");
+            }
+            Assert.True(said.Contains("The CSS language server ended as it started; starting it again"),
+                $"The status bar never said the server that ended as it started was started again; it said: {string.Join(" | ", said)}");
+            Assert.Contains($"The CSS language server ended as it started for {window.Folder}", Ui.IdeLog());
+            Assert.Equal("CSS", window.LanguageShown);
+            Assert.Null(window.EditorArea.ActiveGroup.BannerText);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A web language server that ends during every start is started again only as often as one that ends later
+    /// is, then left stopped, its file's banner and the status bar saying why and offering to start it again. Its words
+    /// start it while the cause stands, and it is tried as often again, its restarts counted afresh; once the cause is
+    /// gone, the banner's link starts it, and the file is checked again, without the folder opened again.</summary>
+    [AvaloniaFact]
+    public void A_stylesheets_language_server_that_ends_during_every_start_is_left_stopped_saying_so_and_its_words_start_it_again()
+    {
+        SkipWithoutNode();
+        string folder = TestFolders.Create("css-ending-");
+        File.WriteAllText(Path.Combine(folder, "site.css"), Unknown);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false, autosaves: false);
+        List<string> said = [];
+        using IDisposable following = Ui.FollowStatus(window, said);
+        const string LeftStopped = "The CSS language server ended as it started 4 times in 5 minutes, so it was left stopped; click to start it again";
+        const string Banner = "CSS has its colours only: its language server stopped 4 times in 5 minutes.";
+        try
+        {
+            OpenDocument document;
+            using (EndingAsTheyStart ending = new(CssServer))
+            {
+                window.OpenFile(Path.Combine(PathNames.Canonical(folder), "site.css"));
+                document = window.EditorArea.Active!;
+                Ui.WaitFor(() => window.EditorArea.ActiveGroup.BannerText == Banner,
+                    () => $"the banner to say the CSS server was left stopped after it ended as it started {ending.Ended.Count} times (it says {window.EditorArea.ActiveGroup.BannerText})");
+                Ui.Settle();
+                Assert.True(ending.Ended.Count == 4, $"The CSS language server was started {ending.Ended.Count} times, ending each time as it started, rather than once and then 3 times again");
+                Assert.True(said.Contains("The CSS language server ended as it started; starting it again"),
+                    $"The status bar never said the server that ended as it started was started again; it said: {string.Join(" | ", said)}");
+                Assert.True(window.Status == LeftStopped, $"The status bar says \"{window.Status}\" of the CSS server left stopped, having said: {string.Join(" | ", said)}");
+                Assert.Equal("start it again", window.StatusPlace?.Name);
+                Assert.Equal("Start it again", window.EditorArea.ActiveGroup.BannerLink);
+                Assert.Equal("CSS · language server stopped", window.LanguageShown);
+
+                Ui.Click(window.GetVisualDescendants().OfType<Avalonia.Controls.Button>().Single(b => b.Name == "StatusMessage"));
+                Ui.WaitFor(() => ending.Ended.Count >= 8 && window.EditorArea.ActiveGroup.BannerText == Banner,
+                    () => $"the CSS server started again by the status bar's words to be left stopped again after 4 more starts ({ending.Ended.Count} in all; the banner says {window.EditorArea.ActiveGroup.BannerText})");
+                Ui.Settle();
+                Assert.True(ending.Ended.Count == 8, $"The CSS server started again by the status bar's words was started {ending.Ended.Count - 4} times, not 4: its restarts before were counted still");
+                Assert.True(said.Contains("Starting the CSS language server again"),
+                    $"The status bar never said the CSS server left stopped was started again; it said: {string.Join(" | ", said)}");
+                Assert.Equal(LeftStopped, window.Status);
+            }
+            Assert.DoesNotContain(document.Markers, Warned);
+
+            Ui.Click(window.EditorArea.ActiveGroup.BannerLinkControl);
+            Ui.WaitFor(() => document.Markers.Any(Warned), () => $"the CSS server's warning once the banner's link started it again ({window.LanguageShown}; the banner says {window.EditorArea.ActiveGroup.BannerText})");
+            Assert.Null(window.EditorArea.ActiveGroup.BannerText);
+            Assert.Equal("CSS", window.LanguageShown);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>What the CSS language server's command line names it by.</summary>
+    private const string CssServer = "cssServerMain.js";
+
+    /// <summary>A stylesheet with a property CSS has not, which its server warns of.</summary>
+    private const string Unknown = ".card {\n    colr: red;\n}\n";
+
+    private static bool Warned(Marker marker) => marker.Kind == MarkerKind.Warning && marker.Message.Contains("Unknown property: 'colr'", StringComparison.Ordinal);
 
     [AvaloniaFact]
     public void A_project_with_its_own_typescript_is_read_by_it()
@@ -356,6 +485,70 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
         {
             window.Close();
         }
+    }
+
+    /// <summary>Keys typed above a stylesheet's four thousand empty rules, a warning each from the CSS server, cost the UI
+    /// thread what they do above forty, the rest of that file's four thousand rules setting a colour: the document carries
+    /// the server's markers through a key, so the web host sets them again only when the server reports.</summary>
+    [AvaloniaFact]
+    public void Keys_above_thousands_of_a_stylesheets_warnings_cost_what_they_do_above_a_few()
+    {
+        SkipWithoutNode();
+        string folder = TestFolders.Create("css-warnings-");
+        File.WriteAllText(Path.Combine(folder, "few.css"), Rules(4000, 40));
+        File.WriteAllText(Path.Combine(folder, "many.css"), Rules(4000, 4000));
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false, autosaves: false);
+        try
+        {
+            long few = WarnedKeys(window, Path.Combine(PathNames.Canonical(folder), "few.css"), 40);
+            long many = WarnedKeys(window, Path.Combine(PathNames.Canonical(folder), "many.css"), 4000);
+            TestContext.Current.TestOutputHelper?.WriteLine($"A key allocated {few / 1024} KB on the UI thread above 40 warnings, {many / 1024} KB above 4,000");
+            Assert.True(many <= few + (32 * 1024),
+                $"A key above a stylesheet's 4,000 warnings allocated {many / 1024} KB on the UI thread, {(many - few) / 1024} KB more than above 40: the markers were copied for every key");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A stylesheet of <paramref name="rules"/> rules under a comment, the first <paramref name="empty"/> empty.</summary>
+    private static string Rules(int rules, int empty) =>
+        "/* top */\n" + string.Concat(Enumerable.Range(0, rules).Select(i => i < empty ? $".empty{i} {{}}\n" : $".full{i} {{ color: red; }}\n"));
+
+    /// <summary>The bytes a key and the frame after it allocate on the UI thread, the middle of five, typed into a stylesheet's first
+    /// line once its warnings have come; every warning then still stands on its empty rule.</summary>
+    private static long WarnedKeys(MainWindow window, string path, int warned)
+    {
+        window.OpenFile(path);
+        Ui.Settle();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument document = window.EditorArea.Active!;
+        Ui.WaitFor(() => editor.ProblemCount.Warnings == warned, $"the CSS server's warnings of {warned} empty rules");
+        Ui.PlaceAfter(editor, "/* top");
+        editor.Focus();
+        Ui.Settle();
+        const int Keys = 5;
+        long[] bytes = new long[Keys];
+        for (int i = 0; i < Keys; i++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            window.KeyTextInput("1");
+            Ui.Hold(TimeSpan.FromMilliseconds(10), "a frame after the key, whose allocations are measured");
+            bytes[i] = GC.GetAllocatedBytesForCurrentThread() - before;
+        }
+        TestContext.Current.TestOutputHelper?.WriteLine($"The keys above {warned} warnings allocated {string.Join(", ", bytes.Select(b => $"{b / 1024} KB"))}");
+        TextSnapshot text = document.Text.Snapshot;
+        List<Marker> warnings = [.. document.Markers.Where(m => m.Kind == MarkerKind.Warning)];
+        Assert.Equal(warned, warnings.Count);
+        foreach (Marker warning in warnings)
+        {
+            Assert.True(text.GetText(warning.Range.Start, ".empty".Length) == ".empty",
+                $"After {Keys} keys above them, a warning stands on '{text.GetText(warning.Range.Start, Math.Min(12, text.Length - warning.Range.Start))}' on line {text.GetLineFromOffset(warning.Range.Start) + 1}");
+        }
+        // The middle key's: an answer to an earlier request may land in another's frame.
+        Array.Sort(bytes);
+        return bytes[Keys / 2];
     }
 
     private static void CopyFolder(string from, string to)
@@ -400,7 +593,7 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
     /// needs the TypeScript server (<paramref name="typescript"/>), one older than it needs.</summary>
     internal static void SkipWithoutNode(bool typescript = false)
     {
-        Assert.SkipWhen(Programs.Node() is null, "Node.js is not on the PATH, and the web language servers run on it");
+        Assert.SkipWhen(Programs.Node() is null, NoNode);
         if (typescript)
         {
             string? old = TooOld();
@@ -408,10 +601,26 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
         }
     }
 
-    /// <summary>Why the PATH's Node.js cannot run the TypeScript server, or null when it can.</summary>
-    private static string? TooOld()
+    /// <inheritdoc cref="SkipWithoutNode"/>
+    internal static async Task SkipWithoutNodeAsync(bool typescript = false)
     {
-        Passenger.App.Web.NodeRuntime node = Task.Run(() => Passenger.App.Web.NodeRuntime.FindAsync(null)).GetAwaiter().GetResult();
+        Assert.SkipWhen(Programs.Node() is null, NoNode);
+        if (typescript)
+        {
+            string? old = await TooOldAsync();
+            Assert.SkipWhen(old is not null, $"The TypeScript language server cannot run here: {old}");
+        }
+    }
+
+    private const string NoNode = "Node.js is not on the PATH, and the web language servers run on it";
+
+    /// <summary><see cref="TooOldAsync"/> from the UI thread, the window's loop running meanwhile.</summary>
+    private static string? TooOld() => Ui.Await(Waiting.Apart(() => TooOldAsync()), "the PATH's Node.js to say its version");
+
+    /// <summary>Why the PATH's Node.js cannot run the TypeScript server, or null when it can.</summary>
+    private static async Task<string?> TooOldAsync()
+    {
+        Passenger.App.Web.NodeRuntime node = await Passenger.App.Web.NodeRuntime.FindAsync(null);
         return node.Problem ?? node.TooOldFor(Path.Combine(Passenger.App.Web.WebLanguages.Modules, "typescript-language-server", "package.json"), "the TypeScript language server");
     }
 }

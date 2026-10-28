@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Passenger.App.Editors;
 using Passenger.App;
 using Passenger.App.Containers;
 using Passenger.App.Debugging;
@@ -132,17 +133,20 @@ public sealed class ContainerServicesTests(ContainerRunDebuggingTests.Tools tool
             Ui.Launched(window, window.RunAsync(), "the services to come up", TimeSpan.FromMinutes(5));
             Ui.WaitFor(() => window.RequestLog.Following.Contains("web of", StringComparison.Ordinal) && window.RequestLog.Following.Contains("api of", StringComparison.Ordinal),
                 "the Requests window to follow both services in their containers", TimeSpan.FromMinutes(2));
-            Assert.Equal("web 1", ContainerRunDebuggingTests.Get(ContainerRunsTests.Published(project, "web")).GetAwaiter().GetResult());
-            Assert.Equal("api 1", ContainerRunDebuggingTests.Get(ContainerRunsTests.Published(project, "api")).GetAwaiter().GetResult());
+            Assert.Equal("web 1", Ui.AwaitPumped(ContainerRunDebuggingTests.Get(ContainerRunsTests.Published(project, "web")), "web's answer", TimeSpan.FromMinutes(3.5)));
+            Assert.Equal("api 1", Ui.AwaitPumped(ContainerRunDebuggingTests.Get(ContainerRunsTests.Published(project, "api")), "api's answer", TimeSpan.FromMinutes(3.5)));
             Ui.WaitFor(() => window.RequestLog.Requests.Count(r => r.Path == "/" && r.Status == 200) == 2, "both services' requests, listed as they ended", TimeSpan.FromSeconds(30));
             Assert.Equal(["api of Compose: compose.yaml", "web of Compose: compose.yaml"], window.RequestLog.Requests.Select(r => r.From).Order(StringComparer.Ordinal));
+            // A request that came before its project's routes were read finds its route once they are.
+            Ui.WaitFor(() => window.RequestLog.Requests.All(r => r.Route is not null),
+                () => $"each request's route ({string.Join(", ", window.RequestLog.Requests.Select(r => $"{r.From}: {r.Route?.Project ?? "none yet"}"))})", TimeSpan.FromMinutes(1));
             Assert.All(window.RequestLog.Requests, r => Assert.True(r.Route is { } route && route.Project.Contains(r.From[..3], StringComparison.OrdinalIgnoreCase),
                 $"{r.From}'s request reached {r.Route?.Project ?? "no route"}"));
 
             Passenger.Roslyn.Extension.WebRoute webRoute = window.Session.Routes.All.Single(r => r.Project.Contains("Web", StringComparison.Ordinal) && r.Template == "/");
             Task<string?> sent = window.SendRouteAsync(webRoute);
             Ui.WaitFor(() => sent.IsCompleted && window.Endpoints.Response.Response is not null, "web's answer to the route's request", TimeSpan.FromMinutes(1));
-            Assert.Null(sent.Result);
+            Assert.Null(Ui.Await(sent, "the route's request to be sent"));
             Assert.True(window.Endpoints.Response.Passed, $"web's route did not answer from its container: {window.Endpoints.Response.Summary}");
             Assert.Contains("web 1", window.Endpoints.Response.Shown, StringComparison.Ordinal);
         }
@@ -286,8 +290,7 @@ public sealed class ContainerServicesTests(ContainerRunDebuggingTests.Tools tool
         string? answer = null;
         try
         {
-            Ui.WaitFor(() => answering.IsCompleted, $"{service}'s answer", TimeSpan.FromMinutes(1.5));
-            answer = answering.Result;
+            answer = Ui.Await(answering, $"{service}'s answer", TimeSpan.FromMinutes(1.5));
         }
         catch (TimeoutException)
         {
@@ -339,7 +342,7 @@ public sealed class ContainerServicesTests(ContainerRunDebuggingTests.Tools tool
         int at = Array.IndexOf(compose.Text.Snapshot.ToString().Split('\n'), line);
         Ui.WaitFor(() => compose.RunMarks.Any(m => m.Line == at), $"the run icon beside {line.Trim()}");
         Passenger.Editor.CodeEditor shown = window.EditorArea.CodeEditor;
-        double x = Enumerable.Range(0, 400).First(x => shown.IsInMarkColumn(new Avalonia.Point(x, 0))) + 3;
+        double x = Enumerable.Range(0, 400).First(x => shown.IsOnGutterColumn(shown.Gutter!.Marks, new Avalonia.Point(x, 0))) + 3;
         Ui.Click(shown, new Avalonia.Point(x, shown.PointOf(compose.Text.Snapshot.GetLineStart(at)).Y + (shown.LineHeight / 2)));
         return [.. Assert.IsType<MenuFlyout>(window.RunMarkMenu).Items.OfType<Avalonia.Controls.MenuItem>()];
     }

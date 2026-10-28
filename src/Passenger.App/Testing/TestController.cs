@@ -97,6 +97,10 @@ public sealed class TestController : IAsyncDisposable
     /// <summary>The last run's tally, for the window's status line.</summary>
     public string Summary { get; private set; } = string.Empty;
 
+    /// <summary>The methods the last run ran, or the run under way runs: those its tally counts, each holding that run's
+    /// results alone.</summary>
+    public IReadOnlyList<TestNode> RunMethods { get; private set; } = [];
+
     /// <summary>Tests were found or results came in: the gutter's marks follow.</summary>
     public event EventHandler? Changed;
 
@@ -265,6 +269,7 @@ public sealed class TestController : IAsyncDisposable
                 }
             }
             lastRun = chosen ?? [];
+            RunMethods = methods;
             working?.Say($"{prefix}Running {Plural.Of(tests.Count, "test")}…");
             Tree.Begin(tests);
             RunSummary? summary = null;
@@ -400,7 +405,7 @@ public sealed class TestController : IAsyncDisposable
         ITestRunner? ending = runner;
         runner = null;
         // Not held: the window's end waits for it with no UI thread to come back to (MainWindow.Ended).
-        return ending is null ? ValueTask.CompletedTask : new ValueTask(Task.Run(ending.Dispose));
+        return ending is null ? ValueTask.CompletedTask : new ValueTask(BackgroundWork.Unheld(ending.Dispose));
     }
 
     /// <summary>The tests these rows run: a method's or a group's tests as a runner found them, a data row's own (its
@@ -457,7 +462,7 @@ public sealed class TestController : IAsyncDisposable
         {
             // A discovery that never said it had stopped: its runner ends, its test hosts with it.
             runner = null;
-            IdeErrors.Observe(Task.Run(stuck.Dispose));
+            IdeErrors.Observe(BackgroundWork.Unheld(stuck.Dispose));
         }
         Message?.Invoke(this, StoppedMessage);
         return StoppedMessage;

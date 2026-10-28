@@ -203,21 +203,96 @@ public sealed record Shortcut(Keystroke First, Keystroke? Second = null)
     public bool StartsWith(Shortcut prefix) => First == prefix.First && (prefix.Second is null || prefix.Second == Second);
 }
 
+/// <summary>A press of a mouse button with modifiers, written the way Rider's keymap files write a mouse shortcut ("meta
+/// shift button1", "alt button1 doubleClick"): button1 is the left button, button2 the middle, button3 the right, button4
+/// and button5 the side buttons, Back and Forward. <see cref="Clicks"/> is which click of a run of them it is.</summary>
+public readonly record struct MouseShortcut(MouseButton Button, KeyModifiers Modifiers, int Clicks = 1)
+{
+    public static MouseShortcut Parse(string text)
+    {
+        KeyModifiers modifiers = KeyModifiers.None;
+        MouseButton? button = null;
+        int clicks = 1;
+        foreach (string part in text.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            switch (part.ToLowerInvariant())
+            {
+                case "meta" or "cmd":
+                    modifiers |= KeyModifiers.Meta;
+                    break;
+                case "control" or "ctrl":
+                    modifiers |= KeyModifiers.Control;
+                    break;
+                case "alt" or "option":
+                    modifiers |= KeyModifiers.Alt;
+                    break;
+                case "shift":
+                    modifiers |= KeyModifiers.Shift;
+                    break;
+                case "doubleclick":
+                    clicks = 2;
+                    break;
+                default:
+                    button = button is null ? ButtonOf(part) ?? throw new FormatException($"unknown mouse button '{part}'") : throw new FormatException($"'{text}' names two buttons");
+                    break;
+            }
+        }
+        return new MouseShortcut(button ?? throw new FormatException($"'{text}' names no button"), modifiers, clicks);
+    }
+
+    /// <summary>Whether a keymap's text names a mouse button, so is a mouse shortcut rather than a key's.</summary>
+    public static bool IsMouse(string text) => text.Split(' ', StringSplitOptions.RemoveEmptyEntries).Any(part => ButtonOf(part) is not null);
+
+    /// <summary>The press a pointer made: the button that went down, the modifiers held, and its click of a run.</summary>
+    public static MouseShortcut Of(PointerPressedEventArgs e) => new(e.Properties.PointerUpdateKind switch
+    {
+        PointerUpdateKind.LeftButtonPressed => MouseButton.Left,
+        PointerUpdateKind.MiddleButtonPressed => MouseButton.Middle,
+        PointerUpdateKind.RightButtonPressed => MouseButton.Right,
+        PointerUpdateKind.XButton1Pressed => MouseButton.XButton1,
+        PointerUpdateKind.XButton2Pressed => MouseButton.XButton2,
+        _ => MouseButton.None,
+    }, e.KeyModifiers, e.ClickCount);
+
+    private static MouseButton? ButtonOf(string part) => part.ToLowerInvariant() switch
+    {
+        "button1" => MouseButton.Left,
+        "button2" => MouseButton.Middle,
+        "button3" => MouseButton.Right,
+        "button4" => MouseButton.XButton1,
+        "button5" => MouseButton.XButton2,
+        _ => null,
+    };
+}
+
 /// <summary>Which shortcuts run which action. An action is a name from <see cref="EditorActions"/>
-/// or the IDE's own list; a shortcut may run only one action.</summary>
+/// or the IDE's own list; a shortcut, a key's or the mouse's, may run only one action.</summary>
 public sealed class Keymap
 {
     private readonly Dictionary<string, List<Shortcut>> byAction = [];
     private readonly Dictionary<Shortcut, string> byShortcut = [];
+    private readonly Dictionary<MouseShortcut, string> byMouse = [];
 
     public Keymap(string name) => Name = name;
 
     public string Name { get; }
 
+    /// <summary>Binds an action's shortcuts, a mouse shortcut (one naming a button) among them as Rider's keymap files list
+    /// it.</summary>
     public Keymap Bind(string action, params string[] shortcuts)
     {
         foreach (string text in shortcuts)
         {
+            if (MouseShortcut.IsMouse(text))
+            {
+                MouseShortcut gesture = MouseShortcut.Parse(text);
+                if (byMouse.TryGetValue(gesture, out string? had) && had != action)
+                {
+                    throw new InvalidOperationException($"{Name}: {text} is bound to both {had} and {action}");
+                }
+                byMouse[gesture] = action;
+                continue;
+            }
             Shortcut shortcut = Shortcut.Parse(text);
             if (byShortcut.TryGetValue(shortcut, out string? taken) && taken != action)
             {
@@ -233,8 +308,8 @@ public sealed class Keymap
         return this;
     }
 
-    /// <summary>Gives an action exactly these shortcuts, as a person's keymap does: its own go, and a shortcut another
-    /// action had is taken from it.</summary>
+    /// <summary>Gives an action exactly these shortcuts, as a person's keymap does: its own keys go, and a shortcut another
+    /// action had is taken from it. Its mouse shortcuts stay.</summary>
     public Keymap Set(string action, IEnumerable<Shortcut> shortcuts)
     {
         if (byAction.TryGetValue(action, out List<Shortcut>? own))
@@ -268,6 +343,12 @@ public sealed class Keymap
         byAction.TryGetValue(action, out List<Shortcut>? list) ? list : [];
 
     public string? ActionFor(Shortcut shortcut) => byShortcut.GetValueOrDefault(shortcut);
+
+    /// <summary>The action a press of the mouse runs, or null.</summary>
+    public string? ActionFor(MouseShortcut gesture) => byMouse.GetValueOrDefault(gesture);
+
+    /// <summary>Every action a mouse shortcut is bound to.</summary>
+    public IEnumerable<string> MouseActions => byMouse.Values.Distinct();
 
     /// <summary>The other actions' shortcuts that clash with one: the same first keystroke and, unless either is one
     /// keystroke alone, the same second. So a chord clashes with the key that begins it, which would run before the

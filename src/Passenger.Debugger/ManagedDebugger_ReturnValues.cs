@@ -208,13 +208,13 @@ public partial class ManagedDebugger
         }
     }
 
-    /// <summary>A call the compiler wrote rather than the user: an await's (GetAwaiter, IsCompleted, GetResult) or an
-    /// interpolated string's, whose values no one asked for.</summary>
+    /// <summary>A call the compiler wrote rather than the user: an await's (GetAwaiter, IsCompleted, GetResult, or a
+    /// runtime-async method's AsyncHelpers.Await) or an interpolated string's, whose values no one asked for.</summary>
     private static bool IsCompilersOwn(ModuleMetadataReader.CalledMethod called)
     {
         string type = called.DeclaringType is { } declaring && declaring.IndexOf('<') is int generic and > 0 ? declaring[..generic] : called.DeclaringType ?? "";
         return called.Name == "GetAwaiter" || type.EndsWith("Awaiter", StringComparison.Ordinal) || type.EndsWith("Awaitable", StringComparison.Ordinal)
-            || type.EndsWith("MethodBuilder", StringComparison.Ordinal) || type == "DefaultInterpolatedStringHandler";
+            || type.EndsWith("MethodBuilder", StringComparison.Ordinal) || type is "DefaultInterpolatedStringHandler" or "AsyncHelpers";
     }
 
     /// <summary>The method a call names as its row names it: a property's accessor by the property, a local function by its

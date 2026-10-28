@@ -5,17 +5,20 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.Explorer;
 using Passenger.App.Run;
 using Passenger.App.State;
+using Passenger.App.Workspace;
 using Passenger.Core;
 
 namespace Passenger.Tests;
 
 /// <summary>Run configurations as Edit Configurations makes them: one added in the dialog runs with what was typed there
 /// and is there when the folder opens again; a generated one is changed in place, its changes kept with the folder over
-/// its launch profile or written to it, or copied to be the person's own; one removed is gone for good. The dialog opens
-/// from the Run menu's action and the toolbar's chooser. A test that runs Hello takes a restored folder
-/// (<see cref="Restored"/>); the rest open one no restore reached, as a fresh clone opens, since they build nothing.</summary>
+/// its launch profile or written to it, or copied to be the person's own; one of the person's own is saved as a launch
+/// profile of its project; one removed is gone for good. The dialog opens from the Run menu's action and the toolbar's
+/// chooser. A test that runs Hello takes a restored folder (<see cref="Restored"/>); the rest open one no restore reached,
+/// as a fresh clone opens, since they build nothing.</summary>
 public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDisposable
 {
     private readonly RestoredFolders folders;
@@ -53,6 +56,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         TestFolders.Delete(settings);
     }
 
+    [Gate]
     [Fact]
     public void A_generated_Aspire_override_keeps_linked_AppHost_paths_relative_in_storage()
     {
@@ -67,6 +71,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
 
     /// <summary>While a run of a configuration is up, the toolbar, its chooser and Edit Configurations' row say "(running)"
     /// after its name, and stop saying it once the run has ended.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_configuration_says_it_is_running_in_the_toolbar_its_chooser_and_Edit_Configurations_while_a_run_of_it_is_up()
     {
@@ -103,6 +108,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_configuration_added_in_the_dialog_runs_with_what_was_typed_and_is_there_when_the_folder_opens_again()
     {
@@ -167,6 +173,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
     /// project's folder, arguments given for one run replacing the profile's; a Docker profile is a container configuration
     /// of its project; and a generated configuration copied is the person's own, the generated one staying as its profile
     /// makes it.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_generated_configuration_copied_is_the_persons_own_and_the_generated_one_stays_as_its_launch_profile_makes_it()
     {
@@ -235,9 +242,77 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         }
     }
 
+    /// <summary>A launch profile that names no working folder runs where dotnet run runs it, in the project's
+    /// RunWorkingDirectory, and its program is told the profile's name in DOTNET_LAUNCH_PROFILE, as dotnet run tells it; one
+    /// that names no arguments gives the program the project's RunArguments, which dotnet watch gives it under Hot Reload,
+    /// once. So a program that reads a file of its working folder finds it however it is run.</summary>
+    [AvaloniaFact]
+    public void A_launch_profile_runs_in_the_projects_RunWorkingDirectory_told_its_name_and_given_RunArguments_when_it_names_none()
+    {
+        Restored();
+        Write("Hello/Hello.csproj", TestProjects.Console("<ImplicitUsings>enable</ImplicitUsings>",
+            "<RunWorkingDirectory>$(MSBuildProjectDirectory)/data</RunWorkingDirectory>", "<RunArguments>alpha \"beta gamma\"</RunArguments>"));
+        Write("Hello/Program.cs", "Console.WriteLine($\"args={string.Join(\"|\", args)}\");\n"
+            + "Console.WriteLine($\"cwd={Environment.CurrentDirectory}\");\n"
+            + "Console.WriteLine($\"profile={Environment.GetEnvironmentVariable(\"DOTNET_LAUNCH_PROFILE\")}\");\n"
+            + "Console.WriteLine($\"marker={File.Exists(\"marker.txt\")}\");\n");
+        Write("Hello/data/marker.txt", "here\n");
+        Write("Hello/Properties/launchSettings.json", """
+            {
+              "profiles": {
+                "Sample": { "commandName": "Project", "commandLineArgs": "one \"two three\"" },
+                "Bare": { "commandName": "Project" }
+              }
+            }
+            """);
+        string data = Path.Combine(project, "data");
+        MainWindow window = Keeping();
+        try
+        {
+            Assert.Equal(["Hello: Sample", "Hello: Bare"], Names(window));
+            Assert.Equal(RunConfiguration.DotnetRunFolder, window.Configurations[0].WorkingDirectory);
+            Assert.True(window.SelectConfiguration("Hello: Sample"));
+            Said(window, "Hello: Sample", ["args=one|two three", $"cwd={data}", "profile=Sample", "marker=True"]);
+            Assert.True(window.SelectConfiguration("Hello: Bare"));
+            Said(window, "Hello: Bare", ["args=alpha|beta gamma", $"cwd={data}", "profile=Bare", "marker=True"]);
+
+            window.ApplySettings(window.Settings with { HotReload = true });
+            Ui.Launched(window, window.RunAsync(), "Hello: Bare under dotnet watch to start", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => Lines(window).Contains("marker=True"), () => $"Hello: Bare to run under dotnet watch, the Run window saying:\n{Run(window)}", TimeSpan.FromMinutes(2));
+            Assert.True(Told(window).SequenceEqual(["args=alpha|beta gamma", $"cwd={data}", "profile=Bare", "marker=True"]),
+                $"Under dotnet watch the program was not given the project's RunArguments once, in its RunWorkingDirectory, told its profile:\n{Run(window)}");
+        }
+        finally
+        {
+            if (window.IsRunning)
+            {
+                window.Perform(AppActions.Stop);
+                Ui.WaitFor(() => !window.IsRunning, "the run under dotnet watch to stop");
+            }
+            window.ApplySettings(new Passenger.App.Settings.AppSettings());
+            window.Close();
+        }
+
+        static void Said(MainWindow window, string name, string[] expected)
+        {
+            Ui.Launched(window, window.RunAsync(), $"{name} to start", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => window.Runner.Ended.IsCompleted, $"{name} to end");
+            Assert.True(Told(window).SequenceEqual(expected), $"{name} did not run with what dotnet run gives it, its Run window saying:\n{Run(window)}");
+        }
+
+        // The lines the program writes, among the run's own.
+        static string[] Told(MainWindow window) =>
+            [.. Lines(window).Where(line => ((string[])["args=", "cwd=", "profile=", "marker="]).Any(key => line.StartsWith(key, StringComparison.Ordinal)))];
+
+        static string Run(MainWindow window) => window.BottomPanel.Run.Document.Snapshot.ToString();
+
+        static string[] Lines(MainWindow window) => Run(window).Split('\n', StringSplitOptions.TrimEntries);
+    }
+
     /// <summary>A generated configuration's arguments changed in place, with no copy, are what Run gives the program, and are
     /// there when the folder opens again; its launch profile's environment changed on disk then reaches it while the
-    /// arguments stay the person's, and the dialog marks the arguments alone as changed from the profile.</summary>
+    /// arguments stay the person's, the Explorer left as it was, and the dialog marks the arguments alone as changed.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_generated_configurations_arguments_changed_in_place_are_run_kept_with_the_folder_and_stay_over_its_launch_profile_as_it_changes()
     {
@@ -270,9 +345,15 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
             RunConfiguration kept = Assert.Single(again.Configurations);
             Assert.True(kept.Generated && kept.Arguments == "--name Grace", $"The change in place was not kept with the folder: {kept.Name} runs with {kept.Arguments}");
 
+            again.ExplorerView.Reveal(Path.Combine(project, "Hello.csproj"));
+            Ui.Settle();
+            ExplorerNode hello = again.ExplorerView.Tree.Rows.First(r => r.Name == "Hello");
+            Ui.ClickRow(again, hello);
             Write("Hello/Properties/launchSettings.json", Greet("Hello"));
             Ui.WaitFor(() => again.Configurations[0].Environment.GetValueOrDefault("GREETING") == "Hello", "the launch profile's new variable to reach the configuration");
             Assert.Equal("--name Grace", again.Configurations[0].Arguments);
+            Assert.True(again.ExplorerView.Tree.Rows.Contains(hello) && again.ExplorerView.Rows().IsKeyboardFocusWithin && again.ExplorerView.SelectedNodes is [{ Name: "Hello" }],
+                "launchSettings.json changed on disk had the Explorer's rows made again, as a project changed does, or took its keys or its choice");
             RunConfigurationsDialog reopened = again.ShowRunConfigurations();
             Assert.Equal(["Program arguments"], reopened.Marked);
             reopened.Close();
@@ -289,9 +370,47 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         }
     }
 
+    /// <summary>On Windows Write to Launch Profile into a launchSettings.json another program holds waits for it: while it
+    /// is held the status bar says it waits for that file and the dialog never says it was written, and once the program
+    /// lets go the arguments are in the profile and the dialog says so.</summary>
+    [AvaloniaFact]
+    public void Write_to_launch_profile_into_a_file_another_program_holds_says_it_waits_and_written_once_the_file_is_let_go()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses to replace or write a file another program holds");
+        string settingsFile = Path.Combine(project, "Properties", "launchSettings.json");
+        Write("Hello/Properties/launchSettings.json", Profiles);
+        MainWindow window = Keeping();
+        List<string> said = [];
+        using IDisposable following = Ui.FollowStatus(window, said);
+        try
+        {
+            RunConfigurationsDialog dialog = window.ShowRunConfigurations();
+            Assert.True(dialog.Choose("Hello: Greet"));
+            Type(dialog.ArgumentsBox, "--name \"Grace Hopper\"");
+            using (new FileStream(settingsFile, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                Ui.Click(dialog.WriteButton, settle: false);
+                Ui.PumpUntil(() => said.Any(s => s.StartsWith("Waiting", StringComparison.Ordinal)) || dialog.Changes.StartsWith("Written", StringComparison.Ordinal),
+                    "Write to Launch Profile to say it waits for the held launchSettings.json");
+                Assert.Equal(Profiles, File.ReadAllText(settingsFile));
+                Assert.False(dialog.Changes.StartsWith("Written", StringComparison.Ordinal), $"The dialog said it wrote the profile while the file was held: {dialog.Changes}");
+            }
+            Ui.PumpUntil(() => dialog.Changes.StartsWith("Written", StringComparison.Ordinal), "the dialog to say it wrote the profile once launchSettings.json was let go");
+            Assert.Equal(["Waiting for launchSettings.json to be saved…"], said.Where(s => s.StartsWith("Waiting", StringComparison.Ordinal)));
+            Assert.Equal("Written to its launch profile in launchSettings.json: Program arguments.", dialog.Changes);
+            Assert.Contains("\"commandLineArgs\": \"--name \\\"Grace Hopper\\\"\"", File.ReadAllText(settingsFile), StringComparison.Ordinal);
+            Ui.Click(dialog.OkButton);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>Write to Launch Profile puts the arguments and a variable changed in place into the profile, the rest of
     /// launchSettings.json (the other profile, a comment, the spacing) byte for byte, and keeps here what the file has no
     /// place for; Undo takes the write back whole: the file as it was, the changes kept with the folder as they were.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Write_to_launch_profile_puts_the_changes_into_launchSettings_json_the_rest_as_it_was_and_Undo_takes_it_back()
     {
@@ -348,8 +467,306 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         }
     }
 
+    /// <summary>Save as Launch Profile, greyed with why on a generated configuration and a name a profile has, adds one made
+    /// in the dialog (its project's name taken off its own) after the profiles of a launchSettings.json, the rest byte for
+    /// byte; dotnet run runs it by that name, listed as generated from it, the console kept here. Undo in the Explorer takes
+    /// the profile out, the folder's own configuration back, the keys left there for Redo to save it again; the folder
+    /// opened again lists it as generated, the console still kept here.</summary>
+    [Gate]
+    [AvaloniaFact]
+    public void Save_as_launch_profile_adds_a_configuration_made_here_to_launchSettings_json_which_dotnet_run_runs_and_Undo_takes_it_back()
+    {
+        Restored();
+        string settingsFile = Path.Combine(project, "Properties", "launchSettings.json");
+        Write("Hello/Properties/launchSettings.json", Profiles);
+        MainWindow window = Keeping();
+        try
+        {
+            RunConfigurationsDialog dialog = window.ShowRunConfigurations();
+            Assert.True(dialog.Choose("Hello: Greet"));
+            Ui.Settle();
+            Assert.Equal("Save as Launch Profile", dialog.SaveAsProfileButton.Content);
+            Assert.False(dialog.SaveAsProfileButton.IsEnabled, "Save as Launch Profile can be used on a configuration generated from a launch profile");
+            Assert.Equal("Hello: Greet is generated from its launch profile already: Write to Launch Profile writes its changes there", ToolTip.GetTip(dialog.SaveAsProfileButton));
+            Add(dialog);
+            Type(dialog.NameBox, "Greet");
+            Assert.False(dialog.SaveAsProfileButton.IsEnabled, "Save as Launch Profile can be used on a name a launch profile has already");
+            Assert.Equal("Hello's launchSettings.json has a profile named Greet already", ToolTip.GetTip(dialog.SaveAsProfileButton));
+            Type(dialog.NameBox, "Hello: Staging");
+            Type(dialog.ArgumentsBox, "one \"two three\"");
+            Type(dialog.WorkingDirectoryBox, RunConfiguration.DotnetRunFolder);
+            Ui.Click(dialog.AddVariableButton);
+            (TextBox name, TextBox value) = Assert.Single(dialog.Variables);
+            Type(name, "GREETING");
+            Type(value, "Hi");
+            dialog.ConsoleBox.IsChecked = true;
+            Ui.Settle();
+            Assert.True(dialog.SaveAsProfileButton.IsEffectivelyEnabled, $"Save as Launch Profile cannot be used on a configuration made here: {ToolTip.GetTip(dialog.SaveAsProfileButton)}");
+            DialogButtonsTests.Check(dialog);
+            Ui.Click(dialog.SaveAsProfileButton);
+            Assert.True(dialog.Problem.Length == 0, $"Save as Launch Profile was refused: {dialog.Problem}");
+
+            string written = Profiles.Replace("      \"commandLineArgs\": \"--other\"\n    }\n",
+                "      \"commandLineArgs\": \"--other\"\n    },\n    \"Staging\": {\n      \"commandName\": \"Project\",\n      \"commandLineArgs\": \"one \\\"two three\\\"\",\n"
+                + "      \"environmentVariables\": {\n        \"GREETING\": \"Hi\"\n      }\n    }\n", StringComparison.Ordinal);
+            Assert.Equal(written, File.ReadAllText(settingsFile));
+            Assert.Equal(["Hello: Greet", "Hello: Other", "Hello: Staging"], dialog.Rows.Select(r => r.Name));
+            Assert.True(dialog.Chosen is { Generated: true, LaunchProfile: "Staging" }, $"The configuration saved is not chosen as generated from its new profile: {dialog.Chosen?.Name}");
+            Assert.Equal("Saved as the launch profile Staging in Hello's Properties/launchSettings.json: it is now Hello: Staging, generated from that profile. "
+                + "Kept here, as launchSettings.json has no place for it: Use external console.", dialog.Changes);
+            Assert.Equal(["Use external console"], dialog.Marked);
+            Ui.Click(dialog.OkButton);
+            Assert.Equal(["Hello: Greet", "Hello: Other", "Hello: Staging"], Names(window));
+            Assert.True(window.Configuration is { Name: "Hello: Staging", Generated: true, Console: ConsoleKind.Terminal, Source.Console: ConsoleKind.Internal },
+                $"The toolbar's configuration is not the one saved, generated with the console kept here: {window.Configuration?.Name}, {window.Configuration?.Console}");
+
+            ChildResult ran = Ui.Await(ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["run", "--launch-profile", "Staging"], project), limit: TimeSpan.FromMinutes(3).Scaled()),
+                "dotnet run of the launch profile saved", TimeSpan.FromMinutes(3));
+            Assert.True(ran.Succeeded && ran.Output.Contains($"Hi [one|two three] in {project}", StringComparison.Ordinal),
+                $"dotnet run --launch-profile Staging did not run the program with the arguments and variable saved:\n{ran.Output}{ran.Error}");
+
+            List<string> asked = [];
+            window.Confirm = (title, question, _) =>
+            {
+                asked.Add(question);
+                return Task.FromResult(true);
+            };
+            window.ExplorerView.Reveal(Path.Combine(project, "Hello.csproj"));
+            Ui.Settle();
+            Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Name.StartsWith("Hello", StringComparison.Ordinal)));
+            Heard(window, settingsFile, () => Ui.Run(window, Passenger.Editor.EditorActions.Undo));
+            Assert.Equal(["Undo Save Hello: Staging as a Launch Profile? It changes launchSettings.json and the run configuration Hello: Staging."], asked);
+            Assert.Equal(Profiles, File.ReadAllText(settingsFile));
+            Assert.Equal(["Hello: Greet", "Hello: Other", "Hello: Staging"], Names(window));
+            Assert.True(window.Configuration is { Name: "Hello: Staging", Generated: false, Arguments: "one \"two three\"", Console: ConsoleKind.Terminal },
+                $"Undo did not bring the folder's own configuration back, chosen: {window.Configuration?.Name}, generated {window.Configuration?.Generated}");
+            Assert.True(window.ExplorerView.Rows().IsKeyboardFocusWithin && window.ExplorerView.SelectedNodes is [{ Name: "Hello" }],
+                $"Undo, the files read again and the folder watcher's word of launchSettings.json, left the Explorer's keys elsewhere, [{string.Join(", ", window.ExplorerView.SelectedNodes.Select(n => n.Name))}] chosen");
+
+            Ui.Run(window, Passenger.Editor.EditorActions.Redo);
+            Assert.True(File.ReadAllText(settingsFile) == written, $"Redo did not add the profile again: {window.Status} ({string.Join(" | ", asked)})");
+            Assert.True(window.Configuration is { Name: "Hello: Staging", Generated: true, Console: ConsoleKind.Terminal },
+                $"Redo did not save the configuration as its launch profile again: {window.Configuration?.Name}, generated {window.Configuration?.Generated}");
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        MainWindow again = Keeping();
+        try
+        {
+            Assert.Equal(["Hello: Greet", "Hello: Other", "Hello: Staging"], Names(again));
+            RunConfiguration kept = again.Configurations[^1];
+            Assert.True(kept is { Generated: true, LaunchProfile: "Staging", Console: ConsoleKind.Terminal, Arguments: "one \"two three\"" },
+                $"The folder opened again does not list the configuration as generated from its profile with the console kept here: {kept.Name}, {kept.Console}");
+        }
+        finally
+        {
+            again.Close();
+        }
+    }
+
+    /// <summary>Save as Launch Profile in a project with no launchSettings.json makes the file as dotnet new does, its schema
+    /// then its profiles, which dotnet run runs by the profile's name; the project then runs only as that profile, its
+    /// building first kept here. Undo takes the file and the folder made for it away, the folder's own configuration back;
+    /// Redo makes them again, and the folder opened again lists it as generated, still not built first.</summary>
+    [Gate]
+    [AvaloniaFact]
+    public void Save_as_launch_profile_in_a_project_with_no_launchSettings_json_makes_it_as_dotnet_new_does_and_Undo_takes_it_away()
+    {
+        Restored();
+        string properties = Path.Combine(project, "Properties");
+        string settingsFile = Path.Combine(properties, "launchSettings.json");
+        MainWindow window = Keeping();
+        try
+        {
+            RunConfigurationsDialog dialog = window.ShowRunConfigurations();
+            Add(dialog);
+            Type(dialog.NameBox, "Greeting");
+            Type(dialog.ArgumentsBox, "--name Grace");
+            Type(dialog.WorkingDirectoryBox, RunConfiguration.DotnetRunFolder);
+            Ui.Click(dialog.AddVariableButton);
+            (TextBox name, TextBox value) = Assert.Single(dialog.Variables);
+            Type(name, "GREETING");
+            Type(value, "Hi");
+            dialog.BuildBox.IsChecked = false;
+            Ui.Settle();
+            Ui.Click(dialog.SaveAsProfileButton);
+            Assert.True(dialog.Problem.Length == 0, $"Save as Launch Profile was refused: {dialog.Problem}");
+
+            Assert.Equal("{\n  \"$schema\": \"https://json.schemastore.org/launchsettings.json\",\n  \"profiles\": {\n    \"Greeting\": {\n      \"commandName\": \"Project\",\n"
+                + "      \"commandLineArgs\": \"--name Grace\",\n      \"environmentVariables\": {\n        \"GREETING\": \"Hi\"\n      }\n    }\n  }\n}\n",
+                File.Exists(settingsFile) ? File.ReadAllText(settingsFile) : "no file");
+            Assert.Equal("Saved as the launch profile Greeting in Hello's Properties/launchSettings.json, made for it: it is now Hello: Greeting, generated from that profile. "
+                + "Kept here, as launchSettings.json has no place for it: Before launch.", dialog.Changes);
+            // A project one of whose profiles runs it is listed by its profiles alone.
+            Assert.Equal(["Hello: Greeting"], dialog.Rows.Select(r => r.Name));
+            Ui.Click(dialog.OkButton);
+            Assert.True(window.Configuration is { Name: "Hello: Greeting", Generated: true, BuildBeforeLaunch: false },
+                $"The toolbar's configuration is not the one saved, generated, not built first: {window.Configuration?.Name}, {window.Configuration?.BuildBeforeLaunch}");
+
+            ChildResult ran = Ui.Await(ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["run", "--launch-profile", "Greeting"], project), limit: TimeSpan.FromMinutes(3).Scaled()),
+                "dotnet run of the launch profile saved", TimeSpan.FromMinutes(3));
+            Assert.True(ran.Succeeded && ran.Output.Contains($"Hi [--name|Grace] in {project}", StringComparison.Ordinal),
+                $"dotnet run --launch-profile Greeting did not run the program with the arguments and variable saved:\n{ran.Output}{ran.Error}");
+
+            List<string> asked = [];
+            window.Confirm = (title, question, _) =>
+            {
+                asked.Add(question);
+                return Task.FromResult(true);
+            };
+            window.ExplorerView.Reveal(Path.Combine(project, "Hello.csproj"));
+            Ui.Settle();
+            Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Name.StartsWith("Hello", StringComparison.Ordinal)));
+            Ui.Run(window, Passenger.Editor.EditorActions.Undo);
+            Assert.Equal(["Undo Save Greeting as a Launch Profile? It changes launchSettings.json, the Properties folder and the run configuration Greeting."], asked);
+            Assert.False(File.Exists(settingsFile) || Directory.Exists(properties), "Undo left launchSettings.json or the Properties folder made for it");
+            Assert.Equal(["Hello", "Greeting"], Names(window));
+            Assert.True(window.Configuration is { Name: "Greeting", Generated: false, BuildBeforeLaunch: false },
+                $"Undo did not bring the folder's own configuration back, chosen: {window.Configuration?.Name}");
+
+            Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Name.StartsWith("Hello", StringComparison.Ordinal)));
+            Ui.Run(window, Passenger.Editor.EditorActions.Redo);
+            Assert.True(File.Exists(settingsFile), $"Redo did not make launchSettings.json again: {window.Status} ({string.Join(" | ", asked)})");
+            Assert.Equal(["Hello: Greeting"], Names(window));
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        MainWindow again = Keeping();
+        try
+        {
+            RunConfiguration kept = Assert.Single(again.Configurations);
+            Assert.True(kept is { Name: "Hello: Greeting", Generated: true, BuildBeforeLaunch: false, Arguments: "--name Grace" },
+                $"The folder opened again does not list the configuration as generated from its profile, not built first: {kept.Name}, {kept.BuildBeforeLaunch}");
+        }
+        finally
+        {
+            again.Close();
+        }
+    }
+
+    /// <summary>A file-based program's launch profiles, in its app.run.json, changed on disk reach its run configuration as
+    /// a launchSettings.json's do, the Explorer left as it was.</summary>
+    [Gate]
+    [AvaloniaFact]
+    public void A_file_based_programs_run_json_changed_on_disk_reaches_its_run_configuration()
+    {
+        TestFolders.Delete(folder);
+        folder = TestFolders.Create("program-");
+        Write("app.cs", "#!/usr/bin/env dotnet\n#:property PublishAot=false\nConsole.WriteLine(Environment.GetEnvironmentVariable(\"GREETING\"));\n");
+        Write("app.run.json", Greet("Hi"));
+        MainWindow window = Keeping();
+        try
+        {
+            Ui.WaitFor(() => window.Configurations is [{ Name: "app: Greet" } greet] && greet.Environment.GetValueOrDefault("GREETING") == "Hi",
+                "app.cs to be a program with its app.run.json profile's configuration", TimeSpan.FromMinutes(1));
+            List<ExplorerNode> rows = [.. window.ExplorerView.Tree.Rows];
+            Write("app.run.json", Greet("Hello"));
+            Ui.WaitFor(() => window.Configurations is [{ Name: "app: Greet" } greet] && greet.Environment.GetValueOrDefault("GREETING") == "Hello",
+                "the profile's new variable, written in app.run.json on disk, to reach the configuration");
+            Assert.True(window.ExplorerView.Tree.Rows.SequenceEqual(rows, ReferenceEqualityComparer.Instance), "app.run.json changed on disk had the Explorer's rows made again");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>In a solution of many projects, every one shown open: Undo of Save as Launch Profile in a project with no
+    /// Properties folder takes that folder's row out and Go to File's launchSettings.json with it, and Redo puts them back,
+    /// every other row the row it was; Undo and Redo of one saved into that launchSettings.json, a command of its text alone,
+    /// leave every row as it was, with no project checked again and the folder never walked.</summary>
+    [AvaloniaFact]
+    public void Undo_and_Redo_of_Save_as_launch_profile_in_a_solution_of_many_projects_make_again_only_the_rows_of_what_they_change()
+    {
+        const int Libraries = 40;
+        for (int i = 0; i < Libraries; i++)
+        {
+            Write($"Lib{i:00}/Lib{i:00}.csproj", TestProjects.Library());
+            Write($"Lib{i:00}/Part{i}.cs", $"public class Part{i} {{ }}\n");
+        }
+        Write("Shop.slnx", $"<Solution>\n{string.Concat(Enumerable.Range(0, Libraries).Select(i => $"  <Project Path=\"Lib{i:00}/Lib{i:00}.csproj\" />\n"))}  <Project Path=\"Hello/Hello.csproj\" />\n</Solution>\n");
+        string properties = Path.Combine(project, "Properties");
+        string settingsFile = Path.Combine(properties, "launchSettings.json");
+        MainWindow window = Keeping();
+        try
+        {
+            ExplorerTree tree = window.ExplorerView.Tree;
+            Ui.WaitFor(() => window.Projects.Count == Libraries + 1 && window.Projects.All(p => p.IsEvaluated), "every project evaluated");
+            foreach (ExplorerNode row in tree.Rows.Where(r => r.Kind == NodeKind.Project).ToList())
+            {
+                tree.Expand(row);
+            }
+            Ui.Settle();
+            int walks = 0;
+            window.FileIndex.Walked += (_, _) => walks++;
+            List<string> asked = [];
+            window.Confirm = (_, question, _) =>
+            {
+                asked.Add(question);
+                return Task.FromResult(true);
+            };
+            Heard(window, settingsFile, () => Save("Greeting"));
+            Ui.WaitFor(() => tree.Rows.Any(r => r.Path == PathNames.Canonical(properties)), "the Properties folder made for launchSettings.json to show");
+
+            List<ExplorerNode> before = [.. tree.Rows];
+            ExplorerNode made = tree.Rows.Single(r => r.Path == PathNames.Canonical(properties));
+            Ui.ClickRow(window, tree.Rows.First(r => r.Kind == NodeKind.Project && r.Name == "Hello"));
+            Heard(window, settingsFile, () => Ui.Run(window, Passenger.Editor.EditorActions.Undo));
+            Assert.False(Directory.Exists(properties), $"Undo left the Properties folder it made: {window.Status} ({string.Join(" | ", asked)})");
+            Ui.WaitFor(() => !tree.Rows.Contains(made), "the Properties folder's row to go");
+            Assert.True(tree.Rows.SequenceEqual(before.Where(r => r != made), ReferenceEqualityComparer.Instance),
+                $"Undo made rows other than the Properties folder's again: [{string.Join(", ", tree.Rows.Where(r => !before.Contains(r, ReferenceEqualityComparer.Instance)).Select(r => r.Name))}] are new");
+            Assert.DoesNotContain(window.FileIndex.Files, f => f.EndsWith("launchSettings.json", StringComparison.Ordinal));
+
+            Ui.Run(window, Passenger.Editor.EditorActions.Redo);
+            Assert.True(File.Exists(settingsFile), $"Redo did not make launchSettings.json again: {window.Status}");
+            Ui.WaitFor(() => tree.Rows.Any(r => r.Path == PathNames.Canonical(properties)), "the Properties folder's row to come back");
+            Ui.Settle();
+            Assert.True(tree.Rows.Where(r => r.Path != PathNames.Canonical(properties)).SequenceEqual(before.Where(r => r != made), ReferenceEqualityComparer.Instance),
+                "Redo made rows other than the Properties folder's again");
+            Assert.Contains(window.FileIndex.Files, f => f.EndsWith("launchSettings.json", StringComparison.Ordinal));
+
+            Heard(window, settingsFile, () => Save("Staging"));
+            before = [.. tree.Rows];
+            int rounds = window.Session.Models.Rounds;
+            string saved = File.ReadAllText(settingsFile);
+            Ui.ClickRow(window, tree.Rows.First(r => r.Kind == NodeKind.Project && r.Name == "Hello"));
+            Heard(window, settingsFile, () => Ui.Run(window, Passenger.Editor.EditorActions.Undo));
+            Assert.DoesNotContain("Staging", File.ReadAllText(settingsFile), StringComparison.Ordinal);
+            Heard(window, settingsFile, () => Ui.Run(window, Passenger.Editor.EditorActions.Redo));
+            Assert.Equal(saved, File.ReadAllText(settingsFile));
+            Assert.True(tree.Rows.SequenceEqual(before, ReferenceEqualityComparer.Instance),
+                $"Undo and Redo of launchSettings.json's text made rows again: [{string.Join(", ", tree.Rows.Where(r => !before.Contains(r, ReferenceEqualityComparer.Instance)).Select(r => r.Name))}] are new");
+            Assert.True(window.Session.Models.Rounds == rounds,
+                $"Undo and Redo of launchSettings.json's text had the {Libraries + 1} projects checked again {window.Session.Models.Rounds - rounds} times");
+            Assert.True(walks == 0, $"Undo and Redo walked the folder for Go to File {walks} times");
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        // A configuration made in Edit Configurations and saved as a launch profile of Hello.
+        void Save(string name)
+        {
+            RunConfigurationsDialog dialog = window.ShowRunConfigurations();
+            Add(dialog);
+            Type(dialog.NameBox, name);
+            Ui.Click(dialog.SaveAsProfileButton);
+            Assert.True(dialog.Problem.Length == 0, $"Save as Launch Profile was refused: {dialog.Problem}");
+            Ui.Click(dialog.OkButton);
+        }
+    }
+
     /// <summary>Reset to Launch Profile puts a generated configuration changed in place back as its profile makes it, and
     /// the folder opened again has no change kept for it.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Reset_to_launch_profile_puts_a_changed_configuration_back_as_its_profile_makes_it_for_good()
     {
@@ -386,6 +803,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
 
     /// <summary>A runConfigurations.json an older Passenger wrote, with a copy the person made of a generated configuration,
     /// opens as it was; changing the generated one in place leaves the copy in the file as it stood.</summary>
+    [Gate]
     [AvaloniaFact]
     public void An_older_runConfigurations_json_opens_as_it_was_and_keeps_the_persons_copies_as_they_stand()
     {
@@ -455,6 +873,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
     /// <summary>Use external console, chosen in the dialog for a copy of the generated configuration (whose own stays the
     /// Run window's), runs the program in a tab of the Terminal window named for the configuration, and is still chosen when
     /// the folder opens again.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Use_external_console_chosen_in_the_dialog_runs_the_program_in_the_terminal_and_is_kept_with_the_configuration()
     {
@@ -502,6 +921,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
 
     /// <summary>Open browser, After launch: a launch profile's launchBrowser shows ticked with the URL its launchUrl and
     /// applicationUrl make, and opens that URL once the program listens; turned off in a copy, the copy opens none.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_launch_profiles_browser_shows_under_open_browser_and_a_copy_with_it_turned_off_opens_none()
     {
@@ -560,6 +980,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         }
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_configuration_removed_in_the_dialog_is_gone_from_the_toolbar_and_the_folder()
     {
@@ -593,6 +1014,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         }
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_compose_configuration_added_in_the_dialog_shows_its_kinds_page_and_is_kept_with_its_files_and_choices()
     {
@@ -629,6 +1051,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         again.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_name_taken_or_missing_is_refused_with_why_and_nothing_changes()
     {
@@ -656,6 +1079,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
     }
 
     /// <summary>A name longer than the list is wide ends in an ellipsis inside its row.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_configuration_named_longer_than_the_list_is_wide_ends_in_an_ellipsis_inside_its_row()
     {
@@ -713,4 +1137,23 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
     }
 
     private void Write(string relative, string text) => TestFolders.Write(folder, relative, text);
+
+    /// <summary>Does something that writes a file, and waits for the folder watcher to hear of it and for what it heard to
+    /// land, which a settle alone does not wait for.</summary>
+    private static void Heard(MainWindow window, string path, Action change)
+    {
+        bool heard = false;
+        void Hear(object? sender, FolderChanges changes) => heard |= changes.Paths.Contains(PathNames.Canonical(path));
+        window.FolderWatcher!.Changed += Hear;
+        try
+        {
+            change();
+            Ui.WaitFor(() => heard, $"the folder watcher to hear of {Path.GetFileName(path)} written");
+            Ui.Settle();
+        }
+        finally
+        {
+            window.FolderWatcher!.Changed -= Hear;
+        }
+    }
 }

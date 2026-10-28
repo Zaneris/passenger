@@ -38,6 +38,11 @@ public sealed class RefactoringDialogsTests
 
     private const string Cat = "namespace Shop;\n\npublic class Cat : Animal\n{\n    public bool Purrs => true;\n}\n";
 
+    private const string Coins = "namespace Shop;\n\npublic class Coin\n{\n    public int Value;\n\n    public static Coin Mint(int value, string metal = \"gold\") => new() { Value = value };\n}\n";
+
+    private const string Purse = "using System;\n\nnamespace Shop;\n\npublic static class Purse\n{\n    public static int Fill()\n    {\n        Func<int, string, Coin> mint = Coin.Mint;\n"
+        + "        return Coin.Mint(1).Value + mint(2, \"silver\").Value;\n    }\n}\n";
+
     private string folder = string.Empty;
 
     /// <summary>Every dialog's refactoring made in one window on one project, each through its own keys or menu item and
@@ -50,7 +55,7 @@ public sealed class RefactoringDialogsTests
         folder = PathNames.Canonical(TestFolders.Create("refactorings-"));
         File.WriteAllText(PathOf("Shop.csproj"), TestProjects.Library("<Nullable>enable</Nullable>"));
         (string Name, string Text)[] files = [("Calc.cs", Calc), ("Till.cs", Till), ("Order.cs", Order), ("OrderBook.cs", OrderBook),
-            ("Report.cs", Report), ("Shapes.cs", Shapes), ("Animal.cs", Animal), ("Dog.cs", Dog), ("Cat.cs", Cat)];
+            ("Report.cs", Report), ("Shapes.cs", Shapes), ("Animal.cs", Animal), ("Dog.cs", Dog), ("Cat.cs", Cat), ("Coins.cs", Coins), ("Purse.cs", Purse)];
         foreach ((string name, string text) in files)
         {
             File.WriteAllText(PathOf(name), text);
@@ -61,6 +66,7 @@ public sealed class RefactoringDialogsTests
         List<(string Title, string Text)> asked = Answer(window);
 
         ChangeSignature(window, asked);
+        ChangeSignatureNamingAMethodGroup(window, asked);
         ExtractInterface(window, asked);
         MoveToNamespace(window, asked);
         MoveToAnotherFile(window, asked);
@@ -69,7 +75,8 @@ public sealed class RefactoringDialogsTests
         window.Close();
     }
 
-    /// <summary>Change Signature adds, removes and reorders parameters, and every call passes its arguments in the new order.</summary>
+    /// <summary>Change Signature adds, removes and reorders parameters, and every call passes its arguments in the new order,
+    /// a change of texts alone that makes no Explorer row again and has the project checked no more.</summary>
     private void ChangeSignature(MainWindow window, List<(string Title, string Text)> asked)
     {
         asked.Clear();
@@ -96,7 +103,7 @@ public sealed class RefactoringDialogsTests
         Ui.Settle();
         Assert.Equal("public static int Scale(int factor, int value, int offset)", dialog.Preview);
         Assert.Equal(string.Empty, dialog.Problem);
-        Next(dialog);
+        FilesFollowed.Check(window, "Change Signature", [PathOf("Calc.cs"), PathOf("Till.cs")], () => Next(dialog), textsAlone: true);
 
         string calc = Calc.Replace("Scale(int value, int factor, int unused)", "Scale(int factor, int value, int offset)", StringComparison.Ordinal)
             .Replace("Scale(value, 2, 0)", "Scale(2, value, 0)", StringComparison.Ordinal);
@@ -112,7 +119,41 @@ public sealed class RefactoringDialogsTests
         Assert.Equal(Till, File.ReadAllText(PathOf("Till.cs")));
     }
 
-    /// <summary>Extract Interface makes the interface of the members chosen in a file of its own, and the class implements it.</summary>
+    /// <summary>Change Signature changes every call but a method group, which it cannot change: once the dialog is done,
+    /// the status bar names the group and why, the delegate it makes no longer fitting the new parameters.</summary>
+    private void ChangeSignatureNamingAMethodGroup(MainWindow window, List<(string Title, string Text)> asked)
+    {
+        asked.Clear();
+        window.OpenFile(PathOf("Coins.cs"));
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "Coin Mi");
+        Ui.Run(window, AppActions.ChangeSignature);
+        ChangeSignatureDialog dialog = Shown<ChangeSignatureDialog>(window, "Change Signature");
+        Ui.Click(dialog.Parameters[0].NameBox);
+        Ui.Click(dialog.AddButton);
+        dialog.KeyTextInput("int");
+        Ui.Settle();
+        Ui.Click(dialog.Parameters[1].NameBox);
+        dialog.KeyTextInput("year");
+        Ui.Click(dialog.Parameters[1].DefaultBox);
+        dialog.KeyTextInput("2026");
+        Ui.Settle();
+        Assert.Equal("public static Coin Mint(int value, int year, string metal = \"gold\")", dialog.Preview);
+        Next(dialog);
+
+        Assert.Equal(Coins.Replace("Mint(int value, string metal", "Mint(int value, int year, string metal", StringComparison.Ordinal), window.EditorArea.Active?.Text.Snapshot.ToString());
+        Assert.Equal(Purse.Replace("Coin.Mint(1)", "Coin.Mint(1, 2026)", StringComparison.Ordinal), File.ReadAllText(PathOf("Purse.cs")));
+        Assert.Equal("Changed the signature of Coin.Mint in 2 files, but left 1 use as it was: Purse.cs:9, Coin.Mint as a Func<int, string, Coin>, "
+            + "which the new signature no longer fits", window.Status);
+
+        window.EditorArea.CodeEditor.Focus();
+        Ui.Run(window, EditorActions.Undo);
+        Assert.Equal([("Undo", "Undo Change Signature? It changes Coins.cs and Purse.cs.")], asked);
+        Assert.Equal(Coins, window.EditorArea.Active?.Text.Snapshot.ToString());
+        Assert.Equal(Purse, File.ReadAllText(PathOf("Purse.cs")));
+    }
+
+    /// <summary>Extract Interface makes the interface of the members chosen in a file of its own, whose row alone comes into
+    /// the Explorer, and the class implements it.</summary>
     private void ExtractInterface(MainWindow window, List<(string Title, string Text)> asked)
     {
         asked.Clear();
@@ -126,9 +167,9 @@ public sealed class RefactoringDialogsTests
         Assert.Equal(["Total: int", "Add(int): void", "Describe(): string"], dialog.Members.Select(m => m.Text));
         Ui.Click(dialog.Members[2].Box);
         Assert.False(dialog.Members[2].Box.IsChecked, "A click did not leave Describe out of the interface");
-        Next(dialog);
-
         string extracted = PathOf("IOrder.cs");
+        FilesFollowed.Check(window, "Extract Interface", [extracted], () => Next(dialog));
+
         Assert.True(File.Exists(extracted), $"Extract Interface made no IOrder.cs: {window.Status}");
         Assert.Equal("namespace Shop;\n\npublic interface IOrder\n{\n    int Total { get; }\n\n    void Add(int amount);\n}\n", File.ReadAllText(extracted).ReplaceLineEndings("\n"));
         Assert.Equal(Order.Replace("public class Order", "public class Order : IOrder", StringComparison.Ordinal), window.EditorArea.Active?.Text.Snapshot.ToString());

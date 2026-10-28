@@ -63,8 +63,6 @@ public sealed class RecentLocationsPopup : SearchPopup<RecentLocation>
         return false;
     }
 
-    protected override Control Draw(RecentLocation row) => Row(row);
-
     /// <summary>The places asked for again, as the switch between all of them and those edited turns.</summary>
     private void Reload()
     {
@@ -90,20 +88,18 @@ public sealed class RecentLocationsPopup : SearchPopup<RecentLocation>
 
     /// <summary>A place's row: its file and what it is in over its lines of code, numbered as the file numbers them,
     /// the place's own line marked.</summary>
-    private static Control Row(RecentLocation row)
+    protected override Control Row()
     {
-        PathIcon icon = new()
+        RowIcon icon = new()
         {
-            Data = Explorer.FileIcons.ForFile(row.Place.Path),
-            Foreground = Explorer.FileIcons.BrushForFile(row.Place.Path),
             Width = 14,
             Height = 14,
             Margin = new Thickness(0, 0, 6, 0),
             VerticalAlignment = VerticalAlignment.Center,
         };
+        TextBlock name = new() { FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center };
         TextBlock member = new()
         {
-            Text = row.Member ?? string.Empty,
             FontSize = 12,
             Margin = new Thickness(10, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
@@ -114,13 +110,8 @@ public sealed class RecentLocationsPopup : SearchPopup<RecentLocation>
         {
             Orientation = Orientation.Horizontal,
             Height = ListRow.Height,
-            Children = { icon, new TextBlock { Text = row.Name, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center }, member },
+            Children = { icon, name, member },
         };
-        ToolTip.SetTip(header, row.Place.Path);
-
-        TextDocument lines = new(row.Lines);
-        int count = lines.Snapshot.LineCount;
-        int own = Math.Clamp(row.Place.Line - row.FirstLine, 0, count - 1);
         CodeEditor code = new()
         {
             IsReadOnly = true,
@@ -131,12 +122,8 @@ public sealed class RecentLocationsPopup : SearchPopup<RecentLocation>
             // The row takes the clicks, so a click chooses the place and a double-click goes there.
             IsHitTestVisible = false,
         };
-        code.Show(lines, SelectionSet.Single(lines.Snapshot.GetLineStart(own)), default);
-        code.Highlighter = row.Colours;
-        code.Height = count * code.LineHeight;
         TextBlock numbers = new()
         {
-            Text = string.Join('\n', Enumerable.Range(row.FirstLine + 1, count)),
             FontFamily = code.FontFamily,
             FontSize = code.FontSize,
             LineHeight = code.LineHeight,
@@ -151,8 +138,23 @@ public sealed class RecentLocationsPopup : SearchPopup<RecentLocation>
         fragment.Children.Add(code);
         Border frame = new() { Child = fragment, Classes = { "box" }, ClipToBounds = true, Padding = new Thickness(0, 4) };
         frame.Bind(Border.BackgroundProperty, frame.GetResourceObservable(TokenKeys.Editor_Background));
-        // A closed row lets go of the colours it was shown with, whose changes would otherwise still reach it.
+        // A row the list let go of lets go of the colours it was shown with, whose changes would otherwise still reach it.
         code.DetachedFromVisualTree += (_, _) => code.Highlighter = null;
-        return new StackPanel { Margin = new Thickness(0, 2, 0, 6), Children = { header, frame } };
+        StackPanel row = new() { Margin = new Thickness(0, 2, 0, 6), Children = { header, frame } };
+        return row.Showing<RecentLocation>(place =>
+        {
+            icon.Data = Explorer.FileIcons.ForFile(place.Place.Path);
+            icon.Foreground = Explorer.FileIcons.BrushForFile(place.Place.Path);
+            name.Text = place.Name;
+            member.Text = place.Member ?? string.Empty;
+            ToolTip.SetTip(header, place.Place.Path);
+            TextDocument lines = new(place.Lines);
+            int count = lines.Snapshot.LineCount;
+            int own = Math.Clamp(place.Place.Line - place.FirstLine, 0, count - 1);
+            code.Show(lines, SelectionSet.Single(lines.Snapshot.GetLineStart(own)), default);
+            code.Highlighter = place.Colours;
+            code.Height = count * code.LineHeight;
+            numbers.Text = string.Join('\n', Enumerable.Range(place.FirstLine + 1, count));
+        });
     }
 }

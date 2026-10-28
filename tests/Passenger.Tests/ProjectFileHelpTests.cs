@@ -66,6 +66,7 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
         folder = PathNames.Canonical(shop.Folder);
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_project_file_completes_its_properties_their_values_paths_and_the_names_its_evaluation_knows()
     {
@@ -116,6 +117,7 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_package_reference_completes_ids_and_versions_from_the_folders_feed_and_a_vulnerable_version_is_marked()
     {
@@ -153,6 +155,7 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void The_card_over_a_name_says_its_evaluated_value_and_where_it_was_set_and_go_to_declaration_goes_there()
     {
@@ -208,6 +211,7 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
 
     /// <summary>Core takes in its own folder's C# by the SDK's wildcard and Shared's by its own element, so a file come into or
     /// gone from either folder, whether another program or the IDE made it, changes what the cards count with nothing typed.</summary>
+    [Gate]
     [AvaloniaFact]
     public void An_item_elements_card_counts_the_files_come_into_and_gone_from_the_folders_its_wildcards_walk_with_nothing_typed()
     {
@@ -241,6 +245,7 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void The_evaluations_errors_are_marked_on_their_lines_as_typed_and_listed_in_problems()
     {
@@ -270,6 +275,7 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Directory_packages_props_completes_versions_marks_a_vulnerable_one_and_takes_a_new_references_version()
     {
@@ -344,6 +350,7 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
 
     /// <summary>A lone '\r', U+0085, U+2028 and U+2029 end a line for the edits a workspace edit makes, not for the editor:
     /// the version a new reference takes goes into Directory.Packages.props, not open, beside the others below them.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_new_references_version_goes_beside_the_others_in_a_directory_packages_props_holding_line_breaks_only_roslyn_counts()
     {
@@ -384,6 +391,7 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_project_file_saved_has_the_solution_view_and_the_language_server_take_what_it_says_now()
     {
@@ -494,13 +502,12 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
             Put("Core/Core.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <ItemGroup>\n    <Compile Include=\"../Shared/*.cs\" />\n  </ItemGroup>\n</Project>\n");
             Put("Core/Store.cs", "class Store\n{\n}\n");
             Put("Shared/Price.cs", "class Price\n{\n}\n");
-            Prepare();
         }
 
-        public override void Dispose()
+        public override async ValueTask DisposeAsync()
         {
-            base.Dispose();
-            feed.Dispose();
+            await base.DisposeAsync();
+            await feed.DisposeAsync();
         }
 
         private void Put(string relative, string text)

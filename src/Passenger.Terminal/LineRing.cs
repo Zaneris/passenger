@@ -25,14 +25,16 @@ internal sealed class LineRing(int limit) : IReadOnlyList<TerminalLine>
         }
     }
 
-    public void Add(TerminalLine line)
+    /// <summary>Adds the newest line. At the limit the oldest leaves, and is given back, since nothing else keeps it; else null.</summary>
+    public TerminalLine? Add(TerminalLine line)
     {
         if (Count == limit)
         {
+            TerminalLine oldest = items[start];
             items[start] = line;
             start = (start + 1) % items.Length;
             Dropped++;
-            return;
+            return oldest;
         }
         if (Count == items.Length)
         {
@@ -40,6 +42,7 @@ internal sealed class LineRing(int limit) : IReadOnlyList<TerminalLine>
         }
         items[(start + Count) % items.Length] = line;
         Count++;
+        return null;
     }
 
     public TerminalLine RemoveLast()

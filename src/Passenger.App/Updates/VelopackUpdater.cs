@@ -68,11 +68,14 @@ public sealed class VelopackUpdater(IVelopackLocator locator) : Updater
         {
             return;
         }
-        if (OthersRunning())
+        IReadOnlyList<OtherCopy> others = Others();
+        if (others.Any(other => !other.Relay))
         {
-            IdeErrors.Write($"Updates: Passenger {version} waits to install: another Passenger runs from {locator.AppContentDir}");
+            IdeErrors.Write($"Updates: Passenger {version} waits to install: another Passenger runs from {locator.AppContentDir}: {Listed(others.Where(other => !other.Relay))}");
             return;
         }
+        // Update.exe would find their files in use.
+        EndRelays(others, version);
         try
         {
             // Quietly when Passenger is only closing; with Velopack's progress while a person waits for it to start again.
@@ -86,14 +89,14 @@ public sealed class VelopackUpdater(IVelopackLocator locator) : Updater
         IdeErrors.Flush();
     }
 
-    public override void Discard()
+    public override Task DiscardAsync()
     {
         Ready = null;
         manager = null;
         package = null;
         if (locator.PackagesDir is not { } packages || !Directory.Exists(packages))
         {
-            return;
+            return Task.CompletedTask;
         }
         // The package the installed version came with stays, as Velopack keeps it.
         foreach (VelopackAsset newer in locator.GetLocalPackages().Where(p => p.Version > locator.CurrentlyInstalledVersion))
@@ -104,14 +107,16 @@ public sealed class VelopackUpdater(IVelopackLocator locator) : Updater
         {
             Delete(partial);
         }
+        return Task.CompletedTask;
     }
 
-    public override bool OthersRunning()
+    protected override IReadOnlyList<int> RunningHere()
     {
         if (locator.AppContentDir is not { } content)
         {
-            return false;
+            return [];
         }
+        List<int> here = [];
         foreach (Process running in Process.GetProcessesByName("Passenger"))
         {
             using (running)
@@ -120,7 +125,7 @@ public sealed class VelopackUpdater(IVelopackLocator locator) : Updater
                 {
                     if (running.Id != Environment.ProcessId && running.MainModule?.FileName is { } path && PathNames.IsUnder(path, content))
                     {
-                        return true;
+                        here.Add(running.Id);
                     }
                 }
                 catch (Exception error) when (error is Win32Exception or InvalidOperationException)
@@ -129,7 +134,7 @@ public sealed class VelopackUpdater(IVelopackLocator locator) : Updater
                 }
             }
         }
-        return false;
+        return here;
     }
 
     private static async Task<string> Sha256Async(string path, CancellationToken cancel)

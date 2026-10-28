@@ -165,8 +165,14 @@ internal sealed class DiscordConnection : IAsyncDisposable
         {
             why = $"{Where} closed the connection";
         }
+        catch (IOException error)
+        {
+            why = $"the connection to {Where} failed: {error.Message}";
+        }
         catch (Exception error)
         {
+            // A fault of the IDE's own, in what reads Discord's answers: reported, and the connection lost.
+            IdeErrors.Report(error);
             why = $"the connection to {Where} failed: {error.Message}";
         }
         ready.TrySetResult(why);

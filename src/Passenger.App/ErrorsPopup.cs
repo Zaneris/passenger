@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
 
@@ -23,8 +22,8 @@ public sealed class ErrorsPopup : UserControl
             Classes = { "tree" },
             Height = 150,
             ItemsSource = errors,
-            ItemTemplate = new FuncDataTemplate<IdeError>((error, _) => Row(error), supportsRecycling: false),
         };
+        ReusedRows.Use(list, Row);
         occurred = new TextBlock { Classes = { "muted" } };
         details = new TextBox
         {
@@ -90,27 +89,26 @@ public sealed class ErrorsPopup : UserControl
     public event EventHandler? Done;
 
     /// <summary>An error's row: when it first came, its kind and first line, and how many times when more than once.</summary>
-    private static Control Row(IdeError? error)
+    /// <summary>An error's row: when it came, its kind and message on one line, and how often it came at the right.</summary>
+    private static Control Row()
     {
-        if (error is null)
-        {
-            return new TextBlock();
-        }
         TextBlock count = new()
         {
             Classes = { "muted" },
-            Text = error.Count == 1 ? string.Empty : $"{error.Count} times",
             Margin = new Thickness(12, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
             [DockPanel.DockProperty] = Dock.Right,
         };
         TextBlock what = new()
         {
-            Text = $"{error.At:HH:mm:ss}  {error.Kind}: {error.Message.ReplaceLineEndings(" ")}",
             TextTrimming = TextTrimming.CharacterEllipsis,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        return new DockPanel { Children = { count, what } };
+        return new DockPanel { Children = { count, what } }.Showing<IdeError>(error =>
+        {
+            count.Text = error.Count == 1 ? string.Empty : $"{error.Count} times";
+            what.Text = $"{error.At:HH:mm:ss}  {error.Kind}: {error.Message.ReplaceLineEndings(" ")}";
+        });
     }
 
     /// <summary>The line over an error's details: how often it came, and when.</summary>

@@ -278,7 +278,8 @@ public sealed class LocalHistoryTests : IDisposable
 
         Task<VcsOutcome> checkout = window.Vcs.CheckoutAsync("side");
         Ui.WaitFor(() => checkout.IsCompleted && Text(window) == Saved1, "side checked out and the open file following it");
-        Assert.True(checkout.Result.Succeeded, checkout.Result.Message);
+        VcsOutcome checkedOut = Ui.Await(checkout, "side checked out");
+        Assert.True(checkedOut.Succeeded, checkedOut.Message);
         HistoryTab history = ShowFromFileMenu(window, "Show History…");
         Ui.WaitFor(() => history.Rows.Count == 1, "the checkout's change to the file");
         Assert.Equal("Git checkout", history.Rows[0].Title);
@@ -321,6 +322,55 @@ public sealed class LocalHistoryTests : IDisposable
         history.Select(history.Rows.First(r => r.Title == "Modify A.cs"));
         Ui.Landed(() => history.Files.Count == 2, "A.cs and B.cs changed since");
         Assert.Equal([(PathNames.Canonical(a), ChangeKind.Modified), (PathNames.Canonical(b), ChangeKind.Modified)], history.Files.Select(f => (f.Path, f.Kind)));
+        window.Close();
+    }
+
+    /// <summary>A revert follows only what it changes: a file's text put back leaves every Explorer row as it was, with Go to
+    /// File's folder never walked again and the project not checked again, and a file deleted brought back puts in its own
+    /// row alone.</summary>
+    [AvaloniaFact]
+    public void A_revert_of_a_text_makes_no_row_again_and_one_bringing_back_a_file_only_its_own()
+    {
+        Write("Shop.csproj", TestProjects.Library());
+        string a = Write("src/A.cs", "class A\n{\n}\n");
+        string b = Write("src/B.cs", "class B\n{\n}\n");
+        Write("Notes.txt", "notes\n");
+        MainWindow window = Open("src/A.cs");
+        Save(window, 0, 0, "sealed ");
+        Save(window, 0, 0, "public ");
+        window.OpenFile(b);
+        Save(window, 0, 0, "sealed ");
+        Show(window, a);
+        Show(window, Path.Combine(folder, "Notes.txt"));
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+        Ui.ChooseFromRowMenu(window, Show(window, b), "Edit", "Delete…");
+        Ui.WaitFor(() => !File.Exists(b), "B.cs deleted");
+
+        Ui.ChooseFromRowMenu(window, Show(window, Path.Combine(folder, "src")), "Local History", "Show History…");
+        HistoryTab history = window.LocalHistoryWindow.Shown!;
+        Ui.Landed(() => history.Rows.Count > 0 && history.Rows[0].Title == "Delete B.cs", "B.cs's deletion");
+        Ui.Landed(() => history.Diff?.Left.Document.Snapshot.ToString() == "sealed class B\n{\n}\n", "B.cs as it was deleted");
+        FilesFollowed.Check(window, "Revert of B.cs's deletion", [b], () =>
+        {
+            Task reverting = history.RevertAsync();
+            Ui.WaitFor(() => reverting.IsCompleted, "the revert");
+        });
+        Assert.Equal("sealed class B\n{\n}\n", File.ReadAllText(b));
+        Assert.Contains(window.ExplorerView.Tree.Rows, r => r.Path == PathNames.Canonical(b));
+
+        window.OpenFile(a);
+        Ui.Settle();
+        history = ShowFromFileMenu(window, "Show History…");
+        Ui.Landed(() => history.Rows.Count == 2, "A.cs's two saves");
+        // The first save's version: A.cs as it was before it.
+        history.Select(history.Rows[1]);
+        Ui.Settle();
+        FilesFollowed.Check(window, "Revert of A.cs", [a], () =>
+        {
+            Task reverting = history.RevertAsync();
+            Ui.WaitFor(() => reverting.IsCompleted, "the revert");
+        }, textsAlone: true);
+        Assert.Equal("class A\n{\n}\n", File.ReadAllText(a));
         window.Close();
     }
 
@@ -371,7 +421,7 @@ public sealed class LocalHistoryTests : IDisposable
                 new { textDocument = new { uri, version = (int?)null }, edits = new[] { new { range = new { start = new { line = 0, character = 0 }, end = new { line = 0, character = 0 } }, newText = Made } } },
             },
         });
-        Passenger.App.CSharp.WorkspaceEdits.ApplyAsCommand(window.EditorArea, edit, "Move to File");
+        MoveToFile(window, edit);
         Assert.Equal(Made, File.ReadAllText(notes));
 
         window.Confirm = (_, _, _) => Task.FromResult(true);
@@ -389,7 +439,7 @@ public sealed class LocalHistoryTests : IDisposable
         try
         {
             Passenger.App.CSharp.WorkspaceEditFailed refused = Assert.Throws<Passenger.App.CSharp.WorkspaceEditFailed>(
-                () => Passenger.App.CSharp.WorkspaceEdits.ApplyAsCommand(window.EditorArea, edit, "Move to File"));
+                () => MoveToFile(window, edit));
             Assert.Equal("Notes.cs is read-only", refused.Message);
             Assert.Equal(Original, File.ReadAllText(notes));
         }
@@ -398,6 +448,13 @@ public sealed class LocalHistoryTests : IDisposable
             new FileInfo(notes).IsReadOnly = false;
         }
         window.Close();
+    }
+
+    /// <summary>A server's edit applied as Move to File applies its own: one command of Undo.</summary>
+    private static void MoveToFile(MainWindow window, System.Text.Json.JsonElement edit)
+    {
+        using Passenger.App.Editors.CommandHistory.Recording recording = window.EditorArea.Commands.Record("Move to File");
+        Passenger.App.CSharp.WorkspaceEdits.ApplyAsCommand(window.EditorArea, edit, recording);
     }
 
     [AvaloniaFact]

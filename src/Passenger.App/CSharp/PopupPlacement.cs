@@ -1,13 +1,16 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
+using Avalonia.VisualTree;
 using Passenger.Core;
 using Passenger.Lsp;
 
 namespace Passenger.App.CSharp;
 
 /// <summary>Where the code assistance's popups sit: on the layer over the active editor's window, placed at a line of
-/// the editor and kept inside it, and the one list of choices or rename box open at a time, whose answer is carried out
-/// as background work.</summary>
+/// the editor and kept inside it, and the one list of choices or rename box open at a time, which a press in its window
+/// outside it dismisses and whose answer is carried out as background work.</summary>
 internal sealed class PopupPlacement
 {
     private readonly AssistContext context;
@@ -17,6 +20,12 @@ internal sealed class PopupPlacement
 
     /// <summary>What undoes what the open modal showed in the editor, run as it closes however it closes.</summary>
     private Action? modalClosed;
+
+    /// <summary>The open modal answered as dismissed, its answer null; null with none open.</summary>
+    private Action? dismissed;
+
+    /// <summary>The open modal's window's presses, heard while it is open.</summary>
+    private IDisposable? presses;
 
     public PopupPlacement(AssistContext context, Canvas layer)
     {
@@ -112,20 +121,49 @@ internal sealed class PopupPlacement
 
     public void ShowModal(ChoicePopup popup, int offset, string what, Func<Choice?, Task> done)
     {
-        CloseModal();
-        modal = popup;
-        layer.Children.Add(popup);
+        Open(popup, () => IdeErrors.Observe(Carried(what, () => done(null))));
         Place(popup, offset, above: false);
         popup.Done += (_, choice) => IdeErrors.Observe(Carried(what, () => done(choice)));
     }
 
     public void ShowModal(RenameBox box, int offset, Func<string?, Task> done)
     {
-        CloseModal();
-        modal = box;
-        layer.Children.Add(box);
+        Open(box, () => IdeErrors.Observe(Carried("Rename", () => done(null))));
         Place(box, offset, above: true);
         box.Done += (_, name) => IdeErrors.Observe(Carried("Rename", () => done(name)));
+    }
+
+    /// <summary>A modal on the layer in place of any open, its window's presses heard.</summary>
+    private void Open(Control popup, Action dismiss)
+    {
+        CloseModal();
+        modal = popup;
+        dismissed = dismiss;
+        layer.Children.Add(popup);
+        presses = TopLevel.GetTopLevel(layer)?.AddDisposableHandler(InputElement.PointerPressedEvent, OnPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
+    }
+
+    /// <summary>Answers the modal open in a window as dismissed, as Escape there does, wherever the keys are in it; false
+    /// with none open there.</summary>
+    public bool Dismiss(TopLevel window)
+    {
+        if (modal is null || dismissed is not { } dismiss || TopLevel.GetTopLevel(modal) != window)
+        {
+            return false;
+        }
+        dismiss();
+        return true;
+    }
+
+    /// <summary>A press in the modal's window outside it dismisses it, then goes on to what it was made on: the caret
+    /// placed, a tool window's row chosen. A press over the modal is its own, though a menu's layer over the window takes it.</summary>
+    private void OnPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (modal is { } open && !(e.Source is Visual pressed && (pressed == open || open.IsVisualAncestorOf(pressed)))
+            && !new Rect(open.Bounds.Size).Contains(e.GetPosition(open)))
+        {
+            dismissed?.Invoke();
+        }
     }
 
     /// <summary>What a modal's answer does (a fix chosen, a new name), carried out as background work. A failure of the
@@ -160,12 +198,25 @@ internal sealed class PopupPlacement
     {
         if (modal is not null)
         {
+            bool keysElsewhere = KeysElsewhere(modal);
             layer.Children.Remove(modal);
             modal = null;
-            Editor.Focus();
+            if (!keysElsewhere)
+            {
+                Editor.Focus();
+            }
         }
+        dismissed = null;
+        presses?.Dispose();
+        presses = null;
         Action? closed = modalClosed;
         modalClosed = null;
         closed?.Invoke();
     }
+
+    /// <summary>Whether an element of the modal's window other than the modal has the keys, which keep them as it closes;
+    /// those the modal had go back to the editor.</summary>
+    private static bool KeysElsewhere(Control open) =>
+        TopLevel.GetTopLevel(open) is { } window && window.FocusManager?.GetFocusedElement() is Visual focused
+        && focused != window && focused != open && !open.IsVisualAncestorOf(focused);
 }

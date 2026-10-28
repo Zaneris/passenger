@@ -54,8 +54,8 @@ internal static class Evaluation
     private static (EvaluatedProject Project, IReadOnlyList<string> Frameworks) Outer(string path, ProjectCollection collection, EvaluationContext context, IReadOnlyDictionary<string, string> properties)
     {
         // Stamped before they are read: whatever changes once evaluation has begun changes the stamps too.
-        Stamp file = Stamps.File(path);
-        IReadOnlyList<Stamp> folders = Walked(Path.GetDirectoryName(path)!);
+        Stamp file = Stamps.Project(path);
+        IReadOnlyList<Stamp> folders = Walked(path);
         if (file.Ticks == 0)
         {
             return (new EvaluatedProject { Path = path, Problem = $"{path} does not exist", Inputs = [file] }, []);
@@ -131,9 +131,10 @@ internal static class Evaluation
             IsTestProject = each.Any(p => p.GetPropertyValue("IsTestProject").Equals("true", StringComparison.OrdinalIgnoreCase)),
             IsAspireHost = each.Any(p => p.GetPropertyValue("IsAspireHost").Equals("true", StringComparison.OrdinalIgnoreCase)),
             Dependencies = [.. each.Select((p, i) => Dependencies(p, named[i]))],
+            Symbols = [.. each.Select(DefinedSymbols.Of).OfType<FrameworkSymbols>()],
             Items = items,
             Properties = Carried(first, excluded),
-            Inputs = Inputs(file, each, excluded, LookedFor(path, first)),
+            Inputs = Inputs(file, each, excluded, [.. LookedFor(path, first), .. IncludedHeads(path, items)]),
             Folders = Folders(path, folders, items.Select(i => i.Path)),
         };
     }
@@ -149,6 +150,12 @@ internal static class Evaluation
             .Select(Stamps.File)
             .Concat(also)
             .DistinctBy(s => s.Path, PathNames.Comparer)];
+
+    /// <summary>For a program, the heads of the C# files it includes, whose directives are its project's too; none for a
+    /// project.</summary>
+    internal static IEnumerable<Stamp> IncludedHeads(string path, IEnumerable<EvaluatedItem> items) => ProgramFiles.IsProgram(path)
+        ? items.Where(i => i.Type == "Compile" && ProgramFiles.IsProgram(i.Path) && !PathNames.Same(i.Path, path)).Select(i => Stamps.Head(i.Path))
+        : [];
 
     /// <summary>The folders a project's files come from, stamped: those under its own (<see cref="Walked"/>, stamped before
     /// it was evaluated), and the folder of each file it takes from elsewhere (../Shared/*.cs), not all under it: a file at
@@ -172,7 +179,7 @@ internal static class Evaluation
         {
             global["TargetFramework"] = framework;
         }
-        return WindowsTargeting.Load(given => Project.FromFile(path, new ProjectOptions
+        return WindowsTargeting.Load(given => VirtualProjects.Load(path, new ProjectOptions
         {
             GlobalProperties = given,
             ProjectCollection = collection,
@@ -219,7 +226,8 @@ internal static class Evaluation
                 NonEmpty(p.GetMetadataValue("VersionOverride")) ?? NonEmpty(p.GetMetadataValue("Version")) ?? central.GetValueOrDefault(p.EvaluatedInclude),
                 p.GetMetadataValue("IsImplicitlyDefined").Equals("true", StringComparison.OrdinalIgnoreCase)))
             .DistinctBy(p => p.Name, StringComparer.OrdinalIgnoreCase)];
-        List<string> projects = [.. project.GetItems("ProjectReference").Select(r => r.GetMetadataValue("FullPath")).Distinct(PathNames.Comparer)];
+        List<string> projects = [.. project.GetItems("ProjectReference")
+            .Select(r => NonEmpty(r.GetMetadataValue(ProgramFiles.RefMetadata)) ?? r.GetMetadataValue("FullPath")).Distinct(PathNames.Comparer)];
         return new FrameworkDependencies(framework, packages, projects)
         {
             FrameworkReferences = [.. project.GetItems("FrameworkReference").Select(r => r.EvaluatedInclude).Distinct(StringComparer.OrdinalIgnoreCase)],
@@ -280,24 +288,26 @@ internal static class Evaluation
         }
     }
 
-    /// <summary>The files MSBuild looks for from a project's folder up, by the property that names each and its default name.</summary>
-    private static readonly (string Property, string Name)[] Above =
+    /// <summary>The files MSBuild looks for from a project's folder up, by the property that names each and its default name;
+    /// global.json, which no property names, gives the SDKs from the package folders their versions (msbuild-sdks).</summary>
+    private static readonly (string? Property, string Name)[] Above =
     [
         ("_DirectoryBuildPropsFile", "Directory.Build.props"),
         ("_DirectoryBuildTargetsFile", "Directory.Build.targets"),
         ("_DirectoryPackagesPropsFile", "Directory.Packages.props"),
+        (null, "global.json"),
     ];
 
     /// <summary>What would change a project's evaluation by coming or going, stamped (most as not there): each
-    /// Directory.Build.props, .targets and Directory.Packages.props MSBuild looks for from the project's folder up, as far
-    /// as the first it finds, and the props and targets a restore writes for the project to import. Without an evaluation
-    /// (one that failed), by their default names and place.</summary>
+    /// Directory.Build.props, .targets, Directory.Packages.props and global.json looked for from the project's folder up,
+    /// as far as the first it finds, and the props and targets a restore writes for the project to import. Without an
+    /// evaluation (one that failed), by their default names and place.</summary>
     internal static IEnumerable<Stamp> LookedFor(string path, Project? evaluated)
     {
         string folder = Path.GetDirectoryName(path)!;
-        foreach ((string property, string name) in Above)
+        foreach ((string? property, string name) in Above)
         {
-            string named = evaluated?.GetPropertyValue(property) is { Length: > 0 } given ? given : name;
+            string named = property is not null && evaluated?.GetPropertyValue(property) is { Length: > 0 } given ? given : name;
             for (string? at = folder; at is not null; at = Path.GetDirectoryName(at))
             {
                 Stamp stamp = Stamps.File(Path.Combine(at, named));
@@ -311,7 +321,7 @@ internal static class Evaluation
         string restored = evaluated?.GetPropertyValue("MSBuildProjectExtensionsPath") is { Length: > 0 } written && Path.IsPathFullyQualified(written)
             ? written
             : Path.Combine(folder, "obj");
-        string file = Path.GetFileName(path);
+        string file = evaluated?.GetPropertyValue("MSBuildProjectFile") is { Length: > 0 } projectFile ? projectFile : Path.GetFileName(path);
         yield return Stamps.File(Path.Combine(restored, file + ".nuget.g.props"));
         yield return Stamps.File(Path.Combine(restored, file + ".nuget.g.targets"));
     }
@@ -329,7 +339,12 @@ internal static class Evaluation
     }
 
     /// <summary>Every folder under a project's that a wildcard would enter, stamped: each once whatever links reach it, and
-    /// none a link goes up to (<see cref="PathNames.FoldersUnder"/>), the nearest first up to the limit, several read at once.</summary>
-    internal static IReadOnlyList<Stamp> Walked(string folder) =>
-        [.. PathNames.FoldersUnder(folder, sub => Stamps.Counts(Path.GetFileName(sub), folder: true)).Take(FolderLimit).AsParallel().AsOrdered().Select(Stamps.Folder)];
+    /// none a link goes up to (<see cref="PathNames.FoldersUnder"/>), the nearest first up to the limit, several read at once.
+    /// A program's own folder alone, which its project takes nothing from unless its directives name it.</summary>
+    internal static IReadOnlyList<Stamp> Walked(string path)
+    {
+        string folder = Path.GetDirectoryName(path)!;
+        return ProgramFiles.IsProgram(path) ? [Stamps.Folder(folder)]
+            : [.. PathNames.FoldersUnder(folder, sub => Stamps.Counts(Path.GetFileName(sub), folder: true)).Take(FolderLimit).AsParallel().AsOrdered().Select(Stamps.Folder)];
+    }
 }

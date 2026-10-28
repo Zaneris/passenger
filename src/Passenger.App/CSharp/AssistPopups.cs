@@ -1,7 +1,6 @@
 using Avalonia;
 using Avalonia.Collections;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -189,9 +188,11 @@ internal sealed record CompletionRow(Lsp.CompletionItem Item, string Letter, str
 }
 
 /// <summary>A place in the completion list, kept from one filter to the next: the row it shows now, which its control
-/// follows (<see cref="CompletionRowView"/>).</summary>
-internal sealed class CompletionSlot(CompletionRow row)
+/// follows while shown (<see cref="CompletionRowView"/>).</summary>
+internal sealed class CompletionSlot(CompletionRow row) : System.ComponentModel.INotifyPropertyChanged
 {
+    private static readonly System.ComponentModel.PropertyChangedEventArgs RowChanged = new(nameof(Row));
+
     private CompletionRow row = row;
 
     public CompletionRow Row
@@ -202,13 +203,13 @@ internal sealed class CompletionSlot(CompletionRow row)
             if (!ReferenceEquals(row, value))
             {
                 row = value;
-                Changed?.Invoke(this, EventArgs.Empty);
+                PropertyChanged?.Invoke(this, RowChanged);
             }
         }
     }
 
     /// <summary>The slot shows another row.</summary>
-    public event EventHandler? Changed;
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
 }
 
 /// <summary>The completion list: rows under the caret, the selected one highlighted, ten at a time. Its places are kept as
@@ -235,8 +236,8 @@ internal sealed class CompletionPopup : Border
             Classes = { "tree" },
             MaxHeight = 26 * 10,
             ItemsSource = slots,
-            ItemTemplate = new FuncDataTemplate<CompletionSlot>((_, _) => new CompletionRowView(this), supportsRecycling: true),
         };
+        ReusedRows.Use(List, () => new CompletionRowView(this));
         List.SelectionChanged += (_, _) => FollowSelected();
         Child = List;
     }
@@ -304,8 +305,8 @@ internal sealed class CompletionPopup : Border
     }
 }
 
-/// <summary>A completion row's controls, made once for a place in the list and kept: the slot it is given (its data
-/// context) is followed, its words and badge changed in place as the slot shows another row.</summary>
+/// <summary>A completion row's controls, made once with a container of the list and kept: the slot it is handed (its data
+/// context) is shown while the row is, its words and badge changed in place as the slot shows another row.</summary>
 internal sealed class CompletionRowView : DockPanel
 {
     private readonly CompletionPopup popup;
@@ -313,7 +314,6 @@ internal sealed class CompletionRowView : DockPanel
     private readonly TextBlock letter;
     private readonly TextBlock detail;
     private readonly TextBlock label;
-    private CompletionSlot? slot;
 
     public CompletionRowView(CompletionPopup popup)
     {
@@ -357,29 +357,7 @@ internal sealed class CompletionRowView : DockPanel
         Children.Add(badge);
         Children.Add(detail);
         Children.Add(label);
-    }
-
-    protected override void OnDataContextChanged(EventArgs e)
-    {
-        base.OnDataContextChanged(e);
-        if (slot is not null)
-        {
-            slot.Changed -= OnSlotChanged;
-        }
-        slot = DataContext as CompletionSlot;
-        if (slot is not null)
-        {
-            slot.Changed += OnSlotChanged;
-            Show(slot.Row);
-        }
-    }
-
-    private void OnSlotChanged(object? sender, EventArgs e)
-    {
-        if (sender is CompletionSlot changed && changed == slot)
-        {
-            Show(changed.Row);
-        }
+        this.Showing<CompletionSlot>(slot => Show(slot.Row));
     }
 
     private void Show(CompletionRow row)
@@ -392,8 +370,8 @@ internal sealed class CompletionRowView : DockPanel
     }
 }
 
-/// <summary>A titled list to choose from (fixes, definitions, usages, surround templates): Up and Down, Enter to choose,
-/// a choice's digit to choose it at once, Escape or a click away to dismiss.</summary>
+/// <summary>A titled list to choose from (fixes, definitions, usages, surround templates): Up and Down, Enter or a double
+/// click to choose, a choice's digit to choose it at once.</summary>
 internal sealed class ChoicePopup : Border
 {
     // Styled as the Border it is, so the theme's Border.popup reaches it.
@@ -426,36 +404,8 @@ internal sealed class ChoicePopup : Border
             MaxHeight = 26 * 14,
             ItemsSource = choices,
             SelectedIndex = choices.Count > 0 ? 0 : -1,
-            ItemTemplate = new FuncDataTemplate<Choice>((choice, _) => new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                Spacing = 10,
-                Height = ListRow.Height,
-                Children =
-                {
-                    new TextBlock
-                    {
-                        Text = choice?.Mnemonic?.ToString(),
-                        Foreground = InfoCard.Brush(TokenKeys.TextMuted),
-                        FontFamily = Fonts.Mono,
-                        Width = 10,
-                        IsVisible = numbered,
-                        VerticalAlignment = VerticalAlignment.Center,
-                    },
-                    new TextBlock { Text = choice?.Text, VerticalAlignment = VerticalAlignment.Center },
-                    new TextBlock
-                    {
-                        Text = choice?.Detail,
-                        Foreground = InfoCard.Brush(TokenKeys.TextMuted),
-                        FontFamily = choice?.DetailIsCode == true ? Fonts.Mono : FontFamily.Default,
-                        FontSize = 12,
-                        TextTrimming = TextTrimming.CharacterEllipsis,
-                        MaxWidth = 460,
-                        VerticalAlignment = VerticalAlignment.Center,
-                    },
-                },
-            }, supportsRecycling: false),
         };
+        ReusedRows.Use(list, () => ChoiceRow(numbered));
         Child = new StackPanel
         {
             Spacing = 4,
@@ -478,8 +428,8 @@ internal sealed class ChoicePopup : Border
         }, DispatcherPriority.Loaded);
     }
 
-    /// <summary>The choice made, or null when dismissed.</summary>
-    public event EventHandler<Choice?>? Done;
+    /// <summary>The choice made.</summary>
+    public event EventHandler<Choice>? Done;
 
     /// <summary>The choice the list has selected now, as Up and Down move it.</summary>
     public event EventHandler<Choice?>? Moved;
@@ -491,16 +441,29 @@ internal sealed class ChoicePopup : Border
             Choose();
             e.Handled = true;
         }
-        else if (e.Key == Key.Escape)
-        {
-            Done?.Invoke(this, null);
-            e.Handled = true;
-        }
         else if (Digit(e.Key) is { } digit && list.ItemsSource is IEnumerable<Choice> choices && choices.FirstOrDefault(c => c.Mnemonic == digit) is { } marked)
         {
             Done?.Invoke(this, marked);
             e.Handled = true;
         }
+    }
+
+    /// <summary>A choice's row: its digit when the list has them, its words, and its detail muted, in code's font for code.</summary>
+    private static Control ChoiceRow(bool numbered)
+    {
+        TextBlock digit = new() { FontFamily = Fonts.Mono, Width = 10, IsVisible = numbered, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock text = new() { VerticalAlignment = VerticalAlignment.Center };
+        TextBlock detail = new() { FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 460, VerticalAlignment = VerticalAlignment.Center };
+        StackPanel row = new() { Orientation = Orientation.Horizontal, Spacing = 10, Height = ListRow.Height, Children = { digit, text, detail } };
+        return row.Showing<Choice>(choice =>
+        {
+            digit.Text = choice.Mnemonic?.ToString();
+            digit.Foreground = InfoCard.Brush(TokenKeys.TextMuted);
+            text.Text = choice.Text;
+            detail.Text = choice.Detail;
+            detail.Foreground = InfoCard.Brush(TokenKeys.TextMuted);
+            detail.FontFamily = choice.DetailIsCode ? Fonts.Mono : FontFamily.Default;
+        });
     }
 
     private static char? Digit(Key key) => key switch
@@ -523,7 +486,7 @@ internal sealed class ChoicePopup : Border
 /// chooses it, if it has one.</summary>
 internal sealed record Choice(string Text, string Detail, object Value, bool DetailIsCode = false, char? Mnemonic = null);
 
-/// <summary>Inline rename: the name in a box over itself, all of it selected; Enter renames, Escape leaves it. For a
+/// <summary>Inline rename: the name in a box over itself, all of it selected; Enter renames. For a
 /// type declared in files named after it, Also rename files to reflect this change is a check box under it, with the
 /// files it would rename, clicked while the keys stay with the name.</summary>
 internal sealed class RenameBox : Border
@@ -598,11 +561,6 @@ internal sealed class RenameBox : Border
         {
             string text = name.Text?.Trim() ?? string.Empty;
             Done?.Invoke(this, text.Length > 0 ? text : null);
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Escape)
-        {
-            Done?.Invoke(this, null);
             e.Handled = true;
         }
     }

@@ -63,6 +63,16 @@ public sealed class DebugController : IDisposable
     /// <summary>The failed binding the program is paused at, once the stop is read; null otherwise.</summary>
     public BindingStop? BindingStop => Stop is not null ? bindingStop : null;
 
+    /// <summary>The session whose stop's reading last ended, with which of its stops that was.</summary>
+    private (DebugSession Session, int Stop)? read;
+
+    /// <summary>A stop has been read as far as it will be: described and its frames listed (<see cref="Stop"/>), or its
+    /// reading ended without, given up for what came next.</summary>
+    public event EventHandler? StopRead;
+
+    /// <summary>Whether the stop the session is paused at now has been read as far as it will be (<see cref="StopRead"/>).</summary>
+    public bool HasRead(DebugSession session) => Session == session && Stop is not null || read is ({ } of, int stop) && of == session && stop == session.Stops;
+
     /// <summary>Counts the stops shown and the runs between them, so what a stop's requests bring back once the program has
     /// gone on is dropped rather than shown over what is now true.</summary>
     private int shown;
@@ -760,8 +770,8 @@ public sealed class DebugController : IDisposable
         tab.Following = process;
         ConsoleSink sink = console.Sink;
         // For the program's life, as its output is: no screenshot waits on it. Its last words land as its follower ends.
-        IdeErrors.Observe(Task.Run(() => sink.PumpAsync(process.StandardOutput, ConsoleStream.Output)));
-        IdeErrors.Observe(Task.Run(() => sink.PumpAsync(process.StandardError, ConsoleStream.Error)));
+        IdeErrors.Observe(BackgroundWork.Unheld(() => sink.PumpAsync(process.StandardOutput, ConsoleStream.Output)));
+        IdeErrors.Observe(BackgroundWork.Unheld(() => sink.PumpAsync(process.StandardError, ConsoleStream.Error)));
     }
 
     /// <summary>Ends a tab's following of its program's output a moment after its session ended, its last words in.</summary>
@@ -1278,10 +1288,11 @@ public sealed class DebugController : IDisposable
             return;
         }
         int stop = shown;
+        string path = PathNames.Canonical(source);
         IReadOnlyList<StepInTarget> targets;
         try
         {
-            targets = await session.StepInTargetsAsync(top.Id);
+            targets = await session.StepInTargetsAsync(top.Id, editors.ParseOptions(path));
         }
         catch (DapException error)
         {
@@ -1292,7 +1303,6 @@ public sealed class DebugController : IDisposable
         {
             return;
         }
-        string path = PathNames.Canonical(source);
         Navigate?.Invoke(this, (path, Current(path, top)));
         CodeEditor editor = editors.CodeEditor;
         List<(StepInTarget Target, TextRange Range)> placed = editors.Active?.Path == path ? Placed(targets, path, editor.Document.Snapshot) : [];
@@ -1729,6 +1739,20 @@ public sealed class DebugController : IDisposable
     /// quiet never ends with the editor about to go there; its values are read after, unheld, as Continue never waits.</summary>
     private async Task ShowStop(DebugSession session)
     {
+        int stop = session.Stops;
+        try
+        {
+            await DescribeStop(session);
+        }
+        finally
+        {
+            read = (session, stop);
+            StopRead?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private async Task DescribeStop(DebugSession session)
+    {
         if (session.StoppedThread is not int thread)
         {
             return;
@@ -1899,6 +1923,7 @@ public sealed class DebugController : IDisposable
         {
             Stop = new DebugStop(thread, session.StopReason, stack, top, stopException?.Text) { Binding = bindingStop?.Problem };
             bindingFrame = bindingStop is not null && shows ? top?.Id : null;
+            StopRead?.Invoke(this, EventArgs.Empty);
         }
         view.ShowFrames(threads, threads.FirstOrDefault(t => t.Id == thread), stack, top);
         if (thread == session.StoppedThread)
@@ -2052,9 +2077,9 @@ public sealed class DebugController : IDisposable
             int line = Current(document.Path, current.Line - 1);
             IReadOnlyList<LineAnnotation> inline = document.Syntax is { } syntax ? InlineValues.For(syntax.Current, line, values) : [];
             document.LineAnnotations = stopException is { } thrown && thrown.FrameId == current.Id
-                ? [new LineAnnotation(line, thrown.Text, LineAnnotationKind.Exception), .. inline]
+                ? [new LineAnnotation(line, thrown.Text, LineAnnotationLook.ErrorOnGround), .. inline]
                 : bindingStop is { } failed && bindingFrame == current.Id
-                    ? [new LineAnnotation(line, $"Binding error{(BindingErrors.Where(failed.Problem) is { } where ? $" at {where}" : string.Empty)}: {BindingErrors.Stopped(failed.Problem.Failure)}", LineAnnotationKind.Exception), .. inline]
+                    ? [new LineAnnotation(line, $"Binding error{(BindingErrors.Where(failed.Problem) is { } where ? $" at {where}" : string.Empty)}: {BindingErrors.Stopped(failed.Problem.Failure)}", LineAnnotationLook.ErrorOnGround), .. inline]
                     : inline;
         }
     }

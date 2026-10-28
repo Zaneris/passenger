@@ -48,11 +48,11 @@ public partial class ManagedDebugger
 
     /// <summary>The process an attach is to take hold of, from the attach request until its runtime has been let go (or was
     /// running already); 0 when there is none. One held at its start (DOTNET_DefaultDiagnosticPortSuspend) waits there for
-    /// the debugger, so an attach that fails, or a session that ends first, lets it go (<see cref="ReleaseHeldTarget"/>).</summary>
+    /// the debugger, so an attach that fails, or a session that ends first, lets it go (<see cref="ReleaseHeldTargetAsync"/>).</summary>
     private int _heldTarget;
 
     /// <summary>Whether the session's program was launched for it (by the adapter, or in the client's terminal) rather than
-    /// attached to: only such a program ends with a client that goes without disconnecting (<see cref="Abandon"/>).</summary>
+    /// attached to: only such a program ends with a client that goes without disconnecting (<see cref="AbandonAsync"/>).</summary>
     private bool _launched;
     private bool _justMyCode;
     private bool _stopAtEntry;
@@ -85,18 +85,18 @@ public partial class ManagedDebugger
     private TaskCompletionSource _exitTold = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     /// <summary>Tells the client the program has ended, once, after the last of its output, and why its exit code is lost
-    /// where it is. A second caller (the runtime's word of the end, after the wait's) returns only once it has been told,
-    /// so the end it tells next comes after.</summary>
-    private void ReportExit(int? exitCode)
+    /// where it is. A second caller (the runtime's word of the end, after the wait's) ends only once it has been told, so
+    /// the end it tells next comes after.</summary>
+    private async Task ReportExitAsync(int? exitCode)
     {
         if (Interlocked.Exchange(ref _exitReported, 1) == 1)
         {
-            _exitTold.Task.Wait(TimeSpan.FromSeconds(15));
+            await Task.WhenAny(_exitTold.Task, Task.Delay(TimeSpan.FromSeconds(15))).ConfigureAwait(false);
             return;
         }
         try
         {
-            WaitForLastOutput();
+            await WaitForLastOutputAsync().ConfigureAwait(false);
             if (exitCode is null && _launch?.CodeLost is { } lost)
             {
                 OnConsole?.Invoke($"The program ended, but its exit code is lost: {lost}.\n");
@@ -111,14 +111,14 @@ public partial class ManagedDebugger
 
     /// <summary>Waits for the launched program's output readers to end, while its output still comes: a program it started
     /// that holds its output open gives up the wait once a second passes with nothing read, and 10 s at the most.</summary>
-    private void WaitForLastOutput()
+    private async Task WaitForLastOutputAsync()
     {
         if (_launchOutput is not { } output)
         {
             return;
         }
         long began = Stopwatch.GetTimestamp();
-        while (!output.Wait(TimeSpan.FromMilliseconds(100)))
+        while (await Task.WhenAny(output, Task.Delay(TimeSpan.FromMilliseconds(100))).ConfigureAwait(false) != output)
         {
             long quietSince = Math.Max(began, Interlocked.Read(ref _lastOutputAt));
             if (Stopwatch.GetElapsedTime(quietSince) >= TimeSpan.FromSeconds(1) || Stopwatch.GetElapsedTime(began) >= TimeSpan.FromSeconds(10))
@@ -130,12 +130,13 @@ public partial class ManagedDebugger
 
     /// <summary>How the program ended, once the runtime has said it has: a launched one's as its wait saw it, an attached
     /// one's as Windows tells it; null where it cannot be known (attached on macOS or Linux, where only a parent learns it).</summary>
-    private int? EndedWith()
+    private async Task<int?> EndedWithAsync()
     {
         // The program's own end follows the runtime's word of it by a moment.
         if (_launchExit is { } ended)
         {
-            return ended.Wait(TimeSpan.FromSeconds(2)) ? ended.Result : null;
+            await Task.WhenAny(ended, Task.Delay(TimeSpan.FromSeconds(2))).ConfigureAwait(false);
+            return ended.IsCompletedSuccessfully ? ended.Result : null;
         }
         try
         {
@@ -245,7 +246,8 @@ public partial class ManagedDebugger
             SingleWriter = false
         });
         _callbacks.OnAnyEvent += QueueEvent;
-        Core.UnawaitedWork.Observe(Task.Run(ProcessRuntimeEventQueue));
+        // Not held: it serves the runtime's events for as long as the session lasts.
+        Core.UnawaitedWork.Observe(Core.BackgroundWork.Unheld(ProcessRuntimeEventQueue));
     }
 
     private void QueueEvent(object? sender, CorDebugManagedCallbackEventArgs e)
@@ -410,12 +412,12 @@ public partial class ManagedDebugger
             {
                 return;
             }
-            _logger?.Invoke($"Event: {e.GetType().Name}");
+            _logger?.Invoke($"Event: {e.GetType().Name}{(DispatchThread(e) is int thread ? $" on thread {thread}" : "")}");
             switch (e)
             {
                 case LogMessageCorDebugManagedCallbackEventArgs a: HandleLogMessage(sender, a); break;
                 case CreateProcessCorDebugManagedCallbackEventArgs a: HandleProcessCreated(sender, a); break;
-                case ExitProcessCorDebugManagedCallbackEventArgs a: HandleProcessExited(sender, a); break;
+                case ExitProcessCorDebugManagedCallbackEventArgs a: await HandleProcessExited(a).ConfigureAwait(false); break;
                 case CreateThreadCorDebugManagedCallbackEventArgs a: HandleThreadCreated(sender, a); break;
                 case ExitThreadCorDebugManagedCallbackEventArgs a: HandleThreadExited(sender, a); break;
                 case LoadModuleCorDebugManagedCallbackEventArgs a: HandleModuleLoaded(sender, a); break;
@@ -482,7 +484,7 @@ public partial class ManagedDebugger
             process.Dispose();
             _logger?.Invoke($"Attaching to process {processId} failed: {error}");
             // A program held at its start, which the attach never let go, runs on undebugged rather than wait there for good.
-            ReleaseHeldTarget();
+            await ReleaseHeldTargetAsync().ConfigureAwait(false);
             throw new InvalidOperationException($"Could not attach to process {processId}: {error.Message}", error);
         }
         if (OperatingSystem.IsWindows() && TryHold(process))
@@ -656,6 +658,22 @@ public partial class ManagedDebugger
         FollowReturnWatch(thread);
     }
 
+    /// <summary>The step through an await ends where its run goes on, on this thread, already on a line after the await's
+    /// statement. False, stopping nothing, where that shows no line: none read, a hidden one, or under Just My Code
+    /// not the user's code.</summary>
+    internal bool StopStepAt(ICorDebugThread thread)
+    {
+        if (thread.ActiveFrame is not ICorDebugILFrame frame || (_justMyCode && !IsUserCodeFrame(frame)) || FindModule(frame.Function.Module) is not { } module
+            || module.MetadataReader.IsCurrentSequencePointHidden(frame.Function.Token, frame.IP.pnOffset, ModuleMetadataReader.VersionOf(frame))
+            || GetSourceInfoAtFrame(frame, _justMyCode is false) is not { } source)
+        {
+            return false;
+        }
+        EndStepper();
+        ReportStop(thread.Id, StopReasons.Step, source.FilePath, source.StartLine, source.StartColumn);
+        return true;
+    }
+
     /// <summary>A pause that came while the process was held for an event of its own, taken at the next Continue.</summary>
     private bool _pauseRequested;
 
@@ -671,9 +689,9 @@ public partial class ManagedDebugger
     private (int ThreadId, StackRange? Frame)? _stepping;
 
     /// <summary>Where a frame lies on its thread's stack: its identity while it lives, as the stack's memory does not move.</summary>
-    private readonly record struct StackRange(CORDB_ADDRESS Start, CORDB_ADDRESS End);
+    internal readonly record struct StackRange(CORDB_ADDRESS Start, CORDB_ADDRESS End);
 
-    private static StackRange? RangeOf(ICorDebugFrame frame) =>
+    internal static StackRange? RangeOf(ICorDebugFrame frame) =>
         frame.TryGetStackRange(out CORDB_ADDRESS start, out CORDB_ADDRESS end) is Cor.S_OK ? new StackRange(start, end) : null;
 
     /// <summary>Steps out of the frame of a handler outside the user's code, Just My Code: the step ends where the
@@ -734,7 +752,8 @@ public partial class ManagedDebugger
 
         ICorDebugStepper stepper = frame.CreateStepper();
         stepper.SetInterceptMask(CorDebugIntercept.INTERCEPT_ALL & ~(CorDebugIntercept.INTERCEPT_SECURITY | CorDebugIntercept.INTERCEPT_CLASS_INIT));
-        return BeginStep(stepper, thread, frame, _justMyCode, stepper =>
+        bool justMyCode = _justMyCode && _asyncStepper?.SeesFrameLeave(thread, frame) is not true;
+        return BeginStep(stepper, thread, frame, justMyCode, stepper =>
         {
             if (stepType == StepType.StepOut)
             {
@@ -753,12 +772,13 @@ public partial class ManagedDebugger
         });
     }
 
-    /// <summary>The IL a step from a frame's statement steps through: its sequence point to the next one that shows a line,
-    /// to the method's end from one of no length. None in a module the debugger could not read.</summary>
-    private (int Start, int End)? StepRangeOf(ICorDebugILFrame frame)
+    /// <summary>The IL a step from a frame's statement (the one at its IP, or at the IL offset given) steps through: its
+    /// sequence point to the next one that shows a line, to the method's end from one of no length. None in a module the
+    /// debugger could not read.</summary>
+    internal (int Start, int End)? StepRangeOf(ICorDebugILFrame frame, int? at = null)
     {
         ICorDebugFunction function = frame.Function;
-        if (FindModule(function.Module)?.MetadataReader.GetStartAndEndSequencePointIlOffsetsForIlOffset(function.Token, frame.IP.pnOffset, ModuleMetadataReader.VersionOf(frame)) is not var (start, end))
+        if (FindModule(function.Module)?.MetadataReader.GetStartAndEndSequencePointIlOffsetsForIlOffset(function.Token, at ?? frame.IP.pnOffset, ModuleMetadataReader.VersionOf(frame)) is not var (start, end))
         {
             return null;
         }
@@ -838,7 +858,8 @@ public partial class ManagedDebugger
         }
         catch (Exception ex)
         {
-            _logger?.Invoke($"Error binding breakpoint at {bp.FilePath}:{bp.Line}: {ex.Message}");
+            // One breakpoint's failure to bind is its own, said on it, never the binding of those beside it.
+            _logger?.Invoke($"Error binding breakpoint at {bp.FilePath}:{bp.Line}: {ex}");
             bp.Verified = false;
             bp.Message = $"Error binding breakpoint: {ex.Message}";
             return false;
@@ -894,7 +915,8 @@ public partial class ManagedDebugger
         }
         catch (Exception ex)
         {
-            _logger?.Invoke($"Error binding function breakpoint '{bp.FunctionName}' in {module.ModuleName}: {ex.Message}");
+            // One module's failure to bind the breakpoint is its own, never the binding in the modules beside it.
+            _logger?.Invoke($"Error binding function breakpoint '{bp.FunctionName}' in {module.ModuleName}: {ex}");
             if (!bp.Verified)
             {
                 bp.Message = $"Error binding function breakpoint: {ex.Message}";
@@ -951,7 +973,7 @@ public partial class ManagedDebugger
     /// <summary>The thread's managed frames from its stop down. An evaluation given up, still running on the thread, is a
     /// chain of its own above the stop's (CHAIN_FUNC_EVAL, ending at its [Func Eval] frame): its frames are left out, so a
     /// frame's depth names the same frame as before the evaluation began.</summary>
-    private static IEnumerable<ICorDebugFrame> EnumerateFramesForThread(ICorDebugThread thread)
+    internal static IEnumerable<ICorDebugFrame> EnumerateFramesForThread(ICorDebugThread thread)
     {
         List<ICorDebugChain> chains = [.. thread.EnumerateChains()];
         int stop = chains.FindLastIndex(chain => chain.Reason is CorDebugChainReason.CHAIN_FUNC_EVAL) + 1;
@@ -1031,17 +1053,18 @@ public partial class ManagedDebugger
         return currentException;
     }
 
-    // Not intended to implement IDisposable - it is intended that this is called via Disconnect()
-    // letGo: the program runs on after (a detach), so no thread may be left inside the runtime's handling of a stop.
-    private void Dispose(bool letGo = false, TimeSpan? within = null)
+    /// <summary>Lets go of the session's program and all the engine holds of it, as a disconnect or a terminate ends the
+    /// session; <paramref name="letGo"/> when the program runs on after (a detach), so no thread may be left inside the
+    /// runtime's handling of a stop.</summary>
+    private async Task EndAsync(bool letGo = false, TimeSpan? within = null)
     {
         // A decompile under way is given up, its temporary file deleted, whether or not a process was ever held.
         _ending.Cancel();
         // An attach asked for and never made (no configurationDone, or it failed) leaves no program held at its start.
-        ReleaseHeldTarget(within);
+        await ReleaseHeldTargetAsync(within).ConfigureAwait(false);
         if (_process is null)
         {
-            return; // A client may call Terminate, then Disconnect, both of which call Dispose. Dispose only needs to be run once.
+            return; // A client may terminate, then disconnect, each of which ends the session here, which needs doing only once.
         }
         // A process that has exited is the runtime's to tear down: nothing below may call into it.
         bool exited = _exited.IsSet;

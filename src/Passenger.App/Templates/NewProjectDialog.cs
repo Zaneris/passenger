@@ -1,7 +1,6 @@
 using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -15,11 +14,24 @@ using Passenger.Core;
 namespace Passenger.App.Templates;
 
 /// <summary>Where Add New Project puts what it makes: the open solution, the solution folder chosen (by its path in the
-/// solution, null for the solution's top) and the names of the projects it has, which a new one cannot take.</summary>
-public sealed record ProjectTarget(string Solution, string? Folder, IReadOnlyList<string> Projects);
+/// solution, null for the solution's top), the names of the projects it has, which a new one cannot take, and its Aspire
+/// AppHost's name, null for none.</summary>
+public sealed record ProjectTarget(string Solution, string? Folder, IReadOnlyList<string> Projects, string? AppHost = null);
 
-/// <summary>What Create made, canonical: New Solution's solution (null for Add New Project's) and the projects.</summary>
-public sealed record CreatedProjects(string? Solution, IReadOnlyList<string> Projects);
+/// <summary>What Create made, canonical: New Solution's solution (null for Add New Project's), the projects, the folder it
+/// made them in, and how the first is to run, set up once it is open.</summary>
+public sealed record CreatedProjects(string? Solution, IReadOnlyList<string> Projects, string Folder, ProjectSetup Setup);
+
+/// <summary>How a new service runs, set up with it: as its own launch profiles say, in a container its Dockerfile or the
+/// .NET SDK makes, as a service of the solution's compose.yaml, or as a resource of an Aspire AppHost.</summary>
+public enum ProjectSetup
+{
+    None,
+    Dockerfile,
+    SdkContainer,
+    Compose,
+    Aspire,
+}
 
 /// <summary>The New Project dialog, for New Solution and Add, New Project: the template families read ahead down the
 /// left (<see cref="TemplateFamilies"/>) under a search; on the right the names, where it goes, the family's Type, the
@@ -63,6 +75,16 @@ public sealed class NewProjectDialog : Window
     private readonly TextBlock problem = new() { TextWrapping = TextWrapping.Wrap, IsVisible = false, VerticalAlignment = VerticalAlignment.Center };
     private readonly Button create = new() { Content = "Create", IsDefault = true, Classes = { "primary" }, IsEnabled = false };
     private readonly Button browse = new() { Content = "Browse…", Margin = new Thickness(8, 0, 0, 0) };
+    private readonly ComboBox setup = new() { Classes = { "form" } };
+    private readonly ComboBoxItem[] setups = [.. Enum.GetValues<ProjectSetup>().Select(s => new ComboBoxItem { Content = SetupName(s) })];
+    private readonly TextBlock setupNote = new() { Classes = { "muted" }, FontSize = 12, TextWrapping = TextWrapping.Wrap };
+    private readonly Control setupRow;
+
+    /// <summary>The set-up chosen last, in any dialog, which the next service made offers.</summary>
+    public static ProjectSetup Remembered { get; set; }
+
+    /// <summary>Why no container can be set up here (no container engine's command), once asked; null while it can.</summary>
+    private string? noEngine;
 
     /// <summary>The shown options' values, and those the person set, which another template with the option keeps.</summary>
     private readonly Dictionary<string, string> values = new(StringComparer.Ordinal);
@@ -95,7 +117,8 @@ public sealed class NewProjectDialog : Window
 
     /// <param name="folder">The directory offered: where a solution goes, or the project's folder in the solution.</param>
     /// <param name="target">The solution a project is added to; null for New Solution.</param>
-    public NewProjectDialog(string folder, ProjectTarget? target)
+    /// <param name="containers">Why no container can be set up here, asked off the window's thread; null for no question.</param>
+    public NewProjectDialog(string folder, ProjectTarget? target, Task<string?>? containers = null)
     {
         FormRows.Scope(this);
         this.target = target;
@@ -111,8 +134,8 @@ public sealed class NewProjectDialog : Window
             Classes = { "tree" },
             // The chosen family's band as wide as the search field above, its name where the field's text starts.
             Padding = new Thickness(8, 0),
-            ItemTemplate = new FuncDataTemplate<TemplateFamily?>((row, _) => row is null ? new Panel() : Item(row), supportsRecycling: false),
         };
+        ReusedRows.Use(list, Item);
         list.SelectionChanged += (_, _) =>
         {
             if (!setting && list.SelectedItem is TemplateFamily chosen)
@@ -129,7 +152,7 @@ public sealed class NewProjectDialog : Window
         leftPanel.Children.Add(new Panel { Children = { list, loading } });
         Border left = new() { Width = 260, BorderThickness = new Thickness(0, 0, 1, 0), Child = leftPanel };
         left.Bind(Border.BorderBrushProperty, left.GetResourceObservable(TokenKeys.Divider));
-        typeChooser.ItemTemplate = new FuncDataTemplate<ProjectTemplate?>((type, _) => type is null ? new Panel() : TypeItem(type), supportsRecycling: false);
+        ReusedRows.Use(typeChooser, TypeItem);
         typeChooser.SelectionChanged += (_, _) =>
         {
             if (!setting && typeChooser.SelectedItem is ProjectTemplate chosen)
@@ -171,10 +194,20 @@ public sealed class NewProjectDialog : Window
         }
         fields.Children.Add(Row(null, where));
         languageRow = Row("Language:", language);
+        setup.ItemsSource = setups;
+        setup.SelectionChanged += (_, _) =>
+        {
+            if (!setting && setup.SelectedIndex >= 0)
+            {
+                Remembered = (ProjectSetup)setup.SelectedIndex;
+                ShowSetup();
+            }
+        };
+        setupRow = Row("Set up:", setup);
         details = new StackPanel
         {
             Spacing = 10,
-            Children = { Row("Target framework:", framework), languageRow, options, Row(null, command) },
+            Children = { Row("Target framework:", framework), languageRow, options, setupRow, Row(null, setupNote), Row(null, command) },
         };
         install.Click += (_, _) => IdeErrors.Observe(InstallAsync());
         offer = new StackPanel
@@ -223,6 +256,10 @@ public sealed class NewProjectDialog : Window
             Show(ready);
         }
         TemplatesRead = RefreshAsync();
+        if (containers is not null)
+        {
+            IdeErrors.Observe(AskEngineAsync(containers));
+        }
         // The name has the keys as the dialog opens, its default chosen to be typed over; again once laid out.
         void FocusName()
         {
@@ -316,7 +353,12 @@ public sealed class NewProjectDialog : Window
     /// <summary>The solution's format: "slnx" or "sln", as dotnet new sln takes it.</summary>
     public string SolutionFormat => format.SelectedItem as string is { } chosen ? chosen.TrimStart('.') : catalog?.SolutionFormat ?? "sln";
 
-    public string? Framework => framework.SelectedItem as string;
+    /// <summary>The framework chosen; one the template does not offer is not taken.</summary>
+    public string? Framework
+    {
+        get => framework.SelectedItem as string;
+        set => framework.SelectedItem = value;
+    }
 
     public string? Language => language.SelectedItem as string;
 
@@ -325,6 +367,22 @@ public sealed class NewProjectDialog : Window
 
     /// <summary>The control that sets an option, by its label, for a click; null when none is shown.</summary>
     public Control? OptionEditor(string label) => shown.FirstOrDefault(s => s.Option.Label == label).Editor;
+
+    /// <summary>How the project made is to run, set up once it is open: none for a template that is no service.</summary>
+    public ProjectSetup Setup
+    {
+        get => setup.IsEnabled && setup.SelectedIndex > 0 ? (ProjectSetup)setup.SelectedIndex : ProjectSetup.None;
+        set => setup.SelectedIndex = (int)value;
+    }
+
+    /// <summary>The set-up chooser, for a click on it.</summary>
+    public ComboBox SetupChooser => setup;
+
+    /// <summary>Whether a set-up is offered: with the set-up as its index, false where it is greyed.</summary>
+    public bool Offers(ProjectSetup kind) => setup.IsEnabled && setups[(int)kind].IsEnabled;
+
+    /// <summary>What the set-up chosen makes, or why none is offered.</summary>
+    public string SetupNote => setupNote.Text ?? string.Empty;
 
     /// <summary>The command line Create runs for the project, as the dialog shows it.</summary>
     public string Command => command.Text ?? string.Empty;
@@ -388,6 +446,7 @@ public sealed class NewProjectDialog : Window
         }
         Plan plan = Planned();
         bool existed = Directory.Exists(plan.Root);
+        ProjectSetup setUp = Setup;
         using CancellationTokenSource cancel = new();
         creating = cancel;
         Fail(null);
@@ -416,7 +475,13 @@ public sealed class NewProjectDialog : Window
                 await FailedAsync($"dotnet new {template.ShortName} made no project in {plan.ProjectFolder}", plan, existed);
                 return;
             }
-            await BackgroundWork.Run(() => DeveloperTools.TakeOut(plan.ProjectFolder), cancel.Token);
+            IReadOnlyList<string> takenOut = await BackgroundWork.Run(() => DeveloperTools.TakeOut(plan.ProjectFolder), cancel.Token);
+            // The restore and the solution read the files once they hold what was taken out.
+            if (await Editors.EditorArea.LandedAsync(takenOut, said => progress.Text = said) is [(string unwritten, Exception notLanded), ..])
+            {
+                await FailedAsync($"{NameGiven} could not be created: {CSharp.WorkspaceEdits.Unwritten(unwritten, notLanded)}", plan, existed);
+                return;
+            }
             if (Variant().SkipRestoreOption is not null)
             {
                 // The template's own restore, after the take-out; one that fails, as its own may, leaves the build to say why.
@@ -443,7 +508,7 @@ public sealed class NewProjectDialog : Window
                     madeSolution = plan.Solution;
                 }
             }
-            Created = new CreatedProjects(madeSolution is null ? null : PathNames.Canonical(madeSolution), projects);
+            Created = new CreatedProjects(madeSolution is null ? null : PathNames.Canonical(madeSolution), projects, PathNames.Canonical(plan.ProjectFolder), setUp);
             creating = null;
             Close(Created);
         }
@@ -913,7 +978,68 @@ public sealed class NewProjectDialog : Window
         heading.Text = template.Name;
         description.Text = Variant().Description;
         ShowOptions(Variant());
+        ShowSetup();
         ShowWhere();
+    }
+
+    /// <summary>The set-up offered for the template chosen: the one chosen last for a service, none and greyed with why for
+    /// a template that is none, a container's greyed with no container engine.</summary>
+    private void ShowSetup()
+    {
+        string? why = template is null ? null : NotAService(template);
+        foreach (ProjectSetup kind in (ProjectSetup[])[ProjectSetup.Dockerfile, ProjectSetup.SdkContainer, ProjectSetup.Compose])
+        {
+            setups[(int)kind].IsEnabled = noEngine is null;
+        }
+        ProjectSetup offered = why is null && setups[(int)Remembered].IsEnabled ? Remembered : ProjectSetup.None;
+        bool was = setting;
+        setting = true;
+        setup.SelectedIndex = (int)offered;
+        setting = was;
+        setup.IsEnabled = why is null && creating is null && installing is null;
+        setupRow.Opacity = why is null ? 1 : 0.55;
+        setupNote.Text = why ?? Said(offered) ?? (noEngine is { } none ? $"{none}: Docker and Docker Compose are not offered" : string.Empty);
+        setupNote.IsVisible = setupNote.Text.Length > 0;
+    }
+
+    /// <summary>What a set-up makes, as the dialog says it; null for none.</summary>
+    private string? Said(ProjectSetup kind) => kind switch
+    {
+        ProjectSetup.Dockerfile => "A Dockerfile beside the project and a Docker launch profile, chosen, so Run and Debug run it in its container",
+        ProjectSetup.SdkContainer => "The .NET SDK makes its image, and an SdkContainer launch profile is chosen, so Run and Debug run it in its container",
+        ProjectSetup.Compose => target is null ? "compose.yaml at the solution's folder with it as a service, chosen, so Run and Debug bring it up with Compose"
+            : "It joins the solution's compose.yaml as a service (one made if there is none), chosen, so Run and Debug bring it up with Compose",
+        ProjectSetup.Aspire => target?.AppHost is { } host ? $"It joins {host} as a resource, the AppHost chosen, so Run and Debug start it under Aspire"
+            : "An AppHost and ServiceDefaults made with it as a resource, the AppHost chosen, so Run and Debug start it under Aspire",
+        _ => null,
+    };
+
+    private static string SetupName(ProjectSetup kind) => kind switch
+    {
+        ProjectSetup.Dockerfile => "Container: Dockerfile",
+        ProjectSetup.SdkContainer => "Container: .NET SDK",
+        ProjectSetup.Compose => "Docker Compose",
+        ProjectSetup.Aspire => "Aspire",
+        _ => "None",
+    };
+
+    /// <summary>Why a template's project is set up to run no other way: it is no service (web, API, worker, Blazor, gRPC);
+    /// null for one that is.</summary>
+    private static string? NotAService(ProjectTemplate template)
+    {
+        HashSet<string> kinds = new(template.Classifications, StringComparer.OrdinalIgnoreCase);
+        return !template.IsSolution && (kinds.Contains("Web") || kinds.Contains("Worker")) && !kinds.Overlaps(["Test", "Library", "Desktop"]) ? null
+            : $"{template.Name} is not a service: containers and Aspire are set up for web, API, worker, Blazor and gRPC projects";
+    }
+
+    /// <summary>Greys the containers' set-ups once the question says no container can be set up here.</summary>
+    private async Task AskEngineAsync(Task<string?> containers)
+    {
+        noEngine = await containers;
+        if (template is not null)
+        {
+            ShowSetup();
+        }
     }
 
     /// <summary>The template's options, each a checkbox, a list of its choices, or a box for text.</summary>
@@ -1081,13 +1207,14 @@ public sealed class NewProjectDialog : Window
         create.IsEnabled = !busy && template is { Pack: null };
         install.IsEnabled = !busy;
         list.IsEnabled = !busy;
-        foreach (Control field in (Control[])[search, typeChooser, solutionName, projectName, directory, browse, sameDirectory, format, framework, language, options])
+        foreach (Control field in (Control[])[search, typeChooser, solutionName, projectName, directory, browse, sameDirectory, format, framework, language, options, setup])
         {
             field.IsEnabled = !busy;
         }
         if (!busy && template is not null)
         {
             Enable();
+            ShowSetup();
         }
     }
 
@@ -1111,33 +1238,43 @@ public sealed class NewProjectDialog : Window
         }
     }
 
-    /// <summary>A family's row: its name, its Types on hover, and "Not installed" for one none of whose Types is.</summary>
-    private static Control Item(TemplateFamily row)
+    /// <summary>A row for whichever family the list hands its container: its name, its Types on hover, and "Not installed"
+    /// for one none of whose Types is.</summary>
+    private static Control Item()
     {
-        Border item = new() { Padding = new Thickness(5, 6) };
-        string types = row.Types.Count > 1 ? $": {string.Join(", ", row.Types.Select(t => t.TypeName))}" : row.Name == row.Types[0].Name ? string.Empty : $": {row.Types[0].Name}";
-        ToolTip.SetTip(item, row.NotInstalled ? $"{row.Name}{types}, from {row.Types[0].Pack!.Id}, which is not installed" : $"{row.Name}{types}");
-        item.Child = Named(row.Name, row.NotInstalled);
-        return item;
+        (DockPanel named, TextBlock name, TextBlock missing) = Named();
+        Border item = new() { Padding = new Thickness(5, 6), Child = named };
+        return item.Showing<TemplateFamily>(row =>
+        {
+            string types = row.Types.Count > 1 ? $": {string.Join(", ", row.Types.Select(t => t.TypeName))}" : row.Name == row.Types[0].Name ? string.Empty : $": {row.Types[0].Name}";
+            ToolTip.SetTip(item, row.NotInstalled ? $"{row.Name}{types}, from {row.Types[0].Pack!.Id}, which is not installed" : $"{row.Name}{types}");
+            name.Text = row.Name;
+            missing.IsVisible = row.NotInstalled;
+        });
     }
 
-    /// <summary>A Type in the chooser: its name, and "Not installed" for one not installed.</summary>
-    private static Control TypeItem(ProjectTemplate type) => Named(type.TypeName, type.Pack is not null);
-
-    /// <summary>A name cut short where it must be, with "Not installed" after it for what dotnet new has not got.</summary>
-    private static Control Named(string text, bool notInstalled)
+    /// <summary>A Type in the chooser, for whichever Type it is handed: its name, and "Not installed" for one not installed.</summary>
+    private static Control TypeItem()
     {
-        TextBlock name = new() { Text = text, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-        if (!notInstalled)
+        (DockPanel named, TextBlock name, TextBlock missing) = Named();
+        return named.Showing<ProjectTemplate>(type =>
         {
-            return name;
-        }
+            name.Text = type.TypeName;
+            missing.IsVisible = type.Pack is not null;
+        });
+    }
+
+    /// <summary>A name cut short where it must be, with "Not installed" after it for what dotnet new has not got, shown
+    /// only then.</summary>
+    private static (DockPanel Named, TextBlock Name, TextBlock Missing) Named()
+    {
+        TextBlock name = new() { TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
         TextBlock missing = new() { Text = "Not installed", Classes = { "muted" }, FontSize = 11, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         DockPanel both = new();
         DockPanel.SetDock(missing, Dock.Right);
         both.Children.Add(missing);
         both.Children.Add(name);
-        return both;
+        return (both, name, missing);
     }
 
     private Control Rule()

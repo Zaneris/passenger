@@ -1,7 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
-using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -72,7 +71,7 @@ public sealed class NuGetView : DockPanel
         prerelease = new CheckBox { Content = "Prerelease", VerticalAlignment = VerticalAlignment.Center };
         status = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0), TextTrimming = TextTrimming.CharacterEllipsis };
         status.Classes.Add("muted");
-        Button refresh = ToolButtons.Of(IconKeys.Rerun, "Refresh", () => IdeErrors.Observe(ReloadSourcesAsync()));
+        Button refresh = ToolButtons.Of(AppActions.NuGetRefresh, IconKeys.Rerun, "Refresh", action => ActionRequested?.Invoke(this, action));
         refresh.Margin = new Thickness(6, 0, 0, 0);
         typing = new Debounce(Pause, RefreshAsync);
         search.TextChanged += (_, _) => typing.Restart();
@@ -91,8 +90,8 @@ public sealed class NuGetView : DockPanel
         list = new ListBox
         {
             Classes = { "tree" },
-            ItemTemplate = new FuncDataTemplate<PackageRow>((row, _) => row is null ? new TextBlock() : Row(row), supportsRecycling: false),
         };
+        ReusedRows.Use(list, Row);
         list.SelectionChanged += (_, _) => IdeErrors.Observe(ShowAsync());
         details = new StackPanel { Spacing = 8, Margin = new Thickness(14, 10) };
         log = new TextBox
@@ -183,6 +182,9 @@ public sealed class NuGetView : DockPanel
         status.Text = outcome.Done ? "Done" : "The change failed; the log says why";
         IdeErrors.Observe(RefreshAsync());
     }
+
+    /// <summary>One of the window's actions asked for by its button.</summary>
+    public event EventHandler<string>? ActionRequested;
 
     /// <summary>An advisory's link clicked, for the browser.</summary>
     public event EventHandler<Uri>? LinkClicked;
@@ -651,37 +653,40 @@ public sealed class NuGetView : DockPanel
         return button;
     }
 
-    private Control Row(PackageRow row)
+    /// <summary>A package's row: its icon, its id (strong where a project has it), its version muted, its description on
+    /// hover, and a warning saying the gravest advisory where a version a project has is vulnerable.</summary>
+    private Control Row()
     {
-        TextBlock version = new() { Text = row.Version, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
+        TextBlock version = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
         version.Classes.Add("muted");
-        PathIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(6, 0, 6, 0) };
-        icon.Bind(PathIcon.DataProperty, icon.GetResourceObservable(IconKeys.Package));
+        RowIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(6, 0, 6, 0) };
+        icon.DataKey = IconKeys.Package;
+        TextBlock id = new() { VerticalAlignment = VerticalAlignment.Center };
+        RowIcon warning = Warning(string.Empty);
+        warning.Margin = new Thickness(6, 0, 0, 0);
         StackPanel line = new()
         {
             Orientation = Orientation.Horizontal,
             Height = ListRow.Height,
-            Children = { icon, new TextBlock { Text = row.Id, VerticalAlignment = VerticalAlignment.Center, FontWeight = row.IsInstalled ? FontWeight.SemiBold : FontWeight.Normal }, version },
+            Children = { icon, id, version, warning },
         };
-        if (row.Description.Length > 0)
+        return line.Showing<PackageRow>(row =>
         {
-            ToolTip.SetTip(line, row.Description);
-        }
-        if (row.IsVulnerable)
-        {
-            PathIcon warning = Warning($"Known security vulnerability: {row.Advisories[0].Severity} severity ({row.Advisories[0].Address})");
-            warning.Margin = new Thickness(6, 0, 0, 0);
-            line.Children.Add(warning);
-        }
-        return line;
+            id.Text = row.Id;
+            id.FontWeight = row.IsInstalled ? FontWeight.SemiBold : FontWeight.Normal;
+            version.Text = row.Version;
+            ToolTip.SetTip(line, row.Description.Length > 0 ? row.Description : null);
+            warning.IsVisible = row.IsVulnerable;
+            ToolTip.SetTip(warning, row.IsVulnerable ? $"Known security vulnerability: {row.Advisories[0].Severity} severity ({row.Advisories[0].Address})" : null);
+        });
     }
 
     /// <summary>The warning a vulnerable version is marked with, saying what it is.</summary>
-    private static PathIcon Warning(string tip)
+    private static RowIcon Warning(string tip)
     {
-        PathIcon warning = new() { Width = 12, Height = 12, VerticalAlignment = VerticalAlignment.Center };
-        warning.Bind(PathIcon.DataProperty, warning.GetResourceObservable(IconKeys.Problems));
-        warning.Bind(PathIcon.ForegroundProperty, warning.GetResourceObservable(TokenKeys.Warning));
+        RowIcon warning = new() { Width = 12, Height = 12, VerticalAlignment = VerticalAlignment.Center };
+        warning.DataKey = IconKeys.Problems;
+        warning.ForegroundKey = TokenKeys.Warning;
         ToolTip.SetTip(warning, tip);
         return warning;
     }

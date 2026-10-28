@@ -208,8 +208,11 @@ internal sealed class HeapGraph
         private readonly List<GcRoot> roots = [];
         private readonly Dictionary<GcRoot, int> rootIds = [];
         private readonly List<(ulong Object, int Root)> rooted = [];
-        private ulong[] sorted = [];
-        private int[] order = [];
+
+        /// <summary>The addresses sorted, and beside each its object's place in the walk, only when the walk found them out
+        /// of order: in order, they are looked up where the walk wrote them.</summary>
+        private ulong[]? sorted;
+        private int[]? order;
 
         public void Walk(CancellationToken cancel)
         {
@@ -244,15 +247,20 @@ internal sealed class HeapGraph
             }
             edgeStarts.Add(edgeTargets.Count);
             // Regions need not come in address order; what the rest looks up by address must.
-            sorted = addresses.ToArray();
-            order = [.. Enumerable.Range(0, sorted.Length)];
+            ReadOnlySpan<ulong> walked = addresses.Items;
             bool ascending = true;
-            for (int i = 1; i < sorted.Length && ascending; i++)
+            for (int i = 1; i < walked.Length && ascending; i++)
             {
-                ascending = sorted[i] > sorted[i - 1];
+                ascending = walked[i] > walked[i - 1];
             }
             if (!ascending)
             {
+                sorted = walked.ToArray();
+                order = new int[sorted.Length];
+                for (int i = 0; i < order.Length; i++)
+                {
+                    order[i] = i;
+                }
                 Array.Sort(sorted, order);
             }
         }
@@ -344,22 +352,26 @@ internal sealed class HeapGraph
 
         private int Find(ulong address)
         {
+            if (sorted is null)
+            {
+                return addresses.Items.BinarySearch(address) is var walked and >= 0 ? walked : -1;
+            }
             int at = Array.BinarySearch(sorted, address);
-            return at >= 0 ? order[at] : -1;
+            return at >= 0 ? order![at] : -1;
         }
 
         /// <summary>The reachable objects, their shortest paths, and their retained sizes.</summary>
         public HeapGraph Analyse(CancellationToken cancel)
         {
             int count = addresses.Count;
-            int[] starts = edgeStarts.ToArray();
-            ulong[] targets = edgeTargets.ToArray();
+            ReadOnlySpan<int> starts = edgeStarts.Items;
+            ReadOnlySpan<ulong> targets = edgeTargets.Items;
             int[] targetIndex = new int[targets.Length];
             for (int e = 0; e < targets.Length; e++)
             {
                 targetIndex[e] = Find(targets[e]);
             }
-            int[] offsets = edgeOffsets.ToArray();
+            ReadOnlySpan<int> offsets = edgeOffsets.Items;
 
             // Breadth first from the roots, statics first: each object's shortest path.
             int[] root = new int[count];
@@ -405,8 +417,9 @@ internal sealed class HeapGraph
             Array.Fill(kept, -1);
             int live = 0;
             int[] liveOld = new int[tail];
-            foreach (int old in order)
+            for (int at = 0; at < count; at++)
             {
+                int old = order is null ? at : order[at];
                 if (root[old] >= 0)
                 {
                     kept[old] = live;
@@ -433,9 +446,9 @@ internal sealed class HeapGraph
             int[] edgeTarget = new int[edgeCount];
             int[] edgeOffset = new int[edgeCount];
             int edge = 0;
-            ulong[] allAddresses = addresses.ToArray();
-            int[] allTypes = objectTypes.ToArray();
-            long[] allSizes = sizes.ToArray();
+            ReadOnlySpan<ulong> allAddresses = addresses.Items;
+            ReadOnlySpan<int> allTypes = objectTypes.Items;
+            ReadOnlySpan<long> allSizes = sizes.Items;
             for (int i = 0; i < live; i++)
             {
                 int old = liveOld[i];
@@ -642,16 +655,16 @@ internal sealed class HeapGraph
                 }
             }
 
-            // Retained sizes, children before their dominators.
-            long[] retained = new long[nodes];
-            for (int i = 0; i < count; i++)
-            {
-                retained[i] = size[i];
-            }
+            // Retained sizes, children before their dominators; the root of its own retains everything, kept nowhere.
+            long[] retained = new long[count];
+            size.AsSpan().CopyTo(retained);
             for (int i = numbered - 1; i > 0; i--)
             {
                 int n = vertex[i];
-                retained[idom[n]] += retained[n];
+                if (idom[n] != top)
+                {
+                    retained[idom[n]] += retained[n];
+                }
             }
 
             // The dominator tree's walk: spans, and each type's retained bytes from its outermost objects.
@@ -671,15 +684,15 @@ internal sealed class HeapGraph
                 int n = vertex[i];
                 children[childStart[idom[n]] + filled[idom[n]]++] = n;
             }
-            int[] enter = new int[nodes];
-            int[] leave = new int[nodes];
+            // The root of its own enters first and leaves last, its span kept nowhere.
+            int[] enter = new int[count];
+            int[] leave = new int[count];
             long[] typeRetained = new long[typeCount];
             int[] open = new int[typeCount];
             Array.Clear(next);
             sp = 0;
-            int clock = 0;
+            int clock = 1;
             stack[sp++] = top;
-            enter[top] = clock++;
             while (sp > 0)
             {
                 int v = stack[sp - 1];
@@ -695,18 +708,18 @@ internal sealed class HeapGraph
                     stack[sp++] = child;
                     continue;
                 }
-                leave[v] = clock++;
                 if (v != top)
                 {
+                    leave[v] = clock++;
                     open[type[v]]--;
                 }
                 sp--;
             }
             return new Dominators
             {
-                Retained = retained[..count],
-                Enter = enter[..count],
-                Leave = leave[..count],
+                Retained = retained,
+                Enter = enter,
+                Leave = leave,
                 TypeRetained = typeRetained,
             };
 
@@ -753,7 +766,8 @@ internal sealed class HeapGraph
             items[Count++] = item;
         }
 
-        public T[] ToArray() => items[..Count];
+        /// <summary>What it holds, over its own buffer.</summary>
+        public ReadOnlySpan<T> Items => items.AsSpan(0, Count);
     }
 }
 

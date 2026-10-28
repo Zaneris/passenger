@@ -14,8 +14,8 @@ namespace Passenger.App;
 /// <summary>The Explorer's file operations: New File, New Folder and New Class where a row holds things, Rename and
 /// Delete (to the Trash) for what is on disk, though a project's Delete takes it out of the solution; the solution's
 /// own folders' are in MainWindow.Solution.cs, and the actions that run them on a row in MainWindow.ExplorerActions.cs.
-/// The open tabs follow a rename and close with a delete, and the Explorer, the file index and Git are read again
-/// after.</summary>
+/// The open tabs follow a rename and close with a delete, and the Explorer, the file index and Git follow what each
+/// made, moved or deleted.</summary>
 public partial class MainWindow
 {
     private void AddFileOperations()
@@ -40,9 +40,12 @@ public partial class MainWindow
         }
     }
 
-    private void AskName(string title, string initial, Func<string, string?> attempt)
+    private void AskName(string title, string initial, Func<string, string?> attempt) => AskName(title, initial, name => Task.FromResult(attempt(name)));
+
+    /// <summary>Asks for a name in a popup, which stays open saying why while <paramref name="attempt"/> refuses it.</summary>
+    private void AskName(string title, string initial, Func<string, Task<string?>> attempt)
     {
-        Vcs.NamePopup popup = new(title, initial, name => Task.FromResult(attempt(name)));
+        Vcs.NamePopup popup = new(title, initial, attempt);
         popups.Show(popup, _ => { });
     }
 
@@ -96,18 +99,20 @@ public partial class MainWindow
         }
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            // Made as its .editorconfig asks: its line breaks and its charset.
-            EditorConfig conventions = EditorConfig.For(path);
-            FileEncoding charset = conventions.Charset ?? FileEncoding.Utf8;
-            LineSeparator separator = conventions.EndOfLine ?? LineSeparator.LF;
-            FileText.Save(path, LineEndings.In(text, separator.Held()), charset.Encoding, charset.Bom, separator == LineSeparator.CR);
+            Following([path], () =>
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                // Made as its .editorconfig asks: its line breaks and its charset.
+                EditorConfig conventions = EditorConfig.For(path);
+                FileEncoding charset = conventions.Charset ?? FileEncoding.Utf8;
+                LineSeparator separator = conventions.EndOfLine ?? LineSeparator.LF;
+                FileText.Save(path, LineEndings.In(text, separator.Held()), charset.Encoding, charset.Bom, separator == LineSeparator.CR);
+            });
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             return NotMade(name, error);
         }
-        FilesChanged();
         OpenFile(path);
         Explorer.Reveal(PathNames.Canonical(path));
         return null;
@@ -126,13 +131,12 @@ public partial class MainWindow
         }
         try
         {
-            Directory.CreateDirectory(path);
+            Following([path], () => Directory.CreateDirectory(path));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             return NotMade(name, error);
         }
-        FilesChanged();
         Explorer.Reveal(PathNames.Canonical(path));
         return null;
     }
@@ -198,7 +202,7 @@ public partial class MainWindow
     {
         if (TypeRename.NamedAfterFile(Editors, path) is not { } type)
         {
-            AskName("Rename", Path.GetFileName(path), name => Rename(path, name));
+            AskName("Rename", Path.GetFileName(path), name => RenameAsync(path, name));
             return;
         }
         Vcs.NamePopup? popup = null;
@@ -216,7 +220,7 @@ public partial class MainWindow
         string renamed = TypeRename.Stem(name);
         if (!renameType || renamed == type.Name)
         {
-            return Rename(path, name);
+            return await RenameAsync(path, name);
         }
         if (Invalid(name) is { } problem)
         {
@@ -269,10 +273,13 @@ public partial class MainWindow
             // The files nested under it go with it too (Form1.resx with Form1.cs), those that are parts of the type once.
             moves.AddRange(WithDependents(path, name).Where(d => !moves.Any(m => m.From == d.From)));
             List<string> dropped = [];
-            int files = TypeRename.Apply(Editors, made, moves, $"Rename {type.Name} to {renamed}", asked, dropped,
-                recording => FollowMoved([.. moves.Select(m => (m.From, PathNames.Canonical(m.To)))], recording));
-            FilesChanged();
+            string command = $"Rename {type.Name} to {renamed}";
+            using CommandHistory.Recording recording = Editors.Commands.Record(command);
+            int files = Following([.. moves.SelectMany(m => new[] { m.From, m.To }), .. WorkspaceEdits.Paths(made)],
+                () => TypeRename.Apply(Editors, made, moves, command, asked, dropped,
+                    moving => FollowMoved([.. moves.Select(m => (m.From, PathNames.Canonical(m.To)))], moving), into: recording));
             Explorer.Reveal(PathNames.Canonical(target));
+            await WorkspaceEdits.LandedAsync(recording, waiting => status.Text = waiting);
             status.Text = $"Renamed {Path.GetFileName(path)} to {name}, and {type.Name} to {renamed} in {Plural.Of(files, "file")}"
                 + (dropped.Count > 0 ? $", but not in {string.Join(", ", dropped)}: it was edited meanwhile" : string.Empty);
             return null;
@@ -293,18 +300,18 @@ public partial class MainWindow
     }
 
     /// <summary>Rename on a project: its file takes the name, its extension kept, and the solution and the projects
-    /// referencing it follow (<see cref="Rename"/>). Null once renamed, else why not.</summary>
-    public string? RenameProject(string project, string name)
+    /// referencing it follow (<see cref="RenameAsync"/>). Null once renamed, else why not.</summary>
+    public async Task<string?> RenameProjectAsync(string project, string name)
     {
         string extension = Path.GetExtension(project);
-        return Invalid(name) ?? Rename(project, name.EndsWith(extension, StringComparison.OrdinalIgnoreCase) ? name : name + extension);
+        return Invalid(name) ?? await RenameAsync(project, name.EndsWith(extension, StringComparison.OrdinalIgnoreCase) ? name : name + extension);
     }
 
     /// <summary>Renames a file or folder in place, and the files nested under a file with it (Counter.razor.cs going
     /// with Counter.razor). Its open files keep their tabs, splits and undo, saved first, its bookmarks and breakpoints
     /// go with it, and what names it follows (projects' items, the solution, references to a project). Undo in the
-    /// Solution view renames it all back.</summary>
-    public string? Rename(string path, string name)
+    /// Solution view renames it all back, once what it wrote of the files that follow it has landed.</summary>
+    public async Task<string?> RenameAsync(string path, string name)
     {
         if (Invalid(name) is { } problem)
         {
@@ -320,21 +327,31 @@ public partial class MainWindow
         {
             return $"{Path.GetFileName(taken.To)} is already there";
         }
-        using (CommandHistory.Recording recording = Editors.Commands.Record($"Rename {Path.GetFileName(path)} to {name}"))
+        using CommandHistory.Recording recording = Editors.Commands.Record($"Rename {Path.GetFileName(path)} to {name}");
+        string? failed = Following([.. moves.SelectMany(m => new[] { m.From, m.To })], () =>
         {
             foreach ((string from, string to) in moves)
             {
-                if (Editors.MoveFile(from, to) is { } failed)
+                if (Editors.MoveFile(from, to) is { } refused)
                 {
-                    return failed;
+                    return refused;
                 }
             }
             if (FollowMoved([.. moves.Select(m => (m.From, PathNames.Canonical(m.To)))], recording) is { } unfollowed)
             {
                 status.Text = unfollowed;
             }
+            return null;
+        });
+        if (failed is not null)
+        {
+            return failed;
         }
         Explorer.Reveal(PathNames.Canonical(target));
+        if (await recording.LandedAsync(waiting => status.Text = waiting) is [(string unfollowed, Exception refused), ..])
+        {
+            status.Text = $"{Path.GetFileName(unfollowed)} could not follow the files moved: {refused.Message}";
+        }
         return null;
     }
 
@@ -349,8 +366,18 @@ public partial class MainWindow
     private void OnFileMoved(FileMove move)
     {
         session.Moved(move);
-        FilesChanged();
+        if (movesFollowed is { } gathered)
+        {
+            gathered.Add(move.From);
+            gathered.Add(move.To);
+            return;
+        }
+        CameOrWent([move.From, move.To]);
     }
+
+    /// <summary>While an Undo or Redo of a command runs, the ends of the moves it makes, followed with the rest of what it
+    /// changed once it is done.</summary>
+    private List<string>? movesFollowed;
 
     /// <summary>Delete on a project: it leaves the solution and its files stay. Moving its folder to the Trash is a
     /// second question, never asked of the open folder, a folder above it, or one holding the solution or another of
@@ -367,7 +394,7 @@ public partial class MainWindow
         {
             return false;
         }
-        if (EditSolution(file => SolutionEdits.RemoveProject(file, project), $"Removed {name} from {solution.Name}") is { } problem)
+        if (await EditSolutionAsync(file => SolutionEdits.RemoveProject(file, project), $"Removed {name} from {solution.Name}") is { } problem)
         {
             status.Text = $"{name} could not be removed: {problem}";
             return false;
@@ -437,21 +464,102 @@ public partial class MainWindow
         {
             Editors.CloseDeleted(document);
         }
-        FilesChanged();
+        CameOrWent([path]);
         status.Text = $"Moved {what} to the Trash";
         return true;
     }
 
-    /// <summary>The Explorer, the index Go to File and Find in Files read, and Git's colours, after files changed.</summary>
-    private void FilesChanged()
+    /// <summary>Runs a change of files the IDE makes itself, then follows only what it came to: what it made, moved or
+    /// deleted along <paramref name="paths"/> (a folder over one among them) and the moves it made, as
+    /// <see cref="CameOrWent"/> does; a change of texts alone has evaluated again the projects that read one of them.</summary>
+    private T Following<T>(IReadOnlyCollection<string> paths, Func<T> change)
     {
-        Explorer.Refresh();
-        // What a project's wildcards take in changed here: its evaluation follows at once, not when the watcher hears of it.
+        Dictionary<string, bool> stood = Standing(paths);
+        List<string> moved = [];
+        try
+        {
+            return Gathering(moved, change);
+        }
+        finally
+        {
+            Followed(stood, moved, paths);
+        }
+    }
+
+    private void Following(IReadOnlyCollection<string> paths, Action change) => Following(paths, () =>
+    {
+        change();
+        return true;
+    });
+
+    /// <summary>Whether each file and folder along the paths stands, up to the open folder: what a change made or took away
+    /// is what stands otherwise after it, a folder made or taken with a file among them.</summary>
+    private Dictionary<string, bool> Standing(IEnumerable<string> paths)
+    {
+        Dictionary<string, bool> stood = new(PathNames.Comparer);
+        foreach (string path in paths)
+        {
+            for (string? at = PathNames.Canonical(path); at is not null && (Folder is not { } folder || PathNames.IsUnder(at, folder)); at = Path.GetDirectoryName(at))
+            {
+                // A folder already looked at was looked at with every folder over it.
+                if (!stood.TryAdd(at, Stands(at)))
+                {
+                    break;
+                }
+            }
+        }
+        return stood;
+    }
+
+    private static bool Stands(string path) => File.Exists(path) || Directory.Exists(path);
+
+    /// <summary>Runs a change, the ends of the moves it makes gathered into <paramref name="moved"/>, to be followed with the
+    /// rest of what it changed once it is done rather than one by one.</summary>
+    private T Gathering<T>(List<string> moved, Func<T> change)
+    {
+        List<string>? outer = movesFollowed;
+        movesFollowed = moved;
+        try
+        {
+            return change();
+        }
+        finally
+        {
+            movesFollowed = outer;
+        }
+    }
+
+    /// <summary>Follows a change of files once it is done: what came or went along <paramref name="stood"/>'s paths, with the
+    /// ends of the moves it made, as <see cref="CameOrWent"/> does; with none, the projects whose evaluation read one of
+    /// <paramref name="texts"/> are evaluated again.</summary>
+    private void Followed(Dictionary<string, bool> stood, IReadOnlyCollection<string> moved, IReadOnlyCollection<string> texts)
+    {
+        List<string> cameOrWent = [.. moved, .. stood.Where(s => s.Value != Stands(s.Key)).Select(s => s.Key)];
+        if (cameOrWent.Count > 0)
+        {
+            CameOrWent(cameOrWent);
+        }
+        else if (session.Models.Read(texts))
+        {
+            // Only texts changed, a project's or an import's among them: the projects that read it are evaluated again.
+            session.Evaluate();
+        }
+    }
+
+    /// <summary>Files or folders the IDE itself made, moved or deleted, followed at once rather than when the folder watcher
+    /// hears of them: the Explorer reads again only the folders that held or hold them, keeping the rows still there, Go to
+    /// File's index takes them in or out in place, the projects are checked for what their wildcards take in, and Git's
+    /// colours follow.</summary>
+    private void CameOrWent(IReadOnlyCollection<string> paths)
+    {
+        HashSet<string> named = new(paths.Select(PathNames.Canonical), StringComparer.Ordinal);
+        Explorer.RefreshFolders(named.Select(Path.GetDirectoryName).OfType<string>());
         session.Evaluate();
         session.MSBuild.FilesCameOrWent();
+        session.CSharp?.FilesCameOrWent(named);
         if (Folder is { } folder)
         {
-            session.Index.Build(folder);
+            session.Index.Apply(folder, named);
         }
         IdeErrors.Observe(session.Vcs.RefreshAsync());
     }

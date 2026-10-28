@@ -1,3 +1,5 @@
+using System.Text.Json;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Explorer;
@@ -61,6 +63,7 @@ public sealed class ProjectEvaluationTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    [Gate]
     [AvaloniaFact]
     public void A_project_shows_its_files_and_packages_as_MSBuild_evaluates_its_conditions_imports_wildcards_and_central_versions()
     {
@@ -75,6 +78,7 @@ public sealed class ProjectEvaluationTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_project_file_edited_on_disk_shows_what_it_says_now()
     {
@@ -90,12 +94,13 @@ public sealed class ProjectEvaluationTests : IDisposable
 
     /// <summary>A host whose answer does not read, as one of another build's could write, is ended and the evaluation asked
     /// of it fails; the next change is evaluated by a host started anew.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_project_host_whose_answer_does_not_read_is_ended_and_the_next_change_is_evaluated_by_a_new_one()
     {
         MainWindow window = Open();
         Assert.Contains("Serilog", Children(window, "Dependencies"));
-        ProjectHost spoiled = Task.Run(() => ProjectHosts.ForAsync(folder)).GetAwaiter().GetResult();
+        ProjectHost spoiled = Ui.Await(Waiting.Apart(() => ProjectHosts.ForAsync(folder)), "the folder's project host");
         spoiled.SpoilNext(HostMethods.Evaluate);
         Write("App/App.csproj", Project.Replace("""<Compile Remove="Legacy/**" />""", """<Compile Remove="Legacy/Old.cs" />"""));
         Ui.WaitFor(() => spoiled.HasExited, "the host whose answer did not read to be ended");
@@ -106,11 +111,12 @@ public sealed class ProjectEvaluationTests : IDisposable
         Write("App/App.csproj", Project.Replace("""'$(ShopLogs)' == 'true'""", """'$(ShopLogs)' == 'false'"""));
         Ui.WaitFor(() => !window.ExplorerView.Tree.Rows.Any(r => r.Name == "Serilog"), "the next change's evaluation to drop the package its condition now leaves out");
         Assert.Null(window.Session.Models.Problem);
-        int now = Task.Run(() => ProjectHosts.ForAsync(folder)).GetAwaiter().GetResult().ProcessId;
+        int now = Ui.Await(Waiting.Apart(() => ProjectHosts.ForAsync(folder)), "the folder's project host now").ProcessId;
         Assert.True(now != spoiled.ProcessId, "The next evaluation was asked of the host whose answer did not read");
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_folder_opened_again_shows_its_projects_from_their_last_evaluation_before_any_is_evaluated_again()
     {
@@ -149,6 +155,7 @@ public sealed class ProjectEvaluationTests : IDisposable
         third.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_directory_build_file_made_above_an_open_project_shows_what_it_adds()
     {
@@ -161,6 +168,7 @@ public sealed class ProjectEvaluationTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_folder_opened_again_evaluates_a_project_whose_directory_build_file_came_while_it_was_closed()
     {
@@ -177,6 +185,7 @@ public sealed class ProjectEvaluationTests : IDisposable
         second.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_project_is_evaluated_again_once_its_first_restore_writes_what_it_imports_and_kept_so()
     {
@@ -192,6 +201,7 @@ public sealed class ProjectEvaluationTests : IDisposable
         second.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_project_holding_folder_links_back_up_its_own_tree_keeps_its_real_folders_alone_as_what_its_evaluation_and_build_read()
     {
@@ -257,6 +267,68 @@ public sealed class ProjectEvaluationTests : IDisposable
             && Directory.EnumerateFiles(Passenger.App.CSharp.CSharpService.LogFolder, $"server-*-{process}.log").SingleOrDefault() is { } path ? Ui.Shared(path) : string.Empty;
     }
 
+    /// <summary>A run whose window closed as it began working out what App runs, the SDK App's folder picks still being
+    /// asked, leaves the project host to every window after it: one opened on App's folder shows App as MSBuild evaluates
+    /// it. Each window's loop here never runs again once its window has gone, as a window test's does once it is over.</summary>
+    [Gate]
+    [Fact]
+    public async Task A_run_whose_window_closed_as_it_began_leaves_the_project_host_to_the_windows_after_it()
+    {
+        HeadlessUnitTestSession session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(ProjectEvaluationTests).Assembly);
+        // A failure comes back as each window's answer: thrown, it would end this test on the window's thread.
+        Exception? ran = await session.Dispatch(() => InWindow(() =>
+        {
+            MainWindow window = Open();
+            // Its plan asks the host for App's folder, whose SDK no window has asked for yet.
+            Assert.True(window.Perform(AppActions.RunProgram), "Run did not start");
+            // Gone at once, and its loop with it, before the SDK's answer can come.
+            window.Close();
+        }, waitForEnds: false), TestContext.Current.CancellationToken);
+        await Task.Yield();
+        Throw(ran);
+        Write("App/App.slnx", "<Solution>\n  <Project Path=\"App.csproj\" />\n</Solution>\n");
+        Exception? opened = await session.Dispatch(() => InWindow(() =>
+        {
+            MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
+            window.Show();
+            window.OpenFolder(Path.Combine(folder, "App", "App.slnx"));
+            Ui.WaitFor(() => window.Session.Workspace?.Projects.FirstOrDefault(p => p.Name == "App")?.Evaluated is not null,
+                "the window opened on App's folder after the run's window closed to show App as MSBuild evaluates it", TimeSpan.FromSeconds(30));
+            Assert.Contains("Serilog", Children(window, "Dependencies"));
+        }, waitForEnds: true), TestContext.Current.CancellationToken);
+        await Task.Yield();
+        Throw(opened);
+
+        // As every window test starts and ends (TestsLeaveNothingBehind): a window left open closed, and its end waited out.
+        static Exception? InWindow(Action steps, bool waitForEnds)
+        {
+            BackgroundWork.Forget();
+            OpenWindows.Watch();
+            try
+            {
+                steps();
+                if (waitForEnds)
+                {
+                    OpenWindows.CloseAll();
+                }
+                return null;
+            }
+            catch (Exception failed)
+            {
+                OpenWindows.CloseAll();
+                return failed;
+            }
+        }
+
+        static void Throw(Exception? failed)
+        {
+            if (failed is not null)
+            {
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(failed);
+            }
+        }
+    }
+
     /// <summary>A window on the solution with no C# language server: the Solution view's projects are the project host's
     /// evaluation, and the server would restore the solution's packages, from nuget.org where the package cache lacks them.</summary>
     private MainWindow Open()
@@ -308,4 +380,46 @@ public sealed class ProjectEvaluationTests : IDisposable
     }
 
     private void Write(string relative, string text) => TestFolders.Write(folder, relative, text);
+}
+
+/// <summary>What a design-time build's reply costs the IDE to read, counted across the process, so the class runs alone.</summary>
+[Collection(Alone.Name)]
+public sealed class ProjectHostBytesTests(ITestOutputHelper testOutput) : IDisposable
+{
+    private readonly string folder = PathNames.Canonical(TestFolders.Create("host-bytes-"));
+
+    public void Dispose() => TestFolders.Delete(folder);
+
+    /// <summary>A project's design-time build comes back as one line whose compiler command line, every framework reference's
+    /// path among it, is carried as the JSON it is: read in place from the bytes the line came in, it costs the IDE at most
+    /// twice the line's JSON, and the language server is given the same command line; least of five.</summary>
+    [Fact]
+    public async Task A_design_time_builds_reply_costs_at_most_twice_its_JSON_to_read()
+    {
+        CancellationToken cancel = TestContext.Current.CancellationToken;
+        string project = Path.Combine(folder, "App", "App.csproj");
+        Directory.CreateDirectory(Path.GetDirectoryName(project)!);
+        File.WriteAllText(project, TestProjects.Console());
+        File.WriteAllText(Path.Combine(folder, "App", "Program.cs"), "System.Console.WriteLine(\"Shop\");\n");
+        await Restore.RunAsync(project);
+        ProjectHost host = await ProjectHosts.ForAsync(folder, cancel);
+        long least = long.MaxValue;
+        BuiltProject? built = null;
+        for (int time = 0; time < 5; time++)
+        {
+            List<BuiltProject> replies = [];
+            long before = GC.GetTotalAllocatedBytes(precise: true);
+            await host.BuildAsync([project], new Dictionary<string, string>(), replies.Add, cancel).WaitAsync(TimeSpan.FromMinutes(2).Scaled(), cancel);
+            least = Math.Min(least, GC.GetTotalAllocatedBytes(precise: true) - before);
+            built = Assert.Single(replies);
+        }
+        Assert.Null(built!.Problem);
+        using JsonDocument infos = JsonDocument.Parse(built.Infos.ToString());
+        string arguments = string.Join('\n', infos.RootElement[0].GetProperty("commandLineArgs").EnumerateArray().Select(a => a.GetString()));
+        Assert.Contains("System.Runtime.dll", arguments, StringComparison.Ordinal);
+        long json = JsonSerializer.SerializeToUtf8Bytes(built, HostJson.Options).Length;
+        testOutput.WriteLine($"{json:N0} bytes of JSON, {least:N0} allocated ({(double)least / json:0.00}×)");
+        Assert.True(least <= json * 2,
+            $"Reading a design-time build's reply of {json:N0} bytes of JSON allocated {least:N0} bytes ({(double)least / json:0.0}× its JSON): every project's build costs the IDE that much more memory as a solution loads");
+    }
 }

@@ -6,4 +6,9 @@
 Rule ID | Category | Severity | Notes
 --------|----------|----------|-------
 PSG0001 | Passenger | Warning | IdentifierLiterals
+PSG0002 | Passenger | Warning | AsyncVoidMethods
+PSG0003 | Passenger | Warning | AsyncVoidLambdas
+PSG0004 | Passenger | Warning | BlockingWaits
+PSG0005 | Passenger | Warning | CatchAlls
+PSG0006 | Passenger | Warning | BareTaskRuns
 PSG9001 | Passenger | Error | ResourceKeys

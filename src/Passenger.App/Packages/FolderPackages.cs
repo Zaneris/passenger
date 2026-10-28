@@ -47,9 +47,10 @@ public sealed class FolderPackages
     /// answered: the window takes them into its editors and reads the solution again.</summary>
     public event EventHandler<PackageOutcome>? Changed;
 
-    /// <summary>Saves the open files before a change rewrites a project or a nuget.config, so what is rewritten holds their
-    /// edits.</summary>
-    public Action? SaveFirst { get; set; }
+    /// <summary>Saves the open files and waits for the saves still landing before a change rewrites a project or a
+    /// nuget.config, so what is rewritten, and what the restore then reads, holds their edits. Null once all are on disk,
+    /// else why not, and nothing is changed.</summary>
+    public Func<Working?, CancellationToken, Task<string?>>? SaveFirst { get; set; }
 
     /// <summary>The window's work under way, which a package change shows itself in until it ends.</summary>
     public ActionWork? Work { get; set; }
@@ -209,7 +210,10 @@ public sealed class FolderPackages
         bool done;
         try
         {
-            SaveFirst?.Invoke();
+            if (SaveFirst is { } save && await save(working, CancellationToken.None) is { } unsaved)
+            {
+                return new PackageOutcome(false, [], []) { Refused = unsaved };
+            }
             // Read once the open files are saved: what the save wrote is not the change's.
             before = [.. files.Select(Bytes)];
             done = await change();

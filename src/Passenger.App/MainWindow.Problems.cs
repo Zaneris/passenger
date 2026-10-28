@@ -111,7 +111,7 @@ public partial class MainWindow
 
     /// <summary>How long typing pauses before the File tab lists where the keys moved the file's problems, less than the
     /// server's pull waits, so the problems it finds for that text are listed as they land.</summary>
-    private static readonly TimeSpan ProblemsPause = TimeSpan.FromMilliseconds(250);
+    public static readonly TimeSpan ProblemsPause = TimeSpan.FromMilliseconds(250);
 
     private Debounce? problemsMoved;
 
@@ -168,7 +168,7 @@ public partial class MainWindow
     private static Problem ProblemOf(SolutionProblem problem, string project) => new(
         problem.Diagnostic.Severity == DiagnosticSeverity.Error ? ProblemSeverity.Error : ProblemSeverity.Warning,
         problem.Diagnostic.Message,
-        problem.Diagnostic.Code?.ValueKind == System.Text.Json.JsonValueKind.String ? problem.Diagnostic.Code.Value.GetString() : problem.Diagnostic.Code?.ToString(),
+        problem.Diagnostic.Code,
         problem.Path,
         problem.At,
         project);

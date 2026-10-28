@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Passenger.App.Discord;
 using Passenger.Core;
+using Passenger.Text;
 using Passenger.Workspace;
 
 namespace Passenger.App;
@@ -72,8 +73,8 @@ public static class PassengerApp
         window.Closed += (_, _) => Remove(window);
     }
 
-    /// <summary>Opens a folder, solution (.sln, .slnx) or C# project (.csproj), a path checked already
-    /// (<see cref="MainWindow.Open"/> says why one cannot be), in the window it is opened from or one of its own; a
+    /// <summary>Opens a folder, solution (.sln, .slnx), solution filter (.slnf) or C# project (.csproj), a path checked
+    /// already (<see cref="MainWindow.Open"/> says why one cannot be), in the window it is opened from or one of its own; a
     /// window with nothing open takes it either way. One another window has open (its folder) is brought forward there
     /// instead, taking the solution named. The window it opened in; <paramref name="then"/> is told that window once
     /// the solution's session has begun there, never when it was not opened.</summary>
@@ -188,7 +189,7 @@ public static class PassengerApp
                 window.Close();
                 if (window.IsVisible)
                 {
-                    if (window.AsksBeforeClosing)
+                    if (window.ClosesLater)
                     {
                         quitGivenUp += givenUp;
                     }
@@ -256,12 +257,14 @@ public static class PassengerApp
     /// (<see cref="MainWindow.Ended"/>), then installs an update made ready, last of all. It needs no UI thread.</summary>
     public static void End()
     {
+        updates?.HoldRelaysForUpdate();
         Task[] ending;
         lock (Ending)
         {
             ending = [.. Ending];
         }
-        Task.WaitAll(ending);
+        // Main's last act before the process ends, with no loop left to await on; a save still landing is never cut short.
+        Synchronously.Run(() => Task.WhenAll([.. ending, FileText.AllLanded()]));
         updates?.InstallUpdate();
     }
 

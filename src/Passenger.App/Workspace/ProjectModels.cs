@@ -45,11 +45,19 @@ public sealed class ProjectModels
     /// opens on its cache with nothing changed evaluates none.</summary>
     public int Evaluations { get; private set; }
 
+    /// <summary>How many rounds have begun, each reading again what every project's evaluation read (its files and the
+    /// folders its wildcards walked) to find those to evaluate.</summary>
+    public int Rounds { get; private set; }
+
     /// <summary>Why the host could not evaluate the folder's projects, the last time it was asked; null when it could.</summary>
     public string? Problem { get; private set; }
 
     /// <summary>Whether every project of the workspace last followed has its complete evaluation in.</summary>
     public bool IsComplete { get; private set; }
+
+    /// <summary>Whether a workspace was given to follow since the folder was taken up: until then no round has begun, so
+    /// <see cref="Idle"/> says nothing of its evaluations.</summary>
+    public bool Followed { get; private set; }
 
     private TaskCompletionSource idle = Done();
 
@@ -63,24 +71,25 @@ public sealed class ProjectModels
         return done;
     }
 
-    /// <summary>Takes up a folder, with the store's cache of its evaluations when the window keeps one, which lands as
-    /// <see cref="Changed"/> once read.</summary>
-    public void Open(string opened, StateDocument<ProjectModelCache>? cache)
+    /// <summary>Takes up a folder, with the store's cache of its evaluations when the window keeps one, or the evaluations
+    /// begun <paramref name="ahead"/> of the window, either landing as <see cref="Changed"/> once there; the first round
+    /// waits for them, so it evaluates only what changed since.</summary>
+    public void Open(string opened, StateDocument<ProjectModelCache>? cache, Task<ProjectModelCache>? ahead = null)
     {
         UiThread.Check();
         Close();
         folder = opened;
         kept = cache;
-        if (cache is not null)
+        if ((ahead ?? cache?.ValueAsync()) is { } evaluations)
         {
             idle = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            reading = TakeCacheAsync(generation, cache);
+            reading = TakeCacheAsync(generation, evaluations);
         }
     }
 
-    private async Task TakeCacheAsync(int mine, StateDocument<ProjectModelCache> cache)
+    private async Task TakeCacheAsync(int mine, Task<ProjectModelCache> evaluations)
     {
-        ProjectModelCache value = await cache.ValueAsync();
+        ProjectModelCache value = await evaluations;
         if (mine != generation)
         {
             return;
@@ -118,6 +127,7 @@ public sealed class ProjectModels
         made.Clear();
         Problem = null;
         IsComplete = false;
+        Followed = false;
     }
 
     /// <summary>The models made of the evaluations known, each made once (its references are each a path made canonical).</summary>
@@ -139,6 +149,17 @@ public sealed class ProjectModels
 
     public WorkspaceModel Apply(WorkspaceModel workspace) => workspace.WithProjects(Apply);
 
+    /// <summary>Whether an evaluation known read one of these files: a project's own, or one it imports.</summary>
+    public bool Read(IReadOnlyCollection<string> paths)
+    {
+        if (paths.Count == 0)
+        {
+            return false;
+        }
+        HashSet<string> asked = new(paths, PathNames.Comparer);
+        return known.Values.Any(e => e.Inputs.Any(i => asked.Contains(i.Path)));
+    }
+
     /// <summary>Checks each project of a workspace against what its evaluation read, off the UI thread, and has those that
     /// changed or were never evaluated evaluated, the one holding <paramref name="active"/> first; the host is asked its SDK
     /// for the folder in any case, and a change of it has every project evaluated again.</summary>
@@ -150,6 +171,7 @@ public sealed class ProjectModels
             return;
         }
         wanted = (workspace, active);
+        Followed = true;
         IsComplete = workspace.Projects.Where(p => p.Exists).All(p => known.TryGetValue(p.Path, out EvaluatedProject? e) && e.Complete);
         // Until the cache is read, which follows what is wanted then.
         if (running != generation && reading.IsCompleted)
@@ -172,6 +194,7 @@ public sealed class ProjectModels
             idle = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         }
         running = generation;
+        Rounds++;
         List<string> projects = [.. Ordered(next.Workspace, next.Active)];
         Dictionary<string, EvaluatedProject> before = new(StringComparer.Ordinal);
         foreach (string path in projects)
@@ -242,10 +265,11 @@ public sealed class ProjectModels
         CancellationToken cancel)
     {
         long began = Stopwatch.GetTimestamp();
+        HashSet<string> evaluated = new(StringComparer.Ordinal);
         try
         {
-            List<string> stale = await Task.Run(() => projects.Where(p => !before.TryGetValue(p, out EvaluatedProject? e) || !Holds(e)).ToList());
-            ProjectHost host = await Task.Run(() => ProjectHosts.ForAsync(following));
+            List<string> stale = await BackgroundWork.Run(() => projects.Where(p => !before.TryGetValue(p, out EvaluatedProject? e) || !Holds(e)).ToList());
+            ProjectHost host = await BackgroundWork.Run(() => ProjectHosts.ForAsync(following));
             if (mine != generation)
             {
                 return;
@@ -261,14 +285,23 @@ public sealed class ProjectModels
             {
                 return;
             }
-            EvaluateDone done = await host.EvaluateAsync(stale, properties, evaluated =>
+            EvaluateDone done;
+            try
             {
-                landed.Enqueue((mine, evaluated));
-                if (Interlocked.Exchange(ref posting, 1) == 0)
+                done = await EvaluateAsync(host, stale);
+            }
+            catch (ProjectHostFailed ended) when (ended.HostEnded && !cancel.IsCancellationRequested)
+            {
+                // Every window shares the host, which another folder's build may have ended: a host started anew evaluates the rest once.
+                List<string> left;
+                lock (evaluated)
                 {
-                    UiThread.Post(Land);
+                    left = [.. stale.Where(p => !evaluated.Contains(p))];
                 }
-            }, cancel);
+                IdeErrors.Write($"Project host (process {host.ProcessId}) evaluating the projects of {following}: {ended.Reason}. The {left.Count} not yet evaluated are asked of a host started anew");
+                host = await BackgroundWork.Run(() => ProjectHosts.ForAsync(following));
+                done = await EvaluateAsync(host, left);
+            }
             if (mine == generation)
             {
                 Keep(projects);
@@ -298,6 +331,22 @@ public sealed class ProjectModels
             }
             BackgroundWork.End();
         }
+
+        Task<EvaluateDone> EvaluateAsync(ProjectHost asked, List<string> projects) => asked.EvaluateAsync(projects, properties, project =>
+        {
+            if (project.Complete)
+            {
+                lock (evaluated)
+                {
+                    evaluated.Add(project.Path);
+                }
+            }
+            landed.Enqueue((mine, project));
+            if (Interlocked.Exchange(ref posting, 1) == 0)
+            {
+                UiThread.Post(Land);
+            }
+        }, cancel);
     }
 
     /// <summary>The evaluations landed since the last batch, taken in (those for a folder let go, dropped).</summary>

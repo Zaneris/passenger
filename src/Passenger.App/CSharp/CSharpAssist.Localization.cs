@@ -224,7 +224,7 @@ internal sealed partial class CSharpAssist
             return made is null || made == text ? [] : [TextEdit.Between(text, made)];
         }
         string title = xliff ? $"Translate '{key}'" : $"Add '{key}'";
-        if (actions.ApplyFileChanges(title, [new XamlFileChange(target, Edits)]) is { } refused)
+        if (await actions.ApplyFileChangesAsync(title, [new XamlFileChange(target, Edits)]) is { } refused)
         {
             return RefactorOutcome.Refused(refused);
         }

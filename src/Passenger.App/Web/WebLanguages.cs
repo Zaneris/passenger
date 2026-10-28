@@ -30,14 +30,18 @@ public enum WebServerKind
     Yaml,
 }
 
+/// <summary>A web language server lost, as the status bar says it, with what starts it again when it was left stopped for
+/// ending too often; null when it was started again at once.</summary>
+public sealed record WebServerLost(string Said, Action? StartAgain);
+
 /// <summary>JavaScript, TypeScript, HTML, CSS, JSON, Dockerfiles and YAML for the open folder: each kind's language
 /// server (the npm packages carried under <c>web/</c>, run on the machine's Node.js through ChildProcesses) started as
 /// the first file that needs it opens, every open file of its languages kept in step with it (a
 /// <see cref="WebDocument"/> each), and ended with the folder. Without a Node.js to run them (none found, or one too
-/// old), each file says why in its banner and the status bar, keeping its colours. A server that ends or stops
-/// answering is started again with its files, a few times at most. The project's own <c>node_modules/typescript</c> is
-/// the TypeScript server's when it has one. A UI-thread object: what a server says from its threads crosses through
-/// <see cref="UiThread"/>.</summary>
+/// old), each file says why in its banner and the status bar, keeping its colours. A server that ends (as it starts too)
+/// or stops answering is started again with its files, a few times at most, then left stopped until a person starts it
+/// again. The project's own <c>node_modules/typescript</c> is the TypeScript server's when it has one. A UI-thread object:
+/// what a server says from its threads crosses through <see cref="UiThread"/>.</summary>
 public sealed class WebLanguages : IAsyncDisposable
 {
     private readonly string folder;
@@ -75,13 +79,15 @@ public sealed class WebLanguages : IAsyncDisposable
         Prettier = new PrettierService(folder, settings, FindNodeAsync);
         Checks = new Containers.EngineChecks(engine ?? (() => Containers.ContainerEngine.Shared), now.BuildKitChecks);
         Eslint.Message += (_, message) => Message?.Invoke(this, message);
+        Eslint.Stopped += (_, lost) => Stopped?.Invoke(this, lost);
     }
 
     /// <summary>A server's state changed (starting, ready, stopped, no Node.js); raised on the UI thread.</summary>
     public event EventHandler? StateChanged;
 
-    /// <summary>A server ended or stopped answering, with what was done about it, for the status bar.</summary>
-    public event EventHandler<string>? Stopped;
+    /// <summary>A server (ESLint's too) ended or stopped answering, with what was done about it, for the status bar; raised
+    /// on the UI thread.</summary>
+    public event EventHandler<WebServerLost>? Stopped;
 
     /// <summary>Something else for the status bar: ESLint's word on a file, npm install's end. Raised on the UI thread.</summary>
     public event EventHandler<string>? Message;
@@ -208,18 +214,20 @@ public sealed class WebLanguages : IAsyncDisposable
 
     private static (ToolConfiguration, string?, string) Linting(AppSettings settings) => (settings.Eslint, settings.EslintPackage, settings.EslintFiles);
 
-    /// <summary>What a file's banner says: why its language server cannot run (no Node.js); else that a package its
-    /// package.json lists for ESLint or Prettier is not installed, offering to install it; else nothing.</summary>
+    /// <summary>What a file's banner says: why its language server cannot run (no Node.js), offering to start one left
+    /// stopped again; else that a package its package.json lists for ESLint or Prettier is not installed, offering to
+    /// install it; else nothing.</summary>
     private void Announce(OpenDocument document)
     {
         if (!documents.TryGetValue(document, out WebDocument? features))
         {
             return;
         }
-        if (servers.GetValueOrDefault(features.Kind) is { Problem: { } problem })
+        if (servers.GetValueOrDefault(features.Kind) is { Problem: { } problem } server)
         {
+            WebServerKind kind = features.Kind;
             document.Notice = Notice(Language.ForPath(document.Path), problem);
-            document.NoticeAction = null;
+            document.NoticeAction = server.LeftStopped ? new NoticeAction("Start it again", () => StartAgain(kind)) : null;
             return;
         }
         List<string> tools = [];
@@ -645,12 +653,33 @@ public sealed class WebLanguages : IAsyncDisposable
         }
     }
 
-    /// <summary>A server gone: started again with its files, unless servers of its kind have gone too often to be worth it.</summary>
+    /// <summary>A server gone: started again with its files, unless servers of its kind have gone too often to be worth it,
+    /// when it is left stopped until a person starts it again (<see cref="StartAgain"/>).</summary>
     private void Lost(WebServerKind kind, NodeServer server, string what)
     {
-        bool again = server.Restarts.Again();
-        Replace(kind, server, stopped: again ? null : $"its language server stopped {ServerRestarts.Often}");
-        Stopped?.Invoke(this, ServerRestarts.Said(what, again));
+        if (server.Restarts.Again())
+        {
+            Replace(kind, server);
+            Stopped?.Invoke(this, new WebServerLost(ServerRestarts.StartedAgain(what), null));
+            return;
+        }
+        Replace(kind, server, stopped: $"its language server stopped {ServerRestarts.Often}");
+        Stopped?.Invoke(this, new WebServerLost(ServerRestarts.LeftStopped(what), () => StartAgain(kind)));
+    }
+
+    /// <summary>Starts a kind's server left stopped again at a person's word, with its files, its restarts counted afresh:
+    /// it runs again once what ended it is gone.</summary>
+    private void StartAgain(WebServerKind kind)
+    {
+        UiThread.Check();
+        if (disposed || servers.GetValueOrDefault(kind) is not { LeftStopped: true } server)
+        {
+            return;
+        }
+        server.Restarts.Forget();
+        IdeErrors.Write($"The {Name(kind)} language server is started again for {folder}, as asked");
+        Message?.Invoke(this, $"Starting the {Name(kind)} language server again");
+        Replace(kind, server);
     }
 
     /// <summary>Ends a server (or its start) and lets its files go, then gives them a new one: started, or left stopped for

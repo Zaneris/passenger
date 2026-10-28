@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
+using Passenger.Core;
 
 namespace Passenger.App.Mcp;
 
@@ -58,7 +59,7 @@ public sealed class AgentCall : IAsyncDisposable
         this.traced = traced;
         lastTold = began;
         // Not held: it changes nothing drawn, and ends with the call.
-        beating = token is null ? Task.CompletedTask : Task.Run(BeatAsync);
+        beating = token is null ? Task.CompletedTask : BackgroundWork.Unheld(BeatAsync);
     }
 
     /// <summary>How often a call that takes a while tells its agent so: 10 s, or what <see cref="EveryVariable"/>
@@ -113,7 +114,7 @@ public sealed class AgentCall : IAsyncDisposable
         waitingOn = onWhat;
         Log($"waiting: {onWhat}");
         // Not held, and never on the caller's thread (the window's): it changes nothing drawn, and the agent's pipe may be slow.
-        IdeErrors.Observe(Task.Run(() => TellAsync()));
+        IdeErrors.Observe(BackgroundWork.Unheld(() => TellAsync()));
     }
 
     /// <summary>The wait is over, with what it came to.</summary>

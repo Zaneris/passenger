@@ -16,43 +16,19 @@ public sealed partial class CodeEditor
     /// <summary>The gutter's folding column, at its right edge against the code.</summary>
     private const double FoldWidth = 12;
 
-    private IReadOnlyList<FoldRegion> folds = [];
     private FoldLines? foldLines;
     private readonly Dictionary<int, Rect> placeholders = [];
     private bool overGutter;
 
-    /// <summary>The regions that fold, in offset order, each saying whether it is folded.</summary>
-    public IReadOnlyList<FoldRegion> FoldRegions => folds;
+    /// <summary>The regions that fold, in offset order, each saying whether it is folded: the decorations', which every
+    /// editor of the document folds alike.</summary>
+    public IReadOnlyList<FoldRegion> FoldRegions => decorations.FoldRegions;
 
     /// <summary>A region was folded or unfolded here (a chevron, a placeholder, a key, a caret landing in one): the
     /// regions as they now stand, for the host to keep.</summary>
     public event EventHandler<IReadOnlyList<FoldRegion>>? FoldsToggled;
 
-    public void SetFoldRegions(IReadOnlyList<FoldRegion> regions)
-    {
-        if (ReferenceEquals(regions, folds))
-        {
-            return;
-        }
-        HideFoldPreview();
-        folds = regions is FoldList || InOrder(regions) ? regions : [.. regions.OrderBy(r => r.Start)];
-        InvalidateVisual();
-        UpdateScrollBars();
-        ScrollWithinRows();
-        FollowInputMethod();
-    }
-
-    private static bool InOrder(IReadOnlyList<FoldRegion> regions)
-    {
-        for (int i = 1; i < regions.Count; i++)
-        {
-            if (regions[i].Start < regions[i - 1].Start)
-            {
-                return false;
-            }
-        }
-        return true;
-    }
+    public void SetFoldRegions(IReadOnlyList<FoldRegion> regions) => decorations.SetFoldRegions(regions);
 
     /// <summary>The regions in lines for the text as it stands.</summary>
     private FoldLines Folding
@@ -60,32 +36,32 @@ public sealed partial class CodeEditor
         get
         {
             TextSnapshot text = document.Snapshot;
-            if (foldLines is not { } known || !ReferenceEquals(known.Text, text) || !ReferenceEquals(known.Folds, folds))
+            if (foldLines is not { } known || !ReferenceEquals(known.Text, text) || !ReferenceEquals(known.Folds, FoldRegions))
             {
-                foldLines = known = new FoldLines(text, folds);
+                foldLines = known = new FoldLines(text, FoldRegions);
             }
             return known;
         }
     }
 
     /// <summary>The folded region whose placeholder ends a line, if any.</summary>
-    private FoldRegion? FoldedAt(int line) => Folding.Placeholders.TryGetValue(line, out int index) ? folds[index] : null;
+    private FoldRegion? FoldedAt(int line) => Folding.Placeholders.TryGetValue(line, out int index) ? FoldRegions[index] : null;
 
     /// <summary>The innermost region holding a line: its first line through its last.</summary>
     private int RegionAround(int line, Func<FoldRegion, bool> which)
     {
         TextSnapshot text = document.Snapshot;
         int best = -1;
-        for (int i = 0; i < folds.Count; i++)
+        for (int i = 0; i < FoldRegions.Count; i++)
         {
-            FoldRegion region = folds[i];
+            FoldRegion region = FoldRegions[i];
             int first = FoldLines.StartLineOf(text, region);
             int last = FoldLines.EndLineOf(text, region);
             if (last < 0 || !which(region))
             {
                 continue;
             }
-            if (line >= first && line <= last && last > first && (best < 0 || region.End - region.Start < folds[best].End - folds[best].Start))
+            if (line >= first && line <= last && last > first && (best < 0 || region.End - region.Start < FoldRegions[best].End - FoldRegions[best].Start))
             {
                 best = i;
             }
@@ -104,21 +80,21 @@ public sealed partial class CodeEditor
                 int around = RegionAround(line, _ => true);
                 if (around >= 0)
                 {
-                    SetFolded(i => i == around ? !folds[i].Folded : folds[i].Folded);
+                    SetFolded(i => i == around ? !FoldRegions[i].Folded : FoldRegions[i].Folded);
                 }
                 return true;
             case EditorActions.Fold:
                 int open = RegionAround(line, r => !r.Folded);
                 if (open >= 0)
                 {
-                    SetFolded(i => i == open || folds[i].Folded);
+                    SetFolded(i => i == open || FoldRegions[i].Folded);
                 }
                 return true;
             case EditorActions.Unfold:
                 int shut = RegionAround(line, r => r.Folded);
                 if (shut >= 0)
                 {
-                    SetFolded(i => i != shut && folds[i].Folded);
+                    SetFolded(i => i != shut && FoldRegions[i].Folded);
                 }
                 return true;
             case EditorActions.FoldAll:
@@ -128,13 +104,13 @@ public sealed partial class CodeEditor
                 SetFolded(_ => false);
                 return true;
             case EditorActions.FoldToDefinitions:
-                SetFolded(i => folds[i].Folded || folds[i].Kind is FoldKind.Body or FoldKind.DocComment);
+                SetFolded(i => FoldRegions[i].Folded || FoldRegions[i].Kind is FoldKind.Body or FoldKind.DocComment);
                 return true;
             case EditorActions.FoldDocComments:
-                SetFolded(i => folds[i].Folded || folds[i].Kind == FoldKind.DocComment);
+                SetFolded(i => FoldRegions[i].Folded || FoldRegions[i].Kind == FoldKind.DocComment);
                 return true;
             case EditorActions.UnfoldDocComments:
-                SetFolded(i => folds[i].Folded && folds[i].Kind != FoldKind.DocComment);
+                SetFolded(i => FoldRegions[i].Folded && FoldRegions[i].Kind != FoldKind.DocComment);
                 return true;
         }
         return false;
@@ -143,13 +119,12 @@ public sealed partial class CodeEditor
     /// <summary>Sets which regions are folded, carets in newly folded lines moved to their fold's first line.</summary>
     private void SetFolded(Func<int, bool> folded)
     {
-        FoldRegion[] next = [.. folds.Select((r, i) => r with { Folded = folded(i) })];
-        if (next.SequenceEqual(folds))
+        FoldRegion[] next = [.. FoldRegions.Select((r, i) => r with { Folded = folded(i) })];
+        if (next.SequenceEqual(FoldRegions))
         {
             return;
         }
-        HideFoldPreview();
-        folds = next;
+        decorations.SetFoldRegions(next);
         TextSnapshot text = document.Snapshot;
         if (selections.Items.Any(s => IsHidden(text.GetLineFromOffset(s.Caret))))
         {
@@ -160,7 +135,7 @@ public sealed partial class CodeEditor
         ScrollWithinRows();
         InvalidateVisual();
         FollowInputMethod();
-        FoldsToggled?.Invoke(this, folds);
+        FoldsToggled?.Invoke(this, FoldRegions);
     }
 
     /// <summary>The end of the line a folded offset's fold starts on, where a caret folded away goes.</summary>
@@ -198,7 +173,7 @@ public sealed partial class CodeEditor
                 };
         }
         SetFoldRegions(carried);
-        FoldsToggled?.Invoke(this, folds);
+        FoldsToggled?.Invoke(this, FoldRegions);
     }
 
     /// <summary>How far a region moved, when it lies in text an edit moved whole.</summary>
@@ -228,10 +203,9 @@ public sealed partial class CodeEditor
         {
             return;
         }
-        HideFoldPreview();
-        folds = [.. folds.Select(r => r.Folded && FoldLines.EndLineOf(text, r) is int end and >= 0 && lines.Any(l => l > FoldLines.StartLineOf(text, r) && l <= end) ? r with { Folded = false } : r)];
+        decorations.SetFoldRegions([.. FoldRegions.Select(r => r.Folded && FoldLines.EndLineOf(text, r) is int end and >= 0 && lines.Any(l => l > FoldLines.StartLineOf(text, r) && l <= end) ? r with { Folded = false } : r)]);
         UpdateScrollBars();
-        FoldsToggled?.Invoke(this, folds);
+        FoldsToggled?.Invoke(this, FoldRegions);
     }
 
     /// <summary>A click in the folding column or on a placeholder: the fold there toggled. Whether it was one.</summary>
@@ -239,7 +213,7 @@ public sealed partial class CodeEditor
     {
         if (PlaceholderAt(at) is { } chip && OutermostAt(chip.Line, r => r.Folded) is int shown)
         {
-            SetFolded(i => i != shown && folds[i].Folded);
+            SetFolded(i => i != shown && FoldRegions[i].Folded);
             return true;
         }
         if (!ShowLineNumbers || at.X < GutterWidth - FoldWidth || at.X >= GutterWidth)
@@ -250,7 +224,7 @@ public sealed partial class CodeEditor
         (int clicked, int row) = Rows.LineOfRow(RowAtY(at.Y));
         if (row == 0 && OutermostAt(clicked, _ => true) is int index)
         {
-            SetFolded(i => i == index ? !folds[i].Folded : folds[i].Folded);
+            SetFolded(i => i == index ? !FoldRegions[i].Folded : FoldRegions[i].Folded);
             return true;
         }
         return false;
@@ -261,10 +235,10 @@ public sealed partial class CodeEditor
     {
         TextSnapshot text = document.Snapshot;
         int? best = null;
-        for (int i = FirstStartingOn(text, line); i < folds.Count && FoldLines.StartLineOf(text, folds[i]) == line; i++)
+        for (int i = FirstStartingOn(text, line); i < FoldRegions.Count && FoldLines.StartLineOf(text, FoldRegions[i]) == line; i++)
         {
-            FoldRegion region = folds[i];
-            if (FoldLines.EndLineOf(text, region) > line && which(region) && (best is null || region.End > folds[best.Value].End))
+            FoldRegion region = FoldRegions[i];
+            if (FoldLines.EndLineOf(text, region) > line && which(region) && (best is null || region.End > FoldRegions[best.Value].End))
             {
                 best = i;
             }
@@ -283,10 +257,12 @@ public sealed partial class CodeEditor
             return;
         }
         TextSnapshot text = document.Snapshot;
-        HashSet<int> drawn = [];
-        for (int i = FirstStartingOn(text, first); i < folds.Count && FoldLines.StartLineOf(text, folds[i]) <= last; i++)
+        HashSet<int> drawn = chevronLines;
+        drawn.Clear();
+        IPen pen = palette.PenOf(palette.LineNumber, 1.2);
+        for (int i = FirstStartingOn(text, first); i < FoldRegions.Count && FoldLines.StartLineOf(text, FoldRegions[i]) <= last; i++)
         {
-            FoldRegion region = folds[i];
+            FoldRegion region = FoldRegions[i];
             int line = FoldLines.StartLineOf(text, region);
             if (FoldLines.EndLineOf(text, region) <= line || !(region.Folded || overGutter) || IsHidden(line) || !drawn.Add(line))
             {
@@ -294,9 +270,11 @@ public sealed partial class CodeEditor
             }
             bool folded = map.Placeholders.ContainsKey(line);
             double middle = TopOf(line) - scroll.Y + metrics.LineHeight / 2;
-            StreamGeometry chevron = new();
-            using (StreamGeometryContext path = chevron.Open())
+            ShapeKey key = new(folded ? ShapeKind.Folded : ShapeKind.Open, x, middle, 0, 0);
+            if (!shapes.TryGet(key, out StreamGeometry? chevron))
             {
+                chevron = shapes.Add(key, new StreamGeometry());
+                using StreamGeometryContext path = chevron.Open();
                 if (folded)
                 {
                     path.BeginFigure(new Point(x + 2, middle - 4), false);
@@ -310,15 +288,21 @@ public sealed partial class CodeEditor
                     path.LineTo(new Point(x + 8, middle - 2));
                 }
             }
-            context.DrawGeometry(null, new Pen(palette.LineNumber, 1.2), chevron);
+            context.DrawGeometry(null, pen, chevron);
         }
     }
+
+    /// <summary>The lines a frame drew a chevron on, found again for each.</summary>
+    private readonly HashSet<int> chevronLines = [];
 
     /// <summary>A folded region's placeholder after its first line's code, on a chip a click unfolds.</summary>
     private double DrawPlaceholder(DrawingContext context, int line, FoldRegion region, double x, double y)
     {
         x += metrics.CharWidth;
-        TextLine label = labels.Get((region.Placeholder, -8), () => Format(region.Placeholder, [], RunWith(palette.InlineValue)));
+        if (!labels.TryGet((region.Placeholder, -8), out TextLine? label))
+        {
+            label = labels.Add((region.Placeholder, -8), Format(region.Placeholder, [], RunWith(palette.Annotation)));
+        }
         Rect chip = new(x, y + 2, label.WidthIncludingTrailingWhitespace + metrics.CharWidth, metrics.LineHeight - 4);
         context.FillRectangle(palette.InlayHintBack, chip, 3);
         label.Draw(context, new Point(x + metrics.CharWidth / 2, y + (metrics.LineHeight - label.Height) / 2));
@@ -451,11 +435,11 @@ public sealed partial class CodeEditor
     {
         int offset = line < text.LineCount ? text.GetLineStart(line) : text.Length + 1;
         int low = 0;
-        int high = folds.Count;
+        int high = FoldRegions.Count;
         while (low < high)
         {
             int middle = (low + high) / 2;
-            if (folds[middle].Start < offset)
+            if (FoldRegions[middle].Start < offset)
             {
                 low = middle + 1;
             }

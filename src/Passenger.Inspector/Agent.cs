@@ -52,9 +52,10 @@ public static class Agent
         {
             return Application.Current is not null;
         }
-        catch (Exception)
+        catch (Exception error)
         {
             // Read off the UI thread while the app is setting up: asked again in a moment.
+            InspectorTrace.Step($"the app's Application could not be read yet: {error}");
             return false;
         }
     }

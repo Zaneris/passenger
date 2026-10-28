@@ -1,8 +1,10 @@
 using Avalonia;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Input.TextInput;
 using Avalonia.Media;
 using Avalonia.Media.TextFormatting;
+using Avalonia.VisualTree;
 using Passenger.Text;
 
 namespace Passenger.Editor;
@@ -20,7 +22,6 @@ public sealed partial class CodeEditor
     private Point hoverAt;
     private bool hovering;
     private Drag drag;
-    private int arrowAt = -1;
     private EditorInputMethod? inputMethod;
     private string preedit = string.Empty;
 
@@ -54,7 +55,7 @@ public sealed partial class CodeEditor
         {
             return;
         }
-        string typed = new(e.Text.Where(c => c >= ' ' && c != '\u007f').ToArray());
+        string typed = Printable(e.Text);
         if (typed.Length == 0)
         {
             return;
@@ -66,16 +67,48 @@ public sealed partial class CodeEditor
         Typed?.Invoke(this, typed);
     }
 
+    private static readonly System.Buffers.SearchValues<char> ControlCharacters = System.Buffers.SearchValues.Create(
+        "\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u0007\u0008\u0009\u000A\u000B\u000C\u000D\u000E\u000F\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001A\u001B\u001C\u001D\u001E\u001F\u007F");
+
+    /// <summary>What was typed less its control characters: the text itself when it holds none, as a key's does.</summary>
+    private static string Printable(string text)
+    {
+        if (text.AsSpan().IndexOfAny(ControlCharacters) < 0)
+        {
+            return text;
+        }
+        Span<char> kept = text.Length <= 256 ? stackalloc char[text.Length] : new char[text.Length];
+        int count = 0;
+        foreach (char c in text)
+        {
+            if (!ControlCharacters.Contains(c))
+            {
+                kept[count++] = c;
+            }
+        }
+        return new string(kept[..count]);
+    }
+
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
+        // A press on a scrollbar that its thumb and track leave (beside the thumb) is the bar's, not the text's under it.
+        if ((e.Source as Visual)?.FindAncestorOfType<ScrollBar>(includeSelf: true) is { } bar && (bar == vertical || bar == horizontal))
+        {
+            e.Handled = true;
+            return;
+        }
         PointerPoint point = e.GetCurrentPoint(this);
         if (point.Properties.IsRightButtonPressed && point.Position.X < GutterWidth && GutterClicked is not null && ShowLineNumbers)
         {
             int line = LineAtY(point.Position.Y);
             if (line < document.Snapshot.LineCount)
             {
-                GutterClicked(this, new GutterClick(line, e.KeyModifiers, point.Position, Context: true));
+                GutterClick click = new(line, e.KeyModifiers, point.Position, Context: true);
+                if (!PressColumns(click, e.Pointer))
+                {
+                    GutterClicked(this, click);
+                }
                 e.Handled = true;
             }
             return;
@@ -93,38 +126,45 @@ public sealed partial class CodeEditor
             e.Handled = true;
             return;
         }
-        if (!point.Properties.IsLeftButtonPressed)
+        MouseShortcut gesture = MouseShortcut.Of(e);
+        string? action = point.Position.X >= GutterWidth ? ActionOf(gesture) : null;
+        bool left = gesture.Button == MouseButton.Left;
+        // The middle button does only what the keymap gives its gesture, and on the text alone.
+        if (!left && (gesture.Button != MouseButton.Middle || action is null))
         {
             CancelChoices();
             return;
         }
         Focus();
-        if (point.Position.X >= GutterWidth && ClickChoice(OffsetAt(point.Position)))
+        if (left && point.Position.X >= GutterWidth && ClickChoice(OffsetAt(point.Position)))
         {
             e.Handled = true;
             return;
         }
         CancelChoices();
-        if (ClickFold(point.Position))
+        if (left && ClickFold(point.Position))
         {
             e.Handled = true;
             return;
         }
-        PressLink(point.Position, e.KeyModifiers, e.ClickCount);
+        if (left)
+        {
+            PressLink(point.Position, e.KeyModifiers, e.ClickCount);
+        }
         document.BreakUndoGroup();
         TextSnapshot text = document.Snapshot;
         int offset = OffsetAt(point.Position, out bool beforeWrap);
         KeyModifiers mods = e.KeyModifiers;
-        KeyModifiers command = Keystroke.Command;
 
         int pressed = LineAtY(point.Position.Y);
-        if (ExecutionPointDragged is not null && IsInMarkColumn(point.Position) && LineMarks.Any(m => m.Kind == LineMarkKind.ExecutionPoint && m.Line == pressed))
+        if (point.Position.X < GutterWidth && ShowLineNumbers && pressed < text.LineCount)
         {
-            drag = new Drag(DragMode.ExecutionPoint, pressed, point.Position);
-            arrowAt = pressed;
-            e.Pointer.Capture(this);
-            e.Handled = true;
-            return;
+            drag = default;
+            if (PressColumns(new GutterClick(pressed, mods, point.Position, Context: false), e.Pointer))
+            {
+                e.Handled = true;
+                return;
+            }
         }
         if (point.Position.X < GutterWidth && GutterClicked is not null && ShowLineNumbers)
         {
@@ -143,7 +183,7 @@ public sealed partial class CodeEditor
             drag = new Drag(DragMode.Lines, text.GetLineStart(line), point.Position);
             ExtendLines(text, offset, mods.HasFlag(KeyModifiers.Shift));
         }
-        else if (mods.HasFlag(KeyModifiers.Alt) && mods.HasFlag(KeyModifiers.Shift))
+        else if (action == EditorActions.AddOrRemoveCaret)
         {
             SelectionSet without = selections.RemoveAt(offset);
             if (without == selections && selections.Count >= SelectionSet.MaxCount)
@@ -158,15 +198,27 @@ public sealed partial class CodeEditor
             e.Handled = true;
             return;
         }
-        else if (mods.HasFlag(KeyModifiers.Alt))
+        else if (action == EditorActions.ColumnSelectionDrag)
         {
             drag = new Drag(DragMode.Column, offset, point.Position);
             SetSelections(SelectionSet.Single(offset), reveal: false);
         }
-        else if (mods.HasFlag(command) && e.ClickCount == 1)
+        else if (action == EditorActions.ColumnSelectionFromCaret)
+        {
+            // From the middle of the caret's row, so the row is the caret's wherever the press is.
+            Point from = PointOf(selections.Primary.Caret) + new Vector(0, metrics.LineHeight / 2);
+            drag = new Drag(DragMode.Column, offset, from);
+            SetSelections(ColumnSelection(text, from, point.Position), reveal: false);
+        }
+        else if (action == EditorActions.AddColumnSelectionDrag)
+        {
+            drag = new Drag(DragMode.Column, offset, point.Position, Kept: selections);
+            SetSelections(WithColumn(selections, text, point.Position, point.Position), reveal: false);
+        }
+        else if (action is not null)
         {
             SetSelections(SelectionSet.Single(offset), reveal: false);
-            NavigateRequested?.Invoke(this, offset);
+            ActionRequested?.Invoke(this, action);
             drag = default;
             e.Handled = true;
             return;
@@ -201,7 +253,7 @@ public sealed partial class CodeEditor
         base.OnPointerMoved(e);
         Point position = e.GetPosition(this);
         RestartHover(position);
-        Cursor = position.X < GutterWidth || drag.Mode == DragMode.ExecutionPoint ? Cursor.Default : new Cursor(StandardCursorType.Ibeam);
+        Cursor = position.X < GutterWidth || drag.Mode == DragMode.Gutter ? Cursor.Default : IbeamCursor;
         FollowLinks(position, drag.Mode != DragMode.None && e.GetCurrentPoint(this).Properties.IsLeftButtonPressed);
         bool inGutter = position.X < GutterWidth;
         if (inGutter != overGutter)
@@ -209,7 +261,8 @@ public sealed partial class CodeEditor
             overGutter = inGutter;
             InvalidateVisual();
         }
-        if (drag.Mode == DragMode.None || !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        PointerPointProperties held = e.GetCurrentPoint(this).Properties;
+        if (drag.Mode == DragMode.None || !(held.IsLeftButtonPressed || held.IsMiddleButtonPressed))
         {
             return;
         }
@@ -237,10 +290,10 @@ public sealed partial class CodeEditor
                 ExtendLines(text, offset, extend: true);
                 break;
             case DragMode.Column:
-                SetSelections(ColumnSelection(text, drag.Start, position), reveal: true);
+                SetSelections(drag.Kept is { } kept ? WithColumn(kept, text, drag.Start, position) : ColumnSelection(text, drag.Start, position), reveal: true);
                 break;
-            case DragMode.ExecutionPoint:
-                arrowAt = Math.Clamp(LineAtY(position.Y), 0, text.LineCount - 1);
+            case DragMode.Gutter:
+                dragging?.Drag(Math.Clamp(LineAtY(position.Y), 0, text.LineCount - 1));
                 InvalidateVisual();
                 break;
         }
@@ -249,20 +302,9 @@ public sealed partial class CodeEditor
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
-        if (drag.Mode == DragMode.ExecutionPoint)
+        if (drag.Mode == DragMode.Gutter && dragging is { } column)
         {
-            int from = drag.Anchor;
-            int to = arrowAt;
-            arrowAt = -1;
-            InvalidateVisual();
-            if (to != from)
-            {
-                ExecutionPointDragged?.Invoke(this, to);
-            }
-            else
-            {
-                GutterClicked?.Invoke(this, new GutterClick(from, e.KeyModifiers, e.GetPosition(this), Context: false));
-            }
+            DropColumn(column, e.KeyModifiers, e.GetPosition(this));
         }
         ReleaseLink(e.GetPosition(this));
         drag = default;
@@ -407,9 +449,10 @@ public sealed partial class CodeEditor
         SetSelections(SelectionSet.Single(selection), reveal: true);
     }
 
-    /// <summary>Option-drag (Alt-drag): a selection on every row between the press and the pointer,
-    /// spanning the same columns on each; on the most rows toward the pointer an editor keeps carets on.</summary>
-    private SelectionSet ColumnSelection(TextSnapshot text, Point start, Point end)
+    /// <summary>A column selection, as a column drag makes it: a selection on every row between the press and the pointer,
+    /// spanning the same columns on each; on the most rows toward the pointer an editor keeps carets on, or
+    /// <paramref name="most"/>.</summary>
+    private SelectionSet ColumnSelection(TextSnapshot text, Point start, Point end, int most = SelectionSet.MaxCount)
     {
         int count = Math.Max(1, RowCount);
         int firstRow = Math.Clamp(start.Y + scroll.Y < 0 ? 0 : RowAtY(start.Y), 0, count - 1);
@@ -418,9 +461,9 @@ public sealed partial class CodeEditor
         double toX = end.X - TextLeft + scroll.X;
         List<Selection> rows = [];
         int step = lastRow >= firstRow ? 1 : -1;
-        if (Math.Abs(lastRow - firstRow) >= SelectionSet.MaxCount)
+        if (Math.Abs(lastRow - firstRow) >= most)
         {
-            firstRow = lastRow - (step * (SelectionSet.MaxCount - 1));
+            firstRow = lastRow - (step * (most - 1));
             CaretLimitReached?.Invoke(this, EventArgs.Empty);
         }
         for (int row = firstRow; ; row += step)
@@ -433,6 +476,17 @@ public sealed partial class CodeEditor
         }
         return SelectionSet.Create(rows, rows.Count - 1);
     }
+
+    /// <summary>A column selection's rows beside the carets kept from before the drag, its last row the primary, as many as
+    /// an editor keeps carets on.</summary>
+    private SelectionSet WithColumn(SelectionSet kept, TextSnapshot text, Point start, Point end)
+    {
+        SelectionSet column = ColumnSelection(text, start, end, Math.Max(1, SelectionSet.MaxCount - kept.Count));
+        return SelectionSet.Create([.. kept.Items, .. column.Items], kept.Count + column.PrimaryIndex);
+    }
+
+    /// <summary>What the keymap gives a press's gesture: the editor's own keymap, else its window's.</summary>
+    private string? ActionOf(MouseShortcut gesture) => ownKeys is { } own ? own.Keymap.ActionFor(gesture) : GetValue(GesturesProperty)?.Invoke(gesture);
 
     /// <summary>Drops a composition under way, the platform's input method's too, so it is never finished into a
     /// document it was not begun in.</summary>
@@ -479,13 +533,13 @@ public sealed partial class CodeEditor
         Lines,
         Column,
 
-        /// <summary>The execution arrow, carried to the line it will go on from.</summary>
-        ExecutionPoint,
+        /// <summary>What a column of the gutter took to drag, carried from line to line.</summary>
+        Gutter,
     }
 
     /// <summary>A press being dragged: how it selects, where it began (as an offset, and as a point
-    /// for column selection), and for words the end of the first word.</summary>
-    private readonly record struct Drag(DragMode Mode, int Anchor, Point Start, int AnchorEnd = 0);
+    /// for column selection), for words the end of the first word, and the carets a column is added beside.</summary>
+    private readonly record struct Drag(DragMode Mode, int Anchor, Point Start, int AnchorEnd = 0, SelectionSet? Kept = null);
 
     /// <summary>What the platform's input method (accents, CJK composition) reads and writes: the
     /// caret's line as the surrounding text, the selection in it, which it may set to type over (press and hold's accents

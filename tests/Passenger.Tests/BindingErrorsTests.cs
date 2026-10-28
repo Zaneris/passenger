@@ -177,7 +177,7 @@ public sealed class BindingErrorsTests : IClassFixture<RestoredFolders>, IDispos
         Assert.True(window.DockHost.IsShown(ToolWindowIds.Problems) && window.BottomPanel.Problems.Shown == ProblemsTab.Bindings,
             $"A click on \"{window.Status}\" in the status bar showed {(window.DockHost.IsShown(ToolWindowIds.Problems) ? $"Problems' {window.BottomPanel.Problems.Shown} tab" : "nothing")}, not Problems' Bindings");
         window.ShowToolWindow(ToolWindowIds.Debug);
-        Assert.Contains(window.EditorArea.CodeEditor.LineAnnotations, a => a.Kind == LineAnnotationKind.Exception && a.Text.StartsWith("Binding error at MainWindow.axaml", StringComparison.Ordinal));
+        Assert.Contains(window.EditorArea.CodeEditor.LineAnnotations, a => a.Look == LineAnnotationLook.ErrorOnGround && a.Text.StartsWith("Binding error at MainWindow.axaml", StringComparison.Ordinal));
         Assert.Equal("\"Nmae\"", Member(window, "$bindingError", "Path"));
         Assert.Equal("\"Nmae\"", Member(window, "$bindingError", "FailedPart"));
         Assert.Contains("MainViewModel", Member(window, "$bindingError", "DataContext"), StringComparison.Ordinal);
@@ -293,9 +293,8 @@ public sealed class BindingErrorsTests : IClassFixture<RestoredFolders>, IDispos
     {
         MainWindow window = Opened();
         // While the app floods, its failures keep the window busy: the waits run its loop rather than wait for it to be quiet.
-        Task<string?> launch = window.DebugAsync("flood");
-        Ui.PumpUntil(() => launch.IsCompleted, "the app to build and start under the debugger", TimeSpan.FromMinutes(4));
-        Assert.True(launch.Result is null, $"The window refused to debug the app: {launch.Result}{Ui.BuildErrors(window)}");
+        string? refused = Ui.AwaitPumped(window.DebugAsync("flood"), "the app to build and start under the debugger", TimeSpan.FromMinutes(4));
+        Assert.True(refused is null, $"The window refused to debug the app: {refused}{Ui.BuildErrors(window)}");
         LiveTreeView tree = window.LiveTree;
         Ui.PumpUntil(() => window.LiveApp?.State is LiveAppState.Connected or LiveAppState.Refused or LiveAppState.Ended, "the app's inspector to say hello", TimeSpan.FromMinutes(2));
         Assert.True(window.LiveApp?.State == LiveAppState.Connected, $"The app's inspector did not connect: {window.LiveApp?.State} {window.LiveApp?.Problem}");

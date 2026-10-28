@@ -90,7 +90,7 @@ public sealed partial class CodeEditor
         hovered.Hold(document, dragging ? null : LinkAt(position));
         if (HoveredLink is not null)
         {
-            Cursor = new Cursor(StandardCursorType.Hand);
+            Cursor = HandCursor;
         }
     }
 
@@ -168,14 +168,14 @@ public sealed partial class CodeEditor
             return;
         }
         double under = Math.Round(y + ((metrics.LineHeight - view.Height) / 2) + view.Baseline) + 1.5;
-        Pen? pen = null;
+        IPen? pen = null;
         foreach (TextLink link in links(text, view.Span.Line))
         {
             int from = Math.Max(link.Range.Start, view.Span.Start) - view.Span.Start;
             int to = Math.Min(link.Range.End, view.Span.End) - view.Span.Start;
             if (to > from)
             {
-                pen ??= new Pen(palette.LinkUnderline, 1);
+                pen ??= palette.PenOf(palette.LinkUnderline, 1);
                 context.DrawLine(pen, new Point(left + XWith(view, gaps, from), under), new Point(left + XWith(view, gaps, to, afterHints: false), under));
             }
         }

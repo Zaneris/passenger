@@ -1,3 +1,4 @@
+using System.IO.Enumeration;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 
@@ -45,11 +46,19 @@ public static partial class PathNames
 
     /// <summary>Whether a path lies inside a folder, at any depth: the folder's name and then a separator begin it, so
     /// /x/app2/Foo.cs is not under /x/app. The folder itself is not under itself.</summary>
-    public static bool IsUnder(string path, string folder)
+    public static bool IsUnder(string path, string folder) => IsUnder(path.AsSpan(), folder);
+
+    /// <inheritdoc cref="IsUnder(string, string)"/>
+    public static bool IsUnder(ReadOnlySpan<char> path, string folder)
     {
         ReadOnlySpan<char> top = folder.AsSpan().TrimEnd(Separators);
-        return path.Length > top.Length + 1 && Separators.Contains(path[top.Length]) && path.AsSpan().StartsWith(top, Comparison);
+        return path.Length > top.Length + 1 && Separators.Contains(path[top.Length]) && path.StartsWith(top, Comparison);
     }
+
+    /// <summary>The names from a folder down to a path under it ("src/App/App.cs"), as the path spells them; empty for the
+    /// folder itself or a path outside it.</summary>
+    public static ReadOnlySpan<char> Below(ReadOnlySpan<char> path, string folder) =>
+        IsUnder(path, folder) ? path[(folder.AsSpan().TrimEnd(Separators).Length + 1)..] : [];
 
     /// <summary>Whether a path is a file or folder, or under it.</summary>
     public static bool Within(string path, string place) => Same(path, place) || IsUnder(path, place);
@@ -78,58 +87,99 @@ public static partial class PathNames
     /// (the first folder or one above it), which would have the walk go round the tree for good. A folder that cannot
     /// be read is passed over.</summary>
     public static IEnumerable<string> FoldersUnder(string start, Func<string, bool> enters) =>
-        Walk(start, (sub, _) => enters(sub), inside: false, files: false).Select(f => f.At);
+        Walk(start, (sub, _) => enters(sub), inside: false, named: null).Select(f => f.At);
 
     /// <summary>The files in a folder and in the folders under it that <paramref name="enters"/> lets the walk into (asked of
     /// each by its canonical path), folder by folder, nearest first, all by their canonical paths: each folder once
     /// whatever links reach it and none a link leads to outside the first, so no walk loops or leaves it; the system's own
     /// files (<see cref="IsSystemFile"/>) passed over.</summary>
-    public static IEnumerable<(string Folder, IReadOnlyList<string> Files)> FilesUnder(string start, Func<string, bool> enters) =>
-        Walk(start, (_, canonical) => enters(canonical), inside: true, files: true).Select(f => (f.Canonical, f.Files));
+    public static IEnumerable<(string Folder, IReadOnlyList<string> Files)> FilesUnder(string start, Func<string, bool> enters, FileNamed? named = null) =>
+        Walk(start, (_, canonical) => enters(canonical), inside: true, named ?? Joined).Select(f => (f.Canonical, f.Files));
+
+    /// <summary>How a walk names a file of a folder it reached (by the folder's canonical path): its name after a part the
+    /// folder's files share, so they sort as their names do; null passes the file over.</summary>
+    public delegate string? FileNamed(string folder, ReadOnlySpan<char> name);
+
+    private static string Joined(string folder, ReadOnlySpan<char> name) => Path.Join(folder, name);
+
+    /// <summary>Whether a path's extension is one of these, in any letter case, read where it lies.</summary>
+    public static bool HasExtension(string path, ReadOnlySpan<string> extensions)
+    {
+        ReadOnlySpan<char> extension = Path.GetExtension(path.AsSpan());
+        foreach (string one in extensions)
+        {
+            if (extension.Equals(one, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
 
     /// <summary>Whether a file is the system's own record of its folder (Finder's .DS_Store, Explorer's Thumbs.db), which no
     /// walk or listing of a folder shows and no project means to hold.</summary>
-    public static bool IsSystemFile(string name) => SystemFiles.Contains(name);
+    public static bool IsSystemFile(string name) => IsSystemFile(name.AsSpan());
 
-    private static readonly HashSet<string> SystemFiles = new(StringComparer.OrdinalIgnoreCase) { ".DS_Store", "Thumbs.db" };
+    /// <inheritdoc cref="IsSystemFile(string)"/>
+    public static bool IsSystemFile(ReadOnlySpan<char> name)
+    {
+        foreach (string system in SystemFiles)
+        {
+            if (name.Equals(system, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static readonly string[] SystemFiles = [".DS_Store", "Thumbs.db"];
+
+    /// <summary>How a walk lists a folder: every entry, hidden and system ones too.</summary>
+    private static readonly EnumerationOptions Listing = new() { AttributesToSkip = 0, IgnoreInaccessible = false, RecurseSubdirectories = false };
 
     /// <summary>The walk under <see cref="FoldersUnder"/> and <see cref="FilesUnder"/>, breadth first, each folder's folders
-    /// and files in the order of their names; <paramref name="inside"/> enters no folder outside the first.</summary>
-    private static IEnumerable<(string At, string Canonical, IReadOnlyList<string> Files)> Walk(string start, Func<string, string, bool> enters, bool inside, bool files)
+    /// and files in the order of their names, read from the system's entries without an object for each; files only where
+    /// <paramref name="named"/> names them, and <paramref name="inside"/> enters no folder outside the first.</summary>
+    private static IEnumerable<(string At, string Canonical, IReadOnlyList<string> Files)> Walk(string start, Func<string, string, bool> enters, bool inside, FileNamed? named)
     {
         string root = Canonical(start);
         HashSet<string> walked = new(Comparer) { root };
         Queue<(string At, string Canonical)> waiting = new([(start, root)]);
+        List<(string At, bool Link)> subs = [];
         while (waiting.TryDequeue(out (string At, string Canonical) folder))
         {
-            List<FileSystemInfo> entries;
+            List<string> found = [];
+            subs.Clear();
             try
             {
-                DirectoryInfo at = new(folder.At);
-                entries = files ? [.. at.EnumerateFileSystemInfos()] : [.. at.EnumerateDirectories()];
+                foreach ((string? path, bool isFolder, bool link) in Entries(folder.At, folder.Canonical, named))
+                {
+                    if (isFolder)
+                    {
+                        subs.Add((path!, link));
+                    }
+                    else if (path is not null)
+                    {
+                        found.Add(path);
+                    }
+                }
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {
                 // Gone or shut: it holds nothing to walk.
-                entries = [];
+                found.Clear();
+                subs.Clear();
             }
-            entries.Sort((a, b) => string.CompareOrdinal(a.Name, b.Name));
-            List<string> found = [];
-            foreach (FileSystemInfo entry in entries)
+            found.Sort(StringComparer.Ordinal);
+            subs.Sort(static (a, b) => string.CompareOrdinal(a.At, b.At));
+            foreach ((string at, bool link) in subs)
             {
-                if (entry is not DirectoryInfo sub)
-                {
-                    if (!IsSystemFile(entry.Name))
-                    {
-                        found.Add(Path.Join(folder.Canonical, entry.Name));
-                    }
-                    continue;
-                }
                 // Only a link (or another reparse point) is asked where it leads: any other folder is its name in its parent.
-                string canonical = sub.Attributes.HasFlag(FileAttributes.ReparsePoint) ? Canonical(sub.FullName) : Path.Join(folder.Canonical, sub.Name);
-                if ((inside ? IsUnder(canonical, root) : !Within(root, canonical)) && Enters(sub.FullName, canonical) && walked.Add(canonical))
+                string canonical = link ? Canonical(at) : string.Equals(folder.At, folder.Canonical, StringComparison.Ordinal) ? at : Path.Join(folder.Canonical, Path.GetFileName(at.AsSpan()));
+                if ((inside ? IsUnder(canonical, root) : !Within(root, canonical)) && Enters(at, canonical) && walked.Add(canonical))
                 {
-                    waiting.Enqueue((sub.FullName, canonical));
+                    waiting.Enqueue((at, canonical));
                 }
             }
             yield return (folder.At, folder.Canonical, found);
@@ -148,7 +198,18 @@ public static partial class PathNames
         }
     }
 
-    private static ReadOnlySpan<char> Separators => OperatingSystem.IsWindows() ? @"\/" : "/";
+    /// <summary>A folder's entries: each folder by its path and whether it is a link, each file as <paramref name="named"/>
+    /// names it (null for one passed over, the system's own files among them); no files without it.</summary>
+    private static FileSystemEnumerable<(string? Path, bool Folder, bool Link)> Entries(string at, string canonical, FileNamed? named) =>
+        new(at, (ref FileSystemEntry entry) => entry.IsDirectory
+            ? (entry.ToFullPath(), true, (entry.Attributes & FileAttributes.ReparsePoint) != 0)
+            : (named is null || IsSystemFile(entry.FileName) ? null : named(canonical, entry.FileName), false, false), Listing)
+        {
+            ShouldIncludePredicate = named is null ? static (ref FileSystemEntry entry) => entry.IsDirectory : null,
+        };
+
+    /// <summary>The characters that part a path's names: both slashes on Windows.</summary>
+    public static ReadOnlySpan<char> Separators => OperatingSystem.IsWindows() ? @"\/" : "/";
 
     /// <summary>An existing file or folder's name as the system resolves it; null for one that is not there.</summary>
     private static string? Resolved(string path)

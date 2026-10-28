@@ -12,9 +12,9 @@ namespace Passenger.App.Vcs;
 /// <summary>The side-by-side diff: the last commit's text on the left (read-only), the file as it is on the right (the
 /// open file's own text, so an edit there is an edit to it), each change tinted on both sides and joined by a band
 /// between them, the words that changed inside its lines marked stronger, the two kept level as either scrolls. A band's
-/// arrow puts that change back; F7 and Shift+F7 (F8 and Shift+F8 too off the Mac) go to the next and previous one; Settings
-/// (its keys <see cref="AppActions.DiffSettings"/>'s) chooses how differences are highlighted, by words at first. Made by
-/// <see cref="DiffPanes"/>.</summary>
+/// arrow puts that change back; F7 and Shift+F7 (F8 and Shift+F8 too off the Mac) go to the next and previous one; F4 asks
+/// for its file at the caret's line (Jump to Source); Settings (its keys <see cref="AppActions.DiffSettings"/>'s) chooses
+/// how differences are highlighted, by words at first. Made by <see cref="DiffPanes"/>.</summary>
 public sealed class DiffView : DockPanel, IOwnKeys
 {
     /// <summary>How long editing pauses before the differences are worked out again.</summary>
@@ -62,7 +62,9 @@ public sealed class DiffView : DockPanel, IOwnKeys
         count = new TextBlock();
         settings = ToolButtons.Of(AppActions.DiffSettings, IconKeys.Settings, "Settings", _ => ShowSettings());
         settings.ContextMenu = SettingsMenu();
-        Children.Add(DiffLines.Bar(name, Step, count, [], settings));
+        Button jump = ToolButtons.Of(IconKeys.Edit, "Jump to Source (F4)", () => SourceRequested?.Invoke(this, EventArgs.Empty));
+        jump.Name = AppActions.DiffJumpToSource;
+        Children.Add(DiffLines.Bar(name, Step, count, [jump], settings));
         Children.Add(sides);
 
         Left.ScrollChanged += (_, _) => Follow(Left, Right, toLeft: false);
@@ -86,6 +88,11 @@ public sealed class DiffView : DockPanel, IOwnKeys
                 Step(step);
                 e.Handled = true;
             }
+            else if (IsJump(e))
+            {
+                SourceRequested?.Invoke(this, EventArgs.Empty);
+                e.Handled = true;
+            }
         }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         Show(diff);
         IdeErrors.Observe(CompareAsync());
@@ -98,8 +105,22 @@ public sealed class DiffView : DockPanel, IOwnKeys
     public CodeEditor Right { get; }
 
     /// <summary>Next and Previous Difference's keys, ahead of what the IDE binds them to elsewhere (Smart Step Into's
-    /// Shift+F7).</summary>
-    public bool TakesKey(KeyEventArgs e) => DiffLines.Step(e) != 0;
+    /// Shift+F7), and Jump to Source's.</summary>
+    public bool TakesKey(KeyEventArgs e) => DiffLines.Step(e) != 0 || IsJump(e);
+
+    private static bool IsJump(KeyEventArgs e) => e.Key == Key.F4 && e.KeyModifiers == KeyModifiers.None;
+
+    /// <summary>The file the right side is a version of, which Jump to Source opens.</summary>
+    public string? Source { get; init; }
+
+    /// <summary>Jump to Source asked for, by F4 or the toolbar's button.</summary>
+    public event EventHandler? SourceRequested;
+
+    /// <summary>Where Jump to Source lands in the file: the right side's caret, or the left's carried across the
+    /// differences above it while the left has the keys.</summary>
+    public TextPosition SourcePlace => Left.IsKeyboardFocusWithin
+        ? new TextPosition(Math.Min((int)MapLine(Left.CaretPosition.Line, toLeft: false), Math.Max(0, Right.Document.Snapshot.LineCount - 1)), 0)
+        : Right.CaretPosition;
 
     public bool IsEditable { get; }
 

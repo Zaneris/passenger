@@ -54,27 +54,17 @@ public sealed partial class CodeEditor
         }
     }
 
-    /// <summary>The hints as they stand in the text: carried through each edit ahead of everyone who hears of it
-    /// (<see cref="OnChangedFirst"/>), as the host carries its own, whose list then costs the editor only the runs it reached.</summary>
-    private HintList hintList = HintList.Empty;
+    /// <summary>The hints the wraps were last made with: those the decorations held at the last change or set, so a set
+    /// wraps again only the lines whose hints are drawn otherwise.</summary>
+    private HintList wrappedHints = HintList.Empty;
 
-    /// <summary>The hints, in offset order, a type's before a parameter's name at the same offset (it ends the text before).</summary>
-    public IReadOnlyList<InlayHint> InlayHints => hintList;
+    /// <summary>The hints, in offset order, a type's before a parameter's name at the same offset (it ends the text before):
+    /// the decorations', carried through each edit ahead of everyone who hears of it (<see cref="OnChangedFirst"/>).</summary>
+    public IReadOnlyList<InlayHint> InlayHints => decorations.InlayHints;
 
     /// <summary>The host's hints for the text as it stands, taken as they are when in order (a <see cref="HintList"/> always
     /// is); with soft wrap on, only the lines whose hints are drawn otherwise are wrapped again.</summary>
-    public void SetInlayHints(IReadOnlyList<InlayHint> hints)
-    {
-        HintList before = hintList;
-        hintList = HintList.Of(hints);
-        if (ReferenceEquals(before, hintList))
-        {
-            return;
-        }
-        FollowHints(before, hintList);
-        InvalidateVisual();
-        FollowInputMethod();
-    }
+    public void SetInlayHints(IReadOnlyList<InlayHint> hints) => decorations.SetInlayHints(hints);
 
     /// <summary>A hint where it stands on its line: the column it goes at, the room it takes, its label, whether it ends
     /// the text before it (a type) rather than starting the text after it, and whether it is the input method's
@@ -122,7 +112,7 @@ public sealed partial class CodeEditor
     /// <summary>The first hint at or after an offset, shown or not.</summary>
     private int FirstHintFrom(int offset)
     {
-        HintList hints = hintList;
+        HintList hints = decorations.InlayHints;
         int low = 0;
         int high = hints.Count;
         while (low < high)
@@ -144,7 +134,7 @@ public sealed partial class CodeEditor
     /// and how they are drawn stand (<see cref="rowGaps"/>), so a frame that draws them again makes none of them again.</summary>
     private Gap[] HintsOn(RowSpan span)
     {
-        HintList hints = hintList;
+        HintList hints = decorations.InlayHints;
         int low = FirstHintFrom(span.Start);
         int end = span.IsLast ? span.End : span.End - 1;
         if (low >= hints.Count || hints[low].Offset > end)
@@ -167,7 +157,6 @@ public sealed partial class CodeEditor
             count += Shows(hints[i]) ? 1 : 0;
         }
         Gap[] gaps = count == 0 ? [] : new Gap[count];
-        double pad = metrics.CharWidth / 2;
         int at = 0;
         for (int i = low; i < hints.Count && hints[i].Offset <= end; i++)
         {
@@ -176,12 +165,29 @@ public sealed partial class CodeEditor
             {
                 continue;
             }
-            TextLine label = labels.TryGet((hint.Label, -6), out TextLine? known) ? known : labels.Add((hint.Label, -6), Format(hint.Label, [], hintRun ??= HintRun()));
-            double width = label.WidthIncludingTrailingWhitespace + pad + (hint.PadLeft ? pad : 0) + (hint.PadRight ? pad : 0);
+            double width = HintWidth(hint, out TextLine label);
             gaps[at++] = new Gap(hint.Offset - span.Start, width, label, hint.PadLeft, Trails(hint), hint);
         }
         rowGaps[(span.Start, span.End)] = gaps;
         return gaps;
+    }
+
+    /// <summary>The room a hint takes on its row, its label padded, and the label.</summary>
+    private double HintWidth(InlayHint hint, out TextLine label)
+    {
+        label = labels.TryGet((hint.Label, -6), out TextLine? known) ? known : labels.Add((hint.Label, -6), Format(hint.Label, [], hintRun ??= HintRun()));
+        double pad = metrics.CharWidth / 2;
+        return label.WidthIncludingTrailingWhitespace + pad + (hint.PadLeft ? pad : 0) + (hint.PadRight ? pad : 0);
+    }
+
+    /// <summary>The first hint shown from an index of the hints on.</summary>
+    private int ShownHintFrom(HintList hints, int index)
+    {
+        while (index < hints.Count && !Shows(hints[index]))
+        {
+            index++;
+        }
+        return index;
     }
 
     /// <summary>Whether a row's hints kept have their labels still, kept on for this frame: a frame lets go of the labels it
@@ -206,7 +212,7 @@ public sealed partial class CodeEditor
     /// <summary>Whether shown hints stand at an offset, and whether one of them ends the text before it (a type).</summary>
     private (bool Any, bool Trailing) HintsAt(int offset)
     {
-        HintList hints = hintList;
+        HintList hints = decorations.InlayHints;
         bool any = false;
         bool trailing = false;
         for (int i = FirstHintFrom(offset); i < hints.Count && hints[i].Offset == offset; i++)
@@ -235,8 +241,8 @@ public sealed partial class CodeEditor
     private void StepHorizontally(TextSnapshot text, bool forward, bool extend)
     {
         document.BreakUndoGroup();
-        HashSet<int> lean = [];
-        HashSet<int> wrapLean = [];
+        HashSet<int>? lean = null;
+        HashSet<int>? wrapLean = null;
         SelectionSet moved = selections.With(s =>
         {
             if (!extend && !s.IsEmpty)
@@ -263,7 +269,7 @@ public sealed partial class CodeEditor
             {
                 to = caret;
                 toAfter = after;
-                wrapLean.Add(caret);
+                (wrapLean ??= []).Add(caret);
             }
             else
             {
@@ -272,12 +278,12 @@ public sealed partial class CodeEditor
                 toAfter = to == caret ? after : !forward;
                 if (forward && to != caret && IsWrapAt(text, to))
                 {
-                    wrapLean.Add(to);
+                    (wrapLean ??= []).Add(to);
                 }
             }
             if (HintsAt(to) is { Any: true, Trailing: bool trailing } && toAfter == trailing)
             {
-                lean.Add(to);
+                (lean ??= []).Add(to);
             }
             return s.MoveTo(to, extend);
         });
@@ -294,7 +300,7 @@ public sealed partial class CodeEditor
             return false;
         }
         int line = text.GetLineFromOffset(offset);
-        return map[line] is { } wrap && Array.BinarySearch(wrap.Starts, offset - text.GetLineStart(line)) >= 0;
+        return map[line] is { } wrap && wrap.Starts.BinarySearch(offset - text.GetLineStart(line)) >= 0;
     }
 
     /// <summary>Whether a point on the text is past the middle of the hints at the offset it falls at, where a click

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -7,12 +8,18 @@ using Passenger.Roslyn.Extension;
 namespace Passenger.App.Endpoints;
 
 /// <summary>The folder's web routes, as the C# server's extension last read them (<see cref="Handlers.WebRoutes"/>), by
-/// project: a project's are read again only once a file of it changed (<see cref="Stale"/>), and every project's at first.</summary>
+/// project: a project's are read again only once a file of it changed (<see cref="Stale"/>), and every project's at first.
+/// A read's answer clears only what no change made due again while it read (<see cref="Changes"/>).</summary>
 public sealed class RouteCatalog
 {
     private readonly Dictionary<string, IReadOnlyList<WebRoute>> byProject = new(PathNames.Comparer);
-    private readonly HashSet<string> stale = new(PathNames.Comparer);
+
+    /// <summary>The projects whose routes are due again, each with the change that last made it so.</summary>
+    private readonly Dictionary<string, int> stale = new(PathNames.Comparer);
     private bool unread = true;
+
+    /// <summary>The change that last made every project due.</summary>
+    private int forgotten;
 
     /// <summary>Every route read, by project then as their code declares them.</summary>
     public IReadOnlyList<WebRoute> All { get; private set; } = [];
@@ -23,24 +30,32 @@ public sealed class RouteCatalog
     /// <summary>Whether a read is due: none yet, or a project's file changed since.</summary>
     public bool Wants => unread || stale.Count > 0;
 
+    /// <summary>How many changes have made routes due, each <see cref="Stale"/> and <see cref="Forget"/>.</summary>
+    public int Changes { get; private set; }
+
     /// <summary>The web projects read, with their routes or none.</summary>
     public IEnumerable<string> Projects => byProject.Keys;
 
-    /// <summary>What the next read asks for: every project (none named) until the first, then the stale ones.</summary>
-    public IReadOnlyList<string> ToRead() => unread ? [] : [.. stale];
+    /// <summary>What the next read asks for: every project (none named) until the first, then the stale ones; as of the
+    /// changes made so far.</summary>
+    public RoutesAsked ToRead() => new(unread ? [] : [.. stale.Keys], Changes);
 
-    /// <summary>A read's answer for what it asked: the projects asked for that it no longer finds are gone.</summary>
-    public void Took(RoutesFound found, IReadOnlyList<string> asked)
+    /// <summary>A read's answer for what it asked: the projects asked for that it no longer finds are gone, and what a change
+    /// made due after it was asked stays due.</summary>
+    public void Took(RoutesFound found, RoutesAsked asked)
     {
-        if (asked.Count == 0)
+        if (asked.Projects.Count == 0)
         {
             byProject.Clear();
-            unread = false;
+            unread = forgotten > asked.Changes;
         }
-        foreach (string project in asked)
+        foreach (string project in asked.Projects.Count == 0 ? [.. stale.Keys] : asked.Projects)
         {
             byProject.Remove(project);
-            stale.Remove(project);
+            if (stale.TryGetValue(project, out int since) && since <= asked.Changes)
+            {
+                stale.Remove(project);
+            }
         }
         foreach (string project in found.Projects)
         {
@@ -51,23 +66,22 @@ public sealed class RouteCatalog
 
     /// <summary>A project's file changed: its routes are read again at the next read (none for a project that is no web
     /// project, which the read finds out cheaply).</summary>
-    public void Stale(string project)
-    {
-        if (!unread)
-        {
-            stale.Add(project);
-        }
-    }
+    public void Stale(string project) => stale[project] = ++Changes;
 
     /// <summary>Every project is read again, as at first (a new language server, a project come or gone).</summary>
     public void Forget()
     {
         unread = true;
+        forgotten = ++Changes;
         stale.Clear();
     }
 
     public bool IsWeb(string project) => byProject.ContainsKey(project);
 }
+
+/// <summary>What a read of the routes asks for (every project when it names none), and how many changes it reads as of
+/// (<see cref="RouteCatalog.Changes"/>).</summary>
+public sealed record RoutesAsked(IReadOnlyList<string> Projects, int Changes);
 
 /// <summary>How a route and an .http file's requests meet: a request calls a route when its method is one the route takes
 /// and its URL's path, after its host, fits the route's template (a parameter's segment taking any value, a
@@ -84,11 +98,28 @@ public static partial class RouteRequests
     /// <summary>Whether a request sent from the gutter can reach the route: a gRPC method needs a gRPC client.</summary>
     public static bool Sendable(WebRoute route) => route.Kind != RouteKinds.Grpc;
 
+    /// <summary>Whether a route takes a method: any when it names none, else one of its own, in any case.</summary>
+    public static bool Takes(WebRoute route, string method)
+    {
+        IReadOnlyList<string> methods = route.Methods;
+        if (methods.Count == 0)
+        {
+            return true;
+        }
+        for (int i = 0; i < methods.Count; i++)
+        {
+            if (string.Equals(methods[i], method, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /// <summary>Whether a request calls a route.</summary>
     public static bool Calls(EndpointRequest request, WebRoute route)
     {
-        if (route.Kind == RouteKinds.Grpc || (route.Methods.Count > 0 && !route.Methods.Contains(request.Method, StringComparer.OrdinalIgnoreCase)
-            && !(route.Kind == RouteKinds.SignalR && request.Method == "POST")))
+        if (route.Kind == RouteKinds.Grpc || (!Takes(route, request.Method) && !(route.Kind == RouteKinds.SignalR && request.Method == "POST")))
         {
             return false;
         }
@@ -129,44 +160,10 @@ public static partial class RouteRequests
 
     /// <summary>Whether a path fits a template, segment by segment as ASP.NET Core's matcher reads it: a literal by its
     /// letters in any case, a parameter by any value, an optional one by none, a catch-all by the rest.</summary>
-    public static bool Fits(string template, string path)
-    {
-        string[] want = Segments(template);
-        string[] got = Segments(path);
-        for (int i = 0; i < want.Length; i++)
-        {
-            string segment = want[i];
-            if (segment.StartsWith("{*", StringComparison.Ordinal) || segment.StartsWith("{**", StringComparison.Ordinal))
-            {
-                return true;
-            }
-            if (i >= got.Length)
-            {
-                return want[i..].All(w => w.StartsWith('{') && (w.EndsWith("?}", StringComparison.Ordinal) || w.Contains('=', StringComparison.Ordinal)));
-            }
-            if (!SegmentFits(segment, got[i]))
-            {
-                return false;
-            }
-        }
-        return got.Length == want.Length;
-    }
-
-    private static string[] Segments(string path) => path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-
-    private static bool SegmentFits(string segment, string got)
-    {
-        if (!segment.Contains('{', StringComparison.Ordinal))
-        {
-            return string.Equals(segment, got, StringComparison.OrdinalIgnoreCase);
-        }
-        // A segment of parameters and literals ("{name}.{ext}"): each parameter takes some characters, a {{variable}} any.
-        string pattern = "^" + string.Concat(Parameter().Split(segment).Select((part, i) => i % 2 == 1 ? ".+" : Regex.Escape(part))) + "$";
-        return Regex.IsMatch(got, pattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-    }
+    public static bool Fits(string template, string path) => RouteTemplate.Of(template).Fits(path);
 
     [GeneratedRegex(@"(\{[^{}]+\})")]
-    private static partial Regex Parameter();
+    internal static partial Regex Parameter();
 
     /// <summary>The variable a project's requests name its address by, as <c>dotnet new webapi</c>'s .http file does.</summary>
     public static string HostVariable(string project) => Path.GetFileNameWithoutExtension(project) + "_HostAddress";
@@ -284,4 +281,120 @@ public static partial class RouteRequests
     /// <summary>Where a route is written, as the editor counts the place (the server's place converted by the caller).</summary>
     public static string Where(WebRoute route, string? root) =>
         string.Create(CultureInfo.InvariantCulture, $"{PathNames.Shown(route.Path, root)}:{route.At.Line + 1}");
+}
+
+/// <summary>A route's template split into its segments once and kept, by its text, for every path walked against it as
+/// spans: a literal compared by its letters in any case, a segment of parameters (and literals) by a regex made once, a
+/// catch-all taking the rest, and the segments a path may leave out (an optional parameter, one with a default).</summary>
+public sealed class RouteTemplate
+{
+    /// <summary>The templates split so far: those of a folder's routes, a few hundred, made again only past this many.</summary>
+    private const int Kept = 4096;
+
+    private static readonly ConcurrentDictionary<string, RouteTemplate> split = new(StringComparer.Ordinal);
+
+    private readonly Segment[] segments;
+
+    private RouteTemplate(string template)
+    {
+        List<Segment> parts = [];
+        foreach (Range range in template.AsSpan().Split('/'))
+        {
+            string text = template[range];
+            if (text.Length > 0)
+            {
+                parts.Add(new Segment(text));
+            }
+        }
+        segments = [.. parts];
+        Braces = template.AsSpan().Count('{');
+    }
+
+    /// <summary>How many '{' it holds: of two templates a path fits, the one with fewer is the literal one, and wins.</summary>
+    public int Braces { get; }
+
+    /// <summary>A template's split, made once for its text.</summary>
+    public static RouteTemplate Of(string template)
+    {
+        if (split.TryGetValue(template, out RouteTemplate? known))
+        {
+            return known;
+        }
+        if (split.Count >= Kept)
+        {
+            split.Clear();
+        }
+        return split.GetOrAdd(template, static text => new RouteTemplate(text));
+    }
+
+    /// <summary>Whether a path fits it (<see cref="RouteRequests.Fits"/>), its segments walked in place.</summary>
+    public bool Fits(ReadOnlySpan<char> path)
+    {
+        int at = 0;
+        foreach (Range range in path.Split('/'))
+        {
+            ReadOnlySpan<char> got = path[range];
+            if (got.IsEmpty)
+            {
+                continue;
+            }
+            if (at >= segments.Length)
+            {
+                return false;
+            }
+            Segment want = segments[at];
+            if (want.CatchAll)
+            {
+                return true;
+            }
+            if (!want.Fits(got))
+            {
+                return false;
+            }
+            at++;
+        }
+        if (at < segments.Length && segments[at].CatchAll)
+        {
+            return true;
+        }
+        for (; at < segments.Length; at++)
+        {
+            if (!segments[at].MayBeLeftOut)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// <summary>A segment of a template: a literal, or parameters with literals between (<c>{name}.{ext}</c>), each
+    /// parameter taking some characters, a request's <c>{{variable}}</c> any.</summary>
+    private sealed class Segment
+    {
+        private readonly string text;
+        private readonly Regex? pattern;
+
+        public Segment(string text)
+        {
+            this.text = text;
+            CatchAll = text.StartsWith("{*", StringComparison.Ordinal);
+            MayBeLeftOut = text.StartsWith('{') && (text.EndsWith("?}", StringComparison.Ordinal) || text.Contains('=', StringComparison.Ordinal));
+            if (text.Contains('{', StringComparison.Ordinal))
+            {
+                StringBuilder written = new("^");
+                string[] parts = RouteRequests.Parameter().Split(text);
+                for (int i = 0; i < parts.Length; i++)
+                {
+                    written.Append(i % 2 == 1 ? ".+" : Regex.Escape(parts[i]));
+                }
+                pattern = new Regex(written.Append('$').ToString(), RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            }
+        }
+
+        public bool CatchAll { get; }
+
+        public bool MayBeLeftOut { get; }
+
+        public bool Fits(ReadOnlySpan<char> got) => pattern?.IsMatch(got) ?? got.Equals(text, StringComparison.OrdinalIgnoreCase);
+    }
 }

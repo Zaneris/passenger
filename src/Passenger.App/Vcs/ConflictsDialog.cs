@@ -1,7 +1,6 @@
 using System.Collections.ObjectModel;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -68,8 +67,8 @@ public sealed class ConflictsDialog : Window
             Classes = { "tree" },
             ItemsSource = rows,
             SelectionMode = SelectionMode.Multiple,
-            ItemTemplate = new FuncDataTemplate<ConflictRow>((row, _) => row is null ? new Panel() : Row(row), supportsRecycling: false),
         };
+        ReusedRows.Use(list, Row);
         list.SelectionChanged += (_, _) => UpdateButtons();
         list.DoubleTapped += (_, _) => IdeErrors.Observe(MergeAsync());
         list.AddHandler(KeyDownEvent, (_, e) =>
@@ -202,30 +201,32 @@ public sealed class ConflictsDialog : Window
         }
     }
 
-    private static Control Row(ConflictRow row)
+    /// <summary>A row for whichever file in conflict the list hands its container: its icon, its name in the conflicted
+    /// colour, its folder, and what yours and theirs did to it.</summary>
+    private static Control Row()
     {
-        PathIcon icon = new()
-        {
-            Data = Explorer.FileIcons.ForFile(row.Conflict.Path),
-            Foreground = Explorer.FileIcons.BrushForFile(row.Conflict.Path),
-            Width = 14,
-            Height = 14,
-            Margin = new Thickness(0, 0, 6, 0),
-        };
-        TextBlock name = new() { Text = row.Conflict.Name, VerticalAlignment = VerticalAlignment.Center };
+        RowIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(0, 0, 6, 0) };
+        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
         name.Bind(TextBlock.ForegroundProperty, name.GetResourceObservable(TokenKeys.Vcs_File_Conflicted));
-        TextBlock folder = new() { Text = row.Folder, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0), FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock folder = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0), FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
         folder.Classes.Add("muted");
         StackPanel file = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(6, 0, 0, 0), Children = { icon, name, folder } };
-        Grid line = new() { ColumnDefinitions = new ColumnDefinitions($"*,{StatusWidth},{StatusWidth}"), Height = ListRow.Height };
-        line.Children.Add(file);
-        line.Children.Add(Status(row.Yours, 1));
-        line.Children.Add(Status(row.Theirs, 2));
-        return line;
-
-        static TextBlock Status(string text, int column)
+        TextBlock yours = Status(1);
+        TextBlock theirs = Status(2);
+        Grid line = new() { ColumnDefinitions = new ColumnDefinitions($"*,{StatusWidth},{StatusWidth}"), Height = ListRow.Height, Children = { file, yours, theirs } };
+        return line.Showing<ConflictRow>(row =>
         {
-            TextBlock status = new() { Text = text, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
+            icon.Data = Explorer.FileIcons.ForFile(row.Conflict.Path);
+            icon.Foreground = Explorer.FileIcons.BrushForFile(row.Conflict.Path);
+            name.Text = row.Conflict.Name;
+            folder.Text = row.Folder;
+            yours.Text = row.Yours;
+            theirs.Text = row.Theirs;
+        });
+
+        static TextBlock Status(int column)
+        {
+            TextBlock status = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
             Grid.SetColumn(status, column);
             return status;
         }

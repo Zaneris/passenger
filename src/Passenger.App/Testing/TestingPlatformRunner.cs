@@ -3,9 +3,11 @@ using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using Passenger.Core;
-using StreamJsonRpc;
+using Passenger.Lsp;
 
 namespace Passenger.App.Testing;
 
@@ -56,18 +58,18 @@ public sealed class TestingPlatformRunner : ITestRunner
     /// program fails to start or answer is said in the log and has no tests; canceled, every one is ended.</summary>
     public async Task<IReadOnlyList<TestItem>> DiscoverAsync(IReadOnlyList<TestAssembly> assemblies, Action<string>? log = null, CancellationToken cancel = default)
     {
-        (TestAssembly Assembly, IReadOnlyList<Node> Nodes)[] asked = await Task.WhenAll(assemblies.Select(a => DiscoverIn(a, log, cancel)));
+        (TestAssembly Assembly, IReadOnlyList<PlatformNode> Nodes)[] asked = await Task.WhenAll(assemblies.Select(a => DiscoverIn(a, log, cancel)));
         cancel.ThrowIfCancellationRequested();
         return await BackgroundWork.Run(() => Tell(asked));
     }
 
-    private static async Task<(TestAssembly, IReadOnlyList<Node>)> DiscoverIn(TestAssembly assembly, Action<string>? log, CancellationToken cancel)
+    private static async Task<(TestAssembly, IReadOnlyList<PlatformNode>)> DiscoverIn(TestAssembly assembly, Action<string>? log, CancellationToken cancel)
     {
-        List<Node> nodes = [];
+        List<PlatformNode> nodes = [];
         try
         {
             await using Host host = await Host.StartAsync(assembly, null, null, log, cancel);
-            bool asked = await host.RequestAsync("testing/discoverTests", [], changed =>
+            bool asked = await host.RequestAsync("testing/discoverTests", null, changed =>
             {
                 lock (nodes)
                 {
@@ -101,7 +103,7 @@ public sealed class TestingPlatformRunner : ITestRunner
     {
         RunSummary summary = new(TimeSpan.Zero, false, false, null);
         foreach (IGrouping<string, (TestItem Test, Found Node)> assembly in tests
-            .Select(t => (Test: t, Node: found.Of(t.Key)!))
+            .Select(t => (Test: t, Node: found.Of(t)!))
             .Where(t => t.Node is not null)
             .GroupBy(t => t.Node.Assembly.Path, StringComparer.Ordinal))
         {
@@ -125,23 +127,30 @@ public sealed class TestingPlatformRunner : ITestRunner
     private static async Task<RunSummary> RunIn(TestAssembly assembly, IReadOnlyList<(TestItem Test, Found Node)> tests, Action<IReadOnlyList<TestOutcome>> outcomes,
         Action<string>? log, ITestDebugLauncher? debugger, IReadOnlyDictionary<string, string>? environment, CancellationToken cancel)
     {
-        Dictionary<string, TestItem> byUid = new(StringComparer.Ordinal);
-        JsonArray chosen = [];
+        Dictionary<string, TestItem> byUid = new(tests.Count, StringComparer.Ordinal);
+        List<Found> chosen = new(tests.Count);
         foreach ((TestItem test, Found node) in tests)
         {
             if (byUid.TryAdd(node.Uid, test))
             {
-                chosen.Add(new JsonObject { ["uid"] = node.Uid, ["display-name"] = node.DisplayName });
+                chosen.Add(node);
             }
         }
-        List<TestOutcome> all = [];
+        List<TestOutcome> all = new(chosen.Count);
         long began = Stopwatch.GetTimestamp();
         try
         {
             await using Host host = await Host.StartAsync(assembly, environment, debugger, log, cancel);
-            bool ran = await host.RequestAsync("testing/runTests", new JsonObject { ["tests"] = chosen }, changed =>
+            bool ran = await host.RequestAsync("testing/runTests", chosen, changed =>
             {
-                List<TestOutcome> batch = [.. changed.Select(n => byUid.TryGetValue(n.Uid, out TestItem? test) ? Outcome(test, n) : null).OfType<TestOutcome>()];
+                List<TestOutcome> batch = new(changed.Count);
+                foreach (PlatformNode node in changed)
+                {
+                    if (byUid.TryGetValue(node.Uid, out TestItem? test) && Outcome(test, node) is { } outcome)
+                    {
+                        batch.Add(outcome);
+                    }
+                }
                 if (batch.Count == 0)
                 {
                     return;
@@ -180,7 +189,7 @@ public sealed class TestingPlatformRunner : ITestRunner
     /// <summary>The test nodes found told as the IDE's tests, each with the project and framework of its assembly, and kept
     /// to be run by the key of the test told. The platform names a source file as the compiler was given it: the tree's are
     /// canonical.</summary>
-    private IReadOnlyList<TestItem> Tell((TestAssembly Assembly, IReadOnlyList<Node> Nodes)[] asked) =>
+    private IReadOnlyList<TestItem> Tell((TestAssembly Assembly, IReadOnlyList<PlatformNode> Nodes)[] asked) =>
         found.Tell(asked.Select(a => a.Assembly), asked.SelectMany(a => a.Nodes.Where(n => n.IsTest).Select(n => (a.Assembly, n))), node => node.Uid,
             (assembly, node) => new TestItem(assembly.Project.Path, node.FullyQualifiedName, node.DisplayName)
             {
@@ -194,7 +203,7 @@ public sealed class TestingPlatformRunner : ITestRunner
 
     /// <summary>A node's result as the IDE's outcome; null for an update that is not one (discovered, in progress, an attempt
     /// a retry replaces, or one the stop canceled, which stays not run).</summary>
-    private static TestOutcome? Outcome(TestItem test, Node node)
+    private static TestOutcome? Outcome(TestItem test, PlatformNode node)
     {
         TestState? state = node.State switch
         {
@@ -222,91 +231,35 @@ public sealed class TestingPlatformRunner : ITestRunner
     /// <summary>A test the platform discovered: the node it is run by, in the assembly it is in.</summary>
     private sealed record Found(TestAssembly Assembly, string Uid, string DisplayName);
 
-    /// <summary>A test node as the platform tells one, read from its properties ("location.type", "execution-state", ...).</summary>
-    private sealed record Node(string Uid, string DisplayName, bool IsTest, string? State, string FullyQualifiedName)
+    /// <summary>A discovery's or a run's parameters: the tests a run runs, by the nodes they were found as, then the
+    /// request's id; written straight from the tests found.</summary>
+    [JsonConverter(typeof(Writer))]
+    private sealed record TestRequest(IReadOnlyList<Found>? Tests, Guid Run)
     {
-        public string? File { get; init; }
-
-        /// <summary>The line the framework says it is on, from one (xUnit and MSTest say their attribute's).</summary>
-        public int Line { get; init; }
-
-        public IReadOnlyList<KeyValuePair<string, string>> Traits { get; init; } = [];
-        public string? Message { get; init; }
-        public string? StackTrace { get; init; }
-        public string? Output { get; init; }
-        public TimeSpan Duration { get; init; }
-
-        /// <summary>The files its result carries, each a node's FileArtifactProperty, which the platform writes as
-        /// "attachments.N.uri" (the file's path) and "attachments.N.display-name" (the test's name for it).</summary>
-        public IReadOnlyList<TestAttachment> Attachments { get; init; } = [];
-
-        /// <summary>An attempt that a retry of the same test follows, so not its result.</summary>
-        public bool Superseded { get; init; }
-
-        public static Node? Read(JsonNode? change)
+        private sealed class Writer : JsonConverter<TestRequest>
         {
-            if ((change as JsonObject)?["node"] is not JsonObject node || Text(node, "uid") is not { Length: > 0 } uid)
-            {
-                return null;
-            }
-            string display = Text(node, "display-name") ?? uid;
-            // The platform's type is the namespace's and the type's names together; before 1.9 the namespace came apart.
-            string? type = Text(node, "location.type");
-            if (Text(node, "location.namespace") is { Length: > 0 } space && type is not null && !type.StartsWith(space + ".", StringComparison.Ordinal))
-            {
-                type = $"{space}.{type}";
-            }
-            string? method = Text(node, "location.method") is { } named ? TestItem.MethodOf(named) : null;
-            string name = type is { Length: > 0 } && method is { Length: > 0 } ? $"{type}.{method}"
-                : Text(node, "vstest.TestCase.FullyQualifiedName") ?? display;
-            string? output = string.Join('\n', new[] { Text(node, "standardOutput"), Text(node, "standardError") }.Where(t => !string.IsNullOrEmpty(t)));
-            return new Node(uid, display, Text(node, "node-type") != "group", Text(node, "execution-state"), name)
-            {
-                File = Text(node, "location.file"),
-                Line = Number(node, "location.line-start") is { } line and > 0 ? (int)line : 0,
-                Traits = TraitsOf(node["traits"]),
-                Message = Text(node, "error.message"),
-                StackTrace = Text(node, "error.stacktrace"),
-                Output = output.Length > 0 ? output : null,
-                Duration = Number(node, "time.duration-ms") is { } ms and >= 0 ? TimeSpan.FromMilliseconds(ms) : TimeSpan.Zero,
-                Superseded = node["retry.is-superseded"] is JsonValue superseded && superseded.TryGetValue(out bool later) && later,
-                Attachments = AttachmentsOf(node),
-            };
-        }
+            public override TestRequest Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+                throw new NotSupportedException("A test request is only written");
 
-        private static List<TestAttachment> AttachmentsOf(JsonObject node)
-        {
-            List<TestAttachment> read = [];
-            for (int at = 0; Text(node, $"attachments.{at}.uri") is { Length: > 0 } file; at++)
+            public override void Write(Utf8JsonWriter writer, TestRequest value, JsonSerializerOptions options)
             {
-                read.Add(TestAttachment.Of(Text(node, $"attachments.{at}.display-name") ?? string.Empty, file));
-            }
-            return read;
-        }
-
-        /// <summary>A node's traits: each an object of one name and its value (a category alone has none, and is a
-        /// Category), or of Key and Value.</summary>
-        private static List<KeyValuePair<string, string>> TraitsOf(JsonNode? traits)
-        {
-            List<KeyValuePair<string, string>> read = [];
-            foreach (JsonObject trait in (traits as JsonArray ?? []).OfType<JsonObject>())
-            {
-                if (trait.Count == 2 && (Text(trait, "Key") ?? Text(trait, "key")) is { } key)
+                writer.WriteStartObject();
+                if (value.Tests is { } tests)
                 {
-                    read.Add(new(key, Text(trait, "Value") ?? Text(trait, "value") ?? string.Empty));
-                    continue;
+                    writer.WriteStartArray("tests"u8);
+                    foreach (Found test in tests)
+                    {
+                        writer.WriteStartObject();
+                        writer.WriteString("uid"u8, test.Uid);
+                        writer.WriteString("display-name"u8, test.DisplayName);
+                        writer.WriteEndObject();
+                    }
+                    writer.WriteEndArray();
                 }
-                foreach ((string name, JsonNode? value) in trait)
-                {
-                    read.Add(value is JsonValue text && text.TryGetValue(out string? said) && said.Length > 0 ? new(name, said) : new("Category", name));
-                }
+                writer.WriteString("runId"u8, value.Run.ToString());
+                writer.WriteEndObject();
             }
-            return read;
         }
-
-        private static string? Text(JsonObject node, string name) => node[name] is JsonValue value && value.TryGetValue(out string? text) ? text : null;
-
-        private static double? Number(JsonObject node, string name) => node[name] is JsonValue value && value.TryGetValue(out double number) ? number : null;
     }
 
     /// <summary>A test host that could not be started or asked, in words for the person.</summary>
@@ -323,18 +276,18 @@ public sealed class TestingPlatformRunner : ITestRunner
         private readonly Process? process;
         private readonly int processId;
         private readonly TcpClient client;
-        private readonly JsonRpc rpc;
+        private readonly JsonRpcPeer peer;
         private readonly Notifications target;
         private readonly StringBuilder said;
         private bool stopped;
 
-        private Host(string name, Process? process, int processId, TcpClient client, JsonRpc rpc, Notifications target, StringBuilder said)
+        private Host(string name, Process? process, int processId, TcpClient client, JsonRpcPeer peer, Notifications target, StringBuilder said)
         {
             this.name = name;
             this.process = process;
             this.processId = processId;
             this.client = client;
-            this.rpc = rpc;
+            this.peer = peer;
             this.target = target;
             this.said = said;
         }
@@ -396,15 +349,14 @@ public sealed class TestingPlatformRunner : ITestRunner
             }
             Notifications target = new(name, log);
             // What the test host sends is handled in the order it came, so its run's end is told after its last result.
-            JsonRpc rpc = new(new HeaderDelimitedMessageHandler(client.GetStream(), client.GetStream(), new SystemTextJsonFormatter()))
-            {
-                SynchronizationContext = new Microsoft.VisualStudio.Threading.NonConcurrentSynchronizationContext(sticky: false),
-            };
-            rpc.AddLocalRpcTarget(target, new JsonRpcTargetOptions { UseSingleObjectParameterDeserialization = true });
-            rpc.StartListening();
-            // A test host ending on Windows resets its connection, faulting its end, which the requests waiting on it hear of.
-            _ = rpc.Completion.ContinueWith(t => _ = t.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
-            Host host = new(name, process, id, client, rpc, target, said);
+            JsonRpcPeer peer = new(client.GetStream());
+            peer.On<TestUpdate>("testing/testUpdates/tests", target.Tests);
+            peer.On<PlatformLog>("client/log", target.Log);
+            peer.On<PlatformLog>("client/showMessage", target.Log);
+            peer.On<TracedJson>("telemetry/update", update => Trace("<--", "telemetry/update", update?.Json));
+            peer.On<TracedJson>("testing/testUpdates/attachments", update => Trace("<--", "testing/testUpdates/attachments", update?.Json));
+            peer.Start();
+            Host host = new(name, process, id, client, peer, target, said);
             try
             {
                 JsonObject initialize = new()
@@ -415,8 +367,7 @@ public sealed class TestingPlatformRunner : ITestRunner
                     ["capabilities"] = new JsonObject { ["testing"] = new JsonObject { ["debuggerProvider"] = false, ["isStateful"] = true } },
                 };
                 Trace("-->", "initialize", initialize);
-                JsonNode? answer = await host.Ask("initialize", initialize, cancel);
-                Trace("<--", "initialize", answer);
+                await host.AskAsync("initialize", initialize, tellCanceled: false, cancel);
             }
             catch
             {
@@ -430,30 +381,22 @@ public sealed class TestingPlatformRunner : ITestRunner
         /// <summary>Asks for a discovery or a run, each test node it changes handed over a notification at a time, until the
         /// platform says the request has told all it will. False when it was canceled first: the test host is then given a
         /// moment to stop, what it reports meanwhile still handed over.</summary>
-        public async Task<bool> RequestAsync(string method, JsonObject parameters, Action<IReadOnlyList<Node>> changed, CancellationToken cancel)
+        public async Task<bool> RequestAsync(string method, IReadOnlyList<Found>? tests, Action<IReadOnlyList<PlatformNode>> changed, CancellationToken cancel)
         {
             Guid run = Guid.NewGuid();
-            parameters["runId"] = run.ToString();
+            TestRequest parameters = new(tests, run);
             Task told = target.Expect(run, changed);
             Trace("-->", method, parameters);
-            // Canceled, the request's own token has StreamJsonRpc send the platform $/cancelRequest.
-            using CancellationTokenSource asking = new();
-            using CancellationTokenRegistration stop = cancel.Register(asking.Cancel);
-            Task<JsonNode?> answer = rpc.InvokeWithParameterObjectAsync<JsonNode?>(method, parameters, asking.Token);
-            _ = answer.ContinueWith(t => _ = t.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             try
             {
-                Trace("<--", method, await answer.WaitAsync(cancel));
+                // Canceled, the platform is sent $/cancelRequest.
+                await AskAsync(method, parameters, tellCanceled: true, cancel);
             }
             catch (OperationCanceledException) when (cancel.IsCancellationRequested)
             {
                 stopped = true;
                 await Task.WhenAny(told, Task.Delay(StopLimit, CancellationToken.None));
                 return false;
-            }
-            catch (Exception error) when (error is RemoteRpcException or ObjectDisposedException or IOException)
-            {
-                throw await FailedAsync(error is RemoteInvocationException refused ? $"{name} refused {method}: {refused.Message}" : $"{name} ended before it answered {method}");
             }
             // The answer can overtake the notifications before it: the run's end is told after the last of them.
             if (await Task.WhenAny(told, Task.Delay(ExitLimit, CancellationToken.None)) != told)
@@ -469,9 +412,9 @@ public sealed class TestingPlatformRunner : ITestRunner
         {
             try
             {
-                await rpc.NotifyWithParameterObjectAsync("exit", new JsonObject());
+                await peer.TellAsync("exit", new JsonObject());
             }
-            catch (Exception error) when (error is RemoteRpcException or ObjectDisposedException or IOException or InvalidOperationException)
+            catch (JsonRpcFailed)
             {
                 // Gone already.
             }
@@ -481,22 +424,22 @@ public sealed class TestingPlatformRunner : ITestRunner
                 IdeLog.Write(IdeLog.Tests, $"{name} (process {processId}) had not exited {limit.TotalSeconds:0} s after it was told to, and is ended");
                 End(process, processId);
             }
-            rpc.Dispose();
+            peer.Dispose();
             client.Dispose();
             process?.Dispose();
         }
 
-        private async Task<JsonNode?> Ask(string method, JsonObject parameters, CancellationToken cancel)
+        /// <summary>Asks the test host, its answer in the trace; one it refuses or never gives fails the host.</summary>
+        private async Task AskAsync(string method, object parameters, bool tellCanceled, CancellationToken cancel)
         {
-            Task<JsonNode?> answer = rpc.InvokeWithParameterObjectAsync<JsonNode?>(method, parameters, CancellationToken.None);
-            _ = answer.ContinueWith(t => _ = t.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             try
             {
-                return await answer.WaitAsync(cancel);
+                TracedJson? answer = await peer.AskAsync<TracedJson>(method, parameters, tellCanceled, cancel);
+                Trace("<--", method, answer?.Json);
             }
-            catch (Exception error) when (error is RemoteRpcException or ObjectDisposedException or IOException)
+            catch (JsonRpcFailed failed)
             {
-                throw await FailedAsync(error is RemoteInvocationException refused ? $"{name} refused {method}: {refused.Message}" : $"{name} ended before it answered {method}");
+                throw await FailedAsync(failed.Refused ? $"{name} refused {method}: {failed.Message}" : $"{name} ended before it answered {method}");
             }
         }
 
@@ -625,22 +568,30 @@ public sealed class TestingPlatformRunner : ITestRunner
     }
 
     /// <summary>A message to or from a test host, in vstest.log while protocols are traced.</summary>
-    private static void Trace(string direction, string method, JsonNode? message)
+    private static void Trace(string direction, string method, string? json)
     {
         if (IdeLog.Traces)
         {
-            IdeLog.Write(IdeLog.Tests, $"{direction} {method} {message?.ToJsonString() ?? "null"}");
+            IdeLog.Write(IdeLog.Tests, $"{direction} {method} {json ?? "null"}");
+        }
+    }
+
+    private static void Trace(string direction, string method, object parameters)
+    {
+        if (IdeLog.Traces)
+        {
+            Trace(direction, method, JsonSerializer.Serialize(parameters));
         }
     }
 
     /// <summary>What a test host sends: the test nodes a request changes, which the request under way takes, until the
-    /// platform's update with no changes ends them; what its output device says; its telemetry, which is its own.</summary>
+    /// platform's update with no changes ends them; what its output device says.</summary>
     private sealed class Notifications(string name, Action<string>? log)
     {
         private readonly Lock gate = new();
-        private (Guid Run, Action<IReadOnlyList<Node>> Changed, TaskCompletionSource Ended)? expected;
+        private (Guid Run, Action<IReadOnlyList<PlatformNode>> Changed, TaskCompletionSource Ended)? expected;
 
-        public Task Expect(Guid run, Action<IReadOnlyList<Node>> changed)
+        public Task Expect(Guid run, Action<IReadOnlyList<PlatformNode>> changed)
         {
             TaskCompletionSource ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
             lock (gate)
@@ -650,50 +601,35 @@ public sealed class TestingPlatformRunner : ITestRunner
             return ended.Task;
         }
 
-        [JsonRpcMethod("testing/testUpdates/tests")]
-        public void Tests(JsonNode? update)
+        public void Tests(TestUpdate? update)
         {
-            Trace("<--", "testing/testUpdates/tests", update);
-            (Guid Run, Action<IReadOnlyList<Node>> Changed, TaskCompletionSource Ended)? request;
+            Trace("<--", "testing/testUpdates/tests", update?.Json);
+            (Guid Run, Action<IReadOnlyList<PlatformNode>> Changed, TaskCompletionSource Ended)? request;
             lock (gate)
             {
                 request = expected;
             }
-            if (request is not { } asked || !Guid.TryParse(Text(update, "runId"), out Guid run) || run != asked.Run)
+            if (request is not { } asked || update?.Run != asked.Run)
             {
                 return;
             }
-            if ((update as JsonObject)?["changes"] is not JsonArray changes)
+            if (update.Changes is not { } changes)
             {
                 asked.Ended.TrySetResult();
                 return;
             }
-            List<Node> nodes = [.. changes.Select(Node.Read).OfType<Node>()];
-            if (nodes.Count > 0)
+            if (changes.Count > 0)
             {
-                asked.Changed(nodes);
+                asked.Changed(changes);
             }
         }
 
-        [JsonRpcMethod("client/log")]
-        public void Log(JsonNode? message)
+        public void Log(PlatformLog? message)
         {
-            if (Text(message, "message") is { Length: > 0 } text)
+            if (message?.Message is { Length: > 0 } text)
             {
-                Said(Text(message, "level") ?? "Information", $"{name}: {text}", log);
+                Said(message.Level ?? "Information", $"{name}: {text}", log);
             }
         }
-
-        private static string? Text(JsonNode? node, string property) =>
-            (node as JsonObject)?[property] is JsonValue value && value.TryGetValue(out string? text) ? text : null;
-
-        [JsonRpcMethod("client/showMessage")]
-        public void ShowMessage(JsonNode? message) => Log(message);
-
-        [JsonRpcMethod("telemetry/update")]
-        public void Telemetry(JsonNode? update) => Trace("<--", "telemetry/update", update);
-
-        [JsonRpcMethod("testing/testUpdates/attachments")]
-        public void Attachments(JsonNode? update) => Trace("<--", "testing/testUpdates/attachments", update);
     }
 }

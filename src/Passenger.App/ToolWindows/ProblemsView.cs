@@ -1,7 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -37,8 +36,8 @@ public sealed class ProblemsView : DockPanel
         {
             Classes = { "tree" },
             ItemsSource = model.ShownRows,
-            ItemTemplate = new FuncDataTemplate<ProblemRow>((row, _) => Row(row), supportsRecycling: false),
         };
+        ReusedRows.Use(list, Row);
         empty = new TextBlock { Classes = { "emptyText" } };
         Children.Add(new Panel { Children = { empty, list } });
         list.DoubleTapped += (_, _) => Choose();
@@ -118,69 +117,78 @@ public sealed class ProblemsView : DockPanel
         }
     }
 
-    private Control Row(ProblemRow? row)
+    /// <summary>A row for whichever group or problem the list hands its container: a group's name and count; a problem's
+    /// icon, its message's first line (a long one cut, all of it on hover) with its link, and where it is.</summary>
+    private Control Row()
     {
-        if (row is null)
-        {
-            return new TextBlock();
-        }
-        ShrinkingRow panel = new() { Height = ListRow.Height, Margin = new Thickness(8 + (row.Depth * 16), 0, 8, 0) };
-        TextBlock detail = new() { Text = row.Detail, FontSize = 12, Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        RowIcon icon = new() { Margin = new Thickness(0, 0, 8, 0) };
+        TextBlock text = new() { VerticalAlignment = VerticalAlignment.Center };
+        Button open = new() { Classes = { "link" }, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock after = new() { VerticalAlignment = VerticalAlignment.Center };
+        TextBlock detail = new() { FontSize = 12, Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         detail.Classes.Add("muted");
-        if (row.Problem is not { } problem)
+        ShrinkingRow panel = new() { Height = ListRow.Height, Children = { icon, text, open, after, detail } };
+        open.Click += (_, e) =>
         {
-            panel.Children.Add(new TextBlock { Text = row.Label, FontWeight = row.Depth == 0 ? FontWeight.SemiBold : FontWeight.Normal, VerticalAlignment = VerticalAlignment.Center });
-            panel.Children.Add(detail);
-            return panel;
-        }
-        PathIcon icon = new() { Margin = new Thickness(0, 0, 8, 0) };
-        icon.Bind(PathIcon.DataProperty, icon.GetResourceObservable(problem.Severity == ProblemSeverity.Error ? IconKeys.Error : IconKeys.Problems));
-        icon.Bind(PathIcon.ForegroundProperty, icon.GetResourceObservable(problem.Severity == ProblemSeverity.Error ? TokenKeys.Error : TokenKeys.Warning));
-        void Where() => detail.Text = problem.Code is { Length: > 0 } code ? $"{row.Detail}  {code}" : row.Detail;
-        Where();
-        // Followed only while shown, so a row let go of by the list holds nothing it showed.
-        void OnMoved(object? sender, System.ComponentModel.PropertyChangedEventArgs e) => Where();
-        panel.AttachedToVisualTree += (_, _) =>
-        {
-            row.PropertyChanged += OnMoved;
-            Where();
-        };
-        panel.DetachedFromVisualTree += (_, _) => row.PropertyChanged -= OnMoved;
-        panel.Children.Add(icon);
-        // A message's first line shows in the row, a long one cut, and all of it on hover.
-        string label = row.Label;
-        ToolTip.SetTip(panel, row.Label);
-        if (label.IndexOf('\n') is int lineEnd and >= 0)
-        {
-            label = label[..lineEnd].TrimEnd('\r');
-        }
-        // A rule's name the message ends with is its link (an ESLint problem's), else the address where the message has it.
-        int at = problem.Link is not { } named ? -1
-            : problem.LinkText is { } words ? label.LastIndexOf(words, StringComparison.Ordinal)
-            : label.IndexOf(named.OriginalString, StringComparison.Ordinal);
-        if (problem.Link is not { } link || at < 0)
-        {
-            panel.Children.Add(new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 900 });
-        }
-        else
-        {
-            // The link's words in the link colour, the words around them as they are.
-            string address = problem.LinkText ?? link.OriginalString;
-            Button open = new() { Classes = { "link" }, Content = address, VerticalAlignment = VerticalAlignment.Center };
-            ToolTip.SetTip(open, $"Open {link.OriginalString} in the browser");
-            open.Click += (_, e) =>
+            if (panel.DataContext is ProblemRow { Problem.Link: { } link })
             {
                 model.Open(link);
                 e.Handled = true;
-            };
-            panel.Children.Add(new TextBlock { Text = label[..at], VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 700 });
-            panel.Children.Add(open);
-            if (label[(at + address.Length)..] is { Length: > 0 } after)
-            {
-                panel.Children.Add(new TextBlock { Text = after, VerticalAlignment = VerticalAlignment.Center });
             }
+        };
+        ProblemRow? drawn = null;
+        return panel.Showing<ProblemRow>(row =>
+        {
+            if (row != drawn)
+            {
+                drawn = row;
+                Draw(row);
+            }
+            detail.Text = row.Problem?.Code is { Length: > 0 } code ? $"{row.Detail}  {code}" : row.Detail;
+        });
+
+        void Draw(ProblemRow row)
+        {
+            panel.Margin = new Thickness(8 + (row.Depth * 16), 0, 8, 0);
+            Problem? problem = row.Problem;
+            icon.IsVisible = problem is not null;
+            icon.DataKey = problem is null ? null : problem.Severity == ProblemSeverity.Error ? IconKeys.Error : IconKeys.Problems;
+            icon.ForegroundKey = problem is null ? null : problem.Severity == ProblemSeverity.Error ? TokenKeys.Error : TokenKeys.Warning;
+            ToolTip.SetTip(panel, problem is null ? null : row.Label);
+            text.FontWeight = problem is null && row.Depth == 0 ? FontWeight.SemiBold : FontWeight.Normal;
+            text.TextTrimming = problem is null ? TextTrimming.None : TextTrimming.CharacterEllipsis;
+            open.IsVisible = after.IsVisible = false;
+            if (problem is null)
+            {
+                text.Text = row.Label;
+                text.MaxWidth = double.PositiveInfinity;
+                return;
+            }
+            // A message's first line shows in the row.
+            string label = row.Label;
+            if (label.IndexOf('\n') is int lineEnd and >= 0)
+            {
+                label = label[..lineEnd].TrimEnd('\r');
+            }
+            // A rule's name the message ends with is its link (an ESLint problem's), else the address where the message has it.
+            int at = problem.Link is not { } named ? -1
+                : problem.LinkText is { } words ? label.LastIndexOf(words, StringComparison.Ordinal)
+                : label.IndexOf(named.OriginalString, StringComparison.Ordinal);
+            if (problem.Link is not { } link || at < 0)
+            {
+                text.Text = label;
+                text.MaxWidth = 900;
+                return;
+            }
+            // The link's words in the link colour, the words around them as they are.
+            string address = problem.LinkText ?? link.OriginalString;
+            text.Text = label[..at];
+            text.MaxWidth = 700;
+            open.Content = address;
+            open.IsVisible = true;
+            ToolTip.SetTip(open, $"Open {link.OriginalString} in the browser");
+            after.Text = label[(at + address.Length)..];
+            after.IsVisible = after.Text.Length > 0;
         }
-        panel.Children.Add(detail);
-        return panel;
     }
 }

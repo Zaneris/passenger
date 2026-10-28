@@ -39,6 +39,39 @@ public sealed class MenuTests : IDisposable
         window.Close();
     }
 
+    /// <summary>An editor tab's menu offers what the Explorer's row offers for its file: Copy Path, and Open In's file
+    /// manager and terminal, an HTML page's browser too.</summary>
+    [AvaloniaFact]
+    public void An_editor_tabs_menu_copies_its_files_path_and_opens_it_in_the_file_manager_or_a_terminal()
+    {
+        string one = Path.Combine(folder, "One.cs");
+        File.WriteAllText(one, "class One { }\n");
+        MainWindow window = Ui.OpenFolder(folder);
+        window.OpenFile(one);
+        Ui.Settle();
+        Control tab = window.EditorArea.ActiveGroup.GetVisualDescendants().OfType<TextBlock>()
+            .First(t => t.Text == "One.cs" && t.Classes.Contains("tabName")).FindAncestorOfType<Border>()!;
+        Ui.ChooseFromMenu(tab, "Copy Path");
+        Ui.WaitFor(() => Ui.Clipboard(window) == window.EditorArea.Active!.Path, "the tab's file's path on the clipboard");
+        tab.RaiseEvent(new ContextRequestedEventArgs());
+        Ui.Settle();
+        MenuItem openIn = tab.ContextMenu!.Items.OfType<MenuItem>().FirstOrDefault(i => (string?)i.Header == "Open In")
+            ?? throw new Xunit.Sdk.XunitException("The tab's menu has no Open In");
+        Assert.Equal([window.Actions[AppActions.RevealInFileManager]!.Title, "Open in Terminal"], openIn.Items.OfType<MenuItem>().Select(i => i.Header as string));
+        Assert.True(openIn.Items.OfType<MenuItem>().All(i => i.IsEnabled), "Open In's items are greyed on a file shown in a tab");
+        tab.ContextMenu.Close();
+
+        string page = Path.Combine(folder, "page.html");
+        File.WriteAllText(page, "<p>Hi</p>\n");
+        window.OpenFile(page);
+        Ui.Settle();
+        Control pageTab = window.EditorArea.ActiveGroup.GetVisualDescendants().OfType<TextBlock>()
+            .First(t => t.Text == "page.html" && t.Classes.Contains("tabName")).FindAncestorOfType<Border>()!;
+        Ui.ChooseFromMenu(pageTab, "Open In", "Open in Browser");
+        Assert.Contains(window.Browsed, uri => uri.IsFile && uri.LocalPath.EndsWith("page.html", StringComparison.Ordinal));
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void The_menus_show_each_actions_shortcut_disable_what_cannot_run_and_run_what_is_chosen()
     {

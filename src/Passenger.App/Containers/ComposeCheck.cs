@@ -59,8 +59,8 @@ internal sealed partial class ComposeCheck(EngineChecks owner, OpenDocument docu
         // All three awaited together, so none that fails goes unobserved.
         Task[] all = alone is null ? [project, values] : [project, alone, values];
         await Task.WhenAll(all);
-        ChildResult model = project.Result;
-        ChildResult? self = alone?.Result;
+        ChildResult model = await project;
+        ChildResult? self = alone is null ? null : await alone;
         List<Finding> found = [];
         List<InlayHint> hints = [];
         if (!model.Succeeded && !Error(model, folder).Contains(RemoteRefused, StringComparison.Ordinal))
@@ -86,7 +86,7 @@ internal sealed partial class ComposeCheck(EngineChecks owner, OpenDocument docu
             (IReadOnlyList<Finding> connections, gaps) = await ComposeConnections.FindAsync(reading, folder, path, snapshot, model.Output, cancel);
             found.AddRange(connections);
         }
-        IReadOnlyDictionary<string, string> resolved = values.Result;
+        IReadOnlyDictionary<string, string> resolved = await values;
         foreach ((int start, int end, string expression) in interpolations)
         {
             if (resolved.TryGetValue(expression, out string? value))

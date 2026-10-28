@@ -174,18 +174,18 @@ public partial class ManagedDebugger
         {
             if (!_decompiling.TryGetValue(wanted.Mvid, out Task<bool>? decompiling))
             {
-                decompiling = Task.Factory.StartNew(() => Decompile(wanted), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+                decompiling = DecompileOffTheLockAsync(wanted);
                 _decompiling[wanted.Mvid] = decompiling;
             }
             return decompiling;
         }
     }
 
-    private bool Decompile(SymbolsWanted wanted)
+    private async Task<bool> DecompileOffTheLockAsync(SymbolsWanted wanted)
     {
         _logger?.Invoke($"Decompiling {wanted.Name} ({wanted.Mvid}) for its symbols, off the engine's lock");
         long began = Stopwatch.GetTimestamp();
-        bool made = _symbols!.Write(wanted.AssemblyPath, wanted.Name, wanted.Mvid, wanted.References, _ending.Token);
+        bool made = await _symbols!.WriteAsync(wanted.AssemblyPath, wanted.Name, wanted.Mvid, wanted.References, _ending.Token).ConfigureAwait(false);
         _logger?.Invoke($"Decompiling {wanted.Name} {(made ? "made its symbols" : "made none")} in {Stopwatch.GetElapsedTime(began).TotalSeconds:0.0} s");
         return made;
     }

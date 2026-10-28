@@ -8,9 +8,9 @@ public sealed record HeapType(string Name, int Count, long Bytes, long RetainedB
 }
 
 /// <summary>What a program's heap held at a moment: every object a GC root keeps alive, by type, with what each retains
-/// and the shortest path that keeps it. The runtime writes a dump of the heap through its diagnostic port (createdump,
-/// so no debugger attaches) and ClrMD reads it; the dump, as large as the heap, is deleted once read. Snapshots of one
-/// run can be compared, object by object.</summary>
+/// and the shortest path that keeps it. The runtime's createdump writes a dump of the heap (no debugger attaches) and
+/// ClrMD reads it; the dump, as large as the heap, is deleted once read. Snapshots of one run can be compared, object
+/// by object.</summary>
 public sealed class MemorySnapshot
 {
     private readonly IReadOnlyDictionary<int, Identity> earlier;

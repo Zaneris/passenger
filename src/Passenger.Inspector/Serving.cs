@@ -46,7 +46,7 @@ internal static class Serving
         {
             // The tree and the agents' tools still serve an app whose binding errors cannot be heard.
             string problem = $"The inspector could not listen to the app's binding errors: {error.GetBaseException().Message}";
-            InspectorTrace.Step(problem);
+            InspectorTrace.Step($"{problem}: {error}");
             connection.Send(new Reply { Event = Wire.BindingFailed, Error = problem });
         }
         Thread thread = new(() => Serve(connection, app)) { IsBackground = true, Name = "Passenger inspector" };
@@ -88,6 +88,7 @@ internal static class Serving
         }
         catch (Exception error)
         {
+            InspectorTrace.Step($"{request.Method} {request.Id} failed: {error}");
             reply = new Reply { Id = request.Id, Error = error.Message };
         }
         InspectorTrace.Step($"{request.Method} {request.Id}: {reply.Error ?? (reply.Windows is { } windows ? $"{windows.Count} window(s)" : reply.Tree is { } tree ? $"{tree.Roots.Count} root(s)" : "answered")}");
@@ -138,6 +139,7 @@ internal abstract class Inspecting<T>(Connection connection) where T : class
         }
         catch (Exception error)
         {
+            InspectorTrace.Step($"{request.Method} {request.Id} failed in the app: {error}");
             return new Reply { Id = request.Id, Error = $"{error.GetType().Name}: {error.Message}" };
         }
     }
@@ -356,6 +358,8 @@ internal static class Words
         }
         catch (Exception error)
         {
+            // The app's own code, whose failure is its value's description.
+            InspectorTrace.Step($"{value.GetType()}'s ToString failed: {error}");
             return $"({error.GetType().Name} from its ToString)";
         }
         string full = value.GetType().FullName ?? string.Empty;

@@ -5,6 +5,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.Editors;
 using Passenger.Editor;
 using Passenger.Text;
 
@@ -17,6 +18,7 @@ public sealed class NavigationTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    [Gate]
     [AvaloniaFact]
     public void Go_to_file_finds_a_file_by_its_camel_humps_and_enter_opens_it()
     {
@@ -39,6 +41,7 @@ public sealed class NavigationTests : IDisposable
     /// <summary>Page Down and Page Up in Go to File's field choose a page of results below or above: the first Page Down
     /// chooses the last row in sight without scrolling, the next keeps the row it left in sight, and Page Up comes back the
     /// same way, stopping at the top.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Page_down_and_up_in_go_to_file_choose_a_page_of_results_keeping_the_choice_in_sight()
     {
@@ -81,6 +84,7 @@ public sealed class NavigationTests : IDisposable
     /// is passed over with nothing done for it, and the first letter, which a great many match, keeps only the best of them as
     /// it goes. What the window allocates is the count, not a time a busy machine stretches: each key over 20,000 files
     /// allocates on the UI thread less than 8 bytes for each file more than over 2,000, the least of three tries of it.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Go_to_file_in_twenty_thousand_files_does_no_work_for_a_file_whose_name_cannot_match()
     {
@@ -100,19 +104,66 @@ public sealed class NavigationTests : IDisposable
         Ui.Press(window, "ENTER");
         Assert.Matches(@"^Validator7x\d+\.cs$", window.EditorArea.Active?.Name ?? string.Empty);
         window.Close();
+    }
 
-        // Areas of 200 files each, of eight kinds, in two folders by turns.
-        static void Files(string root, int areas)
+    /// <summary>A query with a slash in Go to File matches along each file's whole path, '/' and '\' alike, copying no
+    /// path or query for it: over 20,000 files a key of either allocates on the UI thread under 8 bytes for each file more
+    /// than over 2,000, the least of three tries, and both slashes offer the same files in the same order.</summary>
+    [Gate]
+    [AvaloniaFact]
+    public void Go_to_file_with_a_slash_in_twenty_thousand_files_copies_nothing_for_a_file_and_takes_either_slash()
+    {
+        string small = TestFolders.Create("nav-small-");
+        Files(small, 10);
+        Files(folder, 100);
+        MainWindow window = new() { Width = 1200, Height = 800 };
+        window.Show();
+        (long fewSlash, long fewBackslash, string[] fewOffered) = SlashedKeys(window, small, 2000);
+        (long manySlash, long manyBackslash, string[] manyOffered) = SlashedKeys(window, folder, 20_000);
+        TestContext.Current.TestOutputHelper?.WriteLine($"A key after / allocated {fewSlash / 1024} KB over 2,000 files, {manySlash / 1024} KB over 20,000; after \\ {fewBackslash / 1024} KB and {manyBackslash / 1024} KB");
+        Assert.True(manySlash - fewSlash < 8 * 18_000,
+            $"A key after a / in Go to File over 20,000 files allocated {manySlash / 1024} KB on the UI thread, against {fewSlash / 1024} KB over 2,000: 8 bytes or more for each file more");
+        Assert.True(manyBackslash - fewBackslash < 8 * 18_000,
+            $"A key after a \\ in Go to File over 20,000 files allocated {manyBackslash / 1024} KB on the UI thread, against {fewBackslash / 1024} KB over 2,000: the query or each path was copied for each file");
+        Assert.True(fewOffered.Length > 0 && manyOffered.Length > 0, "Go to File offered nothing for Features/Validator2x1");
+        window.Close();
+    }
+
+    /// <summary>What a key typed after a query with a / and after the same with a \ allocates in Go to File over a folder,
+    /// the least of three tries of each, a full list of the folder's validators offered after it either way; and what a
+    /// longer query offers, which must be the same with either slash.</summary>
+    private static (long Slash, long Backslash, string[] Offered) SlashedKeys(MainWindow window, string root, int files)
+    {
+        window.OpenFolder(root);
+        Ui.WaitFor(() => window.FileIndex.Count >= files, $"the folder's {files} files indexed");
+        long[] keys = new long[2];
+        string[][] offered = new string[2][];
+        foreach ((int at, string slash) in (ReadOnlySpan<(int, string)>)[(0, "/"), (1, "\\")])
         {
-            string[] kinds = ["Controller", "Service", "Repository", "ViewModel", "Handler", "Validator", "Mapper", "Options"];
-            for (int area = 0; area < areas; area++)
+            Ui.Press(window, Ui.Shortcut(AppActions.GoToFile));
+            window.KeyTextInput($"Features{slash}Vali");
+            keys[at] = Least(window, "d");
+            window.KeyTextInput("ator2x1");
+            Ui.Settle();
+            offered[at] = [.. Assert.IsType<Passenger.App.Navigation.GoToFilePopup>(window.Popup).Rows.Select(hit => hit.RelativePath)];
+            Ui.Press(window, "ESCAPE");
+        }
+        Assert.True(offered[0].SequenceEqual(offered[1]),
+            $"Go to File offers [{string.Join(", ", offered[0].Take(5))}…] for Features/Validator2x1, and [{string.Join(", ", offered[1].Take(5))}…] for Features\\Validator2x1");
+        return (keys[0], keys[1], offered[0]);
+    }
+
+    /// <summary>Areas of 200 empty files each, of eight kinds, in two folders by turns.</summary>
+    private static void Files(string root, int areas)
+    {
+        string[] kinds = ["Controller", "Service", "Repository", "ViewModel", "Handler", "Validator", "Mapper", "Options"];
+        for (int area = 0; area < areas; area++)
+        {
+            string dir = Path.Combine(root, $"Area{area}", area % 2 == 0 ? "Features" : "Infrastructure");
+            Directory.CreateDirectory(dir);
+            for (int i = 0; i < 200; i++)
             {
-                string dir = Path.Combine(root, $"Area{area}", area % 2 == 0 ? "Features" : "Infrastructure");
-                Directory.CreateDirectory(dir);
-                for (int i = 0; i < 200; i++)
-                {
-                    File.WriteAllText(Path.Combine(dir, $"{kinds[i % kinds.Length]}{area}x{i}.cs"), string.Empty);
-                }
+                File.WriteAllText(Path.Combine(dir, $"{kinds[i % kinds.Length]}{area}x{i}.cs"), string.Empty);
             }
         }
     }
@@ -155,6 +206,7 @@ public sealed class NavigationTests : IDisposable
         return least;
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Go_to_file_with_a_line_after_the_name_opens_the_file_at_that_line_and_column()
     {
@@ -185,6 +237,7 @@ public sealed class NavigationTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Go_to_file_with_nothing_typed_offers_the_files_opened_before_this_one()
     {
@@ -202,6 +255,7 @@ public sealed class NavigationTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Go_to_line_takes_a_line_and_column_counted_from_one()
     {
@@ -220,6 +274,7 @@ public sealed class NavigationTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Going_to_a_line_of_a_file_that_fits_the_view_keeps_its_first_line_shown_and_to_a_long_files_end_shows_its_last_at_the_foot()
     {
@@ -254,6 +309,7 @@ public sealed class NavigationTests : IDisposable
         Ui.Settle();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void The_explorers_shortcut_gives_it_the_keys_on_the_open_files_row()
     {
@@ -273,6 +329,7 @@ public sealed class NavigationTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void The_explorer_chooses_the_file_shown_as_select_next_tab_or_a_click_on_a_tab_shows_another()
     {
@@ -295,6 +352,7 @@ public sealed class NavigationTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Focus_editor_gives_the_keys_back_to_the_file_shown()
     {
@@ -314,7 +372,245 @@ public sealed class NavigationTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Back and Forward step through the files opened one after another from the Explorer, each at the caret it
+    /// was left at, as they do through the places a navigation left.</summary>
+    [AvaloniaFact]
+    public void Back_and_forward_step_through_the_files_opened_from_the_explorer_each_at_its_caret()
+    {
+        WriteFiles("A.cs", "B.cs", "C.cs");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        FromExplorer(window, "A.cs");
+        Down(window, 2);
+        FromExplorer(window, "B.cs");
+        Down(window, 5);
+        FromExplorer(window, "C.cs");
+        Down(window, 7);
+
+        Step(window, AppActions.Back, "B.cs", 5, "Back from C.cs, opened from the Explorer after B.cs,");
+        Step(window, AppActions.Back, "A.cs", 2, "A second Back");
+        Step(window, AppActions.Forward, "B.cs", 5, "Forward after two Backs");
+        Step(window, AppActions.Forward, "C.cs", 7, "A second Forward");
+        window.Close();
+    }
+
+    /// <summary>The mouse's Back and Forward side buttons step as Back and Forward do, wherever in the window they are
+    /// pressed: over the editor, whose caret they leave where the step puts it, and over a tool window.</summary>
+    [AvaloniaFact]
+    public void The_mouses_back_and_forward_buttons_step_back_and_forward_over_the_editor_and_over_a_tool_window()
+    {
+        WriteFiles("A.cs", "B.cs", "C.cs");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        FromExplorer(window, "A.cs");
+        Down(window, 2);
+        FromExplorer(window, "B.cs");
+        Down(window, 5);
+        FromExplorer(window, "C.cs");
+        Down(window, 7);
+        CodeEditor editor = window.EditorArea.CodeEditor;
+
+        Side(window, editor, MouseButton.XButton1, "B.cs", 5, "Back's button over the editor in C.cs");
+        Side(window, window.ExplorerView, MouseButton.XButton1, "A.cs", 2, "Back's button over the Explorer");
+        Side(window, window.ExplorerView, MouseButton.XButton2, "B.cs", 5, "Forward's button over the Explorer");
+        Side(window, editor, MouseButton.XButton2, "C.cs", 7, "Forward's button over the editor in B.cs");
+        window.Close();
+    }
+
+    /// <summary>A click on a tab leaves the file shown for Back as a navigation does; a file left again keeps one place
+    /// behind, where it was left last.</summary>
+    [AvaloniaFact]
+    public void Back_and_forward_step_through_the_files_shown_by_a_click_on_their_tabs_each_once()
+    {
+        WriteFiles("A.cs", "B.cs", "C.cs");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        window.OpenFile("A.cs");
+        window.OpenFile("B.cs");
+        window.OpenFile("C.cs");
+        Ui.Settle();
+        ClickTab(window, "A.cs");
+        Down(window, 3);
+        ClickTab(window, "B.cs");
+        Down(window, 6);
+
+        Step(window, AppActions.Back, "A.cs", 3, "Back after a click on A.cs's tab, then on B.cs's,");
+        Step(window, AppActions.Back, "C.cs", 0, "A second Back, to the file A.cs's tab was clicked from,");
+        Step(window, AppActions.Back, "B.cs", 0, "A third Back, to B.cs as C.cs opened over it,");
+        Step(window, AppActions.Back, "B.cs", 0, "A fourth Back, past A.cs left twice and kept once,");
+        Step(window, AppActions.Forward, "C.cs", 0, "Forward after the Backs");
+        Step(window, AppActions.Forward, "A.cs", 3, "A second Forward");
+        Step(window, AppActions.Forward, "B.cs", 6, "A third Forward");
+        window.Close();
+    }
+
+    /// <summary>A tab closed puts nothing behind, so Back never opens the file just closed, while a file closed after it
+    /// was left for another opens again at its place.</summary>
+    [AvaloniaFact]
+    public void Back_passes_a_tab_just_closed_by_and_opens_again_a_file_closed_after_it_was_left()
+    {
+        WriteFiles("A.cs", "B.cs", "C.cs");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        window.OpenFile("A.cs");
+        Ui.Settle();
+        Down(window, 4);
+        window.OpenFile("B.cs");
+        window.OpenFile("C.cs");
+        Ui.Settle();
+        Ui.Run(window, AppActions.CloseTab);
+        Assert.Equal("B.cs", window.EditorArea.Active?.Name);
+        Step(window, AppActions.Back, "A.cs", 4, "Back after C.cs's tab closed and showed B.cs");
+
+        ClickTab(window, "B.cs");
+        ClickTab(window, "A.cs");
+        Ui.Run(window, AppActions.CloseTab);
+        Assert.True(window.EditorArea.Active?.Name == "B.cs" && window.EditorArea.Documents.All(d => d.Name != "A.cs"), "Close Tab on A.cs left it open");
+        Step(window, AppActions.Back, "A.cs", 4, "Back after A.cs, left for B.cs, was shown again and closed,");
+        window.Close();
+    }
+
+    /// <summary>A click in the split beside leaves the file of the split worked in for Back.</summary>
+    [AvaloniaFact]
+    public void Back_returns_to_the_file_left_by_a_click_in_the_split_beside()
+    {
+        WriteFiles("A.cs", "B.cs");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        window.OpenFile("A.cs");
+        Ui.Settle();
+        EditorGroup left = window.EditorArea.ActiveGroup;
+        Assert.True(window.Perform(AppActions.SplitRight));
+        window.OpenFile("B.cs");
+        Ui.Settle();
+        Down(window, 5);
+        Ui.Click(left.Editor);
+        Assert.True(window.EditorArea.ActiveGroup == left && window.EditorArea.Active?.Name == "A.cs", "A click in the left split did not make its A.cs the file worked in");
+        int clicked = window.EditorArea.CodeEditor.CaretPosition.Line;
+
+        Step(window, AppActions.Back, "B.cs", 5, "Back after a click in the left split's A.cs");
+        Step(window, AppActions.Forward, "A.cs", clicked, "Forward from B.cs");
+        window.Close();
+    }
+
+    /// <summary>Go to Related File goes from a XAML file to its code-behind and back by its keys, and from a Razor
+    /// component's code-behind to its markup and back; a file with neither beside it greys it, saying why.</summary>
+    [AvaloniaFact]
+    public void Go_to_related_file_switches_between_markup_and_its_code_behind_both_ways()
+    {
+        Write("Views/MainWindow.axaml", "<Window xmlns=\"https://github.com/avaloniaui\" />\n");
+        Write("Views/MainWindow.axaml.cs", "namespace Shop.Views;\n\npublic partial class MainWindow { }\n");
+        Write("Pages/Counter.razor", "<h1>Counter</h1>\n");
+        Write("Pages/Counter.razor.cs", "namespace Shop.Pages;\n\npublic partial class Counter { }\n");
+        Write("Notes.cs", "class Notes { }\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        Assert.Null(window.OpenFile("Views/MainWindow.axaml"));
+        Ui.Settle();
+        Ui.Press(window, Ui.Shortcut(AppActions.GoToRelated));
+        Assert.Equal("MainWindow.axaml.cs", window.EditorArea.Active?.Name);
+        Ui.Press(window, Ui.Shortcut(AppActions.GoToRelated));
+        Assert.Equal("MainWindow.axaml", window.EditorArea.Active?.Name);
+
+        Assert.Null(window.OpenFile("Pages/Counter.razor.cs"));
+        Ui.Settle();
+        Ui.Run(window, AppActions.GoToRelated);
+        Assert.Equal("Counter.razor", window.EditorArea.Active?.Name);
+        Ui.Run(window, AppActions.GoToRelated);
+        Assert.Equal("Counter.razor.cs", window.EditorArea.Active?.Name);
+
+        Assert.Null(window.OpenFile("Notes.cs"));
+        Ui.Settle();
+        Ui.Press(window, Ui.Shortcut(AppActions.GoToRelated));
+        Assert.Equal("Notes.cs", window.EditorArea.Active?.Name);
+        Assert.Equal("Notes.cs has no code-behind or markup beside it", window.Status);
+        window.Close();
+    }
+
+    /// <summary>With more tabs than the strip shows, the active one is in sight: the last opened, at the strip's end; the
+    /// first gone back to, at its start; and one reached by Previous Tab, wherever it stands.</summary>
+    [AvaloniaFact]
+    public void The_active_tab_is_scrolled_into_the_strips_sight_however_many_tabs_crowd_it()
+    {
+        string[] names = [.. Enumerable.Range(0, 30).Select(i => $"Notes{i:00}.txt")];
+        WriteFiles(names);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        foreach (string name in names)
+        {
+            Assert.Null(window.OpenFile(name));
+        }
+        Ui.Settle();
+        EditorGroup group = window.EditorArea.ActiveGroup;
+        Assert.Equal(names.Length, group.Tabs.Count);
+        InSight(group, "Notes29.txt");
+        Assert.Null(window.OpenFile("Notes00.txt"));
+        Ui.Settle();
+        InSight(group, "Notes00.txt");
+        Ui.Run(window, AppActions.PreviousTab);
+        InSight(group, window.EditorArea.Active!.Name);
+        Assert.NotEqual("Notes00.txt", window.EditorArea.Active.Name);
+        window.Close();
+    }
+
+    /// <summary>The group's active tab, named so, lies wholly inside its strip's sight.</summary>
+    private static void InSight(EditorGroup group, string name)
+    {
+        ScrollViewer strip = group.TabStrip.GetVisualDescendants().OfType<ScrollViewer>().First();
+        Border tab = strip.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("tab") && b.Classes.Contains("active"));
+        Assert.Equal(name, tab.GetVisualDescendants().OfType<TextBlock>().First(t => t.Classes.Contains("tabName")).Text);
+        double left = tab.TranslatePoint(default, strip)?.X ?? double.NaN;
+        Assert.True(left >= -0.5 && left + tab.Bounds.Width <= strip.Viewport.Width + 0.5,
+            $"{name}'s tab, the active one, lies from {left:0.#} to {left + tab.Bounds.Width:0.#}, out of the strip's sight (0 to {strip.Viewport.Width:0.#})");
+    }
+
     private void Write(string relative, string text) => TestFolders.Write(folder, relative, text);
+
+    /// <summary>Files of ten numbered lines each, none a comment, so none folds.</summary>
+    private void WriteFiles(params string[] names)
+    {
+        foreach (string name in names)
+        {
+            Write(name, string.Join('\n', Enumerable.Range(1, 10).Select(i => $"int line{i} = {i};")));
+        }
+    }
+
+    /// <summary>A file opened by a double-click on its row in the Explorer, the keys then in its editor.</summary>
+    private static void FromExplorer(MainWindow window, string name)
+    {
+        Ui.DoubleClick(Ui.Row(window.ExplorerView, window.ExplorerView.Tree.Rows.First(r => r.Name == name)));
+        Assert.True(window.EditorArea.Active?.Name == name, $"A double-click on {name} in the Explorer showed {window.EditorArea.Active?.Name}");
+    }
+
+    private static void ClickTab(MainWindow window, string name)
+    {
+        Ui.Click(window.EditorArea.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == name && t.Classes.Contains("tabName")));
+        Assert.True(window.EditorArea.Active?.Name == name, $"A click on {name}'s tab showed {window.EditorArea.Active?.Name}");
+    }
+
+    /// <summary>The caret moved down some lines by the Down key, in the file shown.</summary>
+    private static void Down(MainWindow window, int lines)
+    {
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Assert.True(editor.IsKeyboardFocusWithin, $"The keys are not in {window.EditorArea.Active?.Name}'s editor");
+        int from = editor.CaretPosition.Line;
+        for (int i = 0; i < lines; i++)
+        {
+            Ui.Press(window, "DOWN");
+        }
+        Assert.True(editor.CaretPosition.Line == from + lines, $"Down {lines} times in {window.EditorArea.Active?.Name} moved its caret from line {from + 1} to {editor.CaretPosition.Line + 1}");
+    }
+
+    /// <summary>A side button of the mouse pressed over a part of the window, and the file and line it shows then.</summary>
+    private static void Side(MainWindow window, Control over, MouseButton button, string file, int line, string what)
+    {
+        Ui.SideClick(over, button);
+        TextPosition caret = window.EditorArea.CodeEditor.CaretPosition;
+        Assert.True(window.EditorArea.Active?.Name == file && caret.Line == line,
+            $"{what} showed {window.EditorArea.Active?.Name} at line {caret.Line + 1}, not {file} at line {line + 1}");
+    }
+
+    /// <summary>Back or Forward by its keys, and the file and line it shows.</summary>
+    private static void Step(MainWindow window, string action, string file, int line, string what)
+    {
+        Ui.Press(window, Ui.Shortcut(action));
+        TextPosition caret = window.EditorArea.CodeEditor.CaretPosition;
+        Assert.True(window.EditorArea.Active?.Name == file && caret.Line == line,
+            $"{what} showed {window.EditorArea.Active?.Name} at line {caret.Line + 1}, not {file} at line {line + 1}");
+    }
 
     private MainWindow Open() => Ui.OpenFolder(folder);
 }

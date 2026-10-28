@@ -178,6 +178,50 @@ public sealed class KeymapChoiceTests : IDisposable
         }
     }
 
+    /// <summary>The toolbar's Run names the keys that run, a tool window's Hide the keys that hide it in the keymap chosen
+    /// (VS Code's, never Visual Studio's left behind), and the Run window, empty before anything has run, says what fills it
+    /// and with which keys, until it has text and again once it is cleared.</summary>
+    [AvaloniaFact]
+    public void The_toolbars_Run_and_Hide_name_their_keys_and_the_empty_Run_window_says_how_to_run()
+    {
+        MainWindow window = Open();
+        try
+        {
+            string run = Shortcut.Parse("control F5").Display();
+            Button runButton = window.FindControl<Button>("RunButton")!;
+            Assert.Equal($"Run ({run})", ToolTip.GetTip(runButton));
+            window.ShowToolWindow(ToolWindowIds.Run);
+            Ui.Settle();
+            Button hide = window.BottomPanel.Run.GetVisualAncestors().OfType<DockPanel>().First(p => p.Classes.Contains("toolPane"))
+                .GetVisualDescendants().OfType<Button>().Single(b => b.Name == AppActions.HideToolWindow);
+            Assert.Equal($"Hide ({Shortcut.Parse("shift ESCAPE").Display()})", ToolTip.GetTip(hide));
+            string? Said() => window.BottomPanel.Run.GetVisualDescendants().OfType<TextBlock>().SingleOrDefault(t => t.Classes.Contains("emptyText") && t.IsEffectivelyVisible)?.Text;
+            Assert.Equal($"Run ({run}) shows a program's output here", Said());
+
+            window.ApplySettings(window.Settings with { Keymap = KeymapPreset.VSCode });
+            Ui.Settle();
+            Assert.Equal($"Hide ({Shortcut.Parse($"{Cmd} J").Display()})", ToolTip.GetTip(hide));
+            Assert.Equal($"Run ({run})", ToolTip.GetTip(runButton));
+            window.ApplySettings(window.Settings with { VSCodeShortcuts = new() { [AppActions.RunProgram] = ["shift F9"] } });
+            Ui.Settle();
+            string own = Shortcut.Parse("shift F9").Display();
+            Assert.Equal($"Run ({own})", ToolTip.GetTip(runButton));
+            Assert.Equal($"Run ({own}) shows a program's output here", Said());
+
+            window.BottomPanel.Run.Append("Hello\n");
+            Ui.Settle();
+            Assert.True(Said() is null, $"The Run window still says \"{Said()}\" over a program's output");
+            window.BottomPanel.Run.Clear();
+            Ui.Settle();
+            Assert.Equal($"Run ({own}) shows a program's output here", Said());
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+    }
+
     /// <summary>The Debug window's evaluate box names the keys that add a watch there in the keymap in force: Complete
     /// Statement's in Visual Studio's, Start New Line Before's in VS Code's (Ctrl+Shift+Enter in each, Cmd on the Mac),
     /// Add to Watches' own once the person sets some, and none once they take them all away.</summary>
@@ -484,6 +528,113 @@ public sealed class KeymapChoiceTests : IDisposable
     {
         string[] tips = [.. console.GetLogicalDescendants().OfType<Button>().Select(b => ToolTip.GetTip(b) as string).OfType<string>()];
         return [.. ((string[])["Rerun", "Stop", "Apply Hot Reload Changes"]).Select(words => tips.Single(tip => tip == words || tip.StartsWith($"{words} (", StringComparison.Ordinal)))];
+    }
+
+    /// <summary>The mouse's caret and column gestures are those of the keymap in force, each keymap's resolved as its keys
+    /// are: each adds a caret and takes it away again, makes a column from the caret to a press that its drag goes on with,
+    /// drags a column, and drags one beside the carets there are. Visual Studio's Alt-drag, a column there, adds a caret
+    /// in VS Code's and drags nothing.</summary>
+    [AvaloniaFact]
+    public void The_mouses_caret_and_column_gestures_are_the_keymaps_in_force()
+    {
+        File.WriteAllText(Path.Combine(folder, "columns.txt"), string.Concat(Enumerable.Repeat("abcdefgh\n", 6)));
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.OpenFile(Path.Combine(folder, "columns.txt"));
+            Ui.Settle();
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            bool mac = OperatingSystem.IsMacOS();
+            RawInputModifiers cmd = mac ? RawInputModifiers.Meta : RawInputModifiers.Control;
+            const RawInputModifiers Alt = RawInputModifiers.Alt;
+            const RawInputModifiers Shift = RawInputModifiers.Shift;
+            Gestures(window, VisualStudio, addCaret: (MouseButton.Left, mac ? Alt | Shift : RawInputModifiers.Control | Alt),
+                fromCaret: (mac ? MouseButton.Middle : MouseButton.Left, Alt | Shift),
+                columnDrags: mac ? [(MouseButton.Left, Alt), (MouseButton.Middle, RawInputModifiers.None)] : [(MouseButton.Left, Alt)],
+                besideCarets: (MouseButton.Left, cmd | Alt | Shift));
+
+            window.ApplySettings(window.Settings with { Keymap = KeymapPreset.VSCode });
+            Ui.Settle();
+            Gestures(window, VSCode, addCaret: (MouseButton.Left, Alt), fromCaret: (MouseButton.Left, Alt | Shift),
+                columnDrags: mac ? [] : [(MouseButton.Middle, RawInputModifiers.None)], besideCarets: (MouseButton.Left, cmd | Alt | Shift));
+            Place(editor, 0, 6);
+            Ui.Drag(window, Spot(window, 1, 1), Spot(window, 3, 3), MouseButton.Left, Alt);
+            Assert.True(Selected(editor) == "0:6, 1:1", $"Alt-drag in VS Code's keymap left {Selected(editor)}, where it adds a caret at its press and drags no column");
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { Keymap = KeymapPreset.VisualStudio });
+            window.Close();
+        }
+    }
+
+    /// <summary>A keymap's caret and column gestures, each a button and the modifiers held with it, pressed on six lines of
+    /// "abcdefgh"; places are a line and a column from zero.</summary>
+    private static void Gestures(MainWindow window, string keymap, (MouseButton Button, RawInputModifiers Held) addCaret, (MouseButton Button, RawInputModifiers Held) fromCaret,
+        (MouseButton Button, RawInputModifiers Held)[] columnDrags, (MouseButton Button, RawInputModifiers Held) besideCarets)
+    {
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Place(editor, 0, 1);
+        Press(window, addCaret, 2, 3);
+        Assert.True(Selected(editor) == "0:1, 2:3", $"{addCaret} in {keymap}'s keymap left {Selected(editor)}, where it adds a caret at 2:3 beside 0:1");
+        Press(window, addCaret, 2, 3);
+        Assert.True(Selected(editor) == "0:1", $"{addCaret} again in {keymap}'s keymap left {Selected(editor)}, where it takes the caret at 2:3 away");
+
+        Place(editor, 0, 1);
+        Ui.Drag(window, Spot(window, 2, 4), Spot(window, 3, 5), fromCaret.Button, fromCaret.Held);
+        Assert.True(Selected(editor) == "0:1-0:5, 1:1-1:5, 2:1-2:5, 3:1-3:5",
+            $"{fromCaret} pressed at 2:4 and dragged to 3:5 in {keymap}'s keymap left {Selected(editor)}, where it makes a column from the caret at 0:1 that the drag goes on with");
+
+        foreach ((MouseButton Button, RawInputModifiers Held) drag in columnDrags)
+        {
+            Place(editor, 5, 0);
+            Ui.Drag(window, Spot(window, 1, 1), Spot(window, 3, 3), drag.Button, drag.Held);
+            Assert.True(Selected(editor) == "1:1-1:3, 2:1-2:3, 3:1-3:3", $"{drag} dragged from 1:1 to 3:3 in {keymap}'s keymap left {Selected(editor)}, where it selects that column");
+        }
+
+        Place(editor, 0, 6);
+        Ui.Drag(window, Spot(window, 2, 1), Spot(window, 3, 2), besideCarets.Button, besideCarets.Held);
+        Assert.True(Selected(editor) == "0:6, 2:1-2:2, 3:1-3:2",
+            $"{besideCarets} dragged from 2:1 to 3:2 in {keymap}'s keymap left {Selected(editor)}, where it adds that column beside the caret at 0:6");
+    }
+
+    /// <summary>A click of a gesture's button with its modifiers held, at a line and column of the editor.</summary>
+    private static void Press(MainWindow window, (MouseButton Button, RawInputModifiers Held) gesture, int line, int column)
+    {
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Point at = editor.PointOf(editor.Document.Snapshot.GetOffset(new Passenger.Text.TextPosition(line, column))) + new Point(1, editor.LineHeight / 2);
+        if (gesture.Button == MouseButton.Middle)
+        {
+            Ui.MiddleClick(editor, at, gesture.Held);
+        }
+        else
+        {
+            Ui.Click(editor, at, gesture.Held);
+        }
+    }
+
+    /// <summary>Where in the window a line and column of the editor are, inside the character there.</summary>
+    private static Point Spot(MainWindow window, int line, int column)
+    {
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Point at = editor.PointOf(editor.Document.Snapshot.GetOffset(new Passenger.Text.TextPosition(line, column))) + new Point(1, editor.LineHeight / 2);
+        return editor.TranslatePoint(at, window) ?? throw new Xunit.Sdk.XunitException("The editor is not laid out in its window");
+    }
+
+    private static void Place(CodeEditor editor, int line, int column) =>
+        editor.Selections = Passenger.Text.SelectionSet.Single(editor.Document.Snapshot.GetOffset(new Passenger.Text.TextPosition(line, column)));
+
+    /// <summary>The editor's carets and selections in order, each as line:column from zero, a selection as its two ends.</summary>
+    private static string Selected(CodeEditor editor)
+    {
+        Passenger.Text.TextSnapshot text = editor.Document.Snapshot;
+        string At(int offset)
+        {
+            Passenger.Text.TextPosition place = text.GetPosition(offset);
+            return $"{place.Line}:{place.Column}";
+        }
+
+        return string.Join(", ", editor.Selections.Items.Select(s => s.IsEmpty ? At(s.Caret) : $"{At(s.Start)}-{At(s.End)}"));
     }
 
     /// <summary>Representative keys of Rider's VS Code keymap pressed in the window: the editor's (Select Next Occurrence,

@@ -214,9 +214,9 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
         {
             TestFolders.Write(folder, $"{app}/Dockerfile", "FROM mcr.microsoft.com/dotnet/aspnet:10.0\nWORKDIR /src\nCOPY . .\nEXPOSE 8080\n"
                 + $"ENTRYPOINT [\"dotnet\", \"/src/{app}/out/{app}.dll\"]\n");
-            ChildResult built = Task.Run(() => ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", Path.Combine(folder, app, $"{app}.csproj"), "-c", configuration,
+            ChildResult built = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", Path.Combine(folder, app, $"{app}.csproj"), "-c", configuration,
                 "-o", Path.Combine(folder, app, "out"), $"-p:PathMap={folder}{Path.DirectorySeparatorChar}=/src/", "-nologo", "-v:q"], folder), null,
-                TimeSpan.FromMinutes(5).Scaled(), CancellationToken.None)).GetAwaiter().GetResult();
+                TimeSpan.FromMinutes(5).Scaled(), CancellationToken.None)), $"{app}'s build", TimeSpan.FromMinutes(5) + TestFolders.Spare);
             Assert.True(built.Succeeded, $"{app} did not build: {built.Output}{built.Error}");
         }
         File.AppendAllText(Path.Combine(folder, "compose.yaml"), "  quiet:\n    build: { context: ., dockerfile: Api/Dockerfile }\n"
@@ -315,6 +315,56 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
         }
     }
 
+    /// <summary>A port Passenger chose for a service that something else on the machine takes before the engine publishes it
+    /// (a listener the test opens there on IPv6's and IPv4's every address, while Debug's up is held) is chosen again: it comes up
+    /// published on another port, held and attached there (a request to it stops at a breakpoint), the browser opened at it,
+    /// and the run's console says which port was taken. Without the choice made again, the run fails with the engine's
+    /// "address already in use".</summary>
+    [AvaloniaFact]
+    public void A_port_Passenger_chose_that_is_taken_before_up_is_chosen_again_and_the_service_comes_up_debugged_on_another()
+    {
+        Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
+        (string folder, string project) = Shop("taken");
+        MainWindow window = ContainerRunsTests.Open(folder);
+        window.Debugger.Breakpoints.Toggle(Source(folder, "Api"), InRequest);
+        Assert.True(window.SelectConfiguration("Compose: compose.yaml"));
+        TaskCompletionSource taken = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task held = window.Builds.HoldNextUp(taken.Task);
+        System.Net.Sockets.TcpListener? holder = null;
+        try
+        {
+            Task<string?> debugging = window.DebugAsync();
+            Ui.PumpUntil(() => held.IsCompleted || debugging.IsCompleted, "Debug to choose its ports and come to its up", TimeSpan.FromMinutes(5));
+            Assert.False(debugging.IsCompleted, $"Debug ended before its up: {(debugging.IsCompleted ? debugging.Result : null)}");
+            // api is the configuration's browser's: the port chosen for it, taken at [::] too, where Docker Desktop binds it.
+            int chosen = window.Builds.Containers!.Plan.Ports!.Of("api").Single();
+            holder = System.Net.Sockets.TcpListener.Create(chosen);
+            holder.Start();
+            taken.SetResult();
+            string? refused = Ui.Await(debugging, "Debug to come up with api on another port", TimeSpan.FromMinutes(5));
+            Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{ContainerRunsTests.Run(window)}");
+            int now = ContainerRunsTests.Published(project, "api");
+            Assert.NotEqual(chosen, now);
+            Assert.Equal([now], window.Builds.Containers!.Plan.Ports!.Of("api"));
+            Assert.Contains($"api's port {chosen} was taken before the engine could publish it: published on {now} instead", ContainerRunsTests.Run(window),
+                StringComparison.Ordinal);
+            Ui.WaitFor(() => window.Browsed.Any(u => u.Port == now), $"the browser to open at api's new port {now}", TimeSpan.FromMinutes(1));
+
+            DebugTab api = Tab(window, "api");
+            Task<string> answer = Get(now);
+            StoppedAt(window, api, Source(folder, "Api"), InRequest, "api's request on its new port to stop in its handler");
+            Resume(window, api);
+            Assert.Equal("api 1", Ui.Await(answer, "api's answer on its new port", TimeSpan.FromMinutes(1)));
+        }
+        finally
+        {
+            taken.TrySetResult();
+            holder?.Dispose();
+            Docker.Stopped(window, project, "Stop to take the services down");
+            window.Close();
+        }
+    }
+
     /// <summary>ContainerRunsTests' Compose solution, each service's Program.cs and Message.cs as these tests stop in them.</summary>
     private static (string Folder, string Project) Shop(string name)
     {
@@ -357,9 +407,7 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
                 {
                     return false;
                 }
-                Task<IReadOnlyList<Passenger.Dap.DapStackFrame>> frames = session.StackTraceAsync(thread);
-                Ui.WaitFor(() => frames.IsCompleted, "the stop's frames");
-                Passenger.Dap.DapStackFrame top = frames.Result.First(f => f.Source?.Path is not null);
+                Passenger.Dap.DapStackFrame top = Ui.Await(session.StackTraceAsync(thread), "the stop's frames").First(f => f.Source?.Path is not null);
                 at = (top.Source!.Path, top.Line - 1);
                 return true;
             }, what, TimeSpan.FromMinutes(2));
@@ -377,11 +425,8 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
 
     internal static string Evaluate(DebugSession session, string expression)
     {
-        Task<IReadOnlyList<Passenger.Dap.DapStackFrame>> frames = session.StackTraceAsync(session.StoppedThread ?? 0);
-        Ui.WaitFor(() => frames.IsCompleted, "the stop's frames");
-        Task<Passenger.Dap.EvaluateResponse> value = session.EvaluateAsync(expression, frames.Result[0].Id, "watch");
-        Ui.WaitFor(() => value.IsCompleted, $"{expression} to be evaluated");
-        return value.Result.Result;
+        IReadOnlyList<Passenger.Dap.DapStackFrame> frames = Ui.Await(session.StackTraceAsync(session.StoppedThread ?? 0), "the stop's frames");
+        return Ui.Await(session.EvaluateAsync(expression, frames[0].Id, "watch"), $"{expression} to be evaluated").Result;
     }
 
     /// <summary>Resumes a tab's program as Resume does with its tab chosen, waiting for it to run.</summary>
@@ -401,7 +446,7 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
     /// <summary>A request to a port, answered once the program goes on (one paused at a breakpoint is waited for); asked
     /// again while nothing listens there yet (the program let go of a moment ago, or restarting). It never fails: a request
     /// that gets no answer within a minute of refusals, or at all, gives back why, so no failure of it outlives its test.</summary>
-    internal static Task<string> Get(int port) => Task.Run(async () =>
+    internal static Task<string> Get(int port) => Waiting.Apart(async () =>
     {
         Uri address = new($"http://localhost:{port.ToString(CultureInfo.InvariantCulture)}/");
         DateTime until = DateTime.UtcNow + TimeSpan.FromMinutes(1).Scaled();
@@ -423,18 +468,20 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
     });
 
     /// <summary>Passenger's container tools for the engine's processor, published where a dev build finds them.</summary>
-    public sealed class Tools
+    public sealed class Tools : IAsyncLifetime
     {
-        public Tools()
+        public async ValueTask InitializeAsync()
         {
-            WhyNot = Docker.WhyNot;
+            WhyNot = await Docker.WhyNotAsync();
             if (WhyNot is null)
             {
-                ContainerPrograms.Publish($"linux-{ContainerPrograms.Processor()}");
+                await ContainerPrograms.PublishAsync($"linux-{await ContainerPrograms.ProcessorAsync()}");
             }
         }
 
         /// <summary>Why no container runs here, or null.</summary>
-        public string? WhyNot { get; }
+        public string? WhyNot { get; private set; }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

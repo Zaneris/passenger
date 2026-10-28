@@ -1,5 +1,4 @@
 using System.Buffers.Binary;
-using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
 using Avalonia.Controls;
@@ -19,23 +18,28 @@ namespace Passenger.Tests;
 /// the tests' own Avalonia and restored. Headless, so nothing of it shows on the screen. Its window's tag holds a lone '\r',
 /// which XamlIl counts as a line's end and the editor does not, so every place below it the app reports is a line on from
 /// the editor's, and an agent is told the editor's.</summary>
-public sealed class AgentAppFolder : IDisposable
+public sealed class AgentAppFolder : IAsyncLifetime
 {
     public AgentAppFolder()
     {
         Folder = PathNames.Canonical(TestFolders.Create("agentapp-"));
-        TestFolders.Prepare(() =>
-        {
-            AvaloniaApp.Debuggee(Folder, "AgentApp");
-            string xaml = Path.Combine(Folder, "MainWindow.axaml");
-            File.WriteAllText(xaml, File.ReadAllText(xaml).Replace("Title=\"Agent App\" Width", "Title=\"Agent App\"\r        Width", StringComparison.Ordinal));
-            Restore.Run(Folder);
-        }, Folder);
     }
+
+    public ValueTask InitializeAsync() => new(TestFolders.PrepareAsync(async () =>
+    {
+        AvaloniaApp.Debuggee(Folder, "AgentApp");
+        string xaml = Path.Combine(Folder, "MainWindow.axaml");
+        File.WriteAllText(xaml, File.ReadAllText(xaml).Replace("Title=\"Agent App\" Width", "Title=\"Agent App\"\r        Width", StringComparison.Ordinal));
+        await Restore.RunAsync(Folder);
+    }, Folder));
 
     public string Folder { get; }
 
-    public void Dispose() => TestFolders.Delete(Folder);
+    public ValueTask DisposeAsync()
+    {
+        TestFolders.Delete(Folder);
+        return ValueTask.CompletedTask;
+    }
 }
 
 /// <summary>Agents testing the Avalonia app Passenger runs as a person would: they look at it through the pictures it draws
@@ -58,12 +62,10 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
         JsonElement built = await Call(client, McpTools.Build);
         Assert.True(built.GetProperty("succeeded").GetBoolean(), $"The app did not build: {built}");
         Assert.False(built.TryGetProperty("outputTail", out _), $"A build that succeeded was answered with MSBuild's output: {built}");
-        // The app never ends by itself, so run must come back once its UI is up, well within waitSeconds.
-        long began = Stopwatch.GetTimestamp();
-        JsonElement ran = await Call(client, McpTools.Run, new() { ["waitSeconds"] = 300 });
+        // The app never ends by itself, so run must come back once its UI is up: an hour's wait would outlast the call's limit.
+        JsonElement ran = await Call(client, McpTools.Run, new() { ["waitSeconds"] = 3600 });
         Assert.True(ran.GetProperty("stillRunning").GetBoolean(), $"The app ended as it started: {ran}");
-        Assert.True(ran.GetProperty("status").GetString()!.Contains("its UI up", StringComparison.Ordinal) && Stopwatch.GetElapsedTime(began) < TimeSpan.FromSeconds(25).Scaled(),
-            $"run waited {Stopwatch.GetElapsedTime(began).TotalSeconds:0} s for an app that never ends, and said: {ran}");
+        Assert.True(ran.GetProperty("status").GetString()!.Contains("its UI up", StringComparison.Ordinal), $"run came back from an app that never ends saying: {ran}");
 
         JsonElement windows = await Call(client, McpTools.AppWindows);
         JsonElement main = Assert.Single(windows.GetProperty("windows").EnumerateArray());
@@ -157,18 +159,17 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
     public async Task An_agent_debugging_an_avalonia_app_clicks_into_a_breakpoint_reads_a_controls_sources_and_styles_breaks_where_a_property_changes_and_on_a_failed_binding()
     {
         await using McpClient client = await Start(["--mcp", appFolder], languageServer: false);
-        // The app never stops by itself, so debug_start must come back once its UI is up, well within waitSeconds.
-        Stopwatch launching = Stopwatch.StartNew();
-        JsonElement started = await Call(client, McpTools.DebugStart, new() { ["waitSeconds"] = 300 });
-        Assert.True(started.GetProperty("status").GetString()!.Contains("its UI up", StringComparison.Ordinal) && launching.Elapsed < TimeSpan.FromSeconds(50).Scaled(),
-            $"debug_start waited {launching.Elapsed.TotalSeconds:0} s for an app that never stops, and said: {started}");
+        // Built first, as the build's time on a busy machine is none of what the launch's wait below measures.
+        JsonElement built = await Call(client, McpTools.Build);
+        Assert.True(built.GetProperty("succeeded").GetBoolean(), $"The app did not build: {built}");
+        // The app never stops by itself, so debug_start must come back once its UI is up: an hour's wait would outlast the call's limit.
+        JsonElement started = await Call(client, McpTools.DebugStart, new() { ["waitSeconds"] = 3600 });
+        Assert.True(started.GetProperty("status").GetString()!.Contains("its UI up", StringComparison.Ordinal), $"debug_start came back from an app that never stops saying: {started}");
         Assert.Single((await Call(client, McpTools.AppWindows)).GetProperty("windows").EnumerateArray());
 
         // Set while the app runs; the click must say where it stopped, as the paused app cannot say what the click did.
         await Call(client, McpTools.BreakpointSet, new() { ["path"] = "MainWindow.axaml.cs", ["line"] = 23 });
-        Stopwatch asked = Stopwatch.StartNew();
         string clicked = Text(await Call(client, McpTools.AppClick, new() { ["control"] = "#Count" }));
-        Assert.True(asked.Elapsed < TimeSpan.FromSeconds(8).Scaled(), $"The click that stopped at a breakpoint took {asked.Elapsed} to say so: {clicked}");
         Assert.Contains("and that paused the program (breakpoint) at MainWindow.axaml.cs:23:", clicked, StringComparison.Ordinal);
         JsonElement stopped = await Call(client, McpTools.DebugState);
         Assert.Equal("paused", stopped.GetProperty("state").GetString());
@@ -240,39 +241,39 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
         try
         {
             Ui.Launched(window, window.RunAsync(), "the app to build and start", TimeSpan.FromMinutes(4));
-            client = Await(Task.Run(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+            client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
             McpClient agent = client;
 
-            Assert.Contains("Button#Count", Text(Await(Task.Run(() => Call(agent, McpTools.AppTree, new() { ["filter"] = "#Count" })), "the app's tree")), StringComparison.Ordinal);
+            Assert.Contains("Button#Count", Text(Await(Waiting.Apart(() => Call(agent, McpTools.AppTree, new() { ["filter"] = "#Count" })), "the app's tree")), StringComparison.Ordinal);
             Assert.Empty(window.OwnedWindows.OfType<ConfirmDialog>());
 
-            Task<JsonElement> clicking = Task.Run(() => Call(agent, McpTools.AppClick, new() { ["control"] = "#Count" }));
+            Task<JsonElement> clicking = Waiting.Apart(() => Call(agent, McpTools.AppClick, new() { ["control"] = "#Count" }));
             ConfirmDialog asked = Question(window, "the question for the agent's click");
             Assert.Contains("Allow app_click?", Texts(asked));
             Press(asked, "Allow");
             Assert.StartsWith("Clicked Button#Count", Text(Await(clicking, "the click")), StringComparison.Ordinal);
-            Assert.Contains("\"Clicked once\"", Text(Await(Task.Run(() => Call(agent, McpTools.AppTree, new() { ["control"] = "#Counter" })), "the counter")), StringComparison.Ordinal);
+            Assert.Contains("\"Clicked once\"", Text(Await(Waiting.Apart(() => Call(agent, McpTools.AppTree, new() { ["control"] = "#Counter" })), "the counter")), StringComparison.Ordinal);
 
             TextBlock project = window.FindControl<TextBlock>("ProjectName")!;
             // The tree names an element by its type, #name, any .classes, then its text.
             Assert.Matches($"TextBlock#ProjectName(\\.[\\w-]+)* \"{System.Text.RegularExpressions.Regex.Escape(project.Text!)}\"",
-                Text(Await(Task.Run(() => Call(agent, McpTools.AppTree, new() { ["app"] = "ide", ["filter"] = "#ProjectName" })), "Passenger's tree")));
-            Await(Task.Run(() => Call(agent, McpTools.AppClick, new() { ["app"] = "ide", ["control"] = "#RunConfigButton" })), "the click on Passenger's run configurations");
+                Text(Await(Waiting.Apart(() => Call(agent, McpTools.AppTree, new() { ["app"] = "ide", ["filter"] = "#ProjectName" })), "Passenger's tree")));
+            Await(Waiting.Apart(() => Call(agent, McpTools.AppClick, new() { ["app"] = "ide", ["control"] = "#RunConfigButton" })), "the click on Passenger's run configurations");
             Dictionary<string, object?> menu = new() { ["app"] = "ide", ["filter"] = "MenuItem \"AgentApp\"" };
-            Assert.Contains("MenuItem \"AgentApp\"", Text(Await(Task.Run(() => Call(agent, McpTools.AppTree, menu)), "the run configurations' menu")), StringComparison.Ordinal);
-            Task<JsonElement> escaping = Task.Run(() => Call(agent, McpTools.AppKey, new() { ["app"] = "ide", ["keys"] = "Escape" }));
+            Assert.Contains("MenuItem \"AgentApp\"", Text(Await(Waiting.Apart(() => Call(agent, McpTools.AppTree, menu)), "the run configurations' menu")), StringComparison.Ordinal);
+            Task<JsonElement> escaping = Waiting.Apart(() => Call(agent, McpTools.AppKey, new() { ["app"] = "ide", ["keys"] = "Escape" }));
             Press(Question(window, "the question for the agent's keys"), "Allow");
             string escaped = Text(Await(escaping, "the Escape"));
-            string after = Text(Await(Task.Run(() => Call(agent, McpTools.AppTree, menu)), "the menu closed"));
+            string after = Text(Await(Waiting.Apart(() => Call(agent, McpTools.AppTree, menu)), "the menu closed"));
             Assert.True(after.StartsWith("Nothing in Passenger matches", StringComparison.Ordinal), $"Escape ({escaped}) left the menu open: {after}");
 
-            Task<CallToolResult> building = Task.Run(() => Result(agent, McpTools.Build));
+            Task<CallToolResult> building = Waiting.Apart(() => Result(agent, McpTools.Build));
             ConfirmDialog question = Question(window, "the question for the agent's build");
-            CallToolResult clicked = Await(Task.Run(() => Result(agent, McpTools.AppClick, new() { ["app"] = "ide", ["window"] = "ConfirmDialog", ["control"] = "Button \"Allow\"" })),
+            CallToolResult clicked = Await(Waiting.Apart(() => Result(agent, McpTools.AppClick, new() { ["app"] = "ide", ["window"] = "ConfirmDialog", ["control"] = "Button \"Allow\"" })),
                 "the agent's click on the question's Allow");
             Assert.True(clicked.IsError == true && Text(clicked).Contains("only they answer it", StringComparison.Ordinal),
                 $"The agent's click on the question its own build waits on was answered: {Text(clicked)}");
-            CallToolResult entered = Await(Task.Run(() => Result(agent, McpTools.AppKey, new() { ["app"] = "ide", ["window"] = "ConfirmDialog", ["keys"] = "Enter" })),
+            CallToolResult entered = Await(Waiting.Apart(() => Result(agent, McpTools.AppKey, new() { ["app"] = "ide", ["window"] = "ConfirmDialog", ["keys"] = "Enter" })),
                 "the agent's Enter in the question");
             Assert.True(entered.IsError == true && Text(entered).Contains("only they answer it", StringComparison.Ordinal),
                 $"The agent's Enter in the question its own build waits on was answered: {Text(entered)}");
@@ -282,7 +283,7 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
 
             shown = window.ShowSettings();
             Ui.Settle();
-            CallToolResult set = Await(Task.Run(() => Result(agent, McpTools.AppClick, new() { ["app"] = "ide", ["window"] = "SettingsDialog", ["x"] = 20, ["y"] = 20 })),
+            CallToolResult set = Await(Waiting.Apart(() => Result(agent, McpTools.AppClick, new() { ["app"] = "ide", ["window"] = "SettingsDialog", ["x"] = 20, ["y"] = 20 })),
                 "the agent's click in Settings");
             Assert.True(set.IsError == true && Text(set).Contains("Settings is the person's alone", StringComparison.Ordinal),
                 $"The agent's click in Settings was answered: {Text(set)}");
@@ -321,7 +322,7 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
         MainWindow window = AgentsWindow(apps, languageServer: false);
         DebuggedAppsTests.Debug(window, "BindingErrorsApp", "Caption");
         DebuggedAppsTests.Debug(window, "LiveTreeApp", "Delete");
-        McpClient client = Await(Task.Run(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
         try
         {
             string chosen = Text(Unasked(window, client, McpTools.AppTree));

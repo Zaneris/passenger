@@ -29,6 +29,7 @@ public static class Agent
     private static bool WaitForWindow(Dispatcher dispatcher, Inspector inspector)
     {
         DateTime until = DateTime.UtcNow + FirstWindow;
+        Task<int>? asked = null;
         while (DateTime.UtcNow < until)
         {
             if (dispatcher.HasShutdownStarted)
@@ -37,17 +38,27 @@ public static class Agent
             }
             try
             {
-                // Asked at Background, after the startup work queued before it; a paused or busy app is asked again.
-                DispatcherOperation<int> shown = dispatcher.InvokeAsync(() => inspector.TopLevels().Count, DispatcherPriority.Background);
-                if (shown.Task.Wait(TimeSpan.FromSeconds(1)) && shown.Result > 0)
+                // Asked at Background, after the startup work queued before it; a paused or busy app is looked at until it answers.
+                Task<int> shown = asked ??= dispatcher.InvokeAsync(() => inspector.TopLevels().Count, DispatcherPriority.Background).Task;
+                if (shown.IsCompletedSuccessfully && shown.Result > 0)
                 {
                     InspectorTrace.Step($"the app shows {shown.Result} top level(s)");
                     return true;
                 }
+                if (shown.IsFaulted || shown.IsCanceled)
+                {
+                    InspectorTrace.Step($"no window to wait for: {shown.Exception?.GetBaseException().Message ?? "the dispatcher took no work"}");
+                    return !dispatcher.HasShutdownStarted;
+                }
+                if (shown.IsCompleted)
+                {
+                    // No window yet: asked again.
+                    asked = null;
+                }
             }
-            catch (Exception error) when (error is InvalidOperationException or TaskCanceledException or AggregateException)
+            catch (InvalidOperationException error)
             {
-                InspectorTrace.Step($"no window to wait for: {error.GetBaseException().Message}");
+                InspectorTrace.Step($"no window to wait for: {error.Message}");
                 return !dispatcher.HasShutdownStarted;
             }
             Thread.Sleep(Look);

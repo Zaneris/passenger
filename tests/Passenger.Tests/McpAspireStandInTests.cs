@@ -17,11 +17,11 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
     [Fact]
     public async Task An_agents_telemetry_is_the_dashboards_own_answer_with_its_credentials_hidden_and_never_another_resources()
     {
-        project.Reset();
+        await project.ResetAsync();
         await using AspireInteractionHost resources = await AspireInteractionHost.StartAsync(project.KeyFile);
         resources.PushResource(new Passenger.App.Aspire.Protocol.Resource { Name = "api-owned-instance", DisplayName = "api", Uid = "api", ResourceType = "Project", State = "Running" });
         await using AspireDashboardHost dashboard = await AspireDashboardHost.StartAsync();
-        project.Serve(resources, dashboard.Endpoint);
+        await project.ServeAsync(resources, dashboard.Endpoint);
         await using McpClient client = await Start(["--mcp", project.Folder], languageServer: false);
         string host = PathNames.Canonical(project.ProjectFile);
         string api = host + "::api-owned-instance";
@@ -105,10 +105,10 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
         // An address no machine answers at (TEST-NET-1), and the stand-in dashboard's own named with a user.
         foreach (Uri elsewhere in (Uri[])[new("http://192.0.2.10:5000"), new($"http://agent@127.0.0.1:{dashboard.Endpoint.Port}")])
         {
-            project.Reset();
+            await project.ResetAsync();
             await using AspireInteractionHost resources = await AspireInteractionHost.StartAsync(project.KeyFile);
             resources.PushResource(new Passenger.App.Aspire.Protocol.Resource { Name = "api-owned-instance", DisplayName = "api", Uid = "api", ResourceType = "Project", State = "Running" });
-            project.Serve(resources, elsewhere);
+            await project.ServeAsync(resources, elsewhere);
             await using McpClient client = await Start(["--mcp", project.Folder], languageServer: false);
             string host = PathNames.Canonical(project.ProjectFile);
             await Running(client, host);
@@ -124,10 +124,10 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
     [Fact]
     public async Task An_agent_is_told_why_an_AppHost_whose_connection_ended_lists_no_resources_and_the_rest_of_the_workspace_answers()
     {
-        project.Reset();
+        await project.ResetAsync();
         await using AspireInteractionHost resources = await AspireInteractionHost.StartAsync(project.KeyFile);
         resources.PushResource(new Passenger.App.Aspire.Protocol.Resource { Name = "api-owned-instance", DisplayName = "api", Uid = "api", ResourceType = "Project", State = "Running" });
-        project.Serve(resources);
+        await project.ServeAsync(resources);
         await using McpClient client = await Start(["--mcp", project.Folder], languageServer: false);
         string host = PathNames.Canonical(project.ProjectFile);
         await Running(client, host);
@@ -155,7 +155,7 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
     [Fact]
     public async Task An_agent_runs_an_AppHost_resources_commands_through_container_action_and_is_refused_those_it_cannot()
     {
-        project.Reset();
+        await project.ResetAsync();
         await using AspireInteractionHost resources = await AspireInteractionHost.StartAsync(project.KeyFile);
         Passenger.App.Aspire.Protocol.Resource api = new() { Name = "api-owned-instance", DisplayName = "api", Uid = "api", ResourceType = "Project", State = "Running" };
         api.Commands.Add(new Passenger.App.Aspire.Protocol.ResourceCommand
@@ -170,7 +170,7 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
             ArgumentInputs = { new Passenger.App.Aspire.Protocol.InteractionInput { Name = "rows", Label = "Rows", InputType = Passenger.App.Aspire.Protocol.InputType.Number } },
         });
         resources.PushResource(api);
-        project.Serve(resources);
+        await project.ServeAsync(resources);
         await using McpClient client = await Start(["--mcp", project.Folder], languageServer: false);
         string host = PathNames.Canonical(project.ProjectFile);
         await Running(client, host);

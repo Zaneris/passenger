@@ -78,6 +78,9 @@ public sealed class PublishTests : IClassFixture<RestoredFolders>, IDisposable
         }
     }
 
+    /// <summary>A profile saved comes into the Explorer as the rows of the folders made for it alone, every other row shown
+    /// staying the row it was; Undo takes it away, Redo makes it again, and it publishes again after a restart as dotnet
+    /// publish takes it.</summary>
     [AvaloniaFact]
     public void A_saved_profile_is_one_undo_step_publishes_again_after_a_restart_and_dotnet_publish_takes_it()
     {
@@ -87,13 +90,17 @@ public sealed class PublishTests : IClassFixture<RestoredFolders>, IDisposable
         MainWindow window = Keeping(state);
         try
         {
+            window.ExplorerView.Reveal(PathNames.Canonical(Path.Combine(folder, "src", "Hello", "Program.cs")));
+            window.ExplorerView.Reveal(PathNames.Canonical(Path.Combine(folder, "src", "Site", "appsettings.json")));
+            Ui.Settle();
             PublishDialog dialog = Show(window, "Hello");
             dialog.ProfileName = "Nightly";
             dialog.Configuration = "Debug";
             dialog.OutputFolder = "../../out/nightly/";
             Ui.Settle();
             Assert.True(dialog.Destination is { } shown && PathNames.Same(shown, nightly), $"The dialog says the app lands in {dialog.Destination}, not in {nightly}");
-            Assert.Null(Done(dialog.SaveAsync(), "the profile to be saved"));
+            FilesFollowed.Check(window, "Saving a publish profile", [Path.Combine(folder, "src", "Hello", "Properties")],
+                () => Assert.Null(Done(dialog.SaveAsync(), "the profile to be saved")));
             string saved = File.ReadAllText(profile);
             Assert.True(saved.Contains("<Configuration>Debug</Configuration>", StringComparison.Ordinal) && saved.Contains("<PublishDir>../../out/nightly/</PublishDir>", StringComparison.Ordinal),
                 $"The saved profile says:\n{saved}");
@@ -290,7 +297,7 @@ public sealed class PublishTests : IClassFixture<RestoredFolders>, IDisposable
             Assert.Equal("Building Hello (FolderProfile)…", window.Actions.Work.Of(AppActions.Publish)?.Stage);
             window.Perform(AppActions.Stop);
             Ui.WaitFor(() => window.LastPublish is { IsCompleted: true }, "the stopped publish to end", TimeSpan.FromSeconds(30));
-            BuildOutcome ended = window.LastPublish!.Result;
+            BuildOutcome ended = Ui.Await(window.LastPublish!, "the stopped publish's outcome");
             Assert.Equal((BuildStatus.Stopped, "Publish stopped"), (ended.Status, window.Status));
             Assert.False(window.IsBuilding, "The publish was stopped but the window still says it builds");
         }
@@ -405,16 +412,12 @@ public sealed class PublishTests : IClassFixture<RestoredFolders>, IDisposable
     private static BuildOutcome Publish(MainWindow window, Func<Task<string?>> start)
     {
         Task<string?> asked = start();
-        Ui.WaitFor(() => window.LastPublish is { IsCompleted: true } || asked is { IsCompleted: true, Result: not null }, "the publish to end", TimeSpan.FromMinutes(4));
+        Ui.WaitFor(() => window.LastPublish is { IsCompleted: true } || (asked.IsCompleted && asked.Result is not null), "the publish to end", TimeSpan.FromMinutes(4));
         Assert.True(window.LastPublish is not null, $"The publish did not start: {(asked.IsCompleted ? asked.Result : "still asking")}; the status bar says {window.Status}");
-        return window.LastPublish.Result;
+        return Ui.Await(window.LastPublish, "the publish's outcome", TimeSpan.FromMinutes(4));
     }
 
-    private static string? Done(Task<string?> task, string what)
-    {
-        Ui.WaitFor(() => task.IsCompleted, what, TimeSpan.FromMinutes(1));
-        return task.Result;
-    }
+    private static string? Done(Task<string?> task, string what) => Ui.Await(task, what, TimeSpan.FromMinutes(1));
 
     private static System.Diagnostics.ProcessStartInfo Dotnet(IReadOnlyList<string> arguments, string at) => ChildProcesses.DotnetCommand(arguments, at);
 
@@ -423,7 +426,8 @@ public sealed class PublishTests : IClassFixture<RestoredFolders>, IDisposable
 
     private static ChildResult Run(System.Diagnostics.ProcessStartInfo start, bool check)
     {
-        ChildResult result = Task.Run(() => ChildProcesses.RunAsync(start, limit: TimeSpan.FromMinutes(4).Scaled())).GetAwaiter().GetResult();
+        TimeSpan limit = TimeSpan.FromMinutes(4);
+        ChildResult result = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(start, limit: limit.Scaled())), ChildProcesses.Display(start), limit + TestFolders.Spare);
         Assert.True(!check || result.Succeeded, $"{ChildProcesses.Display(start)} exited with code {result.ExitCode}:\n{result.Output}{result.Error}");
         return result;
     }

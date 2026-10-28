@@ -3,9 +3,15 @@
        (its encoding, its .editorconfig, its one way of being saved). -->
   <PropertyGroup>
     <RootNamespace>Passenger.Text</RootNamespace>
-    <!-- A save keeps a macOS file's extended attributes and ACL through libc's copyfile, a generated P/Invoke. -->
+    <!-- A save keeps a macOS file's encoding attribute only while it holds, through libc's getxattr and removexattr,
+         generated P/Invokes. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The rope's nodes, whose shape its unit tests hold after every edit. -->
+    <InternalsVisibleTo Include="Passenger.UnitTests" />
+  </ItemGroup>
 
   <ItemGroup>
     <!-- AtomicFile, which every save writes through. -->

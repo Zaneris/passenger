@@ -7,11 +7,11 @@ using A = Passenger.App.AppActions;
 
 namespace Passenger.App;
 
-/// <summary>The line separator and encoding: the status bar's two widgets, and File, File Encoding and Line Separators.
-/// A line separator chosen converts every break and writes the file. An encoding chosen is taken at once when nothing
-/// changes; otherwise a question, Reload (the file's bytes read again in it) or Convert (the text written in it),
-/// warning before either loses something. Each is one undoable step, its undo and redo reaching the file as it
-/// did.</summary>
+/// <summary>The line separator, encoding and indentation: the status bar's widgets, and File, File Encoding, File
+/// Indentation and Line Separators. A line separator chosen converts every break and writes the file. An encoding chosen
+/// is taken at once when nothing changes; otherwise a question, Reload (the file's bytes read again in it) or Convert
+/// (the text written in it), warning before either loses something. Each is one undoable step, its undo and redo
+/// reaching the file as it did. An indentation chosen is how the file indents from then on, its text left as it is.</summary>
 public partial class MainWindow
 {
     private void AddFileProperties()
@@ -20,6 +20,12 @@ public partial class MainWindow
         {
             WhyNot = Unchangeable,
             Menus = [new MenuPlace("File", 2, 0)],
+        });
+        actions.Add(new IdeAction(A.FileIndentation, "File Indentation", "IDE", _ => ShowIndentMenu())
+        {
+            WhyNot = Refusals.NeedsLines,
+            Menus = [new MenuPlace("File", 2, 2)],
+            Words = ["Indent Using Tabs", "Indent Using Spaces", "Tab Size"],
         });
         for (int i = 0; i < LineSeparators.All.Count; i++)
         {
@@ -61,7 +67,7 @@ public partial class MainWindow
 
     /// <summary>Why the file's line separator and encoding cannot change: none is open, or it is read-only.</summary>
     private static string? Unchangeable(ActionContext context) =>
-        context.File is not { } file ? Refusals.NoFile : file.IsReadOnly ? $"{file.Name} is read-only" : null;
+        context.File is not { } file ? Refusals.NoFile : file.IsReadOnly ? Refusals.ReadOnly(file.Name) : null;
 
 
     /// <summary>The line separator popup: the Line Separators menu, the file's own checked.</summary>
@@ -73,6 +79,33 @@ public partial class MainWindow
     }
 
     private void OnEncodingClicked(object? sender, RoutedEventArgs e) => Request(A.FileEncoding);
+
+    private void OnIndentClicked(object? sender, RoutedEventArgs e) => Request(A.FileIndentation);
+
+    private void OnCaretClicked(object? sender, RoutedEventArgs e) => Request(A.GoToLine);
+
+    /// <summary>The indentation popup over the status bar's widget: a tab and the widths of spaces offered, then the one
+    /// the file has with none chosen, the one in force checked.</summary>
+    private void ShowIndentMenu()
+    {
+        if (Editors.Active is not { HoldsText: true } document)
+        {
+            return;
+        }
+        IndentOptions now = document.Indentation.Options;
+        bool chosen = document.ChosenIndent is not null;
+        List<Control> items = [.. Workspace.FileIndent.Offered(now).Select(offered => MenuChoice.Of(Workspace.FileIndent.NameOf(offered),
+            chosen && offered.UseTabs == now.UseTabs && (offered.UseTabs || offered.Size == now.Size), () => ChooseIndent(document, offered)))];
+        items.Add(new Separator());
+        items.Add(MenuChoice.Of($"Automatic: {document.Unchosen.Shown}", !chosen, () => ChooseIndent(document, null)));
+        Open(new ContextMenu { ItemsSource = items, Placement = PlacementMode.TopEdgeAlignedRight }, IndentButton);
+    }
+
+    private void ChooseIndent(OpenDocument document, IndentOptions? options)
+    {
+        document.ChosenIndent = options;
+        status.Text = $"{document.Name} indents with {document.Indentation.Name} now";
+    }
 
     /// <summary>The encoding popup over the status bar's widget: the encodings it lists first, then More, the file's
     /// own checked. Choosing one asks, when it changes anything, whether to reload the file in it or convert the file
@@ -103,7 +136,7 @@ public partial class MainWindow
     {
         if (document.IsReadOnly)
         {
-            status.Text = $"{document.Name} is read-only";
+            status.Text = Refusals.ReadOnly(document.Name);
             return;
         }
         string from = document.EncodingName;

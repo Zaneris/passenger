@@ -121,10 +121,11 @@ public partial class ManagedDebugger
         _launch = launch;
         _initialThreadId = launch.InitialThreadId;
         _launchOutput = Task.WhenAll(Forward(launch.Output, isError: false), Forward(launch.Error, isError: true));
-        Task<int?> launchExit = Task.Run(launch.WaitForExit);
+        // Not held: it waits for the program to end.
+        Task<int?> launchExit = Core.BackgroundWork.Unheld(launch.WaitForExit);
         _launchExit = launchExit;
         // Told as the program goes, not when the runtime's word of it is handled, which mscordbi may lose tearing down.
-        Core.UnawaitedWork.Observe(launchExit.ContinueWith(ended => ReportExit(ended.Result), TaskScheduler.Default));
+        Core.UnawaitedWork.Observe(launchExit.ContinueWith(ended => ReportExitAsync(ended.Result), TaskScheduler.Default).Unwrap());
         int processId = launch.ProcessId;
 
         _logger?.Invoke($"Process created suspended with PID: {processId}");
@@ -147,7 +148,8 @@ public partial class ManagedDebugger
         {
             _logger?.Invoke($"Taking hold of process {processId} failed: {error}");
             // A program that ended meanwhile is why, whatever the debugger was refused on the way.
-            string ended = launchExit.Wait(TimeSpan.FromMilliseconds(500)) && launchExit.Result is int code ? $" (the program had ended, with exit code {code})" : "";
+            await Task.WhenAny(launchExit, Task.Delay(TimeSpan.FromMilliseconds(500)));
+            string ended = launchExit.IsCompletedSuccessfully && launchExit.Result is int code ? $" (the program had ended, with exit code {code})" : "";
             // A program the debugger could not take hold of (not .NET, or failed first) is not left behind, held.
             launch.Kill();
             throw new InvalidOperationException($"Could not take hold of process {processId} as it started: {error.Message}{ended}", error);
@@ -160,8 +162,8 @@ public partial class ManagedDebugger
         SendAllBreakpointEvents();
         return;
 
-        // A program's output as it comes, a prompt with no line end included.
-        Task Forward(Stream stream, bool isError) => Task.Run(async () =>
+        // A program's output as it comes, a prompt with no line end included; not held, as it lasts as the program does.
+        Task Forward(Stream stream, bool isError) => Core.BackgroundWork.Unheld(async () =>
         {
             try
             {
@@ -188,7 +190,7 @@ public partial class ManagedDebugger
             }
             catch (Exception ex)
             {
-                _logger?.Invoke($"Error forwarding debuggee output: {ex.Message}");
+                _logger?.Invoke($"Error forwarding debuggee output: {ex}");
             }
         }
     }
@@ -202,16 +204,9 @@ public partial class ManagedDebugger
             return false;
         }
 
-        if (bp.CorBreakpoint is not null)
+        if (bp.CorBreakpoint?.TryActivate(false) is int deactivated and < 0)
         {
-            try
-            {
-                bp.CorBreakpoint.Activate(false);
-            }
-            catch (Exception ex)
-            {
-                _logger?.Invoke($"Error deactivating breakpoint: {ex.Message}");
-            }
+            _logger?.Invoke($"Error deactivating breakpoint: 0x{deactivated:X8}");
         }
         return _breakpointManager.RemoveBreakpoint(id);
     }
@@ -234,16 +229,35 @@ public partial class ManagedDebugger
     /// <summary>Lets go the runtime of a process an attach was to take hold of and did not (the session ended first, or the
     /// attach failed), should it be held at its start: it runs on undebugged rather than wait for good for a debugger that
     /// is not coming. A runtime already running takes the word as done; one still starting is waited for, within
-    /// <paramref name="within"/> when the client gives a time for the let-go.</summary>
-    private void ReleaseHeldTarget(TimeSpan? within = null)
+    /// <paramref name="within"/> when the client gives a time for the let-go. One that lives on not let go is told in the
+    /// console, never left waiting unsaid.</summary>
+    private async Task ReleaseHeldTargetAsync(TimeSpan? within = null)
     {
         int target = Interlocked.Exchange(ref _heldTarget, 0);
         if (target == 0)
         {
             return;
         }
-        string? why = DiagnosticClientHelper.Resume(target, within);
+        string? why = await DiagnosticClientHelper.ResumeAsync(target, within).ConfigureAwait(false);
         _logger?.Invoke(why is null ? $"Let process {target} go: the debugger did not take hold of it" : $"Process {target}, not taken hold of, was not let go: {why}");
+        if (why is not null && Lives(target))
+        {
+            OnConsole?.Invoke($"Process {target} was not let go ({why}): a .NET program held at its start waits there until a debugger attaches to it or it is stopped.\n");
+        }
+    }
+
+    /// <summary>Whether the process is still there.</summary>
+    private static bool Lives(int processId)
+    {
+        try
+        {
+            using Process process = Process.GetProcessById(processId);
+            return !process.HasExited;
+        }
+        catch (Exception gone) when (gone is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            return false;
+        }
     }
 
     /// <summary>The client's breakpoints are set: the launch or attach asked for is made.</summary>
@@ -449,16 +463,9 @@ public partial class ManagedDebugger
         }
         foreach (BreakpointManager.BreakpointInfo gone in existingBreakpoints.Where(b => !kept.Contains(b)))
         {
-            if (gone.CorBreakpoint is not null)
+            if (gone.CorBreakpoint?.TryActivate(false) is int deactivated and < 0)
             {
-                try
-                {
-                    gone.CorBreakpoint.Activate(false);
-                }
-                catch (Exception ex)
-                {
-                    _logger?.Invoke($"Error deactivating breakpoint: {ex.Message}");
-                }
+                _logger?.Invoke($"Error deactivating breakpoint: 0x{deactivated:X8}");
             }
             _breakpointManager.RemoveBreakpoint(gone.Id);
         }
@@ -520,8 +527,10 @@ public partial class ManagedDebugger
         {
             foreach (BreakpointManager.FunctionBreakpointBinding binding in gone.FunctionBindings)
             {
-                try { binding.CorBreakpoint.Activate(false); }
-                catch (Exception ex) { _logger?.Invoke($"Error deactivating function breakpoint: {ex.Message}"); }
+                if (binding.CorBreakpoint.TryActivate(false) is int deactivated and < 0)
+                {
+                    _logger?.Invoke($"Error deactivating function breakpoint: 0x{deactivated:X8}");
+                }
             }
             _breakpointManager.RemoveBreakpoint(gone.Id);
         }
@@ -591,7 +600,7 @@ public partial class ManagedDebugger
                 result.Add((id, threadInfo.Name ?? (id == _mainThreadId ? "Main Thread" : "<No Name>"), id == _mainThreadId));
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (Failures.OfRuntime(ex))
         {
             _logger?.Invoke($"Error getting threads: {ex.Message}");
         }
@@ -675,7 +684,8 @@ public partial class ManagedDebugger
         }
         catch (Exception ex)
         {
-            _logger?.Invoke($"Error getting stack trace: {ex.Message}");
+            // A frame that fails to be read leaves the frames read before it, its failure said whole.
+            _logger?.Invoke($"Error getting stack trace: {ex}");
         }
 
         return result;
@@ -959,6 +969,10 @@ public partial class ManagedDebugger
             {
                 result.Add(await ReadQuerySql(variablesReference));
             }
+            else if (variablesReference.ReferenceKind is StoredReferenceKind.Pointer)
+            {
+                await AddPointedAt(variablesReference, result);
+            }
             else if (variablesReference.ReferenceKind is StoredReferenceKind.ArrayRange)
             {
                 ICorDebugArrayValue arrayValue = (ICorDebugArrayValue)variablesReference.ObjectValue!.UnwrapDebugValue();
@@ -1030,7 +1044,7 @@ public partial class ManagedDebugger
         }
         (string? friendlyTypeName, string? value, ICorDebugValue? debuggerProxyInstance, bool resultIsError) = await GetValueForCorDebugValueAsync(result.Value!, threadId, frameStackDepth, true);
         VariablePresentationHint? variablePresentationHint = resultIsError ? new VariablePresentationHint { Attributes = AttributesValue.FailedEvaluation } : null;
-        int variablesReference = GetVariablesReference(result.Value!, friendlyTypeName, threadId, frameStackDepth, debuggerProxyInstance);
+        int variablesReference = GetVariablesReference(result.Value!, friendlyTypeName, threadId, frameStackDepth, debuggerProxyInstance, expression.Trim());
         VariableInfo variableInfo = new VariableInfo
         {
             Name = null!,
@@ -1048,46 +1062,43 @@ public partial class ManagedDebugger
     }
 
     /// <summary>Ends the program and lets go of it, once the runtime has seen it go.</summary>
-    public void Terminate()
+    public async Task TerminateAsync()
     {
         _logger?.Invoke("Terminate");
         if (_process is not null && !_exited.IsSet)
         {
-            try
+            // A running process cannot be terminated (CORDBG_E_PROCESS_NOT_SYNCHRONIZED): it is stopped first.
+            if (_process.TryIsRunning(out bool isRunning) is Cor.S_OK && isRunning)
             {
-                // A running process cannot be terminated (CORDBG_E_PROCESS_NOT_SYNCHRONIZED): it is stopped first.
-                if (_process.TryIsRunning(out bool isRunning) is Cor.S_OK && isRunning)
+                int stopResult = _process.TryStop(0);
+                if (stopResult is not (Cor.S_OK or Cor.CORDBG_E_PROCESS_TERMINATED))
                 {
-                    int stopResult = _process.TryStop(0);
-                    if (stopResult is not (Cor.S_OK or Cor.CORDBG_E_PROCESS_TERMINATED))
-                    {
-                        _logger?.Invoke($"Error stopping process before terminating it: {stopResult}");
-                    }
-                }
-                _process.Terminate(0);
-                // The process goes on the runtime's thread; letting go of it before it has would race that.
-                if (!_exited.Wait(TimeSpan.FromSeconds(5)))
-                {
-                    _logger?.Invoke("The process had not exited 5 s after Terminate");
+                    _logger?.Invoke($"Error stopping process before terminating it: {stopResult}");
                 }
             }
-            catch (Exception ex)
+            int terminated = _process.TryTerminate(0);
+            if (terminated < 0)
             {
-                _logger?.Invoke($"Error terminating process: {ex.Message}");
+                _logger?.Invoke($"Error terminating process: 0x{terminated:X8}");
+            }
+            // The process goes on the runtime's thread; letting go of it before it has would race that.
+            else if (!_exited.Wait(TimeSpan.FromSeconds(5)))
+            {
+                _logger?.Invoke("The process had not exited 5 s after Terminate");
             }
         }
-        Dispose();
+        await EndAsync().ConfigureAwait(false);
     }
 
     /// <summary>Ends the session: the program ends with it when asked, else it is let go to run on, the let-go kept within
     /// the client's time for it when it gives one (<paramref name="within"/>).</summary>
-    public void Disconnect(bool terminateDebuggee, TimeSpan? within = null)
+    public async Task DisconnectAsync(bool terminateDebuggee, TimeSpan? within = null)
     {
         _logger?.Invoke($"Disconnect (terminate: {terminateDebuggee})");
 
         if (terminateDebuggee)
         {
-            Terminate();
+            await TerminateAsync().ConfigureAwait(false);
         }
         else
         {
@@ -1099,13 +1110,13 @@ public partial class ManagedDebugger
                     _logger?.Invoke($"Error stopping process during disconnect: {hResult}");
                 }
             }
-            Dispose(letGo: true, within);
+            await EndAsync(letGo: true, within).ConfigureAwait(false);
         }
     }
 
     /// <summary>The client went without disconnecting (crashed, or was ended): a program the session launched ends with it,
     /// and one it attached to is let go to run on, as a detach lets it go.</summary>
-    public void Abandon() => Disconnect(terminateDebuggee: _launched);
+    public Task AbandonAsync() => DisconnectAsync(terminateDebuggee: _launched);
 
     public async Task<ExceptionInfo> ExceptionInfo(ThreadId threadId)
     {

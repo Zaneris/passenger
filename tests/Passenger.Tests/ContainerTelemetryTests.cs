@@ -29,7 +29,8 @@ public sealed class ContainerTelemetryTests : McpRig
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         string[] missing = [.. ((string[])[ContainerTelemetry.Image, "mcr.microsoft.com/dotnet/aspnet:10.0"])
-            .Where(image => !Task.Run(() => ContainerEngine.Shared.RunAsync(["image", "inspect", image], TimeSpan.FromSeconds(30).Scaled())).GetAwaiter().GetResult().Succeeded)];
+            .Where(image => !Ui.AwaitPumped(Waiting.Apart(() => ContainerEngine.Shared.RunAsync(["image", "inspect", image], TimeSpan.FromSeconds(30).Scaled())),
+                $"docker image inspect {image}", TimeSpan.FromSeconds(30) + TestFolders.Spare).Succeeded)];
         Assert.SkipWhen(missing.Length > 0, $"The engine lacks images the run uses, which no test pulls: pull {string.Join(" and ", missing)} to run it");
         (string folder, string project) = Shop();
         MainWindow window = ContainerRunsTests.Open(folder);
@@ -79,12 +80,12 @@ public sealed class ContainerTelemetryTests : McpRig
                 && chosen.TraceId == log.TraceId && view.Telemetry.SelectedSpan?.Span.SpanId == log.SpanId,
                 $"the request's trace, with web's request to itself, its log's span chosen ({view.Telemetry.TracesStatus})", TimeSpan.FromMinutes(1));
 
-            client = Await(Task.Run(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
-            Task<JsonElement> logs = Task.Run(() => Call(client, McpTools.Telemetry, new() { ["resource"] = "web", ["limit"] = 50 }));
+            client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+            Task<JsonElement> logs = Waiting.Apart(() => Call(client, McpTools.Telemetry, new() { ["resource"] = "web", ["limit"] = 50 }));
             Press(Admission(window, "the window to ask whether the agent may work there"), AgentAdmissionDialog.Allow);
             JsonElement read = Await(logs, "the agent's telemetry of web's logs");
             Assert.Contains(read.GetProperty("logs").EnumerateArray(), item => item.GetProperty("message").GetString()?.Contains("Passenger order 42", StringComparison.Ordinal) == true);
-            JsonElement traced = Await(Task.Run(() => Call(client, McpTools.Telemetry, new() { ["kind"] = "traces", ["traceId"] = log.TraceId })), "the agent's telemetry of the request's trace");
+            JsonElement traced = Await(Waiting.Apart(() => Call(client, McpTools.Telemetry, new() { ["kind"] = "traces", ["traceId"] = log.TraceId })), "the agent's telemetry of the request's trace");
             Assert.True(Assert.Single(traced.GetProperty("traces").EnumerateArray()).GetProperty("spans").GetArrayLength() >= 3, traced.ToString());
         }
         finally
@@ -110,7 +111,8 @@ public sealed class ContainerTelemetryTests : McpRig
     {
         try
         {
-            return Task.Run(() => Http.GetStringAsync(new Uri($"http://localhost:{port.ToString(CultureInfo.InvariantCulture)}/"))).GetAwaiter().GetResult();
+            return Ui.AwaitPumped(Waiting.Apart(() => Http.GetStringAsync(new Uri($"http://localhost:{port.ToString(CultureInfo.InvariantCulture)}/"))),
+                $"the answer on port {port}", Http.Timeout + TestFolders.Spare);
         }
         catch (Exception unanswered) when (unanswered is HttpRequestException or TaskCanceledException)
         {

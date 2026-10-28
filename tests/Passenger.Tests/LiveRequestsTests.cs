@@ -1,9 +1,14 @@
 using System.Net.Http;
+using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
+using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Endpoints;
 using Passenger.App.Run;
 using Passenger.Profiler;
+using Passenger.Roslyn.Extension;
 
 namespace Passenger.Tests;
 
@@ -115,7 +120,7 @@ public sealed class LiveRequestsTests
                 Assert.Equal("Ada: 0, Grace: 0, Linus: 0", Get(client, $"http://127.0.0.1:{port.Port}/orders"));
                 Assert.Equal("out", Get(client, $"http://127.0.0.1:{port.Port}/sign-in/ada"));
                 Assert.Equal("signed up", Get(client, $"http://127.0.0.1:{port.Port}/sign-up/ada"));
-                HttpResponseMessage failed = Task.Run(() => client.GetAsync($"http://127.0.0.1:{port.Port}/boom")).GetAwaiter().GetResult();
+                HttpResponseMessage failed = Asked(() => client.GetAsync($"http://127.0.0.1:{port.Port}/boom"), "the shop's answer at /boom");
                 Assert.Equal(500, (int)failed.StatusCode);
             }
             try
@@ -235,11 +240,66 @@ public sealed class LiveRequestsTests
         {
             try
             {
-                return Task.Run(() => client.GetAsync(url)).GetAwaiter().GetResult().IsSuccessStatusCode;
+                return Asked(() => client.GetAsync(url), $"the shop's answer at {url}").IsSuccessStatusCode;
             }
             catch (HttpRequestException)
             {
                 return false;
+            }
+        }
+    }
+
+    /// <summary>A web app Run runs answers a thousand requests, the window listing as many as it keeps, and the list
+    /// scrolled with the wheel as <see cref="LongListsTests"/> scrolls the IDE's own: a step down it allocates what one
+    /// down fifty requests does, and its rows are handed other requests, none made again.</summary>
+    [AvaloniaFact]
+    public void A_scroll_step_down_a_thousand_requests_a_running_app_answered_hands_the_rows_other_requests_never_making_one_again()
+    {
+        using HeldPort port = new();
+        string folder = TestFolders.Create("requests-many-");
+        TestFolders.Write(folder, "Counter.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>"));
+        TestFolders.Write(folder, "Properties/launchSettings.json",
+            $"{{\n  \"profiles\": {{\n    \"http\": {{ \"commandName\": \"Project\", \"applicationUrl\": \"http://127.0.0.1:{port.Port}\" }}\n  }}\n}}\n");
+        TestFolders.Write(folder, "Program.cs", "WebApplication app = WebApplication.Create(args);\napp.MapGet(\"/items/{id:int}\", (int id) => id);\napp.Run();\n");
+        Restore.Run(folder);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.ShowToolWindow(ToolWindowIds.Requests);
+            port.LetGo(Path.Combine(folder, "gate"));
+            Assert.True(window.SelectConfiguration("Counter: http"), $"No configuration Counter: http among {string.Join(", ", window.Configurations.Select(c => c.Name))}");
+            Ui.Launched(window, window.RunAsync(), "the app to start", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => window.BottomPanel.Run.Document.Snapshot.ToString().Contains("Now listening on:", StringComparison.Ordinal), "the app to listen", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => window.RequestLog.Following.StartsWith("Following", StringComparison.Ordinal) && window.RequestLog.Following.Contains("process", StringComparison.Ordinal),
+                () => $"the Requests window to follow the app; it says: {window.RequestLog.Following}", TimeSpan.FromMinutes(1));
+            Avalonia.Controls.ListBox list = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window.Requests).OfType<Avalonia.Controls.ListBox>().Single();
+            using HttpClient client = new();
+            int sent = 0;
+            LongListsTests.Holds("The Requests window", "requests", 50, 1000, count =>
+            {
+                int from = sent;
+                Ui.AwaitPumped(Waiting.Apart(() => Send(client, port.Port, from, count)), $"the app's answers to requests {from} to {count - 1}", TimeSpan.FromMinutes(2));
+                sent = count;
+                int listed = Math.Min(count, RequestLog.Most);
+                Ui.WaitFor(() => window.RequestLog.Requests.Count(r => r.Status is not null) == listed && window.RequestLog.Requests.Any(r => r.Path == $"/items/{count - 1}"),
+                    () => $"the last {listed} of {count} requests listed, where the window lists {window.RequestLog.Requests.Count}: {window.RequestLog.Following}", TimeSpan.FromSeconds(30));
+                Ui.Settle();
+                return (list, () => { });
+            });
+        }
+        finally
+        {
+            window.Perform(AppActions.Stop);
+            Ui.WaitFor(() => !window.Runner.IsRunning, "the app to stop");
+            window.Close();
+        }
+
+        // Requests to the app's one route, twenty at a time.
+        static async Task Send(HttpClient client, int port, int from, int to)
+        {
+            for (int at = from; at < to; at += 20)
+            {
+                await Task.WhenAll(Enumerable.Range(at, Math.Min(20, to - at)).Select(n => client.GetStringAsync(new Uri($"http://127.0.0.1:{port}/items/{n}"))));
             }
         }
     }
@@ -256,7 +316,7 @@ public sealed class LiveRequestsTests
         int heard = 0;
         try
         {
-            window.ShowToolWindow(ToolWindowIds.Requests);
+            // The log alone, as it keeps the requests while no one looks: a drawn row's cost is held by the test above.
             Ui.Settle();
             long few = Costs(5);
             long many = Costs(RequestLog.Most);
@@ -328,30 +388,243 @@ public sealed class LiveRequestsTests
         }
     }
 
-    /// <summary>The tooltip of each of a request's command rows, as the pointer resting on the row shows it, each row
-    /// scrolled into view first.</summary>
+    /// <summary>A request heard costs the window what it costs with five routes when the folder has five hundred: each
+    /// route's template is split once, and the request's path is walked against them where it lies. The routes are stood
+    /// in for by the catalog's answer from the C# server, the app's events by the profiler reader's.</summary>
+    [AvaloniaFact]
+    public void A_request_heard_costs_the_window_what_it_costs_with_five_routes_when_the_folder_has_five_hundred()
+    {
+        string folder = TestFolders.Create("requests-routes-");
+        string project = Path.Combine(folder, "Shop.csproj");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        int heard = 0;
+        try
+        {
+            // The log alone, as it keeps the requests while no one looks: a drawn row's cost is held by the test above.
+            Ui.Settle();
+            long few = Costs(5);
+            long many = Costs(500);
+            Assert.True(many < few + 1024,
+                $"A request heard with 500 routes allocated {many:N0} bytes on the UI thread, with 5 routes {few:N0}: its path is matched against each route by making it again");
+            Assert.Equal("/orders/{id}", window.RequestLog.Requests[^1].Route?.Template);
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        // The least a request heard allocated on the UI thread with this many routes, the one it reaches the last.
+        long Costs(int routes)
+        {
+            window.RequestLog.Clear();
+            List<WebRoute> declared = [];
+            for (int i = 0; i < routes - 1; i++)
+            {
+                string template = (i % 3) switch
+                {
+                    0 => $"/api/things{i}",
+                    1 => $"/api/things{i}/{{id}}/parts",
+                    _ => $"/files{i}/{{name}}.{{extension}}",
+                };
+                declared.Add(Route(template));
+            }
+            declared.Add(Route("/orders/{id}"));
+            window.Session.Routes.Took(new RoutesFound(declared, [project]), window.Session.Routes.ToRead());
+            for (int i = 0; i < 3; i++)
+            {
+                Hear(Request());
+            }
+            long least = long.MaxValue;
+            for (int round = 0; round < 5; round++)
+            {
+                WebEvent[] told = Request();
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                Hear(told);
+                least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
+            }
+            return least;
+        }
+
+        WebRoute Route(string template) => new(project, RouteKinds.Minimal, ["GET"], template, null, [], "Handle", Path.Combine(folder, "Program.cs"),
+            new Place(0, 0), new Place(0, 1), string.Empty);
+
+        // A request as the app tells of it, made before it is measured: its start and its end.
+        WebEvent[] Request()
+        {
+            string id = $"request-{heard}";
+            DateTime at = DateTime.UtcNow;
+            return [new RequestBegan(id, at, id, "GET", $"/orders/{heard++}", string.Empty), new RequestEnded(id, at, id, 200)];
+        }
+
+        void Hear(WebEvent[] told)
+        {
+            foreach (WebEvent one in told)
+            {
+                window.RequestLog.Hear(one, "Shop", null);
+            }
+            Ui.Settle();
+        }
+    }
+
+    /// <summary>A 2 KB SQL command of hundreds of words, its parameters' values logged, costs the window what one of the
+    /// same length with a few long words costs: its text is read for its columns as ranges of its characters, with no
+    /// string made for each word, and the log masked once.</summary>
+    [AvaloniaFact]
+    public void A_two_kilobyte_SQL_command_costs_the_window_no_string_for_each_of_its_words()
+    {
+        string folder = TestFolders.Create("requests-sql-");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        int heard = 0;
+        try
+        {
+            // The log alone, as it keeps the requests while no one looks: a row drawn shapes each word of its text.
+            Ui.Settle();
+            long words = Costs(round => string.Concat(Enumerable.Repeat($"c{round}, ", 300)));
+            long few = Costs(round => new string((char)('a' + round), 1200) + ", ");
+            Assert.True(words < few + 1024,
+                $"A 2 KB command of 300 words cost the UI thread {words:N0} bytes, one of its length in a few words {few:N0}: each word of its text is made a string");
+            LiveCommand command = Assert.Single(window.RequestLog.Requests[^1].Commands);
+            Assert.Equal("@p0='••••••', @p1='Ada' (Size = 3)", command.Parameters);
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        // The least a request of one such command (its log heard first) allocated on the UI thread, each text new to it.
+        long Costs(Func<int, string> selected)
+        {
+            for (int i = 0; i < 3; i++)
+            {
+                Hear(Request(Sql(selected(i))));
+            }
+            long least = long.MaxValue;
+            for (int round = 3; round < 8; round++)
+            {
+                WebEvent[] told = Request(Sql(selected(round)));
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                Hear(told);
+                least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
+            }
+            return least;
+        }
+
+        // A command's text of 2 KB: the columns selected, then a WHERE that compares a secret's column and a name's.
+        static string Sql(string selected)
+        {
+            string where = " FROM \"Customers\" AS \"c\" WHERE \"c\".\"Password\" = @p0 AND \"c\".\"Name\" = @p1";
+            string text = "SELECT " + selected + "1" + where;
+            return text + new string(' ', 2048 - text.Length);
+        }
+
+        // A request as the app tells of it, made before it is measured: its start, EF Core's log of its command, the command and its end.
+        WebEvent[] Request(string sql)
+        {
+            string id = $"request-{heard++}";
+            DateTime at = DateTime.UtcNow;
+            string logged = $"Executed DbCommand (1ms) [Parameters=[@p0='hunter22' (Size = 8), @p1='Ada' (Size = 3)], CommandType='Text', CommandTimeout='30']\n{sql}";
+            return [new RequestBegan(id, at, id, "GET", "/customers", string.Empty), new CommandLogged(id, at, logged),
+                new CommandRan(id, at, $"{id}-0", sql, 1.5, null, null), new RequestEnded(id, at, id, 200)];
+        }
+
+        void Hear(WebEvent[] told)
+        {
+            foreach (WebEvent one in told)
+            {
+                window.RequestLog.Hear(one, "Shop", null);
+            }
+            Ui.Settle();
+        }
+    }
+
+    /// <summary>A command's row shows the command's own tooltip where the row last showed a request: with more requests
+    /// listed than the window shows, each command heard in a batch of its own is handed the row of a request scrolled off
+    /// the list's foot, as a slow machine's batches hand them. The app's events are stood in for by the profiler reader's.</summary>
+    [AvaloniaFact]
+    public void A_command_handed_the_row_of_a_request_shows_its_own_tooltip()
+    {
+        string folder = TestFolders.Create("requests-reused-");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.ShowToolWindow(ToolWindowIds.Requests);
+            Ui.Settle();
+            int heard = 0;
+            ListBox list = window.Requests.GetVisualDescendants().OfType<ListBox>().Single();
+            Assert.True(list.Bounds.Height >= 4 * ListRow.Height, $"The Requests window's list is {list.Bounds.Height} high, too low to show a request and its three commands");
+            while (window.Requests.Rows.Count * ListRow.Height < list.Bounds.Height + (4 * ListRow.Height))
+            {
+                string each = $"request-{heard}";
+                Hear(new RequestBegan(each, DateTime.UtcNow, each, "GET", $"/orders/{heard++}", string.Empty), new RequestEnded(each, DateTime.UtcNow, each, 200));
+            }
+
+            string id = "signing-up";
+            DateTime at = DateTime.UtcNow;
+            string[] texts = ["INSERT INTO \"Customers\" (\"Name\") VALUES (@p0)", "UPDATE \"Customers\" SET \"Name\" = @p0", "SELECT COUNT(*) FROM \"Customers\""];
+            Hear(new RequestBegan(id, at, id, "GET", "/sign-up/ada", string.Empty));
+            for (int i = 0; i < texts.Length; i++)
+            {
+                Hear(new CommandRan(id, at, $"{id}-{i}", texts[i], 1.5, null, null));
+            }
+            Hear(new RequestEnded(id, at, id, 200));
+            string[] tips = CommandTips(window, window.RequestLog.Requests.Single(r => r.Path == "/sign-up/ada"));
+            Assert.True(tips.SequenceEqual(texts), $"The pointer resting on the sign-up's commands, each in the row of a request before, reads [{string.Join(" | ", tips)}], not their own texts [{string.Join(" | ", texts)}]");
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        // Events the window takes in one batch, laid out before the next.
+        void Hear(params WebEvent[] told)
+        {
+            foreach (WebEvent one in told)
+            {
+                window.RequestLog.Hear(one, "Shop", null);
+            }
+            Ui.Settle();
+        }
+    }
+
+    /// <summary>The tooltip of each of a request's command rows, as the pointer resting on the row's words finds it (never
+    /// on a part the row hides), each row found by its command and scrolled into view first.</summary>
     private static string[] CommandTips(MainWindow window, LiveRequest request)
     {
-        Avalonia.Controls.ListBox list = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window.Requests).OfType<Avalonia.Controls.ListBox>().Single();
-        IReadOnlyList<object> rows = window.Requests.Rows;
+        ListBox list = window.Requests.GetVisualDescendants().OfType<ListBox>().Single();
         List<string> tips = [];
-        for (int at = 0; at < rows.Count; at++)
+        foreach (RequestsView.CommandRow row in window.Requests.Rows.OfType<RequestsView.CommandRow>().Where(r => r.Request == request).ToList())
         {
-            if (rows[at] is RequestsView.CommandRow row && row.Request == request)
-            {
-                list.ScrollIntoView(at);
-                Ui.Settle();
-                Avalonia.Controls.Control shown = list.ContainerFromIndex(at) ?? throw new Xunit.Sdk.XunitException($"The command row {at} is not shown");
-                tips.Add(Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(shown).OfType<Avalonia.Controls.Control>()
-                    .Select(Avalonia.Controls.ToolTip.GetTip).OfType<string>().First());
-            }
+            list.ScrollIntoView(window.Requests.Rows.ToList().IndexOf(row));
+            Ui.Settle();
+            Control shown = list.ContainerFromIndex(window.Requests.Rows.ToList().IndexOf(row)) ?? throw new Xunit.Sdk.XunitException($"The row of the command {row.Command.Text} is not shown");
+            TextBlock words = shown.GetVisualDescendants().OfType<TextBlock>().FirstOrDefault(t => t.IsEffectivelyVisible && t.Text is { Length: > 0 })
+                ?? throw new Xunit.Sdk.XunitException($"The row of the command {row.Command.Text} shows no words");
+            Point at = words.TranslatePoint(new Point(2, words.Bounds.Height / 2), window) ?? throw new Xunit.Sdk.XunitException("The command's row is not laid out");
+            // What covers the row (a tooltip the window opened under a pointer that never moved) is passed over.
+            Visual? found = window.InputHitTest(at, v => v == shown || v.IsVisualAncestorOf(shown) || shown.IsVisualAncestorOf(v)) as Visual;
+            tips.Add((found ?? list).GetSelfAndVisualAncestors().TakeWhile(v => v != list).OfType<Control>().Select(ToolTip.GetTip).OfType<string>().FirstOrDefault()
+                ?? throw new Xunit.Sdk.XunitException($"The pointer on the words of the command {row.Command.Text}'s row finds {found?.GetType().Name ?? "nothing"}, with no tooltip"));
         }
         return [.. tips];
     }
 
     /// <summary>The shop written into a folder and restored from the run's local feed, its launch profile serving at the port
-    /// given: this class's and an agent's test of the requests (McpRequestsTests).</summary>
+    /// given: this class's and an agent's test of the requests (McpRequestsTests); restored from the UI thread, the
+    /// window's loop running meanwhile.</summary>
     internal static void WriteShop(string folder, int port)
+    {
+        Write(folder, port);
+        Restore.Run(folder);
+    }
+
+    /// <inheritdoc cref="WriteShop"/>
+    internal static Task WriteShopAsync(string folder, int port)
+    {
+        Write(folder, port);
+        return Restore.RunAsync(folder);
+    }
+
+    private static void Write(string folder, int port)
     {
         AvaloniaApp.UseFeed(folder);
         TestFolders.Write(folder, "Shop.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>", "<Nullable>enable</Nullable>")
@@ -359,10 +632,16 @@ public sealed class LiveRequestsTests
         TestFolders.Write(folder, "Properties/launchSettings.json",
             $"{{\n  \"profiles\": {{\n    \"http\": {{ \"commandName\": \"Project\", \"applicationUrl\": \"http://127.0.0.1:{port}\" }}\n  }}\n}}\n");
         TestFolders.Write(folder, "Program.cs", Program);
-        Restore.Run(folder);
     }
 
-    internal static string Get(HttpClient client, string url) => Task.Run(() => client.GetStringAsync(url)).GetAwaiter().GetResult();
+    /// <summary>The app's answer at the address, asked from the UI thread with the window's loop running meanwhile, never
+    /// waiting for the window's work to land; a test with no window awaits the client itself.</summary>
+    internal static string Get(HttpClient client, string url) => Asked(() => client.GetStringAsync(url), $"the shop's answer at {url}");
+
+    /// <summary>A request of the test's own, sent on the thread pool and waited for on the UI thread for as long as the client
+    /// gives it and a moment more, so the client's own timeout fails it first.</summary>
+    private static T Asked<T>(Func<Task<T>> request, string what) =>
+        Ui.AwaitPumped(Waiting.Apart(request), what, TimeSpan.FromSeconds(100) + TestFolders.Spare);
 
     private static int LineOf(string text) => Array.FindIndex(Program.Split('\n'), l => l.Contains(text, StringComparison.Ordinal));
 }

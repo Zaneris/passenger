@@ -589,8 +589,8 @@ internal sealed partial class XamlAssist : LanguageAssist
     }
 
     /// <summary>An element's name renamed where the file names it and where its code-behind uses its field, as one command
-    /// undone whole: the files it changed (none where the name cannot be a field's) and the words for it; null when the
-    /// project's XAML is not read.</summary>
+    /// undone whole: the files it changed, once written (none where the name cannot be a field's or a file could not be
+    /// written), and the words for it; null when the project's XAML is not read.</summary>
     internal async Task<(IReadOnlyList<string> Files, string Said)?> XamlRenameAsync(XamlDocument xaml, string old, string name)
     {
         if (!Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsValidIdentifier(name))
@@ -622,7 +622,18 @@ internal sealed partial class XamlAssist : LanguageAssist
         }
         JsonElement edit = JsonSerializer.SerializeToElement(new { changes }, Json.Options);
         List<string> dropped = [];
-        int files = TypeRename.Apply(context.Editors, edit, [], $"Rename {old} to {name}", asked, dropped);
+        int files;
+        string named = $"Rename {old} to {name}";
+        using CommandHistory.Recording recording = context.Editors.Commands.Record(named);
+        try
+        {
+            files = TypeRename.Apply(context.Editors, edit, [], named, asked, dropped, into: recording);
+            await WorkspaceEdits.LandedAsync(recording, context.Say);
+        }
+        catch (WorkspaceEditFailed failed)
+        {
+            return ([], $"Rename failed: {failed.Message}");
+        }
         return ([.. changes.Keys.Select(DocumentUris.ToPath)], dropped.Count > 0 ? $"Renamed, but not in {string.Join(", ", dropped)}: it was edited meanwhile"
             : files > 1 ? $"Renamed in {files} files" : "Renamed");
     }
@@ -663,7 +674,7 @@ internal sealed partial class XamlAssist : LanguageAssist
         {
             if (choice?.Value is XamlFix fix)
             {
-                ApplyFix(actions, fix);
+                return ApplyFixAsync(actions, fix);
             }
             else if (choice?.Value is EditorFix chosen && document is not null)
             {
@@ -679,10 +690,10 @@ internal sealed partial class XamlAssist : LanguageAssist
     }
 
     /// <summary>A XAML fix made against its files' texts as they are now (open, or on disk), the files it makes made, as one
-    /// command.</summary>
-    private void ApplyFix(CodeActions actions, XamlFix fix)
+    /// command, said once those not open have landed.</summary>
+    private async Task ApplyFixAsync(CodeActions actions, XamlFix fix)
     {
-        string? refused = actions.ApplyFileChanges(fix.Title, [new XamlFileChange(fix.Path, fix.Edits), .. fix.Others]);
+        string? refused = await actions.ApplyFileChangesAsync(fix.Title, [new XamlFileChange(fix.Path, fix.Edits), .. fix.Others]);
         context.Say(refused is null ? fix.Title : $"{fix.Title} was not applied: {refused}");
     }
 

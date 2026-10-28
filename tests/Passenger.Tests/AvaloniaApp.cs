@@ -9,7 +9,7 @@ namespace Passenger.Tests;
 /// reference to Avalonia's paid developer tools is taken out, as nothing of Avalonia Accelerate may be used.</summary>
 internal static class AvaloniaApp
 {
-    private static readonly Lazy<string> Hive = new(Install, LazyThreadSafetyMode.ExecutionAndPublication);
+    private static readonly Lazy<Task<string>> Hive = new(InstallAsync, LazyThreadSafetyMode.ExecutionAndPublication);
 
     private static readonly Lazy<string> FeedFolder = new(MakeFeed, LazyThreadSafetyMode.ExecutionAndPublication);
 
@@ -47,11 +47,11 @@ internal static class AvaloniaApp
         return folder;
     }
 
-    private static string Install()
+    private static async Task<string> InstallAsync()
     {
         string hive = Directory.CreateDirectory(Path.Combine(TestRun.Root, "templates")).FullName;
         UseFeed(FeedFolder.Value);
-        ChildResult installed = Run(["new", "install", $"Avalonia.Templates::{TemplatesVersion}", "--debug:custom-hive", hive], FeedFolder.Value);
+        ChildResult installed = await Run(["new", "install", $"Avalonia.Templates::{TemplatesVersion}", "--debug:custom-hive", hive], FeedFolder.Value);
         Assert.True(installed.Succeeded, $"Avalonia's templates did not install into the run's own hive (exit code {installed.ExitCode}):\n{installed.Output}{installed.Error}");
         return hive;
     }
@@ -78,11 +78,16 @@ internal static class AvaloniaApp
         return project;
     }
 
+    /// <summary><see cref="CreateAsync"/> from the UI thread (a window test's body), run on the thread pool and waited for
+    /// with the window's loop running (<see cref="Ui.AwaitPumped{T}"/>), never for its work to land.</summary>
+    public static void Create(string folder, string name) =>
+        Ui.AwaitPumped(Waiting.Apart(() => CreateAsync(folder, name)), $"dotnet new avalonia.app to make {name}", (Limit * 2) + TestFolders.Spare);
+
     /// <summary>Makes the app in a folder, its project and namespace named <paramref name="name"/>, without restoring it.</summary>
-    public static void Create(string folder, string name)
+    public static async Task CreateAsync(string folder, string name)
     {
-        ChildResult made = Run(["new", "avalonia.app", "--output", folder, "--name", name, "--framework", TestProjects.Framework, "--avalonia-version", Version,
-            "--no-restore", "--no-update-check", "--debug:custom-hive", Hive.Value], null);
+        ChildResult made = await Run(["new", "avalonia.app", "--output", folder, "--name", name, "--framework", TestProjects.Framework, "--avalonia-version", Version,
+            "--no-restore", "--no-update-check", "--debug:custom-hive", await Hive.Value], null);
         Assert.True(made.Succeeded, $"dotnet new avalonia.app did not make the test's app (exit code {made.ExitCode}):\n{made.Output}{made.Error}");
         string project = Path.Combine(folder, name + ".csproj");
         string text = File.ReadAllText(project);
@@ -105,6 +110,9 @@ internal static class AvaloniaApp
         typeof(AvaloniaApp).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>().FirstOrDefault(a => a.Key == key)?.Value
         ?? throw new InvalidOperationException($"The test assembly was built without its {key}");
 
-    private static ChildResult Run(IReadOnlyList<string> arguments, string? folder) =>
-        Task.Run(() => ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(arguments, folder), limit: TimeSpan.FromMinutes(3))).GetAwaiter().GetResult();
+    /// <summary>The longest dotnet new may take.</summary>
+    private static readonly TimeSpan Limit = TimeSpan.FromMinutes(3);
+
+    private static Task<ChildResult> Run(IReadOnlyList<string> arguments, string? folder) =>
+        ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(arguments, folder), limit: Limit);
 }

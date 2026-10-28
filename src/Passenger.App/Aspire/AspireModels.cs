@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 
 namespace Passenger.App.Aspire;
@@ -61,55 +62,64 @@ public sealed class AspireResourceCommand(string name, JsonElement data)
 
 public sealed record AspireConsoleLog(string ResourceName, string Content, bool IsError, string? Timestamp, int? LineNumber = null);
 
-public sealed class AspireStructuredLog(JsonElement data)
+/// <summary>A log as its reader wrote it, its credentials masked (<see cref="AspireRecords"/>): its bytes, read as JSON when
+/// first asked for (most logs a view follows are never shown), and the names it was written with.</summary>
+public sealed class AspireStructuredLog(ReadOnlyMemory<byte> json, string? resourceName, string? serviceName)
 {
-    private string? resourceName;
+    private StrongBox<JsonElement>? data;
 
-    public JsonElement Data { get; } = data;
+    /// <summary>The log's JSON as written.</summary>
+    public ReadOnlyMemory<byte> Json { get; } = json;
+
+    public JsonElement Data => (data ??= new StrongBox<JsonElement>(Parsed(Json))).Value;
 
     /// <summary>Its place in the order its reader heard the logs (from 1), given once off the UI thread, which the Telemetry
     /// view keys its row by; 0 for a log read otherwise (the CLI's).</summary>
     public long Sequence { get; init; }
 
-    /// <summary>The resource that logged it, read once.</summary>
-    public string? ResourceName => resourceName ??= AspireJson.String(Data, "resourceName");
+    /// <summary>The resource that logged it.</summary>
+    public string? ResourceName { get; } = resourceName;
 
     /// <summary>The service that logged it, by its name alone (no instance), as <see cref="ResourceName"/> begins.</summary>
-    public string? ServiceName => AspireJson.String(Data, "serviceName");
+    public string? ServiceName { get; } = serviceName;
     public string Message => AspireJson.String(Data, "message") ?? string.Empty;
     public string? TraceId => AspireJson.String(Data, "traceId");
     public string? SpanId => AspireJson.String(Data, "spanId");
-    public override string ToString() => $"{AspireJson.String(Data, "severity")} · {AspireJson.String(Data, "resourceName")} · {Message}";
+    public override string ToString() => $"{AspireJson.String(Data, "severity")} · {ResourceName} · {Message}";
+
+    /// <summary>A record's JSON as an element of its own.</summary>
+    internal static JsonElement Parsed(ReadOnlyMemory<byte> json)
+    {
+        Utf8JsonReader reader = new(json.Span);
+        return JsonElement.ParseValue(ref reader);
+    }
 }
 
 /// <summary>What one envelope of a followed log stream changed of the logs its reader keeps: those it added and those the
 /// bounds evicted, each oldest first (an evicted log may be one it added).</summary>
 public sealed record AspireLogBatch(IReadOnlyList<AspireStructuredLog> Added, IReadOnlyList<AspireStructuredLog> Evicted);
 
-public sealed class AspireSpan(JsonElement data)
+/// <summary>A span as its reader wrote it, its credentials masked (<see cref="AspireRecords"/>): its bytes, read as JSON when
+/// first asked for, and the ids, source and service it was written with, which a trace's tree reads for every span, with a
+/// root's name.</summary>
+public sealed class AspireSpan(ReadOnlyMemory<byte> json, string spanId, string? parentSpanId, string? name, string? source, string? service)
 {
-    /// <summary>What a span with no parent keeps as its parent's id once read: a string of its own, never a span's id.</summary>
-    private static readonly string NoParent = new('-', 1);
-    private string? spanId;
-    private string? parentSpanId;
+    private StrongBox<JsonElement>? data;
 
-    public JsonElement Data { get; } = data;
+    /// <summary>The span's JSON as written.</summary>
+    public ReadOnlyMemory<byte> Json { get; } = json;
 
-    /// <summary>Its id and its parent's, read once: a trace's tree reads them for every span at every look.</summary>
-    public string SpanId => spanId ??= AspireJson.RequiredString(Data, "spanId");
-    public string? ParentSpanId
-    {
-        get
-        {
-            string parent = parentSpanId ??= AspireJson.String(Data, "parentSpanId") ?? NoParent;
-            return ReferenceEquals(parent, NoParent) ? null : parent;
-        }
-    }
-    public string? Source => AspireJson.String(Data, "source");
+    public JsonElement Data => (data ??= new StrongBox<JsonElement>(AspireStructuredLog.Parsed(Json))).Value;
+    public string SpanId { get; } = spanId;
+    public string? ParentSpanId { get; } = parentSpanId;
+
+    /// <summary>What the span is of, as its trace is titled after its root's: a root's given, any other's read when asked.</summary>
+    public string? Name => ParentSpanId is null ? name : AspireJson.String(Data, "name");
+    public string? Source { get; } = source;
 
     /// <summary>The service whose span it is, by its name alone (no instance), as <see cref="Source"/> begins.</summary>
-    public string? Service => AspireJson.String(Data, "service");
-    public override string ToString() => $"{Source} · {AspireJson.String(Data, "name")} · {AspireJson.Duration(Data)} · {AspireJson.String(Data, "status")}";
+    public string? Service { get; } = service;
+    public override string ToString() => $"{Source} · {Name} · {AspireJson.Duration(Data)} · {AspireJson.String(Data, "status")}";
 }
 
 public sealed class AspireTrace(JsonElement data, IReadOnlyList<AspireSpan> spans)

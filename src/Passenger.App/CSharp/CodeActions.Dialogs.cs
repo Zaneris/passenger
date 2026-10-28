@@ -214,12 +214,23 @@ internal sealed partial class CodeActions
     }
 
     /// <summary>A refactoring computed by Passenger's extension for a file and applied as one command, which Undo takes back
-    /// whole: every file it changes, open or not, and every file it makes. What it came to: the files it changed and what
-    /// to say of it, or why it was not made (for an agent's call, told its <paramref name="patience"/>).</summary>
+    /// whole: every file it changes, open or not, and every file it makes. What it came to once the files not open it wrote
+    /// have landed (<see cref="WorkspaceEdits.LandedAsync"/>): the files it changed and what to say of it, or why it was
+    /// not made (for an agent's call, told its <paramref name="patience"/>).</summary>
     internal async Task<RefactorOutcome> MakeAsync(string name, OpenDocument document, Func<LspDocument, Task<Refactored>> ask, Func<int, string> done, Patience? patience)
     {
         try
         {
+            int version = document.Text.Version;
+            if (await context.TakenInAsync(document) is { } unloaded)
+            {
+                return RefactorOutcome.Refused($"{name} was not applied: {unloaded}");
+            }
+            // The place it was given is in the text as it was before the wait.
+            if (document.Text.Version != version)
+            {
+                return RefactorOutcome.Refused($"{name} was not applied: {document.Name} changed while the C# language server took in the files just made; try again");
+            }
             LspDocument lsp = context.Now(document);
             using Asked asked = WorkspaceEdits.Track(context.Editors);
             Refactored made = await ask(lsp);
@@ -237,19 +248,24 @@ internal sealed partial class CodeActions
                 return RefactorOutcome.Refused($"{name} was not applied: {stale}");
             }
             List<string> dropped = [];
-            IReadOnlyList<RefactoredFile> files = WorkspaceEdits.Files(edit, WorkspaceEdits.Answered(context.Editors, asked));
-            using (CommandHistory.Recording recording = context.Editors.Commands.Record(name))
+            Func<string, TextSnapshot?> texts = WorkspaceEdits.Answered(context.Editors, asked);
+            IReadOnlyList<RefactoredFile> files = WorkspaceEdits.Files(edit, texts);
+            List<UnchangedUse> unchanged = [.. (made.Left ?? []).Select(use => Unchanged(use, texts))];
+            using CommandHistory.Recording recording = context.Editors.Commands.Record(name);
+            context.ChangeFiles([.. made.Changes.Select(c => c.Path), .. WorkspaceEdits.Paths(edit)], () =>
             {
                 foreach (FileChange change in made.Changes)
                 {
                     recording.Watch(PathNames.Canonical(change.Path));
                 }
                 _ = WorkspaceEdits.Apply(context.Editors, edit, asked, dropped);
-            }
-            context.ChangedFiles();
+            });
+            await WorkspaceEdits.LandedAsync(recording, context.Say);
             // Counted by file: a file made is its creation and its text, which the edit counts apart.
-            string said = done(made.Changes.Count - dropped.Count) + (dropped.Count > 0 ? $", but not in {string.Join(", ", dropped)}: it was edited meanwhile" : string.Empty);
-            return new RefactorOutcome(said, null, files, dropped);
+            string said = done(made.Changes.Count - dropped.Count) + (dropped.Count > 0 ? $", but not in {string.Join(", ", dropped)}: it was edited meanwhile" : string.Empty)
+                + (unchanged.Count > 0 ? $", but left {Plural.Of(unchanged.Count, "use")} as {(unchanged.Count == 1 ? "it was" : "they were")}: "
+                    + string.Join("; ", unchanged.Select(use => $"{Path.GetFileName(use.Path)}:{use.Line}, {use.Why}")) : string.Empty);
+            return new RefactorOutcome(said, null, files, dropped) { Unchanged = unchanged };
         }
         catch (LanguageServerFailed failed)
         {
@@ -259,6 +275,14 @@ internal sealed partial class CodeActions
         {
             return RefactorOutcome.Refused(failed.Message);
         }
+    }
+
+    /// <summary>A use the extension left as it was, at the editor's line and column in the file's text as it answered.</summary>
+    private static UnchangedUse Unchanged(UseLeft use, Func<string, TextSnapshot?> texts)
+    {
+        string path = PathNames.Canonical(use.Path);
+        TextPosition at = ServerPlaces.PositionOf(texts(path), new LspPosition(use.At.Line, use.At.Character));
+        return new UnchangedUse(path, at.Line + 1, at.Column + 1, use.Why);
     }
 
     /// <summary>Where the caret was as a refactoring was asked for, followed through what changes the file until its

@@ -4,6 +4,7 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.VisualTree;
+using Passenger.App.Debugging;
 using Passenger.App;
 using Passenger.App.Editors;
 using Passenger.App.Explorer;
@@ -51,20 +52,19 @@ public sealed class ExplorerFilesTests : IDisposable
         Assert.Contains(window.ExplorerView.Tree.Rows, r => r.Name == "Order.cs");
         Assert.Equal("Order.cs is already there", window.CreateFile(models, "Order.cs", string.Empty));
 
-        Assert.Null(window.Rename(order, "Purchase.cs"));
+        Assert.Null(Ui.Await(window.RenameAsync(order, "Purchase.cs"), "the rename"));
         string purchase = Path.Combine(models, "Purchase.cs");
         Assert.True(File.Exists(purchase));
         Assert.False(File.Exists(order));
         Assert.Equal(["Purchase.cs"], window.EditorArea.Documents.Select(d => d.Name));
 
-        Assert.Null(window.Rename(models, "Domain"));
+        Assert.Null(Ui.Await(window.RenameAsync(models, "Domain"), "the rename"));
         Assert.Equal(PathNames.Canonical(Path.Combine(folder, "Domain", "Purchase.cs")), Assert.Single(window.EditorArea.Documents).Path);
 
         window.Confirm = (_, _, _) => Task.FromResult(true);
         string moved = Path.Combine(folder, "Domain", "Purchase.cs");
         Task<bool> deleting = window.DeleteAsync(PathNames.Canonical(moved));
-        Ui.WaitFor(() => deleting.IsCompleted, "the delete");
-        Assert.True(deleting.Result);
+        Assert.True(Ui.Await(deleting, "the delete"));
         Assert.False(File.Exists(moved));
         Assert.True(File.Exists(Path.Combine(trash, "Purchase.cs")));
         Assert.Empty(window.EditorArea.Documents);
@@ -77,7 +77,7 @@ public sealed class ExplorerFilesTests : IDisposable
         window.OpenFile(Path.Combine(domain, "Beta.cs"));
         window.OpenFile(Path.Combine(domain, "Alpha.cs"));
         Ui.Settle();
-        Assert.Null(window.Rename(domain, "Models"));
+        Assert.Null(Ui.Await(window.RenameAsync(domain, "Models"), "the rename"));
         Assert.Equal(PathNames.Canonical(Path.Combine(folder, "Models", "Alpha.cs")), window.EditorArea.Active?.Path);
         Assert.Equal(2, window.EditorArea.Documents.Count);
 
@@ -215,6 +215,80 @@ public sealed class ExplorerFilesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A file-based program's directives follow what they name: the project its <c>#:project</c> names renamed in
+    /// the Explorer, its value names the new folder and the program evaluates with the project there; the program cut and
+    /// pasted into a deeper folder, its <c>#:project</c> and <c>#:include</c> name from there what they named before. One
+    /// Undo puts each back whole: the folder or the program where it was, and the program's text as it was.</summary>
+    [AvaloniaFact]
+    public void A_programs_directives_follow_the_project_it_names_and_the_program_itself_moved_and_one_undo_puts_each_back()
+    {
+        File.Delete(Path.Combine(folder, "Shop.csproj"));
+        string root = PathNames.Canonical(folder);
+        TestFolders.Write(root, "Lib/Lib.csproj", TestProjects.Library());
+        TestFolders.Write(root, "Lib/Shapes.cs", "namespace Lib;\n\npublic static class Shapes\n{\n    public const string Name = \"shapes\";\n}\n");
+        const string Program = "#!/usr/bin/env dotnet\n#:project ../Lib/Lib.csproj\n#:include helper.cs\nSystem.Console.WriteLine(Lib.Shapes.Name + Helper.Name);\n";
+        TestFolders.Write(root, "scripts/tool.cs", Program);
+        TestFolders.Write(root, "scripts/helper.cs", "static class Helper\n{\n    public const string Name = \"helper\";\n}\n");
+        string cli = Directory.CreateDirectory(Path.Combine(root, "tools", "cli")).FullName;
+        string tool = Path.Combine(root, "scripts", "tool.cs");
+        string lib = Path.Combine(root, "Lib");
+        MainWindow window = Open();
+        List<string> asked = Answer(window);
+        Evaluated(tool, Path.Combine(lib, "Lib.csproj"), "as written");
+
+        Choose(lib);
+        Ui.Run(window, AppActions.Rename);
+        NamePopup popup = Assert.IsType<NamePopup>(window.Popup);
+        popup.Text = string.Empty;
+        window.KeyTextInput("Geometry");
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => !window.IsPopupOpen, () => $"the rename to finish: {popup.Problem}");
+        string geometry = Path.Combine(root, "Geometry");
+        Assert.True(Directory.Exists(geometry), $"Lib was not renamed: {window.Status}");
+        Assert.Equal(Program.Replace("../Lib/", "../Geometry/", StringComparison.Ordinal), File.ReadAllText(tool));
+        Evaluated(tool, Path.Combine(geometry, "Lib.csproj"), "once Lib was renamed Geometry");
+
+        Choose(geometry);
+        Ui.Run(window, EditorActions.Undo);
+        Assert.Equal(["Undo"], asked);
+        Assert.True(Directory.Exists(lib) && !Directory.Exists(geometry), $"Undo did not rename Geometry back: {window.Status}");
+        Assert.Equal(Program, File.ReadAllText(tool));
+
+        Choose(tool);
+        Ui.Run(window, EditorActions.Cut);
+        Choose(cli);
+        Ui.Run(window, EditorActions.Paste);
+        Assert.Equal("Moved tool.cs to cli", window.Status);
+        string moved = Path.Combine(cli, "tool.cs");
+        Assert.Equal(Program.Replace("../Lib/", "../../Lib/", StringComparison.Ordinal).Replace("#:include helper.cs", "#:include ../../scripts/helper.cs", StringComparison.Ordinal),
+            File.ReadAllText(moved));
+        Evaluated(moved, Path.Combine(lib, "Lib.csproj"), "once it moved to tools/cli");
+        Assert.True(window.Projects.Single(p => p.Path == moved).Holds(Path.Combine(root, "scripts", "helper.cs")),
+            "The program moved no longer compiles the helper.cs it included, left in scripts");
+
+        Choose(cli);
+        Ui.Run(window, EditorActions.Undo);
+        Assert.Equal(["Undo", "Undo"], asked);
+        Assert.True(File.Exists(tool) && !File.Exists(moved), $"Undo did not move tool.cs back: {window.Status}");
+        Assert.Equal(Program, File.ReadAllText(tool));
+        window.Close();
+
+        void Choose(string path)
+        {
+            window.ExplorerView.Reveal(path);
+            Ui.Settle();
+            Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Path == path));
+        }
+
+        void Evaluated(string program, string referenced, string when)
+        {
+            string References() => window.Projects.FirstOrDefault(p => p.Path == program) is { } found
+                ? found.IsEvaluated ? string.Join(", ", found.ProjectReferences) : $"not evaluated: {found.Problem ?? "not yet"}"
+                : "not a project";
+            Ui.WaitFor(() => References() == referenced, () => $"{Path.GetFileName(program)}, {when}, to evaluate with its #:project's {referenced} ({References()})", TimeSpan.FromMinutes(1));
+        }
+    }
+
     [AvaloniaFact]
     public void A_file_renamed_in_the_explorer_keeps_its_tab_in_both_splits_its_undo_its_bookmark_and_its_breakpoint()
     {
@@ -236,7 +310,7 @@ public sealed class ExplorerFilesTests : IDisposable
 
         bool heard = false;
         window.FolderWatcher!.Changed += (_, changes) => heard |= changes.Paths.Any(p => Path.GetFileName(p) is "Order.cs" or "Purchase.cs");
-        Assert.Null(window.Rename(order, "Purchase.cs"));
+        Assert.Null(Ui.Await(window.RenameAsync(order, "Purchase.cs"), "the rename"));
         // The folder watcher hears of the move after it, and must not take it for the file deleted.
         Ui.WaitFor(() => heard, "the folder watcher to hear of the move");
         Ui.Settle();
@@ -264,6 +338,43 @@ public sealed class ExplorerFilesTests : IDisposable
         Assert.Equal("namespace Shop.Models;\n\npublic class Order\n{\n    public int Total;\n}\n", document.Text.Snapshot.ToString());
         Assert.Equal(4, Assert.Single(window.Debugger.Breakpoints.In(purchase)).Line);
         window.Close();
+    }
+
+    /// <summary>An HTML page opens in the person's browser from the Explorer's Open In, from its editor's menu and from the
+    /// keys Rider gives Open in Browser, the window handing the browser the file's address (headless, recorded and opened
+    /// nowhere); a file that is no page is refused, saying why.</summary>
+    [AvaloniaFact]
+    public void An_HTML_page_opens_in_the_browser_from_the_explorer_its_editors_menu_and_the_keys()
+    {
+        File.WriteAllText(Path.Combine(folder, "index.html"), "<!doctype html>\n<title>Shop</title>\n");
+        File.WriteAllText(Path.Combine(folder, "notes.txt"), "notes\n");
+        MainWindow window = Open();
+        try
+        {
+            string page = Row(window, "index.html").Path!;
+            Uri address = new(page);
+            Ui.ChooseFromRowMenu(window, Row(window, "index.html"), "Open In", "Browser");
+            Assert.Equal([address], window.Browsed);
+
+            window.OpenFile(page);
+            Ui.Settle();
+            Ui.ChooseFromEditorMenu(window, "Open in Browser");
+            Assert.Equal([address, address], window.Browsed);
+            window.EditorArea.CodeEditor.Focus();
+            Ui.Press(window, Ui.Shortcut(AppActions.OpenInBrowser));
+            Assert.Equal([address, address, address], window.Browsed);
+
+            window.OpenFile(Path.Combine(folder, "notes.txt"));
+            Ui.Settle();
+            window.EditorArea.CodeEditor.Focus();
+            Ui.Press(window, Ui.Shortcut(AppActions.OpenInBrowser));
+            Assert.True(window.Browsed.Count == 3, $"Open in Browser opened {window.Browsed[^1]}, which is no HTML page");
+            Assert.Equal("notes.txt is not an HTML page", window.Status);
+        }
+        finally
+        {
+            window.Close();
+        }
     }
 
     /// <summary>The Explorer's menu and keys are the window's actions: a row's Rename and Delete run from its menu and

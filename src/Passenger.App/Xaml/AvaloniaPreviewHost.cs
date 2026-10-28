@@ -27,6 +27,9 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
     private IAvaloniaRemoteTransportConnection? connection;
     private Process? host;
     private bool disposed;
+
+    /// <summary>Whether the previewer's process has ended, whose end the pane says with its last words.</summary>
+    private bool ended;
     private Stopwatch? starting;
     private bool empty;
     private double drawnAt;
@@ -91,7 +94,7 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
         host = started;
         started.OutputDataReceived += (_, e) => log.Heard(e.Data);
         started.ErrorDataReceived += (_, e) => log.Heard(e.Data);
-        started.Exited += (_, _) => UiThread.Post(() => Ended(started));
+        HearEnd(started, () => Ended(started));
         started.BeginOutputReadLine();
         started.BeginErrorReadLine();
         starting = Stopwatch.StartNew();
@@ -128,7 +131,14 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
         }
         connection = opened;
         opened.OnMessage += (_, message) => UiThread.Post(() => Received(opened, message));
-        opened.OnException += (_, error) => UiThread.Post(() => preview.Say($"The previewer's connection failed: {error.Message}"));
+        // A connection broken by the previewer's end says nothing over the end's own words, whichever is heard first.
+        opened.OnException += (_, error) => UiThread.Post(() =>
+        {
+            if (!ended)
+            {
+                preview.Say($"The previewer's connection failed: {error.Message}");
+            }
+        });
         opened.Start();
         double dpi = 96 * preview.Scaling;
         IdeErrors.Observe(opened.Send(new ClientSupportedPixelFormatsMessage { Formats = [RemoteFormat.Bgra8888, RemoteFormat.Rgba8888] }));
@@ -219,10 +229,30 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
         return result.Error.Split('\n')[0].Trim();
     }
 
-    private void Ended(Process ended)
+    /// <summary>Has <paramref name="ended"/> run once on the window's thread after a previewer's process ends, an end
+    /// before this listened too: a process raises Exited once, and one that died as it started may have raised it already.</summary>
+    internal static void HearEnd(Process started, Action ended)
     {
-        if (!disposed && ended == host)
+        int heard = 0;
+        void Heard()
         {
+            if (Interlocked.Exchange(ref heard, 1) == 0)
+            {
+                UiThread.Post(ended);
+            }
+        }
+        started.Exited += (_, _) => Heard();
+        if (started.HasExited)
+        {
+            Heard();
+        }
+    }
+
+    private void Ended(Process process)
+    {
+        if (!disposed && process == host)
+        {
+            ended = true;
             log.Ended();
         }
     }

@@ -16,6 +16,18 @@ public sealed partial class BuildRunController
     /// <summary>The container run under way, if any (its services up, its log followed).</summary>
     public ContainerRun? Containers => session.ContainerRun is { IsStopped: false } run ? run : null;
 
+    /// <summary>The next container run's <c>up</c> held by a test (<see cref="HoldNextUp"/>): what it waits for, and done once it waits.</summary>
+    private (Task Until, TaskCompletionSource Holding)? upHeld;
+
+    /// <summary>Holds the next container run's <c>up</c> until <paramref name="until"/> ends, its override written and its
+    /// ports chosen (<see cref="ContainerPlan.Ports"/>), for a test of what goes on meanwhile. Done once it is held.</summary>
+    public Task HoldNextUp(Task until)
+    {
+        TaskCompletionSource holding = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        upHeld = (until, holding);
+        return holding.Task;
+    }
+
     /// <summary>Runs (or debugs) a container configuration not chosen in the toolbar (a gutter icon's: one compose service, a
     /// Dockerfile's image), as Run (or Debug) runs the chosen one; a container run under way is taken down first. Null once it
     /// runs.</summary>
@@ -74,7 +86,10 @@ public sealed partial class BuildRunController
 
     private async Task<string?> StartContainersAsync(RunConfiguration chosen, Working work, RunStart how)
     {
-        parts.Editors.SaveAll();
+        if (await parts.Editors.SaveAllLandedAsync(work, work.Stopping) is { } unsaved)
+        {
+            return Said(unsaved);
+        }
         parts.Views.Run.Clear();
         // The configuration's own fault first: a Dockerfile one with none would send the person to start an engine for nothing.
         if (chosen.Kind == RunKind.Dockerfile && chosen.Dockerfile.Length == 0
@@ -172,7 +187,7 @@ public sealed partial class BuildRunController
         if (plan.Builds.Count > 0)
         {
             work.Say($"Building {string.Join(", ", plan.Builds.Select(Path.GetFileNameWithoutExtension))}…");
-            BuildOutcome built = await BuildForAsync(plan.Builds, work.Stopping);
+            BuildOutcome built = await BuildForAsync(plan.Builds, work.Stopping, work);
             if (!built.Succeeded)
             {
                 return Checkpoint(work, chosen.Name) is { } stopped ? Said(stopped) : built.Message;
@@ -272,6 +287,12 @@ public sealed partial class BuildRunController
         string? failed;
         try
         {
+            if (upHeld is { } hold)
+            {
+                upHeld = null;
+                hold.Holding.TrySetResult();
+                await hold.Until.WaitAsync(work.Stopping);
+            }
             failed = await run.PublishAsync(work.Stopping)
                 ?? await run.UpAsync(work.Stopping, debugged.Count == 0 ? null : (up, stop) => AttachAllAsync(run, debugged, up, notes, work, stop, how == RunStart.Profile ? how : null));
         }
@@ -450,8 +471,11 @@ public sealed partial class BuildRunController
         using (work)
         {
             using IDisposable held = BackgroundWork.Scope();
-            parts.Editors.SaveAll();
-            BuildOutcome built = await BuildForAsync(run.Plan.Builds, work.Stopping);
+            if (await parts.Editors.SaveAllLandedAsync(work, work.Stopping) is { } unsaved)
+            {
+                return Said(unsaved);
+            }
+            BuildOutcome built = await BuildForAsync(run.Plan.Builds, work.Stopping, work);
             if (!built.Succeeded)
             {
                 return Said(built.Message);

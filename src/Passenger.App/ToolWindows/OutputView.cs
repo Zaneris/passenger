@@ -10,10 +10,10 @@ using Passenger.Text;
 namespace Passenger.App.ToolWindows;
 
 /// <summary>A program's or a build's console: the code editor, read-only, following the end while the output grows, with
-/// the run toolbar down its left side (rerun, stop, clear). Output comes through its <see cref="Sink"/> from any thread;
-/// standard error is drawn in the error colour, and what a person types goes to the program's <see cref="Input"/> a line
-/// at a time, in the input colour. It keeps a cycle buffer of text, the oldest lines dropped past it. Its file locations
-/// and web addresses are links (<see cref="Links"/>).</summary>
+/// the run toolbar down its left side (rerun, stop, clear) and Find over its text. Output comes through its <see cref="Sink"/> from any thread;
+/// standard error is drawn in the error colour, a build's error and warning lines in their severities' colours, and what a
+/// person types goes to the program's <see cref="Input"/> a line at a time, in the input colour. It keeps a cycle buffer of
+/// text, the oldest lines dropped past it. Its file locations and web addresses are links (<see cref="Links"/>).</summary>
 public sealed class OutputView : DockPanel
 {
     /// <summary>The cycle buffer a console keeps by default: 1024 KB of text.</summary>
@@ -23,8 +23,17 @@ public sealed class OutputView : DockPanel
     private readonly Button stop;
     private readonly Button hotReload;
     private readonly ConsoleColours colours = new();
+
+    /// <summary>The editor, under what the console says while it is empty.</summary>
+    private readonly Panel body = new();
+
+    /// <summary>What the console says while it is empty and nothing runs in it, once given words (<see cref="SayWhenEmpty"/>).</summary>
+    private readonly TextBlock empty = new() { Classes = { "emptyText" }, IsVisible = false };
+
     private int limit = DefaultLimitKb * 1024;
     private ConsoleInput? input;
+    private bool running;
+    private bool saysEmpty;
 
     /// <summary>Where the line being typed begins, at the end when none is: output goes in before it.</summary>
     private int typedFrom;
@@ -58,6 +67,8 @@ public sealed class OutputView : DockPanel
         {
             Children.Add(tools);
         }
+        body.Children.Add(empty);
+        Children.Add(body);
         Document.Changed += (_, change) =>
         {
             if (!editing)
@@ -70,6 +81,7 @@ public sealed class OutputView : DockPanel
                 typedFrom = Document.Snapshot.Length;
             }
             editor?.ScrollToEnd();
+            ShowEmpty();
         };
     }
 
@@ -102,7 +114,7 @@ public sealed class OutputView : DockPanel
         // Ahead of the editor's own handling, which a read-only editor gives nothing to.
         made.AddHandler(KeyDownEvent, OnKey, RoutingStrategies.Tunnel);
         made.AddHandler(TextInputEvent, OnText, RoutingStrategies.Tunnel);
-        Children.Add(made);
+        body.Children.Insert(0, made);
         made.Selections = SelectionSet.Single(typedFrom);
         made.ScrollToEnd();
         return made;
@@ -133,6 +145,17 @@ public sealed class OutputView : DockPanel
         ActionTips.Set(hotReload, hotReloadAction, "Apply Hot Reload Changes");
     }
 
+    /// <summary>Has the console say, while it is empty and nothing runs in it, what fills it: words naming an action's keys
+    /// as the keymap in force has them (<see cref="ActionTips.SetWords(Control, string, Func{string?, string})"/>).</summary>
+    public void SayWhenEmpty(string action, Func<string?, string> words)
+    {
+        ActionTips.SetWords(empty, action, words);
+        saysEmpty = true;
+        ShowEmpty();
+    }
+
+    private void ShowEmpty() => empty.IsVisible = saysEmpty && !running && Document.Snapshot.Length == 0;
+
     /// <summary>Shows Apply Hot Reload Changes while the program runs with Hot Reload.</summary>
     public void ShowHotReload(bool on) => hotReload.IsVisible = on;
 
@@ -146,6 +169,27 @@ public sealed class OutputView : DockPanel
 
     /// <summary>The console's editor, made the first time it is shown or asked for.</summary>
     public CodeEditor Editor => editor ?? MakeEditor();
+
+    private Editors.FindBar? find;
+
+    /// <summary>The editor's own Find over the console's text (case, whole words, regular expressions, every match marked),
+    /// made over it the first time it is asked for.</summary>
+    public Editors.FindBar Find
+    {
+        get
+        {
+            if (find is null)
+            {
+                find = new Editors.FindBar { [DockProperty] = Dock.Top };
+                Children.Insert(Children.IndexOf(body), find);
+                find.Attach(Editor);
+            }
+            return find;
+        }
+    }
+
+    /// <summary>Opens Find over the console.</summary>
+    public void OpenFind() => Find.Open(replace: false);
 
     /// <summary>Where programs write to this console, from any thread.</summary>
     public ConsoleSink Sink { get; }
@@ -182,28 +226,15 @@ public sealed class OutputView : DockPanel
     /// <summary>The console's menu: Copy the selection, Select All, and Clear All.</summary>
     private void ShowMenu(Point? at)
     {
-        Keymap keymap = AppActions.Keymap();
-        MenuItem Item(string header, string? action, Action run)
-        {
-            MenuItem item = new() { Header = header };
-            if (action is not null && keymap.ShortcutsFor(action).FirstOrDefault(s => s.Second is null) is { } keys)
-            {
-                item.InputGesture = new KeyGesture(keys.First.Key, keys.First.Modifiers);
-            }
-            item.Click += (_, _) => run();
-            return item;
-        }
-        MenuItem copy = Item("Copy", EditorActions.Copy, () => Editor.TryExecute(EditorActions.Copy));
-        copy.IsEnabled = !Editor.Selections.Primary.IsEmpty;
         ContextMenu menu = new()
         {
             PlacementTarget = Editor,
             Items =
             {
-                copy,
-                Item("Select All", EditorActions.SelectAll, () => Editor.TryExecute(EditorActions.SelectAll)),
+                ListMenus.Keyed("Copy", EditorActions.Copy, () => Editor.TryExecute(EditorActions.Copy), enabled: !Editor.Selections.Primary.IsEmpty),
+                ListMenus.Keyed("Select All", EditorActions.SelectAll, () => Editor.TryExecute(EditorActions.SelectAll)),
                 new Separator(),
-                Item("Clear All", null, Clear),
+                ListMenus.Item("Clear All", null, Clear),
             },
         };
         if (at is null)
@@ -258,8 +289,10 @@ public sealed class OutputView : DockPanel
 
     public void SetRunning(bool running)
     {
+        this.running = running;
         stop.IsEnabled = running;
         rerun.IsEnabled = !running || RerunsWhileRunning;
+        ShowEmpty();
     }
 
     /// <summary>Puts text in before the line being typed (at the end when there is none), its error runs coloured, and
@@ -442,10 +475,15 @@ public sealed class OutputView : DockPanel
 
     /// <summary>The console's coloured stretches (standard error, what was typed), in order and apart. They are kept in
     /// offsets from the start of all the console has held since it was last cleared, so dropping its oldest lines moves
-    /// none of them, and a line's colours are found by halving.</summary>
+    /// none of them, and a line's colours are found by halving. A line naming a build's or a compiler's problem is found
+    /// as it is drawn, in its severity's colour over the stream's, as every console showing a build draws it.</summary>
     private sealed class ConsoleColours : IHighlighter
     {
+        /// <summary>Lines longer than this are never read for a problem, as output written without line breaks.</summary>
+        private const int LongestLine = 4096;
+
         private readonly List<SyntaxSpan> spans = [];
+        private readonly char[] reading = new char[LongestLine];
         private ConsoleLinks? links;
 
         /// <summary>How much text has been dropped from the start since the console was cleared.</summary>
@@ -535,32 +573,59 @@ public sealed class OutputView : DockPanel
             {
                 found.Add(spans[i] with { Start = spans[i].Start - dropped });
             }
+            if (Problems(text, start, length) is { } problems)
+            {
+                found = Under(found, problems);
+            }
             IReadOnlyList<SyntaxSpan> linked = links?.GetSpans(text, start, length) ?? [];
             return linked.Count == 0 ? found : Under(found, linked);
         }
 
-        /// <summary>The streams' colours with the links laid over them: a stretch a link covers is the link's alone.</summary>
-        private static List<SyntaxSpan> Under(List<SyntaxSpan> coloured, IReadOnlyList<SyntaxSpan> linked)
+        /// <summary>The lines over a stretch that name a problem, each whole in its severity's colour; null for none.</summary>
+        private List<SyntaxSpan>? Problems(TextSnapshot text, int start, int length)
         {
-            List<SyntaxSpan> merged = [.. linked];
-            foreach (SyntaxSpan span in coloured)
+            List<SyntaxSpan>? found = null;
+            int end = start + length;
+            for (int line = text.GetLineFromOffset(start); line < text.LineCount && text.GetLineStart(line) < end; line++)
+            {
+                LineSpan span = text.GetLine(line);
+                if (span.Length == 0 || span.Length > LongestLine)
+                {
+                    continue;
+                }
+                Span<char> chars = reading.AsSpan(0, span.Length);
+                text.CopyTo(span.Start, chars);
+                if (Run.BuildOutput.SeverityOf(chars) is { } severity)
+                {
+                    (found ??= []).Add(new SyntaxSpan(span.Start, span.Length, severity == Run.ProblemSeverity.Error ? TokenKind.BuildError : TokenKind.BuildWarning));
+                }
+            }
+            return found;
+        }
+
+        /// <summary>Colours with others laid over them (a problem's line over a stream's, a link over both): a stretch one
+        /// above covers is that one's alone.</summary>
+        private static List<SyntaxSpan> Under(List<SyntaxSpan> below, IReadOnlyList<SyntaxSpan> above)
+        {
+            List<SyntaxSpan> merged = [.. above];
+            foreach (SyntaxSpan span in below)
             {
                 int from = span.Start;
-                foreach (SyntaxSpan link in linked)
+                foreach (SyntaxSpan over in above)
                 {
-                    if (link.End <= from)
+                    if (over.End <= from)
                     {
                         continue;
                     }
-                    if (link.Start >= span.End)
+                    if (over.Start >= span.End)
                     {
                         break;
                     }
-                    if (link.Start > from)
+                    if (over.Start > from)
                     {
-                        merged.Add(span with { Start = from, Length = link.Start - from });
+                        merged.Add(span with { Start = from, Length = over.Start - from });
                     }
-                    from = link.End;
+                    from = over.End;
                 }
                 if (from < span.End)
                 {

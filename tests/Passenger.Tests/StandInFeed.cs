@@ -9,7 +9,7 @@ namespace Passenger.Tests;
 /// read nuget.org's. Made with a user and password, it answers only a request with those Basic credentials (401 and a
 /// challenge otherwise, as a private feed asks); every request is kept with whether it had them and the Authorization it
 /// carried.</summary>
-public sealed class StandInFeed : IDisposable
+public sealed class StandInFeed : IDisposable, IAsyncDisposable
 {
     private readonly StandInHttp http;
     private readonly Dictionary<string, Dictionary<string, byte[]>> packages = new(StringComparer.OrdinalIgnoreCase);
@@ -60,10 +60,14 @@ public sealed class StandInFeed : IDisposable
     /// <summary>Takes these credentials from now on, in place of the ones it was made with.</summary>
     public void Accept(string user, string password) => Volatile.Write(ref accepted, Basic(user, password));
 
+    /// <summary>Its end from the UI thread (<see cref="StandInHttp.Dispose"/>).</summary>
     public void Dispose() => http.Dispose();
 
-    /// <summary>A package with nothing in it but its manifest and an empty lib folder, so any framework takes it.</summary>
-    public static byte[] Package(string id, string version)
+    public ValueTask DisposeAsync() => http.DisposeAsync();
+
+    /// <summary>A package with nothing in it but its manifest, an empty lib folder, so any framework takes it, and the
+    /// <paramref name="files"/> given (an MSBuild SDK's Sdk/Sdk.props), each by its path in the package and its text.</summary>
+    public static byte[] Package(string id, string version, IReadOnlyDictionary<string, string>? files = null)
     {
         using MemoryStream bytes = new();
         using (ZipArchive zip = new(bytes, ZipArchiveMode.Create, leaveOpen: true))
@@ -83,6 +87,11 @@ public sealed class StandInFeed : IDisposable
                     """);
             }
             zip.CreateEntry("lib/netstandard2.0/_._");
+            foreach ((string path, string text) in files ?? new Dictionary<string, string>())
+            {
+                using StreamWriter file = new(zip.CreateEntry(path).Open());
+                file.Write(text);
+            }
         }
         return bytes.ToArray();
     }

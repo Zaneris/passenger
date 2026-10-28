@@ -7,8 +7,10 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.Editors;
 using Passenger.App.Endpoints;
 using Passenger.App.State;
+using Passenger.Roslyn.Extension;
 
 namespace Passenger.Tests;
 
@@ -31,6 +33,52 @@ public sealed class EndpointsTests : IDisposable
         Assert.Equal(["All items", "Add an item", "{{base}}/missing"], window.Endpoints.Requests.Select(r => r.Title));
         Assert.Equal("dev", window.Endpoints.Environment);
         window.Close();
+    }
+
+    /// <summary>Resting the pointer on an .http file's heading or a web project's shows the file's or the project's path;
+    /// a click on a heading chooses its row, and a double click there or Enter or F4 opens nothing. The project's routes
+    /// are stood in for by a read's answer.</summary>
+    [AvaloniaFact]
+    public void Resting_the_pointer_on_a_files_or_a_projects_heading_shows_its_path()
+    {
+        string folder = Folder();
+        string project = Path.Combine(folder, "Shop", "Shop.csproj");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.ShowToolWindow(ToolWindowIds.Endpoints);
+            Ui.WaitFor(() => window.Endpoints.Requests.Count == 3, "the .http file's three requests");
+            window.Endpoints.ShowRoutes([new WebRoute(project, RouteKinds.Minimal, ["GET"], "/orders", null, [], "lambda", Path.Combine(folder, "Shop", "Program.cs"),
+                new Place(0, 0), new Place(0, 1), string.Empty)]);
+            Ui.Settle();
+            foreach ((string name, string path) in ((string, string)[])[("api.http", window.Endpoints.Requests[0].File), ("Shop", project)])
+            {
+                TextBlock heading = Heading(name);
+                window.MouseMove(heading.TranslatePoint(new Point(heading.Bounds.Width / 2, heading.Bounds.Height / 2), window)!.Value);
+                Ui.WaitFor(() => Tip() == path, () => $"the path {path} shown with the pointer resting on the heading {name}, where it shows {Tip() ?? "no tooltip"}", TimeSpan.FromSeconds(5));
+            }
+
+            ListBox list = window.Endpoints.GetVisualDescendants().OfType<ListBox>().Single();
+            TextBlock file = Heading("api.http");
+            Control row = list.ContainerFromItem(list.Items.OfType<EndpointsView.FileRow>().Single())!;
+            Point on = file.TranslatePoint(new Point(file.Bounds.Width / 2, file.Bounds.Height / 2), row)!.Value;
+            Ui.Click(row, on);
+            Assert.True(list.SelectedItem is EndpointsView.FileRow, $"A click on the heading api.http chose {list.SelectedItem ?? "nothing"}, not the heading's row");
+            Ui.DoubleClick(row, on);
+            Ui.Press(window, "ENTER");
+            Ui.Press(window, "F4");
+            Assert.True(window.EditorArea.Active is null && api.Received.Count == 0 && list.SelectedItem is EndpointsView.FileRow,
+                $"A double click, Enter and F4 on the heading api.http opened {window.EditorArea.Active?.Path ?? "nothing"} and sent {api.Received.Count} requests, where a heading opens and sends nothing");
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        TextBlock Heading(string name) => window.Endpoints.GetVisualDescendants().OfType<TextBlock>().FirstOrDefault(t => t.IsEffectivelyVisible && t.Text == name)
+            ?? throw new Xunit.Sdk.XunitException($"No heading {name} is shown in the Endpoints window");
+
+        string? Tip() => window.GetVisualDescendants().OfType<ToolTip>().FirstOrDefault(t => t.IsEffectivelyVisible)?.Content as string;
     }
 
     [AvaloniaFact]
@@ -57,6 +105,31 @@ public sealed class EndpointsTests : IDisposable
         Ui.WaitFor(() => window.Endpoints.Response.Response is not null, "the second answer");
         Assert.False(window.Endpoints.Response.Passed, "A 404 passed a test that expects an answer below 400");
         Assert.False(window.Endpoints.Outcome(window.Endpoints.Requests[2]));
+        window.Close();
+    }
+
+    /// <summary>The send icon on an .http file's request line sends that request as Test does, with the environment the
+    /// Endpoints window chooses, though the window was never shown before.</summary>
+    [AvaloniaFact]
+    public void The_icon_on_an_http_files_request_line_sends_that_request()
+    {
+        string folder = Folder();
+        MainWindow window = Open(folder);
+        Assert.Null(window.OpenFile(Path.Combine(folder, "api.http")));
+        Ui.Settle();
+        Passenger.App.Workspace.OpenDocument document = window.EditorArea.Active!;
+        int line = Array.IndexOf(document.Text.Snapshot.ToString().Split('\n'), "GET {{base}}/items");
+        Ui.WaitFor(() => document.RouteMarks.Any(m => m.Line == line),
+            () => $"the send icon beside GET {{{{base}}}}/items; there are icons on lines [{string.Join(", ", document.RouteMarks.Select(m => m.Line))}]");
+        Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
+        double x = Enumerable.Range(0, 400).First(x => editor.IsOnGutterColumn(editor.Gutter!.Marks, new Point(x, 0))) + 3;
+        Ui.Click(editor, new Point(x, editor.PointOf(document.Text.Snapshot.GetLineStart(line)).Y + (editor.LineHeight / 2)));
+        Assert.Empty(api.Received);
+        Ui.Choose(window.RouteMarkMenu, "Send 'All items'");
+        Ui.WaitFor(() => api.Received.Count == 1 && window.Endpoints.Response.Response is not null,
+            () => $"the request's answer; the Endpoints window says {window.Endpoints.Response.Summary}");
+        Assert.Equal("GET /items", api.Received[0].Line);
+        Assert.True(window.Endpoints.Response.Passed, $"The answer met none of its criteria: {window.Endpoints.Response.Summary}");
         window.Close();
     }
 
@@ -125,6 +198,56 @@ public sealed class EndpointsTests : IDisposable
         Ui.Click(dialog.Send);
         Assert.Contains("no criterion", dialog.Problem);
         Assert.Equal(sent, api.Received.Count);
+        dialog.Close();
+        window.Close();
+    }
+
+    /// <summary>An .http file's QUERY request (HTTP's safe method with a body) is listed in its own colour and sent as a
+    /// QUERY with its body, by Test and by Interactive Test; a method Passenger offers by no name (PURGE) is sent as
+    /// written, never as a GET.</summary>
+    [AvaloniaFact]
+    public void A_query_request_and_a_method_of_its_own_are_sent_as_written_with_their_bodies()
+    {
+        string folder = Folder();
+        File.WriteAllText(Path.Combine(folder, "search.http"), "QUERY {{base}}/items\nContent-Type: application/json\n\n{ \"name\": \"Ada\" }\n\n###\nPURGE {{base}}/items\n");
+        MainWindow window = Open(folder);
+        window.ShowToolWindow(ToolWindowIds.Endpoints);
+        Ui.WaitFor(() => window.Endpoints.Requests.Count == 5, "the five requests");
+        EndpointRequest[] searches = [.. window.Endpoints.Requests.Where(r => Path.GetFileName(r.File) == "search.http")];
+        EndpointRequest query = searches[0];
+        Assert.True(query is { Method: "QUERY", Url: "{{base}}/items" }, $"search.http's QUERY request was read as {query.Method} {query.Url}");
+        EndpointRequest purge = searches[1];
+        Assert.True(purge is { Method: "PURGE", Url: "{{base}}/items" }, $"search.http's PURGE request was read as {purge.Method} {purge.Url}");
+        Ui.Settle();
+        TextBlock tag = window.Endpoints.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == "QUERY");
+        Assert.True(Application.Current!.TryFindResource(TokenKeys.Syntax_Method, window.ActualThemeVariant, out object? colour) && ReferenceEquals(tag.Foreground, colour),
+            "QUERY's tag is drawn in the muted colour of a method Passenger does not know");
+
+        Ui.Click(RowButton(window, query, "endpointTest"));
+        Ui.WaitFor(() => api.Received.Count == 1 && window.Endpoints.Response.Response is not null, "the QUERY's answer");
+        Assert.Equal(("QUERY /items", "{ \"name\": \"Ada\" }"), (api.Received[0].Line, api.Received[0].Body));
+        Ui.Click(RowButton(window, purge, "endpointTest"));
+        Ui.WaitFor(() => api.Received.Count == 2, "the PURGE");
+        Assert.Equal("PURGE /items", api.Received[1].Line);
+
+        Ui.Click(RowButton(window, query, "endpointInteractive"));
+        InteractiveTestDialog dialog = window.InteractiveTest!;
+        Ui.Settle();
+        Assert.True(dialog.Method.SelectedItem as string == "QUERY", $"Interactive Test opened the QUERY request as a {dialog.Method.SelectedItem}");
+        dialog.Body.Text = """{ "name": "Grace" }""";
+        Ui.Click(dialog.Send);
+        Ui.WaitFor(() => api.Received.Count == 3 && dialog.Response.Response is not null, "the dialog's QUERY");
+        Assert.Equal(("QUERY /items", """{ "name": "Grace" }"""), (api.Received[2].Line, api.Received[2].Body));
+        dialog.Close();
+        Ui.Settle();
+
+        Ui.Click(RowButton(window, purge, "endpointInteractive"));
+        dialog = window.InteractiveTest!;
+        Ui.Settle();
+        Assert.True(dialog.Method.SelectedItem as string == "PURGE", $"Interactive Test opened the PURGE request as a {dialog.Method.SelectedItem}");
+        Ui.Click(dialog.Send);
+        Ui.WaitFor(() => api.Received.Count == 4, "the dialog's PURGE");
+        Assert.Equal("PURGE /items", api.Received[3].Line);
         dialog.Close();
         window.Close();
     }
@@ -592,7 +715,7 @@ public sealed class EndpointsTests : IDisposable
         return window;
     }
 
-    private static Button RowButton(MainWindow window, EndpointRequest request, string name)
+    internal static Button RowButton(MainWindow window, EndpointRequest request, string name)
     {
         Button? found = null;
         Ui.WaitFor(() => (found = window.Endpoints.GetVisualDescendants().OfType<Button>()
@@ -603,7 +726,7 @@ public sealed class EndpointsTests : IDisposable
     }
 
     /// <summary>A small JSON API on a loopback port: GET /items lists one item, POST and PUT /items answer 201 with the
-    /// body sent, GET /moved redirects to /items and GET /elsewhere to it under the name localhost, GET and POST
+    /// body sent, QUERY /items 200 with it, GET /moved redirects to /items and GET /elsewhere to it under the name localhost, GET and POST
     /// /other-port to <see cref="RedirectRoot"/>'s /items (a 302 and a 307), GET /slow answers only as the test ends,
     /// anything else 404. It keeps every request with the connection it came on, and counts connections made and still
     /// open, so a test sees whether a client was kept.</summary>
@@ -680,6 +803,7 @@ public sealed class EndpointsTests : IDisposable
             "GET /slow" => (200, "{}"),
             "GET /huge" => (200, string.Concat(Enumerable.Repeat(new string('a', 99) + "\n", (EndpointClient.MostRead / 100) + 10_000))),
             "POST /items" or "PUT /items" => (201, request.Body),
+            "QUERY /items" => (200, request.Body),
             _ => (404, """{"error":"not found"}"""),
         };
     }

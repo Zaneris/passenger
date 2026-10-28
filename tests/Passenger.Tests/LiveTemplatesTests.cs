@@ -299,7 +299,6 @@ public sealed class LiveTemplatesTests : IClassFixture<LiveTemplatesTests.Projec
             File.WriteAllText(PathOf("Program.cs"), "class Program\n{\n    static void Main()\n    {\n        int sum = Sum.Of();\n    }\n}\n");
             File.WriteAllText(PathOf("Sum.cs"), "using System;\n\nstatic class Sum\n{\n    public static int Of()\n    {\n        int total = 0;\n        return total;\n    }\n}\n");
             File.WriteAllText(PathOf("Pair.cs"), "class Pair\n{\n    public int First;\n\n    public int Both(Pair other)\n    {\n        int count = 2;\n        return count;\n    }\n}\n");
-            Prepare();
         }
     }
 }

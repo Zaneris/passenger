@@ -31,7 +31,7 @@ public delegate void StatusSay(string said, StatusPlace? more = null);
 /// <summary>The window's status bar: what the last action came to (an error's or a warning's marked with its icon until
 /// something else is said, and a link to where it has more to see while it has a place, its whole text on hover), and
 /// the file shown's place (its path while nothing is said), caret, line separator, encoding, indent and language with
-/// the language server's state. It says what it is told; what an operation came to is the operation's own answer, never
+/// the language server's state, each of the file's a widget a click acts on. It says what it is told; what an operation came to is the operation's own answer, never
 /// read back from here. A UI-thread object of the window.</summary>
 public sealed class StatusBar
 {
@@ -39,7 +39,9 @@ public sealed class StatusBar
     private readonly TextBlock text;
     private readonly PathIcon icon;
     private readonly WorkingRing working;
+    private readonly Button caretButton;
     private readonly TextBlock caret;
+    private readonly Button indentButton;
     private readonly TextBlock indent;
     private readonly TextBlock language;
     private readonly Button lineSeparator;
@@ -51,14 +53,19 @@ public sealed class StatusBar
     /// anything else said takes the icon and the place away.</summary>
     private (string Text, StatusPlace? Place)? standing;
 
-    public StatusBar(Button message, TextBlock text, PathIcon icon, WorkingRing working, TextBlock caret, TextBlock indent, TextBlock language, Button lineSeparator,
-        TextBlock lineEnding, Button encoding, TextBlock encodingText)
+    /// <summary>The file and folder the message line last followed (<see cref="ShowFile"/>); null before the first.</summary>
+    private (OpenDocument? File, string? Folder)? shownFile;
+
+    public StatusBar(Button message, TextBlock text, PathIcon icon, WorkingRing working, Button caretButton, TextBlock caret, Button indentButton, TextBlock indent,
+        TextBlock language, Button lineSeparator, TextBlock lineEnding, Button encoding, TextBlock encodingText)
     {
         this.message = message;
         this.text = text;
         this.icon = icon;
         this.working = working;
+        this.caretButton = caretButton;
         this.caret = caret;
+        this.indentButton = indentButton;
         this.indent = indent;
         this.language = language;
         this.lineSeparator = lineSeparator;
@@ -148,15 +155,20 @@ public sealed class StatusBar
     }
 
     /// <summary>The file shown, or none: with none the message line names the folder (or says there is no solution); with
-    /// one, its path names it, so the message line is left for messages.</summary>
+    /// one, its path names it, so the message line is left for messages. Only another file or folder shown changes the
+    /// message line: the same one shown again leaves what was said.</summary>
     public void ShowFile(OpenDocument? active, string? folder, CodeEditor editor, string languageLabel)
     {
-        string where = folder is null ? "No solution" : Path.GetFileName(folder);
-        text.Text = active is null ? where : string.Empty;
+        if (shownFile != (active, folder))
+        {
+            shownFile = (active, folder);
+            text.Text = active is not null ? string.Empty : folder is null ? "No solution" : Path.GetFileName(folder);
+        }
         ShowStorage(active);
         OpenDocument? textual = Textual(active);
+        indentButton.IsVisible = textual is not null;
         indent.Text = textual?.Indentation.Shown ?? "";
-        ToolTip.SetTip(indent, textual?.Indentation.Tip(textual.Language.Name));
+        ToolTip.SetTip(indentButton, textual?.Indentation.Tip(textual.Language.Name));
         ShowLanguage(languageLabel);
         ShowCaret(textual is null ? null : editor);
     }
@@ -183,15 +195,25 @@ public sealed class StatusBar
     /// <summary>The caret's line and column, the carets there are, or what is selected; nothing with no file shown.</summary>
     public void ShowCaret(CodeEditor? editor)
     {
+        caretButton.IsVisible = editor is not null;
         if (editor is null)
         {
             caret.Text = "";
+            shownCaret = default;
             return;
         }
         TextPosition at = editor.CaretPosition;
         int carets = editor.Selections.Count;
-        int selected = editor.Selections.Items.Sum(s => s.Length);
+        int selected = carets > 1 ? 0 : editor.Selections.Primary.Length;
+        if (shownCaret == (at, carets, selected) && caret.Text is { Length: > 0 })
+        {
+            return;
+        }
+        shownCaret = (at, carets, selected);
         string position = $"{at.Line + 1}:{at.Column + 1}";
         caret.Text = carets > 1 ? $"{carets} carets" : selected > 0 ? $"{position} ({selected} chars)" : position;
     }
+
+    /// <summary>What the caret's words say: a move that changes none of it words nothing again.</summary>
+    private (TextPosition At, int Carets, int Selected) shownCaret;
 }

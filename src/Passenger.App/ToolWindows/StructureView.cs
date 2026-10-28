@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Passenger.App.Navigation;
@@ -11,9 +10,9 @@ using Passenger.Text;
 
 namespace Passenger.App.ToolWindows;
 
-/// <summary>The Structure window: the active file's types and members, indented, from the language server's
-/// outline, asked as it is shown and, while it is, following the editor (a moment after typing stops) and choosing the
-/// member the caret is in. A click or Enter goes to a member.</summary>
+/// <summary>The Structure window: the active file's outline (a C# file's types and members, a JSON file's keys),
+/// indented, from its language server, asked as it is shown and, while it is, following the editor (a moment after
+/// typing stops) and choosing the member the caret is in. A click or Enter goes to a member.</summary>
 public sealed class StructureView : DockPanel
 {
     private static readonly TimeSpan Pause = TimeSpan.FromMilliseconds(600);
@@ -36,8 +35,8 @@ public sealed class StructureView : DockPanel
         list = new ListBox
         {
             Classes = { "tree" },
-            ItemTemplate = new FuncDataTemplate<SymbolRow>((row, _) => SymbolPopup.Row(row), supportsRecycling: false),
         };
+        ReusedRows.Use(list, SymbolPopup.ReusedRow);
         list.SelectionChanged += (_, _) =>
         {
             if (!choosing && list.SelectedItem is SymbolRow row && list.IsKeyboardFocusWithin)
@@ -60,7 +59,8 @@ public sealed class StructureView : DockPanel
                 e.Handled = true;
             }
         };
-        placeholder = new TextBlock { Classes = { "emptyText" }, Text = "A C# file's members show here" };
+        placeholder = new TextBlock { Classes = { "emptyText" } };
+        ActionTips.SetWords(placeholder, AppActions.GoToFile, keys => $"The open file's outline shows here: open one with {ActionTips.Named("Go to File", keys)}");
         settle = new Debounce(Pause, Refresh);
         ListMenus.Attach(list, () => list.SelectedItem is not SymbolRow chosen ? [] :
         [
@@ -114,8 +114,8 @@ public sealed class StructureView : DockPanel
         }
     }
 
-    /// <summary>The language server's state changed (the files connected, the projects loaded): a shown window without the
-    /// shown file's outline asks for it, since what it asked before the server had the file found nothing.</summary>
+    /// <summary>A file was opened in the language server, or its state changed (the projects loaded): a shown window without
+    /// the shown file's outline asks for it, since what it asked before the server had the file found nothing.</summary>
     public void FollowServer()
     {
         if (shown && asking is null && source?.Invoke() is { Lsp: not null } now && outlined != now.Path)

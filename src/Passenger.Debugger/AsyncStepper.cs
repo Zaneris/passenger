@@ -10,7 +10,7 @@ public enum StepType
     StepOut
 }
 
-internal sealed class AsyncStepper
+internal sealed partial class AsyncStepper
 {
     private readonly ManagedDebugger _debugger;
     private class AsyncBreakpoint
@@ -22,14 +22,8 @@ internal sealed class AsyncStepper
 
         public void Deactivate()
         {
-            try
-            {
-                Breakpoint?.Activate(false);
-            }
-            catch
-            {
-                // Ignore deactivation errors
-            }
+            // A breakpoint the runtime cannot deactivate is one whose module or process has gone, with nothing left to stop.
+            Breakpoint?.TryActivate(false);
         }
 
         public void Dispose()
@@ -111,8 +105,10 @@ internal sealed class AsyncStepper
 
             return true;
         }
-        catch (Exception)
+        catch (Exception error)
         {
+            // A call into the program, whose failure (its throw, its abort, the runtime's refusal) leaves the step a plain one.
+            _debugger.Log($"The async step out could not ask the builder to tell of its end: {error}");
             return false;
         }
     }
@@ -171,7 +167,7 @@ internal sealed class AsyncStepper
 
             return true;
         }
-        catch (Exception)
+        catch (Exception error) when (Failures.OfRuntime(error))
         {
             return false;
         }
@@ -187,6 +183,14 @@ internal sealed class AsyncStepper
             if (frame is null)
             {
                 return (false, null);
+            }
+
+            _runtimeStep?.Dispose();
+            _runtimeStep = null;
+            if (frame is ICorDebugILFrame awaiting && TrySetupRuntimeAsyncStep(thread, awaiting, stepType))
+            {
+                // A run whose caller waits in a continuation runs to it with no stepper, which would pass its breakpoint by.
+                return (true, _runtimeStep!.FrameAwaits);
             }
 
             ICorDebugFunction function = frame.Function;
@@ -283,9 +287,14 @@ internal sealed class AsyncStepper
     }
 
     /// <summary>Handles a breakpoint hit as part of an async step: whether the async stepper took it, and whether the
-    /// program stops there.</summary>
+    /// program stops there (none when the step has ended there, its stop shown).</summary>
     public async Task<(bool HandledByAsyncStepper, bool? ShouldStop)> TryHandleBreakpoint(ICorDebugThread thread, ICorDebugFunctionBreakpoint breakpoint)
     {
+        if (_runtimeStep is { } runtime && runtime.Resume.Breakpoint == breakpoint)
+        {
+            return (true, TakeRuntimeResume(runtime, thread) ? null : false);
+        }
+
         if (_notifyDebuggerBreakpoint is not null &&
             MatchesBreakpoint(breakpoint, _notifyDebuggerBreakpoint, thread))
         {
@@ -310,6 +319,8 @@ internal sealed class AsyncStepper
         ICorDebugILFrame? frame = thread.ActiveFrame as ICorDebugILFrame;
         if (frame is null || frame.IP.pnOffset != (atYield ? step.Yield! : step.Resume!).ILOffset)
         {
+            _debugger.Log($"The async step's breakpoint at IL_{(atYield ? step.Yield! : step.Resume!).ILOffset:X4} was met on thread {thread.Id} "
+                + $"at {(frame is null ? "no IL frame" : $"IL_{frame.IP.pnOffset:X4}")}: the async step ends");
             step.Dispose();
             _currentAsyncStep = null;
             return (false, null);
@@ -335,6 +346,8 @@ internal sealed class AsyncStepper
         ICorDebugFunction function = frame.Function;
         step.Run = StateMachineOf(frame) ?? await BuilderRunOf(frame);
         step.Resume = Arm(function.ILCode, function.Module.BaseAddress, function.Token, step.ResumeOffset);
+        _debugger.Log($"Thread {step.ThreadId} leaves the method at the await: the step waits where its run resumes, IL_{step.ResumeOffset:X4}, "
+            + (step.Run is not { } run ? "the run not told" : run.IsStateMachine ? "the run told by its state machine" : "the run told by its builder"));
         return false;
     }
 
@@ -344,6 +357,7 @@ internal sealed class AsyncStepper
     {
         if (!await IsTheStepsRun(step, thread, frame))
         {
+            _debugger.Log($"A run of the method resumes on thread {thread.Id}, not the step's: it runs on");
             return;
         }
         _currentAsyncStep = null;
@@ -497,7 +511,7 @@ internal sealed class AsyncStepper
             ICorDebugValue fieldValueUnwrapped = fieldValue.UnwrapDebugValue();
             return fieldValueUnwrapped;
         }
-        catch (Exception)
+        catch (Exception error) when (Failures.OfRuntime(error))
         {
             return null;
         }
@@ -564,6 +578,8 @@ internal sealed class AsyncStepper
     {
         _currentAsyncStep?.Dispose();
         _currentAsyncStep = null;
+        _runtimeStep?.Dispose();
+        _runtimeStep = null;
     }
 
     /// <summary>
@@ -573,6 +589,8 @@ internal sealed class AsyncStepper
     {
         _currentAsyncStep?.Dispose();
         _currentAsyncStep = null;
+        _runtimeStep?.Dispose();
+        _runtimeStep = null;
         _notifyDebuggerBreakpoint?.Dispose();
         _notifyDebuggerBreakpoint = null;
     }

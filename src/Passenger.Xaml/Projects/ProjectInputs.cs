@@ -1,14 +1,20 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using Microsoft.CodeAnalysis.CSharp;
 using Passenger.Core;
 
 namespace Passenger.Xaml.Projects;
 
 /// <summary>What MSBuild's evaluation says of where a project's restore and build put things, wherever its obj and output
 /// folders were moved: its assets file, the package folder it restores into, the version it takes of each package (central
-/// versions included), and the assembly its build makes.</summary>
-public sealed record ProjectEvaluation(string? AssetsFile, string? PackageRoot, IReadOnlyDictionary<string, string> Versions, string? TargetPath = null);
+/// versions included), the assembly its build makes, and what its C# is parsed with.</summary>
+public sealed record ProjectEvaluation(string? AssetsFile, string? PackageRoot, IReadOnlyDictionary<string, string> Versions, string? TargetPath = null)
+{
+    /// <summary>What its C# files are parsed with: the preprocessor symbols and C# version it compiles them with; null for
+    /// none known.</summary>
+    public CSharpParseOptions? Parsing { get; init; }
+}
 
 /// <summary>What a project's XAML is compiled against, read without MSBuild: the assemblies its restore resolved
 /// (<c>project.assets.json</c>: each package's compile assets, the framework's reference pack), its project references,
@@ -35,6 +41,10 @@ public sealed record ProjectInputs(
 
     /// <summary>The assembly the project's build makes, as MSBuild's evaluation names it; null without one.</summary>
     public string? TargetPath { get; init; }
+
+    /// <summary>What its C# files are parsed with, as MSBuild's evaluation gives it (<see cref="ProjectEvaluation.Parsing"/>);
+    /// null without one.</summary>
+    public CSharpParseOptions? Parsing { get; init; }
 
     /// <summary>Where each package its restore resolved is, by id: the folder of its version in the package cache.</summary>
     public IReadOnlyDictionary<string, string> PackageFolders { get; init; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -132,6 +142,7 @@ public sealed record ProjectInputs(
             PackageVersions = versions,
             PackageFolders = folders,
             TargetPath = evaluation?.TargetPath is { Length: > 0 } built ? built : null,
+            Parsing = evaluation?.Parsing,
             FrameworkReferences = read?.FrameworkReferences ?? [],
         };
     }

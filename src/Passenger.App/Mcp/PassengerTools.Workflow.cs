@@ -83,7 +83,7 @@ public sealed partial class PassengerTools
 
     [McpServerTool(Name = McpTools.VcsCommit, Title = "Commit", Destructive = true), Description(
         "Commits the paths given, else every changed file but the unversioned (saved first), with message; amend changes the " +
-        "last commit, push pushes after. Returns the commit and how the push went; a push the remote refuses is an error with " +
+        "last commit (with paths [], its message alone), push pushes after. Returns the commit and how the push went; a push the remote refuses is an error with " +
         "git's reason, the commit made all the same.")]
     public Task<string> VcsCommit(string message, IReadOnlyList<string>? paths = null, bool amend = false, bool push = false, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
@@ -156,22 +156,28 @@ public sealed partial class PassengerTools
     });
 
     [McpServerTool(Name = McpTools.VcsStash, Title = "Stash or unstash changes", Destructive = true), Description(
-        "Stash Changes and Unstash Changes. action: list (the stashes, newest first, by index), push (every uncommitted " +
-        "change, new files too, put away under message, open files saved first), pop or apply (stash index's changes back; pop " +
-        "drops it after), drop (throw stash index away).")]
-    public Task<IReadOnlyList<StashSummary>> VcsStash(string action = "list", string message = "", int index = 0, CancellationToken cancel = default) => OnUi<IReadOnlyList<StashSummary>>(cancel, async () =>
+        "Stash Changes and Unstash Changes. action: list (the stashes, newest first, by index and commit), push (every " +
+        "uncommitted change, new files too, put away under message, open files saved first), pop or apply (stash index's " +
+        "changes back, or commit's wherever it now is; pop drops it after), drop (throw it away).")]
+    public Task<IReadOnlyList<StashSummary>> VcsStash(string action = "list", string message = "", int index = 0, string? commit = null,
+        CancellationToken cancel = default) => OnUi<IReadOnlyList<StashSummary>>(cancel, async () =>
     {
         VcsController vcs = Session.Vcs;
         await vcs.Opened;
         if (action != "list")
         {
             IReadOnlyList<StashInfo> before = await vcs.StashesAsync();
-            StashInfo? stash = before.FirstOrDefault(s => s.Index == index);
+            bool byCommit = !string.IsNullOrEmpty(commit);
+            StashInfo? stash = byCommit
+                ? before.FirstOrDefault(s => s.Commit.StartsWith(commit!, StringComparison.OrdinalIgnoreCase))
+                : before.FirstOrDefault(s => s.Index == index);
             if (action != "push" && stash is null)
             {
-                throw new InvalidOperationException($"No stash {index}; there are {before.Count}");
+                throw new InvalidOperationException(byCommit
+                    ? $"No stash in the list has commit {commit}: it was popped or dropped since the list was read, or never was a stash"
+                    : $"No stash {index}; there are {before.Count}");
             }
-            Editors.SaveAll();
+            await SaveLandedAsync(cancel);
             VcsOutcome done = action switch
             {
                 "push" => await vcs.StashAsync(message),
@@ -184,7 +190,7 @@ public sealed partial class PassengerTools
                 throw new InvalidOperationException(failed);
             }
         }
-        return [.. (await vcs.StashesAsync()).Select(s => new StashSummary(s.Index, s.Message, s.Time))];
+        return [.. (await vcs.StashesAsync()).Select(s => new StashSummary(s.Index, s.Commit[..Math.Min(8, s.Commit.Length)], s.Message, s.Time))];
     });
 
     // Packages
@@ -286,13 +292,18 @@ public sealed partial class PassengerTools
         // An Avalonia app's inspector, which records its frames; null for any other program.
         LiveTree.LiveApp? inspected = Session.ProfiledApp;
         IReadOnlyList<HeapTypeInfo>? heap = null;
+        string? heapNote = null;
         if (seconds is { } limit)
         {
             await When(() => running.HasExited, TimeSpan.FromSeconds(Math.Clamp(limit, 1, 3600)), cancel, Ends(running.ExitedAsync()), Ends(running.PutAway));
             CheckProfileTarget();
-            if (memory && !running.HasExited && await window.MemorySnapshotAsync(cancel) is { } taken)
+            if (memory && !running.HasExited)
             {
-                heap = [.. taken.Types.Take(Math.Clamp(top, 1, 200)).Select(t => new HeapTypeInfo(t.Name, t.Count, t.Bytes))];
+                (Passenger.Profiler.MemorySnapshot? taken, heapNote) = await window.MemorySnapshotUnaskedAsync(cancel);
+                if (taken is not null)
+                {
+                    heap = [.. taken.Types.Take(Math.Clamp(top, 1, 200)).Select(t => new HeapTypeInfo(t.Name, t.Count, t.Bytes))];
+                }
             }
         }
         else
@@ -328,6 +339,7 @@ public sealed partial class PassengerTools
             snapshot.TracePath,
             heap)
         {
+            HeapNote = heapNote,
             Frames = snapshot.Place is { } elsewhere && snapshot.HotSpots.Any(h => h.Module.StartsWith("Avalonia", StringComparison.Ordinal))
                 ? new UiFramesInfo(0, 0, 0, 0, 0, []) { Why = Profiling.FramesView.InContainer(elsewhere.Where) }
                 : UiFramesOf(snapshot.UiFrames, Math.Clamp(top, 1, 200), inspected),
@@ -539,6 +551,9 @@ public sealed record ProfileFrame(string Method, int TotalMs, int SelfMs, string
 
 public sealed record ProfileInfo(double DurationMs, int Samples, int Threads, IReadOnlyList<ProfileFrame> HotSpots, IReadOnlyList<ProfileFrame> HotPath, string Trace, IReadOnlyList<HeapTypeInfo>? Heap = null)
 {
+    /// <summary>Why there is no heap when a memory snapshot was asked for, or what taking it put into the program's output.</summary>
+    public string? HeapNote { get; init; }
+
     /// <summary>An Avalonia app's frames, as the Frames page shows them; null for any other program.</summary>
     public UiFramesInfo? Frames { get; init; }
 }
@@ -587,5 +602,5 @@ public sealed record HeapTypeInfo(string Type, int Count, long Bytes);
 /// the files it changed.</summary>
 public sealed record PackageChange(string Package, string? Version, string Project, IReadOnlyList<string> Changed);
 
-/// <summary>A stash as the vcs_stash tool lists it.</summary>
-public sealed record StashSummary(int Index, string Message, DateTimeOffset Time);
+/// <summary>A stash as the vcs_stash tool lists it: its place, its commit (short), what it says and when it was made.</summary>
+public sealed record StashSummary(int Index, string Commit, string Message, DateTimeOffset Time);

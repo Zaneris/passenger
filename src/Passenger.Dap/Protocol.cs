@@ -1,3 +1,6 @@
+using System.Text.Json.Serialization;
+using Passenger.Core;
+
 namespace Passenger.Dap;
 
 // The Debug Adapter Protocol, as much of it as Passenger's debugger speaks, in the protocol's own field
@@ -285,6 +288,7 @@ public sealed record DapVariable
 {
     public string Name { get; init; } = string.Empty;
     public string Value { get; init; } = string.Empty;
+    [JsonConverter(typeof(SharedNames))]
     public string? Type { get; init; }
     public string? EvaluateName { get; init; }
     public int VariablesReference { get; init; }
@@ -333,8 +337,10 @@ public sealed record ThreadArguments(int ThreadId);
 /// <summary>Step Into: the thread, and the call to step straight into (a target stepInTargets gave), Smart Step Into's.</summary>
 public sealed record StepInArguments(int ThreadId, int? TargetId = null);
 
-/// <summary>The calls a frame's statement can step into, in the order they run (Smart Step Into's question).</summary>
-public sealed record StepInTargetsArguments(int FrameId);
+/// <summary>The calls a frame's statement can step into, in the order they run (Smart Step Into's question), its source read
+/// as its project compiles it: with these preprocessor symbols, at this C# version ("12.0", "preview"); with neither, as
+/// the compiler's defaults read it.</summary>
+public sealed record StepInTargetsArguments(int FrameId, IReadOnlyList<string>? PreprocessorSymbols = null, string? LanguageVersion = null);
 
 public sealed record StepInTargetsResponse
 {
@@ -444,11 +450,18 @@ public sealed record DapModule(string Id, string Name, string? Path = null);
 
 public sealed record ProcessEvent(string Name, int? SystemProcessId = null, bool? IsLocalProcess = null, string? StartMethod = null);
 
+/// <summary>This debugger's own request for what Hot Reload needs of the program: <paramref name="Hold"/> stops a running
+/// program for the update being made, until <see cref="DapCommands.HotReloadRelease"/> lets it go.</summary>
+public sealed record HotReloadStateArguments(bool? Hold = null);
+
 /// <summary>This debugger's own request: what Hot Reload needs of the program. The edits its runtime can take, as its own
 /// CoreLib names them (System.Reflection.Metadata.MetadataUpdater's capabilities), or why they are unknown; the modules it
-/// has loaded, each with whether the runtime lets it be edited; and, paused, the statements its threads are in.</summary>
+/// has loaded, each with whether the runtime lets it be edited; and, paused or held, the statements its threads are in.</summary>
 public sealed record HotReloadStateResponse
 {
+    /// <summary>Whether the program, running, is now held for the update, until it is let go.</summary>
+    public bool Held { get; init; }
+
     public IReadOnlyList<string>? Capabilities { get; init; }
 
     /// <summary>Why the runtime's capabilities could not be read, when they could not.</summary>
@@ -473,10 +486,14 @@ public sealed record DapActiveStatement(Guid Module, int Token, int Version, int
 public sealed record ApplyChangesArguments(IReadOnlyList<DapModuleUpdate> Updates);
 
 /// <summary>One module's update: the metadata, IL and PDB deltas, the methods and types it changes, the lines that moved in
-/// each document (a line from zero, from which on the lines move to the new one's), and where each active statement went.</summary>
+/// each document (a line from zero, from which on the lines move to the new one's), where each active statement went, and
+/// the first line it changed in each document it edits.</summary>
 public sealed record DapModuleUpdate(Guid Module, string Name, byte[] Metadata, byte[] IL, byte[] Pdb,
     IReadOnlyList<int> UpdatedMethods, IReadOnlyList<int> UpdatedTypes, IReadOnlyList<DapLineUpdates> Lines,
-    IReadOnlyList<DapStatementUpdate> ActiveStatements);
+    IReadOnlyList<DapStatementUpdate> ActiveStatements, IReadOnlyList<DapFirstChange> FirstChanges);
+
+/// <summary>A document an update edits and the first of its lines the edit changed (from zero), as it read before.</summary>
+public sealed record DapFirstChange(string Document, int Line);
 
 public sealed record DapLineUpdates(string Document, IReadOnlyList<DapLineUpdate> Updates);
 

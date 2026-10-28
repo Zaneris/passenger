@@ -241,7 +241,6 @@ public sealed class HotReloadEditsTests : IClassFixture<HotReloadEditsTests.Tick
             File.WriteAllText(PathOf("Demo.cs"), Demo);
             // The first build makes bin, which a reset would take for a file the test added: made now, the folder stays as reset.
             Directory.CreateDirectory(PathOf("bin"));
-            Prepare();
         }
     }
 }

@@ -420,7 +420,7 @@ public sealed class BindingValuesController
         List<LineAnnotation> shown = [];
         if (read.Problem is { } problem && wanted.FirstOrDefault() is { } first)
         {
-            shown.Add(new LineAnnotation(first.EndLine, $"binding values: {problem.Short}", LineAnnotationKind.InlineValue));
+            shown.Add(new LineAnnotation(first.EndLine, $"binding values: {problem.Short}", LineAnnotationLook.Muted));
         }
         HashSet<(int, int)> counted = [];
         foreach (XamlBinding binding in bindings)
@@ -434,7 +434,7 @@ public sealed class BindingValuesController
             {
                 if (element.Instances > 1 && counted.Add(spot))
                 {
-                    shown.Add(new LineAnnotation(binding.EndLine, $"{label}: made {element.Instances} times, choose one in the Live Visual Tree", LineAnnotationKind.InlineValue));
+                    shown.Add(new LineAnnotation(binding.EndLine, $"{label}: made {element.Instances} times, choose one in the Live Visual Tree", LineAnnotationLook.Muted));
                 }
                 continue;
             }
@@ -445,12 +445,12 @@ public sealed class BindingValuesController
             if (bound.Failure is { } failure)
             {
                 string at = bound.FailedAt is { } step ? $" at {step}" : string.Empty;
-                shown.Add(new LineAnnotation(binding.EndLine, $"{label}: binding failed{at}: {Cut(failure)}", LineAnnotationKind.Failed));
+                shown.Add(new LineAnnotation(binding.EndLine, $"{label}: binding failed{at}: {Cut(failure)}", LineAnnotationLook.Error));
             }
             else if (bound.Value is { } value)
             {
                 string since = bound.Unbound == true ? " (set since: no binding now)" : string.Empty;
-                shown.Add(new LineAnnotation(binding.EndLine, $"{label}: {Cut(value.Text)}{since}", LineAnnotationKind.InlineValue));
+                shown.Add(new LineAnnotation(binding.EndLine, $"{label}: {Cut(value.Text)}{since}", LineAnnotationLook.Muted));
             }
         }
         return shown;

@@ -100,6 +100,11 @@ public static partial class IdeLog
         {
             return;
         }
+        // Kept apart from what the process starts: an agent's relay says why it ends there (GivenError).
+        if (KeepEnd(StandardError) is var kept and >= 0 && Descriptors.CloseOnExec(kept))
+        {
+            given = kept;
+        }
         if (Duplicate(ends[1], StandardError) < 0)
         {
             CloseEnd(ends[0]);
@@ -126,6 +131,27 @@ public static partial class IdeLog
         { IsBackground = true, Name = "Passenger standard error" };
         reader.Start();
     }
+
+    /// <summary>The standard error the process was given, before the console took it (<see cref="TakeConsole"/>), or -1.</summary>
+    private static int given = -1;
+
+    /// <summary>The standard error the process was given made its standard error again, as a process it becomes takes it
+    /// (an agent's relay following an update); passenger.log no longer has what is written there.</summary>
+    public static void GiveBackStandardError()
+    {
+        const int StandardError = 2;
+        if (given >= 0)
+        {
+            Duplicate(given, StandardError);
+        }
+    }
+
+    /// <summary>The standard error the process was given, which its starter reads: where an agent's relay says why it ends.</summary>
+    public static Stream GivenError() =>
+        given >= 0 ? new FileStream(new Microsoft.Win32.SafeHandles.SafeFileHandle(given, ownsHandle: false), FileAccess.Write, 1) : Console.OpenStandardError();
+
+    [System.Runtime.InteropServices.LibraryImport("libc", EntryPoint = "dup", SetLastError = true)]
+    private static partial int KeepEnd(int end);
 
     [System.Runtime.InteropServices.LibraryImport("libc", EntryPoint = "pipe", SetLastError = true)]
     private static unsafe partial int Pipe(int* ends);

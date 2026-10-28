@@ -23,7 +23,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
     [Fact]
     public async Task An_agent_reads_navigates_renames_and_refactors_avalonia_xaml_through_passengers_own_xaml_and_a_library_type_decompiled_once()
     {
-        string gallery = Taken("mcpaxaml-");
+        string gallery = await Taken("mcpaxaml-");
         // Another version's decompiled files, which no session has used for two months.
         string stale = Path.Combine(OwnState, "MetadataAsSource", "Decompiled", "Avalonia.Controls", "0123456789abcdef");
         Directory.CreateDirectory(stale);
@@ -97,7 +97,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
     public async Task An_agent_goes_to_sets_and_renames_aspire_resources_as_the_window_does()
     {
         string secrets = Path.Combine(TestRun.UserSecrets, AspireSecretsId, "secrets.json");
-        string shop = Taken("mcpaspire-");
+        string shop = await Taken("mcpaspire-");
         Directory.CreateDirectory(Path.GetDirectoryName(secrets)!);
         File.Delete(secrets);
         try
@@ -134,7 +134,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
     [Fact]
     public async Task An_agent_reads_navigates_renames_and_refactors_wpf_xaml_through_passengers_own_xaml()
     {
-        string gallery = Taken("mcpwxaml-");
+        string gallery = await Taken("mcpwxaml-");
         await using McpClient client = await Start(["--mcp", gallery]);
         string window = File.ReadAllText(Path.Combine(gallery, "MainWindow.xaml"));
 
@@ -179,8 +179,8 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
     [Fact]
     public async Task An_agent_reads_navigates_renames_fixes_and_formats_the_web_languages_through_their_servers_eslint_and_prettier()
     {
-        WebLanguagesTests.SkipWithoutNode(typescript: true);
-        EslintPrettierTests.Project.SkipWithoutNode();
+        await WebLanguagesTests.SkipWithoutNodeAsync(typescript: true);
+        await EslintPrettierTests.Project.SkipWithoutNodeAsync();
         string web = Made("mcpweb-", made =>
         {
             string packages = Path.Combine(AppContext.BaseDirectory, "node-packages", "node_modules");
@@ -304,7 +304,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
     [Fact]
     public async Task An_agent_lists_a_web_apps_routes_read_from_its_code()
     {
-        string shop = Taken("mcproutes-");
+        string shop = await Taken("mcproutes-");
         await using McpClient client = await Start(["--mcp", shop]);
 
         Assert.False((await Call(client, McpTools.Workspace)).TryGetProperty("routes", out JsonElement unasked) && unasked.ValueKind != JsonValueKind.Null,
@@ -333,52 +333,65 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
     }
 
     /// <summary>The test's own restored folder (<see cref="Restored"/>), removed with the test.</summary>
-    private string Taken(string name)
+    private async Task<string> Taken(string name)
     {
-        string taken = restored.Take(name);
+        string taken = await restored.Take(name);
         DeleteAtEnd(taken);
         return taken;
     }
 
     /// <summary>The class's restored folders, Avalonia's and WPF's galleries, the Aspire AppHost and its service, and the web
-    /// app of routes, each written as its test needs it: all four are restored at once as the first test takes one, rather
-    /// than each test's in its turn. Each test takes its own; those no test took go with the class.</summary>
-    public sealed class Restored : IDisposable
+    /// app of routes, each written as its test needs it: all four are restored at once, begun as the class starts, so the
+    /// tests that take none run meanwhile, rather than each test's in its turn. Each test takes its own; those no test took
+    /// go with the class.</summary>
+    public sealed class Restored : IAsyncLifetime
     {
         private readonly Dictionary<string, string> folders = new(StringComparer.Ordinal);
         private readonly HashSet<string> taken = new(StringComparer.Ordinal);
+        private Task restoring = Task.CompletedTask;
 
-        public string Take(string name)
+        public ValueTask InitializeAsync()
         {
-            if (folders.Count == 0)
+            restoring = Waiting.Apart(RestoreAsync);
+            return ValueTask.CompletedTask;
+        }
+
+        private async Task RestoreAsync()
+        {
+            (string Name, Func<string, Task> Write)[] kinds = [("mcpaxaml-", Avalonia), ("mcpaspire-", Aspire), ("mcpwxaml-", Wpf), ("mcproutes-", Routes)];
+            try
             {
-                (string Name, Action<string> Write)[] kinds = [("mcpaxaml-", Avalonia), ("mcpaspire-", Aspire), ("mcpwxaml-", Wpf), ("mcproutes-", Routes)];
-                try
+                foreach ((string kind, Func<string, Task> write) in kinds)
                 {
-                    foreach ((string kind, Action<string> write) in kinds)
-                    {
-                        string folder = PathNames.Canonical(TestFolders.Unowned(kind));
-                        folders[kind] = folder;
-                        write(folder);
-                    }
-                    Task.Run(() => Task.WhenAll(folders.Values.Select(Restore.RunAsync))).GetAwaiter().GetResult();
+                    string folder = PathNames.Canonical(TestFolders.Unowned(kind));
+                    folders[kind] = folder;
+                    await write(folder);
                 }
-                catch
-                {
-                    foreach (string folder in folders.Values)
-                    {
-                        TestFolders.Delete(folder);
-                    }
-                    folders.Clear();
-                    throw;
-                }
+                await Task.WhenAll(folders.Values.Select(Restore.RunAsync));
             }
+            catch
+            {
+                foreach (string folder in folders.Values)
+                {
+                    TestFolders.Delete(folder);
+                }
+                folders.Clear();
+                throw;
+            }
+        }
+
+        public async Task<string> Take(string name)
+        {
+            await restoring;
             taken.Add(name);
             return folders[name];
         }
 
-        public void Dispose()
+        /// <summary>Once the restore has ended, the folders no test took go; one that failed took its folders with it, and
+        /// each test that took one failed saying why.</summary>
+        public async ValueTask DisposeAsync()
         {
+            await Task.WhenAny(restoring);
             foreach ((string kind, string folder) in folders)
             {
                 if (!taken.Contains(kind))
@@ -388,7 +401,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
             }
         }
 
-        private static void Avalonia(string made)
+        private static Task Avalonia(string made)
         {
             File.WriteAllText(Path.Combine(made, "Gallery.csproj"), AvaloniaApp.HeadlessProject());
             Directory.CreateDirectory(Path.Combine(made, "ViewModels"));
@@ -403,24 +416,24 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
             File.WriteAllText(Path.Combine(made, "MainWindow.axaml"), XamlTests.Gallery.Window.Replace(
                 "<TextBlock Text=\"{Binding #Go.Content}\" />", "<TextBlock Text=\"{Binding #Go.Content}\" />\n        <TextBlock Text=\"{Binding Subtitle}\" />", StringComparison.Ordinal));
             File.WriteAllText(Path.Combine(made, "MainWindow.axaml.cs"), XamlTests.Gallery.CodeBehind);
+            return Task.CompletedTask;
         }
 
-        private static void Aspire(string made)
+        private static Task Aspire(string made)
         {
             AspireCodeHelpTests.Project.WriteTo(made, AspireSecretsId);
             File.WriteAllText(Path.Combine(made, "Host", "Program.cs"), AspireCodeHelpTests.Project.Host.Replace("builder.Build().Run();",
                 "var password = builder.AddParameter(\"password\", secret: true);\nbuilder.Build().Run();", StringComparison.Ordinal));
             AspireApp.UseFeed(made);
+            return Task.CompletedTask;
         }
 
-        private static void Wpf(string made)
-        {
-            WpfXamlTests.Gallery.Make(made);
-        }
+        private static Task Wpf(string made) => WpfXamlTests.Gallery.MakeAsync(made);
 
-        private static void Routes(string made)
+        private static Task Routes(string made)
         {
             WebRoutesTests.WriteShop(made, 5557);
+            return Task.CompletedTask;
         }
     }
 
@@ -444,7 +457,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
     [Fact]
     public async Task An_agent_reads_a_compose_files_declarations_and_problems_renames_a_service_and_formats_it_through_the_yaml_server()
     {
-        DockerFilesTests.Shop.SkipWithoutNode(yaml: true);
+        await DockerFilesTests.Shop.SkipWithoutNodeAsync(yaml: true);
         const string Compose = "services:\n  web:\n    image:   nginx:1.27\n    ports: [ \"8080:80\" ]\n    depends_on:   [api]\n  api:\n    build: .\n";
         string compose = Made("mcpcompose-", made =>
         {

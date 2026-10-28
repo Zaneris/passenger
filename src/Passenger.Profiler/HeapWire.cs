@@ -19,6 +19,9 @@ internal static class HeapWire
 
     public const byte Failure = (byte)'F';
 
+    /// <summary>No snapshot, since only the program's runtime could write it, into the program's output: why, as a line.</summary>
+    public const byte IntoOutput = (byte)'O';
+
     private const int HeaderLength = 10;
 
     /// <summary>The largest body read, past which the stream is taken for something other than the wire: the tools'
@@ -36,6 +39,8 @@ internal static class HeapWire
     private const int Chunk = 1 << 20;
 
     public static void WriteFailure(Stream output, string why) => WriteFrame(output, Failure, Encoding.UTF8.GetBytes(why));
+
+    public static void WriteIntoOutput(Stream output, string why) => WriteFrame(output, IntoOutput, Encoding.UTF8.GetBytes(why));
 
     public static void WriteSnapshot(Stream output, MemorySnapshot taken)
     {
@@ -77,7 +82,7 @@ internal static class HeapWire
             throw new InvalidDataException($"The container tools answer in version {header[1]} of the heap's wire, and the IDE reads version {Version}");
         }
         long length = BinaryPrimitives.ReadInt64LittleEndian(header.AsSpan(2));
-        if (header[0] is not (Snapshot or Failure) || length < 0)
+        if (header[0] is not (Snapshot or Failure or IntoOutput) || length < 0)
         {
             throw new InvalidDataException("The container tools' answer is not a heap snapshot");
         }

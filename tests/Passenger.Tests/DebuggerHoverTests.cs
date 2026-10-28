@@ -169,7 +169,7 @@ public sealed class DebuggerHoverTests : IClassFixture<DebuggerHoverTests.People
         values.ScrollIntoView(row);
         Ui.Settle();
         Control shown = values.ContainerFromItem(row) ?? throw new InvalidOperationException($"The card does not show {row.Name}");
-        PathIcon chevron = shown.GetVisualDescendants().OfType<PathIcon>().First(i => i.Classes.Contains("chevron"));
+        RowIcon chevron = shown.GetVisualDescendants().OfType<RowIcon>().First(i => i.DataKey == IconKeys.ChevronRight);
         Click(window, (Control)chevron.Parent!);
     }
 
@@ -199,7 +199,6 @@ public sealed class DebuggerHoverTests : IClassFixture<DebuggerHoverTests.People
                 + "sealed class Person(string name, Address home)\n{\n    public string Name { get; set; } = name;\n\n    public Address Home { get; } = home;\n}\n");
             // The first build makes bin, which a reset would take for a file the test added: made now, the folder stays as reset.
             Directory.CreateDirectory(PathOf("bin"));
-            Prepare();
         }
     }
 }

@@ -60,7 +60,7 @@ public sealed class BindingValuesTests : IClassFixture<RestoredFolders>, IDispos
         Assert.Equal("ItemsSource: Count = 3", Value(editor, Line(Xaml, "ItemsSource=")));
         int broken = Line(Xaml, "x:Name=\"Broken\"");
         LineAnnotation failed = Assert.Single(editor.LineAnnotations, a => a.Line == broken);
-        Assert.Equal(LineAnnotationKind.Failed, failed.Kind);
+        Assert.Equal(LineAnnotationLook.Error, failed.Look);
         Assert.StartsWith("Text: binding failed at Nmae: ", failed.Text, StringComparison.Ordinal);
         int row = Line(Xaml, "<TextBlock Text=\"{Binding}\"");
         Assert.Equal("Text: made 3 times, choose one in the Live Visual Tree", Value(editor, row));

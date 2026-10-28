@@ -52,7 +52,7 @@ public partial class ManagedDebugger
                     Value = value,
                     Type = friendlyTypeName,
                     PresentationHint = variablePresentationHint,
-                    VariablesReference = GetVariablesReference(localVariableCorDebugValue, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance)
+                    VariablesReference = GetVariablesReference(localVariableCorDebugValue, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance, localVariableName)
                 });
             });
         }
@@ -178,7 +178,7 @@ public partial class ManagedDebugger
                     Value = value,
                     Type = friendlyTypeName,
                     PresentationHint = variablePresentationHint,
-                    VariablesReference = GetVariablesReference(argumentCorDebugValue, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance)
+                    VariablesReference = GetVariablesReference(argumentCorDebugValue, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance, argumentName)
                 });
             });
         }
@@ -208,8 +208,23 @@ public partial class ManagedDebugger
         }
     }
 
-    private int GetVariablesReference(ICorDebugValue corDebugValue, string friendlyTypeName, ThreadId threadId, FrameStackDepth stackDepth, ICorDebugValue? debuggerProxyInstance)
+    /// <summary>The reference a value's row opens by, 0 for one that opens to nothing: a union opens to the value it holds,
+    /// and a pointer (<paramref name="name"/> its row's) to the value it points at.</summary>
+    private int GetVariablesReference(ICorDebugValue corDebugValue, string friendlyTypeName, ThreadId threadId, FrameStackDepth stackDepth, ICorDebugValue? debuggerProxyInstance, string? name = null)
     {
+        if (corDebugValue is ICorDebugReferenceValue { Type: CorElementType.PTR } pointer)
+        {
+            return pointer.IsNull || pointer.ExactType.FirstTypeParameter.Type is CorElementType.VOID ? 0
+                : _variableManager.CreateReference(new VariablesReference(StoredReferenceKind.Pointer, pointer, threadId, stackDepth, null, Name: name));
+        }
+        if (TryGetUnionValue(corDebugValue, out _, out ICorDebugValue? held))
+        {
+            if (held is null)
+            {
+                return 0;
+            }
+            corDebugValue = held;
+        }
         ICorDebugValue unwrappedDebugValue = corDebugValue.UnwrapDebugValue();
         if (unwrappedDebugValue is ICorDebugArrayValue arrayValue)
         {
@@ -260,6 +275,25 @@ public partial class ManagedDebugger
             }
         }
         return 0;
+    }
+
+    /// <summary>The one row a pointer opens to: the value it points at, named as C# reads it (*p).</summary>
+    private async Task AddPointedAt(VariablesReference pointer, List<VariableInfo> result)
+    {
+        ICorDebugValue pointedAt = ((ICorDebugReferenceValue)pointer.ObjectValue!).Dereference();
+        string name = pointer.Name is { } named ? (SyntaxFacts.IsValidIdentifier(named) ? $"*{named}" : $"*({named})") : "*";
+        await WithFailureHandling(result, name, async () =>
+        {
+            (string friendlyTypeName, string value, ICorDebugValue? proxy, bool resultIsError) = await GetValueForCorDebugValueAsync(pointedAt, pointer.ThreadId, pointer.FrameStackDepth, true);
+            result.Add(new VariableInfo
+            {
+                Name = name,
+                Value = value,
+                Type = friendlyTypeName,
+                PresentationHint = resultIsError ? new VariablePresentationHint { Attributes = AttributesValue.FailedEvaluation } : null,
+                VariablesReference = GetVariablesReference(pointedAt, friendlyTypeName, pointer.ThreadId, pointer.FrameStackDepth, proxy, name)
+            });
+        });
     }
 
     private int GenerateUniqueVariableReference(ICorDebugValue value, ThreadId threadId, FrameStackDepth stackDepth, ICorDebugValue? debuggerProxyInstance)
@@ -522,7 +556,7 @@ public partial class ManagedDebugger
                     Value = value,
                     Type = friendlyTypeName,
                     PresentationHint = variablePresentationHint,
-                    VariablesReference = GetVariablesReference(fieldCorDebugValue, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance)
+                    VariablesReference = GetVariablesReference(fieldCorDebugValue, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance, fieldName)
                 };
                 result.Add(variableInfo);
             });
@@ -743,7 +777,7 @@ public partial class ManagedDebugger
             .ToArray();
         foreach ((uint[]? indices, ICorDebugValue? element) in elements)
         {
-            string name = $"[{string.Join(", ", indices)}]";
+            string name = indices.Length == 1 ? $"[{indices[0]}]" : $"[{string.Join(", ", indices)}]";
             await WithFailureHandling(result, name, async () =>
             {
                 (string? friendlyTypeName, string? value, ICorDebugValue? debuggerProxyInstance, bool resultIsError, string? displayName) = await GetDisplayedValueAsync(element, threadId, stackDepth, true);
@@ -763,7 +797,9 @@ public partial class ManagedDebugger
         return false;
     }
 
-    private static async Task WithFailureHandling(List<VariableInfo> result, string fieldName, Func<Task> func)
+    /// <summary>A row's value read, any failure of it (the runtime's, the program's, an evaluation's) shown as the row's
+    /// value, so the rows beside it are read on.</summary>
+    private async Task WithFailureHandling(List<VariableInfo> result, string fieldName, Func<Task> func)
     {
         try
         {
@@ -771,6 +807,7 @@ public partial class ManagedDebugger
         }
         catch (Exception ex)
         {
+            _logger?.Invoke($"{fieldName} could not be read: {ex}");
             result.Add(new VariableInfo
             {
                 Name = fieldName,

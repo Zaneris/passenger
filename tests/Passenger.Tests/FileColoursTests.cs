@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text;
 using Avalonia;
 using Avalonia.Controls;
@@ -241,6 +240,75 @@ public sealed class FileColoursTests : FileColoursFolder
         window.Close();
     }
 
+    /// <summary>Razor's grammar includes both HTML and C#: colouring a standalone file must not depend on a
+    /// language server, a Blazor project, or the SDK's project templates.</summary>
+    [AvaloniaFact]
+    public void A_standalone_Razor_file_colours_its_markup_and_embedded_CSharp()
+    {
+        MainWindow window = Window();
+        try
+        {
+            CodeEditor editor = Open(window, "Greeting.razor", """
+                <h1 class="greeting">@Title</h1>
+                @code {
+                    // The greeting.
+                    private string Title = "Hello";
+                }
+                """);
+            Assert.Equal(TokenKind.Tag, KindOf(editor, "<h1"));
+            Assert.Equal(TokenKind.AttributeName, KindOf(editor, "class"));
+            Assert.Equal(TokenKind.AttributeValue, KindOf(editor, "\"greeting\""));
+            Assert.Equal(TokenKind.Comment, KindOf(editor, "// The greeting."));
+            Assert.Equal(TokenKind.Keyword, KindOf(editor, "private"));
+            Assert.Equal(TokenKind.String, KindOf(editor, "\"Hello\""));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A shared tokenizer's scratch buffers must not become a document's saved state or colours. Leave
+    /// a comment open in one file, then edit both files before comparing their colours with fresh passes.</summary>
+    [AvaloniaFact]
+    public void Two_JSON_documents_keep_independent_states_when_their_tokenizer_is_shared()
+    {
+        MainWindow first = Window();
+        MainWindow second = Window();
+        try
+        {
+            CodeEditor comment = Open(first, "Comment.json", "/* Open comment\n{ \"closed\": false }\n");
+            CodeEditor settings = Open(second, "Settings.json", "{ \"ready\": true, \"count\": 1 }\n");
+            Assert.Equal(TokenKind.Comment, KindOf(comment, "false"));
+            Assert.Equal(TokenKind.JsonKey, KindOf(settings, "\"ready\""));
+            Assert.Equal(TokenKind.Keyword, KindOf(settings, "true"));
+
+            comment.Focus();
+            comment.Selections = SelectionSet.Single(comment.Document.Snapshot.ToString().IndexOf('{'));
+            first.KeyTextInput("*/\n");
+            settings.Focus();
+            settings.Selections = SelectionSet.Single(settings.Document.Snapshot.ToString().IndexOf('1'));
+            second.KeyTextInput("2");
+            Ui.Settle();
+            Assert.Null(((TextMateHighlighter)comment.Highlighter!).Failure);
+            Assert.Null(((TextMateHighlighter)settings.Highlighter!).Failure);
+            Assert.Equal(TokenKind.Keyword, KindOf(comment, "false"));
+            Assert.Equal(TokenKind.Number, KindOf(settings, "21"));
+
+            string commentText = comment.Document.Snapshot.ToString();
+            string settingsText = settings.Document.Snapshot.ToString();
+            string commentColours = Colours(comment);
+            string settingsColours = Colours(settings);
+            Assert.Equal(commentColours, Colours(Open(first, "FreshComment.json", commentText)));
+            Assert.Equal(settingsColours, Colours(Open(second, "FreshSettings.json", settingsText)));
+        }
+        finally
+        {
+            first.Close();
+            second.Close();
+        }
+    }
+
     /// <summary>SCSS and Less coloured by their own grammars, as CSS is, with their variables, mixins and nesting, and
     /// commented with <c>//</c>; an Avalonia file of the old extension (.paml) as the XAML it is. A Less variable ends
     /// with its value.</summary>
@@ -429,6 +497,71 @@ public sealed class FileColoursTests : FileColoursFolder
         window.Close();
     }
 
+    /// <summary>The files a solution keeps beside its code edit as their kinds: a .gitignore and an .editorconfig comment
+    /// a line with '#', the .editorconfig coloured as INI is; a solution filter is the JSON it is, coloured and folded;
+    /// and the status bar names a XAML file XAML and a project file MSBuild, not XML.</summary>
+    [AvaloniaFact]
+    public void An_ignore_file_an_editorconfig_and_a_solution_filter_edit_as_their_kinds_and_the_status_bar_names_XAML()
+    {
+        MainWindow window = Window();
+        CodeEditor editor = Open(window, ".gitignore", "bin/\nobj/\n");
+        editor.Focus();
+        editor.Selections = SelectionSet.Single(0);
+        Ui.Run(window, EditorActions.ToggleLineComment);
+        Assert.Equal("# bin/\nobj/\n", editor.Document.Snapshot.ToString());
+        Assert.Equal("Ignore", window.LanguageShown);
+
+        const string Config = "root = true\n\n[*.cs]\nindent_style = space\n";
+        editor = Open(window, "config/.editorconfig", Config);
+        editor.Focus();
+        Assert.Equal(TokenKind.Keyword, KindOf(editor, "indent_style"));
+        editor.Selections = SelectionSet.Single(Config.IndexOf("indent_style", StringComparison.Ordinal));
+        Ui.Run(window, EditorActions.ToggleLineComment);
+        Assert.Contains("\n# indent_style = space\n", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        Assert.Equal(TokenKind.Comment, KindOf(editor, "# indent_style = space"));
+        Assert.Equal("EditorConfig", window.LanguageShown);
+
+        editor = Open(window, "Shop.slnf", """
+            {
+              "solution": {
+                "path": "Shop.slnx",
+                "projects": [
+                  "src/Api/Api.csproj"
+                ]
+              }
+            }
+
+            """);
+        Assert.Equal("JSON", window.LanguageShown);
+        Assert.Equal(TokenKind.JsonKey, KindOf(editor, "\"solution\""));
+        Assert.Equal(TokenKind.String, KindOf(editor, "\"Shop.slnx\""));
+        Assert.True(editor.FoldRegions.Count >= 3, $"The solution filter has {editor.FoldRegions.Count} folds, where its object, its solution and its projects each fold");
+
+        Open(window, "Views/MainView.axaml", "<UserControl xmlns=\"https://github.com/avaloniaui\" />\n");
+        Assert.Equal("XAML", window.LanguageShown);
+        Open(window, "Shapes.csproj", Project);
+        Assert.Equal("MSBuild", window.LanguageShown);
+        window.Close();
+    }
+
+    /// <summary>An .http file is HTTP: its request's method coloured a keyword, its comments comments, and a line commented
+    /// with '#'.</summary>
+    [AvaloniaFact]
+    public void An_http_file_is_coloured_as_HTTP_and_comments_a_line_with_a_hash()
+    {
+        MainWindow window = Window();
+        const string Requests = "### All items\n# Every item there is\nGET https://example.com/items\nAccept: application/json\n";
+        CodeEditor editor = Open(window, "api.http", Requests);
+        editor.Focus();
+        Assert.Equal("HTTP", window.LanguageShown);
+        Assert.Equal(TokenKind.Keyword, KindOf(editor, "GET"));
+        Assert.Equal(TokenKind.Comment, KindOf(editor, "# Every item there is"));
+        editor.Selections = SelectionSet.Single(Requests.IndexOf("Accept", StringComparison.Ordinal));
+        Ui.Run(window, EditorActions.ToggleLineComment);
+        Assert.Contains("\n# Accept: application/json\n", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void Comment_with_line_comment_writes_each_languages_own_comment_and_block_comment_wraps_XML_in_its_own()
     {
@@ -586,9 +719,8 @@ public sealed class FileColoursTests : FileColoursFolder
     }
 }
 
-/// <summary>A key in a long file of a language TextMate colours costs the UI thread what one in a short file does. Held to a
-/// time, so the class runs alone.</summary>
-[Collection(Alone.Name)]
+/// <summary>A key in a long file of a language TextMate colours costs the UI thread what one in a short file does, counted
+/// in the lines the grammar reads and the bytes the UI thread allocates.</summary>
 public sealed class FileColoursResponsivenessTests : FileColoursFolder
 {
     /// <summary>A key in a file of 20,000 lines of XML, or 5,000 of Markdown, has the grammar read the line it changed,
@@ -614,13 +746,14 @@ public sealed class FileColoursResponsivenessTests : FileColoursFolder
             ("Notes.md", notes, "Section 250", "# Notes\n\n## Section 1\n\nSome **bold** text.\n", "Section 1"),
         })
         {
-            (double keyLong, double readLong, double lines, TextMateHighlighter colours) = Keys(window, file, text, at);
-            (double keyShort, _, _, _) = Keys(window, "Small" + Path.GetExtension(file), small, smallAt);
-            Assert.True(lines <= 2, $"A key in {file} had the grammar read {lines:F1} lines");
-            Assert.True(keyLong <= Math.Max(4 * keyShort, keyShort + 2), $"A key in {file} took the UI thread {keyLong:F2} ms, against {keyShort:F2} ms in a short file");
+            (long keyLong, double lines, TextMateHighlighter colours) = Keys(window, file, text, at);
+            (long keyShort, _, _) = Keys(window, "Small" + Path.GetExtension(file), small, smallAt);
             TestContext.Current.TestOutputHelper?.WriteLine(
-                $"{file}: {text.Count(c => c == '\n'):N0} lines; a key {keyLong:F2} ms on the UI thread ({keyShort:F2} ms in a short file), "
-                + $"{readLong:F2} ms off it reading {lines:F1} lines; opening it read {colours.Worked.Lines:N0} lines");
+                $"{file}: {text.Count(c => c == '\n'):N0} lines; a key allocated {keyLong:N0} bytes on the UI thread ({keyShort:N0} in a short file), "
+                + $"the grammar reading {lines:F1} lines off it; opening it read {colours.Worked.Lines:N0} lines");
+            Assert.True(lines <= 2, $"A key in {file} had the grammar read {lines:F1} lines");
+            Assert.True(keyLong <= keyShort + LongFileSlack,
+                $"A key in {file} allocated {keyLong:N0} bytes on the UI thread, against {keyShort:N0} in a short file: what the whole file has was made again");
         }
 
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -678,6 +811,21 @@ public sealed class FileColoursResponsivenessTests : FileColoursFolder
             Assert.Equal(TokenKind.Comment, KindOf(editor, "line 19999xxxxx"));
             return least;
         }
+    }
+
+    /// <summary>A C# 15 union typed into a file has its name in a struct's colour at its declaration, as a record struct's
+    /// is, from the parser's colours alone.</summary>
+    [AvaloniaFact]
+    public void A_union_typed_has_its_name_in_a_structs_colour_where_it_is_declared()
+    {
+        MainWindow window = Window();
+        CodeEditor editor = Open(window, "Pets.cs", "public sealed record Cat(string Name);\npublic sealed record Dog(string Name);\n");
+        editor.Selections = SelectionSet.Single(editor.Document.Snapshot.Length);
+        editor.Focus();
+        window.KeyTextInput("public union Pet(Cat, Dog);");
+        Assert.True(KindOf(editor, "Pet") is TokenKind.Struct, $"The union's name typed is coloured as {KindOf(editor, "Pet")?.ToString() ?? "several kinds"}, not as a struct's");
+        Assert.Equal(TokenKind.Keyword, KindOf(editor, "union"));
+        window.Close();
     }
 
     /// <summary>The parse a key starts classifies the lines on screen on its worker, and its landing hands them to the
@@ -810,30 +958,33 @@ public abstract class FileColoursFolder : IDisposable
         return xml.Append("</Project>\n").ToString();
     }
 
-    /// <summary>A file opened in the window and typed in at a place: the median time a key takes the UI thread, the time
-    /// the grammar took for it off the UI thread, and the lines it read for it.</summary>
-    protected (double Key, double Read, double Lines, TextMateHighlighter Colours) Keys(MainWindow window, string file, string text, string at)
+    /// <summary>What a key may allocate on the UI thread in a long file beyond what it does in a short one: about 3 bytes a
+    /// line of 20,000, where a copy of the file's text would be 2 MB.</summary>
+    protected const long LongFileSlack = 256 * 1024;
+
+    /// <summary>A file opened in the window and typed in at a place: the least a key allocates on the UI thread with its
+    /// frame, and the lines the grammar read for each key off the UI thread.</summary>
+    protected (long Key, double Lines, TextMateHighlighter Colours) Keys(MainWindow window, string file, string text, string at)
     {
         CodeEditor editor = Open(window, file, text);
         TextMateHighlighter colours = (TextMateHighlighter)window.EditorArea.Active!.Highlighter!;
         editor.Selections = SelectionSet.Single(text.IndexOf(at, StringComparison.Ordinal) + 2);
         editor.Focus();
         Ui.Settle();
-        (long lines, int passes, TimeSpan time) = colours.Worked;
-        List<double> keys = [];
+        (long lines, int passes, _) = colours.Worked;
+        long least = long.MaxValue;
         const int Count = 12;
         for (int i = 0; i < Count; i++)
         {
-            long began = Stopwatch.GetTimestamp();
+            long before = GC.GetAllocatedBytesForCurrentThread();
             window.KeyTextInput(i % 2 == 0 ? "x" : "y");
             Dispatcher(window);
-            keys.Add(Stopwatch.GetElapsedTime(began).TotalMilliseconds);
+            least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
             Ui.Settle();
         }
-        (long linesAfter, int passesAfter, TimeSpan timeAfter) = colours.Worked;
+        (long linesAfter, int passesAfter, _) = colours.Worked;
         Assert.True(passesAfter - passes >= Count, $"{Count} keys in {file} made {passesAfter - passes} passes");
-        keys.Sort();
-        return (keys[Count / 2], (timeAfter - time).TotalMilliseconds / Count, (linesAfter - lines) / (double)Count, colours);
+        return (least, (linesAfter - lines) / (double)Count, colours);
     }
 
     /// <summary>What the key left for the UI thread to do (its frame, drawn with the colours carried), done.</summary>

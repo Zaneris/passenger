@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using Passenger.App.CSharp;
 using Passenger.App.Run;
+using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Workspace;
 
@@ -50,7 +51,20 @@ public partial class MainWindow
         ContainerTools = () => ContainerToolsFrom ?? Containers.ContainerToolsSource.Default(Releases),
         DockerHub = DockerHub,
         StartsLanguageServer = StartsLanguageServer,
+        HeadStart = headStart,
     };
+
+    /// <summary>The opening of the folder the process was started on, begun before the window was built, which the first
+    /// session of the window takes up (<see cref="SessionSetup.HeadStart"/>); a windowless Passenger's. None for a person's
+    /// window, which opens its folder itself.</summary>
+    public HeadStart? HeadStart
+    {
+        get => headStart;
+        init => headStart = value;
+    }
+
+    /// <summary>The head start until the window's first folder has opened, which alone takes it up.</summary>
+    private HeadStart? headStart;
 
     /// <summary>Where this window's Dockerfile server asks for image tags in Docker Hub's place: the one given, else
     /// the place <c>PASSENGER_DOCKER_HUB</c> names, else Docker Hub's own.</summary>
@@ -158,13 +172,15 @@ public partial class MainWindow
         WorkspaceModel? withSolution = WorkspaceModel.ReadSolution(folder, named);
         // The projects as MSBuild last evaluated them, from the folder's cache, before any is evaluated again.
         ProjectSession opened = ProjectSession.Open(Setup(), folder, named, withSolution, keepsWorkspace ? Store().Project(folder) : null);
+        // The head start is this first folder's: one opened later, this one again too, is read and evaluated afresh.
+        headStart = null;
         // The consoles are another folder's: what it ran said its last there before its end landed.
         Bottom.Run.Clear();
         Bottom.Build.Clear();
         Bottom.Debug.Clear();
         Bind(opened);
         Explorer.Load(opened.Workspace!);
-        opened.Start(walk: withSolution is null);
+        opened.Start();
         FindTests();
         Editors.ShowFolderHint(folder);
         RestoreWorkspace();
@@ -292,12 +308,19 @@ public partial class MainWindow
                     structure?.FollowServer();
                 }
             };
-            web.Stopped += (_, message) =>
+            // Each stop is logged with why, so the log is where to see more; one left stopped is started again from its words.
+            web.Stopped += (_, lost) =>
             {
-                if (session == next)
+                if (session != next)
                 {
-                    Say(message, LogPlace);
+                    return;
                 }
+                if (lost.StartAgain is { } again)
+                {
+                    Say($"{lost.Said}; click to start it again", StartAgainPlace(again));
+                    return;
+                }
+                Say(lost.Said, LogPlace);
             };
             web.Message += (_, message) =>
             {
@@ -313,16 +336,28 @@ public partial class MainWindow
                     Browse(page);
                 }
             };
-            // ESLint's fixes are made by its server's commands, which hand their edit to the window to make.
-            web.Eslint.ApplyEdit = edit =>
+            // ESLint's fixes are made by its server's commands, which hand their edit to the window to make, answered once it has landed.
+            web.Eslint.ApplyEdit = async edit =>
             {
+                void SayOf(string said)
+                {
+                    if (session == next)
+                    {
+                        status.Text = said;
+                    }
+                }
                 List<string> dropped = [];
                 try
                 {
                     WorkspaceEdits.Apply(Editors, edit, null, dropped);
+                    if (await WorkspaceEdits.LandedAsync(Editors, edit, SayOf))
+                    {
+                        SayOf("ESLint's edit done");
+                    }
                 }
                 catch (WorkspaceEditFailed failed)
                 {
+                    SayOf($"ESLint's edit failed: {failed.Message}");
                     return failed.Message;
                 }
                 return dropped.Count > 0 ? $"{string.Join(", ", dropped)} changed since ESLint was asked" : null;
@@ -334,6 +369,7 @@ public partial class MainWindow
             {
                 Explorer.Reload(next.Workspace!);
                 ShowWorkspaceName();
+                FollowSymbols();
                 FindTests();
                 // Each file's project, which Problems lists the solution's under, as the projects now are.
                 ShowSolutionProblems();
@@ -344,6 +380,7 @@ public partial class MainWindow
             if (session == next)
             {
                 Explorer.UpdateProjects(next.Workspace!, evaluated.Projects);
+                FollowSymbols();
                 if (evaluated.TestsChanged)
                 {
                     FindTests();
@@ -435,6 +472,8 @@ public partial class MainWindow
             service.StateChanged += (_, _) => usages.Refresh();
             service.StateChanged += (_, _) => OutlineWhenUnseen();
             service.StateChanged += (_, _) => structure?.FollowServer();
+            service.Connected += (_, _) => OutlineWhenUnseen();
+            service.Connected += (_, _) => structure?.FollowServer();
             service.StateChanged += (_, _) => RoutesServerChanged(service);
             service.ProjectsLoaded += (_, _) => RoutesProjectsLoaded(service);
             service.StateChanged += (_, _) =>
@@ -446,8 +485,16 @@ public partial class MainWindow
                     ReadOpenAspireMarks(again: true);
                 }
             };
-            // Each stop is logged with why: the log is where to see more.
-            service.Stopped += (_, message) => Say(message, LogPlace);
+            // Each stop is logged with why, so the log is where to see more; one left stopped is started again from its words.
+            service.Stopped += (_, message) =>
+            {
+                if (service.IsStopped)
+                {
+                    Say($"{message}; {actions![AppActions.RestartCSharpServer]!.Title} starts it again", RestartCSharpPlace);
+                    return;
+                }
+                Say(message, LogPlace);
+            };
             service.Said += (_, said) => status.Say(said.Text, said.Severity, said.Problem is { } problem ? LoadProblemPlace(problem) : null);
             WatchProblems(service);
             service.FollowIndent(Editors.Active);

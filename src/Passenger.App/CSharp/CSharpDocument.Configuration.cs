@@ -46,7 +46,7 @@ public sealed partial class CSharpDocument
         return missing;
     }
 
-    /// <summary>Whether a configuration key is a secret's by Passenger's one rule (<see cref="Containers.ContainerSecrets.Secret"/>),
+    /// <summary>Whether a configuration key is a secret's by Passenger's one rule (<see cref="Containers.ContainerSecrets.Secret(string)"/>),
     /// its sections read as the words of one name (Payments:ApiKey as Payments_ApiKey).</summary>
     internal static bool SecretKey(string key) => Containers.ContainerSecrets.Secret(key.Replace(':', '_'));
 

@@ -74,7 +74,10 @@ Console.WriteLine("end");
 Captures.Outer(41);
 Nested.Throw();
 Displays.Show();
+Unions.Show();
+Pointers.Show();
 Interpreter.Run();
+Reading.Run();
 Jumps.Run();
 Threads.Run();
 Children.Run();
@@ -148,6 +151,35 @@ internal static class Displays
 		Console.WriteLine("displays");
 	}
 }
+
+// C# 15's unions, each case held and none, as Variables shows them.
+internal static class Unions
+{
+	public static void Show()
+	{
+		Pet cat = new Cat("Tom");
+		Pet dog = new Dog("Rex");
+		Pet bird = new Bird("Tweety");
+		Pet none = default;
+		Console.WriteLine($"unions {cat.Value} {dog.Value} {bird.Value} {none.Value}");
+	}
+}
+
+// A pointer, as Variables shows it.
+internal static class Pointers
+{
+	public static unsafe void Show()
+	{
+		int number = 42;
+		int* pointer = &number;
+		Console.WriteLine($"pointers {*pointer}");
+	}
+}
+
+internal sealed record Cat(string Name);
+internal sealed record Dog(string Name);
+internal sealed record Bird(string Name);
+internal union Pet(Cat, Dog, Bird);
 
 [DebuggerDisplay("{Amount} {Currency,nq}")]
 internal sealed class Money { public decimal Amount; public string Currency = ""; }
@@ -223,6 +255,29 @@ internal static class Interpreter
 		Console.WriteLine($"interpreter read {myInt}, {myUInt}, {minusOne}, {wide}, {counter.Count} and {price}");
 	}
 }
+
+// What an evaluation reads and leaves as it was: a record struct and a tuple a with copies, a char joined to a string,
+// and a box a pattern takes apart, read again each round.
+internal static class Reading
+{
+	public static void Run()
+	{
+		Spot spot = new(3, 4);
+		(int, string) tuple = (1, "x");
+		string word = "hello";
+		char letter = 'A';
+		object boxed = 42;
+		for (int round = 0; round < 3; round++)
+		{
+			Console.WriteLine($"reading round {round}");
+			Console.WriteLine($"read round {round}");
+		}
+		Console.WriteLine("reading");
+		Console.WriteLine($"read {spot}, {tuple}, {word}{letter} and {boxed}");
+	}
+}
+
+internal record struct Spot(int X, int Y);
 
 internal enum SignedEnum : sbyte { MinusOne = -1 }
 internal enum WideEnum : ushort { Max = 65535 }
@@ -493,14 +548,15 @@ internal static class Locks
 	}
 }
 
-// A stop at which an evaluation spins in a finally block until another thread, paused with the program, lets it out once
-// it has spun 5 s, longer than the tests give an evaluation: the runtime puts an abort off until the block is left, by
-// then after the program has gone on. That thread is in its loop by the stop, past the initialization of every type the
-// evaluation uses (Finally's statics, Stopwatch): paused inside one, it would hold the evaluation short of its finally.
+// A stop at which an evaluation spins, or sleeps, in a finally block until another thread, paused with the program, lets
+// it out once it has been in the block 5 s, longer than the tests give an evaluation: the runtime puts an abort off until
+// the block is left, by then after the program has gone on. That thread is in its loop by the stop, past the
+// initialization of every type the evaluation uses (Finally's statics, Stopwatch, Thread): paused inside one, it would
+// hold the evaluation short of its finally.
 internal static class Finally
 {
 	private static readonly ManualResetEventSlim Looping = new();
-	private static long spinningSince;
+	private static long heldSince;
 	private static int letOut;
 	public static int Turns;
 
@@ -510,7 +566,7 @@ internal static class Finally
 		{
 			try
 			{
-				Interlocked.CompareExchange(ref spinningSince, Stopwatch.GetTimestamp(), 0);
+				Interlocked.CompareExchange(ref heldSince, Stopwatch.GetTimestamp(), 0);
 			}
 			finally
 			{
@@ -522,14 +578,33 @@ internal static class Finally
 		}
 	}
 
-	private static bool SpunLongEnough() => Volatile.Read(ref spinningSince) is var since && since != 0 && Stopwatch.GetElapsedTime(since) > TimeSpan.FromSeconds(5);
+	public static int Sleeps
+	{
+		get
+		{
+			try
+			{
+				Interlocked.CompareExchange(ref heldSince, Stopwatch.GetTimestamp(), 0);
+			}
+			finally
+			{
+				while (Volatile.Read(ref letOut) == 0)
+				{
+					Thread.Sleep(10);
+				}
+			}
+			return ++Turns;
+		}
+	}
+
+	private static bool HeldLongEnough() => Volatile.Read(ref heldSince) is var since && since != 0 && Stopwatch.GetElapsedTime(since) > TimeSpan.FromSeconds(5);
 
 	public static void Run()
 	{
 		Thread freer = new(() =>
 		{
 			Stopwatch waited = Stopwatch.StartNew();
-			while (!SpunLongEnough() && waited.Elapsed < TimeSpan.FromSeconds(60))
+			while (!HeldLongEnough() && waited.Elapsed < TimeSpan.FromSeconds(60))
 			{
 				Looping.Set();
 				Thread.Sleep(20);
@@ -538,8 +613,20 @@ internal static class Finally
 		});
 		freer.Start();
 		Looping.Wait();
-		Console.WriteLine("a finally next"); // stop before an evaluation spins in a finally block
+		Console.WriteLine("a finally next"); // stop before an evaluation spins or sleeps in a finally block
 		freer.Join();
 		Console.WriteLine($"let out, {Turns} turns"); // stop once the evaluation has been let out
 	}
+}
+
+namespace System.Runtime.CompilerServices
+{
+	// What .NET 11 gives C# 15's unions, which this .NET 10 program declares itself.
+	public interface IUnion
+	{
+		object? Value { get; }
+	}
+
+	[AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, AllowMultiple = false, Inherited = false)]
+	public sealed class UnionAttribute : Attribute;
 }

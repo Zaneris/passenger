@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
@@ -6,20 +8,46 @@ namespace Passenger.Host;
 
 // The project host's protocol, one definition for both ends (the app compiles this file too): one JSON object a line
 // each way over the host's standard input and output. The app asks (HostRequest); the host answers each request with
-// partial results as they come, then with its result or why it failed (HostReply, by the request's id). The host's
+// partial results as they come, then with its result or why it failed (HostReply's lines, by the request's id). The host's
 // first line, id 0, says which SDK's MSBuild it loaded, or why it loaded none.
 
 public sealed record HostRequest(int Id, string Method, JsonElement Params);
 
-public sealed record HostReply
+/// <summary>A reply's line, {"id":N,"partial":value}, {"id":N,"result":value} or {"id":N,"error":"why"}: its value written
+/// straight into the line by the host and read in place by the app, by these names.</summary>
+public static class HostReply
 {
-    public int Id { get; init; }
+    public static ReadOnlySpan<byte> Id => "id"u8;
 
-    public JsonElement? Partial { get; init; }
+    public static ReadOnlySpan<byte> Partial => "partial"u8;
 
-    public JsonElement? Result { get; init; }
+    public static ReadOnlySpan<byte> Result => "result"u8;
 
-    public string? Error { get; init; }
+    public static ReadOnlySpan<byte> Error => "error"u8;
+}
+
+/// <summary>A JSON value carried whole as its UTF-8 bytes: written into a message as the value it is, and read out of one
+/// as its bytes, never as a string inside the message.</summary>
+[JsonConverter(typeof(RawJsonConverter))]
+public sealed class RawJson(byte[] utf8)
+{
+    public static RawJson EmptyArray { get; } = new("[]"u8.ToArray());
+
+    public ReadOnlyMemory<byte> Utf8 { get; } = utf8;
+
+    public override string ToString() => Encoding.UTF8.GetString(Utf8.Span);
+}
+
+public sealed class RawJsonConverter : JsonConverter<RawJson>
+{
+    /// <summary>The value's bytes copied out of the message, its document's room pooled and given back.</summary>
+    public override RawJson Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        using JsonDocument value = JsonDocument.ParseValue(ref reader);
+        return new RawJson(JsonMarshal.GetRawUtf8Value(value.RootElement).ToArray());
+    }
+
+    public override void Write(Utf8JsonWriter writer, RawJson value, JsonSerializerOptions options) => writer.WriteRawValue(value.Utf8.Span, skipInputValidation: true);
 }
 
 public static class HostMethods
@@ -52,8 +80,13 @@ public static class HostMethods
     /// with those properties would see them.</summary>
     public const string Properties = "properties";
 
-    /// <summary><see cref="InputsParams"/> to <see cref="BuildInputs"/>: what a build of one project with the global properties
-    /// given reads (stamped) and makes, its references' too, or why a build of it reads more than its evaluations say.</summary>
+    /// <summary><see cref="ProgramParams"/>: a file-based program's project as the SDK made it, which the host evaluates and
+    /// builds in place of a project file whenever a request names the program's C# file; answered true once taken.</summary>
+    public const string Program = "program";
+
+    /// <summary><see cref="InputsParams"/> to a <see cref="BuildInputs"/> for each project, in the order asked: what a build of
+    /// it with the global properties given reads (stamped) and makes, its references' too, or why a build of it reads more
+    /// than its evaluations say.</summary>
     public const string Inputs = "inputs";
 }
 
@@ -68,9 +101,6 @@ public static class HostJson
 
     /// <summary>A request's line as the host reads it.</summary>
     public static JsonTypeInfo<HostRequest> Request { get; } = (JsonTypeInfo<HostRequest>)Options.GetTypeInfo(typeof(HostRequest));
-
-    /// <summary>An answer's line as the app reads it.</summary>
-    public static JsonTypeInfo<HostReply> Reply { get; } = (JsonTypeInfo<HostReply>)Options.GetTypeInfo(typeof(HostReply));
 }
 
 /// <summary>The SDK the host loaded: its folder (MSBuild's) and version.</summary>
@@ -108,6 +138,10 @@ public sealed record EvaluatedProject
 
     /// <summary>Its packages and project references, a target framework each, or one with none for a project with one.</summary>
     public IReadOnlyList<FrameworkDependencies> Dependencies { get; init; } = [];
+
+    /// <summary>The preprocessor symbols and C# version each target framework compiles with, in the order of
+    /// <see cref="TargetFrameworks"/>; none for a multi-targeted project known by its outer evaluation alone.</summary>
+    public IReadOnlyList<FrameworkSymbols> Symbols { get; init; } = [];
 
     /// <summary>The files the project holds, every framework's, each once.</summary>
     public IReadOnlyList<EvaluatedItem> Items { get; init; } = [];
@@ -177,6 +211,11 @@ public sealed record FrameworkDependencies(string? Framework, IReadOnlyList<Pack
     public bool WindowsTargeting { get; init; }
 }
 
+/// <summary>What a target framework of a project compiles its C# with: its DefineConstants, with the symbols the .NET SDK
+/// adds for the framework and its platform (NET11_0, NET8_0_OR_GREATER, WINDOWS), and its LangVersion ("12", "preview"),
+/// the SDK's for the framework when the project sets none, or null where the evaluation has none.</summary>
+public sealed record FrameworkSymbols(string Framework, IReadOnlyList<string> Symbols, string? LanguageVersion = null);
+
 /// <summary>A package reference, its version as restore takes it: its own, its VersionOverride, or the central one.</summary>
 public sealed record PackageDependency(string Name, string? Version, bool Implicit);
 
@@ -193,10 +232,67 @@ public sealed record BuildParams(IReadOnlyList<string> Projects, IReadOnlyDictio
 public sealed record BuildDone(int Built, double Seconds);
 
 /// <summary>A project's design-time builds as Roslyn's server takes them (a JSON array of its ProjectFileInfo, one a target
-/// framework), what they read (the project file, its imports outside the SDK and package folders and those it would import
+/// framework, carried as its bytes), what they read (the project file, its imports outside the SDK and package folders and those it would import
 /// were they there, its packages' assets, its folders), and why they failed, when they did; with the errors and warnings
 /// the builds logged.</summary>
-public sealed record BuiltProject(string Path, string Infos, IReadOnlyList<Stamp> Inputs, string? Problem, IReadOnlyList<BuildDiagnostic>? Diagnostics = null);
+public sealed record BuiltProject(string Path, RawJson Infos, IReadOnlyList<Stamp> Inputs, string? Problem, IReadOnlyList<BuildDiagnostic>? Diagnostics = null)
+{
+    /// <summary>A reply's build read in place, its infos copied out of it as their bytes (from a string too, as a host
+    /// before these wrote them) and the rest read by the serializer.</summary>
+    public static BuiltProject Read(ReadOnlySpan<byte> json)
+    {
+        Utf8JsonReader reader = new(json);
+        if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
+        {
+            throw new JsonException("a build that is not an object");
+        }
+        string? path = null;
+        RawJson infos = RawJson.EmptyArray;
+        IReadOnlyList<Stamp>? inputs = null;
+        string? problem = null;
+        IReadOnlyList<BuildDiagnostic>? diagnostics = null;
+        while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
+        {
+            bool isPath = reader.ValueTextEquals("path"u8);
+            bool isInfos = reader.ValueTextEquals("infos"u8);
+            bool isInputs = reader.ValueTextEquals("inputs"u8);
+            bool isProblem = reader.ValueTextEquals("problem"u8);
+            bool isDiagnostics = reader.ValueTextEquals("diagnostics"u8);
+            reader.Read();
+            if (isPath)
+            {
+                path = reader.GetString();
+            }
+            else if (isInfos && reader.TokenType == JsonTokenType.String)
+            {
+                infos = new RawJson(Encoding.UTF8.GetBytes(reader.GetString()!));
+            }
+            else if (isInfos)
+            {
+                int start = (int)reader.TokenStartIndex;
+                reader.Skip();
+                infos = new RawJson(json[start..(int)reader.BytesConsumed].ToArray());
+            }
+            else if (isInputs)
+            {
+                inputs = JsonSerializer.Deserialize<List<Stamp>>(ref reader, HostJson.Options);
+            }
+            else if (isProblem)
+            {
+                problem = reader.GetString();
+            }
+            else if (isDiagnostics)
+            {
+                diagnostics = JsonSerializer.Deserialize<List<BuildDiagnostic>>(ref reader, HostJson.Options);
+            }
+            else
+            {
+                reader.Skip();
+            }
+        }
+        return new BuiltProject(path ?? throw new JsonException("a build with no path"), infos, inputs ?? [], problem, diagnostics);
+    }
+}
 
 /// <summary>An error or warning a design-time build logged, with the project file it was logged for.</summary>
 public sealed record BuildDiagnostic(bool Error, string Message, string Project);
@@ -208,8 +304,9 @@ public sealed record HoldParams;
 public sealed record HoldState(IReadOnlyList<string> Running, bool Held);
 
 /// <summary>A file's last write (UTC ticks) and length, 0 and -1 for one not there; for a folder, the hash of its names and
-/// how many (<see cref="Stamps.Folder"/>).</summary>
-public sealed record Stamp(string Path, long Ticks, long Length, bool Folder = false);
+/// how many (<see cref="Stamps.Folder"/>); for a program's C# file, the hash of its head's directives and how many
+/// (<see cref="Stamps.Head"/>).</summary>
+public sealed record Stamp(string Path, long Ticks, long Length, bool Folder = false, bool Head = false);
 
 /// <summary>A project to evaluate for code help, with the global properties (the solution's) and the text of the open
 /// MSBuild files that differ from what is on disk, by path, which its evaluation reads instead.</summary>
@@ -270,8 +367,12 @@ public sealed record PropertiesParams(string Project, IReadOnlyDictionary<string
 /// <summary>Each property asked for that has a value, as evaluated, or why the project did not evaluate.</summary>
 public sealed record PropertiesAnswer(IReadOnlyDictionary<string, string> Values, string? Problem);
 
-/// <summary>A project a build is about to build, with the global properties the build gives it (its framework among them).</summary>
-public sealed record InputsParams(string Project, IReadOnlyDictionary<string, string> Properties);
+/// <summary>A file-based program's C# file, with the project the SDK makes of it (<c>dotnet run-api</c>): where that project
+/// would be (app.cs.csproj beside app.cs) and its XML; or why the SDK made none (a directive it does not read).</summary>
+public sealed record ProgramParams(string Path, string? Project, string? Content, string? Problem);
+
+/// <summary>Projects builds are about to build, with the global properties those builds give each (its framework among them).</summary>
+public sealed record InputsParams(IReadOnlyList<string> Projects, IReadOnlyDictionary<string, string> Properties);
 
 /// <summary>What a build of a project reads and makes, as its evaluations say, with the projects it references in turn.</summary>
 public sealed record BuildInputs
@@ -296,6 +397,12 @@ public sealed record BuildInputs
     /// <summary>Those of <see cref="Reads"/> a restore writes (each project's assets, lock file and the props and targets it
     /// imports), which the build's own restore may write before anything reads them.</summary>
     public IReadOnlyList<string> Restored { get; init; } = [];
+
+    /// <summary>Whether a file is a static one the SDK's build makes into another, so a change to it reaches the app only
+    /// through a build, though no item the build copies names it: a component's or page's scoped CSS
+    /// (<c>Counter.razor.css</c>, <c>Index.cshtml.css</c>), rewritten under obj and bundled into the app's styles.</summary>
+    public static bool IsProcessedStatic(string path) =>
+        path.EndsWith(".razor.css", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".cshtml.css", StringComparison.OrdinalIgnoreCase);
 }
 
 /// <summary>A place in a file of <see cref="ProjectInsight.Files"/>, its line and column from 1 as MSBuild counts them.</summary>

@@ -299,10 +299,19 @@ public sealed record FileChange(
     [property: JsonPropertyName("created")] bool Created,
     [property: JsonPropertyName("edits")] IReadOnlyList<Edit> Edits);
 
-/// <summary>A refactoring's answer: the files it changes, or why it changes none.</summary>
+/// <summary>A refactoring's answer: the files it changes, or why it changes none; and the uses it leaves as they were,
+/// which the change leaves wrong.</summary>
 public sealed record Refactored(
     [property: JsonPropertyName("problem")] string? Problem,
-    [property: JsonPropertyName("changes")] IReadOnlyList<FileChange> Changes);
+    [property: JsonPropertyName("changes")] IReadOnlyList<FileChange> Changes,
+    [property: JsonPropertyName("left")] IReadOnlyList<UseLeft>? Left = null);
+
+/// <summary>A use a refactoring could not change: its file, its place in the file as it was, and why, as words that
+/// name it ("Circle.Make as a Func&lt;double, Circle&gt;, which the new signature no longer fits").</summary>
+public sealed record UseLeft(
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("at")] Place At,
+    [property: JsonPropertyName("why")] string Why);
 
 /// <summary>A parameter as a signature has it: its modifier (ref, out, in, params, this, or none), type, name and the
 /// default value its declaration gives (none when empty).</summary>

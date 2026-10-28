@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Passenger.Text;
@@ -7,8 +8,8 @@ namespace Passenger.Editor;
 
 /// <summary>Soft wrap: a line wider than the view goes on in rows below, broken after a space (or a comma or semicolon,
 /// else before a dot or a bracket, else at the edge), its later rows from its own indent. <see cref="Rows"/> maps lines
-/// to rows and back with the folds; a line's wraps come from its graphemes' widths, and after an edit only the lines it
-/// touched are wrapped again. A caret where a row wraps stands at the next row's start, or at the end of the row before
+/// to rows and back with the folds; a line's wraps come from its graphemes' widths, and after an edit only the rows it
+/// reaches are wrapped again. A caret where a row wraps stands at the next row's start, or at the end of the row before
 /// (after End, a step right onto it, a click past the row's end, typing).</summary>
 public sealed partial class CodeEditor
 {
@@ -190,11 +191,15 @@ public sealed partial class CodeEditor
         return span.Start + column;
     }
 
+    /// <summary>The rows a frame shows, found again for each.</summary>
+    private readonly List<RowSpan> rowsShown = [];
+
     /// <summary>The rows from <paramref name="firstRow"/> to <paramref name="lastRow"/>, in order, stepping over folded lines
     /// rather than visiting them.</summary>
     private List<RowSpan> RowsOnScreen(TextSnapshot text, int firstRow, int lastRow)
     {
-        List<RowSpan> shown = [];
+        List<RowSpan> shown = rowsShown;
+        shown.Clear();
         RowMap map = Rows;
         FoldLines folds = map.Folds;
         (int line, int sub) = map.LineOfRow(firstRow);
@@ -242,7 +247,7 @@ public sealed partial class CodeEditor
         {
             int caret = Math.Min(s.Caret, text.Length);
             int line = text.GetLineFromOffset(caret);
-            if (map[line] is { } wrap && Array.BinarySearch(wrap.Starts, caret - text.GetLineStart(line)) >= 0)
+            if (map[line] is { } wrap && wrap.Starts.BinarySearch(caret - text.GetLineStart(line)) >= 0)
             {
                 (at ??= []).Add(caret);
             }
@@ -363,18 +368,20 @@ public sealed partial class CodeEditor
         }
     }
 
-    /// <summary>Ahead of everyone who hears of an edit (<see cref="TextDocument.ChangedFirst"/>): the hints carried through it,
-    /// then the wraps, so the lines it touched wrap with their hints where they now stand, and the host's hints carried
-    /// alike after it change no line's rows.</summary>
+    /// <summary>Ahead of everyone who hears of an edit (<see cref="TextDocument.ChangedFirst"/>): the decorations' hints and
+    /// folds carried through it, then the wraps, so the lines it touched wrap with their hints where they now stand.</summary>
     private void OnChangedFirst(object? sender, DocumentChangedEventArgs change)
     {
-        hintList = hintList.Through(change.Edits);
+        views.Follow(change, advances);
+        decorations.Follow(change);
+        wrappedHints = decorations.InlayHints;
         FollowWraps(change);
     }
 
-    /// <summary>The wraps carried through an edit: a line it did not touch keeps its rows, the ones it did are wrapped again.
-    /// Ahead of everyone else who hears of the edit, since the host moving its folds through it asks for the rows, and what
-    /// follows it asks where the carets are drawn.</summary>
+    /// <summary>The wraps carried through an edit: a line it did not touch keeps its rows, a wrapped line it changed within
+    /// keeps the rows it did not reach (<see cref="TryCarry"/>), and the other lines it touched are wrapped again. Ahead of
+    /// everyone else who hears of the edit, since the host moving its folds through it asks for the rows, and what follows
+    /// it asks where the carets are drawn.</summary>
     private void FollowWraps(DocumentChangedEventArgs change)
     {
         if (wraps is not { } map || !ReferenceEquals(map.Text, change.Before))
@@ -406,9 +413,26 @@ public sealed partial class CodeEditor
             }
             made.AddRange(map, copiedTo, first - copiedTo);
             int lastAfter = last + shift + added;
-            for (int line = first + shift; line <= lastAfter; line++)
+            if (added == 0 && first == last && map[first] is { } was
+                && TryCarry(was, change, first, first + shift, i, j, map.Width, measure, out LineWrap? carried))
             {
-                made.Add(WrapLine(after, after.GetLine(line), map.Width, measure));
+                made.Add(carried);
+            }
+            else
+            {
+                for (int line = first + shift; line <= lastAfter; line++)
+                {
+                    LineWrap? wrap = WrapLine(after, after.GetLine(line), map.Width, measure);
+                    made.Add(wrap);
+                    if (added == 0)
+                    {
+                        Rewrapped(StartsOf(map[line - shift]), StartsOf(wrap), line);
+                    }
+                }
+            }
+            if (added != 0)
+            {
+                rowShape++;
             }
             copiedTo = last + 1;
             shift += added;
@@ -416,6 +440,116 @@ public sealed partial class CodeEditor
         }
         made.AddRange(map, copiedTo, map.LineCount - copiedTo);
         wraps = made.Build(after, map.Width, map.Look);
+    }
+
+    /// <summary>A wrapped line's rows carried through edits <paramref name="from"/> to <paramref name="to"/> inside it that
+    /// leave it one line: around each edit, the rows before it whose wrap read as far as it and the rows from it are
+    /// wrapped again, up to the first row past it that starts where one started before; the rest are kept, moved by what
+    /// the edits changed, so a key costs the rows it reaches. False where an edit reaches the line's indent, from which
+    /// every row's room comes.</summary>
+    private bool TryCarry(LineWrap was, DocumentChangedEventArgs change, int line, int lineAfter, int from, int to, double width,
+        Advances measure, out LineWrap? carried)
+    {
+        carried = null;
+        IReadOnlyList<TextEdit> edits = change.Edits;
+        LineSpan old = change.Before.GetLine(line);
+        LineSpan now = change.After.GetLine(lineAfter);
+        int grown = 0;
+        for (int e = from; e < to; e++)
+        {
+            grown += edits[e].Text.Length - edits[e].Length;
+        }
+        if (now.Length != old.Length + grown || edits[from].Start - old.Start <= was.FirstText)
+        {
+            return false;
+        }
+        WrapReading chars = Reading(change.After, now);
+        RowRule rule = new(now.Start, was.FirstText, Fixed(width), Fixed(width - was.Indent), measure);
+        ReadOnlySpan<int> starts = was.Starts;
+        List<int> rows = rowsMade;
+        rows.Clear();
+        // The next of the starts before, the rows at the list's start that are the text's now, and what earlier edits grew.
+        int next = 0;
+        int settled = 0;
+        int shift = 0;
+        int firstReach = was.FirstReach;
+        bool ended = false;
+        int at = from;
+        while (at < to && !ended)
+        {
+            int edited = edits[at].Start - old.Start;
+            while (next < starts.Length && starts[next] <= edited)
+            {
+                rows.Add(starts[next++] + shift);
+            }
+            edited += shift;
+            // Back over the rows before the edit whose wrap read as far as it.
+            while (rows.Count > settled && RowEnd(chars, rows.Count > 1 ? rows[^2] : 0, rule).Reach > edited)
+            {
+                rows.RemoveAt(rows.Count - 1);
+            }
+            if (settled == 0 && rows.Count > 1 && was.Indent > 0 && firstReach > edited)
+            {
+                // The first row has more room than the rest, so its wrap may have read further than theirs.
+                rows.Clear();
+            }
+            int start = rows.Count > 0 ? rows[^1] : 0;
+            int passed = at;
+            int passedShift = shift;
+            while (true)
+            {
+                (int end, int reach) = RowEnd(chars, start, rule);
+                if (start == 0)
+                {
+                    firstReach = reach;
+                }
+                if (end < 0)
+                {
+                    ended = true;
+                    break;
+                }
+                rows.Add(end);
+                while (passed < to && edits[passed].Start - old.Start + passedShift < end)
+                {
+                    passedShift += edits[passed].Text.Length - edits[passed].Length;
+                    passed++;
+                }
+                // Where the row starts in the text before, where it is past the edits it passed and short of the next.
+                int column = end - passedShift;
+                if (passed > at && column > edits[passed - 1].End - old.Start && (passed == to || column < edits[passed].Start - old.Start))
+                {
+                    while (next < starts.Length && starts[next] < column)
+                    {
+                        next++;
+                    }
+                    if (next < starts.Length && starts[next] == column)
+                    {
+                        // From a row that started here before, the rows read what they read then, up to the next edit.
+                        next++;
+                        settled = rows.Count;
+                        at = passed;
+                        shift = passedShift;
+                        break;
+                    }
+                }
+                start = end;
+            }
+        }
+        if (!ended)
+        {
+            while (next < starts.Length)
+            {
+                rows.Add(starts[next++] + shift);
+            }
+        }
+        ReadOnlySpan<int> made = CollectionsMarshal.AsSpan(rows);
+        Rewrapped(starts, made, lineAfter);
+        if (made.Length > 0)
+        {
+            was.Carry(made, firstReach);
+            carried = was;
+        }
+        return true;
     }
 
     /// <summary>The hints changed: the lines where one is drawn otherwise than before (where it stands, what it says) are
@@ -439,7 +573,9 @@ public sealed partial class CodeEditor
         foreach (int line in touched)
         {
             made.AddRange(map, copiedTo, line - copiedTo);
-            made.Add(WrapLine(text, text.GetLine(line), map.Width, measure));
+            LineWrap? wrap = WrapLine(text, text.GetLine(line), map.Width, measure);
+            made.Add(wrap);
+            Rewrapped(StartsOf(map[line]), StartsOf(wrap), line);
             copiedTo = line + 1;
         }
         made.AddRange(map, copiedTo, map.LineCount - copiedTo);
@@ -448,8 +584,11 @@ public sealed partial class CodeEditor
 
     private static int Breaks(string text) => text.AsSpan().Count('\n');
 
+    private static ReadOnlySpan<int> StartsOf(LineWrap? wrap) => wrap is null ? [] : wrap.Starts;
+
     private WrapMap WrapAll(TextSnapshot text, double width)
     {
+        rowShape++;
         WrapBuilder made = new();
         Advances measure = Measures();
         for (int line = 0; line < text.LineCount; line++)
@@ -470,10 +609,21 @@ public sealed partial class CodeEditor
         return advances;
     }
 
-    /// <summary>Where one line wraps at a width, or null for a line that fits. Its graphemes' widths are summed with the hints'
-    /// (a hint's room goes on the row its column starts); past the width, the row ends at the last space, comma or semicolon
-    /// it holds, else before its last dot or bracket, else before the grapheme that would not fit. Spaces never wrap: they
-    /// stay at the end of their row however far they reach, so a row starts with text.</summary>
+    /// <summary>The rows a line's wraps were last worked out in, reused for the next.</summary>
+    private readonly List<int> rowsMade = [];
+
+    private WrapReading? wrapReading;
+
+    private WrapReading Reading(TextSnapshot text, LineSpan line)
+    {
+        wrapReading ??= new WrapReading(this);
+        wrapReading.Begin(text, line);
+        return wrapReading;
+    }
+
+    /// <summary>Where one line wraps at a width, or null for a line that fits: its rows one after another, each from where
+    /// the one before it ended (<see cref="RowEnd"/>), its rows after the first drawn from its indent where that is no more
+    /// than half the width.</summary>
     private LineWrap? WrapLine(TextSnapshot text, LineSpan line, double width, Advances measure)
     {
         int length = line.Length;
@@ -481,117 +631,117 @@ public sealed partial class CodeEditor
         {
             return null;
         }
-        CharactersWrapped += length;
-        Gap[] hints = HintsOn(RowSpan.Whole(line));
-        char[] buffer = ArrayPool<char>.Shared.Rent(length);
-        try
+        WrapReading chars = Reading(text, line);
+        int firstText = 0;
+        double indent = 0;
+        while (firstText < length)
         {
-            Span<char> chars = buffer.AsSpan(0, length);
-            text.CopyTo(line.Start, chars);
-            double uniform = measure.Uniform;
-            bool plain = hints.Length == 0 && !double.IsNaN(uniform) && !chars.ContainsAnyExceptInRange(' ', '~');
-            if (plain && length * uniform <= width)
+            chars.Cover(firstText, firstText + 1);
+            char c = chars[firstText];
+            if (!IsBlank(c))
             {
-                return null;
+                break;
             }
-            int firstText = 0;
-            double indent = 0;
-            while (firstText < length && chars[firstText] is ' ' or '\t')
-            {
-                indent += chars[firstText] == '\t' ? measure.Tab : measure.Of(chars.Slice(firstText, 1));
-                firstText++;
-            }
-            if (firstText == length)
-            {
-                return null;
-            }
-            double drawnIndent = wrapIndent && indent <= width / 2 ? indent : 0;
-            List<int>? starts = plain ? WrapPlain(chars, uniform, width, firstText, drawnIndent) : null;
-            double x = 0;
-            double rowX = 0;
-            double room = width;
-            int rowStart = 0;
-            (int At, double X) good = (-1, 0);
-            (int At, double X) fair = (-1, 0);
-            int h = 0;
-            int i = plain ? length : 0;
-            while (i < length)
-            {
-                char c = chars[i];
-                if (i > firstText && i > rowStart && !IsBlank(c))
-                {
-                    char previous = chars[i - 1];
-                    if (IsBlank(previous) || previous is ',' or ';')
-                    {
-                        good = (i, x);
-                    }
-                    else if (c is '.' or '(' or '[' or '{')
-                    {
-                        fair = (i, x);
-                    }
-                }
-                double before = x;
-                while (h < hints.Length && hints[h].Column <= i)
-                {
-                    x += hints[h].Width;
-                    h++;
-                }
-                int size = Grapheme(chars, i);
-                double advance = c == '\t' ? measure.Tab : measure.Of(chars.Slice(i, size));
-                if (x + advance - rowX > room && i > rowStart && !IsBlank(c))
-                {
-                    (int at, double atX) = good.At > rowStart ? good : fair.At > rowStart ? fair : (i, before);
-                    (starts ??= []).Add(at);
-                    rowStart = at;
-                    rowX = atX;
-                    room = width - drawnIndent;
-                    // Read again from the new row's start, whose room may be less than the row before's.
-                    i = at;
-                    x = atX;
-                    h = 0;
-                    while (h < hints.Length && hints[h].Column < at)
-                    {
-                        h++;
-                    }
-                    continue;
-                }
-                x += advance;
-                i += size;
-            }
-            return starts is null ? null : new LineWrap([.. starts], drawnIndent);
+            indent += c == '\t' ? measure.Tab : measure.Of(chars.Span(firstText, 1));
+            firstText++;
         }
-        finally
+        if (firstText == length)
         {
-            ArrayPool<char>.Shared.Return(buffer);
+            return null;
         }
+        double drawnIndent = wrapIndent && indent <= width / 2 ? indent : 0;
+        RowRule rule = new(line.Start, firstText, Fixed(width), Fixed(width - drawnIndent), measure);
+        List<int> rows = rowsMade;
+        rows.Clear();
+        (int end, int firstReach) = RowEnd(chars, 0, rule);
+        while (end >= 0)
+        {
+            rows.Add(end);
+            end = RowEnd(chars, end, rule).End;
+        }
+        return rows.Count == 0 ? null : new LineWrap([.. rows], drawnIndent, firstText, firstReach);
     }
 
-    /// <summary>The same wraps for a line of printable ASCII and no hints in a font that gives each the one width: a row's
-    /// end found by counting, and its break by looking back from there, rather than by reading every character.</summary>
-    private static List<int>? WrapPlain(ReadOnlySpan<char> chars, double uniform, double width, int firstText, double drawnIndent)
+    /// <summary>Where a line's row from a column wraps (-1 where the line ends on it), and past what column it read, which an
+    /// edit beyond leaves it as it is: its graphemes' widths and its hints' summed exactly from its start, so it is the same
+    /// whatever came before, and past its room it ends after its last space, comma or semicolon, else before its last dot or
+    /// bracket, else before the grapheme that would not fit. Spaces never wrap: they stay at the end of their row however
+    /// far they reach, so a row starts with text.</summary>
+    private (int End, int Reach) RowEnd(WrapReading chars, int start, in RowRule rule)
     {
-        List<int>? starts = null;
-        int rowStart = 0;
-        double room = width;
-        while (true)
+        int length = chars.Length;
+        Int128 room = start == 0 ? rule.FirstRoom : rule.Room;
+        HintList hints = decorations.InlayHints;
+        int h = ShownHintFrom(hints, FirstHintFrom(rule.LineStart + start));
+        int hintAt = h < hints.Count ? hints[h].Offset - rule.LineStart : int.MaxValue;
+        if (rule.Uniform >= 0 && PlainRowEnd(chars, start, room, hintAt, rule) is { } plain)
         {
-            // The first text that would not fit: spaces past the edge stay on the row.
-            int over = rowStart + Math.Max(1, (int)Math.Floor(room / uniform));
-            int text = over < chars.Length ? chars[over..].IndexOfAnyExcept(' ') : -1;
-            if (text < 0)
-            {
-                return starts;
-            }
-            int at = BreakBefore(chars, over + text, Math.Max(rowStart, firstText));
-            (starts ??= []).Add(at);
-            rowStart = at;
-            room = width - drawnIndent;
+            return plain;
         }
+        Int128 x = 0;
+        int good = -1;
+        int fair = -1;
+        int i = start;
+        while (i < length)
+        {
+            chars.Cover(i > start ? i - 1 : i, i + 2);
+            char c = chars[i];
+            if (i > rule.FirstText && i > start && !IsBlank(c))
+            {
+                char previous = chars[i - 1];
+                if (IsBlank(previous) || previous is ',' or ';')
+                {
+                    good = i;
+                }
+                else if (c is '.' or '(' or '[' or '{')
+                {
+                    fair = i;
+                }
+            }
+            while (hintAt <= i)
+            {
+                x += Fixed(HintWidth(hints[h], out _));
+                h = ShownHintFrom(hints, h + 1);
+                hintAt = h < hints.Count ? hints[h].Offset - rule.LineStart : int.MaxValue;
+            }
+            int size = chars.Grapheme(i);
+            Int128 advance = c == '\t' ? rule.Tab
+                : size == 1 && rule.Uniform >= 0 && c is >= ' ' and <= '~' ? rule.Uniform
+                : Fixed(rule.Measure.Of(chars.Span(i, size)));
+            if (x + advance > room && i > start && !IsBlank(c))
+            {
+                return (good > start ? good : fair > start ? fair : i, i + size + 2);
+            }
+            x += advance;
+            i += size;
+        }
+        return (-1, length + 1);
+    }
+
+    /// <summary>The same row's end where it is printable ASCII with no hint, in a font that gives each the one width: found
+    /// by counting to the edge and looking back for the break, rather than by summing; null where the row is otherwise.</summary>
+    private static (int End, int Reach)? PlainRowEnd(WrapReading chars, int start, Int128 room, int hintAt, in RowRule rule)
+    {
+        int length = chars.Length;
+        Int128 fits = room / rule.Uniform;
+        int over = fits >= length - start ? length : start + Math.Max(1, (int)fits);
+        chars.Cover(start, over + 2);
+        // The first text that would not fit: spaces past the edge stay on the row.
+        int text = chars.SpacesFrom(over);
+        if (text == length)
+        {
+            return hintAt >= length && chars.Plain(start, length) ? (-1, length + 1) : null;
+        }
+        if (hintAt <= text || !chars.Plain(start, Math.Min(length, text + 2)))
+        {
+            return null;
+        }
+        return (BreakBefore(chars, text, Math.Max(start, rule.FirstText)), text + 2);
     }
 
     /// <summary>Where a row of plain text that would not fit at <paramref name="over"/> ends: after its last space, comma or
     /// semicolon past <paramref name="after"/>, else before its last dot or bracket, else at <paramref name="over"/>.</summary>
-    private static int BreakBefore(ReadOnlySpan<char> chars, int over, int after)
+    private static int BreakBefore(WrapReading chars, int over, int after)
     {
         for (int j = over; j > after; j--)
         {
@@ -613,7 +763,7 @@ public sealed partial class CodeEditor
     private static bool IsBlank(char c) => c is ' ' or '\t';
 
     /// <summary>How many of a rising array's values are at most <paramref name="value"/>.</summary>
-    private static int UpperBound(int[] values, int value)
+    private static int UpperBound(ReadOnlySpan<int> values, int value)
     {
         int low = 0;
         int high = values.Length;
@@ -658,13 +808,154 @@ public sealed partial class CodeEditor
         }
     }
 
-    /// <summary>A wrapped line: the columns its rows after the first start at, rising, and how far in their text is drawn.</summary>
-    private sealed record LineWrap(int[] Starts, double Indent);
+    /// <summary>A wrapped line: the columns its rows after the first start at, rising; how far in their text is drawn; where
+    /// its text begins after its indent; and how far its first row's wrap read (<see cref="RowEnd"/>). An edit inside the
+    /// line carries its rows in place (<see cref="TryCarry"/>), the map then holding it being the one of the text it made.</summary>
+    private sealed class LineWrap
+    {
+        private int[] starts;
+        private int count;
+
+        public LineWrap(int[] starts, double indent, int firstText, int firstReach)
+        {
+            this.starts = starts;
+            count = starts.Length;
+            Indent = indent;
+            FirstText = firstText;
+            FirstReach = firstReach;
+        }
+
+        public ReadOnlySpan<int> Starts => starts.AsSpan(0, count);
+
+        /// <summary>How many times the line wraps: its rows less one.</summary>
+        public int Breaks => count;
+
+        public double Indent { get; }
+
+        public int FirstText { get; }
+
+        public int FirstReach { get; private set; }
+
+        /// <summary>The line's rows after an edit inside it, and how far its first row's wrap reads now.</summary>
+        public void Carry(ReadOnlySpan<int> now, int firstReach)
+        {
+            if (now.Length > starts.Length)
+            {
+                starts = new int[now.Length + (now.Length / 4) + 8];
+            }
+            now.CopyTo(starts);
+            count = now.Length;
+            FirstReach = firstReach;
+        }
+    }
+
+    /// <summary>What a line's rows wrap by: where the line starts, where its text begins after its indent, the room of its
+    /// first row and of the rest, the graphemes' widths, and printable ASCII's one width (or -1) and a tab's in
+    /// <see cref="Unit"/>s.</summary>
+    private readonly struct RowRule(int lineStart, int firstText, Int128 firstRoom, Int128 room, Advances measure)
+    {
+        public int LineStart { get; } = lineStart;
+        public int FirstText { get; } = firstText;
+        public Int128 FirstRoom { get; } = firstRoom;
+        public Int128 Room { get; } = room;
+        public Advances Measure { get; } = measure;
+        public Int128 Uniform { get; } = double.IsNaN(measure.Uniform) ? -1 : Fixed(measure.Uniform);
+        public Int128 Tab { get; } = Fixed(measure.Tab);
+    }
+
+    /// <summary>The line being wrapped, read from its text a window at a time, so wrapping a few of its rows reads only
+    /// around them; what it reads is counted in <see cref="CharactersWrapped"/>.</summary>
+    private sealed class WrapReading(CodeEditor editor)
+    {
+        private const int Window = 1024;
+
+        private char[] buffer = new char[Window];
+        private TextSnapshot? text;
+        private int lineStart;
+        private int readAt;
+        private int read;
+
+        public int Length { get; private set; }
+
+        /// <summary>A character read: <see cref="Cover"/> it first.</summary>
+        public char this[int column] => buffer[column - readAt];
+
+        public void Begin(TextSnapshot snapshot, LineSpan line)
+        {
+            text = snapshot;
+            lineStart = line.Start;
+            Length = line.Length;
+            readAt = 0;
+            read = 0;
+        }
+
+        /// <summary>Columns [from, to) read, up to the line's end: a window from <paramref name="from"/> read where they are not.</summary>
+        public void Cover(int from, int to)
+        {
+            to = Math.Min(to, Length);
+            if (from >= readAt && to <= readAt + read)
+            {
+                return;
+            }
+            int count = Math.Max(to - from, Math.Min(Window, Length - from));
+            if (count > buffer.Length)
+            {
+                buffer = new char[Math.Max(count, buffer.Length * 2)];
+            }
+            text!.CopyTo(lineStart + from, buffer.AsSpan(0, count));
+            editor.CharactersWrapped += count;
+            readAt = from;
+            read = count;
+        }
+
+        /// <summary>Characters read: <see cref="Cover"/> them first.</summary>
+        public ReadOnlySpan<char> Span(int from, int length) => buffer.AsSpan(from - readAt, length);
+
+        /// <summary>The length of the grapheme at a column, read on as far as it goes and a whole character past it, so what
+        /// follows it is read as the text has it.</summary>
+        public int Grapheme(int at)
+        {
+            Cover(at, at + 3);
+            while (true)
+            {
+                int size = CodeEditor.Grapheme(buffer.AsSpan(at - readAt, readAt + read - at), 0);
+                if (at + size + 1 < readAt + read || readAt + read == Length)
+                {
+                    return size;
+                }
+                Cover(at, at + (2 * (readAt + read - at)));
+            }
+        }
+
+        /// <summary>The first column from one on that is no space, or the line's length.</summary>
+        public int SpacesFrom(int from)
+        {
+            while (from < Length)
+            {
+                Cover(from, from + 1);
+                int run = buffer.AsSpan(from - readAt, readAt + read - from).IndexOfAnyExcept(' ');
+                if (run >= 0)
+                {
+                    return from + run;
+                }
+                from = readAt + read;
+            }
+            return Length;
+        }
+
+        /// <summary>Whether columns [from, to) are all printable ASCII.</summary>
+        public bool Plain(int from, int to)
+        {
+            Cover(from, to);
+            return !Span(from, to - from).ContainsAnyExceptInRange(' ', '~');
+        }
+    }
 
     /// <summary>Where every line of one text wraps at one width, null for a line that fits, in runs of lines that the maps of
     /// later texts share: an edit's map makes again the lines it touched and takes the runs around them as they were, so a
-    /// key costs the lines it changed and a few small arrays, whatever the length of the file. Replaced, never changed, so a
-    /// row map made from it stays true to it.</summary>
+    /// key costs the lines it changed and a few small arrays, whatever the length of the file. Replaced, never changed but
+    /// for a line an edit carries in place for the next text's map, so a row map made from it stays true to it while its
+    /// text stands.</summary>
     private sealed class WrapMap
     {
         private readonly WrapRun[] runs;
@@ -766,7 +1057,7 @@ public sealed partial class CodeEditor
             int[] extra = new int[lines.Length + 1];
             for (int i = 0; i < lines.Length; i++)
             {
-                extra[i + 1] = extra[i] + (lines[i]?.Starts.Length ?? 0);
+                extra[i + 1] = extra[i] + (lines[i]?.Breaks ?? 0);
             }
             return new WrapRun(lines, extra, 0, lines.Length);
         }
@@ -883,7 +1174,7 @@ public sealed partial class CodeEditor
 
         /// <summary>How many rows a line takes: one for a folded one, which shares its fold's.</summary>
         public int RowsOf(int line) =>
-            Wraps is null || Folds.IsHidden(line) || line >= Wraps.LineCount ? 1 : 1 + (Wraps[line]?.Starts.Length ?? 0);
+            Wraps is null || Folds.IsHidden(line) || line >= Wraps.LineCount ? 1 : 1 + (Wraps[line]?.Breaks ?? 0);
 
         /// <summary>The line a row shows and which of its rows it is; past the last row, the lines past the end.</summary>
         public (int Line, int Row) LineOfRow(int row)

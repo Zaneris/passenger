@@ -19,4 +19,9 @@ public readonly record struct Marker(TextRange Range, MarkerKind Kind, string Me
     public Uri? Link { get; init; }
 
     public string? LinkText { get; init; }
+
+    /// <summary>Where its start goes when text is typed at it while it holds text: <see cref="AnchorGravity.Before"/> takes
+    /// the text in, as a squiggle under a word takes what is typed onto that word; <see cref="AnchorGravity.After"/> leaves
+    /// the text before it.</summary>
+    public AnchorGravity StartGravity { get; init; }
 }

@@ -2,11 +2,11 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.App.Vcs;
+using Passenger.Core;
 using Passenger.Vcs;
 
 namespace Passenger.App.ToolWindows;
@@ -44,6 +44,10 @@ public sealed class GitLogView : DockPanel, IOwnKeys
 
     /// <summary>How many times the log has been read, which a save never adds to.</summary>
     public int Loads => loads;
+
+    /// <summary>How many pens the graphs have made: one for each lane's colour when a theme gives other brushes, none for
+    /// a line drawn.</summary>
+    public static int PensMade { get; private set; }
     private int showing;
 
     /// <param name="scope">What Show History lists the commits of, or null for the Log of every branch.</param>
@@ -56,8 +60,8 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         list = new ListBox
         {
             Classes = { "tree" },
-            ItemTemplate = new FuncDataTemplate<GraphRow>((row, _) => row is null ? new TextBlock() : Row(row), supportsRecycling: false),
         };
+        ReusedRows.Use(list, Row);
         list.SelectionChanged += (_, _) => IdeErrors.Observe(ShowCommitAsync());
         list.DoubleTapped += (_, _) => RequestFileDiff();
         // Ahead of the list's own keys, which take Enter for its selection.
@@ -73,7 +77,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
             .. FileChangeOf(commit) is { } change ? new Control[]
             {
                 ListMenus.Item("Show Diff", null, () => DiffRequested?.Invoke(this, (commit, change))),
-                ListMenus.Item("Compare with Local", null, () => CompareRequested?.Invoke(this, (commit, change))),
+                ListMenus.Item("Compare with Local", null, () => CompareRequested?.Invoke(this, (Scope!.Path, commit, change))),
                 new Separator(),
             } : [],
             ListMenus.Item("Copy Revision Number", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, commit.Hash))),
@@ -92,8 +96,8 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         {
             Classes = { "tree" },
             ItemsSource = files,
-            ItemTemplate = new FuncDataTemplate<FileChange>((change, _) => change is null ? new TextBlock() : FileRow(change), supportsRecycling: false),
         };
+        ReusedRows.Use(fileList, FileRow);
         fileList.DoubleTapped += (_, _) => RequestDiff();
         fileList.KeyDown += (_, e) =>
         {
@@ -102,7 +106,21 @@ public sealed class GitLogView : DockPanel, IOwnKeys
                 RequestDiff();
                 e.Handled = true;
             }
+            else if (e.Key == Key.F4 && e.KeyModifiers == KeyModifiers.None && fileList.SelectedItem is FileChange { Kind: not ChangeKind.Deleted } shown)
+            {
+                OpenRequested?.Invoke(this, shown.Path);
+                e.Handled = true;
+            }
         };
+        // A commit's file offers what the Commit window's changed files do.
+        ListMenus.Attach(fileList, () => Selected is not { } commit || fileList.SelectedItem is not FileChange change ? [] :
+        [
+            ListMenus.Item("Show Diff", "Enter", () => DiffRequested?.Invoke(this, (commit, change))),
+            ListMenus.Item("Compare with Local", null, () => CompareRequested?.Invoke(this, (change.Path, commit, change)), change.Kind is not ChangeKind.Deleted),
+            ListMenus.Item("Jump to Source", "F4", () => OpenRequested?.Invoke(this, change.Path), change.Kind is not ChangeKind.Deleted),
+            new Separator(),
+            ListMenus.Item("Copy Path", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, change.Path))),
+        ]);
         details = new TextBox
         {
             IsReadOnly = true,
@@ -117,7 +135,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
 
         filter = new TextBox { Classes = { "search" }, PlaceholderText = "Text or hash", Width = 240, Margin = new Thickness(8, 0) };
         filter.TextChanged += (_, _) => Filter();
-        Button refresh = ToolButtons.Of(IconKeys.Rerun, "Refresh", () => IdeErrors.Observe(LoadAsync()));
+        Button refresh = ToolButtons.Of(AppActions.GitLogRefresh, IconKeys.Rerun, "Refresh", action => ActionRequested?.Invoke(this, action));
         // The Branch filter, shown while the log is filtered to a branch, its x showing every branch again.
         branchFilterText = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
         PathIcon clearGlyph = new() { Classes = { "small" } };
@@ -232,8 +250,14 @@ public sealed class GitLogView : DockPanel, IOwnKeys
     /// <summary>A file of a commit whose change to show: the commit and the file.</summary>
     public event EventHandler<(CommitInfo Commit, FileChange File)>? DiffRequested;
 
-    /// <summary>A file as a commit of its history had it, to compare with the file as it is now.</summary>
-    public event EventHandler<(CommitInfo Commit, FileChange File)>? CompareRequested;
+    /// <summary>A file as a commit had it, to compare with the file as it is now (its path now first).</summary>
+    public event EventHandler<(string Local, CommitInfo Commit, FileChange File)>? CompareRequested;
+
+    /// <summary>A commit's file to open as it is now.</summary>
+    public event EventHandler<string>? OpenRequested;
+
+    /// <summary>One of the window's actions asked for by its button.</summary>
+    public event EventHandler<string>? ActionRequested;
 
     /// <summary>A branch to make at a commit, its name to be asked for.</summary>
     public event EventHandler<CommitInfo>? NewBranchRequested;
@@ -298,12 +322,13 @@ public sealed class GitLogView : DockPanel, IOwnKeys
             : Range is { } range ? await repository.LogAsync(revisions: [$"{range.FromRef}..{range.ToRef}"])
             : BranchFilter is { } branch ? await repository.LogAsync(revisions: [branch])
             : await repository.LogAsync();
+        IReadOnlyList<GraphRow> laid = await BackgroundWork.Run(() => Scope is null ? CommitGraph.Layout(commits) : CommitGraph.Line(commits));
         if (load != loads)
         {
             return;
         }
         changes = history.ToDictionary(h => h.Commit.Hash, h => h.Changes);
-        all = Scope is null ? CommitGraph.Layout(commits) : CommitGraph.Line(commits);
+        all = laid;
         Filter();
         string name = Scope is null ? string.Empty : Path.GetFileName(Path.TrimEndingDirectorySeparator(Scope.Path));
         placeholder.Text = repository is null ? Refusals.NoRepository
@@ -417,32 +442,22 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         }
     }
 
-    private Control Row(GraphRow row)
+    /// <summary>A commit's row for whichever commit the list hands its container: its part of the graph, its refs as tags,
+    /// the path it had the file at (under another name then), its subject, author and date.</summary>
+    private Control Row()
     {
-        Graph graph = new(row) { Width = (row.Width * LaneWidth) + 8, Height = RowHeight };
+        Graph graph = new() { Height = RowHeight };
         // A dock, not a stack, so the subject is given the room left and trims to it.
         DockPanel subject = new() { VerticalAlignment = VerticalAlignment.Center, ClipToBounds = true };
-        foreach (string label in row.Commit.Refs)
-        {
-            // A long branch's name ends in an ellipsis and leaves the subject room.
-            TextBlock text = new() { Text = label, FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis };
-            text.Bind(TextBlock.ForegroundProperty, text.GetResourceObservable(TokenKeys.Vcs_RefText));
-            ToolTip.SetTip(text, label);
-            Border tag = new() { [DockProperty] = Dock.Left, Classes = { "tag" }, Padding = new Thickness(5, 1), Margin = new Thickness(0, 0, 6, 0), Child = text, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 160 };
-            tag.Bind(Border.BackgroundProperty, tag.GetResourceObservable(TokenKeys.Vcs_Ref));
-            subject.Children.Add(tag);
-        }
-        if (FileChangeOf(row.Commit) is { } change && change.Path != Scope!.Path && vcs.Repository is { } repository)
-        {
-            // Under another name then: the path the commit had the file at.
-            TextBlock then = Muted(repository.Relative(change.Path));
-            then[DockProperty] = Dock.Right;
-            then.MaxWidth = 280;
-            subject.Children.Add(then);
-        }
-        subject.Children.Add(new TextBlock { Text = row.Commit.Subject, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis });
-        TextBlock author = Muted(row.Commit.Author);
-        TextBlock date = Muted(When(row.Commit.Time));
+        TextBlock then = Muted();
+        then[DockProperty] = Dock.Right;
+        then.MaxWidth = 280;
+        TextBlock words = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        subject.Children.Add(then);
+        subject.Children.Add(words);
+        List<(Border Tag, TextBlock Text)> tags = [];
+        TextBlock author = Muted();
+        TextBlock date = Muted();
         // The author and the date at most 150 and 180 wide, and never more than half of a narrow log between them.
         Grid line = new() { Height = RowHeight };
         line.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
@@ -456,11 +471,39 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         line.Children.Add(subject);
         line.Children.Add(author);
         line.Children.Add(date);
-        return line;
-
-        static TextBlock Muted(string text)
+        return line.Showing<GraphRow>(row =>
         {
-            TextBlock block = MutedText.Of(text);
+            graph.Show(row);
+            graph.Width = (row.Width * LaneWidth) + 8;
+            IReadOnlyList<string> refs = row.Commit.Refs;
+            while (tags.Count < refs.Count)
+            {
+                // A long branch's name ends in an ellipsis and leaves the subject room.
+                TextBlock text = new() { FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis };
+                text.Bind(TextBlock.ForegroundProperty, text.GetResourceObservable(TokenKeys.Vcs_RefText));
+                Border tag = new() { [DockProperty] = Dock.Left, Classes = { "tag" }, Padding = new Thickness(5, 1), Margin = new Thickness(0, 0, 6, 0), Child = text, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 160 };
+                tag.Bind(Border.BackgroundProperty, tag.GetResourceObservable(TokenKeys.Vcs_Ref));
+                subject.Children.Insert(tags.Count, tag);
+                tags.Add((tag, text));
+            }
+            for (int i = 0; i < tags.Count; i++)
+            {
+                tags[i].Tag.IsVisible = i < refs.Count;
+                tags[i].Text.Text = i < refs.Count ? refs[i] : null;
+                ToolTip.SetTip(tags[i].Text, i < refs.Count ? refs[i] : null);
+            }
+            // Under another name then: the path the commit had the file at.
+            string? moved = FileChangeOf(row.Commit) is { } change && change.Path != Scope!.Path && vcs.Repository is { } repository ? repository.Relative(change.Path) : null;
+            then.IsVisible = moved is not null;
+            then.Text = moved;
+            words.Text = row.Commit.Subject;
+            author.Text = row.Commit.Author;
+            date.Text = When(row.Commit.Time);
+        });
+
+        static TextBlock Muted()
+        {
+            TextBlock block = MutedText.Of(string.Empty);
             block.Margin = new Thickness(8, 0);
             return block;
         }
@@ -479,30 +522,68 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         };
     }
 
-    private Control FileRow(FileChange change)
+    /// <summary>A changed file's row for whichever file the list hands its container: its icon, name in its change's
+    /// colour, and folder.</summary>
+    private Control FileRow()
     {
-        PathIcon icon = new()
-        {
-            Data = Explorer.FileIcons.ForFile(change.Path),
-            Foreground = Explorer.FileIcons.BrushForFile(change.Path),
-            Width = 14,
-            Height = 14,
-            Margin = new Thickness(8, 0, 6, 0),
-        };
-        TextBlock name = new() { Text = change.Name, VerticalAlignment = VerticalAlignment.Center };
-        name.Bind(TextBlock.ForegroundProperty, name.GetResourceObservable(CommitView.KindToken(change.Kind)));
-        string where = vcs.Repository is { } repository ? Path.GetDirectoryName(repository.Relative(change.Path))?.Replace('\\', '/') ?? string.Empty : string.Empty;
-        TextBlock folder = new() { Text = where, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0), FontSize = 12 };
+        RowIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(8, 0, 6, 0) };
+        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
+        TextBlock folder = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0), FontSize = 12 };
         folder.Classes.Add("muted");
+        string? kind = null;
         // The folder gives way first, then the name, each ending in an ellipsis, in a narrow pane.
-        return new ShrinkingRow { Height = RowHeight, Children = { icon, name, folder } };
+        ShrinkingRow row = new() { Height = RowHeight, Children = { icon, name, folder } };
+        return row.Showing<FileChange>(change =>
+        {
+            icon.Data = Explorer.FileIcons.ForFile(change.Path);
+            icon.Foreground = Explorer.FileIcons.BrushForFile(change.Path);
+            name.Text = change.Name;
+            string token = CommitView.KindToken(change.Kind);
+            if (token != kind)
+            {
+                kind = token;
+                name.Bind(TextBlock.ForegroundProperty, name.GetResourceObservable(token));
+            }
+            folder.Text = vcs.Repository is { } repository ? Path.GetDirectoryName(repository.Relative(change.Path))?.Replace('\\', '/') ?? string.Empty : string.Empty;
+        });
     }
 
-    /// <summary>A row's part of the graph: the lines through it, lane by lane, and the commit's dot.</summary>
-    private sealed class Graph(GraphRow row) : Control
+    /// <summary>The lanes' colours as a theme gives them, and a pen of each.</summary>
+    private sealed record LaneColours(IBrush[] Fills, Pen[] Lines);
+
+    /// <summary>A row's part of the graph: the lines through it, lane by lane, and the commit's dot, drawn in the colours
+    /// its theme gives, which every row shares while the theme gives the same brushes.</summary>
+    private sealed class Graph : Control
     {
+        private static readonly string[] Keys = [TokenKeys.Graph_0, TokenKeys.Graph_1, TokenKeys.Graph_2, TokenKeys.Graph_3, TokenKeys.Graph_4, TokenKeys.Graph_5];
+
+        /// <summary>The colours the theme last looked up gave, with their pens.</summary>
+        private static LaneColours? shared;
+
+        private GraphRow? row;
+        private LaneColours? colours;
+
+        public Graph()
+        {
+            // A theme, or a look laid over the application's resources (Settings), gives other brushes.
+            ActualThemeVariantChanged += (_, _) => Recolour();
+            ResourcesChanged += (_, _) => Recolour();
+        }
+
+        /// <summary>Draws another commit's part of the graph.</summary>
+        public void Show(GraphRow shown)
+        {
+            row = shown;
+            InvalidateVisual();
+        }
+
         public override void Render(DrawingContext context)
         {
+            if (row is null)
+            {
+                return;
+            }
+            LaneColours lanes = colours ??= Colours();
             double mid = Bounds.Height / 2;
             double bottom = Bounds.Height;
             string hash = row.Commit.Hash;
@@ -515,23 +596,59 @@ public sealed class GitLogView : DockPanel, IOwnKeys
                 if (waiting == hash)
                 {
                     // A lane that waited for this commit comes into its dot.
-                    context.DrawLine(PenFor(i), new Point(X(i), 0), new Point(X(row.Lane), mid));
+                    context.DrawLine(lanes.Lines[i % Keys.Length], new Point(X(i), 0), new Point(X(row.Lane), mid));
                 }
                 else if (IndexOf(row.Below, waiting) is int j and >= 0)
                 {
-                    context.DrawLine(PenFor(i), new Point(X(i), 0), new Point(X(i), mid));
-                    context.DrawLine(PenFor(i), new Point(X(i), mid), new Point(X(j), bottom));
+                    context.DrawLine(lanes.Lines[i % Keys.Length], new Point(X(i), 0), new Point(X(i), mid));
+                    context.DrawLine(lanes.Lines[i % Keys.Length], new Point(X(i), mid), new Point(X(j), bottom));
                 }
             }
-            foreach (string parent in row.Joins)
+            for (int p = 0; p < row.Joins.Count; p++)
             {
-                if (IndexOf(row.Below, parent) is int j and >= 0)
+                if (IndexOf(row.Below, row.Joins[p]) is int j and >= 0)
                 {
-                    context.DrawLine(PenFor(j), new Point(X(row.Lane), mid), new Point(X(j), bottom));
+                    context.DrawLine(lanes.Lines[j % Keys.Length], new Point(X(row.Lane), mid), new Point(X(j), bottom));
                 }
             }
-            IBrush dot = BrushFor(row.Lane);
-            context.DrawEllipse(dot, null, new Point(X(row.Lane), mid), 4, 4);
+            context.DrawEllipse(lanes.Fills[row.Lane % Keys.Length], null, new Point(X(row.Lane), mid), 4, 4);
+        }
+
+        private void Recolour()
+        {
+            colours = null;
+            InvalidateVisual();
+        }
+
+        /// <summary>The colours the theme gives this graph: the shared ones while it gives their brushes, else new ones
+        /// shared from now on.</summary>
+        private LaneColours Colours()
+        {
+            if (shared is { } last && Gives(last.Fills))
+            {
+                return last;
+            }
+            IBrush[] fills = new IBrush[Keys.Length];
+            Pen[] lines = new Pen[Keys.Length];
+            for (int i = 0; i < Keys.Length; i++)
+            {
+                fills[i] = BrushOf(Keys[i]);
+                lines[i] = new Pen(fills[i], 1.6);
+                PensMade++;
+            }
+            return shared = new LaneColours(fills, lines);
+        }
+
+        private bool Gives(IBrush[] fills)
+        {
+            for (int i = 0; i < Keys.Length; i++)
+            {
+                if (!ReferenceEquals(BrushOf(Keys[i]), fills[i]))
+                {
+                    return false;
+                }
+            }
+            return true;
         }
 
         private static double X(int lane) => 10 + (lane * LaneWidth);
@@ -548,10 +665,8 @@ public sealed class GitLogView : DockPanel, IOwnKeys
             return -1;
         }
 
-        private IBrush BrushFor(int lane) =>
-            this.TryFindResource($"Passenger.Graph.{lane % 6}", ActualThemeVariant, out object? found) && found is IBrush brush ? brush : Brushes.Transparent;
-
-        private Pen PenFor(int lane) => new(BrushFor(lane), 1.6);
+        private IBrush BrushOf(string key) =>
+            this.TryFindResource(key, ActualThemeVariant, out object? found) && found is IBrush brush ? brush : Brushes.Transparent;
     }
 }
 

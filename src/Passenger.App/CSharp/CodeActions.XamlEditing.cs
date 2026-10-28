@@ -37,15 +37,15 @@ internal sealed partial class CodeActions
             }
             Func<string, string?> texts = context.Editors.Texts().Text;
             IReadOnlyList<ResourcePlace> places = await BackgroundWork.Run(() => XamlRefactorings.Places(file, styles: false, texts));
-            dialog = new ExtractResourceDialog(value, places, key => XamlRefactorings.KeyProblem(file, key), (key, place, everywhere) =>
+            dialog = new ExtractResourceDialog(value, places, key => XamlRefactorings.KeyProblem(file, key), async (key, place, everywhere) =>
             {
-                string? refused = ApplyFileChanges(name, XamlRefactorings.ExtractResource(file, value, key, place, everywhere));
+                string? refused = await ApplyFileChangesAsync(name, XamlRefactorings.ExtractResource(file, value, key, place, everywhere));
                 if (refused is null)
                 {
                     int replaced = everywhere ? value.Uses.Count : 1;
                     context.Say($"Extracted resource '{key}' to {place.Title}{(replaced > 1 ? $", used in {replaced} places" : string.Empty)}");
                 }
-                return Task.FromResult(refused);
+                return refused;
             });
         }
         if (dialog is not null)
@@ -74,14 +74,14 @@ internal sealed partial class CodeActions
             }
             Func<string, string?> texts = context.Editors.Texts().Text;
             IReadOnlyList<ResourcePlace> places = await BackgroundWork.Run(() => XamlRefactorings.Places(file, styles: source.ByClass, texts));
-            dialog = new ExtractStyleDialog(source, places, styleName => XamlRefactorings.StyleNameProblem(file, source, styleName), (styleName, chosen, place) =>
+            dialog = new ExtractStyleDialog(source, places, styleName => XamlRefactorings.StyleNameProblem(file, source, styleName), async (styleName, chosen, place) =>
             {
-                string? refused = ApplyFileChanges(name, XamlRefactorings.ExtractStyle(file, source, styleName, chosen, place));
+                string? refused = await ApplyFileChangesAsync(name, XamlRefactorings.ExtractStyle(file, source, styleName, chosen, place));
                 if (refused is null)
                 {
                     context.Say($"Extracted {Core.Plural.Of(chosen.Count, "property", "properties")} of {source.ElementName} to style '{styleName}' in {place.Title}");
                 }
-                return Task.FromResult(refused);
+                return refused;
             });
         }
         if (dialog is not null)
@@ -108,9 +108,10 @@ internal sealed partial class CodeActions
         return context.Editors.Active == document ? (file, caret) : (null, 0);
     }
 
-    /// <summary>A refactoring's or fix's changes to files made as one command (XAML's, an Aspire parameter's value set; Undo takes back
-    /// every file, a file made included): each file's edits made from its text as it is now, open or on disk. Null once made; else why not.</summary>
-    internal string? ApplyFileChanges(string name, IReadOnlyList<XamlFileChange> changes)
+    /// <summary>A refactoring's or fix's changes to files made in the command <paramref name="recording"/> follows (XAML's, an
+    /// Aspire parameter's value set; Undo takes back every file, a file made included): each file's edits made from its text
+    /// as it is now, open or on disk. Null once made; else why not.</summary>
+    private string? ApplyFileChanges(string name, IReadOnlyList<XamlFileChange> changes, CommandHistory.Recording recording)
     {
         List<object> documentChanges = [];
         foreach (XamlFileChange change in changes)
@@ -138,17 +139,26 @@ internal sealed partial class CodeActions
         List<string> dropped = [];
         try
         {
-            TypeRename.Apply(context.Editors, edit, [], name, null, dropped);
+            context.ChangeFiles([.. changes.Select(c => c.Path)], () => TypeRename.Apply(context.Editors, edit, [], name, null, dropped, into: recording));
         }
         catch (WorkspaceEditFailed failed)
         {
             return failed.Message;
         }
-        if (changes.Any(c => c.Made is not null) || changes.Any(c => context.Editors.Documents.All(d => d.Path != c.Path)))
-        {
-            context.ChangedFiles();
-        }
         return dropped.Count > 0 ? $"{name} was not applied to {string.Join(", ", dropped)}: it was edited meanwhile" : null;
+    }
+
+    /// <summary><see cref="ApplyFileChanges"/> as one command, answered once the files not open it wrote have landed, the
+    /// status bar saying meanwhile which another program holds (<see cref="CommandHistory.Recording.LandedAsync"/>).
+    /// Null once made; else why not.</summary>
+    internal async Task<string?> ApplyFileChangesAsync(string name, IReadOnlyList<XamlFileChange> changes)
+    {
+        using CommandHistory.Recording recording = context.Editors.Commands.Record(name);
+        if (ApplyFileChanges(name, changes, recording) is { } refused)
+        {
+            return refused;
+        }
+        return await recording.LandedAsync(context.Say) is [(string path, Exception why), ..] ? WorkspaceEdits.Unwritten(path, why) : null;
     }
 
     /// <summary>The refactorings offered at the caret of a XAML file (Refactor This, and after the fixes in Show

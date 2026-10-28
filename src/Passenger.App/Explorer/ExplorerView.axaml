@@ -1,6 +1,5 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:explorer="using:Passenger.App.Explorer"
              x:Class="Passenger.App.Explorer.ExplorerView">
     <DockPanel Background="{DynamicResource Passenger.Panel}">
         <DockPanel Name="OwnHeader" DockPanel.Dock="Top" Margin="12,6,8,2">
@@ -18,28 +17,7 @@
             <TextBlock Name="Hint" Classes="muted" Text="Nothing open"
                        HorizontalAlignment="Center" VerticalAlignment="Center" />
             <ListBox Name="Rows" Classes="tree" IsVisible="False" SelectionMode="Multiple"
-                     DoubleTapped="OnRowDoubleTapped">
-                <ListBox.ItemTemplate>
-                    <DataTemplate x:DataType="explorer:ExplorerNode">
-                        <StackPanel Orientation="Horizontal" Margin="{Binding Indent}" Opacity="{Binding Opacity}" Height="24"
-                                    ToolTip.Tip="{Binding Tip}">
-                            <Border Width="18" Height="24" Background="Transparent" PointerPressed="OnChevronPressed">
-                                <PathIcon Classes="chevron" Data="{StaticResource Icon.ChevronRight}" IsVisible="{Binding HasChildren}"
-                                          RenderTransformOrigin="50%,50%">
-                                    <PathIcon.RenderTransform>
-                                        <RotateTransform Angle="{Binding ChevronAngle}" />
-                                    </PathIcon.RenderTransform>
-                                </PathIcon>
-                            </Border>
-                            <PathIcon Data="{Binding Icon}" Foreground="{Binding IconBrush}" Margin="0,0,6,0" />
-                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center"
-                                       Classes.vcsModified="{Binding IsVcsModified}" Classes.vcsAdded="{Binding IsVcsAdded}"
-                                       Classes.vcsUnversioned="{Binding IsVcsUnversioned}" Classes.vcsConflicted="{Binding IsVcsConflicted}" />
-                            <TextBlock Text="{Binding Detail}" Classes="muted" FontSize="12" Margin="8,0,0,0" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
+                     DoubleTapped="OnRowDoubleTapped" />
         </Panel>
     </DockPanel>
 </UserControl>

@@ -4,12 +4,12 @@
     "net10.0": {
       "Aspire.Hosting.AppHost": {
         "type": "Direct",
-        "requested": "[13.6.3, )",
-        "resolved": "13.6.3",
-        "contentHash": "93mUttjq+jQab2xKtgVFfdtZ18xx0sZGctWD/WzwJsdDntCfYQypzQgYy9aLAzB3T7/PLYzw4PxjH0th+StcXQ==",
+        "requested": "[13.6.4, )",
+        "resolved": "13.6.4",
+        "contentHash": "bHDwJmvFRVsOTFhgaIUDIQO8Qqq22ZcnUfDflTiaq95rDBBiNjattsAATkwpHDp6/JuKHF0dBB/nF22V0/rUtA==",
         "dependencies": {
           "AspNetCore.HealthChecks.Uris": "9.0.0",
-          "Aspire.Hosting": "13.6.3",
+          "Aspire.Hosting": "13.6.4",
           "Google.Protobuf": "3.36.1",
           "Grpc.AspNetCore": "2.83.0",
           "Grpc.Net.ClientFactory": "2.83.0",
@@ -43,8 +43,8 @@
       },
       "Aspire.Hosting": {
         "type": "Transitive",
-        "resolved": "13.6.3",
-        "contentHash": "CKPYA+DScm85BbnADc9yVmdiBmfrYdbeXkWm5ooLZLPVYv3txAyuypNi9ExJVIskxdKBtkNX4hDGIkr7j4olkQ==",
+        "resolved": "13.6.4",
+        "contentHash": "B9H7ttsmjUB+6dbkPTZ6yck25+RRj7gAGWRlqPbeWnn1FtoENET3QFgx8NZ8McFzTzSyPcmgy7OmsaYepEJ3GQ==",
         "dependencies": {
           "AspNetCore.HealthChecks.Uris": "9.0.0",
           "Google.Protobuf": "3.36.1",
@@ -504,14 +504,6 @@
         "resolved": "18.4.0",
         "contentHash": "iQWOKi3L5QStmWqDjDubcr1KlTDy88qBTe88I0etlUUo1l0zSNebGJXl1Xetyl+ACA+ujP3YUtxo3Nz54JPriw=="
       },
-      "Microsoft.VisualStudio.Threading.Only": {
-        "type": "Transitive",
-        "resolved": "17.14.15",
-        "contentHash": "NqONyw1RXyj9P3k5e1uU2k9kc1ptwuU5NJQzG+MPq7vQVHUzBY8HLuJf/N2Rw5H/myD96CVxziDxmjawPuzntw==",
-        "dependencies": {
-          "Microsoft.VisualStudio.Validation": "17.8.8"
-        }
-      },
       "Microsoft.VisualStudio.Validation": {
         "type": "Transitive",
         "resolved": "17.13.22",
@@ -644,6 +636,15 @@
         "dependencies": {
           "Grpc.Net.Common": "2.83.0",
           "Microsoft.Extensions.Logging.Abstractions": "8.0.0"
+        }
+      },
+      "Microsoft.VisualStudio.Threading.Only": {
+        "type": "CentralTransitive",
+        "requested": "[18.7.23, )",
+        "resolved": "17.14.15",
+        "contentHash": "NqONyw1RXyj9P3k5e1uU2k9kc1ptwuU5NJQzG+MPq7vQVHUzBY8HLuJf/N2Rw5H/myD96CVxziDxmjawPuzntw==",
+        "dependencies": {
+          "Microsoft.VisualStudio.Validation": "17.8.8"
         }
       },
       "ModelContextProtocol.Core": {

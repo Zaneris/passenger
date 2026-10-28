@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Passenger.App.CSharp;
+using Passenger.App.Editors;
 using Passenger.App.Workspace;
 using Passenger.App.Xaml;
 using Passenger.Editor;
@@ -11,7 +12,8 @@ namespace Passenger.App;
 
 /// <summary>The gutter's colour swatches: a click on one opens the colour picker beside it, and the colour chosen is
 /// written back as the colour was written (a hex value, a name, a C# call's arguments), where it is written: the line's
-/// own value, or for a resource a brush names, its definition in another file. One undo step.</summary>
+/// own value, or for a resource a brush names, its definition in another file. One undo step. Where that is a file shown
+/// read-only, the picker shows the colour with Choose greyed, saying why.</summary>
 public partial class MainWindow
 {
     private ColourPicker? picker;
@@ -22,7 +24,7 @@ public partial class MainWindow
     /// <summary>A press on a line's swatch opens the picker for it; whether the press was on one.</summary>
     private bool PickColour(CodeEditor editor, OpenDocument document, GutterClick click)
     {
-        if (click.Context || !editor.IsInMarkColumn(click.Position) || document.ColourMarks.FirstOrDefault(m => m.Line == click.Line) is not { Data: ColourUse use })
+        if (click.Context || document.ColourMarks.FirstOrDefault(m => m.Line == click.Line) is not { Data: ColourUse use })
         {
             return false;
         }
@@ -32,7 +34,7 @@ public partial class MainWindow
             return true;
         }
         ClosePicker();
-        ColourPicker opened = new(use.Colour);
+        ColourPicker opened = new(use.Colour, Unwritable(document, use));
         picker = opened;
         Canvas layer = Editors.AssistLayer;
         layer.Children.Add(opened);
@@ -46,7 +48,7 @@ public partial class MainWindow
             editor.Focus();
             if (colour is { } chosen)
             {
-                WriteColour(document, use, chosen);
+                IdeErrors.Observe(WriteColourAsync(document, use, chosen));
             }
         };
         return true;
@@ -61,11 +63,21 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>A colour written where a swatch's colour is, in its form, unless that text changed meanwhile.</summary>
-    private void WriteColour(OpenDocument document, ColourUse use, Argb colour)
+    /// <summary>Why a swatch's colour cannot be written where it is: that file is shown read-only; null when it can.</summary>
+    private string? Unwritable(OpenDocument document, ColourUse use) =>
+        Editors.Find(use.WritePath ?? document.Path) is { IsReadOnly: true } open ? Refusals.ReadOnly(open.Name) : null;
+
+    /// <summary>A colour written where a swatch's colour is, in its form, unless that text changed meanwhile; in a file not
+    /// open, said once the write has landed.</summary>
+    private async Task WriteColourAsync(OpenDocument document, ColourUse use, Argb colour)
     {
         string path = use.WritePath ?? document.Path;
         OpenDocument? open = Editors.Find(path);
+        if (Unwritable(document, use) is { } why)
+        {
+            status.Text = $"{why}: the colour is left as it was";
+            return;
+        }
         if (Editors.TextOf(path)?.ToString() is not { } text)
         {
             status.Text = $"{Path.GetFileName(path)} could not be read";
@@ -85,13 +97,25 @@ public partial class MainWindow
         }
         else
         {
-            TextSnapshot snapshot = TextSnapshot.From(text);
-            TextPosition from = snapshot.GetPosition(range.Start);
-            TextPosition to = snapshot.GetPosition(range.End);
-            Lsp.LspTextEdit edit = new(new Lsp.LspRange(new Lsp.LspPosition(from.Line, from.Column), new Lsp.LspPosition(to.Line, to.Column)), replacement);
+            List<Lsp.LspTextEdit> edits = ServerPlaces.EditsOf(TextSnapshot.From(text), [new TextEdit(range.Start, range.Length, replacement)]);
             System.Text.Json.JsonElement change = System.Text.Json.JsonSerializer.SerializeToElement(
-                new { changes = new Dictionary<string, List<Lsp.LspTextEdit>> { [Lsp.DocumentUris.FromPath(path)] = [edit] } }, Lsp.Json.Options);
-            TypeRename.Apply(Editors, change, [], $"Set colour to {colour.Hex}", null, []);
+                new { changes = new Dictionary<string, List<Lsp.LspTextEdit>> { [Lsp.DocumentUris.FromPath(path)] = edits } }, Lsp.Json.Options);
+            string name = $"Set colour to {colour.Hex}";
+            using CommandHistory.Recording recording = Editors.Commands.Record(name);
+            try
+            {
+                TypeRename.Apply(Editors, change, [], name, null, [], into: recording);
+            }
+            catch (WorkspaceEditFailed failed)
+            {
+                status.Text = $"The colour could not be set: {failed.Message}";
+                return;
+            }
+            if (await recording.LandedAsync(waiting => status.Text = waiting) is [(string unwritten, Exception refused), ..])
+            {
+                status.Text = $"The colour could not be set: {WorkspaceEdits.Unwritten(unwritten, refused)}";
+                return;
+            }
         }
         status.Text = $"Colour set to {colour.Hex}{(path != document.Path ? $" in {Path.GetFileName(path)}" : string.Empty)}";
     }

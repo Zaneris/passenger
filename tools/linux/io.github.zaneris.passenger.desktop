@@ -9,5 +9,5 @@ Icon=io.github.zaneris.passenger
 Terminal=false
 Categories=Development;IDE;
 Keywords=C#;csharp;.NET;dotnet;Roslyn;debugger;profiler;
-MimeType=application/x-ms-sln;application/x-ms-slnx;application/x-ms-csproj;
+MimeType=application/x-ms-sln;application/x-ms-slnx;application/x-ms-slnf;application/x-ms-csproj;
 StartupWMClass=Passenger

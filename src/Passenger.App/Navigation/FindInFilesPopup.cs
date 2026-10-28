@@ -1,7 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -13,6 +12,7 @@ using Passenger.Editor;
 using Passenger.Text;
 using Passenger.Core;
 using Passenger.Workspace;
+using Microsoft.CodeAnalysis.CSharp;
 
 namespace Passenger.App.Navigation;
 
@@ -38,8 +38,9 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         (SearchScopeKind.Scope, "Scope", Key.S),
     ];
 
-    private readonly Func<SearchQuery, SearchScope, CancellationToken, Task<IReadOnlyList<SearchMatch>>> search;
+    private readonly Func<SearchQuery, SearchScope, CancellationToken, Task<FilesFound>> search;
     private readonly Func<string, TextSnapshot?> textOf;
+    private readonly Func<string, CSharpParseOptions> parseOptions;
     private readonly TextBox query;
     private readonly TextBox? replacement;
     private readonly ToggleButton matchCase;
@@ -60,19 +61,21 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
     private readonly Debounce typing;
     private SearchScopeKind kind;
     private CancellationTokenSource? asking;
-    private IReadOnlyList<SearchMatch> matches = [];
+    private FilesFound found = FilesFound.None;
 
     /// <summary>The query and scope the matches shown were found for.</summary>
     private (SearchQuery Query, SearchScope Scope)? shownFor;
 
     private Task? searching;
 
+    /// <param name="parseOptions">What a C# file's preview is parsed with: its project's symbols.</param>
     /// <param name="ligatures">Settings' Enable ligatures, which the matched lines and the preview follow.</param>
-    public FindInFilesPopup(Func<SearchQuery, SearchScope, CancellationToken, Task<IReadOnlyList<SearchMatch>>> search, Func<string, TextSnapshot?> textOf,
-        bool replace, string? initial, FindChoices choices, bool ligatures)
+    public FindInFilesPopup(Func<SearchQuery, SearchScope, CancellationToken, Task<FilesFound>> search, Func<string, TextSnapshot?> textOf,
+        Func<string, CSharpParseOptions> parseOptions, bool replace, string? initial, FindChoices choices, bool ligatures)
     {
         this.search = search;
         this.textOf = textOf;
+        this.parseOptions = parseOptions;
         projects = choices.Projects;
         Width = PopupFrame.Widest;
         query = new TextBox { Classes = { "search" }, PlaceholderText = "Text to find", Text = initial ?? string.Empty };
@@ -110,7 +113,11 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         }
 
         projectBox = Field(choices.Projects, editable: false);
-        projectBox.ItemTemplate = new FuncDataTemplate<ProjectModel>((project, _) => new TextBlock { Text = project?.Name });
+        ReusedRows.Use(projectBox, () =>
+        {
+            TextBlock name = new();
+            return name.Showing<ProjectModel>(project => name.Text = project.Name);
+        });
         projectBox.SelectedItem = choices.Projects.FirstOrDefault(p => p.Path == choices.Start.Project) ?? choices.Projects.FirstOrDefault();
         directoryBox = Field(choices.Directories, editable: true);
         directoryBox.Text = choices.Start.Directory ?? string.Empty;
@@ -152,8 +159,8 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         {
             Classes = { "tree" },
             Height = ListRow.Height * 10,
-            ItemTemplate = new FuncDataTemplate<SearchMatch>((match, _) => match is null ? new TextBlock() : Row(match, ligatures), supportsRecycling: false),
         };
+        ReusedRows.Use(results, () => Row(ligatures));
         results.SelectionChanged += (_, _) => ShowPreview();
         results.DoubleTapped += (_, _) => Choose();
         ToolWindows.ListMenus.Attach(results, () => results.SelectedItem is not SearchMatch chosen ? [] :
@@ -203,12 +210,12 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
     public event EventHandler<SearchMatch?>? Done;
 
     /// <summary>Replace All pressed: the query, its replacement, and the files it matched in.</summary>
-    public event EventHandler<(SearchQuery Query, string Replacement, IReadOnlyList<SearchMatch> Matches)>? ReplaceRequested;
+    public event EventHandler<(SearchQuery Query, string Replacement, FilesFound Found)>? ReplaceRequested;
 
     /// <summary>The scope or the mask changed, for the window to keep.</summary>
     public event EventHandler<SearchScope>? ScopeChanged;
 
-    public IReadOnlyList<SearchMatch> Matches => matches;
+    public IReadOnlyList<SearchMatch> Matches => found.Matches;
 
     public string Status => status.Text ?? string.Empty;
 
@@ -337,9 +344,9 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         {
             await SearchAsync();
         }
-        if (matches.Count > 0 && shownFor == (Query, Scope))
+        if (found.Matches.Count > 0 && shownFor == (Query, Scope))
         {
-            ReplaceRequested?.Invoke(this, (Query, Replacement, matches));
+            ReplaceRequested?.Invoke(this, (Query, Replacement, found));
         }
     }
 
@@ -356,7 +363,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
     {
         asking?.Cancel();
         SearchQuery asked = Query;
-        Show([], asked.Text.Length == 0 ? string.Empty : FileSearch.Problem(asked) ?? Scope.Problem() ?? "Searching…", null);
+        Show(FilesFound.None, asked.Text.Length == 0 ? string.Empty : FileSearch.Problem(asked) ?? Scope.Problem() ?? "Searching…", null);
         typing.Restart();
     }
 
@@ -413,36 +420,38 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         SearchScope where = Scope;
         if (asked.Text.Length == 0)
         {
-            Show([], string.Empty, (asked, where));
+            Show(FilesFound.None, string.Empty, (asked, where));
             return;
         }
         if ((FileSearch.Problem(asked) ?? where.Problem()) is { } problem)
         {
-            Show([], problem, (asked, where));
+            Show(FilesFound.None, problem, (asked, where));
             return;
         }
-        Show([], "Searching…", null);
+        Show(FilesFound.None, "Searching…", null);
         try
         {
-            IReadOnlyList<SearchMatch> found = await search(asked, where, cancel.Token);
+            FilesFound searched = await search(asked, where, cancel.Token);
             if (cancel.IsCancellationRequested)
             {
                 return;
             }
-            int files = found.Select(m => m.Path).Distinct().Count();
-            Show(found, found.Count == 0 ? "Nothing found" : $"{Count(found.Count)} in {Plural.Of(files, "file")}", (asked, where));
+            IReadOnlyList<SearchMatch> each = searched.Matches;
+            int files = each.Select(m => m.Path).Distinct().Count();
+            string said = each.Count == 0 ? "Nothing found" : $"{Count(each.Count)} in {Plural.Of(files, "file")}";
+            Show(searched, searched.StoppedIn(System.IO.Path.GetFileName) is { } stopped ? $"{said}; {stopped}" : said, (asked, where));
         }
         catch (OperationCanceledException)
         {
         }
     }
 
-    private void Show(IReadOnlyList<SearchMatch> found, string said, (SearchQuery Query, SearchScope Scope)? of)
+    private void Show(FilesFound shown, string said, (SearchQuery Query, SearchScope Scope)? of)
     {
-        matches = found;
+        found = shown;
         shownFor = of;
-        results.ItemsSource = found;
-        results.SelectedIndex = found.Count > 0 ? 0 : -1;
+        results.ItemsSource = shown.Matches;
+        results.SelectedIndex = shown.Matches.Count > 0 ? 0 : -1;
         status.Text = said;
         ShowPreview();
     }
@@ -457,7 +466,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         TextDocument shown = new(text.ToString());
         preview.Show(shown, SelectionSet.Single(0), default);
         (preview.Highlighter as IDisposable)?.Dispose();
-        preview.Highlighter = Languages.Highlighters.For(Languages.Language.ForPath(match.Path), shown);
+        preview.Highlighter = Languages.Highlighters.For(Languages.Language.ForPath(match.Path), shown, parseOptions(match.Path));
         if (match.Line < shown.Snapshot.LineCount)
         {
             int at = shown.Snapshot.GetLineStart(match.Line) + match.Column;
@@ -550,13 +559,12 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
     }
 
     /// <summary>A match's line, its leading space trimmed and the match itself bold, and where it is at the right.</summary>
-    private static Control Row(SearchMatch match, bool ligatures)
+    /// <summary>A match's row for whichever match the list hands its container: its line, the match in bold, and where it is.</summary>
+    private static Control Row(bool ligatures)
     {
-        string line = match.LineText;
-        int indent = line.Length - line.TrimStart().Length;
-        int start = Math.Clamp(match.Column - indent, 0, Math.Max(0, line.Length - indent));
-        string trimmed = line[indent..];
-        int length = Math.Min(match.Length, trimmed.Length - start);
+        Avalonia.Controls.Documents.Run before = new();
+        Avalonia.Controls.Documents.Run matched = new() { FontWeight = FontWeight.Bold };
+        Avalonia.Controls.Documents.Run after = new();
         TextBlock text = new()
         {
             VerticalAlignment = VerticalAlignment.Center,
@@ -564,18 +572,26 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
             FontFamily = CSharp.Fonts.Mono,
             FontSize = 12,
             FontFeatures = CSharp.Fonts.Features(ligatures),
+            Inlines = [before, matched, after],
         };
-        text.Inlines = [];
-        text.Inlines.Add(new Avalonia.Controls.Documents.Run(trimmed[..start]));
-        text.Inlines.Add(new Avalonia.Controls.Documents.Run(trimmed.Substring(start, Math.Max(0, length))) { FontWeight = FontWeight.Bold });
-        text.Inlines.Add(new Avalonia.Controls.Documents.Run(trimmed[Math.Min(trimmed.Length, start + Math.Max(0, length))..]));
-        TextBlock where = new() { Text = $"{match.Name} {match.Line + 1}", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 4, 0), FontSize = 12 };
+        TextBlock where = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 4, 0), FontSize = 12 };
         where.Classes.Add("muted");
         DockPanel row = new() { Height = ListRow.Height, Margin = new Thickness(8, 0) };
         DockPanel.SetDock(where, Dock.Right);
         row.Children.Add(where);
         row.Children.Add(text);
-        ToolTip.SetTip(row, match.Path);
-        return row;
+        return row.Showing<SearchMatch>(match =>
+        {
+            string line = match.LineText;
+            int indent = line.Length - line.TrimStart().Length;
+            int start = Math.Clamp(match.Column - indent, 0, Math.Max(0, line.Length - indent));
+            string trimmed = line[indent..];
+            int length = Math.Max(0, Math.Min(match.Length, trimmed.Length - start));
+            before.Text = trimmed[..start];
+            matched.Text = trimmed.Substring(start, length);
+            after.Text = trimmed[Math.Min(trimmed.Length, start + length)..];
+            where.Text = $"{match.Name} {match.Line + 1}";
+            ToolTip.SetTip(row, match.Path);
+        });
     }
 }

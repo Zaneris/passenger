@@ -1,11 +1,13 @@
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Passenger.App.Editors;
 using Passenger.App;
 using Passenger.App.Debugging;
 using Passenger.Core;
 using Passenger.Dap;
 using Passenger.Editor;
 using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.Tests;
 
@@ -56,9 +58,26 @@ public sealed class SelfDebuggingTests : IDisposable
         editor.GoTo(new TextPosition(line, 8));
         Ui.Run(window, AppActions.ToggleBreakpoint);
 
+        // The checkout's restore as its last build wrote it, which Passenger's build here leaves as it was.
+        string[] spelled = [.. OtherwiseSpelled(repository, window.Projects, app)];
+        Assert.True(spelled.Length == 0, $"The checkout's last build restored {Plural.Of(spelled.Length, "project")} of Passenger through another spelling "
+            + $"of the checkout's path ({spelled.FirstOrDefault()}): building them through the disk's, Passenger would restore and compile them and all that "
+            + $"uses them again. Build the checkout only through {PathNames.Canonical(repository)}, with no MSBuild node left from a build through the other "
+            + "(dotnet build-server shutdown)");
+        Dictionary<string, byte[]> restore = RestoreFiles(repository);
         string picture = Path.Combine(folder, "inner.png");
-        Task<string?> launched = window.DebugAsync($"\"{folder}\" --screenshot \"{picture}\" --key F10 --key F10 --wait 600000");
+        Task<string?> launched;
+        // The build of the person's checkout has their NuGet settings; the inner Passenger it starts, the run's.
+        using (TestRun.PersonsNuGet())
+        {
+            launched = window.DebugAsync($"\"{folder}\" --screenshot \"{picture}\" --key F10 --key F10 --wait 600000");
+            Ui.PumpUntil(() => window.IsBuilding || launched.IsCompleted, "Passenger's build to begin");
+        }
         Ui.Launched(window, launched, "Passenger to build and start under its debugger", TimeSpan.FromMinutes(5));
+        string[] rewritten = [.. restore.Where(r => !File.Exists(r.Key) || !File.ReadAllBytes(r.Key).AsSpan().SequenceEqual(r.Value))
+            .Select(r => Path.GetFileName(Path.GetDirectoryName(r.Key)!)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+        Assert.True(rewritten.Length == 0, $"Building Passenger rewrote the checkout's restore of {Plural.Of(rewritten.Length, "project")} "
+            + $"({string.Join(", ", rewritten)}), which the person's next build restores again; {FirstChange(restore)}");
         DebugSession session = window.Debugger.Session!;
         Ui.WaitFor(() => session.State == DebugState.Paused || !window.Debugger.IsDebugging, "the inner Passenger to stop at the breakpoint in its key's action", TimeSpan.FromMinutes(3));
         Assert.True(session.State == DebugState.Paused, $"The inner Passenger ended without stopping: {window.Status}\n{Console(window)}");
@@ -89,7 +108,7 @@ public sealed class SelfDebuggingTests : IDisposable
         string opened = $"Opened {PathNames.Canonical(folder)}";
         Assert.Contains(opened, Ui.Shared(Path.Combine(sandbox, "logs", "passenger.log")), StringComparison.Ordinal);
         Assert.DoesNotContain(opened, Ui.IdeLog(), StringComparison.Ordinal);
-        int inner = session.ProcessStarted.Result;
+        int inner = Ui.Await(session.ProcessStarted, "the adapter to say which process it started");
         IReadOnlyList<int> children = Processes.Descendants(inner);
         int[] servers = [.. Directory.GetFiles(Path.Combine(sandbox, "logs", "roslyn"), "server-*.log").Select(ServerProcess)];
         Assert.True(servers.Length > 0 && servers.All(children.Contains),
@@ -107,6 +126,70 @@ public sealed class SelfDebuggingTests : IDisposable
 
     private static string? Value(MainWindow window, string name) =>
         window.BottomPanel.Debug.Tree.Rows.FirstOrDefault(r => r.Depth == 0 && r.Name == name)?.Value;
+
+    /// <summary>Each file of the checkout's restore (each project's project.assets.json, dgspec, nuget.g.props and the rest
+    /// beside them under artifacts/obj) with its bytes.</summary>
+    /// <summary>The first line a restore file kept before the build reads otherwise after it, as a failure says it.</summary>
+    private static string FirstChange(Dictionary<string, byte[]> restore)
+    {
+        foreach ((string path, byte[] before) in restore.OrderBy(r => r.Key, StringComparer.Ordinal))
+        {
+            if (!File.Exists(path))
+            {
+                return $"{path} is gone";
+            }
+            byte[] after = File.ReadAllBytes(path);
+            if (after.AsSpan().SequenceEqual(before))
+            {
+                continue;
+            }
+            string[] was = System.Text.Encoding.UTF8.GetString(before).Split('\n');
+            string[] now = System.Text.Encoding.UTF8.GetString(after).Split('\n');
+            int at = Enumerable.Range(0, Math.Min(was.Length, now.Length)).FirstOrDefault(i => was[i] != now[i], -1);
+            if (at >= 0 || was.Length != now.Length)
+            {
+                at = at >= 0 ? at : Math.Min(was.Length, now.Length);
+                return $"{path}, line {at + 1}, read \"{(at < was.Length ? was[at].Trim() : "")}\" and now reads \"{(at < now.Length ? now[at].Trim() : "")}\"";
+            }
+        }
+        return "none of them reads otherwise";
+    }
+
+    private static Dictionary<string, byte[]> RestoreFiles(string repository) =>
+        Directory.EnumerateDirectories(Path.Combine(repository, "artifacts", "obj")).SelectMany(d => Directory.EnumerateFiles(d)).ToDictionary(f => f, File.ReadAllBytes);
+
+    /// <summary>The paths through which the checkout's last restore reached the projects a build of <paramref name="app"/>
+    /// reaches, where those differ from the disk's spelling that the window builds them by.</summary>
+    private static IEnumerable<string> OtherwiseSpelled(string repository, IReadOnlyList<ProjectModel> projects, string app)
+    {
+        Dictionary<string, ProjectModel> byPath = new(PathNames.Comparer);
+        foreach (ProjectModel project in projects)
+        {
+            byPath.TryAdd(project.Path, project);
+        }
+        HashSet<string> reached = new(PathNames.Comparer);
+        Queue<string> next = new([app]);
+        while (next.TryDequeue(out string? path))
+        {
+            if (reached.Add(path) && byPath.TryGetValue(path, out ProjectModel? project))
+            {
+                foreach (string reference in project.ProjectReferences)
+                {
+                    next.Enqueue(reference);
+                }
+            }
+        }
+        // Each restore writes its project's path here; the assets file it keeps when nothing else in it changed.
+        foreach (string cache in Directory.EnumerateDirectories(Path.Combine(repository, "artifacts", "obj")).Select(d => Path.Combine(d, "project.nuget.cache")).Where(File.Exists))
+        {
+            using System.Text.Json.JsonDocument read = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(cache));
+            if (read.RootElement.TryGetProperty("projectFilePath", out System.Text.Json.JsonElement named) && named.GetString() is { } restored
+                && reached.TryGetValue(restored, out string? built) && !string.Equals(restored, built, StringComparison.Ordinal))
+            {
+                yield return restored;
+            }
+        }
+    }
 
     private static string Console(MainWindow window) => window.BottomPanel.Debug.Console.Document.Snapshot.ToString();
 

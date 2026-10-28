@@ -134,7 +134,7 @@ public sealed partial class CodeEditor
     /// <summary>The bracket at the caret and its pair, where either is on this line.</summary>
     private void DrawBraces(DrawingContext context, LineView view, Gap[] gaps, double left, double y, BracePair pair)
     {
-        foreach (TextRange bracket in new[] { pair.Touched, pair.Matching })
+        foreach (TextRange bracket in (ReadOnlySpan<TextRange>)[pair.Touched, pair.Matching])
         {
             if (bracket.Start >= view.Span.Start && bracket.Start < view.Span.End)
             {

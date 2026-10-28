@@ -6,8 +6,9 @@ namespace Passenger.App.Web;
 
 /// <summary>One language server on the web servers' Node.js for the folder open, from its start to its end: started on
 /// the Node.js found unless it cannot run there (none, one too old for its package, the server missing from the app's
-/// folder), which <see cref="Unavailable"/> hears; its log heard; its end or hang told to <see cref="Lost"/> while it is
-/// the one kept. A UI-thread object: what the server says from its threads crosses through <see cref="UiThread"/>.</summary>
+/// folder), which <see cref="Unavailable"/> hears; its log heard; its end (during its start too) or hang told to
+/// <see cref="Lost"/> while it is the one kept. A UI-thread object: what the server says from its threads crosses through
+/// <see cref="UiThread"/>.</summary>
 internal sealed class NodeServer
 {
     private readonly string folder;
@@ -57,7 +58,8 @@ internal sealed class NodeServer
     /// <summary>It asked for every file's diagnostics again.</summary>
     public Action? Refresh { get; init; }
 
-    /// <summary>It ended or stopped answering, as the status bar says it ("The TypeScript language server ended").</summary>
+    /// <summary>It ended (as it started too) or stopped answering, as the status bar says it ("The TypeScript language
+    /// server ended").</summary>
     public Action<string>? Lost { get; init; }
 
     public LanguageSession? Session { get; private set; }
@@ -76,6 +78,10 @@ internal sealed class NodeServer
     /// <summary>What the status bar says of it while it cannot answer: starting, ready, or why not in a few words.</summary>
     public string State { get; private set; } = string.Empty;
 
+    /// <summary>Whether it was left stopped (<see cref="Stop"/>) rather than unable to run: a start at a person's word may
+    /// run it.</summary>
+    public bool LeftStopped { get; private set; }
+
     public void Start()
     {
         CancellationTokenSource started = new();
@@ -92,6 +98,7 @@ internal sealed class NodeServer
     {
         Problem = problem;
         State = "language server stopped";
+        LeftStopped = true;
     }
 
     private async Task<LanguageSession?> StartAsync(CancellationToken cancelled)
@@ -124,12 +131,22 @@ internal sealed class NodeServer
             LanguageSession started = await BackgroundWork.Run(() => LanguageSession.StartAsync(start, cancelled), cancelled);
             if (cancelled.IsCancellationRequested || ended)
             {
-                IdeErrors.Observe(Task.Run(() => started.DisposeAsync().AsTask()));
+                // Not held: a start given up ends in its own time.
+                IdeErrors.Observe(BackgroundWork.Unheld(() => started.DisposeAsync().AsTask()));
                 return null;
             }
             if (Configure is { } configure)
             {
-                await configure(started.Server);
+                try
+                {
+                    await configure(started.Server);
+                }
+                catch
+                {
+                    // Not held: a start that failed ends in its own time.
+                    IdeErrors.Observe(BackgroundWork.Unheld(() => started.DisposeAsync().AsTask()));
+                    throw;
+                }
             }
             Hear(started);
             Session = started;
@@ -141,6 +158,12 @@ internal sealed class NodeServer
         }
         catch (Exception error) when (error is OperationCanceledException || cancelled.IsCancellationRequested)
         {
+            return null;
+        }
+        catch (LanguageServerFailed failed) when (failed.Ended)
+        {
+            IdeErrors.Write($"The {Name} language server ended as it started for {folder}: {failed}");
+            Lost?.Invoke($"The {Name} language server ended as it started");
             return null;
         }
         catch (Exception error)
@@ -222,6 +245,6 @@ internal sealed class NodeServer
         Starting = null;
         LanguageSession? ending = Session;
         Session = null;
-        return ending is null ? Task.CompletedTask : Task.Run(() => ending.DisposeAsync().AsTask());
+        return ending is null ? Task.CompletedTask : BackgroundWork.Unheld(() => ending.DisposeAsync().AsTask());
     }
 }

@@ -182,8 +182,16 @@ public sealed class AspireContainersTests : IClassFixture<AspireApp>
     }
 
     /// <summary>Why no AppHost here can make the tests' containers: no Linux engine, or no busybox in it (none is pulled).</summary>
-    internal static string? WhyNot => Docker.WhyNot
-        ?? (Docker.Said("image", "inspect", Docker.Image) is null ? $"The engine lacks {Docker.Image}, which these tests do not pull: docker pull {Docker.Image}" : null);
+    internal static string? WhyNot => Docker.WhyNot ?? (Docker.Said("image", "inspect", Docker.Image) is null ? NoBusybox : null);
+
+    /// <summary>Skips a test with no window where no AppHost can make the tests' containers (<see cref="WhyNot"/>), saying why.</summary>
+    internal static async Task SkipWithoutEngineAsync()
+    {
+        string? why = await Docker.WhyNotAsync() ?? (await Docker.SaidAsync("image", "inspect", Docker.Image) is null ? NoBusybox : null);
+        Assert.SkipWhen(why is not null, why ?? string.Empty);
+    }
+
+    private static string NoBusybox => $"The engine lacks {Docker.Image}, which these tests do not pull: docker pull {Docker.Image}";
 
     /// <summary>The starter's AppHost given a busybox container of each lifetime (the session one alone without
     /// <paramref name="kept"/>), carrying the run's label.</summary>
@@ -226,15 +234,19 @@ public sealed class AspireContainersTests : IClassFixture<AspireApp>
     internal static async Task<string> RunningAsync(string resource)
     {
         string? id = null;
-        Assert.True(await Waiting.UntilAsync(() => (id = RunningId(resource)) is not null, TimeSpan.FromMinutes(3), TestContext.Current.CancellationToken),
+        Assert.True(await Waiting.UntilAsync(async () => (id = Id(await Docker.SaidAsync(RunningOf(resource)))) is not null, TimeSpan.FromMinutes(3), TestContext.Current.CancellationToken),
             $"{resource}'s container did not run within 3 minutes");
         return id!;
     }
 
-    private static string? RunningId(string resource) =>
-        Docker.Said("ps", "-q", "--no-trunc", "--filter", $"label={Docker.RunLabel}", "--filter", $"name={resource}-") is { Length: 64 } id ? id : null;
+    private static string? RunningId(string resource) => Id(Docker.Said(RunningOf(resource)));
 
-    /// <summary>Removes what the tests' AppHosts made: their containers (by the run's label) and the Persistent one's network.</summary>
+    private static string[] RunningOf(string resource) => ["ps", "-q", "--no-trunc", "--filter", $"label={Docker.RunLabel}", "--filter", $"name={resource}-"];
+
+    private static string? Id(string? said) => said is { Length: 64 } id ? id : null;
+
+    /// <summary>Removes what the tests' AppHosts made: their containers (by the run's label) and the Persistent one's network;
+    /// from the UI thread, a test with no window awaiting <see cref="RemoveMadeAsync"/>.</summary>
     internal static void RemoveMade()
     {
         string[] networks = (Docker.Said("ps", "-a", "-q", "--filter", $"label={Docker.RunLabel}", "--filter", $"name={Kept}-") ?? string.Empty)
@@ -250,6 +262,30 @@ public sealed class AspireContainersTests : IClassFixture<AspireApp>
         {
             Docker.Said("network", "rm", network);
         }
+    }
+
+    /// <inheritdoc cref="RemoveMade"/>
+    internal static async Task RemoveMadeAsync()
+    {
+        List<string> networks = [];
+        foreach (string id in Ids(await Docker.SaidAsync("ps", "-a", "-q", "--filter", $"label={Docker.RunLabel}", "--filter", $"name={Kept}-")))
+        {
+            networks.AddRange((await Docker.SaidAsync("inspect", "-f", "{{range $name, $_ := .NetworkSettings.Networks}}{{$name}} {{end}}", id) ?? string.Empty)
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        }
+        foreach (string id in Ids(await Docker.SaidAsync("ps", "-aq", "--filter", $"label={Docker.RunLabel}")))
+        {
+            if (await Docker.SaidAsync("inspect", "-f", "{{.Name}}", id) is { } name && (name.Contains(Session, StringComparison.Ordinal) || name.Contains(Kept, StringComparison.Ordinal)))
+            {
+                await Docker.SaidAsync("rm", "-f", id);
+            }
+        }
+        foreach (string network in networks.Distinct().Where(name => name.StartsWith("aspire-", StringComparison.Ordinal)))
+        {
+            await Docker.SaidAsync("network", "rm", network);
+        }
+
+        static string[] Ids(string? said) => (said ?? string.Empty).Split('\n', StringSplitOptions.RemoveEmptyEntries);
     }
 
     /// <summary>Podman's own command beside Docker's, the runtime an orchestrator told it runs on: what the tests' AppHosts
@@ -268,7 +304,7 @@ public sealed class AspireContainersTests : IClassFixture<AspireApp>
             {
                 return "Podman does not answer here";
             }
-            if (Task.Run(() => ContainerEngine.Shared.StateAsync()).GetAwaiter().GetResult() is { IsPodman: true })
+            if (Ui.AwaitPumped(Waiting.Apart(() => ContainerEngine.Shared.StateAsync()), "the container engine's state") is { IsPodman: true })
             {
                 return "docker reaches Podman itself here, so an orchestrator told Podman runs its containers where docker sees them";
             }
@@ -283,7 +319,8 @@ public sealed class AspireContainersTests : IClassFixture<AspireApp>
         {
             try
             {
-                ChildResult result = Task.Run(() => Engine.Value!.RunAsync(arguments, TimeSpan.FromMinutes(1).Scaled())).GetAwaiter().GetResult();
+                TimeSpan limit = TimeSpan.FromMinutes(1).Scaled();
+                ChildResult result = Ui.AwaitPumped(Waiting.Apart(() => Engine.Value!.RunAsync(arguments, limit)), $"podman {string.Join(' ', arguments)}", limit + TestFolders.Spare);
                 return result.Succeeded ? result.Output.Trim() : null;
             }
             catch (TimeoutException)

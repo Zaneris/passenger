@@ -44,6 +44,8 @@ public sealed partial class PassengerTools
     /// project read, the C# server's workspace loaded. A file no service reads is refused at once, saying which do.</summary>
     private async Task<Served> Serve(string path, CancellationToken cancel)
     {
+        // A C# file is opened in the server once the files come under its projects are in them.
+        bool takenIn = Languages.Language.ForPath(path).Service == Languages.LanguageService.CSharp && await TakenInAsync(cancel);
         OpenDocument document = await DocumentAsync(path, cancel);
         string name = Path.GetFileName(document.Path);
         if (XamlService.IsXaml(document.Path))
@@ -71,7 +73,7 @@ public sealed partial class PassengerTools
         }
         if (document.Language.Service == Languages.LanguageService.CSharp)
         {
-            (_, LspDocument lsp) = await Code(path, cancel);
+            (_, LspDocument lsp) = await Code(path, cancel, takenIn);
             return new ServerServed(document, document.Language.Name, lsp);
         }
         throw new InvalidOperationException($"Passenger has no code help for {LanguageOf(document)} files such as {name}: the code tools answer C#, Razor, "
@@ -130,13 +132,9 @@ public sealed partial class PassengerTools
 
     /// <summary>A file's language as the tools name it: XAML, MSBuild and the web languages by what reads them, the rest as
     /// the editor names them.</summary>
-    private static string LanguageOf(OpenDocument document) => Languages.Language.ForPath(document.Path) switch
-    {
-        { Service: Languages.LanguageService.Xaml } => "XAML",
-        { Service: Languages.LanguageService.MSBuild } => "MSBuild",
-        { Service: not (Languages.LanguageService.None or Languages.LanguageService.CSharp) } web => web.Name,
-        _ => document.Language.Name,
-    };
+    private static string LanguageOf(OpenDocument document) =>
+        Languages.Language.ForPath(document.Path) is { Service: not (Languages.LanguageService.None or Languages.LanguageService.CSharp) } served
+            ? served.Name : document.Language.Name;
 
     /// <summary>Go to Declaration in JSON, whose server has none: a package.json dependency's package, a script's run.</summary>
     private async Task<IReadOnlyList<Place>> JsonDefinition(ServerServed json, int offset, CancellationToken cancel)
@@ -222,6 +220,7 @@ public sealed partial class PassengerTools
         }
         WorkspaceEdits.ApplyTo(Editors, document, placed);
         document.Save();
+        await LandedAsync(CancellationToken.None);
         int runs = placed.Count - 1;
         return $"Renamed {old} to {newName} in {Relative(document.Path)}{(runs == 0 ? string.Empty : $", and in {Plural.Of(runs, "script")} that run{(runs == 1 ? "s" : "")} it")}";
     }
@@ -249,7 +248,7 @@ public sealed partial class PassengerTools
         {
             return $"'{fix.Title}' changed nothing";
         }
-        Editors.SaveAll();
+        await SaveLandedAsync(CancellationToken.None);
         return $"Applied '{fix.Title}' to {Relative(web.Document.Path)}";
     }
 
@@ -329,7 +328,7 @@ public sealed partial class PassengerTools
         {
             throw new InvalidOperationException(renamed.Said);
         }
-        Editors.SaveAll();
+        await SaveLandedAsync(cancel);
         return $"Renamed {named.Value} to {newName} in {Plural.Of(renamed.Files.Count, "file")}: {string.Join(", ", renamed.Files.Select(Relative))}";
     }
 
@@ -376,7 +375,7 @@ public sealed partial class PassengerTools
             {
                 throw new InvalidOperationException(refused);
             }
-            Editors.SaveAll();
+            await SaveLandedAsync(CancellationToken.None);
             return set.Said;
         }
         if (now.Elsewhere is { } elsewhere)
@@ -386,11 +385,11 @@ public sealed partial class PassengerTools
             {
                 throw new InvalidOperationException(problem);
             }
-            Editors.SaveAll();
+            await SaveLandedAsync(CancellationToken.None);
             return $"Applied '{fix.Title}' to {string.Join(", ", made.Files.Select(f => Relative(f.Path)).Distinct())}";
         }
         WorkspaceEdits.ApplyTo(Editors, document, [new TextEdit(now.Range.Start, now.Range.Length, now.Text)]);
-        Editors.SaveAll();
+        await SaveLandedAsync(CancellationToken.None);
         return $"Applied '{fix.Title}' to {Relative(document.Path)}";
     }
 
@@ -445,12 +444,12 @@ public sealed partial class PassengerTools
                 return await ApplyOwnFix(xaml.Document, fix, value: name);
             case XamlFix fix:
                 IReadOnlyList<XamlFileChange> changes = [new XamlFileChange(fix.Path, fix.Edits), .. fix.Others];
-                refused = window.Assist.Actions.ApplyFileChanges(fix.Title, changes);
+                refused = await window.Assist.Actions.ApplyFileChangesAsync(fix.Title, changes);
                 if (refused is not null)
                 {
                     throw new InvalidOperationException($"{what} was not applied: {refused}");
                 }
-                Editors.SaveAll();
+                await SaveLandedAsync(CancellationToken.None);
                 return $"Applied {what} to {string.Join(", ", changes.Select(c => Relative(c.Path)).Distinct())}";
         }
         Func<string, string?> texts = Editors.Texts().Text;
@@ -462,12 +461,12 @@ public sealed partial class PassengerTools
             {
                 throw new InvalidOperationException($"{what} cannot name the resource '{key}': {problem}");
             }
-            refused = window.Assist.Actions.ApplyFileChanges("Extract Resource", XamlRefactorings.ExtractResource(xaml.File, value, key, place, everywhere: true));
+            refused = await window.Assist.Actions.ApplyFileChangesAsync("Extract Resource", XamlRefactorings.ExtractResource(xaml.File, value, key, place, everywhere: true));
             if (refused is not null)
             {
                 throw new InvalidOperationException($"{what} was not applied: {refused}");
             }
-            Editors.SaveAll();
+            await SaveLandedAsync(CancellationToken.None);
             return $"Extracted resource '{key}' to {place.Title}{(value.Uses.Count > 1 ? $", used in {value.Uses.Count} places" : string.Empty)}";
         }
         StyleSource source = (StyleSource)chosen.Made;
@@ -482,12 +481,12 @@ public sealed partial class PassengerTools
         {
             throw new InvalidOperationException($"{what} cannot name the style '{style}': {named}");
         }
-        refused = window.Assist.Actions.ApplyFileChanges("Extract Style", XamlRefactorings.ExtractStyle(xaml.File, source, style, properties, into));
+        refused = await window.Assist.Actions.ApplyFileChangesAsync("Extract Style", XamlRefactorings.ExtractStyle(xaml.File, source, style, properties, into));
         if (refused is not null)
         {
             throw new InvalidOperationException($"{what} was not applied: {refused}");
         }
-        Editors.SaveAll();
+        await SaveLandedAsync(CancellationToken.None);
         return $"Extracted {Plural.Of(properties.Count, "property", "properties")} of {source.ElementName} ({string.Join(", ", properties)}) to style '{style}' in {into.Title}";
 
         ResourcePlace PlaceChosen(IReadOnlyList<ResourcePlace> places) => choice is null

@@ -5,7 +5,7 @@
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <RootNamespace>Passenger.Tests</RootNamespace>
-    <!-- The rig's LibraryImports (the run's nice value). -->
+    <!-- The rig's LibraryImports (the run's nice value), and FileTests' (a Linux file's extended attributes). -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- dotnet test's results (VSTest's folder for each run, a .trx, a hang's dump) under artifacts/ with the builds, never
          beside the sources, where VSTest puts them by default; CI's test.yml names the same folder. -->
@@ -85,9 +85,11 @@
     <ProjectReference Include="../EfGraphs/Sqlite/EfGraphs.Sqlite.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../EfGraphs/SqliteOlder/EfGraphs.SqliteOlder.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../EfGraphs/Npgsql/EfGraphs.Npgsql.csproj" ReferenceOutputAssembly="false" />
-    <PackageDownload Include="dotnet-ef" Version="[$(EfCoreVersion)];[$(EfCoreOlderVersion)]" />
+    <ProjectReference Include="../EfGraphs/Sqlite11/EfGraphs.Sqlite11.csproj" ReferenceOutputAssembly="false" />
+    <PackageDownload Include="dotnet-ef" Version="[$(EfCoreVersion)];[$(EfCoreOlderVersion)];[$(EfCore11Version)]" />
     <AssemblyMetadata Include="EfCoreVersion" Value="$(EfCoreVersion)" />
     <AssemblyMetadata Include="EfCoreOlderVersion" Value="$(EfCoreOlderVersion)" />
+    <AssemblyMetadata Include="EfCore11Version" Value="$(EfCore11Version)" />
     <AssemblyMetadata Include="NpgsqlEfVersion" Value="$(NpgsqlEfVersion)" />
   </ItemGroup>
 
@@ -184,6 +186,8 @@
     <ProjectReference Include="../Debuggees/PassengerCases/PassengerCases.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../Debuggees/ReadsInputConsoleApp/ReadsInputConsoleApp.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../Debuggees/ReadsInputConsoleAppNoCet/ReadsInputConsoleAppNoCet.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../Debuggees/RuntimeAsyncConsoleApp/RuntimeAsyncConsoleApp.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../Debuggees/StateMachineAsyncConsoleApp/StateMachineAsyncConsoleApp.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../Debuggees/SteppingConsoleApp/SteppingConsoleApp.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../Debuggees/TerminalConsoleApp/TerminalConsoleApp.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../Debuggees/TerminalCases/TerminalCases.csproj" ReferenceOutputAssembly="false" />

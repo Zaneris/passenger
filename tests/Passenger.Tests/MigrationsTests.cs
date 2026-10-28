@@ -26,6 +26,7 @@ public sealed class MigrationsTests
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         System.Text.StringBuilder programs = new();
         window.BottomPanel.Build.Written += (_, text) => programs.Append(text);
+        using EfRuns runs = new(folder);
         try
         {
             window.ShowToolWindow(ToolWindowIds.Migrations);
@@ -33,16 +34,20 @@ public sealed class MigrationsTests
             Assert.True(window.Migrations.Migrations.Count == 0, $"A context with no migration listed {window.Migrations.Migrations.Count}");
             Assert.Equal("ShopContext", window.Migrations.Context);
 
+            runs.Ran("Listing the migrations as the window is first shown", "dbcontext list", "migrations list");
             Add(window, "Initial");
             Assert.Equal([("Initial", (bool?)false)], Rows(window));
+            window.BottomPanel.Build.Flush();
+            Assert.DoesNotContain(window.BottomPanel.Build.Document.Snapshot.ToString().Split('\n'), line => EfRun.Split(line).Kind == "data");
+            runs.Ran("Adding the first migration", "migrations add");
+
+            Tool(window, AppActions.UpdateDatabase);
+            Ui.WaitFor(() => Rows(window) is [(_, true)], $"Initial applied to the database ({window.Status})", Slow);
             window.BottomPanel.Build.Flush();
             string console = window.BottomPanel.Build.Document.Snapshot.ToString();
             Assert.True(programs.ToString().Split('\n').Any(line => EfRun.Split(line).Kind is "info" or "warn"),
                 $"dotnet ef's lines did not reach the Build window as a program's output, which was:\n{programs}\nThe window's:\n{console}");
-            Assert.DoesNotContain(console.Split('\n'), line => EfRun.Split(line).Kind == "data");
-
-            Tool(window, AppActions.UpdateDatabase);
-            Ui.WaitFor(() => Rows(window) is [(_, true)], $"Initial applied to the database ({window.Status})", Slow);
+            runs.Ran("Updating the database after Add Migration", "database update");
 
             // A model change no migration covers, which the build after it says in Problems at the context.
             ShopApp.AddPrice(folder);
@@ -50,6 +55,7 @@ public sealed class MigrationsTests
             string said = "ShopContext's model has changes no migration covers: Add Migration… makes one";
             Passenger.App.ToolWindows.ProblemsModel problems = window.BottomPanel.Problems;
             Ui.WaitFor(() => problems.Problems.Any(p => p.Message == said) && window.Migrations.Busy is null, $"the pending model changes in Problems after the build ({window.Status})", Slow);
+            runs.Ran("Reading the migrations again after a build that changed the model", "dbcontext list", "migrations list", "migrations has-pending-model-changes");
             Passenger.App.Run.Problem pending = problems.Problems.Single(p => p.Message == said);
             Assert.Equal(Passenger.Core.PathNames.Canonical(Path.Combine(folder, "Program.cs")), pending.Path);
             window.ShowToolWindow(ToolWindowIds.Problems);
@@ -62,9 +68,11 @@ public sealed class MigrationsTests
             Ui.Press(window, "ENTER");
             Name(window, "AddPrice");
             Ui.WaitFor(() => window.Migrations.Busy is null && Rows(window) is [(_, true), ("AddPrice", false)], $"AddPrice added and listed ({window.Status})", Slow);
+            runs.Ran("Adding a migration from Problems", "migrations add");
             Assert.DoesNotContain(problems.Problems, p => p.Message == said);
             Tool(window, AppActions.UpdateDatabase);
             Ui.WaitFor(() => Rows(window) is [(_, true), (_, true)], $"both applied ({window.Status})", Slow);
+            runs.Ran("Updating the database after Add Migration", "database update");
 
             ListBox list = window.MigrationsView.GetVisualDescendants().OfType<ListBox>().Single(l => l.Name == "MigrationsList");
             Ui.RightClick(Assert.IsType<ListBoxItem>(list.ContainerFromItem(window.Migrations.Migrations.Single(m => m.Name == "Initial"))));
@@ -73,11 +81,13 @@ public sealed class MigrationsTests
             Assert.Contains("AddPrice", string.Join(' ', asked.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text)), StringComparison.Ordinal);
             Ui.ClickButton(asked, "Roll Back");
             Ui.WaitFor(() => Rows(window) is [(_, true), (_, false)], $"AddPrice rolled back ({window.Status})", Slow);
+            runs.Ran("Rolling the database back to a listed migration", "database update");
 
             Tool(window, AppActions.ScriptMigrations);
             MigrationScriptDialog script = Asked<MigrationScriptDialog>(window, "Script Migrations' question");
             Ui.ClickButton(script, "Script");
             Ui.WaitFor(() => window.EditorArea.Active?.Path.EndsWith(".sql", StringComparison.Ordinal) == true, $"the script open in a tab ({window.Status})", Slow);
+            runs.Ran("Scripting the migrations", "migrations script");
             string sql = window.EditorArea.Active!.Text.Snapshot.ToString();
             Assert.Contains("CREATE TABLE \"Products\"", sql, StringComparison.Ordinal);
             Assert.Contains("\"Price\"", sql, StringComparison.Ordinal);
@@ -86,7 +96,8 @@ public sealed class MigrationsTests
             ChoiceDialog remove = Asked<ChoiceDialog>(window, "Remove Last's question");
             Assert.Contains("AddPrice", string.Join(' ', remove.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text)), StringComparison.Ordinal);
             Ui.ClickButton(remove, "Remove");
-            Ui.WaitFor(() => Rows(window) is [("Initial", true)], $"AddPrice removed and the list read again ({window.Status})", Slow);
+            // Not settled: the build and model check after it are for Problems, which this does not read.
+            Ui.PumpUntil(() => Rows(window) is [("Initial", true)], $"AddPrice removed and the list read again ({window.Status})", Slow);
             Assert.Empty(Directory.GetFiles(Path.Combine(folder, "Migrations"), "*_AddPrice*.cs"));
         }
         finally
@@ -100,6 +111,9 @@ public sealed class MigrationsTests
     {
         string folder = ShopApp.Make(design: false, tool: null);
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        List<string> opened = [];
+        window.EditorArea.Opened += (_, document) => opened.Add($"{Path.GetFileName(document.Path)}, opened from:\n"
+            + string.Join("\n", new System.Diagnostics.StackTrace().ToString().Split('\n').Where(f => f.Contains(" Passenger.", StringComparison.Ordinal)).Take(12)));
         try
         {
             // Found as the projects are read, the window hidden.
@@ -128,9 +142,9 @@ public sealed class MigrationsTests
             Assert.Contains("<PrivateAssets>all</PrivateAssets>", project, StringComparison.Ordinal);
             Ui.WaitFor(() => Gaps(window).Length == 0, $"no gap left ({Gaps(window)})");
 
-            UndoFromExplorer(window, Path.Combine(folder, "Shop.csproj"));
+            UndoFromExplorer(window, Path.Combine(folder, "Shop.csproj"), () => string.Join("\n", opened));
             Assert.DoesNotContain("Microsoft.EntityFrameworkCore.Design", File.ReadAllText(Path.Combine(folder, "Shop.csproj")), StringComparison.Ordinal);
-            UndoFromExplorer(window, Path.Combine(folder, "Shop.csproj"));
+            UndoFromExplorer(window, Path.Combine(folder, "Shop.csproj"), () => string.Join("\n", opened));
             Assert.False(File.Exists(Path.Combine(folder, "dotnet-tools.json")), "Undo left the tool manifest the fix made");
         }
         finally
@@ -324,8 +338,9 @@ public sealed class MigrationsTests
         }
     }
 
-    /// <summary>Undo from the Solution view, a row chosen there, its question answered yes: the last command taken back.</summary>
-    private static void UndoFromExplorer(MainWindow window, string path)
+    /// <summary>Undo from the Solution view, a row chosen there, its question answered yes: the last command taken back;
+    /// <paramref name="opened"/> says where the files open in editors were opened from.</summary>
+    private static void UndoFromExplorer(MainWindow window, string path, Func<string>? opened = null)
     {
         List<string> asked = [];
         window.Confirm = (_, question, _) =>
@@ -336,8 +351,56 @@ public sealed class MigrationsTests
         window.ExplorerView.Reveal(path);
         Ui.Settle();
         Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Name.StartsWith(Path.GetFileNameWithoutExtension(path), StringComparison.Ordinal)));
+        string? next = window.EditorArea.Commands.ToUndo(null)?.Name;
+        string open = string.Join(", ", window.EditorArea.Documents.Select(d => Path.GetFileName(d.Path)));
+        string? active = window.EditorArea.Active?.Path is { } shown ? Path.GetFileName(shown) : null;
+        string? focused = window.FocusManager?.GetFocusedElement()?.GetType().Name;
         Ui.Run(window, Passenger.Editor.EditorActions.Undo);
-        Assert.True(asked.Count == 1, $"Undo asked {asked.Count} questions: {string.Join(" | ", asked)}");
+        Assert.True(asked.Count == 1, $"Undo asked {asked.Count} questions: {string.Join(" | ", asked)} (the command to undo was {next ?? "none"}; "
+            + $"open: {open}; active: {active ?? "none"}; the keys with: {focused ?? "nothing"}; the status bar said {window.Status}){(opened is null ? "" : $"\n{opened()}")}");
+    }
+
+    /// <summary>EF Core 11's dotnet ef takes its options' defaults from .config/dotnet-ef.json: of a library's two apps that
+    /// can start its contexts, the window lists and adds migrations through the startup project the file names and the
+    /// context it names, never the first app (which lacks the Design package dotnet ef needs) nor the first context; and
+    /// with the database out of reach, Remove Last Migration removes the migration offline, never asking the database.</summary>
+    [AvaloniaFact]
+    public void With_EF_Core_11_the_window_takes_what_dotnet_ef_json_names_and_removes_a_migration_offline()
+    {
+        string folder = ShopApp.MakeEf11();
+        string data = Path.Combine(folder, "Data");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        // Each dotnet ef command line the Build window shows, which the build before the next command clears.
+        List<string> commands = [];
+        window.BottomPanel.Build.Document.Changed += (_, _) => commands.AddRange(window.BottomPanel.Build.Document.Snapshot.ToString().Split('\n')
+            .Where(l => l.Contains("--startup-project", StringComparison.Ordinal) && !commands.Contains(l)));
+        try
+        {
+            window.ShowToolWindow(ToolWindowIds.Migrations);
+            Ui.WaitFor(() => window.Migrations.Listed, () => $"the migrations listed (status: {window.Status}; gaps: {Gaps(window)})", Slow);
+            Assert.Equal(("Data", "Web", "SalesContext"), (window.Migrations.Project?.Name, window.Migrations.Startup?.Name, window.Migrations.Context));
+
+            Add(window, "Initial");
+            Assert.True(File.Exists(Path.Combine(data, "Migrations", "SalesContextModelSnapshot.cs")),
+                $"Add Migration made no snapshot of SalesContext: [{string.Join(", ", Directory.GetFiles(Path.Combine(data, "Migrations")).Select(Path.GetFileName))}]");
+            Assert.Equal([("Initial", (bool?)null)], Rows(window));
+
+            Tool(window, AppActions.RemoveLastMigration);
+            ChoiceDialog remove = Asked<ChoiceDialog>(window, "Remove Last's question");
+            Assert.Contains("could not be read", string.Join(' ', remove.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text)), StringComparison.Ordinal);
+            Ui.ClickButton(remove, "Remove");
+            // Not settled: the build and model check after it are for Problems, which this does not read.
+            Ui.PumpUntil(() => Rows(window).Count == 0, $"Initial removed with the database out of reach ({window.Status})", Slow);
+            Assert.Empty(Directory.GetFiles(Path.Combine(data, "Migrations"), "*_Initial*.cs"));
+
+            Assert.True(commands.Count > 0 && commands.All(c => c.Contains("Web.csproj", StringComparison.Ordinal) && !c.Contains("Api.csproj", StringComparison.Ordinal)),
+                $"dotnet ef was not run through Web alone:\n{string.Join("\n", commands)}");
+            Assert.Contains(commands, c => c.Contains("migrations remove", StringComparison.Ordinal) && c.Contains("--offline", StringComparison.Ordinal));
+        }
+        finally
+        {
+            window.Close();
+        }
     }
 
     private static string Gaps(MainWindow window) => string.Join(" | ", window.MigrationsView.GapsShown);
@@ -376,6 +439,56 @@ public sealed class MigrationsTests
     }
 }
 
+/// <summary>The dotnet ef commands the IDE starts on a folder's projects, by their verbs ("migrations list"), and its
+/// builds there, each a process a person waits on: what each step of a test ran held to what that step needs.</summary>
+internal sealed class EfRuns : IDisposable
+{
+    private static readonly string[] Verbs = ["migrations", "dbcontext", "database"];
+    private readonly List<string> started = [];
+    private readonly EventHandler<Passenger.Core.ChildStart> heard;
+
+    public EfRuns(string folder)
+    {
+        string under = Passenger.Core.PathNames.Canonical(folder);
+        heard = (_, child) =>
+        {
+            if (child.Start is not { } start || !start.ArgumentList.Any(a => a.Contains(under, StringComparison.Ordinal)))
+            {
+                return;
+            }
+            List<string> words = [.. start.ArgumentList];
+            int verb = words.FindIndex(w => Verbs.Contains(w));
+            string? ran = words is ["build", ..] ? "build"
+                : verb >= 0 && verb + 1 < words.Count && words.Any(w => w is "--startup-project" or "--startup-assembly") ? $"{words[verb]} {words[verb + 1]}" : null;
+            if (ran is not null)
+            {
+                lock (started)
+                {
+                    started.Add(ran);
+                }
+            }
+        };
+        Passenger.Core.ChildProcesses.Started += heard;
+    }
+
+    /// <summary>Holds what ran since the last step to the dotnet ef commands given, in any order; builds are told, not held.</summary>
+    public void Ran(string step, params string[] needed)
+    {
+        string[] ran;
+        lock (started)
+        {
+            ran = [.. started];
+            started.Clear();
+        }
+        string[] ef = [.. ran.Where(r => r != "build").Order(StringComparer.Ordinal)];
+        Assert.True(ef.SequenceEqual(needed.Order(StringComparer.Ordinal)),
+            $"{step} ran dotnet ef {ef.Length} times ({string.Join(", ", ef)}) where it needs {string.Join(", ", needed)}: "
+            + $"a person waits on each. Everything it started, in order: {string.Join(", ", ran)}");
+    }
+
+    public void Dispose() => Passenger.Core.ChildProcesses.Started -= heard;
+}
+
 /// <summary>A console app with a SQLite context, as a test of migrations writes it: EF Core's SQLite provider at the
 /// version the tests pin, the Design package or not, the local tool at a version or none, restored from the run's local
 /// feed, which holds the tool and the Design package copied from the package cache.</summary>
@@ -392,9 +505,25 @@ internal static class ShopApp
 
     /// <summary>The app in a folder of its own: the Design package or not, the local tool at a version or none, the stand-in
     /// provider at a version (its versions in a feed of the test's own, each with the range of EF Core it supports), and a
-    /// Program.cs of the test's in place of the shop's.</summary>
+    /// Program.cs of the test's in place of the shop's; restored from the UI thread (a window test's body), the window's
+    /// loop running meanwhile.</summary>
     public static string Make(bool design, string? tool, string? provider = null, IReadOnlyList<(string Version, string Range)>? providers = null, string? program = null,
         string? ef = null)
+    {
+        string folder = Write(design, tool, provider, providers, program, ef);
+        Restore.Run(Path.Combine(folder, "Shop.csproj"));
+        return folder;
+    }
+
+    /// <inheritdoc cref="Make"/>
+    public static async Task<string> MakeAsync(bool design, string? tool)
+    {
+        string folder = Write(design, tool, null, null, null, null);
+        await Restore.RunAsync(Path.Combine(folder, "Shop.csproj"));
+        return folder;
+    }
+
+    private static string Write(bool design, string? tool, string? provider, IReadOnlyList<(string Version, string Range)>? providers, string? program, string? ef)
     {
         ef ??= Version;
         string folder = TestFolders.Create("shop");
@@ -456,7 +585,78 @@ internal static class ShopApp
 
                 """);
         }
-        Restore.Run(Path.Combine(folder, "Shop.csproj"));
+        return folder;
+    }
+
+    public static string Ef11 { get; } = AvaloniaApp.Metadata("EfCore11Version");
+
+    /// <summary>A library with two SQLite contexts on EF Core 11 and the two apps that reference it, Api (first, without the
+    /// Design package) and Web, with the local dotnet-ef 11 and a .config/dotnet-ef.json naming the library, Web and the
+    /// second context; the database a file that is none, out of reach. Restored from the run's local feed and the
+    /// package cache (tests/EfGraphs), from the UI thread.</summary>
+    public static string MakeEf11()
+    {
+        string folder = TestFolders.Create("shop11");
+        Copy(("dotnet-ef", Ef11));
+        AvaloniaApp.UseFeed(folder);
+        string Ef(string package, bool design = false) =>
+            $"    <PackageReference Include=\"Microsoft.EntityFrameworkCore.{package}\" Version=\"{Ef11}\"{(design ? " PrivateAssets=\"all\"" : string.Empty)} />\n";
+        string App(string packages) =>
+            $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <OutputType>Exe</OutputType>\n    <TargetFramework>net11.0</TargetFramework>\n  </PropertyGroup>\n"
+            + $"  <ItemGroup>\n    <ProjectReference Include=\"../Data/Data.csproj\" />\n{packages}  </ItemGroup>\n</Project>\n";
+        TestFolders.Write(folder, "Shop.slnx", "<Solution>\n  <Project Path=\"Api/Api.csproj\" />\n  <Project Path=\"Data/Data.csproj\" />\n  <Project Path=\"Web/Web.csproj\" />\n</Solution>\n");
+        TestFolders.Write(folder, "Data/Data.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net11.0</TargetFramework>\n    <Nullable>enable</Nullable>\n"
+            + $"  </PropertyGroup>\n  <ItemGroup>\n{Ef("Sqlite")}  </ItemGroup>\n</Project>\n");
+        // A file of the database's name that is no database: the tool finds it there and cannot read it.
+        string database = Path.Combine(folder, "sales.db");
+        TestFolders.Write(folder, "sales.db", "not a database\n");
+        TestFolders.Write(folder, "Data/Contexts.cs", $$"""
+            using Microsoft.EntityFrameworkCore;
+
+            namespace Data;
+
+            public sealed class Product
+            {
+                public int Id { get; set; }
+                public string Name { get; set; } = "";
+            }
+
+            public sealed class ShopContext : DbContext
+            {
+                public DbSet<Product> Products => Set<Product>();
+
+                protected override void OnConfiguring(DbContextOptionsBuilder options) => options.UseSqlite(@"Data Source={{database}}");
+            }
+
+            public sealed class SalesContext : DbContext
+            {
+                public DbSet<Product> Sold => Set<Product>();
+
+                protected override void OnConfiguring(DbContextOptionsBuilder options) => options.UseSqlite(@"Data Source={{database}}");
+            }
+
+            """);
+        TestFolders.Write(folder, "Api/Api.csproj", App(string.Empty));
+        TestFolders.Write(folder, "Api/Program.cs", "System.Console.WriteLine(\"Api\");\n");
+        TestFolders.Write(folder, "Web/Web.csproj", App(Ef("Design", design: true)));
+        TestFolders.Write(folder, "Web/Program.cs", "System.Console.WriteLine(\"Web\");\n");
+        TestFolders.Write(folder, ".config/dotnet-ef.json", "{\n  \"project\": \"Data\",\n  \"startupProject\": \"Web/Web.csproj\",\n  \"context\": \"SalesContext\"\n}\n");
+        TestFolders.Write(folder, "dotnet-tools.json", $$"""
+            {
+              "version": 1,
+              "isRoot": true,
+              "tools": {
+                "dotnet-ef": {
+                  "version": "{{Ef11}}",
+                  "commands": [ "dotnet-ef" ],
+                  "rollForward": false
+                }
+              }
+            }
+
+            """);
+        // By its real path: NuGet reaches Data by that too, and two spellings of one project restored at once collide.
+        Restore.Run(Passenger.Core.PathNames.Canonical(Path.Combine(folder, "Shop.slnx")));
         return folder;
     }
 
@@ -493,15 +693,16 @@ internal static class ShopApp
 
     /// <summary>The tool at both versions, the Design package and EF Core at both versions, copied from the package cache into
     /// the run's local feed, whose metadata the window reads for the versions that fit.</summary>
-    internal static void Feed()
+    internal static void Feed() => Copy(
+        ("dotnet-ef", Version), ("dotnet-ef", Older), ("microsoft.entityframeworkcore.design", Version),
+        ("microsoft.entityframeworkcore", Version), ("microsoft.entityframeworkcore", Older),
+        ("microsoft.entityframeworkcore.sqlite", Version), ("microsoft.entityframeworkcore.sqlite", Older));
+
+    /// <summary>Packages copied from the package cache into the run's local feed.</summary>
+    private static void Copy(params (string Id, string Version)[] packages)
     {
         string cache = AvaloniaApp.Metadata("NuGetPackageRoot");
-        foreach ((string id, string version) in new[]
-        {
-            ("dotnet-ef", Version), ("dotnet-ef", Older), ("microsoft.entityframeworkcore.design", Version),
-            ("microsoft.entityframeworkcore", Version), ("microsoft.entityframeworkcore", Older),
-            ("microsoft.entityframeworkcore.sqlite", Version), ("microsoft.entityframeworkcore.sqlite", Older),
-        })
+        foreach ((string id, string version) in packages)
         {
             string package = Path.Combine(cache, id, version, $"{id}.{version}.nupkg");
             Assert.True(File.Exists(package), $"{id} {version} is not in the package cache at {package}: restore the tests first");

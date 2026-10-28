@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.ComponentModel;
 using Passenger.App.LiveTree;
 using Passenger.App.Run;
 
@@ -56,7 +58,7 @@ public sealed class ProblemRow(int depth, string label, string? detail, Problem?
 /// bindings and containers write here; <see cref="ProblemsView"/> shows it once the window is first shown.</summary>
 public sealed class ProblemsModel
 {
-    private readonly ObservableCollection<ProblemRow> rows = [];
+    private readonly ProblemRows rows = [];
     private IReadOnlyList<Problem> file = [];
 
     /// <summary>The solution's problems by file, each file's in order; null with solution-wide analysis off.</summary>
@@ -100,13 +102,16 @@ public sealed class ProblemsModel
     public IReadOnlyList<Problem> FileProblems => file;
 
     /// <summary>The solution's problems, or null with solution-wide analysis off.</summary>
-    public IReadOnlyList<Problem>? SolutionProblems => solution is null ? null : solutionOrdered ??= [.. Ordered(solution.Values.SelectMany(p => p))];
+    public IReadOnlyList<Problem>? SolutionProblems => solution is null ? null : solutionOrdered ??= Ordered(solution.Values.SelectMany(p => p));
 
     /// <summary>Whether the solution's problems are listed: solution-wide analysis is on.</summary>
     public bool ListsSolution => solution is not null;
 
     /// <summary>How many of the solution's problems are errors.</summary>
     public int SolutionErrors => solutionErrors;
+
+    /// <summary>How many problems the Solution tab lists, as its title counts them.</summary>
+    public int SolutionCount => solutionCount;
 
     /// <summary>The warnings and errors the projects loaded with.</summary>
     public IReadOnlyList<Problem> ToolsetProblems => toolset;
@@ -147,7 +152,7 @@ public sealed class ProblemsModel
     /// shown when it has problems.</summary>
     public void ShowHotReload(string said, IReadOnlyList<Problem> problems)
     {
-        hotReload = [.. Ordered(problems)];
+        hotReload = Ordered(problems);
         hotReloadSaid = said;
         if (problems.Count > 0)
         {
@@ -255,10 +260,11 @@ public sealed class ProblemsModel
     }
 
     /// <summary>The current file's problems, as they are typed: the same problems moved by a key move their rows, which
-    /// keep their place in the list, rather than every row being made again.</summary>
+    /// keep their place in the list, rather than every row being made again; another tab shown is left as it is but for
+    /// the File tab's title.</summary>
     public void ShowFile(string? name, IReadOnlyList<Problem> problems)
     {
-        Problem[] ordered = [.. Ordered(problems)];
+        Problem[] ordered = Ordered(problems);
         if (name == fileName && Moved(file, ordered))
         {
             file = ordered;
@@ -273,6 +279,11 @@ public sealed class ProblemsModel
         }
         fileName = name;
         file = ordered;
+        if (Shown != ProblemsTab.File)
+        {
+            TabsChanged?.Invoke(this, EventArgs.Empty);
+            return;
+        }
         Refresh();
     }
 
@@ -296,8 +307,7 @@ public sealed class ProblemsModel
     /// <summary>The solution's problems, or null to take the tab away when solution-wide analysis goes off.</summary>
     public void ShowSolution(IReadOnlyList<Problem>? problems)
     {
-        solution = problems?.GroupBy(p => p.Path ?? string.Empty, Core.PathNames.Comparer)
-            .ToDictionary(g => g.Key, g => (Problem[])[.. Ordered(g)], Core.PathNames.Comparer);
+        solution = problems is null ? null : ByFile(problems);
         solutionOrdered = null;
         solutionCount = problems?.Count ?? 0;
         solutionErrors = problems?.Count(p => p.Severity == ProblemSeverity.Error) ?? 0;
@@ -318,7 +328,7 @@ public sealed class ProblemsModel
         {
             return;
         }
-        Problem[] fresh = [.. Ordered(problems)];
+        Problem[] fresh = Ordered(problems);
         Problem[] old = solution.GetValueOrDefault(path) ?? [];
         if (old.AsSpan().SequenceEqual(fresh))
         {
@@ -418,10 +428,7 @@ public sealed class ProblemsModel
         {
             end++;
         }
-        for (int i = end - 1; i >= fileAt; i--)
-        {
-            rows.RemoveAt(i);
-        }
+        rows.RemoveRange(fileAt, end - fileAt);
         Recount(projectAt, project);
     }
 
@@ -434,11 +441,12 @@ public sealed class ProblemsModel
             rows.Insert(projectAt, new ProblemRow(0, project, null, null));
         }
         (int fileAt, _) = FileRow(path, projectAt);
-        rows.Insert(fileAt, new ProblemRow(1, System.IO.Path.GetFileName(path), Count(problems.Length), null));
-        for (int i = 0; i < problems.Length; i++)
+        List<ProblemRow> made = new(problems.Length + 1) { new ProblemRow(1, System.IO.Path.GetFileName(path), Count(problems.Length), null) };
+        foreach (Problem problem in problems)
         {
-            rows.Insert(fileAt + 1 + i, new ProblemRow(2, problems[i].Message, problems[i].Where, problems[i]));
+            made.Add(new ProblemRow(2, problem.Message, problem.Where, problem));
         }
+        rows.InsertRange(fileAt, made);
         Recount(projectAt, project);
     }
 
@@ -463,7 +471,7 @@ public sealed class ProblemsModel
     /// <summary>The container engine's problems, in Containers, its tab there while it has any.</summary>
     public void ShowContainers(IReadOnlyList<Problem> problems)
     {
-        containers = [.. Ordered(problems)];
+        containers = Ordered(problems);
         Refresh();
     }
 
@@ -471,7 +479,7 @@ public sealed class ProblemsModel
     /// file in Containers after the engine's own.</summary>
     public void ShowContainerFiles(IReadOnlyList<Problem> problems)
     {
-        containerFiles = [.. Ordered(problems)];
+        containerFiles = Ordered(problems);
         Refresh();
     }
 
@@ -481,7 +489,7 @@ public sealed class ProblemsModel
     /// <summary>The projects' load problems, in Toolset, Environment.</summary>
     public void ShowToolset(IReadOnlyList<Problem> problems)
     {
-        toolset = [.. Ordered(problems)];
+        toolset = Ordered(problems);
         Refresh();
     }
 
@@ -506,8 +514,57 @@ public sealed class ProblemsModel
         }
     }
 
-    private static IEnumerable<Problem> Ordered(IEnumerable<Problem> problems) =>
-        problems.OrderBy(p => p.Severity).ThenBy(p => p.Path, StringComparer.Ordinal).ThenBy(p => p.Position.Line).ThenBy(p => p.Position.Column);
+    /// <summary>Problems by severity, file, line and column, those alike in the order they came, in one sort.</summary>
+    private static Problem[] Ordered(IEnumerable<Problem> problems)
+    {
+        Problem[] listed = [.. problems];
+        if (listed.Length < 2)
+        {
+            return listed;
+        }
+        (Problem Problem, int Came)[] keyed = new (Problem, int)[listed.Length];
+        for (int i = 0; i < listed.Length; i++)
+        {
+            keyed[i] = (listed[i], i);
+        }
+        Array.Sort(keyed, ByPlace);
+        for (int i = 0; i < keyed.Length; i++)
+        {
+            listed[i] = keyed[i].Problem;
+        }
+        return listed;
+    }
+
+    /// <summary>Problems by severity, file, line and column, then the order they came.</summary>
+    private static readonly Comparison<(Problem Problem, int Came)> ByPlace = static (a, b) =>
+    {
+        int order = a.Problem.Severity.CompareTo(b.Problem.Severity);
+        order = order != 0 ? order : string.CompareOrdinal(a.Problem.Path, b.Problem.Path);
+        order = order != 0 ? order : a.Problem.Position.Line.CompareTo(b.Problem.Position.Line);
+        order = order != 0 ? order : a.Problem.Position.Column.CompareTo(b.Problem.Position.Column);
+        return order != 0 ? order : a.Came.CompareTo(b.Came);
+    };
+
+    /// <summary>The solution's problems by file, each file's in order.</summary>
+    private static Dictionary<string, Problem[]> ByFile(IReadOnlyList<Problem> problems)
+    {
+        Dictionary<string, List<Problem>> found = new(Core.PathNames.Comparer);
+        foreach (Problem problem in problems)
+        {
+            string path = problem.Path ?? string.Empty;
+            if (!found.TryGetValue(path, out List<Problem>? listed))
+            {
+                found[path] = listed = [];
+            }
+            listed.Add(problem);
+        }
+        Dictionary<string, Problem[]> byFile = new(found.Count, Core.PathNames.Comparer);
+        foreach ((string path, List<Problem> listed) in found)
+        {
+            byFile[path] = Ordered(listed);
+        }
+        return byFile;
+    }
 
     /// <summary>The row chosen let go once it is no longer listed, as the list lets go of an item taken out of it.</summary>
     private void Forget()
@@ -520,28 +577,28 @@ public sealed class ProblemsModel
 
     private void Refresh()
     {
-        rows.Clear();
+        List<ProblemRow> made = [];
         ChosenRow = null;
         switch (Shown)
         {
             case ProblemsTab.File:
                 foreach (Problem problem in file)
                 {
-                    rows.Add(new ProblemRow(0, problem.Message, problem.Where, problem));
+                    made.Add(new ProblemRow(0, problem.Message, problem.Where, problem));
                 }
                 EmptyText = fileName is null ? Refusals.NoFile : "No problems in this file";
                 break;
             case ProblemsTab.Solution:
-                Grouped(SolutionProblems ?? []);
+                Grouped(made, SolutionProblems ?? []);
                 EmptyText = "No problems in the solution";
                 break;
             case ProblemsTab.Toolset:
                 foreach (IGrouping<string, Problem> project in toolset.GroupBy(p => p.Project ?? string.Empty).OrderBy(g => g.Key, StringComparer.Ordinal))
                 {
-                    rows.Add(new ProblemRow(0, project.Key, Count(project.Count()), null));
+                    made.Add(new ProblemRow(0, project.Key, Count(project.Count()), null));
                     foreach (Problem problem in project)
                     {
-                        rows.Add(new ProblemRow(1, problem.Message, null, problem));
+                        made.Add(new ProblemRow(1, problem.Message, null, problem));
                     }
                 }
                 EmptyText = "The projects loaded without problems";
@@ -550,65 +607,130 @@ public sealed class ProblemsModel
                 foreach (IGrouping<string, BindingProblem> file in bindings.GroupBy(b => b.Problem.Path ?? string.Empty)
                     .OrderBy(g => g.Key.Length == 0).ThenBy(g => g.Key, StringComparer.Ordinal))
                 {
-                    rows.Add(new ProblemRow(0, file.Key.Length > 0 ? System.IO.Path.GetFileName(file.Key) : "Not from XAML", Count(file.Count()), null));
+                    made.Add(new ProblemRow(0, file.Key.Length > 0 ? System.IO.Path.GetFileName(file.Key) : "Not from XAML", Count(file.Count()), null));
                     foreach (BindingProblem binding in file)
                     {
-                        rows.Add(new ProblemRow(1, binding.Problem.Message, binding.Detail, binding.Problem));
+                        made.Add(new ProblemRow(1, binding.Problem.Message, binding.Detail, binding.Problem));
                     }
                 }
                 foreach ((string said, string why) in bindingsUntold)
                 {
-                    rows.Add(new ProblemRow(0, said, why, null));
+                    made.Add(new ProblemRow(0, said, why, null));
                 }
                 EmptyText = "No failed bindings: those of an Avalonia or WPF app run or debugged here are listed as they fail";
                 break;
             case ProblemsTab.HotReload:
-                rows.Add(new ProblemRow(0, hotReloadSaid, null, null));
-                Grouped(hotReload ?? []);
+                made.Add(new ProblemRow(0, hotReloadSaid, null, null));
+                Grouped(made, hotReload ?? []);
                 EmptyText = "Hot Reload applied every change";
                 break;
             case ProblemsTab.Containers:
                 foreach (Problem problem in containers)
                 {
-                    rows.Add(new ProblemRow(0, problem.Message, null, problem));
+                    made.Add(new ProblemRow(0, problem.Message, null, problem));
                 }
                 foreach (IGrouping<string, Problem> path in containerFiles.GroupBy(p => p.Path ?? string.Empty).OrderBy(g => g.Key, StringComparer.Ordinal))
                 {
-                    rows.Add(new ProblemRow(0, System.IO.Path.GetFileName(path.Key), Count(path.Count()), null));
+                    made.Add(new ProblemRow(0, System.IO.Path.GetFileName(path.Key), Count(path.Count()), null));
                     foreach (Problem problem in path)
                     {
-                        rows.Add(new ProblemRow(1, problem.Message, problem.Where, problem));
+                        made.Add(new ProblemRow(1, problem.Message, problem.Where, problem));
                     }
                 }
                 EmptyText = "The container engine has no problems";
                 break;
             default:
-                Grouped(Problems);
+                Grouped(made, Problems);
                 EmptyText = "No problems from the last build";
                 break;
         }
+        rows.ReplaceAll(made);
         TabsChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private static string Count(int count) => Core.Plural.Of(count, "problem");
 
-    /// <summary>Problems under their projects and files.</summary>
-    private void Grouped(IEnumerable<Problem> problems)
+    /// <summary>Problems under their projects and files, each group in its key's order and its problems as they came.</summary>
+    private static void Grouped(List<ProblemRow> made, IEnumerable<Problem> problems)
     {
-        foreach (IGrouping<string, Problem> project in problems.GroupBy(p => p.Project ?? "Solution").OrderBy(g => g.Key, StringComparer.Ordinal))
+        (Problem Problem, int Came)[] keyed = [.. problems.Select(static (p, i) => (p, i))];
+        Array.Sort(keyed, ByGroup);
+        int at = 0;
+        while (at < keyed.Length)
         {
-            rows.Add(new ProblemRow(0, project.Key, Count(project.Count()), null));
-            foreach (IGrouping<string, Problem> path in project.GroupBy(p => p.Path ?? string.Empty).OrderBy(g => g.Key, StringComparer.Ordinal))
+            string project = GroupOf(keyed[at].Problem);
+            int projectEnd = at;
+            while (projectEnd < keyed.Length && GroupOf(keyed[projectEnd].Problem) == project)
             {
-                if (path.Key.Length > 0)
+                projectEnd++;
+            }
+            made.Add(new ProblemRow(0, project, Count(projectEnd - at), null));
+            while (at < projectEnd)
+            {
+                string path = keyed[at].Problem.Path ?? string.Empty;
+                int pathEnd = at;
+                while (pathEnd < projectEnd && (keyed[pathEnd].Problem.Path ?? string.Empty) == path)
                 {
-                    rows.Add(new ProblemRow(1, System.IO.Path.GetFileName(path.Key), Count(path.Count()), null));
+                    pathEnd++;
                 }
-                foreach (Problem problem in path)
+                if (path.Length > 0)
                 {
-                    rows.Add(new ProblemRow(path.Key.Length > 0 ? 2 : 1, problem.Message, problem.Where, problem));
+                    made.Add(new ProblemRow(1, System.IO.Path.GetFileName(path), Count(pathEnd - at), null));
+                }
+                for (; at < pathEnd; at++)
+                {
+                    Problem problem = keyed[at].Problem;
+                    made.Add(new ProblemRow(path.Length > 0 ? 2 : 1, problem.Message, problem.Where, problem));
                 }
             }
         }
+    }
+
+    /// <summary>The project a problem is grouped under.</summary>
+    private static string GroupOf(Problem problem) => problem.Project ?? "Solution";
+
+    /// <summary>Problems by project, then file, then the order they came.</summary>
+    private static readonly Comparison<(Problem Problem, int Came)> ByGroup = static (a, b) =>
+    {
+        int order = string.CompareOrdinal(GroupOf(a.Problem), GroupOf(b.Problem));
+        order = order != 0 ? order : string.CompareOrdinal(a.Problem.Path ?? string.Empty, b.Problem.Path ?? string.Empty);
+        return order != 0 ? order : a.Came.CompareTo(b.Came);
+    };
+}
+
+/// <summary>Problems' rows, a file's put in or taken out as one change, and a tab's made again as one, which the list
+/// hears once rather than row by row.</summary>
+internal sealed class ProblemRows : ObservableCollection<ProblemRow>
+{
+    private List<ProblemRow> All => (List<ProblemRow>)Items;
+
+    public void InsertRange(int index, List<ProblemRow> added)
+    {
+        CheckReentrancy();
+        All.InsertRange(index, added);
+        Changed(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, added, index));
+    }
+
+    public void RemoveRange(int index, int count)
+    {
+        CheckReentrancy();
+        List<ProblemRow> removed = All.GetRange(index, count);
+        All.RemoveRange(index, count);
+        Changed(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, removed, index));
+    }
+
+    public void ReplaceAll(List<ProblemRow> made)
+    {
+        CheckReentrancy();
+        All.Clear();
+        All.AddRange(made);
+        Changed(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
+    }
+
+    private void Changed(NotifyCollectionChangedEventArgs change)
+    {
+        OnPropertyChanged(new PropertyChangedEventArgs(nameof(Count)));
+        OnPropertyChanged(new PropertyChangedEventArgs("Item[]"));
+        OnCollectionChanged(change);
     }
 }

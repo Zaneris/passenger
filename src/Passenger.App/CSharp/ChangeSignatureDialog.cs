@@ -143,7 +143,7 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
         {
             return string.IsNullOrWhiteSpace(NameBox.Text) ? "Method name can not be empty" : $"'{NameBox.Text}' is not a valid method name";
         }
-        if (method && !IsType(ReturnTypeBox.Text))
+        if (method && ReturnTypeBox.Text?.Trim() != "void" && !IsType(ReturnTypeBox.Text))
         {
             return "The return type is invalid";
         }

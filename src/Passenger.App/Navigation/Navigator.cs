@@ -21,8 +21,9 @@ public sealed record NavigatorParts(
 
 /// <summary>Getting about the code: going to a file and position remembered for Back and Forward, Last and Next Edit
 /// Location, Recent Locations with their lines of code, and the Go to popups (File, Symbol, Everything, Line:Column,
-/// File Structure). The places are the open folder's (its session's navigation history), visited as a file is left for
-/// another and edited as one is typed in. A UI-thread object of the window.</summary>
+/// File Structure). The places are the open folder's (its session's navigation history): a file left for another,
+/// however that one came to be shown, goes behind for Back, and one closed only visited; a place is edited as its file
+/// is typed in. A UI-thread object of the window.</summary>
 public sealed class Navigator
 {
     /// <summary>How many places Recent Locations lists.</summary>
@@ -37,6 +38,9 @@ public sealed class Navigator
     private readonly NavigatorParts parts;
     private OpenDocument? shownLast;
     private bool editNoted;
+
+    /// <summary>Whether a navigation or Back and Forward is showing a file, putting behind what it left itself.</summary>
+    private bool navigating;
 
     /// <summary>Whether Recent Locations last showed only the places edited, which it opens on again.</summary>
     private bool recentEditedOnly;
@@ -54,7 +58,15 @@ public sealed class Navigator
             {
                 TextSnapshot text = left.Text.Snapshot;
                 int caret = Math.Min(left.Selections.Primary.Caret, text.Length);
-                Places.Visited(new HistoryPlace(left.Path, caret, text.GetLineFromOffset(caret)));
+                HistoryPlace place = new(left.Path, caret, text.GetLineFromOffset(caret));
+                if (navigating || Editors.Active is null || !Editors.HasTab(left))
+                {
+                    Places.Visited(place);
+                }
+                else
+                {
+                    Places.Switched(place);
+                }
             }
             shownLast = Editors.Active;
         };
@@ -72,7 +84,7 @@ public sealed class Navigator
     public void NavigateTo(string path, TextPosition position)
     {
         HistoryPlace? from = Here();
-        parts.OpenFile(path);
+        Show(path);
         // Opened files are known by their canonical path: the one given may run through a symlink.
         if (Editors.Active is { } active && active.Path == PathNames.Canonical(path))
         {
@@ -97,6 +109,20 @@ public sealed class Navigator
 
     private bool Reachable(string path) => Editors.Documents.Any(d => d.Path == path) || File.Exists(path);
 
+    /// <summary>Opens a file for a navigation or Back and Forward, which keep the place it leaves themselves.</summary>
+    private void Show(string path)
+    {
+        navigating = true;
+        try
+        {
+            parts.OpenFile(path);
+        }
+        finally
+        {
+            navigating = false;
+        }
+    }
+
     /// <summary>Back (a step of -1) or Forward (1): the caret goes to the place the history gives.</summary>
     public void StepHistory(int step)
     {
@@ -106,7 +132,7 @@ public sealed class Navigator
         {
             return;
         }
-        parts.OpenFile(target.Path);
+        Show(target.Path);
         if (Editors.Active is { } active && active.Path == target.Path)
         {
             Editors.CodeEditor.GoTo(active.Text.Snapshot.GetPosition(Math.Min(target.Offset, active.Text.Snapshot.Length)));
@@ -206,7 +232,7 @@ public sealed class Navigator
             else if (parts.TextOf(place.Path) is { } read)
             {
                 TextDocument closed = new(read.ToString());
-                IHighlighter? colours = Languages.Highlighters.For(Languages.Language.ForPath(place.Path), closed);
+                IHighlighter? colours = Languages.Highlighters.For(Languages.Language.ForPath(place.Path), closed, Editors.ParseOptions(place.Path));
                 if (colours is IDisposable disposable)
                 {
                     made.Add(disposable);
@@ -372,13 +398,15 @@ public sealed class Navigator
         return owner.Length > 0 ? owner : match.Groups["project"].Value.Trim();
     }
 
-    /// <summary>File Structure: the active file's types and members, indented, filtered as typed with the containers of
-    /// what matches kept.</summary>
+    /// <summary>File Structure: the active file's outline (a C# file's types and members, a JSON file's keys), indented,
+    /// filtered as typed with the containers of what matches kept.</summary>
     public void ShowFileStructure()
     {
-        if (Editors.Active is not { } active || Session.CSharp?.For(active)?.Lsp is null)
+        if (Editors.Active is not { } active || Session.OutlineOf(active) is null)
         {
-            parts.Status.Text = "File Structure needs a C# file the language server has open";
+            parts.Status.Text = Editors.Active is { } file
+                ? $"File Structure needs a file a language server has open, and none has {file.Name}"
+                : "File Structure needs a file a language server has open";
             return;
         }
         IReadOnlyList<SymbolRow>? outline = null;
@@ -386,7 +414,7 @@ public sealed class Navigator
         SymbolPopup popup = new($"File Structure: {active.Name}", "Filter by name, CamelHumps too", async (query, cancel) =>
         {
             // The server's document now: one started again while the popup is open has a new one.
-            Lsp.LspDocument lsp = Session.CSharp?.For(active)?.Lsp ?? throw new Lsp.LanguageServerFailed("the C# language server is not running");
+            Lsp.LspDocument lsp = Session.OutlineOf(active) ?? throw new Lsp.LanguageServerFailed($"no language server has {active.Name} open");
             outline ??= ToolWindows.StructureView.Flatten(await lsp.OutlineAsync(cancel), 0, active.Path, Lsp.ServerLines.Of(lsp.Text.Snapshot));
             return FilterOutline(outline, query.Trim());
         })

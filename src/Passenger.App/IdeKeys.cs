@@ -16,22 +16,24 @@ public interface IOwnKeys
     bool TakesKey(KeyEventArgs e);
 }
 
-/// <summary>The IDE's keys in each window it opens but a dialog (the main window, an editor window, a floating tool window,
-/// a diff, merge or changes window, a test's frame): the main window's one keymap before any control there, Escape closing
-/// a popup over it first and a part's own keys (<see cref="IOwnKeys"/>) left to it; a chord forgotten on a click, a move
-/// of the focus or a window left; a key or click activity, a window left perhaps Passenger left; the popups its keys open
-/// shown over it. A dialog keeps its own keys. A UI-thread object of the main window.</summary>
+/// <summary>The IDE's keys and mouse gestures in each window it opens but a dialog (the main window, an editor, floating
+/// tool, diff, merge or changes window, a test's frame): the main window's one keymap before any control, Escape closing
+/// what is over it first, a part's own keys left to it (<see cref="IOwnKeys"/>), its popups over it. Of the UI thread.</summary>
 /// <param name="main">The main window, whose popups' layer is its own.</param>
 /// <param name="keys">The main window's keymap, which runs in each.</param>
+/// <param name="dismissed">Escape with no popup over a window: whether it closed the code's choices or rename box.</param>
 /// <param name="pressed">What a key not taken here does in the window it was pressed in: the keymap's action.</param>
+/// <param name="sideClicked">What a side button does in the window it was pressed in: the keymap's action for its gesture.</param>
 /// <param name="activity">A key or a click, in any of them.</param>
 /// <param name="left">One of them was left, perhaps for another program.</param>
-public sealed class IdeKeys(Window main, KeymapDispatcher keys, PopupHost popups, Action<TopLevel, object?, KeyEventArgs> pressed, Action activity, Action left)
+public sealed class IdeKeys(Window main, KeymapDispatcher keys, PopupHost popups, Func<TopLevel, bool> dismissed, Action<TopLevel, object?, KeyEventArgs> pressed,
+    Action<TopLevel, string> sideClicked, Action activity, Action left)
 {
     /// <summary>The window a key is being handled in, while it is: what an action it runs acts on there.</summary>
     public TopLevel? Pressing { get; private set; }
 
-    /// <summary>Takes a window in as the IDE's own, before it shows: its keys, its chords, its activity and its popups.</summary>
+    /// <summary>Takes a window in as the IDE's own, before it shows: its keys, its chords (forgotten on a click, a move of the
+    /// focus or the window left), its activity, its popups, and the gestures of its editors and of the side buttons.</summary>
     public void Attach(TopLevel window)
     {
         window.AddHandler(InputElement.KeyDownEvent, (_, e) => OnKeyDown(window, e), RoutingStrategies.Tunnel);
@@ -42,6 +44,8 @@ public sealed class IdeKeys(Window main, KeymapDispatcher keys, PopupHost popups
             popups.WorkIn(window);
             activity();
         }, RoutingStrategies.Tunnel, handledEventsToo: true);
+        window.AddHandler(InputElement.PointerPressedEvent, (_, e) => OnSideButton(window, e), RoutingStrategies.Tunnel);
+        CodeEditor.SetGestures(window, gesture => keys.Keymap.ActionFor(gesture));
         window.AddHandler(InputElement.GotFocusEvent, (_, _) => keys.Reset(), RoutingStrategies.Bubble, handledEventsToo: true);
         if (window is WindowBase shown)
         {
@@ -66,10 +70,9 @@ public sealed class IdeKeys(Window main, KeymapDispatcher keys, PopupHost popups
         popups.WorkIn(window);
         try
         {
-            if (e.Key == Key.Escape && e.KeyModifiers == KeyModifiers.None && popups.IsOpenOver(window))
+            if (e.Key == Key.Escape && e.KeyModifiers == KeyModifiers.None && Escaped(window))
             {
                 // Escape closes what is over the window before anything under it hears it.
-                popups.Dismiss();
                 e.Handled = true;
                 return;
             }
@@ -88,6 +91,39 @@ public sealed class IdeKeys(Window main, KeymapDispatcher keys, PopupHost popups
         {
             Pressing = null;
         }
+    }
+
+    /// <summary>A side button's gesture runs its action wherever it is pressed, as no control takes those buttons, where a
+    /// left or middle press is the control's under it (an editor's through <see cref="CodeEditor.GesturesProperty"/>). One
+    /// that throws is reported as an IDE error, as a key's is.</summary>
+    private void OnSideButton(TopLevel window, PointerPressedEventArgs e)
+    {
+        MouseShortcut gesture = MouseShortcut.Of(e);
+        if (gesture.Button is not (MouseButton.XButton1 or MouseButton.XButton2) || keys.Keymap.ActionFor(gesture) is not { } action)
+        {
+            return;
+        }
+        e.Handled = true;
+        try
+        {
+            sideClicked(window, action);
+        }
+        catch (Exception error)
+        {
+            IdeErrors.Report(error);
+        }
+    }
+
+    /// <summary>Escape over a window: its popup closed, else the code's list of choices or rename box there; false with
+    /// neither open.</summary>
+    private bool Escaped(TopLevel window)
+    {
+        if (popups.IsOpenOver(window))
+        {
+            popups.Dismiss();
+            return true;
+        }
+        return dismissed(window);
     }
 
     /// <summary>Whether the element with the keys, one it is inside or the window takes the key itself.</summary>

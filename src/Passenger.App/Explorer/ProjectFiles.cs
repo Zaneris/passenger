@@ -12,12 +12,16 @@ namespace Passenger.App.Explorer;
 internal sealed class ProjectFiles
 {
     private readonly string root;
+
+    /// <summary>Whether it is a file-based program's, whose folder on disk is not its own.</summary>
+    private readonly bool program;
     private readonly Dictionary<string, List<(string Name, string Path)>> files = new(PathNames.Comparer);
     private readonly Dictionary<string, HashSet<string>> folders = new(PathNames.Comparer);
 
     public ProjectFiles(ProjectModel project)
     {
         root = project.Folder;
+        program = project.IsProgram;
         HashSet<string> seen = new(PathNames.Comparer);
         foreach (EvaluatedItem item in project.Evaluated?.Items ?? [])
         {
@@ -89,10 +93,15 @@ internal sealed class ProjectFiles
     /// <summary>A place in the project as a path on disk, whether or not a folder is there.</summary>
     public string PathOf(string relative) => relative.Length == 0 ? root : Path.Combine(root, relative.Replace('/', Path.DirectorySeparatorChar));
 
-    /// <summary>The folders at a place: those the project holds something in, and those on disk with nothing in them.</summary>
+    /// <summary>The folders at a place: those the project holds something in, and but for a program's, those on disk with
+    /// nothing in them.</summary>
     public IEnumerable<string> FoldersIn(string relative)
     {
         HashSet<string> names = folders.TryGetValue(relative, out HashSet<string>? held) ? new(held, PathNames.Comparer) : new(PathNames.Comparer);
+        if (program)
+        {
+            return names;
+        }
         try
         {
             foreach (DirectoryInfo folder in new DirectoryInfo(PathOf(relative)).EnumerateDirectories())

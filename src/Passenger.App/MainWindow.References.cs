@@ -12,12 +12,13 @@ namespace Passenger.App;
 public partial class MainWindow
 {
     /// <summary>The dialog over the solution's other projects, those the project references checked; OK makes the project
-    /// reference just those. Null, saying why, when there is no other project.</summary>
+    /// reference just those. A file-based program is no project file a reference can name, so it is never offered. Null,
+    /// saying why, when there is no other project.</summary>
     public AddReferenceDialog? ShowAddReference(string project)
     {
         string name = Path.GetFileNameWithoutExtension(project);
         IReadOnlyList<ProjectModel> all = session.Workspace?.Projects ?? [];
-        List<ProjectModel> others = [.. all.Where(p => !PathNames.Same(p.Path, project)).OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)];
+        List<ProjectModel> others = [.. all.Where(p => !p.IsProgram && !PathNames.Same(p.Path, project)).OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)];
         if (others.Count == 0)
         {
             status.Text = $"The solution has no other project for {name} to reference";
@@ -33,14 +34,14 @@ public partial class MainWindow
         {
             if (await dialog.ShowDialog<IReadOnlyList<string>?>(this) is { } chosen)
             {
-                SetReferences(project, chosen);
+                await SetReferencesAsync(project, chosen);
             }
         }
     }
 
     /// <summary>Makes a project reference the solution's projects given and no others of them: those not referenced yet are
-    /// added, those no longer given taken out. Null once done, else why not, which the status bar says too.</summary>
-    public string? SetReferences(string project, IReadOnlyCollection<string> wanted)
+    /// added, those no longer given taken out. Null once done and landed, else why not, which the status bar says too.</summary>
+    public async Task<string?> SetReferencesAsync(string project, IReadOnlyCollection<string> wanted)
     {
         string name = Path.GetFileNameWithoutExtension(project);
         IReadOnlyList<string> had = session.Workspace?.Projects.FirstOrDefault(p => PathNames.Same(p.Path, project))?.ProjectReferences ?? [];
@@ -57,6 +58,7 @@ public partial class MainWindow
             return unsaved;
         }
         List<string> said = [];
+        Exception? refused = null;
         try
         {
             foreach (string added in adding)
@@ -70,16 +72,22 @@ public partial class MainWindow
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            said.Add($"{name} could not be changed: {error.Message}");
-            FollowWritten([project]);
-            ReloadSolution();
-            status.Text = string.Join("; ", said);
-            return error.Message;
+            refused = error;
+        }
+        // The project file's last write holds every change, so once it never lands none of them is made.
+        if (refused is null && await UnlandedAsync([project]) is { } unlanded)
+        {
+            said.Clear();
+            refused = unlanded;
+        }
+        if (refused is not null)
+        {
+            said.Add($"{name} could not be changed: {refused.Message}");
         }
         FollowWritten([project]);
         ReloadSolution();
         status.Text = string.Join("; ", said);
-        return null;
+        return refused?.Message;
     }
 
     /// <summary>Remove on a project reference under Dependencies, once asked: the project file loses it.</summary>
@@ -99,6 +107,10 @@ public partial class MainWindow
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             problem = error.Message;
+        }
+        if (problem is null && await UnlandedAsync([project]) is { } unlanded)
+        {
+            problem = unlanded.Message;
         }
         FollowWritten([project]);
         if (problem is null)

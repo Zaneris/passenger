@@ -154,6 +154,7 @@ internal sealed class Details(Inspector inspector)
         catch (Exception error)
         {
             // A property whose getter fails here (some read their element's state) is shown with why, not the row's end.
+            InspectorTrace.Step($"{owner}.{name} could not be read: {error}");
             return new PropertyValue(name, owner, attached, type, $"({error.GetType().Name}: {error.Message})", ValueSources.Default, null, null);
         }
         if (source.IsAnimated)

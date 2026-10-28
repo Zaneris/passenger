@@ -20,7 +20,7 @@ public sealed class DiffPanes(Func<DiffHighlighting> chosen, Action<DiffHighligh
     public DiffView ForFile(string name, FileDiff diff, TextDocument mine, OpenDocument? open, (string Left, string Right) titles,
         string leftPath, string rightPath)
     {
-        DiffView view = new(name, diff, mine, editable: open is not null, titles, chosen());
+        DiffView view = new(name, diff, mine, editable: open is not null, titles, chosen()) { Source = rightPath };
         view.HighlightingChanged += (_, way) => keep(way);
         Colour(view, [(view.Left, leftPath, null), (view.Right, rightPath, open)]);
         return view;
@@ -52,6 +52,7 @@ public sealed class DiffPanes(Func<DiffHighlighting> chosen, Action<DiffHighligh
                 open.PropertyChanged += OnOpenChanged;
                 letGo.Add(() => open.PropertyChanged -= OnOpenChanged);
             }
+            // Colours alone, of a revision the project may have compiled otherwise: a file in no project's options are guess enough.
             else if (Languages.Highlighters.For(Languages.Language.ForPath(path), pane.Document) is { } colours)
             {
                 pane.Highlighter = colours;

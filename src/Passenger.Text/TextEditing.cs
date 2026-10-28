@@ -105,13 +105,7 @@ public static class TextEditing
                 replacements.Add(Removal(at - 1, at + 1, i));
                 continue;
             }
-            LineReader content = new(text, line);
-            int lead = at;
-            while (lead > line.Start && content[lead - 1] == ' ')
-            {
-                lead--;
-            }
-            if (!indent.UseTabs && lead == line.Start)
+            if (!indent.UseTabs && before == ' ' && SpacesStart(text, line.Start, at) == line.Start)
             {
                 int stop = (at - line.Start - 1) / indent.Size * indent.Size;
                 replacements.Add(Removal(line.Start + stop, at, i));
@@ -120,6 +114,25 @@ public static class TextEditing
             replacements.Add(Removal(TextNavigation.PreviousGrapheme(text, at), at, i));
         }
         return replacements.Count == 0 ? null : Build(Union(replacements), selections, EditKind.DeleteBackward);
+    }
+
+    /// <summary>Where the spaces just before an offset of a line begin, read back a block at a time on the stack.</summary>
+    private static int SpacesStart(TextSnapshot text, int lineStart, int at)
+    {
+        Span<char> block = stackalloc char[64];
+        while (at > lineStart)
+        {
+            int from = Math.Max(lineStart, at - block.Length);
+            Span<char> read = block[..(at - from)];
+            text.CopyTo(from, read);
+            int last = read.LastIndexOfAnyExcept(' ');
+            if (last >= 0)
+            {
+                return from + last + 1;
+            }
+            at = from;
+        }
+        return at;
     }
 
     public static EditPlan? Delete(TextSnapshot text, SelectionSet selections)

@@ -7,6 +7,9 @@ namespace Passenger.App;
 
 public partial class MainWindow
 {
+    /// <summary>What the status bar says once orchestration is added.</summary>
+    private const string AspireAdded = "Added Aspire orchestration";
+
     /// <summary>The current orchestration dialog's result, retained after workspace loading changes the status bar.</summary>
     public Task<string?>? AspireOrchestrationResult { get; private set; }
 
@@ -38,71 +41,90 @@ public partial class MainWindow
             {
                 return null;
             }
-            using CancellationTokenSource cancel = new();
-            void WindowClosed(object? sender, EventArgs args) => cancel.Cancel();
-            Closed += WindowClosed;
-            string staging = Path.Combine(StateFolder, "aspire-staging", Guid.NewGuid().ToString("N"));
-            IReadOnlyList<AspireOrchestration.Write> writes = [];
-            try
+            return await AddAspireOrchestrationAsync(choice);
+        }
+    }
+
+    /// <summary>Aspire orchestration of the services chosen, prepared away from the solution and then written whole: their
+    /// AppHost (the one chosen, else one made) referencing and starting them, their ServiceDefaults, the solution listing
+    /// what was made. What the status bar then says; part of the command given (<paramref name="into"/>), else one of its
+    /// own.</summary>
+    public async Task<string?> AddAspireOrchestrationAsync(AspireOrchestrationChoice choice, CommandHistory.Recording? into = null)
+    {
+        if (Solution is not { } solution)
+        {
+            return status.Text = Refusals.NoSolution;
+        }
+        using CancellationTokenSource cancel = new();
+        void WindowClosed(object? sender, EventArgs args) => cancel.Cancel();
+        Closed += WindowClosed;
+        string staging = Path.Combine(StateFolder, "aspire-staging", Guid.NewGuid().ToString("N"));
+        IReadOnlyList<AspireOrchestration.Write> writes = [];
+        try
+        {
+            string[] existing = [solution.Path, .. choice.Services.SelectMany(p => new[] { p.Path, Path.Combine(p.Folder, "Program.cs") }),
+                .. choice.AppHost is { } host ? (string[])[host.Path, .. AspireOrchestration.AppHostSources(host.Path)] : [],
+                .. choice.ServiceDefaults is { } defaults ? new[] { defaults.Path } : []];
+            if (SaveBeforeWriting(existing) is { } unsaved)
             {
-                string[] existing = [solution.Path, .. choice.Services.SelectMany(p => new[] { p.Path, Path.Combine(p.Folder, "Program.cs") }),
-                    .. choice.AppHost is { } host ? (string[])[host.Path, .. AspireOrchestration.AppHostSources(host.Path)] : [],
-                    .. choice.ServiceDefaults is { } defaults ? new[] { defaults.Path } : []];
-                if (SaveBeforeWriting(existing) is { } unsaved)
+                return status.Text = unsaved;
+            }
+            status.Text = "Preparing Aspire orchestration…";
+            Task<IReadOnlyList<AspireOrchestration.Write>> preparing = AspireOrchestration.PrepareAsync(solution.Path, staging, choice, cancel.Token);
+            BackgroundWork.Track(preparing);
+            writes = await preparing;
+            cancel.Token.ThrowIfCancellationRequested();
+            if (Solution != solution)
+            {
+                return status.Text = "The solution changed: Aspire orchestration was not added";
+            }
+            if (existing.Any(path => Editors.Documents.Any(d => PathNames.Same(d.Path, path) && d.IsModified)))
+            {
+                throw new InvalidOperationException("A file was edited while orchestration was being prepared: save it and try again");
+            }
+            AspireOrchestration.CheckUnchanged(writes);
+            using (CommandHistory.Recording? own = into is null ? Editors.Commands.Record("Add Aspire Orchestration") : null)
+            {
+                CommandHistory.Recording recording = into ?? own!;
+                foreach (AspireOrchestration.Write write in writes)
                 {
-                    return status.Text = unsaved;
+                    recording.Watch(write.Path);
                 }
-                status.Text = "Preparing Aspire orchestration…";
-                Task<IReadOnlyList<AspireOrchestration.Write>> preparing = AspireOrchestration.PrepareAsync(solution.Path, staging, choice, cancel.Token);
-                BackgroundWork.Track(preparing);
-                writes = await preparing;
-                cancel.Token.ThrowIfCancellationRequested();
-                if (Solution != solution)
+                try
                 {
-                    return status.Text = "The solution changed: Aspire orchestration was not added";
-                }
-                if (existing.Any(path => Editors.Documents.Any(d => PathNames.Same(d.Path, path) && d.IsModified)))
-                {
-                    throw new InvalidOperationException("A file was edited while orchestration was being prepared: save it and try again");
-                }
-                AspireOrchestration.CheckUnchanged(writes);
-                using (CommandHistory.Recording recording = Editors.Commands.Record("Add Aspire Orchestration"))
-                {
-                    foreach (AspireOrchestration.Write write in writes)
+                    foreach (AspireOrchestration.Write write in writes.OrderBy(w => w.Before is null ? 0 : PathNames.Same(w.Path, solution.Path) ? 2 : 1))
                     {
-                        recording.Watch(write.Path);
-                    }
-                    try
-                    {
-                        foreach (AspireOrchestration.Write write in writes.OrderBy(w => w.Before is null ? 0 : PathNames.Same(w.Path, solution.Path) ? 2 : 1))
-                        {
-                            Directory.CreateDirectory(Path.GetDirectoryName(write.Path)!);
-                            FileText.Save(write.Path, write.Text.Text, write.Text.Encoding, write.Text.HasBom, write.Text.CrBreaks);
-                        }
-                    }
-                    finally
-                    {
-                        FollowWritten(writes.Select(w => w.Path));
+                        Directory.CreateDirectory(Path.GetDirectoryName(write.Path)!);
+                        FileText.Save(write.Path, write.Text.Text, write.Text.Encoding, write.Text.HasBom, write.Text.CrBreaks);
                     }
                 }
-                ReloadSolution();
-                return status.Text = writes.Count == 0 ? "Aspire orchestration is already configured" : "Added Aspire orchestration";
+                finally
+                {
+                    FollowWritten(writes.Select(w => w.Path));
+                }
+                // The solution is read again only once it and its projects hold what was written.
+                if (await UnlandedAsync(recording) is { } unlanded)
+                {
+                    throw unlanded;
+                }
             }
-            catch (OperationCanceledException)
-            {
-                return status.Text = "Adding Aspire orchestration was canceled";
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or System.Xml.XmlException)
-            {
-                FollowWritten(writes.Select(w => w.Path));
-                ReloadSolution();
-                return status.Text = $"Could not add Aspire orchestration: {error.Message}; Undo Add Aspire Orchestration takes back any change written";
-            }
-            finally
-            {
-                Closed -= WindowClosed;
-                CleanAspireStaging(staging);
-            }
+            ReloadSolution();
+            return status.Text = writes.Count == 0 ? "Aspire orchestration is already configured" : AspireAdded;
+        }
+        catch (OperationCanceledException)
+        {
+            return status.Text = "Adding Aspire orchestration was canceled";
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or System.Xml.XmlException)
+        {
+            FollowWritten(writes.Select(w => w.Path));
+            ReloadSolution();
+            return status.Text = $"Could not add Aspire orchestration: {error.Message}; Undo Add Aspire Orchestration takes back any change written";
+        }
+        finally
+        {
+            Closed -= WindowClosed;
+            CleanAspireStaging(staging);
         }
     }
 

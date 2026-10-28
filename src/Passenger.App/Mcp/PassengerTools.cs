@@ -101,10 +101,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     });
 
     [McpServerTool(Name = McpTools.Workspace, Title = "The workspace", ReadOnly = true), Description(
-        "The open folder and solution, its projects (output type, frameworks), run configurations (the chosen one marked), the " +
-        "language server's state, the open files (unsaved marked) and the active one with its caret, and the Aspire AppHosts and " +
-        "container run under way, each resource with its state, hold, debug session and target. routes adds the web projects' " +
-        "routes, read from their code.")]
+        "The open folder and solution (or solution filter), its projects (output type, frameworks, unloaded marked), run " +
+        "configurations (the chosen one marked), the language server's state, the open files (unsaved marked) and the active " +
+        "one with its caret, and the Aspire AppHosts and container run under way, each resource with its state, hold, debug " +
+        "session and target. routes adds the web projects' routes, read from their code.")]
     public Task<Workspace> GetWorkspace(bool routes = false, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         Workspace answered = await RunsWorkspace(Snapshot(), cancel);
@@ -138,7 +138,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     }
 
     [McpServerTool(Name = McpTools.EditorText, Title = "A file's text in the editor", ReadOnly = true), Description(
-        "A file's text as the editor holds it, unsaved changes included, its lines numbered; opened if it is not.")]
+        "A file's text as the editor holds it, unsaved changes included, its lines numbered.")]
     public Task<string> EditorText(string path, int? from = null, int? to = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         TextSnapshot text = (await TextualAsync(path, cancel)).Text.Snapshot;
@@ -149,10 +149,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     // Not ide_action's app.saveAll: never asked on a person's window (#278), and its answer names what was left unsaved.
     [McpServerTool(Name = McpTools.SaveAll, Title = "Save every file", Destructive = false), Description("Saves every open file with unsaved changes.")]
-    public Task<string> SaveAll(CancellationToken cancel = default) => OnUi(cancel, () =>
+    public Task<string> SaveAll(CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         int unsaved = Editors.Documents.Count(d => d.IsModified);
-        Editors.SaveAll();
+        await SaveLandedAsync(cancel);
         // A read-only file, or one the system refused, keeps its changes, and the agent is told so rather than "Saved".
         List<OpenDocument> left = [.. Editors.Documents.Where(d => d.IsModified)];
         if (left.Count > 0)
@@ -160,8 +160,26 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             string names = string.Join(", ", left.Select(d => FileText.IsReadOnly(d.Path) ? $"{Relative(d.Path)} (read-only)" : Relative(d.Path)));
             throw new InvalidOperationException($"Saved {unsaved - left.Count} of {unsaved} files; not saved: {names}");
         }
-        return Task.FromResult(unsaved == 0 ? "Nothing to save" : $"Saved {Plural.Of(unsaved, "file")}");
+        return unsaved == 0 ? "Nothing to save" : $"Saved {Plural.Of(unsaved, "file")}";
     });
+
+    /// <summary>Saves every changed file and comes back once each save has landed (<see cref="Passenger.App.Editors.EditorArea.LandedAsync"/>), so
+    /// the agent, its shell and what it starts read what was saved; a save that never lands fails the call, saying why.</summary>
+    private async Task SaveLandedAsync(CancellationToken cancel)
+    {
+        Editors.SaveAll();
+        await LandedAsync(cancel);
+    }
+
+    /// <summary>Comes back once each save still landing has (<see cref="Passenger.App.Editors.EditorArea.LandedAsync"/>); one that never lands
+    /// fails the call, saying why.</summary>
+    private static async Task LandedAsync(CancellationToken cancel)
+    {
+        if (await Passenger.App.Editors.EditorArea.LandedAsync(null, cancel) is { } unsaved)
+        {
+            throw new InvalidOperationException(unsaved);
+        }
+    }
 
     // Code: the language server's
 
@@ -210,7 +228,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         return (IReadOnlyList<Finding>)[.. found.Select(d =>
         {
             TextPosition at = ServerPlaces.PositionOf(answered, d.Range.Start);
-            return new Finding(d.Severity switch { DiagnosticSeverity.Error => "error", DiagnosticSeverity.Warning => "warning", DiagnosticSeverity.Information => "info", _ => "hint" }, d.Code?.ToString(), d.Message,
+            return new Finding(d.Severity switch { DiagnosticSeverity.Error => "error", DiagnosticSeverity.Warning => "warning", DiagnosticSeverity.Information => "info", _ => "hint" }, d.Code, d.Message,
                 Relative(document.Path), at.Line + 1, at.Column + 1);
         })];
     });
@@ -379,7 +397,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             {
                 throw new InvalidOperationException(refused);
             }
-            Editors.SaveAll();
+            await SaveLandedAsync(cancel);
             return $"{compose.Said}: {string.Join(", ", compose.Files.Select(f => Relative(f.Path)))}";
         }
         switch (served)
@@ -401,7 +419,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             {
                 throw new InvalidOperationException(problem);
             }
-            Editors.SaveAll();
+            await SaveLandedAsync(cancel);
             return $"{made.Said}: {string.Join(", ", made.Files.Select(f => Relative(f.Path)).Distinct())}";
         }
         (string Type, IReadOnlyList<string> Files)? named = renameFiles && server.Web is null && Session.CSharp?.Session?.Folder is { } folder
@@ -415,7 +433,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             return renaming.Said;
         }
-        Editors.SaveAll();
+        await SaveLandedAsync(cancel);
         List<string> changed = [.. renaming.Files.Where(f => f.Change == "changed").Select(f => Relative(f.Path))];
         List<string> moved = [.. renaming.Files.Where(f => f.Change == "moved").Select(f => $"{Relative(f.Path)} to {Relative(f.To!)}")];
         string renamed = moved.Count > 0 ? $"; renamed {string.Join(", ", moved)}" : string.Empty;
@@ -524,8 +542,20 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             throw new InvalidOperationException($"{what} was not applied: {stale}");
         }
         List<string> dropped = [];
-        int files = WorkspaceEdits.ApplyAsCommand(Editors, edit, title, asked, dropped);
-        Editors.SaveAll();
+        int files;
+        using (Passenger.App.Editors.CommandHistory.Recording recording = Editors.Commands.Record(title))
+        {
+            try
+            {
+                files = WorkspaceEdits.ApplyAsCommand(Editors, edit, recording, asked, dropped);
+                await WorkspaceEdits.LandedAsync(recording, null);
+            }
+            catch (WorkspaceEditFailed failed)
+            {
+                throw new InvalidOperationException($"{what} was not applied: {failed.Message}");
+            }
+        }
+        await SaveLandedAsync(cancel);
         return $"Applied {what} to {Plural.Of(files, "file")}{unrun}{(dropped.Count > 0 ? $", but not to {string.Join(", ", dropped)}, edited meanwhile" : string.Empty)}";
     }, cancel));
 
@@ -558,24 +588,22 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             ServerServed served = file as ServerServed ?? throw Lacks(file, "Reformat Code", MSBuildHas);
             (document, lsp) = (served.Document, served.Lsp);
         }
-        window.OpenFile(document.Path);
         CSharp.CodeActions.Reformatted done = await window.Assist.Actions.ReformatAsync(document, null, () => lsp)
             ?? throw new InvalidOperationException($"Reformat Code was not applied: {Relative(document.Path)} was closed as it was reformatted");
-        return Saved(done, document);
+        return await SavedAsync(done, document, cancel);
     });
 
     /// <summary>A XAML file reformatted as the window's Reformat Code and Code Cleanup reformat it, then saved.</summary>
     private async Task<CSharp.CodeActions.Reformatted> FormatXamlAsync(OpenDocument markup, string what)
     {
-        window.OpenFile(markup.Path);
         CSharp.CodeActions.Reformatted done = await window.Assist.Languages.Xaml.ReformatXamlAsync(markup, null, what);
-        _ = Saved(done, markup);
+        await SavedAsync(done, markup, CancellationToken.None);
         return done;
     }
 
     /// <summary>What a reformat came to, as an agent is told it, the file saved once it is applied and the file holds
     /// what is not saved; one not applied refused, saying why.</summary>
-    private static string Saved(CSharp.CodeActions.Reformatted done, OpenDocument document)
+    private async Task<string> SavedAsync(CSharp.CodeActions.Reformatted done, OpenDocument document, CancellationToken cancel)
     {
         if (!done.Applied)
         {
@@ -584,6 +612,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         if (document.IsModified)
         {
             document.Save();
+            await LandedAsync(cancel);
         }
         return done.Said;
     }
@@ -1083,8 +1112,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             await Until(() => run.IsCompleted || Session.Debug.Session is { State: DebugState.Paused }, TimeSpan.FromMinutes(5), cancel);
             if (!run.IsCompleted)
             {
-                // Looked at every 50 ms: a stop's reading raises nothing as it lands.
-                await Until(() => Session.Debug.Stop is not null, TimeSpan.FromSeconds(5), cancel);
+                await StopReadAsync(Session.Debug.Session, cancel);
                 return TestInfo(tests) with { Debugger = await DebugSnapshotAsync() };
             }
         }
@@ -1126,9 +1154,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     /// <summary>How long tests_list waits for the tests to be found from the test projects' code.</summary>
     private static readonly TimeSpan TestsLookLimit = TimeSpan.FromSeconds(60);
 
+    /// <summary>The last run's tally and its failures, of the tests it ran alone.</summary>
     private TestRunInfo TestInfo(Testing.TestController tests)
     {
-        List<Testing.TestNode> failed = [.. tests.Tree.Methods.Where(m => m.State == Testing.TestState.Failed)];
+        List<Testing.TestNode> failed = [.. tests.RunMethods.Where(m => m.State == Testing.TestState.Failed)];
         return new TestRunInfo(tests.Summary, [.. failed.Select(m => new TestFailure(TestName(m), m.Path is { } at ? $"{Relative(at)}:{m.Line}" : null, m.Details))]);
     }
 
@@ -1577,9 +1606,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     [McpServerTool(Name = McpTools.IdeAction, Title = "Run an IDE action", Destructive = true), Description(
         "Runs an IDE action by its id (app.build, app.debug.stepOver...; ide_actions lists them) as its shortcut would, or " +
-        "says why it cannot. input: app.migrations.add's name, updateTo's target.")]
+        "says why it cannot. input: app.migrations.add's name, updateTo's target; app.saveAsLaunchProfile's configuration (else the chosen one).")]
     public Task<string> IdeAction(string action, string? input = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
         action.StartsWith("app.migrations.", StringComparison.Ordinal) && window.Actions[action] is not null ? await window.MigrationsForAgentAsync(action, input, cancel)
+        : action == AppActions.SaveAsLaunchProfile ? await window.SaveAsLaunchProfileForAgentAsync(input)
         : input is not null ? throw new InvalidOperationException($"{action} takes no input")
         : window.Actions.Run(action) is { } why ? throw new InvalidOperationException($"{action} did not run: {why}") : $"Ran {action}");
 
@@ -1609,14 +1639,27 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             {
                 // Ended while it waited its turn (its agent shut out as the window left the folder): it does nothing in the next.
                 cancel.ThrowIfCancellationRequested();
-                if (!Session.WorkspaceRead.IsCompleted || !Session.Models.Idle.IsCompleted)
+                // A tool run inside another's call reads its files into that call's, let go as that one ends.
+                CallFiles? own = Files.Value is null ? new CallFiles(Editors, connection is { Attached: true }) : null;
+                if (own is not null)
                 {
-                    AgentCall.Say($"Waiting for {Session.Folder ?? "the folder"}'s projects to be read");
-                    await Session.WorkspaceRead.WaitAsync(cancel);
-                    await Session.Models.Idle.WaitAsync(cancel);
-                    AgentCall.Say(null);
+                    Files.Value = own;
                 }
-                return await work();
+                try
+                {
+                    if (!Session.WorkspaceRead.IsCompleted || !Session.Models.Idle.IsCompleted)
+                    {
+                        AgentCall.Say($"Waiting for {Session.Folder ?? "the folder"}'s projects to be read");
+                        await Session.WorkspaceRead.WaitAsync(cancel);
+                        await Session.Models.Idle.WaitAsync(cancel);
+                        AgentCall.Say(null);
+                    }
+                    return await work();
+                }
+                finally
+                {
+                    own?.LetGo();
+                }
             });
         }
         catch (Exception error) when (error is InvalidOperationException or ArgumentException or IOException or UnauthorizedAccessException or TimeoutException
@@ -1674,10 +1717,18 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         DebugSession? going = session ?? Session.Debug.Session;
         await When(() => going is not { State: DebugState.Running or DebugState.Starting }, limit, cancel, StateOf(going));
-        // A stop is read just after the state says paused; looked at every 50 ms, as its reading raises nothing.
-        await Until(() => going is not { State: DebugState.Paused } || Session.Debug.Session == going && Session.Debug.Stop is not null, TimeSpan.FromSeconds(5), cancel);
+        await StopReadAsync(going, cancel);
         return await DebugSnapshotAsync(going);
     }
+
+    /// <summary>Waits for the Debug window to have read the stop a session is paused at (described, its frames listed), which
+    /// comes just after the state says paused, in as long as the adapter takes to answer what it asks; at most
+    /// <see cref="StopReadLimit"/>, past which the stop is taken as one the window never shows (its tab not chosen).</summary>
+    private async Task StopReadAsync(DebugSession? session, CancellationToken cancel) =>
+        await When(() => session is not { State: DebugState.Paused } || Session.Debug.HasRead(session), StopReadLimit, cancel, StateOf(session),
+            On(h => Session.Debug.StopRead += h, h => Session.Debug.StopRead -= h));
+
+    private static TimeSpan StopReadLimit => Waits.Of(TimeSpan.FromSeconds(60));
 
     /// <summary>The session a debugging tool acts on when it names none: the one paused, else the only one debugged; with
     /// none debugged the chosen tab's (ended, or none). Several debugged and none or several paused, the call is refused,
@@ -1719,6 +1770,32 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         return debugger.Tabs.Count > 1 ? snapshot with { Session = of is null ? null : debugger.TabOf(of)?.Name, Sessions = Sessions() } : snapshot;
     }
 
+    /// <summary>Why a paused session stopped and where, as debug_state says them, with nothing else of the stop read.</summary>
+    private async Task<(string? Reason, string? Location)> StoppedAtAsync(DebugSession session)
+    {
+        if (session.State != DebugState.Paused || session.StoppedThread is null)
+        {
+            return (null, null);
+        }
+        (_, DapStackFrame? top) = await StopFramesAsync(session);
+        return (session.StopReason, Located(top, session));
+    }
+
+    /// <summary>A paused session's frames and the one its stop shows: as the Debug window read them, else from the adapter.</summary>
+    private async Task<(IReadOnlyList<DapStackFrame> Frames, DapStackFrame? Top)> StopFramesAsync(DebugSession session)
+    {
+        DebugController debugger = Session.Debug;
+        // The controller's stop is always the one paused at now, since every change drops it; before it is read, the session's.
+        DebugStop? read = debugger.Session == session && debugger.Stop is { } stop && stop.Thread == session.StoppedThread ? stop : null;
+        IReadOnlyList<DapStackFrame> frames = read?.Frames ?? await Stack(session);
+        // The frame the stop shows: past the Live Visual Tree inspector's call a property or binding error breakpoint stops in.
+        return (frames, read?.Top ?? frames.FirstOrDefault(f => f.Source?.Path is not null) ?? (frames.Count > 0 ? frames[0] : null));
+    }
+
+    /// <summary>A frame's place as an agent reads it, path:line:column at the editor's line; null for one with no source.</summary>
+    private string? Located(DapStackFrame? frame, DebugSession session) =>
+        frame?.Source?.Path is { } path && Session.Debug.PlaceOf(frame, session) is { } at ? $"{Relative(path)}:{at.Line + 1}:{at.Column + 1}" : null;
+
     private async Task<DebugSnapshot> SnapshotOf(DebugSession? session)
     {
         DebugController debugger = Session.Debug;
@@ -1732,11 +1809,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             return new DebugSnapshot(session.State, null, null, [], [], null, summary);
         }
         bool shown = debugger.Session == session;
-        // The controller's stop is always the one paused at now, since every change drops it; before it is read, the session's.
-        DebugStop? read = shown && debugger.Stop is { } stop && stop.Thread == session.StoppedThread ? stop : null;
-        IReadOnlyList<DapStackFrame> frames = read?.Frames ?? await Stack(session);
-        // The frame the stop shows: past the Live Visual Tree inspector's call a property or binding error breakpoint stops in.
-        DapStackFrame? top = read?.Top ?? frames.FirstOrDefault(f => f.Source?.Path is not null) ?? (frames.Count > 0 ? frames[0] : null);
+        (IReadOnlyList<DapStackFrame> frames, DapStackFrame? top) = await StopFramesAsync(session);
         List<VariableInfo> locals = [];
         if (shown && debugger.BindingStop is { } failed)
         {
@@ -1765,7 +1838,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         return new DebugSnapshot(
             DebugState.Paused,
             session.StopReason,
-            top?.Source?.Path is { } path && debugger.PlaceOf(top, session) is { } at ? $"{Relative(path)}:{at.Line + 1}:{at.Column + 1}" : null,
+            Located(top, session),
             Frames(frames, session),
             locals,
             null,
@@ -1945,15 +2018,36 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             await When(() => Session.CSharp?.IsReady != false, ServerLimit, cancel, ServerState());
             AgentCall.Say(null);
         }
-        return Session.CSharp is { IsReady: true, Session: { } server }
-            ? server
-            : throw new TimeoutException($"The language server has not loaded the workspace ({Session.CSharp?.State ?? "none"})");
+        if (Session.CSharp is not { IsReady: true, Session: { } server })
+        {
+            throw new TimeoutException($"The language server has not loaded the workspace ({Session.CSharp?.State ?? "none"})");
+        }
+        await TakenInAsync(cancel);
+        return Session.CSharp?.Session ?? server;
     }
 
-    /// <summary>A file opened as the editor would, with the language server's document for it once the
-    /// server has loaded the workspace.</summary>
-    private async Task<(OpenDocument Document, LspDocument Lsp)> Code(string path, CancellationToken cancel)
+    /// <summary>Waits, once the language server has loaded the workspace, until it holds every C# file come under one of the
+    /// folder's projects in its project (one an agent wrote a moment before among them), for up to <see cref="Patience.Limit"/>:
+    /// an answer before would leave each it holds in none out, a rename's callers there unrenamed. Refused, naming the
+    /// first, when the time is up; whether it was waited for (false while the server still loads the workspace).</summary>
+    private async Task<bool> TakenInAsync(CancellationToken cancel)
     {
+        if (Session.CSharp is not { IsReady: true } csharp)
+        {
+            return false;
+        }
+        IReadOnlyList<(string Path, string Project)> left = await csharp.UnplacedAsync(Patience.Limit, looking: true,
+            waiting => AgentCall.Say(waiting is null ? null : $"Waiting for the C# language server to load {Relative(waiting)} into its project"), cancel);
+        return left.Count == 0 ? true
+            : throw new TimeoutException(Refusals.NotTakenIn(Relative(left[0].Path), Path.GetFileNameWithoutExtension(left[0].Project)));
+    }
+
+    /// <summary>A file opened as the editor would, with the language server's document for it once the server has loaded
+    /// the workspace and every C# file come under its projects (<see cref="TakenInAsync"/>, waited for before the file is
+    /// opened, so one just written is opened in its project; <paramref name="takenIn"/> when the caller has).</summary>
+    private async Task<(OpenDocument Document, LspDocument Lsp)> Code(string path, CancellationToken cancel, bool takenIn = false)
+    {
+        takenIn = takenIn || await TakenInAsync(cancel);
         OpenDocument document = await DocumentAsync(path, cancel);
         if (Session.CSharp is null)
         {
@@ -1966,29 +2060,127 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         // Answers before the solution has loaded are wrong; looked at every 50 ms: a server document raises nothing.
         await Until(() => Session.CSharp is not { } csharp || csharp.IsReady && csharp.For(document)?.Lsp is not null, ServerLimit, cancel);
+        if (!takenIn)
+        {
+            await TakenInAsync(cancel);
+        }
         return (document, Session.CSharp?.For(document)?.Lsp
             ?? throw new TimeoutException($"The language server has not loaded {Path.GetFileName(document.Path)} ({Session.CSharp?.State ?? "none"})"));
     }
 
-    /// <summary>A file opened as the editor would. An agent's own file tools write to disk and ask about the file at once,
-    /// before the folder's watcher has told the editor: an open file it has not changed takes the disk's text first, so no
-    /// answer is about the text before, reading the disk off the UI thread and only once its length or time changed since
-    /// the editor read it (<see cref="OpenDocument.TakeDiskTextAsync"/>). A preview has no text to take, and is decoded
-    /// again only when the watcher hears its file change.</summary>
+    /// <summary>A file opened as the editor would, with no tab, held for the call (<see cref="CallFiles"/>). An agent's own
+    /// file tools write to disk and ask at once, before the watcher has told the editor: an open file it has not changed
+    /// takes the disk's text first, read off the UI thread and only once its length or time changed since the editor read
+    /// it (<see cref="OpenDocument.TakeDiskTextAsync"/>). A preview has no text to take, and is decoded again only when
+    /// the watcher hears its file change.</summary>
     private async Task<OpenDocument> DocumentAsync(string path, CancellationToken cancel)
     {
         string full = Resolve(path);
         if (Editors.Find(full) is { } open)
         {
+            Files.Value?.Hold(open);
             await open.TakeDiskTextAsync(cancel);
             return open;
         }
-        if (window.OpenFile(full) is { } problem)
+        if (Files.Value is not { Ended: false } call)
         {
-            throw new FileNotFoundException($"{full} could not be opened: {problem}");
+            throw new InvalidOperationException($"{Relative(full)} is opened for a tool's call only while the call runs");
         }
-        return Editors.Find(full)
-            ?? throw new FileNotFoundException($"{full} is not open in the editor");
+        try
+        {
+            return call.Lend(full);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            throw new FileNotFoundException($"{full} could not be opened: {error.Message}", error);
+        }
+    }
+
+    /// <summary>The call this flow serves' files (<see cref="OnUi"/>'s), the dispatcher flowing it as it flows <see
+    /// cref="AgentCall"/>.</summary>
+    private static readonly AsyncLocal<CallFiles?> Files = new();
+
+    /// <summary>The files one call read or changed, held open while it runs so no other call's end closes them under it, and
+    /// let go after it (<see cref="Lingering"/>): one with no tab closes then, unless the call left it unsaved, or changed it
+    /// in a person's window (<paramref name="keepChanged"/>), where its Undo is the person's, which keeps it in a tab. So an
+    /// agent's session never holds open every file it read, nor a person's window a tab they never opened.</summary>
+    private sealed class CallFiles(Passenger.App.Editors.EditorArea editors, bool keepChanged)
+    {
+        private readonly Dictionary<OpenDocument, (IDisposable Hold, int Version)> held = [];
+
+        /// <summary>Whether the call has ended and let its files go, so nothing it left running holds one again.</summary>
+        public bool Ended { get; private set; }
+
+        public void Hold(OpenDocument document)
+        {
+            if (!Ended && !held.ContainsKey(document))
+            {
+                held[document] = (editors.Hold(document), document.Text.Version);
+            }
+        }
+
+        public OpenDocument Lend(string full)
+        {
+            (OpenDocument document, IDisposable hold) = editors.Lend(full);
+            if (!held.TryAdd(document, (hold, document.Text.Version)))
+            {
+                hold.Dispose();
+            }
+            return document;
+        }
+
+        public void LetGo()
+        {
+            Ended = true;
+            List<IDisposable> holds = [];
+            foreach ((OpenDocument document, (IDisposable hold, int version)) in held)
+            {
+                bool kept = document.IsModified || (keepChanged && document.Text.Version != version);
+                if (kept && editors.Documents.Contains(document) && !editors.HasTab(document))
+                {
+                    editors.Activate(document);
+                }
+                holds.Add(hold);
+            }
+            held.Clear();
+            Lingering.Of(editors).Take(holds);
+        }
+    }
+
+    /// <summary>The files of the call that ended last, held a moment more: an agent's next call is often on the same file,
+    /// which then keeps what its servers worked out as it opened (a linter's findings, a compose file's names). Let go as
+    /// the next call ends, or once the window's calls pause for <see cref="Pause"/>.</summary>
+    private sealed class Lingering
+    {
+        private static readonly TimeSpan Pause = TimeSpan.FromSeconds(2);
+
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Passenger.App.Editors.EditorArea, Lingering> Windows = new();
+
+        private readonly Debounce later;
+        private List<IDisposable> holds = [];
+
+        private Lingering() => later = new Debounce(Pause, () =>
+        {
+            Take([]);
+            return Task.CompletedTask;
+        });
+
+        public static Lingering Of(Passenger.App.Editors.EditorArea editors) => Windows.GetValue(editors, _ => new Lingering());
+
+        /// <summary>Holds the files of the call that ended, then lets go of those of the one before, so a file both held stays open.</summary>
+        public void Take(List<IDisposable> next)
+        {
+            List<IDisposable> before = holds;
+            holds = next;
+            foreach (IDisposable hold in before)
+            {
+                hold.Dispose();
+            }
+            if (next.Count > 0)
+            {
+                later.Restart();
+            }
+        }
     }
 
     /// <summary>A file opened as <see cref="DocumentAsync"/> opens it, refused when its tab holds no text of the file's (an
@@ -2056,8 +2248,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         TextPosition? caret = active is null ? null : Editors.CodeEditor.CaretPosition;
         return new Workspace(
             session.Folder,
-            session.Solution?.Path,
-            [.. (session.Workspace?.Projects ?? []).Select(p => new ProjectInfo(p.Name, Relative(p.Path), p.OutputType, p.TargetFrameworks))],
+            session.Workspace?.Filter?.Path ?? session.Solution?.Path,
+            [.. (session.Workspace?.Projects ?? []).Select(p => new ProjectInfo(p.Name, Relative(p.Path), p.OutputType, p.TargetFrameworks)
+            {
+                Unloaded = session.Unloaded.Contains(p.Path) ? true : null,
+            })],
             [.. session.Configurations.All.Select(c => c.Name)],
             session.Configurations.Chosen?.Name,
             session.CSharp is not { } csharp ? "none" : csharp.IsReady ? "ready" : csharp.State,
@@ -2197,7 +2392,12 @@ public sealed record Workspace(
 /// its handler, its parameters ("id:int (route)"), where it is declared, and its body's type.</summary>
 public sealed record RouteInfo(string Project, string Kind, string Route, string Handler, IReadOnlyList<string> Parameters, string Path, int Line, string? Body);
 
-public sealed record ProjectInfo(string Name, string Path, string? OutputType, IReadOnlyList<string> TargetFrameworks);
+public sealed record ProjectInfo(string Name, string Path, string? OutputType, IReadOnlyList<string> TargetFrameworks)
+{
+    /// <summary>True for a project not loaded: one the solution filter opened leaves out, or one the person unloaded; null
+    /// for one loaded, which the answer leaves unsaid.</summary>
+    public bool? Unloaded { get; init; }
+}
 
 public sealed record Finding(string Severity, string? Code, string Message, string? Path, int Line, int Column);
 

@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Passenger.App.Editors;
 using Passenger.App;
 using Passenger.App.Endpoints;
 using Passenger.Roslyn.Extension;
@@ -198,6 +199,73 @@ public sealed class WebRoutesTests
         }
     }
 
+    /// <summary>An app mapping an HTTP QUERY endpoint (MapMethods) has it listed as QUERY, its Send writing a QUERY with
+    /// its body's sample into the project's .http file and sending it, and Interactive Test opening that request as a
+    /// QUERY: the running app answers each with the method and the body it was sent.</summary>
+    [AvaloniaFact]
+    public void A_query_endpoint_is_sent_a_query_with_its_body_by_its_send_and_by_interactive_test()
+    {
+        using HeldPort port = new();
+        string folder = TestFolders.Create("query-");
+        TestFolders.Write(folder, "Finder.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>", "<Nullable>enable</Nullable>"));
+        TestFolders.Write(folder, "Properties/launchSettings.json",
+            $"{{\n  \"profiles\": {{\n    \"http\": {{ \"commandName\": \"Project\", \"applicationUrl\": \"http://127.0.0.1:{port.Port}\" }}\n  }}\n}}\n");
+        TestFolders.Write(folder, "Program.cs", """
+            WebApplication app = WebApplication.CreateBuilder(args).Build();
+            app.MapMethods("/search", ["QUERY"], (Search search, HttpRequest request) => $"{request.Method} for {search.Text}.");
+            app.Run();
+
+            public record Search(string Text);
+            """);
+        Restore.Run(folder);
+        MainWindow window = Ui.OpenFolder(folder);
+        try
+        {
+            window.ShowToolWindow(ToolWindowIds.Endpoints);
+            Ui.WaitFor(() => Titles(window).Contains("QUERY /search"), () => $"the QUERY route listed; listed: {string.Join(", ", Titles(window))}", TimeSpan.FromMinutes(3));
+            Assert.Equal("Search", Route(window, "QUERY /search").BodyType);
+            window.OpenFile(Path.Combine(folder, "Program.cs"));
+            Ui.Settle();
+            Passenger.App.Workspace.OpenDocument program = window.EditorArea.Active!;
+            int line = Line(program, "app.MapMethods(");
+            Ui.WaitFor(() => program.RouteMarks.Any(m => m.Line == line), "the send icon beside the QUERY's route", TimeSpan.FromMinutes(1));
+
+            port.LetGo(Path.Combine(folder, "gate"));
+            Assert.True(window.SelectConfiguration("Finder: http"), $"No configuration Finder: http among {string.Join(", ", window.Configurations.Select(c => c.Name))}");
+            Ui.Launched(window, window.RunAsync(), "the app to start", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => window.BottomPanel.Run.Document.Snapshot.ToString().Contains("Now listening on:", StringComparison.Ordinal), "the app to listen",
+                TimeSpan.FromMinutes(2));
+
+            MenuItem send = Assert.Single(GutterMenu(window, line));
+            Assert.Equal("Send QUERY /search", send.Header);
+            Ui.Choose(window.RouteMarkMenu!, "Send QUERY /search");
+            Ui.WaitFor(() => window.Endpoints.Response.Response is not null, "the running app's answer", TimeSpan.FromMinutes(1));
+            Assert.True(window.Endpoints.Response.Shown.Contains("QUERY for .", StringComparison.Ordinal),
+                $"The app answered the route's Send with {window.Endpoints.Response.Summary}: {window.Endpoints.Response.Shown}");
+            string http = Path.Combine(folder, "Finder.http");
+            Assert.Contains("QUERY {{Finder_HostAddress}}/search\nAccept: application/json\nContent-Type: application/json\n\n{\n  \"text\": \"\"\n}\n",
+                File.ReadAllText(http), StringComparison.Ordinal);
+
+            Ui.WaitFor(() => window.Endpoints.Requests.Any(r => r.Method == "QUERY"), "the QUERY written into Finder.http, listed");
+            Ui.Click(EndpointsTests.RowButton(window, window.Endpoints.Requests.First(r => r.Method == "QUERY"), "endpointInteractive"));
+            InteractiveTestDialog dialog = window.InteractiveTest!;
+            Ui.Settle();
+            Assert.True(dialog.Method.SelectedItem as string == "QUERY", $"Interactive Test opened the QUERY request as a {dialog.Method.SelectedItem}");
+            dialog.Body.Text = """{ "text": "tea" }""";
+            Ui.Click(dialog.Send);
+            Ui.WaitFor(() => dialog.Response.Response is not null, "the app's answer to the dialog", TimeSpan.FromMinutes(1));
+            Assert.True(dialog.Response.Shown.Contains("QUERY for tea.", StringComparison.Ordinal),
+                $"The app answered Interactive Test's QUERY with {dialog.Response.Summary}: {dialog.Response.Shown}");
+            dialog.Close();
+        }
+        finally
+        {
+            window.Perform(AppActions.Stop);
+            Ui.WaitFor(() => !window.Runner.IsRunning, "the app to stop");
+            window.Close();
+        }
+    }
+
     /// <summary>gRPC's packages at the versions tests/AspireGraphs' AppHost restores into the package cache (Aspire's
     /// dashboard client brings them), so the service restores from there, never from nuget.org.</summary>
     private static readonly (string Id, string Version)[] GrpcPackages = [("Grpc.AspNetCore", "2.83.0"), ("Google.Protobuf", "3.36.1")];
@@ -279,6 +347,78 @@ public sealed class WebRoutesTests
         }
     }
 
+    /// <summary>A change while the routes are read is read again once that read answers: a file of routes a web project takes
+    /// in from a shared folder, written as the first read answers and loaded with the project again, is listed after that
+    /// read, which lacked it; and a route typed while the project's routes are read again is listed as typed, not as that
+    /// read found it a key before.</summary>
+    [AvaloniaFact]
+    public void A_route_that_comes_while_the_routes_are_read_is_listed_once_that_read_has_answered()
+    {
+        string folder = TestFolders.Create("routes-during-");
+        TestFolders.Write(folder, "Web/Web.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>").With(
+            "  <ItemGroup>\n    <Compile Include=\"../Shared/*.cs\" />\n  </ItemGroup>\n"));
+        TestFolders.Write(folder, "Web/Program.cs",
+            "using Web;\n\nWebApplication app = WebApplication.CreateBuilder(args).Build();\napp.MapGet(\"/health\", () => \"ok\");\napp.MapShared();\napp.Run();\n");
+        TestFolders.Write(folder, "Shared/Names.cs", "namespace Web;\n\npublic static class Names\n{\n}\n");
+        Restore.Run(Path.Combine(folder, "Web"));
+        MainWindow window = Ui.OpenFolder(folder);
+        try
+        {
+            Ui.WaitFor(() => window.CSharpService is { IsReady: true }, "the language server to load Web", TimeSpan.FromMinutes(2));
+            Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
+            int loads = 0;
+            window.CSharpService.ProjectsLoaded += (_, _) => loads++;
+
+            // The first read answered before Shared/Routes.cs is written, and held until Web has loaded again with it.
+            TaskCompletionSource first = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            Task firstHeld = server.HoldNextAnswer(Passenger.Lsp.LspMethods.DispatchExtensionMessage, ReadsRoutes, first.Task);
+            try
+            {
+                window.ShowToolWindow(ToolWindowIds.Endpoints);
+                Ui.PumpUntil(() => firstHeld.IsCompleted, "the first read of the routes, answered and held", TimeSpan.FromMinutes(1));
+                TestFolders.Write(folder, "Shared/Routes.cs",
+                    "namespace Web;\n\npublic static class SharedRoutes\n{\n    public static void MapShared(this IEndpointRouteBuilder app) => app.MapGet(\"/shared\", () => \"shared\");\n}\n");
+                Ui.PumpUntil(() => loads > 0, "the language server to load Web again with Shared/Routes.cs", TimeSpan.FromMinutes(2));
+            }
+            finally
+            {
+                first.SetResult();
+            }
+            Ui.WaitFor(() => Titles(window).Contains("GET /shared"),
+                () => $"Shared/Routes.cs's route, written while the first read was under way, to be listed once Web loaded with it (listed: {string.Join(", ", Titles(window))})",
+                TimeSpan.FromMinutes(1));
+
+            window.OpenFile(Path.Combine(folder, "Web", "Program.cs"));
+            Ui.Settle();
+            Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
+            editor.Focus();
+            Ui.PlaceAfter(editor, "\"/health");
+            // The read a key makes answered and held, and another key typed meanwhile.
+            TaskCompletionSource typed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            Task typedHeld = server.HoldNextAnswer(Passenger.Lsp.LspMethods.DispatchExtensionMessage, ReadsRoutes, typed.Task);
+            try
+            {
+                window.KeyTextInput("z");
+                Ui.PumpUntil(() => typedHeld.IsCompleted, "the read of Web's routes the key made, answered and held", TimeSpan.FromMinutes(1));
+                window.KeyTextInput("y");
+            }
+            finally
+            {
+                typed.SetResult();
+            }
+            Ui.WaitFor(() => Titles(window).Contains("GET /healthzy"),
+                () => $"the route as typed, GET /healthzy, its last key typed while the read the first made was under way (listed: {string.Join(", ", Titles(window))})",
+                TimeSpan.FromMinutes(1));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>Whether a request to the language server is a read of the routes.</summary>
+    private static bool ReadsRoutes(object parameters) => parameters is Passenger.Lsp.RoslynExtension.DispatchWorkspaceMessageParams { MessageName: Handlers.WebRoutes };
+
     private static IReadOnlyList<string> Titles(MainWindow window) => [.. window.Endpoints.Routes.Select(RouteRequests.Title)];
 
     private static WebRoute Route(MainWindow window, string title) =>
@@ -298,7 +438,7 @@ public sealed class WebRoutesTests
         TextSnapshot text = editor.Document.Snapshot;
         editor.ScrollTo(new Vector(0, Math.Max(0, line * editor.LineHeight - editor.Bounds.Height / 3)));
         Ui.Settle();
-        double x = Enumerable.Range(0, 400).First(x => editor.IsInMarkColumn(new Point(x, 0))) + 3;
+        double x = Enumerable.Range(0, 400).First(x => editor.IsOnGutterColumn(editor.Gutter!.Marks, new Point(x, 0))) + 3;
         Ui.Click(editor, new Point(x, editor.PointOf(text.GetLineStart(line)).Y + editor.LineHeight / 2));
         return [.. Assert.IsType<MenuFlyout>(window.RouteMarkMenu).Items.OfType<MenuItem>()];
     }

@@ -2,6 +2,9 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Layout;
+using Avalonia.Media;
+using Avalonia.VisualTree;
 using Passenger.App.Docking;
 using Passenger.Core;
 using Passenger.Editor;
@@ -23,6 +26,7 @@ public partial class ExplorerView : UserControl
     {
         InitializeComponent();
         Rows.ItemsSource = Tree.Rows;
+        ReusedRows.Use(Rows, Row);
         // Every key the keymap gives an action (Rename, Delete, the clipboard's) is the window's, run on the chosen row.
         TreeKeys.Attach<ExplorerNode>(Rows, Tree.Toggle, node =>
         {
@@ -92,28 +96,42 @@ public partial class ExplorerView : UserControl
         }
     }
 
-    /// <summary>Reads the folder again, keeping the folders that were open open and the chosen row chosen.</summary>
+    /// <summary>Reads the folder again, keeping the folders that were open open, the chosen row chosen, and the keys on it
+    /// where the rows had them.</summary>
     public void Refresh()
     {
-        static string Key(ExplorerNode row) => (row.Kind == NodeKind.SolutionFolder ? row.SolutionPath : row.Path) ?? $"{row.Depth}/{row.Kind}/{row.Name}";
-        List<(int Depth, string Key)> open = [.. Tree.Rows.Where(r => r.IsExpanded).Select(r => (r.Depth, Key(r)))];
+        static string Key(ExplorerNode row) => (row.Kind == NodeKind.SolutionFolder ? row.SolutionPath : row.Path) ?? $"{row.Owner}/{row.Depth}/{row.Kind}/{row.Name}";
+        HashSet<string> open = new(Tree.Rows.Where(r => r.IsExpanded).Select(Key), StringComparer.Ordinal);
         string? chosen = Selected is { } selected ? Key(selected) : null;
+        bool keys = Rows.IsKeyboardFocusWithin;
+        ExplorerNode? again = null;
         Show(Tree.IsSolutionView);
-        // Outermost first, so each opens inside one already open.
-        foreach ((_, string key) in open.OrderBy(o => o.Depth))
+        // Down the rows as they open: a folder's rows come in after it, so each folder is reached once its holder is open.
+        for (int at = 0; at < Tree.Rows.Count; at++)
         {
-            if (Tree.Rows.FirstOrDefault(r => Key(r) == key) is { HasChildren: true, IsExpanded: false } row)
+            ExplorerNode row = Tree.Rows[at];
+            string key = Key(row);
+            if (row is { HasChildren: true, IsExpanded: false } && open.Remove(key))
             {
                 Tree.Expand(row);
             }
+            if (again is null && key == chosen)
+            {
+                again = row;
+            }
         }
-        if (chosen is not null && Tree.Rows.FirstOrDefault(r => Key(r) == chosen) is { } again)
+        if (again is not null)
         {
             Rows.SelectedItem = again;
         }
         if (revealing is { } waiting)
         {
             Reveal(waiting);
+        }
+        // The rows made again took the keys with them: they come back to the chosen row for the next key pressed here.
+        if (keys && Rows.SelectedIndex >= 0 && !Rows.IsKeyboardFocusWithin)
+        {
+            FocusRows();
         }
     }
 
@@ -139,6 +157,9 @@ public partial class ExplorerView : UserControl
     private string? folder;
     private SolutionModel? solution;
 
+    /// <summary>The file-based programs beside the solution, which the Solution view lists after its own.</summary>
+    private IReadOnlyList<ProjectModel> programs = [];
+
     /// <summary>The project opened alone, which the Solution view shows at its top.</summary>
     private ProjectModel? project;
 
@@ -158,6 +179,7 @@ public partial class ExplorerView : UserControl
     {
         folder = null;
         solution = null;
+        programs = [];
         project = null;
         ViewSwitch.IsVisible = false;
         Tree.Clear();
@@ -167,6 +189,27 @@ public partial class ExplorerView : UserControl
 
     /// <summary>Reads again only the folders that changed on disk, the rows open and chosen kept.</summary>
     public void RefreshFolders(IEnumerable<string> folders) => Tree.RefreshFolders(folders);
+
+    /// <summary>A project unloaded or loaded again: its row made anew, chosen again if it was, the keys kept here, and every
+    /// other row as it was.</summary>
+    public void ShowProjectAgain(string project)
+    {
+        bool keys = Rows.IsKeyboardFocusWithin;
+        bool chosen = Selected is { Kind: NodeKind.Project, Path: { } path } && path == project;
+        if (!Tree.ShowProjectsAgain([project]))
+        {
+            Refresh();
+            return;
+        }
+        if (chosen && Tree.Rows.FirstOrDefault(r => r.Kind == NodeKind.Project && r.Path == project) is { } again)
+        {
+            Rows.SelectedItem = again;
+        }
+        if (keys && Rows.SelectedIndex >= 0 && !Rows.IsKeyboardFocusWithin)
+        {
+            FocusRows();
+        }
+    }
 
     /// <summary>The folder's solution read again (a project added or changed on disk), the rows open kept.</summary>
     public void Reload(WorkspaceModel workspace)
@@ -196,6 +239,7 @@ public partial class ExplorerView : UserControl
     private void Take(WorkspaceModel workspace)
     {
         solution = workspace.Solution;
+        programs = [.. workspace.Programs];
         project = workspace.ProjectFile is null ? null : workspace.Projects.FirstOrDefault();
         ViewSwitch.IsVisible = solution is not null || project is not null;
     }
@@ -204,7 +248,7 @@ public partial class ExplorerView : UserControl
     {
         if (solutionView && solution is not null)
         {
-            Tree.LoadSolution(solution);
+            Tree.LoadSolution(solution, programs);
             ViewName.Text = "Solution";
         }
         else if (solutionView && project is not null)
@@ -333,10 +377,37 @@ public partial class ExplorerView : UserControl
         }
     }
 
-    /// <summary>A left press on a file or folder on disk may begin a drag of it, or of the rows chosen with it.</summary>
+    /// <summary>A row for whichever file or folder the list hands its container: its chevron, icon, name and detail.</summary>
+    private Control Row()
+    {
+        RowGlyphs glyphs = new();
+        glyphs.ChevronPressed += OnChevronPressed;
+        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
+        TextBlock detail = new() { Classes = { "muted" }, FontSize = 12, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        StackPanel row = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { glyphs, name, detail } };
+        return row.Showing<ExplorerNode>(node =>
+        {
+            row.Margin = node.Indent;
+            row.Opacity = node.Opacity;
+            ToolTip.SetTip(row, node.Tip);
+            glyphs.HasChevron = node.HasChildren;
+            glyphs.Turned = node.IsExpanded;
+            glyphs.Icon = node.Icon;
+            glyphs.IconBrush = node.IconBrush;
+            name.Text = node.Name;
+            name.Classes.Set("vcsModified", node.IsVcsModified);
+            name.Classes.Set("vcsAdded", node.IsVcsAdded);
+            name.Classes.Set("vcsUnversioned", node.IsVcsUnversioned);
+            name.Classes.Set("vcsConflicted", node.IsVcsConflicted);
+            detail.Text = node.Detail;
+        });
+    }
+
+    /// <summary>A left press on a file or folder on disk may begin a drag of it, or of the rows chosen with it. The row is
+    /// the one pressed on, never one the scrollbar lies over, so a drag of the bar's thumb stays the bar's.</summary>
     private void OnRowsPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (RowAt(e.GetPosition(Rows)) is { IsMovable: true } row)
+        if ((e.Source as Visual)?.FindAncestorOfType<ListBoxItem>(includeSelf: true)?.DataContext is ExplorerNode { IsMovable: true } row)
         {
             // The rows chosen as it was pressed: the list then chooses the row alone.
             IReadOnlyList<ExplorerNode> chosen = SelectedNodes;

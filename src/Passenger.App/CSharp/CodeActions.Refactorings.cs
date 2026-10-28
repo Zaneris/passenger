@@ -113,7 +113,7 @@ internal sealed partial class CodeActions
     {
         // Asked of the server now rather than read from the diagnostics shown, which a file just opened has yet to get.
         (IReadOnlyList<Diagnostic> found, _) = await lsp.DiagnosticsAsync();
-        List<Diagnostic> unused = [.. found.Where(d => d.Code is { ValueKind: System.Text.Json.JsonValueKind.String } code && code.GetString() == RoslynNames.UnnecessaryUsing)];
+        List<Diagnostic> unused = [.. found.Where(d => !d.CodeIsNumber && d.Code == RoslynNames.UnnecessaryUsing)];
         bool removed = unused.Count > 0
             && await ApplyNamed(lsp, document, LineRange(document.Text.Snapshot, document.Text.Snapshot.GetLineFromOffset(lsp.OffsetOf(unused[0].Range.Start))), unused, RoslynNames.RemoveUnnecessaryUsings);
         TextSnapshot text = document.Text.Snapshot;
@@ -172,7 +172,7 @@ internal sealed partial class CodeActions
                 context.Say($"Safe Delete left the {doomed.Removal.Kind} '{doomed.Removal.Name}' where it is");
                 return;
             }
-            context.Say(Delete(doomed).Said);
+            context.Say((await DeleteAsync(doomed)).Said);
         }
         finally
         {
@@ -197,7 +197,7 @@ internal sealed partial class CodeActions
         {
             return (null, "Safe Delete deletes only what this folder's own code declares");
         }
-        ParsedText? syntax = open?.Syntax?.Current ?? (FileText.Load(path) is { } file ? SafeDeletion.Parse(file.Text) : null);
+        ParsedText? syntax = open?.Syntax?.Current ?? (FileText.Load(path) is { } file ? SafeDeletion.Parse(file.Text, context.Editors.ParseOptions(path)) : null);
         if (syntax is null)
         {
             return (null, $"Safe Delete cannot read {Path.GetFileName(path)} as text");
@@ -271,8 +271,9 @@ internal sealed partial class CodeActions
     }
 
     /// <summary>Takes the declaration out of its file as it is now: an open one through its document, one undo step; one
-    /// not open on disk, a command of its own. One whose declaration was edited meanwhile is left alone, and said so.</summary>
-    public RefactorOutcome Delete(Doomed doomed)
+    /// not open on disk, a command of its own, said once its write has landed. One whose declaration was edited meanwhile is
+    /// left alone, and said so.</summary>
+    public async Task<RefactorOutcome> DeleteAsync(Doomed doomed)
     {
         Removal removal = doomed.Removal;
         string uses = doomed.Uses.Count == 0 ? string.Empty : $", leaving {Plural.Of(doomed.Uses.Count, "usage")} to fix";
@@ -299,6 +300,10 @@ internal sealed partial class CodeActions
                 using Editors.CommandHistory.Recording recording = context.Editors.Commands.Record("Safe Delete");
                 recording.Watch(doomed.Path);
                 _ = FileText.Save(doomed.Path, doomed.Text.Replace(removal.Range.Start, removal.Range.Length, string.Empty).ToString(), file.Encoding, file.HasBom, file.CrBreaks);
+                if (await recording.LandedAsync(context.Say) is [(_, Exception refused), ..])
+                {
+                    return RefactorOutcome.Refused($"Safe Delete failed: {refused.Message}");
+                }
             }
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)

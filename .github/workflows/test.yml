@@ -1,10 +1,17 @@
-# The solution built (warnings are errors) and every test run on macOS (arm64), Windows and Linux (Ubuntu LTS, x64),
-# each system's tests split across shards that run at once, the results in artifacts/test-results. Every restore is
-# locked to the packages.lock.json files. Actions are pinned to a release's commit.
+# The solution built (warnings are errors) and its tests run on macOS (arm64), Windows and Linux (Ubuntu LTS, x64) in
+# two lanes: the gate (the [Gate] tests and the unit tests), whose failure fails the caller, and, when the caller asks,
+# the report lane (every other test), whose failures are listed for triage and fail nothing. Each lane's tests are split
+# across shards that run at once, the results in artifacts/test-results. Every restore is locked to the
+# packages.lock.json files. Actions are pinned to a release's commit.
 name: Test
 
 on:
   workflow_call:
+    inputs:
+      report:
+        description: Whether the report lane runs too, beside the gate
+        type: boolean
+        required: true
 
 permissions:
   contents: read
@@ -16,21 +23,27 @@ env:
   AVALONIA_TELEMETRY_OPTOUT: 1
 
 jobs:
-  # One shard of a system's tests, on a runner of its own. Each builds the solution itself, two minutes beside the
-  # others, rather than all waiting on one build's 2 GB uploaded once and downloaded by each. Each lists the whole suite
-  # and deals its classes to the system's shards by their seconds there (TestTimes.json), the same deal in every shard
-  # of a commit, and runs its own hand.
+  # One shard of a lane of a system's tests, on a runner of its own. Each builds the solution itself, two minutes beside
+  # the others, rather than all waiting on one build's 2 GB uploaded once and downloaded by each. Each lists its lane and
+  # deals its classes to the lane's shards on the system by their seconds there (TestTimes.json), the same deal in every
+  # shard of a commit, and runs its own hand. A report shard's failure is said and fails nothing.
   shard:
-    name: ${{ matrix.name }}, shard ${{ matrix.shard }} of ${{ matrix.shards }}
+    name: ${{ matrix.lane == 'gate' && 'Gate' || 'Report' }}, ${{ matrix.name }}, shard ${{ matrix.shard }} of ${{ matrix.lane == 'gate' && matrix.gate_shards || matrix.report_shards }}
+    continue-on-error: ${{ matrix.lane == 'report' }}
     strategy:
       # One shard's failure never hides another's result.
       fail-fast: false
       matrix:
+        lane: ${{ fromJSON(inputs.report && '["gate", "report"]' || '["gate"]') }}
         system: [macOS, Windows, Linux]
-        # A system's number of shards is its `shards` below, and these numbers up to it (a system with fewer excludes
-        # its others). With four, about 13 to 15 minutes of tests each; GitHub runs five macOS jobs at once, the fifth
-        # CI's disk image.
+        # A lane's number of shards on a system is its gate_shards or report_shards below, and these numbers up to it
+        # (the excludes drop the gate's others). GitHub runs five macOS jobs at once, CI's disk image one of them.
         shard: [1, 2, 3, 4]
+        exclude:
+          - lane: gate
+            shard: 3
+          - lane: gate
+            shard: 4
         # time_scale multiplies every test's wall-clock limit (PASSENGER_TEST_TIME_SCALE), each written as the Mac's
         # time: to the nearest half, the 90th percentile of how much longer a test of a second or more took on the
         # system's runner (in October, macOS 2.23, Windows 2.64, Linux 1.96).
@@ -38,20 +51,26 @@ jobs:
           - system: macOS
             name: macOS (arm64)
             os: macos-latest
-            shards: 4
+            gate_shards: 2
+            report_shards: 4
             time_scale: 2
           - system: Windows
             name: Windows (x64)
             os: windows-latest
-            shards: 4
+            gate_shards: 2
+            report_shards: 4
             time_scale: 2.5
           - system: Linux
             name: Linux (x64)
-            os: ubuntu-24.04
-            shards: 4
+            os: ubuntu-26.04
+            gate_shards: 2
+            report_shards: 4
             time_scale: 2
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 56
+    timeout-minutes: 80
+    env:
+      LANE: ${{ matrix.lane }}
+      SHARDS: ${{ matrix.lane == 'gate' && matrix.gate_shards || matrix.report_shards }}
     defaults:
       run:
         shell: bash
@@ -105,10 +124,10 @@ jobs:
       - name: Restore
         run: dotnet restore --locked-mode
 
-      # Saved once restored, so a failing build or test still leaves the next run its packages; by one shard of each
-      # system, since the others would only find the key taken.
+      # Saved once restored, so a failing build or test still leaves the next run its packages; by the gate's first
+      # shard of each system, which every run has, since the others would only find the key taken.
       - name: Cache NuGet packages
-        if: matrix.shard == 1 && steps.nuget.outputs.cache-hit != 'true'
+        if: matrix.lane == 'gate' && matrix.shard == 1 && steps.nuget.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.nuget/packages
@@ -151,7 +170,7 @@ jobs:
           echo "PASSENGER_TEST_PULL=never" >> "$GITHUB_ENV"
 
       - name: Cache container images
-        if: runner.os == 'Linux' && matrix.shard == 1 && steps.images.outputs.cache-hit != 'true' && steps.pulled.outputs.saved == 'true'
+        if: runner.os == 'Linux' && matrix.lane == 'gate' && matrix.shard == 1 && steps.images.outputs.cache-hit != 'true' && steps.pulled.outputs.saved == 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/container-images.tar
@@ -160,7 +179,7 @@ jobs:
       # A file the .gitignore matches never reaches a clone. After the build, so one that wrote beside the sources
       # shows too; and no tracked file may match a rule, since its folder's other files would not be seen.
       - name: No source is ignored by Git
-        if: matrix.shard == 1
+        if: matrix.lane == 'gate' && matrix.shard == 1
         run: |
           hidden=$(git ls-files --others --ignored --exclude-standard -- src tests tools site
                    git ls-files --cached --ignored --exclude-standard)
@@ -170,51 +189,55 @@ jobs:
             exit 1
           fi
 
-      # The deal goes in the log. Before any test runs, the first shard alone lists what each shard's settings select
-      # and fails unless every test is in exactly one (every shard deals the same, and each listing costs a VSTest
-      # start). The suite's listing and the shards' settings go with the results, for the summary to check them against
-      # and a person to read. A listing that names no test or says discovery failed (xunit #3576) is asked again, up to
-      # three tries.
+      # The deal goes in the log, a class with tests outside the lane weighed by its share of them in the listing of
+      # all. Before any test runs, the lane's first shard alone lists what each shard's settings select and fails unless
+      # every test of the lane is in exactly one (each listing costs a VSTest start). The listings and the shards'
+      # settings go with the results, for the summary and `just test-times` to read. A listing that names no test or
+      # says discovery failed (xunit #3576) is asked again, up to three tries.
       - name: Deal the tests to the shards
         env:
           SYSTEM: ${{ matrix.system }}
-          SHARDS: ${{ matrix.shards }}
           SHARD: ${{ matrix.shard }}
         run: |
           python=python3
           [ "$RUNNER_OS" != Windows ] || python=python
           results=artifacts/test-results
           mkdir -p "$results/shards"
-          "$python" -I tools/test-shards.py list "$results/suite.txt"
-          "$python" -I tools/test-shards.py split "$results/suite.txt" --system "$SYSTEM" --of "$SHARDS" --out "$results/shards"
+          "$python" -I tools/test-shards.py list "$results/suite.txt" --lane "$LANE"
+          "$python" -I tools/test-shards.py list "$results/whole.txt" --lane all
+          "$python" -I tools/test-shards.py split "$results/suite.txt" --lane "$LANE" --whole "$results/whole.txt" \
+            --system "$SYSTEM" --of "$SHARDS" --out "$results/shards"
           [ "$SHARD" = 1 ] || exit 0
           for number in $(seq 1 "$SHARDS"); do
-            "$python" -I tools/test-shards.py list "$results/shards/listed-$number.txt" \
+            "$python" -I tools/test-shards.py list "$results/shards/listed-$number.txt" --lane "$LANE" \
               --settings "$results/shards/shard-$number.runsettings"
           done
           "$python" -I tools/test-shards.py check "$results/suite.txt" "$results"/shards/listed-*.txt
 
-      # A test hung for 10 minutes is stopped and named, rather than holding the job to its timeout. Each class's time
-      # goes in the job's summary, a class over its budget a warning and a shard over TestBudget.json's minutes a
-      # failure; the step's timeout is above that budget, so a slow shard still leaves its table. The failed tests are
-      # listed last, as annotations and in the job's summary.
+      # Each project the hand holds tests of, one after another. A test hung for 10 minutes is stopped and named, rather
+      # than holding the job to its timeout, which only ends a shard stuck past that. Each class's time goes in the job's
+      # summary, held to no limit. The failed tests are listed last, as annotations and in the job's summary.
       - name: Test
         shell: pwsh
-        timeout-minutes: 38
+        timeout-minutes: 60
+        continue-on-error: ${{ matrix.lane == 'report' }}
         env:
           SHARD: ${{ matrix.shard }}
-          LABEL: ${{ matrix.name }}, shard ${{ matrix.shard }} of ${{ matrix.shards }}
+          LABEL: ${{ matrix.lane == 'gate' && 'Gate' || 'Report' }}, ${{ matrix.name }}, shard ${{ matrix.shard }} of ${{ matrix.lane == 'gate' && matrix.gate_shards || matrix.report_shards }}
           PASSENGER_TEST_TIME_SCALE: ${{ matrix.time_scale }}
         run: |
           $results = 'artifacts/test-results'
-          dotnet test tests/Passenger.Tests --no-build --settings "$results/shards/shard-$env:SHARD.runsettings" `
-            --results-directory $results --logger trx --logger "console;verbosity=normal" `
-            --blame-hang-timeout 10m --blame-hang-dump-type none
-          $code = $LASTEXITCODE
+          $code = 0
+          foreach ($project in Get-Content "$results/shards/shard-$env:SHARD.projects") {
+            dotnet test $project --no-build --settings "$results/shards/shard-$env:SHARD.runsettings" `
+              --results-directory $results --logger "trx;LogFileName=$(Split-Path -Leaf $project).trx" `
+              --logger "console;verbosity=normal" --blame-hang-timeout 10m --blame-hang-dump-type none
+            if ($LASTEXITCODE -ne 0) { $code = $LASTEXITCODE }
+          }
           $python = if ($IsWindows) { 'python' } else { 'python3' }
-          & $python -I tools/test-times.py $results --budget tests/Passenger.Tests/TestBudget.json --shard $env:SHARD --label $env:LABEL
-          $budget = $LASTEXITCODE
-          if ($code -eq 0) { exit $budget }
+          & $python -I tools/test-times.py $results --shard $env:SHARD --label $env:LABEL
+          $timed = $LASTEXITCODE
+          if ($code -eq 0) { exit $timed }
           $failed = @(Get-ChildItem $results -Recurse -Filter *.trx -ErrorAction SilentlyContinue | ForEach-Object {
             ([xml](Get-Content -Raw $_.FullName)).TestRun.Results.UnitTestResult |
               Where-Object { $_ -and $_.outcome -notin 'Passed', 'NotExecuted' }
@@ -225,6 +248,7 @@ jobs:
             if ($property) { $text = $text.Replace(':', '%3A').Replace(',', '%2C') }
             $text
           }
+          $kind = if ($env:LANE -eq 'report') { 'warning' } else { 'error' }
           $heading = "Tests failed on ${env:LABEL}: $($failed.Count)"
           if ($failed.Count -eq 0) {
             $heading = "dotnet test failed on ${env:LABEL} with no failed test in its results: the log above says what crashed or hung"
@@ -234,7 +258,7 @@ jobs:
           foreach ($test in $failed) {
             $message = "$($test.Output.ErrorInfo.Message)".Trim()
             Write-Host "  $($test.testName) ($($test.outcome))"
-            Write-Host "::error title=$(Escape $test.testName -property)::$(Escape $message)"
+            Write-Host "::$kind title=$(Escape $test.testName -property)::$(Escape $message)"
             $summary += "- ``$($test.testName)`` ($($test.outcome)): $(($message -split "`n")[0].Trim())"
           }
           $summary | Add-Content -Path $env:GITHUB_STEP_SUMMARY -Encoding utf8
@@ -246,31 +270,33 @@ jobs:
         env:
           SYSTEM: ${{ matrix.system }}
           SHARD: ${{ matrix.shard }}
-          SHARDS: ${{ matrix.shards }}
           STATUS: ${{ job.status }}
         run: |
           mkdir -p artifacts/test-results
-          printf '{"system": "%s", "shard": %s, "shards": %s, "status": "%s"}\n' "$SYSTEM" "$SHARD" "$SHARDS" "$STATUS" \
-            > artifacts/test-results/shard.json
+          printf '{"system": "%s", "lane": "%s", "shard": %s, "shards": %s, "status": "%s"}\n' "$SYSTEM" "$LANE" "$SHARD" \
+            "$SHARDS" "$STATUS" > artifacts/test-results/shard.json
 
       - name: Upload test results
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: test-results-${{ matrix.system }}-${{ matrix.shard }}
+          name: test-results-${{ matrix.system }}-${{ matrix.lane }}-${{ matrix.shard }}
           path: artifacts/test-results/
 
-  # Each system's result as one check: every shard's job succeeded and every test has exactly one result among them,
-  # each class's time in the summary, and a warning when dealing by this run's times would end the slowest shard two
-  # minutes sooner (`just test-times RUN` writes them, for a person to commit). It waits for every system's shards, as
-  # one matrix job's needs must.
+  # Each lane's result on each system as one check: every shard's job succeeded and every test of the lane has exactly
+  # one result among them, each class's time in the summary, and a warning when dealing by this run's times would end
+  # the slowest shard two minutes sooner (`just test-times RUN` writes them, for a person to commit). The report lane's
+  # only warns. It waits for every shard, as one matrix job's needs must.
   summary:
-    name: ${{ matrix.name }}
+    name: ${{ matrix.lane == 'gate' && 'Gate' || 'Report' }}, ${{ matrix.name }}
     needs: shard
     if: ${{ !cancelled() }}
+    continue-on-error: ${{ matrix.lane == 'report' }}
     strategy:
       fail-fast: false
       matrix:
+        lane: ${{ fromJSON(inputs.report && '["gate", "report"]' || '["gate"]') }}
+        system: [macOS, Windows, Linux]
         include:
           - system: macOS
             name: macOS (arm64)
@@ -292,19 +318,45 @@ jobs:
       - name: Download the shards' results
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: test-results-${{ matrix.system }}-*
+          pattern: test-results-${{ matrix.system }}-${{ matrix.lane }}-*
           path: results
 
       - name: Test times
         env:
-          NAME: ${{ matrix.name }}
+          NAME: ${{ matrix.name }}, the ${{ matrix.lane }} lane
         run: |
           if [ -n "$(find results -name '*.trx' 2> /dev/null)" ]; then
-            python3 -I tools/test-times.py results --budget tests/Passenger.Tests/TestBudget.json --summary --label "$NAME"
+            python3 -I tools/test-times.py results --label "$NAME"
           fi
 
       - name: Every test ran in exactly one shard
         if: ${{ !cancelled() }}
         env:
           SYSTEM: ${{ matrix.system }}
-        run: python3 -I tools/test-shards.py cover results --system "$SYSTEM"
+          LANE: ${{ matrix.lane }}
+        run: python3 -I tools/test-shards.py cover results --system "$SYSTEM" --lane "$LANE"
+
+  # The report lane's failed tests on every system in one table, each with its system and the first line of what it
+  # said, to be filed and fixed in the usual way: nothing here fails the run.
+  failures:
+    name: Report's failed tests
+    needs: shard
+    if: ${{ inputs.report && !cancelled() }}
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            tools
+
+      - name: Download the report shards' results
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: test-results-*-report-*
+          path: results
+
+      - name: The failed tests
+        run: python3 -I tools/test-shards.py failures results --title "The report lane's failed tests"

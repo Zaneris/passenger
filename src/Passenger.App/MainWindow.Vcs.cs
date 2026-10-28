@@ -102,10 +102,11 @@ public partial class MainWindow
     {
         ToolWindows.CommitView view = commitView = new ToolWindows.CommitView(session.Vcs);
         view.OpenRequested += (_, path) => OpenFile(path);
+        view.ActionRequested += (_, action) => Request(action);
         view.DiffRequested += (_, path) => IdeErrors.Observe(ShowDiffAsync(path));
         view.RollbackRequested += (_, changes) => IdeErrors.Observe(RollbackAsync(changes));
         view.DeleteRequested += (_, path) => IdeErrors.Observe(DeleteAsync(path));
-        view.IgnoreRequested += (_, path) => Ignore(path);
+        view.IgnoreRequested += (_, path) => IdeErrors.Observe(IgnoreAsync(path));
         view.ResolveRequested += (_, _) => ShowConflicts();
         view.MergeRequested += (_, path) => IdeErrors.Observe(MergeAsync(path));
         view.Confirm = (title, text, yes) => Confirm(title, text, yes);
@@ -119,6 +120,8 @@ public partial class MainWindow
         ToolWindows.GitView view = gitView = new ToolWindows.GitView(session.Vcs);
         view.DiffRequested += (_, chosen) => IdeErrors.Observe(ShowCommitDiffAsync(chosen.Commit, chosen.File));
         view.CompareRequested += (_, chosen) => IdeErrors.Observe(CompareWithAsync(chosen.Local, chosen.Commit.Hash, chosen.Commit.Short, chosen.File.Path));
+        view.OpenRequested += (_, path) => OpenFile(path);
+        view.ActionRequested += (_, action) => Request(action);
         view.NewBranchRequested += (_, commit) =>
         {
             NamePopup popup = new($"New Branch from {commit.Short}", string.Empty, async name => (await session.Vcs.NewBranchAtAsync(name, commit.Hash)).Problem);
@@ -137,7 +140,7 @@ public partial class MainWindow
         VcsController vcs = next.Vcs;
         commitView?.Bind(vcs);
         gitView?.Bind(vcs);
-        vcs.SaveFirst = () => Editors.SaveAll();
+        vcs.SaveFirst = Editors.SaveAllLandedAsync;
         vcs.Message += (_, message) =>
         {
             if (session == next)
@@ -323,7 +326,7 @@ public partial class MainWindow
                 hold.Dispose();
             };
         }
-        ShowOwn(window);
+        ShowDiff(window);
         return window;
     }
 
@@ -347,15 +350,35 @@ public partial class MainWindow
         FileDiff diff = await BackgroundWork.Run(() => FileDiff.Compare(before, text));
         DiffView view = Diffs.ForFile(file.Name, diff, mine, null, (leftTitle, commit.Short), file.From ?? file.Path, file.Path);
         DiffWindow window = new($"{file.Name}: {commit.Short} {commit.Subject}", view);
-        ShowOwn(window);
+        ShowDiff(window);
         return window;
     }
 
+    /// <summary>Shows a diff's window over this one, its Jump to Source opening the file here (<see cref="JumpToSource"/>).</summary>
+    private void ShowDiff(DiffWindow window)
+    {
+        window.View.SourceRequested += (_, _) => JumpToSource(window.View);
+        ShowOwn(window);
+    }
+
+    /// <summary>A diff's Jump to Source: its file at the line its caret is on, the diff's window closed so the file shows.</summary>
+    private void JumpToSource(DiffView diff)
+    {
+        if (WhyNotJump(diff) is { } why)
+        {
+            status.Text = why;
+            return;
+        }
+        TextPosition at = diff.SourcePlace;
+        (TopLevel.GetTopLevel(diff) as Window)?.Close();
+        NavigateTo(diff.Source!, at);
+        Activate();
+    }
+
+    private static string? WhyNotJump(DiffView diff) => diff.Source is { } file && File.Exists(file) ? null : $"{Path.GetFileName(diff.Source)} is not on disk";
+
     /// <summary>The change bar a gutter click on a line falls on, or null.</summary>
-    private static ChangeMark? ChangeAt(OpenDocument document, int line) =>
-        document.ChangeMarks.Cast<ChangeMark?>().FirstOrDefault(m => m!.Value.Count == 0
-            ? line == m.Value.Line || line == m.Value.Line - 1
-            : line >= m.Value.Line && line < m.Value.Line + m.Value.Count);
+    private static ChangeMark? ChangeAt(OpenDocument document, int line) => ChangeColumn.At(document.ChangeMarks, line);
 
     /// <summary>A click on a change bar: a popup of what the lines were, with the change's actions.</summary>
     private async Task ShowChangePopupAsync(CodeEditor editor, OpenDocument document, ChangeMark change)
@@ -487,8 +510,17 @@ public partial class MainWindow
         // A diff's own, whatever it compares: how its differences are highlighted.
         actions!.Add(new IdeAction(AppActions.DiffSettings, "Diff Settings", "Git", context => DiffWithKeys(context)!.ShowSettings())
         {
-            WhyNot = context => DiffWithKeys(context) is null ? "No diff has the keys" : null,
+            WhyNot = context => DiffWithKeys(context) is null ? NoDiff : null,
         });
+        actions.Add(new IdeAction(AppActions.DiffJumpToSource, "Jump to Source", "Git", context => JumpToSource(DiffWithKeys(context)!))
+        {
+            WhyNot = context => DiffWithKeys(context) is { } diff ? WhyNotJump(diff) : NoDiff,
+        });
+        // The Commit and Git windows' Refresh: the working tree's changes, and the log shown, read again.
+        actions.Add(new IdeAction(AppActions.CommitRefresh, "Refresh Changes", "Git", _ => IdeErrors.Observe(session.Vcs.RefreshAsync())) { WhyNot = NeedsRepository });
+        actions.Add(new IdeAction(AppActions.GitLogRefresh, "Refresh Git Log", "Git", _ => IdeErrors.Observe(GitWindow.RefreshAsync())) { WhyNot = NeedsRepository });
+
+        string? NeedsRepository(ActionContext context) => NeedsFolder(context) ?? (session.Vcs.Repository is null ? Refusals.NoRepository : null);
 
         void Add(string id, string title, Action<ActionContext> run, MenuPlace menu, bool onFile = false) =>
             actions!.Add(new IdeAction(id, title, "Git", run)
@@ -497,6 +529,8 @@ public partial class MainWindow
                 Menus = [menu],
             });
     }
+
+    private const string NoDiff = "No diff has the keys";
 
     private static DiffView? DiffWithKeys(ActionContext context) => (context.Focused as Visual)?.FindAncestorOfType<DiffView>(includeSelf: true);
 
@@ -518,12 +552,12 @@ public partial class MainWindow
             status.Text = "No files are chosen to roll back";
             return;
         }
-        // The files are listed, so what goes back is seen before it does.
+        // The files are listed, so what goes back is seen before it does, and every file a rollback deletes is said to be.
         string what = changes.Count == 1 ? changes[0].Name : $"these {changes.Count} files";
-        bool added = changes.Any(c => c.Kind is ChangeKind.Unversioned);
-        string text = added
-            ? $"Roll back the changes to {what}? New files are deleted, and this cannot be undone."
-            : $"Roll back the changes to {what}? This cannot be undone.";
+        string kept = changes.Any(c => c.Kind is ChangeKind.Added) ? " Files added to Git stay on disk, unversioned." : string.Empty;
+        string lost = changes.Any(c => c.Kind is ChangeKind.Unversioned) ? " Unversioned files are deleted, and this cannot be undone."
+            : changes.All(c => c.Kind is ChangeKind.Added) ? string.Empty : " This cannot be undone.";
+        string text = $"Roll back the changes to {what}?{kept}{lost}";
         if (await ConfirmAsync("Rollback Changes", text, "Rollback", ToolWindows.CommitView.FileList(changes, session.Vcs.Repository)))
         {
             await session.Vcs.RollbackAsync(changes);
@@ -580,8 +614,8 @@ public partial class MainWindow
 
     /// <summary>Add to .gitignore: the file's path from the repository's top, a line of its .gitignore, which keeps its
     /// encoding, byte order mark and line breaks and is written as a save writes (through a temporary file, to Local
-    /// History); open with unsaved edits, it is saved first, and shows the line after.</summary>
-    private void Ignore(string path)
+    /// History); open with unsaved edits, it is saved first, and shows the line after; said once the write has landed.</summary>
+    private async Task IgnoreAsync(string path)
     {
         if (session.Vcs.Repository is not { } repository)
         {
@@ -605,6 +639,11 @@ public partial class MainWindow
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             status.Text = $".gitignore was not changed: {error.Message}";
+            return;
+        }
+        if (await UnlandedAsync([ignore]) is { } refused)
+        {
+            status.Text = $".gitignore was not changed: {refused.Message}";
             return;
         }
         FollowWritten([ignore]);

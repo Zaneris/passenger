@@ -36,6 +36,32 @@ public sealed record EfTool(EfToolPlace Place, string Version, string Where)
         start.Environment["DOTNET_ROOT"] = Path.GetDirectoryName(host)!;
         return start;
     }
+
+    /// <summary>The ef.dll inside dotnet-ef 10's or 11's package, which <see cref="EfLaunch"/> starts as dotnet ef would: the
+    /// local tool's in the package cache the folder's restores use, the global tool's in its store; null for another version
+    /// or a package not there (a local tool not restored).</summary>
+    public string? EfDll(string folder)
+    {
+        string[]? inside = Major switch
+        {
+            10 => ["tools", "net8.0", "any", "tools", "net8.0", "any", "ef.dll"],
+            11 => ["tools", "net10.0", "any", "tools", "net", "ef.dll"],
+            _ => null,
+        };
+        if (inside is null)
+        {
+            return null;
+        }
+        string version = Version.ToLowerInvariant();
+        string? package = Place == EfToolPlace.Local
+            ? EfTools.PackagesFolder(folder) is { } packages ? Path.Combine(packages, EfTools.Id, version) : null
+            : Path.Combine(Path.GetDirectoryName(Where)!, ".store", EfTools.Id, version, EfTools.Id, version);
+        string? efDll = package is null ? null : Path.Combine([package, .. inside]);
+        return efDll is not null && File.Exists(efDll) ? efDll : null;
+    }
+
+    /// <summary>The tool's major version; 0 when its version does not read.</summary>
+    public int Major => int.TryParse(Version.Split('.')[0], out int major) ? major : 0;
 }
 
 /// <summary>Finds a project's <c>dotnet ef</c> as dotnet finds it (a local tool manifest from its folder up, else the
@@ -102,17 +128,20 @@ public static class EfTools
 
     /// <summary>Whether the tool's package at a version is in the package cache the folder's restores use, so restoring the
     /// folder's local tools reaches no feed.</summary>
-    public static bool Cached(string version, string folder)
+    public static bool Cached(string version, string folder) =>
+        PackagesFolder(folder) is { } packages && File.Exists(Path.Combine(packages, Id, version.ToLowerInvariant(), $"{Id}.{version.ToLowerInvariant()}.nupkg"));
+
+    /// <summary>The package cache the folder's restores use; null where its configuration does not read, so a restore is
+    /// asked about as one that downloads.</summary>
+    public static string? PackagesFolder(string folder)
     {
         try
         {
-            string packages = NuGet.Configuration.SettingsUtility.GetGlobalPackagesFolder(NuGet.Configuration.Settings.LoadDefaultSettings(folder));
-            return File.Exists(Path.Combine(packages, Id, version.ToLowerInvariant(), $"{Id}.{version.ToLowerInvariant()}.nupkg"));
+            return NuGet.Configuration.SettingsUtility.GetGlobalPackagesFolder(NuGet.Configuration.Settings.LoadDefaultSettings(folder));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or NuGet.Configuration.NuGetConfigurationException)
         {
-            // A configuration that does not read: the restore is asked about, as one that downloads.
-            return false;
+            return null;
         }
     }
 

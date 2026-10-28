@@ -3,7 +3,6 @@ using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
-using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -74,7 +73,7 @@ public sealed class LiveTreeView : DockPanel
     {
         SelectElement = ToolButtons.Toggle(IconKeys.SelectElement, "Select Element: point at a control in the app and click it");
         SelectElement.Click += (_, _) => PickRequested?.Invoke(this, SelectElement.IsChecked == true);
-        Button refresh = ToolButtons.Of(IconKeys.Rerun, "Refresh", () => RefreshRequested?.Invoke(this, EventArgs.Empty));
+        Button refresh = ToolButtons.Of(AppActions.LiveTreeRefresh, IconKeys.Rerun, "Refresh", _ => RefreshRequested?.Invoke(this, EventArgs.Empty));
         status = new TextBlock { Classes = { "muted" }, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0), TextTrimming = TextTrimming.CharacterEllipsis };
         DockPanel top = new() { Margin = new Thickness(6, 0) };
         StackPanel buttons = new() { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center, Children = { SelectElement, refresh } };
@@ -92,8 +91,8 @@ public sealed class LiveTreeView : DockPanel
         {
             Classes = { "tree" },
             ItemsSource = rows,
-            ItemTemplate = new FuncDataTemplate<LiveTreeRow>((row, _) => row is null ? new TextBlock() : Row(row), supportsRecycling: false),
         };
+        ReusedRows.Use(tree, Row);
         // An app's tree goes deeper than the window is wide (Passenger's own, twenty levels down to its status bar).
         ScrollViewer.SetHorizontalScrollBarVisibility(tree, ScrollBarVisibility.Auto);
         tree.SelectionChanged += (_, _) =>
@@ -137,8 +136,8 @@ public sealed class LiveTreeView : DockPanel
         {
             Classes = { "tree" },
             ItemsSource = PropertyRows,
-            ItemTemplate = new FuncDataTemplate<PropertyValue>((value, _) => value is null ? new TextBlock() : PropertyRow(value), supportsRecycling: false),
         };
+        ReusedRows.Use(properties, PropertyRow);
         properties.DoubleTapped += (_, _) =>
         {
             if (properties.SelectedItem is PropertyValue { Place: { } place })
@@ -180,6 +179,7 @@ public sealed class LiveTreeView : DockPanel
     /// <summary>Select Element pressed (on) or let go (off).</summary>
     public event EventHandler<bool>? PickRequested;
 
+    /// <summary>Refresh pressed: its action asked for.</summary>
     public event EventHandler? RefreshRequested;
 
     /// <summary>A link to XAML followed: a control's element, a style's selector, a setter.</summary>
@@ -202,6 +202,7 @@ public sealed class LiveTreeView : DockPanel
     {
         PropertyValue? kept = properties.SelectedItem as PropertyValue;
         ShowProperties();
+        PropertiesRefreshed?.Invoke();
         properties.SelectedItem = kept is null ? null : PropertyRows.FirstOrDefault(p => p.Name == kept.Name);
     }
 
@@ -217,7 +218,6 @@ public sealed class LiveTreeView : DockPanel
         watch.ToggleType = MenuItemToggleType.CheckBox;
         watch.IsChecked = Watched?.Invoke(value) == true;
         ToolTip.SetTip(watch, WhyNotBreak?.Invoke() ?? "Stop the app wherever this property of this control is changed: a style, a binding, code or an animation");
-        ToolTip.SetShowOnDisabled(watch, true);
         List<Control> items = [watch];
         if (value.Place is { } place)
         {
@@ -225,6 +225,9 @@ public sealed class LiveTreeView : DockPanel
         }
         return items;
     }
+
+    /// <summary>The properties' breakpoints changed: a row shows its dot anew, whether or not it is handed another property.</summary>
+    private event Action? PropertiesRefreshed;
 
     /// <summary>The menu item's words.</summary>
     public const string BreakWhenValueChanges = "Break When Value Changes";
@@ -479,77 +482,101 @@ public sealed class LiveTreeView : DockPanel
         }
     }
 
-    private Control Row(LiveTreeRow row)
+    /// <summary>A row for whichever element the list hands its container: its chevron, type, name and classes, faint where
+    /// the element is hidden.</summary>
+    private Control Row()
     {
-        Element element = row.Element;
-        PathIcon chevron = new() { Width = 10, Height = 10, Margin = new Thickness(0, 0, 4, 0), Opacity = row.Expands ? 1 : 0 };
-        void Point() => chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(row.IsExpanded ? IconKeys.ChevronDown : IconKeys.ChevronRight));
-        Point();
-        row.FollowWhileShown(chevron, (_, _) => Point());
+        RowIcon chevron = new() { Width = 10, Height = 10, Margin = new Thickness(0, 0, 4, 0) };
+        TextBlock type = new() { VerticalAlignment = VerticalAlignment.Center };
+        TextBlock name = Colored(new TextBlock { Margin = new Thickness(5, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center }, TokenKeys.Syntax_Field);
+        TextBlock classes = new() { Classes = { "muted" }, Margin = new Thickness(6, 0, 0, 0), FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
+        StackPanel line = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { chevron, type, name, classes } };
         chevron.PointerPressed += (_, e) =>
         {
-            Toggle(row);
-            e.Handled = true;
-        };
-        TextBlock type = new() { Text = element.Type, VerticalAlignment = VerticalAlignment.Center };
-        if (element.FromTemplate)
-        {
-            type.Classes.Add("muted");
-        }
-        StackPanel line = new()
-        {
-            Orientation = Orientation.Horizontal,
-            Height = ListRow.Height,
-            Margin = new Thickness(6 + (row.Depth * 12), 0, 8, 0),
-            Opacity = element.Visible ? 1 : 0.5,
-            Children = { chevron, type },
-        };
-        if (element.Name is { Length: > 0 } name)
-        {
-            line.Children.Add(Colored(new TextBlock { Text = $"#{name}", Margin = new Thickness(5, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center }, TokenKeys.Syntax_Field));
-        }
-        if (element.Classes.Count > 0)
-        {
-            line.Children.Add(new TextBlock
+            if (line.DataContext is LiveTreeRow row)
             {
-                Text = string.Join(" ", element.Classes.Select(c => "." + c)),
-                Classes = { "muted" },
-                Margin = new Thickness(6, 0, 0, 0),
-                FontSize = 12,
-                VerticalAlignment = VerticalAlignment.Center,
-            });
-        }
-        return line;
+                Toggle(row);
+                e.Handled = true;
+            }
+        };
+        return line.Showing<LiveTreeRow>(row =>
+        {
+            Element element = row.Element;
+            chevron.Opacity = row.Expands ? 1 : 0;
+            chevron.DataKey = row.IsExpanded ? IconKeys.ChevronDown : IconKeys.ChevronRight;
+            type.Text = element.Type;
+            type.Classes.Set("muted", element.FromTemplate);
+            line.Margin = new Thickness(6 + (row.Depth * 12), 0, 8, 0);
+            line.Opacity = element.Visible ? 1 : 0.5;
+            name.IsVisible = element.Name is { Length: > 0 };
+            name.Text = name.IsVisible ? $"#{element.Name}" : null;
+            classes.IsVisible = element.Classes.Count > 0;
+            classes.Text = classes.IsVisible ? string.Join(" ", element.Classes.Select(c => "." + c)) : null;
+        });
     }
 
-    private Control PropertyRow(PropertyValue value)
+    /// <summary>A row for whichever property the list hands its container: its name (a breakpoint's dot before it where it
+    /// stops the app), its value, and where the value comes from, a link to its place where it has one.</summary>
+    private Control PropertyRow()
     {
         Grid grid = new() { ColumnDefinitions = new ColumnDefinitions("11*,9*"), RowDefinitions = new RowDefinitions("Auto,Auto"), Margin = new Thickness(8, 3) };
-        TextBlock label = new() { Text = value.Name, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-        DockPanel name = new() { Margin = new Thickness(0, 0, 8, 0), Children = { label } };
-        if (Watched?.Invoke(value) == true)
-        {
-            // A breakpoint's dot before a property that stops the app when it changes.
-            Avalonia.Controls.Shapes.Ellipse dot = new() { Width = 8, Height = 8, Margin = new Thickness(0, 0, 5, 0), VerticalAlignment = VerticalAlignment.Center };
-            dot.Bind(Avalonia.Controls.Shapes.Shape.FillProperty, dot.GetResourceObservable(TokenKeys.Editor_Breakpoint));
-            ToolTip.SetTip(dot, $"The app stops wherever {value.Name} is changed");
-            DockPanel.SetDock(dot, Dock.Left);
-            name.Children.Insert(0, dot);
-        }
-        ToolTip.SetTip(label, $"{value.Name} ({value.Type}, from {value.Owner})");
-        TextBlock shown = new() { Text = value.Value, FontFamily = Fonts.Mono, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-        ToolTip.SetTip(shown, value.Value);
+        TextBlock label = new() { TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+        Avalonia.Controls.Shapes.Ellipse dot = new() { Width = 8, Height = 8, Margin = new Thickness(0, 0, 5, 0), VerticalAlignment = VerticalAlignment.Center };
+        dot.Bind(Avalonia.Controls.Shapes.Shape.FillProperty, dot.GetResourceObservable(TokenKeys.Editor_Breakpoint));
+        DockPanel.SetDock(dot, Dock.Left);
+        DockPanel name = new() { Margin = new Thickness(0, 0, 8, 0), Children = { dot, label } };
+        TextBlock shown = new() { FontFamily = Fonts.Mono, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(shown, 1);
-        string source = value.Detail is { Length: > 0 } detail ? $"{value.Source} · {detail}" : value.Source;
-        Control from = value.Place is { } place
-            ? Link($"{source} · {Placed(place)}", place, small: true)
-            : new TextBlock { Text = source, Classes = { "muted" }, FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis };
-        Grid.SetRow(from, 1);
-        Grid.SetColumnSpan(from, 2);
+        TextBlock linked = new() { FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis };
+        Button link = new() { Classes = { "link" }, Content = linked, HorizontalAlignment = HorizontalAlignment.Left };
+        link.Click += (_, _) =>
+        {
+            if (grid.DataContext is PropertyValue { Place: { } place })
+            {
+                GoToRequested?.Invoke(this, place);
+            }
+        };
+        TextBlock source = new() { Classes = { "muted" }, FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis };
+        foreach (Control from in new Control[] { link, source })
+        {
+            Grid.SetRow(from, 1);
+            Grid.SetColumnSpan(from, 2);
+        }
         grid.Children.Add(name);
         grid.Children.Add(shown);
-        grid.Children.Add(from);
-        return grid;
+        grid.Children.Add(link);
+        grid.Children.Add(source);
+        PropertiesRefreshed += () =>
+        {
+            if (grid.DataContext is PropertyValue value)
+            {
+                Show(value);
+            }
+        };
+        return grid.Showing<PropertyValue>(Show);
+
+        void Show(PropertyValue value)
+        {
+            label.Text = value.Name;
+            // A breakpoint's dot before a property that stops the app when it changes.
+            dot.IsVisible = Watched?.Invoke(value) == true;
+            ToolTip.SetTip(dot, dot.IsVisible ? $"The app stops wherever {value.Name} is changed" : null);
+            ToolTip.SetTip(label, $"{value.Name} ({value.Type}, from {value.Owner})");
+            shown.Text = value.Value;
+            ToolTip.SetTip(shown, value.Value);
+            string from = value.Detail is { Length: > 0 } detail ? $"{value.Source} · {detail}" : value.Source;
+            link.IsVisible = value.Place is not null;
+            source.IsVisible = value.Place is null;
+            if (value.Place is { } place)
+            {
+                linked.Text = $"{from} · {Placed(place)}";
+                ToolTip.SetTip(link, $"Go to {place.File}{(place.Line > 0 ? $":{place.Line}" : string.Empty)}");
+            }
+            else
+            {
+                source.Text = from;
+            }
+        }
     }
 
     private Control StyleBlock(StyleReport style)

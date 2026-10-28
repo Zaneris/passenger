@@ -26,7 +26,7 @@ public partial class MainWindow
         Row(A.NewFolder, "New Folder…", row => AskName("New Folder", string.Empty, name => CreateFolder(NewGoesIn(row)!, name)), Holds);
         // Class, Interface, Record, Struct and Enum share this place, chosen in its popup.
         Row(A.NewType, "Class/Interface…", row => AskType(NewGoesIn(row)!), Holds);
-        Row(A.NewSolutionFolder, "New Solution Folder…", row => AskName("New Solution Folder", string.Empty, name => AddSolutionFolder(row.SolutionPath, name)),
+        Row(A.NewSolutionFolder, "New Solution Folder…", row => AskName("New Solution Folder", string.Empty, name => AddSolutionFolderAsync(row.SolutionPath, name)),
             row => row.Kind is NodeKind.Solution or NodeKind.SolutionFolder ? null : "A solution folder goes in the solution or one of its folders");
         Row(A.AddExistingProject, "Add Existing Project…", row => IdeErrors.Observe(AddExistingProjectsAsync(row.SolutionPath)),
             row => row.Kind is NodeKind.Solution or NodeKind.SolutionFolder ? null : "A project is added to the solution or one of its folders", _ => "Existing Project…");
@@ -35,7 +35,7 @@ public partial class MainWindow
         Row(A.AddReference, "Add Reference…", row => ShowAddReference(Referencing(row)!),
             row => Referencing(row) is null ? $"{row.Name} takes no reference" : null, row => row.Kind == NodeKind.Project ? "Reference…" : "Add Reference…");
         Row(A.AddDockerSupport, "Add Docker Support…", row => ShowDockerSupport(row.Path!),
-            row => row is { Kind: NodeKind.Project, Path: not null } ? null : "Docker support is added to a project", _ => "Docker Support…");
+            row => row is { Kind: NodeKind.Project, Path: not null, IsProgram: false } ? null : "Docker support is added to a project", _ => "Docker Support…");
         Row(A.AddDockerCompose, "Add Docker Compose…", _ => ShowDockerCompose(),
             row => row.Kind == NodeKind.Solution ? null : "Docker Compose is added to the solution", _ => "Docker Compose…");
         // The solution's, from its row or a solution folder's, and from Find Action wherever a solution is open.
@@ -65,6 +65,8 @@ public partial class MainWindow
         OnDisk(A.CopyPath, "Copy Path", path => IdeErrors.Observe(CopyPathAsync(path)));
         OnDisk(A.RevealInFileManager, FileManager.Showing, ShowInFileManager, FileManager.Name);
         OnDisk(A.OpenInTerminal, "Open in Terminal", path => IdeErrors.Observe(OpenTerminalAt(Directory.Exists(path) ? path : Path.GetDirectoryName(path)!)), "Terminal");
+        OnDisk(A.OpenInBrowser, "Open in Browser", path => Browse(new Uri(path)), "Browser",
+            path => Languages.Language.ForPath(path) == Languages.Language.Html ? null : $"{Path.GetFileName(path)} is not an HTML page");
         // Rider's RenameElement: the Explorer's row where its menu or keys ask, else what is at the editor's caret.
         actions.Add(new IdeAction(A.Rename, "Rename…", "Code", c =>
         {
@@ -83,7 +85,8 @@ public partial class MainWindow
         });
 
         static string? Holds(ExplorerNode row) => NewGoesIn(row) is null ? $"Nothing new goes in {row.Name}" : null;
-        static string? Referencing(ExplorerNode row) => row.Kind == NodeKind.Project ? row.Path : row.Kind == NodeKind.Dependencies ? row.Owner : null;
+        static string? Referencing(ExplorerNode row) => row.Kind == NodeKind.Project && !row.IsProgram ? row.Path
+            : row.Kind == NodeKind.Dependencies && row.Owner is { } owner && !Passenger.Host.ProgramFiles.IsProgram(owner) ? owner : null;
     }
 
     /// <summary>One of the Explorer's own actions, on its row.</summary>
@@ -94,11 +97,12 @@ public partial class MainWindow
             TitleIn = titleIn is null ? null : c => RowOf(c) is { } row ? titleIn(row) : title,
         });
 
-    /// <summary>An action on what is on disk: the Explorer's row while its menu or keys ask, else the file shown.</summary>
-    private void OnDisk(string id, string title, Action<string> run, string? titleInMenu = null) =>
+    /// <summary>An action on what is on disk: the Explorer's row while its menu or keys ask, else the file shown; one that
+    /// takes only some files says why not of the others (<paramref name="whyNot"/>).</summary>
+    private void OnDisk(string id, string title, Action<string> run, string? titleInMenu = null, Func<string, string?>? whyNot = null) =>
         actions!.Add(new IdeAction(id, title, ExplorerGroup, c => run(PathOnDisk(c)!))
         {
-            WhyNot = c => PathOnDisk(c) is not null ? null : RowOf(c) is { } row ? $"{row.Name} is in no folder on disk" : Refusals.NoFile,
+            WhyNot = c => PathOnDisk(c) is { } path ? whyNot?.Invoke(path) : RowOf(c) is { } row ? $"{row.Name} is in no folder on disk" : Refusals.NoFile,
             TitleIn = titleInMenu is null ? null : c => c.ExplorerRow is null ? title : titleInMenu,
         });
 
@@ -129,10 +133,10 @@ public partial class MainWindow
         switch (row)
         {
             case { Kind: NodeKind.SolutionFolder, SolutionPath: { } renaming }:
-                AskName("Rename Solution Folder", row.Name, name => RenameSolutionFolder(renaming, name));
+                AskName("Rename Solution Folder", row.Name, name => RenameSolutionFolderAsync(renaming, name));
                 break;
             case { Kind: NodeKind.Project, Path: { } project }:
-                AskName("Rename Project", Path.GetFileNameWithoutExtension(project), name => RenameProject(project, name));
+                AskName("Rename Project", Path.GetFileNameWithoutExtension(project), name => RenameProjectAsync(project, name));
                 break;
             case { Path: { } path }:
                 AskRename(path);
@@ -173,11 +177,11 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>A row's menu, its items the window's actions run on the row: Build, Rebuild and Clean for the solution
-    /// or the projects chosen, their unit tests, a project's packages, file and unloading, Add where things can go,
-    /// Edit (the clipboard's actions, Delete or for the solution's own Remove, Rename, Find and Replace in Files), the
-    /// path of what is on disk, Open In, Tools' Compare, Local History and Git's history. A project's Dependencies add
-    /// a reference, and a project reference is removed. None for a row with nothing to do (a package).</summary>
+    /// <summary>A row's menu, its items the window's actions run on the row: Build, Rebuild and Clean for the solution or
+    /// the projects chosen, a program's Run and Debug, unit tests where they hold any, a project's packages, file and
+    /// unloading, Add where things go, Edit (the clipboard's actions, Delete or the solution's Remove, Rename, Find and
+    /// Replace in Files), the path of what is on disk, Open In, Tools' Compare, Local History and Git's history. A project's
+    /// Dependencies add a reference, and a project reference is removed. None for a row with nothing to do.</summary>
     private IReadOnlyList<Control>? ExplorerMenu(ExplorerNode node)
     {
         bool onDisk = node.Kind is NodeKind.File or NodeKind.Folder or NodeKind.Project;
@@ -209,7 +213,11 @@ public partial class MainWindow
             }
             entries.Add(separator);
         }
-        if (node.Kind is NodeKind.Project or NodeKind.SolutionFolder)
+        if (node is { Kind: NodeKind.Project, Path: { } runs } && ProgramConfiguration(runs) is not null)
+        {
+            entries.AddRange([Item(A.RunHere), Item(A.DebugHere), separator]);
+        }
+        if (TestProjectsOf(node).Any())
         {
             entries.AddRange([Item(A.RunTests), Item(A.DebugTests), separator]);
         }
@@ -277,7 +285,12 @@ public partial class MainWindow
         // A solution folder is in no folder on disk, so it has no path to copy or show.
         if (!solutionFolder)
         {
-            entries.AddRange([Item(A.CopyPath), Sub("Open In", [Item(A.RevealInFileManager), Item(A.OpenInTerminal)])]);
+            List<MenuEntry> openIn = [Item(A.RevealInFileManager), Item(A.OpenInTerminal)];
+            if (node is { Kind: NodeKind.File, Path: { } page } && Languages.Language.ForPath(page) == Languages.Language.Html)
+            {
+                openIn.Add(Item(A.OpenInBrowser));
+            }
+            entries.AddRange([Item(A.CopyPath), Sub("Open In", openIn)]);
         }
         if (node.Kind == NodeKind.File && !node.IsSolutionItem)
         {

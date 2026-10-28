@@ -47,6 +47,7 @@ public sealed class CodeEditsTests : IClassFixture<CodeEditsTests.Project>
     /// template's end, each taken back by one Undo; Complete Current Statement closes what is typed (an if, a call, a
     /// declaration, a method) and puts the caret where the next code goes; and around an expression Surround With
     /// offers a cast and parentheses, around types a namespace.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Surround_with_and_complete_current_statement_write_rider_s_code_around_and_after_what_is_chosen_or_typed()
     {
@@ -150,6 +151,7 @@ public sealed class CodeEditsTests : IClassFixture<CodeEditsTests.Project>
     /// the rest; Introduce Field makes a constant a field of the type and says why not for anything else, one Undo
     /// taking it back; Introduce Parameter makes an expression a parameter and passes it at every call; and Encapsulate
     /// Field offers the choice of using the property and makes it.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Optimize_imports_introduce_field_and_parameter_and_encapsulate_field_make_their_edits_as_rider_names_them()
     {
@@ -211,6 +213,7 @@ public sealed class CodeEditsTests : IClassFixture<CodeEditsTests.Project>
 
     /// <summary>Introduce Variable over an expression the method uses twice offers the server's two choices, and the one
     /// for every occurrence makes a local of it in the place of each, one Undo taking it back.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Introduce_variable_offers_one_occurrence_or_all_and_makes_a_local_in_the_place_of_each()
     {
@@ -234,6 +237,7 @@ public sealed class CodeEditsTests : IClassFixture<CodeEditsTests.Project>
 
     /// <summary>Inline on a local puts its value in its one use at once; on the call of a method called once it offers
     /// to inline the method or to keep it too, and inlining puts its body in the call's place and deletes it.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Inline_puts_a_locals_value_in_its_use_and_a_methods_body_in_its_call()
     {
@@ -260,6 +264,7 @@ public sealed class CodeEditsTests : IClassFixture<CodeEditsTests.Project>
     /// <summary>A method nothing uses goes at once, its doc comment and the blank line before it with it; one that is
     /// called has its calls listed and is deleted only when told to, from a usage too, the call left to fix; and Undo
     /// in the Solution view puts the declaration back.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Safe_delete_deletes_an_unused_method_at_once_and_lists_a_used_ones_usages_before_deleting_it_when_told_to()
     {
@@ -296,6 +301,7 @@ public sealed class CodeEditsTests : IClassFixture<CodeEditsTests.Project>
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Safe_delete_from_a_usage_of_a_method_declared_in_a_file_not_open_is_undone_from_the_solution_view()
     {
@@ -327,6 +333,7 @@ public sealed class CodeEditsTests : IClassFixture<CodeEditsTests.Project>
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_rename_reaching_a_file_not_open_that_changed_on_disk_a_moment_before_is_refused_and_once_the_server_has_it_lands_right()
     {
@@ -381,6 +388,7 @@ public sealed class CodeEditsTests : IClassFixture<CodeEditsTests.Project>
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Safe_delete_in_a_file_not_open_whose_lines_end_in_carriage_returns_keeps_them()
     {
@@ -476,7 +484,6 @@ public sealed class CodeEditsTests : IClassFixture<CodeEditsTests.Project>
             File.WriteAllText(PathOf("Prices.cs"), "static class Prices\n{\n    public static int Total(int price, int count)\n    {\n        return price * count + price * count / 10;\n    }\n}\n");
             File.WriteAllText(PathOf("Inlined.cs"), "static class Inlined\n{\n    public static int Area(int width, int height)\n    {\n        int area = width * height;\n"
                 + "        return area + 1;\n    }\n\n    private static int Half(int value) => value / 2;\n\n    public static int Quarter(int value) => Half(value) + 1;\n}\n");
-            Prepare();
         }
     }
 }

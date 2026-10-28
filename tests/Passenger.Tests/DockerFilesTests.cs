@@ -517,6 +517,8 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
         }
     }
 
+    /// <summary>Add Docker Support's Dockerfile and .dockerignore come into the Explorer as their own rows alone, every other
+    /// row shown staying the row it was, and Undo takes both away.</summary>
     [AvaloniaFact]
     public void Add_docker_support_writes_the_projects_dockerfile_and_the_contexts_dockerignore_and_undo_takes_both_away()
     {
@@ -524,14 +526,17 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
         try
         {
             AwaitEvaluated(window);
+            string dockerfile = app.PathOf("Api/Dockerfile");
+            string ignore = app.PathOf(".dockerignore");
+            window.ExplorerView.Reveal(app.PathOf("Api/Program.cs"));
+            window.ExplorerView.Reveal(app.PathOf("Worker/Program.cs"));
+            Ui.Settle();
             Ui.ChooseFromRowMenu(window, Row(window, NodeKind.Project, "Api"), "Add", "Docker Support…");
             DockerSupportDialog dialog = DialogButtonsTests.Check(Assert.Single(window.OwnedWindows.OfType<DockerSupportDialog>()));
             Assert.Equal(DockerSupportKind.Dockerfile, dialog.Chosen);
-            dialog.Accept();
-            Ui.Settle();
+            FilesFollowed.Check(window, "Add Docker Support", [dockerfile, ignore], dialog.Accept);
+            Assert.Contains(window.ExplorerView.Tree.Rows, r => r.Path == dockerfile);
 
-            string dockerfile = app.PathOf("Api/Dockerfile");
-            string ignore = app.PathOf(".dockerignore");
             Assert.Equal(Shop.Dockerfile, File.ReadAllText(dockerfile));
             Assert.Equal(DockerFiles.Ignore, File.ReadAllText(ignore));
             Assert.Equal(dockerfile, window.EditorArea.Active?.Path);
@@ -577,7 +582,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
             Assert.Equal(set, File.ReadAllText(worker));
             Assert.False(File.Exists(app.PathOf("Worker/Dockerfile")), "The SDK's container support wrote a Dockerfile too");
 
-            Assert.Null(window.AddDockerSupport(worker, DockerSupportKind.Sdk));
+            Assert.Null(Ui.Await(window.AddDockerSupportAsync(worker, DockerSupportKind.Sdk), "Docker Support added"));
             Assert.Equal(set, File.ReadAllText(worker));
         }
         finally
@@ -638,7 +643,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
             AwaitEvaluated(window);
             List<string> asked = Answer(window);
             OpenDocument project = window.EditorArea.Active!;
-            Assert.Null(window.AddDockerSupport(worker, DockerSupportKind.Sdk));
+            Assert.Null(Ui.Await(window.AddDockerSupportAsync(worker, DockerSupportKind.Sdk), "Docker Support added"));
             string set = File.ReadAllText(worker);
             Assert.Contains("<ContainerRepository>worker</ContainerRepository>", set, StringComparison.Ordinal);
             Assert.Equal(Lf(set), Lf(project.Text.Snapshot.ToString()));
@@ -650,7 +655,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
             window.OpenFile(app.PathOf("Shop.slnx"));
             Ui.Settle();
             OpenDocument solution = window.EditorArea.Active!;
-            Assert.Null(window.AddDockerCompose([app.PathOf("Api/Api.csproj")], ["postgres"]));
+            Assert.Null(Ui.Await(window.AddDockerComposeAsync([app.PathOf("Api/Api.csproj")], ["postgres"]), "compose.yaml added"));
             string[] made = [app.PathOf("compose.yaml"), app.PathOf("Api/Dockerfile"), app.PathOf(".dockerignore")];
             string listed = File.ReadAllText(app.PathOf("Shop.slnx"));
             Assert.Contains("compose.yaml", solution.Text.Snapshot.ToString(), StringComparison.Ordinal);
@@ -697,13 +702,15 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         string[] missing = [.. ((string[])["mcr.microsoft.com/dotnet/sdk:10.0", "mcr.microsoft.com/dotnet/runtime:10.0"])
-            .Where(i => !Task.Run(() => Passenger.App.Containers.ContainerEngine.Shared.RunAsync(["image", "inspect", i], TimeSpan.FromSeconds(30).Scaled())).GetAwaiter().GetResult().Succeeded)];
+            .Where(i => !Ui.AwaitPumped(Waiting.Apart(() => Passenger.App.Containers.ContainerEngine.Shared.RunAsync(["image", "inspect", i], TimeSpan.FromSeconds(30).Scaled())),
+                $"docker image inspect {i}", TimeSpan.FromSeconds(30) + TestFolders.Spare).Succeeded)];
         Assert.SkipWhen(missing.Length > 0, $"The engine lacks the images the Dockerfile builds on, which no test pulls: pull {string.Join(" and ", missing)} to run it");
         string dockerfile = DockerSupportAtRoot(solution: false);
         string folder = Path.GetDirectoryName(dockerfile)!;
         string image = $"ptest{Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture)}tiny";
-        Passenger.Core.ChildResult built = Task.Run(() => Passenger.App.Containers.ContainerEngine.Shared.RunAsync(
-            ["build", "--pull=false", "--label", Docker.RunLabel, "-t", image, "-f", dockerfile, folder], TimeSpan.FromMinutes(10).Scaled())).GetAwaiter().GetResult();
+        Passenger.Core.ChildResult built = Ui.AwaitPumped(Waiting.Apart(() => Passenger.App.Containers.ContainerEngine.Shared.RunAsync(
+            ["build", "--pull=false", "--label", Docker.RunLabel, "-t", image, "-f", dockerfile, folder], TimeSpan.FromMinutes(10).Scaled())), "the Dockerfile's build",
+            TimeSpan.FromMinutes(10) + TestFolders.Spare);
         try
         {
             Assert.True(built.Succeeded, $"The Dockerfile written did not build: {Passenger.App.Containers.ContainerEngine.Said(built)}");
@@ -723,7 +730,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
         try
         {
             Ui.WaitFor(() => window.Session.Workspace?.Projects is [{ IsEvaluated: true }], "the project evaluated", TimeSpan.FromMinutes(2));
-            Assert.Null(window.AddDockerSupport(Path.Combine(PathNames.Canonical(folder), "Tiny.csproj"), DockerSupportKind.Dockerfile));
+            Assert.Null(Ui.Await(window.AddDockerSupportAsync(Path.Combine(PathNames.Canonical(folder), "Tiny.csproj"), DockerSupportKind.Dockerfile), "Docker Support added"));
             return Path.Combine(folder, "Dockerfile");
         }
         finally
@@ -756,7 +763,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
         {
             AwaitEvaluated(window, 3);
             string root = PathNames.Canonical(folder);
-            Assert.Null(window.AddDockerCompose([.. ((string[])["Api", "Shop", "Web"]).Select(p => Path.Combine(root, p, $"{p}.csproj"))], []));
+            Assert.Null(Ui.Await(window.AddDockerComposeAsync([.. ((string[])["Api", "Shop", "Web"]).Select(p => Path.Combine(root, p, $"{p}.csproj"))], []), "compose.yaml added"));
             string compose = File.ReadAllText(Path.Combine(folder, "compose.yaml"));
             Assert.Equal("services:\n"
                 + "  api:\n    build:\n      context: Api\n      dockerfile: Dockerfile\n    image: api\n    ports:\n      - \"5000:5000\"\n"
@@ -794,7 +801,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
         try
         {
             AwaitEvaluated(window, 1);
-            Assert.Null(window.AddDockerCompose([Path.Combine(PathNames.Canonical(folder), "Orders", "Orders.csproj")], ["postgres", "sqlserver", "redis"]));
+            Assert.Null(Ui.Await(window.AddDockerComposeAsync([Path.Combine(PathNames.Canonical(folder), "Orders", "Orders.csproj")], ["postgres", "sqlserver", "redis"]), "compose.yaml added"));
             string compose = File.ReadAllText(Path.Combine(folder, "compose.yaml"));
             Assert.Contains("    environment:\n"
                 + "      ConnectionStrings__Main: \"Host=postgres;Port=5432;Database=orders;Username=postgres;Password=${POSTGRES_PASSWORD:-postgres}\"\n"
@@ -832,8 +839,9 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
             ("ByReference/Program.cs", "System.Console.WriteLine(\"By reference\");\n"),
             ("ByPackage/ByPackage.csproj", Console + "  <ItemGroup>\n    <PackageReference Include=\"Shop.Kit\" Version=\"1.0.0\" />\n  </ItemGroup>\n</Project>\n"),
             ("ByPackage/Program.cs", "System.Console.WriteLine(\"By package\");\n"));
-        Passenger.Core.ChildResult packed = Task.Run(() => Passenger.Core.ChildProcesses.RunAsync(
-            Passenger.Core.ChildProcesses.DotnetCommand(["pack", Path.Combine(folder, "Kit", "Kit.csproj"), "-o", Path.Combine(folder, "feed")]), limit: Restore.Limit.Scaled())).GetAwaiter().GetResult();
+        Passenger.Core.ChildResult packed = Ui.Await(Waiting.Apart(() => Passenger.Core.ChildProcesses.RunAsync(
+            Passenger.Core.ChildProcesses.DotnetCommand(["pack", Path.Combine(folder, "Kit", "Kit.csproj"), "-o", Path.Combine(folder, "feed")]), limit: Restore.Limit.Scaled())),
+            "Kit's pack", Restore.Limit + TestFolders.Spare);
         Assert.True(packed.Succeeded, $"Kit did not pack: {packed.Output}{packed.Error}");
         Restore.Run(Path.Combine(folder, "ByPackage", "ByPackage.csproj"));
         MainWindow window = OpenOwn(Path.Combine(folder, "Kit.slnx"));
@@ -843,7 +851,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
             string root = PathNames.Canonical(folder);
             foreach (string project in (string[])["ByReference", "ByPackage"])
             {
-                Assert.Null(window.AddDockerSupport(Path.Combine(root, project, $"{project}.csproj"), DockerSupportKind.Dockerfile));
+                Assert.Null(Ui.Await(window.AddDockerSupportAsync(Path.Combine(root, project, $"{project}.csproj"), DockerSupportKind.Dockerfile), "Docker Support added"));
                 string written = File.ReadAllText(Path.Combine(folder, project, "Dockerfile"));
                 Assert.True(written.Contains("FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base\n", StringComparison.Ordinal),
                     $"{project}, which ASP.NET Core reaches, was not given the aspnet image:\n{written}");
@@ -1172,10 +1180,27 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
             WebLanguagesTests.SkipWithoutNode();
             if (yaml)
             {
-                Passenger.App.Web.NodeRuntime node = Task.Run(() => Passenger.App.Web.NodeRuntime.FindAsync(null)).GetAwaiter().GetResult();
-                string? old = node.Problem ?? node.TooOldFor(Path.Combine(Passenger.App.Web.WebLanguages.Modules, "yaml-language-server", "package.json"), "the YAML language server");
+                string? old = Ui.Await(Waiting.Apart(() => TooOldAsync()), "the PATH's Node.js to say its version");
                 Assert.SkipWhen(old is not null, $"The YAML language server cannot run here: {old}");
             }
+        }
+
+        /// <inheritdoc cref="SkipWithoutNode"/>
+        public static async Task SkipWithoutNodeAsync(bool yaml = false)
+        {
+            await WebLanguagesTests.SkipWithoutNodeAsync();
+            if (yaml)
+            {
+                string? old = await TooOldAsync();
+                Assert.SkipWhen(old is not null, $"The YAML language server cannot run here: {old}");
+            }
+        }
+
+        /// <summary>Why the PATH's Node.js cannot run the YAML server, or null when it can.</summary>
+        private static async Task<string?> TooOldAsync()
+        {
+            Passenger.App.Web.NodeRuntime node = await Passenger.App.Web.NodeRuntime.FindAsync(null);
+            return node.Problem ?? node.TooOldFor(Path.Combine(Passenger.App.Web.WebLanguages.Modules, "yaml-language-server", "package.json"), "the YAML language server");
         }
 
         public void Dispose() => TestFolders.Delete(Folder);

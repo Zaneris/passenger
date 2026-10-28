@@ -3,10 +3,12 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Microsoft.CodeAnalysis.CSharp;
 using Passenger.App.Docking;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Languages.CSharp;
 using Passenger.Text;
 
 namespace Passenger.App.Editors;
@@ -52,6 +54,9 @@ public sealed partial class EditorArea : UserControl
     /// <summary>A tab's menu opening, for the window to fill with its tab actions, run on that tab.</summary>
     public event EventHandler<TabMenu>? TabMenuOpening;
 
+    /// <summary>A tab double-clicked: the editors to have the whole frame, or to give it back.</summary>
+    public event EventHandler? MaximizeRequested;
+
     /// <summary>A file opened in a tab, before it is shown; and one closed, its last tab gone and nothing holding it.</summary>
     public event EventHandler<OpenDocument>? Opened;
 
@@ -87,6 +92,10 @@ public sealed partial class EditorArea : UserControl
 
     /// <summary>The open folder, whose files alone a Markdown preview draws the images of; null for none.</summary>
     public Func<string?> Root { get; set; } = () => null;
+
+    /// <summary>What a C# file is parsed with in process, open or not: its project's preprocessor symbols
+    /// (<see cref="CSharp.CompilationSymbols"/>), as the window knows its projects. Asked on the UI thread.</summary>
+    public Func<string, CSharpParseOptions> ParseOptions { get; set; } = _ => CSharpParsing.Default;
 
     private bool showsMarkdownPreview = true;
 
@@ -173,6 +182,15 @@ public sealed partial class EditorArea : UserControl
         }
     }
 
+    /// <summary>Runs for every editor's gutter there is and every one a split makes, as wiring for its columns' events.</summary>
+    public void ForEachGutter(Action<EditorGutter> hook) => ForEachEditor(editor =>
+    {
+        if (EditorGutter.Of(editor) is { } gutter)
+        {
+            hook(gutter);
+        }
+    });
+
     /// <summary>What the area shows with no file open and no folder: the Welcome screen, before one opens and once it
     /// closes.</summary>
     public void ShowWelcome(Control welcome)
@@ -187,7 +205,7 @@ public sealed partial class EditorArea : UserControl
     {
         folderName = Path.GetFileName(folder);
         emptyTitle.Text = folderName;
-        emptyHint.Text = "Open a file from the Explorer.";
+        ActionTips.SetWords(emptyHint, AppActions.GoToFile, keys => $"Open a file from the Explorer or with {ActionTips.Named("Go to File", keys)}.");
         emptyState.Content = folderHint;
         TitleWindows();
     }
@@ -206,7 +224,7 @@ public sealed partial class EditorArea : UserControl
         OpenDocument document;
         try
         {
-            document = OpenDocument.Load(full);
+            document = OpenDocument.Load(full, options: ParseOptions(full));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -266,6 +284,19 @@ public sealed partial class EditorArea : UserControl
         }
         return Load(full, asBytes: false) is { Asset: null, IsBinary: false } document ? (document, Hold(document)) : null;
     }
+
+    /// <summary>A file's document as <see cref="Open"/> reads it (an asset's preview, a binary file's bytes) for work that
+    /// ends, such as an agent's call: the open one, else one read from disk with no tab, held (<see cref="Hold"/>) until
+    /// the hold is disposed. The file system's exception when it cannot be read.</summary>
+    public (OpenDocument Document, IDisposable Hold) Lend(string path)
+    {
+        string full = PathNames.Canonical(path);
+        OpenDocument document = Find(full) ?? LoadNew(full, asBytes: true);
+        return (document, Hold(document));
+    }
+
+    /// <summary>Whether a tab shows the file, in any window.</summary>
+    public bool HasTab(OpenDocument document) => AllGroups.Any(g => g.Has(document));
 
     /// <summary>Names a change made across files through these editors (a refactoring's), for Local History: held while
     /// the change is made.</summary>
@@ -512,6 +543,8 @@ public sealed partial class EditorArea : UserControl
 
     internal void OpenTabMenu(EditorGroup group, OpenDocument document, ContextMenu menu) => TabMenuOpening?.Invoke(this, new TabMenu(group, document, menu));
 
+    internal void RequestMaximize() => MaximizeRequested?.Invoke(this, EventArgs.Empty);
+
     /// <summary>A tab of a group was shown by a click on it.</summary>
     internal void Activated(EditorGroup group)
     {
@@ -550,6 +583,81 @@ public sealed partial class EditorArea : UserControl
         }
         return all;
     }
+
+    /// <summary>Saves every changed file, then waits for the saves still landing (<see cref="LandedAsync"/>): what the IDE
+    /// does before it hands the files to another program. Null once each is on disk, else why not.</summary>
+    public Task<string?> SaveAllLandedAsync(Working? work, CancellationToken stopping)
+    {
+        SaveAll();
+        return LandedAsync(work, stopping);
+    }
+
+    /// <summary>Waits off the window's thread for every save still landing (<see cref="FileText.Landed(string)"/>), so the
+    /// program the IDE hands the files to next (a build, Git, a restore, an agent's shell) reads what was saved, never the
+    /// file before it: <paramref name="work"/> says which file meanwhile, and <paramref name="stopping"/> gives the wait
+    /// up. Null once each has landed, else why not: the file that could not be saved and why, or the stop.</summary>
+    public static async Task<string?> LandedAsync(Working? work, CancellationToken stopping)
+    {
+        string? stage = null;
+        foreach ((string path, Task<Exception?> landing) in FileText.Landings())
+        {
+            string name = Path.GetFileName(path);
+            if (!landing.IsCompleted && work is not null)
+            {
+                stage ??= work.Stage;
+                work.Say(Waiting([path]));
+            }
+            Exception? refused;
+            try
+            {
+                refused = await landing.WaitAsync(stopping);
+            }
+            catch (OperationCanceledException) when (stopping.IsCancellationRequested)
+            {
+                return $"Stopped while {name} was being saved";
+            }
+            if (refused is not null)
+            {
+                return $"{name} could not be saved: {refused.Message}";
+            }
+        }
+        if (stage is not null && work is { IsStopped: false })
+        {
+            work.Say(stage);
+        }
+        return null;
+    }
+
+    /// <summary>Waits for the saves still landing of the files a change of several wrote (<see cref="FileText.Landed(string)"/>),
+    /// so what the change then says it did is what the disk holds: <paramref name="waiting"/> is told meanwhile which, in
+    /// <see cref="Waiting"/>'s words. Each file whose save never landed, with why; none once every one has.</summary>
+    public static async Task<IReadOnlyList<(string Path, Exception Refused)>> LandedAsync(IEnumerable<string> paths, Action<string>? waiting)
+    {
+        List<(string Path, Task<Exception?> Last)> landing = [];
+        foreach (string path in paths.Distinct(PathNames.Comparer))
+        {
+            if (FileText.Landed(path) is { } last)
+            {
+                landing.Add((path, last));
+            }
+        }
+        if (landing.Where(l => !l.Last.IsCompleted).Select(l => l.Path).ToList() is { Count: > 0 } held)
+        {
+            waiting?.Invoke(Waiting(held));
+        }
+        List<(string Path, Exception Refused)> refused = [];
+        foreach ((string path, Task<Exception?> last) in landing)
+        {
+            if (await last is { } why)
+            {
+                refused.Add((path, why));
+            }
+        }
+        return refused;
+    }
+
+    /// <summary>What the status bar says while saves of these files are still landing.</summary>
+    public static string Waiting(IReadOnlyCollection<string> paths) => $"Waiting for {string.Join(", ", paths.Select(Path.GetFileName))} to be saved…";
 
     /// <summary>Writes a file even over a version on disk newer than its own, for Keep Memory Changes.</summary>
     public bool SaveOver(OpenDocument document) => TrySave(document, overDisk: true);
@@ -632,7 +740,7 @@ public sealed partial class EditorArea : UserControl
         {
             // The carets of the editor showing it, whose lines keep the whitespace a save would trim.
             EditorGroup? showing = activeGroup.Has(document) ? activeGroup : AllGroups.FirstOrDefault(g => g.Has(document));
-            document.Save(showing?.SelectionsOf(document), makeFolder: asked);
+            document.Save(showing?.SelectionsOf(document), makeFolder: asked, overDisk: overDisk);
             return true;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
@@ -775,16 +883,22 @@ public sealed partial class EditorArea : UserControl
         }
         try
         {
-            OpenDocument document = OpenDocument.Load(full, asBytes);
-            document.PreviewFailed += OnPreviewFailed;
-            Opened?.Invoke(this, document);
-            documents.Add(document);
-            return document;
+            return LoadNew(full, asBytes);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             return null;
         }
+    }
+
+    /// <summary>A file not open read from disk and opened with no tab; the file system's exception when it cannot be read.</summary>
+    private OpenDocument LoadNew(string full, bool asBytes)
+    {
+        OpenDocument document = OpenDocument.Load(full, asBytes, ParseOptions(full));
+        document.PreviewFailed += OnPreviewFailed;
+        Opened?.Invoke(this, document);
+        documents.Add(document);
+        return document;
     }
 
     /// <summary>An asset whose first decode failed closes, its tabs with it, as a file that could not be read never

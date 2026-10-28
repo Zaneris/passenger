@@ -3,7 +3,7 @@
   <PropertyGroup>
     <TargetFramework>net11.0</TargetFramework>
     <!-- The version, until a vX.Y.Z tag on the commit names it. -->
-    <Version>0.2.0</Version>
+    <Version>0.2.2</Version>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
@@ -30,15 +30,18 @@
   </PropertyGroup>
 
   <!-- Passenger's own rules (src/Passenger.Analyzers) over every project but theirs, as an analyzer alone: nothing of it
-       is referenced or carried. -->
+       is referenced or carried. Built for no system, whatever a publish is for: the compiler that loads it runs on the
+       publishing machine, which can't load a library marked for another's processor. -->
   <ItemGroup Condition="'$(MSBuildProjectName)' != 'Passenger.Analyzers'">
     <ProjectReference Include="$(MSBuildThisFileDirectory)src/Passenger.Analyzers/Passenger.Analyzers.csproj"
-                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all" />
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all"
+                      GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained" />
   </ItemGroup>
 
   <!-- Passenger's own code writes a whole file only through AtomicFile, FileText.Save or OwnFiles: File.WriteAll* is
-       banned under src/ (src/BannedSymbols.txt), which warnings as errors make a failed build. -->
-  <ItemGroup Condition="$(MSBuildProjectDirectory.StartsWith('$(MSBuildThisFileDirectory)src'))">
+       banned under src/ (src/BannedSymbols.txt), which warnings as errors make a failed build. Compared without case, as
+       macOS and Windows name a folder, so a build through another spelling of the checkout's path still holds it. -->
+  <ItemGroup Condition="$(MSBuildProjectDirectory.ToLowerInvariant().StartsWith('$(MSBuildThisFileDirectory.ToLowerInvariant())src'))">
     <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" PrivateAssets="all" />
     <AdditionalFiles Include="$(MSBuildThisFileDirectory)src/BannedSymbols.txt" />
   </ItemGroup>

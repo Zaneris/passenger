@@ -96,7 +96,12 @@ public sealed class VcsController : IDisposable
     /// when it did, never for a save.</summary>
     public event EventHandler? HistoryChanged;
 
-    private string? knownHistory;
+    /// <summary>The refs' hash and HEAD's commit as the history was last read.</summary>
+    private (UInt128 Refs, string? Head)? knownHistory;
+
+    /// <summary>Whether the folder watcher hears Git's own state move: the open folder is the working tree's top and Git's
+    /// folder its .git, so files changed alone leave the history unread.</summary>
+    private bool historyHeard;
 
     /// <summary>What happened, for the status bar: what is under way (a push), and each operation's outcome in the words
     /// it returns them in (a commit made, a push refused and git's reason).</summary>
@@ -115,10 +120,14 @@ public sealed class VcsController : IDisposable
 
     private TaskCompletionSource? idle;
 
-    /// <summary>Saves every open file, run before anything git does to the files (a commit, a checkout, a stash, a
-    /// rollback, an update): what is committed is what the editor shows, and nothing unsaved is left behind for the next
-    /// save to write over what git put there.</summary>
-    public Action? SaveFirst { get; set; }
+    /// <summary>Saves every open file and waits for the saves still landing, run before anything git does to the files (a
+    /// commit, a checkout, a stash, a rollback, an update): what is committed is what the editor shows, and nothing unsaved
+    /// is left behind for the next save to write over what git put there. Null once all are on disk, else why not, and git
+    /// is not run.</summary>
+    public Func<Working?, CancellationToken, Task<string?>>? SaveFirst { get; set; }
+
+    private Task<string?> SavedFirstAsync(Working? work = null) =>
+        SaveFirst?.Invoke(work, work?.Stopping ?? CancellationToken.None) ?? Task.FromResult<string?>(null);
 
     /// <summary>Names what an operation does to the files, for Local History, by its activity's name (Git checkout,
     /// Rollback, Update from VCS): what it changes is kept under that name until the hold is disposed.</summary>
@@ -143,6 +152,7 @@ public sealed class VcsController : IDisposable
                 return;
             }
             git = found;
+            historyHeard = found is not null && PathNames.Same(found.GitDir, Path.Join(folder, ".git"));
             heads.Clear();
             textsOf = null;
             textsRead = false;
@@ -200,6 +210,15 @@ public sealed class VcsController : IDisposable
     {
         UiThread.Check();
         historyAsked = true;
+        return ReadAsync();
+    }
+
+    /// <summary>Another program changed the folder's files, or Git's own state with <paramref name="gitMoved"/>: the status
+    /// read again, and the history too where Git's state moved or the folder watcher cannot hear it move.</summary>
+    public Task FolderChangedAsync(bool gitMoved)
+    {
+        UiThread.Check();
+        historyAsked |= gitMoved || !historyHeard;
         return ReadAsync();
     }
 
@@ -270,7 +289,7 @@ public sealed class VcsController : IDisposable
         }
         GitStatus? status = null;
         MergeState? merge = null;
-        string? refs = null;
+        UInt128? refs = null;
         string? failure = null;
         try
         {
@@ -313,10 +332,9 @@ public sealed class VcsController : IDisposable
             return;
         }
         Refreshed?.Invoke(this, EventArgs.Empty);
-        string? now = status is not null && refs is not null ? refs + status.Head : null;
-        if (now is not null && now != knownHistory)
+        if (status is not null && refs is { } read && (read, status.Head) != knownHistory)
         {
-            knownHistory = now;
+            knownHistory = (read, status.Head);
             HistoryChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -508,7 +526,10 @@ public sealed class VcsController : IDisposable
         using Working? held = work;
         return await OneAtATimeAsync(async () =>
         {
-            SaveFirst?.Invoke();
+            if (await SavedFirstAsync(work) is { } unsaved)
+            {
+                return new CommitResult(Report(false, unsaved), null, null);
+            }
             string[] paths = [.. Paths(chosen)];
             string[] excluded = merging ? [.. Paths(Changes.Where(c => c.Kind is not ChangeKind.Unversioned && !chosen.Contains(c)))] : [];
             GitResult commit = await repository.CommitAsync(paths, message, amend, merging, excluded);
@@ -567,7 +588,10 @@ public sealed class VcsController : IDisposable
             return Report(false, UnderWay(AppActions.UpdateProject));
         }
         using Working? held = work;
-        SaveFirst?.Invoke();
+        if (await SavedFirstAsync(work) is { } unsaved)
+        {
+            return Report(false, unsaved);
+        }
         // Named until Git is read again, so the folder watcher has heard of what it changed.
         using IDisposable? named = Activity?.Invoke("Update from VCS");
         GitResult pulled = await repository.PullAsync();
@@ -788,19 +812,19 @@ public sealed class VcsController : IDisposable
 
     /// <summary>Unstash Changes: a stash's changes back in the files, the stash dropped after with
     /// <paramref name="pop"/>.</summary>
-    public Task<VcsOutcome> UnstashAsync(StashInfo stash, bool pop)
+    public Task<VcsOutcome> UnstashAsync(StashInfo stash, bool pop) => SwitchAsync(async repository =>
     {
         // Git keeps no record of an unstash that stopped for conflicts: the stash names their sides until they are resolved.
-        if (Conflicts.Count == 0)
+        if (Conflicts.Count == 0 && await repository.StashNowAsync(stash) is { } now)
         {
-            unstashed = $"stash@{{{stash.Index}}}";
+            unstashed = $"stash@{{{now.Index}}}";
         }
-        return SwitchAsync(repository => repository.UnstashAsync(stash.Index, pop), pop ? $"Unstashed {stash.Message}" : $"Applied {stash.Message}", "Git unstash",
-            "Unstashed with conflicts");
-    }
+        return await repository.UnstashAsync(stash, pop);
+    }, pop ? $"Unstashed {stash.Message}" : $"Applied {stash.Message}", "Git unstash", "Unstashed with conflicts");
 
+    /// <summary>Drops a stash, the one of its commit wherever the list now has it.</summary>
     public Task<VcsOutcome> DropStashAsync(StashInfo stash) =>
-        SwitchAsync(repository => repository.DropStashAsync(stash.Index), $"Dropped {stash.Message}", "Git stash");
+        SwitchAsync(repository => repository.DropStashAsync(stash), $"Dropped {stash.Message}", "Git stash");
 
     /// <summary>Puts files back as the last commit has them; the open ones take their text from disk again.</summary>
     public async Task<VcsOutcome> RollbackAsync(IReadOnlyList<FileChange> changes)
@@ -815,7 +839,10 @@ public sealed class VcsController : IDisposable
         }
         return await OneAtATimeAsync(async () =>
         {
-            SaveFirst?.Invoke();
+            if (await SavedFirstAsync() is { } unsaved)
+            {
+                return Report(false, unsaved);
+            }
             using IDisposable? named = Activity?.Invoke("Rollback");
             GitResult rolled = await repository.RollbackAsync(changes);
             ReloadOpenFiles();
@@ -872,7 +899,10 @@ public sealed class VcsController : IDisposable
         }
         return await OneAtATimeAsync(async () =>
         {
-            SaveFirst?.Invoke();
+            if (await SavedFirstAsync() is { } unsaved)
+            {
+                return Report(false, unsaved);
+            }
             bool already = Conflicts.Count > 0;
             using IDisposable? named = Activity?.Invoke(activity);
             GitResult switched = await change(repository);
@@ -910,7 +940,10 @@ public sealed class VcsController : IDisposable
         bool theirs = yours == Sides.Swapped;
         return await OneAtATimeAsync(async () =>
         {
-            SaveFirst?.Invoke();
+            if (await SavedFirstAsync() is { } unsaved)
+            {
+                return Report(false, unsaved);
+            }
             GitResult accepted = await repository.AcceptAsync(conflicts, theirs);
             ReloadOpenFiles();
             await RefreshAsync();
@@ -952,8 +985,8 @@ public sealed class VcsController : IDisposable
     }
 
     /// <summary>The merge window's Apply: the result written to the file in the encoding, byte order mark and line breaks
-    /// the working tree has it in (CRLF under core.autocrlf, as git checked it out), and the file marked resolved; the open
-    /// files show it.</summary>
+    /// the working tree has it in (CRLF under core.autocrlf, as git checked it out), and once it has landed the file marked
+    /// resolved; the open files show it.</summary>
     public async Task<VcsOutcome> ResolveAsync(string path, string text)
     {
         if (git is not { } repository)
@@ -962,7 +995,10 @@ public sealed class VcsController : IDisposable
         }
         return await OneAtATimeAsync(async () =>
         {
-            SaveFirst?.Invoke();
+            if (await SavedFirstAsync() is { } unsaved)
+            {
+                return Report(false, unsaved);
+            }
             try
             {
                 FileText? before = InConflict(path);
@@ -973,6 +1009,11 @@ public sealed class VcsController : IDisposable
             catch (Exception refused) when (refused is IOException or UnauthorizedAccessException)
             {
                 return Report(false, refused.Message);
+            }
+            // Marked resolved only once it holds the result: git stages what the disk has.
+            if (await Editors.EditorArea.LandedAsync([path], waiting => Message?.Invoke(this, waiting)) is [(_, Exception unlanded), ..])
+            {
+                return Report(false, unlanded.Message);
             }
             GitResult marked = await repository.MarkResolvedAsync(path);
             ReloadOpenFiles();

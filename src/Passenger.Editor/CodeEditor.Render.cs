@@ -1,7 +1,9 @@
 using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Media.Immutable;
 using Avalonia.Media.TextFormatting;
 using Avalonia.Threading;
 using Passenger.Text;
@@ -11,13 +13,16 @@ namespace Passenger.Editor;
 /// <summary>A frame: the rows on screen, each row's view (<see cref="ViewsOf"/>), and what goes over and beside them.
 /// A frame walks the rows it shows, never the lines a fold hides between them, and finds the carets, selections and
 /// markers on a row by halving rather than by looking at each. A line's number and marks are drawn on its first row, what
-/// follows its code (a fold's placeholder, inline values) after its last.</summary>
+/// follows its code (a fold's placeholder, annotations) after its last.</summary>
 public sealed partial class CodeEditor
 {
     private readonly LabelCache<(string Text, int Style)> labels = new();
     private readonly LabelCache<(int Number, bool Current)> numbers = new();
     private readonly Dictionary<TokenKind, TextRunProperties> runProperties = [];
     private (TextRunProperties Current, TextRunProperties Other) numberRuns;
+
+    /// <summary>The diff tints of the lines on screen, found again for each frame.</summary>
+    private readonly Dictionary<int, IBrush> changeTints = [];
     private double measuredWidth;
     private bool showWhitespaces;
 
@@ -50,19 +55,14 @@ public sealed partial class CodeEditor
         int last = shown.Count > 0 ? shown[^1].Line : -1;
         LineView[] lineViews = ViewsOf(text, shown, scroll.X - TextPadLeft, Math.Max(0, size.Width - gutter));
         int rangeStart = shown.Count > 0 ? lineViews[0].Span.Start : 0;
-        int rangeEnd = shown.Count > 0 ? lineViews[^1].Span.EndIncludingBreak : 0;
+        int rangeEnd = shown.Count > 0 ? lineViews[shown.Count - 1].Span.EndIncludingBreak : 0;
         HashSet<int> caretLines = CaretLines(text, rangeStart, rangeEnd);
-        bool noneSelected = selections.Items.All(s => s.IsEmpty);
-        VisibleMarks marks = new(LineMarks, first, last);
+        bool noneSelected = NoneSelected();
+        LineTints marked = TintsOf(first, last);
         Dictionary<int, IBrush>? tints = ChangeBackgrounds ? ChangeTints(first, last) : null;
-        Dictionary<int, List<LineAnnotation>> annotations = [];
-        foreach (LineAnnotation annotation in LineAnnotations)
-        {
-            if (annotation.Line >= first && annotation.Line <= last)
-            {
-                (annotations.TryGetValue(annotation.Line, out List<LineAnnotation>? list) ? list : annotations[annotation.Line] = []).Add(annotation);
-            }
-        }
+        // The rows go down the lines, and the annotations with them from the first on screen.
+        LineOrdered<LineAnnotation> annotations = decorations.AnnotationsByLine;
+        int annotation = annotations.From(first);
         bool focused = IsFocused;
         BracePair? braced = MatchedBraces;
         double widest = 0;
@@ -88,17 +88,17 @@ public sealed partial class CodeEditor
                     context.FillRectangle(change, new Rect(gutter, y, size.Width - gutter, lineHeight));
                 }
                 DrawInlineChanges(context, view, gaps, from, y);
-                if (LineTint(marks, line) is { } tint)
+                if (marked.Of(line) is { } tint)
                 {
                     context.FillRectangle(tint, new Rect(gutter, y, size.Width - gutter, lineHeight));
                 }
-                else if (marks.Parts.TryGetValue(line, out List<LineMark>? parts))
+                else
                 {
-                    foreach (LineMark part in parts)
+                    foreach ((int partLine, TextRange part, IBrush brush) in marked.Parts)
                     {
-                        if (Tinted(part))
+                        if (partLine == line)
                         {
-                            FillRange(context, view, gaps, from, y, part.Range!.Value, palette.BreakpointLine);
+                            FillRange(context, view, gaps, from, y, part, brush);
                         }
                     }
                 }
@@ -137,9 +137,18 @@ public sealed partial class CodeEditor
                 {
                     end = DrawPlaceholder(context, line, fold, end, y);
                 }
-                if (annotations.TryGetValue(line, out List<LineAnnotation>? here))
+                while (annotation < annotations.Count && annotations.LineOf(annotation) < line)
                 {
-                    DrawAnnotations(context, here, end, y);
+                    annotation++;
+                }
+                int after = annotation;
+                while (after < annotations.Count && annotations.LineOf(after) == line)
+                {
+                    after++;
+                }
+                if (after > annotation)
+                {
+                    DrawAnnotations(context, annotations, annotation, after, end, y);
                 }
             }
 
@@ -154,11 +163,12 @@ public sealed partial class CodeEditor
             }
         }
 
-        DrawGutter(context, shown, row, caretLines, marks, gutter, size.Height);
+        DrawGutter(context, shown, row, caretLines, gutter, size.Height);
         DrawFoldPreview(context);
         views.EndFrame();
         labels.EndFrame();
         numbers.EndFrame();
+        shapes.EndFrame();
         // The widest line drawn since the text changed, so a long line deleted gives its width back, but the view stays.
         widestLine = widestStale ? Math.Max(widest, scroll.X + Viewport.Width - TextPadLeft - (metrics.CharWidth * 4)) : Math.Max(widestLine, widest);
         widestStale = false;
@@ -169,6 +179,19 @@ public sealed partial class CodeEditor
             Dispatcher.UIThread.Post(UpdateScrollBars);
         }
         RefreshStripe();
+    }
+
+    private bool NoneSelected()
+    {
+        IReadOnlyList<Selection> items = selections.Items;
+        for (int i = 0; i < items.Count; i++)
+        {
+            if (!items[i].IsEmpty)
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     /// <summary>The first selection that ends at or after an offset; selections never overlap, so their ends rise with
@@ -214,10 +237,14 @@ public sealed partial class CodeEditor
         return low;
     }
 
+    /// <summary>The lines with a caret on them on screen, found again for each frame.</summary>
+    private readonly HashSet<int> caretLines = [];
+
     /// <summary>The lines with a caret on them between two offsets: those on screen.</summary>
     private HashSet<int> CaretLines(TextSnapshot text, int start, int end)
     {
-        HashSet<int> lines = [];
+        HashSet<int> lines = caretLines;
+        lines.Clear();
         IReadOnlyList<Selection> items = selections.Items;
         for (int i = FirstCaretFrom(start); i < items.Count && items[i].Caret <= end; i++)
         {
@@ -297,7 +324,7 @@ public sealed partial class CodeEditor
                 if (i == CurrentHighlight)
                 {
                     // The current match stands out from the rest, outlined in the caret's colour.
-                    context.DrawRectangle(palette.SearchCurrent, new Pen(palette.Caret, 1), box, 2, 2);
+                    context.DrawRectangle(palette.SearchCurrent, palette.PenOf(palette.Caret, 1), box, 2, 2);
                 }
                 else
                 {
@@ -330,7 +357,7 @@ public sealed partial class CodeEditor
             // On the pixel grid, so a dot and an arrow's shaft are drawn crisp in their colour.
             double middle = Math.Floor(y + (metrics.LineHeight / 2));
             double dot = Math.Max(2, Math.Round(metrics.FontSize / 7));
-            Pen? arrow = null;
+            IPen? arrow = null;
             for (int i = 0; i < to - from; i++)
             {
                 char c = buffer[i];
@@ -346,14 +373,16 @@ public sealed partial class CodeEditor
                     context.FillRectangle(palette.Whitespace, new Rect(Math.Round(((x1 + x2) / 2) - (dot / 2)), middle - Math.Floor(dot / 2), dot, dot));
                     continue;
                 }
-                arrow ??= new Pen(palette.Whitespace, 1);
+                arrow ??= palette.PenOf(palette.Whitespace, 1);
                 double shaft = middle + 0.5;
                 double tail = x1 + (metrics.CharWidth * 0.3);
                 double head = Math.Max(tail + 2, x2 - (metrics.CharWidth * 0.3));
                 double barb = Math.Min(3, metrics.CharWidth * 0.35);
-                StreamGeometry shape = new();
-                using (StreamGeometryContext path = shape.Open())
+                ShapeKey key = new(ShapeKind.Tab, tail, head, shaft, barb);
+                if (!shapes.TryGet(key, out StreamGeometry? shape))
                 {
+                    shape = shapes.Add(key, new StreamGeometry());
+                    using StreamGeometryContext path = shape.Open();
                     path.BeginFigure(new Point(tail, shaft), false);
                     path.LineTo(new Point(head, shaft));
                     path.EndFigure(false);
@@ -380,9 +409,11 @@ public sealed partial class CodeEditor
         double top = y + ((metrics.LineHeight - size) / 2);
         double bottom = top + size;
         double barb = Math.Max(2, size / 3);
-        StreamGeometry sign = new();
-        using (StreamGeometryContext path = sign.Open())
+        ShapeKey key = new(ShapeKind.Wrap, left, top, size, barb);
+        if (!shapes.TryGet(key, out StreamGeometry? sign))
         {
+            sign = shapes.Add(key, new StreamGeometry());
+            using StreamGeometryContext path = sign.Open();
             path.BeginFigure(new Point(right, top), false);
             path.LineTo(new Point(right, bottom));
             path.LineTo(new Point(left, bottom));
@@ -392,7 +423,7 @@ public sealed partial class CodeEditor
             path.LineTo(new Point(left + barb, bottom + barb));
             path.EndFigure(false);
         }
-        context.DrawGeometry(null, new Pen(palette.SoftWrapSign, 1), sign);
+        context.DrawGeometry(null, palette.PenOf(palette.SoftWrapSign, 1), sign);
     }
 
     /// <summary>Squiggles under errors, warnings and suggestions; unnecessary code is faded by laying
@@ -400,23 +431,8 @@ public sealed partial class CodeEditor
     private void DrawMarkers(DrawingContext context, LineView view, Gap[] gaps, double left, double y, double clipLeft, double clipRight)
     {
         RowSpan span = view.Span;
-        IReadOnlyList<Marker> markers = Markers;
-        // The markers before the first that reaches this far all end before the line.
-        int low = 0;
-        int high = markers.Count;
-        while (low < high)
-        {
-            int middle = (low + high) / 2;
-            if (markerReach[middle] < span.Start)
-            {
-                low = middle + 1;
-            }
-            else
-            {
-                high = middle;
-            }
-        }
-        for (int i = low; i < markers.Count; i++)
+        MarkerList markers = decorations.Markers;
+        for (int i = markers.FirstReaching(span.Start); i < markers.Count; i++)
         {
             Marker marker = markers[i];
             // One starting where a row wraps is the next row's.
@@ -452,21 +468,23 @@ public sealed partial class CodeEditor
         }
     }
 
-    /// <summary>A line's annotations after its code, a few spaces on; an exception's on a tinted ground so it reads as the
-    /// stop's reason.</summary>
-    private void DrawAnnotations(DrawingContext context, List<LineAnnotation> annotations, double x, double y)
+    /// <summary>A line's annotations after its code, a few spaces on, each in its look.</summary>
+    private void DrawAnnotations(DrawingContext context, LineOrdered<LineAnnotation> annotations, int from, int to, double x, double y)
     {
         x += metrics.CharWidth * 3;
-        foreach (LineAnnotation annotation in annotations)
+        for (int i = from; i < to; i++)
         {
-            bool exception = annotation.Kind == LineAnnotationKind.Exception;
-            bool error = exception || annotation.Kind == LineAnnotationKind.Failed;
-            TextLine text = labels.Get((annotation.Text, error ? -4 : -3), () =>
-                Format(annotation.Text, [], error ? annotationRuns.Exception : annotationRuns.Value));
-            double top = y + (metrics.LineHeight - text.Height) / 2;
-            if (exception)
+            LineAnnotation annotation = annotations[i];
+            bool ground = annotation.Look == LineAnnotationLook.ErrorOnGround;
+            bool error = ground || annotation.Look == LineAnnotationLook.Error;
+            if (!labels.TryGet((annotation.Text, error ? -4 : -3), out TextLine? text))
             {
-                context.FillRectangle(palette.ExceptionBack, new Rect(x - metrics.CharWidth / 2, y + 1, text.WidthIncludingTrailingWhitespace + metrics.CharWidth, metrics.LineHeight - 2), 3);
+                text = labels.Add((annotation.Text, error ? -4 : -3), Format(annotation.Text, [], error ? annotationRuns.Error : annotationRuns.Value));
+            }
+            double top = y + (metrics.LineHeight - text.Height) / 2;
+            if (ground)
+            {
+                context.FillRectangle(palette.ErrorGround, new Rect(x - metrics.CharWidth / 2, y + 1, text.WidthIncludingTrailingWhitespace + metrics.CharWidth, metrics.LineHeight - 2), 3);
             }
             text.Draw(context, new Point(x, top));
             x += text.WidthIncludingTrailingWhitespace + metrics.CharWidth * 2;
@@ -474,8 +492,8 @@ public sealed partial class CodeEditor
     }
 
     /// <summary>A squiggle from x1 to x2, drawn only where it can be seen: whole waves off either edge are left out, so
-    /// one under a line of a million characters costs the screen's width.</summary>
-    private static void DrawWave(DrawingContext context, IBrush brush, double x1, double x2, double y, double clipLeft, double clipRight)
+    /// one under a line of a million characters costs the screen's width. Made again only where it moved.</summary>
+    private void DrawWave(DrawingContext context, IBrush brush, double x1, double x2, double y, double clipLeft, double clipRight)
     {
         const double Step = 2.5;
         double skipped = Math.Floor((clipLeft - (Step * 2) - x1) / (Step * 2));
@@ -488,9 +506,11 @@ public sealed partial class CodeEditor
         {
             return;
         }
-        StreamGeometry wave = new();
-        using (StreamGeometryContext path = wave.Open())
+        ShapeKey key = new(ShapeKind.Wave, x1, x2, y, 0);
+        if (!shapes.TryGet(key, out StreamGeometry? wave))
         {
+            wave = shapes.Add(key, new StreamGeometry());
+            using StreamGeometryContext path = wave.Open();
             path.BeginFigure(new Point(x1, y), false);
             bool up = true;
             for (double x = x1 + Step; x < x2 + Step; x += Step)
@@ -500,237 +520,89 @@ public sealed partial class CodeEditor
             }
             path.EndFigure(false);
         }
-        context.DrawGeometry(null, new Pen(brush, 1), wave);
+        context.DrawGeometry(null, palette.PenOf(brush, 1), wave);
     }
 
-    /// <summary>The gutter beside the rows shown: a line's number and marks beside its first row only, a wrapped line's
-    /// other rows left bare.</summary>
-    private void DrawGutter(DrawingContext context, List<RowSpan> shown, int row, HashSet<int> caretLines, VisibleMarks marks, double gutter, double height)
+    private readonly ShapeCache shapes = new();
+
+    /// <summary>How many shapes (squiggles, tabs' arrows, wrap signs, fold chevrons, the gutter columns' marks) the editor
+    /// has made to draw: what a frame that moved none should leave as it was.</summary>
+    public long ShapesMade => shapes.Made + (gutterFrame?.ShapesMade ?? 0);
+
+    /// <summary>What a shape the editor draws is: its kind and the numbers that place and size it.</summary>
+    private readonly record struct ShapeKey(ShapeKind Kind, double A, double B, double C, double D);
+
+    private enum ShapeKind
     {
-        context.FillRectangle(palette.Gutter, new Rect(0, 0, gutter, height));
-        if (!ShowLineNumbers || shown.Count == 0)
-        {
-            return;
-        }
-        int first = shown[0].Line;
-        int last = shown[^1].Line;
-        if (!ChangeBackgrounds)
-        {
-            DrawChanges(context, first, last, gutter);
-        }
-        if (annotationWidth > 0)
-        {
-            DrawAnnotations(context, shown, row);
-        }
-        foreach (int marked in Bookmarks)
-        {
-            if (marked >= first && marked <= last && !IsHidden(marked))
-            {
-                DrawBookmark(context, annotationWidth + 3, TopOf(marked) - scroll.Y);
-            }
-        }
-        DrawFoldMarkers(context, first, last, gutter);
-        double right = gutter - FoldWidth - GutterPadRight;
-        Dictionary<int, TestMarkKind> tests = [];
-        foreach (TestMark test in TestMarks)
-        {
-            if (test.Line >= first && test.Line <= last)
-            {
-                tests[test.Line] = test.Kind;
-            }
-        }
-        HashSet<int> runs = [.. RunMarks.Where(r => r.Line >= first && r.Line <= last).Select(r => r.Line)];
-        Dictionary<int, Color> colours = [];
-        foreach (ColourMark colour in ColourMarks)
-        {
-            if (colour.Line >= first && colour.Line <= last)
-            {
-                colours.TryAdd(colour.Line, colour.Colour);
-            }
-        }
-        for (int i = 0; i < shown.Count; i++)
-        {
-            if (shown[i].Row > 0)
-            {
-                continue;
-            }
-            int line = shown[i].Line;
-            double top = (row + i) * metrics.LineHeight - scroll.Y;
-            if (marks.Executing.Contains(line))
-            {
-                DrawExecutionArrow(context, right, top);
-            }
-            else if (line == arrowAt && drag.Mode == DragMode.ExecutionPoint)
-            {
-                // Where the dragged arrow would go on from, drawn faint until it is let go.
-                using (context.PushOpacity(0.5))
-                {
-                    DrawExecutionArrow(context, right, top);
-                }
-            }
-            else if (tests.TryGetValue(line, out TestMarkKind test))
-            {
-                DrawTestMark(context, test, right, top);
-            }
-            else if (runs.Contains(line))
-            {
-                // A run configuration's service or image: the run icon a test not yet run has.
-                DrawTestMark(context, TestMarkKind.NotRun, right, top);
-            }
-            else if (colours.TryGetValue(line, out Color colour))
-            {
-                DrawSwatch(context, colour, right, top);
-            }
-            if (marks.Breakpoints.TryGetValue(line, out LineMark mark))
-            {
-                // Over the number, which gives way.
-                DrawBreakpoint(context, mark, right - metrics.CharWidth, top + metrics.LineHeight / 2);
-                continue;
-            }
-            bool current = caretLines.Contains(line);
-            // Found without a closure made for each number each frame.
-            if (!numbers.TryGet((line + 1, current), out TextLine? number))
-            {
-                number = numbers.Add((line + 1, current), Format((line + 1).ToString(CultureInfo.InvariantCulture), [], current ? numberRuns.Current : numberRuns.Other));
-            }
-            double y = top + (metrics.LineHeight - number.Height) / 2;
-            number.Draw(context, new Point(right - number.WidthIncludingTrailingWhitespace, y));
-        }
+        Wave,
+        Tab,
+        Wrap,
+        Open,
+        Folded,
     }
 
-    /// <summary>A line's tint: the execution point's over a breakpoint's, and none for a breakpoint
-    /// that is off or cannot bind.</summary>
-    private IBrush? LineTint(VisibleMarks marks, int line) =>
-        marks.Executing.Contains(line) ? palette.ExecutionLine
-        : marks.Breakpoints.TryGetValue(line, out LineMark mark) && mark.Range is null && Tinted(mark) ? palette.BreakpointLine
-        : null;
-
-    /// <summary>Whether a breakpoint tints what it is on: one that stops and can.</summary>
-    private static bool Tinted(LineMark mark) => !mark.Tracepoint && !mark.Muted && mark.Kind is LineMarkKind.Breakpoint or LineMarkKind.BreakpointBound;
-
-    /// <summary>The marks on the lines a frame draws, looked up once per frame.</summary>
-    private sealed class VisibleMarks
+    /// <summary>The shapes drawn in the last frame (squiggles, tabs' arrows, wrap signs, fold chevrons), by what they are and
+    /// where: a frame draws again those it drew before without making them, and lets go of the rest.</summary>
+    private sealed class ShapeCache
     {
-        public VisibleMarks(IReadOnlyList<LineMark> marks, int first, int last)
+        private Dictionary<ShapeKey, StreamGeometry> previous = [];
+        private Dictionary<ShapeKey, StreamGeometry> current = [];
+
+        public bool TryGet(ShapeKey key, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out StreamGeometry? shape)
         {
-            foreach (LineMark mark in marks)
+            if (current.TryGetValue(key, out shape))
             {
-                if (mark.Line < first || mark.Line > last)
-                {
-                    continue;
-                }
-                if (mark.Kind == LineMarkKind.ExecutionPoint)
-                {
-                    Executing.Add(mark.Line);
-                    continue;
-                }
-                if (mark.Range is not null)
-                {
-                    (Parts.TryGetValue(mark.Line, out List<LineMark>? parts) ? parts : Parts[mark.Line] = []).Add(mark);
-                }
-                // The line's own breakpoint gives the dot over one on a part of it.
-                if (!Breakpoints.TryGetValue(mark.Line, out LineMark there) || (there.Range is not null && mark.Range is null))
-                {
-                    Breakpoints[mark.Line] = mark;
-                }
+                return true;
             }
-        }
-
-        public HashSet<int> Executing { get; } = [];
-
-        public Dictionary<int, LineMark> Breakpoints { get; } = [];
-
-        /// <summary>The breakpoints on parts of lines, by line.</summary>
-        public Dictionary<int, List<LineMark>> Parts { get; } = [];
-    }
-
-    /// <summary>A breakpoint's dot, centred at a point: filled when set, with a tick once bound, a
-    /// ring when it cannot bind or is off; a question mark on it for a condition, amber for a tracepoint, grey muted.</summary>
-    private void DrawBreakpoint(DrawingContext context, LineMark mark, double x, double y)
-    {
-        double radius = Math.Min(metrics.LineHeight - 6, 14) / 2;
-        Point centre = new(x, y);
-        IBrush fill = mark.Muted ? palette.BreakpointMuted : mark.Tracepoint ? palette.Tracepoint : palette.Breakpoint;
-        if (mark.Muted && mark.Kind == LineMarkKind.BreakpointDisabled)
-        {
-            context.DrawEllipse(null, new Pen(fill, 1.5), centre, radius - 0.75, radius - 0.75);
-            return;
-        }
-        if (mark.Conditional && mark.Kind is LineMarkKind.Breakpoint or LineMarkKind.BreakpointBound)
-        {
-            context.DrawEllipse(fill, null, centre, radius, radius);
-            TextLine question = labels.Get(("?", -5), () => Format("?", [], questionRun ??= new GenericTextRunProperties(
-                new Typeface(FontFamily, FontStyle.Normal, FontWeight.Bold), FontSize * 0.75, foregroundBrush: palette.Background)));
-            question.Draw(context, new Point(x - question.WidthIncludingTrailingWhitespace / 2, y - question.Height / 2));
-            return;
-        }
-        switch (mark.Kind)
-        {
-            case LineMarkKind.Breakpoint:
-                context.DrawEllipse(fill, null, centre, radius, radius);
-                break;
-            case LineMarkKind.BreakpointBound:
-                context.DrawEllipse(fill, null, centre, radius, radius);
-                StreamGeometry tick = new();
-                using (StreamGeometryContext path = tick.Open())
-                {
-                    path.BeginFigure(new Point(x - radius * 0.45, y + radius * 0.02), false);
-                    path.LineTo(new Point(x - radius * 0.1, y + radius * 0.38));
-                    path.LineTo(new Point(x + radius * 0.48, y - radius * 0.35));
-                    path.EndFigure(false);
-                }
-                context.DrawGeometry(null, new Pen(palette.Background, 1.6, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round), tick);
-                break;
-            case LineMarkKind.BreakpointInvalid:
-                context.DrawEllipse(null, new Pen(fill, 1.5), centre, radius - 0.75, radius - 0.75);
-                break;
-            default:
-                context.DrawEllipse(null, new Pen(palette.LineNumber, 1.5), centre, radius - 0.75, radius - 0.75);
-                break;
-        }
-    }
-
-    /// <summary>A bookmark's ribbon: a strip with a notch cut from its foot.</summary>
-    private void DrawBookmark(DrawingContext context, double x, double top)
-    {
-        double height = Math.Min(metrics.LineHeight - 4, 12);
-        double y = top + ((metrics.LineHeight - height) / 2);
-        StreamGeometry ribbon = new();
-        using (StreamGeometryContext path = ribbon.Open())
-        {
-            path.BeginFigure(new Point(x, y), true);
-            path.LineTo(new Point(x + 8, y));
-            path.LineTo(new Point(x + 8, y + height));
-            path.LineTo(new Point(x + 4, y + height - 3));
-            path.LineTo(new Point(x, y + height));
-            path.EndFigure(true);
-        }
-        context.DrawGeometry(palette.Bookmark, null, ribbon);
-    }
-
-    /// <summary>The annotation column (Git blame): each line's text muted at the gutter's left, a rule after it.</summary>
-    private void DrawAnnotations(DrawingContext context, List<RowSpan> shown, int row)
-    {
-        context.FillRectangle(palette.CurrentLine, new Rect(0, 0, annotationWidth - 6, Bounds.Height));
-        for (int i = 0; i < shown.Count && shown[i].Line < GutterAnnotations.Count; i++)
-        {
-            if (shown[i].Row > 0 || GutterAnnotations[shown[i].Line] is not { Length: > 0 } label)
+            if (previous.Remove(key, out shape))
             {
-                continue;
+                current[key] = shape;
+                return true;
             }
-            TextLine text = labels.Get((label, -7), () => Format(label, [], numberRuns.Other));
-            double y = (row + i) * metrics.LineHeight - scroll.Y + (metrics.LineHeight - text.Height) / 2;
-            text.Draw(context, new Point(8, y));
+            return false;
+        }
+
+        /// <summary>How many shapes have been made: what drawing them has cost.</summary>
+        public long Made { get; private set; }
+
+        public StreamGeometry Add(ShapeKey key, StreamGeometry shape)
+        {
+            Made++;
+            current[key] = shape;
+            return shape;
+        }
+
+        public void EndFrame()
+        {
+            previous.Clear();
+            (previous, current) = (current, previous);
+        }
+
+        public void Clear()
+        {
+            previous.Clear();
+            current.Clear();
         }
     }
+
+    /// <summary>The text's I-beam and a link's hand, made once.</summary>
+    private static Cursor? ibeam;
+    private static Cursor? hand;
+
+    private static Cursor IbeamCursor => ibeam ??= new Cursor(StandardCursorType.Ibeam);
+
+    private static Cursor HandCursor => hand ??= new Cursor(StandardCursorType.Hand);
 
     /// <summary>A diff side's tint for each line from <paramref name="first"/> to <paramref name="last"/> inside a change,
     /// the first change's that holds it.</summary>
     private Dictionary<int, IBrush> ChangeTints(int first, int last)
     {
-        Dictionary<int, IBrush> tints = [];
-        foreach (ChangeMark change in ChangeMarks)
+        Dictionary<int, IBrush> tints = changeTints;
+        tints.Clear();
+        LineOrdered<ChangeMark> changes = decorations.ChangesByLine;
+        for (int i = changes.From(first); i < changes.Count && changes.LineOf(i) <= last; i++)
         {
+            ChangeMark change = changes[i];
             IBrush brush = change.Kind switch
             {
                 ChangeMarkKind.Added => palette.DiffAdded,
@@ -786,8 +658,10 @@ public sealed partial class CodeEditor
     /// <summary>A diff side's rule where the other side has lines this one has none of.</summary>
     private void DrawChangeRules(DrawingContext context, int first, int last, double gutter, double width)
     {
-        foreach (ChangeMark change in ChangeMarks)
+        LineOrdered<ChangeMark> changes = decorations.ChangesByLine;
+        for (int i = changes.From(first); i < changes.Count && changes.LineOf(i) <= last + 1; i++)
         {
+            ChangeMark change = changes[i];
             if (change.Count == 0 && change.Line >= first && change.Line <= last + 1)
             {
                 IBrush brush = change.Kind switch
@@ -800,105 +674,6 @@ public sealed partial class CodeEditor
                 context.FillRectangle(brush, new Rect(gutter, TopOf(change.Line) - scroll.Y - 1, width - gutter, 2));
             }
         }
-    }
-
-    /// <summary>The change bars against the code: green for lines added, blue for lines changed, a grey wedge where
-    /// lines were deleted.</summary>
-    private void DrawChanges(DrawingContext context, int first, int last, double gutter)
-    {
-        double x = gutter - FoldWidth - 5;
-        foreach (ChangeMark change in ChangeMarks)
-        {
-            if (change.Line + Math.Max(1, change.Count) <= first || change.Line > last + 1)
-            {
-                continue;
-            }
-            double top = TopOf(change.Line) - scroll.Y;
-            if (change.Kind == ChangeMarkKind.Deleted)
-            {
-                StreamGeometry wedge = new();
-                using (StreamGeometryContext path = wedge.Open())
-                {
-                    path.BeginFigure(new Point(x - 1, top - 4), true);
-                    path.LineTo(new Point(x + 4, top));
-                    path.LineTo(new Point(x - 1, top + 4));
-                    path.EndFigure(true);
-                }
-                context.DrawGeometry(palette.ChangeDeleted, null, wedge);
-                continue;
-            }
-            IBrush brush = change.Kind switch
-            {
-                ChangeMarkKind.Added => palette.ChangeAdded,
-                ChangeMarkKind.Conflict => palette.ChangeConflict,
-                _ => palette.ChangeModified,
-            };
-            double bottom = BottomOf(Math.Min(change.Line + change.Count - 1, document.Snapshot.LineCount - 1)) - scroll.Y;
-            context.FillRectangle(brush, new Rect(x, top + 1, 3, Math.Max(1, bottom - top - 2)), 1);
-        }
-    }
-
-    /// <summary>A test's run icon right of the line numbers, in its last result's colour; a dot while it runs.</summary>
-    private void DrawTestMark(DrawingContext context, TestMarkKind kind, double right, double top)
-    {
-        IBrush brush = kind switch
-        {
-            TestMarkKind.Passed => palette.TestPassed,
-            TestMarkKind.Failed => palette.Error,
-            TestMarkKind.Running => palette.ExecutionPoint,
-            _ => palette.TestNotRun,
-        };
-        double size = Math.Min(metrics.LineHeight - 8, 11);
-        double x = right + 6;
-        double y = top + ((metrics.LineHeight - size) / 2);
-        if (kind == TestMarkKind.Running)
-        {
-            context.DrawEllipse(brush, null, new Point(x + (size / 2), y + (size / 2)), size / 2.6, size / 2.6);
-            return;
-        }
-        StreamGeometry triangle = new();
-        using (StreamGeometryContext path = triangle.Open())
-        {
-            path.BeginFigure(new Point(x, y), true);
-            path.LineTo(new Point(x + (size * 0.9), y + (size / 2)));
-            path.LineTo(new Point(x, y + size));
-            path.EndFigure(true);
-        }
-        context.DrawGeometry(brush, null, triangle);
-        if (kind == TestMarkKind.Failed)
-        {
-            // A failed test: the run icon with a red mark on it.
-            context.DrawEllipse(palette.Error, new Pen(palette.Gutter, 1.2), new Point(x + size, y + size - 1), 2.6, 2.6);
-        }
-    }
-
-    /// <summary>A colour's swatch right of the line numbers: a small square of it, ringed so a colour near the gutter's
-    /// own still shows.</summary>
-    private void DrawSwatch(DrawingContext context, Color colour, double right, double top)
-    {
-        double size = Math.Min(metrics.LineHeight - 6, 12);
-        Rect square = new(right + 5, top + ((metrics.LineHeight - size) / 2), size, size);
-        context.DrawRectangle(new SolidColorBrush(colour), new Pen(palette.LineNumber, 1), square, 2, 2);
-    }
-
-    /// <summary>The execution point's arrow, in the space right of the line numbers.</summary>
-    private void DrawExecutionArrow(DrawingContext context, double right, double top)
-    {
-        double height = Math.Min(metrics.LineHeight - 6, 12);
-        double y = top + (metrics.LineHeight - height) / 2;
-        double x = right + 5;
-        double width = Math.Min(GutterPadRight - 8, 13);
-        StreamGeometry arrow = new();
-        using (StreamGeometryContext path = arrow.Open())
-        {
-            path.BeginFigure(new Point(x, y), true);
-            path.LineTo(new Point(x + width - height / 2, y));
-            path.LineTo(new Point(x + width, y + height / 2));
-            path.LineTo(new Point(x + width - height / 2, y + height));
-            path.LineTo(new Point(x, y + height));
-            path.EndFigure(true);
-        }
-        context.DrawGeometry(palette.ExecutionPoint, null, arrow);
     }
 
     /// <summary>The font and colour a token kind is drawn in, made once per theme.</summary>
@@ -956,6 +731,7 @@ public sealed partial class CodeEditor
         private static readonly IBrush None = Brushes.Transparent;
         private readonly Dictionary<TokenKind, IBrush> syntax = [];
         private readonly Dictionary<TokenKind, SyntaxStyle> styles = [];
+        private readonly Dictionary<(IBrush Brush, double Thickness), IPen> pens = [];
 
         /// <summary>Every resource the palette was read from, in order, to tell a theme's change from none.</summary>
         private List<object?> found = [];
@@ -978,14 +754,8 @@ public sealed partial class CodeEditor
         public IBrush Info { get; private init; } = None;
         public IBrush Faded { get; private init; } = None;
         public IBrush SearchCurrent { get; private init; } = None;
-        public IBrush Breakpoint { get; private init; } = None;
-        public IBrush BreakpointLine { get; private init; } = None;
-        public IBrush ExecutionLine { get; private init; } = None;
-        public IBrush ExecutionPoint { get; private init; } = None;
-        public IBrush InlineValue { get; private init; } = None;
-        public IBrush Tracepoint { get; private init; } = None;
-        public IBrush BreakpointMuted { get; private init; } = None;
-        public IBrush TestPassed { get; private init; } = None;
+        public IBrush Annotation { get; private init; } = None;
+        public IBrush Passed { get; private init; } = None;
         public IBrush Bookmark { get; private init; } = None;
         public IBrush DiffAdded { get; private init; } = None;
         public IBrush DiffModified { get; private init; } = None;
@@ -999,8 +769,7 @@ public sealed partial class CodeEditor
         public IBrush ChangeModified { get; private init; } = None;
         public IBrush ChangeDeleted { get; private init; } = None;
         public IBrush ChangeConflict { get; private init; } = None;
-        public IBrush TestNotRun { get; private init; } = None;
-        public IBrush ExceptionBack { get; private init; } = None;
+        public IBrush ErrorGround { get; private init; } = None;
         public IBrush InlayHint { get; private init; } = None;
         public IBrush InlayHintBack { get; private init; } = None;
         public IBrush UsageRead { get; private init; } = None;
@@ -1023,6 +792,16 @@ public sealed partial class CodeEditor
         public Geometry? PassedIcon { get; private init; }
 
         public IBrush Syntax(TokenKind kind) => syntax.TryGetValue(kind, out IBrush? brush) ? brush : Text;
+
+        /// <summary>A pen of a brush and a thickness, made once for each, immutable as a frame's drawing keeps it.</summary>
+        public IPen PenOf(IBrush brush, double thickness)
+        {
+            if (!pens.TryGetValue((brush, thickness), out IPen? pen))
+            {
+                pens[(brush, thickness)] = pen = new ImmutablePen((IImmutableBrush)brush.ToImmutable(), thickness);
+            }
+            return pen;
+        }
 
         /// <summary>The style the theme sets a kind in, or null for the kind's own.</summary>
         public SyntaxStyle? Style(TokenKind kind) => styles.TryGetValue(kind, out SyntaxStyle style) ? style : null;
@@ -1055,14 +834,8 @@ public sealed partial class CodeEditor
                 Info = F(TokenKeys.Editor_Info) ?? defaults.Info,
                 Faded = Fade(F(TokenKeys.Editor_Background)) ?? defaults.Faded,
                 SearchCurrent = F(TokenKeys.Editor_SearchCurrent) ?? defaults.SearchCurrent,
-                Breakpoint = F(TokenKeys.Editor_Breakpoint) ?? defaults.Breakpoint,
-                BreakpointLine = F(TokenKeys.Editor_BreakpointLine) ?? defaults.BreakpointLine,
-                ExecutionLine = F(TokenKeys.Editor_ExecutionLine) ?? defaults.ExecutionLine,
-                ExecutionPoint = F(TokenKeys.Editor_ExecutionPoint) ?? defaults.ExecutionPoint,
-                InlineValue = F(TokenKeys.Editor_InlineValue) ?? defaults.InlineValue,
-                Tracepoint = F(TokenKeys.Editor_Tracepoint) ?? defaults.Tracepoint,
-                BreakpointMuted = F(TokenKeys.Editor_BreakpointMuted) ?? defaults.BreakpointMuted,
-                TestPassed = F(TokenKeys.Test_Passed) ?? defaults.TestPassed,
+                Annotation = F(TokenKeys.Editor_InlineValue) ?? defaults.Annotation,
+                Passed = F(TokenKeys.Test_Passed) ?? defaults.Passed,
                 Bookmark = F(TokenKeys.Editor_Bookmark) ?? defaults.Bookmark,
                 DiffAdded = F(TokenKeys.Diff_Added) ?? defaults.DiffAdded,
                 DiffModified = F(TokenKeys.Diff_Modified) ?? defaults.DiffModified,
@@ -1076,8 +849,7 @@ public sealed partial class CodeEditor
                 ChangeModified = F(TokenKeys.Vcs_Modified) ?? defaults.ChangeModified,
                 ChangeDeleted = F(TokenKeys.Vcs_Deleted) ?? defaults.ChangeDeleted,
                 ChangeConflict = F(TokenKeys.Vcs_Conflict) ?? defaults.ChangeConflict,
-                TestNotRun = F(TokenKeys.Run) ?? defaults.TestNotRun,
-                ExceptionBack = F(TokenKeys.Editor_ExceptionBack) ?? defaults.ExceptionBack,
+                ErrorGround = F(TokenKeys.Editor_ExceptionBack) ?? defaults.ErrorGround,
                 InlayHint = F(TokenKeys.Editor_InlayHint) ?? defaults.InlayHint,
                 InlayHintBack = F(TokenKeys.Editor_InlayHintBack) ?? defaults.InlayHintBack,
                 UsageRead = F(TokenKeys.Editor_UsageRead) ?? defaults.UsageRead,

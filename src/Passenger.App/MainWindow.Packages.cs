@@ -18,6 +18,7 @@ public partial class MainWindow
         {
             ToolWindows.NuGetView view = nuget = new ToolWindows.NuGetView(session.Packages);
             view.LinkClicked += (_, link) => Browse(link);
+            view.ActionRequested += (_, action) => Request(action);
             // The NuGet window's update of one of EF Core's packages is weighed against the project's provider first.
             view.BeforeInstall = migrations is { } weighs ? weighs.WeighUpdateAsync : null;
             return view;
@@ -27,6 +28,7 @@ public partial class MainWindow
             Tools = () => nuget?.Tabs,
             Menus = [new MenuPlace("Tools", 0, 0)],
         });
+        actions!.Add(new IdeAction(AppActions.NuGetRefresh, "Refresh NuGet", "NuGet", _ => IdeErrors.Observe(NuGet.ReloadSourcesAsync())) { WhyNot = NeedsFolder });
     }
 
     /// <summary>The session's packages followed while it is the window's: a change's files taken from disk and the solution

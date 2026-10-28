@@ -46,7 +46,7 @@ public static class MainMenu
         new("View/Active Editor", 3, 0),
         new("File/" + RecentSolutions, 0, 3),
         new("File/Line Separators", 2, 1),
-        new("File/Local History", 2, 2),
+        new("File/Local History", 2, 3),
         new("Edit/Find", 3, 0),
         new("Navigate/Bookmarks", 4, 0),
         new("Run/" + AvaloniaOverlays, 3, 1),

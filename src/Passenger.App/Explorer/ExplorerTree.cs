@@ -86,21 +86,29 @@ public sealed class ExplorerTree
     /// <summary>The solution shown, whose projects say which one a file is revealed in.</summary>
     private SolutionModel? solution;
 
+    /// <summary>The file-based programs beside the solution shown: no solution lists one, so each is a project of the
+    /// folder's after the solution's own, as a folder with no solution has its programs beside its projects.</summary>
+    private IReadOnlyList<ProjectModel> programs = [];
+
     public void LoadFileSystem(string folder)
     {
         IsSolutionView = false;
         solution = null;
+        programs = [];
         Show(Folder(PathNames.Canonical(folder), 0, dimmed: false));
     }
 
-    public void LoadSolution(SolutionModel solution)
+    /// <summary>A solution: its folders, projects and items, then the programs beside it, each by name.</summary>
+    public void LoadSolution(SolutionModel solution, IReadOnlyList<ProjectModel> beside)
     {
         IsSolutionView = true;
         this.solution = solution;
-        Take(solution.Projects);
-        int count = solution.Projects.Count();
+        programs = beside;
+        Take([.. solution.Projects, .. beside]);
+        int count = solution.Projects.Count() + beside.Count;
         ExplorerNode root = new(NodeKind.Solution, solution.Name, solution.Path, 0, false,
-            node => Entries(solution.Entries, node.Depth + 1, null),
+            node => [.. Entries(solution.Entries, node.Depth + 1, null),
+                .. beside.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).Select(p => Project(p, node.Depth + 1))],
             Plural.Of(count, "project"));
         Show(root);
     }
@@ -167,22 +175,23 @@ public sealed class ExplorerTree
         if (solution is not null)
         {
             solution = solution.WithProjects(Current);
+            programs = [.. programs.Select(Current)];
         }
-        bool any = false;
-        foreach (ExplorerNode node in Loaded(Root).Where(n => n.Kind == NodeKind.Project && n.Path is { } path && changed.Contains(path)).ToList())
+        List<ExplorerNode> reloaded = [];
+        foreach (ExplorerNode node in Loaded(Root, n => n.Kind == NodeKind.Project && n.Path is { } path && changed.Contains(path)))
         {
             ProjectModel project = projects[node.Path!];
             node.Detail = Unloaded.Contains(project.Path) ? "(unloaded)" : DetailOf(project);
             node.Tip = Unloaded.Contains(project.Path) ? null : TipOf(project);
-            foreach (ExplorerNode below in Loaded(node).ToList())
+            foreach (ExplorerNode below in Loaded(node, _ => true))
             {
-                any |= below.Reload();
+                if (below.Reload())
+                {
+                    reloaded.Add(below);
+                }
             }
         }
-        if (any)
-        {
-            Rebuild();
-        }
+        ShowAgain(reloaded);
     }
 
     public void Toggle(ExplorerNode node)
@@ -222,6 +231,24 @@ public sealed class ExplorerTree
         Rows.Close(node);
     }
 
+    /// <summary>Closes every row but the top one, the rows out of sight under a closed one too, so none opens again with
+    /// its own rows open.</summary>
+    public void CollapseAll()
+    {
+        if (Root is null)
+        {
+            return;
+        }
+        foreach (ExplorerNode row in Rows.Reverse().Where(r => r != Root && r.IsExpanded).ToList())
+        {
+            Collapse(row);
+        }
+        foreach (ExplorerNode hidden in Loaded(Root, n => n != Root && n.IsExpanded))
+        {
+            hidden.IsExpanded = false;
+        }
+    }
+
     /// <summary>Reads again only the folders (and projects) that hold these, keeping the rows still there as they were (open,
     /// chosen), and puts the rows that came or went in their places.</summary>
     public void RefreshFolders(IEnumerable<string> folders)
@@ -231,51 +258,82 @@ public sealed class ExplorerTree
             return;
         }
         HashSet<string> changed = new(folders, StringComparer.Ordinal);
-        bool any = false;
-        foreach (ExplorerNode node in Loaded(Root).ToList())
+        List<ExplorerNode> reloaded = [];
+        foreach (ExplorerNode node in Loaded(Root, n => n.Kind switch
         {
-            string? holds = node.Kind switch
+            NodeKind.Folder => n.Path is { } folder && changed.Contains(folder),
+            NodeKind.Project => n.Path is { } project && Path.GetDirectoryName(project) is { } holds && changed.Contains(holds),
+            _ => false,
+        }))
+        {
+            if (node.Reload())
             {
-                NodeKind.Folder => node.Path,
-                NodeKind.Project when node.Path is { } project => Path.GetDirectoryName(project),
-                _ => null,
-            };
-            if (holds is not null && changed.Contains(holds))
-            {
-                any |= node.Reload();
+                reloaded.Add(node);
             }
         }
-        if (any)
-        {
-            Rebuild();
-        }
+        ShowAgain(reloaded);
     }
 
-    /// <summary>The rows made again from the nodes as they now are: those still there kept, the rest taken out or put in.</summary>
-    private void Rebuild()
+    /// <summary>Projects unloaded or loaded again: each one's row made anew in its place, every other row kept as it was;
+    /// false where one is the root, the project opened alone, which only showing the tree again remakes.</summary>
+    public bool ShowProjectsAgain(IReadOnlyCollection<string> paths)
     {
         if (Root is null)
         {
-            return;
+            return true;
         }
-        List<ExplorerNode> wanted = [Root, .. Visible(Root)];
-        HashSet<ExplorerNode> shown = [.. Rows];
-        foreach (ExplorerNode node in wanted.Where(n => !shown.Contains(n)))
+        if (Root is { Kind: NodeKind.Project, Path: { } top } && paths.Contains(top))
         {
-            Mark(node);
+            return false;
         }
-        Rows.Show(wanted);
+        bool Picked(ExplorerNode node) => node is { Kind: NodeKind.Project, Path: { } project } && paths.Contains(project);
+        List<ExplorerNode> reloaded = [];
+        foreach (ExplorerNode node in Loaded(Root, n => n.LoadedChildren?.Any(Picked) == true))
+        {
+            if (node.Reload(Picked))
+            {
+                reloaded.Add(node);
+            }
+        }
+        ShowAgain(reloaded);
+        return true;
     }
 
-    /// <summary>The node and every one under it whose children have been read.</summary>
-    private static IEnumerable<ExplorerNode> Loaded(ExplorerNode node)
+    /// <summary>The rows under each node read again made anew from it as it now is, where it is shown open: those still
+    /// there kept, the rest taken out or put in, and every other row left as it was.</summary>
+    private void ShowAgain(List<ExplorerNode> reloaded)
     {
-        yield return node;
-        foreach (ExplorerNode child in node.LoadedChildren ?? [])
+        foreach (ExplorerNode node in reloaded.Where(n => n.IsExpanded))
         {
-            foreach (ExplorerNode below in Loaded(child))
+            List<ExplorerNode> wanted = [.. Visible(node)];
+            foreach (ExplorerNode row in wanted)
             {
-                yield return below;
+                Mark(row);
+            }
+            Rows.ShowUnder(node, wanted);
+        }
+    }
+
+    /// <summary>Those of the node and the nodes under it whose children have been read that are picked, all found before
+    /// any is read again, by a walk that makes nothing for the nodes it passes.</summary>
+    private static List<ExplorerNode> Loaded(ExplorerNode node, Func<ExplorerNode, bool> picked)
+    {
+        List<ExplorerNode> found = [];
+        Walk(node);
+        return found;
+
+        void Walk(ExplorerNode at)
+        {
+            if (picked(at))
+            {
+                found.Add(at);
+            }
+            if (at.LoadedChildren is { } children)
+            {
+                foreach (ExplorerNode child in children)
+                {
+                    Walk(child);
+                }
             }
         }
     }
@@ -290,12 +348,12 @@ public sealed class ExplorerTree
             return null;
         }
         string full = PathNames.Canonical(path);
-        string? owner = solution is null ? null : ProjectModel.Owning(solution.Projects, full)?.Path;
+        string? owner = solution is null ? null : ProjectModel.Owning([.. solution.Projects, .. programs], full)?.Path;
         // A file a project takes from elsewhere shows where its Link puts it, in the project that holds it.
         string? linked = null;
         if (owner is null && solution is not null)
         {
-            foreach (ProjectModel project in solution.Projects)
+            foreach (ProjectModel project in solution.Projects.Concat(programs))
             {
                 if (FilesOf(Current(project))?.LogicalOf(full) is { } logical)
                 {
@@ -362,6 +420,7 @@ public sealed class ExplorerTree
         Rows.Clear();
         Root = null;
         solution = null;
+        programs = [];
         IsSolutionView = false;
     }
 
@@ -500,6 +559,11 @@ public sealed class ExplorerTree
         ProjectModel project = Current(given);
         ProjectFiles? files = FilesOf(project);
         Nesting nesting = new(project, NestFiles, files);
+        if (files is null && project.IsProgram)
+        {
+            // Its folder is not its own: until its evaluation says what it includes, its C# file alone.
+            return [new ExplorerNode(NodeKind.File, Path.GetFileName(project.Path), project.Path, depth, dimmed, null)];
+        }
         if (files is null)
         {
             string folder = relative.Length == 0 ? project.Folder : Path.Combine(project.Folder, relative.Replace('/', Path.DirectorySeparatorChar));
@@ -682,11 +746,15 @@ public sealed class ExplorerNode : Observable, ITreeRow
     /// <summary>A file or folder on disk that can be cut, copied or dragged, rather than a part of the solution.</summary>
     public bool IsMovable => Kind is NodeKind.Folder || Kind == NodeKind.File && !IsSolutionItem;
 
+    /// <summary>A file-based program beside the solution, which is no solution's to rename or take out: its C# file is,
+    /// as the row under it.</summary>
+    public bool IsProgram => Kind == NodeKind.Project && Path is { } program && ProgramFiles.IsProgram(program);
+
     /// <summary>What Rename renames: what is on disk, but a file only the solution lists, and a solution folder.</summary>
-    public bool CanRename => Kind is NodeKind.Folder or NodeKind.Project or NodeKind.SolutionFolder || Kind == NodeKind.File && !IsSolutionItem;
+    public bool CanRename => Kind is NodeKind.Folder or NodeKind.SolutionFolder || Kind == NodeKind.Project && !IsProgram || Kind == NodeKind.File && !IsSolutionItem;
 
     /// <summary>What Delete takes away: a file or folder to the Trash, or what is the solution's own out of it.</summary>
-    public bool CanRemove => Kind is NodeKind.File or NodeKind.Folder or NodeKind.Project or NodeKind.SolutionFolder
+    public bool CanRemove => Kind is NodeKind.File or NodeKind.Folder or NodeKind.SolutionFolder || Kind == NodeKind.Project && !IsProgram
         || Kind == NodeKind.ProjectReference && Referenced is not null;
 
     /// <summary>What Delete only takes out of the solution or its project, its files staying on disk: a project, a
@@ -703,16 +771,16 @@ public sealed class ExplorerNode : Observable, ITreeRow
     /// <summary>The children once read, without reading them.</summary>
     internal List<ExplorerNode>? LoadedChildren => children;
 
-    /// <summary>Reads the children again, keeping each one still there (with what is open under it); whether any came
-    /// or went.</summary>
-    internal bool Reload()
+    /// <summary>Reads the children again, keeping each one still there (with what is open under it) but those
+    /// <paramref name="remade"/> picks, which are made anew; whether any came or went.</summary>
+    internal bool Reload(Func<ExplorerNode, bool>? remade = null)
     {
         if (load is null || children is null)
         {
             return false;
         }
         Dictionary<string, ExplorerNode> before = children.ToDictionary(Identity);
-        List<ExplorerNode> fresh = [.. load(this).Select(c => before.TryGetValue(Identity(c), out ExplorerNode? kept) ? kept : c)];
+        List<ExplorerNode> fresh = [.. load(this).Select(c => before.TryGetValue(Identity(c), out ExplorerNode? kept) && remade?.Invoke(kept) != true ? kept : c)];
         bool same = fresh.Count == children.Count && fresh.SequenceEqual(children);
         children = fresh;
         return !same;
@@ -730,7 +798,6 @@ public sealed class ExplorerNode : Observable, ITreeRow
             if (Set(ref isExpanded, value))
             {
                 Raise(nameof(Icon));
-                Raise(nameof(ChevronAngle));
             }
         }
     }
@@ -759,7 +826,6 @@ public sealed class ExplorerNode : Observable, ITreeRow
     public bool IsVcsConflicted => change is ChangeKind.Conflicted;
 
     public Thickness Indent => new(Depth * 16, 0, 0, 0);
-    public double ChevronAngle => IsExpanded ? 90 : 0;
     public double Opacity => IsDimmed || IsCut ? 0.55 : 1;
     public Geometry Icon => FileIcons.For(this);
     public IBrush IconBrush => FileIcons.BrushFor(this);

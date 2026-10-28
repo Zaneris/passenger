@@ -1,3 +1,6 @@
+using System.Globalization;
+using Passenger.Text;
+
 namespace Passenger.App;
 
 /// <summary>Why an action cannot run for want of what it acts on, named once, so the same want reads the same wherever an
@@ -19,6 +22,12 @@ public static class Refusals
     /// <summary>The folder has no C# language server: it has neither a solution nor a project, or its window starts none.</summary>
     public const string NoCSharp = "No C# language server runs for this folder";
 
+    /// <summary>A C# file come under a project that the language server has not loaded into it (<see
+    /// cref="CSharp.CSharpService.UnplacedAsync"/>), whose answers about the solution would leave it out.</summary>
+    public static string NotTakenIn(string file, string project) =>
+        $"{file} is not loaded into {project} yet: the C# language server has not taken it in after {CSharp.Patience.Limit.TotalSeconds:0} s, "
+        + "and would answer without it; try again once it has";
+
     /// <summary>Go to Declaration found nothing to go to where it was asked.</summary>
     public const string NoDeclaration = "Cannot find a declaration to go to";
 
@@ -31,6 +40,21 @@ public static class Refusals
     /// <summary>A service its run left unstarted (<see cref="DontStart"/>), as it is named, and what starts it as its run's kind
     /// starts one (<see cref="Run.ServiceRun.StartsIt"/>).</summary>
     public static string NotStarted(string service, string startsIt) => $"{service} is not started: {DontStart}; {startsIt}";
+
+    /// <summary>Why no match of a search is replaced: replacing every one would make the text longer than a replacement
+    /// may (<see cref="SearchResult.TooLong"/>), worked out before any is made; null when it would not.</summary>
+    public static string? TooLongReplaced(SearchResult found, string replacement) =>
+        found.ReplacedLength(replacement) is var length && found.TooLong(length)
+            ? string.Create(CultureInfo.InvariantCulture, $"the text replaced would be {length:N0} characters long, more than {SearchResult.MostReplaced:N0}")
+            : null;
+
+    /// <summary>A file shown read-only (decompiled, installed, carried by the app, a copy to read), which nothing edits or
+    /// saves.</summary>
+    public static string ReadOnly(string name) => $"{name} is read-only";
+
+    /// <summary>Why the file shown cannot be saved: none is shown, it is read-only, or it has nothing to save.</summary>
+    public static string? NeedsUnsaved(ActionContext context) =>
+        context.File is not { } file ? NoFile : file.IsReadOnly ? ReadOnly(file.Name) : file.IsModified ? null : $"{file.Name} is saved";
 
     /// <summary>Why an action on the file shown cannot run: none is shown.</summary>
     public static string? NeedsFile(ActionContext context) => context.File is null ? NoFile : null;

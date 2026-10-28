@@ -1,6 +1,9 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text.Json;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Passenger.App.Editors;
 using Passenger.App;
 using Passenger.App.Debugging;
 using Passenger.App.Explorer;
@@ -60,8 +63,7 @@ public sealed class PathsTests : IDisposable
         Ui.Settle();
         Assert.Equal(program, window.EditorArea.Active?.Path);
         Task<DiffWindow?> opening = window.ShowDiffAsync(Assert.Single(window.Vcs.Changes).Path);
-        Ui.WaitFor(() => opening.IsCompleted, "the diff to open");
-        DiffWindow diff = opening.Result!;
+        DiffWindow diff = Ui.Await(opening, "the diff to open")!;
         Assert.True(ReferenceEquals(window.EditorArea.Active!.Text, diff.View.Right.Document), "Show Diff opened a copy of the open file rather than the file itself");
         diff.Close();
         Ui.Settle();
@@ -81,8 +83,7 @@ public sealed class PathsTests : IDisposable
         Ui.WaitFor(() => commit.Chosen.Any(c => c.Name == "Program.cs"), "Program.cs in the Commit window");
         commit.Message = "Start at ten";
         Task<bool> committed = commit.CommitAsync(push: false);
-        Ui.WaitFor(() => committed.IsCompleted, "the commit");
-        Assert.True(committed.Result, window.Status);
+        Assert.True(Ui.Await(committed, "the commit"), window.Status);
         Assert.Equal("Start at ten", Git(repository, "log", "-1", "--format=%s").Trim());
         Ui.WaitFor(() => window.Vcs.Changes.Count == 0, "nothing left changed");
         window.Close();
@@ -116,13 +117,69 @@ public sealed class PathsTests : IDisposable
     private static extern uint GetShortPathName(string path, [Out] char[] shortPath, uint length);
 }
 
-/// <summary>A project the solution names in other letter case than its folder is the one its files build in and take their
-/// namespace from, and a sibling folder whose name begins with the open folder's is not inside it.</summary>
+/// <summary>A folder the command line names in other letter case is the disk's everywhere it goes; a project the solution
+/// names in other letter case than its folder is the one its files build in and take their namespace from; and a sibling
+/// folder whose name begins with the open folder's is not inside it.</summary>
 public sealed class ProjectPathsTests : IDisposable
 {
     private readonly string root = PathNames.Canonical(TestFolders.Create("paths-"));
 
     public void Dispose() => TestFolders.Delete(root);
+
+    /// <summary>Passenger started on a folder in lower case from a shell whose PWD spells it so: the window, its projects and
+    /// the file the command line names, the restore and build it makes and a step of that build, the program it runs, the
+    /// terminal's shell and the language server all have the folder as the disk names it, so no later build through the
+    /// disk's spelling restores, compiles or deletes what this one wrote.</summary>
+    [AvaloniaFact]
+    public void A_folder_the_command_line_names_in_other_letter_case_is_built_run_and_given_to_the_terminal_and_language_server_as_the_disk_names_it()
+    {
+        Assert.SkipWhen(PathNames.Comparison == StringComparison.Ordinal, PathsTests.CaseTold);
+        string folder = Path.Combine(root, "Shop Front");
+        string project = DiskSpelled.Write(folder);
+        string spelled = folder.ToLowerInvariant();
+        string? pwd = Environment.GetEnvironmentVariable("PWD");
+        Environment.SetEnvironmentVariable("PWD", spelled);
+        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false };
+        try
+        {
+            window.Show();
+            window.Start(LaunchOptions.Parse([spelled, "--file", "Program.cs"]));
+            Ui.Settle();
+            Assert.True(window.Folder == folder && window.Solution?.Path == Path.Combine(folder, "Shop.slnx") && window.Projects.SingleOrDefault()?.Path == project
+                && window.EditorArea.Active?.Path == Path.Combine(folder, "Program.cs"),
+                $"Opened as {spelled}, the window has the folder {window.Folder}, the solution {window.Solution?.Path}, the projects "
+                + $"[{string.Join(", ", window.Projects.Select(p => p.Path))}] and the file {window.EditorArea.Active?.Path}");
+            Ui.WaitFor(() => window.CSharpService?.Session is { IsLoaded: true }, "the language server to load the project", TimeSpan.FromMinutes(2));
+            Assert.True(window.CSharpService!.Session!.Folder == folder && window.CSharpService.Session.Solution == Path.Combine(folder, "Shop.slnx"),
+                $"The language server was given the folder {window.CSharpService.Session.Folder} and the solution {window.CSharpService.Session.Solution}");
+
+            window.Perform(AppActions.Build);
+            Ui.WaitFor(() => !window.IsBuilding, "the build", TimeSpan.FromMinutes(2));
+            Assert.True(window.Status == "Build succeeded", $"The build did not succeed: {Ui.Said(window)}");
+            DiskSpelled.Check(spelled, folder, project);
+
+            Ui.Launched(window, window.RunAsync(), "the run", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => window.BottomPanel.Run.Document.Snapshot.ToString().Contains("Process finished", StringComparison.Ordinal), "the run to end");
+            string output = window.BottomPanel.Run.Document.Snapshot.ToString();
+            Assert.True(output.Contains($"Shop runs from {Path.Combine(folder, "bin", "Debug", TestProjects.Framework)}", StringComparison.Ordinal)
+                && !output.Contains(spelled, StringComparison.Ordinal), $"The program did not run from its build as the disk names it:\n{output}");
+
+            window.TerminalPanel.Shell = OperatingSystem.IsWindows() ? ("cmd.exe", []) : ("/bin/sh", []);
+            Ui.Run(window, AppActions.ShowTerminal);
+            Ui.WaitFor(() => window.TerminalPanel.Active is { IsRunning: true }, "the shell to start");
+            Ui.WaitFor(() => window.TerminalPanel.View.IsFocused, "the keys to go to the terminal");
+            string told = Path.Combine(root, "terminal-folder.txt");
+            window.KeyTextInput(OperatingSystem.IsWindows() ? $"cd > \"{told}\"" : $"pwd > '{told}'");
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => File.Exists(told) && Ui.Shared(told).Trim().Length > 0, "the shell to write its folder");
+            Assert.True(Ui.Shared(told).Trim() == folder, $"The terminal's shell is in {Ui.Shared(told).Trim()}, so a build typed there would go through that spelling");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PWD", pwd);
+            window.Close();
+        }
+    }
 
     [AvaloniaFact]
     public void A_project_the_solution_names_in_other_letter_case_than_its_folder_builds_from_its_file_and_gives_new_classes_its_namespace()
@@ -170,5 +227,52 @@ public sealed class ProjectPathsTests : IDisposable
         Assert.Equal(Path.Combine(root, "app2"), Assert.Single(recent.Rows, r => r.Name == "Outside.cs").Where);
         Assert.Null(window.ExplorerView.Tree.Reveal(outside));
         window.Close();
+    }
+}
+
+/// <summary>A solution with one console project at its folder's top, whose build has a step write the folder its shell is
+/// in, and what its restore and build name, each held to the folder as the disk spells it.</summary>
+internal static class DiskSpelled
+{
+    /// <summary>Writes the solution, Shop.slnx, and its project into the folder; the project's path.</summary>
+    public static string Write(string folder)
+    {
+        TestFolders.Write(folder, "Shop.slnx", "<Solution>\n  <Project Path=\"Shop.csproj\" />\n</Solution>\n");
+        TestFolders.Write(folder, "Program.cs", "Console.WriteLine($\"Shop runs from {AppContext.BaseDirectory}\");\n");
+        // A shell's PWD is what a step of a build takes for its folder; Windows' shells have none.
+        return TestFolders.Write(folder, "Shop.csproj", TestProjects.Console("<ImplicitUsings>enable</ImplicitUsings>").With(
+            "  <Target Name=\"SayFolder\" AfterTargets=\"Build\" Condition=\"'$(OS)' != 'Windows_NT' And '$(DesignTimeBuild)' != 'true'\">\n"
+            + "    <Exec Command=\"pwd &gt; obj/step-folder.txt\" />\n  </Target>\n"));
+    }
+
+    /// <summary>Fails naming each place the restore and build of the project, opened as <paramref name="spelled"/>, named
+    /// its folder otherwise than the disk does: the assets file's project and output, every file the build lists as its
+    /// own (which a build through another spelling deletes) and the folder a step of the build ran in.</summary>
+    public static void Check(string spelled, string folder, string project)
+    {
+        string under = folder + Path.DirectorySeparatorChar;
+        List<string> wrong = [];
+        using (JsonDocument assets = JsonDocument.Parse(File.ReadAllText(Path.Combine(folder, "obj", "project.assets.json"))))
+        {
+            JsonElement restore = assets.RootElement.GetProperty("project").GetProperty("restore");
+            if (restore.GetProperty("projectPath").GetString() is { } restored && restored != project)
+            {
+                wrong.Add($"project.assets.json restored the project {restored}");
+            }
+            if (restore.GetProperty("outputPath").GetString() is { } output && !output.StartsWith(under, StringComparison.Ordinal))
+            {
+                wrong.Add($"project.assets.json restored into {output}");
+            }
+        }
+        string listed = Path.Combine(folder, "obj", "Debug", TestProjects.Framework, "Shop.csproj.FileListAbsolute.txt");
+        Assert.True(File.Exists(listed), $"The build listed none of its files in {listed}");
+        wrong.AddRange(File.ReadAllLines(listed).Where(line => line.Length > 0 && !line.StartsWith(under, StringComparison.Ordinal))
+            .Select(line => $"the build listed {line} as its own"));
+        if (!OperatingSystem.IsWindows() && File.ReadAllText(Path.Combine(folder, "obj", "step-folder.txt")).Trim() is { } step && step != folder)
+        {
+            wrong.Add($"a step of the build ran in {step}");
+        }
+        Assert.True(wrong.Count == 0, $"Opened as {spelled}, {folder} was built under another spelling, which a build by the disk's would "
+            + $"restore, compile and delete again: {string.Join("; ", wrong)}");
     }
 }

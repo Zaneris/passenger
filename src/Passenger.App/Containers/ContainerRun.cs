@@ -58,6 +58,14 @@ public sealed record ContainerPlan(string Name, string Folder, string ProjectNam
     public Func<IReadOnlyList<DotnetService>, IReadOnlyCollection<string>, IReadOnlyCollection<string>, DevelopmentCertificate.Exported?, CancellationToken, Task> Writer { get; init; } =
         (_, _, _, _, _) => Task.CompletedTask;
 
+    /// <summary>Writes the override again as it was last written, with the ports chosen since (<see cref="ChosenPorts.Again"/>),
+    /// building no image again.</summary>
+    public Func<CancellationToken, Task> WriteOverrideAgain { get; init; } = _ => Task.CompletedTask;
+
+    /// <summary>The host ports Passenger chose for the published ports the files leave to the engine; null where it chooses
+    /// none, Compose being too old to put a service's ports in place of its files'.</summary>
+    public ChosenPorts? Ports { get; init; }
+
     /// <summary>The plan with .NET services it left unstarted (marked Don't start) started from now, run from Passenger's build
     /// as the rest are: the override gives them fast mode's stage and mounts, Rerun builds and restarts them, Stop takes them.</summary>
     public ContainerPlan StartingLater(IReadOnlyCollection<string> later) => this with
@@ -149,7 +157,7 @@ public static class ContainerPlans
         {
             single = projects.FirstOrDefault(p => PathNames.Same(p.Path, configuration.Project))
                 ?? throw new LaunchException($"{configuration.Name} cannot run: its project {Path.GetFileName(configuration.Project)} is not loaded in the open folder");
-            properties = await LaunchPlan.EvaluateAsync(single, configuration.Framework.Length > 0 ? configuration.Framework : null,
+            properties = await LaunchPlan.EvaluateAsync(single, LaunchPlan.FrameworkOf(configuration.Framework, single),
                 ["TargetPath", "TargetDir", "AssemblyName", "DockerfileContext", "DockerfileFile", "DockerfileFastModeStage", "ContainerDevelopmentMode",
                     "DockerfileBuildArguments", "DockerfileRunArguments", "DockerfileTag", "ContainerBaseImage", "ContainerPort", "RuntimeIdentifier", "SelfContained"],
                 workspace, cancel, configuration.Kind == RunKind.SdkContainer ? "ComputeContainerBaseImage" : null);
@@ -168,7 +176,7 @@ public static class ContainerPlans
             string service = DockerFiles.ServiceName(single.Name.Split(' ')[0]);
             fixedProjects[service] = single.Path;
             string composed = Path.Combine(state, $"{file}.compose.yaml");
-            WriteJson(composed, SingleService(configuration, single, properties, service, workspace, mode));
+            WriteJson(composed, SingleService(configuration, single, properties, service, workspace, mode, LaunchPlan.FrameworkOf(configuration.Framework, single)));
             files = [composed];
             runsIn = single.Folder;
         }
@@ -193,7 +201,8 @@ public static class ContainerPlans
                 continue;
             }
             IReadOnlyDictionary<string, string> its = single is not null && PathNames.Same(project.Path, single.Path) ? properties
-                : await LaunchPlan.EvaluateAsync(project, null, ["TargetPath", "TargetDir", "AssemblyName", "DockerfileFastModeStage", "RuntimeIdentifier", "SelfContained"], workspace, cancel);
+                : await LaunchPlan.EvaluateAsync(project, LaunchPlan.FrameworkOf(string.Empty, project),
+                    ["TargetPath", "TargetDir", "AssemblyName", "DockerfileFastModeStage", "RuntimeIdentifier", "SelfContained"], workspace, cancel);
             string output = its.GetValueOrDefault("TargetDir") is { Length: > 0 } dir ? Path.TrimEndingDirectorySeparator(dir)
                 : Path.GetDirectoryName(its.GetValueOrDefault("TargetPath") ?? string.Empty) ?? project.Folder;
             string assembly = its.GetValueOrDefault("AssemblyName") is { Length: > 0 } named ? named : Path.GetFileNameWithoutExtension(project.Path);
@@ -237,8 +246,10 @@ public static class ContainerPlans
         List<string> backing = [.. model.Services.Select(s => s.Name).Where(s => !dotnetNames.Contains(s))];
         List<string> watched = [.. model.Services.Where(s => s.Watches && !dotnetNames.Contains(s.Name) && (start.Count == 0 || start.Contains(s.Name))).Select(s => s.Name)];
         List<string> notes = [.. dotnet.Where(d => !d.Starts && touched.Contains(d.Service)).Select(d => ContainerPlan.DependedOn(d.Service))];
-        // As deployed, the image's own user could not read what is kept for the person alone (OverrideAsync's owner).
-        if (mode == ContainerMode.Images && OperatingSystem.IsLinux() && DotnetProcesses.UserAndGroup is { } owner)
+        EngineState engineState = await engine.StateAsync(cancel: cancel);
+        string? owner = OperatingSystem.IsLinux() ? DotnetProcesses.UserAndGroup : null;
+        // As deployed, the image's own user could not read what is kept for the person alone (RunsAs).
+        if (mode == ContainerMode.Images && RunsAs(engineState, owner) is { } user)
         {
             foreach (DotnetService runs in dotnet.Where(d => d.Starts && touched.Contains(d.Service)))
             {
@@ -246,7 +257,8 @@ public static class ContainerPlans
                     .. !Development(model[runs.Service]!) || UserSecrets(projects.FirstOrDefault(p => PathNames.Same(p.Path, runs.Project))) is null ? Array.Empty<string>() : ["user secrets"]];
                 if (kept.Length > 0)
                 {
-                    notes.Add($"{runs.Service} runs as you ({owner}) on this Linux engine, as fast mode does, so it can read the {string.Join(" and ", kept)} kept for you alone");
+                    string who = engineState.Rootless ? "as root in its container, which is you on this rootless engine" : $"as you ({user}) on this Linux engine";
+                    notes.Add($"{runs.Service} runs {who}, as fast mode does, so it can read the {string.Join(" and ", kept)} kept for you alone");
                 }
             }
         }
@@ -259,29 +271,36 @@ public static class ContainerPlans
         string overrideFile = Path.Combine(state, $"{file}.override.yaml");
         compose.InsertRange(compose.IndexOf("--project-directory"), ["-f", overrideFile]);
         // Written once the host's build is done: what fast mode mounts (its static web assets' folders) is that build's.
-        EngineState engineState = await engine.StateAsync(cancel: cancel);
         bool pin = Overrides(engineState.ComposeVersion);
-        // Rootless Podman maps a container's users onto the person's subordinate ids: keep-id makes the person's own theirs.
-        bool keepId = engineState is { IsPodman: true, Rootless: true };
         // Each port Passenger pins is chosen once for the plan: every override it writes after (a hold, a restart) keeps it.
-        Dictionary<(string Service, int Port), int> pinned = [];
+        ChosenPorts? pinned = pin ? new ChosenPorts(model.Services) : null;
+        (IReadOnlyList<DotnetService> Now, IReadOnlyCollection<string> Held, IReadOnlyCollection<string> Modifiable, DevelopmentCertificate.Exported? Certificate,
+            Dictionary<string, IReadOnlyDictionary<string, string>> Images)? last = null;
         async Task WriteOverride(IReadOnlyList<DotnetService> now, IReadOnlyCollection<string> held, IReadOnlyCollection<string> modifiable, DevelopmentCertificate.Exported? certificate,
             CancellationToken stop)
         {
-            Dictionary<string, IReadOnlyDictionary<string, string>> images = [];
-            WriteJson(overrideFile, await OverrideAsync(model, projectName, now, mode, labels, projects, state, pin ? pinned : null, held, modifiable, certificate, keepId, telemetry,
-                images, stop), overriding: true);
+            last = (now, held, modifiable, certificate, []);
+            await WriteAgain(stop);
             // A hold is its image's to refuse too, read as the override just written builds it: one its image turns off goes unheld.
             List<ComposeService> holding = [.. model.Services.Where(s => held.Contains(s.Name) && now.Any(d => d.Service == s.Name && d.Starts))];
             if (holding.Count == 0)
             {
                 return;
             }
-            images = await ImageEnvironmentsAsync(engine, compose, runsIn, holding, projectName, mode, stop);
+            Dictionary<string, IReadOnlyDictionary<string, string>> images = await ImageEnvironmentsAsync(engine, compose, runsIn, holding, projectName, mode, stop);
             if (holding.Any(s => HeldStart.DebuggerOff(Started(s, images)) is not null))
             {
-                WriteJson(overrideFile, await OverrideAsync(model, projectName, now, mode, labels, projects, state, pin ? pinned : null, held, modifiable, certificate, keepId,
-                    telemetry, images, stop), overriding: true);
+                last = (now, held, modifiable, certificate, images);
+                await WriteAgain(stop);
+            }
+        }
+        // As last written, its images' environments as read then: an image built again would leave a container kept naming one gone.
+        async Task WriteAgain(CancellationToken stop)
+        {
+            if (last is { } was)
+            {
+                WriteJson(overrideFile, await OverrideAsync(model, projectName, was.Now, mode, labels, projects, state, pinned, was.Held, was.Modifiable, was.Certificate,
+                    engineState, owner, telemetry, was.Images, stop), overriding: true);
             }
         }
         if (mode == ContainerMode.Images || dotnet.Count == 0)
@@ -301,6 +320,8 @@ public static class ContainerPlans
             configuration.LaunchBrowser && configuration.BrowserUrl.Length > 0 ? configuration.BrowserUrl : null, launchService, launchPort, all)
         {
             Writer = WriteOverride,
+            WriteOverrideAgain = WriteAgain,
+            Ports = pinned,
             Publish = publish,
             State = state,
             Https = [.. model.Services.Where(s => dotnet.Any(d => d.Service == s.Name) && Serves(s)).Select(s => s.Name)],
@@ -397,7 +418,7 @@ public static class ContainerPlans
     /// the Dockerfile beside it and the solution's folder), or the SDK's base image, with the configuration's environment
     /// and <c>docker run</c> words (ports, env files, volumes, variables).</summary>
     private static JsonObject SingleService(RunConfiguration configuration, ProjectModel project, IReadOnlyDictionary<string, string> properties, string name,
-        WorkspaceModel workspace, ContainerMode mode)
+        WorkspaceModel workspace, ContainerMode mode, string? framework)
     {
         JsonObject service = [];
         List<int> exposed = [];
@@ -437,7 +458,7 @@ public static class ContainerPlans
         {
             string image = properties.GetValueOrDefault("PassengerImage") is { Length: > 0 } published ? published
                 : properties.GetValueOrDefault("ContainerBaseImage") is { Length: > 0 } basis ? basis
-                : $"mcr.microsoft.com/dotnet/{(ContainerConfigurations.IsWeb(project, workspace.Projects) ? "aspnet" : "runtime")}:{FrameworkTag(project)}";
+                : $"mcr.microsoft.com/dotnet/{(ContainerConfigurations.IsWeb(project, workspace.Projects) ? "aspnet" : "runtime")}:{FrameworkTag(project, framework)}";
             service["image"] = image;
             exposed.AddRange((properties.GetValueOrDefault("ContainerPort") ?? string.Empty).Split(';', StringSplitOptions.RemoveEmptyEntries)
                 .Select(p => int.TryParse(p.Split(':')[0], NumberStyles.None, CultureInfo.InvariantCulture, out int n) ? n : 0).Where(n => n > 0));
@@ -512,24 +533,24 @@ public static class ContainerPlans
         return new JsonObject { ["name"] = $"passenger-{Slug(configuration.Name)}-{ContainerLabels.FolderValue(workspace.Folder)[..8]}", ["services"] = new JsonObject { [name] = service } };
     }
 
-    /// <summary>The image tag of a project's newest .NET (10.0 of net10.0), else 10.0.</summary>
-    private static string FrameworkTag(ProjectModel project) =>
-        project.TargetFrameworks.Select(f => f.Split('-')[0]).Where(f => f.StartsWith("net", StringComparison.OrdinalIgnoreCase) && Version.TryParse(f[3..], out _))
+    /// <summary>The image tag of the .NET a project runs for (10.0 of net10.0): the framework given, else its newest, else 10.0.</summary>
+    private static string FrameworkTag(ProjectModel project, string? framework) =>
+        (framework is null ? project.TargetFrameworks : [framework]).Select(f => f.Split('-')[0]).Where(f => f.StartsWith("net", StringComparison.OrdinalIgnoreCase) && Version.TryParse(f[3..], out _))
             .Select(f => Version.Parse(f[3..])).OrderByDescending(v => v).Select(v => $"{v.Major}.{Math.Max(0, v.Minor)}").FirstOrDefault() ?? "10.0";
 
     /// <summary>The override Passenger lays over the files: its labels on every service, image and network it makes (an image
     /// built as deployed tagged apart from the one its files name); for each .NET service it starts, in fast mode its image's
     /// runtime stage running <c>dotnet /passenger/app/X.dll</c> as PID 1 over Passenger's build mounted read-only, in images
     /// mode a Debug build where its Dockerfile takes BUILD_CONFIGURATION; the development certificate and user secrets where
-    /// they serve; a service held for the debugger started held (its debugger on), its code open to Hot Reload. JSON, read as YAML.</summary>
-    private static async Task<JsonObject> OverrideAsync(ComposeModel model, string project, IReadOnlyList<DotnetService> dotnet, ContainerMode mode, IReadOnlyList<string> labels,
-        IReadOnlyList<ProjectModel> projects, string state, Dictionary<(string Service, int Port), int>? pinned, IReadOnlyCollection<string> held,
-        IReadOnlyCollection<string> modifiable, DevelopmentCertificate.Exported? certificate, bool keepId, ContainerTelemetry? telemetry,
+    /// they serve, read <see cref="RunsAs"/>; a service held for the debugger started held, its code open to Hot Reload.</summary>
+    public static async Task<JsonObject> OverrideAsync(ComposeModel model, string project, IReadOnlyList<DotnetService> dotnet, ContainerMode mode, IReadOnlyList<string> labels,
+        IReadOnlyList<ProjectModel> projects, string state, ChosenPorts? pinned, IReadOnlyCollection<string> held,
+        IReadOnlyCollection<string> modifiable, DevelopmentCertificate.Exported? certificate, EngineState engine, string? owner, ContainerTelemetry? telemetry,
         IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> images, CancellationToken cancel)
     {
         JsonObject services = [];
         HashSet<string> heard = new(StringComparer.Ordinal);
-        string? owner = OperatingSystem.IsLinux() ? DotnetProcesses.UserAndGroup : null;
+        string? user = RunsAs(engine, owner);
         foreach (ComposeService service in model.Services)
         {
             JsonObject entry = new() { ["labels"] = Labels(labels) };
@@ -568,7 +589,7 @@ public static class ContainerPlans
                     if (pinned is not null && service.Ports.Any(p => ComposeModel.HostPort(p.Published) is null))
                     {
                         entry["ports"] = new JsonArray([.. service.Ports.Select((p, i) =>
-                            (JsonNode)Port(p, ComposeModel.HostPort(p.Published) is null ? Pinned(pinned, service.Name, i, p.HostIp) : null))]);
+                            (JsonNode)Port(p, ComposeModel.HostPort(p.Published) is null ? pinned.Of(service.Name, i, p) : null))]);
                     }
                     volumes.Add(new JsonObject { ["type"] = "bind", ["source"] = built.Output, ["target"] = AppFolder, ["read_only"] = true });
                     if (!service.Environment.ContainsKey("ASPNETCORE_ENVIRONMENT") && !service.Environment.ContainsKey("DOTNET_ENVIRONMENT"))
@@ -591,14 +612,9 @@ public static class ContainerPlans
                     build["args"] = new JsonObject { ["BUILD_CONFIGURATION"] = "Debug" };
                 }
                 (string Folder, string Id)? secrets = development ? UserSecrets(projects.FirstOrDefault(p => PathNames.Same(p.Path, built.Project))) : null;
-                // Linux keeps the host's owners on a mount: the app runs as the person, who alone can read what is kept for them.
-                if (owner is not null && (mode == ContainerMode.Fast || Serves(service) || secrets is not null))
+                if (user is not null && (mode == ContainerMode.Fast || Serves(service) || secrets is not null))
                 {
-                    entry["user"] = owner;
-                    if (keepId)
-                    {
-                        entry["userns_mode"] = "keep-id";
-                    }
+                    entry["user"] = user;
                 }
                 // Held until what attaches lets it go, never where nothing can; the profiler's gets no changeable code to measure.
                 if (held.Contains(service.Name) && HeldStart.DebuggerOff(Started(service, images)) is null)
@@ -659,6 +675,12 @@ public static class ContainerPlans
         }
         return made;
     }
+
+    /// <summary>Who a .NET service's app runs as to read what is kept for the person alone (their build, certificate and user
+    /// secrets), a Linux engine keeping the host's owners on a mount: the person, <paramref name="owner"/> (their uid:gid,
+    /// given on Linux); on a rootless engine, Docker or Podman, the container's root, which is the person there, its
+    /// other users the person's subordinate ids. Null with no owner given, the image's own user reading them.</summary>
+    private static string? RunsAs(EngineState engine, string? owner) => owner is null ? null : engine.Rootless ? "0:0" : owner;
 
     /// <summary>The image a service runs: one built from its folder under Passenger's own tag for the mode, else the one it names.</summary>
     private static string? ImageOf(ComposeService service, string project, ContainerMode mode) =>
@@ -773,11 +795,12 @@ public static class ContainerPlans
         }
     }
 
-    /// <summary>Whether a service runs in Development (as its files say, or with nothing said, as Passenger runs it), where it
-    /// reads its user secrets and static web assets.</summary>
+    /// <summary>Whether a service runs in Development (as its files say, in any letter case as .NET reads the name, or with
+    /// nothing said, as Passenger runs it), where it reads its user secrets and static web assets.</summary>
     private static bool Development(ComposeService service) =>
         !service.Environment.ContainsKey("ASPNETCORE_ENVIRONMENT") && !service.Environment.ContainsKey("DOTNET_ENVIRONMENT")
-        || service.Environment.GetValueOrDefault("ASPNETCORE_ENVIRONMENT") == "Development" || service.Environment.GetValueOrDefault("DOTNET_ENVIRONMENT") == "Development";
+        || string.Equals(service.Environment.GetValueOrDefault("ASPNETCORE_ENVIRONMENT"), "Development", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(service.Environment.GetValueOrDefault("DOTNET_ENVIRONMENT"), "Development", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Whether a service serves HTTPS: Kestrel told an https address or an HTTPS port, or a port of HTTPS's.</summary>
     private static bool Serves(ComposeService service) =>
@@ -808,20 +831,6 @@ public static class ContainerPlans
             }
         }
         return labels;
-    }
-
-    /// <summary>A port nothing on this machine listens on now (at the host's address it is published on), for a service's
-    /// published port Passenger chooses: chosen once for the plan, the same one after.</summary>
-    private static int Pinned(Dictionary<(string Service, int Port), int> pinned, string service, int index, string? hostIp)
-    {
-        if (!pinned.TryGetValue((service, index), out int port))
-        {
-            System.Net.IPAddress at = hostIp is { Length: > 0 } given && System.Net.IPAddress.TryParse(given, out System.Net.IPAddress? parsed) ? parsed : System.Net.IPAddress.Loopback;
-            using System.Net.Sockets.TcpListener listener = new(at, 0);
-            listener.Start();
-            pinned[(service, index)] = port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
-        }
-        return port;
     }
 
     /// <summary>A port in Compose's long syntax as its model had it (the host's address, mode, name and application protocol
@@ -1189,10 +1198,11 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
         }
     }
 
-    /// <summary>Brings it up as <c>docker compose up --detach --wait</c> (images built as Compose says in images mode), its
-    /// words in the console as they come: null once every service is up (healthy where it has a check), else what went
-    /// wrong. <paramref name="alongside"/> runs while it comes up (the debugger attaching to the services held at their start,
-    /// which no wait would see healthy before it lets them go): its problem ends the command. Canceled, the command is ended.</summary>
+    /// <summary>Brings it up as <c>docker compose up --detach --wait</c> (images built as Compose says in images mode, run again
+    /// with new ports where a port Passenger chose was taken), its words in the console as they come: null once every service
+    /// is up (healthy where it has a check), else what went wrong. <paramref name="alongside"/> runs while it comes up (the
+    /// debugger attaching to the services held at their start, which no wait would see healthy before it lets them go): its
+    /// problem ends the command. Canceled, the command is ended.</summary>
     public async Task<string?> UpAsync(CancellationToken cancel, Func<Task, CancellationToken, Task<string?>>? alongside = null)
     {
         Stamp();
@@ -1209,7 +1219,7 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
             upEnded.TrySetResult();
             throw new OperationCanceledException(ending.Token);
         }
-        Task<ChildResult> coming = StreamAsync(words, upEnding.Token);
+        Task<ChildResult> coming = UpCommandAsync(words, upEnding.Token);
         ChildResult up;
         try
         {
@@ -1267,6 +1277,40 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
         }
         return null;
     }
+
+    /// <summary>An <c>up</c> run into the console, run again while it fails naming a port Passenger chose, which something on
+    /// this machine bound after it was chosen: each such port chosen again (<see cref="ChosenPorts.Again"/>), said in the
+    /// console, and the override written again, so <c>up</c> makes those services anew on their new ports and leaves the rest
+    /// as it made them, their images as it built them. Tried <see cref="UpTries"/> times at most, the last one's failure the run's.</summary>
+    private async Task<ChildResult> UpCommandAsync(IReadOnlyList<string> words, CancellationToken cancel)
+    {
+        for (int tried = 1; ; tried++)
+        {
+            ChildResult up = await StreamAsync(tried == 1 ? words : [.. words.Take(Plan.Compose.Count + 1), "--no-build", .. words.Skip(Plan.Compose.Count + 1).Where(w => w != "--build")],
+                cancel);
+            if (up.Succeeded || tried == UpTries || Plan.Ports?.Again(up.Output) is not { Count: > 0 } again)
+            {
+                return up;
+            }
+            foreach ((string service, int was, int now) in again)
+            {
+                console.Write($"{service}'s port {was.ToString(CultureInfo.InvariantCulture)} was taken before the engine could publish it: "
+                    + $"published on {now.ToString(CultureInfo.InvariantCulture)} instead\n");
+            }
+            try
+            {
+                await Plan.WriteOverrideAgain(cancel);
+            }
+            catch (Exception unwritten) when (unwritten is IOException or UnauthorizedAccessException)
+            {
+                console.Write($"Passenger's override could not be written again: {unwritten.Message}\n", ConsoleStream.Error);
+                return up;
+            }
+        }
+    }
+
+    /// <summary>How many times an <c>up</c> is run while the ports Passenger chose are found taken.</summary>
+    private const int UpTries = 4;
 
     private TelemetrySource? telemetry;
 
@@ -1447,16 +1491,16 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
 
         async Task<string?> RestartEachAsync(CancellationToken stop)
         {
-            foreach ((List<string> named, IReadOnlyList<string> words) in ((List<string>, IReadOnlyList<string>)[])[
-                (kept, [.. Plan.Compose, "restart", "--", .. kept]),
+            foreach ((List<string> named, IReadOnlyList<string> words, bool up) in ((List<string>, IReadOnlyList<string>, bool)[])[
+                (kept, [.. Plan.Compose, "restart", "--", .. kept], false),
                 // As deployed, a service's image is built again from its Dockerfile and its container made anew from it.
-                (made, [.. Plan.Compose, "up", "--detach", .. Plan.Mode == ContainerMode.Images ? (string[])["--build"] : [], "--no-deps", "--force-recreate", "--", .. made])])
+                (made, [.. Plan.Compose, "up", "--detach", .. Plan.Mode == ContainerMode.Images ? (string[])["--build"] : [], "--no-deps", "--force-recreate", "--", .. made], true)])
             {
                 if (named.Count == 0)
                 {
                     continue;
                 }
-                ChildResult restarted = await StreamAsync(words, stop);
+                ChildResult restarted = up ? await UpCommandAsync(words, stop) : await StreamAsync(words, stop);
                 if (!restarted.Succeeded)
                 {
                     return $"{Plan.Name}'s services did not restart: docker compose {words[Plan.Compose.Count]} ended with exit code {restarted.ExitCode}";
@@ -1533,7 +1577,8 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
     }
 
     /// <summary>The address the browser opens: the plan's, its <c>{Scheme}</c>, <c>{ServiceHost}</c> and
-    /// <c>{ServicePort}</c> filled from the port the engine published for the launched service; null without one.</summary>
+    /// <c>{ServicePort}</c> filled from the port the engine published for the launched service, on the engine's machine
+    /// (<see cref="ContainerPort.LinkOn"/>); null without one.</summary>
     public async Task<string?> BrowserUrlAsync(CancellationToken cancel)
     {
         if (Plan.BrowserUrl is not { } url)
@@ -1556,8 +1601,10 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
             return null;
         }
         string scheme = port is 443 or 8081 || url.StartsWith("https", StringComparison.OrdinalIgnoreCase) ? "https" : "http";
+        string host = new ContainerPort(answer[(colon + 1)..], port.ToString(CultureInfo.InvariantCulture), "tcp").LinkOn((await engine.StateAsync(cancel: cancel)).Endpoint)?.Host
+            ?? "localhost";
         return url.Replace("{Scheme}", scheme, StringComparison.OrdinalIgnoreCase)
-            .Replace("{ServiceHost}", "localhost", StringComparison.OrdinalIgnoreCase)
+            .Replace("{ServiceHost}", host, StringComparison.OrdinalIgnoreCase)
             .Replace("{ServicePort}", answer[(colon + 1)..], StringComparison.OrdinalIgnoreCase);
     }
 

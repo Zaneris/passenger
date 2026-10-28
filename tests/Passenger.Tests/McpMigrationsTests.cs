@@ -14,7 +14,7 @@ public sealed class McpMigrationsTests : McpRig
     [Fact]
     public async Task An_agent_fixes_what_dotnet_ef_lacks_through_code_actions_then_adds_and_applies_a_migration()
     {
-        string folder = ShopApp.Make(design: false, tool: null);
+        string folder = await ShopApp.MakeAsync(design: false, tool: null);
         await using McpClient client = await Start(["--mcp", folder], languageServer: false);
 
         CallToolResult refused = await Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.AddMigration, ["input"] = "Initial" });

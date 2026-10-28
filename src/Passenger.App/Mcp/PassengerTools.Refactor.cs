@@ -83,7 +83,7 @@ public sealed partial class PassengerTools
         };
         if (answer.Files.Count > 0)
         {
-            Editors.SaveAll();
+            await SaveLandedAsync(cancel);
         }
         return answer;
     }, cancel));
@@ -287,7 +287,7 @@ public sealed partial class PassengerTools
                 throw new InvalidOperationException($"Safe Delete left {what} where it is: it has {Plural.Of(uses.Count, "usage")} that would no longer compile "
                     + $"once it is deleted ({string.Join("; ", uses.Select(u => $"{u.Path}:{u.Line}: {u.Text}"))}). Fix them first, or give deleteAnyway true");
             }
-            return Applied("safe_delete", window.Assist.Actions.Delete(doomed)) with { Usages = uses.Count > 0 ? uses : null };
+            return Applied("safe_delete", await window.Assist.Actions.DeleteAsync(doomed)) with { Usages = uses.Count > 0 ? uses : null };
         }
     }
 
@@ -374,6 +374,7 @@ public sealed partial class PassengerTools
             int before = document.Text.Version;
             string done = await TidyOne(lsp, document, cleanup);
             document.Save();
+            await LandedAsync(cancel);
             return new RefactorAnswer(kind, $"{Relative(document.Path)}: {done}",
                 document.Text.Version == before ? [] : [new RefactorFile(Relative(document.Path), "changed", [], done)], []);
         }
@@ -420,7 +421,13 @@ public sealed partial class PassengerTools
                     }
                 }
             }
+            foreach ((string unsaved, Exception refused) in await recording.LandedAsync(null))
+            {
+                tidied.RemoveAll(t => t.Path == Relative(unsaved));
+                left.Add($"{Relative(unsaved)}: it could not be saved: {refused.Message}");
+            }
         }
+        await LandedAsync(cancel);
         return new RefactorAnswer(kind, $"{name} changed {tidied.Count} of the {Plural.Of(files.Count, "C# file")} of the {scope}", tidied, left);
 
         async Task Tidied(OpenDocument document, LspDocument? lsp)
@@ -484,7 +491,8 @@ public sealed partial class PassengerTools
     private RefactorAnswer Applied(string kind, RefactorOutcome made) => made.Problem is { } problem
         ? throw new InvalidOperationException(problem)
         : new RefactorAnswer(kind, made.Said, [.. made.Files.Select(f => new RefactorFile(Relative(f.Path), f.Change, f.Lines, To: f.To is { } to ? Relative(to) : null))],
-            [.. made.Left.Select(name => $"{name}: it was edited meanwhile, so it was left as it is")]);
+            [.. made.Left.Select(name => $"{name}: it was edited meanwhile, so it was left as it is"),
+                .. made.Unchanged.Select(use => $"{Relative(use.Path)}:{use.Line}:{use.Column}: {use.Why}, so it was left as it is")]);
 
     private static RefactorAnswer Described(string kind, string said, object dialog) =>
         new(kind, said + "; send options to apply it", [], [], JsonSerializer.SerializeToElement(dialog, DialogJson));
