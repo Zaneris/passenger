@@ -128,9 +128,11 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
   Directory.Packages.props before writing it and loads what it wrote after (`SaveBeforeWriting`, `FollowWritten`). A
   change of several files, or one that moves a file, is one command of global undo (`EditorArea.Commands.Record`), and
   the window follows only what a change of files made, moved or deleted (`Following`, `CameOrWent`), never a whole
-  re-read of the folder. Server edits pass `LineEndings.Fit` then `Indentation.Fit`. A save Windows refuses while another
-  program holds the file lands in the background, in order (`FileText.Landed`; `FileText.Read` gives its bytes meanwhile),
-  and what hands the files to another program (a build, Git, a restore, an agent) waits for it (`SaveAllLandedAsync`).
+  re-read of the folder. Server edits pass `LineEndings.Fit` then `Indentation.Fit`. A save Windows refuses while
+  another program holds the file lands in the background, in order (`FileText.Landed`; `FileText.Read` gives its bytes
+  meanwhile), and what hands the files to another program (a build, Git, a restore, an agent) waits for it
+  (`SaveAllLandedAsync`); a change of several files says it is done only once its own writes have landed
+  (`WorkspaceEdits.LandedAsync`, `EditorArea.LandedAsync(paths, …)`).
 - **State is a `StateDocument`** in the one `StateStore` (versioned `Upgrades`, `Clamped`, written debounced and merged,
   a bad file set aside as `.bad`), read off the UI thread; never a file of its own. Per-folder state lives under
   `workspaces/<name>-<hash>/` and is made in `ProjectSession`. A new setting: an `AppSettings` property, its row and
