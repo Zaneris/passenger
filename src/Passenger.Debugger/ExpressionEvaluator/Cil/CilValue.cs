@@ -9,13 +9,18 @@ internal sealed class CilValue
     /// program.</summary>
     public static int PointerSize { get; set; } = IntPtr.Size;
 
-    private CilValue(object? value, ICorDebugValue? corValue, ICilLocation? location = null, ICilLocation? sourceLocation = null)
+    private CilValue(object? value, ICorDebugValue? corValue, ICilLocation? location = null, ICilLocation? sourceLocation = null, bool inBox = false)
     {
         Value = value;
         CorValue = corValue;
         Location = location;
         SourceLocation = sourceLocation;
+        _inBox = inBox;
     }
+
+    /// <summary>Whether <see cref="CorValue"/> is a box the evaluation made to hold a struct, standing for the struct
+    /// rather than for an object.</summary>
+    private readonly bool _inBox;
 
     public object? Value { get; }
     public ICorDebugValue? CorValue { get; }
@@ -32,6 +37,8 @@ internal sealed class CilValue
         return primitive is null ? new(null, value) : new(primitive, null);
     }
     public static CilValue FromLocation(ICilLocation location) => new(null, null, location);
+    /// <summary>A struct the evaluation holds in a box of its own.</summary>
+    public static CilValue InBox(ICorDebugValue box) => new(null, box, inBox: true);
     public static CilValue Null() => new(null, null);
     /// <summary>
     /// Wraps a debuggee value without collapsing primitives (e.g. strings) to host objects.
@@ -45,7 +52,17 @@ internal sealed class CilValue
     /// </summary>
     public string? GetStringText() => Value as string ?? (CorValue?.UnwrapDebugValue() as ICorDebugStringValue)?.String;
 
-    public CilValue WithSourceLocation(ICilLocation location) => new(Value, CorValue, Location, location);
+    public CilValue WithSourceLocation(ICilLocation location) => new(Value, CorValue, Location, location, _inBox);
+
+    /// <summary>The struct the value is, where it lives in the program or in the evaluation's box for it: a value a call
+    /// or a field's store can change there. Null for any other value: an object that boxes a struct, an enum, and a
+    /// primitive as unboxed from an object.</summary>
+    public ICorDebugGenericValue? Struct => Location is null && (_inBox || CorValue is not ICorDebugReferenceValue)
+        && CorValue?.UnwrapDebugValue() is ICorDebugGenericValue { Type: CorElementType.VALUETYPE } generic
+        && UnderlyingType(generic) is null && PrimitiveClassName(generic) is null
+        ? generic
+        : null;
+
     /// <summary>What a managed location holds, or what a pointer points at.</summary>
     public CilValue Dereference() => Location?.Read()
         ?? (CorValue is ICorDebugReferenceValue { Type: CorElementType.PTR, IsNull: false } pointer ? FromCorValue(pointer.Dereference()) : null)
@@ -160,15 +177,17 @@ internal sealed class CilValue
         };
     }
 
-    /// <summary>The name of a value's class when it is one of CoreLib's floating-point types, which no integer reading
-    /// covers; null for any other.</summary>
+    /// <summary>The name of a value's class when it is one of CoreLib's primitive types, as a box of one holds it (the
+    /// floating-point ones no integer reading covers); null for any other.</summary>
     private static string? PrimitiveClassName(ICorDebugValue value)
     {
         try
         {
             ICorDebugClass corClass = value.ExactType.Class;
             string name = corClass.Module.GetMetaDataInterface<IMetaDataImport>().GetTypeDefProps(corClass.Token).szTypeDef;
-            return name is "System.Double" or "System.Single" ? name : null;
+            return name is "System.Double" or "System.Single" or "System.Boolean" or "System.Char" or "System.SByte" or "System.Byte"
+                or "System.Int16" or "System.UInt16" or "System.Int32" or "System.UInt32" or "System.Int64" or "System.UInt64"
+                or "System.IntPtr" or "System.UIntPtr" ? name : null;
         }
         catch (Exception error) when (error is System.Runtime.InteropServices.COMException or InvalidOperationException)
         {

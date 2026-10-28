@@ -77,6 +77,7 @@ Displays.Show();
 Unions.Show();
 Pointers.Show();
 Interpreter.Run();
+Reading.Run();
 Jumps.Run();
 Threads.Run();
 Children.Run();
@@ -254,6 +255,29 @@ internal static class Interpreter
 		Console.WriteLine($"interpreter read {myInt}, {myUInt}, {minusOne}, {wide}, {counter.Count} and {price}");
 	}
 }
+
+// What an evaluation reads and leaves as it was: a record struct and a tuple a with copies, a char joined to a string,
+// and a box a pattern takes apart, read again each round.
+internal static class Reading
+{
+	public static void Run()
+	{
+		Spot spot = new(3, 4);
+		(int, string) tuple = (1, "x");
+		string word = "hello";
+		char letter = 'A';
+		object boxed = 42;
+		for (int round = 0; round < 3; round++)
+		{
+			Console.WriteLine($"reading round {round}");
+			Console.WriteLine($"read round {round}");
+		}
+		Console.WriteLine("reading");
+		Console.WriteLine($"read {spot}, {tuple}, {word}{letter} and {boxed}");
+	}
+}
+
+internal record struct Spot(int X, int Y);
 
 internal enum SignedEnum : sbyte { MinusOne = -1 }
 internal enum WideEnum : ushort { Max = 65535 }

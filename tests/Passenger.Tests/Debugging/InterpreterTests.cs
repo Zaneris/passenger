@@ -103,7 +103,35 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("5", (await Evaluate(host, frame, "myInt + 1")).Value);
     }
 
+    /// <summary>A with on a record struct and on a tuple answers the changed copy and leaves the program's variable as it
+    /// was: the copy is the evaluation's own, never the variable it was read from. A with on a struct the expression
+    /// makes changes the struct it made.</summary>
+    [Fact]
+    public async Task With_on_a_struct_answers_the_changed_copy_and_leaves_the_programs_variable_as_it_was()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        int frame = await StoppedInReadingAsync(host);
+
+        Assert.Equal("Spot { X = 3, Y = 100 }", (await Evaluate(host, frame, "spot with { Y = 100 }")).Value);
+        Assert.True((await Evaluate(host, frame, "spot.Y")).Value == "4", "spot with { Y = 100 } changed the program's spot, which a with only reads");
+        Assert.Equal("(50, \"x\")", (await Evaluate(host, frame, "tuple with { Item1 = 50 }")).Value);
+        Assert.True((await Evaluate(host, frame, "tuple.Item1")).Value == "1", "tuple with { Item1 = 50 } changed the program's tuple, which a with only reads");
+        Assert.Equal("Spot { X = 1, Y = 5 }", (await Evaluate(host, frame, "new Spot(1, 2) with { Y = 5 }")).Value);
+    }
+
     private static int Line(string code) => Debuggees.Line("PassengerCases", code);
+
+    /// <summary>PassengerCases launched and stopped in Reading.Run once its rounds are done; the top frame.</summary>
+    private static async Task<int> StoppedInReadingAsync(DebugSession host)
+    {
+        string reading = "Console.WriteLine(\"reading\");";
+        await host
+            .InitializeAsync()
+            .LaunchAsync(Debuggees.Program("PassengerCases"), stopAtEntry: false, justMyCode: true)
+            .WaitForInitializedEvent();
+        await host.BreakpointsAsync([Line(reading)], Debuggees.Source("PassengerCases", "Program.cs")).ConfigurationDoneAsync();
+        return await StoppedAt(host, reading);
+    }
 
     /// <summary>The next stop, at the line of this code; its top frame.</summary>
     private static async Task<int> StoppedAt(DebugSession host, string code)

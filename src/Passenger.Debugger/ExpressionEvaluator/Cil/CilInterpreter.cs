@@ -210,7 +210,7 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
                         stack.Push(CilValue.FromLocation(arguments[instruction.Index]));
                         break;
                     case ILOpCode.Starg or ILOpCode.Starg_s:
-                        arguments[instruction.Index].Write(await MaterializeForStoreAsync(stack.Pop(), context, handles));
+                        await StoreAsync(arguments[instruction.Index], stack.Pop(), context, handles);
                         break;
                     case >= ILOpCode.Ldloc_0 and <= ILOpCode.Ldloc_3:
                         Load(locals[(int)instruction.Code - (int)ILOpCode.Ldloc_0]);
@@ -222,10 +222,10 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
                         stack.Push(CilValue.FromLocation(locals[instruction.Index]));
                         break;
                     case >= ILOpCode.Stloc_0 and <= ILOpCode.Stloc_3:
-                        locals[(int)instruction.Code - (int)ILOpCode.Stloc_0].Write(await MaterializeForStoreAsync(stack.Pop(), context, handles));
+                        await StoreAsync(locals[(int)instruction.Code - (int)ILOpCode.Stloc_0], stack.Pop(), context, handles);
                         break;
                     case ILOpCode.Stloc or ILOpCode.Stloc_s:
-                        locals[instruction.Index].Write(await MaterializeForStoreAsync(stack.Pop(), context, handles));
+                        await StoreAsync(locals[instruction.Index], stack.Pop(), context, handles);
                         break;
                     case ILOpCode.Dup:
                         stack.Push(stack.Peek());
@@ -305,14 +305,14 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
                     {
                         CilValue value = stack.Pop();
                         ICilLocation address = stack.Pop().Location ?? throw new InvalidOperationException("stind requires a managed location");
-                        address.Write(await MaterializeForStoreAsync(value, context, handles));
+                        await StoreAsync(address, value, context, handles);
                         break;
                     }
                     case ILOpCode.Cpobj:
                     {
                         CilValue source = stack.Pop().Dereference();
                         ICilLocation destination = stack.Pop().Location ?? throw new InvalidOperationException("cpobj requires a managed location");
-                        destination.Write(await MaterializeForStoreAsync(source, context, handles));
+                        await StoreAsync(destination, source, context, handles);
                         break;
                     }
                     case ILOpCode.Initobj:
@@ -598,10 +598,15 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         if (resolver.TryResolveEvaluationMethod(instruction.Token, out ResolvedEvaluationMethod evaluationMethod))
         {
             CilValue[] methodArguments = Pop(stack, evaluationMethod.Signature.ParameterTypes.Length + (evaluationMethod.IsStatic ? 0 : 1));
+            ICilLocation[] parameters = new ICilLocation[methodArguments.Length];
+            for (int parameter = 0; parameter < parameters.Length; parameter++)
+            {
+                parameters[parameter] = new TemporaryLocation(await OwnAsync(methodArguments[parameter], context, handles));
+            }
             CilValue methodResult = await InterpretAsync(
                 run,
                 run.Compiled.GetDecodedMethod(evaluationMethod.Handle),
-                methodArguments.Select(value => (ICilLocation)new TemporaryLocation(value)).ToArray(),
+                parameters,
                 CreateTemporaryLocals(resolver, resolver.GetEvaluationMethodBody(evaluationMethod.Handle).LocalSignature));
             if (evaluationMethod.Signature.ReturnType != MetadataTypeNames.Of(PrimitiveTypeCode.Void))
             {
@@ -657,6 +662,12 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
                 receiver = receiver.Dereference();
             }
 
+            // A struct's constructor called on a variable of the evaluation's own not yet given a value: the struct made there.
+            if (receiver.IsNull && method.Name == ".ctor" && receiverValue.Location is TemporaryLocation home && EvaluationMetadataResolver.IsValueType(method.DeclaringType))
+            {
+                receiver = await CreateDefaultValueAsync(new ResolvedCilType(null, method.DeclaringType), resolver, context, handles);
+                home.Write(receiver);
+            }
             if (receiver.IsNull)
             {
                 throw new NullReferenceException();
@@ -967,7 +978,7 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
             typeArguments.Length == 0 ? null : typeArguments,
             throwOnException: true))
             ?? throw new InvalidOperationException("Failed to create a default value type");
-        return CilValue.FromCorValue(value);
+        return CilValue.InBox(value);
     }
 
     private static bool IsReferenceType(ResolvedCilType type)
@@ -1364,6 +1375,19 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         return value;
     }
 
+    /// <summary>stloc, starg, stobj and cpobj: into a variable of the evaluation's own, a struct as a copy of its own.</summary>
+    private async Task StoreAsync(ICilLocation location, CilValue value, CompiledExpressionEvaluationContext context, EvaluationHandleScope handles)
+    {
+        CilValue stored = await MaterializeForStoreAsync(value, context, handles);
+        location.Write(location is TemporaryLocation ? await OwnAsync(stored, context, handles) : stored);
+    }
+
+    /// <summary>A value as a variable or argument of the evaluation's own holds it: a struct copied into a box of the
+    /// evaluation's, so a call or a field's store through that variable changes the copy, never the program's variable,
+    /// field or element the struct was read from.</summary>
+    private async Task<CilValue> OwnAsync(CilValue value, CompiledExpressionEvaluationContext context, EvaluationHandleScope handles) =>
+        value.Struct is { } read ? CilValue.InBox((await BoxAsync(value, read.ExactType, context, handles)).CorValue!) : value;
+
     private async Task<ICorDebugValue> MaterializeByRefArgumentAsync(
         CilValue value,
         CompiledExpressionEvaluationContext context,
@@ -1406,7 +1430,8 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         EvaluationHandleScope handles)
     {
         ICorDebugThread thread = context.Thread;
-        if (constrainedType is not null && value.CorValue?.UnwrapDebugValue() is ICorDebugGenericValue sourceGeneric)
+        // A reference is the receiver itself: an object's, or a box the evaluation holds a struct in.
+        if (constrainedType is not null && value.CorValue is not ICorDebugReferenceValue && value.CorValue?.UnwrapDebugValue() is ICorDebugGenericValue sourceGeneric)
         {
             ICorDebugType exactType = value.CorValue.ExactType;
             ICorDebugType[] typeArguments = exactType.TypeParameters;
