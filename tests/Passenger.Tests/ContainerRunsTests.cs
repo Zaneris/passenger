@@ -129,6 +129,33 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         window.Close();
     }
 
+    /// <summary>A compose service whose project targets two frameworks runs in fast mode from its first framework's build,
+    /// as Run runs such a project on this machine, the image's runtime that framework's.</summary>
+    [AvaloniaFact]
+    public void A_compose_service_of_a_multi_targeted_project_runs_in_fast_mode_from_its_first_frameworks_build()
+    {
+        Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
+        (string folder, string project) = Restored("multi");
+        TestFolders.Write(folder, "Web/Web.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>")
+            .Replace($"<TargetFramework>{TestProjects.Framework}</TargetFramework>", $"<TargetFrameworks>{TestProjects.Framework};net11.0</TargetFrameworks>", StringComparison.Ordinal));
+        MainWindow window = Open(folder);
+        RunConfiguration web = window.Configurations.First(c => c.Kind == RunKind.Compose).Copied() with { Name = "Web of two frameworks", Services = ["web"], Generated = false };
+        window.SetConfigurations([web], web.Name);
+        try
+        {
+            Launched(window, "web, of two frameworks, to come up in fast mode");
+            Assert.Equal("web 1", Served(window, project, "web"));
+            string built = Docker.Run("inspect", "-f", $"{{{{range .Mounts}}}}{{{{if eq .Destination \"{ContainerPlans.AppFolder}\"}}}}{{{{.Source}}}}{{{{end}}}}{{{{end}}}}", Container(project, "web"));
+            Assert.True(PathNames.Same(Path.Combine(folder, "Web", "bin", "Debug", TestProjects.Framework), built.Trim()),
+                $"web was to run {TestProjects.Framework}'s build, its first framework's, but {ContainerPlans.AppFolder} is {built}");
+        }
+        finally
+        {
+            Docker.Stopped(window, project, "Stop to take web down");
+            window.Close();
+        }
+    }
+
     /// <summary>A compose run builds its .NET services side by side in one dotnet build: with an error in each, it starts
     /// nothing, says the build failed in both, and Problems lists each one's error under its own project; mended, it comes
     /// up from one more build, and Rerun with nothing changed builds nothing, the Build window saying both are up to date.</summary>

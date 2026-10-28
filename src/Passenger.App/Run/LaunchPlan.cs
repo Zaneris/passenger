@@ -89,8 +89,7 @@ public sealed partial record LaunchPlan
         }
         ProjectModel project = projects.FirstOrDefault(p => PathNames.Same(p.Path, configuration.Project))
             ?? throw new LaunchException($"{configuration.Name} cannot run: its project {System.IO.Path.GetFileName(configuration.Project)} is not loaded in the open folder");
-        string? framework = configuration.Framework is { Length: > 0 } chosen ? chosen
-            : project.TargetFrameworks.Count > 1 ? project.TargetFrameworks[0] : null;
+        string? framework = FrameworkOf(configuration.Framework, project);
         // Before its build: the program would build here (EnableWindowsTargeting) and then fail to start for want of WindowsDesktop.
         if (configuration.Program.Length == 0 && project.RunsOnlyOnWindows(framework) is { } windows)
         {
@@ -180,6 +179,11 @@ public sealed partial record LaunchPlan
         }
         return Programs.OnPath(named) ?? Programs.OnPath(named + (OperatingSystem.IsWindows() ? ".exe" : string.Empty)) ?? named;
     }
+
+    /// <summary>The framework a project runs for: the one <paramref name="chosen"/> names, else the first of its several;
+    /// null for a project of one.</summary>
+    internal static string? FrameworkOf(string chosen, ProjectModel project) =>
+        chosen.Length > 0 ? chosen : project.TargetFrameworks.Count > 1 ? project.TargetFrameworks[0] : null;
 
     /// <summary>The properties MSBuild evaluates for the project (with its framework when it has several), with the global
     /// properties a build of it is given (<see cref="ProjectModels.Properties(WorkspaceModel, ProjectModel)"/>), asked of

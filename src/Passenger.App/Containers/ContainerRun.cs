@@ -157,7 +157,7 @@ public static class ContainerPlans
         {
             single = projects.FirstOrDefault(p => PathNames.Same(p.Path, configuration.Project))
                 ?? throw new LaunchException($"{configuration.Name} cannot run: its project {Path.GetFileName(configuration.Project)} is not loaded in the open folder");
-            properties = await LaunchPlan.EvaluateAsync(single, configuration.Framework.Length > 0 ? configuration.Framework : null,
+            properties = await LaunchPlan.EvaluateAsync(single, LaunchPlan.FrameworkOf(configuration.Framework, single),
                 ["TargetPath", "TargetDir", "AssemblyName", "DockerfileContext", "DockerfileFile", "DockerfileFastModeStage", "ContainerDevelopmentMode",
                     "DockerfileBuildArguments", "DockerfileRunArguments", "DockerfileTag", "ContainerBaseImage", "ContainerPort", "RuntimeIdentifier", "SelfContained"],
                 workspace, cancel, configuration.Kind == RunKind.SdkContainer ? "ComputeContainerBaseImage" : null);
@@ -176,7 +176,7 @@ public static class ContainerPlans
             string service = DockerFiles.ServiceName(single.Name.Split(' ')[0]);
             fixedProjects[service] = single.Path;
             string composed = Path.Combine(state, $"{file}.compose.yaml");
-            WriteJson(composed, SingleService(configuration, single, properties, service, workspace, mode));
+            WriteJson(composed, SingleService(configuration, single, properties, service, workspace, mode, LaunchPlan.FrameworkOf(configuration.Framework, single)));
             files = [composed];
             runsIn = single.Folder;
         }
@@ -201,7 +201,8 @@ public static class ContainerPlans
                 continue;
             }
             IReadOnlyDictionary<string, string> its = single is not null && PathNames.Same(project.Path, single.Path) ? properties
-                : await LaunchPlan.EvaluateAsync(project, null, ["TargetPath", "TargetDir", "AssemblyName", "DockerfileFastModeStage", "RuntimeIdentifier", "SelfContained"], workspace, cancel);
+                : await LaunchPlan.EvaluateAsync(project, LaunchPlan.FrameworkOf(string.Empty, project),
+                    ["TargetPath", "TargetDir", "AssemblyName", "DockerfileFastModeStage", "RuntimeIdentifier", "SelfContained"], workspace, cancel);
             string output = its.GetValueOrDefault("TargetDir") is { Length: > 0 } dir ? Path.TrimEndingDirectorySeparator(dir)
                 : Path.GetDirectoryName(its.GetValueOrDefault("TargetPath") ?? string.Empty) ?? project.Folder;
             string assembly = its.GetValueOrDefault("AssemblyName") is { Length: > 0 } named ? named : Path.GetFileNameWithoutExtension(project.Path);
@@ -417,7 +418,7 @@ public static class ContainerPlans
     /// the Dockerfile beside it and the solution's folder), or the SDK's base image, with the configuration's environment
     /// and <c>docker run</c> words (ports, env files, volumes, variables).</summary>
     private static JsonObject SingleService(RunConfiguration configuration, ProjectModel project, IReadOnlyDictionary<string, string> properties, string name,
-        WorkspaceModel workspace, ContainerMode mode)
+        WorkspaceModel workspace, ContainerMode mode, string? framework)
     {
         JsonObject service = [];
         List<int> exposed = [];
@@ -457,7 +458,7 @@ public static class ContainerPlans
         {
             string image = properties.GetValueOrDefault("PassengerImage") is { Length: > 0 } published ? published
                 : properties.GetValueOrDefault("ContainerBaseImage") is { Length: > 0 } basis ? basis
-                : $"mcr.microsoft.com/dotnet/{(ContainerConfigurations.IsWeb(project, workspace.Projects) ? "aspnet" : "runtime")}:{FrameworkTag(project)}";
+                : $"mcr.microsoft.com/dotnet/{(ContainerConfigurations.IsWeb(project, workspace.Projects) ? "aspnet" : "runtime")}:{FrameworkTag(project, framework)}";
             service["image"] = image;
             exposed.AddRange((properties.GetValueOrDefault("ContainerPort") ?? string.Empty).Split(';', StringSplitOptions.RemoveEmptyEntries)
                 .Select(p => int.TryParse(p.Split(':')[0], NumberStyles.None, CultureInfo.InvariantCulture, out int n) ? n : 0).Where(n => n > 0));
@@ -532,9 +533,9 @@ public static class ContainerPlans
         return new JsonObject { ["name"] = $"passenger-{Slug(configuration.Name)}-{ContainerLabels.FolderValue(workspace.Folder)[..8]}", ["services"] = new JsonObject { [name] = service } };
     }
 
-    /// <summary>The image tag of a project's newest .NET (10.0 of net10.0), else 10.0.</summary>
-    private static string FrameworkTag(ProjectModel project) =>
-        project.TargetFrameworks.Select(f => f.Split('-')[0]).Where(f => f.StartsWith("net", StringComparison.OrdinalIgnoreCase) && Version.TryParse(f[3..], out _))
+    /// <summary>The image tag of the .NET a project runs for (10.0 of net10.0): the framework given, else its newest, else 10.0.</summary>
+    private static string FrameworkTag(ProjectModel project, string? framework) =>
+        (framework is null ? project.TargetFrameworks : [framework]).Select(f => f.Split('-')[0]).Where(f => f.StartsWith("net", StringComparison.OrdinalIgnoreCase) && Version.TryParse(f[3..], out _))
             .Select(f => Version.Parse(f[3..])).OrderByDescending(v => v).Select(v => $"{v.Major}.{Math.Max(0, v.Minor)}").FirstOrDefault() ?? "10.0";
 
     /// <summary>The override Passenger lays over the files: its labels on every service, image and network it makes (an image
