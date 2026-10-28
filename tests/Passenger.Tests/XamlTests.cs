@@ -271,6 +271,46 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>A view model typed into as its project's XAML begins to load, the text of the first pause held from the
+    /// project until the next pause's text has landed: let go, the older text is passed over, and the XAML keeps the types
+    /// of the text typed last.</summary>
+    [AvaloniaFact]
+    public void A_view_models_text_typed_as_its_xaml_loads_is_never_replaced_by_an_older_one_landing_after_it()
+    {
+        MainWindow window = app.Open(null, languageServer: false);
+        Passenger.Xaml.XamlProject? latest = null;
+        window.XamlService.ProjectChanged += (_, project) => latest = project;
+        window.OpenFile(app.PathOf("MainWindow.axaml"));
+        OpenDocument view = window.EditorArea.Active!;
+        Replace(window.EditorArea.CodeEditor, "<TextBlock Text=\"{Binding #Go.Content}\" />",
+            "<TextBlock Text=\"{Binding #Go.Content}\" />\n        <TextBlock Text=\"{Binding Subtitle}\" />");
+        window.OpenFile(app.PathOf("ViewModels/MainViewModel.cs"));
+        CodeEditor code = window.EditorArea.CodeEditor;
+        TaskCompletionSource older = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task held = window.XamlService.HoldNextText(older.Task);
+        try
+        {
+            Replace(code, "public int Count { get; set; }\n", "public int Count { get; set; }\n\n    public string Caption { get; set; } = \"\";\n");
+            Ui.PumpUntil(() => held.IsCompleted, "the text with Caption, typing paused, held from the project");
+            Replace(code, "public string Caption", "public string Subtitle");
+            Ui.PumpUntil(() => ViewModelMembers(latest).Contains("Subtitle"), "the text typed next, with Subtitle, taken by the project");
+        }
+        finally
+        {
+            older.SetResult();
+        }
+        Ui.Settle();
+        string[] members = ViewModelMembers(latest);
+        Assert.True(members.Contains("Subtitle") && !members.Contains("Caption"),
+            $"The text typed first, landing last, took the XAML's view model back to an older text: [{string.Join(", ", members)}]");
+        Assert.True(view.Markers.Count == 0, $"The binding to the property typed last is marked: [{string.Join(", ", view.Markers.Select(m => m.Message))}]");
+        window.Close();
+    }
+
+    /// <summary>The names of the members of the app's view model as a project of its XAML reads them; none for no project.</summary>
+    private static string[] ViewModelMembers(Passenger.Xaml.XamlProject? project) =>
+        project?.Types.Find("Gallery.ViewModels.MainViewModel") is { } type ? [.. type.Members.Select(m => m.Name)] : [];
+
     [AvaloniaFact]
     public void A_character_reference_to_half_a_surrogate_pair_leaves_its_file_and_the_projects_others_with_their_help()
     {
