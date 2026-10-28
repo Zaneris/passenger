@@ -390,11 +390,13 @@ nothing of C# opens without the language server (`Ui.OpenFolder(folder, language
 languageServer: false)`).
 
 **Runs.** `just test` deals the classes outside Alone to N processes by `TestTimes.json` (each with its own run folder;
-the container classes in one process), then the Alone classes in one. CI deals each system's gate to two shards and its report lane to
-four the same way; a gate shard over `TestBudget.json`'s 32 minutes fails, a class over its seconds warns, and `just test-times RUN`
-rewrites the times. The run sets its nice value to 0; a test needing an MSBuild node waits for `Processes.MSBuildNodesCounted` or
-skips saying why. The VMs run a filter on a commit: Windows on Arm, `~/Documents/passenger-vm/vm-test.sh NAME FILTER` (no
-Node.js; it can't see dot folders), and Ubuntu 26.04 ARM64, `vm-test-linux.sh NAME FILTER`.
+the container classes in one process), then the Alone classes in one. CI deals each system's gate to two shards and its
+report lane to four the same way, and `just test-times RUN` rewrites the times. Tests hold to no time budget (the
+owner's choice): each job's summary shows a class's seconds, and one taking far longer than its work needs is flagged as
+a bug, never held to a limit. The run sets its nice value to 0; a test needing an MSBuild node waits for
+`Processes.MSBuildNodesCounted` or skips saying why. The VMs run a filter on a commit: Windows on Arm,
+`~/Documents/passenger-vm/vm-test.sh NAME FILTER` (no Node.js; it can't see dot folders), and Ubuntu 26.04 ARM64,
+`vm-test-linux.sh NAME FILTER`.
 
 **Helpers.** Clicks: `Ui.Click` (a real press on a control shown, enabled and hit, shutting first the tooltips its
 pointer leaves, which open in the window headless as the window redraws under a pointer that never moved; `RightClick`,

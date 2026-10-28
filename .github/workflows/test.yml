@@ -67,7 +67,7 @@ jobs:
             report_shards: 4
             time_scale: 2
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 56
+    timeout-minutes: 80
     env:
       LANE: ${{ matrix.lane }}
       SHARDS: ${{ matrix.lane == 'gate' && matrix.gate_shards || matrix.report_shards }}
@@ -215,12 +215,11 @@ jobs:
           "$python" -I tools/test-shards.py check "$results/suite.txt" "$results"/shards/listed-*.txt
 
       # Each project the hand holds tests of, one after another. A test hung for 10 minutes is stopped and named, rather
-      # than holding the job to its timeout. Each class's time goes in the job's summary, a class over its budget a
-      # warning and a gate shard over TestBudget.json's minutes a failure; the step's timeout is above that budget, so a
-      # slow shard still leaves its table. The failed tests are listed last, as annotations and in the job's summary.
+      # than holding the job to its timeout, which only ends a shard stuck past that. Each class's time goes in the job's
+      # summary, held to no limit. The failed tests are listed last, as annotations and in the job's summary.
       - name: Test
         shell: pwsh
-        timeout-minutes: 38
+        timeout-minutes: 60
         continue-on-error: ${{ matrix.lane == 'report' }}
         env:
           SHARD: ${{ matrix.shard }}
@@ -236,9 +235,9 @@ jobs:
             if ($LASTEXITCODE -ne 0) { $code = $LASTEXITCODE }
           }
           $python = if ($IsWindows) { 'python' } else { 'python3' }
-          & $python -I tools/test-times.py $results --budget tests/Passenger.Tests/TestBudget.json --shard $env:SHARD --lane $env:LANE --label $env:LABEL
-          $budget = $LASTEXITCODE
-          if ($code -eq 0) { exit $budget }
+          & $python -I tools/test-times.py $results --shard $env:SHARD --label $env:LABEL
+          $timed = $LASTEXITCODE
+          if ($code -eq 0) { exit $timed }
           $failed = @(Get-ChildItem $results -Recurse -Filter *.trx -ErrorAction SilentlyContinue | ForEach-Object {
             ([xml](Get-Content -Raw $_.FullName)).TestRun.Results.UnitTestResult |
               Where-Object { $_ -and $_.outcome -notin 'Passed', 'NotExecuted' }
@@ -324,12 +323,10 @@ jobs:
 
       - name: Test times
         env:
-          LANE: ${{ matrix.lane }}
           NAME: ${{ matrix.name }}, the ${{ matrix.lane }} lane
         run: |
           if [ -n "$(find results -name '*.trx' 2> /dev/null)" ]; then
-            python3 -I tools/test-times.py results --budget tests/Passenger.Tests/TestBudget.json --summary --lane "$LANE" \
-              --label "$NAME"
+            python3 -I tools/test-times.py results --label "$NAME"
           fi
 
       - name: Every test ran in exactly one shard

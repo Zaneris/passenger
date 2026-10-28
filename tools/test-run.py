@@ -2,7 +2,7 @@
 """The suite, or one lane of it, as several test processes at once, then what must run alone (`just test`).
 
 1. Every class outside the Alone collection, dealt to N processes, since one runs its window tests one at a time: by its
-   seconds (the most any system took in TestTimes.json, else its budget; its share for one partly in the lane), the
+   seconds (the most any system took in TestTimes.json, else a guess; its share for one partly in the lane), the
    heaviest first, each to the lightest process so far. The classes run beside the window tests (the unit tests too) are
    dealt apart, their heaviest hand to the lightest window hand; the container engine's go to one process together
    (TOGETHER). Limits are scaled by SIDE_BY_SIDE_SCALE.
@@ -118,10 +118,10 @@ def beside(name, declared):
     return declares(name, declared, "beside", False)
 
 
-def weight(name, times, budget, share):
-    """A class's seconds for dealing here: the most any system's runs took for it (else its budget), times its share."""
+def weight(name, times, share):
+    """A class's seconds for dealing here: the most any system's runs took for it (else a guess), times its share."""
     known = [times[system][name] for system in shards.SYSTEMS if name in times.get(system, {})]
-    return (max(known) if known else shards.budgeted(name, budget)) * share.get(name, 1.0)
+    return (max(known) if known else shards.guess(name)) * share.get(name, 1.0)
 
 
 def default_processes():
@@ -321,7 +321,6 @@ def main():
     classes = sorted(counts)
     declared = sources()
     times = shards.load(shards.TIMES, {})
-    budget = shards.load(shards.BUDGET, {})
     last = [name for name in classes if alone(name, declared)]
     rest = [name for name in classes if name not in last]
 
@@ -333,7 +332,7 @@ def main():
         units.setdefault(unit, []).append(name)
         if not together and beside(name, declared):
             side.add(unit)
-    unit_weights = {unit: sum(weight(name, times, budget, share) for name in members) for unit, members in units.items()}
+    unit_weights = {unit: sum(weight(name, times, share) for name in members) for unit, members in units.items()}
     windowed = {unit: seconds for unit, seconds in unit_weights.items() if unit not in side}
     besides = {unit: seconds for unit, seconds in unit_weights.items() if unit in side}
     count = min(count, max(len(windowed), len(besides)))
@@ -356,10 +355,10 @@ def main():
                 grouped = unit.startswith("[")
                 print(f"  {unit:<44} {unit_weights[unit]:>7.1f}" + (f"  ({', '.join(units[unit])})" if grouped else "")
                       + ("" if grouped else partly(unit)) + ("  (beside)" if unit in side else ""))
-        print(f"\nAlone, after them, about {sum(weight(n, times, budget, share) for n in last) / 60:.1f} minutes by "
+        print(f"\nAlone, after them, about {sum(weight(n, times, share) for n in last) / 60:.1f} minutes by "
               "CI's times:")
         for name in last:
-            print(f"  {name:<44} {weight(name, times, budget, share):>7.1f}" + partly(name)
+            print(f"  {name:<44} {weight(name, times, share):>7.1f}" + partly(name)
                   + ("" if name in declared else "  (not in the sources)"))
         return 0
 

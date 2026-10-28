@@ -3,7 +3,7 @@
 
 A lane is a part of the suite: the gate's [Gate] tests and the unit tests, the report lane's every other test, or all.
 `list` writes a lane as `dotnet test --list-tests` prints it, listing again while a project names no test or says
-discovery failed. `split` deals its classes by their seconds on that system in TestTimes.json (else their budget), the
+discovery failed. `split` deals its classes by their seconds on that system in TestTimes.json (else a guess), the
 longest first, each to the shard with the fewest so far, so every shard of a commit deals the same. `check` fails unless
 every test is in exactly one shard's settings; `cover`, after the shards, unless each succeeded and every test has
 exactly one result. `failures` tables a lane's failed tests. `update` (`just test-times RUN`) rewrites TestTimes.json.
@@ -20,12 +20,13 @@ from xml.sax.saxutils import escape
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TIMES = os.path.join(ROOT, "tests", "Passenger.Tests", "TestTimes.json")
-BUDGET = os.path.join(ROOT, "tests", "Passenger.Tests", "TestBudget.json")
 PROJECT = os.path.join(ROOT, "tests", "Passenger.Tests")
 # Pure logic's tests, every one in the gate; a checkout may not have them yet.
 UNIT_PROJECT = os.path.join(ROOT, "tests", "Passenger.UnitTests")
 UNIT_PREFIX = "Passenger.UnitTests."
-# A unit test class's seconds while TestTimes.json has none for it: its tests take milliseconds.
+# A test class's seconds while TestTimes.json has none for it, to deal it by; a unit test class's tests take
+# milliseconds.
+CLASS_SECONDS = 60
 UNIT_CLASS_SECONDS = 1
 SYSTEMS = ("macOS", "Windows", "Linux")
 LANES = ("gate", "report", "all")
@@ -193,7 +194,7 @@ def echo(printed):
 def owner(name):
     """A test's class without PREFIX, from its display name: xunit's is the class's full name, the method's and any
     arguments in brackets. A test given a display name of its own still runs with its class, whose filter goes by full
-    name, but its name would be dealt too, as a class weighing a budget."""
+    name, but its name would be dealt too, as a class of its own."""
     whole = name.split("(", 1)[0].rsplit(".", 1)[0]
     return whole[len(PREFIX):] if whole.startswith(PREFIX) else whole
 
@@ -205,10 +206,9 @@ def load(path, default):
         return json.load(file)
 
 
-def budgeted(name, budget):
-    """A class's seconds by its budget, for one TestTimes.json has none for."""
-    default = UNIT_CLASS_SECONDS if name.startswith(UNIT_PREFIX) else budget.get("classSeconds", 60)
-    return budget.get("classes", {}).get(name, default)
+def guess(name):
+    """A class's seconds for one TestTimes.json has none for."""
+    return UNIT_CLASS_SECONDS if name.startswith(UNIT_PREFIX) else CLASS_SECONDS
 
 
 def shares(chosen, whole):
@@ -216,11 +216,11 @@ def shares(chosen, whole):
     return {name: min(1.0, count / whole[name]) if whole.get(name) else 1.0 for name, count in chosen.items()}
 
 
-def weights(classes, system, times, budget, share):
-    """Each class's seconds on this system (else its budget) times its share of its tests, and the classes so weighed."""
+def weights(classes, system, times, share):
+    """Each class's seconds on this system (else a guess) times its share of its tests, and the classes guessed."""
     known = times.get(system, {})
     guessed = sorted(c for c in classes if c not in known)
-    return {c: (known[c] if c in known else budgeted(c, budget)) * share.get(c, 1.0) for c in classes}, guessed
+    return {c: (known[c] if c in known else guess(c)) * share.get(c, 1.0) for c in classes}, guessed
 
 
 def deal(weights, count):
@@ -255,23 +255,22 @@ def split(arguments):
         sys.exit(f"test-shards: {len(classes)} classes cannot be dealt to {arguments.of} shards")
     counts = Counter(owner(test) for test in tests)
     whole = Counter(owner(test) for test in listing(arguments.whole)) if arguments.whole else counts
-    seconds, guessed = weights(classes, arguments.system, load(arguments.times, {}), load(arguments.budget, {}),
-                               shares(counts, whole))
+    seconds, guessed = weights(classes, arguments.system, load(arguments.times, {}), shares(counts, whole))
     hands, totals = deal(seconds, arguments.of)
     lane = "" if arguments.lane == "all" else f" of the {arguments.lane} lane"
     shared = "" if arguments.lane == "all" else "; a class with tests outside the lane by its share of them"
     print(f"{len(tests)} tests in {len(classes)} classes{lane}, dealt to {arguments.of} shards by their seconds on "
-          f"{arguments.system} (TestTimes.json; a class it lacks by its budget{shared})")
+          f"{arguments.system} (TestTimes.json; a class it lacks by a guess{shared})")
     for number, (hand, total) in enumerate(zip(hands, totals), 1):
         print(f"\nShard {number}: {len(hand)} classes, {sum(counts[c] for c in hand)} tests, "
               f"about {total / 60:.1f} minutes")
         for name in hand:
             print(f"  {name:<44} {seconds[name]:>7.1f}"
                   + (f"  ({counts[name]} of its {whole[name]} tests)" if counts[name] < whole[name] else "")
-                  + ("  (its budget: TestTimes.json has none)" if name in guessed else ""))
+                  + ("  (a guess: TestTimes.json has none)" if name in guessed else ""))
     if guessed:
         say("notice", "Test times", f"TestTimes.json has no {arguments.system} seconds for {', '.join(guessed)}, so "
-            "each is dealt by its budget: just test-times RUN brings them in from a run")
+            "each is dealt by a guess: just test-times RUN brings them in from a run")
     if arguments.out:
         os.makedirs(arguments.out, exist_ok=True)
         for number, hand in enumerate(hands, 1):
@@ -529,7 +528,6 @@ def main():
     command.add_argument("--out", help="a folder for each shard's dotnet test settings, shard-N.runsettings, and its "
                          "projects, shard-N.projects")
     command.add_argument("--times", default=TIMES)
-    command.add_argument("--budget", default=BUDGET)
     command.set_defaults(run=split)
 
     command = commands.add_parser("check", help="fail unless every test of the lane is in exactly one shard's listing")
