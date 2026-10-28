@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
@@ -308,11 +307,6 @@ public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IC
         {
             Ui.Run(window, AppActions.Debug);
             Ui.WaitFor(() => Ticks(window).Count >= 2, () => $"the program to spin ({Output(window)})");
-            // A spin and a sleep, as the program takes them under the debugger on this machine.
-            Stopwatch own = Stopwatch.StartNew();
-            int counted = Ticks(window).Count;
-            Ui.WaitFor(() => Ticks(window).Count >= counted + 2, () => $"two more spins ({Output(window)})");
-            TimeSpan tick = own.Elapsed / 2;
             window.OpenFile(spins.PathOf("Spinner.cs"));
             for (int adds = 3; adds < 3 + Applies; adds++)
             {
@@ -327,11 +321,11 @@ public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IC
                 HotReloadOutcome outcome = Ui.Await(window.Debugger.ApplyChangesAsync(), $"Hot Reload to apply + {adds}", TimeSpan.FromMinutes(1));
                 Assert.True(outcome.Result == HotReloadResult.Applied, $"The edit to the spinning method should apply: {outcome.Said}");
                 int before = Ticks(window).Count;
-                Stopwatch since = Stopwatch.StartNew();
                 Ui.WaitFor(() => Ticks(window).Skip(before).Contains(adds),
-                    () => $"the program to go on in the new code (+ {adds}) within three spins of {tick.TotalMilliseconds:0} ms, applied {(spinning ? "mid-spin" : "between spins")} ({string.Join(" | ", Output(window).Split('\n').TakeLast(6))})",
-                    tick * 3 + TimeSpan.FromSeconds(2));
-                TestContext.Current.TestOutputHelper?.WriteLine($"+ {adds} applied {(spinning ? "mid-spin" : "between spins")}: the new code's tick came {since.ElapsedMilliseconds} ms after (a spin and a sleep: {tick.TotalMilliseconds:0} ms)");
+                    () => $"the program to go on in the new code (+ {adds}), applied {(spinning ? "mid-spin" : "between spins")} ({string.Join(" | ", Output(window).Split('\n').TakeLast(6))})");
+                // Within three spins of the update, counted, not timed: one under way, or one told late, may end in the old code.
+                int spun = Ticks(window).Skip(before).TakeWhile(t => t != adds).Count();
+                Assert.True(spun <= 2, $"+ {adds}, applied {(spinning ? "mid-spin" : "between spins")}, came only after {spun} spins in the old code: {string.Join(", ", Ticks(window).Skip(before))}");
             }
             string log = Ui.Shared(engineLog);
             int offered = log.Split('\n').Count(l => l.Contains("Event: FunctionRemapOpportunity", StringComparison.Ordinal));

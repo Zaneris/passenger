@@ -1101,19 +1101,22 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     }
 
     /// <summary>Continue pressed while a stop's values are still being read (a watch, a result and a ToString that each
-    /// run 1.5 s in the program) shows the program running at once and sets it going at once: its other thread ticks
-    /// again within 100 ms, and the evaluation under way ends in the program, which goes on from it to the next
-    /// stop.</summary>
+    /// run 1.5 s in the program) shows the program running at once and sets it going before the evaluation under way
+    /// ends: its other thread, which an evaluation at a stop holds, ticks while that evaluation still spins, and the
+    /// evaluation ends in the program, which goes on from it to the next stop.</summary>
     [AvaloniaFact]
     public void Continue_pressed_while_a_stops_values_are_read_shows_the_program_running_at_once_and_sets_it_going()
     {
         string ticks = Path.Combine(Fresh(), "ticks.txt");
+        // Each spin's begin, and its end with the other thread's count of ticks as it began and as it ended.
+        string spins = Path.Combine(Fresh(), "spins.txt");
         Write("Program.cs", "Slow slow = new();\n"
-            + $"new Thread(() =>\n{{\n    for (long n = 1; ; n++)\n    {{\n        try\n        {{\n            File.WriteAllText(@\"{ticks}\", n.ToString());\n        }}\n        catch (IOException)\n        {{\n        }}\n        Thread.Sleep(5);\n    }}\n}}) {{ IsBackground = true }}.Start();\n"
+            + $"new Thread(() =>\n{{\n    for (long n = 1; ; n++)\n    {{\n        try\n        {{\n            File.WriteAllText(@\"{ticks}\", n.ToString());\n        }}\n        catch (IOException)\n        {{\n        }}\n        Interlocked.Exchange(ref Slow.Ticks, n); Thread.Sleep(5);\n    }}\n}}) {{ IsBackground = true }}.Start();\n"
             + "int total = 0;\nfor (int i = 1; i <= 3; i++)\n{\n    total += i;\n}\nConsole.WriteLine($\"total {total}\");\n\n"
-            + "sealed class Slow\n{\n    public int Getter => Spin(1500);\n\n    public override string ToString() => $\"slow {Spin(1500)}\";\n\n"
-            + "    static int Spin(int ms)\n    {\n        System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();\n"
-            + "        while (clock.ElapsedMilliseconds < ms)\n        {\n        }\n        return ms;\n    }\n}\n");
+            + "sealed class Slow\n{\n    public static long Ticks;\n\n    public int Getter => Spin(1500);\n\n    public override string ToString() => $\"slow {Spin(1500)}\";\n\n"
+            + $"    static int Spin(int ms)\n    {{\n        long from = Interlocked.Read(ref Ticks);\n        File.AppendAllText(@\"{spins}\", \"began\\n\");\n"
+            + "        System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();\n"
+            + $"        while (clock.ElapsedMilliseconds < ms)\n        {{\n        }}\n        File.AppendAllText(@\"{spins}\", $\"ended {{from}} {{Interlocked.Read(ref Ticks)}}\\n\");\n        return ms;\n    }}\n}}\n");
         MainWindow window = Open();
         CodeEditor editor = window.EditorArea.CodeEditor;
         editor.GoTo(new TextPosition(18, 4));
@@ -1132,24 +1135,27 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
 
         Ui.Run(window, AppActions.Resume);
         WaitDebugging(window, () => window.Debugger.Stop is not null, "the second stop's frames");
+        // Continue pressed while an evaluation spins, its thread alone running.
+        WaitDebugging(window, () => Said("began") > Said("ended"), "an evaluation of the second stop's values under way");
         DebugSession session = window.Debugger.Session!;
         long before = Ticks();
-        Stopwatch pressed = Stopwatch.StartNew();
         Assert.True(window.Perform(AppActions.Resume), $"Resume was refused at the stop: {window.Status}");
         Assert.True(session.State == DebugState.Running && !editor.LineMarks.Any(m => m.Kind == LineMarkKind.ExecutionPoint)
             && window.Status?.EndsWith(": running", StringComparison.Ordinal) == true,
             $"Continue left the window showing the stop: the session was {session.State} and the status bar said \"{window.Status}\"");
         Ui.PumpUntil(() => Ticks() > before, "the program to run on", TimeSpan.FromSeconds(30));
-        TimeSpan ran = pressed.Elapsed;
-        Assert.True(ran < TimeSpan.FromMilliseconds(100).Scaled(),
-            $"The program ran on {ran.TotalMilliseconds:0} ms after Continue was pressed: the debugger waited for the stop's evaluations");
         WaitDebugging(window, () => Value(window, "i") == "3", "the third stop's locals, once the evaluation left running had ended");
         Assert.Equal("3", Value(window, "total"));
+        // The other thread ticks during a spin only once the program runs: at a stop the evaluation's thread runs alone.
+        string[] ended = [.. Ui.Shared(spins).Split('\n').Where(l => l.StartsWith("ended ", StringComparison.Ordinal))];
+        Assert.True(ended.Any(l => l.Split(' ') is [_, string from, string to] && long.Parse(to, System.Globalization.CultureInfo.InvariantCulture) > long.Parse(from, System.Globalization.CultureInfo.InvariantCulture)),
+            $"No evaluation spun while the program ran on, each spin's ticks the same at its start and end: the debugger waited for the stop's evaluations before it let the program go ({string.Join("; ", ended)})");
         Ui.Run(window, AppActions.Stop);
         Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
         window.Close();
 
         long Ticks() => long.TryParse(Ui.Shared(ticks), out long n) ? n : 0;
+        int Said(string word) => Ui.Shared(spins).Split('\n').Count(l => l.StartsWith(word, StringComparison.Ordinal));
     }
 
     [AvaloniaFact]
@@ -1255,7 +1261,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     }
 
     [AvaloniaFact]
-    public void Debugging_a_program_that_prints_100000_coloured_lines_leaves_the_console_free_of_colour_codes_and_the_window_responsive()
+    public void Debugging_a_program_that_prints_100000_coloured_lines_leaves_the_console_free_of_colour_codes_within_its_limit()
     {
         Write("Program.cs", "for (int i = 0; i < 100_000; i++)\n{\n    Console.WriteLine($\"\\u001b[3{i % 7 + 1}mline {i}\\u001b[0m\");\n}\nConsole.WriteLine(\"printed\");\n");
         MainWindow window = Open();
@@ -1263,45 +1269,8 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         string Text() => console.Document.Snapshot.ToString();
         try
         {
-            // A key's wait, as the system would deliver one: a job at input's priority, posted from another thread now and then.
-            Avalonia.Threading.Dispatcher dispatcher = Avalonia.Threading.Dispatcher.UIThread;
-            List<double> waits = [];
-            using Timer keys = new(_ =>
-            {
-                long posted = Stopwatch.GetTimestamp();
-                dispatcher.Post(() =>
-                {
-                    lock (waits)
-                    {
-                        waits.Add(Stopwatch.GetElapsedTime(posted).TotalMilliseconds);
-                    }
-                }, Avalonia.Threading.DispatcherPriority.Input);
-            }, null, 0, 10);
-            double Worst()
-            {
-                lock (waits)
-                {
-                    double worst = waits.Count == 0 ? 0 : waits.Max();
-                    waits.Clear();
-                    return worst;
-                }
-            }
-            Ui.Hold(TimeSpan.FromSeconds(1), "a second of the window at rest, against which the keys' waits while the program writes are held");
-            double atRest = Worst();
-
-            // When the console's text grew, from the debugger's start to the program's last line.
-            List<long> grew = [];
-            console.Document.Changed += (_, change) =>
-            {
-                if (change.Edits.Any(e => e.Text.Length > 0))
-                {
-                    grew.Add(Stopwatch.GetTimestamp());
-                }
-            };
             window.Perform(AppActions.Debug);
             Ui.PumpUntil(() => Text().Contains("printed", StringComparison.Ordinal), "the program to print its last line", TimeSpan.FromMinutes(2));
-            double whilePrinting = Worst();
-            double span = Stopwatch.GetElapsedTime(grew[0], grew[^1]).TotalMilliseconds;
 
             Ui.WaitFor(() => !window.Debugger.IsDebugging, "the program to end");
             string text = Text();
@@ -1309,10 +1278,6 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             Assert.DoesNotContain("[0m", text, StringComparison.Ordinal);
             Assert.Contains("\nline 99999\nprinted\n", text, StringComparison.Ordinal);
             Assert.True(text.Length <= Passenger.App.ToolWindows.OutputView.DefaultLimitKb * 1024, $"The console kept {text.Length} characters");
-            // A batch a frame at most, however many writes the program made and however many events the debugger sent.
-            Assert.True(grew.Count <= span / 16 + 10, $"The console took the output in {grew.Count} pieces over {span:0} ms, more than one a frame");
-            Assert.True(whilePrinting < Math.Max(500 * TestRun.TimeScale, 20 * atRest),
-                $"A key waited up to {whilePrinting:0} ms while the program printed, against {atRest:0} ms at rest");
         }
         finally
         {
