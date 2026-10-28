@@ -96,6 +96,10 @@ public sealed record GitConflict(string Path, bool HasBase, bool HasOurs, bool H
 /// was made.</summary>
 public sealed record StashInfo(int Index, string Commit, string Message, DateTimeOffset Time);
 
+/// <summary>What looking for a folder's working tree found: the tree, or none; and, where git refused the one it found (a
+/// repository another user owns, as on a FAT or network drive, until safe.directory names it), why, in its words.</summary>
+public sealed record GitLookup(Git? Tree, string? Refused);
+
 /// <summary>What `git` says, and whether it said it without failing.</summary>
 public sealed record GitResult(int Code, string Output, string Error)
 {
@@ -123,14 +127,37 @@ public sealed class Git
     /// rebase's state.</summary>
     public string GitDir { get; }
 
-    /// <summary>The working tree a folder is in, or null when it is in none (or git is not there).</summary>
-    public static async Task<Git?> OpenAsync(string folder)
+    /// <summary>The working tree a folder is in; none when it is in none (or git is not there), with git's reason when git
+    /// refused the one it found.</summary>
+    public static async Task<GitLookup> OpenAsync(string folder)
     {
         GitResult top = await RunAsync(folder, ["rev-parse", "--show-toplevel", "--absolute-git-dir"], answers: [NotThere]);
         string[] lines = top.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return top.Succeeded && lines.Length == 2
-            ? new Git(PathNames.Canonical(lines[0]), PathNames.Canonical(lines[1]))
-            : null;
+        if (top.Succeeded && lines.Length == 2)
+        {
+            return new GitLookup(new Git(PathNames.Canonical(lines[0]), PathNames.Canonical(lines[1])), null);
+        }
+        // Git names the setting that would let it in only when it refuses a repository it found, in any language it speaks.
+        return new GitLookup(null, top.Code == NotThere && top.Error.Contains("safe.directory", StringComparison.Ordinal)
+            ? $"Git refuses this folder's repository: {OneLine(top.Error)}"
+            : null);
+    }
+
+    /// <summary>What git said on one line: each of its lines trimmed, "fatal: " left off, and a line it ends without a
+    /// stop given one where a sentence follows.</summary>
+    private static string OneLine(string said)
+    {
+        StringBuilder line = new();
+        foreach (string part in said.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            string words = part.StartsWith("fatal: ", StringComparison.Ordinal) ? part[7..] : part;
+            if (line.Length > 0)
+            {
+                line.Append(char.IsUpper(words[0]) && line[^1] is not ('.' or ':' or ';' or ',' or '!' or '?') ? ". " : " ");
+            }
+            line.Append(words);
+        }
+        return line.ToString();
     }
 
     /// <summary>Makes a folder a working tree (Create Git Repository).</summary>

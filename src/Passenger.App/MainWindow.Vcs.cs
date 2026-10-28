@@ -169,7 +169,7 @@ public partial class MainWindow
     {
         VcsController vcs = session.Vcs;
         BranchName.Text = vcs.Repository is null ? "Version control" : vcs.Branch ?? "Detached HEAD";
-        ToolTip.SetTip(BranchButton, vcs.Repository is null ? "Version control" : $"Git branch: {BranchName.Text}");
+        ToolTip.SetTip(BranchButton, vcs.Repository is null ? vcs.Refused ?? "Version control" : $"Git branch: {BranchName.Text}");
         Explorer.Tree.SetChanges(vcs.Changes.Where(c => c.Kind is not ChangeKind.Deleted).ToDictionary(c => c.Path, c => c.Kind));
     }
 
@@ -200,7 +200,13 @@ public partial class MainWindow
         }
         if (session.Vcs.Repository is null)
         {
-            if (Folder is { } open)
+            if (session.Vcs.Refused is { } refused)
+            {
+                // Git's reason names what lets it in; a new repository in the folder would not.
+                status.Text = refused;
+                menu.Items.Add(new MenuItem { Header = "Git refuses this folder's repository", IsEnabled = false });
+            }
+            else if (Folder is { } open)
             {
                 menu.Items.Add(Item("Create Git Repository…", () => IdeErrors.Observe(session.Vcs.InitAsync(open))));
             }
@@ -234,7 +240,7 @@ public partial class MainWindow
     {
         if (session.Vcs.Repository is null)
         {
-            status.Text = Refusals.NoRepository;
+            status.Text = session.Vcs.NoRepository;
             return null;
         }
         NamePopup popup = new("Stash Changes", string.Empty, async message => (await session.Vcs.StashAsync(message)).Problem);
@@ -247,7 +253,7 @@ public partial class MainWindow
     {
         if (session.Vcs.Repository is null)
         {
-            status.Text = Refusals.NoRepository;
+            status.Text = session.Vcs.NoRepository;
             return null;
         }
         UnstashPopup popup = new(await session.Vcs.StashesAsync(), async (stash, pop) => (await session.Vcs.UnstashAsync(stash, pop)).Succeeded,
@@ -278,7 +284,7 @@ public partial class MainWindow
     {
         if (session.Vcs.Repository is null)
         {
-            status.Text = Refusals.NoRepository;
+            status.Text = session.Vcs.NoRepository;
             return null;
         }
         OpenDocument? open = Editors.Find(path) is { HoldsText: true } held ? held : null;
@@ -520,12 +526,12 @@ public partial class MainWindow
         actions.Add(new IdeAction(AppActions.CommitRefresh, "Refresh Changes", "Git", _ => IdeErrors.Observe(session.Vcs.RefreshAsync())) { WhyNot = NeedsRepository });
         actions.Add(new IdeAction(AppActions.GitLogRefresh, "Refresh Git Log", "Git", _ => IdeErrors.Observe(GitWindow.RefreshAsync())) { WhyNot = NeedsRepository });
 
-        string? NeedsRepository(ActionContext context) => NeedsFolder(context) ?? (session.Vcs.Repository is null ? Refusals.NoRepository : null);
+        string? NeedsRepository(ActionContext context) => NeedsFolder(context) ?? (session.Vcs.Repository is null ? session.Vcs.NoRepository : null);
 
         void Add(string id, string title, Action<ActionContext> run, MenuPlace menu, bool onFile = false) =>
             actions!.Add(new IdeAction(id, title, "Git", run)
             {
-                WhyNot = context => NeedsFolder(context) ?? (session.Vcs.Repository is null ? Refusals.NoRepository : onFile ? Refusals.NeedsFile(context) : null),
+                WhyNot = context => NeedsFolder(context) ?? (session.Vcs.Repository is null ? session.Vcs.NoRepository : onFile ? Refusals.NeedsFile(context) : null),
                 Menus = [menu],
             });
     }

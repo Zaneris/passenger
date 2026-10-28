@@ -28,7 +28,7 @@ public partial class MainWindow
         void Add(string id, string title, Action<ActionContext> run, int order, Func<string?> whyNot) =>
             actions!.Add(new IdeAction(id, title, "Git", run)
             {
-                WhyNot = context => NeedsFolder(context) ?? (session.Vcs.Repository is null ? Refusals.NoRepository : whyNot()),
+                WhyNot = context => NeedsFolder(context) ?? (session.Vcs.Repository is null ? session.Vcs.NoRepository : whyNot()),
                 Menus = [new MenuPlace("Git", 0, order)],
             });
     }
@@ -39,7 +39,7 @@ public partial class MainWindow
     {
         if (session.Vcs.Repository is null || session.Vcs.Conflicts.Count == 0)
         {
-            status.Text = session.Vcs.Repository is null ? Refusals.NoRepository : "No conflicts found";
+            status.Text = session.Vcs.Repository is null ? session.Vcs.NoRepository : "No conflicts found";
             return null;
         }
         if (conflictsDialog is { } open)

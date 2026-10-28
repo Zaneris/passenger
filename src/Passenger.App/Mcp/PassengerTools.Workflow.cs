@@ -34,7 +34,7 @@ public sealed partial class PassengerTools
         await vcs.RefreshAsync();
         if (vcs.Repository is null)
         {
-            throw new InvalidOperationException(Refusals.NoRepository);
+            throw new InvalidOperationException(vcs.NoRepository);
         }
         ConflictSides sides = vcs.Sides;
         VcsConflicts? conflicts = vcs.Conflicts.Count == 0 ? null : new VcsConflicts(sides.Description, sides.Yours, sides.Theirs,
@@ -76,6 +76,10 @@ public sealed partial class PassengerTools
         await Session.Vcs.Opened;
         // Read now, so a rename made a moment ago is measured from where the file was.
         await Session.Vcs.RefreshAsync();
+        if (Session.Vcs.Repository is null)
+        {
+            throw new InvalidOperationException(Session.Vcs.NoRepository);
+        }
         string head = await Session.Vcs.HeadTextAsync(full) ?? string.Empty;
         Passenger.App.Editors.OpenTexts texts = Editors.Texts();
         // Reading and comparing a large file would hold the person's window: the thread pool does both.
@@ -118,7 +122,7 @@ public sealed partial class PassengerTools
         CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         await Session.Vcs.Opened;
-        Git repository = Session.Vcs.Repository ?? throw new InvalidOperationException(Refusals.NoRepository);
+        Git repository = Session.Vcs.Repository ?? throw new InvalidOperationException(Session.Vcs.NoRepository);
         int most = Math.Clamp(count, 1, 500);
         (int, int)? lines = (startLine, endLine) switch
         {

@@ -109,7 +109,7 @@ public partial class MainWindow
     {
         if (session.Vcs.Repository is not { } repository)
         {
-            status.Text = Refusals.NoRepository;
+            status.Text = session.Vcs.NoRepository;
             return null;
         }
         IReadOnlyList<FileChange> files = await session.Vcs.ChangesSinceAsync(branch);

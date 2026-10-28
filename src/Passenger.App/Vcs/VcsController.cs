@@ -57,6 +57,16 @@ public sealed class VcsController : IDisposable
     /// <summary>The working tree the open folder is in, or null when it is in none.</summary>
     public Git? Repository => git;
 
+    /// <summary>Why git refused the repository the folder is in (one another user owns, until safe.directory names it), in
+    /// git's words; null when it took it or found none. Each read looks again, so the window follows once git lets it in.</summary>
+    public string? Refused { get; private set; }
+
+    /// <summary>What is said where Git is asked for and the window has none: git's refusal, where it refused one.</summary>
+    public string NoRepository => Refused ?? Refusals.NoRepository;
+
+    /// <summary>The folder whose repository git refused, looked in again by each read.</summary>
+    private string? refusedIn;
+
     /// <summary>The branch checked out, or null on a detached head or outside a working tree.</summary>
     public string? Branch { get; private set; }
 
@@ -152,24 +162,36 @@ public sealed class VcsController : IDisposable
         opening = lookup;
         try
         {
-            Git? found = await Git.OpenAsync(folder);
+            GitLookup found = await Git.OpenAsync(folder);
             if (generation != opened)
             {
                 return;
             }
-            git = found;
-            historyHeard = found is not null && PathNames.Same(found.GitDir, Path.Join(folder, ".git"));
-            heads.Clear();
-            textsOf = null;
-            textsRead = false;
-            moves.Clear();
-            renamed = new(PathNames.Comparer);
+            Take(folder, found);
         }
         finally
         {
             lookup.TrySetResult();
         }
         await RefreshAsync();
+        if (generation == opened && Refused is { } refused)
+        {
+            Message?.Invoke(this, refused);
+        }
+    }
+
+    /// <summary>What a lookup found becomes the window's working tree, read from the start.</summary>
+    private void Take(string folder, GitLookup found)
+    {
+        git = found.Tree;
+        Refused = found.Refused;
+        refusedIn = found.Refused is null ? null : folder;
+        historyHeard = git is not null && PathNames.Same(git.GitDir, Path.Join(folder, ".git"));
+        heads.Clear();
+        textsOf = null;
+        textsRead = false;
+        moves.Clear();
+        renamed = new(PathNames.Comparer);
     }
 
     /// <summary>The folder closed: the window is in no working tree, as with a folder outside one, until another opens;
@@ -179,6 +201,8 @@ public sealed class VcsController : IDisposable
         UiThread.Check();
         opened++;
         git = null;
+        Refused = null;
+        refusedIn = null;
         heads.Clear();
         textsOf = null;
         textsRead = false;
@@ -269,9 +293,19 @@ public sealed class VcsController : IDisposable
         }
     }
 
-    /// <summary>One read: the status (the branch, HEAD and the files), with the refs when the history is wanted too.</summary>
+    /// <summary>One read: the status (the branch, HEAD and the files), with the refs when the history is wanted too; where
+    /// git refused the folder's repository, it is looked for again first.</summary>
     private async Task ReadOnceAsync(bool history)
     {
+        if (git is null && refusedIn is { } folder)
+        {
+            int generation = opened;
+            GitLookup again = await Git.OpenAsync(folder);
+            if (generation == opened && git is null && refusedIn == folder)
+            {
+                Take(folder, again);
+            }
+        }
         if (git is not { } repository)
         {
             Branch = null;
@@ -516,7 +550,7 @@ public sealed class VcsController : IDisposable
         UiThread.Check();
         if (git is not { } repository)
         {
-            return new CommitResult(Report(false, Refusals.NoRepository), null, null);
+            return new CommitResult(Report(false, NoRepository), null, null);
         }
         if (Conflicts.Count > 0)
         {
@@ -573,7 +607,7 @@ public sealed class VcsController : IDisposable
         UiThread.Check();
         if (git is not { } repository)
         {
-            return Report(false, Refusals.NoRepository);
+            return Report(false, NoRepository);
         }
         if (!Begin(AppActions.Push, $"Pushing {Branch}…", out Working? work))
         {
@@ -590,7 +624,7 @@ public sealed class VcsController : IDisposable
         UiThread.Check();
         if (git is not { } repository)
         {
-            return Report(false, Refusals.NoRepository);
+            return Report(false, NoRepository);
         }
         if (Conflicts.Count > 0)
         {
@@ -635,7 +669,7 @@ public sealed class VcsController : IDisposable
         UiThread.Check();
         if (git is not { } repository)
         {
-            return Report(false, Refusals.NoRepository);
+            return Report(false, NoRepository);
         }
         if (!Begin(AppActions.Fetch, "Fetching…", out Working? work))
         {
@@ -792,7 +826,7 @@ public sealed class VcsController : IDisposable
         UiThread.Check();
         if (git is not { } repository)
         {
-            return Report(false, Refusals.NoRepository);
+            return Report(false, NoRepository);
         }
         if (!Begin(AppActions.Push, $"Pushing {branch.Name}…", out Working? work))
         {
@@ -844,7 +878,7 @@ public sealed class VcsController : IDisposable
     {
         if (git is not { } repository)
         {
-            return Report(false, Refusals.NoRepository);
+            return Report(false, NoRepository);
         }
         if (changes.Count == 0)
         {
@@ -908,7 +942,7 @@ public sealed class VcsController : IDisposable
     {
         if (git is not { } repository)
         {
-            return Report(false, Refusals.NoRepository);
+            return Report(false, NoRepository);
         }
         return await OneAtATimeAsync(async () =>
         {
@@ -943,7 +977,7 @@ public sealed class VcsController : IDisposable
     {
         if (git is not { } repository)
         {
-            return Report(false, Refusals.NoRepository);
+            return Report(false, NoRepository);
         }
         if (conflicts.Count == 0)
         {
@@ -1004,7 +1038,7 @@ public sealed class VcsController : IDisposable
     {
         if (git is not { } repository)
         {
-            return Report(false, Refusals.NoRepository);
+            return Report(false, NoRepository);
         }
         return await OneAtATimeAsync(async () =>
         {

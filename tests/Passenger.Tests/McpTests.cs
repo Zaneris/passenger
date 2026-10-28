@@ -343,6 +343,42 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"vcs_status of Bar.txt, git mv'd from Foo.txt with one line changed, answered:\n{diff}");
     }
 
+    /// <summary>A repository git refuses as another user's (as on a FAT or network drive) is said to be refused, in git's
+    /// words naming safe.directory, by vcs_status and the window's status bar, never as no repository; Passenger sets no
+    /// safe.directory itself, and once the person's configuration names it the next read takes the repository.</summary>
+    [Fact]
+    public async Task A_repository_git_refuses_as_another_users_is_said_to_be_refused_in_gits_words_naming_safe_directory()
+    {
+        string repository = TestFolders.Create("mcp-dubious-");
+        string home = TestFolders.Create("mcp-dubious-config-");
+        DeleteAtEnd(repository);
+        DeleteAtEnd(home);
+        File.WriteAllText(Path.Combine(repository, "Notes.txt"), "one\n");
+        await TestGit.InitAsync(repository);
+        string global = Path.Combine(home, "gitconfig");
+        File.WriteAllText(global, string.Empty);
+
+        await using McpClient client = await Start(["--mcp", repository], languageServer: false,
+            environment: new() { ["GIT_TEST_ASSUME_DIFFERENT_OWNER"] = "1", ["GIT_CONFIG_GLOBAL"] = global });
+        foreach (Dictionary<string, object?>? arguments in new Dictionary<string, object?>?[] { null, new() { ["path"] = "Notes.txt" } })
+        {
+            CallToolResult refused = await Result(client, McpTools.VcsStatus, arguments);
+            string said = Text(refused);
+            Assert.True(refused.IsError == true && said.Contains("detected dubious ownership", StringComparison.Ordinal) && said.Contains("safe.directory", StringComparison.Ordinal),
+                $"vcs_status {JsonSerializer.Serialize(arguments)} over a repository git refuses as another user's answered, rather than git's reason: {said}");
+        }
+        string bar = string.Empty;
+        await Waiting.UntilAsync(async () => (bar = Text(await Call(client, McpTools.AppTree, new() { ["app"] = "ide", ["control"] = "#StatusText" })))
+            .Contains("Git refuses this folder's repository: detected dubious ownership", StringComparison.Ordinal), TimeSpan.FromSeconds(10), Cancel, TimeSpan.FromMilliseconds(200));
+        Assert.True(bar.Contains("Git refuses this folder's repository: detected dubious ownership", StringComparison.Ordinal),
+            $"The window's status bar, over a repository git refuses, does not say why: {bar}");
+        Assert.True(File.ReadAllText(global).Length == 0, $"Passenger wrote to the person's Git configuration: {File.ReadAllText(global)}");
+
+        // As the person would, having read git's words.
+        File.WriteAllText(global, "[safe]\n\tdirectory = *\n");
+        Assert.Equal("main", (await Call(client, McpTools.VcsStatus)).GetProperty("branch").GetString());
+    }
+
     /// <summary>vcs_stash lists each stash with its commit, and an agent's drop by that commit takes that stash wherever it
     /// now is, though another program stashed after the list was read; asked again, it is refused as gone.</summary>
     [Fact]
