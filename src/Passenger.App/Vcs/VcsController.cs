@@ -1073,8 +1073,8 @@ public sealed class VcsController : IDisposable
         }, refused => refused);
     }
 
-    /// <summary>Abort Merge and Abort Rebase (and a cherry-pick's or a revert's): the tree back as it was before the
-    /// operation began.</summary>
+    /// <summary>Abort Merge, Abort Rebase, Abort Cherry-Pick and Abort Revert, whichever is under way: the tree back as it
+    /// was before the operation began.</summary>
     public Task<VcsOutcome> AbortAsync()
     {
         MergeOperation operation = Merge.Operation;

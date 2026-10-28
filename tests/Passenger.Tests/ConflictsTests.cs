@@ -366,6 +366,59 @@ public sealed class ConflictsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A cherry-pick stopped for its conflict is aborted by Abort Cherry-Pick once agreed to, and a revert stopped
+    /// so by Abort Revert: each time HEAD and the file are as they were before it and nothing is under way. While one is
+    /// under way, the other aborts and Abort Merge are greyed saying none of theirs is.</summary>
+    [AvaloniaFact]
+    public void A_cherry_pick_or_a_revert_stopped_for_conflicts_is_aborted_by_its_own_abort_and_head_is_as_it_was()
+    {
+        string longer = Shop.Replace("int count", "long count", StringComparison.Ordinal);
+        Git("switch", "-q", "-c", "feature");
+        Write("Shop.cs", Shop.Replace("int count", "short count", StringComparison.Ordinal));
+        Git("commit", "-q", "-am", "Short");
+        string shorter = Git("rev-parse", "HEAD").Trim();
+        Git("switch", "-q", "main");
+        Write("Shop.cs", longer);
+        Git("commit", "-q", "-am", "Long");
+        Write("Shop.cs", Shop.Replace("int count", "ulong count", StringComparison.Ordinal));
+        Git("commit", "-q", "-am", "Unsigned");
+        string head = Git("rev-parse", "HEAD").Trim();
+        string unsigned = Read("Shop.cs");
+        Conflicting("cherry-pick", shorter);
+
+        MainWindow window = Open();
+        List<string> asked = [];
+        window.Confirm = (title, text, yes) =>
+        {
+            asked.Add($"{title} | {text} | {yes}");
+            return Task.FromResult(true);
+        };
+        Ui.Landed(() => window.Vcs.Merge.Operation == MergeOperation.CherryPick, "the cherry-pick under way");
+        Assert.Equal("No merge in progress", window.Actions.WhyNot(AppActions.AbortMerge, window.Actions.Context()));
+        Assert.Equal("No revert in progress", window.Actions.WhyNot(AppActions.AbortRevert, window.Actions.Context()));
+        Assert.True(window.Perform(AppActions.AbortCherryPick), window.Status);
+        Ui.Landed(() => window.Vcs.Merge.Operation == MergeOperation.None, "the cherry-pick aborted");
+        Assert.Equal(["Abort Cherry-Pick | Abort cherry-pick? | Abort"], asked);
+        Assert.Equal("Abort cherry-pick succeeded", window.Status);
+        Assert.Equal(head, Git("rev-parse", "HEAD").Trim());
+        Assert.Equal(unsigned, Read("Shop.cs"));
+        Assert.Empty(Unmerged());
+        Ui.Landed(() => window.EditorArea.Active!.Text.Snapshot.ToString() == unsigned, "the open file as HEAD has it");
+
+        // The revert of Long conflicts with Unsigned, which changed the same line after it.
+        Conflicting("revert", "--no-edit", "HEAD~1");
+        Ui.WaitFor(() => window.Vcs.Merge.Operation == MergeOperation.Revert, "the revert under way");
+        Assert.Equal("No cherry-pick in progress", window.Actions.WhyNot(AppActions.AbortCherryPick, window.Actions.Context()));
+        Assert.True(window.Perform(AppActions.AbortRevert), window.Status);
+        Ui.Landed(() => window.Vcs.Merge.Operation == MergeOperation.None, "the revert aborted");
+        Assert.Equal("Abort Revert | Abort revert? | Abort", asked[^1]);
+        Assert.Equal("Abort revert succeeded", window.Status);
+        Assert.Equal(head, Git("rev-parse", "HEAD").Trim());
+        Assert.Equal(unsigned, Read("Shop.cs"));
+        Assert.Empty(Unmerged());
+        window.Close();
+    }
+
     private MainWindow Open()
     {
         MainWindow window = Ui.OpenFolder(folder);
