@@ -233,6 +233,29 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("98", (await Evaluate(host, frame, "\"abc\"u8[1]")).Value);
     }
 
+    /// <summary>A multi-dimensional array the expression makes is the one the program would make: of its rank and lengths,
+    /// filled as its initializer says, of any element type, its elements read and written; a negative length throws as
+    /// the program's would.</summary>
+    [Fact]
+    public async Task A_multi_dimensional_array_is_made_as_the_program_would_make_it()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        int frame = await StoppedInReadingAsync(host);
+
+        Assert.Equal(("3", "int"), await Evaluate(host, frame, "new int[,] { {1,2},{3,4} }[1,0]"));
+        Assert.Equal("6", (await Evaluate(host, frame, "new int[,,] { { { 1, 2 }, { 3, 4 } }, { { 5, 6 }, { 7, 8 } } }[1, 0, 1]")).Value);
+        Assert.Equal("2.5", (await Evaluate(host, frame, "new double[,] { { 1.5, 2.5 }, { 3.5, 4.5 } }[0, 1]")).Value);
+        Assert.Equal("MinusOne", (await Evaluate(host, frame, "new SignedEnum[,] { { SignedEnum.MinusOne, SignedEnum.MinusOne }, { SignedEnum.MinusOne, SignedEnum.MinusOne } }[1, 1]")).Value);
+        Assert.Equal("\"hello\"", (await Evaluate(host, frame, "new string[,] { { \"a\", \"b\" }, { \"c\", word } }[1, 1]")).Value);
+        Assert.Equal("7", (await Evaluate(host, frame, "new Spot[,] { { spot, new Spot(7, 8) } }[0, 1].X")).Value);
+        Assert.Equal("6", (await Evaluate(host, frame, "new int[2, 3].Length")).Value);
+        Assert.Equal("3", (await Evaluate(host, frame, "new Spot[2, 3].GetLength(1)")).Value);
+        Assert.Equal("9", (await Evaluate(host, frame, "new int[,] { { 1, 2 }, { 3, 4 } }[1, 1] = 9")).Value);
+        string negative = (await Evaluate(host, frame, "new int[letter - 'B', 2]")).Value;
+        Assert.True(negative.StartsWith("error: Evaluation threw System.OverflowException", StringComparison.Ordinal),
+            $"new int[letter - 'B', 2] answered \"{negative}\", where the program would throw an OverflowException for the length of -1");
+    }
+
     /// <summary>A call that throws in the program is named with what its exception says, as the program's own catch reads
     /// it, the value it was given too, on one line.</summary>
     [Fact]

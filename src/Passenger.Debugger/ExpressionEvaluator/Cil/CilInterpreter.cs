@@ -541,6 +541,10 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
             run.Closures.Add(evaluationClosure);
             return CilValue.FromVirtual(evaluationClosure);
         }
+        if (resolver.TryResolveArrayMethod(instruction.Token, out string arrayMethod, out ResolvedCilType? arrayType, out int parameters) && arrayMethod is ".ctor")
+        {
+            return await NewArrayAsync(arrayType, Pop(stack, parameters), run);
+        }
         ResolvedRuntimeMethod constructor = resolver.ResolveMethod(instruction.Token);
         CilValue[] constructorArguments = Pop(stack, constructor.Signature.ParameterTypes.Length);
         if (constructorArguments is [var delegateTarget, { Value: EvaluationFunctionPointer function }])
@@ -667,9 +671,9 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
             }
             return;
         }
-        if (resolver.TryResolveArrayAccessor(instruction.Token, out string accessor, out int rank))
+        if (resolver.TryResolveArrayMethod(instruction.Token, out string accessor, out ResolvedCilType? arrayType, out _) && accessor is not ".ctor")
         {
-            await ArrayAccessorAsync(accessor, rank, stack, context, handles);
+            await ArrayAccessorAsync(accessor, arrayType.ArrayRank, stack, context, handles);
             return;
         }
         ResolvedRuntimeMethod method = resolver.ResolveMethod(instruction.Token);
@@ -1128,6 +1132,55 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
             2,
             [arrayType, lengthValue],
             throwOnException: true));
+    }
+
+    /// <summary>A multi-dimensional array's constructor, of each dimension's length or of its lower bound and length, run as
+    /// newobj runs it: the array made in the program by Array.CreateInstance, a negative length throwing as it would there.</summary>
+    private async Task<CilValue> NewArrayAsync(ResolvedCilType arrayType, CilValue[] arguments, Interpretation run)
+    {
+        int rank = arrayType.ArrayRank;
+        bool bounded = arguments.Length == 2 * rank;
+        if (!bounded && arguments.Length != rank)
+        {
+            throw new NotSupportedException($"An array constructor of {arguments.Length} parameters for rank {rank} is not supported");
+        }
+        int[] lowerBounds = new int[rank];
+        int[] lengths = new int[rank];
+        for (int dimension = 0; dimension < rank; dimension++)
+        {
+            lowerBounds[dimension] = bounded ? arguments[2 * dimension].AsInt32() : 0;
+            lengths[dimension] = arguments[bounded ? 2 * dimension + 1 : dimension].AsInt32() is >= 0 and int length ? length : throw new OverflowException();
+        }
+        EvaluationMetadataResolver resolver = run.Resolver;
+        ICorDebugValue elementType = await GetSystemTypeAsync(arrayType.ElementType!, resolver, run.Context, run.Handles)
+            ?? throw new InvalidOperationException("Failed to resolve the element type for array allocation");
+        string integers = MetadataTypeNames.Of(PrimitiveTypeCode.Int32) + "[]";
+        ResolvedRuntimeMethod createInstance = resolver.ResolveRuntimeMethod("System", "Array", "CreateInstance", "System.Type", integers, integers);
+        ICorDebugValue[] createArguments = [elementType, await IntegersAsync(lengths, run), await IntegersAsync(lowerBounds, run)];
+        ICorDebugValue? array = run.Handles.Track(await run.Context.Thread.CreateEval().CallParameterizedFunctionAsync(
+            debugger.ProcessRuntimeEventsUntilEvalEvent,
+            debugger.EvalStatus,
+            createInstance.Function,
+            0,
+            null,
+            createArguments.Length,
+            createArguments,
+            throwOnException: true));
+        return array is null ? CilValue.Null() : CilValue.FromCorValue(array);
+    }
+
+    /// <summary>An int array of the program's holding the values given, for a call that takes one.</summary>
+    private async Task<ICorDebugValue> IntegersAsync(int[] values, Interpretation run)
+    {
+        ResolvedCilType int32 = new ResolvedCilType(PrimitiveTypeCode.Int32, null);
+        ICorDebugValue array = await CreateArrayAsync(int32, run.Resolver.GetCorDebugType(int32), (uint)values.Length, run.Resolver, run.Context, run.Handles)
+            ?? throw new InvalidOperationException("The program made no array for a call's integers");
+        ICorDebugArrayValue elements = (ICorDebugArrayValue)array.UnwrapDebugValue();
+        for (int position = 0; position < values.Length; position++)
+        {
+            new CorDebugLocation(elements.GetElementAtPosition(position)).Write(CilValue.FromPrimitive(values[position]));
+        }
+        return array;
     }
 
     private bool IsEvalAllocatableArrayElementType(ICorDebugType elementType)

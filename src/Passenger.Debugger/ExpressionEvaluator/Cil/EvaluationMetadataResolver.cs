@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
@@ -210,22 +211,25 @@ internal sealed class EvaluationMetadataResolver(ManagedDebugger debugger, Metad
         throw new MissingMethodException(GetTypeName(declaringType), name);
     }
 
-    /// <summary>A call of a multi-dimensional array's Get, Set or Address (<c>grid[1, 2]</c>), which the runtime makes for
-    /// each such array type and no type defines: the method's name and the array's rank.</summary>
-    public bool TryResolveArrayAccessor(int token, out string name, out int rank)
+    /// <summary>A multi-dimensional array's constructor, Get, Set or Address (<c>new int[2, 3]</c>, <c>grid[1, 2]</c>), which
+    /// the runtime makes for each such array type and no type defines: the method's name, the array's type and how many
+    /// parameters the method takes.</summary>
+    public bool TryResolveArrayMethod(int token, out string name, [NotNullWhen(true)] out ResolvedCilType? array, out int parameters)
     {
         EntityHandle handle = MetadataTokens.EntityHandle(token);
         if (handle.Kind == HandleKind.MemberReference
             && evaluationReader.GetMemberReference((MemberReferenceHandle)handle) is { Parent.Kind: HandleKind.TypeSpecification } member
-            && evaluationReader.GetString(member.Name) is "Get" or "Set" or "Address"
-            && ResolveTypeToken(MetadataTokens.GetToken(member.Parent)) is { ArrayRank: > 0, IsSzArray: false } array)
+            && evaluationReader.GetString(member.Name) is ".ctor" or "Get" or "Set" or "Address"
+            && ResolveTypeToken(MetadataTokens.GetToken(member.Parent)) is { ArrayRank: > 0, IsSzArray: false } resolved)
         {
             name = evaluationReader.GetString(member.Name);
-            rank = array.ArrayRank;
+            array = resolved;
+            parameters = member.DecodeMethodSignature(SignatureKeyProvider.Instance, genericContext: null).RequiredParameterCount;
             return true;
         }
         name = string.Empty;
-        rank = 0;
+        array = null;
+        parameters = 0;
         return false;
     }
 
