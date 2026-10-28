@@ -134,9 +134,11 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
   (`FileText.Landed`; `FileText.Read` gives its bytes meanwhile), and what hands the files to another program (a build,
   Git, a restore, an agent) waits for it (`SaveAllLandedAsync`); a change that writes a file not open (several files, a
   fix, Undo and Redo) says it is done only once its own writes have landed (`WorkspaceEdits.LandedAsync`,
-  `EditorArea.LandedAsync(paths, …)`), a command waiting inside its recording (`Recording.LandedAsync`: the open files'
-  changes taken first, a file never written left out). A file shown read-only refuses every change to its text
-  (`TextDocument.IsReadOnly`, set only by `OpenDocument`), and an action on it greys with `Refusals.ReadOnly`.
+  `EditorArea.LandedAsync(paths, …)`), every command waiting inside its recording (`Recording.LandedAsync`,
+  `WorkspaceEdits.LandedAsync(recording, …)`: the open files' changes taken first, a file never written left out;
+  `TypeRename.Apply` and `ApplyAsCommand` take the caller's), the window's words through `UnlandedAsync`. A file shown
+  read-only refuses every change to its text (`TextDocument.IsReadOnly`, set only by `OpenDocument`), and an action on
+  it greys with `Refusals.ReadOnly`.
 - **State is a `StateDocument`** in the one `StateStore` (versioned `Upgrades`, `Clamped`, written debounced and merged,
   a bad file set aside as `.bad`), read off the UI thread; never a file of its own. Per-folder state lives under
   `workspaces/<name>-<hash>/` and is made in `ProjectSession`. A new setting: an `AppSettings` property, its row and
