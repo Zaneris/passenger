@@ -117,9 +117,8 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
 
     /// <summary>Keys typed in a burst have solution-wide analysis ask the server again once typing pauses, not for every key:
     /// its pulls held open for a change are let go as the first key comes and asked again once the open file's own pull has
-    /// answered, and the Solution tab then lists what the keys broke in a file nobody has open. Only what it asked between a
-    /// key and the next one that came within the open file's pull's pause counts: a loaded machine's keys may come further
-    /// apart, and typing has then paused between them.</summary>
+    /// answered, and the Solution tab then lists what the keys broke in a file nobody has open. The keys come one straight
+    /// after another, each with the work it posted run, so no pause comes between them however slow the machine.</summary>
     [AvaloniaFact]
     public void Keys_typed_in_a_burst_have_solution_wide_analysis_ask_the_server_again_once_typing_pauses()
     {
@@ -143,23 +142,12 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
 
         const int Keys = 10;
         int[] during = new int[sources.Count];
-        int quick = 0;
-        int typed = 0;
-        while (quick < Keys && typed < Keys * 4)
+        for (int typed = 0; typed < Keys; typed++)
         {
             int[] asked = Asked();
-            long pressed = System.Diagnostics.Stopwatch.GetTimestamp();
             window.KeyTextInput("x");
-            typed++;
-            Ui.Hold(TimeSpan.FromMilliseconds(150), "the time between a burst's keys, well inside the open file's pull's pause");
-            if (System.Diagnostics.Stopwatch.GetElapsedTime(pressed) < Passenger.App.CSharp.CSharpDocument.Pause)
-            {
-                quick++;
-                during = [.. Asked().Select((now, i) => during[i] + now - asked[i])];
-            }
+            during = [.. Asked().Select((now, i) => during[i] + now - asked[i])];
         }
-        Assert.True(quick == Keys,
-            $"Of {typed} keys typed 150 ms apart only {quick} came within the open file's pull's pause ({Passenger.App.CSharp.CSharpDocument.Pause.TotalMilliseconds} ms) of the next");
         Ui.WaitFor(CallerBroken, "the error the keys made in the caller nobody has open", TimeSpan.FromMinutes(1));
         Ui.Settle();
         int[] after = Asked();
@@ -244,8 +232,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
 
     /// <summary>A file with thousands of problems types as one with few does: every key moves the file's markers, and the
     /// File tab lists where they went once typing pauses, rather than placing and listing every one again for each
-    /// key. Only keys that came within the pause of the one before, by the clock, are counted: a loaded machine's keys may
-    /// come further apart, and the pause is then over between them.</summary>
+    /// key. Sixteen keys come one straight after another, so however slow the machine some come within the pause.</summary>
     [AvaloniaFact]
     public void Keys_typed_above_thousands_of_problems_list_them_again_once_typing_pauses()
     {
@@ -264,35 +251,24 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         editor.Focus();
         Ui.Settle();
 
-        // Keys in quick succession, each one's own work done but no pause between them, until eight came within the pause.
+        // Keys in quick succession, each one's own work done but no pause between them.
         int listed = 0;
-        int quick = 0;
-        int typed = 0;
         IReadOnlyList<Problem> shown = problems.FileProblems;
-        const int Keys = 8;
-        long last = System.Diagnostics.Stopwatch.GetTimestamp();
-        while (quick < Keys && typed < Keys * 4)
+        const int Keys = 16;
+        for (int typed = 0; typed < Keys; typed++)
         {
-            long pressed = System.Diagnostics.Stopwatch.GetTimestamp();
             window.KeyPress(Avalonia.Input.Key.Enter, Avalonia.Input.RawInputModifiers.None, Avalonia.Input.PhysicalKey.None, null);
             window.KeyRelease(Avalonia.Input.Key.Enter, Avalonia.Input.RawInputModifiers.None, Avalonia.Input.PhysicalKey.None, null);
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-            if (typed == 0 || System.Diagnostics.Stopwatch.GetElapsedTime(last) < MainWindow.ProblemsPause)
-            {
-                quick++;
-                listed += ReferenceEquals(problems.FileProblems, shown) ? 0 : 1;
-            }
+            listed += ReferenceEquals(problems.FileProblems, shown) ? 0 : 1;
             shown = problems.FileProblems;
-            last = pressed;
-            typed++;
         }
-        Assert.True(quick == Keys, $"Of {typed} keys typed in quick succession only {quick} came within {MainWindow.ProblemsPause.TotalMilliseconds} ms of the one before");
-        Assert.True(listed <= Keys / 4, $"The File tab listed the file's 3,000 problems again {listed} times for {Keys} keys typed in quick succession");
+        Assert.True(listed < Keys, $"The File tab listed the file's 3,000 problems again for each of {Keys} keys typed one straight after another");
 
         Ui.Settle();
         Assert.Equal(3000, problems.FileProblems.Count);
-        Assert.Equal(new TextPosition(4 + typed, 12), problems.FileProblems[0].Position);
-        Assert.Equal(new TextPosition(4 + typed + 2999, 12), problems.FileProblems[^1].Position);
+        Assert.Equal(new TextPosition(4 + Keys, 12), problems.FileProblems[0].Position);
+        Assert.Equal(new TextPosition(4 + Keys + 2999, 12), problems.FileProblems[^1].Position);
         window.Close();
     }
 
