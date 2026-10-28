@@ -7,7 +7,7 @@ namespace Passenger.App.Run;
 /// .NET services (those marked Debug, else every one) held at their start until a session per service attaches; run with
 /// Hot Reload, every .NET service held and attached to quietly, no breakpoint sent, so the edits reach it through the
 /// debugger (dotnet watch would need the SDK in a container's image); or profiled, one .NET service held at its start until
-/// the profiler records it. What a service is held at its start for is one of these too (<see cref="ServiceRun.HeldFor"/>).</summary>
+/// the profiler records it. What a service is held at its start for is one of these too (<see cref="ServiceRun.HeldFor(IRunService)"/>).</summary>
 public enum RunStart
 {
     Run,
@@ -66,6 +66,10 @@ public abstract class ServiceRun
     /// Reload): a restart holds it again and attaches again. A service not here runs unheld.</summary>
     private readonly Dictionary<string, RunStart> holds = new(StringComparer.Ordinal);
 
+    /// <summary>What each start of a service kept by its own key (<see cref="KeyOf"/>: a replica) is held at its start for
+    /// where it was chosen for it alone, over its name's hold: null where it runs unheld. Its name's next choice ends it.</summary>
+    private readonly Dictionary<string, (string Service, RunStart? How)> ownHolds = new(StringComparer.Ordinal);
+
     /// <summary>The run's name, its configuration's, by which its Debug tabs are grouped and the person's choices kept.</summary>
     public abstract string Name { get; }
 
@@ -82,7 +86,8 @@ public abstract class ServiceRun
     /// it takes their programs.</summary>
     public HashSet<string> Debugged { get; } = new(StringComparer.Ordinal);
 
-    /// <summary>The services attached to as they ran (Attach, not held at their start), which a restart attaches to again.</summary>
+    /// <summary>The services attached to as they ran (Attach, not held at their start), by <see cref="KeyOf"/>, which a restart
+    /// attaches to again.</summary>
     public HashSet<string> AttachedRunning { get; } = new(StringComparer.Ordinal);
 
     /// <summary>A service as the profiler window and the status bar name what is recorded: by the run too.</summary>
@@ -90,7 +95,7 @@ public abstract class ServiceRun
 
     /// <summary>The service the profiler records, which Stop ends (<see cref="EndProfiling"/>, its snapshot read) before it
     /// takes the programs; null when none is.</summary>
-    public string? Profiled { get; set; }
+    public IRunService? Profiled { get; set; }
 
     /// <summary>Ends the profiler's recording of <see cref="Profiled"/>, reading its snapshot, done once it has.</summary>
     public Func<Task>? EndProfiling { get; set; }
@@ -108,13 +113,22 @@ public abstract class ServiceRun
     public virtual Telemetry.TelemetrySource? Telemetry => null;
 
     /// <summary>The .NET services held at their start for the debugger, which a restart holds again.</summary>
-    public IReadOnlyList<IRunService> Held => [.. Services.Where(s => holds.ContainsKey(s.Name))];
+    public IReadOnlyList<IRunService> Held => [.. Services.Where(s => HeldFor(s) is not null)];
 
     /// <summary>The names of the services held at their start, whatever for.</summary>
     protected IReadOnlyCollection<string> HeldNames => holds.Keys;
 
-    /// <summary>What a service is held at its start for (Debug or Hot Reload), or null when it runs unheld.</summary>
-    public RunStart? HeldFor(string service) => holds.TryGetValue(service, out RunStart how) ? how : null;
+    /// <summary>What the starts of a service's name are held at their start for (Debug or Hot Reload), or null when they run
+    /// unheld.</summary>
+    protected RunStart? HeldFor(string service) => holds.TryGetValue(service, out RunStart how) ? how : null;
+
+    /// <summary>What a service is held at its start for (Debug or Hot Reload), or null when it runs unheld: what was chosen for
+    /// it alone (a replica, <see cref="KeyOf"/>), else what its name is held for.</summary>
+    public RunStart? HeldFor(IRunService service) => ownHolds.TryGetValue(KeyOf(service), out (string Service, RunStart? How) own) ? own.How : HeldFor(service.Name);
+
+    /// <summary>What a service's own choices are kept by (its hold, an attach as it ran, its recording): its name, unless its
+    /// kind runs several of one name (an AppHost's replicas), each then kept by a key of its own that its restarts keep.</summary>
+    public virtual string KeyOf(IRunService service) => service.Name;
 
     /// <summary>The services as they were brought up: those held for the debugger (or the one for the profiler, whose hold its
     /// recording lets go, never asked again).</summary>
@@ -135,9 +149,24 @@ public abstract class ServiceRun
     {
     }
 
-    /// <summary>Chooses what a service is held at its start for from now (null: unheld), which its next start makes so.</summary>
-    public Task HoldAsync(string service, RunStart? how, CancellationToken cancel)
+    /// <summary>Chooses what a service is held at its start for from now (null: unheld), which its next start makes so: it
+    /// alone where its kind keeps it by a key of its own (a replica, <see cref="KeyOf"/>), else every start of its name.</summary>
+    public Task HoldAsync(IRunService service, RunStart? how, CancellationToken cancel) => HoldAsync(service.Name, KeyOf(service), how, cancel);
+
+    /// <summary>Chooses what the starts of a service's name are held at their start for from now (null: unheld), what was
+    /// chosen for one alone let go; or, given a start's own key that is not its name (<paramref name="own"/>,
+    /// <see cref="KeyOf"/>), what that start alone is held for.</summary>
+    protected Task HoldAsync(string service, string? own, RunStart? how, CancellationToken cancel)
     {
+        if (own is not null && own != service)
+        {
+            ownHolds[own] = (service, how);
+            return HoldsChangedAsync(cancel);
+        }
+        foreach (string key in ownHolds.Where(chosen => chosen.Value.Service == service).Select(chosen => chosen.Key).ToList())
+        {
+            ownHolds.Remove(key);
+        }
         if (how is { } held)
         {
             holds[service] = held;
@@ -192,7 +221,7 @@ public abstract class ServiceRun
         // The whole run's: a session left of a service no longer among its services ends too.
         List<Task> ending = [.. each.Select(s => EndSessionAsync(debug, s, closing)),
             .. given is null && !closing ? Debugged.Where(name => !named.Contains(name)).Select(debug.StopAsync) : []];
-        if (!closing && (given is null || Profiled is { } profiled && given.Any(s => s.Name == profiled)) && EndProfiling is { } end)
+        if (!closing && (given is null || Profiled is { } profiled && given.Any(s => KeyOf(s) == KeyOf(profiled))) && EndProfiling is { } end)
         {
             ending.Add(EndRecordingAsync(end));
         }
@@ -229,6 +258,10 @@ public abstract class ServiceRun
     /// service's own, unless its kind names it otherwise (an Aspire service by its AppHost too, as two AppHosts' may share a
     /// resource's name).</summary>
     public virtual string SessionName(IRunService service) => service.Name;
+
+    /// <summary>The session debugging a service from here, its Debug tab's, else null: by its session's name, unless its kind
+    /// keeps each start's own (an Aspire service's, whose replicas share a name).</summary>
+    public virtual DebugSession? SessionOf(DebugController debug, IRunService service) => debug.SessionNamed(SessionName(service));
 
     /// <summary>Whether each start of a held service is attached to by its kind as it starts, once (an Aspire service, whose
     /// start DCP asks for): a restart waits for that attach rather than attaching again.</summary>

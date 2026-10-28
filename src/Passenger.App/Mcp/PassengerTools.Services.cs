@@ -327,10 +327,10 @@ public sealed partial class PassengerTools
         DebugSession? debugged = tabbed is { State: not DebugState.Ended } ? tabbed : quiet is { State: not DebugState.Ended } ? quiet : null;
         return info with
         {
-            Held = run.HeldFor(service.Name) is { } how ? Words(how) : null,
+            Held = run.HeldFor(service) is { } how ? Words(how) : null,
             Session = debugged is not null && debugged == tabbed ? name : null,
             Debugger = debugged is null ? null : debugged == quiet ? "hotReload" : debugged.State.ToString().ToLowerInvariant(),
-            Profiled = run.Profiled == service.Name ? true : null,
+            Profiled = run.Profiled is { } profiled && run.KeyOf(profiled) == run.KeyOf(service) ? true : null,
         };
     }
 

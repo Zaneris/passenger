@@ -127,6 +127,9 @@ public partial class MainWindow
         return true;
     }
 
+    /// <summary>The start of a service an agent's call asked for, once it runs (attached to, when <paramref name="debugging"/>)
+    /// and its resource names it: a start after <paramref name="previous"/> of the same replica, else of the resource named
+    /// (<paramref name="resourceName"/>) where its service runs several.</summary>
     private Task<AspireResourceRun> WaitForAspireToolServiceAsync(ProjectSession current, AspireAppRun app,
         string name, string project, CancellationToken cancel, AspireResourceRun? previous = null, bool debugging = false,
         string? resourceName = null)
@@ -138,7 +141,9 @@ public partial class MainWindow
             if (service is null)
             {
                 AspireResourceRun[] services = app.Services.Where(candidate => candidate != previous && candidate.ResourceName == name
-                    && PathNames.Same(candidate.Project, project) && !candidate.Stopping.IsCancellationRequested).ToArray();
+                    && PathNames.Same(candidate.Project, project) && !candidate.Stopping.IsCancellationRequested
+                    && (previous is null || candidate.IdentityKey == previous.IdentityKey)
+                    && (resourceName is null || candidate.ResourceIn(resources) is not { } own || own.Name == resourceName)).ToArray();
                 if (services.Length > 1)
                 {
                     throw new InvalidOperationException("The proven AppHost project identifies more than one native service");

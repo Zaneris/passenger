@@ -560,7 +560,7 @@ public sealed class ProfilerCommands
                 : run.IsStopped ? $"{run.Name} was stopped as {service.Name}'s recording began" : "A run is already being profiled";
         }
         Follow(profiled, recording, name, killable: false);
-        run.Profiled = service.Name;
+        run.Profiled = service;
         run.EndProfiling = () => profiled.Profiling == recording && profiled == Session ? SnapshotAsync() : Task.CompletedTask;
         return null;
     }

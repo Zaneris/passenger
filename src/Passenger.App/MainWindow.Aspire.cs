@@ -380,9 +380,9 @@ public partial class MainWindow
         return (app, service);
     }
 
-    /// <summary>Debug or Attach of a service of an AppHost the window runs, as it runs now: its live Debug tab chosen when it
-    /// has one, else the run of services' Debug (restarted held, attached as it starts) or Attach (as it runs), its tab chosen
-    /// once attached. Null once done, else why not.</summary>
+    /// <summary>Debug or Attach of a start of a service of an AppHost the window runs (a replica of several, by its own), as
+    /// it runs now: its live Debug tab chosen when it has one, else the run of services' Debug (restarted held, attached as it
+    /// starts) or Attach (as it runs), its tab chosen once attached. Null once done, else why not.</summary>
     private async Task<string?> DebugAspireRunningAsync(ProjectSession current, AspireAppRun app, AspireResourceRun service, bool attach)
     {
         using IDisposable held = BackgroundWork.Scope();
@@ -394,8 +394,8 @@ public partial class MainWindow
             return null;
         }
         string name = ((IRunService)service).Name;
-        string? problem = attach ? await buildRun.AttachServiceAsync(app, name) : await buildRun.DebugServiceAsync(app, name);
-        if (problem is null && session == current && app.ServiceNamed(name) is AspireResourceRun now)
+        string? problem = attach ? await buildRun.AttachServiceAsync(app, name, service) : await buildRun.DebugServiceAsync(app, name, service);
+        if (problem is null && session == current && app.Newest(service) is { } now)
         {
             current.Aspire.SelectService(now);
             ShowToolWindow(ToolWindowIds.Debug);
@@ -426,13 +426,13 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Profile of a service of an AppHost the window runs, as it runs: the run of services' one recording of a
-    /// service. Null once it records, else why not.</summary>
+    /// <summary>Profile of a start of a service of an AppHost the window runs (a replica of several, by its own), as it runs:
+    /// the run of services' one recording of a service. Null once it records, else why not.</summary>
     private async Task<string?> ProfileAspireRunningAsync(ProjectSession current, AspireAppRun app, AspireResourceRun service)
     {
         using IDisposable held = BackgroundWork.Scope();
         current.Aspire.SelectService(service);
-        return await buildRun.ProfileServiceAsync(app, ((IRunService)service).Name);
+        return await buildRun.ProfileServiceAsync(app, ((IRunService)service).Name, service);
     }
 
     /// <summary>The run of services' one recording of a service, either kind's, held at its start or as it runs: the window's
@@ -455,7 +455,7 @@ public partial class MainWindow
             if (current.Aspire.FindService(selection) is { } running && current.Aspire.FindApp(selection.AppHostPath) is { } app)
             {
                 return debugging ? await DebugAspireServiceAsync(current, selection, attach: false, cancel)
-                    : await buildRun.RunServiceAsync(app, ((IRunService)running).Name);
+                    : await buildRun.RunServiceAsync(app, ((IRunService)running).Name, running);
             }
             string owner = current.Aspire.FindApp(selection.AppHostPath)?.Name ?? Path.GetFileNameWithoutExtension(selection.AppHostPath);
             AspireResourceCommand command = StartOf(selection.Resource)

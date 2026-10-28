@@ -55,9 +55,11 @@ public partial class MainWindow
     /// there), one among its run's services now (<paramref name="Runs"/>: running, or a container run's left unstarted, which
     /// its actions start) or an AppHost's project resource that does not run, which Debug and Run without Debugger start
     /// (<paramref name="Resource"/> as the Aspire window chose it, else found by its name as the action runs); or why there is
-    /// none.</summary>
+    /// none. <see cref="Start"/> is the start the Aspire window chose (one replica of several), else null.</summary>
     private sealed record ServiceAim(ServiceRun? Run, string? Name, bool Runs, AspireSelection? Resource, string? WhyNot)
     {
+        public AspireResourceRun? Start { get; init; }
+
         public static ServiceAim Refused(string why) => new(null, null, false, null, why);
     }
 
@@ -117,7 +119,7 @@ public partial class MainWindow
         {
             return ServiceAim.Refused($"{chosen.Resource.DisplayName} is not a .NET service of {app.Name}");
         }
-        return session.Aspire.FindService(chosen) is IRunService running ? new(app, running.Name, true, chosen, null)
+        return session.Aspire.FindService(chosen) is { } running ? new(app, ((IRunService)running).Name, true, chosen, null) { Start = running }
             : new(app, app.UnstartedName(chosen.Resource) ?? chosen.Resource.DisplayName, false, chosen, null);
     }
 
@@ -156,12 +158,13 @@ public partial class MainWindow
             return await ServiceActionAsync(id, aim.Name);
         }
         ProjectSession current = session;
-        if (aim.Runs && app.ServiceNamed(aim.Name!) is AspireResourceRun running)
+        // The start the Aspire window chose (one replica of several), else the newest of the name.
+        if (aim.Runs && (aim.Start is { } chosen && app.Services.Contains(chosen) ? chosen : app.ServiceNamed(aim.Name!)) is AspireResourceRun running)
         {
             return id switch
             {
                 AppActions.ServiceDebug or AppActions.ServiceAttach => await DebugAspireRunningAsync(current, app, running, attach: id == AppActions.ServiceAttach),
-                AppActions.ServiceRun => await buildRun.RunServiceAsync(app, aim.Name!),
+                AppActions.ServiceRun => await buildRun.RunServiceAsync(app, aim.Name!, running),
                 _ => await ProfileAspireRunningAsync(current, app, running),
             };
         }

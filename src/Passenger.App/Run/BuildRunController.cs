@@ -1186,7 +1186,7 @@ public sealed partial class BuildRunController
         return ServicesStarted(configuration.Name, mode, mode switch
         {
             RunStart.Debug => marked.Length > 0 ? string.Join(" and ", marked) : "each .NET service it starts",
-            RunStart.Profile => started.Select(app => app.Profiled).OfType<string>().FirstOrDefault() ?? "its service",
+            RunStart.Profile => started.Select(app => app.Profiled?.Name).OfType<string>().FirstOrDefault() ?? "its service",
             _ => "its .NET services",
         });
     }

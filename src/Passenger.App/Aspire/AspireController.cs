@@ -197,7 +197,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         }
         if (FindService(selection) is { } service)
         {
-            app.Choose(((IRunService)service).Name, debugging);
+            app.Choose(service, debugging);
             return;
         }
         // One its run left unstarted, as its configuration says Don't start: its next start is held as now chosen.
@@ -214,7 +214,8 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         {
             throw new InvalidOperationException("The selected resource does not identify one previously owned .NET service");
         }
-        app.Choose(selection.Resource.DisplayName, debugging);
+        // The start it was, its replica's own key (which its restart keeps), so a choice of one replica is its alone.
+        app.Choose(selection.Resource.DisplayName, debugging, identity.IdentityKey);
     }
 
     public bool IsAspire(RunConfiguration configuration) => configuration.Aspire
@@ -910,7 +911,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
                     throw new LaunchException(unattached);
                 }
                 // Held for a debugger that could not reach it, it would wait for good: it runs on unheld, said.
-                await app.HoldAsync(serviceName, null, CancellationToken.None);
+                await app.HoldAsync(resource, null, CancellationToken.None);
                 resource.Held = null;
                 await LetGoAsync(resource.ProcessId);
                 string said = $"{serviceName} of {app.Name} runs without the debugger, which could not attach: {unattached}";
@@ -1195,9 +1196,10 @@ public sealed partial class AspireController(ProjectSession workspace, string st
 
 /// <summary>An Aspire AppHost the window started, a run of services (<see cref="ServiceRun"/>) whose services DCP asks the
 /// IDE to start on this machine: each start is the controller's (<c>StartResourceAsync</c>), held at its runtime's start as
-/// the model says (<see cref="ServiceRun.HeldFor"/>) and attached to as it starts, once (<see cref="AttachesItsStarts"/>).
-/// What is its own: a service restarts through its AppHost's resource commands (<see cref="RestartAsync"/>), its program
-/// is the newest started for its name, and its session is named by its AppHost too.</summary>
+/// the model says (<see cref="ServiceRun.HeldFor(IRunService)"/>) and attached to as it starts, once (<see cref="AttachesItsStarts"/>).
+/// What is its own: a service restarts through its AppHost's resource commands (<see cref="RestartAsync"/>), each start is
+/// kept by its replica (<see cref="KeyOf"/>) and its program is the newest started of it, and its session is named by its
+/// AppHost too.</summary>
 public sealed class AspireAppRun : ServiceRun
 {
     /// <summary>The services started at least once in this run, whose hold is the model's from then on.</summary>
@@ -1308,12 +1310,26 @@ public sealed class AspireAppRun : ServiceRun
     /// <summary>By its AppHost too, as two AppHosts may each run a resource of one name.</summary>
     public override string SessionName(IRunService service) => $"{Path.GetFileNameWithoutExtension(Configuration.Project)}: {service.Name}";
 
+    /// <summary>The newest start still running of the replica a start is (<see cref="KeyOf"/>: the start given, or the one its
+    /// restart started), else of a service of that name.</summary>
+    internal AspireResourceRun? Newest(IRunService service) => service is AspireResourceRun start
+        ? Resources.Values.Where(resource => resource.IdentityKey == start.IdentityKey && !resource.Stopping.IsCancellationRequested).MaxBy(resource => resource.Sequence)
+        : ServiceNamed(service.Name) as AspireResourceRun;
+
     /// <summary>The newest start of a service of that name still running.</summary>
     public override IRunService? ServiceNamed(string name) =>
         Resources.Values.Where(resource => ((IRunService)resource).Name == name && !resource.Stopping.IsCancellationRequested).MaxBy(resource => resource.Sequence);
 
     public override bool Refused(Exception failure) => failure is IOException or InvalidOperationException or TimeoutException or LaunchException or InvalidDataException
         or System.ComponentModel.Win32Exception;
+
+    /// <summary>Each start by its replica (<see cref="AspireResourceRun.IdentityKey"/>), which its restarts keep: replicas
+    /// share their service's name.</summary>
+    public override string KeyOf(IRunService service) => service is AspireResourceRun start ? start.IdentityKey : service.Name;
+
+    /// <summary>A start's own session, never another replica's of the same name.</summary>
+    public override DebugSession? SessionOf(DebugController debug, IRunService service) =>
+        service is AspireResourceRun start ? start.DebugTab?.Session ?? start.Debugged : base.SessionOf(debug, service);
 
     /// <summary>A start's own session, never another start's of the same name: in its tab, stopped; quiet (for Hot Reload),
     /// let go; closed as the folder ends.</summary>
@@ -1333,10 +1349,10 @@ public sealed class AspireAppRun : ServiceRun
     /// <summary>Nothing to write: a service's next start reads its hold.</summary>
     protected override Task HoldsChangedAsync(CancellationToken cancel) => Task.CompletedTask;
 
-    /// <summary>A service's program on this machine: the newest start of its name, with its inspected app, open to Hot Reload
-    /// when it started held (with DOTNET_MODIFIABLE_ASSEMBLIES=debug).</summary>
+    /// <summary>A service's program on this machine: the newest start of its replica (<see cref="Newest"/>), with its
+    /// inspected app, open to Hot Reload when it started held (with DOTNET_MODIFIABLE_ASSEMBLIES=debug).</summary>
     public override Task<ServiceProgram?> ProgramAsync(IRunService service, Task up, CancellationToken stop) =>
-        ServiceNamed(service.Name) is AspireResourceRun { ProcessId: int id } running
+        Newest(service) is { ProcessId: int id } running
             ? Task.FromResult<ServiceProgram?>(new ServiceProgram(id, null, null)
             {
                 HotReload = running.Held is not null,
@@ -1433,7 +1449,7 @@ public sealed class AspireAppRun : ServiceRun
         {
             Brought([(resource, held)]);
         }
-        return HeldFor(name);
+        return HeldFor(resource);
     }
 
     /// <summary>Whether a service's start is its first in this run and its configuration says Don't start it: refused then,
@@ -1470,12 +1486,16 @@ public sealed class AspireAppRun : ServiceRun
         }
     }
 
-    /// <summary>A person's choice of a service: debugged from its next start, or run without the debugger.</summary>
-    internal void Choose(string name, bool debugging)
+    /// <summary>A person's choice of a service: debugged from its next start, or run without the debugger; that of one start
+    /// alone given its own key (<see cref="KeyOf"/>: a replica's), else of every start of its name.</summary>
+    internal void Choose(string name, bool debugging, string? own = null)
     {
         decided.Add(name);
-        IdeErrors.Observe(HoldAsync(name, debugging ? RunStart.Debug : null, CancellationToken.None));
+        IdeErrors.Observe(HoldAsync(name, own, debugging ? RunStart.Debug : null, CancellationToken.None));
     }
+
+    /// <summary>A person's choice of a start that runs: it alone debugged from its next start, or run without the debugger.</summary>
+    internal void Choose(AspireResourceRun start, bool debugging) => Choose(((IRunService)start).Name, debugging, KeyOf(start));
 
     /// <summary>The service's start the session attached to keeps its tab (which the Aspire window chooses) and session.</summary>
     public override void Attached(IRunService service, ServiceProgram program, DebugTab? tab, DebugSession? debugged)
