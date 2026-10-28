@@ -1577,7 +1577,8 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
     }
 
     /// <summary>The address the browser opens: the plan's, its <c>{Scheme}</c>, <c>{ServiceHost}</c> and
-    /// <c>{ServicePort}</c> filled from the port the engine published for the launched service; null without one.</summary>
+    /// <c>{ServicePort}</c> filled from the port the engine published for the launched service, on the engine's machine
+    /// (<see cref="ContainerPort.LinkOn"/>); null without one.</summary>
     public async Task<string?> BrowserUrlAsync(CancellationToken cancel)
     {
         if (Plan.BrowserUrl is not { } url)
@@ -1600,8 +1601,10 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
             return null;
         }
         string scheme = port is 443 or 8081 || url.StartsWith("https", StringComparison.OrdinalIgnoreCase) ? "https" : "http";
+        string host = new ContainerPort(answer[(colon + 1)..], port.ToString(CultureInfo.InvariantCulture), "tcp").LinkOn((await engine.StateAsync(cancel: cancel)).Endpoint)?.Host
+            ?? "localhost";
         return url.Replace("{Scheme}", scheme, StringComparison.OrdinalIgnoreCase)
-            .Replace("{ServiceHost}", "localhost", StringComparison.OrdinalIgnoreCase)
+            .Replace("{ServiceHost}", host, StringComparison.OrdinalIgnoreCase)
             .Replace("{ServicePort}", answer[(colon + 1)..], StringComparison.OrdinalIgnoreCase);
     }
 

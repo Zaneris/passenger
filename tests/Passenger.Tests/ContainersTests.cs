@@ -925,6 +925,80 @@ public sealed class ContainersTests
         }
     }
 
+    /// <summary>A compose run on an engine of another machine opens the browser at the launched service's port on that
+    /// machine, its context's host, as the Containers window links it, never this one's localhost. The engine is a stand-in
+    /// at 127.0.0.1, its service's published port a loopback server of the test's.</summary>
+    [AvaloniaFact]
+    public void A_compose_run_on_an_engine_of_another_machine_opens_the_browser_on_that_machine()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
+        using StandInHttp web = new(exchange => exchange.ReplyAsync(200, "text/plain", "web"));
+        string engineFolder = TestFolders.Create("ctr-remote-run-");
+        string cli = StandInComposeEngine(engineFolder, "tcp://127.0.0.1:2376", web.Port);
+        string folder = TestFolders.Create("ctr-remote-run-window-");
+        string compose = TestFolders.Write(folder, "compose.yaml", $"services:\n  web:\n    image: {Docker.Image}\n    ports: [\"8080:80\"]\n");
+        MainWindow window = new() { Width = 1200, Height = 800, Engine = new ContainerEngine(cli: cli) };
+        window.Show();
+        window.OpenFolder(folder);
+        Ui.Settle();
+        try
+        {
+            RunConfiguration remote = new()
+            {
+                Name = "Remote", Kind = RunKind.Compose, ComposeFiles = [compose], LaunchService = "web", LaunchBrowser = true, BrowserUrl = "{Scheme}://{ServiceHost}:{ServicePort}/",
+            };
+            window.SetConfigurations([remote], remote.Name);
+            Ui.Launched(window, window.RunAsync(), "the stand-in engine's compose run to come up");
+            Ui.WaitFor(() => window.Browsed.Any(), "the browser to open at web's published port");
+            Assert.Equal([new Uri($"http://127.0.0.1:{web.Port.ToString(CultureInfo.InvariantCulture)}/")], window.Browsed);
+        }
+        finally
+        {
+            window.Perform(AppActions.Stop);
+            window.Close();
+            File.WriteAllText(Path.Combine(engineFolder, "down"), string.Empty);
+        }
+    }
+
+    /// <summary>A docker of the test's own for a compose run: a Linux server at <paramref name="host"/> with Compose v2, whose
+    /// model of any compose files is a project "remote" of one service web (busybox, its port 80 published on 8080), which
+    /// comes up at once, publishes 80 on <paramref name="port"/>, and lists, logs and follows nothing until a file
+    /// <c>down</c> is made beside it; every command it is given written to <c>calls</c>. The CLI.</summary>
+    private static string StandInComposeEngine(string folder, string host, int port)
+    {
+        const string Model = """{"name":"remote","services":{"web":{"image":"busybox:1.37","ports":[{"mode":"ingress","target":80,"published":"8080","protocol":"tcp"}],"networks":{"default":null}}},"networks":{"default":{"name":"remote_default"}}}""";
+        const string Wait = "while [ ! -f \"$here/down\" ]; do sleep 0.2; done; exit 0";
+        string cli = Path.Combine(folder, "docker");
+        File.WriteAllText(cli, string.Join('\n', (string[])[
+            "#!/bin/sh",
+            "here=$(dirname \"$0\")",
+            "echo \"$*\" >> \"$here/calls\"",
+            "case \"$1\" in",
+            "  version) echo '{\"Client\":{\"Version\":\"29.0.0\",\"Context\":\"remote\"},\"Server\":{\"Version\":\"29.0.0\",\"Os\":\"linux\",\"Arch\":\"arm64\"}}'; exit 0 ;;",
+            $"  context) echo '[{{\"Name\":\"remote\",\"Endpoints\":{{\"docker\":{{\"Host\":\"{host}\"}}}}}}]'; exit 0 ;;",
+            "  info) echo '{\"SecurityOptions\":[\"name=seccomp,profile=builtin\"]}'; exit 0 ;;",
+            $"  events) {Wait} ;;",
+            "  compose) ;;",
+            "  *) exit 0 ;;",
+            "esac",
+            "for word in \"$@\"; do",
+            "  case \"$word\" in",
+            "    version) echo '{\"version\":\"2.39.0\"}'; exit 0 ;;",
+            $"    config) echo '{Model}'; exit 0 ;;",
+            $"    port) echo '0.0.0.0:{port.ToString(CultureInfo.InvariantCulture)}'; exit 0 ;;",
+            $"    logs) {Wait} ;;",
+            "    up|ps|down|rm|stop|restart) exit 0 ;;",
+            "  esac",
+            "done",
+            "exit 0",
+            string.Empty]));
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(cli, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+        return cli;
+    }
+
     /// <summary>A container its restart policy starts again after each crash, and one that exited with an error, show
     /// red as failed; one a Stop ended (SIGKILL's 137) and one that exited cleanly show stopped, and each dot's tip
     /// says the engine's words. A container's menu begins with the service actions, greyed with why while no run of the
