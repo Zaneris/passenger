@@ -417,15 +417,15 @@ pointer leaves, which open in the window headless as the window redraws under a 
 a failed build's errors. Projects: `TestProjects.Console`, `Library`, `Web` (`.With`) on `TestProjects.Framework`;
 files: `TestFolders.Write`; a loopback HTTP server: `StandInHttp`. Multi-line edits: `Typing.Replace` (`KeyTextInput`
 drops `\n`). A server's request held unsent: `LanguageServer.HoldNext`; its answer held: `HoldNextAnswer`; a container
-run's `up`, its ports chosen: `BuildRunController.HoldNextUp`; a watcher's record held: `WatchedTree.HoldRecord`
-(`RecordSize`; the server's own watcher of a folder, `ServerWatches.Of`). A helper that runs a program (`TestGit`,
-`Restore`, `RestoredFolders`, the app makers, `SharedProject.Reset`) waits on the UI thread with its loop running and
-refuses any other; a fixture or a windowless test awaits its `…Async` form. Read a log the IDE may be writing with
-`Ui.Shared`. A dialog is held to `DialogButtonsTests.Check`, the window to `UiRulesTests`. A stand-in leaves files a
-target writes as it found them (a new one makes MSBuild skip the target). Containers: `Docker.Stopped`/`TakenDown`; MCP:
-`McpRig.Text`, `Gone`; an agent that gives up sends "cancelled" itself (`CallGivingUp`). A headless click runs the
-window's queued work and draws frames after itself, so what a status said during a click is read from what it showed
-throughout, not after; a count of a key's frames sets aside the caret's blinks (`CodeEditor.Blinks`).
+run's `up`, its ports chosen: `BuildRunController.HoldNextUp`; a watcher's record read: `WatchedTree.RecordSize` (the
+server's own watcher of a folder, `ServerWatches.Of`). A helper that runs a program (`TestGit`, `Restore`,
+`RestoredFolders`, the app makers, `SharedProject.Reset`) waits on the UI thread with its loop running and refuses any
+other; a fixture or a windowless test awaits its `…Async` form. Read a log the IDE may be writing with `Ui.Shared`. A
+dialog is held to `DialogButtonsTests.Check`, the window to `UiRulesTests`. A stand-in leaves files a target writes as
+it found them (a new one makes MSBuild skip the target). Containers: `Docker.Stopped`/`TakenDown`; MCP: `McpRig.Text`,
+`Gone`; an agent that gives up sends "cancelled" itself (`CallGivingUp`). A headless click runs the window's queued work
+and draws frames after itself, so what a status said during a click is read from what it showed throughout, not after; a
+count of a key's frames sets aside the caret's blinks (`CodeEditor.Blinks`).
 
 **What a test needs, or skips saying why without:** a Linux container engine (`docker info`'s OSType; tests label
 everything with `Docker.RunLabel`, remove dead runs' leftovers, never prune or start or stop Docker Desktop, and pull
