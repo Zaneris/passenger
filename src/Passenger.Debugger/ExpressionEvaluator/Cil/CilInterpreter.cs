@@ -888,7 +888,7 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         CorElementType? expectedElementType = GetPrimitiveElementType(expectedType?.Primitive);
         if (value.Value is null && expectedElementType is { } primitiveElementType && value.CorValue?.UnwrapDebugValue() is ICorDebugGenericValue sourceGeneric)
         {
-            ICorDebugGenericValue primitiveResult = (ICorDebugGenericValue)eval.CreateValue(primitiveElementType, null);
+            ICorDebugGenericValue primitiveResult = await CreatePrimitiveAsync(eval, primitiveElementType, resolver, handles);
             byte[] sourceBytes = sourceGeneric.GetValueAsBytes();
             if (sourceBytes.Length != primitiveResult.Size && value.TryGetInt64(out long integer))
             {
@@ -943,8 +943,7 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
             double => CorElementType.R8,
             _ => throw new NotSupportedException($"Cannot materialize CIL value '{value.Value.GetType().Name}'")
         };
-        ICorDebugValue result = eval.CreateValue(elementType, null);
-        ICorDebugGenericValue generic = (ICorDebugGenericValue)result;
+        ICorDebugGenericValue generic = await CreatePrimitiveAsync(eval, elementType, resolver, handles);
         object materializedValue = elementType == CorElementType.BOOLEAN ? value.IsTrue() : value.Value;
         byte[] bytes = CilValueEncoding.GetBytes(materializedValue, elementType);
         unsafe
@@ -954,7 +953,32 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
                 generic.SetValue((nint)pointer);
             }
         }
-        return result;
+        return generic;
+    }
+
+    /// <summary>A primitive value for the debugger to fill. ICorDebug makes a native integer only as a call's result, so one
+    /// is what the program's own conversion from a 64-bit integer returns, as wide as the program's native integers.</summary>
+    private async Task<ICorDebugGenericValue> CreatePrimitiveAsync(ICorDebugEval eval, CorElementType elementType, EvaluationMetadataResolver? resolver, EvaluationHandleScope handles)
+    {
+        if (elementType is not (CorElementType.I or CorElementType.U))
+        {
+            return (ICorDebugGenericValue)eval.CreateValue(elementType, null);
+        }
+        EvaluationMetadataResolver types = resolver ?? throw new NotSupportedException($"Cannot make a {elementType} value here");
+        ResolvedRuntimeMethod conversion = elementType is CorElementType.I
+            ? types.ResolveRuntimeMethod("System", "IntPtr", "op_Explicit", MetadataTypeNames.Of(PrimitiveTypeCode.Int64))
+            : types.ResolveRuntimeMethod("System", "UIntPtr", "op_Explicit", MetadataTypeNames.Of(PrimitiveTypeCode.UInt64));
+        ICorDebugValue zero = eval.CreateValue(elementType is CorElementType.I ? CorElementType.I8 : CorElementType.U8, null);
+        ICorDebugValue made = handles.Track(await eval.CallParameterizedFunctionAsync(
+            debugger.ProcessRuntimeEventsUntilEvalEvent,
+            debugger.EvalStatus,
+            conversion.Function,
+            0,
+            null,
+            1,
+            [zero],
+            throwOnException: true)) ?? throw new InvalidOperationException($"The program made no {elementType} value");
+        return made.UnwrapDebugValue() as ICorDebugGenericValue ?? throw new InvalidOperationException($"The program's {elementType} value cannot be written");
     }
 
     /// <summary>A primitive value type's element type, null for any other type.</summary>
@@ -979,6 +1003,8 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
                 CorElementType.R8 => CilValue.FromPrimitive(0d),
                 CorElementType.I8 => CilValue.FromPrimitive(0L),
                 CorElementType.U8 => CilValue.FromPrimitive(0UL),
+                CorElementType.I when CilValue.PointerSize == 8 => CilValue.FromPrimitive(0L),
+                CorElementType.U when CilValue.PointerSize == 8 => CilValue.FromPrimitive(0UL),
                 _ => CilValue.FromPrimitive(0)
             };
         }

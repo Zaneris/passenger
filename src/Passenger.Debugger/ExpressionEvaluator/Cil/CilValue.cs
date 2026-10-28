@@ -438,6 +438,7 @@ internal static class CilValueEncoding
         CorElementType.CHAR or CorElementType.I2 or CorElementType.U2 => GetBytesForSize(value, 2),
         CorElementType.I4 or CorElementType.U4 => GetBytesForSize(value, 4),
         CorElementType.I8 or CorElementType.U8 => GetBytesForSize(value, 8),
+        CorElementType.I or CorElementType.U => GetBytesForSize(value, CilValue.PointerSize),
         CorElementType.R4 => BitConverter.GetBytes(Convert.ToSingle(value)),
         CorElementType.R8 => BitConverter.GetBytes(Convert.ToDouble(value)),
         _ => throw new NotSupportedException($"Cannot encode a primitive CIL value as '{targetType}'")

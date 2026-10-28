@@ -257,7 +257,7 @@ internal static class Interpreter
 }
 
 // What an evaluation reads and leaves as it was: a record struct and a tuple a with copies, a char joined to a string,
-// and a box a pattern takes apart, read again each round.
+// a box a pattern takes apart, read again each round, and native integers wider than an int.
 internal static class Reading
 {
 	public static void Run()
@@ -267,13 +267,15 @@ internal static class Reading
 		string word = "hello";
 		char letter = 'A';
 		object boxed = 42;
+		nint native = unchecked((nint)5_000_000_000L);
+		nuint unsignedNative = 7;
 		for (int round = 0; round < 3; round++)
 		{
 			Console.WriteLine($"reading round {round}");
 			Console.WriteLine($"read round {round}");
 		}
 		Console.WriteLine("reading");
-		Console.WriteLine($"read {spot}, {tuple}, {word}{letter} and {boxed}");
+		Console.WriteLine($"read {spot}, {tuple}, {word}{letter}, {boxed}, {native} and {unsignedNative}");
 	}
 }
 

@@ -155,6 +155,25 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("5", (await Evaluate(host, frame, "int.TryParse(\"5\", out int parsed) ? parsed : -1")).Value);
     }
 
+    /// <summary>A native integer evaluates as wide as the program's are, read, in arithmetic, converted to and set, each
+    /// answering an nint or nuint as the program would hold it.</summary>
+    [Fact]
+    public async Task Native_integers_evaluate_as_wide_as_the_programs()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        int frame = await StoppedInReadingAsync(host);
+
+        Assert.Equal(("5000000000", "nint"), await Evaluate(host, frame, "native"));
+        Assert.Equal(("5000000001", "nint"), await Evaluate(host, frame, "native + 1"));
+        Assert.Equal(("10000000000", "nint"), await Evaluate(host, frame, "native * 2"));
+        Assert.Equal(("5", "nint"), await Evaluate(host, frame, "(nint)5"));
+        Assert.Equal(("18446744073709551615", "nuint"), await Evaluate(host, frame, "unsignedNative - 8"));
+        Assert.Equal(("3", "nuint"), await Evaluate(host, frame, "unsignedNative / 2"));
+        Assert.Equal("\"5000000000\"", (await Evaluate(host, frame, "native.ToString()")).Value);
+        Assert.Equal("9", (await Evaluate(host, frame, "unsignedNative = 9")).Value);
+        Assert.True((await Evaluate(host, frame, "unsignedNative")).Value == "9", "unsignedNative = 9 left the program's unsignedNative as it was");
+    }
+
     private static int Line(string code) => Debuggees.Line("PassengerCases", code);
 
     /// <summary>PassengerCases launched and stopped in Reading.Run once its rounds are done; the top frame.</summary>

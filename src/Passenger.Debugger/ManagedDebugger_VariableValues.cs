@@ -497,9 +497,9 @@ public partial class ManagedDebugger
                 // Little-endian only.
                 CorElementType.R4 => BitConverter.ToSingle(BitConverter.GetBytes(Marshal.ReadInt32(buffer)), 0).ToString(),
                 CorElementType.R8 => BitConverter.ToDouble(BitConverter.GetBytes(Marshal.ReadInt64(buffer)), 0).ToString(),
-                // native integer
-                CorElementType.I => IntPtr.Size is 4 ? Marshal.ReadInt32(buffer).ToString() : Marshal.ReadInt64(buffer).ToString(),
-                CorElementType.U => IntPtr.Size is 4 ? ((uint)Marshal.ReadInt32(buffer)).ToString() : ((ulong)Marshal.ReadInt64(buffer)).ToString(),
+                // As wide as the program's native integers, which the value's own size says.
+                CorElementType.I => corDebugGenericValue.Size is 4 ? Marshal.ReadInt32(buffer).ToString() : Marshal.ReadInt64(buffer).ToString(),
+                CorElementType.U => corDebugGenericValue.Size is 4 ? ((uint)Marshal.ReadInt32(buffer)).ToString() : ((ulong)Marshal.ReadInt64(buffer)).ToString(),
                 CorElementType.STRING => throw new ArgumentOutOfRangeException(),
                 CorElementType.PTR => throw new ArgumentOutOfRangeException(),
                 CorElementType.BYREF => throw new ArgumentOutOfRangeException(),
