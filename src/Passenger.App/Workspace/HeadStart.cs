@@ -26,6 +26,10 @@ public sealed class HeadStart
     private Task<ProjectHost?> hosting = Task.FromResult<ProjectHost?>(null);
     private bool ended;
 
+    /// <summary>When the design-time builds begun ahead were asked of the host, so before any read what it read; set
+    /// before <see cref="Builds"/> ends.</summary>
+    private DateTime buildsBegan;
+
     private HeadStart(string folder, string? named)
     {
         Folder = folder;
@@ -147,6 +151,7 @@ public sealed class HeadStart
             {
                 return new ProjectBuildCache();
             }
+            buildsBegan = DateTime.UtcNow;
             BuildDone done = await host.BuildAsync(projects, ProjectBuilds.Properties(ProjectModels.Properties(read)), project =>
             {
                 if (project.Problem is null)
@@ -273,7 +278,7 @@ public sealed class HeadStart
     /// and answers in their place: none when the host could not build them, and the server builds its projects itself.</summary>
     private sealed class Feed(HeadStart head) : IProjectFeed
     {
-        public async Task<(IReadOnlyList<ProjectToOpen> First, IReadOnlyList<ProjectToOpen> Later)?> ProjectsAsync(CancellationToken cancel)
+        public async Task<FedProjects?> ProjectsAsync(CancellationToken cancel)
         {
             ProjectBuildCache builds = await head.Builds;
             WorkspaceModel read = await head.Read;
@@ -281,19 +286,20 @@ public sealed class HeadStart
             {
                 return null;
             }
-            return ([], [.. Projects(read).Select(path => builds.Projects.TryGetValue(path, out KeptBuild? kept)
-                ? new ProjectToOpen(path, kept.Read(), ProjectBuilds.Said(kept.Diagnostics)) : new ProjectToOpen(path, null))]);
+            List<ProjectToOpen> projects = [.. Projects(read).Select(path => builds.Projects.TryGetValue(path, out KeptBuild? kept)
+                ? new ProjectToOpen(path, kept.Read(), ProjectBuilds.Said(kept.Diagnostics)) : new ProjectToOpen(path, null))];
+            return new FedProjects([], projects, projects.Any(p => p.Infos is not null) ? head.buildsBegan : null);
         }
 
-        public async Task<ProjectInfoResult> InfoAsync(string path, CancellationToken cancel)
+        public async Task<FedProject> InfoAsync(string path, CancellationToken cancel)
         {
             if ((await head.Builds).Projects.TryGetValue(path, out KeptBuild? kept))
             {
-                return new ProjectInfoResult(kept.Read(), null, ProjectBuilds.Said(kept.Diagnostics));
+                return new FedProject(new ProjectInfoResult(kept.Read(), null, ProjectBuilds.Said(kept.Diagnostics)), ProjectBuilds.Changed(kept.Inputs));
             }
             if (await head.hosting is not { } host)
             {
-                return new ProjectInfoResult(null, "the project host did not start");
+                return new FedProject(new ProjectInfoResult(null, "the project host did not start"), []);
             }
             // One whose build failed ahead, built again for its problem.
             BuiltProject? built = null;
@@ -303,13 +309,13 @@ public sealed class HeadStart
             }
             catch (ProjectHostFailed failed)
             {
-                return new ProjectInfoResult(null, failed.Reason);
+                return new FedProject(new ProjectInfoResult(null, failed.Reason), []);
             }
             return built switch
             {
-                { Problem: { } problem } => new ProjectInfoResult(null, problem),
-                { } done => new ProjectInfoResult(done.Infos.ToString(), null, ProjectBuilds.Said(done.Diagnostics)),
-                null => new ProjectInfoResult(null, "the project host built nothing of it"),
+                { Problem: { } problem } => new FedProject(new ProjectInfoResult(null, problem), []),
+                { } done => new FedProject(new ProjectInfoResult(done.Infos.ToString(), null, ProjectBuilds.Said(done.Diagnostics)), ProjectBuilds.Changed(done.Inputs)),
+                null => new FedProject(new ProjectInfoResult(null, "the project host built nothing of it"), []),
             };
         }
     }

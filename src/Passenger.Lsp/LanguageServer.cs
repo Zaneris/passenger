@@ -1264,12 +1264,19 @@ public sealed class LanguageServer : IAsyncDisposable
         }
 
         /// <summary>Passenger's project loader in the server asking for a project's design-time builds, from the client's
-        /// feed (its project host's builds); awaited apart from the messages that follow, which go on being handled.</summary>
+        /// feed (its project host's builds), what they read that changed since told as changed on disk, kept for the
+        /// registrations its load sends; awaited apart from the messages that follow, which go on being handled.</summary>
         [JsonRpcMethod(Roslyn.Extension.ProjectMethods.Info)]
-        public async Task<Roslyn.Extension.ProjectInfoResult> ProjectInfo(Roslyn.Extension.ProjectInfoParams asked) =>
-            Owner?.Feed is { } feed
-                ? await feed.InfoAsync(asked.Path, CancellationToken.None).ConfigureAwait(false)
-                : new Roslyn.Extension.ProjectInfoResult(null, "Passenger has no design-time builds to give");
+        public async Task<Roslyn.Extension.ProjectInfoResult> ProjectInfo(Roslyn.Extension.ProjectInfoParams asked)
+        {
+            if (Owner is not { Feed: { } feed } owner)
+            {
+                return new Roslyn.Extension.ProjectInfoResult(null, "Passenger has no design-time builds to give");
+            }
+            FedProject fed = await feed.InfoAsync(asked.Path, CancellationToken.None).ConfigureAwait(false);
+            owner.WatchedFiles.Tell(fed.Changed);
+            return fed.Info;
+        }
 
         [JsonRpcMethod(LspMethods.SemanticTokensRefresh)]
         public object? RefreshTokens(JsonElement? request = null)

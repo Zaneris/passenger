@@ -89,7 +89,7 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
         CancellationToken cancel = default, IReadOnlyDictionary<string, object?>? options = null, Action<LanguageServer>? started = null,
         Func<Task<IReadOnlyList<string>>>? first = null, IProjectFeed? feed = null, string? stateCache = null)
     {
-        Task<(IReadOnlyList<ProjectToOpen> First, IReadOnlyList<ProjectToOpen> Later)?>? feeding = feed?.ProjectsAsync(cancel);
+        Task<FedProjects?>? feeding = feed?.ProjectsAsync(cancel);
         LanguageServer server;
         try
         {
@@ -112,14 +112,15 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
                 feeding = null;
             }
             // Awaited from here, its fault the start's own.
-            Task<(IReadOnlyList<ProjectToOpen> First, IReadOnlyList<ProjectToOpen> Later)?>? asked = feeding;
+            Task<FedProjects?>? asked = feeding;
             feeding = null;
             if (asked is not null && await asked.ConfigureAwait(false) is { } fed)
             {
                 server.Feed = feed;
                 session.Fed = true;
                 server.WatchedFiles.HasLoader = true;
-                (IReadOnlyList<ProjectToOpen> before, IReadOnlyList<ProjectToOpen> rest) = fed;
+                server.WatchedFiles.ReadFrom(fed.Read);
+                (IReadOnlyList<ProjectToOpen> before, IReadOnlyList<ProjectToOpen> rest) = (fed.First, fed.Later);
                 if (before.Count > 0)
                 {
                     session.Expect(2);

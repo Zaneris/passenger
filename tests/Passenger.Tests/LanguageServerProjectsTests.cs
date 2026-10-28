@@ -58,8 +58,9 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
         TestFolders.Delete(settings);
     }
 
-    /// <summary>A restore landing during a project's first design-time build: the language server, given that build, hears
-    /// of the assets and is given one made after them, which the folder opened again loads as kept.</summary>
+    /// <summary>A restore landing during a project's first design-time build, its assets dated before the build began (copied
+    /// in with their times kept): the language server, given that build, hears of them and is given one made after them,
+    /// which the folder opened again loads as kept.</summary>
     [AvaloniaFact]
     public void A_project_whose_packages_arrive_during_its_first_build_is_built_again_as_the_server_hears_of_them()
     {
@@ -91,7 +92,10 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
             Write(root, "Page.cs", "using Passenger.Core;\nclass Page { string Path() => PathNames.Canonical(Missing); }\n");
             Restore.Run(Path.Combine(root, "App.csproj"));
             string assets = Path.Combine(root, "obj", "project.assets.json");
-            File.Move(assets, Path.Combine(root, "assets.prebuilt.json"));
+            string prebuilt = Path.Combine(root, "assets.prebuilt.json");
+            File.Move(assets, prebuilt);
+            // The build's Copy keeps this time, so no file's time can say the assets came after the build read the project.
+            File.SetLastWriteTimeUtc(prebuilt, DateTime.UtcNow - TimeSpan.FromMinutes(1));
             // The build goes on a while after its assets arrive, so the language server asks for it while it runs and is given it.
             int held = (int)Math.Ceiling(TimeSpan.FromSeconds(3).Scaled().TotalSeconds);
             Write(root, "Directory.Build.targets", $"""
@@ -348,14 +352,14 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
 
         public void Release() => released.TrySetResult();
 
-        public async Task<(IReadOnlyList<Passenger.Roslyn.Extension.ProjectToOpen> First, IReadOnlyList<Passenger.Roslyn.Extension.ProjectToOpen> Later)?> ProjectsAsync(CancellationToken cancel)
+        public async Task<Passenger.Lsp.FedProjects?> ProjectsAsync(CancellationToken cancel)
         {
             asked.TrySetResult();
             await released.Task.WaitAsync(cancel);
             return await feed.ProjectsAsync(cancel);
         }
 
-        public Task<Passenger.Roslyn.Extension.ProjectInfoResult> InfoAsync(string path, CancellationToken cancel) => feed.InfoAsync(path, cancel);
+        public Task<Passenger.Lsp.FedProject> InfoAsync(string path, CancellationToken cancel) => feed.InfoAsync(path, cancel);
     }
 
     private static IEnumerable<string?> Codes(MainWindow window, string path) =>

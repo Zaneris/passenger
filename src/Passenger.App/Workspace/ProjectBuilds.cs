@@ -164,7 +164,7 @@ public sealed class ProjectBuilds
 
     /// <summary>The projects the server is to load: each with its builds when they stand, the rest built now, those the
     /// server opens first first; none to give when the host will not start for the folder.</summary>
-    private async Task<(IReadOnlyList<ProjectToOpen> First, IReadOnlyList<ProjectToOpen> Later)?> ProjectsAsync()
+    private async Task<FedProjects?> ProjectsAsync()
     {
         int mine = generation;
         await TakeCacheAsync();
@@ -173,7 +173,7 @@ public sealed class ProjectBuilds
         string? host = await HostSdkAsync();
         if (mine != generation)
         {
-            return ([], []);
+            return new FedProjects([], [], null);
         }
         if (host is null)
         {
@@ -188,13 +188,14 @@ public sealed class ProjectBuilds
             builtUnder = under;
         }
         Dictionary<string, KeptBuild> held = new(known, StringComparer.Ordinal);
+        DateTime looked = DateTime.UtcNow;
         // Read off the window's thread: a large solution's builds are megabytes.
         Dictionary<string, ProjectToOpen> standing = await BackgroundWork.Run(() => all
             .Where(p => held.TryGetValue(p, out KeptBuild? build) && build.Inputs.All(Stamps.Holds))
             .ToDictionary(p => p, p => new ProjectToOpen(p, held[p].Read(), Said(held[p].Diagnostics)), StringComparer.Ordinal));
         if (mine != generation)
         {
-            return ([], []);
+            return new FedProjects([], [], null);
         }
         foreach (string path in first.Where(p => !standing.ContainsKey(p)))
         {
@@ -211,7 +212,7 @@ public sealed class ProjectBuilds
         {
             IdeErrors.Write($"C# language server loads {string.Join(", ", first.Select(Path.GetFileNameWithoutExtension))} first, for the file shown ({first.Count(standing.ContainsKey)} of them as built before)");
         }
-        return ([.. first.Select(Open)], [.. rest.Select(Open)]);
+        return new FedProjects([.. first.Select(Open)], [.. rest.Select(Open)], standing.Count > 0 ? looked : null);
 
         ProjectToOpen Open(string path) => standing.GetValueOrDefault(path) ?? new(path, null);
     }
@@ -237,13 +238,14 @@ public sealed class ProjectBuilds
         }
     }
 
-    /// <summary>One project's builds as the server asks for them: those kept when they stand, else built now.</summary>
-    private async Task<ProjectInfoResult> InfoAsync(string path)
+    /// <summary>One project's builds as the server asks for them: those kept when they stand, else built now, with what
+    /// they read that changed as they were made.</summary>
+    private async Task<FedProject> InfoAsync(string path)
     {
         await TakeCacheAsync();
         if (!waiting.ContainsKey(path) && known.TryGetValue(path, out KeptBuild? held) && await BackgroundWork.Run(() => held.Inputs.All(Stamps.Holds)))
         {
-            return new ProjectInfoResult(held.Read(), null, Said(held.Diagnostics));
+            return new FedProject(new ProjectInfoResult(held.Read(), null, Said(held.Diagnostics)), []);
         }
         BuiltProject built;
         Awaited++;
@@ -255,7 +257,25 @@ public sealed class ProjectBuilds
         {
             Awaited--;
         }
-        return built.Problem is { } problem ? new ProjectInfoResult(null, problem) : new ProjectInfoResult(built.Infos.ToString(), null, Said(built.Diagnostics));
+        if (built.Problem is { } problem)
+        {
+            return new FedProject(new ProjectInfoResult(null, problem), []);
+        }
+        // Looked at off the window's thread: a project's inputs are files by the hundred.
+        return new FedProject(new ProjectInfoResult(built.Infos.ToString(), null, Said(built.Diagnostics)), await BackgroundWork.Run(() => Changed(built.Inputs)));
+    }
+
+    /// <summary>The files among a build's inputs that are no longer as it found them, each as made, changed or gone (a
+    /// folder's names changing names no file).</summary>
+    internal static List<FileEvent> Changed(IReadOnlyList<Stamp> inputs)
+    {
+        List<FileEvent> changed = [];
+        foreach (Stamp input in inputs.Where(input => !input.Folder && !Stamps.Holds(input)))
+        {
+            string path = PathNames.Canonical(input.Path);
+            changed.Add(new FileEvent(path, !File.Exists(path) ? FileChangeType.Deleted : input.Length < 0 ? FileChangeType.Created : FileChangeType.Changed));
+        }
+        return changed;
     }
 
     /// <summary>A project's builds once the host has built them; asked once the folder was let go, no build at all, saying so.</summary>
@@ -469,10 +489,9 @@ public sealed class ProjectBuilds
     /// <summary>The server's client's way in: each question crosses to the UI thread, where the builds are.</summary>
     private sealed class Crossing(ProjectBuilds builds) : IProjectFeed
     {
-        public Task<(IReadOnlyList<ProjectToOpen> First, IReadOnlyList<ProjectToOpen> Later)?> ProjectsAsync(CancellationToken cancel) =>
-            UiThread.InvokeAsync(builds.ProjectsAsync);
+        public Task<FedProjects?> ProjectsAsync(CancellationToken cancel) => UiThread.InvokeAsync(builds.ProjectsAsync);
 
-        public Task<ProjectInfoResult> InfoAsync(string path, CancellationToken cancel) => UiThread.InvokeAsync(() => builds.InfoAsync(path));
+        public Task<FedProject> InfoAsync(string path, CancellationToken cancel) => UiThread.InvokeAsync(() => builds.InfoAsync(path));
     }
 }
 

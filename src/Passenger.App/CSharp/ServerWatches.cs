@@ -11,11 +11,13 @@ namespace Passenger.App.CSharp;
 /// what is under it; with no folder watcher, every folder registered. Each is watched as the folder's watcher watches its
 /// folder (<see cref="WatchedTree"/>), recorded only as deep as the registrations over it reach and only the files they
 /// match, so what a burst lost is found. A watcher starts as its registration comes, and what was written in its folder
-/// since the server started is told then. What changed reaches the server from the thread pool, one notification for
-/// each batch, in the order seen. The folders watched, and any that cannot be, are said in the IDE's log.</summary>
+/// since the server, or a design-time build it was given, may have read it is told then (<see cref="WatchedFiles.Since"/>).
+/// What changed reaches the server from the thread pool, one notification for each batch, in the order seen. The folders
+/// watched, and any that cannot be, are said in the IDE's log.</summary>
 public sealed class ServerWatches : IDisposable
 {
-    /// <summary>How far a file system's clock may round a file's time down: one written as the server started counts.</summary>
+    /// <summary>How far a file system's clock may round a file's time down: one written as the server, or a build, began
+    /// reading counts.</summary>
     private static readonly TimeSpan Rounding = TimeSpan.FromSeconds(2);
 
     private const string NotThere = "it is not there; it is watched if a registration names it once it is";
@@ -377,8 +379,9 @@ public sealed class ServerWatches : IDisposable
 
     /// <summary>A folder watched for the server as the folder's watcher watches the open folder, kept to the folders the
     /// registrations over it reach and recording only the files they match: a change the server never asked for (a
-    /// build's churn) counts toward a burst but is never told; what was written since the server started is told as it
-    /// starts; and with changes lost there, every file in it is told, those its record held now gone too.</summary>
+    /// build's churn) counts toward a burst but is never told; what was written since the server, or a build it was given,
+    /// may have read it is told as it starts; and with changes lost there, every file in it is told, those its record held
+    /// now gone too.</summary>
     private sealed class Watched : WatchedTree
     {
         private readonly ServerWatches owner;
@@ -400,7 +403,7 @@ public sealed class ServerWatches : IDisposable
             if (Watches.Count > 0)
             {
                 // Told whether or not a registration matches them yet: one the server's load sends later takes those kept for it.
-                DateTime since = owner.watched.Started - Rounding;
+                DateTime since = owner.watched.Since - Rounding;
                 owner.InTurn(() => owner.watched.Tell(Every(top, recursive, _ => false, since)));
             }
         }

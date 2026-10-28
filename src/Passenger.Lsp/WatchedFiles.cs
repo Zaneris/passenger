@@ -30,14 +30,26 @@ public sealed class WatchedFiles
     /// <summary>Whether changes were let go past <see cref="KeptLimit"/> in this load, said once.</summary>
     private bool overflowed;
 
+    private DateTime since = DateTime.UtcNow;
+
     internal WatchedFiles(LanguageServer server) => this.server = server;
 
     /// <summary>Whether the server has Passenger's project loader, which takes files gone from disk once the projects holding
     /// them have let go of them (<see cref="ProjectMethods.Deleted"/>).</summary>
     internal bool HasLoader { get; set; }
 
-    /// <summary>When the server started: a file written since may have changed after it read it.</summary>
-    public DateTime Started { get; } = DateTime.UtcNow;
+    /// <summary>Since when a file may have changed after the server, or the design-time builds it was given to load first,
+    /// read it: the server's start, or the moment the earliest of those builds began reading, if before (<see cref="ReadFrom"/>).</summary>
+    public DateTime Since
+    {
+        get
+        {
+            lock (gate)
+            {
+                return since;
+            }
+        }
+    }
 
     /// <summary>The watchers registered changed: one came or went.</summary>
     public event EventHandler? Changed;
@@ -101,6 +113,19 @@ public sealed class WatchedFiles
             server.Note($"Files no longer watched for the server, registration {id}");
         }
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>The server is given design-time builds that began reading at <paramref name="read"/> (none with null),
+    /// before it loads anything, so before anything is watched for it.</summary>
+    internal void ReadFrom(DateTime? read)
+    {
+        lock (gate)
+        {
+            if (read is { } began && began < since)
+            {
+                since = began;
+            }
+        }
     }
 
     /// <summary>The server was asked to load projects, whose registrations may follow changes told meanwhile.</summary>

@@ -40,6 +40,23 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   (`WarmServer`) outlives its window. **The IDE**: builds asked of a folder let go of are refused at once, and a kept
   server's questions wait for the window that takes it up, whose builds answer them (#615, in this commit, with a test
   that touches the project file between windows).
+
+- `LanguageServerProjectsTests`' project whose packages arrive during its first design-time build, the Mac in three
+  processes beside ServerWatchTests, FolderWatchTests and ProblemsTests (#613): "Waited 180 s for the first window's
+  language server to resolve the package … Page.cs has CS0246, CS0103, CS0103, IDE0005, after 1 design-time build(s)",
+  under 20 burners, where under 14 and 16 it passed, and alone too. The test's build copies the restored assets into
+  obj, and the copy keeps their time, the restore's: written at 15:48:53.5, they arrived during a build begun at
+  15:48:59.4, and the server's watches of obj, started as its load ended, told what was written since 2 s before the
+  server started (15:48:58.4). Load put more than 2 s between the restore and that start, so the server was never told
+  of assets its build had not read, though the build's own stamps said project.assets.json was missing as it read the
+  project and there as it landed; no window of time from the build's start would have told them either. A person opening
+  a folder on a busy machine as its restore lands, or as its obj is unpacked or copied in with times kept, met the same.
+  **The IDE**: a build given the server as it asks comes with the files it read that changed since, told the server as
+  changed and kept for the registrations its load sends, whatever their times; and the watches tell what was written
+  since the earliest of the builds the server was given as it started began reading (a kept build's since its stamps
+  were looked at), where that came before the server's start (#613, in this commit). The test now dates the arriving
+  assets a minute back, before any server's start, so on main it fails alone too.
+
 - `CodeAssistTests`' type and parameter name hints, the Mac under 14 burners beside FolderWatchTests and ProblemsTests'
   thousand rewrites (#610): "Waited 135 s for the hint's hover card". As the window opened, its design-time build
   rewrote the project's generated .editorconfig; told of it, Roslyn read every document again, the text the same but its

@@ -227,13 +227,13 @@ public sealed class WarmServer : IAsyncDisposable
 
         public void Answer(IProjectFeed? feed) => taker.TrySetResult(feed);
 
-        public async Task<(IReadOnlyList<Roslyn.Extension.ProjectToOpen> First, IReadOnlyList<Roslyn.Extension.ProjectToOpen> Later)?> ProjectsAsync(CancellationToken cancel) =>
+        public async Task<FedProjects?> ProjectsAsync(CancellationToken cancel) =>
             await TakerAsync(cancel).ConfigureAwait(false) is { } feed ? await feed.ProjectsAsync(cancel).ConfigureAwait(false) : null;
 
-        public async Task<Roslyn.Extension.ProjectInfoResult> InfoAsync(string path, CancellationToken cancel) =>
+        public async Task<FedProject> InfoAsync(string path, CancellationToken cancel) =>
             await TakerAsync(cancel).ConfigureAwait(false) is { } feed
                 ? await feed.InfoAsync(path, cancel).ConfigureAwait(false)
-                : new Roslyn.Extension.ProjectInfoResult(null, "no window took the language server up");
+                : new FedProject(new Roslyn.Extension.ProjectInfoResult(null, "no window took the language server up"), []);
 
         private async Task<IProjectFeed?> TakerAsync(CancellationToken cancel)
         {

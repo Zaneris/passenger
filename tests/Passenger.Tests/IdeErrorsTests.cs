@@ -586,9 +586,9 @@ public sealed class IdeErrorsTests : IDisposable
     {
         private int ended;
 
-        public async Task<(IReadOnlyList<Passenger.Roslyn.Extension.ProjectToOpen> First, IReadOnlyList<Passenger.Roslyn.Extension.ProjectToOpen> Later)?> ProjectsAsync(CancellationToken cancel)
+        public async Task<Passenger.Lsp.FedProjects?> ProjectsAsync(CancellationToken cancel)
         {
-            (IReadOnlyList<Passenger.Roslyn.Extension.ProjectToOpen> First, IReadOnlyList<Passenger.Roslyn.Extension.ProjectToOpen> Later)? projects = await feed.ProjectsAsync(cancel);
+            Passenger.Lsp.FedProjects? projects = await feed.ProjectsAsync(cancel);
             if (Interlocked.Exchange(ref ended, 1) == 0)
             {
                 Dispatcher.UIThread.Post(end);
@@ -596,7 +596,7 @@ public sealed class IdeErrorsTests : IDisposable
             return projects;
         }
 
-        public Task<Passenger.Roslyn.Extension.ProjectInfoResult> InfoAsync(string path, CancellationToken cancel) => feed.InfoAsync(path, cancel);
+        public Task<Passenger.Lsp.FedProject> InfoAsync(string path, CancellationToken cancel) => feed.InfoAsync(path, cancel);
     }
 
     /// <summary>A server whose process ends during its own start, before it has answered, is started again as one that ends
