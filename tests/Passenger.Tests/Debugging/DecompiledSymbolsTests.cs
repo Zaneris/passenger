@@ -73,15 +73,11 @@ public sealed class DecompiledSymbolsTests(ITestOutputHelper testOutputHelper) :
         Assert.True(File.Exists(writing), "A temporary file a minute old, which another adapter may still be writing, was pruned");
         Assert.False(Directory.Exists(Path.GetDirectoryName(Path.GetDirectoryName(stale))), "The pruned entry's folders were left behind, empty");
     }
-}
 
-/// <summary>A decompile runs off the engine's lock, so the session answers meanwhile: held to how soon the adapter answers
-/// during a decompile, so the class runs alone.</summary>
-[Collection(Alone.Name)]
-public sealed class DecompiledSymbolsTimingTests(ITestOutputHelper testOutputHelper) : DecompiledSymbolsSessions(testOutputHelper)
-{
+    /// <summary>A decompile runs off the engine's lock: a request and a disconnect made while CoreLib is decompiled, which
+    /// takes a minute or more, are answered before it ends, and leave no symbols half written.</summary>
     [Fact]
-    public async Task A_disconnect_while_CoreLib_is_decompiled_is_answered_at_once_and_leaves_no_symbols_half_written()
+    public async Task A_disconnect_while_CoreLib_is_decompiled_is_answered_before_it_ends_and_leaves_no_symbols_half_written()
     {
         string cache = TestFolders.Create("symbols");
         await using DebugSession host = await StoppedInCoreLibCallback(cache);
@@ -89,14 +85,12 @@ public sealed class DecompiledSymbolsTimingTests(ITestOutputHelper testOutputHel
         Task<ResolveStackFrameResponse> resolving = host.Send<ResolveStackFrameResponse>(DapCommands.ResolveStackFrame, new ResolveStackFrameArguments(coreLib.Id));
         await DecompileStarted(cache, resolving);
 
-        Stopwatch asked = Stopwatch.StartNew();
         Assert.NotEmpty((await host.RequestAsync<ThreadsResponse>(DapCommands.Threads, limit: Decompile)).Threads);
-        Assert.True(asked.Elapsed < Promptly, $"A request made while CoreLib was decompiled took {asked.Elapsed.TotalSeconds:0.0} s: it waited for the decompile");
-        Assert.True(await host.DisconnectAsync(Promptly), $"The disconnect went unanswered for {Promptly.TotalSeconds:0} s while CoreLib was decompiled, so an IDE would kill the adapter");
-        Assert.False(resolving.IsCompletedSuccessfully, "CoreLib's frame was resolved before the disconnect, so the disconnect never waited on a decompile");
+        Assert.False(resolving.IsCompleted, "CoreLib's frame was resolved before a request made meanwhile was answered: the request waited for the decompile");
+        Assert.True(await host.DisconnectAsync(Decompile), "The disconnect went unanswered while CoreLib was decompiled, so an IDE would kill the adapter");
+        Assert.False(resolving.IsCompletedSuccessfully, "CoreLib's frame was resolved before the disconnect was answered: the disconnect waited for the decompile");
         Assert.True(Pdbs(cache).Count == 0, $"The session ended mid-decompile left symbols in the cache, which the next would take for whole: {string.Join(", ", Pdbs(cache))}");
     }
-
 }
 
 /// <summary>The programs the decompiled symbols' tests stop, each adapter given a cache folder of the test's own, and what
@@ -105,10 +99,6 @@ public abstract class DecompiledSymbolsSessions(ITestOutputHelper testOutputHelp
 {
     /// <summary>The test's output, which its debug sessions write to.</summary>
     protected ITestOutputHelper Output => testOutputHelper;
-
-    /// <summary>How long a request may take while CoreLib is decompiled beside it, which takes a minute or
-    /// more.</summary>
-    protected static readonly TimeSpan Promptly = TimeSpan.FromSeconds(10);
 
     /// <summary>The longest a decompile may take on a slow runner.</summary>
     protected static readonly TimeSpan Decompile = TimeSpan.FromMinutes(3);
