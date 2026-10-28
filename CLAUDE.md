@@ -372,7 +372,8 @@ them run only the debug adapter's protocol tests (`DebugSession.Collection`) and
 process shares changed, nothing held to a time). A class with a test held to a time, or that debugs through the window,
 is `[Collection(Alone.Name)]`, run last with nothing beside it. A class sharing one project derives from `SharedProject`:
 one warm language server, the files put back before each test (with times that keep MSBuild honest), a new file through
-`project.Write` (which ends the server), `InitializeAsync` overridden with `PrepareAsync(restore: false)` where nothing
+`project.Write` (which ends the server, unless the class passes `loadsAgain`), `InitializeAsync` overridden with
+`PrepareAsync(restore: false)` where nothing
 reads a restore, `PrepareAsync(byRealPath: true)` where projects name each other by real path. A class fixture is made
 off the UI thread, a window test's class on it, and xunit v3 calls only `DisposeAsync` on a class with both. Fresh restored folders come from `RestoredFolders`. A test asking
 nothing of C# opens without the language server (`Ui.OpenFolder(folder, languageServer: false)`, `McpRig.Start(…,
