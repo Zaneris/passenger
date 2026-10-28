@@ -294,9 +294,9 @@ public abstract class SharedProject : IAsyncLifetime
     private bool Holds(IReadOnlyDictionary<string, string> texts) =>
         Ui.AwaitPumped(Waiting.Apart(() => Server.HoldsAsync(texts, Rereading.Scaled())), "the kept language server to read the files again", Rereading + TestFolders.Spare);
 
-    /// <summary>Ends the shared server, waited for on the UI thread with the window's loop running, within the time a
-    /// window's end gives what it started.</summary>
-    private void Drop() => Ui.AwaitPumped(Waiting.Apart(Server.Drop), "the shared language server to end", MainWindow.EndLimit + TestFolders.Spare);
+    /// <summary>Ends the shared server, so the next window starts one of its own as it opens the folder; waited for on the
+    /// UI thread with the window's loop running, within the time a window's end gives what it started.</summary>
+    public void Drop() => Ui.AwaitPumped(Waiting.Apart(Server.Drop), "the shared language server to end", MainWindow.EndLimit + TestFolders.Spare);
 
     /// <summary>When a build last compiled one of the project's assemblies (a .dll under bin or obj, which neither a restore
     /// nor a design-time build writes), or never.</summary>

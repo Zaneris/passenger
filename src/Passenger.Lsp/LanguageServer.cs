@@ -258,10 +258,6 @@ public sealed class LanguageServer : IAsyncDisposable
     /// <summary>The sources that answer for the whole workspace (<c>workspace/diagnostic</c>), as well as for one document.</summary>
     public IReadOnlyList<string?> WorkspaceDiagnosticSources => client.WorkspaceDiagnosticSources;
 
-    /// <summary>Changes one of the server's options while it runs (a setting turned on): it hears the configuration
-    /// changed and asks for it again. A server that has stopped is not told: one started again reads its options afresh.</summary>
-    public void SetOption(string name, object? value) => SetOptions(new Dictionary<string, object?> { [name] = value });
-
     /// <summary>The options set on the server as it stands: those it started with and every change since.</summary>
     public IReadOnlyDictionary<string, object?> Options
     {

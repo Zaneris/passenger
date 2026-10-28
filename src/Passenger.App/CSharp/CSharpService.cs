@@ -313,13 +313,7 @@ public sealed partial class CSharpService : IAsyncDisposable
             solutionWide = value;
             ForgetReports();
             analysing?.Cancel();
-            if (session is { } running)
-            {
-                foreach (string option in FullSolution.Keys)
-                {
-                    running.Server.SetOption(option, value ? FullSolution[option] : null);
-                }
-            }
+            session?.Server.SetOptions(ScopeSettings(value));
             StartAnalysis();
             SolutionProblemsChanged?.Invoke(this, null);
         }
@@ -347,6 +341,11 @@ public sealed partial class CSharpService : IAsyncDisposable
 
     /// <summary>Whether a file's pull asks the server for its inlay hints: while the editors show either kind.</summary>
     internal bool AsksHints => hints.Parameters || hints.Types;
+
+    /// <summary>Roslyn's scope for its analyzers and compiler: every document with solution-wide analysis on, else its own
+    /// default (the open files).</summary>
+    private static Dictionary<string, object?> ScopeSettings(bool solutionWide) =>
+        FullSolution.ToDictionary(option => option.Key, option => solutionWide ? option.Value : null, StringComparer.Ordinal);
 
     /// <summary>Roslyn's switches for each kind of inlay hint, by the names it asks for them under.</summary>
     private static Dictionary<string, object?> HintSettings((bool Parameters, bool Types) shown) => new()
@@ -883,7 +882,8 @@ public sealed partial class CSharpService : IAsyncDisposable
             string logs = LogFolder;
             IndentOptions startedWith = told;
             (bool, bool) hintedWith = hints;
-            Dictionary<string, object?> options = StartOptions(startedWith, solutionWide, hintedWith);
+            bool wideWith = solutionWide;
+            Dictionary<string, object?> options = StartOptions(startedWith, wideWith, hintedWith);
             RoslynSession started;
             ServerWatches? handed = null;
             bool loadAgain = false;
@@ -1014,6 +1014,7 @@ public sealed partial class CSharpService : IAsyncDisposable
                 gone.TrySetResult();
                 UiThread.Post(() => OnExited(started));
             }
+            // Settings changed as it started went to no server, or to the one before: told now.
             if (told != startedWith)
             {
                 started.Server.SetOptions(IndentSettings(told));
@@ -1021,6 +1022,10 @@ public sealed partial class CSharpService : IAsyncDisposable
             if (hints != hintedWith)
             {
                 started.Server.SetOptions(HintSettings(hints));
+            }
+            if (solutionWide != wideWith)
+            {
+                started.Server.SetOptions(ScopeSettings(solutionWide));
             }
             SetState(started.Solution is { } opened ? $"Loading {Path.GetFileName(opened)}…" : "Loading projects…");
             ConnectLoaded(started);

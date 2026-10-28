@@ -90,6 +90,28 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
             $"The Solution tab's rows {when} are not those it lists afresh:\n{string.Join('\n', kept)}\n\nAfresh:\n{string.Join('\n', afresh)}");
     }
 
+    /// <summary>Solution-wide analysis turned on as the folder opens, while its language server starts and before the
+    /// window has a session of it, reaches the server once it has: the Solution tab lists the error of a file nobody
+    /// opened, which a server left analysing the open files alone never reports.</summary>
+    [AvaloniaFact]
+    public void Solution_wide_analysis_turned_on_while_the_server_starts_lists_the_error_of_a_file_nobody_opened()
+    {
+        // A server of the window's own, started as the folder opens: one taken up warm is the window's at once.
+        project.Drop();
+        MainWindow window = project.Open(null, w =>
+        {
+            Ui.PumpUntil(() => w.CSharpService is { State: "Starting C#…" }, "the language server to start");
+            w.Perform(AppActions.ToggleSolutionAnalysis);
+        });
+        Assert.True(window.Settings.SolutionWideAnalysis);
+        ProblemsModel problems = window.BottomPanel.Problems;
+        Ui.WaitFor(() => problems.SolutionProblems?.Any(p => p.Code == "CS0029") == true,
+            $"the error of Bad.cs, a file nobody opened, listed by solution-wide analysis turned on as the server started (listed: {string.Join("; ", problems.SolutionProblems?.Select(p => p.Code) ?? [])})");
+        problems.Shown = ProblemsTab.Solution;
+        Assert.Contains("Bad.cs", problems.Rows.Where(r => r.Problem is null).Select(r => r.Label));
+        window.Close();
+    }
+
     /// <summary>A pull the server refuses or cuts short (Roslyn cancels one a change made stale) is asked again, so the
     /// solution's problems go on following edits.</summary>
     [AvaloniaFact]
