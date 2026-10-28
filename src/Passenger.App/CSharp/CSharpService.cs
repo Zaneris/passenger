@@ -29,9 +29,9 @@ public sealed partial class CSharpService : IAsyncDisposable
     [IdentifierHome]
     public const string SlowLoadVariable = "PASSENGER_CSHARP_SLOW_LOAD_MS";
 
-    /// <summary>How long the projects may take to load before the status bar warns that they are still loading, the server
-    /// going on with them however long they take: 5 minutes, or what <see cref="SlowLoadVariable"/> gives; a value there
-    /// that is no whole number of milliseconds above 0 is fatal.</summary>
+    /// <summary>How long a server started ahead may take to start, and then the projects to load, before the status bar
+    /// warns that C# is still starting or loading, C# going on however long they take: 5 minutes, or what
+    /// <see cref="SlowLoadVariable"/> gives; a value there that is no whole number of milliseconds above 0 is fatal.</summary>
     public static TimeSpan SlowLoad => Environment.GetEnvironmentVariable(SlowLoadVariable) is { Length: > 0 } given
         ? int.TryParse(given, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int milliseconds) && milliseconds > 0
             ? TimeSpan.FromMilliseconds(milliseconds)
@@ -174,8 +174,8 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// status bar, with whether it is an error or a warning.</summary>
     public event EventHandler<ServerSaid>? Said;
 
-    /// <summary>The projects' load ran past <see cref="SlowLoad"/>, the server going on with it (a warning), or ended after
-    /// it: what the status bar says of it; raised on the UI thread.</summary>
+    /// <summary>A server started ahead took longer than <see cref="SlowLoad"/> to start, or the projects to load, C# going on
+    /// with it (a warning), or C# was ready after it: what the status bar says of it; raised on the UI thread.</summary>
     public event EventHandler<ServerSaid>? LoadRanLong;
 
     /// <summary>The problems the server met loading the projects changed; raised on the UI thread.</summary>
@@ -888,8 +888,14 @@ public sealed partial class CSharpService : IAsyncDisposable
             ServerWatches? handed = null;
             bool loadAgain = false;
             string loading = solution is not null ? Path.GetFileName(solution) : Plural.Of(projects.Length, "project");
-            Func<CancellationToken, Task<RoslynSession?>>? startedAhead = warm is null ? headStart?.TakeServer(opening.Folder, solution, projects, options) : null;
-            RoslynSession? takenAhead = startedAhead is null ? null : await startedAhead(cancel);
+            Task<RoslynSession?>? takingAhead = null;
+            bool late = false;
+            if (warm is null && headStart is { } head && head.TakeServer(opening.Folder, solution, projects, options) is { } startedAhead)
+            {
+                takingAhead = startedAhead(cancel);
+                late = await StillStartingAsync(head, takingAhead, loading, cancel);
+            }
+            RoslynSession? takenAhead = takingAhead is null ? null : await takingAhead;
             if (takenAhead is not null)
             {
                 started = takenAhead;
@@ -1029,7 +1035,6 @@ public sealed partial class CSharpService : IAsyncDisposable
             }
             SetState(started.Solution is { } opened ? $"Loading {Path.GetFileName(opened)}…" : "Loading projects…");
             ConnectLoaded(started);
-            bool late = false;
             if (!started.IsLoaded)
             {
                 TimeSpan slow = SlowLoad;
@@ -1085,6 +1090,26 @@ public sealed partial class CSharpService : IAsyncDisposable
         {
             UiThread.Post(() => BackgroundWork.End());
         }
+    }
+
+    /// <summary>Waits up to <see cref="SlowLoad"/> for the server started ahead, then, unless it has come or its start was
+    /// given up, says C# is still starting and what for: its projects' design-time builds, every one of which it waits for
+    /// before it loads any, or its own start. Whether it said so; the caller waits on however long the start takes.</summary>
+    private async Task<bool> StillStartingAsync(HeadStart ahead, Task taking, string loading, CancellationToken cancel)
+    {
+        TimeSpan slow = SlowLoad;
+        // A wait with no fault to leave behind: the start's own is the caller's.
+        await Task.WhenAny(taking, Task.Delay(slow, cancel));
+        if (taking.IsCompleted || cancel.IsCancellationRequested)
+        {
+            return false;
+        }
+        string awaited = ahead.Builds.IsCompleted ? "the language server" : "its design-time builds";
+        IdeErrors.Write($"C# language server started ahead for {ahead.Folder} had not begun loading {loading} after {Spoken(slow)}: it waits for {awaited}, and C# for it");
+        string still = $"Still starting C# for {loading} after {Spoken(slow)}, waiting for {awaited}";
+        SetState(still);
+        LoadRanLong?.Invoke(this, new ServerSaid(still, ProblemSeverity.Warning));
+        return true;
     }
 
     /// <summary>Listens to a server as it starts, before it is asked to load anything (or as a warm one is taken up); on the

@@ -496,7 +496,7 @@ public partial class MainWindow
                 Say(message, LogPlace);
             };
             service.Said += (_, said) => status.Say(said.Text, said.Severity, said.Problem is { } problem ? LoadProblemPlace(problem) : null);
-            // A load running long is warned of with the log, which says where it is; its late end said plainly.
+            // A start or load running long is warned of with the log, which says where it is; its late end said plainly.
             service.LoadRanLong += (_, said) => status.Say(said.Text, said.Severity, said.Severity is null ? null : LogPlace);
             WatchProblems(service);
             service.FollowIndent(Editors.Active);
