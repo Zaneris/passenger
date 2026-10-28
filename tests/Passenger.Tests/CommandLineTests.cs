@@ -74,6 +74,11 @@ public sealed class CommandLineTests : IDisposable
 
     private const string Milliseconds = "a whole number of milliseconds above 0";
 
+    [Theory]
+    [InlineData(global::Passenger.App.CSharp.CSharpService.SlowLoadVariable, "5m", Milliseconds)]
+    public Task A_malformed_variable_the_gate_has_no_record_of_yet_ends_Passenger_with_exit_code_2_and_the_reason(string variable, string value, string takes) =>
+        A_malformed_variable_ends_Passenger_with_exit_code_2_and_the_reason_before_anything_starts(variable, value, takes);
+
     /// <summary>A variable the IDE or its debug adapter reads is checked as Passenger starts, before any window or
     /// server, so a malformed one ends it at once rather than failing every Debug later.</summary>
     [Gate]
@@ -82,7 +87,6 @@ public sealed class CommandLineTests : IDisposable
     [InlineData(global::Passenger.Dap.AdapterEnvironment.EvaluationTimeoutVariable, "0", Milliseconds)]
     [InlineData(global::Passenger.App.Mcp.AgentCall.EveryVariable, "-1000", Milliseconds)]
     [InlineData(global::Passenger.Text.TextSearch.ApartVariable, "5s", Milliseconds)]
-    [InlineData(global::Passenger.App.CSharp.CSharpService.SlowLoadVariable, "5m", Milliseconds)]
     [InlineData(global::Passenger.App.Mcp.McpHost.LanguageServerVariable, "no", "off or on")]
     [InlineData(global::Passenger.Core.Waits.ScaleVariable, "0", "a number above 0")]
     public async Task A_malformed_variable_ends_Passenger_with_exit_code_2_and_the_reason_before_anything_starts(string variable, string value, string takes)
