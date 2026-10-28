@@ -66,6 +66,15 @@ public sealed class ServerWatches : IDisposable
         }
     }
 
+    /// <summary>The watcher of a folder watched apart from the folder's own watcher, if it is.</summary>
+    public WatchedTree? Of(string folder)
+    {
+        lock (gate)
+        {
+            return own.FirstOrDefault(w => PathNames.Same(w.Key.Folder, folder)).Value;
+        }
+    }
+
     /// <summary>Watches from now on beside another folder's watcher, or alone (null), the watchers it then needs started
     /// before those it no longer needs stop, so nothing changes unheard in between: a server a window hands over or takes up.</summary>
     public void Follow(string? folder)
@@ -449,29 +458,27 @@ public sealed class ServerWatches : IDisposable
             }
         }
 
-        protected override void Hand() => owner.InTurn(Deliver);
-
-        private void Deliver()
+        protected override FolderChanges? Gathered(bool lost, bool overflowed)
         {
-            FolderChanges changes;
-            lock (Gate)
+            FolderChanges changes = new(new HashSet<string>(paths, PathNames.Comparer), Structure: came.Count > 0, Projects: false, Git: false)
             {
-                (bool lost, bool overflowed, bool watching) = Handing();
-                changes = new FolderChanges(new HashSet<string>(paths, PathNames.Comparer), Structure: came.Count > 0, Projects: false, Git: false)
-                {
-                    ComeOrGone = new HashSet<string>(came, PathNames.Comparer),
-                    Lost = lost,
-                    Overflowed = overflowed,
-                };
-                paths.Clear();
-                came.Clear();
-                if (!watching || (changes.Paths.Count == 0 && !lost))
-                {
-                    return;
-                }
-            }
-            owner.Tell(changes, Top, Recursive, _ => false);
+                ComeOrGone = new HashSet<string>(came, PathNames.Comparer),
+                Lost = lost,
+                Overflowed = overflowed,
+            };
+            paths.Clear();
+            came.Clear();
+            return changes.Paths.Count > 0 || lost ? changes : null;
         }
+
+        /// <summary>Told the server in turn, unless the watcher was disposed meanwhile.</summary>
+        protected override void Hand(FolderChanges changes) => owner.InTurn(() =>
+        {
+            if (!IsDisposed)
+            {
+                owner.Tell(changes, Top, Recursive, _ => false);
+            }
+        });
 
         /// <summary>Said of the folder itself, and of any the system's watches ran out for; a folder under it gone as it was
         /// walked is no failure.</summary>

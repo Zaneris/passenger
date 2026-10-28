@@ -30,6 +30,21 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-10-28
 
+- `ServerWatchTests`' `A_thousand_files_deleted_side_by_side_in_obj_each_reach_the_server_as_gone`, the Mac in three
+  processes beside FolderWatchTests, ProblemsTests and LanguageServerProjectsTests under 20 burners, 1 round in 10
+  (#617): "Of the 1000 sources deleted side by side in obj, the language server was told 827 went". A watcher's record
+  took in what came or went in a batch as work queued as the batch was handed over, reading each path from the disk as
+  that work ran. The test deletes the thousand once the server is told they came; on a loaded thread pool that work ran
+  after the deletions began, so it dropped from the record sources the server had just been told were there, and for
+  those whose deletions FSEvents dropped, the listing after the burst had nothing left to find gone. (The log's "823
+  paths heard … 178 changes not heard found" was the thousand's making; a listing's count leaves out a path heard or
+  found in the last moments, so the deletions' "0 found" said nothing.) A script deleting what a build had just written,
+  on a busy Mac, met the same, and so did the folder's own watcher, Go to File keeping the file. **The IDE**: a batch's
+  paths are looked at on the thread pool as it is let go of, before anything it goes to looks, and the record takes each
+  as it was then, so a change after that differs from the record and the listing finds it (#617, in this commit, with
+  tests that hold the record's work while a file the server or Go to File was told came is deleted unheard, which fail
+  on main every time).
+
 - `ProblemsTests`' `Lines_typed_above_a_files_problems_move_their_rows_without_making_the_list_again`, macOS report lane
   of run 40704117907 (#615): "The IDE was not quiet within 180 s. Still busy: background work begun at
   CSharpService.cs:711", the start of a window taking up the class's kept server to load the file the test wrote. With

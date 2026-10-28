@@ -33,6 +33,9 @@ public abstract class WatchedTree : IDisposable
     /// <summary>Whether each kept folder is watched on its own rather than the whole tree through one watcher.</summary>
     private readonly bool eachFolder;
     private readonly object gate = new();
+
+    /// <summary>Held through a batch's hand-over, so batches go over in the order they were let go of.</summary>
+    private readonly Lock handing = new();
     private readonly Dictionary<string, FileSystemWatcher> watches = new(StringComparer.Ordinal);
 
     /// <summary>When each kept path was last heard of, and each kept folder had one of its paths heard, for the last moments.</summary>
@@ -89,8 +92,9 @@ public abstract class WatchedTree : IDisposable
     /// <summary>The folder watched.</summary>
     public string Top { get; }
 
-    /// <summary>How many folders and entries the record holds, read by the work <see cref="Begin"/>'s walk is.</summary>
-    protected (int Folders, int Entries) RecordSize => (record.Count, recorded);
+    /// <summary>How many folders and entries the record holds: as they are in the work that keeps the record (<see
+    /// cref="Begin"/>'s walk's), a moment old elsewhere.</summary>
+    public (int Folders, int Entries) RecordSize => (record.Count, Volatile.Read(ref recorded));
 
     /// <summary>Whether the watcher handed over, from its first walk, whatever was written since before it watched, so a burst
     /// begun before its record was made, or made again, is listed against the record rather than taken for lost.</summary>
@@ -105,7 +109,8 @@ public abstract class WatchedTree : IDisposable
     /// <summary>Done once the first walk has watched and recorded every kept folder.</summary>
     public Task Ready { get; private set; } = Task.CompletedTask;
 
-    private bool IsDisposed
+    /// <summary>Whether the watcher was disposed, so it watches and hands over nothing more.</summary>
+    protected bool IsDisposed
     {
         get
         {
@@ -169,9 +174,13 @@ public abstract class WatchedTree : IDisposable
     /// <summary>Takes in a change <see cref="Noticed"/> said it takes, under the gate.</summary>
     protected abstract void Take(string path, bool created, Notice notice);
 
-    /// <summary>Hands over what was gathered, once it has and a burst's lost changes were looked for: the watcher reads it
-    /// under the gate with <see cref="Handing"/>, on the thread it chooses.</summary>
-    protected abstract void Hand();
+    /// <summary>The batch gathered, let go of under the gate so the next change gathers another, with whether changes were
+    /// lost, or the system said it overflowed, since the last batch; null when it has nothing to hand over.</summary>
+    protected abstract FolderChanges? Gathered(bool lost, bool overflowed);
+
+    /// <summary>Hands a batch over, from the thread pool to the thread the watcher chooses, once a burst's lost changes
+    /// were looked for and the record follows what came or went in it as it was when let go of.</summary>
+    protected abstract void Hand(FolderChanges changes);
 
     /// <summary>The files in a folder moved in that may have changed before it was watched, taken as made with it.</summary>
     protected virtual IEnumerable<string> MovedIn(string folder) => [];
@@ -189,20 +198,39 @@ public abstract class WatchedTree : IDisposable
     /// walk <see cref="Named"/> it, when that differs. Neither taken nor counted is passed over.</summary>
     protected readonly record struct Notice(bool Takes, bool Counts, string? Canonical, string? Named = null);
 
-    /// <summary>Under the gate: whether changes were lost, or the system said it overflowed, since the last batch, and
-    /// whether the watcher still watches; the batch let go of, so the next change gathers another, and the record follows
-    /// what came or went in it.</summary>
-    protected (bool Lost, bool Overflowed, bool Watching) Handing()
+    /// <summary>Lets go of the batch gathered and hands it over, from the thread pool: what came or went in it is looked at
+    /// off the gate, before anything it goes to looks, and the record takes each as it was then (<see cref="Keep"/>).</summary>
+    private void HandOver()
     {
-        (bool Lost, bool Overflowed, bool Watching) handing = (lost, overflowed, !disposed);
-        lost = overflowed = pending = false;
-        if (cameOrWent.Count > 0 && !disposed)
+        lock (handing)
         {
-            List<string> keeping = [.. cameOrWent];
-            Follow(() => Keep(keeping));
+            FolderChanges? changes;
+            List<string> comeOrGone;
+            bool watching;
+            lock (gate)
+            {
+                changes = Gathered(lost, overflowed);
+                lost = overflowed = pending = false;
+                watching = !disposed;
+                comeOrGone = watching ? [.. cameOrWent] : [];
+                cameOrWent.Clear();
+            }
+            if (comeOrGone.Count > 0)
+            {
+                List<Seen> seen = [.. comeOrGone.Select(Seen.Now)];
+                Follow(() => Keep(seen));
+            }
+            if (changes is not null && watching)
+            {
+                Hand(changes);
+            }
         }
-        cameOrWent.Clear();
-        return handing;
+    }
+
+    /// <summary>A path come or gone as a batch was handed over: a folder, a file, or nothing there.</summary>
+    private readonly record struct Seen(string Path, bool Folder, bool There)
+    {
+        public static Seen Now(string path) => Directory.Exists(path) ? new(path, Folder: true, There: true) : new(path, Folder: false, There: File.Exists(path));
     }
 
     /// <summary>Starts watching a folder, or the whole tree under it; false when it is gone or cannot be watched.</summary>
@@ -360,6 +388,16 @@ public abstract class WatchedTree : IDisposable
         }
     }
 
+    /// <summary>Holds what the watcher does to its record (a batch's come and gone kept, a burst's folders listed again)
+    /// until <paramref name="until"/> ends, for a test of what changes on disk meanwhile.</summary>
+    public void HoldRecord(Task until)
+    {
+        lock (gate)
+        {
+            following = following.ContinueWith(_ => until, TaskScheduler.Default).Unwrap();
+        }
+    }
+
     /// <summary>Watches every kept folder not watched yet, lets go of those gone and records them all again: the walk after
     /// events were lost, or after what is kept changed. Asked for once however many watchers lost theirs.</summary>
     protected void Rewalk()
@@ -492,35 +530,35 @@ public abstract class WatchedTree : IDisposable
         record[at] = new(new HashSet<string>(entries.Select(e => e.Name), StringComparer.Ordinal), stamp);
     }
 
-    /// <summary>Keeps the record of what a batch handed over came or went: each name in or out of its folder's record as the
-    /// disk has it now, a folder come recorded with what is in it, one gone let go of with every folder recorded under it.
-    /// The folders' stamps stay as they were, so a change lost beside these still shows.</summary>
-    private void Keep(IEnumerable<string> cameOrWent)
+    /// <summary>Keeps the record of what a batch handed over came or went: each name in or out of its folder's record as it
+    /// was when handed, so a change since, which what it was handed to may not have seen, still differs from the record
+    /// and is found if it goes unheard; a folder come recorded with what is in it, one gone let go of with every folder
+    /// recorded under it. The folders' stamps stay as they were, so a change lost beside these still shows.</summary>
+    private void Keep(List<Seen> batch)
     {
         if (recordedAt is null)
         {
             return;
         }
-        foreach (string path in cameOrWent)
+        foreach (Seen seen in batch)
         {
-            if (Path.GetDirectoryName(path) is not { } parent || !record.TryGetValue(parent, out Listed? listed))
+            if (Path.GetDirectoryName(seen.Path) is not { } parent || !record.TryGetValue(parent, out Listed? listed))
             {
                 continue;
             }
-            string name = Path.GetFileName(path);
-            bool folder = Directory.Exists(path);
-            if ((folder || File.Exists(path)) && Records(parent, name, folder))
+            string name = Path.GetFileName(seen.Path);
+            if (seen.There && Records(parent, name, seen.Folder))
             {
                 recorded += listed.Names.Add(name) ? 1 : 0;
-                if (folder && !record.ContainsKey(path) && Kept(path))
+                if (seen.Folder && !record.ContainsKey(seen.Path) && Kept(seen.Path))
                 {
-                    WatchFrom(path);
+                    WatchFrom(seen.Path);
                 }
             }
-            else if (!folder && !File.Exists(path))
+            else if (!seen.There)
             {
                 recorded -= listed.Names.Remove(name) ? 1 : 0;
-                Forget(path);
+                Forget(seen.Path);
             }
         }
     }
@@ -760,7 +798,7 @@ public abstract class WatchedTree : IDisposable
                     finally
                     {
                         // What was heard goes over even if the look failed, or no batch after it would.
-                        Hand();
+                        HandOver();
                     }
                 });
                 if (burst.Again)
@@ -770,7 +808,7 @@ public abstract class WatchedTree : IDisposable
             }
             else
             {
-                Hand();
+                HandOver();
             }
             held.Dispose();
         }, TaskScheduler.Default));

@@ -277,32 +277,29 @@ public sealed class FolderWatcher : WatchedTree
         return false;
     }
 
-    protected override void Hand() => UiThread.Post(Deliver);
-
-    private void Deliver()
+    protected override FolderChanges? Gathered(bool lost, bool overflowed)
     {
-        FolderChanges changes;
-        bool live;
-        lock (Gate)
+        FolderChanges changes = new(new HashSet<string>(paths, StringComparer.Ordinal), structure, projects, git)
         {
-            (bool lost, bool overflowed, bool watching) = Handing();
-            changes = new FolderChanges(new HashSet<string>(paths, StringComparer.Ordinal), structure, projects, git)
-            {
-                Restored = new HashSet<string>(restored, StringComparer.Ordinal),
-                ComeOrGone = new HashSet<string>(comeOrGone, StringComparer.Ordinal),
-                Lost = lost,
-                Overflowed = overflowed,
-                LaunchProfiles = launchProfiles,
-            };
-            paths.Clear();
-            restored.Clear();
-            comeOrGone.Clear();
-            structure = projects = launchProfiles = git = false;
-            live = watching && (changes.Paths.Count > 0 || changes.Restored.Count > 0 || changes.Git || changes.Overflowed);
-        }
-        if (live)
+            Restored = new HashSet<string>(restored, StringComparer.Ordinal),
+            ComeOrGone = new HashSet<string>(comeOrGone, StringComparer.Ordinal),
+            Lost = lost,
+            Overflowed = overflowed,
+            LaunchProfiles = launchProfiles,
+        };
+        paths.Clear();
+        restored.Clear();
+        comeOrGone.Clear();
+        structure = projects = launchProfiles = git = false;
+        return changes.Paths.Count > 0 || changes.Restored.Count > 0 || changes.Git || changes.Overflowed ? changes : null;
+    }
+
+    /// <summary>On the UI thread, unless the watcher was disposed meanwhile.</summary>
+    protected override void Hand(FolderChanges changes) => UiThread.Post(() =>
+    {
+        if (!IsDisposed)
         {
             Changed?.Invoke(this, changes);
         }
-    }
+    });
 }

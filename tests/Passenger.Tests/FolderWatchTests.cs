@@ -531,6 +531,46 @@ public sealed class FolderWatchTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A file made, which Go to File lists, deleted unheard before the folder's watcher has taken it into its
+    /// record, as on a busy machine whose watcher's work runs late and whose burst drops the deletion's event: the listing
+    /// after the burst finds it gone, and Go to File lets it go. Its watchers stop as the file is deleted. A batch's
+    /// hand-over, looking at what came or went in it on disk, needs nothing of the window's thread: the record takes in a
+    /// file made while that thread runs nothing.</summary>
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_file_deleted_unheard_before_the_watcher_recorded_it_is_found_gone_after_a_burst(bool eachFolder)
+    {
+        Write("One.cs", "class One { }\n");
+        MainWindow window = Open(eachFolder ? FolderWatching.Inotify : FolderWatching.WholeTree, languageServer: false);
+        Ui.Hold(TimeSpan.FromSeconds(3.5), "the watcher's record of the folder to be older than what an overflow may have lost");
+        FolderWatcher watcher = window.FolderWatcher!;
+        int entries = watcher.RecordSize.Entries;
+        Write("Kept.cs", "class Kept { }\n");
+        Assert.True(Ui.Idle(Waiting.Apart(() => Waiting.Until(() => watcher.RecordSize.Entries > entries, TimeSpan.FromSeconds(10))), "the record to take in a file made"),
+            "The folder's watcher took a file made into its record only once the window's thread ran, so a batch's hand-over looked at the disk there");
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        watcher.HoldRecord(release.Task);
+        List<FileSystemWatcher> watchers = [.. watcher.Watches.Values];
+        try
+        {
+            Write("Brief.cs", "class Brief { }\n");
+            Ui.PumpUntil(() => window.FileIndex.Files.Contains("Brief.cs"), "the file made in Go to File");
+            watchers.ForEach(w => w.EnableRaisingEvents = false);
+            File.Delete(Path.Combine(folder, "Brief.cs"));
+            release.SetResult();
+            RaiseError(watcher.Watches[folder], new InternalBufferOverflowException("Too many changes at once; directory listing is required."));
+            Ui.PumpUntil(() => !window.FileIndex.Files.Contains("Brief.cs"),
+                $"Go to File to let go of the file deleted unheard, which it still lists among {string.Join(", ", window.FileIndex.Files)}", TimeSpan.FromSeconds(30));
+        }
+        finally
+        {
+            release.TrySetResult();
+            watchers.ForEach(w => w.EnableRaisingEvents = true);
+        }
+        window.Close();
+    }
+
     /// <summary>A file made in the folder joins Go to File, and one deleted leaves it, without a walk of the folder: over
     /// 20,000 files each batch allocates (on every thread, the least of three) under 8 bytes for each file more than over
     /// 2,000, where walking the folder again cost hundreds; and Go to File then lists what a walk lists, in its order.</summary>
@@ -707,7 +747,7 @@ public sealed class FolderWatchTests : IDisposable
         new("The configured user limit (8192) on the number of inotify watches has been reached, or the operating system failed to allocate a required resource.", 28);
 
     /// <summary>A watcher's error raised as the system's watcher raises it, which no kernel but Linux's gives for this.</summary>
-    private static void RaiseError(FileSystemWatcher watcher, Exception error) =>
+    internal static void RaiseError(FileSystemWatcher watcher, Exception error) =>
         typeof(FileSystemWatcher).GetMethod("OnError", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(watcher, [new ErrorEventArgs(error)]);
 
     /// <summary>The folders watched, from the open folder, with forward slashes.</summary>

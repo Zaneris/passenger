@@ -1,5 +1,6 @@
 using Avalonia.Headless.XUnit;
 using Passenger.App;
+using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Lsp;
 
@@ -73,6 +74,45 @@ public sealed class ServerWatchTests : IClassFixture<ServerWatchTests.Project>
         Assert.True(heard, $"Of the {Files} sources deleted side by side in obj, the language server was told {gone.Count} went: {WatchLog(window)}");
         TestContext.Current.TestOutputHelper?.WriteLine($"{Files} sources deleted side by side in obj: the language server was told of every one {after:0.00} s after, "
             + $"in {gone.Notifications} notifications; {Recovered(window)}; {Records(window)}");
+        window.Close();
+    }
+
+    /// <summary>A source written in obj, which the server is told came, deleted unheard before obj's watcher has taken it
+    /// into its record, as on a busy machine whose watcher's work runs late and whose burst drops the deletion's event:
+    /// the listing after the burst finds it gone, and the server is told it went.</summary>
+    [AvaloniaFact]
+    public void A_source_deleted_unheard_in_obj_before_its_watcher_recorded_it_reaches_the_server_as_gone()
+    {
+        MainWindow window = project.Open("Program.cs");
+        WatchedFiles watched = Watched(window);
+        string obj = PathNames.Canonical(project.PathOf("obj"));
+        WatchedTree tree = window.CSharpService!.Watching!.Of(obj)!;
+        Ui.WaitFor(() => tree.Ready.IsCompleted, "obj's watcher to have recorded what is in it");
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        tree.HoldRecord(release.Task);
+        List<FileSystemWatcher> watchers = [.. tree.Watches.Values];
+        string source = Path.Combine(obj, "Unheard.cs");
+        Told made = new(watched, name => name == "Unheard.cs", gone: false);
+        Told gone = new(watched, name => name == "Unheard.cs", gone: true);
+        bool heardGone = false;
+        try
+        {
+            File.WriteAllText(source, "static class Unheard\n{\n}\n");
+            Assert.True(Ui.Pumped(() => made.Count == 1, TimeSpan.FromSeconds(30)), $"The language server was not told of the source written in obj: {WatchLog(window)}");
+            watchers.ForEach(w => w.EnableRaisingEvents = false);
+            File.Delete(source);
+            release.SetResult();
+            FolderWatchTests.RaiseError(tree.Watches[tree.Top], new InternalBufferOverflowException("Too many changes at once; directory listing is required."));
+            heardGone = Ui.Pumped(() => gone.Count == 1, TimeSpan.FromSeconds(30));
+        }
+        finally
+        {
+            release.TrySetResult();
+            watchers.ForEach(w => w.EnableRaisingEvents = true);
+            made.Dispose();
+            gone.Dispose();
+        }
+        Assert.True(heardGone, $"The language server was never told the source deleted unheard in obj went, so it keeps its document and its problems: {WatchLog(window)}");
         window.Close();
     }
 
