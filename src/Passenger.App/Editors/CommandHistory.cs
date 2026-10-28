@@ -171,6 +171,11 @@ public sealed class CommandHistory
         return null;
     }
 
+    /// <summary>The files not open that taking a command back (or making it again, given true) writes, whose saves may
+    /// still be landing once it returns (<see cref="EditorArea.LandedAsync(IEnumerable{string}, Action{string}?)"/>).</summary>
+    public IReadOnlyList<string> Writes(Command command, bool redo) =>
+        [.. command.Texts.Where(t => !IsOpen(t.Document)).Select(t => t.Path), .. redo ? command.Created.Select(c => c.Path) : []];
+
     private void Keep(Command command)
     {
         undone.Clear();
@@ -338,6 +343,20 @@ public sealed class CommandHistory
         /// <summary>What the command changed in the open files, taken as it stands now: what is typed later, while it waits
         /// for its writes to files not open to land, is no part of it.</summary>
         public void TakeOpen() => openTaken = OpenChanges();
+
+        /// <summary>Waits for the saves still landing of the files not open it watched (<see cref="EditorArea.LandedAsync(IEnumerable{string}, Action{string}?)"/>,
+        /// <paramref name="waiting"/> told which), the open files' changes taken first (<see cref="TakeOpen"/>) and each file
+        /// whose save never landed left out (<see cref="Unwritten"/>): those files, with why.</summary>
+        public async Task<IReadOnlyList<(string Path, Exception Refused)>> LandedAsync(Action<string>? waiting)
+        {
+            TakeOpen();
+            IReadOnlyList<(string Path, Exception Refused)> unlanded = await EditorArea.LandedAsync([.. closed.Keys], waiting);
+            foreach ((string path, _) in unlanded)
+            {
+                closed.Remove(path);
+            }
+            return unlanded;
+        }
 
         /// <summary>Something besides files the command changed, taken back and made again with them; the command is kept
         /// for it however few files it changed.</summary>

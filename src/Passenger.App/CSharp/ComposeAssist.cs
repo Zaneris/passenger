@@ -236,15 +236,15 @@ internal sealed class ComposeAssist(AssistContext context, PopupPlacement popups
             {
                 // Its warning as it stands when chosen, refused once the compose file's check no longer finds the gap.
                 Again = _ => context.CSharp?.For(file)?.ComposeGapsOn(null).FirstOrDefault(m => m.Gap.Same(gap)) is { } now ? ReadFix(file, now.Range, now.Gap) : null,
-                Elsewhere = (_, _) => Task.FromResult(SetInCompose(gap)),
+                Elsewhere = (_, _) => SetInComposeAsync(gap),
             };
     }
 
     /// <summary>A connection string's variable set in a compose file's service's environment, as the compose file's own fix sets
     /// it (<see cref="Containers.ComposeFixes.SetVariable"/>), worked out on the file's text as it is now, open or not, as one
-    /// undo step (the open file's own, else one of global undo); refused once the file no longer has the service or sets the
-    /// variable already.</summary>
-    private RefactorOutcome SetInCompose(Containers.ComposeGap gap)
+    /// undo step (the open file's own, else one of global undo), said once a file not open has landed; refused once the file
+    /// no longer has the service or sets the variable already.</summary>
+    private async Task<RefactorOutcome> SetInComposeAsync(Containers.ComposeGap gap)
     {
         string title = $"Set {gap.Variable} in {gap.Service}'s environment";
         IReadOnlyList<TextEdit> Edits(string text) =>
@@ -255,7 +255,7 @@ internal sealed class ComposeAssist(AssistContext context, PopupPlacement popups
         {
             return RefactorOutcome.Refused($"{title} was not made: {compose} no longer has the service {gap.Service}, or sets {gap.Variable} already");
         }
-        if (actions.ApplyFileChanges(title, [new XamlFileChange(gap.Compose, Edits)]) is { } refused)
+        if (await actions.ApplyFileChangesAsync(title, [new XamlFileChange(gap.Compose, Edits)]) is { } refused)
         {
             return RefactorOutcome.Refused(refused);
         }

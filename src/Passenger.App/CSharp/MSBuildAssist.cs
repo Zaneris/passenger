@@ -180,7 +180,7 @@ internal sealed class MSBuildAssist : LanguageAssist
         TextRange replaced = TextRange.FromBounds(start, Math.Max(start, caret));
         if (item.Package is { } package && context.MSBuildCurrent is { } msbuild)
         {
-            CommitPackage(msbuild, package, replaced);
+            IdeErrors.Observe(CommitPackageAsync(msbuild, package, replaced));
             return;
         }
         if (item.IsSnippet)
@@ -200,8 +200,8 @@ internal sealed class MSBuildAssist : LanguageAssist
 
     /// <summary>A package id chosen for an item's Include: a reference that names no version takes the feed's latest;
     /// under central package management the reference takes none and Directory.Packages.props a PackageVersion for it
-    /// (unless it has one), both one command undone together.</summary>
-    private void CommitPackage(MSBuildDocument msbuild, PackageChoice package, TextRange replaced)
+    /// (unless it has one), both one command undone together, said once Directory.Packages.props, when not open, has landed.</summary>
+    private async Task CommitPackageAsync(MSBuildDocument msbuild, PackageChoice package, TextRange replaced)
     {
         XmlTree tree = msbuild.Tree;
         XmlPlace place = tree.PlaceAt(replaced.Start);
@@ -217,14 +217,9 @@ internal sealed class MSBuildAssist : LanguageAssist
         }
         string? propsText = central ? context.ReadOpenOrDisk(props!) : null;
         TextEdit? pinned = propsText is null ? null : CentralVersion(propsText, package);
-        using CommandHistory.Recording? recording = pinned is null ? null : context.Editors.Commands.Record($"Add {package.Id}");
-        if (pinned is not null)
-        {
-            recording!.Watch(props!);
-        }
-        Editor.ApplyEdits(edits, SelectionSet.Single(replaced.Start + package.Id.Length));
         if (pinned is not { } version)
         {
+            Editor.ApplyEdits(edits, SelectionSet.Single(replaced.Start + package.Id.Length));
             return;
         }
         JsonElement edit = JsonSerializer.SerializeToElement(new
@@ -235,16 +230,25 @@ internal sealed class MSBuildAssist : LanguageAssist
             },
         }, Json.Options);
         List<string> dropped = [];
+        using CommandHistory.Recording recording = context.Editors.Commands.Record($"Add {package.Id}");
+        recording.Watch(props!);
+        Editor.ApplyEdits(edits, SelectionSet.Single(replaced.Start + package.Id.Length));
         try
         {
             WorkspaceEdits.Apply(context.Editors, edit, null, dropped);
-            context.Say(dropped.Count > 0 ? $"{Path.GetFileName(props)} was edited meanwhile: add {package.Id}'s version there"
-                : $"{package.Id} {package.Version} added to {Path.GetFileName(props)}, as central package management has it");
         }
         catch (WorkspaceEditFailed failed)
         {
             context.Say($"{package.Id}'s version could not be added to {Path.GetFileName(props)}: {failed.Message}");
+            return;
         }
+        if (await recording.LandedAsync(context.Say) is [(string unwritten, Exception why), ..])
+        {
+            context.Say($"{package.Id}'s version could not be added to {Path.GetFileName(props)}: {WorkspaceEdits.Unwritten(unwritten, why)}");
+            return;
+        }
+        context.Say(dropped.Count > 0 ? $"{Path.GetFileName(props)} was edited meanwhile: add {package.Id}'s version there"
+            : $"{package.Id} {package.Version} added to {Path.GetFileName(props)}, as central package management has it");
     }
 
     /// <summary>The PackageVersion a package takes in Directory.Packages.props: beside the others, in their order, with

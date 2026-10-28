@@ -108,9 +108,10 @@ internal sealed partial class CodeActions
         return context.Editors.Active == document ? (file, caret) : (null, 0);
     }
 
-    /// <summary>A refactoring's or fix's changes to files made as one command (XAML's, an Aspire parameter's value set; Undo takes back
-    /// every file, a file made included): each file's edits made from its text as it is now, open or on disk. Null once made; else why not.</summary>
-    internal string? ApplyFileChanges(string name, IReadOnlyList<XamlFileChange> changes)
+    /// <summary>A refactoring's or fix's changes to files made in the command <paramref name="recording"/> follows (XAML's, an
+    /// Aspire parameter's value set; Undo takes back every file, a file made included): each file's edits made from its text
+    /// as it is now, open or on disk. Null once made; else why not.</summary>
+    private string? ApplyFileChanges(string name, IReadOnlyList<XamlFileChange> changes, CommandHistory.Recording recording)
     {
         List<object> documentChanges = [];
         foreach (XamlFileChange change in changes)
@@ -138,7 +139,7 @@ internal sealed partial class CodeActions
         List<string> dropped = [];
         try
         {
-            context.ChangeFiles([.. changes.Select(c => c.Path)], () => TypeRename.Apply(context.Editors, edit, [], name, null, dropped));
+            context.ChangeFiles([.. changes.Select(c => c.Path)], () => TypeRename.Apply(context.Editors, edit, [], name, null, dropped, into: recording));
         }
         catch (WorkspaceEditFailed failed)
         {
@@ -147,17 +148,17 @@ internal sealed partial class CodeActions
         return dropped.Count > 0 ? $"{name} was not applied to {string.Join(", ", dropped)}: it was edited meanwhile" : null;
     }
 
-    /// <summary><see cref="ApplyFileChanges"/> answered once the files not open it wrote have landed, the status bar saying
-    /// meanwhile which another program holds (<see cref="EditorArea.LandedAsync(IEnumerable{string}, Action{string}?)"/>).
+    /// <summary><see cref="ApplyFileChanges"/> as one command, answered once the files not open it wrote have landed, the
+    /// status bar saying meanwhile which another program holds (<see cref="CommandHistory.Recording.LandedAsync"/>).
     /// Null once made; else why not.</summary>
     internal async Task<string?> ApplyFileChangesAsync(string name, IReadOnlyList<XamlFileChange> changes)
     {
-        List<string> closed = [.. changes.Select(c => c.Path).Where(p => context.Editors.Find(p) is null)];
-        if (ApplyFileChanges(name, changes) is { } refused)
+        using CommandHistory.Recording recording = context.Editors.Commands.Record(name);
+        if (ApplyFileChanges(name, changes, recording) is { } refused)
         {
             return refused;
         }
-        return await EditorArea.LandedAsync(closed, context.Say) is [(string path, Exception why), ..] ? WorkspaceEdits.Unwritten(path, why) : null;
+        return await recording.LandedAsync(context.Say) is [(string path, Exception why), ..] ? WorkspaceEdits.Unwritten(path, why) : null;
     }
 
     /// <summary>The refactorings offered at the caret of a XAML file (Refactor This, and after the fixes in Show

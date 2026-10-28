@@ -672,7 +672,7 @@ internal sealed partial class XamlAssist : LanguageAssist
         {
             if (choice?.Value is XamlFix fix)
             {
-                ApplyFix(actions, fix);
+                return ApplyFixAsync(actions, fix);
             }
             else if (choice?.Value is EditorFix chosen && document is not null)
             {
@@ -688,10 +688,10 @@ internal sealed partial class XamlAssist : LanguageAssist
     }
 
     /// <summary>A XAML fix made against its files' texts as they are now (open, or on disk), the files it makes made, as one
-    /// command.</summary>
-    private void ApplyFix(CodeActions actions, XamlFix fix)
+    /// command, said once those not open have landed.</summary>
+    private async Task ApplyFixAsync(CodeActions actions, XamlFix fix)
     {
-        string? refused = actions.ApplyFileChanges(fix.Title, [new XamlFileChange(fix.Path, fix.Edits), .. fix.Others]);
+        string? refused = await actions.ApplyFileChangesAsync(fix.Title, [new XamlFileChange(fix.Path, fix.Edits), .. fix.Others]);
         context.Say(refused is null ? fix.Title : $"{fix.Title} was not applied: {refused}");
     }
 

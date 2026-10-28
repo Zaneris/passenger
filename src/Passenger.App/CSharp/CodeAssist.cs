@@ -432,8 +432,9 @@ public sealed class CodeAssist
 
     internal IReadOnlyList<EditorFix> OwnFixes(OpenDocument? file, int offset) => actions.OwnFixes(file, offset);
 
-    /// <summary>A fix's changes to files made as one command (<see cref="CodeActions.ApplyFileChanges"/>): null once made, else why not.</summary>
-    internal string? ApplyFileChanges(string name, IReadOnlyList<XamlFileChange> changes) => actions.ApplyFileChanges(name, changes);
+    /// <summary>A fix's changes to files made as one command, once the files not open it wrote have landed
+    /// (<see cref="CodeActions.ApplyFileChangesAsync"/>): null once made, else why not.</summary>
+    internal Task<string?> ApplyFileChangesAsync(string name, IReadOnlyList<XamlFileChange> changes) => actions.ApplyFileChangesAsync(name, changes);
 
     /// <summary>A XAML project was read anew: a list made from it as it was is asked again (<see cref="XamlAssist.ProjectRead"/>).</summary>
     internal void XamlProjectRead(XamlProject project) => context.Languages.Xaml.ProjectRead(project);

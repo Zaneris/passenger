@@ -30,7 +30,7 @@ public partial class MainWindow
             return Task.CompletedTask;
         });
         Closed += (_, _) => configurationTyped.Stop();
-        actions!.Add(new IdeAction(A.ManageUserSecrets, "Manage User Secrets", ExplorerGroup, c => ManageUserSecrets(SecretsProjectOf(c)!.Path))
+        actions!.Add(new IdeAction(A.ManageUserSecrets, "Manage User Secrets", ExplorerGroup, c => IdeErrors.Observe(ManageUserSecretsAsync(SecretsProjectOf(c)!.Path)))
         {
             WhyNot = c => SecretsProjectOf(c) is not null ? null
                 : RowOf(c) is { } row ? $"{row.Name} is not a project"
@@ -58,9 +58,9 @@ public partial class MainWindow
 
     /// <summary>A project's user secrets opened in an editor tab: its UserSecretsId given first where it has none (a
     /// new GUID, set in its project file) and its secrets.json made where missing, both one command of global undo, in
-    /// the user secrets' folder (<see cref="UserSecrets.Root"/>). Null once open, else why not, which the status bar
-    /// says too.</summary>
-    public string? ManageUserSecrets(string project)
+    /// the user secrets' folder (<see cref="UserSecrets.Root"/>), opened once those files have landed. Null once open,
+    /// else why not, which the status bar says too.</summary>
+    public async Task<string?> ManageUserSecretsAsync(string project)
     {
         if (SolutionProject(project) is not { } model)
         {
@@ -88,7 +88,7 @@ public partial class MainWindow
             {
                 return SecretsSaid($"{name}'s user secrets could not be made: {error.Message}");
             }
-            if (Assist.ApplyFileChanges("Manage User Secrets", changes) is { } refused)
+            if (await Assist.ApplyFileChangesAsync("Manage User Secrets", changes) is { } refused)
             {
                 return SecretsSaid($"{name}'s user secrets could not be made: {refused}");
             }

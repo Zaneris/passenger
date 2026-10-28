@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Passenger.App.CSharp;
+using Passenger.App.Editors;
 using Passenger.App.Workspace;
 using Passenger.App.Xaml;
 using Passenger.Editor;
@@ -47,7 +48,7 @@ public partial class MainWindow
             editor.Focus();
             if (colour is { } chosen)
             {
-                WriteColour(document, use, chosen);
+                IdeErrors.Observe(WriteColourAsync(document, use, chosen));
             }
         };
         return true;
@@ -66,8 +67,9 @@ public partial class MainWindow
     private string? Unwritable(OpenDocument document, ColourUse use) =>
         Editors.Find(use.WritePath ?? document.Path) is { IsReadOnly: true } open ? Refusals.ReadOnly(open.Name) : null;
 
-    /// <summary>A colour written where a swatch's colour is, in its form, unless that text changed meanwhile.</summary>
-    private void WriteColour(OpenDocument document, ColourUse use, Argb colour)
+    /// <summary>A colour written where a swatch's colour is, in its form, unless that text changed meanwhile; in a file not
+    /// open, said once the write has landed.</summary>
+    private async Task WriteColourAsync(OpenDocument document, ColourUse use, Argb colour)
     {
         string path = use.WritePath ?? document.Path;
         OpenDocument? open = Editors.Find(path);
@@ -95,13 +97,25 @@ public partial class MainWindow
         }
         else
         {
-            TextSnapshot snapshot = TextSnapshot.From(text);
-            TextPosition from = snapshot.GetPosition(range.Start);
-            TextPosition to = snapshot.GetPosition(range.End);
-            Lsp.LspTextEdit edit = new(new Lsp.LspRange(new Lsp.LspPosition(from.Line, from.Column), new Lsp.LspPosition(to.Line, to.Column)), replacement);
+            List<Lsp.LspTextEdit> edits = ServerPlaces.EditsOf(TextSnapshot.From(text), [new TextEdit(range.Start, range.Length, replacement)]);
             System.Text.Json.JsonElement change = System.Text.Json.JsonSerializer.SerializeToElement(
-                new { changes = new Dictionary<string, List<Lsp.LspTextEdit>> { [Lsp.DocumentUris.FromPath(path)] = [edit] } }, Lsp.Json.Options);
-            TypeRename.Apply(Editors, change, [], $"Set colour to {colour.Hex}", null, []);
+                new { changes = new Dictionary<string, List<Lsp.LspTextEdit>> { [Lsp.DocumentUris.FromPath(path)] = edits } }, Lsp.Json.Options);
+            string name = $"Set colour to {colour.Hex}";
+            using CommandHistory.Recording recording = Editors.Commands.Record(name);
+            try
+            {
+                TypeRename.Apply(Editors, change, [], name, null, [], into: recording);
+            }
+            catch (WorkspaceEditFailed failed)
+            {
+                status.Text = $"The colour could not be set: {failed.Message}";
+                return;
+            }
+            if (await recording.LandedAsync(waiting => status.Text = waiting) is [(string unwritten, Exception refused), ..])
+            {
+                status.Text = $"The colour could not be set: {WorkspaceEdits.Unwritten(unwritten, refused)}";
+                return;
+            }
         }
         status.Text = $"Colour set to {colour.Hex}{(path != document.Path ? $" in {Path.GetFileName(path)}" : string.Empty)}";
     }

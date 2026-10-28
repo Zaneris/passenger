@@ -46,8 +46,8 @@ public sealed class EslintService : IAsyncDisposable
     /// <summary>A rule's page the server asked to be opened.</summary>
     public event EventHandler<Uri>? Browse;
 
-    /// <summary>Makes a workspace edit ESLint's command makes (a fix), on the UI thread: null once made, else why not.</summary>
-    public Func<JsonElement, string?>? ApplyEdit { get; set; }
+    /// <summary>Makes a workspace edit ESLint's command makes (a fix), on the UI thread: null once made and landed, else why not.</summary>
+    public Func<JsonElement, Task<string?>>? ApplyEdit { get; set; }
 
     /// <summary>The server's script in the package carried under web/.</summary>
     public static string Script => Path.Combine(WebLanguages.Modules, "vscode-langservers-extracted", "lib", "eslint-language-server", "eslintServer.js");
@@ -170,7 +170,8 @@ public sealed class EslintService : IAsyncDisposable
             Command = runtime => new ServerStart(ChildProcesses.Command(runtime, [Script, "--stdio"], folder), folder, WebLanguages.LogFolder, ClientCapabilities.Web)
             {
                 Configuration = Section,
-                ApplyEdit = edit => UiThread.InvokeAsync<string?>(() => disposed ? "the folder was closed" : ApplyEdit?.Invoke(edit) ?? "Passenger cannot make ESLint's edit here"),
+                ApplyEdit = edit => UiThread.InvokeAsync(() => disposed ? Task.FromResult<string?>("the folder was closed")
+                    : ApplyEdit is { } apply ? apply(edit) : Task.FromResult<string?>("Passenger cannot make ESLint's edit here")),
             },
             HearsOwnLog = true,
             Listen = Hear,

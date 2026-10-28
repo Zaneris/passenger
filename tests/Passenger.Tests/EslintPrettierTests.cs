@@ -29,6 +29,8 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
 
     public EslintPrettierTests(Project project) => this.project = project;
 
+    /// <summary>ESLint's problem shows as typed, with its rule's page, and its fix, which ESLint's server makes by handing
+    /// the window its edit, makes it go, the server told the edit was made, so it logs no failure.</summary>
     [AvaloniaFact]
     public void An_ESLint_problem_shows_as_it_is_typed_in_the_editor_the_stripe_and_Problems_with_its_rules_page_and_its_fix_makes_it_go()
     {
@@ -63,9 +65,18 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
             Ui.WaitFor(() => window.Assist.Offered.Count > 0, "the fixes for the line");
             Assert.Equal("ESLint: Fix 'prefer-const'", window.Assist.Offered[0]);
             Assert.Contains("ESLint: Suppress 'prefer-const' for current line", window.Assist.Offered);
+            IdeErrors.Flush();
+            int logged = Ui.Shared(IdeErrors.LogPath).Length;
             Ui.Press(window, "ENTER");
             Ui.WaitFor(() => editor.Document.Snapshot.ToString().Contains("const total = items.length;", StringComparison.Ordinal), "the let made a const by ESLint's fix");
             Ui.WaitFor(() => !document.Markers.Any(m => m.Message == PreferConst), "the problem gone once the code is fixed");
+            // The fix's command answered, after what the server logged of its edit's answer.
+            Ui.Settle();
+            IdeErrors.Flush();
+            string log = Ui.Shared(IdeErrors.LogPath);
+            string since = log.Length >= logged ? log[logged..] : log;
+            Assert.False(since.Contains("Failed to apply command", StringComparison.Ordinal),
+                $"ESLint was told its fix was not made though the window made it, so it logged a failure: {string.Join('\n', since.Split('\n').Where(l => l.Contains("ESLint", StringComparison.Ordinal)).Take(5))}");
             Ui.Run(window, EditorActions.Undo);
             Assert.Contains("let total = items.length;", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
         }

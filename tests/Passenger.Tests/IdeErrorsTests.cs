@@ -770,6 +770,38 @@ public sealed class IdeErrorsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>On Windows Undo of a rename puts back a file not open that another program holds as the rename wrote it: while
+    /// it is held the status bar says Undo waits for that file, never that it undid the rename, and once the program lets go
+    /// the file has its old name back and Undo says it undid the rename.</summary>
+    [AvaloniaFact]
+    public void Undo_of_a_rename_whose_file_another_program_holds_says_it_waits_and_undone_once_the_file_is_let_go()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses to replace or write a file another program holds");
+        string helper = HelperOfProgram(out MainWindow window);
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+        List<string> said = [];
+        Rename(window, "Double");
+        SaidUntil(window, said, s => s.StartsWith("Renamed", StringComparison.Ordinal), "the rename to say it renamed");
+        Assert.Contains("public static int Double(int value)", File.ReadAllText(helper), StringComparison.Ordinal);
+        Ui.Settle();
+        said.Clear();
+        using (new FileStream(helper, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            Ui.Run(window, Passenger.Editor.EditorActions.Undo, settle: false);
+            SaidUntil(window, said, s => s.StartsWith("Waiting", StringComparison.Ordinal) || s.StartsWith("Undone", StringComparison.Ordinal),
+                "Undo to say it waits for the held Helper.cs");
+            Assert.Contains("Double", File.ReadAllText(helper), StringComparison.Ordinal);
+        }
+        SaidUntil(window, said, s => s.StartsWith("Undone", StringComparison.Ordinal) || s.StartsWith("Cannot undo", StringComparison.Ordinal),
+            "Undo to say it undid the rename once Helper.cs was let go");
+        Assert.Equal(["Waiting for Helper.cs to be saved…", "Undone: Rename Twice to Double"],
+            said.Where(s => s.StartsWith("Waiting", StringComparison.Ordinal) || s.StartsWith("Undone", StringComparison.Ordinal) || s.StartsWith("Cannot", StringComparison.Ordinal)));
+        Assert.Contains("public static int Twice(int value)", File.ReadAllText(helper), StringComparison.Ordinal);
+        Assert.Contains("Helper.Twice(2)", window.EditorArea.CodeEditor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        Assert.Empty(Directory.EnumerateFiles(Path.GetDirectoryName(helper)!, "*" + Passenger.Text.FileText.SaveSuffix));
+        window.Close();
+    }
+
     /// <summary>A program calling Helper.Twice, declared in a file not open (whose path this is), the caret on the call.</summary>
     private string HelperOfProgram(out MainWindow window)
     {

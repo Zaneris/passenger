@@ -1,3 +1,4 @@
+using Passenger.App.CSharp;
 using Passenger.App.Editors;
 using Passenger.App.Explorer;
 using Passenger.App.Workspace;
@@ -368,8 +369,8 @@ public partial class MainWindow
     }
 
     /// <summary>Undo or Redo that reaches a command of several files or of a file moved (a rename) takes all of it back
-    /// or makes all of it again, once the person agrees; in an editor, only when that command is its file's next step.
-    /// False when Undo there is the file's own.</summary>
+    /// or makes all of it again, once the person agrees, said done once the files not open it wrote have landed; in an
+    /// editor, only when that command is its file's next step. False when Undo there is the file's own.</summary>
     private bool UndoCommand(bool redo, OpenDocument? document)
     {
         if ((redo ? Editors.Commands.ToRedo(document) : Editors.Commands.ToUndo(document)) is not { } command)
@@ -399,9 +400,14 @@ public partial class MainWindow
         // What may come or go, with the folders over it, as they stand before: a part may make or take away a folder.
         Dictionary<string, bool> stood = Standing(command.Moves.SelectMany(m => new[] { m.From, m.To }).Concat(command.Created.Select(c => c.Path)));
         List<string> moved = [];
+        IReadOnlyList<string> written = Editors.Commands.Writes(command, redo);
         // Asked again: a file may have changed while the question was open.
         string? failed = Gathering(moved, () => Editors.Commands.Blocked(command, redo) ?? (redo ? Editors.Commands.Redo(command) : Editors.Commands.Undo(command)));
         Followed(stood, moved, [.. command.Texts.Select(t => t.Document?.Path ?? (redo ? command.Moved(t.Path) : t.Path))]);
+        if (failed is null && await EditorArea.LandedAsync(written, waiting => status.Text = waiting) is [(string path, Exception why), ..])
+        {
+            failed = WorkspaceEdits.Unwritten(path, why);
+        }
         status.Text = failed is null ? $"{(redo ? "Redone" : "Undone")}: {command.Name}" : $"Cannot {verb.ToLowerInvariant()} {command.Name}: {failed}";
     }
 }

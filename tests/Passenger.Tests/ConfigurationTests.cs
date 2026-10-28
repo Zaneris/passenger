@@ -187,26 +187,62 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
                 Directory.Delete(Path.Combine(TestRun.UserSecrets, secretsId), recursive: true);
             }
         }
-
-        static void Set(MainWindow window, string after, string fix, bool secret, string value)
-        {
-            Ui.PlaceAfter(window.EditorArea.CodeEditor, after);
-            Ui.Run(window, AppActions.QuickFix);
-            Ui.WaitFor(() => window.Assist.Offered.Contains(fix), $"{fix} to be offered");
-            Assert.Equal(fix, window.Assist.Offered[0]);
-            Ui.Press(window, "ENTER");
-            Ui.WaitFor(() => window.OwnedWindows.OfType<ConfirmDialog>().Any(), $"{fix} to ask for the value");
-            ConfirmDialog dialog = DialogButtonsTests.Check(Assert.Single(window.OwnedWindows.OfType<ConfirmDialog>()));
-            TextBox box = Assert.Single(dialog.GetVisualDescendants().OfType<TextBox>());
-            Assert.True(secret == (box.PasswordChar != default), $"{fix}'s box {(secret ? "shows a secret as it is typed" : "masks a value that is no secret")}");
-            dialog.KeyTextInput(value);
-            Ui.Press(dialog, "ENTER");
-            Ui.Settle();
-        }
-
-        static HashSet<string> Missing(MainWindow window) => [.. window.EditorArea.Active!.Markers
-            .Where(m => m.Message.StartsWith("Nothing Shop runs with gives the configuration key '", StringComparison.Ordinal)).Select(m => m.Message.Split('\'')[1])];
     }
+
+    /// <summary>On Windows a key's fix whose write to appsettings.json, not open, waits for another program holding the file
+    /// says meanwhile that it waits for that file, never that it added the key; once the program lets go the key is in the
+    /// file and the fix says it added it.</summary>
+    [AvaloniaFact]
+    public void A_key_set_in_an_appsettings_json_another_program_holds_says_it_waits_and_added_once_the_file_is_let_go()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses to replace or write a file another program holds");
+        string settings = project.PathOf("Shop/appsettings.json");
+        MainWindow window = project.Open(project.PathOf("Shop/Program.cs"));
+        List<string> said = [];
+        try
+        {
+            Ui.WaitFor(() => Missing(window).Contains("Shop:Banner"), "Shop:Banner, which nothing gives, to be warned of");
+            using IDisposable following = Ui.FollowStatus(window, said);
+            using (new FileStream(settings, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                Set(window, "Shop:Ban", "Add Shop:Banner to appsettings.json…", secret: false, "Welcome", settle: false);
+                Ui.PumpUntil(() => said.Any(s => s.StartsWith("Waiting", StringComparison.Ordinal) || s.StartsWith("Added", StringComparison.Ordinal)),
+                    "the fix to say it waits for the held appsettings.json");
+                Assert.DoesNotContain("Banner", File.ReadAllText(settings), StringComparison.Ordinal);
+            }
+            static bool Ended(string status) => status.StartsWith("Added", StringComparison.Ordinal) || status.Contains("could not be written", StringComparison.Ordinal);
+            Ui.PumpUntil(() => said.Any(Ended), "the fix to say it added the key once appsettings.json was let go");
+            Assert.Equal(["Waiting for appsettings.json to be saved…", "Added Shop:Banner to Shop's appsettings.json"],
+                said.Where(s => s.StartsWith("Waiting", StringComparison.Ordinal) || Ended(s)));
+            Assert.Contains("\"Banner\": \"Welcome\"", File.ReadAllText(settings), StringComparison.Ordinal);
+            Assert.Empty(Directory.EnumerateFiles(Path.GetDirectoryName(settings)!, "*" + Passenger.Text.FileText.SaveSuffix));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A key's fix chosen at the code after <paramref name="after"/>, first of those offered, its value typed into
+    /// the box it asks with (masked for a secret) and given; settled after, unless asked not to.</summary>
+    private static void Set(MainWindow window, string after, string fix, bool secret, string value, bool settle = true)
+    {
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, after);
+        Ui.Run(window, AppActions.QuickFix);
+        Ui.WaitFor(() => window.Assist.Offered.Contains(fix), $"{fix} to be offered");
+        Assert.Equal(fix, window.Assist.Offered[0]);
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => window.OwnedWindows.OfType<ConfirmDialog>().Any(), $"{fix} to ask for the value");
+        ConfirmDialog dialog = DialogButtonsTests.Check(Assert.Single(window.OwnedWindows.OfType<ConfirmDialog>()));
+        TextBox box = Assert.Single(dialog.GetVisualDescendants().OfType<TextBox>());
+        Assert.True(secret == (box.PasswordChar != default), $"{fix}'s box {(secret ? "shows a secret as it is typed" : "masks a value that is no secret")}");
+        dialog.KeyTextInput(value);
+        Ui.Press(dialog, "ENTER", settle);
+    }
+
+    /// <summary>The keys the open file's reads are warned of as nothing giving them.</summary>
+    private static HashSet<string> Missing(MainWindow window) => [.. window.EditorArea.Active!.Markers
+        .Where(m => m.Message.StartsWith("Nothing Shop runs with gives the configuration key '", StringComparison.Ordinal)).Select(m => m.Message.Split('\'')[1])];
 
     /// <summary>Manage User Secrets on the project's row gives a project with none a UserSecretsId and opens its secrets.json,
     /// made in the run's own user secrets folder, never the person's; its keys complete there as appsettings.json's do, and
