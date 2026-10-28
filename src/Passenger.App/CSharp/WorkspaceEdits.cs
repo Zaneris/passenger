@@ -449,11 +449,18 @@ public static class WorkspaceEdits
 }
 
 /// <summary>What a refactoring came to, for its dialog, the status bar and an agent alike: what to say of it, why it was
-/// not made (then nothing changed), each file it changed, and the open files it left alone as edited meanwhile, by name.</summary>
+/// not made (then nothing changed), each file it changed, the open files it left alone as edited meanwhile, by name, and
+/// the uses it could not change, each with why.</summary>
 public sealed record RefactorOutcome(string Said, string? Problem, IReadOnlyList<RefactoredFile> Files, IReadOnlyList<string> Left)
 {
+    public IReadOnlyList<UnchangedUse> Unchanged { get; init; } = [];
+
     public static RefactorOutcome Refused(string problem) => new(problem, problem, [], []);
 }
+
+/// <summary>A use a refactoring left as it was, which the change leaves wrong: its file, its line and column from one as
+/// the editor counts the text as it was, and why.</summary>
+public sealed record UnchangedUse(string Path, int Line, int Column, string Why);
 
 /// <summary>A file a refactoring changed: created, changed, moved (to <paramref name="To"/>) or deleted, with the lines its
 /// edits start on, from one, as the editor counts the text as it was.</summary>

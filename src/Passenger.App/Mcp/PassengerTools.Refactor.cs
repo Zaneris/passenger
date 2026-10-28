@@ -491,7 +491,8 @@ public sealed partial class PassengerTools
     private RefactorAnswer Applied(string kind, RefactorOutcome made) => made.Problem is { } problem
         ? throw new InvalidOperationException(problem)
         : new RefactorAnswer(kind, made.Said, [.. made.Files.Select(f => new RefactorFile(Relative(f.Path), f.Change, f.Lines, To: f.To is { } to ? Relative(to) : null))],
-            [.. made.Left.Select(name => $"{name}: it was edited meanwhile, so it was left as it is")]);
+            [.. made.Left.Select(name => $"{name}: it was edited meanwhile, so it was left as it is"),
+                .. made.Unchanged.Select(use => $"{Relative(use.Path)}:{use.Line}:{use.Column}: {use.Why}, so it was left as it is")]);
 
     private static RefactorAnswer Described(string kind, string said, object dialog) =>
         new(kind, said + "; send options to apply it", [], [], JsonSerializer.SerializeToElement(dialog, DialogJson));

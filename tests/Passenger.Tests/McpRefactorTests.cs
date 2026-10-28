@@ -49,6 +49,16 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
 
     private const string Counter = "namespace Shop;\n\npublic class Counter\n{\n    public int count;\n\n    public void Add() => count++;\n}\n";
 
+    private const string Summer = "namespace Shop;\n\npublic static class Summer\n{\n    public static int Sum(string label, params ReadOnlySpan<int> values) => values.Length;\n}\n";
+
+    private const string Totals = "namespace Shop;\n\npublic static class Totals\n{\n    public static int All() => Summer.Sum(\"a\", 1, 2, 3) + Summer.Sum(\"b\", [4, 5]) + Summer.Sum(\"c\");\n}\n";
+
+    private const string Coins = "namespace Shop;\n\npublic class Coin\n{\n    public int Value;\n\n    /// <summary>A coin, as <see cref=\"Mint(int, string)\"/> makes it.</summary>\n"
+        + "    public static Coin Mint(int value, string metal = \"gold\") => new() { Value = value };\n\n    public void OnDropped(object? sender, EventArgs e)\n    {\n    }\n}\n";
+
+    private const string Purse = "namespace Shop;\n\npublic static class Purse\n{\n    public static event EventHandler? Dropped;\n\n    public static int Fill()\n    {\n"
+        + "        Func<int, string, Coin> mint = Coin.Mint;\n        Dropped += new Coin().OnDropped;\n        return Coin.Mint(1).Value + mint(2, \"silver\").Value;\n    }\n}\n";
+
     [AvaloniaFact]
     public void An_agent_changes_a_signature_for_every_caller_moves_types_and_extracts_an_interface_each_undone_whole_by_the_person()
     {
@@ -223,6 +233,46 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(renaming.IsError != true, $"A rename right after the agent wrote Report.cs answered: {Text(renaming)}");
         Assert.Equal(rewritten.Replace("Calc.Scale(", "Calc.Times(", StringComparison.Ordinal), File.ReadAllText(PathOf("Report.cs")));
         Assert.DoesNotContain("Scale", File.ReadAllText(PathOf("Till.cs")), StringComparison.Ordinal);
+    }
+
+    /// <summary>Change Signature passes a new parameter's value in every call of a method taking a params collection, the
+    /// values spread out or passed as one, gives a cref the new parameters, and names each method group it cannot change
+    /// with why (a delegate's, an event handler's): the delegate it makes no longer fits, which the agent would otherwise
+    /// hear of only as the build breaks.</summary>
+    [Fact]
+    public async Task An_agent_changing_a_signature_has_every_params_collection_call_changed_and_hears_of_each_method_group_left_as_it_was()
+    {
+        await TakeFolderAsync();
+        Shop(("Summer.cs", Summer), ("Totals.cs", Totals), ("Coins.cs", Coins), ("Purse.cs", Purse));
+        await using McpClient client = await Start(["--mcp", Folder]);
+
+        JsonElement summed = await Call(client, McpTools.Refactor, Place("change_signature", "Summer.cs", Summer, "int Su", new
+        {
+            parameters = new object[] { new { type = "int", name = "start", callValue = "0" }, new { from = "label" }, new { from = "values" } },
+        }));
+        Assert.Equal(["Summer.cs changed", "Totals.cs changed"], Files(summed));
+        Assert.Empty(summed.GetProperty("notApplied").EnumerateArray());
+        Assert.Equal(Totals.Replace("Summer.Sum(\"a\", 1, 2, 3) + Summer.Sum(\"b\", [4, 5]) + Summer.Sum(\"c\")",
+            "Summer.Sum(0, \"a\", 1, 2, 3) + Summer.Sum(0, \"b\", [4, 5]) + Summer.Sum(0, \"c\")", StringComparison.Ordinal), File.ReadAllText(PathOf("Totals.cs")));
+
+        JsonElement minted = await Call(client, McpTools.Refactor, Place("change_signature", "Coins.cs", Coins, "Coin Mi", new
+        {
+            parameters = new object[] { new { from = "value" }, new { type = "int", name = "year", callValue = "2026" }, new { from = "metal" } },
+        }));
+        (int line, int column) = LineColumn(Purse, "Mint;", Purse.IndexOf("Mint;", StringComparison.Ordinal));
+        const string why = "Coin.Mint as a Func<int, string, Coin>, which the new signature no longer fits";
+        Assert.Equal([$"Purse.cs:{line}:{column}: {why}, so it was left as it is"], minted.GetProperty("notApplied").EnumerateArray().Select(n => n.GetString()));
+        Assert.Equal($"Changed the signature of Coin.Mint in 2 files, but left 1 use as it was: Purse.cs:{line}, {why}", minted.GetProperty("said").GetString());
+        Assert.Equal(Purse.Replace("Coin.Mint(1)", "Coin.Mint(1, 2026)", StringComparison.Ordinal), File.ReadAllText(PathOf("Purse.cs")));
+        string coins = Coins.Replace("Mint(int, string)", "Mint(int, int, string)", StringComparison.Ordinal)
+            .Replace("Mint(int value, string metal", "Mint(int value, int year, string metal", StringComparison.Ordinal);
+        Assert.Equal(coins, File.ReadAllText(PathOf("Coins.cs")));
+
+        JsonElement handled = await Call(client, McpTools.Refactor, Place("change_signature", "Coins.cs", coins, "void OnDro", new { parameters = new object[] { new { from = "sender" } } }));
+        (line, column) = LineColumn(Purse, "OnDropped;", Purse.IndexOf("OnDropped;", StringComparison.Ordinal));
+        Assert.Equal([$"Purse.cs:{line}:{column}: Coin.OnDropped as an EventHandler, which the new signature no longer fits, so it was left as it is"],
+            handled.GetProperty("notApplied").EnumerateArray().Select(n => n.GetString()));
+        Assert.Equal(["Coins.cs changed"], Files(handled));
     }
 
     [AvaloniaFact]
