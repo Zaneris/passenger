@@ -24,6 +24,7 @@ public partial class MainWindow
     {
         Editors.ForEachEditor(editor => ApplyTo(editor, settings));
         settingsStore.Changed += OnSettingsChanged;
+        Activated += (_, _) => settingsStore.LookAgain();
         Closed += (_, _) =>
         {
             settingsStore.Changed -= OnSettingsChanged;

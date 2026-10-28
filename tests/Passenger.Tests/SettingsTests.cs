@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -7,12 +8,13 @@ using Avalonia.Media;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Settings;
+using Passenger.App.State;
 
 namespace Passenger.Tests;
 
 /// <summary>Settings: a search narrows the pages to those with an option whose words match and shows only those options;
-/// a change is in force the moment it is applied, in every editor (one a split makes later too), and a window that keeps
-/// its settings opens on them again.</summary>
+/// a change is in force the moment it is applied, in every editor (one a split makes later too), a window that keeps its
+/// settings opens on them again, and another Passenger's change to them is followed even where the watcher lost it.</summary>
 public sealed class SettingsTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("folder-");
@@ -187,6 +189,53 @@ public sealed class SettingsTests : IDisposable
             window.ApplySettings(new AppSettings());
             window.Close();
         }
+    }
+
+    /// <summary>Another Passenger's change to settings.json that the watcher never heard is followed all the same: read again
+    /// as the watcher says it overflowed, and, for a change dropped without a word, as the window comes in front. The
+    /// watcher stops hearing while the file changes, so each change is lost as a dropped event loses it.</summary>
+    [AvaloniaFact]
+    public void A_change_to_settings_json_the_watcher_lost_is_followed_as_it_overflows_and_as_the_window_comes_in_front()
+    {
+        MainWindow window = Open();
+        window.KeepSettings();
+        StateStore store = StateStore.Open(settings);
+        string file = Path.Combine(settings, StateStore.SettingsFile);
+        FileSystemWatcher watcher = store.Settings.Watcher ?? throw new InvalidOperationException($"{file} is not watched");
+        try
+        {
+            watcher.EnableRaisingEvents = false;
+            window.ApplySettings(window.Settings with { EditorFontSize = 15 });
+            store.Settings.Flush();
+
+            WrittenElsewhere(file, 21);
+            FolderWatchTests.RaiseError(watcher, new InternalBufferOverflowException("Too many changes at once; directory listing is required."));
+            Ui.WaitFor(() => window.EditorArea.CodeEditor.FontSize == 21,
+                $"the window to follow another Passenger's change to settings.json, lost in the watcher's overflow (its font is {window.EditorArea.CodeEditor.FontSize})");
+
+            WrittenElsewhere(file, 19);
+            Ui.Settle();
+            Assert.True(window.EditorArea.CodeEditor.FontSize == 21, "settings.json was read again with its watcher deaf and no word of a change");
+            window.Activate();
+            Ui.WaitFor(() => window.EditorArea.CodeEditor.FontSize == 19,
+                $"the window come in front to follow another Passenger's change to settings.json, dropped without a word (its font is {window.EditorArea.CodeEditor.FontSize})");
+        }
+        finally
+        {
+            watcher.EnableRaisingEvents = true;
+            store.Release();
+            window.Close();
+        }
+    }
+
+    /// <summary>settings.json with the editor's font changed, as another Passenger writes it: a temporary file moved over it.</summary>
+    private static void WrittenElsewhere(string file, int fontSize)
+    {
+        JsonObject changed = (JsonObject)JsonNode.Parse(Ui.Shared(file))!;
+        changed["editorFontSize"] = fontSize;
+        string written = file + ".other.tmp";
+        File.WriteAllText(written, changed.ToJsonString());
+        File.Move(written, file, overwrite: true);
     }
 
     /// <summary>What edits an option, beside its label in the page shown.</summary>
