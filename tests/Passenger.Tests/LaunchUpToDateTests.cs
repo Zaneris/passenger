@@ -63,6 +63,44 @@ public sealed class LaunchUpToDateTests
         }
     }
 
+    /// <summary>Run of a web app after a component's scoped CSS changed builds first, the app then reading the styles its
+    /// build bundled from the change; after a change to a CSS file outside wwwroot, which no build reads, it builds nothing.</summary>
+    [AvaloniaFact]
+    public void A_run_after_a_components_scoped_CSS_changed_builds_first_and_after_another_CSS_file_changed_builds_nothing()
+    {
+        string folder = TestFolders.Create("scopedcss-");
+        TestFolders.Write(folder, "App/App.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>"));
+        TestFolders.Write(folder, "App/Components/Counter.razor", "<h1>Counter</h1>\n");
+        TestFolders.Write(folder, "App/Components/Counter.razor.css", "h1 { color: red; }\n");
+        TestFolders.Write(folder, "App/Styles/notes.css", "p { color: red; }\n");
+        TestFolders.Write(folder, "App/Program.cs", $$"""
+            // The styles the build bundled from the components' scoped CSS, among its intermediate files.
+            string bundle = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "obj", "Debug", "{{TestProjects.Framework}}", "scopedcss", "bundle", "App.styles.css");
+            Console.WriteLine($"said: {(File.ReadAllText(bundle).Contains("color: blue", StringComparison.Ordinal) ? "blue" : "red")}");
+
+            """);
+        Restore.Run(PathNames.Canonical(Path.Combine(folder, "App", "App.csproj")));
+        List<string> builds = [];
+        EventHandler<ChildStart> started = Counting(builds);
+        ChildProcesses.Started += started;
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "App"), "App's run configuration");
+            Assert.True(window.SelectConfiguration("App"));
+            Ran(window, builds, built: true, "red", "its first run");
+            Edit(Path.Combine(folder, "App", "Styles", "notes.css"), "red", "blue");
+            Ran(window, builds, built: false, "red", "a run after a CSS file no build reads changed");
+            Edit(Path.Combine(folder, "App", "Components", "Counter.razor.css"), "red", "blue");
+            Ran(window, builds, built: true, "blue", "a run after the component's scoped CSS changed");
+        }
+        finally
+        {
+            ChildProcesses.Started -= started;
+            window.Close();
+        }
+    }
+
     /// <summary>Run begun while a build works waits for that build to end, saying so in its work, and then runs; here
     /// the build is held until the test lets it go.</summary>
     [Gate]

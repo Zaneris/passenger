@@ -397,6 +397,12 @@ public sealed record BuildInputs
     /// <summary>Those of <see cref="Reads"/> a restore writes (each project's assets, lock file and the props and targets it
     /// imports), which the build's own restore may write before anything reads them.</summary>
     public IReadOnlyList<string> Restored { get; init; } = [];
+
+    /// <summary>Whether a file is a static one the SDK's build makes into another, so a change to it reaches the app only
+    /// through a build, though no item the build copies names it: a component's or page's scoped CSS
+    /// (<c>Counter.razor.css</c>, <c>Index.cshtml.css</c>), rewritten under obj and bundled into the app's styles.</summary>
+    public static bool IsProcessedStatic(string path) =>
+        path.EndsWith(".razor.css", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".cshtml.css", StringComparison.OrdinalIgnoreCase);
 }
 
 /// <summary>A place in a file of <see cref="ProjectInsight.Files"/>, its line and column from 1 as MSBuild counts them.</summary>

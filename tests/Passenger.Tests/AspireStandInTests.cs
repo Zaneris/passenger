@@ -927,6 +927,69 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
+    /// <summary>Rerun after a service's scoped CSS changed, which its build makes into the app's styles, has its AppHost stop
+    /// it, builds it and has it started again; after a change to another CSS file, which the app serves from where it is,
+    /// it restarts nothing.</summary>
+    [AvaloniaFact]
+    public void Rerun_restarts_a_service_whose_scoped_CSS_changed_and_nothing_for_other_CSS()
+    {
+        project.Reset();
+        string scoped = $"{StandInAppHost.Api}/Counter.razor.css";
+        string served = $"{StandInAppHost.Api}/site.css";
+        project.Write([(scoped, "h1 { color: red; }\n"), (served, "body { color: red; }\n")]);
+        project.BuildApi();
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        MainWindow window = OpenRunning(backend);
+        Task<(System.Net.WebSockets.ClientWebSocket Notified, System.Net.HttpStatusCode Answer)>? again = null;
+        try
+        {
+            (System.Net.WebSockets.ClientWebSocket notified, System.Net.HttpStatusCode answer) = project.AskToStartApi("apiservice");
+            using System.Net.WebSockets.ClientWebSocket subscribed = notified;
+            Assert.True((int)answer is >= 200 and < 300, $"The IDE refused the run session: {answer}");
+            int first = Api(window);
+            Resource resource = ApiResource();
+            resource.Commands.Add(new ResourceCommand { Name = "resource-stop", DisplayName = "Stop", State = ResourceCommandState.Enabled });
+            resource.Commands.Add(new ResourceCommand { Name = "resource-start", DisplayName = "Start", State = ResourceCommandState.Enabled });
+            backend.PushResource(resource);
+            Ui.WaitFor(() => window.Aspire.ResourceSnapshots.Any(shown => shown.Name == "apiservice" && shown.Commands.Count == 2), "the API's resource and its commands");
+            backend.OnCommand = command =>
+            {
+                if (command.CommandName == "resource-stop")
+                {
+                    Processes.Kill(first);
+                }
+                else if (command.CommandName == "resource-start")
+                {
+                    again = Waiting.Apart(() => project.StartApiAsync("apiservice", subscribe: false));
+                }
+            };
+            string config = StandInAppHost.Configuration;
+
+            File.WriteAllText(project.PathOf(served), "body { color: blue; }\n");
+            Ui.Run(window, AppActions.Rerun);
+            Assert.Equal($"{config}: nothing changed, nothing restarted", window.Status);
+            Assert.True(Processes.IsRunning(first) && backend.Commands.Length == 0, "Rerun restarted the API for a CSS file its build makes nothing of");
+
+            File.WriteAllText(project.PathOf(scoped), "h1 { color: blue; }\n");
+            Ui.Run(window, AppActions.Rerun);
+            Ui.WaitFor(() => window.Status == $"{config}: restarted apiservice with the new build"
+                && window.AspireRuntime.Apps.Single().Services.SingleOrDefault() is { ProcessId: int restarted } && restarted != first,
+                () => $"Rerun to restart the API, whose scoped CSS changed ({window.Status})", TimeSpan.FromMinutes(3));
+            Assert.False(Processes.IsRunning(first), "The API that ran before Rerun still runs");
+            Assert.Equal(["resource-stop", "resource-start"], backend.Commands.Select(command => command.CommandName));
+            Assert.Empty(backend.Errors);
+        }
+        finally
+        {
+            window.Close();
+            if (again is not null)
+            {
+                Ui.Await(again, "the restart's start request").Notified.Dispose();
+            }
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+    }
+
     /// <summary>Profile of an AppHost waits as long as the AppHost takes to ask for the service it records, then gives that
     /// service its time to reach the profiler, counted from the ask: past it, the start is given up as the time limit it is,
     /// never as a stop nobody pressed, and the AppHost is stopped. Here the window's limit is a moment, which no start meets.</summary>

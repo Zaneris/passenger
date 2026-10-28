@@ -1,4 +1,5 @@
 using Passenger.Core;
+using Passenger.Host;
 using Passenger.Workspace;
 
 namespace Passenger.App.Run;
@@ -64,11 +65,12 @@ public static class BuiltInputs
         }
     }
 
-    /// <summary>What a build reads that its program could not take in while it runs: code, project files, resources, XAML and
-    /// settings. Not what a running program writes beside its project (DCP's <c>.dcp.json</c>, a SQLite database), nor
-    /// static web assets, served from where they are.</summary>
+    /// <summary>What a build reads that its program could not take in while it runs: code, project files, resources, XAML,
+    /// settings and the static files the build makes into others (scoped CSS, <see cref="BuildInputs.IsProcessedStatic"/>).
+    /// Not what a running program writes beside its project (DCP's <c>.dcp.json</c>, a SQLite database), nor other static
+    /// web assets, served from where they are.</summary>
     private static bool IsInput(string file) => PathNames.HasExtension(file, [".json"])
         ? !file.EndsWith(".dcp.json", StringComparison.OrdinalIgnoreCase)
         : PathNames.HasExtension(file, [".cs", ".vb", ".fs", ".fsi", ".csproj", ".vbproj", ".fsproj", ".props", ".targets", ".razor", ".cshtml",
-            ".vbhtml", ".resx", ".xaml", ".axaml", ".paml", ".config", ".proto"]);
+            ".vbhtml", ".resx", ".xaml", ".axaml", ".paml", ".config", ".proto"]) || BuildInputs.IsProcessedStatic(file);
 }
