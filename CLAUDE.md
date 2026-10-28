@@ -123,19 +123,20 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
   app goes through `ServerLines`/`ServerPlaces` (`Compiled`, `CountedByRoslyn`, `PositionOfCompiled`), never `new
   TextPosition(line, character)`; the debugger's lines through `Debugging/BuiltLines`. MCP's places are the editor's.
 - **Writes go one way.** A workspace file: `FileText.Save` (atomic, through symlinks, permissions, Windows attributes,
-  ACL and streams and macOS metadata kept, a read-only file refused, Local History given the old bytes). Any other whole
-  file: `AtomicFile.Write`. Never `File.WriteAll*`. Passenger saves an open project, solution, nuget.config or
-  Directory.Packages.props before writing it and loads what it wrote after (`SaveBeforeWriting`, `FollowWritten`). A
-  change of several files, or one that moves a file, is one command of global undo (`EditorArea.Commands.Record`), and
-  the window follows only what a change of files made, moved or deleted (`Following`, `CameOrWent`), never a whole
-  re-read of the folder. Server edits pass `LineEndings.Fit` then `Indentation.Fit`. A save Windows refuses while
-  another program holds the file lands in the background, in order (`FileText.Landed`; `FileText.Read` gives its bytes
-  meanwhile), and what hands the files to another program (a build, Git, a restore, an agent) waits for it
-  (`SaveAllLandedAsync`); a change of several files says it is done only once its own writes have landed
-  (`WorkspaceEdits.LandedAsync`, `EditorArea.LandedAsync(paths, …)`; its command takes the open files' changes before
-  the wait, `Recording.TakeOpen`, and leaves out a file never written, `Unwritten`). A file shown read-only refuses
-  every change to its text (`TextDocument.IsReadOnly`, set only by `OpenDocument`), and an action on it greys with
-  `Refusals.ReadOnly`.
+  ACL and streams, macOS metadata, and Linux's extended attributes, ACL, owner and group where it may kept
+  (`UnixFileMetadata`, `AtomicFile.Write`'s too), a file another hard link names written in place, a read-only file
+  refused, Local History given the old bytes). Any other whole file: `AtomicFile.Write`. Never `File.WriteAll*`.
+  Passenger saves an open project, solution, nuget.config or Directory.Packages.props before writing it and loads what
+  it wrote after (`SaveBeforeWriting`, `FollowWritten`). A change of several files, or one that moves a file, is one
+  command of global undo (`EditorArea.Commands.Record`), and the window follows only what a change of files made, moved
+  or deleted (`Following`, `CameOrWent`), never a whole re-read of the folder. Server edits pass `LineEndings.Fit` then
+  `Indentation.Fit`. A save Windows refuses while another program holds the file lands in the background, in order
+  (`FileText.Landed`; `FileText.Read` gives its bytes meanwhile), and what hands the files to another program (a build,
+  Git, a restore, an agent) waits for it (`SaveAllLandedAsync`); a change that writes a file not open (several files, a
+  fix, Undo and Redo) says it is done only once its own writes have landed (`WorkspaceEdits.LandedAsync`,
+  `EditorArea.LandedAsync(paths, …)`), a command waiting inside its recording (`Recording.LandedAsync`: the open files'
+  changes taken first, a file never written left out). A file shown read-only refuses every change to its text
+  (`TextDocument.IsReadOnly`, set only by `OpenDocument`), and an action on it greys with `Refusals.ReadOnly`.
 - **State is a `StateDocument`** in the one `StateStore` (versioned `Upgrades`, `Clamped`, written debounced and merged,
   a bad file set aside as `.bad`), read off the UI thread; never a file of its own. Per-folder state lives under
   `workspaces/<name>-<hash>/` and is made in `ProjectSession`. A new setting: an `AppSettings` property, its row and
