@@ -273,6 +273,8 @@ def main():
     lanes.add_argument("--gate", dest="lane", action="store_const", const="gate", help="--lane gate")
     lanes.add_argument("--report", dest="lane", action="store_const", const="report", help="--lane report")
     arguments = parser.parse_args()
+    # As CI runs: the SDK's telemetry holds each dotnet the tests start up to 2 s at its exit to send.
+    os.environ["DOTNET_CLI_TELEMETRY_OPTOUT"] = "true"
     given = arguments.filter.strip()
     lane = arguments.lane
     chosen = shards.both(given, shards.lane_filter(lane))
