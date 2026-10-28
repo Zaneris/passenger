@@ -432,7 +432,8 @@ size. Each checks a tool's answer, leaving the window's steps to the window's te
   titles `popupTitle`; every row `ListRow.Height` (24); empty states `TextBlock.emptyText`; toolbar icon buttons
   `ToolButtons.Of`/`Toggle` (never focusable); muted words `MutedText`; list keys `ListKeys.Move`; counts `Plural.Of`;
   rounded borders `Border.kindBadge`, `tag` or `box`, never a literal radius; lists of what runs `RunRows`, Details tabs
-  `DetailsTables`, merged consoles `MergedLog`; a toolbar down a side `ToolColumn`; scrollbars `ControlThemes.axaml`; the
+  `DetailsTables`, merged consoles `MergedLog` (a console's Find `OutputView.Find`); a tree window's Expand and Collapse All
+  `ToolWindow.ExpandAll`/`CollapseAll`; a toolbar down a side `ToolColumn`; scrollbars `ControlThemes.axaml`; the
   focus ring `FocusRing`; a list's rows `ReusedRows` (`Use`, `Showing`), their icons `RowIcon` (a tree row's chevron and
   icon `RowGlyphs`), drawn as `PathIcon` draws for a fraction of its cost, never `PathIcon` (UiRulesTests). A row hears
   its item only while shown (`Observable.FollowWhileShown`).
