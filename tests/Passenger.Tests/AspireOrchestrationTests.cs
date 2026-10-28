@@ -143,6 +143,22 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
         window.Close();
     }
 
+    /// <summary>Each project's code is read as it compiles: a ServiceDefaults whose extensions are declared under
+    /// #if NET8_0_OR_GREATER is taken for one, and an AppHost's second builder, in a file under #if !NET8_0_OR_GREATER that
+    /// its project never compiles, leaves its one builder's file the one the resource is added to.</summary>
+    [AvaloniaFact]
+    public void Orchestration_reads_each_projects_code_as_it_compiles_taking_extensions_under_its_frameworks_symbols_and_passing_over_a_builder_it_never_compiles()
+    {
+        string extensions = File.ReadAllText(project.PathOf("Defaults/Extensions.cs"));
+        project.Rewrite("Defaults/Extensions.cs", "#if NET8_0_OR_GREATER\n" + extensions + "\n#endif\n");
+        project.Write("Host/Legacy.cs", "#if !NET8_0_OR_GREATER\nusing Aspire.Hosting;\nvar legacy = DistributedApplication.CreateBuilder(args);\nlegacy.Build().Run();\n#endif\n");
+        MainWindow window = Open();
+        Assert.Equal("Added Aspire orchestration", Add(window, "Api", existing: true));
+        Assert.Contains("AddServiceDefaults()", File.ReadAllText(project.PathOf("Api/Program.cs")), StringComparison.Ordinal);
+        Assert.Contains("Defaults", File.ReadAllText(project.PathOf("Api/Api.csproj")), StringComparison.Ordinal);
+        window.Close();
+    }
+
     [AvaloniaTheory]
     [InlineData(false)]
     [InlineData(true)]

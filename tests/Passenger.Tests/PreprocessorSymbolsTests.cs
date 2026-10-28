@@ -1,4 +1,5 @@
 using Avalonia.Headless.XUnit;
+using Microsoft.CodeAnalysis.CSharp;
 using Passenger.App;
 using Passenger.App.Workspace;
 using Passenger.Editor;
@@ -7,8 +8,9 @@ using Passenger.Text;
 namespace Passenger.Tests;
 
 /// <summary>A C# file's own parse (its colours before any server's, its brackets' pairs, its folds, what Safe Delete reads)
-/// takes the preprocessor symbols its project compiles it with: the SDK's for its framework (NET8_0_OR_GREATER in a
-/// net10.0 project) and the project's own DefineConstants, a change of them taken up in one parse.</summary>
+/// takes the preprocessor symbols and C# version its project compiles it with: the SDK's for its framework
+/// (NET8_0_OR_GREATER and C# 14 in a net10.0 project), the project's own DefineConstants and LangVersion, a change of them
+/// taken up in one parse.</summary>
 public sealed class PreprocessorSymbolsTests : IClassFixture<PreprocessorSymbolsTests.Project>
 {
     private const string Shapes =
@@ -87,6 +89,38 @@ public sealed class PreprocessorSymbolsTests : IClassFixture<PreprocessorSymbols
         window.Close();
     }
 
+    /// <summary>With no language server to colour it, <c>field</c> in a property's accessor is C# 14's keyword in a net10.0
+    /// project, and once its project file sets LangVersion 12 the name of the class's own field, as its compiler reads it
+    /// there, taken up in one parse.</summary>
+    [AvaloniaFact]
+    public void Field_in_an_accessor_is_a_keyword_at_its_frameworks_csharp_and_a_name_once_the_project_sets_langversion_12()
+    {
+        MainWindow window = project.Open("Counter.cs", languageServer: false);
+        OpenDocument document = window.EditorArea.Active!;
+        Ui.WaitFor(() => document.Syntax?.Current?.Tree.Options is CSharpParseOptions { LanguageVersion: LanguageVersion.CSharp14 },
+            $"Counter.cs parsed as C# 14, the SDK's for its {TestProjects.Framework} project");
+        Assert.True(Keyword(document, "field; }"), $"field in Value's getter is not drawn as C# 14's keyword in a {TestProjects.Framework} project");
+        Assert.False(Keyword(document, "field;\n"), "The field's own name, declared as one, is drawn as a keyword");
+
+        int parses = document.Syntax!.Worked.Parses;
+        File.WriteAllText(project.PathOf("Symbols.csproj"), TestProjects.Console("<LangVersion>12</LangVersion>"));
+        Ui.WaitFor(() => !Keyword(document, "field; }"), "field in Value's getter drawn as the name it is in C# 12 once the project file sets LangVersion 12");
+        Assert.True(document.Syntax.Worked.Parses == parses + 1,
+            $"The project's LangVersion parsed Counter.cs {document.Syntax.Worked.Parses - parses} times, where one parse takes it up");
+        Assert.False(Keyword(document, "field = value;"), "field in Value's setter is drawn as a keyword in a C# 12 project, where it names the class's field");
+        window.Close();
+    }
+
+    /// <summary>Whether the editor's parse colours the word that starts <paramref name="code"/> as a keyword.</summary>
+    private static bool Keyword(OpenDocument document, string code)
+    {
+        TextSnapshot text = document.Text.Snapshot;
+        int at = text.ToString().IndexOf(code, StringComparison.Ordinal);
+        Assert.True(at >= 0, $"'{code}' is not in {document.Name}");
+        LineSpan line = text.GetLine(text.GetLineFromOffset(at));
+        return document.Highlighter!.GetSpans(text, line.Start, line.EndIncludingBreak - line.Start).Any(s => s.Kind == TokenKind.Keyword && s.Start <= at && s.End > at);
+    }
+
     /// <summary>Whether the editor draws the code that starts with <paramref name="code"/> as disabled, as its parse colours
     /// the line.</summary>
     private static bool Disabled(OpenDocument document, string code)
@@ -110,6 +144,8 @@ public sealed class PreprocessorSymbolsTests : IClassFixture<PreprocessorSymbols
             File.WriteAllText(PathOf("Calc.cs"), "static class Calc\n{\n#if NET8_0_OR_GREATER\n    public static int Twice(int value) => value * 2;\n\n"
                 + "    public static int Unused(int value) => value + 1;\n#endif\n}\n");
             File.WriteAllText(PathOf("Shapes.cs"), Shapes);
+            File.WriteAllText(PathOf("Counter.cs"), "class Counter\n{\n    private int field;\n\n    public int Value\n    {\n        get { return field; }\n"
+                + "        set { field = value; }\n    }\n}\n");
         }
     }
 }

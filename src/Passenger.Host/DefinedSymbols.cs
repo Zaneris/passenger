@@ -6,15 +6,16 @@ namespace Passenger.Host;
 /// DefineConstants with the symbols the .NET SDK adds for the framework and its platform (NET, NET11_0,
 /// NET8_0_OR_GREATER, WINDOWS…), by the rules of the SDK's AddImplicitDefineConstants target, which a build runs before
 /// it compiles and an evaluation never does. Each symbol from the evaluation's own properties and items, so a newer
-/// SDK's frameworks and platform versions come with it.</summary>
+/// SDK's frameworks and platform versions come with it; and its LangVersion, which the evaluation itself defaults for
+/// the framework.</summary>
 internal static class DefinedSymbols
 {
     private const string NetCoreApp = ".NETCoreApp";
     private const string NetFramework = ".NETFramework";
     private const string NetStandard = ".NETStandard";
 
-    /// <summary>A framework's symbols, each once in the order the compiler is given them; null for a multi-targeted
-    /// project's outer evaluation, which compiles nothing.</summary>
+    /// <summary>A framework's symbols, each once in the order the compiler is given them, and its C# version; null for a
+    /// multi-targeted project's outer evaluation, which compiles nothing.</summary>
     public static FrameworkSymbols? Of(Project project)
     {
         string framework = project.GetPropertyValue("TargetFramework");
@@ -31,7 +32,8 @@ internal static class DefinedSymbols
         {
             symbols.AddRange(Implicit(project));
         }
-        return new FrameworkSymbols(framework, [.. symbols.Distinct(StringComparer.Ordinal)]);
+        string version = project.GetPropertyValue("LangVersion").Trim();
+        return new FrameworkSymbols(framework, [.. symbols.Distinct(StringComparer.Ordinal)], version.Length > 0 ? version : null);
     }
 
     /// <summary>The SDK's symbols for the framework, its platform, and each version of either it is compatible with.</summary>

@@ -212,7 +212,7 @@ public sealed partial class DebugAdapter
         // Smart Step Into: the calls of the frame's statement, each placed where it is written.
         connection.Handle<StepInTargetsArguments, StepInTargetsResponse>(DapCommands.StepInTargets, async arguments =>
         {
-            List<StepInTargetInfo> targets = await Read(() => debugger.StepInTargets(arguments.FrameId));
+            List<StepInTargetInfo> targets = await Read(() => debugger.StepInTargets(arguments.FrameId, arguments.PreprocessorSymbols, arguments.LanguageVersion));
             return new StepInTargetsResponse
             {
                 Targets = [.. targets.Select(t => new StepInTarget

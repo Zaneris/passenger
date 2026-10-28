@@ -4,6 +4,7 @@ using Passenger.App.Editors;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Languages.CSharp;
 using Passenger.Text;
 using Passenger.Workspace;
 using Passenger.Xaml;
@@ -277,7 +278,7 @@ public sealed class XamlService : IDisposable
     {
         using IDisposable held = BackgroundWork.Scope();
         await Dispatcher.Yield(DispatcherPriority.Background);
-        return disposed ? null : await BackgroundWork.Run(() => XamlProjectBuilder.For(project, DotnetRoot.Value, IdeErrors.Report, evaluations));
+        return disposed ? null : await BackgroundWork.Run(() => XamlProjectBuilder.For(project, DotnetRoot.Value, CSharpParsing.Default, IdeErrors.Report, evaluations));
     }
 
     private static async Task<XamlProject?> LoadAsync(Task<XamlProjectBuilder?> made, Dictionary<string, TextSnapshot> texts)

@@ -18,7 +18,10 @@ public sealed record ProjectModelCache : IStateDocument<ProjectModelCache>
     public Dictionary<string, EvaluatedProject> Projects { get; init; } = [];
 
     public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, ForgetWindowsTargeted, ForgetAll, ForgetUncarried, ForgetUnpublishable, ForgetAll,
-        ForgetUnrestored, ForgetUndefined];
+        ForgetUnrestored, ForgetUndefined, ForgetUnversioned];
+
+    /// <summary>Every evaluation, kept before they carried each framework's C# version, which its C# files are parsed with.</summary>
+    private static void ForgetUnversioned(JsonObject document) => document.Remove("projects");
 
     /// <summary>Every evaluation, kept before they carried each framework's preprocessor symbols, which its C# files are
     /// parsed with.</summary>

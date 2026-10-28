@@ -1,3 +1,4 @@
+using Microsoft.CodeAnalysis.CSharp;
 using Passenger.Core;
 using Passenger.Xaml.Dialects;
 using Passenger.Xaml.Metadata;
@@ -14,8 +15,13 @@ public sealed class XamlProjectBuilder
     private readonly object gate = new();
     private readonly string? dotnetRoot;
 
-    /// <summary>What MSBuild's evaluation says of where a project's restore and build put things, by its path; any thread asks it.</summary>
+    /// <summary>What MSBuild's evaluation says of where a project's restore and build put things and what its C# is parsed
+    /// with, by its path; any thread asks it.</summary>
     private readonly Func<string, ProjectEvaluation?>? evaluations;
+
+    /// <summary>What the C# of a project with no evaluation to say so is parsed with.</summary>
+    private readonly CSharpParseOptions unevaluated;
+
     private readonly Action<Exception>? failed;
     private readonly Dictionary<string, SourceTypes> sources = new(StringComparer.Ordinal);
     private readonly Dictionary<string, XamlFileSummary> files = new(StringComparer.Ordinal);
@@ -30,11 +36,13 @@ public sealed class XamlProjectBuilder
     /// declares none anew keeps it.</summary>
     private string classes = string.Empty;
 
-    private XamlProjectBuilder(ProjectInputs inputs, XamlDialect dialect, string? dotnetRoot, Action<Exception>? failed, Func<string, ProjectEvaluation?>? evaluations)
+    private XamlProjectBuilder(ProjectInputs inputs, XamlDialect dialect, string? dotnetRoot, CSharpParseOptions unevaluated, Action<Exception>? failed,
+        Func<string, ProjectEvaluation?>? evaluations)
     {
         this.inputs = inputs;
         Dialect = dialect;
         this.dotnetRoot = dotnetRoot;
+        this.unevaluated = unevaluated;
         this.failed = failed;
         this.evaluations = evaluations;
     }
@@ -46,12 +54,14 @@ public sealed class XamlProjectBuilder
     public string Folder => inputs.Folder;
 
     /// <summary>A builder for a project whose XAML Passenger reads (an Avalonia or WPF project), or null for another;
-    /// <paramref name="failed"/> hears of a file a load could not read, which it leaves out, and <paramref name="evaluations"/>
-    /// answers what MSBuild's evaluation says of where a project's restore and build put things, from any thread.</summary>
-    public static XamlProjectBuilder? For(string projectPath, string? dotnetRoot, Action<Exception>? failed = null, Func<string, ProjectEvaluation?>? evaluations = null)
+    /// <paramref name="failed"/> hears of a file a load could not read, which it leaves out, <paramref name="evaluations"/>
+    /// answers what MSBuild's evaluation says of a project (where its restore and build put things, what its C# is parsed
+    /// with), from any thread, and a project it says nothing of has its C# parsed with <paramref name="unevaluated"/>.</summary>
+    public static XamlProjectBuilder? For(string projectPath, string? dotnetRoot, CSharpParseOptions unevaluated, Action<Exception>? failed = null,
+        Func<string, ProjectEvaluation?>? evaluations = null)
     {
         ProjectInputs inputs = ProjectInputs.Read(projectPath, dotnetRoot, evaluations?.Invoke(projectPath));
-        return DialectOf(inputs) is { } dialect ? new XamlProjectBuilder(inputs, dialect, dotnetRoot, failed, evaluations) : null;
+        return DialectOf(inputs) is { } dialect ? new XamlProjectBuilder(inputs, dialect, dotnetRoot, unevaluated, failed, evaluations) : null;
     }
 
     /// <summary>The dialect a project's XAML is in, by the framework it references: Avalonia's for a project that references
@@ -84,9 +94,10 @@ public sealed class XamlProjectBuilder
             referenced = [];
             CollectReferences(inputs, new HashSet<string>(StringComparer.Ordinal) { inputs.ProjectPath });
             sources.Clear();
-            List<(string Path, string Assembly)> cs = [.. inputs.SourceFiles.Select(f => (f, inputs.AssemblyName))];
-            cs.AddRange(referenced.SelectMany(r => r.Inputs.SourceFiles.Select(f => (f, r.Inputs.AssemblyName))));
-            foreach (SourceTypes read in cs.AsParallel().Select(f => Reading(() => SourceTypes.Read(f.Path, open?.Invoke(f.Path) ?? ReadText(f.Path), f.Assembly))).OfType<SourceTypes>())
+            List<(string Path, ProjectInputs Project)> cs = [.. inputs.SourceFiles.Select(f => (f, inputs))];
+            cs.AddRange(referenced.SelectMany(r => r.Inputs.SourceFiles.Select(f => (f, r.Inputs))));
+            foreach (SourceTypes read in cs.AsParallel().Select(f => Reading(() => SourceTypes.Read(f.Path, open?.Invoke(f.Path) ?? ReadText(f.Path), f.Project.AssemblyName,
+                ParsingOf(f.Project)))).OfType<SourceTypes>())
             {
                 sources[read.Path] = read;
             }
@@ -139,8 +150,8 @@ public sealed class XamlProjectBuilder
     {
         lock (gate)
         {
-            string? assembly = AssemblyOf(path);
-            if (assembly is null)
+            ProjectInputs? project = Compiling(path);
+            if (project is null)
             {
                 return null;
             }
@@ -150,7 +161,7 @@ public sealed class XamlProjectBuilder
             }
             else
             {
-                sources[path] = SourceTypes.Read(path, text ?? ReadText(path), assembly);
+                sources[path] = SourceTypes.Read(path, text ?? ReadText(path), project.AssemblyName, ParsingOf(project));
             }
             return built = Make();
         }
@@ -191,9 +202,12 @@ public sealed class XamlProjectBuilder
         }
     }
 
-    /// <summary>Which project's assembly a C# file is compiled into, of this one and those it references; null for none.</summary>
-    private string? AssemblyOf(string path) =>
-        new[] { inputs }.Concat(referenced.Select(r => r.Inputs)).FirstOrDefault(project => project.Compiles(path))?.AssemblyName;
+    /// <summary>Which project compiles a C# file, of this one and those it references; null for none.</summary>
+    private ProjectInputs? Compiling(string path) =>
+        new[] { inputs }.Concat(referenced.Select(r => r.Inputs)).FirstOrDefault(project => project.Compiles(path));
+
+    /// <summary>What a project's C# files are parsed with: what its evaluation says, else what a project with none takes.</summary>
+    private CSharpParseOptions ParsingOf(ProjectInputs project) => project.Parsing ?? unevaluated;
 
     private XamlProject Make()
     {

@@ -2,8 +2,10 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using NuGet.Frameworks;
+using Passenger.App.CSharp;
 using Passenger.App.Templates;
 using Passenger.Core;
+using Passenger.Languages.CSharp;
 using Passenger.Text;
 using Passenger.Workspace;
 
@@ -24,6 +26,8 @@ public static class AspireOrchestration
         string name = Path.GetFileNameWithoutExtension(solution);
         string host = choice.AppHost?.Path ?? Path.Combine(root, name + ".AppHost", name + ".AppHost.csproj");
         string defaults = choice.ServiceDefaults?.Path ?? Path.Combine(root, name + ".ServiceDefaults", name + ".ServiceDefaults.csproj");
+        // A new AppHost, which nothing has evaluated, is read as a file in no project.
+        CSharpParseOptions hostParsing = choice.AppHost is { } chosen ? CompilationSymbols.Of(chosen) : CSharpParsing.Default;
         Dictionary<string, (string Staged, byte[]? Before)> files = new(PathNames.Comparer);
         List<string> newFolders = [];
         foreach (string project in new[] { choice.AppHost is null ? host : null, choice.ServiceDefaults is null ? defaults : null }.OfType<string>())
@@ -73,7 +77,7 @@ public static class AspireOrchestration
         if (choice.AppHost is not null)
         {
             Copy(host);
-            Copy(HostSourcePath(host));
+            Copy(HostSourcePath(host, hostParsing));
             if (choice.Services.Any(service => !CanReference(choice.AppHost.TargetFrameworks, service.TargetFrameworks)))
             {
                 throw new InvalidOperationException("The selected AppHost framework cannot reference every selected service: choose a newer AppHost");
@@ -162,11 +166,11 @@ public static class AspireOrchestration
                 Check(ProjectEdits.AddReference(Staged(host), Staged(service.Path)));
             }
             string program = Path.Combine(service.Folder, "Program.cs");
-            Save(Staged(program), ServiceSource(Read(Staged(program)).Text, program));
+            Save(Staged(program), ServiceSource(Read(Staged(program)).Text, program, CompilationSymbols.Of(service)));
         }
-        string hostProgram = HostSourcePath(Staged(host));
+        string hostProgram = HostSourcePath(Staged(host), hostParsing);
         Dictionary<string, BackingNeeds> needs = choice.Services.ToDictionary(service => service.Path, service => BackingService.Needs(service), PathNames.Comparer);
-        Save(hostProgram, HostSource(Read(hostProgram).Text, host, choice.Services, needs));
+        Save(hostProgram, HostSource(Read(hostProgram).Text, host, choice.Services, needs, hostParsing));
         foreach (BackingService backing in BackingService.Known.Where(k => needs.Values.Any(n => n.Services.Contains(k))))
         {
             AddHosting(host, backing.AspirePackage, root, Staged, Copy);
@@ -199,14 +203,15 @@ public static class AspireOrchestration
             throw new InvalidOperationException("The selected ServiceDefaults target framework is not compatible with every service");
         }
         // What the project builds, never its output, a link twice or a hidden folder.
+        CSharpParseOptions parsing = CompilationSymbols.Of(defaults);
         List<MethodDeclarationSyntax> methods = [.. FolderWalk.Files(defaults.Folder, built: true)
             .Where(p => p.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
-            .SelectMany(p => CSharpSyntaxTree.ParseText(Read(p).Text).GetRoot().DescendantNodes().OfType<MethodDeclarationSyntax>())];
+            .SelectMany(p => CSharpSyntaxTree.ParseText(Read(p).Text, parsing).GetRoot().DescendantNodes().OfType<MethodDeclarationSyntax>())];
         if (!methods.Any(m => m.Identifier.ValueText == "AddServiceDefaults" && m.ParameterList.Parameters.FirstOrDefault()?.Modifiers.Any(SyntaxKind.ThisKeyword) == true))
         {
             throw new InvalidOperationException("The selected ServiceDefaults project does not expose AddServiceDefaults: choose an Aspire ServiceDefaults project");
         }
-        bool web = services.Any(p => CSharpSyntaxTree.ParseText(Read(Path.Combine(p.Folder, "Program.cs")).Text).GetRoot()
+        bool web = services.Any(p => CSharpSyntaxTree.ParseText(Read(Path.Combine(p.Folder, "Program.cs")).Text, CompilationSymbols.Of(p)).GetRoot()
             .DescendantNodes().OfType<InvocationExpressionSyntax>().Any(i => i.Expression is MemberAccessExpressionSyntax
             { Expression: IdentifierNameSyntax { Identifier.ValueText: "WebApplication" }, Name.Identifier.ValueText: "CreateBuilder" }));
         if (web && !methods.Any(m => m.Identifier.ValueText == "MapDefaultEndpoints" && m.ParameterList.Parameters.FirstOrDefault()?.Modifiers.Any(SyntaxKind.ThisKeyword) == true))
@@ -218,9 +223,10 @@ public static class AspireOrchestration
     public static IReadOnlyList<string> AppHostSources(string project) =>
         [.. Directory.EnumerateFiles(Path.GetDirectoryName(project)!, "*.cs", SearchOption.TopDirectoryOnly)];
 
-    private static string HostSourcePath(string project)
+    /// <summary>The AppHost's file that makes its builder, its files read as its project compiles them (<paramref name="parsing"/>).</summary>
+    private static string HostSourcePath(string project, CSharpParseOptions parsing)
     {
-        List<string> sources = [.. AppHostSources(project).Where(path => CSharpSyntaxTree.ParseText(Read(path).Text).GetRoot()
+        List<string> sources = [.. AppHostSources(project).Where(path => CSharpSyntaxTree.ParseText(Read(path).Text, parsing).GetRoot()
             .DescendantNodes().OfType<InvocationExpressionSyntax>().Any(i => i.Expression is MemberAccessExpressionSyntax
                 { Expression: IdentifierNameSyntax { Identifier.ValueText: "DistributedApplication" }, Name.Identifier.ValueText: "CreateBuilder" }))];
         return sources.Count == 1 ? sources[0]
@@ -261,9 +267,9 @@ public static class AspireOrchestration
         }
     }
 
-    private static string ServiceSource(string text, string path)
+    private static string ServiceSource(string text, string path, CSharpParseOptions parsing)
     {
-        CompilationUnitSyntax root = Parse(text, path);
+        CompilationUnitSyntax root = Parse(text, path, parsing);
         (VariableDeclaratorSyntax builder, InvocationExpressionSyntax create) = Builder(root, ["WebApplication", "Host"], path);
         string variable = builder.Identifier.Text;
         InvocationExpressionSyntax build = Build(root, builder, path);
@@ -286,9 +292,10 @@ public static class AspireOrchestration
         return Insert(text, insertions);
     }
 
-    private static string HostSource(string text, string host, IReadOnlyList<ProjectModel> services, IReadOnlyDictionary<string, BackingNeeds> needs)
+    private static string HostSource(string text, string host, IReadOnlyList<ProjectModel> services, IReadOnlyDictionary<string, BackingNeeds> needs,
+        CSharpParseOptions parsing)
     {
-        CompilationUnitSyntax root = Parse(text, host);
+        CompilationUnitSyntax root = Parse(text, host, parsing);
         (VariableDeclaratorSyntax builder, _) = Builder(root, ["DistributedApplication"], host);
         InvocationExpressionSyntax build = Build(root, builder, host);
         StatementSyntax statement = build.Ancestors().OfType<StatementSyntax>().First();
@@ -528,9 +535,10 @@ public static class AspireOrchestration
         InvalidOperationException Unresolved() => new($"Cannot resolve AppHost AddProject arguments: {call}; use literal name and projectPath arguments and a supported Aspire overload before adding orchestration");
     }
 
-    private static CompilationUnitSyntax Parse(string text, string path)
+    /// <summary>A file to change, read as its project compiles it (<paramref name="parsing"/>).</summary>
+    private static CompilationUnitSyntax Parse(string text, string path, CSharpParseOptions parsing)
     {
-        CompilationUnitSyntax root = CSharpSyntaxTree.ParseText(text).GetCompilationUnitRoot();
+        CompilationUnitSyntax root = CSharpSyntaxTree.ParseText(text, parsing).GetCompilationUnitRoot();
         if (root.ContainsDiagnostics || root.ContainsDirectives)
         {
             throw new InvalidOperationException($"{path}: source contains syntax errors or directives: add orchestration by hand for this layout");

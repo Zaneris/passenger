@@ -483,6 +483,34 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         }
     }
 
+    /// <summary>Smart Step Into reads the line it stopped at as the project compiles it: a line of calls under
+    /// #if NET8_0_OR_GREATER offers its calls in the order they run, and Enter steps into the one chosen.</summary>
+    [AvaloniaFact]
+    public void Smart_step_into_offers_the_calls_of_a_line_under_its_frameworks_symbols()
+    {
+        Write("Program.cs", "int nested = 0;\n#if NET8_0_OR_GREATER\nnested = Outer(Inner());\n#endif\nConsole.WriteLine(nested);\n\n"
+            + "static int Inner() => 20;\nstatic int Outer(int value)\n{\n    return value + 1;\n}\n");
+        MainWindow window = Open();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.GoTo(new TextPosition(2, 0));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        StartDebugging(window);
+        WaitDebugging(window, () => window.Debugger.Session?.State == DebugState.Paused && editor.LineMarks.Contains(new LineMark(2, LineMarkKind.ExecutionPoint)),
+            "the stop at the line of calls under #if NET8_0_OR_GREATER");
+
+        editor.Focus();
+        Ui.Run(window, AppActions.SmartStepInto);
+        Ui.WaitFor(() => editor.IsChoosing, () => $"the calls of the line under #if NET8_0_OR_GREATER to be offered: {window.Status}");
+        Assert.Equal(["Inner", "Outer"], editor.Choices.Select(r => editor.Document.Snapshot.GetText(r.Start, r.Length)));
+        Ui.Press(window, "Right");
+        Ui.Press(window, "Enter");
+        Ui.WaitFor(() => Value(window, "value") == "20", "the stop in Outer, given what Inner returned");
+        Assert.Contains(new LineMark(8, LineMarkKind.ExecutionPoint), editor.LineMarks);
+        Ui.Run(window, AppActions.Stop);
+        Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
+        window.Close();
+    }
+
     /// <summary>One program of calls stepped through: a step over a call lists what it returned at the top of Variables, which
     /// a watch names and the next step's calls replace; then Smart Step Into marks the next line's calls in the order they
     /// run, and Enter steps into the one chosen. Resumed, the program ends in an exception the runtime throws, which stops it

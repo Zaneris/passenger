@@ -166,6 +166,7 @@ public sealed class MarkdownCode : Border
             return;
         }
         document = new TextDocument(code);
+        // A block no project compiles, coloured alone: a file in no project's symbols and C# are the best guess.
         highlighter = Languages.Highlighters.For(language, document);
         if (highlighter is not null)
         {

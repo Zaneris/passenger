@@ -139,8 +139,8 @@ public sealed record EvaluatedProject
     /// <summary>Its packages and project references, a target framework each, or one with none for a project with one.</summary>
     public IReadOnlyList<FrameworkDependencies> Dependencies { get; init; } = [];
 
-    /// <summary>The preprocessor symbols each target framework compiles with, in the order of <see cref="TargetFrameworks"/>;
-    /// none for a multi-targeted project known by its outer evaluation alone.</summary>
+    /// <summary>The preprocessor symbols and C# version each target framework compiles with, in the order of
+    /// <see cref="TargetFrameworks"/>; none for a multi-targeted project known by its outer evaluation alone.</summary>
     public IReadOnlyList<FrameworkSymbols> Symbols { get; init; } = [];
 
     /// <summary>The files the project holds, every framework's, each once.</summary>
@@ -211,9 +211,10 @@ public sealed record FrameworkDependencies(string? Framework, IReadOnlyList<Pack
     public bool WindowsTargeting { get; init; }
 }
 
-/// <summary>The preprocessor symbols a target framework of a project compiles with: its DefineConstants, with the symbols the
-/// .NET SDK adds for the framework and its platform (NET11_0, NET8_0_OR_GREATER, WINDOWS).</summary>
-public sealed record FrameworkSymbols(string Framework, IReadOnlyList<string> Symbols);
+/// <summary>What a target framework of a project compiles its C# with: its DefineConstants, with the symbols the .NET SDK
+/// adds for the framework and its platform (NET11_0, NET8_0_OR_GREATER, WINDOWS), and its LangVersion ("12", "preview"),
+/// the SDK's for the framework when the project sets none, or null where the evaluation has none.</summary>
+public sealed record FrameworkSymbols(string Framework, IReadOnlyList<string> Symbols, string? LanguageVersion = null);
 
 /// <summary>A package reference, its version as restore takes it: its own, its VersionOverride, or the central one.</summary>
 public sealed record PackageDependency(string Name, string? Version, bool Implicit);

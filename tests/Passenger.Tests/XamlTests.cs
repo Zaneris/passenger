@@ -163,6 +163,41 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>An event's handlers come from the code-behind as its project compiles it: one declared under
+    /// #if NET8_0_OR_GREATER is offered, one under #if !NET8_0_OR_GREATER is not.</summary>
+    [AvaloniaFact]
+    public void An_events_handlers_are_the_code_behinds_methods_under_its_frameworks_symbols_and_not_those_it_never_compiles()
+    {
+        app.Rewrite("MainWindow.axaml.cs", Gallery.CodeBehind.Replace("    }\n}", """
+                }
+
+            #if NET8_0_OR_GREATER
+                private void OnGo(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+                {
+                }
+            #endif
+
+            #if !NET8_0_OR_GREATER
+                private void OnLegacyGo(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+                {
+                }
+            #endif
+            }
+            """, StringComparison.Ordinal));
+        MainWindow window = app.Open(app.PathOf("MainWindow.axaml"));
+        // The XAML read again with what the evaluation says the code-behind is compiled with, before the list is asked for.
+        Ui.WaitFor(() => window.WorkspaceModel!.Projects.All(p => p.IsEvaluated), "Gallery's project to be evaluated");
+        Ui.Settle();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "<Button Name=\"Go\" Content=\"Go\"");
+        window.KeyTextInput(" Click=");
+        window.KeyTextInput("\"");
+        Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("OnGo"),
+            () => $"OnGo, declared under #if NET8_0_OR_GREATER in the {TestProjects.Framework} project's code-behind, among Click's handlers [{string.Join(", ", window.Assist.CompletionLabels)}]");
+        Assert.DoesNotContain("OnLegacyGo", window.Assist.CompletionLabels);
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void Passengers_own_main_window_completes_its_theme_tokens_and_its_style_classes()
     {

@@ -7,9 +7,9 @@ using Passenger.Workspace;
 namespace Passenger.App.CSharp;
 
 /// <summary>What a C# file of the folder is parsed with in process (<see cref="CSharpParsing"/>): the preprocessor symbols
-/// its project compiles it with for the framework the editor shows, as MSBuild evaluated them (the SDK's framework and
-/// platform symbols among them). A file in no project, or in one not yet evaluated, has a Debug build's. Pure, so any
-/// thread may ask.</summary>
+/// and C# version its project compiles it with for the framework the editor shows, as MSBuild evaluated them (the SDK's
+/// framework and platform symbols, and its LangVersion for the framework, among them). A file in no project, or in one not
+/// yet evaluated, has a Debug build's symbols. Pure, so any thread may ask.</summary>
 public static class CompilationSymbols
 {
     /// <summary>A file's: the project of the language server's context it is shown in (<paramref name="context"/>, the
@@ -25,7 +25,7 @@ public static class CompilationSymbols
     {
         IReadOnlyList<FrameworkSymbols> evaluated = project.Evaluated?.Symbols ?? [];
         FrameworkSymbols? chosen = evaluated.FirstOrDefault(f => string.Equals(f.Framework, framework, StringComparison.OrdinalIgnoreCase)) ?? evaluated.FirstOrDefault();
-        return chosen is null ? CSharpParsing.Default : CSharpParsing.Defining(chosen.Symbols);
+        return chosen is null ? CSharpParsing.Default : CSharpParsing.Defining(chosen.Symbols, chosen.LanguageVersion);
     }
 
     /// <summary>The project a server's context names, as Roslyn names a project after its file: of several of that name,

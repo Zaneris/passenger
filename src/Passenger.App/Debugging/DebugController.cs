@@ -1288,10 +1288,11 @@ public sealed class DebugController : IDisposable
             return;
         }
         int stop = shown;
+        string path = PathNames.Canonical(source);
         IReadOnlyList<StepInTarget> targets;
         try
         {
-            targets = await session.StepInTargetsAsync(top.Id);
+            targets = await session.StepInTargetsAsync(top.Id, editors.ParseOptions(path));
         }
         catch (DapException error)
         {
@@ -1302,7 +1303,6 @@ public sealed class DebugController : IDisposable
         {
             return;
         }
-        string path = PathNames.Canonical(source);
         Navigate?.Invoke(this, (path, Current(path, top)));
         CodeEditor editor = editors.CodeEditor;
         List<(StepInTarget Target, TextRange Range)> placed = editors.Active?.Path == path ? Placed(targets, path, editor.Document.Snapshot) : [];

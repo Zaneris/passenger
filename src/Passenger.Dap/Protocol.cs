@@ -337,8 +337,10 @@ public sealed record ThreadArguments(int ThreadId);
 /// <summary>Step Into: the thread, and the call to step straight into (a target stepInTargets gave), Smart Step Into's.</summary>
 public sealed record StepInArguments(int ThreadId, int? TargetId = null);
 
-/// <summary>The calls a frame's statement can step into, in the order they run (Smart Step Into's question).</summary>
-public sealed record StepInTargetsArguments(int FrameId);
+/// <summary>The calls a frame's statement can step into, in the order they run (Smart Step Into's question), its source read
+/// as its project compiles it: with these preprocessor symbols, at this C# version ("12.0", "preview"); with neither, as
+/// the compiler's defaults read it.</summary>
+public sealed record StepInTargetsArguments(int FrameId, IReadOnlyList<string>? PreprocessorSymbols = null, string? LanguageVersion = null);
 
 public sealed record StepInTargetsResponse
 {

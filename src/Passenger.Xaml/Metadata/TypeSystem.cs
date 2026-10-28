@@ -1,3 +1,5 @@
+using Microsoft.CodeAnalysis.CSharp;
+
 namespace Passenger.Xaml.Metadata;
 
 /// <summary>An xmlns URI's CLR namespace, as an assembly's <c>XmlnsDefinition</c> maps it.</summary>
@@ -14,6 +16,7 @@ public sealed class TypeSystem
     private readonly List<XmlnsDefinition> definitions = [];
     private readonly Dictionary<string, string> prefixes = new(StringComparer.Ordinal);
     private readonly Dictionary<string, IReadOnlyList<SourcePlace>> parts = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, CSharpParseOptions> parsing = new(StringComparer.Ordinal);
     private readonly IReadOnlyList<string> globalUsings;
 
     public TypeSystem(IReadOnlyList<AssemblyTypes> assemblies, IReadOnlyList<SourceTypes> sources, string assemblyName, IReadOnlyList<string>? implicitUsings = null)
@@ -48,6 +51,10 @@ public sealed class TypeSystem
         {
             usings.AddRange(source.GlobalUsings);
             Definitions(source.Attributes, assemblyName);
+            if (source.Parsing is { } options)
+            {
+                parsing[source.Path] = options;
+            }
         }
         globalUsings = [.. usings.Distinct(StringComparer.Ordinal)];
         Namespaces = [.. byNamespace.Keys.Where(n => n.Length > 0).Order(StringComparer.Ordinal)];
@@ -72,6 +79,10 @@ public sealed class TypeSystem
 
     /// <summary>Where the project's C# declares a type, each part of a partial one (a code-behind and its other files).</summary>
     public IReadOnlyList<SourcePlace> PlacesOf(string fullName) => parts.GetValueOrDefault(fullName) ?? [];
+
+    /// <summary>What a C# file whose types these are was parsed with (<see cref="SourceTypes.Parsing"/>); null for a file
+    /// not read as C#.</summary>
+    public CSharpParseOptions? ParsingOf(string path) => parsing.GetValueOrDefault(path);
 
     /// <summary>The top-level types of a CLR namespace.</summary>
     public IReadOnlyList<ClrType> InNamespace(string clrNamespace) => byNamespace.TryGetValue(clrNamespace, out List<ClrType>? types) ? types : [];

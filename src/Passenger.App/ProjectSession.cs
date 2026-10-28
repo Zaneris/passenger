@@ -209,12 +209,13 @@ public sealed class ProjectSession : IAsyncDisposable
 
     private WorkspaceModel? workspace;
 
-    /// <summary>What each evaluated project says of where its restore and build put things, by its path, replaced whole,
-    /// so the XAML service reads it from any thread.</summary>
+    /// <summary>What each evaluated project says of where its restore and build put things and what its C# is parsed with,
+    /// by its path, replaced whole, so the XAML service reads it from any thread.</summary>
     private volatile IReadOnlyDictionary<string, ProjectEvaluation> evaluations =
         new Dictionary<string, ProjectEvaluation>(PathNames.Comparer);
 
-    /// <summary>The projects' evaluations taken anew, and the XAML of a project whose evaluation moved something read again.</summary>
+    /// <summary>The projects' evaluations taken anew, and the XAML of a project whose evaluation moved something, or changed
+    /// what its C# is parsed with, read again.</summary>
     private void FollowEvaluations()
     {
         Dictionary<string, ProjectEvaluation> now = new(PathNames.Comparer);
@@ -227,7 +228,10 @@ public sealed class ProjectSession : IAsyncDisposable
                     evaluated.Properties.GetValueOrDefault(Passenger.Host.CarriedProperties.NuGetPackageRoot)?.Value,
                     project.Packages.Where(p => p.Version is { Length: > 0 }).DistinctBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
                         .ToDictionary(p => p.Name, p => p.Version!, StringComparer.OrdinalIgnoreCase),
-                    evaluated.Properties.GetValueOrDefault(Passenger.Host.CarriedProperties.TargetPath)?.Value);
+                    evaluated.Properties.GetValueOrDefault(Passenger.Host.CarriedProperties.TargetPath)?.Value)
+                {
+                    Parsing = CompilationSymbols.Of(project),
+                };
             }
         }
         IReadOnlyDictionary<string, ProjectEvaluation> was = evaluations;
@@ -239,7 +243,8 @@ public sealed class ProjectSession : IAsyncDisposable
         }
 
         static bool Same(ProjectEvaluation a, ProjectEvaluation b) =>
-            a.AssetsFile == b.AssetsFile && a.PackageRoot == b.PackageRoot && a.TargetPath == b.TargetPath && a.Versions.Count == b.Versions.Count
+            a.AssetsFile == b.AssetsFile && a.PackageRoot == b.PackageRoot && a.TargetPath == b.TargetPath && ReferenceEquals(a.Parsing, b.Parsing)
+            && a.Versions.Count == b.Versions.Count
             && a.Versions.All(v => b.Versions.TryGetValue(v.Key, out string? version) && version == v.Value);
     }
 

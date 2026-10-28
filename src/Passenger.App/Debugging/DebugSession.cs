@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Microsoft.CodeAnalysis.CSharp;
 using Passenger.Core;
 using Passenger.Dap;
 using Passenger.Text;
@@ -415,9 +416,10 @@ public sealed class DebugSession
     public Task StepIntoTargetAsync(int target) => Resume(DapCommands.StepIn, thread => new StepInArguments(thread, target));
 
     /// <summary>The calls a frame's statement can step into, in the order they run, each placed where it is written (lines
-    /// and columns from one, at the built lines).</summary>
-    public async Task<IReadOnlyList<StepInTarget>> StepInTargetsAsync(int frameId) =>
-        (await connection.RequestAsync<StepInTargetsResponse>(DapCommands.StepInTargets, new StepInTargetsArguments(frameId))).Targets;
+    /// and columns from one, at the built lines), its source read as <paramref name="parsing"/> says its project compiles it.</summary>
+    public async Task<IReadOnlyList<StepInTarget>> StepInTargetsAsync(int frameId, CSharpParseOptions parsing) =>
+        (await connection.RequestAsync<StepInTargetsResponse>(DapCommands.StepInTargets,
+            new StepInTargetsArguments(frameId, [.. parsing.PreprocessorSymbolNames], parsing.LanguageVersion.ToDisplayString()))).Targets;
 
     public Task StepOutAsync() => Resume(DapCommands.StepOut);
 

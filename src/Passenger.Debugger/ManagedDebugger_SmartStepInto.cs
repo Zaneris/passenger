@@ -52,9 +52,10 @@ public partial class ManagedDebugger
 
     private SmartStep? _smartStep;
 
-    /// <summary>The calls a thread's top frame can step into from its statement, in the order they run; none from another
-    /// frame, or from code without symbols.</summary>
-    public List<StepInTargetInfo> StepInTargets(int frameId)
+    /// <summary>The calls a thread's top frame can step into from its statement, in the order they run, its source read
+    /// with the preprocessor symbols and C# version its project compiles it with (<see cref="SourceParsing"/>); none from
+    /// another frame, or from code without symbols.</summary>
+    public List<StepInTargetInfo> StepInTargets(int frameId, IReadOnlyList<string>? preprocessorSymbols = null, string? languageVersion = null)
     {
         _stepInTargets.Clear();
         if (_frameReferenceManager.GetFrameInfoById(frameId) is not var (threadId, depth) || depth.Value != 0)
@@ -97,7 +98,7 @@ public partial class ManagedDebugger
         SourceText? text = path is not null && File.Exists(path) ? SourceText.From(File.ReadAllText(path)) : null;
         List<(StepInPlan Plan, string Label, LinePositionSpan? Place)> found = text is null
             ? FromCalls(module, calls, threadId, range, start, end)
-            : FromSource(module, calls, text, points[at], points[last], threadId, range, start, end);
+            : FromSource(module, calls, text, SourceParsing(preprocessorSymbols, languageVersion), points[at], points[last], threadId, range, start, end);
 
         List<StepInTargetInfo> targets = [];
         foreach ((StepInPlan plan, string label, LinePositionSpan? place) in found)
@@ -110,17 +111,24 @@ public partial class ManagedDebugger
         return targets;
     }
 
+    /// <summary>What a frame's source is parsed with: the symbols and C# version the client says its project compiles it
+    /// with; the compiler's defaults when it says neither, a version this parser does not know its preview.</summary>
+    private static CSharpParseOptions SourceParsing(IReadOnlyList<string>? symbols, string? version) =>
+        symbols is null && version is null ? CSharpParseOptions.Default
+        : new CSharpParseOptions(version is not null && LanguageVersionFacts.TryParse(version, out LanguageVersion known) ? known : LanguageVersion.Preview,
+            DocumentationMode.None, preprocessorSymbols: symbols);
+
     /// <summary>The statement's calls matched to its source's invocations, object creations and lambdas, in the order they
     /// run: each invocation by its name to the next call of that name in the IL, a lambda to the delegate made of the
     /// method its body is, which runs once what it is handed to is called, so it comes after that call.</summary>
     private List<(StepInPlan, string, LinePositionSpan?)> FromSource(ModuleInfo module, List<ModuleMetadataReader.CallSite> calls, SourceText text,
-        ModuleMetadataReader.Point first, ModuleMetadataReader.Point last, ThreadId threadId, StackRange range, int start, int end)
+        CSharpParseOptions parsing, ModuleMetadataReader.Point first, ModuleMetadataReader.Point last, ThreadId threadId, StackRange range, int start, int end)
     {
         int Position(int line, int column) => line < 1 || line > text.Lines.Count ? 0 : Math.Min(text.Lines[line - 1].Start + column - 1, text.Lines[line - 1].End);
         TextSpan statement = TextSpan.FromBounds(Position(first.StartLine, first.StartColumn), Math.Max(Position(first.StartLine, first.StartColumn), Position(last.EndLine, last.EndColumn)));
         List<SyntaxNode> nodes = [];
         Dictionary<SyntaxNode, List<SyntaxNode>> handedLambdas = [];
-        Visit(CSharpSyntaxTree.ParseText(text).GetRoot());
+        Visit(CSharpSyntaxTree.ParseText(text, parsing).GetRoot());
 
         List<(StepInPlan, string, LinePositionSpan?)> targets = [];
         Dictionary<(ModuleInfo, int), int> seen = [];
