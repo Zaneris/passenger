@@ -972,6 +972,48 @@ public sealed class VcsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Annotate in a repository whose hashes are SHA-256's 64 hex digits names each line by its commit, as in one
+    /// of SHA-1's 40.</summary>
+    [AvaloniaFact]
+    public void Annotations_name_each_lines_commit_in_a_sha256_repository()
+    {
+        string tree = TestFolders.Create("git-sha256-");
+        try
+        {
+            File.WriteAllText(Path.Combine(tree, "Shop.cs"), Original);
+            TestGit.Run(tree, "init", "-q", "-b", "main", "--object-format=sha256");
+            TestGit.Run(tree, "config", "user.email", "tests@passenger.invalid");
+            TestGit.Run(tree, "config", "user.name", "Passenger Tests");
+            TestGit.Run(tree, "config", "core.autocrlf", "false");
+            TestGit.Run(tree, "add", "-A");
+            TestGit.Run(tree, "commit", "-q", "-m", "First");
+            File.WriteAllText(Path.Combine(tree, "Shop.cs"), Original.Replace("count++", "count += 2", StringComparison.Ordinal));
+            TestGit.Run(tree, "commit", "-q", "-am", "Twice");
+            string twice = TestGit.Run(tree, "rev-parse", "HEAD").Trim();
+            string first = TestGit.Run(tree, "rev-parse", "HEAD~1").Trim();
+            Assert.Equal(64, twice.Length);
+
+            MainWindow window = Ui.OpenFolder(tree);
+            window.OpenFile(Path.Combine(tree, "Shop.cs"));
+            Ui.Settle();
+            Passenger.App.Workspace.OpenDocument shop = window.EditorArea.Active!;
+            Task annotating = window.ToggleAnnotationsAsync(shop);
+            Ui.Landed(() => annotating.IsCompleted, "the blame");
+            IReadOnlyList<BlameLine> blame = window.Vcs.BlameOf(shop) ?? [];
+            Assert.True(blame.Count == 6, $"Annotate blamed {blame.Count} lines of the SHA-256 repository's 6: {window.Status}");
+            Assert.Equal(first, blame[0].Hash);
+            Assert.Equal(twice, blame[4].Hash);
+            Assert.Equal("Twice", blame[4].Summary);
+            Assert.NotNull(shop.GutterAnnotations[0]);
+            Assert.NotNull(shop.GutterAnnotations[4]);
+            window.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(tree);
+        }
+    }
+
     [AvaloniaFact]
     public void Annotations_opened_and_closed_again_and_again_blame_the_file_once_for_each_pause_in_typing()
     {

@@ -966,7 +966,8 @@ public sealed class Git
                 continue;
             }
             string[] words = line.Split(' ', 2);
-            if (words[0].Length == 40 && words[0].All(char.IsAsciiHexDigit))
+            // A SHA-1 repository's hashes are 40 hex digits, a SHA-256 one's 64.
+            if (words[0].Length is 40 or 64 && words[0].All(char.IsAsciiHexDigit))
             {
                 hash = words[0];
                 reading = (string.Empty, 0, string.Empty);
