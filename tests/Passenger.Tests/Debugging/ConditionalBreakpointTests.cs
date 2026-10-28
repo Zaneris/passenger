@@ -344,4 +344,35 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         EvaluateResponse? evaluateResponse2 = await debugProtocolHost.EvaluateAsync(stackFrameId2, "_count");
         Assert.Equal("4", evaluateResponse2.Result);
     }
+
+    /// <summary>A condition that reads a pattern's variable (boxed is int k &amp;&amp; …) stops only where it holds: never
+    /// where it is false on every round, and on the one round where it is true, which the round then read says.</summary>
+    [Fact]
+    public async Task A_condition_reading_a_patterns_variable_stops_only_where_it_holds()
+    {
+        string source = Debuggees.Source("PassengerCases", "Program.cs");
+        int never = Debuggees.Line("PassengerCases", "Console.WriteLine($\"reading round {round}\");");
+        int once = Debuggees.Line("PassengerCases", "Console.WriteLine($\"read round {round}\");");
+        int after = Debuggees.Line("PassengerCases", "Console.WriteLine(\"reading\");");
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await host
+            .InitializeAsync()
+            .LaunchAsync(Debuggees.Program("PassengerCases"), stopAtEntry: false, justMyCode: true)
+            .WaitForInitializedEvent();
+        await host
+            .BreakpointsAsync(source,
+            [
+                new DapSourceBreakpoint(never, Condition: "boxed is int k && k > 100"),
+                new DapSourceBreakpoint(once, Condition: "boxed is int k && k + round == 44"),
+                new DapSourceBreakpoint(after),
+            ])
+            .ConfigurationDoneAsync();
+
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        Assert.True(stop.ReadStopInfo().line == once,
+            $"The program stopped at line {stop.ReadStopInfo().line} ({stop.Reason}) before its condition held on round 2 at line {once}: a pattern's variable read in a condition did not evaluate");
+        int frame = (await host.TopFrameAsync(stop.ThreadId!.Value)).Id;
+        Assert.Equal("2", (await host.EvaluateAsync(frame, "round")).Result);
+        Assert.Equal(after, (await host.ContinueAsync().WaitForStoppedEvent()).ReadStopInfo().line);
+    }
 }

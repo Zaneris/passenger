@@ -139,6 +139,22 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
             $"A span over the char the debugger lends only for the call answered \"{kept}\", where it is refused, saying why");
     }
 
+    /// <summary>The variables an expression declares, a pattern's and an out argument's, evaluate: each holds what the
+    /// pattern took apart or the call put out.</summary>
+    [Fact]
+    public async Task Variables_a_pattern_or_an_out_argument_declares_evaluate()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        int frame = await StoppedInReadingAsync(host);
+
+        Assert.Equal("true", (await Evaluate(host, frame, "boxed is int k && k > 40")).Value);
+        Assert.Equal("false", (await Evaluate(host, frame, "boxed is int k && k > 100")).Value);
+        Assert.Equal("43", (await Evaluate(host, frame, "boxed is int k ? k + 1 : 0")).Value);
+        Assert.Equal("true", (await Evaluate(host, frame, "word is string { Length: 5 } w && w[0] == 'h'")).Value);
+        Assert.Equal("true", (await Evaluate(host, frame, "spot is { X: var x } && x == 3")).Value);
+        Assert.Equal("5", (await Evaluate(host, frame, "int.TryParse(\"5\", out int parsed) ? parsed : -1")).Value);
+    }
+
     private static int Line(string code) => Debuggees.Line("PassengerCases", code);
 
     /// <summary>PassengerCases launched and stopped in Reading.Run once its rounds are done; the top frame.</summary>
