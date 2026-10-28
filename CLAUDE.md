@@ -146,7 +146,9 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
 - **Shortcuts follow Rider's**: its Visual Studio (Windows) or Visual Studio OSX (macOS) keymap, and its VS Code keymaps
   for that preset, resolved as IntelliJ does (own list, then plugins' descriptors, then the parent); a keypad key Rider
   binds beside a main key is bound too. A key IntelliJ gives two actions by place goes to one, said where it's bound;
-  the place takes it through `AppActions.KeysIn`.
+  the place takes it through `AppActions.KeysIn`. Mouse gestures too: `Keymap.Bind` takes Rider's mouse notation (`meta
+  shift button1`), an editor asks its window's keymap (`CodeEditor.GesturesProperty`) and names no IDE action, and the
+  side buttons run window-wide (`IdeKeys`).
 - **Workflows run only by hand** (the owner's choice): never `gh workflow run` unless the owner says. Commit messages go
   through a file (`git commit -F msg.txt`): backticks in a `-m` string are zsh command substitution.
 
@@ -400,20 +402,21 @@ a bug, never held to a limit. The run sets its nice value to 0; a test needing a
 
 **Helpers.** Clicks: `Ui.Click` (a real press on a control shown, enabled and hit, shutting first the tooltips its
 pointer leaves, which open in the window headless as the window redraws under a pointer that never moved; `RightClick`,
-`DoubleClick`, `ClickButton`, `ClickRow`, `ClickLink`); menus: `Ui.Choose`, `ChooseFromMenu`, `ChooseFromRowMenu`,
-`ChooseFromEditorMenu`. A chord in one `Ui.Press(window, "control M , control S")` (its first key is forgotten after 2
-s). Consoles: `Ui.TypeLine` (`TypeToRun`, `TypeToDebugged`); the caret: `Ui.PlaceAfter`; a run: `Ui.Launched` and its
-status `Ui.Said`, both naming a failed build's errors. Projects: `TestProjects.Console`, `Library`, `Web` (`.With`) on
-`TestProjects.Framework`; files: `TestFolders.Write`; a loopback HTTP server: `StandInHttp`. Multi-line edits:
-`Typing.Replace` (`KeyTextInput` drops `\n`). A server's request held unsent: `LanguageServer.HoldNext`; its answer held:
-`HoldNextAnswer`; a container run's `up`, its ports chosen: `BuildRunController.HoldNextUp`. A helper that runs a program (`TestGit`, `Restore`, `RestoredFolders`, the
-app makers, `SharedProject.Reset`) waits on the UI thread with its loop running and refuses any other; a fixture or a
-windowless test awaits its `…Async` form. Read a log the IDE may be writing with `Ui.Shared`. A dialog is held to
-`DialogButtonsTests.Check`, the window to `UiRulesTests`. A stand-in leaves files a target writes as it found them (a
-new one makes MSBuild skip the target). Containers: `Docker.Stopped`/`TakenDown`; MCP: `McpRig.Text`, `Gone`; an agent
-that gives up sends "cancelled" itself (`CallGivingUp`). A headless click runs the window's queued work and draws frames
-after itself, so what a status said during a click is read from what it showed throughout, not after; a count of a key's
-frames sets aside the caret's blinks (`CodeEditor.Blinks`).
+`DoubleClick`, `MiddleClick`, `SideClick`, `ClickButton`, `ClickRow`, `ClickLink`; a drag with any button and modifiers
+`Ui.Drag`); menus: `Ui.Choose`, `ChooseFromMenu`, `ChooseFromRowMenu`, `ChooseFromEditorMenu`. A chord in one
+`Ui.Press(window, "control M , control S")` (its first key is forgotten after 2 s). Consoles: `Ui.TypeLine`
+(`TypeToRun`, `TypeToDebugged`); the caret: `Ui.PlaceAfter`; a run: `Ui.Launched` and its status `Ui.Said`, both naming
+a failed build's errors. Projects: `TestProjects.Console`, `Library`, `Web` (`.With`) on `TestProjects.Framework`;
+files: `TestFolders.Write`; a loopback HTTP server: `StandInHttp`. Multi-line edits: `Typing.Replace` (`KeyTextInput`
+drops `\n`). A server's request held unsent: `LanguageServer.HoldNext`; its answer held: `HoldNextAnswer`; a container
+run's `up`, its ports chosen: `BuildRunController.HoldNextUp`. A helper that runs a program (`TestGit`, `Restore`,
+`RestoredFolders`, the app makers, `SharedProject.Reset`) waits on the UI thread with its loop running and refuses any
+other; a fixture or a windowless test awaits its `…Async` form. Read a log the IDE may be writing with `Ui.Shared`. A
+dialog is held to `DialogButtonsTests.Check`, the window to `UiRulesTests`. A stand-in leaves files a target writes as
+it found them (a new one makes MSBuild skip the target). Containers: `Docker.Stopped`/`TakenDown`; MCP: `McpRig.Text`,
+`Gone`; an agent that gives up sends "cancelled" itself (`CallGivingUp`). A headless click runs the window's queued work
+and draws frames after itself, so what a status said during a click is read from what it showed throughout, not after; a
+count of a key's frames sets aside the caret's blinks (`CodeEditor.Blinks`).
 
 **What a test needs, or skips saying why without:** a Linux container engine (`docker info`'s OSType; tests label
 everything with `Docker.RunLabel`, remove dead runs' leftovers, never prune or start or stop Docker Desktop, and pull
