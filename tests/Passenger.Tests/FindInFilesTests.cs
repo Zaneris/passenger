@@ -324,6 +324,73 @@ public sealed class FindInFilesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>With Local History shown, Undo and Redo of a Replace All across an open file and a closed one, and a revert
+    /// from the history, each say what they did, and the status bar still says so once the IDE is quiet, Local History
+    /// having followed their writes.</summary>
+    [AvaloniaFact]
+    public void Undo_redo_and_a_revert_with_local_history_shown_keep_saying_what_they_did()
+    {
+        const string Named = "Replace 'count' with 'total'";
+        string alpha = Path.Combine(folder, "Alpha.cs");
+        MainWindow window = Open();
+        window.OpenFile(Path.Combine(folder, "Beta.cs"));
+        Ui.Settle();
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+        Assert.True(window.Perform(AppActions.ShowProjectHistory), "Show Project History did not run");
+        Passenger.App.History.HistoryTab history = window.LocalHistoryWindow.Shown!;
+        FindInFilesPopup popup = window.ShowFindInFiles(replace: true)!;
+        popup.Words = true;
+        Search(popup, "count");
+        popup.Replacement = "total";
+        popup.RequestReplace();
+        Ui.WaitFor(() => window.Status?.StartsWith("Replaced", StringComparison.Ordinal) == true, () => $"the replacement; the status says '{window.Status}'");
+        Assert.Equal("Replaced 3 matches in 2 files", window.Status);
+        Ui.Press(window, "ESCAPE");
+        Ui.Landed(() => history.Rows.Any(r => r.Title == Named) && history.Diff is not null, "the replace's change set shown in Local History");
+
+        window.EditorArea.CodeEditor.Focus();
+        KeepsSaying(window, () => Ui.Run(window, EditorActions.Undo, settle: false), $"Undone: {Named}",
+            () => File.ReadAllText(alpha).Contains("int count;", StringComparison.Ordinal), "Undo");
+        KeepsSaying(window, () => Ui.Run(window, EditorActions.Redo, settle: false), $"Redone: {Named}",
+            () => File.ReadAllText(alpha).Contains("int total;", StringComparison.Ordinal), "Redo");
+
+        Passenger.App.History.HistoryRow replaced = history.Rows.Last(r => r.Title == Named);
+        history.Select(replaced);
+        Ui.Landed(() => history.Selected?.Set == replaced.Set && history.Diff is not null, "the replace's change set chosen in Local History");
+        Task? reverting = null;
+        KeepsSaying(window, () => reverting = history.RevertAsync(), Passenger.App.History.HistoryTab.RevertName(replaced),
+            () => reverting!.IsCompleted && File.ReadAllText(alpha).Contains("int count;", StringComparison.Ordinal), "The revert");
+        window.Close();
+    }
+
+    /// <summary>Does what <paramref name="act"/> does, waits for the status bar to say <paramref name="words"/> and then for
+    /// the IDE to be quiet, and checks it still says them, naming all it said meanwhile.</summary>
+    private static void KeepsSaying(MainWindow window, Action act, string words, Func<bool> done, string what)
+    {
+        TextBlock status = window.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Name == "StatusText");
+        List<string?> said = [];
+        EventHandler<Avalonia.AvaloniaPropertyChangedEventArgs> heard = (_, e) =>
+        {
+            if (e.Property == TextBlock.TextProperty)
+            {
+                said.Add(status.Text);
+            }
+        };
+        status.PropertyChanged += heard;
+        try
+        {
+            act();
+            Ui.PumpUntil(() => said.Contains(words) && done(), $"{what} to say '{words}'");
+            Ui.Settle();
+        }
+        finally
+        {
+            status.PropertyChanged -= heard;
+        }
+        Assert.True(window.Status == words,
+            $"{what}'s words were taken away with Local History shown, so the person isn't told what it did: the status bar says '{window.Status}' after saying [{string.Join(" | ", said)}]");
+    }
+
     /// <summary>An agent's replace_in_files is the same one command, its open file saved: one Undo in the window takes every
     /// file back.</summary>
     [AvaloniaFact]

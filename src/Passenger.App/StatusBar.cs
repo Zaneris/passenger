@@ -53,6 +53,9 @@ public sealed class StatusBar
     /// anything else said takes the icon and the place away.</summary>
     private (string Text, StatusPlace? Place)? standing;
 
+    /// <summary>The file and folder the message line last followed (<see cref="ShowFile"/>); null before the first.</summary>
+    private (OpenDocument? File, string? Folder)? shownFile;
+
     public StatusBar(Button message, TextBlock text, PathIcon icon, WorkingRing working, Button caretButton, TextBlock caret, Button indentButton, TextBlock indent,
         TextBlock language, Button lineSeparator, TextBlock lineEnding, Button encoding, TextBlock encodingText)
     {
@@ -152,11 +155,15 @@ public sealed class StatusBar
     }
 
     /// <summary>The file shown, or none: with none the message line names the folder (or says there is no solution); with
-    /// one, its path names it, so the message line is left for messages.</summary>
+    /// one, its path names it, so the message line is left for messages. Only another file or folder shown changes the
+    /// message line: the same one shown again leaves what was said.</summary>
     public void ShowFile(OpenDocument? active, string? folder, CodeEditor editor, string languageLabel)
     {
-        string where = folder is null ? "No solution" : Path.GetFileName(folder);
-        text.Text = active is null ? where : string.Empty;
+        if (shownFile != (active, folder))
+        {
+            shownFile = (active, folder);
+            text.Text = active is not null ? string.Empty : folder is null ? "No solution" : Path.GetFileName(folder);
+        }
         ShowStorage(active);
         OpenDocument? textual = Textual(active);
         indentButton.IsVisible = textual is not null;
