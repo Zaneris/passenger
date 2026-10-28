@@ -1198,9 +1198,18 @@ public static class Ui
     /// the menu of what is there.</summary>
     public static void RightClick(Control control, Point? at = null) => Click(control, at, MouseButton.Right, RawInputModifiers.None, settle: true);
 
-    /// <summary>A middle click as <see cref="Click(Control, Point?, RawInputModifiers, bool)"/> makes a click, which closes a
-    /// tab.</summary>
-    public static void MiddleClick(Control control, Point? at = null) => Click(control, at, MouseButton.Middle, RawInputModifiers.None, settle: true);
+    /// <summary>A middle click as <see cref="Click(Control, Point?, RawInputModifiers, bool)"/> makes a click, with modifiers
+    /// held when given: which closes a tab, and in the editor does what the keymap gives its gesture.</summary>
+    public static void MiddleClick(Control control, Point? at = null, RawInputModifiers modifiers = RawInputModifiers.None) =>
+        Click(control, at, MouseButton.Middle, modifiers, settle: true);
+
+    /// <summary>A press of one of the mouse's side buttons over a control, as <see cref="Click(Control, Point?, RawInputModifiers, bool)"/>
+    /// makes a click: <see cref="MouseButton.XButton1"/> is Back's, as every platform reports it, XButton2 Forward's.</summary>
+    public static void SideClick(Control control, MouseButton side, Point? at = null)
+    {
+        Assert.True(side is MouseButton.XButton1 or MouseButton.XButton2, $"{side} is not a side button");
+        Click(control, at, side, RawInputModifiers.None, settle: true);
+    }
 
     /// <summary>Two clicks in quick succession at the same place, as a person opens what a row holds.</summary>
     public static void DoubleClick(Control control, Point? at = null)
@@ -1217,14 +1226,31 @@ public static class Ui
 
     /// <summary>A drag with the left button from one point of a window to another (its units), through ten moves between,
     /// as a person's hand goes.</summary>
-    public static void Drag(TopLevel window, Point from, Point to)
+    public static void Drag(TopLevel window, Point from, Point to) => Dragged(window, from, to, MouseButton.Left, RawInputModifiers.None);
+
+    /// <summary>A drag as <see cref="Drag(TopLevel, Point, Point)"/> makes one, with another button or modifiers held, and
+    /// apart from a click there before it, as a click is (so never the second press of a double click).</summary>
+    public static void Drag(TopLevel window, Point from, Point to, MouseButton button, RawInputModifiers modifiers)
     {
-        window.MouseDown(from, MouseButton.Left);
+        Apart(window, from);
+        Dragged(window, from, to, button, modifiers);
+    }
+
+    private static void Dragged(TopLevel window, Point from, Point to, MouseButton button, RawInputModifiers modifiers)
+    {
+        RawInputModifiers held = modifiers | button switch
+        {
+            MouseButton.Left => RawInputModifiers.LeftMouseButton,
+            MouseButton.Middle => RawInputModifiers.MiddleMouseButton,
+            MouseButton.Right => RawInputModifiers.RightMouseButton,
+            _ => throw new ArgumentOutOfRangeException(nameof(button), button, "a drag is made with the left, middle or right button"),
+        };
+        window.MouseDown(from, button, modifiers);
         for (int step = 1; step <= 10; step++)
         {
-            window.MouseMove(from + ((to - from) * (step / 10.0)), RawInputModifiers.LeftMouseButton);
+            window.MouseMove(from + ((to - from) * (step / 10.0)), held);
         }
-        window.MouseUp(to, MouseButton.Left);
+        window.MouseUp(to, button, modifiers);
         Clicked(window, from);
         Settle();
     }

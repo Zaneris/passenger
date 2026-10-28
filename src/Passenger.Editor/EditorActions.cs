@@ -63,6 +63,14 @@ public static class EditorActions
     public const string FoldDocComments = "editor.foldDocComments";
     public const string MatchBrace = "editor.matchBrace";
 
+    // The mouse's alone, pressed at a place in the text, so never listed or run by name: Rider's EditorAddOrRemoveCaret,
+    // EditorCreateRectangularSelection (a column from the caret to the press, which a drag goes on with),
+    // EditorCreateRectangularSelectionOnMouseDrag and EditorAddRectangularSelectionOnMouseDrag (the column beside the carets).
+    public const string AddOrRemoveCaret = "editor.addOrRemoveCaret";
+    public const string ColumnSelectionFromCaret = "editor.columnSelectionFromCaret";
+    public const string ColumnSelectionDrag = "editor.columnSelectionDrag";
+    public const string AddColumnSelectionDrag = "editor.addColumnSelectionDrag";
+
     /// <summary>Every editor action and its name for people (Rider's where it has one), which the IDE lists and runs.</summary>
     public static IReadOnlyList<(string Id, string Title)> All { get; } =
     [
@@ -103,7 +111,9 @@ public enum KeymapPreset
 /// for the actions Passenger has, plus the few platform staples those leave out (Cmd+/ to comment, with the keypad's / as
 /// $default has it, Cmd+W to close); and Rider's VSCode and VSCode OSX keymaps, a key IntelliJ gives two actions told
 /// apart by where it is pressed given to one (the editor's own). The keypad's keys (DIVIDE, SUBTRACT) are bound where
-/// Rider binds them, beside the main keys'.</summary>
+/// Rider binds them, beside the main keys'. The mouse's gestures are theirs too, the Mac's from $default with its Ctrl as
+/// Cmd; Shift+Alt-click, which they give a column from the caret and a column drag both, is the first, a drag going on
+/// with it, and Alt-click's Quick Evaluate Expression (the debugger's) and Linux's middle-click paste are left out.</summary>
 public static class DefaultKeymaps
 {
     public static Keymap ForPlatform() => OperatingSystem.IsMacOS() ? VisualStudioMac() : VisualStudio();
@@ -177,7 +187,11 @@ public static class DefaultKeymaps
         .Bind(EditorActions.UnfoldAll, "control M , X", "control M , control X")
         .Bind(EditorActions.FoldToDefinitions, "control M , O", "control M , control O")
         .Bind(EditorActions.MatchBrace, "meta CLOSE_BRACKET")
-        .Bind(EditorActions.Escape, "ESCAPE");
+        .Bind(EditorActions.Escape, "ESCAPE")
+        .Bind(EditorActions.AddOrRemoveCaret, "alt shift button1")
+        .Bind(EditorActions.ColumnSelectionFromCaret, "alt shift button2")
+        .Bind(EditorActions.ColumnSelectionDrag, "alt button1", "button2")
+        .Bind(EditorActions.AddColumnSelectionDrag, "meta alt shift button1");
 
     public static Keymap VisualStudio() => new Keymap("Visual Studio")
         .Bind(EditorActions.Left, "LEFT")
@@ -232,7 +246,11 @@ public static class DefaultKeymaps
         .Bind(EditorActions.UnfoldAll, "control M , X", "control M , control X")
         .Bind(EditorActions.FoldToDefinitions, "control M , O", "control M , control O")
         .Bind(EditorActions.MatchBrace, "control CLOSE_BRACKET")
-        .Bind(EditorActions.Escape, "ESCAPE");
+        .Bind(EditorActions.Escape, "ESCAPE")
+        .Bind(EditorActions.AddOrRemoveCaret, "control alt button1")
+        .Bind(EditorActions.ColumnSelectionFromCaret, "shift alt button1")
+        .Bind(EditorActions.ColumnSelectionDrag, "alt button1")
+        .Bind(EditorActions.AddColumnSelectionDrag, "control alt shift button1");
 
     // Rider's VSCode OSX keymap with what it takes from Mac OS X 10.5+ (Ctrl+B, F, P, N, A and E move as macOS's text does).
     // Its Comment with Line Comment's Cmd+K chords are VS Code's Add and Remove Line Comment, Comment and Uncomment here;
@@ -288,7 +306,10 @@ public static class DefaultKeymaps
         .Bind(EditorActions.UnfoldAll, "meta K , meta J")
         .Bind(EditorActions.FoldDocComments, "meta K , meta SLASH")
         .Bind(EditorActions.MatchBrace, "meta shift BACK_SLASH")
-        .Bind(EditorActions.Escape, "ESCAPE");
+        .Bind(EditorActions.Escape, "ESCAPE")
+        .Bind(EditorActions.AddOrRemoveCaret, "alt button1")
+        .Bind(EditorActions.ColumnSelectionFromCaret, "shift alt button1")
+        .Bind(EditorActions.AddColumnSelectionDrag, "meta alt shift button1");
 
     // Rider's VSCode keymap with what it takes from $default, Comment, Uncomment and Duplicate as on macOS.
     public static Keymap VSCode() => new Keymap(NameOf(KeymapPreset.VSCode))
@@ -340,5 +361,9 @@ public static class DefaultKeymaps
         .Bind(EditorActions.UnfoldAll, "control K , control J")
         .Bind(EditorActions.FoldDocComments, "control K , control SLASH")
         .Bind(EditorActions.MatchBrace, "control shift BACK_SLASH")
-        .Bind(EditorActions.Escape, "ESCAPE");
+        .Bind(EditorActions.Escape, "ESCAPE")
+        .Bind(EditorActions.AddOrRemoveCaret, "alt button1")
+        .Bind(EditorActions.ColumnSelectionFromCaret, "shift alt button1")
+        .Bind(EditorActions.ColumnSelectionDrag, "button2")
+        .Bind(EditorActions.AddColumnSelectionDrag, "control alt shift button1");
 }

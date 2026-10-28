@@ -99,13 +99,6 @@ public sealed class CodeAssist
                     completion.CaretMoved();
                 }
             };
-            editor.NavigateRequested += (_, offset) =>
-            {
-                if (editor == Editor)
-                {
-                    IdeErrors.Observe(navigation.GoToDefinition(offset));
-                }
-            };
         });
         editors.ActiveChanged += (_, _) =>
         {

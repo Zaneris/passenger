@@ -393,6 +393,28 @@ public sealed class NavigationTests : IDisposable
         window.Close();
     }
 
+    /// <summary>The mouse's Back and Forward side buttons step as Back and Forward do, wherever in the window they are
+    /// pressed: over the editor, whose caret they leave where the step puts it, and over a tool window.</summary>
+    [AvaloniaFact]
+    public void The_mouses_back_and_forward_buttons_step_back_and_forward_over_the_editor_and_over_a_tool_window()
+    {
+        WriteFiles("A.cs", "B.cs", "C.cs");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        FromExplorer(window, "A.cs");
+        Down(window, 2);
+        FromExplorer(window, "B.cs");
+        Down(window, 5);
+        FromExplorer(window, "C.cs");
+        Down(window, 7);
+        CodeEditor editor = window.EditorArea.CodeEditor;
+
+        Side(window, editor, MouseButton.XButton1, "B.cs", 5, "Back's button over the editor in C.cs");
+        Side(window, window.ExplorerView, MouseButton.XButton1, "A.cs", 2, "Back's button over the Explorer");
+        Side(window, window.ExplorerView, MouseButton.XButton2, "B.cs", 5, "Forward's button over the Explorer");
+        Side(window, editor, MouseButton.XButton2, "C.cs", 7, "Forward's button over the editor in B.cs");
+        window.Close();
+    }
+
     /// <summary>A click on a tab leaves the file shown for Back as a navigation does; a file left again keeps one place
     /// behind, where it was left last.</summary>
     [AvaloniaFact]
@@ -570,6 +592,15 @@ public sealed class NavigationTests : IDisposable
             Ui.Press(window, "DOWN");
         }
         Assert.True(editor.CaretPosition.Line == from + lines, $"Down {lines} times in {window.EditorArea.Active?.Name} moved its caret from line {from + 1} to {editor.CaretPosition.Line + 1}");
+    }
+
+    /// <summary>A side button of the mouse pressed over a part of the window, and the file and line it shows then.</summary>
+    private static void Side(MainWindow window, Control over, MouseButton button, string file, int line, string what)
+    {
+        Ui.SideClick(over, button);
+        TextPosition caret = window.EditorArea.CodeEditor.CaretPosition;
+        Assert.True(window.EditorArea.Active?.Name == file && caret.Line == line,
+            $"{what} showed {window.EditorArea.Active?.Name} at line {caret.Line + 1}, not {file} at line {line + 1}");
     }
 
     /// <summary>Back or Forward by its keys, and the file and line it shows.</summary>

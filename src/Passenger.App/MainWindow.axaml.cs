@@ -67,7 +67,7 @@ public partial class MainWindow : Window
         popups = new PopupHost(Overlay, OverlayHost, Editors, () => session.Debug.Breakpoints);
         navigator = new Navigation.Navigator(new Navigation.NavigatorParts(Editors, () => session, popups, status, path => OpenFile(path), Editors.TextOf));
         // One keymap for the whole window, seen before any control: editor actions go to the editor with the focus.
-        windowKeys = new IdeKeys(this, keys, popups, OnEscape, OnKey, OnActivity, OnLeft);
+        windowKeys = new IdeKeys(this, keys, popups, OnEscape, OnKey, OnSideButton, OnActivity, OnLeft);
         windowKeys.Attach(this);
         AddActions();
         AddTitleBar();
@@ -151,6 +151,14 @@ public partial class MainWindow : Window
         Editors.Opened += (_, document) => session.Attach(document);
         Editors.Closed += (_, document) => session.Detach(document);
         Editors.ForEachEditor(editor => editor.ProblemsRequested += (_, _) => ShowToolWindow(ToolWindowIds.Problems));
+        // A gesture's action at its press in a file's editor (Cmd+click's Go to Declaration), the keymap's as a key's is.
+        Editors.ForEachEditor(editor => editor.ActionRequested += (_, action) =>
+        {
+            if (editor == Editors.CodeEditor)
+            {
+                Request(action);
+            }
+        });
         Editors.ForEachEditor(editor => editor.CaretLimitReached += (_, _) =>
             status.Text = string.Create(CultureInfo.InvariantCulture, $"Cannot create more than {SelectionSet.MaxCount:N0} carets"));
         Editors.ForEachGutter(gutter =>
@@ -405,6 +413,14 @@ public partial class MainWindow : Window
             Editors.FindBar.Close();
             e.Handled = true;
         }
+    }
+
+    /// <summary>A side button pressed in one of the IDE's windows, over the editor, a tool window or anything else: the
+    /// keymap's action for it (Back, Forward) runs there, the window it was pressed in being the one worked in.</summary>
+    private void OnSideButton(TopLevel window, string action)
+    {
+        Editors.Front(window);
+        Request(action);
     }
 
     /// <summary>Escape in one of the IDE's windows with no popup over it: whether it closed the code's list of choices or

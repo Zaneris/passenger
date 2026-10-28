@@ -111,8 +111,9 @@ public sealed partial class CodeEditor : Control
     /// <summary>Raised when any caret or selection changes, by an edit or a move.</summary>
     public event EventHandler? SelectionChanged;
 
-    /// <summary>Cmd+click (Ctrl+click on Windows) at an offset: the host's go-to-definition.</summary>
-    public event EventHandler<int>? NavigateRequested;
+    /// <summary>A press on the text whose gesture the keymap gives an action not the editor's own (Cmd+click's): the caret
+    /// is put at the press first, for the host to run the action there.</summary>
+    public event EventHandler<string>? ActionRequested;
 
     /// <summary>The pointer has rested on the text: the offset under it and where it is, for a hover
     /// card. Raised once per rest; moving off clears it (<see cref="HoverEnded"/>).</summary>
@@ -357,8 +358,17 @@ public sealed partial class CodeEditor : Control
         ScrollTo(new Vector(0, bottom));
     }
 
-    /// <summary>When set, the editor resolves its own key presses; an IDE leaves it null and sends
-    /// actions in through <see cref="TryExecute"/> from one window-wide keymap.</summary>
+    /// <summary>What a gesture of the mouse pressed on an editor's text runs, by the keymap of the window it is in: set on a
+    /// window, every editor there follows it, unless it has a <see cref="Keymap"/> of its own.</summary>
+    public static readonly AttachedProperty<Func<MouseShortcut, string?>?> GesturesProperty =
+        AvaloniaProperty.RegisterAttached<CodeEditor, AvaloniaObject, Func<MouseShortcut, string?>?>("Gestures", inherits: true);
+
+    public static Func<MouseShortcut, string?>? GetGestures(AvaloniaObject host) => host.GetValue(GesturesProperty);
+
+    public static void SetGestures(AvaloniaObject host, Func<MouseShortcut, string?>? gestures) => host.SetValue(GesturesProperty, gestures);
+
+    /// <summary>When set, the editor resolves its own key presses and gestures; an IDE leaves it null and sends actions in
+    /// through <see cref="TryExecute"/> from one window-wide keymap, whose gestures it gives (<see cref="GesturesProperty"/>).</summary>
     public Keymap? Keymap
     {
         get => ownKeys?.Keymap;

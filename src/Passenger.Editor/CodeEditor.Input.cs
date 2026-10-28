@@ -126,29 +126,35 @@ public sealed partial class CodeEditor
             e.Handled = true;
             return;
         }
-        if (!point.Properties.IsLeftButtonPressed)
+        MouseShortcut gesture = MouseShortcut.Of(e);
+        string? action = point.Position.X >= GutterWidth ? ActionOf(gesture) : null;
+        bool left = gesture.Button == MouseButton.Left;
+        // The middle button does only what the keymap gives its gesture, and on the text alone.
+        if (!left && (gesture.Button != MouseButton.Middle || action is null))
         {
             CancelChoices();
             return;
         }
         Focus();
-        if (point.Position.X >= GutterWidth && ClickChoice(OffsetAt(point.Position)))
+        if (left && point.Position.X >= GutterWidth && ClickChoice(OffsetAt(point.Position)))
         {
             e.Handled = true;
             return;
         }
         CancelChoices();
-        if (ClickFold(point.Position))
+        if (left && ClickFold(point.Position))
         {
             e.Handled = true;
             return;
         }
-        PressLink(point.Position, e.KeyModifiers, e.ClickCount);
+        if (left)
+        {
+            PressLink(point.Position, e.KeyModifiers, e.ClickCount);
+        }
         document.BreakUndoGroup();
         TextSnapshot text = document.Snapshot;
         int offset = OffsetAt(point.Position, out bool beforeWrap);
         KeyModifiers mods = e.KeyModifiers;
-        KeyModifiers command = Keystroke.Command;
 
         int pressed = LineAtY(point.Position.Y);
         if (point.Position.X < GutterWidth && ShowLineNumbers && pressed < text.LineCount)
@@ -177,7 +183,7 @@ public sealed partial class CodeEditor
             drag = new Drag(DragMode.Lines, text.GetLineStart(line), point.Position);
             ExtendLines(text, offset, mods.HasFlag(KeyModifiers.Shift));
         }
-        else if (mods.HasFlag(KeyModifiers.Alt) && mods.HasFlag(KeyModifiers.Shift))
+        else if (action == EditorActions.AddOrRemoveCaret)
         {
             SelectionSet without = selections.RemoveAt(offset);
             if (without == selections && selections.Count >= SelectionSet.MaxCount)
@@ -192,15 +198,27 @@ public sealed partial class CodeEditor
             e.Handled = true;
             return;
         }
-        else if (mods.HasFlag(KeyModifiers.Alt))
+        else if (action == EditorActions.ColumnSelectionDrag)
         {
             drag = new Drag(DragMode.Column, offset, point.Position);
             SetSelections(SelectionSet.Single(offset), reveal: false);
         }
-        else if (mods.HasFlag(command) && e.ClickCount == 1)
+        else if (action == EditorActions.ColumnSelectionFromCaret)
+        {
+            // From the middle of the caret's row, so the row is the caret's wherever the press is.
+            Point from = PointOf(selections.Primary.Caret) + new Vector(0, metrics.LineHeight / 2);
+            drag = new Drag(DragMode.Column, offset, from);
+            SetSelections(ColumnSelection(text, from, point.Position), reveal: false);
+        }
+        else if (action == EditorActions.AddColumnSelectionDrag)
+        {
+            drag = new Drag(DragMode.Column, offset, point.Position, Kept: selections);
+            SetSelections(WithColumn(selections, text, point.Position, point.Position), reveal: false);
+        }
+        else if (action is not null)
         {
             SetSelections(SelectionSet.Single(offset), reveal: false);
-            NavigateRequested?.Invoke(this, offset);
+            ActionRequested?.Invoke(this, action);
             drag = default;
             e.Handled = true;
             return;
@@ -243,7 +261,8 @@ public sealed partial class CodeEditor
             overGutter = inGutter;
             InvalidateVisual();
         }
-        if (drag.Mode == DragMode.None || !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        PointerPointProperties held = e.GetCurrentPoint(this).Properties;
+        if (drag.Mode == DragMode.None || !(held.IsLeftButtonPressed || held.IsMiddleButtonPressed))
         {
             return;
         }
@@ -271,7 +290,7 @@ public sealed partial class CodeEditor
                 ExtendLines(text, offset, extend: true);
                 break;
             case DragMode.Column:
-                SetSelections(ColumnSelection(text, drag.Start, position), reveal: true);
+                SetSelections(drag.Kept is { } kept ? WithColumn(kept, text, drag.Start, position) : ColumnSelection(text, drag.Start, position), reveal: true);
                 break;
             case DragMode.Gutter:
                 dragging?.Drag(Math.Clamp(LineAtY(position.Y), 0, text.LineCount - 1));
@@ -430,9 +449,10 @@ public sealed partial class CodeEditor
         SetSelections(SelectionSet.Single(selection), reveal: true);
     }
 
-    /// <summary>Option-drag (Alt-drag): a selection on every row between the press and the pointer,
-    /// spanning the same columns on each; on the most rows toward the pointer an editor keeps carets on.</summary>
-    private SelectionSet ColumnSelection(TextSnapshot text, Point start, Point end)
+    /// <summary>A column selection, as a column drag makes it: a selection on every row between the press and the pointer,
+    /// spanning the same columns on each; on the most rows toward the pointer an editor keeps carets on, or
+    /// <paramref name="most"/>.</summary>
+    private SelectionSet ColumnSelection(TextSnapshot text, Point start, Point end, int most = SelectionSet.MaxCount)
     {
         int count = Math.Max(1, RowCount);
         int firstRow = Math.Clamp(start.Y + scroll.Y < 0 ? 0 : RowAtY(start.Y), 0, count - 1);
@@ -441,9 +461,9 @@ public sealed partial class CodeEditor
         double toX = end.X - TextLeft + scroll.X;
         List<Selection> rows = [];
         int step = lastRow >= firstRow ? 1 : -1;
-        if (Math.Abs(lastRow - firstRow) >= SelectionSet.MaxCount)
+        if (Math.Abs(lastRow - firstRow) >= most)
         {
-            firstRow = lastRow - (step * (SelectionSet.MaxCount - 1));
+            firstRow = lastRow - (step * (most - 1));
             CaretLimitReached?.Invoke(this, EventArgs.Empty);
         }
         for (int row = firstRow; ; row += step)
@@ -456,6 +476,17 @@ public sealed partial class CodeEditor
         }
         return SelectionSet.Create(rows, rows.Count - 1);
     }
+
+    /// <summary>A column selection's rows beside the carets kept from before the drag, its last row the primary, as many as
+    /// an editor keeps carets on.</summary>
+    private SelectionSet WithColumn(SelectionSet kept, TextSnapshot text, Point start, Point end)
+    {
+        SelectionSet column = ColumnSelection(text, start, end, Math.Max(1, SelectionSet.MaxCount - kept.Count));
+        return SelectionSet.Create([.. kept.Items, .. column.Items], kept.Count + column.PrimaryIndex);
+    }
+
+    /// <summary>What the keymap gives a press's gesture: the editor's own keymap, else its window's.</summary>
+    private string? ActionOf(MouseShortcut gesture) => ownKeys is { } own ? own.Keymap.ActionFor(gesture) : GetValue(GesturesProperty)?.Invoke(gesture);
 
     /// <summary>Drops a composition under way, the platform's input method's too, so it is never finished into a
     /// document it was not begun in.</summary>
@@ -507,8 +538,8 @@ public sealed partial class CodeEditor
     }
 
     /// <summary>A press being dragged: how it selects, where it began (as an offset, and as a point
-    /// for column selection), and for words the end of the first word.</summary>
-    private readonly record struct Drag(DragMode Mode, int Anchor, Point Start, int AnchorEnd = 0);
+    /// for column selection), for words the end of the first word, and the carets a column is added beside.</summary>
+    private readonly record struct Drag(DragMode Mode, int Anchor, Point Start, int AnchorEnd = 0, SelectionSet? Kept = null);
 
     /// <summary>What the platform's input method (accents, CJK composition) reads and writes: the
     /// caret's line as the surrounding text, the selection in it, which it may set to type over (press and hold's accents

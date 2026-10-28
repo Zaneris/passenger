@@ -530,6 +530,113 @@ public sealed class KeymapChoiceTests : IDisposable
         return [.. ((string[])["Rerun", "Stop", "Apply Hot Reload Changes"]).Select(words => tips.Single(tip => tip == words || tip.StartsWith($"{words} (", StringComparison.Ordinal)))];
     }
 
+    /// <summary>The mouse's caret and column gestures are those of the keymap in force, each keymap's resolved as its keys
+    /// are: each adds a caret and takes it away again, makes a column from the caret to a press that its drag goes on with,
+    /// drags a column, and drags one beside the carets there are. Visual Studio's Alt-drag, a column there, adds a caret
+    /// in VS Code's and drags nothing.</summary>
+    [AvaloniaFact]
+    public void The_mouses_caret_and_column_gestures_are_the_keymaps_in_force()
+    {
+        File.WriteAllText(Path.Combine(folder, "columns.txt"), string.Concat(Enumerable.Repeat("abcdefgh\n", 6)));
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.OpenFile(Path.Combine(folder, "columns.txt"));
+            Ui.Settle();
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            bool mac = OperatingSystem.IsMacOS();
+            RawInputModifiers cmd = mac ? RawInputModifiers.Meta : RawInputModifiers.Control;
+            const RawInputModifiers Alt = RawInputModifiers.Alt;
+            const RawInputModifiers Shift = RawInputModifiers.Shift;
+            Gestures(window, VisualStudio, addCaret: (MouseButton.Left, mac ? Alt | Shift : RawInputModifiers.Control | Alt),
+                fromCaret: (mac ? MouseButton.Middle : MouseButton.Left, Alt | Shift),
+                columnDrags: mac ? [(MouseButton.Left, Alt), (MouseButton.Middle, RawInputModifiers.None)] : [(MouseButton.Left, Alt)],
+                besideCarets: (MouseButton.Left, cmd | Alt | Shift));
+
+            window.ApplySettings(window.Settings with { Keymap = KeymapPreset.VSCode });
+            Ui.Settle();
+            Gestures(window, VSCode, addCaret: (MouseButton.Left, Alt), fromCaret: (MouseButton.Left, Alt | Shift),
+                columnDrags: mac ? [] : [(MouseButton.Middle, RawInputModifiers.None)], besideCarets: (MouseButton.Left, cmd | Alt | Shift));
+            Place(editor, 0, 6);
+            Ui.Drag(window, Spot(window, 1, 1), Spot(window, 3, 3), MouseButton.Left, Alt);
+            Assert.True(Selected(editor) == "0:6, 1:1", $"Alt-drag in VS Code's keymap left {Selected(editor)}, where it adds a caret at its press and drags no column");
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { Keymap = KeymapPreset.VisualStudio });
+            window.Close();
+        }
+    }
+
+    /// <summary>A keymap's caret and column gestures, each a button and the modifiers held with it, pressed on six lines of
+    /// "abcdefgh"; places are a line and a column from zero.</summary>
+    private static void Gestures(MainWindow window, string keymap, (MouseButton Button, RawInputModifiers Held) addCaret, (MouseButton Button, RawInputModifiers Held) fromCaret,
+        (MouseButton Button, RawInputModifiers Held)[] columnDrags, (MouseButton Button, RawInputModifiers Held) besideCarets)
+    {
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Place(editor, 0, 1);
+        Press(window, addCaret, 2, 3);
+        Assert.True(Selected(editor) == "0:1, 2:3", $"{addCaret} in {keymap}'s keymap left {Selected(editor)}, where it adds a caret at 2:3 beside 0:1");
+        Press(window, addCaret, 2, 3);
+        Assert.True(Selected(editor) == "0:1", $"{addCaret} again in {keymap}'s keymap left {Selected(editor)}, where it takes the caret at 2:3 away");
+
+        Place(editor, 0, 1);
+        Ui.Drag(window, Spot(window, 2, 4), Spot(window, 3, 5), fromCaret.Button, fromCaret.Held);
+        Assert.True(Selected(editor) == "0:1-0:5, 1:1-1:5, 2:1-2:5, 3:1-3:5",
+            $"{fromCaret} pressed at 2:4 and dragged to 3:5 in {keymap}'s keymap left {Selected(editor)}, where it makes a column from the caret at 0:1 that the drag goes on with");
+
+        foreach ((MouseButton Button, RawInputModifiers Held) drag in columnDrags)
+        {
+            Place(editor, 5, 0);
+            Ui.Drag(window, Spot(window, 1, 1), Spot(window, 3, 3), drag.Button, drag.Held);
+            Assert.True(Selected(editor) == "1:1-1:3, 2:1-2:3, 3:1-3:3", $"{drag} dragged from 1:1 to 3:3 in {keymap}'s keymap left {Selected(editor)}, where it selects that column");
+        }
+
+        Place(editor, 0, 6);
+        Ui.Drag(window, Spot(window, 2, 1), Spot(window, 3, 2), besideCarets.Button, besideCarets.Held);
+        Assert.True(Selected(editor) == "0:6, 2:1-2:2, 3:1-3:2",
+            $"{besideCarets} dragged from 2:1 to 3:2 in {keymap}'s keymap left {Selected(editor)}, where it adds that column beside the caret at 0:6");
+    }
+
+    /// <summary>A click of a gesture's button with its modifiers held, at a line and column of the editor.</summary>
+    private static void Press(MainWindow window, (MouseButton Button, RawInputModifiers Held) gesture, int line, int column)
+    {
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Point at = editor.PointOf(editor.Document.Snapshot.GetOffset(new Passenger.Text.TextPosition(line, column))) + new Point(1, editor.LineHeight / 2);
+        if (gesture.Button == MouseButton.Middle)
+        {
+            Ui.MiddleClick(editor, at, gesture.Held);
+        }
+        else
+        {
+            Ui.Click(editor, at, gesture.Held);
+        }
+    }
+
+    /// <summary>Where in the window a line and column of the editor are, inside the character there.</summary>
+    private static Point Spot(MainWindow window, int line, int column)
+    {
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Point at = editor.PointOf(editor.Document.Snapshot.GetOffset(new Passenger.Text.TextPosition(line, column))) + new Point(1, editor.LineHeight / 2);
+        return editor.TranslatePoint(at, window) ?? throw new Xunit.Sdk.XunitException("The editor is not laid out in its window");
+    }
+
+    private static void Place(CodeEditor editor, int line, int column) =>
+        editor.Selections = Passenger.Text.SelectionSet.Single(editor.Document.Snapshot.GetOffset(new Passenger.Text.TextPosition(line, column)));
+
+    /// <summary>The editor's carets and selections in order, each as line:column from zero, a selection as its two ends.</summary>
+    private static string Selected(CodeEditor editor)
+    {
+        Passenger.Text.TextSnapshot text = editor.Document.Snapshot;
+        string At(int offset)
+        {
+            Passenger.Text.TextPosition place = text.GetPosition(offset);
+            return $"{place.Line}:{place.Column}";
+        }
+
+        return string.Join(", ", editor.Selections.Items.Select(s => s.IsEmpty ? At(s.Caret) : $"{At(s.Start)}-{At(s.End)}"));
+    }
+
     /// <summary>Representative keys of Rider's VS Code keymap pressed in the window: the editor's (Select Next Occurrence,
     /// Copy Line Down, Delete Line), the IDE's (Quick Open, the Command Palette, Go to Line, Split Editor) and a chord's.</summary>
     private static void VSCodeKeysWork(MainWindow window)

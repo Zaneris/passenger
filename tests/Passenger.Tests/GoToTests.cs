@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Passenger.App;
 using Passenger.App.Navigation;
 using Passenger.Editor;
@@ -221,6 +222,92 @@ public sealed class GoToTests : IClassFixture<GoToTests.Project>
         window.Close();
     }
 
+    /// <summary>The keymap's clicks run the Navigate actions its keys run, at the place clicked: Cmd+click (Ctrl+click off
+    /// macOS) goes to the declaration, with Shift to the type's declaration, and on macOS Cmd+Option+click to the derived
+    /// symbols, which Rider's Visual Studio OSX keymap binds as IntelliJ's Go to Implementation, Alt+End's action.</summary>
+    [AvaloniaFact]
+    public void The_keymaps_clicks_go_to_the_declaration_the_types_declaration_and_on_macOS_the_derived_symbols_where_clicked()
+    {
+        MainWindow window = project.Open("Program.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        RawInputModifiers command = OperatingSystem.IsMacOS() ? RawInputModifiers.Meta : RawInputModifiers.Control;
+
+        Ui.Click(editor, Inside(editor, 6, "Area"), command);
+        Ui.WaitFor(() => window.EditorArea.Active?.Name == "Shapes.cs", "a Cmd+click on Area to open Square's Area");
+        Assert.True(editor.CaretPosition.Line == 16, $"A Cmd+click on shape.Area() went to line {editor.CaretPosition.Line + 1}, not to Square's Area on line 17");
+
+        window.OpenFile(project.PathOf("Program.cs"));
+        Ui.Settle();
+        Ui.Click(editor, Inside(editor, 5, "shape"), command | RawInputModifiers.Shift);
+        Ui.WaitFor(() => window.EditorArea.Active?.Name == "Shapes.cs", "a Cmd+Shift+click on shape to open its type");
+        Assert.True(editor.CaretPosition.Line == 12, $"A Cmd+Shift+click on a var holding a Square went to line {editor.CaretPosition.Line + 1}, not to class Square on line 13");
+
+        if (OperatingSystem.IsMacOS())
+        {
+            Ui.Click(editor, Inside(editor, 9, "Describe"), command | RawInputModifiers.Alt);
+            Ui.WaitFor(() => editor.CaretPosition.Line != 9, "a Cmd+Option+click to leave Shape's Describe");
+            Assert.True(editor.CaretPosition.Line == 25, $"A Cmd+Option+click on Shape's Describe went to line {editor.CaretPosition.Line + 1}, not to Circle's override on line 26");
+        }
+        window.Close();
+    }
+
+    /// <summary>The middle button goes where the keymap in force sends it: to the declaration in Visual Studio's keymap off
+    /// macOS and in VS Code's on macOS; with Shift to the type's declaration in Visual Studio's on macOS, and with Ctrl to
+    /// Quick Documentation in VS Code's there, a card no rest of the pointer shows. Where its keymap drags a column with it,
+    /// a click goes nowhere.</summary>
+    [AvaloniaFact]
+    public void Middle_clicks_go_to_the_declaration_the_types_declaration_or_quick_documentation_as_the_keymap_in_force_has_it()
+    {
+        MainWindow window = project.Open("Program.cs");
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            bool mac = OperatingSystem.IsMacOS();
+            Ui.MiddleClick(editor, Inside(editor, 6, "Area"));
+            if (mac)
+            {
+                Assert.True(window.EditorArea.Active?.Name == "Program.cs", $"A middle click in Visual Studio's keymap on macOS, a column's drag there, showed {window.EditorArea.Active?.Name}");
+                Ui.MiddleClick(editor, Inside(editor, 6, "Area"), RawInputModifiers.Control);
+                Ui.Hold(TimeSpan.FromSeconds(1), "the pointer's rest past the hover's delay, after which a card would show for it");
+                Assert.True(window.Assist.HoverText is null, $"A Ctrl+middle click in Visual Studio's keymap on macOS, which gives it nothing, showed a card: {window.Assist.HoverText}");
+                Ui.MiddleClick(editor, Inside(editor, 5, "shape"), RawInputModifiers.Shift);
+                Ui.WaitFor(() => window.EditorArea.Active?.Name == "Shapes.cs", "a Shift+middle click on shape to open its type");
+                Assert.True(editor.CaretPosition.Line == 12, $"A Shift+middle click on a var holding a Square went to line {editor.CaretPosition.Line + 1}, not to class Square on line 13");
+            }
+            else
+            {
+                Ui.WaitFor(() => window.EditorArea.Active?.Name == "Shapes.cs", "a middle click on Area to open Square's Area");
+                Assert.True(editor.CaretPosition.Line == 16, $"A middle click on shape.Area() went to line {editor.CaretPosition.Line + 1}, not to Square's Area on line 17");
+            }
+
+            window.ApplySettings(window.Settings with { Keymap = KeymapPreset.VSCode });
+            window.OpenFile(project.PathOf("Program.cs"));
+            Ui.Settle();
+            Ui.MiddleClick(editor, Inside(editor, 6, "Area"));
+            if (mac)
+            {
+                Ui.WaitFor(() => window.EditorArea.Active?.Name == "Shapes.cs", "a middle click in VS Code's keymap on Area to open Square's Area");
+                Assert.True(editor.CaretPosition.Line == 16, $"A middle click in VS Code's keymap went to line {editor.CaretPosition.Line + 1}, not to Square's Area on line 17");
+                window.OpenFile(project.PathOf("Program.cs"));
+                Ui.Settle();
+                Ui.MiddleClick(editor, Inside(editor, 6, "Area"), RawInputModifiers.Control);
+                Ui.WaitFor(() => window.Assist.HoverText is not null, "a Ctrl+middle click's Quick Documentation card");
+                Assert.Contains("Square.Area()", window.Assist.HoverText, StringComparison.Ordinal);
+                Assert.Equal("Program.cs", window.EditorArea.Active?.Name);
+            }
+            else
+            {
+                Assert.True(window.EditorArea.Active?.Name == "Program.cs", $"A middle click in VS Code's keymap, a column's drag there, showed {window.EditorArea.Active?.Name}");
+            }
+        }
+        finally
+        {
+            // The keymap in force is the process's; the next test starts on the platform's own.
+            window.ApplySettings(window.Settings with { Keymap = KeymapPreset.VisualStudio });
+            window.Close();
+        }
+    }
+
     [Gate]
     [AvaloniaFact]
     public void Last_edit_location_steps_back_through_edits_in_two_files_and_recent_lists_show_only_what_was_edited()
@@ -298,6 +385,14 @@ public sealed class GoToTests : IClassFixture<GoToTests.Project>
         TextPosition caret = window.EditorArea.CodeEditor.CaretPosition;
         Assert.True(window.EditorArea.Active?.Name == file && caret == at,
             $"{what} showed {window.EditorArea.Active?.Name} at {caret.Line + 1}:{caret.Column + 1}, not {file} at {at.Line + 1}:{at.Column + 1}");
+    }
+
+    /// <summary>A point inside a name on a line, past its first two letters, in the editor, where a click there lands.</summary>
+    private static Point Inside(CodeEditor editor, int line, string name)
+    {
+        int column = editor.Document.Snapshot.GetLineText(line).IndexOf(name, StringComparison.Ordinal);
+        Assert.True(column >= 0, $"'{name}' is not on line {line + 1}");
+        return editor.PointOf(editor.Document.Snapshot.GetLineStart(line) + column + 2) + new Point(1, editor.LineHeight / 2);
     }
 
     /// <summary>The caret inside a name on a line, past its first two letters.</summary>

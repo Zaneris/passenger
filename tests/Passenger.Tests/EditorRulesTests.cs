@@ -7,7 +7,7 @@ namespace Passenger.Tests;
 
 /// <summary>Rules the code editor keeps as a control of its own: it draws a text, its line numbers and its folds, and the
 /// gutter's other columns through <see cref="IGutterColumn"/> without knowing what they show, so a new kind of mark
-/// changes the IDE and never the editor.</summary>
+/// changes the IDE and never the editor; and it runs no action of the IDE's, which the IDE's keymap binds.</summary>
 [Collection(Beside.Name)]
 public sealed partial class EditorRulesTests
 {
@@ -18,6 +18,12 @@ public sealed partial class EditorRulesTests
         "Test", "Tests", "Testing", "Xunit", "Blame", "Commit", "Commits", "Vcs", "Git",
     };
 
+    /// <summary>Words of the IDE's actions, as a name in the editor would carry one it ran.</summary>
+    private static readonly HashSet<string> IdeActionWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Navigate", "Navigates", "Declaration", "Implementation", "Implementations", "Documentation",
+    };
+
     /// <summary>The editor names no type, member, parameter or assembly of the debugger, the tests or version control: its
     /// own declarations and what it references hold none of their words. Passed over: what the compiler makes (a property's
     /// accessors are the property's), a member that overrides or implements one declared outside the editor (Avalonia's
@@ -25,11 +31,37 @@ public sealed partial class EditorRulesTests
     [Fact]
     public void The_editor_names_nothing_of_the_debugger_the_tests_or_version_control()
     {
+        List<string> found = Naming(Foreign);
+        Assert.True(found.Count == 0, $"Passenger.Editor names {found.Count} things of the debugger, the tests or version control, so a change to "
+            + $"any of them changes the editor: give that area's mark to the gutter as an IGutterColumn of the IDE's, and keep in the editor only how a thing is "
+            + $"drawn:\n{string.Join("\n", found)}");
+    }
+
+    /// <summary>The editor names no action of the IDE's: no declaration of its own holds their words, and its keymaps bind
+    /// the editor's own actions alone, by key and by gesture. A press of the mouse that runs one of the IDE's (Cmd+click's Go
+    /// to Declaration) is the window's keymap's, which the editor reports as the gesture's action and the IDE runs.</summary>
+    [Fact]
+    public void The_editor_names_no_action_of_the_IDE()
+    {
+        List<string> found = Naming(IdeActionWords);
+        HashSet<string> own = [.. typeof(EditorActions).GetFields(BindingFlags.Public | BindingFlags.Static).Where(f => f.IsLiteral).Select(f => (string)f.GetRawConstantValue()!)];
+        foreach (Keymap keymap in (Keymap[])[DefaultKeymaps.VisualStudio(), DefaultKeymaps.VisualStudioMac(), DefaultKeymaps.VSCode(), DefaultKeymaps.VSCodeMac()])
+        {
+            found.AddRange(keymap.Actions.Concat(keymap.MouseActions).Where(action => !own.Contains(action)).Select(action => $"{keymap.Name}'s binding of {action}"));
+        }
+        Assert.True(found.Count == 0, $"Passenger.Editor names {found.Count} things of the IDE's actions, so a change to one changes the editor: bind the "
+            + $"IDE's action in AppActions' keymaps, a gesture of the mouse too, and have the editor report what is pressed:\n{string.Join("\n", found)}");
+    }
+
+    /// <summary>The editor's declarations and references whose names hold any of these words, each as where it is and the
+    /// word.</summary>
+    private static List<string> Naming(HashSet<string> words)
+    {
         Assembly editor = typeof(CodeEditor).Assembly;
         List<string> found = [];
         void Check(string name, string what)
         {
-            if (Words().Matches(name).Select(m => m.Value).FirstOrDefault(Foreign.Contains) is { } word)
+            if (Words().Matches(name).Select(m => m.Value).FirstOrDefault(words.Contains) is { } word)
             {
                 found.Add($"{what} ({word})");
             }
@@ -64,9 +96,7 @@ public sealed partial class EditorRulesTests
                 }
             }
         }
-        Assert.True(found.Count == 0, $"Passenger.Editor names {found.Count} things of the debugger, the tests or version control, so a change to "
-            + $"any of them changes the editor: give that area's mark to the gutter as an IGutterColumn of the IDE's, and keep in the editor only how a thing is "
-            + $"drawn:\n{string.Join("\n", found)}");
+        return found;
     }
 
     /// <summary>What the compiler makes: a lambda's closure, an iterator, a record's or an attribute's own.</summary>
