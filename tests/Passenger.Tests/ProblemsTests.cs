@@ -542,9 +542,11 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         bool Replaced() => window.CSharpService.Session?.Server != server;
         int batches = 0;
         int named = 0;
+        int lost = 0;
         window.FolderWatcher!.Changed += (_, changes) =>
         {
             batches++;
+            lost += changes.Lost ? 1 : 0;
             named += changes.Paths.Count(p => Path.GetFileName(p).StartsWith("Checked", StringComparison.Ordinal));
         };
         HashSet<string> told = new(StringComparer.Ordinal);
@@ -578,13 +580,68 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         watched.Sent -= sent;
         TestContext.Current.TestOutputHelper?.WriteLine(
             $"{Files} files rewritten on disk: the language server was told of them {toldAfter:0.00} s after, in {notifications} notifications (the folder's watcher handed over {batches} batches), "
-            + $"and solution-wide analysis listed the closed files' new problems {listedAfter:0.00} s after; it registered {watched.Watches.Count} watchers, {window.CSharpService.Watching?.Watching.Count} folders watched beside the folder's watcher");
+            + $"and solution-wide analysis listed the closed files' new problems {listedAfter:0.00} s after; it registered {watched.Watches.Count} watchers, {window.CSharpService.Watching?.Watching.Count} folders watched beside the folder's watcher; {Recovered()}");
         Assert.True(notifications < Files / 10, $"The language server was told of the {Files} files changed on disk in {notifications} notifications, as if file by file");
+        Assert.True(lost == 0, $"The folder's watcher read the whole folder again for {Passenger.Core.Plural.Of(lost, "batch", "batches")} of the {batches} rather than the folders the files changed in");
+        Assert.Equal(Files, window.FileIndex.Files.Count(f => f.StartsWith("Checked", StringComparison.Ordinal)));
         Assert.True(Saying("typed", closed: false) == 1 && Saying("after", closed: false) == 0,
             "The open file's problems were those of its text on disk once the server heard it changed there, not those of its edit");
 
         fromDisk.SetResult(true);
         Ui.WaitFor(() => Saying("after", closed: false) == 1, "the open file's warning of the disk's text once it took it");
+        window.Close();
+    }
+
+    /// <summary>A thousand files deleted side by side, as a script or a clean deletes them, more at once than macOS's watcher
+    /// names: the folder's watcher lists again the folder they went from, rather than the whole folder, and every one
+    /// leaves Go to File and is told the language server as gone.</summary>
+    [AvaloniaFact]
+    public void A_thousand_files_deleted_side_by_side_each_leave_go_to_file_and_reach_the_server_as_gone()
+    {
+        const int Files = 1000;
+        project.Write([.. Enumerable.Range(0, Files).Select(i => ($"Side{i}.cs", $"static class Side{i}\n{{\n}}\n"))]);
+        MainWindow window = project.Open("Program.cs");
+        int Listed() => window.FileIndex.Files.Count(f => f.StartsWith("Side", StringComparison.Ordinal));
+        Ui.WaitFor(() => Listed() == Files, $"the {Files} files in Go to File");
+        Passenger.Lsp.WatchedFiles watched = window.CSharpService!.Session!.Server.WatchedFiles;
+        Assert.True(watched.Watches.Count > 0, "The language server registered no file for the IDE to watch, so it watches the folder itself");
+        Passenger.Lsp.LanguageServer server = window.CSharpService.Session.Server;
+        HashSet<string> told = new(StringComparer.Ordinal);
+        EventHandler<IReadOnlyList<Passenger.Lsp.FileEvent>> sent = (_, changes) =>
+        {
+            lock (told)
+            {
+                told.UnionWith(changes.Where(c => c.Change == Passenger.Lsp.FileChangeType.Deleted).Select(c => Path.GetFileName(c.Path)).Where(name => name.StartsWith("Side", StringComparison.Ordinal)));
+            }
+        };
+        int Told()
+        {
+            lock (told)
+            {
+                return told.Count;
+            }
+        }
+        int batches = 0;
+        int named = 0;
+        int lost = 0;
+        window.FolderWatcher!.Changed += (_, changes) =>
+        {
+            batches++;
+            lost += changes.Lost ? 1 : 0;
+            named += changes.Paths.Count(p => Path.GetFileName(p).StartsWith("Side", StringComparison.Ordinal));
+        };
+        watched.Sent += sent;
+        long deleted = System.Diagnostics.Stopwatch.GetTimestamp();
+        Parallel.For(0, Files, i => File.Delete(project.PathOf($"Side{i}.cs")));
+        // Pumped, not settled, so each time is when it happened, not when the work after it ended.
+        bool heard = Ui.Pumped(() => Told() == Files && Listed() == 0, TimeSpan.FromSeconds(90));
+        double after = System.Diagnostics.Stopwatch.GetElapsedTime(deleted).TotalSeconds;
+        watched.Sent -= sent;
+        Assert.True(heard, $"Of the {Files} files deleted side by side, the language server was told {Told()} went and Go to File still lists {Listed()}, "
+            + $"the folder's watcher handing over {batches} batches naming {named} of them: {WatchLog(server)}");
+        Assert.True(lost == 0, $"The folder's watcher read the whole folder again for {Passenger.Core.Plural.Of(lost, "batch", "batches")} of the {batches} rather than the folder the files went from");
+        TestContext.Current.TestOutputHelper?.WriteLine(
+            $"{Files} files deleted side by side: Go to File let go of them and the language server was told of them {after:0.00} s after, the folder's watcher handing over {batches} batches naming {named} of them; {Recovered()}");
         window.Close();
     }
 
@@ -648,6 +705,9 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
             + $"and the Solution tab listed none of their warnings {listed:0.00} s after, the design-time build held until then; the language server was told of {told} files gone");
         window.Close();
     }
+
+    /// <summary>What the IDE's log says the folder's watcher found by listing folders again after a burst of changes.</summary>
+    private static string Recovered() => string.Join(" | ", Ui.IdeLog().Split('\n').Where(l => l.Contains("The folder's watcher listed", StringComparison.Ordinal)).TakeLast(4));
 
     /// <summary>What the server's log says of its files watched and told, and the IDE's of the folders watched for it, last.</summary>
     private static string WatchLog(Passenger.Lsp.LanguageServer server)

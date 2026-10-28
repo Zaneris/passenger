@@ -484,6 +484,46 @@ public sealed class FolderWatchTests : IDisposable
         window.Close();
     }
 
+    /// <summary>The system's buffer of changes overflows, as a large checkout makes it, a while after the folder opened:
+    /// what it lost is found by listing again the folders whose entries changed, against what the watcher last knew of
+    /// them, rather than by reading the whole folder again. Its watchers stop while the files change, so the changes are
+    /// lost as an overflow loses them.</summary>
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Changes_an_overflow_lost_are_found_by_listing_again_the_folders_they_changed(bool eachFolder)
+    {
+        Write("One.cs", "class One { }\n");
+        Write("Old/Old.cs", "class Old { }\n");
+        Write("Old/Gone.cs", "class Gone { }\n");
+        MainWindow window = Open(eachFolder ? FolderWatching.Inotify : FolderWatching.WholeTree, languageServer: false);
+        window.OpenFile("One.cs");
+        window.OpenFile("Old/Old.cs");
+        Ui.Hold(TimeSpan.FromSeconds(3.5), "the watcher's record of the folder to be older than what an overflow may have lost");
+        bool lost = false;
+        window.FolderWatcher!.Changed += (_, changes) => lost |= changes.Lost;
+        List<FileSystemWatcher> watchers = [.. window.FolderWatcher.Watches.Values];
+        watchers.ForEach(w => w.EnableRaisingEvents = false);
+
+        Write("One.cs", "class One { int changed; }\n");
+        Write("Old/Old.cs", "class Old { int changed; }\n");
+        File.Delete(Path.Combine(folder, "Old", "Gone.cs"));
+        Write("Fresh/Fresh.cs", "class Fresh { }\n");
+        RaiseError(window.FolderWatcher.Watches[folder], new InternalBufferOverflowException("Too many changes at once; directory listing is required."));
+        Ui.WaitFor(() => window.EditorArea.Documents.All(d => d.Text.Snapshot.ToString().Contains("int changed;", StringComparison.Ordinal)),
+            $"every open file to take the text on disk, where they hold [{string.Join(" | ", window.EditorArea.Documents.Select(d => d.Text.Snapshot.ToString().Trim()))}]");
+        Ui.WaitFor(() => window.FileIndex.Files.Contains(Path.Combine("Fresh", "Fresh.cs")) && !window.FileIndex.Files.Contains(Path.Combine("Old", "Gone.cs")),
+            $"Go to File to gain the file made and lose the one deleted meanwhile (it lists {string.Join(", ", window.FileIndex.Files)})");
+        Ui.WaitFor(() => window.ExplorerView.Tree.Rows.Any(r => r.Name == "Fresh"),
+            $"the folder made meanwhile in the Explorer (it shows {string.Join(", ", window.ExplorerView.Tree.Rows.Select(r => r.Name))})");
+        Assert.False(lost, "The folder's watcher read the whole folder again after the overflow rather than the folders whose entries changed");
+
+        watchers.ForEach(w => w.EnableRaisingEvents = true);
+        Write("Fresh/Later.cs", "class Later { }\n");
+        Ui.WaitFor(() => window.FileIndex.Files.Contains(Path.Combine("Fresh", "Later.cs")), "a file made after in the folder found in Go to File");
+        window.Close();
+    }
+
     /// <summary>A file made in the folder joins Go to File, and one deleted leaves it, without a walk of the folder: over
     /// 20,000 files each batch allocates (on every thread, the least of three) under 8 bytes for each file more than over
     /// 2,000, where walking the folder again cost hundreds; and Go to File then lists what a walk lists, in its order.</summary>

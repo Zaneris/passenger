@@ -100,7 +100,7 @@ public partial class MainWindow
         session.MSBuild.FilesChanged(changes.Paths, changes.Structure);
         session.Web?.FilesChanged(changes.Paths);
         EndpointFilesChanged(changes);
-        FollowOpenFiles(changes.Paths, every: changes.Lost);
+        FollowOpenFiles(changes.Paths, every: changes.Lost || changes.Overflowed);
         if (changes.Paths.Count > 0 || changes.Git)
         {
             IdeErrors.Observe(session.Vcs.FolderChangedAsync(changes.Git || changes.Lost));
