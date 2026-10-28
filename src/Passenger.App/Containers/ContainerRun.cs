@@ -245,8 +245,10 @@ public static class ContainerPlans
         List<string> backing = [.. model.Services.Select(s => s.Name).Where(s => !dotnetNames.Contains(s))];
         List<string> watched = [.. model.Services.Where(s => s.Watches && !dotnetNames.Contains(s.Name) && (start.Count == 0 || start.Contains(s.Name))).Select(s => s.Name)];
         List<string> notes = [.. dotnet.Where(d => !d.Starts && touched.Contains(d.Service)).Select(d => ContainerPlan.DependedOn(d.Service))];
-        // As deployed, the image's own user could not read what is kept for the person alone (OverrideAsync's owner).
-        if (mode == ContainerMode.Images && OperatingSystem.IsLinux() && DotnetProcesses.UserAndGroup is { } owner)
+        EngineState engineState = await engine.StateAsync(cancel: cancel);
+        string? owner = OperatingSystem.IsLinux() ? DotnetProcesses.UserAndGroup : null;
+        // As deployed, the image's own user could not read what is kept for the person alone (RunsAs).
+        if (mode == ContainerMode.Images && RunsAs(engineState, owner) is { } user)
         {
             foreach (DotnetService runs in dotnet.Where(d => d.Starts && touched.Contains(d.Service)))
             {
@@ -254,7 +256,8 @@ public static class ContainerPlans
                     .. !Development(model[runs.Service]!) || UserSecrets(projects.FirstOrDefault(p => PathNames.Same(p.Path, runs.Project))) is null ? Array.Empty<string>() : ["user secrets"]];
                 if (kept.Length > 0)
                 {
-                    notes.Add($"{runs.Service} runs as you ({owner}) on this Linux engine, as fast mode does, so it can read the {string.Join(" and ", kept)} kept for you alone");
+                    string who = engineState.Rootless ? "as root in its container, which is you on this rootless engine" : $"as you ({user}) on this Linux engine";
+                    notes.Add($"{runs.Service} runs {who}, as fast mode does, so it can read the {string.Join(" and ", kept)} kept for you alone");
                 }
             }
         }
@@ -267,10 +270,7 @@ public static class ContainerPlans
         string overrideFile = Path.Combine(state, $"{file}.override.yaml");
         compose.InsertRange(compose.IndexOf("--project-directory"), ["-f", overrideFile]);
         // Written once the host's build is done: what fast mode mounts (its static web assets' folders) is that build's.
-        EngineState engineState = await engine.StateAsync(cancel: cancel);
         bool pin = Overrides(engineState.ComposeVersion);
-        // Rootless Podman maps a container's users onto the person's subordinate ids: keep-id makes the person's own theirs.
-        bool keepId = engineState is { IsPodman: true, Rootless: true };
         // Each port Passenger pins is chosen once for the plan: every override it writes after (a hold, a restart) keeps it.
         ChosenPorts? pinned = pin ? new ChosenPorts(model.Services) : null;
         (IReadOnlyList<DotnetService> Now, IReadOnlyCollection<string> Held, IReadOnlyCollection<string> Modifiable, DevelopmentCertificate.Exported? Certificate,
@@ -298,8 +298,8 @@ public static class ContainerPlans
         {
             if (last is { } was)
             {
-                WriteJson(overrideFile, await OverrideAsync(model, projectName, was.Now, mode, labels, projects, state, pinned, was.Held, was.Modifiable, was.Certificate, keepId,
-                    telemetry, was.Images, stop), overriding: true);
+                WriteJson(overrideFile, await OverrideAsync(model, projectName, was.Now, mode, labels, projects, state, pinned, was.Held, was.Modifiable, was.Certificate,
+                    engineState, owner, telemetry, was.Images, stop), overriding: true);
             }
         }
         if (mode == ContainerMode.Images || dotnet.Count == 0)
@@ -541,15 +541,15 @@ public static class ContainerPlans
     /// built as deployed tagged apart from the one its files name); for each .NET service it starts, in fast mode its image's
     /// runtime stage running <c>dotnet /passenger/app/X.dll</c> as PID 1 over Passenger's build mounted read-only, in images
     /// mode a Debug build where its Dockerfile takes BUILD_CONFIGURATION; the development certificate and user secrets where
-    /// they serve; a service held for the debugger started held (its debugger on), its code open to Hot Reload. JSON, read as YAML.</summary>
-    private static async Task<JsonObject> OverrideAsync(ComposeModel model, string project, IReadOnlyList<DotnetService> dotnet, ContainerMode mode, IReadOnlyList<string> labels,
+    /// they serve, read <see cref="RunsAs"/>; a service held for the debugger started held, its code open to Hot Reload.</summary>
+    public static async Task<JsonObject> OverrideAsync(ComposeModel model, string project, IReadOnlyList<DotnetService> dotnet, ContainerMode mode, IReadOnlyList<string> labels,
         IReadOnlyList<ProjectModel> projects, string state, ChosenPorts? pinned, IReadOnlyCollection<string> held,
-        IReadOnlyCollection<string> modifiable, DevelopmentCertificate.Exported? certificate, bool keepId, ContainerTelemetry? telemetry,
+        IReadOnlyCollection<string> modifiable, DevelopmentCertificate.Exported? certificate, EngineState engine, string? owner, ContainerTelemetry? telemetry,
         IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> images, CancellationToken cancel)
     {
         JsonObject services = [];
         HashSet<string> heard = new(StringComparer.Ordinal);
-        string? owner = OperatingSystem.IsLinux() ? DotnetProcesses.UserAndGroup : null;
+        string? user = RunsAs(engine, owner);
         foreach (ComposeService service in model.Services)
         {
             JsonObject entry = new() { ["labels"] = Labels(labels) };
@@ -611,14 +611,9 @@ public static class ContainerPlans
                     build["args"] = new JsonObject { ["BUILD_CONFIGURATION"] = "Debug" };
                 }
                 (string Folder, string Id)? secrets = development ? UserSecrets(projects.FirstOrDefault(p => PathNames.Same(p.Path, built.Project))) : null;
-                // Linux keeps the host's owners on a mount: the app runs as the person, who alone can read what is kept for them.
-                if (owner is not null && (mode == ContainerMode.Fast || Serves(service) || secrets is not null))
+                if (user is not null && (mode == ContainerMode.Fast || Serves(service) || secrets is not null))
                 {
-                    entry["user"] = owner;
-                    if (keepId)
-                    {
-                        entry["userns_mode"] = "keep-id";
-                    }
+                    entry["user"] = user;
                 }
                 // Held until what attaches lets it go, never where nothing can; the profiler's gets no changeable code to measure.
                 if (held.Contains(service.Name) && HeldStart.DebuggerOff(Started(service, images)) is null)
@@ -679,6 +674,12 @@ public static class ContainerPlans
         }
         return made;
     }
+
+    /// <summary>Who a .NET service's app runs as to read what is kept for the person alone (their build, certificate and user
+    /// secrets), a Linux engine keeping the host's owners on a mount: the person, <paramref name="owner"/> (their uid:gid,
+    /// given on Linux); on a rootless engine, Docker or Podman, the container's root, which is the person there, its
+    /// other users the person's subordinate ids. Null with no owner given, the image's own user reading them.</summary>
+    private static string? RunsAs(EngineState engine, string? owner) => owner is null ? null : engine.Rootless ? "0:0" : owner;
 
     /// <summary>The image a service runs: one built from its folder under Passenger's own tag for the mode, else the one it names.</summary>
     private static string? ImageOf(ComposeService service, string project, ContainerMode mode) =>
