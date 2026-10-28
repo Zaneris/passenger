@@ -40,6 +40,37 @@ public sealed class ContainerOverrideTests : IDisposable
         }
     }
 
+    /// <summary>A service whose files name its environment development in lower case runs in Development, as .NET reads the
+    /// name, so its project's user secrets are mounted where it reads them, in fast mode and as deployed; one in Production
+    /// is given none.</summary>
+    [Fact]
+    public async Task A_service_whose_environment_is_development_in_lower_case_has_its_user_secrets_mounted()
+    {
+        string id = $"passenger-test-override-{Guid.NewGuid():N}";
+        string secrets = TestFolders.Write(TestRun.UserSecrets, $"{id}/secrets.json", "{ \"Greeting\": \"from secrets\" }\n");
+        try
+        {
+            string mounted = $"{ContainerPlans.AppData}/Microsoft/UserSecrets/{id}";
+            foreach ((string variable, string environment, bool reads) in ((string, string, bool)[])[
+                ("ASPNETCORE_ENVIRONMENT", "development", true), ("DOTNET_ENVIRONMENT", "DEVELOPMENT", true), ("ASPNETCORE_ENVIRONMENT", "Production", false)])
+            {
+                foreach (ContainerMode mode in (ContainerMode[])[ContainerMode.Fast, ContainerMode.Images])
+                {
+                    JsonObject web = await WebAsync(Engine(podman: false, rootless: false), Owner, mode, new Dictionary<string, string> { [variable] = environment }, id);
+                    string[] targets = [.. (web["volumes"] as JsonArray ?? []).Select(v => v?["target"]?.GetValue<string>() ?? string.Empty)];
+                    Assert.True(reads == targets.Contains(mounted),
+                        $"With {variable}: {environment} in {mode} mode web's user secrets were {(reads ? string.Empty : "not ")}to be mounted at {mounted}: {web.ToJsonString()}");
+                    Assert.True(reads == (web["environment"]?["APPDATA"]?.GetValue<string>() == ContainerPlans.AppData),
+                        $"With {variable}: {environment} in {mode} mode web was {(reads ? string.Empty : "not ")}to read its user secrets from APPDATA: {web.ToJsonString()}");
+                }
+            }
+        }
+        finally
+        {
+            TestFolders.Delete(Path.GetDirectoryName(secrets)!);
+        }
+    }
+
     /// <summary>The override's entry for a .NET service web of a Web project, built from the folder, given the environment.</summary>
     private async Task<JsonObject> WebAsync(EngineState engine, string? owner, ContainerMode mode, IReadOnlyDictionary<string, string> environment, string? secretsId = null)
     {

@@ -795,11 +795,12 @@ public static class ContainerPlans
         }
     }
 
-    /// <summary>Whether a service runs in Development (as its files say, or with nothing said, as Passenger runs it), where it
-    /// reads its user secrets and static web assets.</summary>
+    /// <summary>Whether a service runs in Development (as its files say, in any letter case as .NET reads the name, or with
+    /// nothing said, as Passenger runs it), where it reads its user secrets and static web assets.</summary>
     private static bool Development(ComposeService service) =>
         !service.Environment.ContainsKey("ASPNETCORE_ENVIRONMENT") && !service.Environment.ContainsKey("DOTNET_ENVIRONMENT")
-        || service.Environment.GetValueOrDefault("ASPNETCORE_ENVIRONMENT") == "Development" || service.Environment.GetValueOrDefault("DOTNET_ENVIRONMENT") == "Development";
+        || string.Equals(service.Environment.GetValueOrDefault("ASPNETCORE_ENVIRONMENT"), "Development", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(service.Environment.GetValueOrDefault("DOTNET_ENVIRONMENT"), "Development", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Whether a service serves HTTPS: Kestrel told an https address or an HTTPS port, or a port of HTTPS's.</summary>
     private static bool Serves(ComposeService service) =>
