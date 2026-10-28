@@ -338,7 +338,8 @@ public abstract class WatchedTree : IDisposable
     }
 
     /// <summary>Changes which folders are watched off the thread that saw why, after those already asked for, held as
-    /// background work until it is done, since a file made in a folder only watched from then on shows only then.</summary>
+    /// background work until it is done, since a file made in a folder only watched from then on shows only then. A
+    /// change that fails is reported as it fails, and those after it still run.</summary>
     private void Follow(Action change)
     {
         IDisposable held = BackgroundWork.Scope();
@@ -355,6 +356,7 @@ public abstract class WatchedTree : IDisposable
                     held.Dispose();
                 }
             }, TaskScheduler.Default);
+            IdeErrors.Observe(following);
         }
     }
 
@@ -751,8 +753,15 @@ public abstract class WatchedTree : IDisposable
             {
                 Follow(() =>
                 {
-                    Recover(burst.Began, burst.Since, burst.Folders, burst.Heard);
-                    Hand();
+                    try
+                    {
+                        Recover(burst.Began, burst.Since, burst.Folders, burst.Heard);
+                    }
+                    finally
+                    {
+                        // What was heard goes over even if the look failed, or no batch after it would.
+                        Hand();
+                    }
                 });
                 if (burst.Again)
                 {
