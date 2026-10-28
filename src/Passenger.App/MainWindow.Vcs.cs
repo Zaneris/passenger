@@ -141,6 +141,7 @@ public partial class MainWindow
         commitView?.Bind(vcs);
         gitView?.Bind(vcs);
         vcs.SaveFirst = Editors.SaveAllLandedAsync;
+        vcs.ChooseRemote = ChooseRemoteAsync;
         vcs.Message += (_, message) =>
         {
             if (session == next)
@@ -246,6 +247,20 @@ public partial class MainWindow
         NamePopup popup = new("Stash Changes", string.Empty, async message => (await session.Vcs.StashAsync(message)).Problem);
         popups.Show(popup, _ => { });
         return popup;
+    }
+
+    /// <summary>Which of several remotes a branch that tracks none is pushed to: chosen from a list of them, null once the
+    /// popup closes with none chosen (Escape, a click outside it).</summary>
+    private Task<string?> ChooseRemoteAsync(string branch, IReadOnlyList<string> remotes)
+    {
+        TaskCompletionSource<string?> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        string? chosen = null;
+        ChoicePopup popup = new($"Push {branch} to", "Search for remotes", [.. remotes.Select(r => new Choice(r, string.Empty, r))], "No remote matches");
+        // Heard before the popup closes for it, which ends the question.
+        popup.Done += (_, choice) => chosen = choice?.Value as string;
+        popup.DetachedFromVisualTree += (_, _) => answer.TrySetResult(chosen);
+        popups.Show(popup, _ => { });
+        return answer.Task;
     }
 
     /// <summary>Unstash Changes: the stashes to pop, apply or drop (once the person agrees).</summary>

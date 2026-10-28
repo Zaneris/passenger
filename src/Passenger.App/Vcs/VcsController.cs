@@ -543,9 +543,10 @@ public sealed class VcsController : IDisposable
         return labels;
     }
 
-    /// <summary>Commits the chosen files with a message, then pushes when asked (Commit, and Commit and Push): the commit's
-    /// outcome with the commit made, and the push's once the commit is made and one was asked for.</summary>
-    public async Task<CommitResult> CommitAsync(IReadOnlyList<FileChange> chosen, string message, bool amend, bool push)
+    /// <summary>Commits the chosen files with a message, then pushes when asked (Commit, and Commit and Push; the remote
+    /// asked for as <see cref="PushAsync"/> asks): the commit's outcome with the commit made, and the push's once the
+    /// commit is made and one was asked for.</summary>
+    public async Task<CommitResult> CommitAsync(IReadOnlyList<FileChange> chosen, string message, bool amend, bool push, bool ask = true)
     {
         UiThread.Check();
         if (git is not { } repository)
@@ -600,26 +601,65 @@ public sealed class VcsController : IDisposable
             };
             VcsOutcome done = Report(true, $"{committed}: {FirstLine(message)}");
             await RefreshAsync();
-            return new CommitResult(done, made, push ? await PushAsync() : null);
+            return new CommitResult(done, made, push ? await PushAsync(ask) : null);
         }, refused => new CommitResult(refused, null, null));
 
         static IEnumerable<string> Paths(IEnumerable<FileChange> changes) => changes.SelectMany(c => c.From is { } from ? new[] { c.Path, from } : [c.Path]);
     }
 
-    public async Task<VcsOutcome> PushAsync()
+    /// <summary>Push: the branch to the one it tracks, or where it tracks none, to the only remote or the one of several
+    /// the person chooses (<see cref="ChooseRemote"/>, never asked of an agent: <paramref name="ask"/> false).</summary>
+    public async Task<VcsOutcome> PushAsync(bool ask = true)
     {
         UiThread.Check();
         if (git is not { } repository)
         {
             return Report(false, NoRepository);
         }
+        string? remote = null;
+        if (!await repository.TracksAsync())
+        {
+            if (await repository.BranchAsync() is not { } branch)
+            {
+                return Report(false, "A detached head has no branch to push");
+            }
+            (remote, string? refused) = await RemoteForAsync(repository, branch, ask);
+            if (refused is not null)
+            {
+                return Report(false, refused);
+            }
+        }
         if (!Begin(AppActions.Push, $"Pushing {Branch}…", out Working? work))
         {
             return Report(false, UnderWay(AppActions.Push));
         }
         using Working? held = work;
-        GitResult pushed = await repository.PushAsync();
+        GitResult pushed = await repository.PushAsync(remote);
         return Report(pushed.Succeeded, pushed.Succeeded ? $"Pushed {Branch}" : $"Push failed: {pushed.Message}");
+    }
+
+    /// <summary>Asks which of several remotes a branch that tracks none is pushed to, given the branch and the remotes; null
+    /// once the person gives up. The window's, unset with none to ask in.</summary>
+    public Func<string, IReadOnlyList<string>, Task<string?>>? ChooseRemote { get; set; }
+
+    /// <summary>Where a branch that tracks no remote's branch is pushed: the only remote, or the one the person chooses of
+    /// several; else why it is not pushed.</summary>
+    private async Task<(string? Remote, string? Refused)> RemoteForAsync(Git repository, string branch, bool ask)
+    {
+        IReadOnlyList<string> remotes = await repository.RemotesAsync();
+        if (remotes is [string only])
+        {
+            return (only, null);
+        }
+        if (remotes.Count == 0)
+        {
+            return (null, $"No remote to push {branch} to: the repository has none");
+        }
+        if (!ask || ChooseRemote is not { } choose)
+        {
+            return (null, $"{branch} tracks no remote's branch, and there are {remotes.Count} remotes to push it to ({string.Join(", ", remotes)}): Push… in the window asks which");
+        }
+        return await choose(branch, remotes) is { } chosen ? (chosen, null) : (null, $"{branch} was not pushed: no remote was chosen");
     }
 
     /// <summary>Update Project: the upstream's commits brought in, then the open files and Git read again; one of Git's
@@ -828,7 +868,8 @@ public sealed class VcsController : IDisposable
         return SwitchAsync(repository => repository.FetchIntoAsync(remote, tracked, branch.Name), $"Updated {branch.Name}", "Git update");
     }
 
-    /// <summary>Push of a branch: pushed to the branch it tracks, or to origin, then tracked.</summary>
+    /// <summary>Push of a branch: pushed to the branch it tracks, or where it tracks none, to the only remote or the one
+    /// of several the person chooses, then tracked.</summary>
     public async Task<VcsOutcome> PushBranchAsync(BranchInfo branch)
     {
         UiThread.Check();
@@ -836,12 +877,21 @@ public sealed class VcsController : IDisposable
         {
             return Report(false, NoRepository);
         }
+        string? remote = null;
+        if (branch.UpstreamRemote is null || branch.UpstreamBranch is null)
+        {
+            (remote, string? refused) = await RemoteForAsync(repository, branch.Name, ask: true);
+            if (refused is not null)
+            {
+                return Report(false, refused);
+            }
+        }
         if (!Begin(AppActions.Push, $"Pushing {branch.Name}…", out Working? work))
         {
             return Report(false, UnderWay(AppActions.Push));
         }
         using Working? held = work;
-        GitResult pushed = await repository.PushBranchAsync(branch);
+        GitResult pushed = await repository.PushBranchAsync(branch, remote);
         await RefreshAsync();
         return Report(pushed.Succeeded, pushed.Succeeded ? $"Pushed {branch.Name}" : $"Push failed: {pushed.Message}");
     }

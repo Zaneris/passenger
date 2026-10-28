@@ -863,6 +863,41 @@ public sealed class VcsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Push of a branch that tracks none goes to the repository's only remote whatever its name, the branch tracking
+    /// it there from then on; with several remotes the window asks which, and pushes to the one chosen.</summary>
+    [AvaloniaFact]
+    public void Push_of_a_new_branch_goes_to_the_only_remote_whatever_its_name_and_asks_which_of_several()
+    {
+        string upstream = TestFolders.Create("git-upstream-");
+        string other = TestFolders.Create("git-other-");
+        TestGit.Run(upstream, "init", "-q", "--bare");
+        TestGit.Run(other, "init", "-q", "--bare");
+        Git("remote", "add", "upstream", upstream);
+        Git("switch", "-q", "-c", "feature");
+        MainWindow window = Open();
+        Assert.Equal("feature", window.Vcs.Branch);
+
+        Assert.True(window.Perform(AppActions.Push), window.Status);
+        Ui.Landed(() => window.Status == "Pushed feature", "the push to the only remote, upstream");
+        Assert.Equal(Git("rev-parse", "feature").Trim(), TestGit.Run(upstream, "rev-parse", "feature").Trim());
+        Assert.Equal("upstream/feature", Git("rev-parse", "--abbrev-ref", "feature@{upstream}").Trim());
+
+        Git("remote", "add", "other", other);
+        Git("switch", "-q", "-c", "second");
+        Ui.WaitFor(() => window.Vcs.Branch == "second", "the window to follow the checkout of second");
+        Assert.True(window.Perform(AppActions.Push), window.Status);
+        Ui.Settle();
+        ChoicePopup choosing = Assert.IsType<ChoicePopup>(window.Popup);
+        Assert.Equal(["other", "upstream"], choosing.Rows.Select(r => r.Label));
+        window.KeyTextInput("other");
+        Ui.Settle();
+        Ui.Press(window, "ENTER");
+        Ui.Landed(() => window.Status == "Pushed second", "the push to the remote chosen, other");
+        Assert.Equal(Git("rev-parse", "second").Trim(), TestGit.Run(other, "rev-parse", "second").Trim());
+        Assert.Equal("other/second", Git("rev-parse", "--abbrev-ref", "second@{upstream}").Trim());
+        window.Close();
+    }
+
     /// <summary>Update Project is one of Git's changes to the tree: a checkout asked for while its pull waits on the remote
     /// (as the branches' Checkout asks) is refused as Git still busy, leaving the branch where it was, and the update lands.</summary>
     [AvaloniaFact]

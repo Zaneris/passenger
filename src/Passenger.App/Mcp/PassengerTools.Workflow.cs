@@ -100,7 +100,7 @@ public sealed partial class PassengerTools
             ? [.. vcs.Changes.Where(c => c.Kind is not ChangeKind.Unversioned && c.Uncommittable is null)]
             : [.. paths.Select(Resolve).Select(p => vcs.Changes.FirstOrDefault(c => c.Path == p) ?? throw new ArgumentException($"{Relative(p)} has no changes to commit"))];
         AgentCall.Say($"Committing {Plural.Of(chosen.Count, "file")}{(push ? " and pushing" : string.Empty)}");
-        CommitResult result = await vcs.CommitAsync(chosen, message, amend, push);
+        CommitResult result = await vcs.CommitAsync(chosen, message, amend, push, ask: false);
         if (!result.Commit.Succeeded)
         {
             throw new InvalidOperationException(result.Commit.Message);

@@ -1146,16 +1146,27 @@ public sealed class Git
         }
     }
 
-    /// <summary>Pushes the branch, setting its upstream on the first push.</summary>
-    public async Task<GitResult> PushAsync()
+    /// <summary>Whether the branch checked out tracks a remote's branch (its upstream), which a push goes to.</summary>
+    public async Task<bool> TracksAsync() =>
+        (await RunAsync(Root, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], answers: [NotThere])).Succeeded;
+
+    /// <summary>The remotes' names.</summary>
+    public async Task<IReadOnlyList<string>> RemotesAsync()
     {
-        GitResult upstream = await RunAsync(Root, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], answers: [NotThere]);
-        if (upstream.Succeeded)
+        GitResult remotes = await RunAsync(Root, ["remote"]);
+        return remotes.Succeeded ? remotes.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) : [];
+    }
+
+    /// <summary>Pushes the branch to the one it tracks; or, given <paramref name="remote"/>, to that remote under its own
+    /// name, which it tracks from then on.</summary>
+    public async Task<GitResult> PushAsync(string? remote = null)
+    {
+        if (remote is null)
         {
             return await RunAsync(Root, ["push"]);
         }
         return await BranchAsync() is { } branch
-            ? await RunAsync(Root, ["push", "-u", "origin", branch])
+            ? await RunAsync(Root, ["push", "-u", "--end-of-options", remote, $"refs/heads/{branch}:refs/heads/{branch}"])
             : new GitResult(1, string.Empty, "A detached head has no branch to push");
     }
 
@@ -1194,11 +1205,12 @@ public sealed class Git
     public Task<GitResult> FetchIntoAsync(string remote, string remoteBranch, string local) =>
         RunAsync(Root, ["fetch", "--end-of-options", remote, $"{remoteBranch}:refs/heads/{local}"]);
 
-    /// <summary>A local branch pushed to the branch it tracks, or to origin under its own name, then tracked, when it tracks
-    /// none.</summary>
-    public Task<GitResult> PushBranchAsync(BranchInfo branch) => branch.UpstreamRemote is { } remote && branch.UpstreamBranch is { } target
-        ? RunAsync(Root, ["push", "--end-of-options", remote, $"refs/heads/{branch.Name}:{target}"])
-        : RunAsync(Root, ["push", "-u", "--end-of-options", "origin", $"refs/heads/{branch.Name}:refs/heads/{branch.Name}"]);
+    /// <summary>A local branch pushed to the branch it tracks; or, when it tracks none, to <paramref name="remote"/> under its
+    /// own name, then tracked.</summary>
+    public Task<GitResult> PushBranchAsync(BranchInfo branch, string? remote = null) => branch.UpstreamRemote is { } tracked && branch.UpstreamBranch is { } target
+        ? RunAsync(Root, ["push", "--end-of-options", tracked, $"refs/heads/{branch.Name}:{target}"])
+        : RunAsync(Root, ["push", "-u", "--end-of-options", remote ?? throw new ArgumentNullException(nameof(remote), $"{branch.Name} tracks no branch: the remote to push it to is named"),
+            $"refs/heads/{branch.Name}:refs/heads/{branch.Name}"]);
 
     /// <summary>The files that differ between a revision and the working tree (Show Diff with Working Tree), renames
     /// found, each by its path now.</summary>
