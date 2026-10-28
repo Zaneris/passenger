@@ -215,6 +215,80 @@ public sealed class ExplorerFilesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A file-based program's directives follow what they name: the project its <c>#:project</c> names renamed in
+    /// the Explorer, its value names the new folder and the program evaluates with the project there; the program cut and
+    /// pasted into a deeper folder, its <c>#:project</c> and <c>#:include</c> name from there what they named before. One
+    /// Undo puts each back whole: the folder or the program where it was, and the program's text as it was.</summary>
+    [AvaloniaFact]
+    public void A_programs_directives_follow_the_project_it_names_and_the_program_itself_moved_and_one_undo_puts_each_back()
+    {
+        File.Delete(Path.Combine(folder, "Shop.csproj"));
+        string root = PathNames.Canonical(folder);
+        TestFolders.Write(root, "Lib/Lib.csproj", TestProjects.Library());
+        TestFolders.Write(root, "Lib/Shapes.cs", "namespace Lib;\n\npublic static class Shapes\n{\n    public const string Name = \"shapes\";\n}\n");
+        const string Program = "#!/usr/bin/env dotnet\n#:project ../Lib/Lib.csproj\n#:include helper.cs\nSystem.Console.WriteLine(Lib.Shapes.Name + Helper.Name);\n";
+        TestFolders.Write(root, "scripts/tool.cs", Program);
+        TestFolders.Write(root, "scripts/helper.cs", "static class Helper\n{\n    public const string Name = \"helper\";\n}\n");
+        string cli = Directory.CreateDirectory(Path.Combine(root, "tools", "cli")).FullName;
+        string tool = Path.Combine(root, "scripts", "tool.cs");
+        string lib = Path.Combine(root, "Lib");
+        MainWindow window = Open();
+        List<string> asked = Answer(window);
+        Evaluated(tool, Path.Combine(lib, "Lib.csproj"), "as written");
+
+        Choose(lib);
+        Ui.Run(window, AppActions.Rename);
+        NamePopup popup = Assert.IsType<NamePopup>(window.Popup);
+        popup.Text = string.Empty;
+        window.KeyTextInput("Geometry");
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => !window.IsPopupOpen, () => $"the rename to finish: {popup.Problem}");
+        string geometry = Path.Combine(root, "Geometry");
+        Assert.True(Directory.Exists(geometry), $"Lib was not renamed: {window.Status}");
+        Assert.Equal(Program.Replace("../Lib/", "../Geometry/", StringComparison.Ordinal), File.ReadAllText(tool));
+        Evaluated(tool, Path.Combine(geometry, "Lib.csproj"), "once Lib was renamed Geometry");
+
+        Choose(geometry);
+        Ui.Run(window, EditorActions.Undo);
+        Assert.Equal(["Undo"], asked);
+        Assert.True(Directory.Exists(lib) && !Directory.Exists(geometry), $"Undo did not rename Geometry back: {window.Status}");
+        Assert.Equal(Program, File.ReadAllText(tool));
+
+        Choose(tool);
+        Ui.Run(window, EditorActions.Cut);
+        Choose(cli);
+        Ui.Run(window, EditorActions.Paste);
+        Assert.Equal("Moved tool.cs to cli", window.Status);
+        string moved = Path.Combine(cli, "tool.cs");
+        Assert.Equal(Program.Replace("../Lib/", "../../Lib/", StringComparison.Ordinal).Replace("#:include helper.cs", "#:include ../../scripts/helper.cs", StringComparison.Ordinal),
+            File.ReadAllText(moved));
+        Evaluated(moved, Path.Combine(lib, "Lib.csproj"), "once it moved to tools/cli");
+        Assert.True(window.Projects.Single(p => p.Path == moved).Holds(Path.Combine(root, "scripts", "helper.cs")),
+            "The program moved no longer compiles the helper.cs it included, left in scripts");
+
+        Choose(cli);
+        Ui.Run(window, EditorActions.Undo);
+        Assert.Equal(["Undo", "Undo"], asked);
+        Assert.True(File.Exists(tool) && !File.Exists(moved), $"Undo did not move tool.cs back: {window.Status}");
+        Assert.Equal(Program, File.ReadAllText(tool));
+        window.Close();
+
+        void Choose(string path)
+        {
+            window.ExplorerView.Reveal(path);
+            Ui.Settle();
+            Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Path == path));
+        }
+
+        void Evaluated(string program, string referenced, string when)
+        {
+            string References() => window.Projects.FirstOrDefault(p => p.Path == program) is { } found
+                ? found.IsEvaluated ? string.Join(", ", found.ProjectReferences) : $"not evaluated: {found.Problem ?? "not yet"}"
+                : "not a project";
+            Ui.WaitFor(() => References() == referenced, () => $"{Path.GetFileName(program)}, {when}, to evaluate with its #:project's {referenced} ({References()})", TimeSpan.FromMinutes(1));
+        }
+    }
+
     [AvaloniaFact]
     public void A_file_renamed_in_the_explorer_keeps_its_tab_in_both_splits_its_undo_its_bookmark_and_its_breakpoint()
     {

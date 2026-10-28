@@ -41,21 +41,24 @@ public static class ProgramFiles
 
     /// <summary>The head of a file's lines (<see cref="Head(string)"/>): comments and other preprocessor lines pass, the first
     /// token or <c>#if</c> ends it.</summary>
-    public static List<string> Head(IEnumerable<string> lines)
+    public static List<string> Head(IEnumerable<string> lines) => [.. HeadAt(lines).Select(h => h.Text)];
+
+    /// <summary>The head of a file's lines as <see cref="Head(IEnumerable{string})"/> finds it, each line trimmed, with its
+    /// index among them.</summary>
+    public static List<(int Line, string Text)> HeadAt(IEnumerable<string> lines)
     {
-        List<string> head = [];
+        List<(int Line, string Text)> head = [];
         bool comment = false;
-        bool first = true;
+        int index = -1;
         foreach (string line in lines)
         {
+            index++;
             string text = line.Trim();
-            if (first && text.StartsWith("#!", StringComparison.Ordinal))
+            if (index == 0 && text.StartsWith("#!", StringComparison.Ordinal))
             {
-                head.Add(text);
-                first = false;
+                head.Add((index, text));
                 continue;
             }
-            first = false;
             if (comment)
             {
                 int end = text.IndexOf("*/", StringComparison.Ordinal);
@@ -82,7 +85,7 @@ public static class ProgramFiles
             }
             if (text.StartsWith("#:", StringComparison.Ordinal))
             {
-                head.Add(text);
+                head.Add((index, text));
                 continue;
             }
             if (!text.StartsWith('#') || text.StartsWith("#if", StringComparison.Ordinal))

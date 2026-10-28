@@ -93,14 +93,17 @@ public partial class MainWindow
 
     /// <summary>Moves or copies files and folders into a folder: what is there already stays put, a folder never goes
     /// inside itself, a copy into its own folder is named by the person, and a name taken there is replaced (what had it
-    /// going to the Trash) only once they agree. The status bar says what went where and what could not; the last one put
-    /// is chosen in the Explorer. Answers with where each went.</summary>
+    /// going to the Trash) only once they agree. A move, with what follows it, is one command, which Undo in the Explorer
+    /// takes back whole. The status bar says what went where and what could not; the last one put is chosen in the
+    /// Explorer. Answers with where each went.</summary>
     public async Task<IReadOnlyList<string>> PutAsync(IReadOnlyList<string> paths, string into, bool copy)
     {
         into = PathNames.Canonical(into);
         // A file's dependents go with it, renamed as a copy's name asks; one chosen with its parent goes as the parent's.
         IReadOnlyDictionary<string, IReadOnlyList<string>> following = DependentsOf(paths);
         HashSet<string> dependents = [.. following.Values.SelectMany(d => d)];
+        using CommandHistory.Recording? recording = copy ? null
+            : Editors.Commands.Record($"Move {Together([.. paths.Where(p => !dependents.Contains(p)).Select(Path.GetFileName).OfType<string>()])} to {Path.GetFileName(into)}");
         List<string> put = [];
         List<(string From, string To)> moved = [];
         // The ends of the moves, followed with the copies once all are put.
@@ -152,12 +155,11 @@ public partial class MainWindow
                 }
             }
         }
-        List<string> followed = [];
-        if (FollowMoved(moved, written: followed) is { } unfollowed)
+        if (FollowMoved(moved, recording) is { } unfollowed)
         {
             refused.Add(unfollowed);
         }
-        else if (await EditorArea.LandedAsync(followed, waiting => status.Text = waiting) is [(string unwritten, Exception notLanded), ..])
+        else if (recording is not null && await recording.LandedAsync(waiting => status.Text = waiting) is [(string unwritten, Exception notLanded), ..])
         {
             refused.Add($"{Path.GetFileName(unwritten)} could not follow the files moved: {notLanded.Message}");
         }
@@ -213,11 +215,11 @@ public partial class MainWindow
         return canonical.ToDictionary(p => p.Key, p => found.GetValueOrDefault(p.Value) ?? [], StringComparer.Ordinal);
     }
 
-    /// <summary>What names the files moved follows them: the solution's projects and files, and every project's items
-    /// naming one (an Update or Remove, a DependentUpon, a reference to a project moved), each file watched first when
-    /// a command is recording, for its undo, else added to <paramref name="written"/>. A project moved is read again at its
-    /// new path. Null once they follow, else why one could not.</summary>
-    private string? FollowMoved(IReadOnlyList<(string From, string To)> moved, CommandHistory.Recording? recording = null, List<string>? written = null)
+    /// <summary>What names the files moved follows them: the solution's projects and files, every project's items naming
+    /// one (an Update or Remove, a DependentUpon, a reference to a project moved), and every program's directives naming
+    /// one (a <c>#:project</c>, <c>#:include</c> or <c>#:ref</c>), each file watched first by the command recording, for its
+    /// undo. A project or program moved is read again at its new path. Null once they follow, else why one could not.</summary>
+    private string? FollowMoved(IReadOnlyList<(string From, string To)> moved, CommandHistory.Recording? recording)
     {
         string Now(string path) => moved.FirstOrDefault(m => PathNames.Within(path, m.From)) is { From: not null } move ? PathNames.Moved(path, move.From, move.To) : path;
         // A file naming one moved names it, or the folder it was in, by name: those that cannot are never read further.
@@ -232,7 +234,7 @@ public partial class MainWindow
         foreach (ProjectModel project in session.Workspace?.Projects ?? [])
         {
             string now = Now(project.Path);
-            naming.Add((now, now != project.Path, path => ProjectEdits.MoveItems(path, moved)));
+            naming.Add((now, now != project.Path, project.IsProgram ? path => ProgramEdits.MoveDirectives(path, moved) : path => ProjectEdits.MoveItems(path, moved)));
         }
         bool reread = naming.Any(n => n.Moved);
         foreach ((string path, bool itself, Func<string, bool> follow) in naming)
@@ -250,7 +252,6 @@ public partial class MainWindow
                 }
                 if (follow(path))
                 {
-                    written?.Add(path);
                     // Open, it takes the text now, inside the command, so the command's undo takes it back too.
                     FollowWritten([path]);
                     reread |= WorkspaceModel.IsSolution(path);
