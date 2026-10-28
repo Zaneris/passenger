@@ -200,15 +200,19 @@ public static partial class McpHost
 
     /// <summary>Has the system's request to end the process (SIGTERM, which a client may send just after closing the
     /// input) end it as the end of its input does, <paramref name="end"/>, so its state is written and what it started
-    /// ends, the process going after <see cref="EndLimit"/> at the latest. Null where the system has no such
-    /// signal.</summary>
-    internal static System.Runtime.InteropServices.PosixSignalRegistration? EndOnSignal(Action end)
+    /// ends, the process going after <see cref="EndLimit"/> at the latest, unless <paramref name="kept"/> takes the signal
+    /// as its own. Null where the system has no such signal.</summary>
+    internal static System.Runtime.InteropServices.PosixSignalRegistration? EndOnSignal(Action end, Func<bool>? kept = null)
     {
         try
         {
             return System.Runtime.InteropServices.PosixSignalRegistration.Create(System.Runtime.InteropServices.PosixSignal.SIGTERM, context =>
             {
                 context.Cancel = true;
+                if (kept?.Invoke() == true)
+                {
+                    return;
+                }
                 end();
                 IdeErrors.Observe(Task.Delay(EndLimit).ContinueWith(_ => Environment.Exit(143), TaskScheduler.Default));
             });

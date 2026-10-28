@@ -12,6 +12,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
 using Passenger.App.Mcp;
 using Passenger.App;
 using Passenger.App.Settings;
@@ -610,7 +611,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
 
     [AvaloniaFact]
     [SupportedOSPlatform("macos")]
-    public void An_install_ends_the_agents_relays_running_from_the_app_joined_or_not_each_saying_why_and_goes_ahead()
+    public void An_agents_relay_follows_the_update_in_its_own_process_its_calls_meanwhile_and_after_answered_over_the_same_connection()
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(),
             "On Windows Velopack's Update.exe replaces the install once this process has ended; a test cannot end its own process");
@@ -622,45 +623,81 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         string joining = PathNames.Canonical(Plain("relay-joined-"));
         string idle = PathNames.Canonical(Plain("relay-idle-"));
         MainWindow agents = AgentsWindow(joining, languageServer: false);
-        // One agent has called a tool, its relay joined to the window; the other has called none.
+        // One agent, on the latest protocol, has called a tool; the other, on one with an initialize handshake, has called none.
         Process joinedRelay = StartPassenger(["--mcp-attach", joining], executable: copy.Executable);
         McpClient joined = Await(Waiting.Apart(() => Connect(joinedRelay, ["--mcp-attach", joining])), "the first agent's session starting");
         Unasked(agents, joined, McpTools.Workspace);
         Process idleRelay = StartPassenger(["--mcp-attach", idle], executable: copy.Executable);
-        McpClient waiting = Await(Waiting.Apart(() => Connect(idleRelay, ["--mcp-attach", idle])), "the second agent's session starting");
+        McpClient waiting = Await(Waiting.Apart(() => Connect(idleRelay, ["--mcp-attach", idle], protocol: "2025-06-18")), "the second agent's session starting");
+        int relisted = 0;
+        foreach (McpClient agent in (ReadOnlySpan<McpClient>)[joined, waiting])
+        {
+            agent.RegisterNotificationHandler(NotificationMethods.ToolListChangedNotification, (_, _) =>
+            {
+                Interlocked.Increment(ref relisted);
+                return ValueTask.CompletedTask;
+            });
+        }
 
         MainWindow window = Started(copy.Updater());
         window.WatchForUpdates();
         Ui.WaitFor(() => Notice(window) == $"Restart to update to Passenger {newer}", $"the status bar to offer Restart to Update to v{newer}");
-        // The notice says, as the pointer comes to it, whose connections the install ends.
+        // The notice says, as the pointer comes to it, that the agents' connections go on.
         Button notice = window.FindControl<Button>("UpdateButton")!;
         window.MouseMove(Avalonia.VisualExtensions.TranslatePoint(notice, new Avalonia.Point(notice.Bounds.Width / 2, notice.Bounds.Height / 2), window)!.Value, Avalonia.Input.RawInputModifiers.None);
         Ui.Settle();
         string tip = ToolTip.GetTip(notice) as string ?? string.Empty;
-        Assert.True(tip.Contains("Installing it ends 2 agents' connections to Passenger, on ", StringComparison.Ordinal)
+        Assert.True(tip.Contains("2 agents' connections to Passenger, on ", StringComparison.Ordinal) && tip.Contains("go on into the new version", StringComparison.Ordinal)
             && tip.Contains(joining, StringComparison.Ordinal) && tip.Contains(idle, StringComparison.Ordinal),
-            $"Before Restart to Update, the notice does not say it ends the two agents' connections, on {joining} and {idle}: '{tip}'");
+            $"Before Restart to Update, the notice does not say the two agents' connections, on {joining} and {idle}, go on into the new version: '{tip}'");
 
         Ui.Click(notice, settle: false);
         Ui.Settle();
         Assert.False(window.IsVisible, "Restart to Update did not close the window with only agents' relays running from the app");
+        Assert.False(agents.IsVisible, "Restart to Update left the agents' window open");
         Ended(window);
+        // A call while Passenger restarts finds no window on its folder, and waits for the new version's, starting none.
+        Heard told = new();
+        Task<CallToolResult> meanwhile = Waiting.Apart(() => Result(joined, McpTools.Workspace, heard: told));
+        WaitFor(() => told.Told.Any(said => said.Message?.Contains("Waiting for Passenger to restart into its update", StringComparison.Ordinal) == true),
+            $"the agent's call made while Passenger restarts to wait for it (told {told})");
+        // The new version's windows, as its start opens them again.
+        MainWindow restarted = AgentsWindow(joining, languageServer: false);
+        MainWindow restartedIdle = AgentsWindow(idle, languageServer: false);
         window.InstallUpdate();
         Assert.True(copy.InstalledVersion == newer, $"Restart to Update with agents' relays running left {copy.Bundle} at {copy.InstalledVersion}, not {newer}");
-        Assert.True(joinedRelay.HasExited && idleRelay.HasExited,
-            $"The install left an agent's relay running from the app it replaced: joined {(joinedRelay.HasExited ? "ended" : "runs")}, idle {(idleRelay.HasExited ? "ended" : "runs")}");
-        string why = $"passenger: Passenger {newer} is being installed in {copy.Bundle}, which ends this agent's connection to Passenger. Reconnect the agent";
-        WaitFor(() => Errors().Count(line => line.StartsWith(why, StringComparison.Ordinal)) == 2, "each relay to say on its standard error why it ended");
+        Assert.True(Ui.Shared(copy.Started) == $"started {newer}\n", $"Restart to Update did not start the new version once: what started says '{Ui.Shared(copy.Started)}'");
+
+        CallToolResult answered = Await(meanwhile, "the call made while Passenger restarted");
+        Assert.True(answered.IsError != true && Text(answered).Contains(joining, StringComparison.Ordinal),
+            $"The agent's call made while Passenger restarted was answered '{Text(answered)}', not by the window on {joining}");
+        Assert.True(!joinedRelay.HasExited && !idleRelay.HasExited,
+            $"An agent's relay ended with the update rather than following it: joined {(joinedRelay.HasExited ? "ended" : "runs")}, idle {(idleRelay.HasExited ? "ended" : "runs")}");
+        // The updated app's executable started in each relay's own process, as each one's agent made its next call.
+        Unasked(restarted, joined, McpTools.Workspace);
+        Unasked(restartedIdle, waiting, McpTools.Workspace);
+        foreach (Process relay in (ReadOnlySpan<Process>)[joinedRelay, idleRelay])
+        {
+            Assert.True(Ui.Shared(copy.Relayed).Split('\n').Contains($"relayed {newer} {relay.Id}"),
+                $"The relay {relay.Id} did not start again from Passenger {newer} in its own process: the new version's relays say '{Ui.Shared(copy.Relayed)}'");
+        }
         string[] log = Ui.IdeLog().Split('\n');
         foreach ((string folder, Process relay) in (ReadOnlySpan<(string, Process)>)[(joining, joinedRelay), (idle, idleRelay)])
         {
-            Assert.Contains(log, line => line.Contains($"Updates: ended the agent's relay on {folder} (process {relay.Id}) to install Passenger {newer}", StringComparison.Ordinal));
+            Assert.Contains(log, line => line.Contains($"Updates: the agent's relay on {folder} (process {relay.Id}) let go of the app to install Passenger {newer}", StringComparison.Ordinal));
         }
-        Assert.True(Ui.Shared(copy.Started) == $"started {newer}\n", $"Restart to Update did not start the new version once: what started says '{Ui.Shared(copy.Started)}'");
+        Assert.True(relisted == 0, $"The tools are the same in the new version, yet an agent was told {relisted} times that their list changed");
+        Assert.True(!Errors().Any(line => line.StartsWith("passenger:", StringComparison.Ordinal)), $"A relay said it ended: {string.Join(" | ", Errors())}");
         Gone(joined);
         Gone(waiting);
+        // The relay writes its log a moment after, in batches.
+        WaitFor(() => Ui.IdeLog().Contains($"[{idleRelay.Id}] Agents: this relay's agent's session goes on as it was, in protocol version 2025-06-18", StringComparison.Ordinal),
+            $"the relay {idleRelay.Id} from the new version to say it went on in the protocol version its agent agreed before the update, 2025-06-18; its agents' lines: "
+            + string.Join(" | ", Ui.IdeLog().Split('\n').Where(line => line.Contains(" Agents: ", StringComparison.Ordinal))));
+        restarted.Close();
+        restartedIdle.Close();
 
-        // Closed rather than restarted, with an agent's relay running: the update installs all the same.
+        // Closed rather than restarted, with an agent's relay running: it follows all the same.
         copy.Relaying();
         string later = Bumped(1, 1);
         github.Answer = Release($"v{later}", files: copy.Update(later));
@@ -673,8 +710,12 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         Ended(window);
         window.InstallUpdate();
         Assert.True(copy.InstalledVersion == later, $"Passenger closed with v{later} ready and an agent's relay running left {copy.Bundle} at {copy.InstalledVersion}");
-        Assert.True(relayLeft.HasExited, "Closing Passenger to install the update left the agent's relay running from the app it replaced");
+        MainWindow opened = AgentsWindow(idle, languageServer: false);
+        Unasked(opened, left, McpTools.Workspace);
+        Assert.True(!relayLeft.HasExited && Ui.Shared(copy.Relayed).Split('\n').Contains($"relayed {later} {relayLeft.Id}"),
+            $"Closing Passenger to install the update did not have the agent's relay {relayLeft.Id} go on from Passenger {later}: '{Ui.Shared(copy.Relayed)}'");
         Gone(left);
+        opened.Close();
     }
 
     /// <summary>Unmounts the test's volume. The system's own readers of new files (Spotlight, the code-signing checks)
@@ -875,6 +916,9 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         /// <summary>Where each start of the app writes its version: in the folder above the one it is in, the test's own.</summary>
         public string Started => Path.Combine(folder, "started.txt");
 
+        /// <summary>Where each start of the app as an agent's relay writes its version and process id, there too.</summary>
+        public string Relayed => Path.Combine(folder, "relayed.txt");
+
         public override string? InstalledVersion => Version(Bundle);
 
         public override Updater Updater() => new DiskImageUpdater(Bundle, Staging, StartAsync);
@@ -936,7 +980,8 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         public bool SignatureHolds() => Ran("/usr/bin/codesign", ["--verify", "--deep", "--strict", Bundle], TimeSpan.FromMinutes(2)).Succeeded;
 
         /// <summary>The app of a version at a bundle's path, signed; its start is written down in the folder above the one it
-        /// is put in, so one disk image serves every test's folder.</summary>
+        /// is put in, so one disk image serves every test's folder. Started as an agent's relay, it says so with its process
+        /// id, and becomes the build's Passenger in that process.</summary>
         public static void Make(string bundle, string version)
         {
             string macOS = Directory.CreateDirectory(Path.Combine(bundle, "Contents", "MacOS")).FullName;
@@ -954,7 +999,15 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
                 </plist>
                 """);
             string executable = Path.Combine(macOS, "Passenger");
-            File.WriteAllText(executable, $"#!/bin/sh\necho started {version} >> \"$(dirname \"$0\")/../../../../started.txt\"\n");
+            File.WriteAllText(executable, $"""
+                #!/bin/sh
+                if [ "$1" = --mcp-attach ]; then
+                  echo "relayed {version} $$" >> "$(dirname "$0")/../../../../relayed.txt"
+                  exec "{Path.Combine(AppContext.BaseDirectory, "Passenger")}" "$@"
+                fi
+                echo started {version} >> "$(dirname "$0")/../../../../started.txt"
+
+                """);
             File.SetUnixFileMode(executable, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.GroupRead
                 | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
             Tool("/usr/bin/codesign", "--force", "--options", "runtime", "--sign", "-", bundle);

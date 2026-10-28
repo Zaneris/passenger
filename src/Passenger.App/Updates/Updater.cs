@@ -61,8 +61,8 @@ public abstract partial class Updater
     protected abstract IReadOnlyList<int> RunningHere();
 
     /// <summary>What runs from this install besides this process, whose files an install would change under it: agents'
-    /// relays (<c>--mcp-attach</c>), which the install ends first (<see cref="EndRelays"/>), each with the folder it works
-    /// in, and anything else, which holds the install back until it closes.</summary>
+    /// relays (<c>--mcp-attach</c>), which the install has follow it (<see cref="FollowRelays"/>), each with the folder it
+    /// works in, and anything else, which holds the install back until it closes.</summary>
     public IReadOnlyList<OtherCopy> Others() =>
         [.. RunningHere().Select(id => new OtherCopy(id, Mcp.McpProxy.RelayAt(id)))];
 
@@ -94,6 +94,109 @@ public abstract partial class Updater
         catch (Exception error) when (error is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
         {
             return $"process {processId}, which has ended since";
+        }
+    }
+
+    /// <summary>The relays ordered to follow the update (<see cref="HoldRelays"/>), until it is in place or given up.</summary>
+    private readonly HashSet<int> ordered = [];
+
+    /// <summary>Orders the agents' relays running from this install to follow the update about to be installed, on macOS
+    /// and Linux: a call of theirs that finds no window waits for the updated app's from now on, rather than starting the
+    /// app being replaced. Taken back by <see cref="LetRelaysGo"/>; nothing on Windows, where the install ends them.</summary>
+    public void HoldRelays()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            foreach (OtherCopy relay in Others().Where(other => other.Relay))
+            {
+                Order(relay);
+            }
+        }
+    }
+
+    /// <summary>Takes back each order to follow given (<see cref="HoldRelays"/>): the updated app is in place, or there is
+    /// no update after all.</summary>
+    public void LetRelaysGo()
+    {
+        int[] given;
+        lock (ordered)
+        {
+            given = [.. ordered];
+            ordered.Clear();
+        }
+        foreach (int relay in given)
+        {
+            try
+            {
+                Mcp.McpProxy.Unordered(relay);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                IdeErrors.Write($"Updates: the agent's relay (process {relay}) was not told the update is in place, and waits up to two minutes for it: {error.Message}");
+            }
+        }
+    }
+
+    private bool Order(OtherCopy relay)
+    {
+        try
+        {
+            Mcp.McpProxy.OrderFollowing(relay.ProcessId);
+            lock (ordered)
+            {
+                ordered.Add(relay.ProcessId);
+            }
+            return true;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            IdeErrors.Write($"Updates: the agent's relay on {relay.Folder} (process {relay.ProcessId}) cannot be told to follow the update: {error.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>Has the agents' relays running from this install let go of it before it is replaced, each to start again
+    /// from the updated app in its own process, as its agent's session: each ordered to follow, then SIGTERM, which it
+    /// answers by waiting in a shell, off the app, until <see cref="LetRelaysGo"/>. One that has not let go within
+    /// <see cref="RelayEnding"/> is ended (<see cref="EndRelays"/>), as every relay is on Windows, where a process cannot
+    /// take another's place.</summary>
+    protected void FollowRelays(IReadOnlyList<OtherCopy> others, string version)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            EndRelays(others, version);
+            return;
+        }
+        List<OtherCopy> told = [];
+        foreach (OtherCopy relay in others.Where(other => other.Relay))
+        {
+            if (Order(relay) && Signal(relay.ProcessId, Terminate) == 0)
+            {
+                told.Add(relay);
+            }
+        }
+        Stopwatch waited = Stopwatch.StartNew();
+        TimeSpan limit = Waits.Of(RelayEnding);
+        List<OtherCopy> holding = [];
+        foreach (OtherCopy relay in told)
+        {
+            TimeSpan left = limit - waited.Elapsed;
+            if (SpinWait.SpinUntil(() => Mcp.McpProxy.LetGo(relay.ProcessId) || Signal(relay.ProcessId, 0) != 0, left > TimeSpan.Zero ? left : TimeSpan.Zero)
+                && Mcp.McpProxy.LetGo(relay.ProcessId))
+            {
+                IdeErrors.Write($"Updates: the agent's relay on {relay.Folder} (process {relay.ProcessId}) let go of the app to install Passenger {version}, "
+                    + "and starts again from it as its agent's session");
+            }
+            else if (Signal(relay.ProcessId, 0) == 0)
+            {
+                Mcp.McpProxy.Unordered(relay.ProcessId);
+                holding.Add(relay);
+            }
+        }
+        if (holding.Count > 0)
+        {
+            IdeErrors.Write($"Updates: {Plural.Of(holding.Count, "agent's relay", "agents' relays")} did not let go of the app within {limit.TotalSeconds:0} s, and {(holding.Count == 1 ? "is" : "are")} ended");
+            EndRelays(holding, version);
         }
     }
 

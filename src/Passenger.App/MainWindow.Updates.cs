@@ -138,6 +138,16 @@ public partial class MainWindow
         WatchUpdates(settings.CheckForUpdates);
     }
 
+    /// <summary>Has the agents' relays of the install wait for the update about to be installed as the last window closes,
+    /// rather than start the app being replaced (<see cref="Updater.HoldRelays"/>).</summary>
+    public void HoldRelaysForUpdate()
+    {
+        if (readyRelease is not null && SelfUpdate is { } updater)
+        {
+            updater.HoldRelays();
+        }
+    }
+
     /// <summary>Installs the update made ready, once the window has closed and what it started has ended, as the
     /// process ends: at once on macOS, by Velopack's Update.exe once this process has gone on Windows, then starting
     /// the new version when the person chose Restart to Update.</summary>
@@ -314,7 +324,7 @@ public partial class MainWindow
 
     /// <summary>Quits Passenger, every window closing, to install the update and start it, as the person chose; a window
     /// that does not close (a file it could not save) installs nothing yet, and one that asks first restarts once answered.
-    /// Another program running from the install (but an agent's relay, which the install ends) holds it back, named in
+    /// Another program running from the install (but an agent's relay, which follows the update) holds it back, named in
     /// the notice.</summary>
     private async Task RestartToUpdateAsync()
     {
@@ -334,7 +344,12 @@ public partial class MainWindow
         }
         // A window kept open keeps the update for the next end, which starts nothing.
         restartToUpdate = true;
-        PassengerApp.Quit(givenUp: () => restartToUpdate = false);
+        updater.HoldRelays();
+        PassengerApp.Quit(givenUp: () =>
+        {
+            restartToUpdate = false;
+            updater.LetRelaysGo();
+        });
     }
 
     /// <summary>Stops a download and drops what was downloaded, the notice going back to a link to the release.</summary>
@@ -424,8 +439,8 @@ public partial class MainWindow
             $"Passenger {release.Version} is downloaded and checked. Click to restart into it;\notherwise it installs when Passenger closes.{RelaysEnded()}");
     }
 
-    /// <summary>What installing does to the agents connected through relays of this install, which it ends: said before,
-    /// with the folders they work in.</summary>
+    /// <summary>What installing does to the agents connected through relays of this install, said before, with the folders
+    /// they work in: each goes on into the new version, or, on Windows, is ended and reconnects.</summary>
     private string RelaysEnded()
     {
         if (SelfUpdate is not { } updater)
@@ -437,8 +452,10 @@ public partial class MainWindow
         {
             return string.Empty;
         }
-        return $"\nInstalling it ends {Plural.Of(folders.Length, "agent's connection", "agents' connections")} to Passenger, on "
-            + $"{string.Join(", ", folders.Distinct(PathNames.Comparer))}: each agent reconnects to go on (/mcp in Claude Code).";
+        string on = string.Join(", ", folders.Distinct(PathNames.Comparer));
+        return OperatingSystem.IsWindows()
+            ? $"\nInstalling it ends {Plural.Of(folders.Length, "agent's connection", "agents' connections")} to Passenger, on {on}: each agent reconnects to go on (/mcp in Claude Code)."
+            : $"\n{Plural.Of(folders.Length, "agent's connection", "agents' connections")} to Passenger, on {on}, {(folders.Length == 1 ? "goes" : "go")} on into the new version.";
     }
 
     /// <summary>The update held back by programs running from the install, each named in full, with what to do; a click

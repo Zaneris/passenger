@@ -256,6 +256,7 @@ public static class PassengerApp
     /// (<see cref="MainWindow.Ended"/>), then installs an update made ready, last of all. It needs no UI thread.</summary>
     public static void End()
     {
+        updates?.HoldRelaysForUpdate();
         Task[] ending;
         lock (Ending)
         {

@@ -121,6 +121,18 @@ public sealed partial class DiskImageUpdater : Updater
 
     public override void Install(bool restart)
     {
+        try
+        {
+            InstallReady(restart);
+        }
+        finally
+        {
+            LetRelaysGo();
+        }
+    }
+
+    private void InstallReady(bool restart)
+    {
         if (Ready is not { } version)
         {
             return;
@@ -137,8 +149,10 @@ public sealed partial class DiskImageUpdater : Updater
             IdeErrors.Write($"Updates: Passenger {version} waits to install: another Passenger runs from {Bundle}: {Listed(others.Where(other => !other.Relay))}");
             return;
         }
-        EndRelays(others, version);
+        FollowRelays(others, version);
         (string? why, string? old) = Replace(app, version);
+        // The app is in place, or the old one still is: either way the relays start again from it.
+        LetRelaysGo();
         if (why is not null)
         {
             IdeErrors.Write($"Updates: Passenger {version} was not installed: {app} could not take the place of {Bundle}: {why}");
