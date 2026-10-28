@@ -267,7 +267,8 @@ site-shots` retakes its images.
   `IdeErrors` passes over (`LanguageServer.IsDroppedAnswer`).
 - **Roslyn's server takes file watching all or nothing**: offered it, it watches nothing itself; all it registers is
   ours. A file deleted reaches it only once the projects holding it loaded again without it (`ProjectMethods.Deleted`):
-  told first, it reads the missing file for its document, a second each, before any answer needing the compilation.
+  told first, it reads the missing file for its document, a second each, before any answer needing the compilation
+  (dotnet/roslyn#86236).
 - **Roslyn's server writes its MEF caches beside its DLLs** (`roslyn/cache/`, no option for elsewhere), so where that
   folder is in a macOS bundle (a file added breaks the seal: "damaged", #450) or read-only, it runs from a copy in the
   state's `cache/roslyn/` (`RoslynServerFolder`); nothing a Passenger runs may write inside the app.
@@ -308,8 +309,9 @@ site-shots` retakes its images.
   Resources); TMPDIR is reached through the /var link, so a build or restore of a test's project goes by its real path,
   and two spellings of one project restored at once collide.
 - **.NET's watcher on macOS passes over FSEvents' word that it dropped events** (`MustScanSubDirs|UserDropped` arrive on
-  the watched folder itself, which it skips): `FolderWatcher` takes 256 changes within a second, or an overflow, as a
-  burst at risk and lists again the folders it touched against its record (#607).
+  the watched folder itself, which it skips; dotnet/runtime#136577), so a folder is watched only through `WatchedTree`
+  (the folder's watcher and each of `ServerWatches`'), never a bare `FileSystemWatcher`: it takes 256 changes within a
+  second, or an overflow, as a burst at risk and lists again the folders it touched against its record (#607, #609).
 - **macOS's "damaged" dialog** comes from a Passenger.app whose seal no longer holds being read or started: a mounted disk image
   whose file was replaced under it (`just package-mac` ejects one first) or a bundle written into (#450). Tests never start a
   program inside an unsigned bundle, and the run's folder ends in `.noindex`, so Spotlight reads none of what a run makes.
