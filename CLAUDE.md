@@ -21,8 +21,9 @@ make it, never a copy of another IDE's; only its keys follow Rider's keymaps (th
 just build                 # Debug build of Passenger.slnx; warnings are errors
 just run [PATH] [args]     # the IDE on a folder or file (--file F, --caret L:C, --theme dark|light)
 just screenshot X.png ...  # the main window drawn off-screen to a PNG, after the steps given
-just test [filter] [N]     # tests whose name matches, in N processes, then the Alone classes (tools/test-run.py);
-                           # results and console logs in artifacts/test-results/local; --plan shows the deal
+just test [filter] [N] [--gate|--report]  # tests whose name matches (one lane, or both), in N processes, then the
+                           # Alone classes (tools/test-run.py); results and logs in artifacts/test-results/local;
+                           # --plan shows the deal
 just test-times RUN...     # rewrite tests/Passenger.Tests/TestTimes.json from CI runs (it deals CI's shards)
 just publish RID           # self-contained Release build: osx-arm64, win-x64, win-arm64, linux-x64, linux-arm64
 just package-mac [RID]     # the .dmg (Apple Silicon), signed by PASSENGER_SIGN_IDENTITY and notarized by
@@ -243,7 +244,7 @@ Projects in `src/`; `find_symbol` finds the rest:
   (`Updater.EndRelays`), signalling the relay alone, never its agent's process group.
 
 Releases and the site: `ci.yml` and `release.yml` (from a `vX.Y.Z` tag, its body `docs/release-notes/X.Y.Z.md`, refused
-while it is the stand-in) call `test.yml`, every system's suite in four shards. `site/` is passenger-ide.net, plain HTML
+while it is the stand-in) call `test.yml`: the gate on every system in two shards, and for CI the report lane too. `site/` is passenger-ide.net, plain HTML
 and CSS loading only its own files (CSP 'self'), deployed by the owner by hand: each page has its own title,
 description, canonical, Open Graph tags and `sitemap.xml` entry, a changed share card takes a new name, and `just
 site-shots` retakes its images.
@@ -316,8 +317,16 @@ site-shots` retakes its images.
 ## Tests
 
 Tests drive the IDE whole, headless (`tests/Passenger.Tests`, xunit v3 on Avalonia's headless platform with real Skia):
-a window or an editor, real keys by Rider's macOS keymap (`EditorRig`), typing, clicks, files on disk. No unit tests of
-one type or function: a test says what a person sees or gets, and its failure message names the consequence.
+a window or an editor, real keys by Rider's macOS keymap (`EditorRig`), typing, clicks, files on disk. Pure logic (no
+window, process, network or clock; a temporary folder only where it is about paths) is unit tested in
+`tests/Passenger.UnitTests` instead, each test milliseconds and the same on every run, seeded where random; an end-to-end
+test that checks only such logic gives way to unit tests. Either way a test's name says what holds and its failure message
+names the consequence.
+
+**The gate** (`[Gate]`, and every unit test) is what blocks CI and a release: a test enters it only with a clean record
+on CI on all three systems, no measured time or allocation bound and no container, real-Aspire or Node.js need, guarding
+a core flow; one that fails there for a test's reason leaves it until rewritten. Every other test runs in the report lane,
+whose failures never fail a run: each becomes an issue (`ci-report`) fixed in the normal flow.
 `BannedSymbols.txt` (RS0030) bans driving internals directly (the terminal's emulator, a hand-started Roslyn or profiling
 session, a lone `TextDocument`, `LineDiff`, `CommitGraph`, `Snippet.Parse`; `Rig.cs` excepted), raising Click events
 (`Ui.Click` instead) and fixed sleeps (`Thread.Sleep`, `Task.Delay`, `Screenshot.Pump`) outside `Waiting` and `Ui`. The
@@ -364,8 +373,8 @@ nothing of C# opens without the language server (`Ui.OpenFolder(folder, language
 languageServer: false)`).
 
 **Runs.** `just test` deals the classes outside Alone to N processes by `TestTimes.json` (each with its own run folder;
-the container classes in one lane), then the Alone classes in one. CI deals each system's suite to four shards the same
-way; a shard over `TestBudget.json`'s 32 minutes fails, a class over its seconds warns, and `just test-times RUN`
+the container classes in one process), then the Alone classes in one. CI deals each system's gate to two shards and its report lane to
+four the same way; a gate shard over `TestBudget.json`'s 32 minutes fails, a class over its seconds warns, and `just test-times RUN`
 rewrites the times. The run sets its nice value to 0; a test needing an MSBuild node waits for `Processes.MSBuildNodesCounted` or
 skips saying why. The VMs run a filter on a commit: Windows on Arm, `~/Documents/passenger-vm/vm-test.sh NAME FILTER` (no
 Node.js; it can't see dot folders), and Ubuntu 26.04 ARM64, `vm-test-linux.sh NAME FILTER`.

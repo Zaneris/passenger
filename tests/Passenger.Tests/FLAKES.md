@@ -6,7 +6,9 @@ pattern shows. A **race in the IDE** is fixed in the IDE; waiting longer or tryi
 `Waiting.Until`), never by a longer fixed time. A failure that was neither says what it was.
 
 To add one: a line under its date, newest first, naming the test, the run, the cause in a sentence and the commit
-that fixed it, in one of the forms below. A failure not yet understood goes in only once it is.
+that fixed it, in one of the forms below. A failure not yet understood goes in only once it is. Since 2026-10-28 only
+the gate (`[Gate]` and the unit tests) holds a run or a release back: a gate test that failed for a test's reason leaves
+the gate until it is rewritten, and a report-lane failure is an issue (`ci-report`) written here once understood.
 
 **Where they come from** (the 111 entries of 2026-10-19 to 27, against the 1,556 tests CI ran on 2026-10-27):
 - **By the kind of test:**
