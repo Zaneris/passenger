@@ -74,6 +74,8 @@ public sealed partial class PassengerTools
         string full = Resolve(path);
         string name = Relative(full).Replace('\\', '/');
         await Session.Vcs.Opened;
+        // Read now, so a rename made a moment ago is measured from where the file was.
+        await Session.Vcs.RefreshAsync();
         string head = await Session.Vcs.HeadTextAsync(full) ?? string.Empty;
         Passenger.App.Editors.OpenTexts texts = Editors.Texts();
         // Reading and comparing a large file would hold the person's window: the thread pool does both.

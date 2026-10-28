@@ -198,6 +198,35 @@ public sealed class VcsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A file git mv renamed in a terminal before the folder opened, then one line of it changed, is measured from
+    /// where the last commit has it: one change bar, Show Diff's one difference, and Rollback Lines putting that line back.</summary>
+    [AvaloniaFact]
+    public void A_file_git_mv_renamed_elsewhere_is_compared_with_where_the_last_commit_has_it()
+    {
+        Git("mv", "Shop.cs", "Store.cs");
+        string store = Path.Combine(folder, "Store.cs");
+        File.WriteAllText(store, Original.Replace("int count", "long count", StringComparison.Ordinal));
+        MainWindow window = Ui.OpenFolder(folder);
+        window.OpenFile(store);
+        Ui.Settle();
+        Ui.Landed(() => window.Vcs.Changes.Any(c => c.Name == "Store.cs" && c.Kind == ChangeKind.Renamed), "Store.cs listed as renamed from Shop.cs");
+        Ui.Landed(() => Marks(window).Count > 0, "Store.cs's change bars against what the last commit has as Shop.cs");
+        Assert.True(Marks(window) is [{ Line: 2, Count: 1, Kind: ChangeMarkKind.Modified }],
+            $"Store.cs, git mv'd from Shop.cs with one line changed, shows the bars [{string.Join(", ", Marks(window))}]: compared with nothing, every line is new");
+
+        DiffWindow diff = Ui.Landed(window.ShowDiffAsync(PathNames.Canonical(store)), "Store.cs's diff")!;
+        Assert.Equal(Original, diff.View.Left.Document.Snapshot.ToString());
+        Assert.True(diff.View.Hunks.Count == 1, $"Show Diff of the renamed Store.cs found {diff.View.Hunks.Count} differences from the last commit's Shop.cs, not its one line");
+        diff.Close();
+        Ui.Settle();
+
+        window.EditorArea.CodeEditor.GoTo(new TextPosition(2, 0));
+        window.Perform(AppActions.RollbackLines);
+        Ui.Landed(() => Text(window) == Original, "Rollback Lines to put line 3 back as the last commit's Shop.cs has it");
+        Ui.Landed(() => Marks(window).Count == 0, "the bar gone with the change rolled back");
+        window.Close();
+    }
+
     /// <summary>Amend with no file chosen changes the last commit's message alone: the rename the Explorer made in the
     /// index goes into no commit and stays listed.</summary>
     [AvaloniaFact]

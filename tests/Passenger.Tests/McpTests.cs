@@ -325,6 +325,24 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             .Select(c => $"{c.GetProperty("path").GetString()} {c.GetProperty("kind").GetString()}").Order(StringComparer.Ordinal));
     }
 
+    /// <summary>vcs_status with the path of a file git mv renamed, one line of it changed since, answers that one line, as
+    /// the file was where the last commit has it.</summary>
+    [Fact]
+    public async Task An_agents_diff_of_a_file_git_mv_renamed_is_its_one_changed_line_from_where_the_last_commit_has_it()
+    {
+        string repository = TestFolders.Create("mcp-renamed-");
+        DeleteAtEnd(repository);
+        File.WriteAllText(Path.Combine(repository, "Foo.txt"), "line 1\nline 2\nline 3\nline 4\n");
+        await TestGit.InitAsync(repository);
+
+        await using McpClient client = await Start(["--mcp", repository], languageServer: false);
+        await TestGit.RunAsync(repository, "mv", "Foo.txt", "Bar.txt");
+        File.WriteAllText(Path.Combine(repository, "Bar.txt"), "line 1\nline 2 changed\nline 3\nline 4\n");
+        string diff = (await Call(client, McpTools.VcsStatus, new() { ["path"] = "Bar.txt" })).GetString()!.Replace("\r", string.Empty, StringComparison.Ordinal);
+        Assert.True(diff.Contains("-line 2\n+line 2 changed\n", StringComparison.Ordinal) && !diff.Contains("+line 1", StringComparison.Ordinal),
+            $"vcs_status of Bar.txt, git mv'd from Foo.txt with one line changed, answered:\n{diff}");
+    }
+
     /// <summary>vcs_stash lists each stash with its commit, and an agent's drop by that commit takes that stash wherever it
     /// now is, though another program stashed after the list was read; asked again, it is refused as gone.</summary>
     [Fact]

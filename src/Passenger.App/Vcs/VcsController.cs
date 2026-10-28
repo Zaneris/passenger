@@ -37,6 +37,12 @@ public sealed class VcsController : IDisposable
     private string? textsOf;
     private bool textsRead;
     private readonly List<(string From, string To)> moves = [];
+
+    /// <summary>Where each file the last status lists as renamed came from, by its path now: a rename git was told of
+    /// wherever it was made (git mv in a terminal, a move here in an earlier session), which its bars, diff and rollback
+    /// compare with.</summary>
+    private Dictionary<string, string> renamed = new(PathNames.Comparer);
+
     private Git? git;
     private int opened;
     private TaskCompletionSource? opening;
@@ -157,6 +163,7 @@ public sealed class VcsController : IDisposable
             textsOf = null;
             textsRead = false;
             moves.Clear();
+            renamed = new(PathNames.Comparer);
         }
         finally
         {
@@ -176,6 +183,7 @@ public sealed class VcsController : IDisposable
         textsOf = null;
         textsRead = false;
         moves.Clear();
+        renamed = new(PathNames.Comparer);
         return RefreshAsync();
     }
 
@@ -323,7 +331,12 @@ public sealed class VcsController : IDisposable
             }
             if (!textsRead || status.Head != textsOf)
             {
+                renamed = Renames(status.Changes);
                 ReadTexts(repository, status.Head);
+            }
+            else
+            {
+                TakeRenames(Renames(status.Changes));
             }
         }
         Changed?.Invoke(this, EventArgs.Empty);
@@ -1110,14 +1123,57 @@ public sealed class VcsController : IDisposable
         }
     }
 
-    /// <summary>Where a path was before every move since the folder opened.</summary>
+    /// <summary>Where a file is in the last commit: where the status found it renamed from, else where it was before every
+    /// move made here since the folder opened (or where that was renamed from, until the status reads those moves).</summary>
     private string Origin(string path)
     {
+        if (renamed.TryGetValue(path, out string? from))
+        {
+            return from;
+        }
         for (int i = moves.Count - 1; i >= 0; i--)
         {
             path = PathNames.Moved(path, moves[i].To, moves[i].From);
         }
-        return path;
+        return renamed.GetValueOrDefault(path) ?? path;
+    }
+
+    private static Dictionary<string, string> Renames(IReadOnlyList<FileChange> changes)
+    {
+        Dictionary<string, string> found = new(PathNames.Comparer);
+        foreach (FileChange change in changes)
+        {
+            if (change.From is { } from)
+            {
+                found[change.Path] = from;
+            }
+        }
+        return found;
+    }
+
+    /// <summary>A status's renames taken in: each file whose place in the last commit they move is read there again, an
+    /// open one's bars worked out again; none is when they move nothing (a move here the status has caught up with).</summary>
+    private void TakeRenames(Dictionary<string, string> now)
+    {
+        if (now.Count == renamed.Count && now.All(r => renamed.TryGetValue(r.Key, out string? was) && PathNames.Same(was, r.Value)))
+        {
+            return;
+        }
+        string[] read = [.. heads.Keys];
+        string[] before = [.. read.Select(Origin)];
+        renamed = now;
+        for (int i = 0; i < read.Length; i++)
+        {
+            if (PathNames.Same(before[i], Origin(read[i])))
+            {
+                continue;
+            }
+            heads.Remove(read[i]);
+            foreach (OpenDocument document in documents.Keys.Where(d => PathNames.Same(d.Path, read[i])))
+            {
+                IdeErrors.Observe(MarkAsync(document));
+            }
+        }
     }
 
     /// <summary>Works out a file's change bars from the last commit's text against the editor's, off the window's
