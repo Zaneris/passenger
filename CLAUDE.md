@@ -315,8 +315,10 @@ site-shots` retakes its images.
   or it takes the keys from what the person types (headless, it clears them).
 - **Agents never open windows on the person's screen**: `--mcp FOLDER`, or `--mcp-attach` with
   `PASSENGER_START=headless` and a PASSENGER_SETTINGS of its own; never a bare `--mcp-attach`, never `just run`.
-- **Aspire's CLI and AppHosts** keep running AppHosts in `$HOME/.aspire/cli/bch` whatever ASPIRE_HOME says; on Windows in
-  the profile whatever the environment says (those tests skip there).
+- **Aspire's CLI and AppHosts** keep running AppHosts in `$HOME/.aspire/cli/bch` whatever ASPIRE_HOME says; on Windows
+  in the profile whatever the environment says (those tests skip there). An Aspire service's replicas share
+  `OTEL_SERVICE_NAME` and its display name: a start's own resource is found by `service.instance.id`
+  (`AspireResourceRun.ResourceIn`), never by name alone.
 - **Windows**: a folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
   outlive it, so a child whose descendants must end with it is held with `ChildProcesses.HoldFamily`; a write waits out a
   reader that shares no writes for up to 2 s, off the window's thread (`FileText.WhileHeldAsync`); closing a socket
