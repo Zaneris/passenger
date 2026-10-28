@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Globalization;
 using System.Text.Json;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -211,6 +213,123 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
         Assert.Equal(2, resources.Commands.Length);
         Assert.Equal("Stopped", (await Call(client, McpTools.Stop)).GetString());
         Assert.Empty(resources.Errors);
+    }
+
+    /// <summary>An agent's debug_start of one replica of a service its AppHost runs as two, named by its resource, debugs that
+    /// replica: restarted held by its own resource's command, its session attached to its own new program (stopped at a
+    /// breakpoint, its process's id a local there), workspace naming that session on its resource alone, and the other
+    /// replica left running as it was, undebugged. The test starts each replica as DCP does, as the stand-in's commands ask.</summary>
+    [Fact]
+    public async Task An_agents_debug_start_of_one_replica_debugs_that_replicas_own_program()
+    {
+        await project.ResetAsync();
+        await project.BuildApiAsync();
+        await using AspireInteractionHost resources = await AspireInteractionHost.StartAsync(project.KeyFile);
+        resources.PushResource(new Passenger.App.Aspire.Protocol.Resource { Name = "cache", DisplayName = "cache", Uid = "cache", ResourceType = "Container", State = "Running" });
+        await project.ServeAsync(resources);
+        await using McpClient client = await Start(["--mcp", project.Folder], languageServer: false);
+        string host = PathNames.Canonical(project.ProjectFile);
+        Assert.True(await Waiting.UntilAsync(async () => (await Call(client, McpTools.Workspace)).GetProperty("runConfigurations").EnumerateArray()
+            .Any(item => item.GetString() == StandInAppHost.Configuration), TimeSpan.FromMinutes(2), Cancel),
+            $"The stand-in AppHost's Aspire configuration was not found.{Said()}");
+        JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = StandInAppHost.Configuration });
+        Assert.True(ran.GetProperty("stillRunning").GetBoolean(), $"run of the stand-in AppHost answered: {ran}");
+        (string first, string second) = ("aaaaaaaa", "bbbbbbbb");
+        ConcurrentBag<System.Net.WebSockets.ClientWebSocket> sockets = [];
+        ConcurrentQueue<Task<int>> restarts = new();
+        Dictionary<string, int> programs = [];
+        try
+        {
+            foreach (string instance in (string[])[first, second])
+            {
+                programs[instance] = await StartReplicaAsync(instance, subscribe: instance == first);
+            }
+            resources.OnCommand = command =>
+            {
+                string instance = command.ResourceName["apiservice-".Length..];
+                if (command.CommandName == "resource-restart")
+                {
+                    Processes.Kill(programs[instance]);
+                    restarts.Enqueue(Waiting.Apart(() => StartReplicaAsync(instance, subscribe: false)));
+                }
+            };
+            JsonElement[] listed = [];
+            Assert.True(await Waiting.UntilAsync(async () => (listed = Replicas(await Call(client, McpTools.Workspace))).Length == 2, TimeSpan.FromSeconds(30), Cancel),
+                $"workspace never listed both replicas running: {string.Join(", ", listed)}{Said()}");
+            await Call(client, McpTools.BreakpointSet, new() { ["path"] = $"{StandInAppHost.Api}/Program.cs", ["line"] = project.ApiLoop });
+
+            JsonElement stop = await Call(client, McpTools.DebugStart, new() { ["resource"] = $"{host}::apiservice-{second}", ["waitSeconds"] = 60 });
+            int restarted = await Assert.Single(restarts);
+            Assert.True(restarted != programs[second] && stop.GetProperty("state").GetString() == "paused" && Local(stop, "pid") == restarted.ToString(CultureInfo.InvariantCulture),
+                $"debug_start of the second replica stopped elsewhere than in its own new program {restarted} (it ran as {programs[second]}, the first as {programs[first]}): {stop}");
+            Assert.True(Processes.IsRunning(programs[first]), "debug_start of the second replica ended the first");
+            Assert.Equal(("resource-restart", $"apiservice-{second}"), Assert.Single(resources.Commands, command => command.CommandName != "resource-stop") is { } asked
+                ? (asked.CommandName, asked.ResourceName) : default);
+            Assert.True(await Waiting.UntilAsync(async () => (listed = Replicas(await Call(client, McpTools.Workspace))).Length == 2
+                && SessionOf(listed, second) == $"{StandInAppHost.Name}: apiservice-{second}", TimeSpan.FromSeconds(30), Cancel),
+                $"workspace did not name the second replica's own session on its resource: {string.Join(", ", listed)}");
+            Assert.True(SessionOf(listed, first) is null, $"workspace named a session on the first replica, which nothing debugs: {string.Join(", ", listed)}");
+            Assert.Equal("Stopped", (await Call(client, McpTools.Stop)).GetString());
+            Assert.Empty(resources.Errors);
+        }
+        finally
+        {
+            List<int> left = [.. programs.Values];
+            foreach (Task<int> start in restarts)
+            {
+                if (await Waiting.Within(start, TimeSpan.FromMinutes(1), Cancel) && start.IsCompletedSuccessfully)
+                {
+                    left.Add(await start);
+                }
+            }
+            foreach (int program in left)
+            {
+                Processes.Kill(program);
+            }
+            foreach (System.Net.WebSockets.ClientWebSocket socket in sockets)
+            {
+                socket.Dispose();
+            }
+        }
+
+        // A replica started as DCP starts it, telling its instance; once its program has said its id, its resource as its AppHost says it runs.
+        async Task<int> StartReplicaAsync(string instance, bool subscribe)
+        {
+            string told = $"{project.KeyFile}.{instance}.pid";
+            File.Delete(told);
+            (System.Net.WebSockets.ClientWebSocket notified, System.Net.HttpStatusCode answer) = await project.StartApiAsync("apiservice", environment: new Dictionary<string, string>
+            {
+                ["OTEL_RESOURCE_ATTRIBUTES"] = $"service.instance.id={instance}",
+                ["STAND_IN_PID_FILE"] = told,
+            }, subscribe: subscribe);
+            sockets.Add(notified);
+            Assert.True((int)answer is >= 200 and < 300, $"The IDE refused replica {instance}'s run session: {answer}");
+            int program = 0;
+            Assert.True(await Waiting.UntilAsync(() => (program = Processes.ReadId(told)) > 0, TimeSpan.FromMinutes(1), Cancel), $"Replica {instance} never said its process's id");
+            Passenger.App.Aspire.Protocol.Resource resource = new()
+            {
+                Name = $"apiservice-{instance}", DisplayName = "apiservice", Uid = $"api-{instance}", ResourceType = "Project", State = "Running",
+                Properties =
+                {
+                    new Passenger.App.Aspire.Protocol.ResourceProperty { Name = "project.path", Value = Google.Protobuf.WellKnownTypes.Value.ForString(PathNames.Canonical(project.ApiProject)) },
+                    new Passenger.App.Aspire.Protocol.ResourceProperty { Name = "executable.pid", Value = Google.Protobuf.WellKnownTypes.Value.ForNumber(program) },
+                },
+            };
+            resource.Commands.Add(new Passenger.App.Aspire.Protocol.ResourceCommand
+            {
+                Name = "resource-restart", DisplayName = "Restart", State = Passenger.App.Aspire.Protocol.ResourceCommandState.Enabled,
+            });
+            resources.PushResource(resource);
+            return program;
+        }
+
+        // The replicas' resources workspace lists running.
+        static JsonElement[] Replicas(JsonElement workspace) => [.. workspace.GetProperty("aspireApps").EnumerateArray().SelectMany(app => app.GetProperty("resources").EnumerateArray())
+            .Where(resource => resource.GetProperty("name").GetString()!.StartsWith("apiservice-", StringComparison.Ordinal) && resource.GetProperty("state").GetString() == "Running")];
+
+        // The session workspace names on a replica's resource, or null.
+        static string? SessionOf(JsonElement[] replicas, string instance) => replicas.Single(resource => resource.GetProperty("name").GetString() == $"apiservice-{instance}")
+            .TryGetProperty("session", out JsonElement session) && session.ValueKind == JsonValueKind.String ? session.GetString() : null;
     }
 
     /// <summary>The stand-in AppHost run by the agent from its Aspire configuration, which run answers once the AppHost is

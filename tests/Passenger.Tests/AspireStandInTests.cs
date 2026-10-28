@@ -1120,7 +1120,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
 
     /// <summary>Both replicas of a service its AppHost runs as two, each debugged from the Aspire window, are debugged at once:
     /// each session in a Debug tab of its own, named by its replica's resource, attached to its own program, so Debug of the
-    /// first leaves the second's session as it was.</summary>
+    /// first leaves the second's session as it was; an agent's workspace names each one's session on its own resource.</summary>
     [AvaloniaFact]
     public void Both_replicas_of_a_service_are_debugged_at_once_each_in_a_tab_of_its_own()
     {
@@ -1155,6 +1155,10 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
                 int attached = Ui.Await(replica.DebugTab!.Session!.ProcessStarted, $"{replica.DebugTab.Name}'s session to name its program");
                 Assert.True(attached == replica.ProcessId, $"{replica.DebugTab.Name}'s session attached to process {attached}, not its own {replica.ProcessId}");
             }
+            // An agent's workspace names each replica's own session on its resource, the one its debug tools take.
+            Passenger.App.Mcp.Workspace told = Ui.Await(new Passenger.App.Mcp.PassengerTools(window).GetWorkspace(), "an agent's workspace");
+            Assert.Equal([.. debugged.Select(replica => (replica.DebugTab!.Name, "running"))], instances.Select(instance =>
+                Assert.Single(Assert.Single(told.AspireApps).Resources, resource => resource.Name == $"apiservice-{instance}") is { } listed ? (listed.Session, listed.Debugger) : default));
             Assert.Empty(backend.Errors);
         }
         finally
@@ -2763,6 +2767,16 @@ public sealed class StandInAppHost : SharedProject
                 Console.WriteLine($"child said: {child.StandardOutput.ReadToEnd().Trim()}");
             }
             Console.WriteLine("The stand-in API is up");
+            if (Environment.GetEnvironmentVariable("STAND_IN_PID_FILE") is { Length: > 0 } told)
+            {
+                File.WriteAllText(told + ".part", Environment.ProcessId.ToString());
+                File.Move(told + ".part", told, overwrite: true);
+                while (true)
+                {
+                    int pid = Environment.ProcessId;
+                    Thread.Sleep(100);
+                }
+            }
             Thread.Sleep(Timeout.Infinite);
 
             """);
@@ -2773,10 +2787,14 @@ public sealed class StandInAppHost : SharedProject
 
     /// <summary>A service the stand-in AppHost's orchestrator would start, which a test asks the IDE to start by the execution
     /// protocol, as DCP does: a console app that says it is up and waits, with STAND_IN_CHILD=1 having first run itself as a
-    /// child and said what the child wrote.</summary>
+    /// child and said what the child wrote; given STAND_IN_PID_FILE, it writes its process's id there and goes round
+    /// <see cref="ApiLoop"/>, its id a local.</summary>
     public const string Api = "StandIn.Api";
 
     public string ApiProject => PathOf($"{Api}/{Api}.csproj");
+
+    /// <summary>The line of the service's Program.cs it goes round given STAND_IN_PID_FILE, where a breakpoint stops it.</summary>
+    public int ApiLoop => Array.FindIndex(File.ReadAllLines(PathOf($"{Api}/Program.cs")), line => line.Trim() == "Thread.Sleep(100);") + 1;
 
     /// <summary>Builds the stand-in's service, which the IDE starts as it is built, by its real path, as the IDE's
     /// builds of it (a restart's) name it: a build through the run folder's link (macOS's TMPDIR, under /var) after one
@@ -2784,13 +2802,37 @@ public sealed class StandInAppHost : SharedProject
     /// wrote. None when its files and what its last build here left are as they were then (<see cref="ApiBuilt"/>).</summary>
     internal void BuildApi()
     {
+        if (!ApiUpToDate())
+        {
+            ApiBuiltBy(Ui.Await(ApiBuildAsync(), "the stand-in API's build"));
+        }
+    }
+
+    /// <inheritdoc cref="BuildApi"/>
+    internal async Task BuildApiAsync()
+    {
+        if (!ApiUpToDate())
+        {
+            ApiBuiltBy(await ApiBuildAsync());
+        }
+    }
+
+    /// <summary>Whether the service's files and what its last build here left are as they were then, else forgotten.</summary>
+    private bool ApiUpToDate()
+    {
         if (apiBuilt is { } last && last.SequenceEqual(ApiBuilt()))
         {
-            return;
+            return true;
         }
         apiBuilt = null;
-        ChildResult result = Ui.Await(ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", PathNames.Canonical(ApiProject), "-nologo", "-v:q"]),
-            limit: TimeSpan.FromMinutes(3).Scaled()), "the stand-in API's build");
+        return false;
+    }
+
+    private Task<ChildResult> ApiBuildAsync() => ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", PathNames.Canonical(ApiProject), "-nologo", "-v:q"]),
+        limit: TimeSpan.FromMinutes(3).Scaled());
+
+    private void ApiBuiltBy(ChildResult result)
+    {
         Assert.True(result.Succeeded, $"The stand-in API did not build: {result.Output}{result.Error}");
         apiBuilt = ApiBuilt();
     }

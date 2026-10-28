@@ -313,8 +313,9 @@ public sealed partial class PassengerTools
     }
 
     /// <summary>A resource as workspace says it with what reaches its .NET service from here, a run of services' of either
-    /// kind: what it is held at its start for, the Debug tab debugging it (the session the debug tools take) and its state, a
-    /// quiet session's for Hot Reload, and whether the profiler records it.</summary>
+    /// kind: what it is held at its start for, the Debug tab debugging it (the session the debug tools take, an AppHost's
+    /// start's own, never another replica's) and its state, a quiet session's for Hot Reload, and whether the profiler records
+    /// it.</summary>
     private ResourceInfo Reached(ResourceInfo info, ServiceRun run, IRunService? service)
     {
         if (service is null)
@@ -322,21 +323,32 @@ public sealed partial class PassengerTools
             return info;
         }
         string name = run.SessionName(service);
-        DebugSession? tabbed = run.Debugged.Contains(name) ? Debugging(name) : null;
-        DebugSession? quiet = Session.Debug.Running.FirstOrDefault(r => r.Name == name)?.Session;
+        (ToolWindows.DebugTab? tab, DebugSession? quiet) = service is Aspire.AspireResourceRun start ? OwnSession(run, start, name)
+            : (run.Debugged.Contains(name) ? TabNamed(name) : null, Session.Debug.Running.FirstOrDefault(r => r.Name == name)?.Session);
+        DebugSession? tabbed = tab?.Session;
         DebugSession? debugged = tabbed is { State: not DebugState.Ended } ? tabbed : quiet is { State: not DebugState.Ended } ? quiet : null;
         return info with
         {
             Held = run.HeldFor(service) is { } how ? Words(how) : null,
-            Session = debugged is not null && debugged == tabbed ? name : null,
+            Session = debugged is not null && debugged == tabbed ? tab!.Name : null,
             Debugger = debugged is null ? null : debugged == quiet ? "hotReload" : debugged.State.ToString().ToLowerInvariant(),
             Profiled = run.Profiled is { } profiled && run.KeyOf(profiled) == run.KeyOf(service) ? true : null,
         };
     }
 
+    /// <summary>An AppHost's start's own Debug tab and quiet session for Hot Reload, never another start's (a replica's of
+    /// the same service): its tab once attached, else, while it attaches, the tab of its session's name no other start has.</summary>
+    private (ToolWindows.DebugTab? Tab, DebugSession? Quiet) OwnSession(ServiceRun run, Aspire.AspireResourceRun start, string name) =>
+        start.DebugTab is { } own ? (own, null)
+            : (run.Debugged.Contains(name) && TabNamed(name) is { } named && !run.Services.OfType<Aspire.AspireResourceRun>().Any(other => other.DebugTab == named) ? named : null,
+                Session.Debug.Running.FirstOrDefault(r => r.Session == start.Debugged)?.Session);
+
     /// <summary>The session of a Debug tab of that name, its live one before one an earlier run of it left ended.</summary>
-    private DebugSession? Debugging(string tab) =>
-        Session.Debug.Tabs.LastOrDefault(t => t.Name == tab && t.IsLive)?.Session ?? Session.Debug.SessionNamed(tab);
+    private DebugSession? Debugging(string tab) => TabNamed(tab)?.Session;
+
+    /// <summary>The Debug tab of that name, its live one before one an earlier run of it left ended.</summary>
+    private ToolWindows.DebugTab? TabNamed(string tab) =>
+        Session.Debug.Tabs.LastOrDefault(t => t.Name == tab && t.IsLive) ?? Session.Debug.Tabs.FirstOrDefault(t => t.Name == tab);
 
     /// <summary>How a run of services was started, or a service is held, in an agent's words: run, debug, hotReload, profile.</summary>
     private static string Words(RunStart how) => JsonNamingPolicy.CamelCase.ConvertName(how.ToString());
