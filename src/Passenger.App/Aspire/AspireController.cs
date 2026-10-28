@@ -489,6 +489,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             // Each health check's run is an update: the Containers window is regrouped only when the containers named change.
             bool moved = !ids.ToHashSet(StringComparer.Ordinal).SetEquals(app.KnownContainerIds);
             app.KnownContainerIds = ids;
+            app.Replicas(snapshot);
             BackgroundWork.Track(Reported(Containers.Observe(app.Configuration.Project, snapshot, app.ContainerRuntime)));
             if (moved)
             {
@@ -1307,8 +1308,36 @@ public sealed class AspireAppRun : ServiceRun
     public override void Say(IRunService service, string line, bool error) =>
         ((service as AspireResourceRun ?? ServiceNamed(service.Name) as AspireResourceRun)?.Console ?? Console).Append($"{line}\n", error);
 
-    /// <summary>By its AppHost too, as two AppHosts may each run a resource of one name.</summary>
-    public override string SessionName(IRunService service) => $"{Path.GetFileNameWithoutExtension(Configuration.Project)}: {service.Name}";
+    /// <summary>By its AppHost too, as two AppHosts may each run a resource of one name, and a replica of several by its own
+    /// resource (<see cref="ReplicaOf"/>), so each is debugged in a tab of its own; a start keeps the name it was first given,
+    /// which its session goes by.</summary>
+    public override string SessionName(IRunService service) => service is AspireResourceRun start
+        ? start.SessionName ??= $"{Path.GetFileNameWithoutExtension(Configuration.Project)}: {ReplicaOf(start) ?? service.Name}"
+        : $"{Path.GetFileNameWithoutExtension(Configuration.Project)}: {service.Name}";
+
+    /// <summary>The services its AppHost runs as several replicas, by name, as its resources or their starts (each told an
+    /// instance of its own) have shown them.</summary>
+    private readonly HashSet<string> replicated = new(StringComparer.Ordinal);
+
+    /// <summary>The instance the first start of each service's name was told, which a replica's start tells apart.</summary>
+    private readonly Dictionary<string, string> firstInstances = new(StringComparer.Ordinal);
+
+    /// <summary>The replica's resource name of a start of a service its AppHost runs as several (<see cref="AspireResourceRun.Replica"/>),
+    /// else null.</summary>
+    internal string? ReplicaOf(AspireResourceRun start) => replicated.Contains(((IRunService)start).Name) ? start.Replica : null;
+
+    /// <summary>Takes from its AppHost's resources the services it runs as several replicas: project resources sharing a
+    /// display name, which is their service's.</summary>
+    internal void Replicas(IReadOnlyList<AspireResource> resources)
+    {
+        foreach (IGrouping<string, AspireResource> service in resources.Where(resource => resource.IsProject).GroupBy(resource => resource.DisplayName, StringComparer.Ordinal))
+        {
+            if (service.Skip(1).Any())
+            {
+                replicated.Add(service.Key);
+            }
+        }
+    }
 
     /// <summary>The newest start still running of the replica a start is (<see cref="KeyOf"/>: the start given, or the one its
     /// restart started), else of a service of that name.</summary>
@@ -1445,6 +1474,10 @@ public sealed class AspireAppRun : ServiceRun
         resource.Sequence = ++started;
         string name = ((IRunService)resource).Name;
         unstarted.Remove(name);
+        if (resource.Instance is { } instance && !firstInstances.TryAdd(name, instance) && firstInstances[name] != instance)
+        {
+            replicated.Add(name);
+        }
         if (decided.Add(name) && first() is { } held)
         {
             Brought([(resource, held)]);
@@ -1563,6 +1596,14 @@ public sealed class AspireResourceRun(string id, string instanceId, string proje
         }
         return named is [{ } one] ? one : null;
     }
+
+    /// <summary>DCP's name for its resource, which its <see cref="Instance"/> makes as DCP makes it (the service's name, a
+    /// dash and the instance, or the instance where that is the name); null where none is told.</summary>
+    internal string? Replica => Instance is not { } instance ? null
+        : instance.StartsWith($"{((IRunService)this).Name}-", StringComparison.Ordinal) ? instance : $"{((IRunService)this).Name}-{instance}";
+
+    /// <summary>The name its session took (<see cref="AspireAppRun.SessionName"/>), given once.</summary>
+    internal string? SessionName { get; set; }
 
     public int? ProcessId { get; internal set; }
     public DebugTab? DebugTab { get; internal set; }

@@ -1118,6 +1118,53 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
+    /// <summary>Both replicas of a service its AppHost runs as two, each debugged from the Aspire window, are debugged at once:
+    /// each session in a Debug tab of its own, named by its replica's resource, attached to its own program, so Debug of the
+    /// first leaves the second's session as it was.</summary>
+    [AvaloniaFact]
+    public void Both_replicas_of_a_service_are_debugged_at_once_each_in_a_tab_of_its_own()
+    {
+        project.Reset();
+        project.BuildApi();
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        MainWindow window = OpenRunning(backend);
+        string[] instances = ["aaaaaaaa", "bbbbbbbb"];
+        StandInReplicas replicas = new(project, backend, window, instances);
+        try
+        {
+            Dictionary<string, int> programs = replicas.Start(instances);
+            // The second first, so the first's Debug comes while the second's session is live.
+            foreach (string instance in (string[])[instances[1], instances[0]])
+            {
+                int before = programs[instance];
+                replicas.Choose(instance);
+                FindAction(window, "Debug Service");
+                Ui.WaitFor(() => replicas.Of(instance) is [{ ProcessId: int restarted, DebugTab.IsLive: true }] && restarted != before,
+                    () => $"Debug to restart replica {instance} held and attach to it ({window.Status})", TimeSpan.FromMinutes(2));
+                programs = replicas.Programs();
+                replicas.Show(programs);
+            }
+            AspireResourceRun[] debugged = [.. instances.Select(instance => Assert.Single(replicas.Of(instance)))];
+            Assert.True(debugged.All(replica => replica.DebugTab is { IsLive: true }),
+                "Debug of the first replica ended the second's session, which shared its name");
+            Assert.Equal([.. instances.Select(instance => $"{Path.GetFileNameWithoutExtension(project.ProjectFile)}: apiservice-{instance}")],
+                debugged.Select(replica => replica.DebugTab!.Name));
+            Assert.Equal(2, window.Session.Debug.Tabs.Count(tab => tab.IsLive));
+            foreach (AspireResourceRun replica in debugged)
+            {
+                int attached = Ui.Await(replica.DebugTab!.Session!.ProcessStarted, $"{replica.DebugTab.Name}'s session to name its program");
+                Assert.True(attached == replica.ProcessId, $"{replica.DebugTab.Name}'s session attached to process {attached}, not its own {replica.ProcessId}");
+            }
+            Assert.Empty(backend.Errors);
+        }
+        finally
+        {
+            window.Close();
+            replicas.Dispose();
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+    }
+
     /// <summary>A service the stand-in AppHost runs as replicas, each telling its instance as DCP's starts of them do
     /// (service.instance.id, the suffix of DCP's name for its resource, apiservice-aaaaaaaa): the stand-in's commands act on
     /// each replica's program as DCP's do, a stop or restart ending it and a start or restart asking the IDE to start it
