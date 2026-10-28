@@ -162,6 +162,38 @@ public sealed class TablesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>The cells' menu copies what is chosen as Copy's keys do, each item naming its keys: a right-click among the
+    /// chosen cells keeps them, one outside them chooses the cell under it, and Select All there chooses every cell.</summary>
+    [AvaloniaFact]
+    public void The_cells_menu_copies_the_chosen_cells_and_a_right_click_elsewhere_chooses_the_cell_under_it()
+    {
+        string path = Path.Combine(folder, "numbers.csv");
+        File.WriteAllText(path, "a,b,c\n1,2,3\n4,5,6\n7,8,9\n");
+        MainWindow window = Open(path);
+        CellGrid grid = Grid(window);
+        Ui.Click(grid, new Point(60, ListRow.Height * 1.5));
+        Ui.Press(window, "shift DOWN");
+        Ui.Press(window, "shift RIGHT");
+
+        Ui.RightClick(grid, new Point(60, ListRow.Height * 2.5));
+        Assert.True(grid.Chosen == (0, 0, 1, 1), $"A right-click among the chosen cells left {grid.Chosen} chosen");
+        ContextMenu menu = grid.Menu ?? throw new Xunit.Sdk.XunitException("A right-click on the table's cells opened no menu");
+        Keystroke copyKeys = Keystroke.Parse(Ui.Shortcut(EditorActions.Copy));
+        Assert.Equal(new KeyGesture(copyKeys.Key, copyKeys.Modifiers), menu.Items.OfType<MenuItem>().Single(i => (string?)i.Header == "Copy").InputGesture);
+        Ui.Choose(menu, "Copy");
+        Assert.Equal($"1\t2{Environment.NewLine}4\t5{Environment.NewLine}", Ui.Clipboard(window));
+
+        Ui.RightClick(grid, new Point(60, ListRow.Height * 3.5));
+        Assert.True(grid.Chosen == (2, 0, 2, 0), $"A right-click outside the chosen cells left {grid.Chosen} chosen, not the cell under it");
+        Ui.Choose(grid.Menu, "Copy");
+        Assert.Equal($"7{Environment.NewLine}", Ui.Clipboard(window));
+
+        Ui.RightClick(grid, new Point(60, ListRow.Height * 1.5));
+        Ui.Choose(grid.Menu, "Select All");
+        Assert.Equal((0, 0, 2, 2), grid.Chosen);
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void Find_searches_the_tables_cells_and_enter_walks_them_not_the_text_under_it()
     {

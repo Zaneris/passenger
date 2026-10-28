@@ -65,6 +65,8 @@ public partial class MainWindow
         OnDisk(A.CopyPath, "Copy Path", path => IdeErrors.Observe(CopyPathAsync(path)));
         OnDisk(A.RevealInFileManager, FileManager.Showing, ShowInFileManager, FileManager.Name);
         OnDisk(A.OpenInTerminal, "Open in Terminal", path => IdeErrors.Observe(OpenTerminalAt(Directory.Exists(path) ? path : Path.GetDirectoryName(path)!)), "Terminal");
+        OnDisk(A.OpenInBrowser, "Open in Browser", path => Browse(new Uri(path)), "Browser",
+            path => Languages.Language.ForPath(path) == Languages.Language.Html ? null : $"{Path.GetFileName(path)} is not an HTML page");
         // Rider's RenameElement: the Explorer's row where its menu or keys ask, else what is at the editor's caret.
         actions.Add(new IdeAction(A.Rename, "Rename…", "Code", c =>
         {
@@ -95,11 +97,12 @@ public partial class MainWindow
             TitleIn = titleIn is null ? null : c => RowOf(c) is { } row ? titleIn(row) : title,
         });
 
-    /// <summary>An action on what is on disk: the Explorer's row while its menu or keys ask, else the file shown.</summary>
-    private void OnDisk(string id, string title, Action<string> run, string? titleInMenu = null) =>
+    /// <summary>An action on what is on disk: the Explorer's row while its menu or keys ask, else the file shown; one that
+    /// takes only some files says why not of the others (<paramref name="whyNot"/>).</summary>
+    private void OnDisk(string id, string title, Action<string> run, string? titleInMenu = null, Func<string, string?>? whyNot = null) =>
         actions!.Add(new IdeAction(id, title, ExplorerGroup, c => run(PathOnDisk(c)!))
         {
-            WhyNot = c => PathOnDisk(c) is not null ? null : RowOf(c) is { } row ? $"{row.Name} is in no folder on disk" : Refusals.NoFile,
+            WhyNot = c => PathOnDisk(c) is { } path ? whyNot?.Invoke(path) : RowOf(c) is { } row ? $"{row.Name} is in no folder on disk" : Refusals.NoFile,
             TitleIn = titleInMenu is null ? null : c => c.ExplorerRow is null ? title : titleInMenu,
         });
 
@@ -278,7 +281,12 @@ public partial class MainWindow
         // A solution folder is in no folder on disk, so it has no path to copy or show.
         if (!solutionFolder)
         {
-            entries.AddRange([Item(A.CopyPath), Sub("Open In", [Item(A.RevealInFileManager), Item(A.OpenInTerminal)])]);
+            List<MenuEntry> openIn = [Item(A.RevealInFileManager), Item(A.OpenInTerminal)];
+            if (node is { Kind: NodeKind.File, Path: { } page } && Languages.Language.ForPath(page) == Languages.Language.Html)
+            {
+                openIn.Add(Item(A.OpenInBrowser));
+            }
+            entries.AddRange([Item(A.CopyPath), Sub("Open In", openIn)]);
         }
         if (node.Kind == NodeKind.File && !node.IsSolutionItem)
         {

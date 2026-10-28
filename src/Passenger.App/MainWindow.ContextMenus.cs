@@ -25,8 +25,8 @@ public partial class MainWindow
     }
 
     /// <summary>The editor's menu: context actions and the clipboard, Find Usages, Refactor, Go To, Generate and
-    /// Folding, Reformat and Cleanup, the test at the caret, the paused program's actions, breakpoints, Local History
-    /// and Git.</summary>
+    /// Folding, Reformat and Cleanup, an HTML page's Open in Browser, the test at the caret, the paused program's actions,
+    /// breakpoints, Local History and Git.</summary>
     private void ShowEditorMenu(CodeEditor editor, Point? at)
     {
         if (Editors.Groups.FirstOrDefault(g => g.Editor == editor) is { } group)
@@ -55,6 +55,10 @@ public partial class MainWindow
         if (Web.WebLanguages.LanguageOf(active.Path) is not null || session.Web?.Prettier.PackageFor(active.Path) is not null)
         {
             Add(Item(A.ReformatWithPrettier), Item(A.FixEslintProblems));
+        }
+        if (Languages.Language.ForPath(active.Path) == Languages.Language.Html)
+        {
+            Add(separator, Item(A.OpenInBrowser));
         }
         if (active.Syntax is { } syntax && Testing.TestsAtCaret.At(syntax.Current, editor.CaretPosition.Line) is { } test)
         {

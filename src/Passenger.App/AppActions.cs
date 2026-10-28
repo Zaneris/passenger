@@ -194,6 +194,10 @@ public static class AppActions
     public const string RevealInFileManager = "app.explorer.reveal";
     public const string OpenInTerminal = "app.explorer.openInTerminal";
 
+    // An HTML file opened in the person's browser (Rider's WebOpenInAction): its plugin's Alt+F2 for $default, which the
+    // Mac keymaps and VS Code's take from it, and Ctrl+Alt+F2 for Visual Studio's.
+    public const string OpenInBrowser = "app.explorer.openInBrowser";
+
     public const string Build = "app.build";
     public const string RebuildSolution = "app.build.rebuildSolution";
     public const string CleanSolution = "app.build.cleanSolution";
@@ -407,6 +411,10 @@ public static class AppActions
 
     // Rider's Diff.ShowSettingsPopup, a diff's Settings: $default's Ctrl+Shift+D, none in its VS Code keymaps.
     public const string DiffSettings = "app.vcs.diffSettings";
+
+    // Rider's EditSource in a diff, Jump to Source: F4 there, as in every list, no key of the keymap's (which would take F4
+    // from the lists).
+    public const string DiffJumpToSource = "app.vcs.diffJumpToSource";
     public const string ShowGit = "app.vcs.showGit";
     public const string Annotate = "app.vcs.annotate";
     public const string UpdateProject = "app.vcs.update";
@@ -545,6 +553,7 @@ public static class AppActions
                 // CopyPaths and CompareTwoFiles: $default's Ctrl+Shift+C and Ctrl+D as Mac OS X 10.5+ takes them; RevealIn has none.
                 .Bind(CopyPath, "meta shift C")
                 .Bind(CompareFiles, "meta D")
+                .Bind(OpenInBrowser, "alt F2")
                 .Bind(Build, "meta shift B")
                 .Bind(RunProgram, "control F5")
                 .Bind(Debug, "alt F5")
@@ -669,6 +678,7 @@ public static class AppActions
             .Bind(FindPrevious, "shift F3", "control alt PAGE_UP")
             .Bind(FocusExplorer, "alt 1", "control alt L")
             .Bind(CopyPath, "control shift C")
+            .Bind(OpenInBrowser, "control alt F2")
             .Bind(Build, "control shift B")
             .Bind(RunProgram, "control F5")
             .Bind(Debug, "alt F5")
@@ -798,6 +808,7 @@ public static class AppActions
                 .Bind(FocusExplorer, "meta shift E")
                 .Bind(CopyPath, "meta alt C", "meta K , P")
                 .Bind(RevealInFileManager, "meta K , R", "meta alt R")
+                .Bind(OpenInBrowser, "alt F2")
                 .Bind(Build, "meta shift B")
                 .Bind(RunProgram, "control F5")
                 .Bind(Stop, "shift F5")
@@ -907,6 +918,7 @@ public static class AppActions
             .Bind(FocusExplorer, "control shift E")
             .Bind(CopyPath, "shift alt C", "control K , P")
             .Bind(RevealInFileManager, "shift alt R", "control K , R")
+            .Bind(OpenInBrowser, "alt F2")
             .Bind(Build, "control shift B")
             .Bind(RunProgram, "control F5")
             .Bind(Stop, "shift F5")

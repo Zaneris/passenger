@@ -397,6 +397,41 @@ public sealed class VcsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Jump to Source goes from a diff to its file: F4 on the file's side opens it in the main window at the caret,
+    /// the diff's window closed so the file shows; F4 on the last commit's side lands on the line that one stands at now,
+    /// past the lines put in above it; and the diff's toolbar names it with its key.</summary>
+    [AvaloniaFact]
+    public void F4_in_a_diff_opens_its_file_at_the_carets_line_from_either_side()
+    {
+        TestFolders.Write(folder, "Notes.txt", "notes\n");
+        TestFolders.Write(folder, "Shop.cs", "// One\n// Two\n" + Original);
+        MainWindow window = Open();
+        string shop = window.EditorArea.Active!.Path;
+        window.OpenFile(Path.Combine(folder, "Notes.txt"));
+        Ui.Settle();
+
+        DiffWindow diff = Ui.Landed(window.ShowDiffAsync(shop), "the diff open")!;
+        Ui.Landed(() => diff.View.Right.IsFocused, "the diff's side of the file to have the keys");
+        Button jump = diff.View.GetVisualDescendants().OfType<Button>().Single(b => b.Name == AppActions.DiffJumpToSource);
+        Assert.Equal("Jump to Source (F4)", ToolTip.GetTip(jump));
+        diff.View.Right.GoTo(new TextPosition(4, 4));
+        Ui.Press(diff, "F4");
+        Assert.False(diff.IsVisible, "Jump to Source left the diff's window open over the file it opened");
+        Assert.True(window.EditorArea.Active?.Path == shop, $"Jump to Source opened {window.EditorArea.Active?.Path}, not the diff's file");
+        Assert.Equal(new TextPosition(4, 4), window.EditorArea.CodeEditor.CaretPosition);
+
+        window.OpenFile(Path.Combine(folder, "Notes.txt"));
+        Ui.Settle();
+        diff = Ui.Landed(window.ShowDiffAsync(shop), "the diff open again")!;
+        diff.View.Left.Focus();
+        diff.View.Left.GoTo(new TextPosition(2, 4));
+        Ui.Press(diff, "F4");
+        Assert.False(diff.IsVisible, "Jump to Source from the last commit's side left the diff's window open");
+        Assert.True(window.EditorArea.Active?.Path == shop && window.EditorArea.CodeEditor.CaretPosition.Line == 4,
+            $"F4 on the last commit's line 3 went to line {window.EditorArea.CodeEditor.CaretPosition.Line + 1} of {window.EditorArea.Active?.Path}, not to line 5 of Shop.cs, where it stands now");
+        window.Close();
+    }
+
     /// <summary>A diff's Next Difference is F7 everywhere and F8 too off the Mac, as Rider's Visual Studio keymap binds them
     /// there, Shift with either going back; the Mac's keymap leaves F8 to the IDE.</summary>
     [AvaloniaFact]

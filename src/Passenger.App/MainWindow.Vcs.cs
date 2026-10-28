@@ -323,7 +323,7 @@ public partial class MainWindow
                 hold.Dispose();
             };
         }
-        ShowOwn(window);
+        ShowDiff(window);
         return window;
     }
 
@@ -347,9 +347,32 @@ public partial class MainWindow
         FileDiff diff = await BackgroundWork.Run(() => FileDiff.Compare(before, text));
         DiffView view = Diffs.ForFile(file.Name, diff, mine, null, (leftTitle, commit.Short), file.From ?? file.Path, file.Path);
         DiffWindow window = new($"{file.Name}: {commit.Short} {commit.Subject}", view);
-        ShowOwn(window);
+        ShowDiff(window);
         return window;
     }
+
+    /// <summary>Shows a diff's window over this one, its Jump to Source opening the file here (<see cref="JumpToSource"/>).</summary>
+    private void ShowDiff(DiffWindow window)
+    {
+        window.View.SourceRequested += (_, _) => JumpToSource(window.View);
+        ShowOwn(window);
+    }
+
+    /// <summary>A diff's Jump to Source: its file at the line its caret is on, the diff's window closed so the file shows.</summary>
+    private void JumpToSource(DiffView diff)
+    {
+        if (WhyNotJump(diff) is { } why)
+        {
+            status.Text = why;
+            return;
+        }
+        TextPosition at = diff.SourcePlace;
+        (TopLevel.GetTopLevel(diff) as Window)?.Close();
+        NavigateTo(diff.Source!, at);
+        Activate();
+    }
+
+    private static string? WhyNotJump(DiffView diff) => diff.Source is { } file && File.Exists(file) ? null : $"{Path.GetFileName(diff.Source)} is not on disk";
 
     /// <summary>The change bar a gutter click on a line falls on, or null.</summary>
     private static ChangeMark? ChangeAt(OpenDocument document, int line) => ChangeColumn.At(document.ChangeMarks, line);
@@ -484,7 +507,11 @@ public partial class MainWindow
         // A diff's own, whatever it compares: how its differences are highlighted.
         actions!.Add(new IdeAction(AppActions.DiffSettings, "Diff Settings", "Git", context => DiffWithKeys(context)!.ShowSettings())
         {
-            WhyNot = context => DiffWithKeys(context) is null ? "No diff has the keys" : null,
+            WhyNot = context => DiffWithKeys(context) is null ? NoDiff : null,
+        });
+        actions.Add(new IdeAction(AppActions.DiffJumpToSource, "Jump to Source", "Git", context => JumpToSource(DiffWithKeys(context)!))
+        {
+            WhyNot = context => DiffWithKeys(context) is { } diff ? WhyNotJump(diff) : NoDiff,
         });
 
         void Add(string id, string title, Action<ActionContext> run, MenuPlace menu, bool onFile = false) =>
@@ -494,6 +521,8 @@ public partial class MainWindow
                 Menus = [menu],
             });
     }
+
+    private const string NoDiff = "No diff has the keys";
 
     private static DiffView? DiffWithKeys(ActionContext context) => (context.Focused as Visual)?.FindAncestorOfType<DiffView>(includeSelf: true);
 

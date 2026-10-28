@@ -6,6 +6,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.App.ToolWindows;
 using Passenger.Editor;
 
 namespace Passenger.App.Tables;
@@ -14,7 +15,8 @@ namespace Passenger.App.Tables;
 /// side, both held in place while the cells scroll, numbers against their cell's right edge. Only the cells on screen are
 /// drawn, each one's text laid out once and kept while it stays there, so a sheet of a million rows scrolls as one of ten.
 /// A click chooses a cell, a drag or Shift a range, the header a column and the side a row; a header's edge is dragged to
-/// size its column, or double-clicked to fit it. Copy writes the chosen cells as tab-separated lines.</summary>
+/// size its column, or double-clicked to fit it. Copy writes the chosen cells as tab-separated lines, from the keys or the
+/// cells' menu, which a right-click opens on the cell under it (the chosen ones, when it falls among them).</summary>
 public sealed class CellGrid : Control
 {
     private const double RowHeight = ListRow.Height;
@@ -77,7 +79,43 @@ public sealed class CellGrid : Control
         horizontal.PropertyChanged += OnScrollBarChanged;
         ActualThemeVariantChanged += (_, _) => Restyle();
         ResourcesChanged += (_, _) => Restyle();
+        ContextRequested += (_, e) =>
+        {
+            ShowMenu(e.TryGetPosition(this, out Point at) ? at : null);
+            e.Handled = true;
+        };
         charWidth = Measure("MMMMMMMMMM", Plain, null).WidthIncludingTrailingWhitespace / 10;
+    }
+
+    /// <summary>The cells' menu while it is open.</summary>
+    public ContextMenu? Menu { get; private set; }
+
+    /// <summary>The cells' menu, Copy and Select All with their keys: at the pointer, or from the keys under the caret's cell.</summary>
+    private void ShowMenu(Point? at)
+    {
+        if (table is null)
+        {
+            return;
+        }
+        bool cells = table.RowCount > 0 && table.ColumnCount > 0;
+        ContextMenu menu = new()
+        {
+            PlacementTarget = this,
+            Items =
+            {
+                ListMenus.Keyed("Copy", EditorActions.Copy, () => Execute(EditorActions.Copy), cells),
+                ListMenus.Keyed("Select All", EditorActions.SelectAll, () => Execute(EditorActions.SelectAll), cells),
+            },
+        };
+        if (at is null)
+        {
+            Rect body = Body;
+            menu.Placement = PlacementMode.BottomEdgeAlignedLeft;
+            menu.PlacementRect = new Rect(gutter + lefts[Math.Min(caret.Column, lefts.Length - 1)] - scroll.X, body.Top + (caret.Row * RowHeight) - scroll.Y, 1, RowHeight);
+        }
+        Menu = menu;
+        menu.Closed += (_, _) => Menu = Menu == menu ? null : Menu;
+        menu.Open(this);
     }
 
     /// <summary>The table shown, its columns fitted to their cells; the chosen cell and scroll are kept where they still are.</summary>
@@ -322,6 +360,11 @@ public sealed class CellGrid : Control
     {
         base.OnPointerPressed(e);
         PointerPoint point = e.GetCurrentPoint(this);
+        if (table is not null && point.Properties.IsRightButtonPressed)
+        {
+            ChooseUnder(point.Position);
+            return;
+        }
         if (table is null || !point.Properties.IsLeftButtonPressed)
         {
             return;
@@ -372,6 +415,23 @@ public sealed class CellGrid : Control
             e.Pointer.Capture(this);
         }
         InvalidateVisual();
+    }
+
+    /// <summary>A right-click's cell chosen, unless it falls among the cells chosen already, which its menu then acts on.</summary>
+    private void ChooseUnder(Point at)
+    {
+        Focus();
+        if (table is null || table.RowCount == 0 || table.ColumnCount == 0 || at.X < gutter || at.Y < RowHeight)
+        {
+            return;
+        }
+        (int row, int column) = CellAt(at);
+        (int top, int left, int bottom, int right) = Chosen;
+        if (row < top || row > bottom || column < left || column > right)
+        {
+            caret = anchor = (row, column);
+            InvalidateVisual();
+        }
     }
 
     protected override void OnPointerMoved(PointerEventArgs e)

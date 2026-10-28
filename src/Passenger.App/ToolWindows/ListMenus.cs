@@ -39,6 +39,18 @@ public static class ListMenus
         return item;
     }
 
+    /// <summary>An item that runs an action of the editor's or the window's its place's own way, with the keys the keymap in
+    /// force gives that action.</summary>
+    public static MenuItem Keyed(string header, string action, Action run, bool enabled = true)
+    {
+        MenuItem item = Item(header, null, run, enabled);
+        if (AppActions.Keymap().ShortcutsFor(action).FirstOrDefault(s => s.Second is null) is { } keys)
+        {
+            item.InputGesture = new KeyGesture(keys.First.Key, keys.First.Modifiers);
+        }
+        return item;
+    }
+
     /// <summary>A submenu of items.</summary>
     public static MenuItem Sub(string header, params Control[] items) => new() { Header = header, ItemsSource = items };
 

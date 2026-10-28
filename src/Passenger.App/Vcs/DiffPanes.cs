@@ -20,7 +20,7 @@ public sealed class DiffPanes(Func<DiffHighlighting> chosen, Action<DiffHighligh
     public DiffView ForFile(string name, FileDiff diff, TextDocument mine, OpenDocument? open, (string Left, string Right) titles,
         string leftPath, string rightPath)
     {
-        DiffView view = new(name, diff, mine, editable: open is not null, titles, chosen());
+        DiffView view = new(name, diff, mine, editable: open is not null, titles, chosen()) { Source = rightPath };
         view.HighlightingChanged += (_, way) => keep(way);
         Colour(view, [(view.Left, leftPath, null), (view.Right, rightPath, open)]);
         return view;

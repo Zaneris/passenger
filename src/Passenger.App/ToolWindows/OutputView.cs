@@ -205,28 +205,15 @@ public sealed class OutputView : DockPanel
     /// <summary>The console's menu: Copy the selection, Select All, and Clear All.</summary>
     private void ShowMenu(Point? at)
     {
-        Keymap keymap = AppActions.Keymap();
-        MenuItem Item(string header, string? action, Action run)
-        {
-            MenuItem item = new() { Header = header };
-            if (action is not null && keymap.ShortcutsFor(action).FirstOrDefault(s => s.Second is null) is { } keys)
-            {
-                item.InputGesture = new KeyGesture(keys.First.Key, keys.First.Modifiers);
-            }
-            item.Click += (_, _) => run();
-            return item;
-        }
-        MenuItem copy = Item("Copy", EditorActions.Copy, () => Editor.TryExecute(EditorActions.Copy));
-        copy.IsEnabled = !Editor.Selections.Primary.IsEmpty;
         ContextMenu menu = new()
         {
             PlacementTarget = Editor,
             Items =
             {
-                copy,
-                Item("Select All", EditorActions.SelectAll, () => Editor.TryExecute(EditorActions.SelectAll)),
+                ListMenus.Keyed("Copy", EditorActions.Copy, () => Editor.TryExecute(EditorActions.Copy), enabled: !Editor.Selections.Primary.IsEmpty),
+                ListMenus.Keyed("Select All", EditorActions.SelectAll, () => Editor.TryExecute(EditorActions.SelectAll)),
                 new Separator(),
-                Item("Clear All", null, Clear),
+                ListMenus.Item("Clear All", null, Clear),
             },
         };
         if (at is null)

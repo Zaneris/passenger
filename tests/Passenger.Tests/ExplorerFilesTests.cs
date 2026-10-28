@@ -266,6 +266,43 @@ public sealed class ExplorerFilesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>An HTML page opens in the person's browser from the Explorer's Open In, from its editor's menu and from the
+    /// keys Rider gives Open in Browser, the window handing the browser the file's address (headless, recorded and opened
+    /// nowhere); a file that is no page is refused, saying why.</summary>
+    [AvaloniaFact]
+    public void An_HTML_page_opens_in_the_browser_from_the_explorer_its_editors_menu_and_the_keys()
+    {
+        File.WriteAllText(Path.Combine(folder, "index.html"), "<!doctype html>\n<title>Shop</title>\n");
+        File.WriteAllText(Path.Combine(folder, "notes.txt"), "notes\n");
+        MainWindow window = Open();
+        try
+        {
+            string page = Row(window, "index.html").Path!;
+            Uri address = new(page);
+            Ui.ChooseFromRowMenu(window, Row(window, "index.html"), "Open In", "Browser");
+            Assert.Equal([address], window.Browsed);
+
+            window.OpenFile(page);
+            Ui.Settle();
+            Ui.ChooseFromEditorMenu(window, "Open in Browser");
+            Assert.Equal([address, address], window.Browsed);
+            window.EditorArea.CodeEditor.Focus();
+            Ui.Press(window, Ui.Shortcut(AppActions.OpenInBrowser));
+            Assert.Equal([address, address, address], window.Browsed);
+
+            window.OpenFile(Path.Combine(folder, "notes.txt"));
+            Ui.Settle();
+            window.EditorArea.CodeEditor.Focus();
+            Ui.Press(window, Ui.Shortcut(AppActions.OpenInBrowser));
+            Assert.True(window.Browsed.Count == 3, $"Open in Browser opened {window.Browsed[^1]}, which is no HTML page");
+            Assert.Equal("notes.txt is not an HTML page", window.Status);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>The Explorer's menu and keys are the window's actions: a row's Rename and Delete run from its menu and
     /// from the keys of the keymap chosen, Visual Studio's Ctrl+R, R (⌘R, R on macOS) and Delete, VS Code's F2 and
     /// Delete, as Rider's RenameElement and $Delete are bound in each; F2 renames nothing in Visual Studio's, where
