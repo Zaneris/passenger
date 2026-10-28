@@ -154,6 +154,19 @@ public static partial class BuildOutput
         return false;
     }
 
+    /// <summary>The project and assembly a build's line says it made ("  Lib -> /src/Lib/bin/Debug/net10.0/Lib.dll"), or null.</summary>
+    public static (string Project, string Path)? Made(string line)
+    {
+        int arrow = line.IndexOf(" -> ", StringComparison.Ordinal);
+        if (arrow < 0)
+        {
+            return null;
+        }
+        string project = line[..arrow].Trim();
+        string path = line[(arrow + " -> ".Length)..].Trim();
+        return project.Length > 0 && System.IO.Path.IsPathFullyQualified(path) ? (project, path) : null;
+    }
+
     /// <summary>The words one of which every line naming a problem has (<see cref="Diagnostic"/>'s severity): any other
     /// line is passed over before the expression reads it.</summary>
     private static readonly SearchValues<string> Severities = SearchValues.Create(["error", "warning"], StringComparison.Ordinal);

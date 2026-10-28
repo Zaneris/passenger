@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.Build.Evaluation;
 using Microsoft.Build.Evaluation.Context;
 using Microsoft.Build.Exceptions;
@@ -10,7 +11,8 @@ namespace Passenger.Host;
 /// makes, with each project it references in turn (every framework of one, with those properties but the framework, as a
 /// reference is built). A build that reads more than its evaluations show is said as such: a project not SDK-style C#, a
 /// target or build event of the project's own, a response file, a reference given other properties. Evaluated afresh
-/// each time, every file stamped before the build it comes before.</summary>
+/// each time, every file stamped before the build it comes before; several projects asked at once share their
+/// evaluations, each project they reach evaluated once, side by side.</summary>
 internal static class BuildReads
 {
     /// <summary>A reference's metadata that builds it with other global properties than its evaluation here has.</summary>
@@ -24,15 +26,32 @@ internal static class BuildReads
         "CodeAnalysisRuleSet", "UserRuntimeConfig", "AppConfig",
     ];
 
-    public static BuildInputs Run(InputsParams asked, CancellationToken cancel)
+    /// <summary>What a build of each project asked reads and makes, in the order asked.</summary>
+    public static IReadOnlyList<BuildInputs> Run(InputsParams asked, CancellationToken cancel)
     {
         Dictionary<string, string> globals = new(asked.Properties, StringComparer.OrdinalIgnoreCase);
         string? framework = globals.Remove("TargetFramework", out string? given) ? given : null;
         using ProjectCollection collection = new(globals, loggers: null, ToolsetDefinitionLocations.Default);
-        EvaluationContext context = EvaluationContext.Create(EvaluationContext.SharingPolicy.Shared);
+        Evaluated evaluated = new(collection, EvaluationContext.Create(EvaluationContext.SharingPolicy.Shared), globals);
+        try
+        {
+            evaluated.Load([.. asked.Projects.Select(project => (project, framework))], cancel);
+            return [.. asked.Projects.Select(project => Inputs(project, framework, evaluated, cancel))];
+        }
+        finally
+        {
+            foreach (Project loaded in collection.LoadedProjects.ToList())
+            {
+                collection.UnloadProject(loaded);
+            }
+        }
+    }
+
+    /// <summary>What a build of one project reads and makes, from the evaluations made (<see cref="Evaluated"/>).</summary>
+    private static BuildInputs Inputs(string asked, string? framework, Evaluated evaluated, CancellationToken cancel)
+    {
         Dictionary<string, Stamp> reads = new(PathNames.Comparer);
-        HashSet<string> seen = new(PathNames.Comparer) { asked.Project };
-        HashSet<string> repositories = new(PathNames.Comparer);
+        HashSet<string> seen = new(PathNames.Comparer) { asked };
         HashSet<string> restored = new(PathNames.Comparer);
         Queue<string> references = new();
         List<string> referenced = [];
@@ -40,12 +59,13 @@ internal static class BuildReads
         string? written = null;
         try
         {
-            foreach (Project project in Evaluations(asked.Project, framework, collection, context, globals, reads))
+            foreach ((Project project, Walk walk) in evaluated.Of(asked, framework, reads))
             {
-                if (Unknown(project, references, seen, reads, repositories, restored) is { } why)
+                if (walk.Why is { } why)
                 {
                     return new BuildInputs { Unknown = why };
                 }
+                Take(walk);
                 if (output is null)
                 {
                     output = PathOf(project, "OutDir");
@@ -55,12 +75,13 @@ internal static class BuildReads
             while (references.TryDequeue(out string? reference))
             {
                 cancel.ThrowIfCancellationRequested();
-                foreach (Project project in Evaluations(reference, null, collection, context, globals, reads))
+                foreach ((Project project, Walk walk) in evaluated.Of(reference, null, reads))
                 {
-                    if (Unknown(project, references, seen, reads, repositories, restored) is { } why)
+                    if (walk.Why is { } why)
                     {
                         return new BuildInputs { Unknown = why };
                     }
+                    Take(walk);
                     if (project.GetPropertyValue("TargetPath") is { Length: > 0 } target)
                     {
                         referenced.Add(Path.GetFullPath(Separated(target), project.DirectoryPath));
@@ -68,30 +89,104 @@ internal static class BuildReads
                 }
             }
         }
-        catch (Exception error) when (error is InvalidProjectFileException or IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException)
+        catch (Exception error) when (Unevaluated(error))
         {
             return new BuildInputs { Unknown = error.Message };
-        }
-        finally
-        {
-            foreach (Project loaded in collection.LoadedProjects.ToList())
-            {
-                collection.UnloadProject(loaded);
-            }
         }
         return new BuildInputs
         {
             Reads = [.. reads.Values.OrderBy(s => s.Path, StringComparer.Ordinal)], Output = output, Written = written, Referenced = referenced,
             Restored = [.. restored.Where(reads.ContainsKey)],
         };
+
+        void Take(Walk walk)
+        {
+            foreach ((string path, Stamp stamp) in walk.Reads)
+            {
+                reads.TryAdd(path, stamp);
+            }
+            foreach (string reference in walk.References)
+            {
+                if (seen.Add(reference))
+                {
+                    references.Enqueue(reference);
+                }
+            }
+            restored.UnionWith(walk.Restored);
+        }
+    }
+
+    /// <summary>What one evaluation says a build of it reads, the projects it references and those of its reads a restore
+    /// writes (<see cref="Unknown"/>); or why a build of it reads more than that.</summary>
+    private sealed record Walk(string? Why, Dictionary<string, Stamp> Reads, IReadOnlyList<string> References, HashSet<string> Restored)
+    {
+        public static Walk Of(Project project)
+        {
+            Dictionary<string, Stamp> reads = new(PathNames.Comparer);
+            Queue<string> references = new();
+            HashSet<string> restored = new(PathNames.Comparer);
+            string? why = Unknown(project, references, new HashSet<string>(PathNames.Comparer), reads, new HashSet<string>(PathNames.Comparer), restored);
+            return new Walk(why, reads, [.. references], restored);
+        }
+    }
+
+    /// <summary>Whether an evaluation's failure says only that the project's build cannot be accounted for.</summary>
+    private static bool Unevaluated(Exception error) =>
+        error is InvalidProjectFileException or IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException;
+
+    /// <summary>The evaluations a request's answers read, each project's made and walked once (its file stamped before it is
+    /// read): those asked first, side by side, then the projects they reference, a round at a time. One a round did not
+    /// reach is made when first read.</summary>
+    private sealed class Evaluated(ProjectCollection collection, EvaluationContext context, IReadOnlyDictionary<string, string> globals)
+    {
+        private readonly ConcurrentDictionary<string, Lazy<(Stamp File, List<(Project Project, Walk Walk)>? Projects, Exception? Failed)>> made = new(PathNames.Comparer);
+
+        /// <summary>Makes the evaluations of the projects given, and of every project they reference in turn, as a build of
+        /// each reaches it (a reference with every framework of its own).</summary>
+        public void Load(IReadOnlyList<(string Path, string? Framework)> projects, CancellationToken cancel)
+        {
+            ParallelOptions parallel = new() { MaxDegreeOfParallelism = Environment.ProcessorCount, CancellationToken = cancel };
+            HashSet<string> reached = new(PathNames.Comparer);
+            List<(string Path, string? Framework)> round = [.. projects];
+            while (round.Count > 0)
+            {
+                Parallel.ForEach(round, parallel, each => _ = Get(each.Path, each.Framework));
+                round = [.. round.SelectMany(each => Get(each.Path, each.Framework).Projects ?? []).SelectMany(each => each.Walk.References)
+                    .Where(reference => reached.Add(reference) && !made.ContainsKey(Key(reference, null))).Select(reference => (reference, (string?)null))];
+            }
+        }
+
+        /// <summary>A project's evaluations a build reads (<see cref="Evaluations"/>), each with its walk, its file's stamp put
+        /// in <paramref name="reads"/>; the failure of either thrown again.</summary>
+        public List<(Project Project, Walk Walk)> Of(string path, string? framework, Dictionary<string, Stamp> reads)
+        {
+            (Stamp file, List<(Project Project, Walk Walk)>? projects, Exception? failed) = Get(path, framework);
+            reads.TryAdd(path, file);
+            return projects ?? throw failed!;
+        }
+
+        private (Stamp File, List<(Project Project, Walk Walk)>? Projects, Exception? Failed) Get(string path, string? framework) =>
+            made.GetOrAdd(Key(path, framework), _ => new(() =>
+            {
+                Stamp file = Stamps.File(path);
+                try
+                {
+                    return (file, [.. Evaluations(path, framework, collection, context, globals).Select(project => (project, Walk.Of(project)))], null);
+                }
+                catch (Exception error) when (Unevaluated(error))
+                {
+                    return (file, null, error);
+                }
+            })).Value;
+
+        private static string Key(string path, string? framework) => $"{framework}|{path}";
     }
 
     /// <summary>A project's evaluations a build reads: of the framework given, else its one, else its outer one and each of its
-    /// frameworks'; its file stamped before it is read.</summary>
+    /// frameworks'.</summary>
     private static List<Project> Evaluations(string path, string? framework, ProjectCollection collection, EvaluationContext context,
-        IReadOnlyDictionary<string, string> globals, Dictionary<string, Stamp> reads)
+        IReadOnlyDictionary<string, string> globals)
     {
-        reads.TryAdd(path, Stamps.File(path));
         Project first = Evaluation.Load(path, collection, context, globals, framework);
         if (framework is not null || first.GetPropertyValue("TargetFramework").Length > 0)
         {

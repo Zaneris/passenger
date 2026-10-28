@@ -84,8 +84,9 @@ public static class HostMethods
     /// builds in place of a project file whenever a request names the program's C# file; answered true once taken.</summary>
     public const string Program = "program";
 
-    /// <summary><see cref="InputsParams"/> to <see cref="BuildInputs"/>: what a build of one project with the global properties
-    /// given reads (stamped) and makes, its references' too, or why a build of it reads more than its evaluations say.</summary>
+    /// <summary><see cref="InputsParams"/> to a <see cref="BuildInputs"/> for each project, in the order asked: what a build of
+    /// it with the global properties given reads (stamped) and makes, its references' too, or why a build of it reads more
+    /// than its evaluations say.</summary>
     public const string Inputs = "inputs";
 }
 
@@ -361,8 +362,8 @@ public sealed record PropertiesAnswer(IReadOnlyDictionary<string, string> Values
 /// would be (app.cs.csproj beside app.cs) and its XML; or why the SDK made none (a directive it does not read).</summary>
 public sealed record ProgramParams(string Path, string? Project, string? Content, string? Problem);
 
-/// <summary>A project a build is about to build, with the global properties the build gives it (its framework among them).</summary>
-public sealed record InputsParams(string Project, IReadOnlyDictionary<string, string> Properties);
+/// <summary>Projects builds are about to build, with the global properties those builds give each (its framework among them).</summary>
+public sealed record InputsParams(IReadOnlyList<string> Projects, IReadOnlyDictionary<string, string> Properties);
 
 /// <summary>What a build of a project reads and makes, as its evaluations say, with the projects it references in turn.</summary>
 public sealed record BuildInputs

@@ -267,11 +267,17 @@ public sealed class ProjectHost : IAsyncDisposable
 
     /// <summary>What a build of one project with these global properties reads and makes, as its evaluations say, or why a
     /// build of it reads more than that.</summary>
-    public async Task<BuildInputs> InputsAsync(string project, IReadOnlyDictionary<string, string> properties, CancellationToken cancel = default)
+    public async Task<BuildInputs> InputsAsync(string project, IReadOnlyDictionary<string, string> properties, CancellationToken cancel = default) =>
+        (await InputsAsync([project], properties, cancel).ConfigureAwait(false))[0];
+
+    /// <summary>What a build of each project with these global properties reads and makes (<see cref="InputsAsync(string,
+    /// IReadOnlyDictionary{string, string}, CancellationToken)"/>), in the order given, each project they reach evaluated once.</summary>
+    public async Task<IReadOnlyList<BuildInputs>> InputsAsync(IReadOnlyList<string> projects, IReadOnlyDictionary<string, string> properties,
+        CancellationToken cancel = default)
     {
-        await GiveProgramsAsync([project], cancel).ConfigureAwait(false);
-        return await AskAsync<BuildInputs>(HostMethods.Inputs, new InputsParams(project, properties), null, cancel).ConfigureAwait(false)
-            ?? throw new ProjectHostFailed("the project host gave no answer for what the project's build reads");
+        await GiveProgramsAsync(projects, cancel).ConfigureAwait(false);
+        return await AskAsync<IReadOnlyList<BuildInputs>>(HostMethods.Inputs, new InputsParams(projects, properties), null, cancel).ConfigureAwait(false) is { } inputs
+            && inputs.Count == projects.Count ? inputs : throw new ProjectHostFailed("the project host gave no answer for what the projects' builds read");
     }
 
     /// <summary>Holds the host's design-time builds of WPF projects off for a build of the IDE's own: done once none runs,

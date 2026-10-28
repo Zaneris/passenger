@@ -895,6 +895,8 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
 
             window.ApplySettings(new Passenger.App.Settings.AppSettings());
             window.ShowToolWindow(ToolWindowIds.Problems);
+            // A change for it to build, a run right after the Build that succeeded starting with none.
+            Write("src/Hello/Program.cs", "Console.WriteLine(\"Hello, run\");\n");
             window.Perform(AppActions.RunProgram);
             Ui.PumpUntil(() => window.IsBuilding, "the run's build to start", TimeSpan.FromMinutes(1));
             Assert.True(window.DockHost.IsShown(ToolWindowIds.Problems), "Run's build took the bottom panel, which Rider leaves as it was for a build before a run");

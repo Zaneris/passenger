@@ -1,5 +1,6 @@
 using Avalonia.Headless.XUnit;
 using Passenger.App;
+using Passenger.App.Explorer;
 using Passenger.App.Run;
 using Passenger.Core;
 using Passenger.Text;
@@ -9,12 +10,13 @@ namespace Passenger.Tests;
 /// <summary>Run of a project whose build would read nothing changed since its last build starts no dotnet build, the Build
 /// window saying it is up to date; one whose build reads something changed (a C# file typed into and not saved, its
 /// project file, a .props it imports, a project it references, the version of a package it references, the version
-/// global.json gives an SDK it imports) is built first, the program then running what changed. EF Core's two versions
+/// global.json gives an SDK it imports) is built first, the program then running what changed. A person's Build that
+/// succeeded, of the solution or of the project, is its last build; one that failed leaves none. EF Core's two versions
 /// come from the run's local feed, the SDK's from the folder's own.</summary>
 public sealed class LaunchUpToDateTests
 {
     /// <summary>The longest a build and a run of the app take on a developer's machine, scaled by the run.</summary>
-    private static readonly TimeSpan Slow = TimeSpan.FromMinutes(2);
+    internal static readonly TimeSpan Slow = TimeSpan.FromMinutes(2);
 
     [Gate]
     [AvaloniaFact]
@@ -23,16 +25,7 @@ public sealed class LaunchUpToDateTests
         string folder = Write();
         string app = Path.Combine(folder, "App", "App.csproj");
         List<string> builds = [];
-        EventHandler<ChildStart> started = (_, child) =>
-        {
-            if (child.Command.Contains(" build ", StringComparison.Ordinal) && child.Command.Contains("App.csproj", StringComparison.Ordinal))
-            {
-                lock (builds)
-                {
-                    builds.Add(child.Command);
-                }
-            }
-        };
+        EventHandler<ChildStart> started = Counting(builds);
         ChildProcesses.Started += started;
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         try
@@ -119,6 +112,113 @@ public sealed class LaunchUpToDateTests
             window.Actions.Work.Changed -= worked;
             window.Close();
         }
+    }
+
+    /// <summary>Run right after Build Solution starts no dotnet build of App, the Build window saying it is up to date, and
+    /// runs what the Build built; C# typed after the Build, not saved, has the next Run build first and run what was typed.</summary>
+    [AvaloniaFact]
+    public void A_run_right_after_build_solution_starts_no_build_and_one_after_a_change_typed_since_builds_first()
+    {
+        string folder = WriteSolution();
+        List<string> builds = [];
+        EventHandler<ChildStart> started = Counting(builds);
+        ChildProcesses.Started += started;
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "App"), "App's run configuration");
+            Assert.True(window.SelectConfiguration("App"));
+            Built(window, AppActions.Build, succeeds: true, "Build Solution");
+            Ran(window, builds, built: false, "hello-1 lib-1", "a run right after Build Solution");
+
+            window.OpenFile(Path.Combine(folder, "App", "Program.cs"));
+            Ui.Settle();
+            string text = window.EditorArea.Active!.Text.Snapshot.ToString();
+            window.EditorArea.CodeEditor.ApplyEdits([new TextEdit(text.IndexOf("hello-1", StringComparison.Ordinal), "hello-1".Length, "hello-2")]);
+            Ran(window, builds, built: true, "hello-2 lib-1", "a run after C# typed since Build Solution");
+        }
+        finally
+        {
+            ChildProcesses.Started -= started;
+            window.Close();
+        }
+    }
+
+    /// <summary>A Build that fails leaves no project it built up to date: Run right after Build Selected Projects of App
+    /// starts no build, but after Build Solution fails in Tool, which App does not reference, Run builds App first.</summary>
+    [AvaloniaFact]
+    public void A_run_after_a_build_that_failed_builds_first()
+    {
+        string folder = WriteSolution();
+        List<string> builds = [];
+        EventHandler<ChildStart> started = Counting(builds);
+        ChildProcesses.Started += started;
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "App"), "App's run configuration");
+            Assert.True(window.SelectConfiguration("App"));
+            Choose(window, "App");
+            Built(window, AppActions.BuildSelected, succeeds: true, "Build Selected Projects of App");
+            Ran(window, builds, built: false, "hello-1 lib-1", "a run right after Build Selected Projects");
+
+            Edit(Path.Combine(folder, "Tool", "Program.cs"), "\"tool\"", "1 + \"tool\" - 1");
+            Built(window, AppActions.Build, succeeds: false, "Build Solution with an error in Tool");
+            Ran(window, builds, built: true, "hello-1 lib-1", "a run after Build Solution failed");
+        }
+        finally
+        {
+            ChildProcesses.Started -= started;
+            window.Close();
+        }
+    }
+
+    /// <summary>A solution of a console app, App, that says its C# constant and the word of the library it references, Lib;
+    /// and another console app, Tool, that references neither; restored.</summary>
+    internal static string WriteSolution()
+    {
+        string folder = TestFolders.Create("uptodate-built-");
+        TestFolders.Write(folder, "Lib/Lib.csproj", TestProjects.Library());
+        TestFolders.Write(folder, "Lib/Greeting.cs", "namespace Lib;\n\npublic static class Greeting\n{\n    public static string Name => \"lib-1\";\n}\n");
+        TestFolders.Write(folder, "App/App.csproj", TestProjects.Console().With("  <ItemGroup>\n    <ProjectReference Include=\"../Lib/Lib.csproj\" />\n  </ItemGroup>\n"));
+        TestFolders.Write(folder, "App/Program.cs",
+            "System.Console.WriteLine($\"said: {Words.Hello} {Lib.Greeting.Name}\");\n\nstatic class Words\n{\n    public const string Hello = \"hello-1\";\n}\n");
+        TestFolders.Write(folder, "Tool/Tool.csproj", TestProjects.Console());
+        TestFolders.Write(folder, "Tool/Program.cs", "System.Console.WriteLine(\"tool\");\n");
+        TestFolders.Write(folder, "Built.slnx",
+            "<Solution>\n  <Project Path=\"App/App.csproj\" />\n  <Project Path=\"Lib/Lib.csproj\" />\n  <Project Path=\"Tool/Tool.csproj\" />\n</Solution>\n");
+        // By its real path, as the IDE's builds name it, so the first build's restore finds nothing to do.
+        Restore.Run(PathNames.Canonical(Path.Combine(folder, "Built.slnx")));
+        return folder;
+    }
+
+    /// <summary>A handler of the IDE's child processes that lists each dotnet build of App.csproj.</summary>
+    internal static EventHandler<ChildStart> Counting(List<string> builds) => (_, child) =>
+    {
+        if (child.Command.Contains(" build ", StringComparison.Ordinal) && child.Command.Contains("App.csproj", StringComparison.Ordinal))
+        {
+            lock (builds)
+            {
+                builds.Add(child.Command);
+            }
+        }
+    };
+
+    /// <summary>The project of that name chosen in the Explorer, as Build Selected Projects takes it.</summary>
+    internal static void Choose(MainWindow window, string project)
+    {
+        Ui.WaitFor(() => window.ExplorerView.Tree.Rows.Any(r => r.Kind == NodeKind.Project && r.Name == project), $"{project} in the Explorer");
+        window.ExplorerView.Choose(window.ExplorerView.Tree.Rows.First(r => r.Kind == NodeKind.Project && r.Name == project));
+        Assert.Equal([project], window.SelectedProjects().Select(Path.GetFileNameWithoutExtension));
+    }
+
+    /// <summary>A person's build by the action given, to its end, which succeeds or fails as <paramref name="succeeds"/> says.</summary>
+    internal static void Built(MainWindow window, string action, bool succeeds, string what)
+    {
+        Assert.True(window.Perform(action), $"{what} could not begin: {window.Status}");
+        Ui.WaitFor(() => !window.IsBuilding, $"{what} to end", Slow);
+        Assert.True(window.Status?.StartsWith("Build succeeded", StringComparison.Ordinal) == succeeds,
+            $"{what} {(succeeds ? "did not succeed" : "succeeded")}: {Ui.Said(window)}");
     }
 
     /// <summary>A console app, App, that says what each of its inputs gave it: its C#, the library it references, a
