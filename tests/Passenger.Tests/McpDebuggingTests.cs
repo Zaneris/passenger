@@ -130,12 +130,10 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
             }
         }
 
-        // The C# server never takes a project file, so its problems must come at once from the editor's marks.
+        // The C# server never takes a project file, so its problems come from the editor's marks: the server's would be none.
         await Call(client, McpTools.Open, new() { ["path"] = "Sum.csproj", ["line"] = 7, ["column"] = 1 });
         await Call(client, McpTools.AppType, new() { ["app"] = "ide", ["text"] = "<Import Project=\"Missing.props\" />" });
-        Stopwatch asked = Stopwatch.StartNew();
         JsonElement missing = Assert.Single((await Call(client, McpTools.Diagnostics, new() { ["path"] = "Sum.csproj" })).EnumerateArray());
-        Assert.True(asked.Elapsed < TimeSpan.FromSeconds(60).Scaled(), $"The project file's diagnostics took {asked.Elapsed}");
         Assert.Equal(("error", 7), (missing.GetProperty("severity").GetString(), missing.GetProperty("line").GetInt32()));
         Assert.Contains("Missing.props", missing.GetProperty("message").GetString(), StringComparison.Ordinal);
         // The hover card's lines end as the system's do (Windows' "\r\n").

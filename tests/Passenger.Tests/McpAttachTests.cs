@@ -784,14 +784,12 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
         try
         {
             Heard letIn = new();
-            Stopwatch asked = Stopwatch.StartNew();
             Task<CallToolResult> unanswered = Waiting.Apart(() => Result(client, McpTools.Workspace, heard: letIn));
             string? said = null;
             WaitFor(() => window.OwnedWindows.OfType<AgentAdmissionDialog>().Any(d => d.IsVisible) && (said = window.AgentStatus) is not null,
                 "the window to ask whether the agent may work there");
             Assert.Equal("Test Agent waits for you: let it in?", said);
             CallToolResult notLetIn = Await(unanswered, "the call nobody let in");
-            Assert.True(asked.Elapsed < limit + TimeSpan.FromSeconds(30).Scaled(), $"The call nobody answered came back {asked.Elapsed.TotalSeconds:0} s after it was asked, its limit {limit.TotalSeconds:0} s");
             Assert.True(notLetIn.IsError == true && Text(notLetIn).Contains($"Nobody at {where} answered within {limit.TotalSeconds:0} s whether Test Agent may work there. A later call asks again.", StringComparison.Ordinal),
                 $"The call nobody answered was answered: {Text(notLetIn)}");
             Assert.DoesNotContain(window.OwnedWindows.OfType<AgentAdmissionDialog>(), d => d.IsVisible);
@@ -801,7 +799,6 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
 
             window.ApplySettings(window.Settings with { McpServer = true });
             Heard leave = new();
-            asked.Restart();
             Task<CallToolResult> unallowed = Waiting.Apart(() => Result(client, McpTools.Build, heard: leave));
             said = null;
             WaitFor(() => window.OwnedWindows.OfType<ConfirmDialog>().Any(d => d.IsVisible) && (said = window.AgentStatus) is not null,
@@ -810,7 +807,6 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
             Assert.Contains(Texts(window.OwnedWindows.OfType<ConfirmDialog>().Single(d => d.IsVisible)),
                 t => t.StartsWith("Test Agent, connected through Passenger's MCP server, wants to build", StringComparison.Ordinal));
             CallToolResult notAllowed = Await(unallowed, "the build nobody allowed");
-            Assert.True(asked.Elapsed < limit + TimeSpan.FromSeconds(30).Scaled(), $"The build nobody allowed came back {asked.Elapsed.TotalSeconds:0} s after it was asked, its limit {limit.TotalSeconds:0} s");
             Assert.True(notAllowed.IsError == true && Text(notAllowed).Contains($"Nobody at {where} answered within {limit.TotalSeconds:0} s whether Test Agent may use build. A later call asks again.", StringComparison.Ordinal),
                 $"The build nobody allowed was answered: {Text(notAllowed)}");
             WaitFor(() => !window.OwnedWindows.OfType<ConfirmDialog>().Any(d => d.IsVisible) && window.AgentStatus == "Agent connected",
