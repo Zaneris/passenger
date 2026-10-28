@@ -15,8 +15,8 @@ using Passenger.Editor;
 namespace Passenger.Tests;
 
 /// <summary>Passenger as an agent's IDE with no window (<c>--mcp</c>), over the Model Context Protocol with the SDK's own
-/// client: a project worked through it (its tests, packages, actions, publish, Git and the terminal), and a folder given
-/// it in other letter case.</summary>
+/// client: a project worked through it (its tests, packages, actions, publish, Git and the terminal), a folder given it in
+/// other letter case, and a load that runs long.</summary>
 public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
 {
     public McpTests(RestoredFolders folders)
@@ -111,6 +111,49 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.False(Regex.IsMatch(log, @"evaluated \d+ of the \d+ projects of"), $"The window evaluated the folder's project again once built:\n{log}");
         Assert.False(log.Contains("at design time in", StringComparison.Ordinal), $"The window built the folder's project at design time again once built:\n{log}");
     }
+
+    /// <summary>A load that runs past its limit (the agent's Passenger's own, 2 s) is said to be still loading, in the
+    /// workspace's state and the status bar, and never given up: once the projects load, the language server is ready, the
+    /// status bar says so, and solution-wide analysis lists the warning of a file nobody opened.</summary>
+    [Fact]
+    public async Task A_load_past_its_limit_is_said_to_be_still_loading_and_once_it_loads_the_solution_is_ready_and_analysed()
+    {
+        string folder = await TakeFolderAsync();
+        // The design-time build the language server loads the project from, held until the test lets it go.
+        File.WriteAllText(Path.Combine(folder, "Directory.Build.targets"), """
+            <Project>
+              <Target Name="HeldLoad" BeforeTargets="CoreCompile" Condition="'$(DesignTimeBuild)' == 'true'">
+                <Exec Condition="'$(OS)' != 'Windows_NT'" Command="for i in `seq 3000`; do test -f released &amp;&amp; break; sleep 0.1; done" />
+                <Exec Condition="'$(OS)' == 'Windows_NT'" Command="powershell -NoProfile -Command &quot;for (%24i = 0; %24i -lt 3000 -and -not (Test-Path released); %24i++) { Start-Sleep -Milliseconds 100 }&quot;" />
+              </Target>
+            </Project>
+            """);
+        // Opened once Passenger runs: the folder it starts on has the server's start wait for the builds, not its load.
+        string empty = PathNames.Canonical(TestFolders.Create("mcp-empty-"));
+        DeleteAtEnd(empty);
+        await using McpClient client = await Start(["--mcp", empty], environment: new() { [global::Passenger.App.CSharp.CSharpService.SlowLoadVariable] = "2000" });
+        await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["solutionWideAnalysis"] = true } });
+        await Call(client, McpTools.Open, new() { ["path"] = folder });
+
+        const string still = "Still loading 1 project after 2 seconds; the language server's log says where it is";
+        string state = string.Empty;
+        Assert.True(await Waiting.UntilAsync(async () => (state = await LanguageServerState(client)) == still, TimeSpan.FromMinutes(2), Cancel, TimeSpan.FromMilliseconds(100)),
+            $"The language server's state past the limit was not that it is still loading but \"{state}\".{Said()}");
+        string status = Text(await Call(client, McpTools.AppTree, new() { ["app"] = "ide", ["filter"] = "#StatusText" }));
+        Assert.True(status.Contains(still, StringComparison.Ordinal), $"The status bar did not warn that the load runs long: {status}");
+
+        File.WriteAllText(Path.Combine(folder, "released"), string.Empty);
+        Assert.True(await Waiting.UntilAsync(async () => (state = await LanguageServerState(client)) == "ready", TimeSpan.FromMinutes(2), Cancel, TimeSpan.FromMilliseconds(100)),
+            $"The language server was not ready once its load ended past the limit: \"{state}\".{Said()}");
+        status = Text(await Call(client, McpTools.AppTree, new() { ["app"] = "ide", ["filter"] = "#StatusText" }));
+        Assert.True(status.Contains("C# ready: 1 project loaded after ", StringComparison.Ordinal), $"The status bar did not say the late load ended: {status}");
+        string[] solution = [.. (await Call(client, McpTools.Diagnostics)).GetProperty("solution").EnumerateArray()
+            .Select(p => $"{p.GetProperty("code").GetString()} {p.GetProperty("path").GetString()}:{p.GetProperty("line").GetInt32()}")];
+        Assert.True(solution.Contains("CS0219 Helper.cs:5"), $"Solution-wide analysis did not start once the late load ended: {string.Join("; ", solution)}");
+    }
+
+    /// <summary>The language server's state as workspace gives it: ready, or what it is doing.</summary>
+    private async Task<string> LanguageServerState(McpClient client) => (await Call(client, McpTools.Workspace)).GetProperty("languageServer").GetString()!;
 
     /// <summary>A file-based program (<c>dotnet run app.cs</c>) is a project to an agent: workspace lists it by its C# file,
     /// build builds it and run runs it, the code of the file it includes with it.</summary>

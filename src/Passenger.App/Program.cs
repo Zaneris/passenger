@@ -37,6 +37,7 @@ internal static class Program
             Mcp.McpProxy.CheckVariable();
             _ = Mcp.McpHost.StartsLanguageServer;
             _ = MainWindow.WatchSaysLater;
+            _ = CSharp.CSharpService.SlowLoad;
             _ = Mcp.AgentCall.Every;
             _ = Dap.AdapterEnvironment.EvaluationTimeout;
             _ = Text.TextSearch.Apart;

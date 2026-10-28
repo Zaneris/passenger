@@ -25,6 +25,19 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// load is logged before the message that there were problems loading it).</summary>
     private static readonly TimeSpan ReasonWindow = TimeSpan.FromSeconds(10);
 
+    /// <summary>The variable that gives <see cref="SlowLoad"/> in milliseconds.</summary>
+    [IdentifierHome]
+    public const string SlowLoadVariable = "PASSENGER_CSHARP_SLOW_LOAD_MS";
+
+    /// <summary>How long the projects may take to load before the status bar warns that they are still loading, the server
+    /// going on with them however long they take: 5 minutes, or what <see cref="SlowLoadVariable"/> gives; a value there
+    /// that is no whole number of milliseconds above 0 is fatal.</summary>
+    public static TimeSpan SlowLoad => Environment.GetEnvironmentVariable(SlowLoadVariable) is { Length: > 0 } given
+        ? int.TryParse(given, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int milliseconds) && milliseconds > 0
+            ? TimeSpan.FromMilliseconds(milliseconds)
+            : throw new FormatException($"{SlowLoadVariable} takes a whole number of milliseconds above 0, not '{given}'")
+        : TimeSpan.FromMinutes(5);
+
     private readonly Dictionary<OpenDocument, CSharpDocument> documents = [];
     private readonly ServerRestarts restarts = new();
     private readonly WarmServer? warm;
@@ -160,6 +173,10 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// it says to see the log (the project and the warning or error it loaded with); raised on the UI thread, for the
     /// status bar, with whether it is an error or a warning.</summary>
     public event EventHandler<ServerSaid>? Said;
+
+    /// <summary>The projects' load ran past <see cref="SlowLoad"/>, the server going on with it (a warning), or ended after
+    /// it: what the status bar says of it; raised on the UI thread.</summary>
+    public event EventHandler<ServerSaid>? LoadRanLong;
 
     /// <summary>The problems the server met loading the projects changed; raised on the UI thread.</summary>
     public event EventHandler? ProjectProblemsChanged;
@@ -932,6 +949,7 @@ public sealed partial class CSharpService : IAsyncDisposable
                 IdeErrors.Observe(TimeActiveFileAsync(started, began));
             }
             TaskCompletionSource loaded = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource gone = new(TaskCreationOptions.RunContinuationsAsynchronously);
             EventHandler onLoaded = (_, _) => loaded.TrySetResult();
             EventHandler onColours = (_, _) => UiThread.Post(() => Each(document => document.ColoursMoved()));
             EventHandler onDiagnostics = (_, _) => UiThread.Post(() => Each(document => document.RefreshDiagnostics()));
@@ -942,7 +960,11 @@ public sealed partial class CSharpService : IAsyncDisposable
                 ProjectsLoaded?.Invoke(this, EventArgs.Empty);
             });
             EventHandler<ProjectGiven> onGiven = (_, built) => OnProjectGiven(started.Server, built);
-            EventHandler<string> onExited = (_, _) => UiThread.Post(() => OnExited(started));
+            EventHandler<string> onExited = (_, _) =>
+            {
+                gone.TrySetResult();
+                UiThread.Post(() => OnExited(started));
+            };
             EventHandler<string> onHung = (_, why) => UiThread.Post(() => OnNotResponding(started, why));
             started.Loaded += onLoaded;
             started.Server.ColoursRefreshRequested += onColours;
@@ -989,6 +1011,7 @@ public sealed partial class CSharpService : IAsyncDisposable
             // One that ended before Exited was listened to (as its start came back to this thread) is replaced as any that ends.
             if (started.Server.Ended is not null)
             {
+                gone.TrySetResult();
                 UiThread.Post(() => OnExited(started));
             }
             if (told != startedWith)
@@ -1001,16 +1024,27 @@ public sealed partial class CSharpService : IAsyncDisposable
             }
             SetState(started.Solution is { } opened ? $"Loading {Path.GetFileName(opened)}…" : "Loading projects…");
             ConnectLoaded(started);
+            bool late = false;
             if (!started.IsLoaded)
             {
+                TimeSpan slow = SlowLoad;
                 // A wait with no fault to leave behind: a window gone meanwhile never hears its end.
-                await Task.WhenAny(loaded.Task, Task.Delay(TimeSpan.FromMinutes(5), cancel));
+                await Task.WhenAny(loaded.Task, gone.Task, Task.Delay(slow, cancel));
                 cancel.ThrowIfCancellationRequested();
-                if (!loaded.Task.IsCompleted)
+                if (!loaded.Task.IsCompleted && !gone.Task.IsCompleted && session == started)
                 {
-                    IdeErrors.Write($"C# language server (process {started.Server.ProcessId}) had not loaded {loading} after 5 minutes");
-                    Progress = null;
-                    SetState("C# unavailable: the projects did not load in 5 minutes (the language server's log says where it stopped)");
+                    late = true;
+                    IdeErrors.Write($"C# language server (process {started.Server.ProcessId}) had not loaded {loading} after {Spoken(slow)}, and goes on loading it");
+                    string still = $"Still loading {loading} after {Spoken(slow)}; the language server's log says where it is";
+                    SetState(still);
+                    LoadRanLong?.Invoke(this, new ServerSaid(still, ProblemSeverity.Warning));
+                    // Never given up while the server lives: a large solution on a slow machine loads in its own time.
+                    await Task.WhenAny(loaded.Task, gone.Task, Task.Delay(Timeout.InfiniteTimeSpan, cancel));
+                    cancel.ThrowIfCancellationRequested();
+                }
+                if (!loaded.Task.IsCompleted || session != started)
+                {
+                    // Ended or let go as it loaded: OnExited says so, starting another or leaving C# stopped.
                     return;
                 }
             }
@@ -1018,6 +1052,10 @@ public sealed partial class CSharpService : IAsyncDisposable
             ConnectLoaded(started);
             loadedAt = (started, Stopwatch.GetTimestamp());
             SetState("C# ready");
+            if (late)
+            {
+                LoadRanLong?.Invoke(this, new ServerSaid($"C# ready: {loading} loaded after {Spoken(Stopwatch.GetElapsedTime(began))}", null));
+            }
             RefreshAll();
             StartAnalysis();
         }
@@ -1313,6 +1351,11 @@ public sealed partial class CSharpService : IAsyncDisposable
     private static string Since(long began) => $"{Stopwatch.GetElapsedTime(began).TotalSeconds:0.00} s";
 
     private static string Since(long began, long at) => $"{Stopwatch.GetElapsedTime(began, at).TotalSeconds:0.00} s";
+
+    /// <summary>A while as the status bar says it: in whole minutes from a minute on, else in whole seconds.</summary>
+    private static string Spoken(TimeSpan time) => time >= TimeSpan.FromMinutes(1)
+        ? Plural.Of((long)time.TotalMinutes, "minute")
+        : Plural.Of(Math.Max(1, (long)time.TotalSeconds), "second");
 
     /// <summary>A message the server logged, as the status bar says it: without its tags ("[project/open]"), the open
     /// folder's paths made relative, its spaces single, and without MSBuild's repeat of the file at its end.</summary>

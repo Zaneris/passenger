@@ -4,8 +4,9 @@ using Passenger.Core;
 
 namespace Passenger.App.CSharp;
 
-/// <summary>What the language server says to the person, for the status bar: its words, whether they are an error or a
-/// warning (null for neither), and the project load problem they name, which Problems' Toolset, Environment lists.</summary>
+/// <summary>What the language server says to the person, or the IDE says of its load, for the status bar: its words,
+/// whether they are an error or a warning (null for neither), and the project load problem they name, which Problems'
+/// Toolset, Environment lists.</summary>
 public sealed record ServerSaid(string Text, ProblemSeverity? Severity, ProjectLoadProblem? Problem = null);
 
 /// <summary>A warning or error the language server met loading a project (a package with a known vulnerability, an SDK
