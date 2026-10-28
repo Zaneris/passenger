@@ -408,6 +408,8 @@ nothing large: a test needing an image the engine lacks names it and skips), Nod
 changing a line's code means changing the tests that name it (a breakpoint on a line with a lambda binds inside it: give
 the column). `SelfDebuggingTests` finds its breakpoint by the code `status.Text = why;` in MainWindow.Actions.cs.
 `Debugging/Helpers/StartHold` holds a launched program at its start. `PASSENGER_ENGINE_LOG=FILE` keeps the engine's log.
+A thread a debuggee starts just before a stop can hold that stop's evaluations (it is loading what they need, and they
+run with it held still): stop once it has run a round (#599).
 
 **MCP tests** are agents on the SDK's own client over `McpRig`: `McpTests` and per-area classes on `--mcp`,
 `McpWindowTests` and `McpAttachTests` on a window through `--mcp-attach`, `McpDebuggingTests` holding the tool list's
