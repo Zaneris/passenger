@@ -99,6 +99,43 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         window.Close();
     }
 
+    /// <summary>A Rerun whose restart of web fails (the engine refuses Compose's restart once, through a docker over the real
+    /// one) says so and leaves web on its old build, and the next Rerun restarts web, whose build has changed since it last
+    /// started, rather than finding nothing changed.</summary>
+    [AvaloniaFact]
+    public void A_service_whose_restart_failed_is_restarted_by_the_next_Rerun()
+    {
+        Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The docker over the real one is a shell script");
+        (string folder, string project) = Restored("refail");
+        string engine = TestFolders.Create("ctr-refail-engine-");
+        MainWindow window = Open(folder, engine: new ContainerEngine(cli: OverEngine(engine)));
+        const string Name = "Compose: compose.yaml";
+        Assert.True(window.SelectConfiguration(Name));
+        try
+        {
+            Launched(window, "the Compose application to come up");
+            Assert.Equal("web 1", Served(window, project, "web"));
+            File.WriteAllText(Path.Combine(folder, "Web", "Message.cs"), "public static class Message\n{\n    public const string Text = \"web 2\";\n}\n");
+            File.WriteAllText(Path.Combine(engine, "fail-restart"), string.Empty);
+            Assert.Equal($"{Name}'s services did not restart: docker compose restart ended with exit code 1",
+                Ui.Await(window.Builds.RerunAsync(), "the Rerun whose restart fails", TimeSpan.FromMinutes(3)));
+            Assert.False(File.Exists(Path.Combine(engine, "fail-restart")), "The Rerun did not ask the engine to restart web");
+            Assert.Equal("web 1", Served(window, project, "web"));
+
+            string? reran = Ui.Await(window.Builds.RerunAsync(), "the Rerun after the failed restart", TimeSpan.FromMinutes(3));
+            Assert.True(reran?.StartsWith($"{Name}: restarted web with the new build", StringComparison.Ordinal) == true,
+                $"The Rerun after web's failed restart did not restart web, which still ran its old build: {reran}");
+            int webPort = Published(project, "web");
+            Assert.True(Ui.Pumped(() => Answer(webPort) == "web 2", TimeSpan.FromMinutes(1)), $"web did not answer with its new build: {Answer(webPort)}");
+        }
+        finally
+        {
+            Docker.Stopped(window, project, "Stop to take every container down");
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void With_a_fast_mode_run_up_builds_and_a_configurations_plan_each_finish()
     {
@@ -1058,6 +1095,33 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         return (PathNames.Canonical(folder), project);
     }
 
+    /// <summary>A docker of the test's own over the real one, passing on every command but Compose's <c>restart</c>, which fails
+    /// once while a file <c>fail-restart</c> is beside it. The CLI.</summary>
+    private static string OverEngine(string folder)
+    {
+        string cli = Path.Combine(folder, "docker");
+        File.WriteAllText(cli, string.Join('\n', (string[])[
+            "#!/bin/sh",
+            "here=$(dirname \"$0\")",
+            $"real='{ContainerEngine.Shared.Cli}'",
+            "if [ \"$1\" = compose ]; then",
+            "  for word in \"$@\"; do",
+            "    if [ \"$word\" = restart ] && [ -f \"$here/fail-restart\" ]; then",
+            "      rm -f \"$here/fail-restart\"",
+            "      echo 'Error response from daemon: the stand-in refused the restart' >&2",
+            "      exit 1",
+            "    fi",
+            "  done",
+            "fi",
+            "exec \"$real\" \"$@\"",
+            string.Empty]));
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(cli, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+        return cli;
+    }
+
     /// <summary>A test's Compose project's name: the test run's and the test's own, so whatever it leaves is told apart.</summary>
     private static string ProjectNamed(string name) => $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}{name}";
 
@@ -1110,11 +1174,12 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
 
     /// <summary>A window on a Compose solution; with no C# language server unless a test asks it something (Hot Reload),
     /// since a container run, its debugging and its profiling ask it nothing.</summary>
-    internal static MainWindow Open(string folder, DotnetWords? devCertificates = null, bool agentsAllowed = true, bool languageServer = false)
+    internal static MainWindow Open(string folder, DotnetWords? devCertificates = null, bool agentsAllowed = true, bool languageServer = false, ContainerEngine? engine = null)
     {
         MainWindow window = new()
         {
             Width = 1200, Height = 800, DevCertificates = devCertificates, AgentsAllowed = agentsAllowed, StartsLanguageServer = languageServer,
+            Engine = engine ?? ContainerEngine.Shared,
         };
         window.Show();
         window.OpenFolder(folder);

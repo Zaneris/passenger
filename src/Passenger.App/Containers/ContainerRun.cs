@@ -1484,9 +1484,10 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
         }
         // Stop of the run ends its restart too, whoever asked for it.
         using CancellationTokenSource restartEnding = CancellationTokenSource.CreateLinkedTokenSource(cancel, ending.Token);
+        HashSet<string> succeeded = new(StringComparer.Ordinal);
         string? failed = await RestartEachAsync(restartEnding.Token);
-        // Only those restarted run the build they have now: another's that changed meanwhile is still Rerun's to restart.
-        Stamp(services.Select(Dotnet));
+        // Only those restarted run the build they have now: one whose restart failed, or another's that changed meanwhile, is still Rerun's.
+        Stamp(services.Select(Dotnet).Where(d => succeeded.Contains(d.Service)));
         return failed;
 
         async Task<string?> RestartEachAsync(CancellationToken stop)
@@ -1518,6 +1519,7 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
                         madeHeld.Remove(service);
                     }
                     unmade.Remove(service);
+                    succeeded.Add(service);
                 }
             }
             return null;
