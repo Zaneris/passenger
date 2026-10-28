@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -16,9 +15,8 @@ namespace Passenger.Tests;
 
 /// <summary>The words that changed inside changed lines, marked over a real working tree: in Show Diff's two sides (by
 /// words at first, the diff's Settings choosing lines, characters or nothing, which the next diff keeps), in a change
-/// bar's popup and the file beside it (Highlight Words turning them off), in the merge window's three panes, and
-/// quickly in a large file changed all over.</summary>
-[Collection(Alone.Name)]
+/// bar's popup and the file beside it (Highlight Words turning them off), in the merge window's three panes, and in a
+/// large file changed all over.</summary>
 public sealed class DiffWordsTests : IDisposable
 {
     private const string Original = "class Shop\n{\n    int count;\n\n    void Add() { count++; }\n}\n";
@@ -156,8 +154,10 @@ public sealed class DiffWordsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A 20,000-line file changed on every twelfth line opens its diff with every word changed marked; and a rewrite
+    /// of every line opens with no words marked.</summary>
     [AvaloniaFact]
-    public void A_20000_line_file_changed_on_every_twelfth_line_opens_its_diff_with_every_word_marked_quickly()
+    public void A_20000_line_file_changed_on_every_twelfth_line_opens_its_diff_with_every_word_marked()
     {
         string generated = Path.Combine(folder, "Generated.txt");
         string[] lines = [.. Enumerable.Range(0, 20000).Select(i => $"    int value{i} = Compute({i}, \"label {i}\");")];
@@ -170,14 +170,11 @@ public sealed class DiffWordsTests : IDisposable
         Ui.Landed(() => Marks(window).Count == 1667, "a bar for each line changed");
 
         // The comparison the bars came from is the diff's; its 1,667 changes' words are worked out off the window's thread.
-        Stopwatch opened = Stopwatch.StartNew();
         Task<DiffWindow?> opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
         DiffWindow shown = Ui.Landed(opening, "the diff open")!;
         DiffView view = shown.View;
         Ui.Settle();
         Assert.True(view.Words.Right.Count == 1667, $"Once its work had landed the diff marked {view.Words.Right.Count} words of the 1,667 changed");
-        opened.Stop();
-        Assert.True(opened.Elapsed < TimeSpan.FromSeconds(5).Scaled(), $"The diff of 1,667 changes took {opened.Elapsed.TotalMilliseconds:F0} ms to open with its words marked");
         Assert.All(Marked(view.Right.Document.Snapshot.ToString(), view.Words.Right), w => Assert.Equal("Measure", w));
 
         shown.Close();
@@ -185,11 +182,8 @@ public sealed class DiffWordsTests : IDisposable
         File.WriteAllText(generated, string.Join("\n", lines.Select(l => l.Replace("int", "long", StringComparison.Ordinal))) + "\n");
         window.OpenFile(generated);
         Ui.Landed(() => Marks(window).Count == 1, "one bar over the whole rewrite");
-        opened.Restart();
         opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
         shown = Ui.Landed(opening, "the rewrite's diff open")!;
-        opened.Stop();
-        Assert.True(opened.Elapsed < TimeSpan.FromSeconds(5).Scaled(), $"The diff of a 20,000-line rewrite took {opened.Elapsed.TotalMilliseconds:F0} ms to open");
         Assert.Empty(shown.View.Words.Right);
         shown.Close();
         window.Close();

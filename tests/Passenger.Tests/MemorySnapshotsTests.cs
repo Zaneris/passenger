@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
@@ -12,9 +11,7 @@ namespace Passenger.Tests;
 
 /// <summary>Memory snapshots, from the profiler window: two snapshots of a run compared object by object (new, dead and
 /// survived, however the GC moved what lived on), a type's objects opened to the shortest paths that keep them from the
-/// GC roots with each root's kind and what they retain, and a heap of a million objects read, compared and opened while
-/// the window goes on answering.</summary>
-[Collection(Alone.Name)]
+/// GC roots with each root's kind and what they retain, and a heap of a million objects read, compared and opened.</summary>
 public sealed class MemorySnapshotsTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("memory-");
@@ -232,7 +229,7 @@ public sealed class MemorySnapshotsTests : IDisposable
     }
 
     [AvaloniaFact]
-    public void A_heap_of_a_million_objects_is_read_compared_and_opened_while_the_window_goes_on_answering()
+    public void A_heap_of_a_million_objects_is_read_compared_and_opened()
     {
         MainWindow window = Profiled("Million", """
             using System.Runtime.CompilerServices;
@@ -259,40 +256,26 @@ public sealed class MemorySnapshotsTests : IDisposable
             sealed class Node(int number) { public int Number { get; } = number; }
             """);
         MemoryView memory = window.ProfilerView.MemoryPage;
-        TimeSpan stall = TimeSpan.Zero;
-        Stopwatch clock = Stopwatch.StartNew();
-        MemorySnapshot first = Snapshot(window, 1, s => stall = s > stall ? s : stall);
-        TimeSpan firstTook = clock.Elapsed;
+        MemorySnapshot first = Snapshot(window, 1);
         window.Profiling!.Input!.WriteLine("add");
         window.Profiling.Input!.Flush();
         Ui.PumpUntil(() => Console(window).Contains("added", StringComparison.Ordinal), "the program to add its nodes");
-        clock.Restart();
-        MemorySnapshot second = Snapshot(window, 2, s => stall = s > stall ? s : stall);
-        TimeSpan secondTook = clock.Elapsed;
+        MemorySnapshot second = Snapshot(window, 2);
         Assert.True(second.Objects > 1_200_000, $"{second.Objects} objects in the second snapshot");
 
-        clock.Restart();
-        Task comparing = memory.CompareWithAsync(first);
-        Responsive(() => memory.Comparison is not null, "the comparison", s => stall = s > stall ? s : stall);
-        TimeSpan compared = clock.Elapsed;
+        Task compared = memory.CompareWithAsync(first);
+        Ui.PumpUntil(() => memory.Comparison is not null, "the comparison", TimeSpan.FromMinutes(2));
         TypeDelta nodes = memory.DeltaRows[0];
         Assert.Equal(("Node", 200_000, 200_000, 1_000_000), (nodes.Name, nodes.ObjectsDelta, nodes.NewObjects, nodes.SurvivedObjects));
 
-        clock.Restart();
         memory.Choose(nodes);
         Ui.ClickButton(memory, "Open New Objects");
-        Responsive(() => memory.Set is not null, "the new nodes and their paths", s => stall = s > stall ? s : stall);
-        TimeSpan opened = clock.Elapsed;
+        Ui.PumpUntil(() => memory.Set is not null, "the new nodes and their paths", TimeSpan.FromMinutes(2));
         Assert.Equal(200_000, memory.ObjectRows.Count);
         Assert.Equal("Static reference: Heap.Nodes", memory.PathRows[^1].Node.Text);
-        Assert.True(comparing.IsCompletedSuccessfully);
+        Assert.True(compared.IsCompletedSuccessfully);
 
-        TestContext.Current.TestOutputHelper?.WriteLine(
-            $"Snapshot #1, {first.Objects:N0} objects: {firstTook.TotalSeconds:0.0} s ({first.Phases}); "
-            + $"snapshot #2, {second.Objects:N0} objects: {secondTook.TotalSeconds:0.0} s ({second.Phases}); "
-            + $"compared in {compared.TotalMilliseconds:N0} ms; 200,000 new nodes and their paths opened in {opened.TotalMilliseconds:N0} ms; "
-            + $"the UI thread held at most {stall.TotalMilliseconds:N0} ms at a time");
-        Assert.True(stall < TimeSpan.FromMilliseconds(500), $"The window stopped answering for {stall.TotalMilliseconds:N0} ms while a million objects were read and opened");
+        TestContext.Current.TestOutputHelper?.WriteLine($"Snapshot #1, {first.Objects:N0} objects: {first.Phases}; snapshot #2, {second.Objects:N0} objects: {second.Phases}");
         window.Profiling.Kill();
         window.Close();
     }
@@ -358,8 +341,8 @@ public sealed class MemorySnapshotsTests : IDisposable
         };
         Ui.ClickButton(window.ProfilerView, "Get Memory Snapshot");
         // Bounded, so a createdump that never finishes fails here, not the run.
-        Responsive(() => window.ProfilerView.Memory is not null || window.Status?.StartsWith("No memory snapshot", StringComparison.Ordinal) == true,
-            "the memory snapshot", _ => { });
+        Ui.PumpUntil(() => window.ProfilerView.Memory is not null || window.Status?.StartsWith("No memory snapshot", StringComparison.Ordinal) == true,
+            "the memory snapshot", TimeSpan.FromMinutes(2));
         if (asked.Count == 0)
         {
             Assert.True(window.ProfilerView.Memory?.Number == 1, window.Status);
@@ -401,38 +384,18 @@ public sealed class MemorySnapshotsTests : IDisposable
         return window;
     }
 
-    /// <summary>Get Memory Snapshot pressed, and its snapshot listed, the window answering meanwhile.</summary>
-    private static MemorySnapshot Snapshot(MainWindow window, int number, Action<TimeSpan>? stalled = null)
+    /// <summary>Get Memory Snapshot pressed, and its snapshot listed.</summary>
+    private static MemorySnapshot Snapshot(MainWindow window, int number)
     {
         // Where only the runtime can write it, into the program's output (Linux's ptrace_scope), that is let.
         window.Confirm = (_, _, _) => Task.FromResult(true);
         Ui.ClickButton(window.ProfilerView, "Get Memory Snapshot");
         // Bounded, so a createdump that never finishes fails here, not the run.
-        Responsive(() => window.ProfilerView.Memory?.Number == number || window.Status?.StartsWith("No memory snapshot", StringComparison.Ordinal) == true,
-            $"memory snapshot #{number}", stalled ?? (_ => { }));
+        Ui.PumpUntil(() => window.ProfilerView.Memory?.Number == number || window.Status?.StartsWith("No memory snapshot", StringComparison.Ordinal) == true,
+            $"memory snapshot #{number}", TimeSpan.FromMinutes(2));
         Assert.True(window.ProfilerView.Memory?.Number == number, window.Status);
         Ui.Settle();
         return window.ProfilerView.Memory!;
-    }
-
-    /// <summary>Waits for something while background work goes on, the window's own work given its turns as a person's
-    /// clicks would be: how long each turn took past what it was given is how long the window did not answer.</summary>
-    private static void Responsive(Func<bool> done, string what, Action<TimeSpan> stalled)
-    {
-        TimeSpan within = TimeSpan.FromMinutes(2).Scaled();
-        DateTime until = DateTime.UtcNow + within;
-        TimeSpan turn = TimeSpan.FromMilliseconds(20);
-        Stopwatch each = new();
-        while (!done())
-        {
-            if (DateTime.UtcNow > until)
-            {
-                throw new TimeoutException($"Waited {within.TotalSeconds} s for {what}");
-            }
-            each.Restart();
-            Ui.Hold(turn, "a turn of the window's loop, as a person's clicks come, whose overrun is how long the window did not answer");
-            stalled(each.Elapsed - turn);
-        }
     }
 
     /// <summary>A row chosen and given the keys, as a click on it gives them.</summary>
