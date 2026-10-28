@@ -185,7 +185,9 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
                         stack.Push(CilValue.FromPrimitive(resolver.ResolveUserString(instruction.Token)));
                         break;
                     case ILOpCode.Ldtoken:
-                        stack.Push(CilValue.FromPrimitive(resolver.ResolveTypeToken(instruction.Token)));
+                        stack.Push(MetadataTokens.EntityHandle(instruction.Token) is { Kind: HandleKind.FieldDefinition } constants
+                            ? CilValue.FromVirtual(new EvaluationFieldToken((FieldDefinitionHandle)constants))
+                            : CilValue.FromPrimitive(resolver.ResolveTypeToken(instruction.Token)));
                         break;
                     case >= ILOpCode.Ldc_i4_m1 and <= ILOpCode.Ldc_i4_8:
                         stack.Push(CilValue.FromPrimitive((int)instruction.Code - (int)ILOpCode.Ldc_i4_0));
@@ -480,7 +482,9 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
                     stack.Push(GetEvaluationStaticField(run.StaticFields, handle).Read());
                     break;
                 case ILOpCode.Ldsflda:
-                    stack.Push(CilValue.FromLocation(GetEvaluationStaticField(run.StaticFields, handle)));
+                    stack.Push(resolver.HasEvaluationFieldData(handle)
+                        ? CilValue.FromVirtual(new EvaluationFieldToken(handle))
+                        : CilValue.FromLocation(GetEvaluationStaticField(run.StaticFields, handle)));
                     break;
                 default:
                     GetEvaluationStaticField(run.StaticFields, handle).Write(stack.Pop());
@@ -543,10 +547,19 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         {
             return CilValue.FromVirtual(new EvaluationDelegate(function, delegateTarget, constructor.DeclaringType));
         }
-        if (constructor.Signature.ParameterTypes is ["!0&"] && resolver.GetRuntimeTypeName(constructor.DeclaringType) is "System.Span`1" or "System.ReadOnlySpan`1")
+        if (constructorArguments is [{ Value: EvaluationFieldToken constants }, var count]
+            && resolver.GetRuntimeTypeName(constructor.DeclaringType) is "System.Span`1" or "System.ReadOnlySpan`1")
+        {
+            // A span over constants the compilation laid out, as a u8 string makes: over a pinned array of them.
+            byte[] data = resolver.GetEvaluationFieldData(constants.Field);
+            constructorArguments = [await PinnedArrayAsync(constructor.DeclaringType.TypeArguments[0], count.AsInt32(), made => Fill(made, data), run)];
+            constructor = EvaluationMetadataResolver.ResolveMethodOf(constructor.DeclaringType, ".ctor", "!0[]");
+        }
+        else if (constructor.Signature.ParameterTypes is ["!0&"] && resolver.GetRuntimeTypeName(constructor.DeclaringType) is "System.Span`1" or "System.ReadOnlySpan`1")
         {
             // A span over one value, as a char joined to a string makes: over an array of one, which outlives the call.
-            constructorArguments = [await PinnedArrayOfOneAsync(constructorArguments[0].Dereference(), constructor.DeclaringType.TypeArguments[0], run)];
+            CilValue one = await MaterializeForStoreAsync(constructorArguments[0].Dereference(), run.Context, handles);
+            constructorArguments = [await PinnedArrayAsync(constructor.DeclaringType.TypeArguments[0], 1, array => new CorDebugLocation(array.GetElementAtPosition(0)).Write(one), run)];
             constructor = EvaluationMetadataResolver.ResolveMethodOf(constructor.DeclaringType, ".ctor", "!0[]");
         }
         ICorDebugValue[] argumentValues = new ICorDebugValue[constructorArguments.Length];
@@ -669,6 +682,11 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
                 ?? throw new InvalidOperationException("GetTypeFromHandle requires a type token");
             ICorDebugValue? typeValue = await GetSystemTypeAsync(tokenType, resolver, context, handles);
             stack.Push(typeValue is null ? CilValue.Null() : CilValue.FromTypeToken(tokenType, typeValue));
+            return;
+        }
+        if (argumentValues is [.., { Value: EvaluationFieldToken constants }])
+        {
+            await ConstantsAsync(method, argumentValues, constants, stack, run);
             return;
         }
         (bool Handled, CilValue? Result) intrinsic = await TryExecuteIntrinsicCallAsync(method, receiverValue, argumentValues, resolver, context, handles);
@@ -1510,16 +1528,75 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         return materialized;
     }
 
-    /// <summary>A one-element array of the evaluation's own holding a value, pinned until the evaluation ends: a home for a
-    /// value a span keeps a reference to, which no collection moves while the evaluation reads through the span.</summary>
-    private async Task<CilValue> PinnedArrayOfOneAsync(CilValue value, ResolvedCilType elementType, Interpretation run)
+    /// <summary>An array of the evaluation's own, filled and pinned until the evaluation ends: a home for values a span keeps
+    /// a reference to, which no collection moves while the evaluation reads through the span.</summary>
+    private async Task<CilValue> PinnedArrayAsync(ResolvedCilType elementType, int length, Action<ICorDebugArrayValue> fill, Interpretation run)
     {
-        ICorDebugValue array = await CreateArrayAsync(elementType, run.Resolver.GetCorDebugType(elementType), 1, run.Resolver, run.Context, run.Handles)
-            ?? throw new InvalidOperationException("The program made no array for a span's value");
+        ICorDebugValue array = await CreateArrayAsync(elementType, run.Resolver.GetCorDebugType(elementType), checked((uint)length), run.Resolver, run.Context, run.Handles)
+            ?? throw new InvalidOperationException("The program made no array for a span's values");
         ICorDebugValue held = array.UnwrapDebugValue();
-        new CorDebugLocation(((ICorDebugArrayValue)held).GetElementAtPosition(0)).Write(await MaterializeForStoreAsync(value, run.Context, run.Handles));
+        fill((ICorDebugArrayValue)held);
         run.Handles.Track(((ICorDebugHeapValue2)held).CreateHandle(CorDebugHandleType.HANDLE_PINNED));
         return CilValue.FromCorValue(array);
+    }
+
+    /// <summary>RuntimeHelpers' InitializeArray and CreateSpan over constants the expression's compilation laid out in its own
+    /// image, which the program never loads: the array's elements written from them, or a span over a pinned array of them.</summary>
+    private async Task ConstantsAsync(ResolvedRuntimeMethod method, CilValue[] arguments, EvaluationFieldToken constants, Stack<CilValue> stack, Interpretation run)
+    {
+        EvaluationMetadataResolver resolver = run.Resolver;
+        string name = $"{resolver.GetRuntimeTypeName(method.DeclaringType)}.{method.Name}";
+        byte[] data = resolver.GetEvaluationFieldData(constants.Field);
+        switch (name)
+        {
+            case "System.Runtime.CompilerServices.RuntimeHelpers.InitializeArray" when arguments.Length == 2:
+                Fill(GetArrayValue(arguments[0]), data);
+                break;
+            case "System.Runtime.CompilerServices.RuntimeHelpers.CreateSpan" when method.MethodTypeArguments is [var element]
+                && EvaluationMetadataResolver.SizeOf(element) is > 0 and var size && data.Length % size == 0:
+            {
+                CilValue array = await PinnedArrayAsync(element, data.Length / size, made => Fill(made, data), run);
+                ResolvedRuntimeMethod constructor = resolver.ResolveRuntimeMethod("System", "ReadOnlySpan`1", ".ctor", "!0[]");
+                ICorDebugType[] typeArguments = [resolver.GetCorDebugType(element)];
+                ICorDebugValue? span = run.Handles.Track(await run.Context.Thread.CreateEval().NewParameterizedObjectAsync(
+                    debugger.ProcessRuntimeEventsUntilEvalEvent,
+                    debugger.EvalStatus,
+                    constructor.Function,
+                    typeArguments.Length,
+                    typeArguments,
+                    1,
+                    [array.CorValue!],
+                    throwOnException: true));
+                stack.Push(span is null ? CilValue.Null() : CilValue.FromCorValue(span));
+                break;
+            }
+            default:
+                throw new NotSupportedException($"{name} over the expression's own constants is not supported");
+        }
+    }
+
+    /// <summary>An array's elements written from their values' bytes laid out one after another, as the runtime holds them.</summary>
+    private static void Fill(ICorDebugArrayValue array, byte[] data)
+    {
+        int offset = 0;
+        for (int position = 0; position < array.Count; position++)
+        {
+            ICorDebugGenericValue element = array.GetElementAtPosition(position) as ICorDebugGenericValue
+                ?? throw new InvalidOperationException("The array's elements are not values constants can fill");
+            int size = element.Size;
+            if (offset + size > data.Length)
+            {
+                throw new InvalidOperationException($"The expression's constants fill {data.Length} bytes, fewer than the array's {array.Count} elements hold");
+            }
+            unsafe
+            {
+                fixed (byte* pointer = &data[offset])
+                {
+                    element.SetValue((nint)pointer);
+                }
+            }
+            offset += size;
+        }
     }
 
     /// <summary>Refuses a call that may keep a reference to a by-ref argument the runtime lends it as a copy of its own,

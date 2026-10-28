@@ -361,6 +361,66 @@ internal sealed class EvaluationMetadataResolver(ManagedDebugger debugger, Metad
     public ResolvedCilType ResolveEvaluationFieldType(FieldDefinitionHandle handle) =>
         evaluationReader.GetFieldDefinition(handle).DecodeSignature(new RuntimeTypeSignatureProvider(this), genericContext: null);
 
+    /// <summary>Whether a field of the evaluation's own holds data the compilation laid out in its image.</summary>
+    public bool HasEvaluationFieldData(FieldDefinitionHandle handle) =>
+        (evaluationReader.GetFieldDefinition(handle).Attributes & FieldAttributes.HasFieldRVA) != 0;
+
+    /// <summary>The bytes the compilation laid out in the evaluation's image for a field of its own, an array initializer's
+    /// constants: as many as the field's type holds.</summary>
+    public byte[] GetEvaluationFieldData(FieldDefinitionHandle handle)
+    {
+        FieldDefinition field = evaluationReader.GetFieldDefinition(handle);
+        int address = field.GetRelativeVirtualAddress();
+        BlobReader signature = evaluationReader.GetBlobReader(field.Signature);
+        signature.ReadSignatureHeader();
+        int size = signature.ReadSignatureTypeCode() switch
+        {
+            SignatureTypeCode.TypeHandle when signature.ReadTypeHandle() is { Kind: HandleKind.TypeDefinition } type =>
+                evaluationReader.GetTypeDefinition((TypeDefinitionHandle)type).GetLayout().Size,
+            var code => SizeOf(code),
+        };
+        PEMemoryBlock data = address == 0 ? default : evaluationPeReader.GetSectionData(address);
+        if (size <= 0 || data.Length < size)
+        {
+            throw new BadImageFormatException($"The evaluation's field '{evaluationReader.GetString(field.Name)}' holds no data of its type's size");
+        }
+        return [.. data.GetContent(0, size)];
+    }
+
+    /// <summary>How many bytes a value of a primitive or an enum takes; 0 for any other type.</summary>
+    public static int SizeOf(ResolvedCilType type)
+    {
+        if (type.Primitive is { } primitive)
+        {
+            return SizeOf((SignatureTypeCode)primitive);
+        }
+        if (type is { RuntimeType: { } runtimeType, ElementType: null } && IsValueType(runtimeType))
+        {
+            // An enum's one instance field holds its value.
+            MetadataReader reader = runtimeType.Module.MetadataReader.PeMetadataReader;
+            foreach (FieldDefinitionHandle handle in reader.GetTypeDefinition(runtimeType.Handle).GetFields())
+            {
+                FieldDefinition field = reader.GetFieldDefinition(handle);
+                if ((field.Attributes & FieldAttributes.Static) == 0 && reader.GetString(field.Name) == "value__")
+                {
+                    BlobReader signature = reader.GetBlobReader(field.Signature);
+                    signature.ReadSignatureHeader();
+                    return SizeOf(signature.ReadSignatureTypeCode());
+                }
+            }
+        }
+        return 0;
+    }
+
+    private static int SizeOf(SignatureTypeCode code) => code switch
+    {
+        SignatureTypeCode.Boolean or SignatureTypeCode.SByte or SignatureTypeCode.Byte => 1,
+        SignatureTypeCode.Char or SignatureTypeCode.Int16 or SignatureTypeCode.UInt16 => 2,
+        SignatureTypeCode.Int32 or SignatureTypeCode.UInt32 or SignatureTypeCode.Single => 4,
+        SignatureTypeCode.Int64 or SignatureTypeCode.UInt64 or SignatureTypeCode.Double => 8,
+        _ => 0,
+    };
+
     public ResolvedRuntimeMethod ResolveRuntimeMethod(string @namespace, string typeName, string methodName, params string[] parameterTypes)
     {
         string cacheKey = $"{@namespace}.{typeName}.{methodName}({string.Join(",", parameterTypes)})";

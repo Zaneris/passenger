@@ -212,6 +212,27 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
             $"new string('a', -1) answered \"{negative}\", where the program would throw an ArgumentOutOfRangeException");
     }
 
+    /// <summary>An array initializer of constants makes the array the program would, of any length and element type, and
+    /// a span over constants likewise: each element is the constant written for it.</summary>
+    [Fact]
+    public async Task An_array_initializer_of_constants_makes_the_array_the_program_would()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        int frame = await StoppedInReadingAsync(host);
+
+        Assert.Equal(("3", "int"), await Evaluate(host, frame, "new[] { 1, 2, 3 }.Length"));
+        Assert.Equal(("3", "int"), await Evaluate(host, frame, "new[] { 1, 2, 3 }[2]"));
+        Assert.Equal("20", (await Evaluate(host, frame, "new[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 }[19]")).Value);
+        Assert.Equal("\"bc\"", (await Evaluate(host, frame, "new string(new[] { 'a', 'b', 'c' }, 1, 2)")).Value);
+        Assert.Equal("5000000000", (await Evaluate(host, frame, "new long[] { 1, 2, 5000000000 }[2]")).Value);
+        Assert.Equal("2.5", (await Evaluate(host, frame, "new[] { 1.5, 2.5, 3.5 }[1]")).Value);
+        Assert.Equal("-3", (await Evaluate(host, frame, "new sbyte[] { -1, -2, -3 }[2]")).Value);
+        Assert.Equal("MinusOne", (await Evaluate(host, frame, "new[] { SignedEnum.MinusOne, SignedEnum.MinusOne, SignedEnum.MinusOne }[2]")).Value);
+        Assert.Equal("5", (await Evaluate(host, frame, "new[] { 1, 2, 3, word.Length }[3]")).Value);
+        Assert.Equal("5", (await Evaluate(host, frame, "word.Split('e', 'l', 'o').Length")).Value);
+        Assert.Equal("98", (await Evaluate(host, frame, "\"abc\"u8[1]")).Value);
+    }
+
     private static int Line(string code) => Debuggees.Line("PassengerCases", code);
 
     /// <summary>PassengerCases launched and stopped in Reading.Run once its rounds are done; the top frame.</summary>
