@@ -368,6 +368,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         window.Close();
     }
 
+    /// <summary>The compose file's <c>services:</c> has a run icon too, whose menu runs its configuration whole.</summary>
     [AvaloniaFact]
     public void A_compose_files_services_and_a_Dockerfiles_final_FROM_have_run_icons_whose_menu_runs_that_service()
     {
@@ -378,8 +379,15 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         Ui.Settle();
         Passenger.App.Workspace.OpenDocument compose = window.EditorArea.Active!;
         string[] lines = compose.Text.Snapshot.ToString().Split('\n');
-        int[] services = [.. new[] { "  web:", "  api:", "  cache:" }.Select(s => Array.IndexOf(lines, s))];
-        Ui.WaitFor(() => compose.RunMarks.Select(m => m.Line).Order().SequenceEqual(services.Order()), "the services' run icons");
+        int[] services = [.. new[] { "services:", "  web:", "  api:", "  cache:" }.Select(s => Array.IndexOf(lines, s))];
+        Ui.WaitFor(() => compose.RunMarks.Select(m => m.Line).Order().SequenceEqual(services.Order()), "the run icons of services: and of each service");
+        Passenger.Editor.CodeEditor whole = window.EditorArea.CodeEditor;
+        double gutter = Enumerable.Range(0, 400).First(x => whole.IsOnGutterColumn(whole.Gutter!.Marks, new Avalonia.Point(x, 0))) + 3;
+        Ui.Click(whole, new Avalonia.Point(gutter, whole.PointOf(compose.Text.Snapshot.GetLineStart(services[0])).Y + (whole.LineHeight / 2)));
+        string[] runs = [.. window.Configurations.Where(c => c.Kind == RunKind.Compose && c.ComposeFiles.Any(f => PathNames.Same(f, compose.Path)))
+            .SelectMany(c => new[] { $"Run '{c.Name}'", $"Debug '{c.Name}'", $"Profile '{c.Name}'" })];
+        Assert.Equal(runs, Assert.IsType<Avalonia.Controls.MenuFlyout>(window.RunMarkMenu).Items.OfType<Avalonia.Controls.MenuItem>().Select(i => (string?)i.Header));
+        window.RunMarkMenu!.Hide();
         window.OpenFile(Path.Combine(folder, "Web", "Dockerfile"));
         Ui.Settle();
         Passenger.App.Workspace.OpenDocument dockerfile = window.EditorArea.Active!;

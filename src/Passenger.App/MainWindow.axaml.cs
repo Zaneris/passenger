@@ -91,6 +91,7 @@ public partial class MainWindow : Window
         AddMigrations();
         AddContainers();
         AddRunMarks();
+        AddRunHere();
         AddPlaces();
         AddHierarchy();
         AddFileOperations();
