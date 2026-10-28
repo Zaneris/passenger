@@ -1229,9 +1229,25 @@ public sealed class Git
         return stashes;
     }
 
-    /// <summary>Puts the uncommitted changes, new files too, away in a stash; the files go back to the head's.</summary>
-    public Task<GitResult> StashAsync(string message) =>
-        RunAsync(Root, ["stash", "push", "--include-untracked", .. message.Length > 0 ? new[] { "-m", message } : []]);
+    /// <summary>Puts the uncommitted changes, new files too, away in a stash; the files go back to the head's. With nothing
+    /// to put away, git makes no stash and exits 0 all the same: that is a failure here, in git's words.</summary>
+    public async Task<GitResult> StashAsync(string message)
+    {
+        string? before = await StashTopAsync();
+        GitResult stashed = await RunAsync(Root, ["stash", "push", "--include-untracked", .. message.Length > 0 ? new[] { "-m", message } : []]);
+        if (!stashed.Succeeded || await StashTopAsync() != before)
+        {
+            return stashed;
+        }
+        return new GitResult(1, string.Empty, stashed.Message.Length > 0 ? stashed.Message : "No local changes to save");
+    }
+
+    /// <summary>The newest stash's commit, or null with none.</summary>
+    private async Task<string?> StashTopAsync()
+    {
+        GitResult top = await RunAsync(Root, ["rev-parse", "-q", "--verify", "refs/stash"], answers: [1]);
+        return top.Succeeded ? top.Output.Trim() : null;
+    }
 
     /// <summary>The stash of this one's commit where the list has it now, another program having perhaps stashed or
     /// dropped one since it was read; null once it has left the list.</summary>

@@ -1149,6 +1149,23 @@ public sealed class VcsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Stash Changes with nothing changed makes no stash and says so, in its popup and the status bar, where git
+    /// says nothing failed.</summary>
+    [AvaloniaFact]
+    public void Stash_changes_with_nothing_to_stash_is_refused_saying_so()
+    {
+        MainWindow window = Open();
+        NamePopup stash = window.ShowStash()!;
+        Ui.Settle();
+        stash.Text = "Nothing at all";
+        Task stashing = stash.SubmitAsync();
+        Ui.Landed(() => stashing.IsCompleted, "the stash's answer");
+        Assert.Equal("No local changes to save", stash.Problem);
+        Assert.Equal("No local changes to save", window.Status);
+        Assert.Empty(Stashes());
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void Backspace_in_unstash_changes_keeps_every_stash_and_delete_asks_before_dropping_the_chosen_one_once()
     {
