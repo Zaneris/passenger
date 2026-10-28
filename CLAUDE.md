@@ -79,8 +79,8 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
   Telemetry and Utilities.Internal inside Roslyn's server (its Razor support needs them), and the TextMate bundle
   licence. MIT first.
 - **Every program Passenger starts goes through `ChildProcesses`** (`Command`/`DotnetCommand`, then `Start`,
-  `StartAsync` or `RunAsync`; `Kill` ends it with all it started), so none outlives the IDE (`Lifeline`), each given its
-  folder as the disk names it, PWD too. Started elsewhere: the terminal's shell (Porta.Pty), vstest.console, Velopack's
+  `StartAsync`, `RunAsync`, or `AnswerAsync` for a question one line answers; `Kill` ends it with all it started), so
+  none outlives the IDE (`Lifeline`), each given its folder as the disk names it, PWD too. Started elsewhere: the terminal's shell (Porta.Pty), vstest.console, Velopack's
   Update.exe and an agent's `--mcp-attach` Passenger (`StartApart`); a program run in the terminal is `Adopt`ed.
 - **No secret on a command line** (any process can read it): give it through the environment, or don't make it. Secrets
   everywhere (Details, logs, consoles, hints, agents' answers, `ChildProcesses.Shown`'s echoes) are masked by one rule,
