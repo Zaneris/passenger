@@ -1282,6 +1282,32 @@ public sealed class Git
 
     public string Relative(string path) => System.IO.Path.GetRelativePath(Root, path).Replace('\\', '/');
 
+    /// <summary>The .gitignore line that matches the file or folder at <paramref name="path"/> and nothing else: its path
+    /// from the tree's top anchored there by a leading '/' (so a '#' or '!' it starts with is no comment or negation), a
+    /// folder's ending in '/', and each character a pattern reads as more than itself escaped (a wildcard, a bracket, a
+    /// backslash, a space it ends with). Null for a name holding a line break, which no line of the file can.</summary>
+    public string? IgnoreLine(string path, bool folder)
+    {
+        string relative = System.IO.Path.GetRelativePath(Root, path);
+        relative = (System.IO.Path.DirectorySeparatorChar == '/' ? relative : relative.Replace(System.IO.Path.DirectorySeparatorChar, '/')).TrimEnd('/');
+        if (relative.AsSpan().IndexOfAny('\n', '\r') >= 0)
+        {
+            return null;
+        }
+        int spaces = relative.Length - relative.TrimEnd(' ').Length;
+        StringBuilder line = new("/");
+        for (int i = 0; i < relative.Length; i++)
+        {
+            char c = relative[i];
+            if (c is '\\' or '[' or ']' or '*' or '?' || (c == ' ' && i >= relative.Length - spaces))
+            {
+                line.Append('\\');
+            }
+            line.Append(c);
+        }
+        return folder ? line.Append('/').ToString() : line.ToString();
+    }
+
     /// <summary>A file's name as git takes it for that file alone, never a pattern: "[ab].cs" is not also "a.cs", nor is
     /// a name starting ":" pathspec magic. (The environment's GIT_LITERAL_PATHSPECS would also stop a stash's own magic.)</summary>
     private static string Literal(string relative) => $":(literal){relative}";

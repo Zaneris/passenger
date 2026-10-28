@@ -618,9 +618,10 @@ public partial class MainWindow
         Editors.CodeEditor.ApplyEdits([diff.Restore(hunk)]);
     }
 
-    /// <summary>Add to .gitignore: the file's path from the repository's top, a line of its .gitignore, which keeps its
-    /// encoding, byte order mark and line breaks and is written as a save writes (through a temporary file, to Local
-    /// History); open with unsaved edits, it is saved first, and shows the line after; said once the write has landed.</summary>
+    /// <summary>Add to .gitignore: a line of the repository's top .gitignore matching that file alone (<see
+    /// cref="Git.IgnoreLine"/>), which keeps its encoding, byte order mark and line breaks and is written as a save writes
+    /// (through a temporary file, to Local History); open with unsaved edits, it is saved first, and shows the line after;
+    /// said once the write has landed.</summary>
     private async Task IgnoreAsync(string path)
     {
         if (session.Vcs.Repository is not { } repository)
@@ -628,7 +629,12 @@ public partial class MainWindow
             return;
         }
         string ignore = Path.Combine(repository.Root, ".gitignore");
-        string line = Path.GetRelativePath(repository.Root, path).Replace('\\', '/');
+        string name = repository.Relative(path).TrimEnd('/');
+        if (repository.IgnoreLine(path, Directory.Exists(path)) is not { } line)
+        {
+            status.Text = $".gitignore was not changed: {name} holds a line break, which no line of it can";
+            return;
+        }
         if (SaveBeforeWriting([ignore]) is { } unsaved)
         {
             status.Text = $".gitignore was not changed: {unsaved}";
@@ -653,7 +659,7 @@ public partial class MainWindow
             return;
         }
         FollowWritten([ignore]);
-        status.Text = $"Added {line} to .gitignore";
+        status.Text = $"Added {name} to .gitignore";
         IdeErrors.Observe(session.Vcs.RefreshAsync());
     }
 }

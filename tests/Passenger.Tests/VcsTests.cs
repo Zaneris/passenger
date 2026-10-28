@@ -1177,11 +1177,49 @@ public sealed class VcsTests : IDisposable
         Ui.Landed(() => window.CommitView.Rows.OfType<CommitRow>().Any(r => r.Change.Name == "notes.txt"), "the unversioned file listed");
         changes.SelectedItem = window.CommitView.Rows.OfType<CommitRow>().First(r => r.Change.Name == "notes.txt");
         Ui.ChooseFromMenu(changes, "Add to .gitignore");
-        Assert.Equal([0xEF, 0xBB, 0xBF, .. "# out bin/\r\nobj/\r\nnotes.txt\r\n"u8], File.ReadAllBytes(ignore));
+        Assert.Equal([0xEF, 0xBB, 0xBF, .. "# out bin/\r\nobj/\r\n/notes.txt\r\n"u8], File.ReadAllBytes(ignore));
         Ui.Landed(() => window.Vcs.Changes.All(c => c.Name != "notes.txt"), "the ignored file gone from the changes");
         Passenger.App.Workspace.OpenDocument shown = window.EditorArea.Documents.Single(d => d.Name == ".gitignore");
-        Assert.Equal("# out bin/\r\nobj/\r\nnotes.txt\r\n", shown.Text.Snapshot.ToString());
+        Assert.Equal("# out bin/\r\nobj/\r\n/notes.txt\r\n", shown.Text.Snapshot.ToString());
         Assert.False(shown.IsModified, "The open .gitignore shows unsaved changes it does not have");
+        window.Close();
+    }
+
+    /// <summary>Add to .gitignore has Git ignore the chosen file and no other, whatever its name holds: notes.txt at the top
+    /// and not docs/notes.txt, [draft].md and not d.md (its brackets a pattern), #todo.txt and !keep.txt (a comment and a
+    /// negation written plainly), and where a name can hold them a wildcard and a space it ends with.</summary>
+    [AvaloniaFact]
+    public void Add_to_gitignore_has_git_ignore_the_chosen_file_and_no_other_whatever_its_name_holds()
+    {
+        // Windows takes no '*' in a name, and drops a space it ends with.
+        string[] chosen = ["notes.txt", "[draft].md", "#todo.txt", "!keep.txt", .. OperatingSystem.IsWindows() ? (string[])[] : ["a*b.txt", "end "]];
+        string[] others = ["docs/notes.txt", "d.md", "docs/#todo.txt", "keep.txt", .. OperatingSystem.IsWindows() ? (string[])[] : ["aXb.txt", "end"]];
+        Directory.CreateDirectory(Path.Combine(folder, "docs"));
+        foreach (string name in chosen.Concat(others))
+        {
+            File.WriteAllText(Path.Combine(folder, name), "scratch\n");
+        }
+        MainWindow window = Open();
+        window.Perform(AppActions.ShowCommit);
+        Avalonia.Controls.ListBox changes = Find(window.CommitView, window.CommitView.Rows);
+        foreach (string name in chosen)
+        {
+            Ui.Landed(() => window.CommitView.Rows.OfType<CommitRow>().Any(r => Unix(window.Vcs.Repository!.Relative(r.Change.Path)) == name), $"{name} listed");
+            changes.SelectedItem = window.CommitView.Rows.OfType<CommitRow>().First(r => Unix(window.Vcs.Repository!.Relative(r.Change.Path)) == name);
+            Ui.ChooseFromMenu(changes, "Add to .gitignore");
+            Assert.Equal($"Added {name} to .gitignore", window.Status);
+            Ui.Landed(() => window.Vcs.Changes.All(c => Unix(window.Vcs.Repository!.Relative(c.Path)) != name), $"{name} ignored, gone from the changes");
+        }
+
+        // Each path after the line that ignores it ("source:line:pattern", or "::" for none) and a tab.
+        Dictionary<string, string> ignoredBy = [];
+        foreach (string said in Git(["check-ignore", "-v", "-n", "--", .. chosen, .. others]).Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.Contains('\t')))
+        {
+            ignoredBy[said[(said.IndexOf('\t') + 1)..]] = said[..said.IndexOf('\t')];
+        }
+        string[] wrong = [.. chosen.Where(n => ignoredBy.GetValueOrDefault(n) is null or "::").Select(n => $"{n} not ignored")
+            .Concat(others.Where(n => ignoredBy.GetValueOrDefault(n) is not (null or "::")).Select(n => $"{n} ignored by {ignoredBy[n]}"))];
+        Assert.True(wrong.Length == 0, $"After Add to .gitignore on {string.Join(", ", chosen)} alone, Git finds {string.Join("; ", wrong)}; .gitignore holds:\n{File.ReadAllText(Path.Combine(folder, ".gitignore"))}");
         window.Close();
     }
 
@@ -1213,7 +1251,7 @@ public sealed class VcsTests : IDisposable
             "Add to .gitignore to say it added the line once .gitignore was let go");
         Assert.Equal(["Waiting for .gitignore to be saved…", "Added notes.txt to .gitignore"],
             said.Where(s => s.StartsWith("Waiting", StringComparison.Ordinal) || s.StartsWith("Added", StringComparison.Ordinal) || s.StartsWith(".gitignore", StringComparison.Ordinal)));
-        Assert.Equal("bin/\nobj/\nnotes.txt\n", File.ReadAllText(ignore));
+        Assert.Equal("bin/\nobj/\n/notes.txt\n", File.ReadAllText(ignore));
         window.Close();
     }
 
@@ -1231,7 +1269,7 @@ public sealed class VcsTests : IDisposable
         Ui.Landed(() => window.CommitView.Rows.OfType<CommitRow>().Any(r => r.Change.Name == "notes.txt"), "the unversioned file listed");
         changes.SelectedItem = window.CommitView.Rows.OfType<CommitRow>().First(r => r.Change.Name == "notes.txt");
         Ui.ChooseFromMenu(changes, "Add to .gitignore");
-        Assert.Equal("notes.txt\n", File.ReadAllText(Path.Combine(folder, ".gitignore")));
+        Assert.Equal("/notes.txt\n", File.ReadAllText(Path.Combine(folder, ".gitignore")));
         Ui.Landed(() => window.Vcs.Changes.All(c => c.Name != "notes.txt"), "the ignored file gone from the changes");
 
         window.Perform(AppActions.ShowGit);
