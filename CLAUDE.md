@@ -265,9 +265,9 @@ site-shots` retakes its images.
   sent while it loads is one more load to wait for (`RoslynSession`): the server's word that a load ended names none. A server
   that ends during its start is started again within `ServerRestarts`; StreamJsonRpc then drops a faulted answer, which
   `IdeErrors` passes over (`LanguageServer.IsDroppedAnswer`).
-- **Roslyn's server takes file watching all or nothing**: offered it, it watches nothing itself; all it registers is ours.
-  A file deleted reaches it only once the projects holding it loaded again without it (`ProjectMethods.Deleted`): told
-  first, it reads the missing file for its document, a second each, before any answer needing the compilation.
+- **Roslyn's server takes file watching all or nothing**: offered it, it watches nothing itself; all it registers is
+  ours. A file deleted reaches it only once the projects holding it loaded again without it (`ProjectMethods.Deleted`):
+  told first, it reads the missing file for its document, a second each, before any answer needing the compilation.
 - **Roslyn's server writes its MEF caches beside its DLLs** (`roslyn/cache/`, no option for elsewhere), so where that
   folder is in a macOS bundle (a file added breaks the seal: "damaged", #450) or read-only, it runs from a copy in the
   state's `cache/roslyn/` (`RoslynServerFolder`); nothing a Passenger runs may write inside the app.
