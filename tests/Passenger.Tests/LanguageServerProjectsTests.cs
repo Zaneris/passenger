@@ -58,8 +58,10 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
         TestFolders.Delete(settings);
     }
 
+    /// <summary>A restore landing during a project's first design-time build: the language server, given that build, hears
+    /// of the assets and is given one made after them, which the folder opened again loads as kept.</summary>
     [AvaloniaFact]
-    public void A_project_whose_packages_arrive_during_its_first_build_is_built_again_when_opened_again()
+    public void A_project_whose_packages_arrive_during_its_first_build_is_built_again_as_the_server_hears_of_them()
     {
         string root = PathNames.Canonical(TestFolders.Create("late-assets-"));
         try
@@ -106,20 +108,20 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
             string page = Path.Combine(root, "Page.cs");
             MainWindow first = Keeping(root);
             first.OpenFile(page);
-            // The error on Missing, which the server gives whether the package resolved or not.
-            WaitForCode(first, page, "CS0103", "the server's errors in Page.cs as the first window loaded it");
+            Ui.WaitFor(() => Resolved(first, page),
+                () => $"the first window's language server to resolve the package whose assets arrived during its design-time build, told of them and given a build made after them, which the one made without them must not stand for: Page.cs has {string.Join(", ", Codes(first, page))}, after {first.Session.DesignTimeBuilds.Builds} design-time build(s)",
+                TimeSpan.FromMinutes(2));
             Assert.True(File.Exists(assets), "The assets file did not arrive during the first design-time build");
-            Assert.True(Codes(first, page).Contains("CS0246"),
-                $"The first window's build resolved the package ({string.Join(", ", Codes(first, page))}): the language server was given a build made after its assets arrived, so none without them was kept for the next opening");
+            Assert.True(first.Session.DesignTimeBuilds.Builds == 2,
+                $"The first window built the project {first.Session.DesignTimeBuilds.Builds} time(s) at design time, not once as its package's assets arrived and once more after them");
             first.Close();
 
             MainWindow second = Keeping(root);
             second.OpenFile(page);
-            WaitForCode(second, page, "CS0103", "the error on Missing after the package's PathNames type resolves");
-            Assert.True(second.Session.DesignTimeBuilds.Builds > 0,
-                "Opened again after its assets arrived, the project reused a build that resolved no package assemblies");
-            Assert.DoesNotContain("CS0246", Codes(second, page));
-            Assert.DoesNotContain("CS0234", Codes(second, page));
+            WaitForCode(second, page, "CS0103", "the error on Missing as the folder opened again loads the project");
+            Assert.True(second.Session.DesignTimeBuilds.Builds == 0,
+                $"Opened again with nothing changed, the project was built {second.Session.DesignTimeBuilds.Builds} time(s) rather than loaded from the build made after its assets arrived");
+            Assert.True(Resolved(second, page), $"Opened again, the project was loaded from a build without its package: Page.cs has {string.Join(", ", Codes(second, page))}");
             second.Close();
         }
         finally
@@ -360,6 +362,13 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
         window.EditorArea.Documents.FirstOrDefault(d => d.Path == path) is { } open && window.CSharpService?.For(open) is { } served
             ? served.Diagnostics.Select(d => d.Code?.ToString())
             : [];
+
+    /// <summary>Whether Page.cs has the server's error on Missing and none from the package's PathNames, which resolved.</summary>
+    private static bool Resolved(MainWindow window, string page)
+    {
+        List<string?> codes = [.. Codes(window, page)];
+        return codes.Contains("CS0103") && !codes.Contains("CS0246") && !codes.Contains("CS0234");
+    }
 
     private static void WaitForCode(MainWindow window, string path, string code, string what) =>
         Ui.WaitFor(() => Codes(window, path).Contains(code), what, TimeSpan.FromMinutes(2));

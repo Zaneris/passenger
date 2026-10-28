@@ -30,6 +30,17 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-10-28
 
+- `LanguageServerProjectsTests`' project whose packages arrive during its first design-time build, the Mac on main
+  (#608): "The first window's build resolved the package (CS0103): the language server was given a build made after its
+  assets arrived", in every run alone (passing on 9befe118's parent, failing from 9befe118 on) and in some of its class.
+  Since #604 the server's watches of a project's obj begin with what was written there since it started, so the server,
+  given the build made as the assets arrived, is told of project.assets.json as its load ends and loads the project
+  again 0.4 s later from a build made after them: the package resolves in the window it arrived in, where before #604 it
+  stayed unresolved until the folder was opened again (the rewritten test there: still CS0246 after 3 minutes). The test
+  checked that the first window kept the build without the package, which held only when it read the errors and closed
+  the window within those 0.4 s. Neither a race nor a wrong wait: the IDE got better. **The test**: it checks the first
+  window resolves the package from a second build, the first not standing once its assets came, and the folder opened
+  again loads that one; it still fails with the assets stamped after the build (in this commit).
 - `DebuggerTests`' Continue pressed while a stop's values are read, Linux x64 report lane of run 40623345416:
   "slow.Getter never showed 1500 as a watch: the watches were slow.Getter = error: An evaluation that could not be
   stopped is still running on this thread…". The program started its ticking thread just before its first stop, which
