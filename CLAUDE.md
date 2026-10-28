@@ -241,8 +241,9 @@ Projects in `src/`; `find_symbol` finds the rest:
 - **MCP.** `PassengerTools` (every tool, run on the UI thread, answering with what its operation returned), `McpHost`
   (`--mcp FOLDER`, a window's socket, `--mcp-attach` through `McpProxy`), `HeadStart` (an `--mcp` folder's opening
   begun before its window, which its first session takes up), `AgentConnection` (admission and questions). A relay
-  records itself as `PID.relay` in the socket folder (`McpProxy.RelayAt`), which an update ends first
-  (`Updater.EndRelays`), signalling the relay alone, never its agent's process group.
+  records itself as `PID.relay` in the socket folder (`McpProxy.RelayAt`), which an update has follow it
+  (`Updater.FollowRelays`: it execs itself from the updated app as the same session, `McpProxy.Follow`) or, on Windows,
+  ends (`EndRelays`), signalling the relay alone, never its agent's process group.
 
 Releases and the site: `ci.yml` and `release.yml` (from a `vX.Y.Z` tag, its body `docs/release-notes/X.Y.Z.md`, refused
 while it is the stand-in) call `test.yml`: the gate on every system in two shards, and for CI the report lane too. `site/` is passenger-ide.net, plain HTML
@@ -294,9 +295,11 @@ site-shots` retakes its images.
   reader that shares no writes for up to 2 s (`FileText.WhileHeld`); closing a socket
   with unread input resets it, losing what was written (servers shut their side and drain first); the diagnostics library
   leaves a profiler pipe open after its listener goes (`ProfilingSession.CloseLeftListener` closes it, by reflection).
-- **macOS**: a Unix socket path holds 104 bytes; `codesign` takes a dotted folder under `Contents/MacOS` for a bundle (so
-  the web servers live in Resources); TMPDIR is reached through the /var link, so a build or restore of a test's project
-  goes by its real path, and two spellings of one project restored at once collide.
+- **macOS**: a variadic libc call through P/Invoke (`fcntl`, `ioctl` with an argument) loses its variadic arguments on
+  arm64 (`Descriptors.CloseOnExec`), and `poll` never says a named pipe's writer has gone (`select`); a Unix socket path
+  holds 104 bytes; `codesign` takes a dotted folder under `Contents/MacOS` for a bundle (so the web servers live in
+  Resources); TMPDIR is reached through the /var link, so a build or restore of a test's project goes by its real path,
+  and two spellings of one project restored at once collide.
 - **macOS's "damaged" dialog** comes from a Passenger.app whose seal no longer holds being read or started: a mounted disk image
   whose file was replaced under it (`just package-mac` ejects one first) or a bundle written into (#450). Tests never start a
   program inside an unsigned bundle, and the run's folder ends in `.noindex`, so Spotlight reads none of what a run makes.
