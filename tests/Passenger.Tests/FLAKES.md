@@ -8,6 +8,24 @@ pattern shows. A **race in the IDE** is fixed in the IDE; waiting longer or tryi
 To add one: a line under its date, newest first, naming the test, the run, the cause in a sentence and the commit
 that fixed it, in one of the forms below. A failure not yet understood goes in only once it is.
 
+**Where they come from** (the 111 entries of 2026-10-19 to 27, against the 1,556 tests CI ran on 2026-10-27):
+- **By the kind of test:**
+  - UI end-to-end, the whole IDE in a headless window (1,204 tests): 80 failures, about 7 per 100 tests.
+  - Agent end-to-end over MCP (125): 12, the highest rate, about 10 per 100.
+  - Debugger over DAP (122): 7.
+  - Other windowless tests (105): 6.
+  - No test named (a shard, a job): 6.
+- **By what failed:**
+  - A wrong result: 66.
+  - A wait that gave up: 20.
+  - A time over its bound: 15, from the few dozen tests held to a time, the highest rate of any kind of check.
+  - An allocation measure over its bound: 10.
+- **By cause:**
+  - The IDE: 53, a bug or race a person could meet.
+  - The test itself: 44, waiting for less than it checked, or reading a state that moved.
+  - Outside the code: 7 (the runner, GitHub, xunit, Rosetta).
+  - Unlabelled: 7.
+
 ## 2026-10-27
 
 - `AspireStandInTests`, Windows shard 2 of Release run 40574842088: the eight tests after the one whose AppHost runs an
