@@ -402,9 +402,14 @@ public sealed class EditorGroup : DockPanel
         Editor.IsVisible = true;
         tabBar.IsVisible = true;
         ShowTable(document);
-        Find.Attach(Editor, Table);
+        AttachFind();
         FollowMarkdown();
     }
+
+    /// <summary>The find bar on the file shown: its text, or its table while one lies over it; a read-only file's replace row
+    /// greyed, saying why.</summary>
+    private void AttachFind() =>
+        Find.Attach(Editor, Table, Active is { IsReadOnly: true } shown ? Refusals.ReadOnly(shown.Name) : null);
 
     /// <summary>The table of the file shown, while it is a CSV or a workbook, null otherwise.</summary>
     public CellGrid? Table => tables is { ShowsTable: true } ? tables.View : null;
@@ -425,7 +430,7 @@ public sealed class EditorGroup : DockPanel
             body.Children.Add(tables.Body);
             tables.Switched += (_, _) =>
             {
-                Find.Attach(Editor, Table);
+                AttachFind();
                 if (tables.ShowsTable)
                 {
                     tables.View.Focus();
@@ -594,7 +599,9 @@ public sealed class EditorGroup : DockPanel
                 break;
             case nameof(OpenDocument.Path):
                 ShowTable(document);
-                Find.Attach(Editor, Table);
+                Editor.IsReadOnly = document.IsReadOnly;
+                ShowBanner(document);
+                AttachFind();
                 Editor.LineCommentPrefix = document.Language.LineComment;
                 Editor.BlockComment = document.Language.BlockComment;
                 Editor.Markup = document.Language.Markup;

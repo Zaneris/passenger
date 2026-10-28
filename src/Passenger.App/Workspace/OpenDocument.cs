@@ -54,7 +54,17 @@ public sealed class OpenDocument : Observable
 
     /// <summary>The image or font owned by this document, null for text: a stand-in (<see cref="AssetPreview.IsPending"/>)
     /// until its first decode lands, then the decoded one, replaced only after a successful reload.</summary>
-    public AssetPreview? Asset { get; private set; }
+    public AssetPreview? Asset
+    {
+        get => asset;
+        private set
+        {
+            asset = value;
+            FollowReadOnly();
+        }
+    }
+
+    private AssetPreview? asset;
 
     /// <summary>The asset's decode under way off the UI thread, until what it came to has landed.</summary>
     private Task? decoding;
@@ -233,6 +243,7 @@ public sealed class OpenDocument : Observable
             }
             Raise(nameof(IsModified));
         };
+        FollowReadOnly();
     }
 
     private string? encodingWarning;
@@ -622,6 +633,7 @@ public sealed class OpenDocument : Observable
     public void MoveTo(string path)
     {
         Path = path;
+        FollowReadOnly();
         Language language = Asset is null && !IsBinary ? Language.ForPath(path) : Language;
         if (language != Language)
         {
@@ -844,6 +856,10 @@ public sealed class OpenDocument : Observable
         {
             return;
         }
+        if (IsReadOnly)
+        {
+            throw new IOException(Refusals.ReadOnly(Name));
+        }
         Stored before = Current;
         SelectionSet carets = Selections;
         TextEdit[] sorted = [.. edits.OrderBy(e => e.Start)];
@@ -1045,6 +1061,9 @@ public sealed class OpenDocument : Observable
     public bool IsReadOnly => Asset is not null || IsDecompiled || IsWorkbook || IsBinary || Product.Carries(Path) || IsReleaseNotes
         || MSBuild.MSBuildFiles.IsInstalled(Path) || Containers.ContainerFilesPane.IsCopy(Path) || Endpoints.RequestLog.IsCommandCopy(Path);
 
+    /// <summary>The text refuses every change while the file is read-only, whatever asks it: the one place that holds it so.</summary>
+    private void FollowReadOnly() => Text.IsReadOnly = IsReadOnly;
+
     /// <summary>Whether this is an Excel workbook, shown as its sheets' cells: its tab holds no text, and nothing is ever
     /// written over it.</summary>
     public bool IsWorkbook => Tables.Workbook.IsWorkbook(Path);
@@ -1232,7 +1251,16 @@ public sealed class OpenDocument : Observable
         {
             return false;
         }
-        Text.SetText(file.Text, Selections);
+        // What the disk holds now is what even a read-only file shows.
+        Text.IsReadOnly = false;
+        try
+        {
+            Text.SetText(file.Text, Selections);
+        }
+        finally
+        {
+            FollowReadOnly();
+        }
         Text.MarkSaved();
         if (file.Text.Contains('\n', StringComparison.Ordinal))
         {
@@ -1249,9 +1277,9 @@ public sealed class OpenDocument : Observable
     /// <summary>Writes the file, first doing to its text what its .editorconfig asks of a save (trailing whitespace off
     /// every line without one of <paramref name="carets"/>, a final line break, every break its <c>end_of_line</c>, as
     /// one undoable step) and in its <c>charset</c>; a line separator or encoding the person chose stays. Its folder, once
-    /// another program moved or deleted it, is made again only when <paramref name="makeFolder"/> (the person's Save). An
-    /// asset preview is never written, even when Save is called directly.</summary>
-    public void Save(SelectionSet? carets = null, bool makeFolder = false)
+    /// another program moved or deleted it, is made again only when <paramref name="makeFolder"/> (the person's Save). A
+    /// file with no changes is written only <paramref name="overDisk"/>; a read-only one never, refused with why.</summary>
+    public void Save(SelectionSet? carets = null, bool makeFolder = false, bool overDisk = false)
     {
         if (Asset is not null)
         {
@@ -1266,6 +1294,14 @@ public sealed class OpenDocument : Observable
         {
             // Its control characters are shown as signs: written, they would replace the bytes.
             throw new IOException($"{Name} is a binary file, shown read-only.");
+        }
+        if (IsReadOnly)
+        {
+            throw new IOException(Refusals.ReadOnly(Name));
+        }
+        if (!IsModified && !overDisk)
+        {
+            return;
         }
         ReadConventions();
         string text = Text.Snapshot.ToString();

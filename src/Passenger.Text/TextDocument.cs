@@ -101,6 +101,10 @@ public sealed class TextDocument
 
     public bool IsModified => !ReferenceEquals(Snapshot, saved);
 
+    /// <summary>Whether the text refuses every change while it is set: an edit, an undo or redo, or a console's own each
+    /// leaves it as it is. Its owner (a file shown read-only) lifts it only for what the text must take.</summary>
+    public bool IsReadOnly { get; set; }
+
     /// <summary>The text as last loaded or saved: what the file on disk holds, unless something else changed it.</summary>
     public TextSnapshot Saved => saved;
     public bool CanUndo => undo.Count > 0;
@@ -143,9 +147,14 @@ public sealed class TextDocument
     }
 
     /// <summary>Applies non-overlapping <paramref name="edits"/> (in the current snapshot's
-    /// coordinates) as one undo step, merged with the last if it continues the same kind of edit.</summary>
+    /// coordinates) as one undo step, merged with the last if it continues the same kind of edit; none while
+    /// <see cref="IsReadOnly"/>.</summary>
     public void Edit(IReadOnlyList<TextEdit> edits, SelectionSet selectionsBefore, SelectionSet selectionsAfter, EditKind kind = EditKind.Other)
     {
+        if (IsReadOnly)
+        {
+            return;
+        }
         TextEdit[] sorted = Sorted(edits, apart: true);
         if (sorted.Length == 0)
         {
@@ -183,6 +192,10 @@ public sealed class TextDocument
     /// once Redo has made the edits again.</summary>
     public void Perform(IReadOnlyList<TextEdit> edits, SelectionSet selectionsBefore, SelectionSet selectionsAfter, Action undone, Action redone)
     {
+        if (IsReadOnly)
+        {
+            return;
+        }
         TextEdit[] sorted = Sorted(edits, apart: false);
         TextSnapshot before = Snapshot;
         string[] removed = Removed(before, sorted);
@@ -213,7 +226,7 @@ public sealed class TextDocument
     /// what a program printed, and keeping it would hold every line twice.</summary>
     public void Append(string text)
     {
-        if (text.Length == 0)
+        if (text.Length == 0 || IsReadOnly)
         {
             return;
         }
@@ -227,7 +240,7 @@ public sealed class TextDocument
     /// before the line a person is typing): any history no longer lines up with the text, so it goes.</summary>
     public void Rewrite(int start, int length, string text)
     {
-        if (length == 0 && text.Length == 0)
+        if ((length == 0 && text.Length == 0) || IsReadOnly)
         {
             return;
         }
@@ -240,6 +253,10 @@ public sealed class TextDocument
     /// <summary>Empties the document with no undo step (a console cleared), forgetting its history.</summary>
     public void Clear()
     {
+        if (IsReadOnly)
+        {
+            return;
+        }
         TextSnapshot before = Snapshot;
         Forget();
         if (before.Length > 0)
@@ -254,10 +271,10 @@ public sealed class TextDocument
     public void BreakUndoGroup() => mergeBroken = true;
 
     /// <summary>Undoes the last step and returns the carets as they were before it, or null if there
-    /// was nothing to undo.</summary>
+    /// was nothing to undo or the text is read-only.</summary>
     public SelectionSet? Undo()
     {
-        if (undo.Count == 0)
+        if (undo.Count == 0 || IsReadOnly)
         {
             return null;
         }
@@ -278,7 +295,7 @@ public sealed class TextDocument
 
     public SelectionSet? Redo()
     {
-        if (redo.Count == 0)
+        if (redo.Count == 0 || IsReadOnly)
         {
             return null;
         }

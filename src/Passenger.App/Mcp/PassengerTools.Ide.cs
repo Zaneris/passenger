@@ -268,6 +268,10 @@ public sealed partial class PassengerTools
         string needle = LineEndings.In(oldText, eol);
         List<int> found = [.. text.Occurrences(needle)];
         string name = Relative(document.Path);
+        if (document.IsReadOnly)
+        {
+            throw new InvalidOperationException($"{Refusals.ReadOnly(name)}, so nothing changed");
+        }
         if (found.Count == 0)
         {
             throw new InvalidOperationException($"{name} has no \"{Shorter(oldText)}\" as written (case, spaces and line breaks included), so nothing changed; editor_text shows the file as the editor has it");

@@ -11,7 +11,8 @@ namespace Passenger.App.Xaml;
 
 /// <summary>A colour picker over a swatch: a square of saturation and brightness for the hue chosen on the bar under
 /// it, an alpha bar, the colour before and after, and its hex to read or type. Choose (or Enter) gives the colour,
-/// Cancel or Escape leaves it. Its gradients are the colours being chosen; its chrome is the theme's.</summary>
+/// Cancel or Escape leaves it; over a colour that cannot be written, Choose is greyed, saying why, and Enter gives nothing.
+/// Its gradients are the colours being chosen; its chrome is the theme's.</summary>
 internal sealed class ColourPicker : Border
 {
     // Styled as the Border it is, so the theme's Border.popup reaches it.
@@ -22,14 +23,16 @@ internal sealed class ColourPicker : Border
     private readonly AlphaBar alpha;
     private readonly Border after;
     private readonly TextBox hex;
+    private readonly bool chooses;
     private double h;
     private double s;
     private double v;
     private byte a;
     private bool typing;
 
-    public ColourPicker(Argb start)
+    public ColourPicker(Argb start, string? unchangeable = null)
     {
+        chooses = unchangeable is null;
         Classes.Add("popup");
         Padding = new Thickness(10);
         (h, s, v) = ToHsv(start);
@@ -44,7 +47,8 @@ internal sealed class ColourPicker : Border
         after.Bind(Border.CornerRadiusProperty, after.GetResourceObservable(TokenKeys.ControlRadius, r => r is CornerRadius c ? new CornerRadius(0, c.TopRight, c.BottomRight, 0) : default(CornerRadius)));
         // The field takes what the swatches and buttons leave.
         hex = new TextBox { Classes = { "search" }, FontFamily = new FontFamily("avares://Passenger.Editor/Fonts#JetBrains Mono") };
-        Button choose = new() { Content = "Choose", Classes = { "primary" }, IsDefault = true };
+        Button choose = new() { Content = "Choose", Classes = { "primary" }, IsDefault = chooses, IsEnabled = chooses };
+        ToolTip.SetTip(choose, unchangeable);
         Button cancel = new() { Content = "Cancel" };
         choose.Click += (_, _) => Chosen?.Invoke(this, Colour);
         cancel.Click += (_, _) => Chosen?.Invoke(this, null);
@@ -146,7 +150,10 @@ internal sealed class ColourPicker : Border
         }
         else if (e.Key == Key.Enter)
         {
-            Chosen?.Invoke(this, Colour);
+            if (chooses)
+            {
+                Chosen?.Invoke(this, Colour);
+            }
             e.Handled = true;
         }
     }

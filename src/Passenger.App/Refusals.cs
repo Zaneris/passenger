@@ -42,6 +42,14 @@ public static class Refusals
             ? string.Create(CultureInfo.InvariantCulture, $"the text replaced would be {length:N0} characters long, more than {SearchResult.MostReplaced:N0}")
             : null;
 
+    /// <summary>A file shown read-only (decompiled, installed, carried by the app, a copy to read), which nothing edits or
+    /// saves.</summary>
+    public static string ReadOnly(string name) => $"{name} is read-only";
+
+    /// <summary>Why the file shown cannot be saved: none is shown, it is read-only, or it has nothing to save.</summary>
+    public static string? NeedsUnsaved(ActionContext context) =>
+        context.File is not { } file ? NoFile : file.IsReadOnly ? ReadOnly(file.Name) : file.IsModified ? null : $"{file.Name} is saved";
+
     /// <summary>Why an action on the file shown cannot run: none is shown.</summary>
     public static string? NeedsFile(ActionContext context) => context.File is null ? NoFile : null;
 

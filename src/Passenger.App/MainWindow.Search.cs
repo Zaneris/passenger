@@ -202,8 +202,9 @@ public partial class MainWindow
     /// <summary>Replaces a query's matches in the files Find in Files found them in, each searched off the UI thread first:
     /// an open one as one undoable step changing only its matches, so its carets, folds and breakpoints stay put; a closed
     /// one written in its own encoding (UTF-8 when that cannot hold the replacement, said of each), answered for once it has
-    /// landed. A file the system refuses (read-only, access denied, held past the save's wait), one a regex ran too long in,
-    /// or an open one edited while it was searched is left as it was and named with why; the rest are replaced all the same.</summary>
+    /// landed. A file the system refuses (read-only, access denied, held past the save's wait), one the editor shows
+    /// read-only, one a regex ran too long in, or an open one edited while it was searched is left as it was and named with
+    /// why; the rest are replaced all the same.</summary>
     public async Task<FilesReplaced> ReplaceInFilesAsync(SearchQuery query, string replacement, FilesFound found)
     {
         SearchPattern pattern = SearchPattern.For(query, TextSearch.Apart);
@@ -215,6 +216,11 @@ public partial class MainWindow
             if (open is { HoldsText: false })
             {
                 // A preview's or a workbook's tab holds no text of the file's to replace in, and its bytes are no text.
+                continue;
+            }
+            if (open is { IsReadOnly: true })
+            {
+                refused.Add((path, FileSearch.ReadOnlyWhy));
                 continue;
             }
             files.Add((path, open?.Text.Snapshot));

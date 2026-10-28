@@ -11,7 +11,8 @@ namespace Passenger.App;
 
 /// <summary>The gutter's colour swatches: a click on one opens the colour picker beside it, and the colour chosen is
 /// written back as the colour was written (a hex value, a name, a C# call's arguments), where it is written: the line's
-/// own value, or for a resource a brush names, its definition in another file. One undo step.</summary>
+/// own value, or for a resource a brush names, its definition in another file. One undo step. Where that is a file shown
+/// read-only, the picker shows the colour with Choose greyed, saying why.</summary>
 public partial class MainWindow
 {
     private ColourPicker? picker;
@@ -32,7 +33,7 @@ public partial class MainWindow
             return true;
         }
         ClosePicker();
-        ColourPicker opened = new(use.Colour);
+        ColourPicker opened = new(use.Colour, Unwritable(document, use));
         picker = opened;
         Canvas layer = Editors.AssistLayer;
         layer.Children.Add(opened);
@@ -61,11 +62,20 @@ public partial class MainWindow
         }
     }
 
+    /// <summary>Why a swatch's colour cannot be written where it is: that file is shown read-only; null when it can.</summary>
+    private string? Unwritable(OpenDocument document, ColourUse use) =>
+        Editors.Find(use.WritePath ?? document.Path) is { IsReadOnly: true } open ? Refusals.ReadOnly(open.Name) : null;
+
     /// <summary>A colour written where a swatch's colour is, in its form, unless that text changed meanwhile.</summary>
     private void WriteColour(OpenDocument document, ColourUse use, Argb colour)
     {
         string path = use.WritePath ?? document.Path;
         OpenDocument? open = Editors.Find(path);
+        if (Unwritable(document, use) is { } why)
+        {
+            status.Text = $"{why}: the colour is left as it was";
+            return;
+        }
         if (Editors.TextOf(path)?.ToString() is not { } text)
         {
             status.Text = $"{Path.GetFileName(path)} could not be read";

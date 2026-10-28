@@ -12,7 +12,7 @@ namespace Passenger.App.Editors;
 /// <summary>Find and replace in the open file. Matches are found as the query is typed and drawn in
 /// the editor; the one nearest after the caret is selected, and the count says which of how many. A regex too slow for
 /// the UI thread's moment is searched again off it, the count saying so meanwhile. While a table lies over the editor,
-/// its cells are searched instead (read-only: replacing is the Text view's).</summary>
+/// its cells are searched instead (read-only: replacing is the Text view's); a read-only file's replace row is greyed.</summary>
 public partial class FindBar : UserControl
 {
     private const string Searching = "Searching…";
@@ -32,6 +32,9 @@ public partial class FindBar : UserControl
     private bool jumpApart;
     private int current = -1;
     private CellGrid? grid;
+
+    /// <summary>Why the file shown takes no replacement (it is read-only), or null.</summary>
+    private string? unchangeable;
     private TableSearch cells = TableSearch.None;
     private CancellationTokenSource? searching;
 
@@ -59,10 +62,12 @@ public partial class FindBar : UserControl
     public SearchQuery CurrentQuery => new(Query.Text ?? string.Empty, MatchCase.IsChecked == true, WholeWords.IsChecked == true, UseRegex.IsChecked == true);
 
     /// <summary>Follows whichever document the editor shows, or the table over it when there is one; called when a tab is
-    /// activated and when a table file switches between its table and its text.</summary>
-    public void Attach(CodeEditor shown, CellGrid? table = null)
+    /// activated and when a table file switches between its table and its text. A file shown read-only says why
+    /// (<paramref name="readOnly"/>) on its replace row, greyed.</summary>
+    public void Attach(CodeEditor shown, CellGrid? table = null, string? readOnly = null)
     {
         editor = shown;
+        unchangeable = readOnly;
         Follow(table);
         if (document is not null)
         {
@@ -107,8 +112,8 @@ public partial class FindBar : UserControl
         {
             grid.TableChanged += OnTableChanged;
         }
-        ReplaceWith.IsEnabled = ReplaceButton.IsEnabled = ReplaceAllButton.IsEnabled = grid is null;
-        ToolTip.SetTip(ReplaceRow, grid is null ? null : "Show the file's Text to replace in it");
+        ReplaceWith.IsEnabled = ReplaceButton.IsEnabled = ReplaceAllButton.IsEnabled = Replaces;
+        ToolTip.SetTip(ReplaceRow, unchangeable ?? (grid is null ? null : "Show the file's Text to replace in it"));
     }
 
     /// <summary>Opens the bar (with the replace row if <paramref name="replace"/>), its query the
@@ -291,9 +296,12 @@ public partial class FindBar : UserControl
         Show();
     }
 
+    /// <summary>Whether the text shown takes a replacement: neither a table's cells nor a read-only file's.</summary>
+    private bool Replaces => grid is null && unchangeable is null;
+
     private void ReplaceCurrent()
     {
-        if (editor is null || grid is not null)
+        if (editor is null || !Replaces)
         {
             return;
         }
@@ -322,7 +330,7 @@ public partial class FindBar : UserControl
 
     private void ReplaceAll(SearchQuery query, string replacement)
     {
-        if (editor is null || grid is not null)
+        if (editor is null || !Replaces)
         {
             return;
         }
@@ -351,7 +359,7 @@ public partial class FindBar : UserControl
             SearchResult searched = TextSearch.FindAll(text, query, TextSearch.Apart, int.MaxValue);
             return (searched, searched.Stopped ? ([], null) : Replacing(searched, replacement));
         });
-        if (editor != shown || !IsVisible || grid is not null)
+        if (editor != shown || !IsVisible || !Replaces)
         {
             return;
         }
@@ -479,7 +487,7 @@ public partial class FindBar : UserControl
     {
         switch (e.Key)
         {
-            case Key.Enter when sender == ReplaceWith && grid is null:
+            case Key.Enter when sender == ReplaceWith && Replaces:
                 ReplaceCurrent();
                 e.Handled = true;
                 break;

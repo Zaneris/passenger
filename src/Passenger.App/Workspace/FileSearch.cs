@@ -233,11 +233,14 @@ public static class FileSearch
     /// <summary>Why a file the system would not let be read or written is left as it was.</summary>
     public static string Refusal(Exception error) => error switch
     {
-        ReadOnlyFileException => "read-only",
+        ReadOnlyFileException => ReadOnlyWhy,
         UnauthorizedAccessException => "access denied",
         FileNotFoundException or DirectoryNotFoundException => "gone",
         _ => error.Message,
     };
+
+    /// <summary>Why a read-only file is left as it was: one marked so on disk, or one the editor shows read-only.</summary>
+    public const string ReadOnlyWhy = "read-only";
 
     /// <summary>Why a file a regex ran too long in is left as it was.</summary>
     public const string StoppedWhy = "the regex took too long there";

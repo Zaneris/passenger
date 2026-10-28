@@ -140,7 +140,7 @@ public partial class MainWindow
             {
                 Editors.SaveAll(asked: true);
             }
-            else if (pressed is not null)
+            else if (pressed is { IsModified: true })
             {
                 Editors.SaveAsked(pressed);
             }

@@ -740,7 +740,7 @@ public sealed partial class EditorArea : UserControl
         {
             // The carets of the editor showing it, whose lines keep the whitespace a save would trim.
             EditorGroup? showing = activeGroup.Has(document) ? activeGroup : AllGroups.FirstOrDefault(g => g.Has(document));
-            document.Save(showing?.SelectionsOf(document), makeFolder: asked);
+            document.Save(showing?.SelectionsOf(document), makeFolder: asked, overDisk: overDisk);
             return true;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)

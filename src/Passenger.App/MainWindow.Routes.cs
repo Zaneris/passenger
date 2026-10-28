@@ -348,7 +348,7 @@ public partial class MainWindow
             {
                 if (document.IsReadOnly)
                 {
-                    status.Text = $"{Path.GetFileName(path)} is read-only: no request could be written for {RouteRequests.Title(route)}";
+                    status.Text = $"{Refusals.ReadOnly(Path.GetFileName(path))}: no request could be written for {RouteRequests.Title(route)}";
                     return null;
                 }
                 string before = document.Text.Snapshot.ToString();

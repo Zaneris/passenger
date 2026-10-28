@@ -67,7 +67,7 @@ public partial class MainWindow
 
     /// <summary>Why the file's line separator and encoding cannot change: none is open, or it is read-only.</summary>
     private static string? Unchangeable(ActionContext context) =>
-        context.File is not { } file ? Refusals.NoFile : file.IsReadOnly ? $"{file.Name} is read-only" : null;
+        context.File is not { } file ? Refusals.NoFile : file.IsReadOnly ? Refusals.ReadOnly(file.Name) : null;
 
 
     /// <summary>The line separator popup: the Line Separators menu, the file's own checked.</summary>
@@ -136,7 +136,7 @@ public partial class MainWindow
     {
         if (document.IsReadOnly)
         {
-            status.Text = $"{document.Name} is read-only";
+            status.Text = Refusals.ReadOnly(document.Name);
             return;
         }
         string from = document.EncodingName;
