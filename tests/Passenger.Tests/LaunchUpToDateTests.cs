@@ -16,6 +16,7 @@ public sealed class LaunchUpToDateTests
     /// <summary>The longest a build and a run of the app take on a developer's machine, scaled by the run.</summary>
     private static readonly TimeSpan Slow = TimeSpan.FromMinutes(2);
 
+    [Gate]
     [AvaloniaFact]
     public void A_run_with_nothing_its_build_reads_changed_starts_no_build_and_each_change_builds_first()
     {
@@ -69,6 +70,7 @@ public sealed class LaunchUpToDateTests
 
     /// <summary>Run begun while a build works waits for that build to end, saying so in its work, and then runs; here
     /// the build is held until the test lets it go.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_run_begun_while_a_build_works_waits_for_it_to_end_and_then_runs()
     {

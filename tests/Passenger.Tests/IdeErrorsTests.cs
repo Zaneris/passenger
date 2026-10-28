@@ -31,6 +31,7 @@ public sealed class IdeErrorsTests : IDisposable
         TestFolders.Delete(folder);
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_command_that_throws_leaves_the_window_up_with_the_error_in_the_log_and_the_status_bar()
     {
@@ -82,6 +83,7 @@ public sealed class IdeErrorsTests : IDisposable
 
     /// <summary>A handler of a file's changes that throws is an error the IDE shows, and every handler after it still hears
     /// of the change: the file's parse keeps up with the keys, the first of which the handler threw on.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_handler_of_a_files_changes_that_throws_leaves_those_after_it_in_step_with_the_text()
     {
@@ -228,6 +230,7 @@ public sealed class IdeErrorsTests : IDisposable
     /// lambda for a delegate that returns nothing. Passed over: a continuation whose lambda only reads the task's
     /// Exception, which marks a fault seen and cannot fault itself, and a project not built, the container tools
     /// (only the solution's build and the release make them).</summary>
+    [Gate]
     [AvaloniaFact]
     public void Nothing_in_src_leaves_a_fault_in_the_work_it_starts_for_the_garbage_collector_to_find()
     {
@@ -260,6 +263,7 @@ public sealed class IdeErrorsTests : IDisposable
             + $"give it to IdeErrors.Observe (Core.UnawaitedWork.Observe below the app):\n{string.Join('\n', found.Order(StringComparer.Ordinal))}");
     }
 
+    [Gate]
     [AvaloniaFact]
     public void The_same_error_again_and_again_is_one_row_with_its_count_and_a_log_rotated_under_its_size_cap()
     {
@@ -312,6 +316,7 @@ public sealed class IdeErrorsTests : IDisposable
         }
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Past_a_hundred_different_errors_the_rest_are_only_in_the_log_and_the_count_says_there_are_more()
     {
@@ -339,6 +344,7 @@ public sealed class IdeErrorsTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_window_test_in_which_the_ide_caught_an_error_fails_naming_it()
     {
@@ -406,6 +412,7 @@ public sealed class IdeErrorsTests : IDisposable
 
     /// <summary>A folder without a solution has its projects found by a walk off the window's thread, and its language
     /// server starts once that walk lands: a window closed before then starts none, which nothing would end.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_window_closed_before_its_folders_projects_are_found_starts_no_language_server()
     {
@@ -595,6 +602,7 @@ public sealed class IdeErrorsTests : IDisposable
     /// <summary>A server whose process ends during its own start, before it has answered, is started again as one that ends
     /// later is, the window saying so, and C# comes back for the file open; asked to, the IDE starts it again in place of
     /// the one running.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_language_server_that_ends_during_its_start_is_started_again_saying_so()
     {

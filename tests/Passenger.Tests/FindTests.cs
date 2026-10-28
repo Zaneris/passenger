@@ -17,6 +17,7 @@ public sealed class FindTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    [Gate]
     [AvaloniaFact]
     public void Typing_a_query_selects_the_nearest_match_and_enter_and_shift_enter_walk_them()
     {
@@ -40,6 +41,7 @@ public sealed class FindTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Replace_all_changes_every_match_in_one_undoable_step()
     {
@@ -56,6 +58,7 @@ public sealed class FindTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_regex_sees_a_crlf_files_line_ends_and_stripping_trailing_space_keeps_its_breaks()
     {
@@ -79,6 +82,7 @@ public sealed class FindTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_regex_replacement_fills_its_groups_from_the_match_where_it_stands_lookahead_and_all()
     {
@@ -102,6 +106,7 @@ public sealed class FindTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void With_words_on_a_regex_alternation_finds_whole_words_on_both_sides()
     {
@@ -125,6 +130,7 @@ public sealed class FindTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Replacing_every_lines_start_comments_each_line_and_leaves_the_end_after_the_last_break_alone()
     {
@@ -150,6 +156,7 @@ public sealed class FindTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_regex_that_backtracks_without_end_leaves_the_window_free_stops_saying_so_and_replaces_nothing()
     {
@@ -207,6 +214,7 @@ public sealed class FindTests : IDisposable
     /// <summary>Replace All with a regex whose replacement takes the whole text ($_), what stands before and after each
     /// match ($`, $') and its groups, with '$'s that stand for nothing, gives what .NET's Regex.Replace gives; in a file
     /// of "\r\n" lines, with each break it carries over the file's own.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Replace_all_taking_the_whole_text_or_what_stands_around_each_match_gives_what_dotnet_gives()
     {
@@ -251,6 +259,7 @@ public sealed class FindTests : IDisposable
     /// twice what they do in one of 200, the match at the end moving with them and still counted; on every thread, the
     /// search's own included, a key allocates under half the file's size, plain or as a regex over "\r\n" lines, with
     /// soft wrap on or off, and the stripe's marks stand, the search finding the match where the key moved it.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Typing_with_the_find_bar_open_costs_a_key_in_twenty_thousand_lines_about_what_it_does_in_two_hundred()
     {
@@ -278,6 +287,7 @@ public sealed class FindTests : IDisposable
     /// <summary>Each key typed into the query over a file of 20,000 lines allocates on the UI thread what it does over one
     /// of 200, plain over "\n" lines and as a regex over "\r\n" ones: the search reads the text where it lies, or reads it
     /// as lines once for the keys typed over it.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Typing_a_query_costs_a_key_over_twenty_thousand_lines_what_it_does_over_two_hundred()
     {

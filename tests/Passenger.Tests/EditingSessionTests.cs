@@ -46,12 +46,14 @@ public sealed class EditingSessionTests
         ("control M , X", "Unfold All"),
     ];
 
+    [Gate]
     [AvaloniaTheory]
     [InlineData(1)]
     [InlineData(2)]
     [InlineData(3)]
     public void A_long_session_of_keys_leaves_the_text_and_caret_where_a_plain_model_says(int seed) => Session(seed, wrapped: false);
 
+    [Gate]
     [AvaloniaTheory]
     [InlineData(1)]
     [InlineData(2)]
@@ -64,6 +66,7 @@ public sealed class EditingSessionTests
     /// Whatever a key does: no key fails, no caret leaves the text, every break stays the file's, the line index reads its
     /// lines, an undo gives back the text before its step and a redo the text after it, the rows are a fresh editor's, the
     /// folds in runs are those carried one by one, and the file undoes to itself and redoes to the last text.</summary>
+    [Gate]
     [AvaloniaTheory]
     [InlineData(3, "\n")]
     [InlineData(8, "\n")]

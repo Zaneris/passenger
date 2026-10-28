@@ -11,6 +11,7 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
 {
     private const string Looping = "LoopingConsoleApp";
 
+    [Gate]
     [Fact]
     public async Task Pause_stops_a_looping_program_in_its_loop_and_a_second_pause_after_continuing_does_too()
     {
@@ -33,6 +34,7 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
     /// <summary>A pause that caught the thread in the runtime's own code (its sleep), where none of the program's can run: a
     /// value its ToString would show is shown by its type, its fields there to open, never as an error; and a step from
     /// there comes back to the loop.</summary>
+    [Gate]
     [Fact]
     public async Task A_value_paused_in_a_sleep_shows_its_type_and_fields_where_its_ToString_cannot_run_and_a_step_comes_back_to_the_loop()
     {
@@ -90,6 +92,7 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("2", sum.Result);
     }
 
+    [Gate]
     [Fact]
     public async Task A_condition_that_calls_a_method_stops_a_parallel_loop_on_its_matching_iteration()
     {
@@ -101,6 +104,7 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("377", Assert.Single(await host.LocalsAsync(stopped), v => v.Name == "i").Value);
     }
 
+    [Gate]
     [Fact]
     public async Task An_exception_in_a_parallel_loop_whose_iterations_test_a_condition_stops_where_it_was_thrown()
     {

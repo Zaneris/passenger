@@ -158,6 +158,7 @@ public sealed class FileTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Saving_a_file_does_not_follow_a_planted_temporary_file_link()
     {
@@ -183,6 +184,7 @@ public sealed class FileTests : IDisposable
         }
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Files_dropped_from_the_file_manager_open_in_the_editor_and_a_folder_dropped_on_the_Welcome_screen_opens()
     {
@@ -201,6 +203,7 @@ public sealed class FileTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Closing_a_tab_or_the_window_saves_every_unsaved_edit_without_asking()
     {
@@ -222,6 +225,7 @@ public sealed class FileTests : IDisposable
         Assert.Equal("internal class Two { }\n", File.ReadAllText(Path.Combine(folder, "Two.cs")));
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_file_another_program_reads_without_letting_it_be_deleted_is_still_saved_and_quitting_goes_ahead()
     {
@@ -242,6 +246,7 @@ public sealed class FileTests : IDisposable
 
     /// <summary>A save writes its temporary file under a name of its own, made new, so a link a cloned repository
     /// carries under a fixed name (One.cs.passenger-save) never takes the save elsewhere.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_save_never_writes_through_a_link_left_where_its_temporary_file_would_go()
     {
@@ -262,6 +267,7 @@ public sealed class FileTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Edits_are_saved_when_the_focus_goes_to_the_terminal_unless_settings_say_not_and_before_another_folder_opens()
     {
@@ -287,6 +293,7 @@ public sealed class FileTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void An_edit_left_alone_is_saved_once_the_IDE_has_been_idle_as_long_as_settings_say()
     {
@@ -355,6 +362,7 @@ public sealed class FileTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_read_only_file_is_never_written_by_a_save_and_its_first_edit_and_each_save_ask_to_make_it_writable()
     {
@@ -394,6 +402,7 @@ public sealed class FileTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_window_closed_with_a_read_only_files_changes_asks_and_closes_with_the_file_made_writable_or_left_as_it_was()
     {

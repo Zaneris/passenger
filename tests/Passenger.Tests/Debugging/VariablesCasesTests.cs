@@ -7,6 +7,7 @@ namespace Passenger.Tests.Debugging;
 [Collection(DebugSession.Collection)]
 public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
 {
+    [Gate]
     [Fact]
     public async Task A_parameter_a_lambda_captures_is_listed_once_with_its_live_value()
     {
@@ -20,6 +21,7 @@ public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
         Assert.Single(locals, v => v.Name == "f");
     }
 
+    [Gate]
     [Fact]
     public async Task An_exception_wrapping_another_reports_the_inner_one()
     {
@@ -44,6 +46,7 @@ public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>A C# 15 union shows the value it holds as that value's type, by its row and by evaluation, and opens to that
     /// value's members, one holding none showing null.</summary>
+    [Gate]
     [Fact]
     public async Task A_union_shows_the_value_it_holds_as_that_values_type_opening_to_its_members()
     {
@@ -70,6 +73,7 @@ public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>A pointer shows its address as its type (int*), by its row and by evaluation, opens to the value it points
     /// at, and *pointer evaluates to that value.</summary>
+    [Gate]
     [Fact]
     public async Task A_pointer_shows_its_address_and_type_and_opens_to_what_it_points_at()
     {
@@ -89,6 +93,7 @@ public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
         Assert.Equal(("42", "int"), (read.Result, read.Type));
     }
 
+    [Gate]
     [Fact]
     public async Task DebuggerDisplay_renders_as_Visual_Studio_does()
     {
@@ -129,6 +134,7 @@ public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
     }
 
     /// <summary>A value whose ToString throws shows its type and still opens to its members.</summary>
+    [Gate]
     [Fact]
     public async Task A_value_whose_ToString_throws_shows_its_type_and_opens_to_its_members()
     {

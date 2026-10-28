@@ -69,6 +69,7 @@ public sealed class GoToTests : IClassFixture<GoToTests.Project>
         project.Reset();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Type_declaration_from_a_variable_goes_to_the_class_it_holds_not_to_where_the_variable_is_declared()
     {
@@ -82,6 +83,7 @@ public sealed class GoToTests : IClassFixture<GoToTests.Project>
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Base_symbols_go_from_an_override_to_what_it_overrides_from_an_implementation_to_the_interface_and_offer_both_when_there_are_two()
     {
@@ -116,6 +118,7 @@ public sealed class GoToTests : IClassFixture<GoToTests.Project>
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Derived_symbols_from_the_editors_go_to_menu_offer_what_overrides_or_implements_a_member_or_derives_from_a_type()
     {
@@ -157,6 +160,7 @@ public sealed class GoToTests : IClassFixture<GoToTests.Project>
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Recent_locations_lists_the_places_left_with_their_lines_of_code_and_goes_to_the_one_chosen()
     {
@@ -217,6 +221,7 @@ public sealed class GoToTests : IClassFixture<GoToTests.Project>
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Last_edit_location_steps_back_through_edits_in_two_files_and_recent_lists_show_only_what_was_edited()
     {

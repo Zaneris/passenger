@@ -63,6 +63,7 @@ public sealed class ProjectLoadTests : IDisposable
         TestFolders.Delete(folder);
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_package_with_a_known_vulnerability_is_a_warning_in_the_status_bar_and_problems_with_its_advisory_and_nuget_offers_its_fix()
     {
@@ -111,6 +112,7 @@ public sealed class ProjectLoadTests : IDisposable
 
     /// <summary>An advisory's address is the feed's to name, in any scheme: only an http or https one is a link, and one that
     /// would launch a program (a file: address) is words that open nothing.</summary>
+    [Gate]
     [AvaloniaFact]
     public void An_advisory_whose_address_is_no_web_page_is_shown_in_the_nuget_window_as_words_not_a_link()
     {
@@ -130,6 +132,7 @@ public sealed class ProjectLoadTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Updating_a_vulnerable_package_to_the_version_that_fixes_it_takes_its_warning_away()
     {
@@ -157,6 +160,7 @@ public sealed class ProjectLoadTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_project_whose_sdk_cannot_be_found_is_an_error_naming_why_in_the_status_bar_and_under_it_in_problems()
     {

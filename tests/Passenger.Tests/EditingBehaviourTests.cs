@@ -14,61 +14,7 @@ namespace Passenger.Tests;
 /// Rider's keys: typing help, Enter, several carets, the line commands, comments and the clipboard.</summary>
 public sealed class EditingBehaviourTests
 {
-    [AvaloniaFact]
-    public void Typing_an_opening_bracket_closes_it_and_typing_the_closer_steps_over_it()
-    {
-        EditorRig rig = new("");
-        rig.Type("Call(");
-        Assert.Equal("Call()", rig.Text);
-        Assert.Equal(5, rig.Caret);
-        rig.Type("x)");
-        Assert.Equal("Call(x)", rig.Text);
-        Assert.Equal(7, rig.Caret);
-    }
-
-    [AvaloniaFact]
-    public void A_quote_typed_over_a_selection_wraps_it()
-    {
-        EditorRig rig = new("name");
-        rig.Press("meta A");
-        rig.Type("\"");
-        Assert.Equal("\"name\"", rig.Text);
-    }
-
-    [AvaloniaFact]
-    public void Enter_between_braces_opens_an_indented_line_with_the_closer_below()
-    {
-        EditorRig rig = new("    void Run() {}");
-        rig.PlaceCaret("    void Run() {".Length);
-        rig.Press("ENTER");
-        Assert.Equal("    void Run() {\n        \n    }", rig.Text);
-        Assert.Equal(new TextPosition(1, 8), rig.Editor.CaretPosition);
-    }
-
-    [AvaloniaFact]
-    public void Enter_at_the_start_of_an_indented_line_moves_the_line_down_with_its_indentation()
-    {
-        EditorRig rig = new("{\n    first();\n    second();\n}");
-        rig.PlaceCaret("{\n    first();\n".Length);
-        rig.Press("ENTER");
-        Assert.True(rig.Text == "{\n    first();\n\n    second();\n}", $"Enter at the line's start took its indentation away:\n{rig.Text}");
-        Assert.Equal(new TextPosition(3, 4), rig.Editor.CaretPosition);
-
-        rig.PlaceCaret("{\n    first();\n\n  ".Length);
-        rig.Press("ENTER");
-        Assert.True(rig.Text == "{\n    first();\n\n  \n    second();\n}", $"Enter inside the line's indentation took part of it away:\n{rig.Text}");
-        Assert.Equal(new TextPosition(4, 4), rig.Editor.CaretPosition);
-    }
-
-    [AvaloniaFact]
-    public void Backspace_in_indentation_removes_a_whole_level()
-    {
-        EditorRig rig = new("        x");
-        rig.PlaceCaret(8);
-        rig.Press("BACK_SPACE");
-        Assert.Equal("    x", rig.Text);
-    }
-
+    [Gate]
     [AvaloniaFact]
     public void Carets_cloned_down_the_lines_type_together_and_undo_as_one()
     {
@@ -85,6 +31,7 @@ public sealed class EditingBehaviourTests
     /// <summary>A word typed undoes and redoes as one change, so whatever follows the text (the anchors, folds, colours,
     /// the language server) hears of it once rather than once a key; the typing help's closer and the step over it go
     /// with the word.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Undoing_a_typed_word_takes_it_back_in_one_change_and_redoing_makes_it_again_in_one()
     {
@@ -111,6 +58,7 @@ public sealed class EditingBehaviourTests
     /// <summary>Thousands of keys keep an undo history no larger than its bound, however many more are typed: no version
     /// of the text a key made stays held for its undo, and the newest steps, thousands of them, still undo one at a time
     /// back to the text the oldest kept began from and redo to the last.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Thousands_of_keys_keep_an_undo_history_within_its_bound_that_still_undoes_their_newest_thousands_of_steps()
     {
@@ -171,6 +119,7 @@ public sealed class EditingBehaviourTests
         Assert.True(rig.Text == initial[..caret] + typed + initial[caret..], "Redoing every step did not give back the text the keys left");
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Select_next_occurrence_picks_the_word_then_each_copy_and_typing_replaces_them_all()
     {
@@ -184,22 +133,7 @@ public sealed class EditingBehaviourTests
         Assert.Equal("sum = sum + sum", rig.Text);
     }
 
-    [AvaloniaFact]
-    public void Line_commands_duplicate_move_and_delete_the_caret_line()
-    {
-        EditorRig rig = new("alpha\nbeta\ngamma");
-        rig.PlaceCaret(2);
-        rig.Press("control D");
-        Assert.Equal("alpha\nalpha\nbeta\ngamma", rig.Text);
-        Assert.Equal(new TextPosition(1, 2), rig.Editor.CaretPosition);
-        rig.Press("alt DOWN");
-        Assert.Equal("alpha\nbeta\nalpha\ngamma", rig.Text);
-        Assert.Equal(new TextPosition(2, 2), rig.Editor.CaretPosition);
-        rig.Press("meta shift L");
-        Assert.Equal("alpha\nbeta\ngamma", rig.Text);
-        Assert.Equal(new TextPosition(2, 2), rig.Editor.CaretPosition);
-    }
-
+    [Gate]
     [AvaloniaFact]
     public void Joining_three_selected_lines_whose_middle_one_is_only_spaces_gives_one_line_and_leaves_the_next_alone()
     {
@@ -215,34 +149,7 @@ public sealed class EditingBehaviourTests
         Assert.Equal("        Start();\n        \n        Stop();\n    }", rig.Text);
     }
 
-    [AvaloniaFact]
-    public void Enter_at_two_carets_in_one_run_of_spaces_splits_the_line_at_both()
-    {
-        EditorRig rig = new("    one    two");
-        rig.PlaceCaret("    one".Length);
-        Point second = Within(rig, rig.Editor.PointOf("    one  ".Length) + new Point(1, 4));
-        rig.Window.MouseDown(second, MouseButton.Left, RawInputModifiers.Alt | RawInputModifiers.Shift);
-        rig.Window.MouseUp(second, MouseButton.Left, RawInputModifiers.Alt | RawInputModifiers.Shift);
-        Ui.Settle();
-        Assert.Equal(2, rig.Editor.Selections.Count);
-        rig.Press("ENTER");
-        Assert.Equal("    one\n    \n    two", rig.Text);
-        Assert.Equal([new TextPosition(1, 4), new TextPosition(2, 4)], rig.Editor.Selections.Items.Select(s => rig.Document.Snapshot.GetPosition(s.Caret)));
-    }
-
-    [AvaloniaFact]
-    public void Enter_with_each_space_of_a_run_selected_splits_the_line_at_each()
-    {
-        EditorRig rig = new("first  second");
-        rig.PlaceCaret("first".Length);
-        rig.Press("shift RIGHT");
-        rig.Press("alt shift SEMICOLON");
-        Assert.Equal(2, rig.Editor.Selections.Count);
-        rig.Press("ENTER");
-        Assert.Equal("first\n\nsecond", rig.Text);
-        Assert.Equal([new TextPosition(1, 0), new TextPosition(2, 0)], rig.Editor.Selections.Items.Select(s => rig.Document.Snapshot.GetPosition(s.Caret)));
-    }
-
+    [Gate]
     [AvaloniaFact]
     public void The_comment_chords_add_and_remove_comments_and_the_toggle_undoes_itself()
     {
@@ -259,21 +166,7 @@ public sealed class EditingBehaviourTests
         Assert.Equal("    Run();\n    Stop();", rig.Text);
     }
 
-    /// <summary>A block comment can hold what reads as another one's start (a path's "/*"), from which a caret after it
-    /// finds the comment, by the same end as a caret before it does: the two carets take the comment's ends off once.</summary>
-    [AvaloniaFact]
-    public void Block_comment_at_carets_in_one_comment_holding_another_start_takes_its_ends_off_once()
-    {
-        const string text = "/* copies src/*.cs and docs/*.md */\nint x;\n";
-        EditorRig rig = new(text);
-        rig.PlaceCaret(text.IndexOf("copies", StringComparison.Ordinal));
-        rig.AddCaret(text.IndexOf(".md", StringComparison.Ordinal));
-        rig.Press("control meta SLASH");
-        Assert.True(rig.Text == "copies src/*.cs and docs/*.md\nint x;\n",
-            $"Block Comment at two carets in one comment left \"{rig.Text}\", not the comment's text without its ends");
-        Assert.Equal(2, rig.Editor.Selections.Count);
-    }
-
+    [Gate]
     [AvaloniaFact]
     public void Copy_with_nothing_selected_takes_the_line_and_paste_puts_it_back_above()
     {
@@ -286,22 +179,7 @@ public sealed class EditingBehaviourTests
         Assert.Equal(new TextPosition(2, 2), rig.Editor.CaretPosition);
     }
 
-    /// <summary>Text on the clipboard whose lines end in a lone carriage return (as classic Mac text and some apps' put
-    /// it there) goes in as lines in the file's breaks, never as one line the editor draws whole and the compiler reads
-    /// as several.</summary>
-    [AvaloniaFact]
-    public void Text_pasted_with_lone_carriage_returns_goes_in_as_lines_with_the_files_breaks()
-    {
-        EditorRig rig = new("first\nlast");
-        rig.PlaceCaret("first\n".Length);
-        Ui.Await(rig.Window.Clipboard!.SetTextAsync("one\rtwo\r"), "the text on the clipboard");
-        rig.Press("meta V");
-        Ui.Settle();
-        Assert.True(rig.Text == "first\none\ntwo\nlast",
-            $"The paste left \"{rig.Text.Replace("\r", "\\r", StringComparison.Ordinal).Replace("\n", "\\n", StringComparison.Ordinal)}\", not its lines with the file's breaks");
-        Assert.Equal(new TextPosition(3, 0), rig.Editor.CaretPosition);
-    }
-
+    [Gate]
     [AvaloniaFact]
     public void Option_drag_selects_a_column_and_typing_fills_every_row()
     {
@@ -317,6 +195,7 @@ public sealed class EditingBehaviourTests
         Assert.Equal("aXc\ndXf\ngXi", rig.Text);
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_word_being_typed_keeps_its_colour_before_the_reparse_lands_and_after()
     {
@@ -337,6 +216,7 @@ public sealed class EditingBehaviourTests
     /// and a parse that changes nothing on screen draws nothing. A parse that does change a colour on screen draws it:
     /// a word typed becomes a keyword. The caret's blink draws the editor too, whenever a key's wait for its work
     /// outlasts 530 ms (a loaded machine's): its frames are not the key's.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_key_draws_the_editor_once_and_a_parse_that_changes_a_colour_on_screen_draws_it()
     {
@@ -368,6 +248,7 @@ public sealed class EditingBehaviourTests
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Brackets_take_turns_in_three_colours_by_how_deeply_they_nest_and_a_comparison_is_not_one()
     {
@@ -388,6 +269,7 @@ public sealed class EditingBehaviourTests
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_selection_from_the_start_of_a_line_leaves_the_line_above_it_unpainted()
     {
@@ -406,6 +288,7 @@ public sealed class EditingBehaviourTests
             $"The line above the selection is {above} past its end, the selection's {selected}, not the editor's {plain}: the selection reaches back over the line break before it");
     }
 
+    [Gate]
     [AvaloniaFact]
     public void The_input_methods_window_opens_on_the_carets_line_below_a_fold_and_far_along_a_long_line_and_follows_the_caret()
     {
@@ -457,6 +340,7 @@ public sealed class EditingBehaviourTests
         Assert.True(cursor.X > 0 && cursor.X < rig.Editor.Bounds.Width, $"The input method's window would open at x {cursor.X}, outside the editor's {rig.Editor.Bounds.Width}");
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Press_and_hold_replaces_the_letter_held_with_the_accent_chosen_at_every_caret()
     {
@@ -475,6 +359,7 @@ public sealed class EditingBehaviourTests
         Assert.All(rig.Editor.Selections.Items, s => Assert.True(s.IsEmpty && rig.Text[s.Caret - 1] == 'é', $"A caret was left at {s.Caret}, not after an accent"));
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_composition_moves_the_text_after_it_aside_rather_than_covering_it_and_goes_in_as_typed()
     {

@@ -18,6 +18,7 @@ public sealed class NavigationTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    [Gate]
     [AvaloniaFact]
     public void Go_to_file_finds_a_file_by_its_camel_humps_and_enter_opens_it()
     {
@@ -40,6 +41,7 @@ public sealed class NavigationTests : IDisposable
     /// <summary>Page Down and Page Up in Go to File's field choose a page of results below or above: the first Page Down
     /// chooses the last row in sight without scrolling, the next keeps the row it left in sight, and Page Up comes back the
     /// same way, stopping at the top.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Page_down_and_up_in_go_to_file_choose_a_page_of_results_keeping_the_choice_in_sight()
     {
@@ -82,6 +84,7 @@ public sealed class NavigationTests : IDisposable
     /// is passed over with nothing done for it, and the first letter, which a great many match, keeps only the best of them as
     /// it goes. What the window allocates is the count, not a time a busy machine stretches: each key over 20,000 files
     /// allocates on the UI thread less than 8 bytes for each file more than over 2,000, the least of three tries of it.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Go_to_file_in_twenty_thousand_files_does_no_work_for_a_file_whose_name_cannot_match()
     {
@@ -106,6 +109,7 @@ public sealed class NavigationTests : IDisposable
     /// <summary>A query with a slash in Go to File matches along each file's whole path, '/' and '\' alike, copying no
     /// path or query for it: over 20,000 files a key of either allocates on the UI thread under 8 bytes for each file more
     /// than over 2,000, the least of three tries, and both slashes offer the same files in the same order.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Go_to_file_with_a_slash_in_twenty_thousand_files_copies_nothing_for_a_file_and_takes_either_slash()
     {
@@ -202,6 +206,7 @@ public sealed class NavigationTests : IDisposable
         return least;
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Go_to_file_with_a_line_after_the_name_opens_the_file_at_that_line_and_column()
     {
@@ -232,6 +237,7 @@ public sealed class NavigationTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Go_to_file_with_nothing_typed_offers_the_files_opened_before_this_one()
     {
@@ -249,6 +255,7 @@ public sealed class NavigationTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Go_to_line_takes_a_line_and_column_counted_from_one()
     {
@@ -267,6 +274,7 @@ public sealed class NavigationTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Going_to_a_line_of_a_file_that_fits_the_view_keeps_its_first_line_shown_and_to_a_long_files_end_shows_its_last_at_the_foot()
     {
@@ -301,6 +309,7 @@ public sealed class NavigationTests : IDisposable
         Ui.Settle();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void The_explorers_shortcut_gives_it_the_keys_on_the_open_files_row()
     {
@@ -320,6 +329,7 @@ public sealed class NavigationTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void The_explorer_chooses_the_file_shown_as_select_next_tab_or_a_click_on_a_tab_shows_another()
     {
@@ -342,6 +352,7 @@ public sealed class NavigationTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Focus_editor_gives_the_keys_back_to_the_file_shown()
     {

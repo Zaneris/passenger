@@ -12,6 +12,7 @@ public class AttachTests(ITestOutputHelper testOutputHelper)
 {
     private static readonly int AfterCount = Debuggees.Line("DebuggableConsoleApp", "HitConditionClass.cs", "// breakpoint here");
 
+    [Gate]
     [Fact]
     public async Task A_program_held_at_its_start_is_let_go_by_the_attach_and_its_breakpoints_first_pass_is_seen()
     {
@@ -31,6 +32,7 @@ public class AttachTests(ITestOutputHelper testOutputHelper)
             $"The first stop came on the breakpoint's pass {passes.Result}: the program ran past it before the debugger had hold of it");
     }
 
+    [Gate]
     [Fact]
     public async Task A_program_attached_to_runs_on_when_the_client_goes_without_disconnecting_and_can_be_attached_to_again()
     {
@@ -61,6 +63,7 @@ public class AttachTests(ITestOutputHelper testOutputHelper)
             $"The program let go at pass {before.Result} had not run on when attached to again (pass {after.Result})");
     }
 
+    [Gate]
     [Fact]
     public async Task A_running_program_is_the_debuggers_once_configurationDone_answers_so_a_pause_at_once_stops_it()
     {
@@ -76,6 +79,7 @@ public class AttachTests(ITestOutputHelper testOutputHelper)
         Assert.Equal(StopReasons.Pause, (await host.WaitForStoppedEvent()).Reason);
     }
 
+    [Gate]
     [Fact]
     public async Task An_attached_programs_end_says_its_exit_code_where_the_system_tells_it_and_makes_none_up()
     {
@@ -101,6 +105,7 @@ public class AttachTests(ITestOutputHelper testOutputHelper)
     /// <summary>An attach to a program held at its start that ends before the debugger takes hold of it (Stop or Detach as it
     /// starts, Run Service without Debugger, an agent's stop) lets the program go, which runs on undebugged rather than wait
     /// for good for a debugger that is not coming.</summary>
+    [Gate]
     [Fact]
     public async Task A_program_held_at_its_start_runs_on_when_its_attach_ends_before_taking_hold_of_it()
     {
@@ -173,6 +178,7 @@ public class AttachTests(ITestOutputHelper testOutputHelper)
         }
     }
 
+    [Gate]
     [Fact]
     public async Task An_attach_to_a_program_that_is_not_dotnet_fails_its_configurationDone_saying_why()
     {

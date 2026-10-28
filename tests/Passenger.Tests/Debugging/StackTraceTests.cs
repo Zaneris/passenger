@@ -17,6 +17,7 @@ public class StackTraceTests(ITestOutputHelper testOutputHelper)
     private static readonly int MiddleAwaits = Debuggees.Line("DebuggableConsoleApp", "AsyncStackTraceClass.cs", "await InnerAsync();");
     private static readonly int TestAwaits = Debuggees.Line("DebuggableConsoleApp", "AsyncStackTraceClass.cs", "await MiddleAsync();");
 
+    [Gate]
     [Fact]
     public async Task A_stop_lists_its_frames_down_to_Main_the_librarys_subtle_and_an_async_methods_by_its_own_name()
     {
@@ -102,6 +103,7 @@ public class StackTraceTests(ITestOutputHelper testOutputHelper)
 
     }
 
+    [Gate]
     [Fact]
     public async Task A_stop_in_an_awaited_method_lists_the_async_methods_awaiting_it_with_their_locals()
     {
@@ -133,6 +135,7 @@ public class StackTraceTests(ITestOutputHelper testOutputHelper)
         Assert.Contains(variables, variable => variable.Name == "middleValue" && variable.Value == "17");
     }
 
+    [Gate]
     [Fact]
     public async Task A_library_frame_without_source_is_decompiled_when_it_is_resolved()
     {
@@ -169,6 +172,7 @@ public class StackTraceTests(ITestOutputHelper testOutputHelper)
         Assert.EndsWith("DebuggableConsoleApp.dll", decompiledSourceInfo.CallingUserCodeAssemblyPath);
     }
 
+    [Gate]
     [Fact]
     public async Task A_stop_in_a_method_emitted_code_calls_has_its_stack_down_to_Main_through_the_emitted_frame()
     {

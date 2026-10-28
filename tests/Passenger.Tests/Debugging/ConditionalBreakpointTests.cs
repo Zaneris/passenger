@@ -12,6 +12,7 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
     private static readonly int AfterCount = Debuggees.Line("DebuggableConsoleApp", "HitConditionClass.cs", "// breakpoint here");
     private static readonly int TestEnd = AfterCount + 1;
 
+    [Gate]
     [Fact]
     public async Task A_condition_with_a_lambda_is_refused_saying_why()
     {
@@ -31,6 +32,7 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("Lambda expressions are not supported in breakpoint conditions.", breakpoint.Message);
     }
 
+    [Gate]
     [Fact]
     public async Task A_tracepoint_writes_its_message_with_the_values_in_it_and_never_stops()
     {
@@ -56,6 +58,7 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.Equal(Debuggees.MyMethodEnd, (await host.WaitForStoppedEvent()).ReadStopInfo().line);
     }
 
+    [Gate]
     [Fact]
     public async Task A_breakpoint_whose_condition_holds_stops()
     {
@@ -79,6 +82,7 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.Equal(LogWritten, stopInfo.line);
     }
 
+    [Gate]
     [Theory]
     [InlineData("noSuchName")]
     [InlineData("myInt")]
@@ -111,6 +115,7 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.Equal([id], stoppedEvent.HitBreakpointIds);
     }
 
+    [Gate]
     [Fact]
     public async Task A_breakpoint_whose_condition_fails_never_stops()
     {
@@ -140,6 +145,7 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
     }
 
     /// <summary>Equal to, as Rider's mode writes it, as a number alone, and as Visual Studio's "=".</summary>
+    [Gate]
     [Theory]
     [InlineData("==2")]
     [InlineData("2")]
@@ -173,6 +179,7 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("2", evaluateResponse.Result);
     }
 
+    [Gate]
     [Fact]
     public async Task A_breakpoints_hit_count_and_id_outlast_its_files_breakpoints_being_sent_again()
     {
@@ -212,6 +219,7 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>Hit counts the debugger cannot read, each set in turn with the program's code loaded, where one it took would
     /// bind at once: each is refused saying why, the breakpoint beside it binds, and the program never stops at it.</summary>
+    [Gate]
     [Fact]
     public async Task A_hit_count_the_debugger_cannot_read_is_refused_saying_why()
     {
@@ -253,6 +261,7 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         return value.Result;
     }
 
+    [Gate]
     [Fact]
     public async Task A_hit_count_of_at_least_N_stops_on_every_hit_from_the_Nth()
     {
@@ -294,6 +303,7 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("3", evaluateResponse2.Result);
     }
 
+    [Gate]
     [Fact]
     public async Task A_hit_count_of_every_N_stops_on_every_Nth_hit()
     {

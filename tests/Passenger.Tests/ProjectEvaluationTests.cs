@@ -63,6 +63,7 @@ public sealed class ProjectEvaluationTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    [Gate]
     [AvaloniaFact]
     public void A_project_shows_its_files_and_packages_as_MSBuild_evaluates_its_conditions_imports_wildcards_and_central_versions()
     {
@@ -77,6 +78,7 @@ public sealed class ProjectEvaluationTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_project_file_edited_on_disk_shows_what_it_says_now()
     {
@@ -92,6 +94,7 @@ public sealed class ProjectEvaluationTests : IDisposable
 
     /// <summary>A host whose answer does not read, as one of another build's could write, is ended and the evaluation asked
     /// of it fails; the next change is evaluated by a host started anew.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_project_host_whose_answer_does_not_read_is_ended_and_the_next_change_is_evaluated_by_a_new_one()
     {
@@ -113,6 +116,7 @@ public sealed class ProjectEvaluationTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_folder_opened_again_shows_its_projects_from_their_last_evaluation_before_any_is_evaluated_again()
     {
@@ -151,6 +155,7 @@ public sealed class ProjectEvaluationTests : IDisposable
         third.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_directory_build_file_made_above_an_open_project_shows_what_it_adds()
     {
@@ -163,6 +168,7 @@ public sealed class ProjectEvaluationTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_folder_opened_again_evaluates_a_project_whose_directory_build_file_came_while_it_was_closed()
     {
@@ -179,6 +185,7 @@ public sealed class ProjectEvaluationTests : IDisposable
         second.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_project_is_evaluated_again_once_its_first_restore_writes_what_it_imports_and_kept_so()
     {
@@ -194,6 +201,7 @@ public sealed class ProjectEvaluationTests : IDisposable
         second.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_project_holding_folder_links_back_up_its_own_tree_keeps_its_real_folders_alone_as_what_its_evaluation_and_build_read()
     {
@@ -262,6 +270,7 @@ public sealed class ProjectEvaluationTests : IDisposable
     /// <summary>A run whose window closed as it began working out what App runs, the SDK App's folder picks still being
     /// asked, leaves the project host to every window after it: one opened on App's folder shows App as MSBuild evaluates
     /// it. Each window's loop here never runs again once its window has gone, as a window test's does once it is over.</summary>
+    [Gate]
     [Fact]
     public async Task A_run_whose_window_closed_as_it_began_leaves_the_project_host_to_the_windows_after_it()
     {

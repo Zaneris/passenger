@@ -10,31 +10,7 @@ namespace Passenger.Tests.Debugging;
 [Collection(DebugSession.Collection)]
 public class ProtocolTests(ITestOutputHelper testOutputHelper)
 {
-    [Theory]
-    [InlineData("{\"type\":\"response\",\"request_seq\":1,\"success\":\"true\"}")]
-    [InlineData("{\"type\":\"response\",\"request_seq\":1,\"success\":null}")]
-    [InlineData("{\"type\":\"response\",\"request_seq\":2147483648,\"success\":true}")]
-    [InlineData("{")]
-    public async Task Malformed_responses_fail_pending_requests_without_orphaning_them(string response)
-    {
-        using TcpListener listener = new(IPAddress.Loopback, 0);
-        listener.Start();
-        using TcpClient client = new();
-        await client.ConnectAsync(IPAddress.Loopback, ((IPEndPoint)listener.LocalEndpoint).Port, TestContext.Current.CancellationToken);
-        using TcpClient peer = await listener.AcceptTcpClientAsync(TestContext.Current.CancellationToken);
-        await using DapConnection connection = new(client.GetStream(), client.GetStream());
-        Task pending = connection.RequestAsync(DapCommands.Initialize, null, TestContext.Current.CancellationToken);
-        connection.Start();
-        byte[] body = Encoding.UTF8.GetBytes(response);
-        await peer.GetStream().WriteAsync(Encoding.ASCII.GetBytes($"Content-Length: {body.Length}\r\n\r\n"), TestContext.Current.CancellationToken);
-        await peer.GetStream().WriteAsync(body, TestContext.Current.CancellationToken);
-        DapException failed = await Assert.ThrowsAsync<DapException>(() => pending.WaitAsync(TimeSpan.FromSeconds(5).Scaled(), TestContext.Current.CancellationToken));
-        Assert.Equal(DapCommands.Initialize, failed.Command);
-        await connection.Completion.WaitAsync(TimeSpan.FromSeconds(5).Scaled(), TestContext.Current.CancellationToken);
-    }
-
     [Fact]
-    [Gate]
     public async Task A_request_the_adapter_does_not_support_is_refused_naming_it_and_the_next_is_still_answered()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);

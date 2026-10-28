@@ -56,6 +56,7 @@ public sealed class SolutionViewTests : IDisposable
         TestFolders.Delete(trash);
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_file_cut_and_pasted_into_another_projects_folder_moves_there_with_its_open_tab_its_undo_and_its_edit()
     {
@@ -99,6 +100,7 @@ public sealed class SolutionViewTests : IDisposable
 
     /// <summary>Every file of a folder of 400 chosen and cut allocates on the UI thread, for each file, under twice what every
     /// file of a folder of 40 does, each row dimmed and a file's dependent going with it.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Cutting_every_file_of_a_folder_of_four_hundred_costs_each_file_about_what_it_does_in_a_folder_of_forty()
     {
@@ -149,6 +151,7 @@ public sealed class SolutionViewTests : IDisposable
     }
 
     /// <summary>A folder copied and pasted, and files dragged, in one window: what each leaves is checked before the next.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_folder_copied_and_pasted_copies_all_it_holds_named_as_Riders_Duplicate_asks_and_a_file_dragged_moves_or_with_the_copy_key_copies()
     {
@@ -297,6 +300,7 @@ public sealed class SolutionViewTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Add_reference_beside_one_that_shares_its_line_with_its_groups_tags_writes_a_project_MSBuild_loads_and_remove_puts_it_back()
     {
@@ -337,6 +341,7 @@ public sealed class SolutionViewTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_project_file_and_the_solution_open_with_unsaved_edits_keep_them_through_add_reference_and_new_solution_folder_with_no_question()
     {
@@ -399,6 +404,7 @@ public sealed class SolutionViewTests : IDisposable
 
     /// <summary>A file, folder or class its folder refuses is refused in the popup saying why, with no IDE error; once the
     /// folder takes them, Add, Class/Interface... writes each kind of type in its folder's namespace.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Add_refused_by_its_folder_says_why_with_no_ide_error_and_add_class_interface_writes_each_of_Riders_kinds_of_type_in_its_folders_namespace()
     {
@@ -496,6 +502,7 @@ public sealed class SolutionViewTests : IDisposable
     /// <summary>Three of the Solution view's menus in one window: the solution's and a project's menus show the keys of the
     /// actions their items run, Compare With and Compare Files show two files' differences, and Open In, Terminal starts a
     /// shell in the folder in a tab of its own (sh's pwd is Unix's, so not on Windows).</summary>
+    [Gate]
     [AvaloniaFact]
     public void The_menus_show_their_actions_keys_compare_shows_two_files_differences_and_open_in_terminal_starts_a_shell_in_the_folder()
     {
@@ -626,6 +633,7 @@ public sealed class SolutionViewTests : IDisposable
 
     /// <summary>A file added (a refresh of the Explorer) leaves open the Dependencies that were open, Shop.Core's, and
     /// closed Shop.App's above it, which a key by the row's depth, kind and name alone took for it.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_file_added_keeps_the_open_dependencies_open_and_opens_no_other_projects()
     {
@@ -652,6 +660,7 @@ public sealed class SolutionViewTests : IDisposable
     /// the other shown unloaded, Build building the one and the language server loading the one; the filter changed on
     /// disk to name the other swaps them, and Reload Project loads the one it left out, none of which the folder keeps
     /// as the person's own unloading.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_solution_filter_opens_its_solution_with_its_projects_alone_built_and_analysed_and_a_change_to_it_is_followed()
     {
@@ -702,6 +711,7 @@ public sealed class SolutionViewTests : IDisposable
     /// <summary>A file deleted takes its own row out, and Unload Project and Reload Project make the project's row again,
     /// dimmed and then open to open: every other row shown stays the row it was, rather than every row of the tree being
     /// made again for one.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Delete_unload_and_reload_make_again_only_the_rows_they_touch()
     {
@@ -742,6 +752,7 @@ public sealed class SolutionViewTests : IDisposable
     /// <summary>New File (its folder made with it), New Folder, a file copied and pasted and a file cut and pasted each put in
     /// or take out the rows of what they made or moved alone: every other row shown stays the row it was, with Go to File's
     /// folder never walked again.</summary>
+    [Gate]
     [AvaloniaFact]
     public void New_file_new_folder_and_paste_make_again_only_the_rows_of_what_they_make_or_move()
     {

@@ -7,6 +7,7 @@ namespace Passenger.Tests.Debugging;
 [Collection(DebugSession.Collection)]
 public class FunctionBreakpointTests(ITestOutputHelper testOutputHelper)
 {
+    [Gate]
     [Fact]
     public async Task A_function_breakpoint_by_a_bare_method_name_stops_in_every_method_of_that_name()
     {
@@ -46,6 +47,7 @@ public class FunctionBreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.Equal(3, topFrame2.EndColumn);
     }
 
+    [Gate]
     [Fact]
     public async Task A_function_breakpoint_by_a_full_name_stops_in_that_method_alone()
     {
@@ -72,6 +74,7 @@ public class FunctionBreakpointTests(ITestOutputHelper testOutputHelper)
         topFrame.ShouldBeAtSourceLocation("MyClass.cs", "public void MyMethod(long myParam, int myIntParam)", 2, 3);
     }
 
+    [Gate]
     [Fact]
     public async Task A_function_breakpoint_on_a_generic_classs_method_stops_in_it()
     {
@@ -98,6 +101,7 @@ public class FunctionBreakpointTests(ITestOutputHelper testOutputHelper)
         topFrame.ShouldBeAtSourceLocation("MyClassContainingAnotherClass.cs", "public static void Test()", 3, 4);
     }
 
+    [Gate]
     [Fact]
     public async Task A_function_breakpoints_hit_count_goes_on_when_another_is_set_beside_it_and_it_stops_on_its_third_hit()
     {
@@ -128,6 +132,7 @@ public class FunctionBreakpointTests(ITestOutputHelper testOutputHelper)
             "The function breakpoints asked for again just as they were were made anew, with new ids");
     }
 
+    [Gate]
     [Fact]
     public async Task A_function_breakpoint_naming_no_parameters_stops_in_every_overload()
     {
@@ -187,6 +192,7 @@ public class FunctionBreakpointTests(ITestOutputHelper testOutputHelper)
         }
     }
 
+    [Gate]
     [Fact]
     public async Task A_function_breakpoint_naming_its_parameters_stops_in_that_overload_alone()
     {

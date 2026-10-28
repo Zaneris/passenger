@@ -88,6 +88,7 @@ public sealed class VcsTests : IDisposable
 
     /// <summary>An edit's change bar, and a commit from the Commit window, made by the message's own key (Cmd+Enter, Ctrl+Enter
     /// elsewhere) rather than a new line in it, which clears the bar.</summary>
+    [Gate]
     [AvaloniaFact]
     public void An_edit_shows_a_change_bar_and_committing_it_from_the_commit_window_clears_it()
     {
@@ -178,6 +179,7 @@ public sealed class VcsTests : IDisposable
         }
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_renamed_file_keeps_its_change_bars_against_what_the_last_commit_has_where_it_was()
     {
@@ -218,6 +220,7 @@ public sealed class VcsTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_new_branch_from_the_toolbar_is_checked_out_and_going_back_reloads_the_open_file()
     {
@@ -325,6 +328,7 @@ public sealed class VcsTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Show_diff_puts_the_last_commit_beside_the_open_file_and_its_arrow_puts_a_change_back()
     {
@@ -536,6 +540,7 @@ public sealed class VcsTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_click_on_a_change_bar_shows_what_the_lines_were_and_rolls_them_back()
     {
@@ -658,6 +663,7 @@ public sealed class VcsTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void The_log_lays_out_a_merge_in_two_lanes_and_shows_what_a_commit_did_to_a_file()
     {
@@ -708,6 +714,7 @@ public sealed class VcsTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Update_project_brings_in_the_upstreams_commit_and_the_open_file_shows_it()
     {
@@ -727,6 +734,7 @@ public sealed class VcsTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Annotations_name_each_lines_commit_mark_a_typed_line_and_a_click_chooses_the_commit()
     {
@@ -865,6 +873,7 @@ public sealed class VcsTests : IDisposable
             ? solid.Color
             : throw new InvalidOperationException("The theme has no modified bar's colour");
 
+    [Gate]
     [AvaloniaFact]
     public void Stashing_puts_every_change_away_unsaved_and_new_files_too_and_unstashing_brings_them_back()
     {
@@ -1052,6 +1061,7 @@ public sealed class VcsTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Open_files_are_saved_before_a_checkout_or_a_rollback_and_take_what_git_puts_there_with_no_question()
     {
@@ -1093,6 +1103,7 @@ public sealed class VcsTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_file_name_with_brackets_is_that_file_alone_to_roll_back_and_to_commit()
     {
@@ -1303,6 +1314,7 @@ public sealed class VcsTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Commit_and_stash_are_off_while_one_runs_so_a_second_press_makes_no_second()
     {

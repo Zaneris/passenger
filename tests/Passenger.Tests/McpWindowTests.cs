@@ -140,6 +140,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>A tool's answer is what its own operation came to, whatever the status bar says by the time the answer is
     /// written: here the person presses Run (with nothing to run) just as the agent's push lands.</summary>
+    [Gate]
     [AvaloniaFact]
     public void An_agents_answer_is_its_operations_outcome_whatever_the_status_bar_says_meanwhile()
     {
@@ -178,6 +179,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    [Gate]
     [AvaloniaFact]
     public void An_agents_action_no_action_has_or_one_that_cannot_run_here_is_an_error_saying_why()
     {
@@ -208,6 +210,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent saves one of the folder's own run configurations as a launch profile through ide_action, naming
     /// it: the answer says where it went, the window lists it as generated from the profile, and one generated already is
     /// refused, saying why.</summary>
+    [Gate]
     [AvaloniaFact]
     public void An_agent_saves_the_persons_run_configuration_as_a_launch_profile_and_is_told_why_not_for_a_generated_one()
     {
@@ -287,6 +290,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     }
 
     /// <summary>A fault of the IDE's met by an agent's call, stood in for by an action that fails as no action should.</summary>
+    [Gate]
     [AvaloniaFact]
     public void An_agents_call_that_meets_a_fault_of_the_IDEs_is_answered_with_it_and_logged()
     {
@@ -314,6 +318,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    [Gate]
     [AvaloniaFact]
     public void An_agent_attached_to_the_window_sets_a_breakpoint_the_person_sees()
     {
@@ -349,6 +354,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         Assert.False(File.Exists(socket), "A closed window left its socket for agents to try");
     }
 
+    [Gate]
     [AvaloniaFact]
     public void With_the_MCP_server_off_the_window_asks_to_let_an_agent_in_on_it_lets_agents_in_unasked_and_off_again_shuts_them_out()
     {
@@ -407,6 +413,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    [Gate]
     [AvaloniaFact]
     public void An_agent_asks_before_its_first_run_and_the_window_stops_waiting_when_it_gives_up_or_goes()
     {
@@ -460,6 +467,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>Each solution window of one Passenger listens for agents on a socket of its own, the second opened by File,
     /// Open in a window of its own as Settings says and letting agents in as the first does; an agent started in either's
     /// folder reaches that window, and a window closing takes its own socket alone.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Each_solution_window_has_its_own_socket_and_an_agent_attaches_to_the_one_over_its_folder()
     {
@@ -493,6 +501,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>vcs_log with a path lists the commits Show History does: a file followed through its rename, and a
     /// selection's.</summary>
+    [Gate]
     [AvaloniaFact]
     public void An_agents_vcs_log_with_a_path_lists_the_commits_show_history_does_renames_followed()
     {

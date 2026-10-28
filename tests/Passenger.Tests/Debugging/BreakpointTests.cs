@@ -9,6 +9,7 @@ public class BreakpointTests(ITestOutputHelper testOutputHelper)
 {
     private static readonly int MyIntSet = Debuggees.Line("DebuggableConsoleApp", "MyClass.cs", "int myInt = 4;");
 
+    [Gate]
     [Fact]
     public async Task A_breakpoint_set_before_its_module_loads_is_told_pending_then_bound_at_its_statement()
     {
@@ -64,6 +65,7 @@ public class BreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.Equal(MyIntSet, stopInfo.line);
     }
 
+    [Gate]
     [Fact]
     public async Task A_breakpoint_given_a_column_stops_at_the_statement_at_that_column()
     {
@@ -100,6 +102,7 @@ public class BreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.Equal(endColumn, topFrame.EndColumn);
     }
 
+    [Gate]
     [Fact]
     public async Task A_breakpoint_on_a_line_of_several_statements_stops_at_the_first()
     {
@@ -129,6 +132,7 @@ public class BreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.Equal(expectedColumn, topFrame.Column);
     }
 
+    [Gate]
     [Fact]
     public async Task A_breakpoint_inside_a_statement_of_several_lines_stops_at_its_start()
     {
@@ -164,6 +168,7 @@ public class BreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.Equal(expectedColumn, topFrame.Column);
     }
 
+    [Gate]
     [Fact]
     public async Task A_breakpoint_set_once_its_symbols_have_loaded_is_answered_with_where_it_bound()
     {
@@ -199,6 +204,7 @@ public class BreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.Equal(endColumn, breakpoint.EndColumn);
     }
 
+    [Gate]
     [Fact]
     public async Task A_breakpoint_in_a_file_named_as_the_programs_in_another_folder_binds_to_none_of_it()
     {

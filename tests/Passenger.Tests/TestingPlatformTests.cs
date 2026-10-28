@@ -59,6 +59,7 @@ public sealed class TestingPlatformTests : TestingPlatformFolders, IClassFixture
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_theorys_rows_found_by_the_platform_and_made_by_its_run_land_under_their_method()
     {
@@ -89,6 +90,7 @@ public sealed class TestingPlatformTests : TestingPlatformFolders, IClassFixture
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Stop_ends_a_run_on_the_platform_and_its_test_host_keeping_what_ran()
     {
@@ -109,6 +111,7 @@ public sealed class TestingPlatformTests : TestingPlatformFolders, IClassFixture
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_solution_of_a_vstest_project_and_an_mstest_project_on_the_platform_shows_both_in_one_tree_and_run_all_runs_both()
     {

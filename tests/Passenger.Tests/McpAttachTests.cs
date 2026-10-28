@@ -29,6 +29,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
     {
     }
 
+    [Gate]
     [Fact]
     public async Task An_agent_set_up_before_Passenger_runs_has_the_tools_and_its_first_call_starts_Passenger_on_its_folder_which_asks()
     {
@@ -113,6 +114,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Empty(Directory.Exists(sockets) ? Directory.GetFiles(sockets, "*.sock") : []);
     }
 
+    [Gate]
     [AvaloniaFact]
     public void An_agents_first_call_has_the_running_Passenger_open_its_folder_in_a_window_of_its_own_which_asks_first()
     {
@@ -196,6 +198,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent that agreed an older protocol version with --mcp-attach (OpenCode's 2025-11-25) is answered in
     /// that version: the window is joined in it, so nothing of a later one (a result's serverInfo and resultType) reaches
     /// an agent that never asked for it.</summary>
+    [Gate]
     [AvaloniaFact]
     public void An_agent_on_an_older_protocol_is_answered_in_its_own_version_through_attach()
     {
@@ -222,6 +225,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent that gives up on the call the window's let-in question holds takes the question away: nothing waits
     /// on it, and a later "Allow" would let in an agent that asked nothing. The window's limit is long, so only the giving up
     /// can close it within the wait.</summary>
+    [Gate]
     [AvaloniaFact]
     public void An_agent_giving_up_on_its_call_takes_the_windows_question_away()
     {
@@ -254,6 +258,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>Settings' MCP Server page gives each agent its setup for this copy of Passenger, as the person pastes it: the
     /// running program's own path in every command and configuration, Claude Desktop's with the window's folder after
     /// --mcp-attach, the configurations JSON and TOML that read, and each Copy putting its text on the clipboard whole.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Settings_gives_each_agent_its_setup_for_this_copy_and_copies_it_whole()
     {
@@ -313,6 +318,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    [Gate]
     [AvaloniaFact]
     public void An_agents_open_of_another_folder_is_the_persons_to_allow_on_their_window_and_not_asked_on_the_agents_own()
     {
@@ -357,6 +363,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent let in on one folder works there alone: the person opening another in its window shuts it out, and its
     /// next call is asked again, changing nothing in the folder the person opened meanwhile. The agent's own open of a
     /// folder, which the person allows, keeps it let in there, though its first change there is asked for again.</summary>
+    [Gate]
     [AvaloniaFact]
     public void An_agent_let_in_on_one_folder_is_asked_again_once_the_person_opens_another_in_its_window()
     {
@@ -413,6 +420,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>With Enable MCP Server on, a window keeps its agents as the person opens another folder there, but an agent
     /// set up in the first goes on in it: --mcp-attach joins a window on its own folder again (the running Passenger opening
     /// one), never the window now on the other.</summary>
+    [Gate]
     [AvaloniaFact]
     public void An_agent_set_up_in_a_folder_goes_on_there_once_its_window_opens_another()
     {
@@ -448,6 +456,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>A folder let in always from one window stays let in when another window's Settings, open since before, take
     /// back a different one: the list merges what each changed.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_folder_let_in_always_from_one_window_stays_when_another_windows_settings_take_back_a_different_one()
     {

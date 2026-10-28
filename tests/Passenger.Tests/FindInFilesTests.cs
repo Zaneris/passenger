@@ -33,6 +33,7 @@ public sealed class FindInFilesTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    [Gate]
     [AvaloniaFact]
     public void The_options_narrow_the_matches_and_an_open_files_unsaved_text_is_searched()
     {
@@ -62,6 +63,7 @@ public sealed class FindInFilesTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Choosing_a_match_goes_to_it_and_replace_all_changes_open_and_closed_files()
     {
@@ -231,6 +233,7 @@ public sealed class FindInFilesTests : IDisposable
         return [.. searches];
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Replace_all_across_a_read_only_file_replaces_in_the_rest_and_says_which_file_it_left_and_why()
     {
@@ -264,6 +267,7 @@ public sealed class FindInFilesTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_regex_backtracking_without_end_in_a_file_is_said_to_stop_there_to_the_popup_and_an_agent_and_replace_all_leaves_that_file()
     {
@@ -293,6 +297,7 @@ public sealed class FindInFilesTests : IDisposable
 
     /// <summary>Replace in Files of every word's edge (\b) with the whole text ($_) in a file of 12,000 characters would
     /// make it 144 million long: the file is named as left as it was, with how long its text would be.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Replace_all_that_would_make_a_files_text_too_long_leaves_it_and_says_so()
     {
@@ -314,6 +319,7 @@ public sealed class FindInFilesTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Replace_all_over_an_open_file_keeps_its_caret_folds_and_breakpoints()
     {
@@ -359,6 +365,7 @@ public sealed class FindInFilesTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Replace_in_files_fills_a_regexs_groups_from_each_match_where_it_stands_and_words_take_an_alternation_whole()
     {
@@ -390,6 +397,7 @@ public sealed class FindInFilesTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Replacing_every_lines_start_in_files_comments_each_line_and_leaves_each_files_end_alone()
     {
@@ -415,6 +423,7 @@ public sealed class FindInFilesTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Recent_files_offers_the_files_behind_the_one_in_front_and_opens_one_where_it_was_left()
     {
@@ -434,6 +443,7 @@ public sealed class FindInFilesTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Bookmarks_toggle_move_with_their_lines_and_next_goes_round_the_files()
     {
@@ -475,6 +485,7 @@ public sealed class FindInFilesTests : IDisposable
 
     /// <summary>A file open with no folder stays open as a folder opens, and the session left lets go of all it carried in
     /// the file's text (its bookmark, breakpoint and places), so the text carries no more than it did before them.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_file_left_open_as_a_folder_opens_is_carried_by_nothing_of_the_session_left()
     {
@@ -513,6 +524,7 @@ public sealed class FindInFilesTests : IDisposable
     /// <summary>A breakpoint is an anchor its file's text carries, so a key moves those below it without touching each: the
     /// least of twenty keys typed above 2,000 breakpoints allocates on the UI thread under 2 bytes for each more than above
     /// none, and a line broken above them takes each one down with its line.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Keys_typed_above_two_thousand_breakpoints_carry_them_on_the_UI_thread_without_costing_each()
     {
@@ -566,6 +578,7 @@ public sealed class FindInFilesTests : IDisposable
         return least;
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_matched_lines_arrow_is_one_ligature_only_while_Settings_enables_ligatures()
     {
@@ -589,6 +602,7 @@ public sealed class FindInFilesTests : IDisposable
     /// names, and a packages folder NuGet restored into, in packages.config's layout or the global folder's; Git's
     /// store is not listed at all. A JavaScript monorepo's packages of source are searched, offered and shown as
     /// code.</summary>
+    [Gate]
     [AvaloniaFact]
     public void The_explorer_dims_what_find_in_files_and_go_to_file_pass_over_and_a_monorepos_packages_of_source_are_searched_and_shown_as_code()
     {

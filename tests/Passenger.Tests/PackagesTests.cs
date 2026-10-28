@@ -53,6 +53,7 @@ public sealed class PackagesTests : IDisposable
 
     /// <summary>In a window opened on the folder above the project, which no solution names: a package is installed at the
     /// version chosen, updated and removed, then installed again from the Install on the project's line.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_package_found_in_the_feed_is_installed_updated_and_removed_in_a_project_below_a_folder_with_no_solution()
     {
@@ -95,6 +96,7 @@ public sealed class PackagesTests : IDisposable
         .SelectMany(line => line.Children.OfType<Button>())
         .FirstOrDefault(button => (string?)button.Content == "Install");
 
+    [Gate]
     [AvaloniaFact]
     public void Prereleases_are_offered_as_semver_orders_them_so_beta_10_is_an_update_from_beta_2()
     {
@@ -120,6 +122,7 @@ public sealed class PackagesTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Choosing_a_package_another_and_the_first_again_before_their_versions_arrive_shows_its_details_once()
     {
@@ -143,6 +146,7 @@ public sealed class PackagesTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Versions_unlisted_on_nuget_org_are_not_offered()
     {
@@ -159,6 +163,7 @@ public sealed class PackagesTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Under_central_package_management_the_window_shows_the_version_set_centrally_and_an_install_puts_its_version_there()
     {

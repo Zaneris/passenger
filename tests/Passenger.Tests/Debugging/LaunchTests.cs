@@ -8,6 +8,7 @@ namespace Passenger.Tests.Debugging;
 [Collection(DebugSession.Collection)]
 public class LaunchTests(ITestOutputHelper testOutputHelper)
 {
+    [Gate]
     [Fact]
     public async Task Stop_at_entry_stops_in_Main_saying_so()
     {
@@ -28,6 +29,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
         Assert.EndsWith("Program.cs", topFrame.Source?.Path);
     }
 
+    [Gate]
     [Fact]
     public async Task Stop_at_entry_in_top_level_statements_stops_at_their_first_saying_so()
     {
@@ -52,6 +54,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
         Assert.Contains(variables, variable => variable.Name == "test");
     }
 
+    [Gate]
     [Fact]
     public async Task Stop_at_entry_in_an_async_Main_stops_at_its_start_saying_so()
     {
@@ -76,6 +79,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
         Assert.Contains(variables, variable => variable.Name == "test");
     }
 
+    [Gate]
     [Fact]
     public async Task Stop_at_entry_in_async_top_level_statements_stops_at_their_first_saying_so()
     {
@@ -100,6 +104,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
         Assert.Contains(variables, variable => variable.Name == "test");
     }
 
+    [Gate]
     [Fact]
     public async Task A_launched_program_reads_its_own_input_never_the_adapters()
     {
@@ -125,6 +130,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("\"hello\"", line.Result);
     }
 
+    [Gate]
     [Fact]
     public async Task A_dotnet_program_the_debugged_one_starts_runs_as_it_would_undebugged()
     {
@@ -139,6 +145,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
         Assert.True(hold.Result == "null", $"The program was held at its start by DOTNET_DefaultDiagnosticPortSuspend, which is still in its environment ({hold.Result}) for every .NET program it starts");
     }
 
+    [Gate]
     [Fact]
     public async Task A_program_writing_64_KB_runs_to_its_end_with_all_it_wrote_and_its_own_exit_code()
     {
@@ -155,6 +162,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
         Assert.True(exitCode == 42, $"The program exited with 42, and the debugger said {(exitCode is int code ? code.ToString() : "nothing")}");
     }
 
+    [Gate]
     [Fact]
     public async Task The_thread_running_Main_is_the_one_named_Main_Thread()
     {
@@ -175,6 +183,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>A program the client starts in its terminal starts held, and the debugger has hold of it before any of it
     /// runs: a breakpoint on Main's very first line stops it there, launch after launch, never missed by a Main that ran on.</summary>
+    [Gate]
     [Fact]
     public async Task A_program_started_in_the_clients_terminal_stops_at_a_breakpoint_on_Mains_first_line_every_time()
     {
@@ -200,6 +209,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>A client that cannot start the program in its terminal fails configurationDone saying so, and the debugger
     /// goes on answering: the request never holds the engine.</summary>
+    [Gate]
     [Fact]
     public async Task A_client_that_cannot_start_the_program_in_its_terminal_fails_the_launch_saying_why()
     {
@@ -218,6 +228,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>A program whose runtime is slow to start (its first start on a machine reads it from a cold disk) is
     /// still the debugger's, however late its runtime answers: held here 6 s at its start.</summary>
+    [Gate]
     [Fact]
     public async Task A_program_whose_runtime_starts_late_is_still_debugged()
     {
@@ -241,6 +252,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>A launch stopped while its program's runtime is still starting ends at once, the program with it, and says why:
     /// the debugger waits for a runtime as long as the session lasts, no longer.</summary>
+    [Gate]
     [Fact]
     public async Task A_launch_stopped_while_its_runtime_starts_ends_at_once_with_its_program()
     {
@@ -262,6 +274,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>A program that ends before any runtime in it starts fails configurationDone as it ends, saying so and how it
     /// ended, rather than once a wait runs out.</summary>
+    [Gate]
     [Fact]
     public async Task A_program_that_ends_before_its_runtime_starts_fails_configurationDone_saying_how_it_ended()
     {

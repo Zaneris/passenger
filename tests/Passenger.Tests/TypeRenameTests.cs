@@ -57,6 +57,7 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
     /// <summary>Rename on a class named like its file renames the file with it, its tab, breakpoint and bookmark following,
     /// its uses changing and Git seeing a rename; then Undo in the editor takes back what was typed after it on its own,
     /// and the next Undo the class, its file and the other file together, asked first, and Redo makes it all again.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Renaming_a_class_named_like_its_file_renames_the_file_Git_sees_a_rename_and_undo_and_redo_take_it_back_whole()
     {
@@ -118,6 +119,7 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
     /// <summary>Every part of a partial class in a file named after it is renamed with it, a part named otherwise is not;
     /// then, with Also rename files to reflect this change turned off, only the code is renamed, and the option stays off
     /// for the next rename.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Each_partial_part_named_after_its_class_is_renamed_with_it_and_with_the_file_option_turned_off_only_the_code_is_and_it_stays_off()
     {

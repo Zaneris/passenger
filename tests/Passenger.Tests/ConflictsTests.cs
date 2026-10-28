@@ -34,6 +34,7 @@ public sealed class ConflictsTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    [Gate]
     [AvaloniaFact]
     public void A_merges_conflicts_are_listed_and_resolved_whole_or_in_the_merge_window_and_the_commit_finishes_the_merge()
     {
@@ -118,6 +119,7 @@ public sealed class ConflictsTests : IDisposable
     /// <summary>A file one side deleted, or that both renamed apart, has nothing to merge: the Commit window's double-click
     /// and its Merge... show it chosen in the Conflicts dialog, the status bar saying which side keeps it, and there it is
     /// kept or deleted whole, never written as an empty file.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_file_a_side_deleted_is_kept_or_deleted_whole_from_the_commit_window_never_merged_into_an_empty_file()
     {
@@ -224,6 +226,7 @@ public sealed class ConflictsTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Resolve_simple_conflicts_merges_a_lines_different_words_undo_takes_it_back_and_the_keys_take_a_side()
     {
@@ -280,6 +283,7 @@ public sealed class ConflictsTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Update_project_stopped_by_a_rebases_conflict_names_each_side_by_its_branch_and_the_rebase_goes_on_once_it_is_resolved()
     {
@@ -331,6 +335,7 @@ public sealed class ConflictsTests : IDisposable
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void An_unstash_that_conflicts_opens_the_conflicts_dialog_on_the_stash_and_accept_theirs_takes_the_stashed_change()
     {

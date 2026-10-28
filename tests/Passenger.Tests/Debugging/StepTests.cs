@@ -27,6 +27,7 @@ public class StepTests(ITestOutputHelper testOutputHelper)
     /// the thread that stopped steps on; a frame or value from before a step is refused; Step Into, Out and Over land where
     /// they should on the thread that stopped, a breakpoint inside a call stepped over stopping there, and a Step Into
     /// landing in code without source going on to the next user code.</summary>
+    [Gate]
     [Fact]
     public async Task Step_Into_Over_and_Out_each_stop_where_the_code_goes_next()
     {
@@ -136,6 +137,7 @@ public class StepTests(ITestOutputHelper testOutputHelper)
     /// <summary>Just My Code off: a step over onto a line with a breakpoint stops there once, and the next goes on to the
     /// line after; a breakpoint on a multi-line switch expression is stopped at; and Step Into a module without symbols
     /// stops in its decompiled source.</summary>
+    [Gate]
     [Fact]
     public async Task A_step_onto_a_breakpoints_line_stops_once_a_switch_expression_is_stopped_in_and_a_step_into_code_without_symbols_shows_it_decompiled()
     {
@@ -191,6 +193,7 @@ public class StepTests(ITestOutputHelper testOutputHelper)
         Assert.Equal(1219, decompiled.ReadStopInfo().line);
     }
 
+    [Gate]
     [Fact]
     public async Task A_step_over_goes_on_past_another_threads_breakpoint_whose_condition_is_false()
     {
@@ -200,6 +203,7 @@ public class StepTests(ITestOutputHelper testOutputHelper)
         AssertStepEnded(host, await host.WaitForStoppedEvent(), "the call's step ends here");
     }
 
+    [Gate]
     [Fact]
     public async Task A_step_over_goes_on_past_another_threads_tracepoint_which_logs_meanwhile()
     {
@@ -210,6 +214,7 @@ public class StepTests(ITestOutputHelper testOutputHelper)
         AssertStepEnded(host, await host.WaitForStoppedEvent(), "the call's step ends here");
     }
 
+    [Gate]
     [Fact]
     public async Task A_step_over_a_call_goes_on_past_a_breakpoint_inside_it_whose_condition_is_false()
     {
@@ -219,6 +224,7 @@ public class StepTests(ITestOutputHelper testOutputHelper)
         AssertStepEnded(host, await host.WaitForStoppedEvent(), "the call's step ends here");
     }
 
+    [Gate]
     [Fact]
     public async Task A_step_over_an_await_goes_on_past_another_threads_breakpoint_whose_condition_is_false()
     {
@@ -228,6 +234,7 @@ public class StepTests(ITestOutputHelper testOutputHelper)
         AssertStepEnded(host, await host.WaitForStoppedEvent(), "the await's step ends here");
     }
 
+    [Gate]
     [Fact]
     public async Task A_step_over_an_await_stops_at_its_next_line_though_asking_the_builder_which_run_resumed_would_wait_on_a_paused_thread()
     {
@@ -238,6 +245,7 @@ public class StepTests(ITestOutputHelper testOutputHelper)
         AssertStepEnded(host, await host.WaitForStoppedEvent(), "the waiting builder's step ends here");
     }
 
+    [Gate]
     [Fact]
     public async Task A_step_over_an_await_stops_at_its_next_line_though_asking_the_builder_which_run_leaves_would_wait_on_a_paused_thread()
     {
@@ -247,6 +255,7 @@ public class StepTests(ITestOutputHelper testOutputHelper)
         AssertStepEnded(host, await host.WaitForStoppedEvent(), "the waiting builder's step ends here");
     }
 
+    [Gate]
     [Fact]
     public async Task A_step_over_an_await_whose_method_goes_on_on_another_thread_shows_what_the_statement_called_there_returned()
     {
@@ -260,6 +269,7 @@ public class StepTests(ITestOutputHelper testOutputHelper)
             "Variables leaves out what the statement's call after the await returned, on the thread the method went on on");
     }
 
+    [Gate]
     [Fact]
     public async Task A_step_on_one_thread_and_another_threads_breakpoint_hit_as_it_ends_both_stop()
     {
@@ -290,6 +300,7 @@ public class StepTests(ITestOutputHelper testOutputHelper)
         testOutputHelper.WriteLine($"Both stops were seen in {both} of {RaceTurns} turns");
     }
 
+    [Gate]
     [Fact]
     public async Task A_step_that_ends_while_another_threads_exception_breakpoint_tries_its_condition_stops_once_the_condition_is_tried()
     {

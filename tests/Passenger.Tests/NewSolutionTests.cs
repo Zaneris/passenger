@@ -56,6 +56,7 @@ public sealed class NewSolutionTests : IDisposable
     /// <summary>New Solution from the Welcome screen lists what dotnet new list reports, refuses a name already taken or a
     /// directory not empty with why before anything is made, and makes a console app with the option chosen, opens it
     /// built and runs it.</summary>
+    [Gate]
     [AvaloniaFact]
     public void New_Solution_from_the_Welcome_screen_makes_a_console_app_with_the_option_chosen_opens_it_built_and_runs_it()
     {
@@ -123,6 +124,7 @@ public sealed class NewSolutionTests : IDisposable
     /// session there has begun, whatever Settings' Open project in says: asked, nothing builds while the question waits, and
     /// This Window builds it there once the old solution is left; Current Window builds it there too; New Window builds it in
     /// a window of its own. The solution that was open is never built.</summary>
+    [Gate]
     [AvaloniaTheory]
     [InlineData(OpenProjectIn.Ask)]
     [InlineData(OpenProjectIn.CurrentWindow)]
@@ -175,6 +177,7 @@ public sealed class NewSolutionTests : IDisposable
         }
     }
 
+    [Gate]
     [AvaloniaFact]
     public void New_Solution_offers_Avalonias_templates_not_installed_installs_them_and_makes_an_Avalonia_app_that_builds_and_runs()
     {

@@ -44,6 +44,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// of tokens alone (<see cref="EveryLook"/>) and their grounds' steps checked as tools/themes.py writes them.</summary>
     private static readonly Look[] Looks = [Look.Passenger, Look.Harbour];
 
+    [Gate]
     [AvaloniaFact]
     public void A_menus_current_value_is_checked_with_Rider_s_tick_and_can_still_be_chosen()
     {
@@ -67,6 +68,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
     }
 
+    [Gate]
     [AvaloniaFact]
     public void The_open_editor_tab_shows_its_close_button_as_Rider_s_does_and_the_others_only_under_the_pointer()
     {
@@ -95,6 +97,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Every_tool_windows_tabs_have_one_look_the_open_one_underlined_under_a_larger_title()
     {
@@ -165,6 +168,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// <summary>The two windows that list a run's services, Containers and Aspire, have one layout: their tabs are of one
     /// vocabulary in one order, Log first and shown at first, and their toolbars' service actions are one group in one order
     /// right after their Refresh, as their rows' menus begin with them.</summary>
+    [Gate]
     [AvaloniaFact]
     public void The_Containers_and_Aspire_windows_share_their_tabs_order_and_their_toolbars_service_group()
     {
@@ -202,6 +206,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Every_popup_takes_a_width_of_the_scale_one_title_size_and_rows_of_one_height()
     {
@@ -260,6 +265,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Every_scrollbar_is_Rider_s_thin_and_arrowless_and_a_sideways_one_shows_only_for_what_is_wider()
     {
@@ -308,6 +314,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     private static ScrollContentPresenter Presenter(ScrollViewer viewer) =>
         viewer.GetVisualDescendants().OfType<ScrollContentPresenter>().First(p => p.TemplatedParent == viewer);
 
+    [Gate]
     [AvaloniaFact]
     public void At_half_a_1366_wide_screen_the_window_cuts_nothing_and_a_stripe_too_short_puts_the_rest_behind_More()
     {
@@ -385,6 +392,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
 
     /// <summary>A window opens inside the working area of a screen smaller than its default size: centred when new; one
     /// placed past the area's edge is brought onto it.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_window_opens_inside_a_small_screens_working_area_centred_and_one_placed_past_its_edge_is_brought_onto_it()
     {
@@ -418,6 +426,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
 
     /// <summary>Every corner Passenger rounds is one of the look's radii (Shell.axaml's kindBadge, tag and box on them), so
     /// either look's reach it.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Every_rounded_corner_is_one_of_the_looks_radii()
     {
@@ -474,6 +483,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
 
     /// <summary>The Debug window's toolbar down its left keeps every button inside the window; a window too short for them
     /// all puts the rest behind More, which lists them.</summary>
+    [Gate]
     [AvaloniaFact]
     public void The_debug_windows_toolbar_fits_inside_it_and_puts_what_has_no_room_behind_More()
     {
@@ -521,6 +531,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// <summary>Every tool window's toolbar buttons are made one way (ToolButtons): each icon of the one size every icon has,
     /// and none taking the keys from the list or editor it acts on; only the frame's own Options and Hide in a header are
     /// smaller.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Every_tool_windows_toolbar_buttons_have_the_one_icon_size_and_never_take_the_keys()
     {
@@ -562,6 +573,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// <summary>A label that asks more before it acts ends in one ellipsis everywhere, "…": every action's title, as the
     /// menus, Find Action and the keymap list it and as a menu opened where it runs words it, macOS's application menu, a
     /// row's menu in the Explorer, and every button and menu item the tool windows show.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Every_label_that_asks_more_ends_in_the_one_ellipsis_never_three_dots()
     {
@@ -629,6 +641,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             items.SelectMany(i => (IEnumerable<MenuItem>)[i, .. Items(i.Items.OfType<MenuItem>())]);
     }
 
+    [Gate]
     [AvaloniaFact]
     public void At_the_smallest_width_the_status_bars_path_never_draws_under_its_widgets()
     {
@@ -657,6 +670,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// window's header gives its tabs' room up before its title's and never lays them under its buttons, a tab's name ends in
     /// an ellipsis, the Git log's files end theirs, a sideways scrollbar lies under the last row rather than over it and a
     /// text box's upright one beside its lines.</summary>
+    [Gate]
     [AvaloniaFact]
     public void In_narrow_panes_words_with_no_room_end_in_an_ellipsis_and_nothing_draws_over_anything()
     {
@@ -836,6 +850,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// <summary>The status bar's words are a link while they have a place to go (an internal error's, IDE Internal Errors):
     /// the hand, a key's reach, and the link's colour underlined under the pointer, from the shared style in every look;
     /// words that go nowhere stay the bar's muted words under the pointer, and the keys pass them by.</summary>
+    [Gate]
     [AvaloniaFact]
     public void The_status_bars_words_are_a_link_under_the_pointer_only_while_they_have_a_place_to_go()
     {
@@ -904,6 +919,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         return seen;
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Focus_is_Rider_s_rounded_ring_centred_on_what_has_the_keys_a_check_box_s_round_its_box_alone()
     {
@@ -959,6 +975,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         Ui.Settle();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void The_windows_areas_are_told_apart_by_shade_with_a_line_only_where_two_tool_windows_meet()
     {
@@ -1029,6 +1046,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         picture.Seam("Structure and Problems", new Point(structure.Left + (structure.Width / 2), problems.Top), panel, line);
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_tooltip_and_a_drop_downs_list_are_the_themes_popups_and_a_field_stands_on_the_fields_ground()
     {
@@ -1103,6 +1121,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// <summary>Every theme, for a rule held of its tokens alone, which costs no window.</summary>
     public static TheoryData<Look> EveryLook => [.. Enum.GetValues<Look>()];
 
+    [Gate]
     [AvaloniaTheory]
     [MemberData(nameof(EveryLook))]
     public void Text_icons_and_focus_rings_meet_WCAG_AA_on_what_they_are_drawn_on_dark_and_light(Look look)
@@ -1126,6 +1145,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         Assert.True(below.Count == 0, $"In {look}, {below.Count} pairs fall below WCAG AA (text 4.5:1, icons, focus rings and the caret 3:1):\n" + string.Join("\n", below));
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Every_theme_gives_every_colour_in_Dark_and_Light_and_Rider_s_scheme_only_the_codes()
     {
@@ -1160,6 +1180,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// <summary>Every colour, brush and corner Fluent gives is the look's own token in either look, Dark and Light
     /// (FluentKeys.axaml), so a control left to Fluent never shows another theme's colours or Fluent's greys. A key is left
     /// to Fluent only by the reasons below; an Avalonia update that adds one fails here until it is mapped.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Every_colour_and_corner_Fluent_gives_is_the_looks_own_token_dark_and_light()
     {
@@ -1311,6 +1332,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// <summary>No colour and no rounded corner is written outside the theme files (Theme/): each is a token of the look in
     /// force, so a look draws the whole window. Where a colour is the content's, not the window's, it is allowed below,
     /// saying why.</summary>
+    [Gate]
     [Fact]
     public void No_colour_or_rounded_corner_is_written_outside_the_theme_files()
     {
@@ -1353,6 +1375,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// resource in XAML) is one the app's resources give, dark and light: a misspelt or missing one finds nothing, drawn as
     /// nothing (Transparent, no icon) with no error. A literal of that shape naming something else (a project's assembly, a
     /// diagnostic's source) is passed over; a key made at run time ($"Icon.{kind}") is its own code's to check.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Every_theme_key_and_icon_the_code_names_is_one_the_resources_give_dark_and_light()
     {
@@ -1408,6 +1431,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// <summary>Every list's rows, a drop-down's choices and a strip's tabs are made once by ReusedRows and handed each item
     /// shown there, so scrolling builds no row again: rows from an item template (ItemTemplate, a data template of any
     /// kind) or a container's template of its own fail here, naming the line.</summary>
+    [Gate]
     [Fact]
     public void Every_lists_rows_are_made_once_by_ReusedRows_never_by_an_item_template()
     {
@@ -1443,6 +1467,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// <summary>A row a list reuses draws its icons with RowIcon, one control where a PathIcon is five that the list styles
     /// again whole each time it brings the row back into view: a PathIcon made in a row's factory (the body that hands back
     /// the row Showing its item) or in a row's own class fails here, naming its line; a button's glyph is the button's.</summary>
+    [Gate]
     [Fact]
     public void A_reused_rows_icons_are_RowIcons_never_PathIcons()
     {
@@ -1509,6 +1534,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
 
     /// <summary>Muted words are made one way, by the muted class (MutedText, or the class on a TextBlock of its own), so a
     /// change to how muted words look is made once: a TextBlock's foreground bound by hand to the muted colour fails here.</summary>
+    [Gate]
     [Fact]
     public void Muted_words_take_the_muted_class_never_the_colour_bound_by_hand()
     {
@@ -1522,6 +1548,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// <summary>Every tool window's bars are the shared pieces, ToolBars.Top along its top and ToolBars.Side down its left,
     /// so each is one height, one width and one rule: a bar built by hand (a fixed height over a rule, a strip down the left
     /// beside one, a ToolColumn of its own) fails here, naming its line.</summary>
+    [Gate]
     [Fact]
     public void Every_tool_windows_bars_are_the_shared_top_and_side_bars()
     {

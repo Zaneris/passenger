@@ -24,6 +24,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
     {
     }
 
+    [Gate]
     [Fact]
     public async Task An_agent_that_lists_the_tests_as_it_starts_gets_those_the_test_projects_code_declares()
     {
@@ -55,6 +56,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
     /// them then, and the window, once built, takes all of it up. Of what its opening asked of the built window before (an
     /// evaluation, a design-time build, a language server's start and load), it asks none: the window's build is no
     /// longer the first answer's to wait out.</summary>
+    [Gate]
     [Fact]
     public async Task An_agents_own_passenger_opens_its_folder_while_its_window_is_built_which_takes_it_up_and_does_none_of_it_again()
     {
@@ -82,6 +84,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>A file-based program (<c>dotnet run app.cs</c>) is a project to an agent: workspace lists it by its C# file,
     /// build builds it and run runs it, the code of the file it includes with it.</summary>
+    [Gate]
     [Fact]
     public async Task An_agent_builds_and_runs_a_file_based_program_as_a_project_of_its_own()
     {
@@ -105,6 +108,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>A run refused for a reason of its own (here a launch profile's command named RetryFailed, which Passenger does
     /// not run) is answered with that reason alone, though the last build's errors are still in Problems; a run refused for
     /// the build it ran failing still names them.</summary>
+    [Gate]
     [Fact]
     public async Task An_agents_run_refused_for_anything_but_its_own_failed_build_names_no_build_errors()
     {
@@ -175,6 +179,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>Git's tools on a repository, a merge stopped for a conflict among them: the agent finds it in vcs_status (what
     /// is under way, each side's branch, what each did to the file), resolves it with theirs, and its commit finishes the
     /// merge; and a command in the IDE's terminal.</summary>
+    [Gate]
     [Fact]
     public async Task An_agent_reads_and_commits_changes_resolves_a_merges_conflict_and_runs_a_command_in_the_ides_terminal()
     {
@@ -267,6 +272,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>Commit and Push to a remote that refuses every push: the agent hears the refusal, in git's words, as the
     /// tool's error, and the commit stays made.</summary>
+    [Gate]
     [Fact]
     public async Task An_agents_push_the_remote_refuses_is_an_error_naming_the_refusal_and_the_commit_stays_made()
     {
@@ -291,6 +297,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>Started as the Finder or the Dock start it, Passenger runs the git its login shell's PATH finds, though the
     /// profile leaves a job running, and no git it starts waits on that job.</summary>
+    [Gate]
     [Fact]
     public async Task A_login_profile_that_leaves_a_job_running_holds_up_no_git_Passenger_starts()
     {
@@ -326,6 +333,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>A call whose arguments its tool does not take is answered with what is wrong and every parameter the tool
     /// takes, before the tool runs.</summary>
+    [Gate]
     [Fact]
     public async Task An_agents_call_with_a_parameter_its_tool_lacks_or_misses_hears_which_and_what_the_tool_takes()
     {
@@ -342,6 +350,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>An agent's view of the IDE's actions: every one the IDE declares, listed with why it cannot run now, and run by
     /// its id as its shortcut would.</summary>
+    [Gate]
     [Fact]
     public async Task An_agent_lists_every_action_the_ide_declares_and_one_it_runs_says_why_when_it_cannot()
     {
@@ -390,6 +399,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>An agent's publish, build's with a project to publish: the project to a folder, answered with where it landed
     /// or why it did not.</summary>
+    [Gate]
     [Fact]
     public async Task An_agent_publishes_a_project_and_is_told_the_folder_it_landed_in_or_why_not()
     {

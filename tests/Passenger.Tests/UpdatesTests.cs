@@ -50,6 +50,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         base.Dispose();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_newer_release_is_announced_once_naming_its_version_with_a_link_to_this_systems_download()
     {
@@ -100,6 +101,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_second_solution_window_asks_for_no_release_of_its_own_and_takes_the_watch_over_as_the_first_closes()
     {
@@ -128,6 +130,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         TestFolders.Delete(bank);
     }
 
+    [Gate]
     [AvaloniaFact]
     public void The_same_version_an_older_one_a_pre_release_or_a_draft_says_nothing_and_Check_for_Updates_says_up_to_date()
     {
@@ -163,6 +166,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void With_Check_for_updates_off_in_Settings_nothing_is_asked_until_it_is_on_again()
     {
@@ -196,6 +200,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_failed_or_unanswered_check_says_nothing_and_is_logged_and_Check_for_Updates_says_why()
     {

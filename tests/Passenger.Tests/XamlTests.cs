@@ -51,6 +51,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         }
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Typing_a_tag_offers_the_controls_then_a_controls_properties_and_then_the_values_of_the_one_chosen()
     {
@@ -90,6 +91,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_value_chosen_with_nothing_typed_from_the_list_its_property_opened_leaves_the_caret_after_it_to_type_on()
     {
@@ -191,6 +193,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_misspelt_property_enum_value_resource_and_binding_path_are_marked_as_typed_listed_in_problems_and_go_once_put_right()
     {
@@ -674,6 +677,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Passengers_own_xaml_which_compiles_is_marked_with_no_problem()
     {
@@ -746,6 +750,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void An_elements_name_renames_with_its_code_behinds_uses_and_go_to_declaration_from_the_code_lands_on_it()
     {
@@ -818,6 +823,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void An_avares_path_completes_from_the_projects_assets_is_warned_of_when_missing_and_goes_to_its_file()
     {
@@ -853,6 +859,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void Colours_show_as_gutter_swatches_and_one_chosen_in_the_picker_is_written_back_as_it_was_written()
     {
@@ -1010,6 +1017,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         }
     }
 
+    [Gate]
     [AvaloniaFact]
     public void The_preview_draws_a_window_from_the_last_build_follows_its_text_as_it_is_typed_and_draws_styles_as_their_PreviewWith()
     {

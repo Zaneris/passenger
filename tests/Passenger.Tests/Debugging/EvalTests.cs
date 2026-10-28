@@ -10,6 +10,7 @@ public class EvalTests(ITestOutputHelper testOutputHelper)
     /// <summary>At a stop in a method, its locals and parameters are listed as they are, and an evaluation reads and assigns
     /// them, its fields and properties (static ones too, by any qualified name), and calls its methods, a chain of calls
     /// keeping each one's result alive.</summary>
+    [Gate]
     [Fact]
     public async Task At_a_stop_the_locals_are_listed_as_they_are_and_an_evaluation_reads_assigns_and_calls_what_the_method_sees()
     {
@@ -466,6 +467,7 @@ public class EvalTests(ITestOutputHelper testOutputHelper)
     }
 
     /// <summary>A name a lambda's parameter shadows evaluates to the parameter where the stop is, not the method's local.</summary>
+    [Gate]
     [Fact]
     public async Task An_evaluation_of_a_name_a_lambda_shadows_reads_the_lambdas_own_parameter()
     {
@@ -496,6 +498,7 @@ public class EvalTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>Inside a generic method its type parameter is the type it was called with: default(T), typeof(T) and its
     /// argument evaluate as that type's.</summary>
+    [Gate]
     [Fact]
     public async Task An_evaluation_inside_a_generic_method_knows_its_type_argument()
     {
@@ -527,6 +530,7 @@ public class EvalTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("System.Int32", evaluateResponse4.Result);
     }
 
+    [Gate]
     [Fact]
     public async Task A_LINQ_watch_evaluates_in_a_program_that_has_called_no_LINQ_method_yet()
     {
@@ -547,6 +551,7 @@ public class EvalTests(ITestOutputHelper testOutputHelper)
     }
 
     /// <summary>A stop in a static class's method reads the class's static field.</summary>
+    [Gate]
     [Fact]
     public async Task An_evaluation_in_a_static_classs_method_reads_its_field()
     {
@@ -575,6 +580,7 @@ public class EvalTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>An evaluation calls the program's own methods that take and return a type nested in another of its types,
     /// each found as the program declares it.</summary>
+    [Gate]
     [Fact]
     public async Task An_evaluation_calls_a_method_that_takes_a_nested_type()
     {
