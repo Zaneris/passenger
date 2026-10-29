@@ -60,7 +60,8 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   while the window was held". Its last step changed the signature of `Say`, which the program's loop calls every 200 ms;
   the program called the deleted body before dotnet watch's restart and ended on the unhandled `HotReloadException`, and
   dotnet watch waited for a file to change rather than restarting. Neither race in the IDE: **the test** relied on dotnet
-  watch's own timing; it left the gate, to be rewritten (#701).
+  watch's own timing; it left the gate and was rewritten to change a method the program calls only once dotnet watch has
+  hooked the deleted body's exception (189eee22, #701).
 
 ## 2026-10-28
 
