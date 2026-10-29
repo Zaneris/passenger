@@ -150,9 +150,9 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
 - **State is a `StateDocument`** in the one `StateStore` (versioned `Upgrades`, `Clamped`, written debounced and merged,
   a bad file set aside as `.bad`), read off the UI thread; never a file of its own. Per-folder state lives under
   `workspaces/<name>-<hash>/`, held by each window with the folder open (`StateStore.Hold`/`LetGo`); a failed write is
-  tried again, and a key a later build renamed moves in `IStateDocument.Renamed`. A new setting: an `AppSettings`
-  property, its row and range declared in `Declared` and `Add`ed in its place in `SettingsDialog`, a line in
-  `MainWindow.Follow` or `SettingsStore.InForce`.
+  tried again, and a key a later build renamed moves in `IStateDocument.Renamed`; a value of the wrong kind is passed
+  over alone (`StateFile.Read`). A new setting: an `AppSettings` property, its row and range declared in `Declared` and
+  `Add`ed in its place in `SettingsDialog`, a line in `MainWindow.Follow` or `SettingsStore.InForce`.
 - **Every action is an `IdeAction`** in the window's `ActionRegistry` (ids and keymaps in `AppActions.cs`): keys, menus,
   Find Action, context menus and MCP's `ide_action` all run it, `WhyNot` greys it with why, titles come from the registry
   (`TitleWhere`), a title that asks more ends in "…", and what's missing is said in `Refusals`' words. Anything that
