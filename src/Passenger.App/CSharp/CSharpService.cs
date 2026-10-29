@@ -878,6 +878,8 @@ public sealed partial class CSharpService : IAsyncDisposable
     private async Task Run(WorkspaceModel opening, CancellationToken cancel)
     {
         long began = Stopwatch.GetTimestamp();
+        // Start's hold on background work, let go as C# is said to run long or as this ends.
+        bool holding = true;
         try
         {
             string? solution = opening.Solution?.Path;
@@ -897,6 +899,10 @@ public sealed partial class CSharpService : IAsyncDisposable
             {
                 takingAhead = startedAhead(cancel);
                 late = await StillStartingAsync(head, takingAhead, loading, cancel);
+                if (late)
+                {
+                    EndHold();
+                }
             }
             RoslynSession? takenAhead = takingAhead is null ? null : await takingAhead;
             if (takenAhead is not null)
@@ -1053,6 +1059,7 @@ public sealed partial class CSharpService : IAsyncDisposable
                     string still = $"Still loading {loading} after {Spoken(slow)}; the language server's log says where it is";
                     SetState(still);
                     LoadRanLong?.Invoke(this, new ServerSaid(still, ProblemSeverity.Warning));
+                    EndHold();
                     // Never given up while the server lives: a large solution on a slow machine loads in its own time.
                     await Task.WhenAny(loaded.Task, gone.Task, Task.Delay(Timeout.InfiniteTimeSpan, cancel));
                     cancel.ThrowIfCancellationRequested();
@@ -1093,7 +1100,17 @@ public sealed partial class CSharpService : IAsyncDisposable
         }
         finally
         {
-            UiThread.Post(() => BackgroundWork.End());
+            EndHold();
+        }
+
+        // Once said to run long, C# waits on in the server's own time, which nothing waiting for the IDE to be quiet waits out.
+        void EndHold()
+        {
+            if (holding)
+            {
+                holding = false;
+                UiThread.Post(() => BackgroundWork.End());
+            }
         }
     }
 

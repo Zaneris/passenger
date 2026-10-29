@@ -211,6 +211,31 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(solution.Contains("CS0219 Helper.cs:5"), $"Solution-wide analysis turned on as C# started did not reach its server: {string.Join("; ", solution)}");
     }
 
+    /// <summary>A load past its limit holds the IDE's background work only until its warning is said: a screenshot of the
+    /// folder, which waits for that work, is taken once it is, the load still going on, where it waited out its own limit
+    /// and was taken saying work was still pending.</summary>
+    [Fact]
+    public async Task A_load_past_its_limit_holds_no_background_work_once_its_warning_is_said()
+    {
+        string folder = await TakeFolderAsync();
+        HoldDesignTimeBuilds(folder);
+        string picture = Path.Combine(OwnState, "loading.png");
+        Process passenger = StartPassenger([folder, "--screenshot", picture, "--size", "1000x700"],
+            environment: new() { [global::Passenger.App.CSharp.CSharpService.SlowLoadVariable] = "2000" });
+        try
+        {
+            Assert.True(await Waiting.Within(passenger.WaitForExitAsync(Cancel), TimeSpan.FromMinutes(3), Cancel), $"The screenshot of a folder whose load runs long never ended.{Said()}");
+            string said = Ui.Shared(Path.Combine(OwnState, "logs", "passenger.log"));
+            Assert.True(said.Contains("had not loaded 1 project after 2 seconds, and goes on loading it", StringComparison.Ordinal), $"The load was never said to run long.{Said()}");
+            Assert.True(passenger.ExitCode == 0 && File.Exists(picture),
+                $"The screenshot of a folder whose load was said to run long ended with exit code {passenger.ExitCode}, the load holding background work past its warning.{Said()}");
+        }
+        finally
+        {
+            ReleaseDesignTimeBuilds(folder);
+        }
+    }
+
     /// <summary>Holds the folder's design-time builds, which the language server loads the projects from, until
     /// <see cref="ReleaseDesignTimeBuilds"/>.</summary>
     private static void HoldDesignTimeBuilds(string folder) => File.WriteAllText(Path.Combine(folder, "Directory.Build.targets"), """
