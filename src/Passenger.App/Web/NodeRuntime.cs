@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Passenger.App.Settings;
 using Passenger.Core;
 
 namespace Passenger.App.Web;
@@ -10,7 +11,7 @@ namespace Passenger.App.Web;
 public sealed partial record NodeRuntime(string? Path, Version? Version, string? Problem)
 {
     /// <summary>Where Settings names the interpreter, for what the status bar and banner say.</summary>
-    public const string SettingsPlace = "Settings | Languages & Frameworks | Node.js";
+    public static readonly string SettingsPlace = SettingsDialog.PlaceOfPage(SettingsDialog.NodePage);
 
     /// <summary>The interpreter named, else the PATH's, with its version; one that cannot be run says why. Run off the UI
     /// thread: it starts <c>node --version</c>.</summary>

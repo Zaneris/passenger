@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Passenger.App.Editors;
 using Passenger.App.LiveTree;
+using Passenger.App.Settings;
 using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -284,7 +285,7 @@ public sealed class DebugController : IDisposable
         ?? (Session!.State == DebugState.Starting ? StillStarting
         : hotReload is null ? (Session!.Attached
             ? "Hot Reload applies changes to a program the debugger launched, not to one it attached to"
-            : "This program was launched with Hot Reload when debugging off (Settings, Hot Reload)")
+            : $"This program was launched with Hot Reload when debugging off ({SettingsDialog.PlaceOfPage(SettingsDialog.HotReloadPage)})")
         : hotReload.WhyNot);
 
     /// <summary>Apply Hot Reload Changes to the chosen program debugged with Hot Reload and its group, restarting none.</summary>

@@ -18,13 +18,14 @@ using Passenger.App.Settings;
 
 namespace Passenger.Tests;
 
-/// <summary>Rules the whole window keeps, each decided once in a shared piece and held here across what the tests open: a
-/// menu's current value checked and still enabled (MenuChoice); every tool window's tabs one look (ToolTabs, Shell.axaml's
-/// panelTab); every popup's width from one scale, its title one size and its rows one height (PopupFrame); a menu opening
-/// against its widget; the scrollbars, thin and arrowless; the open editor tab's ×; the focus ring; every list's rows made
-/// once (ReusedRows); and the window at half a 1366-wide screen with nothing cut, a stripe putting what has no room behind
-/// More. Each rule that a look could break is held under both looks in one window, the look switched in place as Settings
-/// switches it.</summary>
+/// <summary>Rules the whole window keeps, each decided once in a shared piece and held here across what the tests open:
+/// a menu's current value checked and still enabled (MenuChoice); every tool window's tabs one look (ToolTabs,
+/// Shell.axaml's panelTab); every popup's width from one scale, its title one size and its rows one height
+/// (PopupFrame); a menu opening against its widget; the scrollbars, thin and arrowless; the open editor tab's ×; the
+/// focus ring; every list's rows made once (ReusedRows); every Settings page a message names one the dialog lists
+/// (SettingsDialog.PlaceOfPage); and the window at half a 1366-wide screen with nothing cut, a stripe putting what has
+/// no room behind More. Each rule that a look could break is held under both looks in one window, the look switched in
+/// place as Settings switches it.</summary>
 public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLifetime
 {
     private readonly Project project;
@@ -1517,6 +1518,59 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
 
         bool Assembly(string name) => Enumerable.Range(2, name.Count(c => c == '.')).Any(parts =>
             Directory.Exists(Path.Combine(root, "src", string.Join('.', name.Split('.').Take(parts)))));
+    }
+
+    /// <summary>A message that sends a person to Settings names a page the dialog lists, as the dialog names it: through
+    /// SettingsDialog.PlaceOfPage, given one of the dialog's page constants. Words written after "Settings |" by hand, or
+    /// a page the dialog does not list, fail here, naming the line.</summary>
+    [AvaloniaFact]
+    public void Every_message_that_sends_a_person_to_Settings_names_a_page_the_dialog_lists()
+    {
+        MainWindow window = Open(1400, 880);
+        IReadOnlyList<string> pages;
+        try
+        {
+            SettingsDialog dialog = window.ShowSettings();
+            Ui.Settle();
+            pages = dialog.Pages;
+            dialog.Close();
+        }
+        finally
+        {
+            window.Close();
+        }
+        Regex byHand = new(@"\bSettings \|(?!\|)");
+        Regex placed = new(@"\bPlaceOfPage\(\s*(?:SettingsDialog\.)?([^()]*?)\s*\)");
+        List<string> found = [];
+        int named = 0;
+        foreach ((string path, string text) in UiFiles().Where(f => f.Path.EndsWith(".cs", StringComparison.Ordinal)))
+        {
+            string[] lines = text.Split('\n');
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (lines[i].TrimStart().StartsWith("//", StringComparison.Ordinal) || lines[i].Contains("static string PlaceOfPage(string page)", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+                if (byHand.IsMatch(lines[i]))
+                {
+                    found.Add($"{path}:{i + 1}: a Settings page named by hand");
+                }
+                foreach (Match place in placed.Matches(lines[i]))
+                {
+                    named++;
+                    string? page = typeof(SettingsDialog).GetField(place.Groups[1].Value, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+                        is { IsLiteral: true } constant ? constant.GetRawConstantValue() as string : null;
+                    if (page is null || !pages.Contains(page))
+                    {
+                        found.Add($"{path}:{i + 1}: {place.Value} names {(page is null ? "none of the dialog's page constants" : $"'{page}', a page the dialog does not list")}");
+                    }
+                }
+            }
+        }
+        Assert.True(named >= 4, $"Only {named} messages were found naming a Settings page: the search no longer reads them");
+        Assert.True(found.Count == 0, $"{found.Count} messages send a person to a place in Settings that may not be there: name the page with "
+            + $"SettingsDialog.PlaceOfPage and the dialog's constant for it, one of {string.Join(", ", pages)}:\n{string.Join("\n", found)}");
     }
 
     /// <summary>Every list's rows, a drop-down's choices and a strip's tabs are made once by ReusedRows and handed each item

@@ -19,7 +19,7 @@ public sealed record PrettierAnswer(string? Formatted = null, int Cursor = 0, bo
 public sealed class PrettierService : IAsyncDisposable
 {
     /// <summary>Where Settings configures Prettier, for what is said when it cannot run.</summary>
-    public const string Place = "Settings | Languages & Frameworks | JavaScript | Prettier";
+    public static readonly string Place = SettingsDialog.PlaceOfPage(SettingsDialog.PrettierPage);
 
     /// <summary>How long a format may take before the runner is taken to be stuck and ended.</summary>
     private static readonly TimeSpan Limit = TimeSpan.FromSeconds(30);

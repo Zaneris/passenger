@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Passenger.App.Debugging;
 using Passenger.App.Run;
+using Passenger.App.Settings;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
 
@@ -43,8 +44,8 @@ public partial class MainWindow
         }, _ => session.Debug.Running.Count > 0 ? null
             : session.Debug.HotReload is not null || session.Debug.IsDebugging ? session.Debug.WhyNotApply()
             : buildRun.WatchesHotReload ? null
-            : buildRun.IsRunning ? "This program runs without Hot Reload: Run it with Hot Reload on (Settings, Hot Reload), or Debug it"
-            : "Nothing runs: Debug the program, or Run it with Hot Reload on (Settings, Hot Reload)", ("Run", 0, 9));
+            : buildRun.IsRunning ? $"This program runs without Hot Reload: Run it with Hot Reload on ({SettingsDialog.PlaceOfPage(SettingsDialog.HotReloadPage)}), or Debug it"
+            : $"Nothing runs: Debug the program, or Run it with Hot Reload on ({SettingsDialog.PlaceOfPage(SettingsDialog.HotReloadPage)})", ("Run", 0, 9));
         // What dotnet watch says from now is of the save, not of the one followed.
         Editors.Opened += (_, document) => document.Saved += (_, _) => UnfollowWatch();
     }

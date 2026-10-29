@@ -681,7 +681,7 @@ public sealed class EngineChecksTests
             IReadOnlyList<Passenger.App.Mcp.Finding> found = (IReadOnlyList<Passenger.App.Mcp.Finding>)Ui.Await(new Passenger.App.Mcp.PassengerTools(window).Diagnostics("other/compose.yaml"), "the diagnostics an agent asks for");
             Assert.Contains(found, f => f.Severity == "error" && f.Message == Said);
             Passenger.App.Mcp.Finding note = Assert.Single(found, f => f.Severity == "info");
-            Assert.Equal($"Checking it beyond the container engine needs the YAML language server: there is no Node.js at {missing}, which Settings | Languages & Frameworks | Node.js names",
+            Assert.Equal($"Checking it beyond the container engine needs the YAML language server: there is no Node.js at {missing}, which Settings | Node.js names",
                 note.Message);
         }
         finally

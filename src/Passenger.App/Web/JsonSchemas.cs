@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Passenger.App.Settings;
 using Passenger.Core;
 
 namespace Passenger.App.Web;
@@ -75,7 +76,7 @@ public sealed class JsonSchemas(Func<bool> download)
         }
         if (!download())
         {
-            throw new InvalidOperationException($"{uri} is not downloaded: Settings | Languages & Frameworks | Schemas and DTDs | Remote JSON Schemas does not allow it");
+            throw new InvalidOperationException($"{uri} is not downloaded: {SettingsDialog.PlaceOfPage(SettingsDialog.SchemasPage)} does not allow it");
         }
         Task<string> fetching = downloaded.GetOrAdd(uri, _ => DownloadAsync(From(asked)));
         try

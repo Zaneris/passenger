@@ -34,6 +34,10 @@ public sealed partial class SettingsDialog : Window
     public const string DiscordPage = "Discord";
     public const string DiagnosticsPage = "Diagnostics";
 
+    /// <summary>A page as a message sends a person to it, by its name above as the dialog lists it:
+    /// "Settings | Node.js".</summary>
+    public static string PlaceOfPage(string page) => $"Settings | {page}";
+
     /// <summary>The names of <see cref="BuildResultsMode"/>'s choices, in its order.</summary>
     public static readonly string[] BuildResultsChoices = ["Always", "Only if errors or warnings received", "Only if errors received", "Never"];
 

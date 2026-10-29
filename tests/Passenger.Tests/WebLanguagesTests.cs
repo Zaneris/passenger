@@ -488,7 +488,7 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
             Ui.Settle();
             CodeEditor editor = window.EditorArea.CodeEditor;
             Ui.WaitFor(() => window.EditorArea.ActiveGroup.BannerText is not null, "the banner over the script");
-            Assert.Equal($"JavaScript has its colours only: there is no Node.js at {missing}, which Settings | Languages & Frameworks | Node.js names.",
+            Assert.Equal($"JavaScript has its colours only: there is no Node.js at {missing}, which Settings | Node.js names.",
                 window.EditorArea.ActiveGroup.BannerText);
             Assert.Equal("JavaScript · no Node.js", window.LanguageShown);
             Assert.True(window.EditorArea.ActiveGroup.BannerLink is null, $"The banner over a script with no Node.js to run its server offers '{window.EditorArea.ActiveGroup.BannerLink}'");
@@ -497,7 +497,7 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
             Assert.Equal(TokenKind.Keyword, KindOf(editor, "function"));
 
             Ui.Run(window, AppActions.Rename);
-            Assert.Equal($"Rename needs the TypeScript language server: there is no Node.js at {missing}, which Settings | Languages & Frameworks | Node.js names", window.Status);
+            Assert.Equal($"Rename needs the TypeScript language server: there is no Node.js at {missing}, which Settings | Node.js names", window.Status);
 
             // A Node.js named that runs it, the server starts on it and the banner goes.
             if (Programs.Node() is { } node && TooOld() is null)
