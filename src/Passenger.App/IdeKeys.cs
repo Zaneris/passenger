@@ -94,12 +94,13 @@ public sealed class IdeKeys(Window main, KeymapDispatcher keys, PopupHost popups
     }
 
     /// <summary>A side button's gesture runs its action wherever it is pressed, as no control takes those buttons, where a
-    /// left or middle press is the control's under it (an editor's through <see cref="CodeEditor.GesturesProperty"/>). One
-    /// that throws is reported as an IDE error, as a key's is.</summary>
+    /// left or middle press is the control's under it (an editor's through <see cref="CodeEditor.GesturesProperty"/>); each
+    /// press of a quick run runs it again (<see cref="Keymap.ActionForAnyClick"/>). One that throws is reported as an IDE
+    /// error, as a key's is.</summary>
     private void OnSideButton(TopLevel window, PointerPressedEventArgs e)
     {
         MouseShortcut gesture = MouseShortcut.Of(e);
-        if (gesture.Button is not (MouseButton.XButton1 or MouseButton.XButton2) || keys.Keymap.ActionFor(gesture) is not { } action)
+        if (gesture.Button is not (MouseButton.XButton1 or MouseButton.XButton2) || keys.Keymap.ActionForAnyClick(gesture) is not { } action)
         {
             return;
         }

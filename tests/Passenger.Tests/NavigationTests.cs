@@ -415,6 +415,29 @@ public sealed class NavigationTests : IDisposable
         window.Close();
     }
 
+    /// <summary>The mouse's Back button pressed three times with no pause steps back three places, though the platform
+    /// counts the presses as one run of clicks, and pressed right after a click at the same place steps back too.</summary>
+    [AvaloniaFact]
+    public void The_mouses_back_button_steps_back_at_each_press_of_a_quick_run_and_right_after_a_click()
+    {
+        WriteFiles("A.cs", "B.cs", "C.cs", "D.cs");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        FromExplorer(window, "A.cs");
+        Down(window, 2);
+        FromExplorer(window, "B.cs");
+        Down(window, 5);
+        FromExplorer(window, "C.cs");
+        Down(window, 7);
+        FromExplorer(window, "D.cs");
+        Down(window, 3);
+        CodeEditor editor = window.EditorArea.CodeEditor;
+
+        Side(window, editor, MouseButton.XButton1, "A.cs", 2, "Back's button pressed three times with no pause in D.cs", times: 3);
+        Side(window, editor, MouseButton.XButton2, "B.cs", 5, "Forward's button in A.cs");
+        Side(window, editor, MouseButton.XButton1, "A.cs", 2, "Back's button right after a click in B.cs's text", afterClick: true);
+        window.Close();
+    }
+
     /// <summary>A click on a tab leaves the file shown for Back as a navigation does; a file left again keeps one place
     /// behind, where it was left last.</summary>
     [AvaloniaFact]
@@ -594,10 +617,11 @@ public sealed class NavigationTests : IDisposable
         Assert.True(editor.CaretPosition.Line == from + lines, $"Down {lines} times in {window.EditorArea.Active?.Name} moved its caret from line {from + 1} to {editor.CaretPosition.Line + 1}");
     }
 
-    /// <summary>A side button of the mouse pressed over a part of the window, and the file and line it shows then.</summary>
-    private static void Side(MainWindow window, Control over, MouseButton button, string file, int line, string what)
+    /// <summary>A side button of the mouse pressed over a part of the window, more times with no pause or right after a
+    /// click there when asked, and the file and line it shows then.</summary>
+    private static void Side(MainWindow window, Control over, MouseButton button, string file, int line, string what, int times = 1, bool afterClick = false)
     {
-        Ui.SideClick(over, button);
+        Ui.SideClick(over, button, times: times, afterClick: afterClick);
         TextPosition caret = window.EditorArea.CodeEditor.CaretPosition;
         Assert.True(window.EditorArea.Active?.Name == file && caret.Line == line,
             $"{what} showed {window.EditorArea.Active?.Name} at line {caret.Line + 1}, not {file} at line {line + 1}");

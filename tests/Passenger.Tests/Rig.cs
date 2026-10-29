@@ -1204,11 +1204,43 @@ public static class Ui
         Click(control, at, MouseButton.Middle, modifiers, settle: true);
 
     /// <summary>A press of one of the mouse's side buttons over a control, as <see cref="Click(Control, Point?, RawInputModifiers, bool)"/>
-    /// makes a click: <see cref="MouseButton.XButton1"/> is Back's, as every platform reports it, XButton2 Forward's.</summary>
-    public static void SideClick(Control control, MouseButton side, Point? at = null)
+    /// makes a click: <see cref="MouseButton.XButton1"/> is Back's, as every platform reports it, XButton2 Forward's. More
+    /// presses (<paramref name="times"/>), or one right after a left click there (<paramref name="afterClick"/>), go with no
+    /// pause between, as a quick hand makes them, and fail unless the platform counted them as one run of clicks.</summary>
+    public static void SideClick(Control control, MouseButton side, Point? at = null, int times = 1, bool afterClick = false)
     {
         Assert.True(side is MouseButton.XButton1 or MouseButton.XButton2, $"{side} is not a side button");
-        Click(control, at, side, RawInputModifiers.None, settle: true);
+        if (times == 1 && !afterClick)
+        {
+            Click(control, at, side, RawInputModifiers.None, settle: true);
+            return;
+        }
+        (TopLevel top, Point point) = Aim(control, at);
+        Apart(top, point);
+        List<int> counts = [];
+        EventHandler<PointerPressedEventArgs> pressed = (_, e) => counts.Add(e.ClickCount);
+        top.AddHandler(InputElement.PointerPressedEvent, pressed, Avalonia.Interactivity.RoutingStrategies.Tunnel, handledEventsToo: true);
+        try
+        {
+            if (afterClick)
+            {
+                top.MouseDown(point, MouseButton.Left);
+                top.MouseUp(point, MouseButton.Left);
+            }
+            for (int i = 0; i < times; i++)
+            {
+                top.MouseDown(point, side);
+                top.MouseUp(point, side);
+            }
+        }
+        finally
+        {
+            top.RemoveHandler(InputElement.PointerPressedEvent, pressed);
+        }
+        Clicked(top, point);
+        Assert.True(counts.SequenceEqual(Enumerable.Range(1, times + (afterClick ? 1 : 0))),
+            $"Presses with no pause between were counted as clicks {string.Join(", ", counts)}, not one run of them, so a quick hand's presses were not what ran");
+        Settle();
     }
 
     /// <summary>Two clicks in quick succession at the same place, as a person opens what a row holds.</summary>
