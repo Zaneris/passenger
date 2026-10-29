@@ -5,6 +5,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
+using EditAndContinueAnalyzer = Microsoft.CodeAnalysis.EditAndContinue.AbstractEditAndContinueAnalyzer;
 
 namespace Passenger.Roslyn.Extension;
 
@@ -41,8 +42,7 @@ internal static class StaleCallers
                 }
                 foreach (MemberDeclarationSyntax declaration in root.DescendantNodes().OfType<MemberDeclarationSyntax>().Where(Callable))
                 {
-                    if (model.GetDeclaredSymbol(declaration, cancel) is not { IsImplicitlyDeclared: false } member
-                        || SymbolFinder.FindSimilarSymbols(member, compiled, cancel).Any())
+                    if (model.GetDeclaredSymbol(declaration, cancel) is not { IsImplicitlyDeclared: false } member || Kept(member, compiled, cancel))
                     {
                         continue;
                     }
@@ -55,6 +55,12 @@ internal static class StaleCallers
         }
         return found;
     }
+
+    /// <summary>Whether the update keeps a member as the runtime knows it: one of the new code of its name and parameters
+    /// whose signature the runtime sees as the same, its return, property or event type and ref-kinds too (tuple names,
+    /// nullability and dynamic aside, as Edit and Continue sets them). One changed there is deleted, and another added.</summary>
+    private static bool Kept(ISymbol member, Compilation compiled, CancellationToken cancel) =>
+        SymbolFinder.FindSimilarSymbols(member, compiled, cancel).Any(now => EditAndContinueAnalyzer.MemberOrDelegateSignaturesEquivalent(member, now, exact: false));
 
     /// <summary>A member a call can reach: a method, constructor, operator, property, indexer or event.</summary>
     private static bool Callable(MemberDeclarationSyntax declaration) =>

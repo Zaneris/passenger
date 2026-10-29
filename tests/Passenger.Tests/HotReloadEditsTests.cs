@@ -97,6 +97,13 @@ public sealed class HotReloadEditsTests : IClassFixture<HotReloadEditsTests.Tick
             // The field the earlier edit added is the running program's now; its type is what this edit changes.
             new("a field's type", [("    static int ticks;", "    static long ticks;")], null),
         ],
+        ["return types changed with their callers and without"] =
+        [
+            new("a return type changed with its callers", [("public string Describe() => $\"pet {Name}\";", "public object Describe() => $\"pet {Name} as object\";"),
+                ("new Pet(\"Rex\").Describe()", "new Pet(\"Rex\").Describe().ToString()")], "as object"),
+            // Tick still calls Next() as returning an int, whose body the update would leave throwing: only a restart runs the edit.
+            new("a method's return type its callers leave as they are", [("public int Next() => 1;", "public long Next() => 2;")], null),
+        ],
     };
 
     public static TheoryData<string> Kinds => [.. Chains.Keys];
