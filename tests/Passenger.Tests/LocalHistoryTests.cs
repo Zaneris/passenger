@@ -402,6 +402,46 @@ public sealed class LocalHistoryTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A save made while a replace writes its closed files is the person's own change, never filed under the
+    /// replace's name, which names only the replace's own writes.</summary>
+    [AvaloniaFact]
+    public void A_save_made_while_a_replace_writes_its_closed_files_is_not_filed_under_the_replaces_name()
+    {
+        string notes = Write("Notes.txt", "a tally of things\n");
+        Write("Shop.cs", Original);
+        MainWindow window = Open("Shop.cs");
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            SearchQuery query = new("tally", WholeWords: true);
+            Passenger.App.Workspace.FilesFound found = Ui.Await(window.FindInFilesAsync(query,
+                new Passenger.App.Workspace.SearchScope(Passenger.App.Workspace.SearchScopeKind.Directory, null, folder, true, null, null), CancellationToken.None), "the search");
+            Task held = window.EditorArea.Commands.HoldNextWrite(release.Task);
+            Task<Passenger.App.Workspace.FilesReplaced> replacing = window.ReplaceInFilesAsync(query, "count", found);
+            Ui.PumpUntil(() => held.IsCompleted, "the replace's write of Notes.txt to be held");
+            window.EditorArea.CodeEditor.Focus();
+            window.KeyTextInput("// saved meanwhile ");
+            Ui.Run(window, AppActions.Save, settle: false);
+            Ui.PumpUntil(() => window.EditorArea.Active?.IsModified == false, "Shop.cs saved");
+            release.SetResult();
+            Ui.AwaitPumped(replacing, "the replace");
+            Assert.Equal("a count of things\n", File.ReadAllText(notes));
+
+            HistoryTab saved = ShowFromFileMenu(window, "Show History…");
+            Ui.Landed(() => saved.Rows.Count == 1, "the save of Shop.cs");
+            Assert.True(saved.Rows[0].Title == "Change", $"The save made while the replace wrote is filed as '{saved.Rows[0].Title}', not as the person's own change");
+            Ui.ChooseFromRowMenu(window, Show(window, notes), "Local History", "Show History…");
+            HistoryTab replaced = window.LocalHistoryWindow.Shown!;
+            Ui.Landed(() => replaced.Rows.Count > 0, "the replace's write of Notes.txt");
+            Assert.Equal(Passenger.App.Workspace.FilesReplaced.Title(query, "count"), replaced.Rows[0].Title);
+        }
+        finally
+        {
+            release.TrySetResult();
+            window.Close();
+        }
+    }
+
     /// <summary>A language server's edit that makes a file over one there (a create with overwrite, then its text), as a
     /// refactoring's answer is applied: the file is written as a save writes it, so the history keeps what it held, which
     /// it never saw open, and Undo puts that back.</summary>

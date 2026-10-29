@@ -227,7 +227,7 @@ public partial class MainWindow
         List<FileSearch.Replacing> planned = await BackgroundWork.Run(() => files.Select(f => FileSearch.Plan(f.Path, f.Open, pattern, replacement)).ToList());
         List<(string Path, string? Note)> written = [];
         string name = FilesReplaced.Title(query, replacement);
-        using IDisposable? activity = session.LocalHistory?.During(name);
+        using History.LocalHistory.Activity? activity = session.LocalHistory?.During(name);
         IReadOnlyList<(string Path, Exception Refused)> unlanded;
         using (CommandHistory.Recording recording = Editors.Commands.Record(name))
         {
@@ -257,8 +257,11 @@ public partial class MainWindow
                 }
             }
             recording.TakeOpen();
+            // From here Local History names only the replace's own writes, not what is saved meanwhile.
+            activity?.Dispose();
             List<FileSearch.Written> writes = closed.Count == 0 ? [] : await Editors.Commands.InTurnAsync(name, [.. closed.Select(c => c.Path)], wrote =>
             {
+                using IDisposable? own = activity?.Own();
                 List<FileSearch.Written> made = [];
                 foreach (FileSearch.Replacing plan in closed)
                 {

@@ -314,7 +314,7 @@ public sealed partial class EditorArea : UserControl
 
     /// <summary>Names a change made across files through these editors (a refactoring's), for Local History: held while
     /// the change is made.</summary>
-    public Func<IDisposable?>? Recording { get; set; }
+    public Func<History.LocalHistory.Activity?>? Recording { get; set; }
 
     private bool Close(OpenDocument document, bool forGood)
     {

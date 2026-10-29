@@ -90,6 +90,8 @@ public sealed class LocalHistory
     private (long Set, string Name)? activity;
     private int activityDepth;
     private (long Set, string Name, DateTime Until)? lingering;
+    /// <summary>The change set the saves made on this flow are kept under, whatever activity is under way (<see cref="Activity.Own"/>).</summary>
+    private readonly AsyncLocal<(long Set, string Name)?> own = new();
 
     private LocalHistory(string folder, string stateFolder, HistoryKeeping keeping)
     {
@@ -152,7 +154,7 @@ public sealed class LocalHistory
     /// <summary>Names what is recorded until disposed, one change set (an activity: a revert, a Git checkout, a
     /// refactoring): the saves made meanwhile, and what the folder watcher sees changed meanwhile and a moment after.
     /// Nested, the outermost names them.</summary>
-    public IDisposable During(string name)
+    public Activity During(string name)
     {
         lock (gate)
         {
@@ -160,8 +162,8 @@ public sealed class LocalHistory
             {
                 activity = (NewSet(), name);
             }
+            return new Activity(this, activity!.Value);
         }
-        return new Ending(this);
     }
 
     private void End()
@@ -176,9 +178,20 @@ public sealed class LocalHistory
         }
     }
 
-    private sealed class Ending(LocalHistory history) : IDisposable
+    /// <summary>An activity under way until disposed (<see cref="During"/>), whose change set also names the saves made
+    /// within <see cref="Own"/> on any thread, before it ends or after.</summary>
+    public sealed class Activity(LocalHistory history, (long Set, string Name) named) : IDisposable
     {
         private int ended;
+
+        /// <summary>Names the saves made on the calling flow until disposed, and nothing else: a change's own writes made
+        /// off the window's thread while the person saves other files.</summary>
+        public IDisposable Own()
+        {
+            (long Set, string Name)? outer = history.own.Value;
+            history.own.Value = named;
+            return new Owning(history, outer);
+        }
 
         public void Dispose()
         {
@@ -187,6 +200,11 @@ public sealed class LocalHistory
                 history.End();
             }
         }
+    }
+
+    private sealed class Owning(LocalHistory history, (long Set, string Name)? outer) : IDisposable
+    {
+        public void Dispose() => history.own.Value = outer;
     }
 
     /// <summary>A file the editor opened, with the bytes it read: its content is known from now on, so a change made
@@ -316,6 +334,10 @@ public sealed class LocalHistory
     /// <summary>The set and name a save is kept under: the activity under way, else a set of its own.</summary>
     private (long Set, string? Name) Named()
     {
+        if (own.Value is { } mine)
+        {
+            return (mine.Set, mine.Name);
+        }
         lock (gate)
         {
             return activity is { } named ? (named.Set, named.Name) : (NewSet(), null);

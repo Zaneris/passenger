@@ -1,4 +1,5 @@
 using System.Text;
+using Passenger.App.History;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
@@ -666,8 +667,9 @@ public sealed class CommandHistory
         private readonly List<(string Began, Func<string, string> Change)> queued = [];
         /// <summary>Where it made each change of <see cref="queued"/>, with the file's path as the command began.</summary>
         private readonly Dictionary<string, string> madeAt = new(PathNames.Comparer);
-        /// <summary>What names its writes to files not open in Local History, held until they are made.</summary>
-        private readonly List<IDisposable> naming = [];
+        /// <summary>What names its writes in Local History (a refactoring's change set): over the window while it changes
+        /// files on the window's thread, then only over its own writes of files not open, made off it.</summary>
+        private readonly List<LocalHistory.Activity> naming = [];
         private readonly TaskCompletionSource ending = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly List<(string From, string To)> moves = [];
         private readonly List<Part> parts = [];
@@ -753,9 +755,9 @@ public sealed class CommandHistory
         /// is changed where it went.</summary>
         public void Change(string path, Func<string, string> change) => queued.Add((Began(path), change));
 
-        /// <summary>What names the command's writes in Local History (a refactoring's change set), held until the changes
-        /// queued are made.</summary>
-        public void Naming(IDisposable? during)
+        /// <summary>What names the command's writes in Local History (a refactoring's change set): its saves on the window's
+        /// thread until it writes the files not open, then those writes alone.</summary>
+        public void Naming(LocalHistory.Activity? during)
         {
             if (during is not null)
             {
@@ -836,17 +838,16 @@ public sealed class CommandHistory
             }
             List<(string Began, string At, Func<string, string> Change)> files = [.. queued.Select(q => (q.Began, Now(q.Began), q.Change))];
             queued.Clear();
-            try
+            // From here Local History names only these writes, not what is saved meanwhile.
+            LocalHistory.Activity? named = naming.FirstOrDefault();
+            Unname();
+            (List<ChangeMade> made, (string Path, Exception Refused)? refused) = await history.InTurnAsync(name, [.. files.Select(f => f.At).Distinct(PathNames.Comparer)], wrote =>
             {
-                (List<ChangeMade> made, (string Path, Exception Refused)? refused) =
-                    await history.InTurnAsync(name, [.. files.Select(f => f.At).Distinct(PathNames.Comparer)], wrote => Make(files, wrote));
-                Took(made);
-                return refused;
-            }
-            finally
-            {
-                Unname();
-            }
+                using IDisposable? own = named?.Own();
+                return Make(files, wrote);
+            });
+            Took(made);
+            return refused;
         }
 
         /// <summary>Something besides files the command changed, taken back and made again with them; the command is kept
