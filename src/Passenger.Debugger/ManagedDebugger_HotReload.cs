@@ -32,9 +32,9 @@ public sealed record ModuleApplied(Guid Module, string Name, bool Applied, strin
 /// callbacks (SetJITCompilerFlags), an update is applied with ICorDebugModule2.ApplyChanges while the program is held (a
 /// running one stopped for it), the module's debug information takes the update's (<see cref="ModuleMetadataReader.AddGeneration"/>),
 /// and a frame in a method's old code moves to the new code at a statement's start (FunctionRemapOpportunity): one Roslyn
-/// mapped, or one the update left as it was. The runtime offers a frame of old code the new at every statement it reaches
-/// and has no way to stop offering, so a frame left in the old code runs it a stop at a time. The runtime's capabilities
-/// are read from its CoreLib, never assumed.</summary>
+/// mapped, the one after an active statement it was part way through, or one the update left as it was. The runtime
+/// offers a frame of old code the new at every statement it reaches and has no way to stop offering, so a frame left in
+/// the old code runs it a stop at a time. The runtime's capabilities are read from its CoreLib, never assumed.</summary>
 public partial class ManagedDebugger
 {
     /// <summary>Whether the launch asked for Hot Reload: the user's modules get Edit and Continue as they load.</summary>
@@ -59,6 +59,10 @@ public partial class ManagedDebugger
 
     /// <summary>The first line (from zero) the last update to each module changed in each document it edits.</summary>
     private readonly Dictionary<(Guid Module, string Document), int> _firstChanges = [];
+
+    /// <summary>Each thread's frames found part way through a statement when the statements were last read, innermost
+    /// first: by module, token, version and the statement's IL offset.</summary>
+    private readonly Dictionary<int, List<(Guid Module, int Token, int Version, int Statement)>> _partWay = [];
 
     /// <summary>Whether the program, running, is stopped for an update being made (<see cref="HoldForHotReload"/>).</summary>
     private bool _heldForHotReload;
@@ -158,8 +162,9 @@ public partial class ManagedDebugger
             return [];
         }
         _newestRead.Clear();
+        _partWay.Clear();
         Dictionary<(Guid, int, int, int), ActiveStatementInfo> found = [];
-        foreach (ThreadInfo thread in _threads.Values)
+        foreach ((int id, ThreadInfo thread) in _threads)
         {
             int depth = 0;
             IEnumerable<ICorDebugFrame> frames;
@@ -207,6 +212,11 @@ public partial class ManagedDebugger
                         ? (path, at.StartLine - 1, at.StartColumn - 1, at.EndLine - 1, at.EndColumn - 1)
                         : ((string?)null, 0, 0, 0, 0);
                     (Guid, int, int, int) key = (module.MetadataReader.Mvid, token, version, statement?.Offset ?? offset);
+                    // A frame below the leaf waits on a call its statement made, wherever its return maps.
+                    if (statement is { } partWay && (!leaf || partWay.Offset != offset || !mapping.HasFlag(CorDebugMappingResult.MAPPING_EXACT)))
+                    {
+                        (_partWay.TryGetValue(id, out List<(Guid, int, int, int)>? partWayFrames) ? partWayFrames : _partWay[id] = []).Add(key);
+                    }
                     if ((flags & 8) == 0 && !_statementUpdates.ContainsKey(key))
                     {
                         // Old code the last update to its method did not place this statement of (one emitted for a running program): stale.
@@ -399,8 +409,9 @@ public partial class ManagedDebugger
     }
 
     /// <summary>A frame running a method's old code reaches a point after an update: at a statement's start that Roslyn
-    /// mapped (an active statement's), or, the frame not stepping, one the update left as it was, it goes on there in the
-    /// new code; otherwise it runs on in the old code, which the runtime offers again at its next statement.</summary>
+    /// mapped (an active statement's) or that follows the active statement the frame was part way through, or, the frame
+    /// not stepping, one the update left as it was, it goes on there in the new code; otherwise it runs on in the old code,
+    /// which the runtime offers again at its next statement.</summary>
     private void HandleFunctionRemapOpportunity(FunctionRemapOpportunityCorDebugManagedCallbackEventArgs remap)
     {
         try
@@ -409,7 +420,7 @@ public partial class ManagedDebugger
             int token = old.Token;
             if (FindModule(old.Module) is { } module && old is ICorDebugFunction2 oldVersion && oldVersion.TryGetVersionNumber(out uint from) is Cor.S_OK
                 && remap.NewFunction is ICorDebugFunction2 newVersion && newVersion.TryGetVersionNumber(out uint to) is Cor.S_OK
-                && RemapTarget(module, token, (int)from, (int)to, (int)remap.OldILOffset, stepping: Stepping is (int steppingThread, _) && steppingThread == remap.Thread.Id) is { Document: not null } there
+                && RemapTarget(module, token, (int)from, (int)to, (int)remap.OldILOffset, remap.Thread.Id, stepping: Stepping is (int steppingThread, _) && steppingThread == remap.Thread.Id) is { Document: not null } there
                 && remap.Thread.ActiveFrame is ICorDebugILFrame2 frame)
             {
                 // A step's stepper is the old frame's: it goes first, and is made again at FunctionRemapComplete.
@@ -441,15 +452,29 @@ public partial class ManagedDebugger
     }
 
     /// <summary>Where in a method's new code a frame of its old code at an IL offset goes on: the statement Roslyn said its
-    /// active statement there became, or, not mid-step, the same statement where the update left the method's text as it
-    /// was up to that statement's end (the first line the update changed in its document after it), in old code whose
+    /// active statement there became; for a frame that was part way through an active statement, at the statement after
+    /// it, the one after what it became; or, not mid-step, the same statement where the update left the method's text as
+    /// it was up to that statement's end (the first line the update changed in its document after it), in old code whose
     /// frames Roslyn placed (so its locals and closures carry over); else none.</summary>
-    private ModuleMetadataReader.Point? RemapTarget(ModuleInfo module, int token, int from, int to, int ilOffset, bool stepping)
+    private ModuleMetadataReader.Point? RemapTarget(ModuleInfo module, int token, int from, int to, int ilOffset, int thread, bool stepping)
     {
         Guid mvid = module.MetadataReader.Mvid;
         if (_statementUpdates.TryGetValue((mvid, token, from, ilOffset), out StatementUpdate? went))
         {
-            return module.MetadataReader.Points(token, to).FirstOrDefault(p => !p.IsHidden && p.StartLine == went.StartLine + 1 && p.StartColumn == went.StartColumn + 1);
+            return Became(went);
+        }
+        if (_partWay.TryGetValue(thread, out List<(Guid Module, int Token, int Version, int Statement)>? frames)
+            && frames.FindIndex(f => f.Module == mvid && f.Token == token && f.Version == from) is int at and >= 0
+            && module.MetadataReader.StatementAt(token, ilOffset, from)?.Offset != frames[at].Statement)
+        {
+            int finished = frames[at].Statement;
+            frames.RemoveAt(at);
+            if (_statementUpdates.TryGetValue((mvid, token, from, finished), out StatementUpdate? was)
+                && After(module.MetadataReader.Points(token, from), finished) is { Document: not null } next && next.Offset == ilOffset
+                && Became(was) is { Document: not null } became)
+            {
+                return After(module.MetadataReader.Points(token, to), became.Offset);
+            }
         }
         if (stepping || !_placedFrames.Contains((mvid, token, from))
             || module.MetadataReader.StatementAt(token, ilOffset, from) is not { Document: { } document } statement || statement.Offset != ilOffset
@@ -459,6 +484,12 @@ public partial class ManagedDebugger
         }
         return module.MetadataReader.Points(token, to).FirstOrDefault(p => !p.IsHidden && p.Document == document
             && p.StartLine == statement.StartLine && p.StartColumn == statement.StartColumn && p.EndLine == statement.EndLine && p.EndColumn == statement.EndColumn);
+
+        ModuleMetadataReader.Point? Became(StatementUpdate update) =>
+            module.MetadataReader.Points(token, to).FirstOrDefault(p => !p.IsHidden && p.StartLine == update.StartLine + 1 && p.StartColumn == update.StartColumn + 1);
+
+        static ModuleMetadataReader.Point? After(IReadOnlyList<ModuleMetadataReader.Point> points, int offset) =>
+            points.FirstOrDefault(p => !p.IsHidden && p.Offset > offset);
     }
 
     /// <summary>The thread whose step a remap ended, stepped again from its statement in the new code once it is there.</summary>

@@ -30,6 +30,16 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-10-29
 
+- `HotReloadEditsTests`' `Each_edit_to_a_running_program_applies_as_the_runtime_allows` (chain "return types changed with
+  their callers and without"), CI macOS, run 40921064516 (7358d411), report lane: "Waited 180 s for the program to print
+  'as object' once a return type changed with its callers applied", its output ending at "async 16". The update landed
+  while `Tick` was part way through its `FetchAsync` line, a frame the runtime offers the new code only at a statement's
+  start, and the debugger moved it only to a statement the edit had left as it was up to its end; the next line, the
+  edited call of `Describe`, ran in the old code, called the `Describe` the update deleted and stopped the program on
+  `HotReloadException`. **A race in the IDE**, met every time by a program paused in a call when the line after it is
+  edited: a frame part way through an active statement goes on, at the statement after it, at the one after what Roslyn
+  made of it (in this commit, with a test paused in `FetchAsync` that fails so on main every time).
+
 - `AspireContainerRecoveryTests`' `Opening_a_window_removes_only_an_exact_record_of_a_dead_owners_container`, every scenario,
   CI Linux and macOS, run 40921064516 (7358d411), report lane: "Item: info --format json … not found". Since #636 the engine
   asks `docker info` once it knows the server's version, and the test's stand-in docker listed the commands it allows

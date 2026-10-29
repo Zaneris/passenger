@@ -203,6 +203,42 @@ public sealed class HotReloadEditsTests : IClassFixture<HotReloadEditsTests.Tick
         }
     }
 
+    /// <summary>A frame waiting on a call goes on in the new code once the call returns: paused in FetchAsync, which Tick
+    /// waits on, a return type changed with its caller on Tick's next line applies, and that tick prints what the new code
+    /// prints rather than calling the member the update deleted.</summary>
+    [AvaloniaFact]
+    public void A_frame_waiting_on_a_call_goes_on_in_the_new_code_once_the_call_returns()
+    {
+        MainWindow window = Open();
+        try
+        {
+            window.OpenFile(DemoPath);
+            TextPosition fetched = new(18, 8);
+            window.EditorArea.CodeEditor.GoTo(fetched);
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            Ui.Run(window, AppActions.Debug);
+            Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && window.Debugger.Stop is not null, "the program to stop in FetchAsync");
+            Ui.Settle();
+            Replace(window, "public string Describe() => $\"pet {Name}\";", "public object Describe() => $\"pet {Name} as object\";");
+            Replace(window, "new Pet(\"Rex\").Describe()", "new Pet(\"Rex\").Describe().ToString()");
+            HotReloadOutcome outcome = Ui.Await(window.Debugger.ApplyChangesAsync(), "Hot Reload to apply the edit", TimeSpan.FromMinutes(2));
+            TestContext.Current.TestOutputHelper?.WriteLine($"a frame waiting on a call: {outcome.Result}: {outcome.Said}");
+            Assert.True(outcome.Result == HotReloadResult.Applied, $"Changing a return type with its callers should apply: {outcome.Said}");
+            int before = Output(window).Length;
+            window.EditorArea.CodeEditor.GoTo(fetched);
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            Ui.Run(window, AppActions.Resume);
+            Ui.WaitFor(() => Output(window)[before..].Contains("generic", StringComparison.Ordinal) || window.Debugger.Session?.State != DebugState.Running,
+                $"the paused tick to go on ({Output(window)[before..]})");
+            Assert.True(window.Debugger.Session?.State == DebugState.Running && Output(window)[before..].Contains("pet Rex as object", StringComparison.Ordinal),
+                $"The tick waiting on FetchAsync should print what the new code prints, not call the deleted Describe: {window.Debugger.Session?.State} {window.Debugger.Stop?.Reason} {window.Debugger.Stop?.Exception} ({Output(window)[before..]})");
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
     private string DemoPath => Path.Combine(PathNames.Canonical(project.Folder), "Demo.cs");
 
     private static string Output(MainWindow window) => window.Debugger.Output().ToString();
