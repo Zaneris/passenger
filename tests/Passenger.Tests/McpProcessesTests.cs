@@ -12,9 +12,9 @@ using Passenger.Editor;
 
 namespace Passenger.Tests;
 
-/// <summary>An agent's own Passenger beside the person's window and on its own: one Local History kept in their
-/// one state, and what it started gone with it when it is killed. What its builds leave for the machine's next build is
-/// <see cref="McpBuildNodesTests"/>'.</summary>
+/// <summary>An agent's own Passenger beside the person's window, beside another agent's and on its own: one Local History
+/// kept in their one state, and what it started gone with it when it is killed. What its builds leave for the machine's
+/// next build is <see cref="McpBuildNodesTests"/>'.</summary>
 public sealed class McpProcessesTests : McpRig, IClassFixture<RestoredFolders>
 {
     public McpProcessesTests(RestoredFolders folders)
@@ -156,6 +156,38 @@ public sealed class McpProcessesTests : McpRig, IClassFixture<RestoredFolders>
             window.Close();
             Gone(client);
         }
+    }
+
+    /// <summary>Two agents' own Passengers on one folder and one state keep one Local History: a change one makes is listed by
+    /// the other, which heard it on disk, and by a Passenger started after both have gone, as the one change set of the edit
+    /// that made it, never a second one called an external change.</summary>
+    [Fact]
+    public async Task A_change_one_passenger_makes_is_one_change_set_named_for_it_in_another_on_the_same_state_and_in_one_started_after()
+    {
+        string folder = Plain("mcp-history-");
+        McpClient watching = await Start(["--mcp", folder], languageServer: false);
+        await using (watching)
+        {
+            await Call(watching, McpTools.Open, new() { ["path"] = "Notes.txt" });
+            await using (McpClient editing = await Start(["--mcp", folder], languageServer: false))
+            {
+                await Call(editing, McpTools.Edit, new() { ["path"] = "Notes.txt", ["oldText"] = "notes", ["newText"] = "notes kept" });
+                string[] made = await Titles(editing);
+                Assert.True(made is ["Change"], $"The Passenger that made the change lists [{string.Join(", ", made)}]");
+            }
+            // A file made after the change is heard after it: kept in the folder's history, the change has been heard too.
+            File.WriteAllText(Path.Combine(folder, "Heard.txt"), "heard\n");
+            await Until(async () => (await Call(watching, McpTools.LocalHistory)).GetProperty("rows").EnumerateArray()
+                .Any(r => r.GetProperty("files").EnumerateArray().Any(f => f.GetString() == "Heard.txt")), "the other Passenger to hear the changes on disk");
+            string[] heard = await Titles(watching);
+            Assert.True(heard is ["Change"], $"The Passenger that heard the change lists [{string.Join(", ", heard)}], not the one change set of the edit");
+        }
+        await using McpClient after = await Start(["--mcp", folder], languageServer: false);
+        string[] read = await Titles(after);
+        Assert.True(read is ["Change"], $"A Passenger started after both lists [{string.Join(", ", read)}], not the one change set of the edit");
+
+        async Task<string[]> Titles(McpClient client) =>
+            [.. (await Call(client, McpTools.LocalHistory, new() { ["path"] = "Notes.txt" })).GetProperty("rows").EnumerateArray().Select(r => r.GetProperty("title").GetString()!)];
     }
 
     /// <summary>Passenger killed outright (SIGKILL, TerminateProcess), as a crash ends it, while it runs (and has profiled)

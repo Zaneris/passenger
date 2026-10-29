@@ -372,6 +372,7 @@ public sealed partial class PassengerTools
         OnUi(cancel, async () =>
     {
         (History.LocalHistory history, string full) = HistoryOf(path);
+        history.LookAgain();
         // Looked at every 50 ms: Local History's queue, drained off the UI thread, raises nothing as it empties.
         await Until(() => !history.IsRecording, HistoryLimit, cancel);
         (IReadOnlyList<HistoryEvent> events, IReadOnlyDictionary<string, string?> known) = history.Snapshot();

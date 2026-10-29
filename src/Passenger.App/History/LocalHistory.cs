@@ -41,7 +41,9 @@ public sealed record HistoryDeletion(string Path, IReadOnlyList<(string Path, by
 /// version of its text files saved, changed elsewhere, deleted or moved, once per hash, compressed, in <c>blobs/</c>, and
 /// what happened a line each in <c>changes.log</c>, labels too. Recording is queued and done in order off the UI thread as
 /// background work, so a save only reads the file it writes over; it is pruned to <see cref="HistoryKeeping"/> as it opens
-/// and once a day. Thread-safe; <see cref="Changed"/> comes on the UI thread.</summary>
+/// and once a day. Another Passenger keeping it in the same state (an agent's, over --mcp) appends to the same log, whose
+/// lines this one takes in before it keeps what it heard, so a change is kept once, under the name of what made it.
+/// Thread-safe; <see cref="Changed"/> comes on the UI thread.</summary>
 public sealed class LocalHistory
 {
     /// <summary>The name of changes made by another program.</summary>
@@ -65,6 +67,10 @@ public sealed class LocalHistory
     /// past that an append goes on all the same, and a prune waits for its next turn.</summary>
     private static readonly TimeSpan HeldFor = TimeSpan.FromSeconds(10);
 
+    /// <summary>How long after a change another Passenger on the same state may hear it and keep it as an external change
+    /// before the record of the one that made it comes: a record coming later is of a change of its own.</summary>
+    private static readonly TimeSpan HeardWithin = TimeSpan.FromMinutes(1);
+
     private static readonly Dictionary<string, LocalHistory> Stores = new(StringComparer.Ordinal);
 
     private static readonly JsonSerializerOptions Compact = new() { WriteIndented = false };
@@ -72,6 +78,18 @@ public sealed class LocalHistory
     private readonly object gate = new();
     private readonly List<HistoryEvent> events = [];
     private readonly Dictionary<string, string?> known = new(PathNames.Comparer);
+
+    /// <summary>Each path's last change kept (made, changed, deleted or moved), by which a second record of that same change
+    /// is told (<see cref="Twice"/>).</summary>
+    private readonly Dictionary<string, HistoryEvent> lastChange = new(PathNames.Comparer);
+
+    /// <summary>How far the log has been taken in, on the queue: the byte after the last line read, and that line with its
+    /// break, which a log written again since (pruned) no longer holds there.</summary>
+    private long readTo;
+    private byte[] readLine = [];
+
+    /// <summary>The lines this store appended without the hold, on the queue: passed over when a read of the log meets them.</summary>
+    private readonly HashSet<string> unread = new(StringComparer.Ordinal);
 
     /// <summary>The saves of each path queued and not yet recorded, whose new content the disk may already hold.</summary>
     private readonly Dictionary<string, int> writing = new(PathNames.Comparer);
@@ -284,6 +302,10 @@ public sealed class LocalHistory
         Enqueue(() => Append([new HistoryEvent(set, time, HistoryKind.Label, null, null, null, null, name, system)]));
     }
 
+    /// <summary>Takes in, on the queue, what another Passenger keeping the history in the same state (an agent's, over --mcp)
+    /// has kept since the log was last read: as a window comes in front, or before an agent reads the history.</summary>
+    public void LookAgain() => Enqueue(CatchUp);
+
     /// <summary>Whether what has happened is still being recorded: an agent's look at the history waits for its own saves.</summary>
     public bool IsRecording
     {
@@ -465,25 +487,195 @@ public sealed class LocalHistory
 
     private void Load()
     {
-        List<(string Line, HistoryEvent? Event)> logged = Logged();
-        List<HistoryEvent> read = [.. logged.Select(l => l.Event).OfType<HistoryEvent>()];
-        int bad = logged.Count - read.Count;
+        using (Hold())
+        {
+            TakeLog();
+        }
+        lock (gate)
+        {
+            foreach (HistoryEvent kept in events)
+            {
+                lastSet = Math.Max(lastSet, kept.Set);
+            }
+        }
+        Prune();
+    }
+
+    /// <summary>Takes in what another Passenger on the same state has kept since the log was last read, when the log's
+    /// length says it has changed since.</summary>
+    private void CatchUp()
+    {
+        FileInfo file = new(log);
+        if ((file.Exists ? file.Length : 0) != readTo)
+        {
+            using (Hold())
+            {
+                TryTakeLog();
+            }
+        }
+    }
+
+    /// <summary>Takes in what the log gained (<see cref="TakeLog"/>); a log the disk refuses is read at the next look, what
+    /// is kept meanwhile kept all the same. Whether it was read.</summary>
+    private bool TryTakeLog()
+    {
+        try
+        {
+            TakeLog();
+            return true;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            IdeErrors.Write($"Local History of {Folder}: {error.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>Takes in the log's complete lines past what was read, held against other Passengers on the same state when
+    /// the caller has the hold: all of them as the store opens, or when the log was written again since (pruned), passing
+    /// over what is held already. A line this build does not read is passed over and said.</summary>
+    private void TakeLog()
+    {
+        if (!File.Exists(log))
+        {
+            (readTo, readLine) = (0, []);
+            return;
+        }
+        long from;
+        byte[] bytes;
+        using (FileStream stream = new(log, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+        {
+            from = readTo > 0 && stream.Length >= readTo && Holds(stream, readTo - readLine.Length, readLine) ? readTo : 0;
+            stream.Position = from;
+            using MemoryStream rest = new();
+            stream.CopyTo(rest);
+            bytes = rest.ToArray();
+        }
+        HashSet<string>? held = null;
+        if (from == 0 && readTo > 0)
+        {
+            lock (gate)
+            {
+                held = [.. events.Select(Key)];
+            }
+            unread.Clear();
+        }
+        int end = Array.LastIndexOf(bytes, (byte)'\n') + 1;
+        List<HistoryEvent> read = [];
+        int bad = 0;
+        int last = 0;
+        for (int start = 0; start < end;)
+        {
+            int stop = Array.IndexOf(bytes, (byte)'\n', start);
+            if (stop > start)
+            {
+                if (Parse(Encoding.UTF8.GetString(bytes, start, stop - start)) is not { } kept)
+                {
+                    bad++;
+                }
+                else if (!unread.Remove(Key(kept)) && held?.Contains(Key(kept)) != true)
+                {
+                    read.Add(kept);
+                }
+                last = start;
+            }
+            start = stop + 1;
+        }
+        if (end > 0 || from == 0)
+        {
+            (readTo, readLine) = (from + end, bytes[last..end]);
+        }
         if (bad > 0)
         {
             IdeErrors.Write($"Local History: {bad} lines of {log} did not read and were passed over");
         }
         lock (gate)
         {
-            events.AddRange(read);
             foreach (HistoryEvent kept in read)
             {
-                Know(kept);
-                lastSet = Math.Max(lastSet, kept.Set);
+                TakeIn(kept, logged: true);
             }
-            changed = read.Count > 0;
         }
-        Prune();
     }
+
+    /// <summary>Whether a file holds bytes at a place.</summary>
+    private static bool Holds(FileStream stream, long at, byte[] expected)
+    {
+        if (at < 0)
+        {
+            return false;
+        }
+        byte[] there = new byte[expected.Length];
+        stream.Position = at;
+        stream.ReadExactly(there);
+        return there.AsSpan().SequenceEqual(expected);
+    }
+
+    /// <summary>Takes an event into what is held, under the gate: false for what is no news, a first look at a file already
+    /// seen or a second record of a change held (<see cref="Twice"/>), but where the change held is an external change the
+    /// record of what made it takes its place. A look logged by another Passenger before a change kept since is no news.</summary>
+    private bool TakeIn(HistoryEvent kept, bool logged)
+    {
+        if (kept.Kind == HistoryKind.Seen && known.TryGetValue(kept.Path!, out string? now)
+            && (now == kept.After || logged && lastChange.TryGetValue(kept.Path!, out HistoryEvent? since) && since.Time >= kept.Time))
+        {
+            return false;
+        }
+        if (Twice(kept) is { } held)
+        {
+            if (held.Name != ExternalChange || kept.Name == ExternalChange)
+            {
+                return false;
+            }
+            // In its place: what the paths hold since is as it was.
+            events[events.FindLastIndex(e => ReferenceEquals(e, held))] = kept;
+            foreach (string path in new[] { held.Path, held.To }.OfType<string>())
+            {
+                if (lastChange.TryGetValue(path, out HistoryEvent? was) && ReferenceEquals(was, held))
+                {
+                    lastChange[path] = kept;
+                }
+            }
+        }
+        else
+        {
+            events.Add(kept);
+            Know(kept);
+        }
+        changed = true;
+        return true;
+    }
+
+    /// <summary>The change held that an event records a second time, one Passenger on the same state having heard what
+    /// another made: its path's last change, made the same way; or, for one that does not follow what its path is known to
+    /// hold, an external change the same way heard since a moment before it.</summary>
+    private HistoryEvent? Twice(HistoryEvent kept)
+    {
+        if (kept.Kind is HistoryKind.Seen or HistoryKind.Label || !lastChange.TryGetValue(kept.Path!, out HistoryEvent? last))
+        {
+            return null;
+        }
+        if (Alike(last, kept))
+        {
+            return last;
+        }
+        if (kept.Kind == HistoryKind.Moved || known.TryGetValue(kept.Path!, out string? now) && now == kept.Before)
+        {
+            return null;
+        }
+        for (int i = events.Count - 1; i >= 0 && events[i].Time >= kept.Time - HeardWithin; i--)
+        {
+            if (events[i].Name == ExternalChange && Alike(events[i], kept))
+            {
+                return events[i];
+            }
+        }
+        return null;
+    }
+
+    private static bool Alike(HistoryEvent held, HistoryEvent kept) =>
+        held.Kind == kept.Kind && held.Before == kept.Before && held.After == kept.After && PathNames.Same(held.Path!, kept.Path!)
+        && (held.To is null ? kept.To is null : kept.To is not null && PathNames.Same(held.To, kept.To));
 
     /// <summary>The log's lines as they are on disk, each with its event, or null for one this build does not read (a
     /// later build's kind, a line cut short by a crash); read sharing writes, as another Passenger may be appending.</summary>
@@ -575,6 +767,8 @@ public sealed class LocalHistory
 
     private void RecordNotice(IReadOnlyList<string> paths, long set, string name, DateTimeOffset time)
     {
+        // What another Passenger on the same state made and kept is known, not a change made elsewhere.
+        CatchUp();
         List<(string Path, string Hash, byte[] Bytes, bool Made)> found = [];
         List<(string Path, string Hash)> gone = [];
         List<string> later = [];
@@ -699,45 +893,68 @@ public sealed class LocalHistory
         Append(made);
     }
 
-    /// <summary>Keeps events: in memory, in what each path is known to hold, and as lines of the log.</summary>
+    /// <summary>Keeps events: in memory, in what each path is known to hold, and as lines of the log, after what another
+    /// Passenger on the same state kept meanwhile, so a change it kept already is not kept again (<see cref="TakeIn"/>).</summary>
     private void Append(IReadOnlyList<HistoryEvent> made)
     {
         if (made.Count == 0)
         {
             return;
         }
+        Directory.CreateDirectory(Root);
+        using FileStream? holding = Hold();
+        bool caughtUp = TryTakeLog();
+        List<HistoryEvent> taken = [];
         lock (gate)
         {
             foreach (HistoryEvent kept in made)
             {
-                events.Add(kept);
-                Know(kept);
+                if (TakeIn(kept, logged: false))
+                {
+                    taken.Add(kept);
+                }
             }
-            changed = true;
         }
-        Directory.CreateDirectory(Root);
+        if (taken.Count == 0)
+        {
+            return;
+        }
         StringBuilder lines = new();
-        foreach (HistoryEvent kept in made)
+        foreach (HistoryEvent kept in taken)
         {
             lines.Append(Line(kept)).Append('\n');
         }
-        using (Hold())
+        using (FileStream appending = new(log, FileMode.Append, FileAccess.Write, FileShare.Read))
         {
-            File.AppendAllText(log, lines.ToString());
+            appending.Write(Encoding.UTF8.GetBytes(lines.ToString()));
+            if (holding is not null && caughtUp)
+            {
+                // Held, nothing else was appended since the log was read: these lines are read.
+                (readTo, readLine) = (appending.Position, Encoding.UTF8.GetBytes(Line(taken[^1]) + "\n"));
+            }
+            else
+            {
+                unread.UnionWith(taken.Select(Key));
+            }
         }
-        sincePrune += made.Count;
+        sincePrune += taken.Count;
     }
 
-    /// <summary>What a path holds after an event, held under the gate.</summary>
+    /// <summary>What a path holds after an event, and the last change of the paths it changed, held under the gate.</summary>
     private void Know(HistoryEvent kept)
     {
         switch (kept.Kind)
         {
-            case HistoryKind.Seen or HistoryKind.Changed or HistoryKind.Created:
+            case HistoryKind.Seen:
                 known[kept.Path!] = kept.After;
+                break;
+            case HistoryKind.Changed or HistoryKind.Created:
+                known[kept.Path!] = kept.After;
+                lastChange[kept.Path!] = kept;
                 break;
             case HistoryKind.Deleted:
                 known[kept.Path!] = null;
+                lastChange[kept.Path!] = kept;
                 break;
             case HistoryKind.Moved:
                 foreach (KeyValuePair<string, string?> moving in known.Where(k => PathNames.Within(k.Key, kept.Path!)).ToList())
@@ -745,6 +962,8 @@ public sealed class LocalHistory
                     known.Remove(moving.Key);
                     known[PathNames.Moved(moving.Key, kept.Path!, kept.To!)] = moving.Value;
                 }
+                lastChange[kept.Path!] = kept;
+                lastChange[kept.To!] = kept;
                 break;
         }
     }
@@ -765,6 +984,7 @@ public sealed class LocalHistory
             // Held past the wait: the next day's prune, or the next thousand changes', tries again.
             return;
         }
+        TakeLog();
         List<(string Line, HistoryEvent? Event)> logged = Logged();
         List<HistoryEvent> all = [.. logged.Select(l => l.Event).OfType<HistoryEvent>()];
         HashSet<string> onDisk = new(all.Select(Key), PathNames.Comparer);
@@ -828,9 +1048,17 @@ public sealed class LocalHistory
             lock (gate)
             {
                 events.RemoveAll(e => dropped.Contains(e.Set));
+                foreach (string path in lastChange.Where(l => dropped.Contains(l.Value.Set)).Select(l => l.Key).ToList())
+                {
+                    lastChange.Remove(path);
+                }
                 changed = true;
             }
-            AtomicFile.Write(log, Encoding.UTF8.GetBytes(string.Concat(left.Select(line => line + "\n"))));
+            List<string> lines = [.. left];
+            AtomicFile.Write(log, Encoding.UTF8.GetBytes(string.Concat(lines.Select(line => line + "\n"))));
+            readTo = lines.Count == 0 ? 0 : new FileInfo(log).Length;
+            readLine = lines.Count == 0 ? [] : Encoding.UTF8.GetBytes(lines[^1] + "\n");
+            unread.Clear();
         }
         DateTime old = DateTime.UtcNow - Orphaned;
         foreach (string hash in sizes.Keys.Where(h => !references.ContainsKey(h)))

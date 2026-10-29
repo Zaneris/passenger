@@ -325,6 +325,42 @@ public sealed class LocalHistoryTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A change kept twice in the log two Passengers on the same state append to, as an external change by the one
+    /// that heard it and under its own name by the one that made it, in either order, lists once under its maker's name.</summary>
+    [AvaloniaFact]
+    public void A_change_kept_by_its_maker_and_as_heard_by_another_passenger_on_the_same_state_lists_once_under_its_makers_name()
+    {
+        string state = TestFolders.Create("history-state-");
+        Write("Shop.cs", Saved1);
+        Write("Notes.txt", "notes kept\n");
+        string shop = Hash(Original);
+        string shopNow = Hash(Saved1);
+        string notes = Hash("notes\n");
+        string notesNow = Hash("notes kept\n");
+        long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        string root = Path.Combine(Passenger.App.State.ProjectState.FolderOf(state, folder), "localHistory");
+        Directory.CreateDirectory(root);
+        // Shop.cs's change heard by one before its maker kept it; Notes.txt's kept by its maker before another heard it.
+        File.WriteAllText(Path.Combine(root, "changes.log"), string.Concat(
+            $"{{\"s\":1,\"t\":{now - 6000},\"k\":\"seen\",\"p\":\"Shop.cs\",\"a\":\"{shop}\"}}\n",
+            $"{{\"s\":2,\"t\":{now - 5000},\"k\":\"changed\",\"p\":\"Shop.cs\",\"b\":\"{shop}\",\"a\":\"{shopNow}\",\"n\":\"{LocalHistory.ExternalChange}\"}}\n",
+            $"{{\"s\":3,\"t\":{now - 4990},\"k\":\"changed\",\"p\":\"Shop.cs\",\"b\":\"{shop}\",\"a\":\"{shopNow}\",\"n\":\"Change Signature\"}}\n",
+            $"{{\"s\":4,\"t\":{now - 4000},\"k\":\"seen\",\"p\":\"Notes.txt\",\"a\":\"{notes}\"}}\n",
+            $"{{\"s\":5,\"t\":{now - 3000},\"k\":\"changed\",\"p\":\"Notes.txt\",\"b\":\"{notes}\",\"a\":\"{notesNow}\"}}\n",
+            $"{{\"s\":6,\"t\":{now - 2990},\"k\":\"changed\",\"p\":\"Notes.txt\",\"b\":\"{notes}\",\"a\":\"{notesNow}\",\"n\":\"{LocalHistory.ExternalChange}\"}}\n"));
+        MainWindow window = Open("Shop.cs", state, new HistoryKeeping());
+
+        HistoryTab history = ShowFromFileMenu(window, "Show History…");
+        Ui.Landed(() => history.Rows.Count > 0, "Shop.cs's history");
+        Assert.Equal(["Change Signature"], history.Rows.Select(r => r.Title));
+        HistoryTab both = window.ShowLocalHistory(folder)!;
+        Ui.Landed(() => both.Rows.Count > 0, "the folder's history");
+        Assert.Equal(["Modify Notes.txt", "Change Signature"], both.Rows.Select(r => r.Title));
+        window.Close();
+
+        static string Hash(string text) => LocalHistory.Hash(System.Text.Encoding.UTF8.GetBytes(text));
+    }
+
     /// <summary>A revert follows only what it changes: a file's text put back leaves every Explorer row as it was, with Go to
     /// File's folder never walked again and the project not checked again, and a file deleted brought back puts in its own
     /// row alone.</summary>
