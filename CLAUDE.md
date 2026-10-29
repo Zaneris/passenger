@@ -285,8 +285,9 @@ site-shots` retakes its images.
   ours. A file deleted reaches it only once the projects holding it loaded again without it (`ProjectMethods.Deleted`):
   told first, it reads the missing file for its document, a second each, before any answer needing the compilation
   (dotnet/roslyn#86236).
-- **Roslyn's server passes over an option answered empty** when told its configuration changed, so a null never takes an
-  option back to its default (#651); `LanguageServer.TakesOptions` names what a running server can't take.
+- **Roslyn's server passes over an option answered empty** when told its configuration changed, so an option goes back
+  to its default only as that default's value (`CSharpService.OwnScope`), never null (a server's option values can't
+  be); `LanguageServer.TakesOptions` names the one thing a running server still can't take, an option left out.
 - **Roslyn's server writes its MEF caches beside its DLLs** (`roslyn/cache/`, no option for elsewhere), so where that
   folder is in a macOS bundle (a file added breaks the seal: "damaged", #450) or read-only, it runs from a copy in the
   state's `cache/roslyn/` (`RoslynServerFolder`); nothing a Passenger runs may write inside the app.
