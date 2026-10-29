@@ -182,12 +182,13 @@ Projects in `src/`; `find_symbol` finds the rest:
   function to an `EditPlan`, `FuzzyMatch` (allocates nothing), `FileText`, and anchors (`AnchorAt`/`RangeAt`/`MarkAt`,
   `AnchoredList`; moved before `Changed`, each handler isolated): hold a place in the text with one, never your own
   `TextEditing.Map*`.
-- `Passenger.Editor`: the `CodeEditor` control (partials), `Keymap` and `EditorActions` (presets). The gutter's columns but
-  numbers and folds are the App's (`IGutterColumn`), the editor naming no debugger, test or VCS concept
-  (EditorRulesTests); what a file's editors draw is its one `DocumentDecorations`, never fed per split. With soft wrap, an
-  offset becomes a place through `Rows`/`RowSpan`. Wraps, rows, folds, hints and built lines are runs an edit moves only
-  where it reaches, so a key costs what it changed, not the file's size: keep it so. Row views are carried so too, a
-  highlighter carrying the colours of lines an edit didn't reach (`IHighlighter.Showing`, `KeptColours`).
+- `Passenger.Editor`: the `CodeEditor` control (partials), `Keymap` and `EditorActions` (presets). The gutter's columns
+  but numbers and folds are the App's (`IGutterColumn`), the editor naming no debugger, test or VCS concept
+  (EditorRulesTests); what a file's editors draw is its one `DocumentDecorations`, never fed per split. With soft wrap,
+  an offset becomes a place through `Rows`/`RowSpan` (a place on a line through `WrapOf`), the lines off screen wrapped
+  on the pool (`WrapRest`). Wraps, rows, folds, hints and built lines are runs an edit moves only where it reaches, so a
+  key costs what it changed, not the file's size: keep it so. Row views are carried so too, a highlighter carrying the
+  colours of lines an edit didn't reach (`IHighlighter.Showing`, `KeptColours`).
 - `Passenger.Languages`: C# coloured by Roslyn's parser in-process (`CSharpHighlighter`, also each open file's one
   syntax service, `OpenDocument.Syntax`: never a fresh parse; every in-process parse takes its options from
   `CSharpParsing`, a folder's file's through `CompilationSymbols`, `EditorArea.ParseOptions`, the XAML core's through
