@@ -176,6 +176,7 @@ public partial class MainWindow
         headStart = null;
         // The consoles are another folder's: what it ran said its last there before its end landed.
         Bottom.Run.Clear();
+        Bottom.Run.ShowWaiting(null);
         Bottom.Build.Clear();
         Bottom.Debug.Clear();
         Bind(opened);

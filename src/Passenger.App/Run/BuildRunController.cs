@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Text;
 using Avalonia.Threading;
 using Passenger.App.Aspire;
@@ -212,6 +213,7 @@ public sealed partial class BuildRunController
     /// greyed.</summary>
     private void RunLogEnded(int code)
     {
+        UnfollowWatched();
         parts.Views.Run.SetRunning(false);
         string said = session.ContainerRun is { } containers ? ContainersEnded(containers) : RunEnded(ran, code);
         // What ran has ended: no configuration of it runs, whatever else does (an AppHost).
@@ -864,6 +866,7 @@ public sealed partial class BuildRunController
                 return Said(unsaved);
             }
             parts.Views.Run.Clear();
+            UnfollowWatched();
             // dotnet watch builds the project itself, and runs it again after an edit it cannot apply.
             bool watched = (hotReload ?? parts.Settings().HotReload) && chosen.Program.Length == 0;
             watching = watched;
@@ -909,6 +912,10 @@ public sealed partial class BuildRunController
             parts.Dock.Show(ToolWindowIds.Run);
             parts.Say(running);
             WatchBindings(inspected, parts.Views.Run);
+            if (watched)
+            {
+                FollowWatched(chosen.Name);
+            }
             // Its fork off the window's thread (#441): the program runs from now as Stop and IsRunning see it, its id known once started.
             string? notStarted = Started(watched
                 ? await session.Runner.StartDotnetAsync(Watch(plan), plan.WorkingDirectory, variables)
@@ -1061,11 +1068,103 @@ public sealed partial class BuildRunController
         return watch;
     }
 
+    /// <summary>dotnet watch's words once the program it ran has ended and it waits for a file to change before starting it
+    /// again, and once it watches the program it has started.</summary>
+    private const string WatchWaits = "Waiting for a file to change before restarting";
+
+    private const string WatchWatches = "Waiting for changes";
+
+    /// <summary>dotnet watch said the program it ran in the Run window ended and it waits for a change to start it again
+    /// (<see cref="HotReloadResult.Failed"/>), or that a change started it again (<see cref="HotReloadResult.Applied"/>),
+    /// with the status bar's words of it.</summary>
+    public event EventHandler<HotReloadOutcome>? WatchSaid;
+
+    /// <summary>Ends following dotnet watch's words of the program it runs in the Run window, taking away what the window
+    /// says of them; null while none is followed.</summary>
+    private Action? unfollowWatched;
+
+    /// <summary>Follows what dotnet watch says of the program it runs in the Run window, a line at a time, until the run's end
+    /// or the next start: once the program has ended and dotnet watch waits for a change to start it again, the status bar
+    /// and the Run window say so, offering Rerun, rather than what the last apply came to; once dotnet watch has started it
+    /// again and watches it, the status bar says that.</summary>
+    private void FollowWatched(string name)
+    {
+        UnfollowWatched();
+        ProcessRunner runner = session.Runner;
+        string? ended = null;
+        bool waits = false;
+        EventHandler<string> heard = (_, line) =>
+        {
+            // The program's own lines are never dotnet watch's.
+            if (!line.StartsWith("dotnet watch", StringComparison.Ordinal))
+            {
+                return;
+            }
+            if (line.Contains(WatchWaits, StringComparison.Ordinal))
+            {
+                waits = true;
+                string end = ended ?? $"{name} ended";
+                string said = $"Hot Reload: {end}; dotnet watch starts it again when a change is saved, or Rerun starts it now";
+                parts.Views.Run.ShowWaiting($"{end}: dotnet watch starts it again when a change is saved");
+                parts.Say(said, StatusPlace.Window(parts.Dock, ToolWindowIds.Run));
+                WatchSaid?.Invoke(this, new HotReloadOutcome(HotReloadResult.Failed, said));
+            }
+            else if (WatchedEnd(line, name) is { } end)
+            {
+                ended = end;
+            }
+            else if (line.Contains(WatchWatches, StringComparison.Ordinal))
+            {
+                ended = null;
+                if (waits)
+                {
+                    waits = false;
+                    string again = $"Running {name} again with Hot Reload: a save applies its changes";
+                    parts.Views.Run.ShowWaiting(null);
+                    parts.Say(again);
+                    WatchSaid?.Invoke(this, new HotReloadOutcome(HotReloadResult.Applied, again));
+                }
+            }
+        };
+        runner.Line += heard;
+        unfollowWatched = () =>
+        {
+            runner.Line -= heard;
+            parts.Views.Run.ShowWaiting(null);
+        };
+    }
+
+    private void UnfollowWatched()
+    {
+        Action? unfollow = unfollowWatched;
+        unfollowWatched = null;
+        unfollow?.Invoke();
+    }
+
+    /// <summary>How a line of dotnet watch's says the program it ran ended ("dotnet watch : [Hello (net10.0)] Exited", "…
+    /// Exited with error code 134"), the program named <paramref name="name"/>; null for any other line.</summary>
+    private static string? WatchedEnd(string line, string name)
+    {
+        const string exited = "] Exited";
+        const string coded = " with error code ";
+        int at = line.IndexOf(exited, StringComparison.Ordinal);
+        if (at < 0)
+        {
+            return null;
+        }
+        ReadOnlySpan<char> rest = line.AsSpan(at + exited.Length).TrimEnd();
+        return rest.IsEmpty ? RunEnded(name, 0)
+            : rest.StartsWith(coded, StringComparison.Ordinal)
+                && int.TryParse(rest[coded.Length..].TrimEnd('.'), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out int code) ? RunEnded(name, code)
+            : $"{name} ended";
+    }
+
     /// <summary>A run that could not start leaves the Run window idle, Stop as the debugger has it, and says why.</summary>
     private string? Started(string? problem)
     {
         if (problem is not null)
         {
+            UnfollowWatched();
             parts.Views.Run.SetRunning(false);
             RunningChanged?.Invoke(this, EventArgs.Empty);
             parts.Say(problem);

@@ -346,6 +346,114 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         }
     }
 
+    /// <summary>A program under dotnet watch that ends on calling a method whose signature an applied edit changed, as one
+    /// does that calls it before dotnet watch has hooked the deleted body: the Apply ends, and the status bar and the Run
+    /// window say the program ended and dotnet watch starts it again when a change is saved, the Run window offering Rerun
+    /// and Stop; a change Apply Hot Reload Changes saves starts it again, which the status bar says, the Apply ending and the
+    /// offer gone; and after a second such end, the Run window's Rerun starts it again.</summary>
+    [AvaloniaFact]
+    public void A_program_under_dotnet_watch_that_ends_on_a_deleted_method_is_said_to_wait_for_a_change_and_a_save_or_rerun_starts_it_again()
+    {
+        string started = Path.Combine(Folder, "program.pid");
+        string asked = Path.Combine(Folder, "asked");
+        // Unhooked, the call of the deleted body ends the program, as a call before dotnet watch's hook does.
+        Write("src/Hello/Program.cs", $$"""
+            File.WriteAllText(@"{{started}}", Environment.ProcessId.ToString());
+            while (true)
+            {
+                if (File.Exists(@"{{asked}}"))
+                {
+                    foreach (System.Reflection.FieldInfo hook in {{DeletedBodyHooks}})
+                    {
+                        hook.SetValue(null, null);
+                    }
+                    Console.WriteLine(Talk.Later());
+                }
+                Thread.Sleep(200);
+            }
+
+            static class Talk
+            {
+                public static string Later() => "asked later";
+            }
+
+            """);
+        MainWindow window = Open();
+        window.ApplySettings(window.Settings with { HotReload = true });
+        bool ending = false;
+        try
+        {
+            window.OpenFile(Path.Combine(Folder, "src", "Hello", "Program.cs"));
+            Ui.Settle();
+            window.Perform(AppActions.RunProgram);
+            WaitWatched(window, () => Processes.ReadId(started) > 0 && Output(window).Contains("Waiting for changes", StringComparison.Ordinal),
+                "the program to run under dotnet watch", TimeSpan.FromMinutes(2));
+            Passenger.App.Workspace.OpenDocument program = window.EditorArea.Active!;
+
+            int first = EndOnDeletedMethod("Later() =>", "Later(int times = 1) =>");
+            Assert.True(window.Runner.IsRunning, "dotnet watch ended with the program, where it waits for a change");
+            Assert.Equal("open the Run window", window.StatusPlace?.Name);
+            Assert.Null(window.Actions.Work.Of(AppActions.ApplyHotReloadChanges));
+
+            // A change saved by the Apply: dotnet watch builds and starts the program again, and the window says so.
+            File.Delete(asked);
+            int at = program.Text.Snapshot.ToString().IndexOf("\"asked later\"", StringComparison.Ordinal);
+            window.EditorArea.CodeEditor.ApplyEdits([new TextEdit(at, "\"asked later\"".Length, "\"saved again\"")]);
+            Assert.True(window.Perform(AppActions.ApplyHotReloadChanges), $"Apply Hot Reload Changes could not run: {window.Status}");
+            WaitWatched(window, () => window.Status == "Running Hello again with Hot Reload: a save applies its changes"
+                && Processes.ReadId(started) is int again && again > 0 && again != first,
+                "dotnet watch to start the program again once a change was saved, and the status bar to say so", TimeSpan.FromMinutes(1));
+            Ui.Settle();
+            Assert.True(window.Actions.Work.Of(AppActions.ApplyHotReloadChanges) is null, "Apply Hot Reload Changes went on working after dotnet watch had started the program again");
+            Assert.Null(window.BottomPanel.Run.Waiting);
+            Assert.DoesNotContain(window.BottomPanel.Run.GetVisualDescendants().OfType<Button>(), b => b.IsEffectivelyVisible && b.Content as string == "Rerun");
+
+            // The Run window's Rerun: dotnet watch ended and run again, which starts the program.
+            int second = EndOnDeletedMethod("Later(int times = 1) =>", "Later(int times = 1, bool again = true) =>");
+            Ui.ClickButton(window.BottomPanel.Run, "Rerun");
+            WaitWatched(window, () => window.Runner.IsRunning && Processes.ReadId(started) is int again && again > 0 && again != second
+                && Output(window).Contains("Waiting for changes", StringComparison.Ordinal) && window.BottomPanel.Run.Waiting is null,
+                "the Run window's Rerun to run the program under dotnet watch again", TimeSpan.FromMinutes(2));
+            Assert.Equal("Running Hello with Hot Reload: a save applies its changes", window.Status);
+
+            ending = true;
+            AssertEndsWithTheWindow(window, started, "the program dotnet watch started");
+
+            // Changes the method's signature, applies it, and has the program call it: the window says it ended, offering the way on.
+            int EndOnDeletedMethod(string before, string after)
+            {
+                int running = Processes.ReadId(started);
+                int place = program.Text.Snapshot.ToString().IndexOf(before, StringComparison.Ordinal);
+                window.EditorArea.CodeEditor.ApplyEdits([new TextEdit(place, before.Length, after)]);
+                Assert.True(window.Perform(AppActions.ApplyHotReloadChanges), $"Apply Hot Reload Changes could not run: {window.Status}");
+                WaitWatched(window, () => window.Status?.Contains("dotnet watch applied the changes", StringComparison.Ordinal) == true
+                    && window.Actions.Work.Of(AppActions.ApplyHotReloadChanges) is null, "the Apply of a changed signature to end with the changes applied");
+                Write("asked", "");
+                WaitWatched(window, () => window.Status is { } said && said.StartsWith("Hot Reload: Hello exited with code ", StringComparison.Ordinal)
+                    && said.EndsWith("; dotnet watch starts it again when a change is saved, or Rerun starts it now", StringComparison.Ordinal),
+                    "the status bar to say the program ended on the deleted method and dotnet watch waits for a change", TimeSpan.FromMinutes(1));
+                Assert.True(Processes.Gone(running), "The program dotnet watch said had ended still runs");
+                string? waiting = window.BottomPanel.Run.Waiting;
+                Assert.True(waiting is not null && waiting.StartsWith("Hello exited with code ", StringComparison.Ordinal)
+                    && waiting.EndsWith(": dotnet watch starts it again when a change is saved", StringComparison.Ordinal),
+                    $"The Run window should say the program ended and dotnet watch waits for a change; it says \"{waiting}\"");
+                string[] offered = [.. window.BottomPanel.Run.GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible).Select(b => b.Content).OfType<string>()];
+                Assert.True(offered.Contains("Rerun") && offered.Contains("Stop"), $"The Run window should offer Rerun and Stop; it offers [{string.Join(", ", offered)}]");
+                return running;
+            }
+        }
+        finally
+        {
+            if (!ending)
+            {
+                window.Perform(AppActions.Stop);
+                Ui.WaitFor(() => !window.Runner.IsRunning, "the program to stop");
+                window.Close();
+            }
+            window.ApplySettings(new Passenger.App.Settings.AppSettings());
+        }
+    }
+
     private static string Output(MainWindow window) => window.BottomPanel.Run.Document.Snapshot.ToString();
 
     /// <summary>A test program's expression of the static delegates of the exception a body an update deleted throws (none

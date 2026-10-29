@@ -90,9 +90,9 @@ public partial class MainWindow
 
     /// <summary>A program under dotnet watch takes edits as their files are saved: they are saved, and what dotnet watch says
     /// of them, a line at a time in the Run window, is said in the status bar however late (its last word, or a restart,
-    /// standing) until the next save or the run's end, as a changed signature restarts the program only at its next call.
-    /// The answer comes once dotnet watch has said what it made of them, <paramref name="later"/> after an apply unless a
-    /// restart comes sooner; null if it said nothing of them in 30 s or before the following ended.</summary>
+    /// standing) until the next save, the run's end or the program's, as a changed signature restarts the program only at its
+    /// next call. The answer is what dotnet watch said of them, or of the program's end or start again, <paramref name="later"/>
+    /// after an apply unless a restart or an end comes sooner; null if nothing in 30 s or before the following ended.</summary>
     internal async Task<HotReloadOutcome?> SaveForWatchAsync(TimeSpan later)
     {
         UnfollowWatch();
@@ -128,12 +128,21 @@ public partial class MainWindow
             }
         };
         EventHandler<int> ended = (_, _) => UnfollowWatch();
+        // The program's end before or after the apply, or its start again once it had ended: what the save came to, said already.
+        BuildRunController watched = buildRun;
+        EventHandler<HotReloadOutcome> told = (_, outcome) =>
+        {
+            last = outcome;
+            UnfollowWatch();
+        };
         run.Line += heard;
         run.Exited += ended;
+        watched.WatchSaid += told;
         unfollowWatch = () =>
         {
             run.Line -= heard;
             run.Exited -= ended;
+            watched.WatchSaid -= told;
             // An answer still waiting is what dotnet watch had said by then.
             said.TrySetResult();
             settled.TrySetResult();
