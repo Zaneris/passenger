@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
+using Passenger.App.Containers;
 using Passenger.App.Explorer;
 using Passenger.App.Run;
 using Passenger.App.Templates;
@@ -26,6 +27,16 @@ public sealed class NewServiceSetupTests : IDisposable
         TestFolders.Delete(place);
     }
 
+    /// <summary>Skips a test of a Docker or Compose set-up where no docker command is installed, which New Project needs to
+    /// offer one; the command is looked for off the window's thread.</summary>
+    private static void SkipWithoutDockerCommand()
+    {
+        string? why = Ui.AwaitPumped(Waiting.Apart(() => ContainerEngine.Shared.Cli is null
+            ? "No docker command is installed here, so New Project offers no Docker or Compose set-up" : null),
+            "the docker command to be looked for", TimeSpan.FromMinutes(1));
+        Assert.SkipWhen(why is not null, why ?? string.Empty);
+    }
+
     /// <summary>New Project into a solution, with a Dockerfile: the project, its Dockerfile and a Docker launch profile beside
     /// the template's own are made, its container configuration chosen; a class library is offered no set-up, saying why,
     /// and the choice comes back with the next service; one Undo in the Solution view takes the project, its files and its
@@ -33,6 +44,7 @@ public sealed class NewServiceSetupTests : IDisposable
     [AvaloniaFact]
     public void New_Project_with_a_Dockerfile_is_chosen_to_run_in_its_container_and_one_Undo_takes_the_whole_creation_back()
     {
+        SkipWithoutDockerCommand();
         TestFolders.Write(place, "Tool/Tool.csproj", TestProjects.Console());
         TestFolders.Write(place, "Tool/Program.cs", "System.Console.WriteLine(\"tool\");\n");
         TestFolders.Write(place, "Shop.slnx", "<Solution>\n  <Project Path=\"Tool/Tool.csproj\" />\n</Solution>\n");
@@ -98,6 +110,7 @@ public sealed class NewServiceSetupTests : IDisposable
     [AvaloniaFact]
     public void Typing_in_another_file_while_New_Project_sets_its_service_up_stays_out_of_its_Undo()
     {
+        SkipWithoutDockerCommand();
         TestFolders.Write(place, "Tool/Tool.csproj", TestProjects.Console());
         TestFolders.Write(place, "Tool/Program.cs", "System.Console.WriteLine(\"tool\");\n");
         const string Had = "static class Greeting\n{\n}\n";
@@ -253,6 +266,7 @@ public sealed class NewServiceSetupTests : IDisposable
     [AvaloniaFact]
     public void New_Solution_of_a_web_API_with_Docker_Compose_is_chosen_to_run_with_Compose_and_the_first_Run_brings_it_up()
     {
+        SkipWithoutDockerCommand();
         MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings, StartsLanguageServer = false };
         window.Show();
         window.KeepLayout();
@@ -305,6 +319,7 @@ public sealed class NewServiceSetupTests : IDisposable
     [AvaloniaFact]
     public void New_Project_with_Docker_Compose_joins_the_solutions_compose_file_beside_its_services()
     {
+        SkipWithoutDockerCommand();
         TestFolders.Write(place, "Tool/Tool.csproj", TestProjects.Console());
         TestFolders.Write(place, "Tool/Program.cs", "System.Console.WriteLine(\"tool\");\n");
         TestFolders.Write(place, "Shop.slnx", "<Solution>\n  <Project Path=\"Tool/Tool.csproj\" />\n</Solution>\n");
