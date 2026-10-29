@@ -428,9 +428,22 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 throw Lacks(served, "Rename", MSBuildHas);
         }
         ServerServed server = (ServerServed)served;
-        LspDocument lsp = server.Lsp;
-        if (server.Web is null && Session.AspireFiles.RoleOf(served.Document.Path) != Aspire.AspireRole.None
-            && await CSharpAssist.AspireResourceAtAsync(lsp, offset) is { } resource)
+        string? resource = null;
+        if (server.Web is null && Session.AspireFiles.RoleOf(served.Document.Path) != Aspire.AspireRole.None)
+        {
+            // Held on the name through what is typed while the server says whether it is a resource's.
+            Anchor held = window.Assist.Actions.HeldAt(served.Document, offset);
+            try
+            {
+                resource = await CSharpAssist.AspireResourceAtAsync(server.Lsp, offset);
+                offset = held.Offset;
+            }
+            finally
+            {
+                held.Remove();
+            }
+        }
+        if (resource is not null)
         {
             RefactorOutcome made = await window.Assist.Languages.CSharp.RenameResourceAsync(served.Document, offset, resource, newName, patience);
             if (made.Problem is { } problem)

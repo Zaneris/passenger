@@ -33,6 +33,8 @@ public static class TypeRename
     /// name is not a type's declared in the folder.</summary>
     public static async Task<Named?> NamedAsync(EditorArea editors, string folder, LspDocument server, int offset)
     {
+        // The open files as the question went: what is typed meanwhile moves the places the answer names in them.
+        using Asked asked = WorkspaceEdits.Track(editors);
         IReadOnlyList<LspLocation> definitions = await server.DefinitionAsync(offset);
         string? type = null;
         string? fullName = null;
@@ -40,7 +42,7 @@ public static class TypeRename
         List<string> files = [];
         foreach (LspLocation place in definitions)
         {
-            if (Local(folder, place) is not { } path || Declared(editors, path, place) is not { } declared)
+            if (Local(folder, place) is not { } path || Declared(editors, asked, path, place) is not { } declared)
             {
                 continue;
             }
@@ -134,12 +136,22 @@ public static class TypeRename
         return JsonSerializer.SerializeToElement(whole, Json.Options);
     }
 
-    /// <summary>The type declared at a place the server gave in a file, with its <c>x:Class</c> name; null when none is.</summary>
-    private static (string Name, string? FullName)? Declared(EditorArea editors, string path, LspLocation place) =>
-        Syntax(editors, path) is { } parsed && DeclarationAt(parsed.Root, ServerLines.Of(parsed.Text).OffsetOf(place.Range.Start)) is { } declaration
-            && Identifier(declaration) is { } name
+    /// <summary>The type declared at a place the server gave in a file, with its <c>x:Class</c> name; null when none is. A
+    /// place in an open file is in its text as the question was <paramref name="asked"/>, read where what was typed since
+    /// has taken it.</summary>
+    private static (string Name, string? FullName)? Declared(EditorArea editors, Asked asked, string path, LspLocation place)
+    {
+        if (Syntax(editors, path) is not { } parsed)
+        {
+            return null;
+        }
+        int offset = editors.Find(path) is { } open && asked.Trackers.GetValueOrDefault(open) is { } since
+            ? since.MapOffset(ServerLines.Of(since.Snapshot).OffsetOf(place.Range.Start))
+            : ServerLines.Of(parsed.Text).OffsetOf(place.Range.Start);
+        return DeclarationAt(parsed.Root, offset) is { } declaration && Identifier(declaration) is { } name
             ? (name.ValueText, FullName(declaration, name.ValueText))
             : null;
+    }
 
     /// <summary>A place's file when it is one inside the folder, never a server's own (metadata, generated source).</summary>
     private static string? Local(string folder, LspLocation place) =>

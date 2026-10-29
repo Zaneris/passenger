@@ -364,6 +364,11 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         IdeErrors.Observe(OfferFileRenames(box, document, word.Start));
     }
 
+    /// <summary>A place in an open file a rename starts from, held on its name through what is typed until the server is
+    /// asked: what is typed at the name's start goes before it, and at its end or inside after it. Its holder removes it.</summary>
+    internal Anchor HeldAt(OpenDocument document, int offset) =>
+        document.Text.AnchorAt(offset, RenamedAt(document, document.Text.Snapshot, offset).Start == offset ? AnchorGravity.After : AnchorGravity.Before);
+
     /// <summary>The name a rename at an offset of a file renames: a web language's through its own characters (CSS's
     /// --accent, JavaScript's $el).</summary>
     private TextRange RenamedAt(OpenDocument document, TextSnapshot text, int offset) =>
@@ -376,24 +381,34 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     /// files not open it wrote have landed; an agent's call is told its <paramref name="patience"/>.</summary>
     internal async Task<RefactorOutcome> RenameSymbolAsync(OpenDocument document, int offset, string name, bool renameFiles, Patience? patience)
     {
-        // Followed through what is typed while the files just made are waited for.
-        using (ChangeTracker waited = new(document.Text))
+        // Held on the name through what is typed while the rename is out.
+        Anchor at = HeldAt(document, offset);
+        try
         {
-            if (await context.TakenInAsync(document, () => waited.MapOffset(offset)) is { } unloaded)
-            {
-                return RefactorOutcome.Refused($"Rename was not applied: {unloaded}");
-            }
-            offset = waited.MapOffset(offset);
+            return await RenameSymbolAsync(document, at, name, renameFiles, patience);
         }
-        TextSnapshot text = document.Text.Snapshot;
-        string old = text.GetText(RenamedAt(document, text, offset));
-        // The open files as the request went: what is typed meanwhile carries the answer on.
-        using Asked asked = WorkspaceEdits.Track(context.Editors);
+        finally
+        {
+            at.Remove();
+        }
+    }
+
+    /// <summary>A name renamed from a place held on it (<see cref="HeldAt"/>), the server asked where the place is then.</summary>
+    private async Task<RefactorOutcome> RenameSymbolAsync(OpenDocument document, Anchor at, string name, bool renameFiles, Patience? patience)
+    {
+        if (await context.TakenInAsync(document, () => at.Offset) is { } unloaded)
+        {
+            return RefactorOutcome.Refused($"Rename was not applied: {unloaded}");
+        }
         // Asked before the rename, where the type is declared still.
         TypeRename.Named? type = context.WebOf(document) is null && context.CSharp?.Session?.Folder is { } folder
-            ? await TypeRename.NamedAsync(context.Editors, folder, context.Now(document), offset) : null;
+            ? await TypeRename.NamedAsync(context.Editors, folder, context.Now(document), at.Offset) : null;
+        TextSnapshot text = document.Text.Snapshot;
+        string old = text.GetText(RenamedAt(document, text, at.Offset));
+        // The open files as the request went: what is typed meanwhile carries the answer on.
+        using Asked asked = WorkspaceEdits.Track(context.Editors);
         // Asked of the server running now: one there before may have been started again since.
-        if (await context.Now(document).RenameAsync(offset, name) is not { } edit)
+        if (await context.Now(document).RenameAsync(at.Offset, name) is not { } edit)
         {
             return new RefactorOutcome("This can't be renamed", null, [], []);
         }

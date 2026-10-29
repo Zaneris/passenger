@@ -242,6 +242,57 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
         window.Close();
     }
 
+    /// <summary>A line typed at the top of a class's file while the class's rename is out goes in above it, and the rename
+    /// still lands on the class: its declaration and uses renamed and its file renamed with it, where the place the rename
+    /// was asked at, and the places the server named the class's files by, no longer named the class.</summary>
+    [AvaloniaFact]
+    public void A_line_typed_in_a_classs_file_while_its_rename_is_out_still_renames_the_class_and_its_file()
+    {
+        MainWindow window = Open("Order.cs");
+        OpenDocument document = window.EditorArea.Active!;
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "class Ord");
+        editor.Focus();
+        Ui.Run(window, AppActions.Rename);
+        Ui.WaitFor(() => window.Assist.RenameOffersFiles.Count > 0, "the rename to offer Order.cs");
+        window.KeyTextInput("Purchase");
+        window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.None, null);
+        editor.ApplyEdits([new TextEdit(0, 0, "// typed meanwhile\n")]);
+        Ui.Settle();
+
+        Assert.True(File.Exists(PurchasePath), $"Order.cs was not renamed with its class, a line typed meanwhile: {window.Status}");
+        Assert.False(File.Exists(OrderPath), "Order.cs is still there");
+        Assert.Equal(PurchasePath, document.Path);
+        Assert.Equal("// typed meanwhile\n" + Order.Replace("Order", "Purchase", StringComparison.Ordinal), document.Text.Snapshot.ToString());
+        Assert.Equal(Till.Replace("Order", "Purchase", StringComparison.Ordinal), File.ReadAllText(Path.Combine(folder, "Till.cs")));
+        window.Close();
+    }
+
+    /// <summary>A line typed at the top of a partial class's open file while the Solution view renames the file with its
+    /// class goes in above it, and the class's other part named after it is renamed with it all the same.</summary>
+    [AvaloniaFact]
+    public void A_line_typed_in_a_file_the_solution_view_renames_with_its_class_still_takes_the_classs_other_part_along()
+    {
+        MainWindow window = Open("Basket.cs");
+        OpenDocument document = window.EditorArea.Active!;
+        Choose(window, Path.Combine(folder, "Basket.cs"));
+        Ui.Run(window, AppActions.Rename);
+        NamePopup popup = Assert.IsType<NamePopup>(window.Popup);
+        Assert.True(popup.Option?.IsChecked == true, "Renaming Basket.cs did not offer to rename the class Basket with it");
+        window.KeyTextInput("Cart.cs");
+        window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.None, null);
+        window.EditorArea.CodeEditor.ApplyEdits([new TextEdit(0, 0, "// typed meanwhile\n")]);
+        Ui.WaitFor(() => !window.IsPopupOpen, $"the rename to finish: {popup.Problem}");
+        Ui.Settle();
+
+        Assert.Equal(["Cart.Lines.cs", "Cart.cs"], Directory.GetFiles(folder, "Cart*").Select(Path.GetFileName).Order(StringComparer.Ordinal));
+        Assert.Empty(Directory.GetFiles(folder, "Basket.*"));
+        Assert.Equal(Path.Combine(folder, "Cart.cs"), document.Path);
+        Assert.StartsWith("// typed meanwhile\nnamespace Shop;\n\npublic partial class Cart\n", document.Text.Snapshot.ToString(), StringComparison.Ordinal);
+        Assert.Contains("public partial class Cart", File.ReadAllText(Path.Combine(folder, "BasketExtras.cs")), StringComparison.Ordinal);
+        window.Close();
+    }
+
     private MainWindow Open(string file)
     {
         MainWindow window = Ui.OpenFolder(folder, autosaves: false);

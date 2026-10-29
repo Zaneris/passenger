@@ -446,11 +446,11 @@ internal sealed partial class XamlAssist : LanguageAssist
     }
 
     /// <summary>A range of a file as a place for the Find window, which reads it in the server's lines as the server's are.</summary>
-    private LspLocation Location(string path, int start, int end)
-    {
-        TextSnapshot text = ServerPlaces.TextOf(context.Editors, path) ?? TextSnapshot.Empty;
-        return new LspLocation(DocumentUris.FromPath(path), ServerLines.Of(text).RangeOf(TextRange.FromBounds(Math.Min(start, text.Length), Math.Min(end, text.Length))));
-    }
+    private LspLocation Location(string path, int start, int end) => Location(path, ServerPlaces.TextOf(context.Editors, path) ?? TextSnapshot.Empty, start, end);
+
+    /// <summary>A range of a file's text as it was found in, in the server's lines.</summary>
+    private static LspLocation Location(string path, TextSnapshot text, int start, int end) =>
+        new(DocumentUris.FromPath(path), ServerLines.Of(text).RangeOf(TextRange.FromBounds(Math.Min(start, text.Length), Math.Min(end, text.Length))));
 
     /// <summary>Find Usages in XAML: an element's name where the file names it and where its code-behind uses the field
     /// Avalonia or WPF makes for it; a resource key where any of the project's XAML uses it; a type or member of the
@@ -487,7 +487,7 @@ internal sealed partial class XamlAssist : LanguageAssist
         if (symbol.Named is { } named)
         {
             usages.AddRange(XamlNavigation.NameUses(file, named.Value).Select(r => Location(file.Path, r.Start, r.End)));
-            usages.AddRange(await CodeBehindUses(file, named.Value));
+            usages.AddRange((await CodeBehindUses(file, named.Value)).Uses);
         }
         else if (symbol.Targets.Count > 0 && symbol.Targets[0].Kind == XamlTargetKind.Resource)
         {
@@ -569,35 +569,44 @@ internal sealed partial class XamlAssist : LanguageAssist
 
     /// <summary>The code-behind's uses of the field Avalonia's generator or WPF's MarkupCompile makes for a named element:
     /// the server's references from a mention of the name in a file of the <c>x:Class</c> whose definition is that
-    /// generated field, its generated declaration and uses left out.</summary>
-    private async Task<IReadOnlyList<LspLocation>> CodeBehindUses(XamlFile file, string name)
+    /// generated field, its generated declaration and uses left out; with the version of the open file's text both
+    /// questions were asked of, which the uses are in (null for a file not open).</summary>
+    private async Task<(IReadOnlyList<LspLocation> Uses, int? Version)> CodeBehindUses(XamlFile file, string name)
     {
         if (context.CSharp?.Session is not { IsLoaded: true } session || file.ClassName is not { } className)
         {
-            return [];
+            return ([], null);
         }
         IEnumerable<string> files = file.Types.PlacesOf(className).Select(p => p.Path).Append(file.Path + ".cs").Where(File.Exists).Distinct(StringComparer.Ordinal);
         Regex word = new($@"(?<![\w.]){Regex.Escape(name)}\b", RegexOptions.CultureInvariant);
         foreach (string path in files)
         {
             OpenDocument? open = context.Editors.Find(path);
-            string text = context.Editors.TextOf(path)?.ToString() ?? string.Empty;
-            foreach (Match mention in word.Matches(text).Take(5))
+            for (int tried = 0; tried < 5; tried++)
             {
+                // Read again for each mention: an open file's text may have been typed in while the last was asked about.
+                string text = context.Editors.TextOf(path)?.ToString() ?? string.Empty;
+                int? version = open?.Text.Version;
+                if (word.Matches(text).Skip(tried).FirstOrDefault() is not { } mention)
+                {
+                    break;
+                }
                 LspDocument? shown = null;
                 try
                 {
                     LspDocument server = open is not null && context.CSharp?.For(open)?.Lsp is { } attached ? attached : shown = session.Open(path, new TextDocument(text));
-                    IReadOnlyList<LspLocation> definitions = await server.DefinitionAsync(mention.Index);
-                    if (!definitions.Any(d => IsGenerated(d, className, file.Path)))
+                    Task<IReadOnlyList<LspLocation>> definitions = server.DefinitionAsync(mention.Index);
+                    Task<IReadOnlyList<LspLocation>> references = server.ReferencesAsync(mention.Index);
+                    await Task.WhenAll(definitions, references);
+                    if (!(await definitions).Any(d => IsGenerated(d, className, file.Path)))
                     {
                         continue;
                     }
-                    return [.. (await server.ReferencesAsync(mention.Index)).Where(r => !IsGenerated(r, className, file.Path))];
+                    return ([.. (await references).Where(r => !IsGenerated(r, className, file.Path))], version);
                 }
                 catch (LanguageServerFailed)
                 {
-                    return [];
+                    return ([], null);
                 }
                 finally
                 {
@@ -605,7 +614,7 @@ internal sealed partial class XamlAssist : LanguageAssist
                 }
             }
         }
-        return [];
+        return ([], null);
     }
 
     /// <summary>Whether a place is in the C# made for a class's XAML: Avalonia's generator's <c>Class.g.cs</c>, or the
@@ -661,24 +670,31 @@ internal sealed partial class XamlAssist : LanguageAssist
         {
             return null;
         }
-        Dictionary<string, List<LspTextEdit>> changes = new(StringComparer.Ordinal);
-        void Add(LspLocation place)
+        Dictionary<string, (int? Version, List<LspTextEdit> Edits)> changes = new(StringComparer.Ordinal);
+        void Add(LspLocation place, int? version)
         {
-            if (!changes.TryGetValue(place.Uri, out List<LspTextEdit>? edits))
+            if (!changes.TryGetValue(place.Uri, out (int? Version, List<LspTextEdit> Edits) entry))
             {
-                changes[place.Uri] = edits = [];
+                changes[place.Uri] = entry = (version, []);
             }
-            edits.Add(new LspTextEdit(place.Range, name));
+            entry.Edits.Add(new LspTextEdit(place.Range, name));
         }
+        // The uses are in the text as the rename began, from which what is typed meanwhile carries them on.
+        TextSnapshot read = WorkspaceEdits.Answered(context.Editors, asked)(file.Path) ?? TextSnapshot.Empty;
         foreach (TextRange use in XamlNavigation.NameUses(file, old))
         {
-            Add(Location(file.Path, use.Start, use.End));
+            Add(Location(file.Path, read, use.Start, use.End), null);
         }
-        foreach (LspLocation use in await CodeBehindUses(file, old))
+        (IReadOnlyList<LspLocation> behind, int? answered) = await CodeBehindUses(file, old);
+        foreach (LspLocation use in behind)
         {
-            Add(use);
+            Add(use, answered);
         }
-        JsonElement edit = JsonSerializer.SerializeToElement(new { changes }, Json.Options);
+        // Each file's edits name the text they were found in: carried on from it, else left out as edited meanwhile.
+        JsonElement edit = JsonSerializer.SerializeToElement(new
+        {
+            documentChanges = changes.Select(c => new { textDocument = new { uri = c.Key, version = c.Value.Version }, edits = c.Value.Edits }),
+        }, Json.Options);
         List<string> dropped = [];
         int files;
         string named = $"Rename {old} to {name}";

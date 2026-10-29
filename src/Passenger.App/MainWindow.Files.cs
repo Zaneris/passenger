@@ -248,14 +248,17 @@ public partial class MainWindow
         OpenDocument? open = Editors.Find(path);
         // A file not open is shown to the server for the question alone, never opened in a tab.
         Lsp.LspDocument? shown = null;
+        Anchor? at = null;
         BackgroundWork.Begin();
         try
         {
             Lsp.LspDocument document = open is not null ? csharp.For(open)?.Lsp ?? throw new Lsp.LanguageServerFailed("the C# language server has not opened the file yet")
                 : shown = server.Open(path, new TextDocument(FileText.Load(path)?.Text ?? string.Empty));
+            // Held on the type's name through what is typed while it is asked about.
+            at = document.Text.AnchorAt(type.Offset, AnchorGravity.After);
+            TypeRename.Named? named = await TypeRename.NamedAsync(Editors, server.Folder, document, at.Offset);
             using Asked asked = WorkspaceEdits.Track(Editors);
-            System.Text.Json.JsonElement? edit = await document.RenameAsync(type.Offset, renamed);
-            TypeRename.Named? named = await TypeRename.NamedAsync(Editors, server.Folder, document, type.Offset);
+            System.Text.Json.JsonElement? edit = await document.RenameAsync(at.Offset, renamed);
             shown?.Dispose();
             shown = null;
             if (edit is not { } made)
@@ -302,6 +305,7 @@ public partial class MainWindow
         }
         finally
         {
+            at?.Remove();
             shown?.Dispose();
             BackgroundWork.End();
         }

@@ -942,6 +942,31 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         return [.. window.Find.Rows.Where(r => r.Usage is not null).Select(r => $"{Path.GetFileName(r.Usage!.Path)}:{r.Usage.Line + 1} {r.Label}")];
     }
 
+    /// <summary>A line written at the top of the open code-behind while an element's rename in its XAML is out (from another
+    /// split, or an agent) goes in above the code, and the rename still lands on the code-behind's use of the element, as
+    /// on the XAML's, where the server was asked about the place the use had been and the rename landed elsewhere.</summary>
+    [AvaloniaFact]
+    public void A_line_written_in_the_code_behind_while_an_elements_rename_is_out_still_renames_its_use_there()
+    {
+        MainWindow window = app.Open(app.PathOf("MainWindow.axaml.cs"));
+        OpenDocument behind = window.EditorArea.Active!;
+        window.OpenFile(app.PathOf("MainWindow.axaml"));
+        Ui.Settle();
+        OpenDocument view = window.EditorArea.Active!;
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "<Button Name=\"G");
+        Ui.Run(window, AppActions.Rename);
+        Ui.WaitFor(() => window.Assist.Renaming == "Go", "the rename box on the button's name");
+        window.KeyTextInput("Start");
+        window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.None, null);
+        behind.Text.Edit([new TextEdit(0, 0, "// written meanwhile\n")], behind.Selections, behind.Selections);
+        Ui.WaitFor(() => view.Text.Snapshot.ToString().Contains("<Button Name=\"Start\"", StringComparison.Ordinal), $"the button renamed: {window.Status}");
+        Ui.Settle();
+
+        Assert.Equal("// written meanwhile\n" + Gallery.CodeBehind.Replace("Go.Content", "Start.Content", StringComparison.Ordinal), behind.Text.Snapshot.ToString());
+        Assert.Contains("{Binding #Start.Content}", view.Text.Snapshot.ToString(), StringComparison.Ordinal);
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void A_key_one_theme_variant_lacks_is_warned_of_where_defined_and_used_and_the_fix_adds_it_to_that_variant()
     {
