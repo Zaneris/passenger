@@ -191,7 +191,8 @@ Projects in `src/`; `find_symbol` finds the rest:
   state it reached, so `TextMateHighlighter.Read` reads it again, then ends it in the state it began in). A new
   language: one `Language` entry, its grammar file and a notices entry; compare entries, never names. A finder never
   tells its answer inside a document's `Changed` (the open file moves its regions in a later handler).
-- `Passenger.Xaml`: Passenger's own XAML core (no Avalonia; WPF shares it; not Avalonia.Ide.CompletionEngine).
+- `Passenger.Xaml`: Passenger's own XAML core (no Avalonia; WPF shares it; not Avalonia.Ide.CompletionEngine); a binding's
+  path is read once (`BindingPath`, `XamlFile.Walk`) for the check, Go to Declaration, uses and completion.
 - `Passenger.Lsp`: the LSP client (StreamJsonRpc, whose types never leave the project; `JsonRpcPeer` for any other
   JSON-RPC peer, the Testing Platform's test hosts), Roslyn's server downloaded per
   platform (`RoslynServer.targets`), `LspDocument` (answers that grow with the solution decoded off the UI thread; never
