@@ -137,7 +137,8 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
   `EditorArea.LandedAsync(paths, …)`), every command waiting inside its recording (`Recording.LandedAsync`,
   `WorkspaceEdits.LandedAsync(recording, …)`: the open files' changes taken first, a file never written left out;
   `TypeRename.Apply` and `ApplyAsCommand` take the caller's), the window's words through `UnlandedAsync`; a command that
-  waits between its writes records with `Commands.RecordWrites`, so only what it wrote is its own. A file shown
+  waits between its writes records with `Commands.RecordWrites`, so only what it wrote is its own; Undo and Redo put
+  closed files back off the window's thread (`CommandHistory.BlockedAsync`, `PutAsync`). A file shown
   read-only refuses every change to its text (`TextDocument.IsReadOnly`, set only by `OpenDocument`), and an action on
   it greys with `Refusals.ReadOnly`.
 - **State is a `StateDocument`** in the one `StateStore` (versioned `Upgrades`, `Clamped`, written debounced and merged,
@@ -238,6 +239,8 @@ Projects in `src/`; `find_symbol` finds the rest:
 - **Web languages.** `WebLanguages` (one Node.js server per kind; every per-kind switch names each kind), `JsonSchemas`
   (downloads only while Settings allows); in a macOS bundle the servers live under `Contents/Resources/web`. TypeScript
   runs one tsserver (`useSyntaxServer` never): a syntax server answers rename and usages from the open files alone.
+  typescript-language-server keeps a file's first `formattingOptions` answer while it runs, so each open file tells
+  tsserver how it indents itself (`WebDocument`'s `configure`).
 - **Build and run.** `BuildRunController` (partials), `ConsoleSink` (every console through one `PumpAsync`),
   `RunConfiguration` (data, edited in place as `ConfigurationEdit`s), `LaunchPlan` (one resolution for Run, Debug,
   Profile, Hot Reload and a debugged test host; a Passenger it launches keeps its state in the launcher's `sandbox/`),
