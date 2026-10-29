@@ -141,6 +141,32 @@ public sealed class StateTests : IDisposable
         Assert.Equal(17, (int)Read(kept)["editorFontSize"]!);
     }
 
+    /// <summary>A change to the settings made while another program holds settings.json without sharing its deletion (on
+    /// Windows another Passenger's read or a scanner, which a move over the file waits out; elsewhere, where an open file is
+    /// moved over all the same, its folder closed to writes) is tried again until it lands, reaching the file once let go.</summary>
+    [AvaloniaFact]
+    public void A_change_made_while_settings_json_is_held_reaches_the_file_once_it_is_let_go()
+    {
+        using IDisposable theme = TestsTheme();
+        string file = Path.Combine(settings, "settings.json");
+        MainWindow window = Keeping();
+        window.KeepSettings();
+        window.ApplySettings(window.Settings with { EditorFontSize = 15 });
+        Ui.WaitFor(() => FontKept(file) == 15, "the settings to be written");
+
+        using (IDisposable held = Held(file))
+        {
+            window.ApplySettings(window.Settings with { EditorFontSize = 16 });
+            Ui.WaitFor(() => Ui.IdeLog().Contains($"{file} could not be written", StringComparison.Ordinal),
+                () => $"the change's write to fail while settings.json is held (it holds font {FontKept(file)})");
+            Assert.Equal(15, FontKept(file));
+        }
+        Ui.WaitFor(() => FontKept(file) == 16,
+            () => $"the change made while settings.json was held to reach it once let go: it holds font {FontKept(file)}, so the next start comes up without the change");
+        window.Close();
+        Assert.Equal(16, FontKept(file));
+    }
+
     [AvaloniaFact]
     public void What_a_person_kept_before_the_store_is_there_on_the_first_run()
     {
@@ -379,6 +405,46 @@ public sealed class StateTests : IDisposable
     }
 
     private static JsonObject Read(string file) => (JsonObject)JsonNode.Parse(File.ReadAllText(file))!;
+
+    /// <summary>The editor's font settings.json holds, read beside a program holding it; none while it holds none.</summary>
+    private static double? FontKept(string file) =>
+        Ui.Shared(file) is { Length: > 0 } text ? (double?)JsonNode.Parse(text)?["editorFontSize"] : null;
+
+    /// <summary>settings.json held as another program holds it: on Windows open without its deletion shared, so a move over
+    /// it is refused; elsewhere, where a move over an open file goes ahead, its folder closed to writes.</summary>
+    private IDisposable Held(string file)
+    {
+        return OperatingSystem.IsWindows() ? new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite) : ClosedToWrites(settings);
+    }
+
+    /// <summary>A folder closed to writes until let go.</summary>
+    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
+    private static IDisposable ClosedToWrites(string folder)
+    {
+        UnixFileMode was = File.GetUnixFileMode(folder);
+        File.SetUnixFileMode(folder, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        Opened opened = new(folder, was);
+        string probe = Path.Combine(folder, "probe");
+        try
+        {
+            File.WriteAllText(probe, string.Empty);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return opened;
+        }
+        File.Delete(probe);
+        opened.Dispose();
+        Assert.Skip("A folder closed to writes takes them all the same here (the tests run as root)");
+        return opened;
+    }
+
+    /// <summary>A folder's mode put back as it is let go.</summary>
+    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
+    private sealed class Opened(string folder, UnixFileMode was) : IDisposable
+    {
+        public void Dispose() => File.SetUnixFileMode(folder, was);
+    }
 
     /// <summary>Every tab's file name, group after group, as the strips show them.</summary>
     private static string[] Tabs(MainWindow window) => [.. window.EditorArea.Groups.SelectMany(g => g.Tabs).Select(t => t.Document.Name)];

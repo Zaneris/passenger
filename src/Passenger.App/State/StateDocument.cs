@@ -28,13 +28,19 @@ public interface IStateDocument<TSelf> where TSelf : class, IStateDocument<TSelf
 
 /// <summary>One file of the store, read the first time it is wanted and clamped. A change is written a moment later,
 /// off the UI thread, through a temporary file flushed to disk and moved over the old one; it is merged over what the
-/// file holds then, so a value this build does not know, or one another Passenger changed, stays. A file that does not
-/// read is set aside as <c>.bad</c>, logged and said in a window keeping its state there, never written over.</summary>
+/// file holds then, so a value this build does not know, or one another Passenger changed, stays. A write that fails
+/// keeps its change waiting and is tried again. A file that does not read is set aside as <c>.bad</c>, logged and said
+/// in a window keeping its state there, never written over.</summary>
 public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
 {
     /// <summary>How long a change waits before it is written, so a burst of them (a drag, an edit moving breakpoints)
     /// is written once.</summary>
     private static readonly TimeSpan Delay = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>The waits before a write that failed is tried again, each longer, as Windows refuses a move over a file
+    /// another program holds a moment without sharing its deletion; past the last, the change waits for the next one or
+    /// <see cref="Flush"/>.</summary>
+    private static readonly TimeSpan[] Again = [.. new[] { 250, 500, 1000, 2000, 4000, 8000 }.Select(ms => TimeSpan.FromMilliseconds(ms))];
 
     private readonly string? formerly;
     private readonly object writing;
@@ -51,6 +57,11 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
 
     private string? pending;
     private bool scheduled;
+
+    /// <summary>The tries of the change waiting that failed since one last landed or a change was set, under
+    /// <see cref="gate"/>.</summary>
+    private int failed;
+
     private bool readOnly;
 
     /// <summary>A document at a path; <paramref name="formerly"/> is the file an older build kept the same value in, read
@@ -84,33 +95,36 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
         }
     }
 
-    /// <summary>Keeps a value, written a moment later unless it is the one kept already.</summary>
+    /// <summary>Keeps a value, written a moment later unless it is the one kept already and written, or being tried
+    /// again.</summary>
     public void Set(T next)
     {
         Load();
         value = next;
         kept = true;
         string text = JsonSerializer.Serialize(next, StateFile.Options);
-        if (text == latest)
-        {
-            return;
-        }
-        latest = text;
         lock (gate)
         {
+            if (text == latest && (pending is null || scheduled))
+            {
+                return;
+            }
+            latest = text;
             pending = text;
+            failed = 0;
             if (scheduled)
             {
                 return;
             }
             scheduled = true;
         }
-        IdeErrors.Observe(Task.Delay(Delay).ContinueWith(_ => Write(), TaskScheduler.Default));
+        WriteAfter(Delay);
     }
 
     /// <summary>Writes a change still waiting, now, on the caller's thread: as the window closes, since the process does
-    /// not wait for a timer.</summary>
-    public void Flush() => Write();
+    /// not wait for a timer. One that fails is tried again while the process runs, the log saying it is lost if
+    /// none lands.</summary>
+    public void Flush() => Write(flushing: true);
 
     /// <summary>A change of this side's about to be put in the file's place, holding this side's value and nothing it has not
     /// read: the written file's last write and length, by which a look at the file later knows it holds nothing new. Raised
@@ -118,12 +132,16 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
     public event Action<(DateTime Written, long Length)>? Wrote;
 
     /// <summary>Reads the file again, once a change still waiting is written: what another Passenger wrote since comes
-    /// in. A file gone or not reading leaves the value as it is (this is no first read, which sets a bad one aside).
-    /// Whether the value changed.</summary>
+    /// in. A change that could not be written, a file gone or one not reading leaves the value as it is (this is no first
+    /// read, which sets a bad one aside). Whether the value changed.</summary>
     public bool Reread()
     {
         Load();
-        Write();
+        if (!Write())
+        {
+            // This side's change, which the file lacks, stays the value until it lands.
+            return false;
+        }
         lock (writing)
         {
             if (readOnly || !File.Exists(Path))
@@ -172,6 +190,7 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
             lock (gate)
             {
                 pending = mine;
+                failed = 0;
             }
             Write();
         }
@@ -247,36 +266,87 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
         }
     }
 
-    /// <summary>Writes the change waiting, if there is one, merged over the file as it is now.</summary>
-    private void Write()
+    private void WriteAfter(TimeSpan wait) => IdeErrors.Observe(Task.Delay(wait).ContinueWith(_ => Write(), TaskScheduler.Default));
+
+    /// <summary>Writes the change waiting, if there is one, merged over the file as it is now. Whether none waits after:
+    /// one whose write failed waits again (<see cref="Failed"/>).</summary>
+    private bool Write(bool flushing = false)
     {
         lock (writing)
         {
             string? mine;
+            int tries;
             lock (gate)
             {
                 mine = pending;
                 pending = null;
                 scheduled = false;
+                tries = failed;
             }
             if (mine is null || readOnly)
             {
-                return;
+                return true;
             }
             try
             {
                 if (OnDisk() is not { } disk)
                 {
-                    return;
+                    return true;
                 }
                 JsonObject merged = StateFile.Merged(disk.Document, Math.Max(disk.Version, T.Upgrades.Count), known, mine, T.Sets);
                 StateFile.Replace(Path, merged, Wrote is { } told && Holds(merged, mine) ? told : null);
                 known = mine;
+                if (tries > 0)
+                {
+                    lock (gate)
+                    {
+                        failed = 0;
+                    }
+                    StateFile.Log($"{Path} was written after {tries} tries failed");
+                }
+                return true;
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {
-                StateFile.Log($"{Path} could not be written ({error.Message})");
+                Failed(mine, error, flushing);
+                return false;
             }
+        }
+    }
+
+    /// <summary>A change whose write failed waits again, unless one set since holds it, and is tried after the next of
+    /// <see cref="Again"/>'s waits, a flush's from the first; the log says so at its first failure, once its tries are
+    /// spent, and at a flush, past which it is lost if the process ends before a try lands.</summary>
+    private void Failed(string mine, Exception error, bool flushing)
+    {
+        TimeSpan? wait = null;
+        int tries;
+        lock (gate)
+        {
+            pending ??= mine;
+            failed = flushing ? 1 : failed + 1;
+            tries = failed;
+            if (!scheduled && tries <= Again.Length)
+            {
+                wait = Again[tries - 1];
+                scheduled = true;
+            }
+        }
+        if (flushing)
+        {
+            StateFile.Log($"{Path} could not be written as it was flushed ({error.Message}): its change is lost if Passenger ends before a later try lands");
+        }
+        else if (tries == 1)
+        {
+            StateFile.Log($"{Path} could not be written ({error.Message}): it is tried again, {Again.Length} times over {Again.Sum(a => a.TotalSeconds)} s at most");
+        }
+        else if (tries == Again.Length + 1)
+        {
+            StateFile.Log($"{Path} still could not be written ({error.Message}): its change waits for the next one, or the window's close");
+        }
+        if (wait is { } after)
+        {
+            WriteAfter(after);
         }
     }
 
