@@ -281,6 +281,93 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
         }
     }
 
+    /// <summary>Add Aspire Orchestration where packages are managed centrally, turned on by Directory.Build.props beside a
+    /// Directory.Packages.props that never says so, or by a Directory.Packages.props with no versions yet: the ServiceDefaults
+    /// made names no version, Directory.Packages.props gains each of its packages', and the solution restores; one Undo
+    /// takes Directory.Packages.props back.</summary>
+    [AvaloniaTheory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Orchestration_where_packages_are_managed_centrally_puts_the_versions_in_Directory_Packages_props_and_the_solution_restores(bool inBuildProps)
+    {
+        string folder = CentralFolder(inBuildProps, inBuildProps ? "    <PackageVersion Include=\"Humanizer\" Version=\"2.14.1\" />\n" : string.Empty, string.Empty);
+        string props = Path.Combine(folder, "Directory.Packages.props");
+        byte[] before = File.ReadAllBytes(props);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => window.WorkspaceModel!.Projects.Where(p => p.Exists).All(p => p.TargetFrameworks.Count > 0), "Api to be evaluated");
+            Assert.Equal("Added Aspire orchestration", Add(window, "Api", existing: false));
+            string defaults = File.ReadAllText(Path.Combine(folder, "Shop.ServiceDefaults", "Shop.ServiceDefaults.csproj"));
+            string pinned = File.ReadAllText(props);
+            List<string> packages = [.. System.Text.RegularExpressions.Regex.Matches(defaults, "<PackageReference Include=\"([^\"]+)\"").Select(m => m.Groups[1].Value)];
+            Assert.True(packages.Count > 0 && !defaults.Contains(" Version=", StringComparison.Ordinal),
+                $"The ServiceDefaults made is not in central package management's form:\n{defaults}");
+            Assert.True(packages.All(p => pinned.Contains($"<PackageVersion Include=\"{p}\" Version=\"", StringComparison.Ordinal)),
+                $"Directory.Packages.props lacks a version of the ServiceDefaults' [{string.Join(", ", packages)}]:\n{pinned}");
+            Restore.Run(Path.Combine(folder, "Shop.slnx"));
+
+            window.Confirm = (_, _, _) => Task.FromResult(true);
+            Ui.Run(window, AppActions.FocusExplorer);
+            Ui.Run(window, EditorActions.Undo);
+            Ui.Run(window, AppActions.SaveAll);
+            Assert.True(before.AsSpan().SequenceEqual(File.ReadAllBytes(props)), $"Undo left Directory.Packages.props as\n{File.ReadAllText(props)}");
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(folder);
+        }
+    }
+
+    /// <summary>Aspire's hosting integration for the database a service reads, added to the AppHost made where packages are
+    /// managed centrally, turned on by Directory.Build.props or by a Directory.Packages.props whose versions are written out
+    /// in full: its reference names no version and Directory.Packages.props pins it at the AppHost's Aspire version.</summary>
+    [AvaloniaTheory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_hosting_package_added_where_packages_are_managed_centrally_is_pinned_in_Directory_Packages_props(bool inBuildProps)
+    {
+        string folder = CentralFolder(inBuildProps, inBuildProps ? "    <PackageVersion Include=\"Npgsql\" Version=\"10.0.3\" />\n"
+            : "    <PackageVersion Include=\"Npgsql\" Version=\"10.0.3\"></PackageVersion>\n", "<ItemGroup><PackageReference Include=\"Npgsql\" /></ItemGroup>");
+        TestFolders.Write(folder, "Api/appsettings.json", "{\n  \"ConnectionStrings\": {\n    \"shopdb\": \"Host=localhost;Database=shop;Username=app;Password=app\"\n  }\n}\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => window.WorkspaceModel!.Projects.Any(p => p.Name == "Api" && p.TargetFrameworks.Count > 0 && p.Packages.Any(q => q.Name == "Npgsql")),
+                "Api's packages to be evaluated");
+            Assert.Equal("Added Aspire orchestration", Add(window, "Api", existing: false));
+            string host = File.ReadAllText(Path.Combine(folder, "Shop.AppHost", "Shop.AppHost.csproj"));
+            string pinned = File.ReadAllText(Path.Combine(folder, "Directory.Packages.props"));
+            Assert.True(host.Contains("<PackageReference Include=\"Aspire.Hosting.PostgreSQL\" />", StringComparison.Ordinal),
+                $"The AppHost's Aspire.Hosting.PostgreSQL names a version, or is not there:\n{host}");
+            Assert.True(pinned.Contains($"<PackageVersion Include=\"Aspire.Hosting.PostgreSQL\" Version=\"{AspireApp.TemplatesVersion}\" />", StringComparison.Ordinal),
+                $"Directory.Packages.props does not pin Aspire.Hosting.PostgreSQL at the AppHost's Aspire version:\n{pinned}");
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(folder);
+        }
+    }
+
+    /// <summary>A solution of one web service, Api (its items given), where packages are managed centrally: turned on by
+    /// Directory.Build.props, else by a Directory.Packages.props, which holds the versions given; restored from the run's
+    /// local feed and the package cache. Its folder, by its real path.</summary>
+    private static string CentralFolder(bool inBuildProps, string versions, string items)
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("aspire-central-"));
+        string turnedOn = "<ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>";
+        TestFolders.Write(folder, "Directory.Build.props", $"<Project><PropertyGroup><AspireUseCliBundle>false</AspireUseCliBundle>{(inBuildProps ? turnedOn : string.Empty)}</PropertyGroup></Project>");
+        TestFolders.Write(folder, "Directory.Packages.props", "<Project>\n" + (inBuildProps ? string.Empty : $"  <PropertyGroup>\n    {turnedOn}\n  </PropertyGroup>\n")
+            + (versions.Length > 0 ? $"  <ItemGroup>\n{versions}  </ItemGroup>\n" : string.Empty) + "</Project>\n");
+        TestFolders.Write(folder, "Shop.slnx", "<Solution><Project Path=\"Api/Api.csproj\" /></Solution>");
+        TestFolders.Write(folder, "Api/Api.csproj", $"<Project Sdk=\"Microsoft.NET.Sdk.Web\"><PropertyGroup><TargetFramework>{TestProjects.Framework}</TargetFramework><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>{items}</Project>");
+        TestFolders.Write(folder, "Api/Program.cs", "var builder = WebApplication.CreateBuilder(args);\nvar app = builder.Build();\napp.MapGet(\"/\", () => \"Hello\");\napp.Run();\n");
+        AspireApp.UseFeed(folder);
+        return folder;
+    }
+
     private MainWindow Open()
     {
         MainWindow window = project.Open(project.PathOf("Api/Program.cs"));

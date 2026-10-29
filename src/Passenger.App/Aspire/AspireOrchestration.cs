@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using NuGet.Frameworks;
 using Passenger.App.CSharp;
+using Passenger.App.MSBuild;
 using Passenger.App.Templates;
 using Passenger.Core;
 using Passenger.Languages.CSharp;
@@ -55,18 +56,22 @@ public static class AspireOrchestration
             }
             return Path.Combine(staging, Path.GetRelativePath(root, path));
         }
-        void Copy(string path)
+        // Outside the solution's folder only a Directory.Packages.props above it may be changed, staged apart.
+        string Copy(string path, bool outside = false)
         {
-            if (files.ContainsKey(path))
+            if (files.TryGetValue(path, out (string Staged, byte[]? Before) held))
             {
-                return;
+                return held.Staged;
             }
             byte[] before = File.ReadAllBytes(path);
             FileText text = FileText.FromBytes(before) ?? throw new InvalidOperationException($"{path} is not a text file");
-            string to = Staged(path);
+            string to = outside && !PathNames.Within(path, root)
+                ? Path.Combine(staging, "outside", files.Count.ToString(System.Globalization.CultureInfo.InvariantCulture), Path.GetFileName(path))
+                : Staged(path);
             Directory.CreateDirectory(Path.GetDirectoryName(to)!);
             FileText.Save(to, text.Text, text.Encoding, text.HasBom, text.CrBreaks);
             files.Add(path, (to, before));
+            return to;
         }
         Copy(solution);
         foreach (ProjectModel service in choice.Services)
@@ -171,9 +176,45 @@ public static class AspireOrchestration
         string hostProgram = HostSourcePath(Staged(host), hostParsing);
         Dictionary<string, BackingNeeds> needs = choice.Services.ToDictionary(service => service.Path, service => BackingService.Needs(service), PathNames.Comparer);
         Save(hostProgram, HostSource(Read(hostProgram).Text, host, choice.Services, needs, hostParsing));
-        foreach (BackingService backing in BackingService.Known.Where(k => needs.Values.Any(n => n.Services.Contains(k))))
+        string hostText = Read(Staged(host)).Text;
+        List<string> hosting = [.. BackingService.Known.Where(k => needs.Values.Any(n => n.Services.Contains(k))).Select(k => k.AspirePackage)
+            .Where(package => !ProjectEdits.HasPackage(hostText, package))];
+        CentralPackages? hostCentral = hosting.Count > 0 ? await CentralPackages.OfAsync(host, hostText, cancel) : null;
+        if (hosting.Count > 0)
         {
-            AddHosting(host, backing.AspirePackage, root, Staged, Copy);
+            // Aspire's hosting integrations at the AppHost's own Aspire version: its SDK's, else its Aspire.Hosting.AppHost's.
+            string version = AspireVersion(hostText) ?? hostCentral?.Versions.GetValueOrDefault("Aspire.Hosting.AppHost")
+                ?? throw new InvalidOperationException($"The AppHost's Aspire version could not be read from its project, for {hosting[0]} to be added at it; no file was changed");
+            foreach (string package in hosting)
+            {
+                Check(ProjectEdits.AddPackage(Staged(host), package, version));
+            }
+        }
+        // Under central package management the versions move to Directory.Packages.props: a made project's all, the AppHost's added.
+        List<(string Project, IReadOnlyCollection<string>? Only)> taking = [];
+        if (choice.ServiceDefaults is null)
+        {
+            taking.Add((defaults, null));
+        }
+        if (choice.AppHost is null || hosting.Count > 0)
+        {
+            taking.Add((host, choice.AppHost is null ? null : hosting));
+        }
+        foreach ((string project, IReadOnlyCollection<string>? only) in taking)
+        {
+            string text = Read(Staged(project)).Text;
+            if (!ProjectEdits.VersionedPackages(text).Any(p => only is null || only.Contains(p.Id, StringComparer.OrdinalIgnoreCase))
+                || (PathNames.Same(project, host) && hostCentral is not null ? hostCentral : await CentralPackages.OfAsync(project, text, cancel)) is not { } central)
+            {
+                continue;
+            }
+            (string centralized, IReadOnlyList<(string Id, string Version)> pinned) = ProjectEdits.Centralized(text, central.Versions, central.Overrides, only);
+            Save(Staged(project), centralized);
+            if (pinned.Count > 0)
+            {
+                string props = Copy(central.Props, outside: true);
+                Save(props, CentralPackages.Pinned(Read(props).Text, pinned));
+            }
         }
         foreach (string project in new[] { choice.AppHost is null ? host : null, choice.ServiceDefaults is null ? defaults : null }.OfType<string>())
         {
@@ -218,6 +259,25 @@ public static class AspireOrchestration
         {
             throw new InvalidOperationException("The selected ServiceDefaults project does not expose MapDefaultEndpoints for web services");
         }
+    }
+
+    /// <summary>The Directory.Packages.props nearest above each folder, as MSBuild finds the one a project there reads.</summary>
+    public static IReadOnlyList<string> PackagesPropsOver(IEnumerable<string> folders)
+    {
+        List<string> found = [];
+        foreach (string start in folders)
+        {
+            for (string? folder = start; folder is not null; folder = Path.GetDirectoryName(folder))
+            {
+                string props = Path.Combine(folder, "Directory.Packages.props");
+                if (File.Exists(props))
+                {
+                    found.Add(PathNames.Canonical(props));
+                    break;
+                }
+            }
+        }
+        return [.. found.Distinct(PathNames.Comparer)];
     }
 
     public static IReadOnlyList<string> AppHostSources(string project) =>
@@ -448,49 +508,7 @@ public static class AspireOrchestration
         private static string Literal(string text) => SymbolDisplay.FormatLiteral(text, true);
     }
 
-    /// <summary>An AppHost given Aspire's hosting integration for a backing service, at the AppHost's own Aspire version: its
-    /// package reference, with its version, or under central package management without, the version in the
-    /// Directory.Packages.props that manages it (staged too).</summary>
-    private static void AddHosting(string host, string package, string root, Func<string, string> staged, Action<string> copy)
-    {
-        string stagedHost = staged(host);
-        string text = Read(stagedHost).Text;
-        if (ProjectEdits.HasPackage(text, package))
-        {
-            return;
-        }
-        string? managing = null;
-        for (string? folder = Path.GetDirectoryName(host); folder is not null
-            && (PathNames.Same(folder, root) || PathNames.IsUnder(folder, root)); folder = Path.GetDirectoryName(folder))
-        {
-            string props = Path.Combine(folder, "Directory.Packages.props");
-            if (File.Exists(props))
-            {
-                managing = Read(props).Text.Contains("<ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>", StringComparison.OrdinalIgnoreCase) ? props : null;
-                break;
-            }
-        }
-        string? version = AspireVersion(text) ?? (managing is null ? null : AspireVersion(Read(managing).Text));
-        if (version is null)
-        {
-            throw new InvalidOperationException($"The AppHost's Aspire version could not be read from its project, for {package} to be added at it; no file was changed");
-        }
-        Check(ProjectEdits.AddPackage(stagedHost, package, managing is null ? version : null));
-        if (managing is not null)
-        {
-            copy(managing);
-            string props = staged(managing);
-            string held = Read(props).Text;
-            if (!held.Contains($"Include=\"{package}\"", StringComparison.OrdinalIgnoreCase)
-                && System.Text.RegularExpressions.Regex.Matches(held, "<PackageVersion\\b[^>]*/>").LastOrDefault() is { } last)
-            {
-                int lineEnd = held.IndexOf('\n', last.Index + last.Length);
-                Save(props, held.Insert(lineEnd < 0 ? held.Length : lineEnd + 1, $"{Indent(held, last.Index)}<PackageVersion Include=\"{package}\" Version=\"{version}\" />{NewLine(held)}"));
-            }
-        }
-    }
-
-    /// <summary>The Aspire version a project or Directory.Packages.props names: its AppHost SDK's, else its Aspire.Hosting.AppHost's.</summary>
+    /// <summary>The Aspire version a project names: its AppHost SDK's, else its Aspire.Hosting.AppHost's.</summary>
     private static string? AspireVersion(string text) =>
         System.Text.RegularExpressions.Regex.Match(text,
             "Aspire\\.AppHost\\.Sdk/(?<v>[0-9][^\"\\s;]*)|Name=\"Aspire\\.AppHost\\.Sdk\"\\s+Version=\"(?<v>[^\"]+)\"|Include=\"Aspire\\.Hosting\\.AppHost\"\\s+Version=\"(?<v>[^\"]+)\"",

@@ -64,7 +64,8 @@ public partial class MainWindow
         {
             string[] existing = [solution.Path, .. choice.Services.SelectMany(p => new[] { p.Path, Path.Combine(p.Folder, "Program.cs") }),
                 .. choice.AppHost is { } host ? (string[])[host.Path, .. AspireOrchestration.AppHostSources(host.Path)] : [],
-                .. choice.ServiceDefaults is { } defaults ? new[] { defaults.Path } : []];
+                .. choice.ServiceDefaults is { } defaults ? new[] { defaults.Path } : [],
+                .. AspireOrchestration.PackagesPropsOver([Path.GetDirectoryName(solution.Path)!, .. choice.AppHost is { } chosen ? new[] { chosen.Folder } : []])];
             if (SaveBeforeWriting(existing) is { } unsaved)
             {
                 return status.Text = unsaved;
@@ -74,11 +75,12 @@ public partial class MainWindow
             BackgroundWork.Track(preparing);
             writes = await preparing;
             cancel.Token.ThrowIfCancellationRequested();
-            if (Solution != solution)
+            // One read again meanwhile is the same solution: each file is written only as it was read (CheckUnchanged).
+            if (Solution is not { } now || !PathNames.Same(now.Path, solution.Path))
             {
                 return status.Text = "The solution changed: Aspire orchestration was not added";
             }
-            if (existing.Any(path => Editors.Documents.Any(d => PathNames.Same(d.Path, path) && d.IsModified)))
+            if (existing.Concat(writes.Select(w => w.Path)).Any(path => Editors.Documents.Any(d => PathNames.Same(d.Path, path) && d.IsModified)))
             {
                 throw new InvalidOperationException("A file was edited while orchestration was being prepared: save it and try again");
             }
