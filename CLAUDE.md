@@ -172,8 +172,9 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
 ## Where things are
 
 Projects in `src/`; `find_symbol` finds the rest:
-- `Passenger.Core`: what everything shares, no UI: `ChildProcesses` (`StartAsync` forks off the UI thread: a fork costs a
-  large process tens of ms), `Dotnet`/`Programs`/`ShellEnvironment` (tools found as the login shell would), `PathNames`,
+- `Passenger.Core`: what everything shares, no UI: `ChildProcesses` (`StartAsync` forks off the UI thread: a fork costs
+  a large process tens of ms), `Dotnet`/`Programs`/`ShellEnvironment` (tools found as the login shell would; the
+  installation's folder is `Dotnet.Root`, from the host's real path, never the folder of `Dotnet.Host()`), `PathNames`,
   `AtomicFile`, `SocketFolders` (every Unix socket), `InFlight`, `BackgroundWork`, `Product` (the one place the version
   is read), `PassengerLog` (below the App, never `IdeLog`), `UnawaitedWork`, `Utf8Lines` and `PooledBytes` (a peer's
   lines read and messages written as pooled bytes), `SharedNames` (a name read from bytes, made once).
