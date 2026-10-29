@@ -11,7 +11,7 @@ namespace Passenger.App.Editors;
 /// of its files, or the Solution view) takes all of it back at once, the files it moved going back, every file's text
 /// as it was and the files it made gone, and Redo makes all of it again, each only while every file is still as the
 /// command left it. One that changed one open file's text alone is that file's own undo step; one file not open, with
-/// no undo of its own, is one.</summary>
+/// no undo of its own, is one. The files not open are read and written off the window's thread.</summary>
 public sealed class CommandHistory
 {
     /// <summary>The most commands kept, the oldest going first.</summary>
@@ -20,6 +20,14 @@ public sealed class CommandHistory
     private readonly EditorArea editors;
     private readonly List<Command> done = [];
     private readonly List<Command> undone = [];
+    /// <summary>The last look at a command's files not open, for taking it back or making it again (true), by path, with how
+    /// many puts had begun as it looked: a later look of the same reads only a file whose length or write time moved.</summary>
+    private (Command Command, bool Redo, Dictionary<string, Look> Files, int Puts)? looked;
+    /// <summary>The command an Undo or Redo is putting, until its files not open are written and it has ended.</summary>
+    private (Command Command, Task Ended)? putting;
+    private int puts;
+    /// <summary>Whether the history let go of the command being put meanwhile, which it then does once that ends.</summary>
+    private bool putDropped;
 
     internal CommandHistory(EditorArea editors) => this.editors = editors;
 
@@ -44,13 +52,103 @@ public sealed class CommandHistory
     /// <summary>Forgets every command, as a folder closing does.</summary>
     public void Clear()
     {
+        looked = null;
         Drop(done);
         Drop(undone);
     }
 
     /// <summary>Why a command cannot be taken back (or made again) now, naming the first file changed or moved since, or
-    /// saying the history has let it go; null when it can.</summary>
-    public string? Blocked(Command command, bool redo)
+    /// saying the history has let it go; null when it can. What its parts read of the disk at length (<see cref="Part.Read"/>)
+    /// and its files not open are looked at off the window's thread, a file read only when its length or last write time
+    /// moved since the last look at it; an Undo or Redo under way is waited out first.</summary>
+    public async Task<string?> BlockedAsync(Command command, bool redo)
+    {
+        while (putting is { } other)
+        {
+            await other.Ended;
+        }
+        foreach (Part part in command.Parts)
+        {
+            if (part.Read is { } read && await read(redo) is { } changed)
+            {
+                return changed;
+            }
+        }
+        if (Blocked(command, redo, null) is { } blocked)
+        {
+            return blocked;
+        }
+        int begun = puts;
+        List<(string Path, TextSnapshot Text, bool Made)> files = Closed(command, redo);
+        Dictionary<string, Look>? earlier = looked is { } last && last.Command == command && last.Redo == redo ? last.Files : null;
+        (string? unlike, Dictionary<string, Look> looks) = files.Count == 0 ? (null, []) : await BackgroundWork.Run(() => LookAt(files, earlier));
+        looked = unlike is null ? (command, redo, looks, begun) : null;
+        return unlike ?? Blocked(command, redo, looks);
+    }
+
+    /// <summary>Takes a command back (or makes it again, given true), asked again first as <see cref="BlockedAsync"/> asks and
+    /// at once after, so nothing comes between the look and the change: its moves (made within <paramref name="moving"/>)
+    /// and the open files' steps on the window's thread, its files not open written off it in order, each stored as the look
+    /// found it. Why not, null once done; and whether it began, false when refused before it changed anything.</summary>
+    public async Task<(string? Why, bool Began)> PutAsync(Command command, bool redo, Func<Func<string?>, string?> moving)
+    {
+        Dictionary<string, Look> looks;
+        while (true)
+        {
+            if (await BlockedAsync(command, redo) is { } changed)
+            {
+                return (changed, false);
+            }
+            // Another put begun since the look may have written what it found.
+            if (putting is null && looked is { } look && look.Command == command && look.Redo == redo && look.Puts == puts)
+            {
+                looks = look.Files;
+                break;
+            }
+        }
+        if (Blocked(command, redo, looks) is { } since)
+        {
+            return (since, false);
+        }
+        looked = null;
+        List<Command> from = redo ? undone : done;
+        List<Command> to = redo ? done : undone;
+        int at = from.IndexOf(command);
+        from.RemoveAt(at);
+        to.Add(command);
+        TaskCompletionSource ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        putting = (command, ended.Task);
+        puts++;
+        try
+        {
+            string? failed = redo ? await RedoAsync(command, looks, moving) : await UndoAsync(command, looks, moving);
+            if (failed is not null && to.Remove(command))
+            {
+                from.Insert(Math.Min(at, from.Count), command);
+            }
+            return (failed, true);
+        }
+        finally
+        {
+            putting = null;
+            ended.SetResult();
+            if (putDropped)
+            {
+                putDropped = false;
+                Dropped(command);
+            }
+        }
+    }
+
+    /// <summary>The files not open that taking a command back (or making it again, given true) writes, whose saves may
+    /// still be landing once it returns (<see cref="EditorArea.LandedAsync(IEnumerable{string}, Action{string}?)"/>).</summary>
+    public IReadOnlyList<string> Writes(Command command, bool redo) =>
+        [.. command.Texts.Where(t => !IsOpen(t.Document)).Select(t => t.Path), .. redo ? command.Created.Select(c => c.Path) : []];
+
+    /// <summary>Why a command cannot be taken back (or made again) now, from what the window holds and where its files are:
+    /// its files not open as <paramref name="looks"/> found them, one not looked at counting as changed; with no look, no
+    /// file's text is compared, the open files' undo steps alone asked of.</summary>
+    private string? Blocked(Command command, bool redo, IReadOnlyDictionary<string, Look>? looks)
     {
         if (!(redo ? undone : done).Contains(command))
         {
@@ -70,13 +168,20 @@ public sealed class CommandHistory
         }
         foreach (Creation made in command.Created)
         {
-            if (redo && Exists(made.Path))
+            if (redo)
             {
-                return $"{Path.GetFileName(made.Path)} is already there";
+                if (Exists(made.Path))
+                {
+                    return $"{Path.GetFileName(made.Path)} is already there";
+                }
+                continue;
             }
-            if (!redo && Made(made) is { } changed)
+            bool unlike = looks is not null && (editors.Find(made.Path) is { } open
+                ? open.Text.Snapshot.ToString() != made.Text.ToString()
+                : !looks.ContainsKey(made.Path));
+            if (unlike)
             {
-                return changed;
+                return $"{Path.GetFileName(made.Path)} has been changed since";
             }
         }
         foreach (TextChange text in command.Texts)
@@ -87,15 +192,12 @@ public sealed class CommandHistory
                 {
                     return $"{text.Document.Name} has been changed since";
                 }
+                continue;
             }
-            else
+            string at = redo ? text.Path : command.Moved(text.Path);
+            if (looks is not null && !looks.ContainsKey(at))
             {
-                string at = redo ? text.Path : command.Moved(text.Path);
-                string expected = (redo ? text.Before : text.After).ToString();
-                if (!File.Exists(at) || FileText.Load(at)?.Text != expected)
-                {
-                    return $"{Path.GetFileName(at)} has been changed since";
-                }
+                return $"{Path.GetFileName(at)} has been changed since";
             }
         }
         foreach (Part part in command.Parts)
@@ -108,37 +210,31 @@ public sealed class CommandHistory
         return null;
     }
 
-    /// <summary>Why a command cannot be taken back (or made again) now, as <see cref="Blocked"/> says, what its parts read of
-    /// the disk at length (<see cref="Part.Read"/>) read off the window's thread first.</summary>
-    public async Task<string?> BlockedAsync(Command command, bool redo)
+    /// <summary>Takes a command back: the files it moved go back and the open files take their undo steps, then the files
+    /// not open are written as they were, off the window's thread, and the files it made go. Null once done, else why
+    /// not.</summary>
+    private async Task<string?> UndoAsync(Command command, IReadOnlyDictionary<string, Look> looks, Func<Func<string?>, string?> moving)
     {
-        foreach (Part part in command.Parts)
+        List<(string Path, TextSnapshot Text, Look? Stored)> writes = [.. command.Texts.Where(t => !IsOpen(t.Document)).Select(t => (t.Path, t.Before, (Look?)looks[command.Moved(t.Path)]))];
+        string? unmoved = moving(() =>
         {
-            if (part.Read is { } read && await read(redo) is { } changed)
+            foreach ((string from, string to) in command.Moves.Reverse())
             {
-                return changed;
+                if (editors.MoveFile(to, from) is { } failed)
+                {
+                    return failed;
+                }
             }
+            Step(command, redo: false);
+            return null;
+        });
+        if (unmoved is not null)
+        {
+            return unmoved;
         }
-        return Blocked(command, redo);
-    }
-
-    /// <summary>Takes a command back: the files it moved go back, then every file's text is as it was. Null once done,
-    /// else why not, from the disk.</summary>
-    public string? Undo(Command command)
-    {
-        foreach ((string from, string to) in command.Moves.Reverse())
+        if (writes.Count > 0 && await BackgroundWork.Run(() => Write(writes)) is { } unwritten)
         {
-            if (editors.MoveFile(to, from) is { } failed)
-            {
-                return failed;
-            }
-        }
-        foreach (TextChange text in command.Texts)
-        {
-            if (Put(text, redo: false) is { } failed)
-            {
-                return failed;
-            }
+            return unwritten;
         }
         foreach (Creation made in command.Created)
         {
@@ -151,54 +247,44 @@ public sealed class CommandHistory
         {
             part.Put(false);
         }
-        done.Remove(command);
-        undone.Add(command);
         return null;
     }
 
-    /// <summary>Makes a command again: the files it made, every file's text as it left it, then the files it moved move
-    /// again.</summary>
-    public string? Redo(Command command)
+    /// <summary>Makes a command again: the open files take their redo steps, the files it made and the files not open are
+    /// written as it left them, off the window's thread, then the files it moved move again.</summary>
+    private async Task<string?> RedoAsync(Command command, IReadOnlyDictionary<string, Look> looks, Func<Func<string?>, string?> moving)
     {
-        foreach (Creation made in command.Created)
+        List<(string Path, TextSnapshot Text, Look? Stored)> writes =
+        [
+            .. command.Created.Select(c => (c.Path, c.Text, (Look?)null)),
+            .. command.Texts.Where(t => !IsOpen(t.Document)).Select(t => (t.Path, t.After, (Look?)looks[t.Path])),
+        ];
+        Step(command, redo: true);
+        if (writes.Count > 0 && await BackgroundWork.Run(() => Write(writes)) is { } unwritten)
         {
-            try
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(made.Path)!);
-                FileText.Save(made.Path, made.Text.ToString(), new UTF8Encoding(false), false, false);
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-            {
-                return $"{Path.GetFileName(made.Path)} could not be written: {error.Message}";
-            }
+            return unwritten;
         }
-        foreach (TextChange text in command.Texts)
+        string? unmoved = moving(() =>
         {
-            if (Put(text, redo: true) is { } failed)
+            foreach ((string from, string to) in command.Moves)
             {
-                return failed;
+                if (editors.MoveFile(from, to) is { } failed)
+                {
+                    return failed;
+                }
             }
-        }
-        foreach ((string from, string to) in command.Moves)
+            return null;
+        });
+        if (unmoved is not null)
         {
-            if (editors.MoveFile(from, to) is { } failed)
-            {
-                return failed;
-            }
+            return unmoved;
         }
         foreach (Part part in command.Parts)
         {
             part.Put(true);
         }
-        undone.Remove(command);
-        done.Add(command);
         return null;
     }
-
-    /// <summary>The files not open that taking a command back (or making it again, given true) writes, whose saves may
-    /// still be landing once it returns (<see cref="EditorArea.LandedAsync(IEnumerable{string}, Action{string}?)"/>).</summary>
-    public IReadOnlyList<string> Writes(Command command, bool redo) =>
-        [.. command.Texts.Where(t => !IsOpen(t.Document)).Select(t => t.Path), .. redo ? command.Created.Select(c => c.Path) : []];
 
     private void Keep(Command command)
     {
@@ -212,26 +298,35 @@ public sealed class CommandHistory
         }
     }
 
-    private static void Drop(List<Command> commands)
+    private void Drop(List<Command> commands)
     {
         List<Command> going = [.. commands];
         commands.Clear();
         going.ForEach(Dropped);
     }
 
-    private static void Dropped(Command command)
+    private void Dropped(Command command)
     {
+        if (putting?.Command == command)
+        {
+            putDropped = true;
+            return;
+        }
+        if (looked?.Command == command)
+        {
+            looked = null;
+        }
         foreach (Part part in command.Parts)
         {
             part.Dropped?.Invoke();
         }
     }
 
-    /// <summary>A file's text as it was before the command or after it: an open file's through its own undo (the editor
-    /// showing it putting its carets back), a closed one's written.</summary>
-    private string? Put(TextChange text, bool redo)
+    /// <summary>The open files' texts as they were before the command or after it (true), each through its own undo, the
+    /// editor showing it putting its carets back.</summary>
+    private void Step(Command command, bool redo)
     {
-        if (IsOpen(text.Document))
+        foreach (TextChange text in command.Texts.Where(t => IsOpen(t.Document)))
         {
             OpenDocument document = text.Document!;
             if (document == editors.Active)
@@ -242,30 +337,85 @@ public sealed class CommandHistory
             {
                 document.Selections = carets;
             }
-            return null;
-        }
-        try
-        {
-            FileText? now = FileText.Load(text.Path);
-            FileText.Save(text.Path, (redo ? text.After : text.Before).ToString(), now?.Encoding ?? new UTF8Encoding(false), now?.HasBom ?? false, now?.CrBreaks ?? false);
-            return null;
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            return $"{Path.GetFileName(text.Path)} could not be written: {error.Message}";
         }
     }
 
-    /// <summary>Why a file a command made cannot be taken away: it is gone, or its text is no longer what the command
-    /// wrote; null when it can.</summary>
-    private string? Made(Creation made)
+    /// <summary>The files not open a command changes, as a look finds them: where each is now, the text it holds while all
+    /// is as the command left it (or found it, for a redo), and whether the command made it, which only its Undo asks of
+    /// (a Redo asks only that the place is free).</summary>
+    private List<(string Path, TextSnapshot Text, bool Made)> Closed(Command command, bool redo)
     {
-        string? now = editors.Find(made.Path) is { } open
-            ? open.Text.Snapshot.ToString()
-            : File.Exists(made.Path) ? FileText.Load(made.Path)?.Text : null;
-        return now is null ? $"{Path.GetFileName(made.Path)} is no longer there"
-            : now != made.Text.ToString() ? $"{Path.GetFileName(made.Path)} has been changed since"
-            : null;
+        List<(string Path, TextSnapshot Text, bool Made)> files = [];
+        if (!redo)
+        {
+            files.AddRange(command.Created.Where(c => editors.Find(c.Path) is null).Select(c => (c.Path, c.Text, true)));
+        }
+        files.AddRange(command.Texts.Where(t => !IsOpen(t.Document)).Select(t => (redo ? t.Path : command.Moved(t.Path), redo ? t.Before : t.After, false)));
+        return files;
+    }
+
+    /// <summary>Looks at files not open, off the window's thread, each read only when its length or last write time moved
+    /// since <paramref name="earlier"/> looked: why the first not holding its text does not (gone, changed or unread), else
+    /// null; with how each looked at is stored.</summary>
+    private static (string? Unlike, Dictionary<string, Look> Looks) LookAt(IReadOnlyList<(string Path, TextSnapshot Text, bool Made)> files,
+        IReadOnlyDictionary<string, Look>? earlier)
+    {
+        Dictionary<string, Look> looks = new(PathNames.Comparer);
+        foreach ((string path, TextSnapshot text, bool made) in files)
+        {
+            string name = Path.GetFileName(path);
+            try
+            {
+                if (Stamp(path) is not { } stamp)
+                {
+                    return (made ? $"{name} is no longer there" : $"{name} has been changed since", looks);
+                }
+                if (earlier?.GetValueOrDefault(path) is { } seen && seen.Length == stamp.Length && seen.Written == stamp.Written)
+                {
+                    looks[path] = seen;
+                    continue;
+                }
+                if (FileText.Load(path) is not { } file || file.Text != text.ToString())
+                {
+                    return ($"{name} has been changed since", looks);
+                }
+                looks[path] = new Look(stamp.Length, stamp.Written, file.Encoding, file.HasBom, file.CrBreaks);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                return ($"{name} could not be read: {error.Message}", looks);
+            }
+        }
+        return (null, looks);
+    }
+
+    /// <summary>A file's length and last write time (through a link, its target's), or null when it is not there.</summary>
+    private static (long Length, DateTime Written)? Stamp(string path)
+    {
+        FileInfo info = new(path);
+        if (info.LinkTarget is not null && info.ResolveLinkTarget(returnFinalTarget: true) is FileInfo target)
+        {
+            info = target;
+        }
+        return info.Exists ? (info.Length, info.LastWriteTimeUtc) : null;
+    }
+
+    /// <summary>Writes files not open, off the window's thread, in order: each stored as a look found it, or as UTF-8 for
+    /// one a command made. Null once each is written, else the first that could not be, with why.</summary>
+    private static string? Write(IReadOnlyList<(string Path, TextSnapshot Text, Look? Stored)> files)
+    {
+        foreach ((string path, TextSnapshot text, Look? stored) in files)
+        {
+            try
+            {
+                FileText.Save(path, text.ToString(), stored?.Encoding ?? new UTF8Encoding(false), stored?.HasBom ?? false, stored?.CrBreaks ?? false);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                return $"{Path.GetFileName(path)} could not be written: {error.Message}";
+            }
+        }
+        return null;
     }
 
     /// <summary>A file a command made, deleted, its tab closed if it was opened since.</summary>
@@ -303,6 +453,10 @@ public sealed class CommandHistory
         }
         return null;
     }
+
+    /// <summary>A file not open as a look found it: its length and last write time, which a later look compares before it
+    /// reads the file again, and how it is stored, which its Undo or Redo writes it in.</summary>
+    private sealed record Look(long Length, DateTime Written, Encoding Encoding, bool HasBom, bool CrBreaks);
 
     /// <summary>What a command did: its name ("Rename Foo to Bar"), each file's text before and after it (at the path the
     /// file had then; an open file's with the undo step that made it), the files it moved, in order, the files it made, and

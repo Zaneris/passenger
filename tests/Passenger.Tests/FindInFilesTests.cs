@@ -468,6 +468,124 @@ public sealed class FindInFilesTests : IDisposable
         }
     }
 
+    /// <summary>Undo and Redo of a replace read and write the closed files it changed off the window's thread: across three
+    /// closed files of 2 MB each they cost that thread no more than across three small ones, where a read of one of them
+    /// there costs at least its bytes.</summary>
+    [AvaloniaFact]
+    public void Undo_and_redo_of_a_replace_across_large_closed_files_cost_the_window_thread_what_small_ones_do()
+    {
+        const int Large = 2 * 1024 * 1024;
+        string smalls = Path.Combine(folder, "small");
+        string larges = Path.Combine(folder, "large");
+        Directory.CreateDirectory(smalls);
+        Directory.CreateDirectory(larges);
+        const string Filler = "// a line of filler, with nothing in it to replace\n";
+        string filler = string.Concat(Enumerable.Repeat(Filler, Large / Filler.Length + 1));
+        for (int i = 0; i < 3; i++)
+        {
+            File.WriteAllText(Path.Combine(smalls, $"Small{i}.txt"), "int count;\n");
+            File.WriteAllText(Path.Combine(larges, $"Large{i}.txt"), "int count;\n" + filler);
+        }
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+        try
+        {
+            (long undoFew, long redoFew) = Costs(smalls);
+            (long undoMany, long redoMany) = Costs(larges);
+            Assert.True(undoMany < undoFew + Large,
+                $"Undo of a replace across three closed files of 2 MB allocated {undoMany / 1024} KB on the window's thread, across three small ones {undoFew / 1024} KB: the files are read or written there, stalling the window as they grow");
+            Assert.True(redoMany < redoFew + Large,
+                $"Redo of a replace across three closed files of 2 MB allocated {redoMany / 1024} KB on the window's thread, across three small ones {redoFew / 1024} KB: the files are read or written there, stalling the window as they grow");
+            Assert.Equal("int total;\n" + filler, File.ReadAllText(Path.Combine(larges, "Large0.txt")));
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        // The least an Undo and a Redo of a replace in the folder's files, run from the Explorer, allocated on the window's thread.
+        (long Undo, long Redo) Costs(string directory)
+        {
+            SearchQuery query = new("count", WholeWords: true);
+            FilesFound found = Ui.Await(window.FindInFilesAsync(query, new SearchScope(SearchScopeKind.Directory, null, directory, true, null, null), CancellationToken.None),
+                $"the search in {Path.GetFileName(directory)}");
+            Assert.Empty(Ui.Await(window.ReplaceInFilesAsync(query, "total", found), $"the replace in {Path.GetFileName(directory)}").Refused);
+            string name = FilesReplaced.Title(query, "total");
+            string row = PathNames.Canonical(directory);
+            window.ExplorerView.Reveal(row);
+            Ui.Settle();
+            Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Path == row));
+            long undo = long.MaxValue;
+            long redo = long.MaxValue;
+            for (int round = 0; round < 2; round++)
+            {
+                undo = Math.Min(undo, Cost(EditorActions.Undo, $"Undone: {name}", "int count;\n"));
+                redo = Math.Min(redo, Cost(EditorActions.Redo, $"Redone: {name}", "int total;\n"));
+            }
+            return (undo, redo);
+
+            long Cost(string action, string said, string first)
+            {
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                Ui.Run(window, action);
+                Ui.WaitFor(() => window.Status == said, () => $"{action} of the replace in {Path.GetFileName(directory)}; the status says '{window.Status}'");
+                long cost = GC.GetAllocatedBytesForCurrentThread() - before;
+                foreach (string file in Directory.GetFiles(directory))
+                {
+                    Assert.StartsWith(first, File.ReadAllText(file), StringComparison.Ordinal);
+                }
+                return cost;
+            }
+        }
+    }
+
+    /// <summary>Undo of a replace across closed files is refused, naming the file, when one changed while its question was
+    /// open, every file left as it was; once that file is as the replace left it again, Undo takes the replace back.</summary>
+    [AvaloniaFact]
+    public void Undo_of_a_replace_is_refused_naming_a_closed_file_changed_while_its_question_was_open()
+    {
+        string alpha = Path.Combine(folder, "Alpha.cs");
+        string beta = Path.Combine(folder, "Beta.cs");
+        string alphaBefore = File.ReadAllText(alpha);
+        string betaBefore = File.ReadAllText(beta);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            SearchQuery query = new("count", WholeWords: true);
+            FilesFound found = Ui.Await(window.FindInFilesAsync(query, new SearchScope(SearchScopeKind.Directory, null, folder, true, null, null), CancellationToken.None), "the search");
+            Assert.Empty(Ui.Await(window.ReplaceInFilesAsync(query, "total", found), "the replace").Refused);
+            string name = FilesReplaced.Title(query, "total");
+            string alphaReplaced = File.ReadAllText(alpha);
+            string betaReplaced = File.ReadAllText(beta);
+            Assert.NotEqual(betaBefore, betaReplaced);
+            window.Confirm = (_, _, _) =>
+            {
+                File.AppendAllText(beta, "// written while Undo asked\n");
+                return Task.FromResult(true);
+            };
+            string row = PathNames.Canonical(alpha);
+            window.ExplorerView.Reveal(row);
+            Ui.Settle();
+            Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Path == row));
+            Ui.Run(window, EditorActions.Undo);
+            Ui.WaitFor(() => window.Status?.StartsWith("Cannot undo", StringComparison.Ordinal) == true, () => $"Undo to be refused; the status says '{window.Status}'");
+            Assert.Equal($"Cannot undo {name}: Beta.cs has been changed since", window.Status);
+            Assert.Equal(alphaReplaced, File.ReadAllText(alpha));
+            Assert.Equal(betaReplaced + "// written while Undo asked\n", File.ReadAllText(beta));
+
+            File.WriteAllText(beta, betaReplaced);
+            window.Confirm = (_, _, _) => Task.FromResult(true);
+            Ui.Run(window, EditorActions.Undo);
+            Ui.WaitFor(() => window.Status == $"Undone: {name}", () => $"Undo once Beta.cs is as the replace left it; the status says '{window.Status}'");
+            Assert.Equal(alphaBefore, File.ReadAllText(alpha));
+            Assert.Equal(betaBefore, File.ReadAllText(beta));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [Gate]
     [AvaloniaFact]
     public void A_regex_backtracking_without_end_in_a_file_is_said_to_stop_there_to_the_popup_and_an_agent_and_replace_all_leaves_that_file()
