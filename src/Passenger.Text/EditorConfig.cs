@@ -2,21 +2,29 @@ using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using Passenger.Core;
 
 namespace Passenger.Text;
 
 /// <summary>What the .editorconfig files over a file say of it (editorconfig.org): each from the file's folder up to the
 /// first marked <c>root = true</c>, the farthest read first, so the nearest file's sections, and a file's later ones, win
-/// where they match the file; <c>unset</c> takes a property back. Read afresh each time, so a change on disk is seen.</summary>
+/// where they match the file; <c>unset</c> takes a property back. Read afresh each time, so a change on disk is seen. A
+/// section whose glob cannot be used (<see cref="Refused"/>) matches no file, the log naming it once.</summary>
 public sealed class EditorConfig
 {
     public const string FileName = ".editorconfig";
 
+    /// <summary>How deep a glob's braces may nest, which bounds how deep its translation goes.</summary>
+    private const int DeepestBraces = 64;
+
     /// <summary>Nothing said: no .editorconfig over the file.</summary>
     public static readonly EditorConfig None = new([]);
 
-    /// <summary>Each glob as a regular expression, and the ranges its numbers must fall in, in the order they appear.</summary>
-    private static readonly ConcurrentDictionary<string, (Regex Regex, IReadOnlyList<(long Min, long Max)> Ranges)> Globs = new(StringComparer.Ordinal);
+    /// <summary>Each glob compiled, by the pattern it is matched as.</summary>
+    private static readonly ConcurrentDictionary<string, CompiledGlob> Globs = new(StringComparer.Ordinal);
+
+    /// <summary>The sections matching no file the log has named, by their .editorconfig and glob.</summary>
+    private static readonly ConcurrentDictionary<(string File, string Glob), bool> Told = new();
 
     private readonly Dictionary<string, (string Value, string From)> properties;
 
@@ -41,9 +49,19 @@ public sealed class EditorConfig
         for (int i = chain.Count - 1; i >= 0; i--)
         {
             (string folder, ConfigFile config) = chain[i];
+            string file = Path.Combine(folder, FileName);
             string relative = "/" + Path.GetRelativePath(folder, path).Replace(Path.DirectorySeparatorChar, '/');
-            foreach (Section section in config.Sections.Where(s => Matches(s.Glob, relative)))
+            foreach (Section section in config.Sections)
             {
+                CompiledGlob glob = Compiled(section.Glob);
+                if (glob.Refused is { } why && Told.TryAdd((file, section.Glob), true))
+                {
+                    PassengerLog.Write($"No file matches the section [{section.Glob}] on line {section.Line} of {file}: {why}");
+                }
+                if (!glob.Matches(relative))
+                {
+                    continue;
+                }
                 foreach ((string key, string value) in section.Pairs)
                 {
                     if (Word(value) == "unset")
@@ -52,7 +70,7 @@ public sealed class EditorConfig
                     }
                     else
                     {
-                        properties[key] = (value, Path.Combine(folder, FileName));
+                        properties[key] = (value, file);
                     }
                 }
             }
@@ -148,13 +166,21 @@ public sealed class EditorConfig
     private static int? Width(string? value) =>
         int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out int width) && width is >= 1 and <= 32 ? width : null;
 
-    private sealed record Section(string Glob, List<(string Key, string Value)> Pairs);
+    /// <summary>A section: its glob, the line its header is on (from 1) and where the glob starts in the file's text.</summary>
+    private sealed record Section(string Glob, int Line, int Offset, List<(string Key, string Value)> Pairs);
 
     private sealed record ConfigFile(bool Root, List<Section> Sections);
 
-    /// <summary>A .editorconfig read, or null when there is none to read: comments (<c>#</c> or <c>;</c> starting a line),
-    /// <c>[glob]</c> section headers, and <c>key = value</c> pairs, keys in any case; <c>root</c> counts only before
-    /// the first section, and a line that is none of these is passed over.</summary>
+    /// <summary>A section of an .editorconfig's text that matches no file: where its glob is in the text, and why.</summary>
+    public readonly record struct RefusedSection(TextRange Glob, string Why);
+
+    /// <summary>The sections of an .editorconfig's text whose glob cannot be used, so they match no file: one whose
+    /// brackets hold a range in reverse order (<c>[z-a]</c>), or whose braces nest too deep.</summary>
+    public static IReadOnlyList<RefusedSection> Refused(string text) =>
+        [.. Parse(text).Sections.Select(s => (Section: s, Compiled(s.Glob).Refused)).Where(s => s.Refused is not null)
+            .Select(s => new RefusedSection(new TextRange(s.Section.Offset, s.Section.Glob.Length), s.Refused!))];
+
+    /// <summary>A .editorconfig read, or null when there is none to read.</summary>
     private static ConfigFile? Read(string file)
     {
         string text;
@@ -170,12 +196,26 @@ public sealed class EditorConfig
         {
             return null;
         }
+        return Parse(text);
+    }
+
+    /// <summary>An .editorconfig's text read: comments (<c>#</c> or <c>;</c> starting a line), <c>[glob]</c> section
+    /// headers, and <c>key = value</c> pairs, keys in any case; <c>root</c> counts only before the first section, and a
+    /// line that is none of these is passed over.</summary>
+    private static ConfigFile Parse(string text)
+    {
         bool root = false;
         List<Section> sections = [];
         Section? current = null;
         bool inSections = false;
-        foreach (string raw in text.Split('\n'))
+        int next = 0;
+        for (int number = 1; next <= text.Length; number++)
         {
+            int end = text.IndexOf('\n', next);
+            end = end < 0 ? text.Length : end;
+            string raw = text[next..end];
+            int start = next + raw.Length - raw.TrimStart().Length;
+            next = end + 1;
             string line = raw.Trim();
             if (line.Length == 0 || line[0] is '#' or ';')
             {
@@ -184,7 +224,7 @@ public sealed class EditorConfig
             if (line[0] == '[')
             {
                 inSections = true;
-                current = line.Length > 2 && line[^1] == ']' ? new Section(line[1..^1], []) : null;
+                current = line.Length > 2 && line[^1] == ']' ? new Section(line[1..^1], number, start + 1, []) : null;
                 if (current is not null)
                 {
                     sections.Add(current);
@@ -212,46 +252,78 @@ public sealed class EditorConfig
 
     /// <summary>Whether a section's glob matches a file, by its path from the .editorconfig's folder ("/src/A.cs"): a
     /// glob with no '/' matches the name in any folder below, one with a '/' the path from the folder.</summary>
-    public static bool Matches(string glob, string relative)
+    public static bool Matches(string glob, string relative) => Compiled(glob).Matches(relative);
+
+    /// <summary>A section's glob compiled once, as the pattern its '/' makes it.</summary>
+    private static CompiledGlob Compiled(string glob) =>
+        Globs.GetOrAdd(glob.Contains('/', StringComparison.Ordinal) ? (glob.StartsWith('/') ? glob : "/" + glob) : "/**/" + glob, Compile);
+
+    private static CompiledGlob Compile(string pattern)
     {
-        string pattern = glob.Contains('/', StringComparison.Ordinal) ? (glob.StartsWith('/') ? glob : "/" + glob) : "/**/" + glob;
-        (Regex regex, IReadOnlyList<(long Min, long Max)> ranges) = Globs.GetOrAdd(pattern, Compile);
-        Match match = regex.Match(relative);
-        if (!match.Success)
+        Translation translation = new();
+        string regex = Translate(pattern, translation, 0);
+        if (translation.Refused is { } why)
         {
-            return false;
+            return new CompiledGlob(null, [], why);
         }
-        for (int i = 0; i < ranges.Count; i++)
+        try
         {
-            Group number = match.Groups["n" + i.ToString(CultureInfo.InvariantCulture)];
-            if (!number.Success)
-            {
-                continue;
-            }
-            string digits = number.Value.TrimStart('+', '-');
-            // "{1..10}" matches "07" no more than a shell's brace expansion would make it.
-            if ((digits.Length > 1 && digits[0] == '0') || !long.TryParse(number.Value, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out long value)
-                || value < ranges[i].Min || value > ranges[i].Max)
+            return new CompiledGlob(new Regex(@"\A" + regex + @"\z", RegexOptions.CultureInvariant | RegexOptions.Singleline), translation.Ranges, null);
+        }
+        catch (RegexParseException failed)
+        {
+            return new CompiledGlob(null, [], $"it does not read as a glob ({failed.Error})");
+        }
+    }
+
+    /// <summary>A glob as a regular expression, and the ranges its numbers must fall in, in the order they appear; or, with
+    /// no expression, why it matches no file.</summary>
+    private sealed record CompiledGlob(Regex? Regex, IReadOnlyList<(long Min, long Max)> Ranges, string? Refused)
+    {
+        public bool Matches(string relative)
+        {
+            if (Regex?.Match(relative) is not { Success: true } match)
             {
                 return false;
             }
+            for (int i = 0; i < Ranges.Count; i++)
+            {
+                Group number = match.Groups["n" + i.ToString(CultureInfo.InvariantCulture)];
+                if (!number.Success)
+                {
+                    continue;
+                }
+                string digits = number.Value.TrimStart('+', '-');
+                // "{1..10}" matches "07" no more than a shell's brace expansion would make it.
+                if ((digits.Length > 1 && digits[0] == '0') || !long.TryParse(number.Value, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out long value)
+                    || value < Ranges[i].Min || value > Ranges[i].Max)
+                {
+                    return false;
+                }
+            }
+            return true;
         }
-        return true;
     }
 
-    private static (Regex Regex, IReadOnlyList<(long Min, long Max)> Ranges) Compile(string pattern)
+    /// <summary>What a glob's translation has found so far: its numbers' ranges, and the first reason it cannot be used.</summary>
+    private sealed class Translation
     {
-        List<(long Min, long Max)> ranges = [];
-        string regex = Translate(pattern, ranges);
-        return (new Regex(@"\A" + regex + @"\z", RegexOptions.CultureInvariant | RegexOptions.Singleline), ranges);
+        public List<(long Min, long Max)> Ranges { get; } = [];
+
+        public string? Refused { get; set; }
     }
 
     /// <summary>A glob as a regular expression: <c>*</c> any characters but '/', <c>**</c> any at all ("/**/" none too),
     /// <c>?</c> one but '/', <c>[name]</c> one of those (<c>[!name]</c> none), <c>{s1,s2}</c> any of those globs,
     /// <c>{num1..num2}</c> a whole number between (checked once matched), and a backslash takes the next character as
     /// it is. A bracket or brace with no end is itself.</summary>
-    private static string Translate(string pattern, List<(long Min, long Max)> ranges)
+    private static string Translate(string pattern, Translation translation, int depth)
     {
+        if (depth > DeepestBraces)
+        {
+            translation.Refused ??= $"its braces nest more than {DeepestBraces} deep";
+            return string.Empty;
+        }
         StringBuilder regex = new();
         for (int i = 0; i < pattern.Length; i++)
         {
@@ -276,7 +348,7 @@ public sealed class EditorConfig
                     i += 3;
                     break;
                 case '[' when ClassEnd(pattern, i) is int close and > 0:
-                    regex.Append(CharacterClass(pattern[(i + 1)..close]));
+                    regex.Append(CharacterClass(pattern[(i + 1)..close], translation));
                     i = close;
                     break;
                 case '{' when BraceEnd(pattern, i) is int close and > 0:
@@ -286,17 +358,17 @@ public sealed class EditorConfig
                     if (range.Success && long.TryParse(range.Groups[1].Value, CultureInfo.InvariantCulture, out long first)
                         && long.TryParse(range.Groups[2].Value, CultureInfo.InvariantCulture, out long last))
                     {
-                        regex.Append(CultureInfo.InvariantCulture, $"(?<n{ranges.Count}>[+-]?[0-9]+)");
-                        ranges.Add((Math.Min(first, last), Math.Max(first, last)));
+                        regex.Append(CultureInfo.InvariantCulture, $"(?<n{translation.Ranges.Count}>[+-]?[0-9]+)");
+                        translation.Ranges.Add((Math.Min(first, last), Math.Max(first, last)));
                     }
                     else if (choices.Count < 2)
                     {
                         // One choice is no choice: the braces are themselves.
-                        regex.Append(@"\{").Append(Translate(inner, ranges)).Append(@"\}");
+                        regex.Append(@"\{").Append(Translate(inner, translation, depth + 1)).Append(@"\}");
                     }
                     else
                     {
-                        regex.Append("(?:").AppendJoin('|', choices.Select(choice => Translate(choice, ranges))).Append(')');
+                        regex.Append("(?:").AppendJoin('|', choices.Select(choice => Translate(choice, translation, depth + 1))).Append(')');
                     }
                     i = close;
                     break;
@@ -327,34 +399,42 @@ public sealed class EditorConfig
         return -1;
     }
 
-    /// <summary>A bracket's characters as a class of the regular expression, which never matches '/'.</summary>
-    private static string CharacterClass(string inside)
+    /// <summary>A bracket's characters as a class of the regular expression, which never matches '/': each character as
+    /// itself (a backslash taking the next), and <c>a-z</c> those from one to the other, which may not run backwards.</summary>
+    private static string CharacterClass(string inside, Translation translation)
     {
-        StringBuilder regex = new("[");
-        int i = 0;
-        if (inside.Length > 0 && inside[0] is '!' or '^')
+        bool negated = inside.Length > 0 && inside[0] is '!' or '^';
+        StringBuilder regex = new(negated ? "[^/" : "[");
+        for (int i = negated ? 1 : 0; i < inside.Length;)
         {
-            regex.Append("^/");
-            i = 1;
-        }
-        for (; i < inside.Length; i++)
-        {
-            char c = inside[i];
-            if (c == '\\' && i + 1 < inside.Length)
+            char low = Literal(inside, ref i);
+            char high = low;
+            if (i + 1 < inside.Length && inside[i] == '-')
             {
-                c = inside[++i];
-                regex.Append('\\').Append(c);
+                i++;
+                high = Literal(inside, ref i);
             }
-            else if (c is '[' or ']' or '^' or '\\')
+            if (high < low)
             {
-                regex.Append('\\').Append(c);
+                translation.Refused ??= $"its range {low}-{high} is in reverse order";
             }
-            else
+            regex.Append(CultureInfo.InvariantCulture, $@"\u{(int)low:X4}");
+            if (high != low)
             {
-                regex.Append(c);
+                regex.Append(CultureInfo.InvariantCulture, $@"-\u{(int)high:X4}");
             }
         }
-        return regex.Append(']').ToString();
+        return regex.Append(negated ? "]" : "-[/]]").ToString();
+    }
+
+    /// <summary>The character at <paramref name="i"/> of a bracket, or the one a backslash there takes as itself, moving past it.</summary>
+    private static char Literal(string inside, ref int i)
+    {
+        if (inside[i] == '\\' && i + 1 < inside.Length)
+        {
+            i++;
+        }
+        return inside[i++];
     }
 
     /// <summary>Where the '}' closing a '{' at <paramref name="open"/> is, braces inside counted, or -1 when none does.</summary>

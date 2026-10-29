@@ -652,6 +652,9 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>The code help in the folder's project, .props and .targets files, from MSBuild's evaluation in the project host.</summary>
     public MSBuild.MSBuildService MSBuild { get; }
 
+    /// <summary>The open .editorconfig files' sections that match no file, marked.</summary>
+    internal EditorConfigChecks EditorConfigs { get; } = new();
+
     /// <summary>The folder's NuGet: its package sources, feeds and known vulnerabilities, and the one way its projects'
     /// packages change, which the NuGet window, MSBuild files' code help, Migrations and an agent all use.</summary>
     public FolderPackages Packages { get; }
@@ -857,6 +860,7 @@ public sealed class ProjectSession : IAsyncDisposable
         Web?.Attach(document);
         Xaml.Attach(document);
         MSBuild.Attach(document);
+        EditorConfigs.Attach(document);
         Debug.Attach(document);
         Vcs.Attach(document);
         Bookmarks.Attach(document.Path, document.Text);
@@ -870,6 +874,7 @@ public sealed class ProjectSession : IAsyncDisposable
         Web?.Detach(document);
         Xaml.Detach(document);
         MSBuild.Detach(document);
+        EditorConfigs.Detach(document);
         Debug.Detach(document);
         Vcs.Detach(document);
         Bookmarks.Detach(document.Path);
@@ -911,6 +916,8 @@ public sealed class ProjectSession : IAsyncDisposable
             Xaml.Attach(document);
             MSBuild.Detach(document);
             MSBuild.Attach(document);
+            EditorConfigs.Detach(document);
+            EditorConfigs.Attach(document);
         }
     }
 
@@ -1191,6 +1198,7 @@ public sealed class ProjectSession : IAsyncDisposable
         parts.Add(("the folder's containers", Containers.EndAsync(Task.WhenAll(debuggers, abandoned))));
         Xaml.Dispose();
         MSBuild.Dispose();
+        EditorConfigs.Dispose();
         return parts;
     }
 

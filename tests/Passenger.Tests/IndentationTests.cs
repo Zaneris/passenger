@@ -4,6 +4,7 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input.Platform;
 using Passenger.App;
+using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
@@ -13,7 +14,8 @@ namespace Passenger.Tests;
 /// <summary>How a file indents, and what its save does to it: the nearest .editorconfig sections that match the file,
 /// else the file's own lines, else its language; Enter, Tab, Shift+Tab and a pasted block follow it, the status bar
 /// names it and where it came from, a save trims, ends and writes the file as the .editorconfig asks, and an
-/// .editorconfig changed on disk is followed at once.</summary>
+/// .editorconfig changed on disk is followed at once. A section whose glob cannot be used matches no file, marked in
+/// the open .editorconfig.</summary>
 public sealed class IndentationTests : IDisposable
 {
     private readonly string folder = PathNames.Canonical(TestFolders.Create("indent-"));
@@ -176,6 +178,44 @@ public sealed class IndentationTests : IDisposable
         Ui.WaitFor(() => IndentShown(window) == "4 spaces, detected", "the open file to go back to its own indentation");
         Ui.Press(window, "TAB");
         Assert.StartsWith("\t    class Open", Text(editor), StringComparison.Ordinal);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_section_whose_range_runs_backwards_matches_no_file_the_others_apply_and_the_open_editorconfig_marks_it_until_it_runs_forwards()
+    {
+        string config = Path.Combine(folder, ".editorconfig");
+        Write(".editorconfig", "root = true\n\n[*]\nindent_size = 3\n\n[[z-a]*.md]\nindent_size = 8\n\n[notes.md]\nindent_style = tab\n");
+        Write("notes.md", "hello\n");
+        Write("zed.md", "hello\n");
+        MainWindow window = Open("notes.md");
+        Assert.True(window.EditorArea.Active?.Path == Path.Combine(folder, "notes.md"), "notes.md did not open under an .editorconfig one of whose sections matches no file");
+        Assert.True(IndentShown(window) == "Tab, from .editorconfig", $"The section [notes.md] after one that matches no file did not apply: {IndentShown(window)}");
+        window.OpenFile("zed.md");
+        Ui.Settle();
+        Assert.True(IndentShown(window) == "3 spaces, from .editorconfig", $"zed.md took the indentation of the section [[z-a]*.md], which matches no file: {IndentShown(window)}");
+        Assert.DoesNotContain(IdeErrors.Errors, e => e.Kind == "RegexParseException");
+        string told = $"No file matches the section [[z-a]*.md] on line 6 of {config}: its range z-a is in reverse order";
+        Assert.True(Ui.IdeLog().Split('\n').Count(l => l.TrimEnd().EndsWith(told, StringComparison.Ordinal)) == 1,
+            $"The log did not name the section that matches no file once, as: {told}");
+
+        window.OpenFile(".editorconfig");
+        Ui.Settle();
+        OpenDocument shown = window.EditorArea.Active!;
+        Marker marked = Assert.Single(shown.Markers);
+        Assert.Equal(MarkerKind.Warning, marked.Kind);
+        Assert.Equal("No file matches this section: its range z-a is in reverse order", marked.Message);
+        Assert.True(shown.Text.Snapshot.ToString().Substring(marked.Range.Start, marked.Range.Length) == "[z-a]*.md", "The mark is not on the section's glob");
+
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "[[z-a");
+        Ui.Press(window, "BACK_SPACE");
+        Ui.Press(window, "BACK_SPACE");
+        Ui.Press(window, "BACK_SPACE");
+        window.KeyTextInput("a-z");
+        Ui.WaitFor(() => shown.Markers.Count == 0, "the mark on the section to go once its range runs forwards");
+        Ui.Press(window, Ui.Shortcut(AppActions.Save));
+        window.OpenFile("zed.md");
+        Ui.WaitFor(() => IndentShown(window) == "8 spaces, from .editorconfig", () => $"zed.md to take the section [[a-z]*.md]'s indentation, not {IndentShown(window)}");
         window.Close();
     }
 
