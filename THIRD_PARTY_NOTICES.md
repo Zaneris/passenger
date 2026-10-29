@@ -438,7 +438,8 @@ whose full text is beside the fonts (`OFL.txt`). The fonts are unmodified.
 
 `src/Passenger.App/Theme/Icons.axaml` holds path data from Microsoft's Fluent UI System Icons
 (https://github.com/microsoft/fluentui-system-icons), written by `tools/icons.py`, which lists every
-icon used.
+icon used. A project's web root folder is drawn with Folder Globe, and its Properties folder with Folder
+Globe's folder and Calendar Settings' gear, put together by the script.
 
 ```
 MIT License

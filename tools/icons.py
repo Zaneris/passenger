@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Writes src/Passenger.App/Theme/Icons.axaml from Microsoft's Fluent UI System Icons (MIT) and, where an icon is
-taken from Visual Studio Code, its Codicons (CC BY 4.0).
+"""Writes src/Passenger.App/Theme/Icons.axaml from Microsoft's Fluent UI System Icons (MIT), a few made of two of them,
+and, where an icon is taken from Visual Studio Code, its Codicons (CC BY 4.0).
 
 Each icon is fetched once into artifacts/icons/ and kept there; the lists below are the only places an icon is named.
 """
@@ -130,6 +130,15 @@ ICONS = [
     ("Attach", "Plug Connected", "20_regular"),
     # The Migrations window's stripe button: a database, whose migrations it lists and applies.
     ("Database", "Database", "20_regular"),
+    # A web project's web root (wwwroot) in the Explorer: the folder whose files are served on the web.
+    ("WebRootFolder", "Folder Globe", "20_regular"),
+]
+
+# Resource key, then two icons (folder and size and style, as above) whose parts make it: the first's shape outside its
+# badge (the corner right of and below its middle, where Fluent puts every badge), the second's badge inside it.
+COMPOSED = [
+    # A project's Properties in the Explorer: Folder Globe's folder, cut round its badge, with Calendar Settings' gear.
+    ("PropertiesFolder", ("Folder Globe", "20_regular"), ("Calendar Settings", "20_regular")),
 ]
 
 # Resource key and the Codicon's name.
@@ -170,18 +179,43 @@ def main():
         lines.append(geometry(key, f"{folder} {stem}", fetch(folder, stem, cache)))
     for key, name in CODICONS:
         lines.append(geometry(key, name, fetched(os.path.join(codicons, name + ".svg"), f"{CODICONS_BASE}/{name}.svg")))
+    for key, (folder, stem), (badged, badge_stem) in COMPOSED:
+        shape = [p for p in parts(f"{folder} {stem}", fetch(folder, stem, cache)) if not in_badge(p, stem)]
+        badge = [p for p in parts(f"{badged} {badge_stem}", fetch(badged, badge_stem, cache)) if in_badge(p, badge_stem)]
+        if not shape or not badge or stem != badge_stem:
+            sys.exit(f"icons: {key} has no shape of {folder} or no badge of {badged} at its size")
+        lines.append(f'    <StreamGeometry x:Key="Icon.{key}">F1 {"".join(shape + badge)}</StreamGeometry>')
     lines.append("</ResourceDictionary>")
     target = os.path.join(root, "src", "Passenger.App", "Theme", "Icons.axaml")
     with open(target, "w", encoding="utf-8") as out:
         out.write("\n".join(lines) + "\n")
-    print(f"icons: {len(ICONS) + len(CODICONS)} written to {os.path.relpath(target, root)}")
+    print(f"icons: {len(ICONS) + len(CODICONS) + len(COMPOSED)} written to {os.path.relpath(target, root)}")
 
 
-def geometry(key, named, svg):
+def path_of(named, svg):
     paths = re.findall(r'<path[^>]*\sd="([^"]+)"', svg)
     if len(paths) != 1 or re.search(r"<(rect|circle|line|polygon|g)\b", svg):
         sys.exit(f"icons: {named} is not a single path")
-    return f'    <StreamGeometry x:Key="Icon.{key}">F1 {paths[0]}</StreamGeometry>'
+    return paths[0]
+
+
+def geometry(key, named, svg):
+    return f'    <StreamGeometry x:Key="Icon.{key}">F1 {path_of(named, svg)}</StreamGeometry>'
+
+
+def parts(named, svg):
+    """An icon's path split where each of its figures begins, every command absolute, so a figure is placed by its start."""
+    data = path_of(named, svg)
+    if re.search(r"[a-df-z]", data):
+        sys.exit(f"icons: {named} has relative commands, whose figures cannot be taken apart")
+    return [part for part in re.split(r"(?=M)", data) if part]
+
+
+def in_badge(part, stem):
+    """Whether a figure begins in the badge's corner: right of and below the icon's middle."""
+    x, y = (float(n) for n in re.findall(r"-?\d*\.?\d+", part)[:2])
+    middle = int(stem.split("_")[0]) / 2
+    return x >= middle and y >= middle
 
 
 if __name__ == "__main__":

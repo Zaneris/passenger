@@ -637,6 +637,139 @@ public sealed class SolutionViewTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A web project's Properties and wwwroot, and a class library's Properties, are the folders the SDK reads: listed
+    /// before the project's other folders, drawn with their own icons in the Solution view and the File System view, and
+    /// refusing Rename, Delete and Cut and a drag saying why, by the row's menu, by keys and for an agent, while a file inside
+    /// renames. A library's wwwroot and a Properties below a project's top are folders like any other.</summary>
+    [AvaloniaFact]
+    public void Properties_and_a_web_projects_wwwroot_list_first_with_their_icons_and_refuse_rename_delete_and_move_saying_why_while_a_file_inside_renames()
+    {
+        Write("Shop.Web/Shop.Web.csproj", TestProjects.Web());
+        Write("Shop.Web/Program.cs", "WebApplication.Create().Run();\n");
+        Write("Shop.Web/Api/Orders.cs", "namespace Shop.Web.Api;\n\npublic class Orders\n{\n}\n");
+        Write("Shop.Web/Api/Properties/notes.txt", "Not the project's.\n");
+        Write("Shop.Web/Properties/launchSettings.json", "{ \"profiles\": {} }\n");
+        Write("Shop.Web/wwwroot/site.css", "body { margin: 0; }\n");
+        Write("Shop.Core/Properties/launchSettings.json", "{ \"profiles\": {} }\n");
+        Write("Shop.Core/wwwroot/readme.txt", "A library's folder like any other.\n");
+        Write("Shop.slnx", "<Solution>\n  <Project Path=\"Shop.Web/Shop.Web.csproj\" />\n  <Project Path=\"Shop.Core/Shop.Core.csproj\" />\n</Solution>\n");
+        string web = PathNames.Canonical(Path.Combine(folder, "Shop.Web"));
+        string core = PathNames.Canonical(Path.Combine(folder, "Shop.Core"));
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        List<string> asked = Answer(window);
+        Ui.WaitFor(() => window.Projects.Count(p => p.IsEvaluated) == 2, "MSBuild to evaluate Shop.Web and Shop.Core");
+        Assert.True(window.Projects.Single(p => p.Name == "Shop.Web").IsWeb, "Shop.Web, on the Web SDK, is not evaluated as a web project");
+        Assert.False(window.Projects.Single(p => p.Name == "Shop.Core").IsWeb, "Shop.Core, a class library, is evaluated as a web project");
+
+        Show(window, Path.Combine(web, "Program.cs"));
+        Show(window, Path.Combine(core, "Catalog"));
+        Assert.Equal(["Properties", "wwwroot", "Api"], FoldersUnder(window, "Shop.Web"));
+        Assert.Equal(["Properties", "Catalog", "wwwroot"], FoldersUnder(window, "Shop.Core"));
+        (string Path, string Icon)[] drawn =
+        [
+            (Path.Combine(web, "Properties"), IconKeys.PropertiesFolder),
+            (Path.Combine(web, "wwwroot"), IconKeys.WebRootFolder),
+            (Path.Combine(core, "Properties"), IconKeys.PropertiesFolder),
+            (Path.Combine(core, "wwwroot"), IconKeys.Explorer),
+            (Path.Combine(web, "Api", "Properties"), IconKeys.Explorer),
+        ];
+        foreach ((string path, string icon) in drawn)
+        {
+            Assert.True(ReferenceEquals(Resource(icon), Drawn(window, Show(window, path)).Data), $"The Solution view does not draw {path} with {icon}");
+            Assert.True(ReferenceEquals(Resource(TokenKeys.File_Folder), Drawn(window, Show(window, path)).Foreground), $"The Solution view does not draw {path} in the folders' colour");
+        }
+
+        string webRoot = Path.Combine(web, "wwwroot");
+        const string served = "wwwroot is the project's web root: ASP.NET Core serves its static files from it";
+        const string profiles = "Properties holds the project's launch and publish profiles";
+        foreach ((string path, string why) in (ReadOnlySpan<(string, string)>)[(webRoot, served), (Path.Combine(web, "Properties"), profiles), (Path.Combine(core, "Properties"), profiles)])
+        {
+            Ui.RightClick(Ui.Row(window.ExplorerView, Show(window, path)));
+            MenuItem[] edit = [.. MenuItemOf(window, "Edit").Items.OfType<MenuItem>()];
+            window.ExplorerView.OpenMenu?.Close();
+            Ui.Settle();
+            foreach (string item in (string[])["Cut", "Delete…", "Rename…"])
+            {
+                MenuItem? shown = edit.FirstOrDefault(i => (string?)i.Header == item);
+                Assert.True(shown is { IsEnabled: false } && Equals(ToolTip.GetTip(shown), why),
+                    $"{path}'s Edit menu shows {item} {(shown is null ? "not at all" : shown.IsEnabled ? "enabled" : $"greyed saying '{ToolTip.GetTip(shown)}'")}, not greyed saying '{why}'");
+            }
+
+            // Copy between the keys refused, which it takes, so each refusal is its own word in the status bar.
+            string name = Path.GetFileName(path);
+            Ui.ClickRow(window, Show(window, path));
+            Ui.Run(window, AppActions.Rename);
+            Assert.False(window.IsPopupOpen, $"Rename's keys on {path} asked a new name");
+            Assert.Equal(why, window.Status);
+            Ui.Run(window, EditorActions.Copy);
+            Assert.Equal($"Copied {name}", window.Status);
+            Ui.Press(window, "BACK_SPACE");
+            Assert.Equal(why, window.Status);
+            Ui.Run(window, EditorActions.Copy);
+            Ui.Run(window, EditorActions.Cut);
+            Assert.Equal(why, window.Status);
+            Assert.False(Show(window, path).IsCut, $"Cut's keys dimmed {path} as cut");
+            foreach (string action in (string[])[AppActions.Rename, EditorActions.Delete, EditorActions.Cut])
+            {
+                Assert.Equal(why, window.Actions.Run(action));
+            }
+            Assert.True(Directory.Exists(path), $"{path} went, deleted by its keys");
+        }
+        Assert.Empty(asked);
+
+        ExplorerNode api = Show(window, Path.Combine(web, "Api"));
+        DropOverlay overlay = window.ExplorerView.GetVisualDescendants().OfType<DropOverlay>().Single();
+        Point from = Ui.Centre(Ui.Row(window.ExplorerView, Show(window, webRoot)), window);
+        Point to = Ui.Centre(Ui.Row(window.ExplorerView, api), window);
+        window.MouseDown(from, MouseButton.Left);
+        Move(window, from, to);
+        Assert.False(overlay.IsVisible, "wwwroot dragged over a folder lit it up as a place to move it to");
+        window.MouseUp(to, MouseButton.Left);
+        Ui.Settle();
+        Assert.True(Directory.Exists(webRoot) && !Directory.Exists(Path.Combine(web, "Api", "wwwroot")), "A drag moved wwwroot");
+
+        Ui.ClickRow(window, Show(window, Path.Combine(webRoot, "site.css")));
+        Ui.Run(window, AppActions.Rename);
+        NamePopup popup = Assert.IsType<NamePopup>(window.Popup);
+        popup.Text = string.Empty;
+        window.KeyTextInput("theme.css");
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => !window.IsPopupOpen, () => $"the rename of site.css to finish: {popup.Problem}");
+        Assert.True(File.Exists(Path.Combine(webRoot, "theme.css")) && !File.Exists(Path.Combine(webRoot, "site.css")),
+            $"site.css in wwwroot was not renamed theme.css: {window.Status}");
+
+        Ui.Click(window.GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) is string tip && tip.StartsWith("Switch between the solution", StringComparison.Ordinal)));
+        Assert.False(window.ExplorerView.Tree.IsSolutionView, "The view switch left the Solution view shown");
+        foreach ((string path, string icon) in drawn)
+        {
+            Assert.True(ReferenceEquals(Resource(icon), Drawn(window, Show(window, path)).Data), $"The File System view does not draw {path} with {icon}");
+        }
+        Assert.Equal(served, Show(window, webRoot).Kept);
+        window.Close();
+    }
+
+    /// <summary>The names of the folders shown directly under a project's row, in order.</summary>
+    private static IReadOnlyList<string> FoldersUnder(MainWindow window, string project)
+    {
+        List<ExplorerNode> rows = [.. window.ExplorerView.Tree.Rows];
+        ExplorerNode row = Row(window, NodeKind.Project, project);
+        return [.. rows.Skip(rows.IndexOf(row) + 1).TakeWhile(r => r.Depth > row.Depth).Where(r => r.Depth == row.Depth + 1 && r.Kind == NodeKind.Folder).Select(r => r.Name)];
+    }
+
+    /// <summary>The icon and its brush a row is drawn with.</summary>
+    private static (Avalonia.Media.Geometry? Data, Avalonia.Media.IBrush? Foreground) Drawn(MainWindow window, ExplorerNode row)
+    {
+        RowGlyphs glyphs = window.ExplorerView.GetVisualDescendants().OfType<RowGlyphs>().FirstOrDefault(i => ReferenceEquals(i.DataContext, row))
+            ?? throw new InvalidOperationException($"The Explorer draws no icon on {row.Name}'s row");
+        return (glyphs.Icon, glyphs.IconBrush);
+    }
+
+    private static object Resource(string key)
+    {
+        Application app = Application.Current!;
+        return app.TryFindResource(key, app.ActualThemeVariant, out object? value) && value is not null ? value : throw new InvalidOperationException($"The theme has no {key}");
+    }
+
     /// <summary>An item of the Explorer's open menu, by its title.</summary>
     private static MenuItem MenuItemOf(MainWindow window, string header)
     {

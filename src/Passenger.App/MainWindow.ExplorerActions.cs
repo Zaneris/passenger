@@ -77,7 +77,7 @@ public partial class MainWindow
             }
         })
         {
-            WhyNot = c => RowOf(c) is { } row ? (row.CanRename ? null : $"{row.Name} cannot be renamed") : assist.WhyNotRename(c),
+            WhyNot = c => RowOf(c) is { } row ? row.Kept ?? (row.CanRename ? null : $"{row.Name} cannot be renamed") : assist.WhyNotRename(c),
             Menus = [new MenuPlace("Refactor", 1, 0)],
         });
 
@@ -261,15 +261,17 @@ public partial class MainWindow
         {
             edit.Add(Item(E.Paste));
         }
-        if (edit.Count > 0 && (node.CanRemove || node.CanRename))
+        // A folder the SDK reads shows Delete and Rename greyed, saying why.
+        bool kept = node.Kept is not null;
+        if (edit.Count > 0 && (node.CanRemove || node.CanRename || kept))
         {
             edit.Add(separator);
         }
-        if (node.CanRemove)
+        if (node.CanRemove || kept)
         {
             edit.Add(Item(E.Delete));
         }
-        if (node.CanRename)
+        if (node.CanRename || kept)
         {
             edit.Add(Item(A.Rename));
         }

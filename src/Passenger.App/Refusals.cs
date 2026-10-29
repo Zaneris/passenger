@@ -54,6 +54,12 @@ public static class Refusals
             ? string.Create(CultureInfo.InvariantCulture, $"the text replaced would be {length:N0} characters long, more than {SearchResult.MostReplaced:N0}")
             : null;
 
+    /// <summary>A folder at a project's top that the SDK reads by its name (<see cref="Explorer.SdkFolder"/>), named as it is
+    /// shown, which Rename, Delete and Cut leave where it is.</summary>
+    public static string ReadBySdk(Explorer.SdkFolder folder, string name) => folder == Explorer.SdkFolder.WebRoot
+        ? $"{name} is the project's web root: ASP.NET Core serves its static files from it"
+        : $"{name} holds the project's launch and publish profiles";
+
     /// <summary>A file shown read-only (decompiled, installed, carried by the app, a copy to read), which nothing edits or
     /// saves.</summary>
     public static string ReadOnly(string name) => $"{name} is read-only";

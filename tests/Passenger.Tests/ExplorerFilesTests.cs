@@ -520,6 +520,35 @@ public sealed class ExplorerFilesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A folder holding a web project and no solution opens in the File System view, where the project's
+    /// Properties and, once MSBuild has evaluated the project as a web one, its wwwroot are listed before its other folders
+    /// and refuse Delete and Rename saying why.</summary>
+    [AvaloniaFact]
+    public void A_web_projects_Properties_and_wwwroot_list_first_in_the_file_system_view_once_evaluated_and_refuse_delete_and_rename()
+    {
+        File.WriteAllText(Path.Combine(folder, "Shop.csproj"), TestProjects.Web());
+        TestFolders.Write(folder, "Properties/launchSettings.json", "{ \"profiles\": {} }\n");
+        TestFolders.Write(folder, "wwwroot/site.css", "body { margin: 0; }\n");
+        MainWindow window = Open();
+        List<string> asked = Answer(window);
+        Assert.False(window.ExplorerView.Tree.IsSolutionView, "A folder with no solution opened in the Solution view");
+        string webRoot = PathNames.Canonical(Path.Combine(folder, "wwwroot"));
+        IReadOnlyList<ExplorerNode> rows = window.ExplorerView.Tree.Rows;
+        Ui.WaitFor(() => rows.Any(r => r.Path == webRoot && r.SdkFolder == SdkFolder.WebRoot),
+            () => $"wwwroot shown as Shop's web root once MSBuild evaluated it a web project: [{string.Join(", ", rows.Select(r => $"{r.Name} {r.SdkFolder}"))}]");
+        Assert.Equal(["Properties", "wwwroot", "Models"], rows.Where(r => r is { Depth: 1, Kind: NodeKind.Folder }).Select(r => r.Name));
+        Assert.Equal(SdkFolder.Properties, Row(window, "Properties").SdkFolder);
+
+        Ui.ClickRow(window, Row(window, "wwwroot"));
+        Ui.Run(window, AppActions.Rename);
+        Assert.Equal("wwwroot is the project's web root: ASP.NET Core serves its static files from it", window.Status);
+        Ui.ClickRow(window, Row(window, "Properties"));
+        Ui.Press(window, "BACK_SPACE");
+        Assert.Equal("Properties holds the project's launch and publish profiles", window.Status);
+        Assert.True(Directory.Exists(webRoot) && Directory.Exists(Path.Combine(folder, "Properties")) && asked.Count == 0, "A folder the SDK reads was renamed or deleted");
+        window.Close();
+    }
+
     /// <summary>A file's row, opened to and chosen in the Explorer by its name in the folder.</summary>
     private ExplorerNode Row(MainWindow window, string name)
     {

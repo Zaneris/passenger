@@ -157,6 +157,9 @@ public partial class ExplorerView : UserControl
     private string? folder;
     private SolutionModel? solution;
 
+    /// <summary>The folder's projects, by which the File System view knows the folders the SDK reads.</summary>
+    private IReadOnlyList<ProjectModel> projects = [];
+
     /// <summary>The file-based programs beside the solution, which the Solution view lists after its own.</summary>
     private IReadOnlyList<ProjectModel> programs = [];
 
@@ -180,6 +183,7 @@ public partial class ExplorerView : UserControl
         folder = null;
         solution = null;
         programs = [];
+        projects = [];
         project = null;
         ViewSwitch.IsVisible = false;
         Tree.Clear();
@@ -240,6 +244,7 @@ public partial class ExplorerView : UserControl
     {
         solution = workspace.Solution;
         programs = [.. workspace.Programs];
+        projects = workspace.Projects;
         project = workspace.ProjectFile is null ? null : workspace.Projects.FirstOrDefault();
         ViewSwitch.IsVisible = solution is not null || project is not null;
     }
@@ -258,7 +263,7 @@ public partial class ExplorerView : UserControl
         }
         else if (folder is not null)
         {
-            Tree.LoadFileSystem(folder);
+            Tree.LoadFileSystem(folder, projects);
             ViewName.Text = "Files";
         }
     }
@@ -461,7 +466,7 @@ public partial class ExplorerView : UserControl
     }
 
     /// <summary>The folder or project what is dragged would go into at a point: the one under it, or a file's; none where
-    /// it would not move (all of it there already) or a folder would go inside itself.</summary>
+    /// it would not move (all of it there already), a folder would go inside itself, or a folder the SDK reads would move.</summary>
     private ExplorerNode? TargetAt(IReadOnlyList<ExplorerNode> items, Point at)
     {
         if (Surface.TranslatePoint(at, Rows) is not { } inRows || RowAt(inRows) is not { } row)
@@ -479,7 +484,7 @@ public partial class ExplorerView : UserControl
             return null;
         }
         if (items.Any(i => i.Kind == NodeKind.Folder && PathNames.Within(into, i.Path!))
-            || !copyHeld && items.All(i => PathNames.Same(Path.GetDirectoryName(i.Path!)!, into)))
+            || !copyHeld && (items.All(i => PathNames.Same(Path.GetDirectoryName(i.Path!)!, into)) || items.Any(i => i.Kept is not null)))
         {
             return null;
         }

@@ -256,6 +256,9 @@ public sealed record ProjectModel(
     /// <summary>Whether Aspire's evaluated SDK identifies this project as an AppHost.</summary>
     public bool IsAspireHost => Evaluated?.IsAspireHost == true;
 
+    /// <summary>Whether a web SDK builds it, as evaluated, serving the files of the wwwroot at its top.</summary>
+    public bool IsWeb => Evaluated?.IsWeb == true;
+
     /// <summary>Whether the project host evaluates and builds it with EnableWindowsTargeting (off Windows, for a framework
     /// the SDK marks Windows-only that the project does not enable itself), which Passenger's own builds of it give too.</summary>
     public bool WindowsTargeting => Evaluated?.Dependencies.Any(d => d.WindowsTargeting) == true;

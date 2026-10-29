@@ -136,6 +136,10 @@ public sealed record EvaluatedProject
     /// <summary>Whether the evaluated project uses Aspire's AppHost SDK.</summary>
     public bool IsAspireHost { get; init; }
 
+    /// <summary>Whether a web SDK builds it (Microsoft.NET.Sdk.Web, .Razor, .BlazorWebAssembly or .StaticWebAssets), whose
+    /// static web assets are the files of the wwwroot at its top.</summary>
+    public bool IsWeb { get; init; }
+
     /// <summary>Its packages and project references, a target framework each, or one with none for a project with one.</summary>
     public IReadOnlyList<FrameworkDependencies> Dependencies { get; init; } = [];
 

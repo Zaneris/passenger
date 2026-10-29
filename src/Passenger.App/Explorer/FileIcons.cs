@@ -5,8 +5,8 @@ using Avalonia.Media;
 namespace Passenger.App.Explorer;
 
 /// <summary>The icon and tint a file or folder is drawn with: <see cref="FileIconSet"/>'s shape and colour for its name, a
-/// folder the set draws nothing apart for as a folder, and a solution folder as a filled one, so it never passes for a
-/// folder on disk.</summary>
+/// folder the set draws nothing apart for as a folder (one the SDK reads with its badge, open or not), and a solution
+/// folder as a filled one, so it never passes for a folder on disk.</summary>
 public static class FileIcons
 {
     public static Geometry For(ExplorerNode node) => Look(node) is { } look
@@ -15,7 +15,12 @@ public static class FileIcons
         {
             NodeKind.SolutionFolder => node.IsExpanded ? IconKeys.SolutionFolderOpen : IconKeys.SolutionFolder,
             NodeKind.Framework => IconKeys.Reference,
-            _ => node.IsExpanded ? IconKeys.FolderOpen : IconKeys.Explorer,
+            _ => node.SdkFolder switch
+            {
+                SdkFolder.Properties => IconKeys.PropertiesFolder,
+                SdkFolder.WebRoot => IconKeys.WebRootFolder,
+                _ => node.IsExpanded ? IconKeys.FolderOpen : IconKeys.Explorer,
+            },
         });
 
     public static IBrush BrushFor(ExplorerNode node) => Look(node) is { } look

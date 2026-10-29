@@ -22,11 +22,17 @@ public partial class MainWindow
 
     private const string NothingHeld = "Nothing to paste: no files or folders were cut or copied";
 
+    /// <summary>The rows Cut or Copy on a row takes: it, or every file and folder chosen with it.</summary>
+    private IEnumerable<ExplorerNode> RowsHeld(ExplorerNode node)
+    {
+        IReadOnlyList<ExplorerNode> chosen = Explorer.SelectedNodes;
+        return (chosen.Contains(node) ? chosen : [node]).Where(n => n.IsMovable);
+    }
+
     /// <summary>Cut or Copy on a row: it, or every file and folder chosen with it, but those inside another of them.</summary>
     private async Task HoldAsync(ExplorerNode node, bool cut)
     {
-        IReadOnlyList<ExplorerNode> chosen = Explorer.SelectedNodes;
-        IReadOnlyList<string> paths = Outermost([.. (chosen.Contains(node) ? chosen : [node]).Where(n => n.IsMovable).Select(n => n.Path!)]);
+        IReadOnlyList<string> paths = Outermost([.. RowsHeld(node).Select(n => n.Path!)]);
         if (paths.Count == 0)
         {
             return;
@@ -343,8 +349,10 @@ public partial class MainWindow
     private string? WhyNotOnRow(string action, ActionContext context) => RowOf(context) is not { } row ? null : action switch
     {
         E.Cut or E.Copy when !row.IsMovable => $"{row.Name} cannot be moved",
+        E.Cut when RowsHeld(row).FirstOrDefault(n => n.Kept is not null) is { Kept: { } kept } => kept,
         E.Paste when row.Into is null => $"Nothing can be pasted into {row.Name}",
         E.Paste when held is null => NothingHeld,
+        E.Delete or E.Backspace when row.Kept is { } kept => kept,
         E.Delete or E.Backspace when !row.CanRemove => $"{row.Name} cannot be deleted",
         _ => null,
     };

@@ -22,6 +22,17 @@ public enum NodeKind
     ProjectReference,
 }
 
+/// <summary>A folder at a project's top that the .NET SDK reads by its name, in the order the Explorer lists them before
+/// the project's other folders: none is renamed, deleted or moved, as what reads it would no longer find it.</summary>
+public enum SdkFolder
+{
+    /// <summary>Properties, which holds the project's launch and publish profiles.</summary>
+    Properties,
+
+    /// <summary>A web project's wwwroot, its web root, whose files ASP.NET Core serves.</summary>
+    WebRoot,
+}
+
 /// <summary>The Explorer's tree, in either of its two views: the Solution (its folders with their files, and projects,
 /// each project's dependencies and its files, a file's dependents nested under it, <see cref="FileNesting"/>) or the
 /// File System. Flattened into the rows currently visible, so a virtualizing list draws only what is on screen; a
@@ -90,11 +101,13 @@ public sealed class ExplorerTree
     /// folder's after the solution's own, as a folder with no solution has its programs beside its projects.</summary>
     private IReadOnlyList<ProjectModel> programs = [];
 
-    public void LoadFileSystem(string folder)
+    /// <summary>A folder's files, the projects among them telling which of its folders the SDK reads (<see cref="SdkFolder"/>).</summary>
+    public void LoadFileSystem(string folder, IReadOnlyList<ProjectModel> within)
     {
         IsSolutionView = false;
         solution = null;
         programs = [];
+        Take(within);
         Show(Folder(PathNames.Canonical(folder), 0, dimmed: false));
     }
 
@@ -155,11 +168,29 @@ public sealed class ExplorerTree
     }
 
     /// <summary>Projects evaluated again: their rows read them anew, every row still there kept as it was (open, chosen,
-    /// focused), and the rows that came or went put in their places.</summary>
+    /// focused), and the rows that came or went put in their places; in the File System view, the folders of those whose
+    /// web root came or went.</summary>
     public void UpdateProjects(IEnumerable<ProjectModel> updated)
     {
-        if (Root is null || !IsSolutionView)
+        if (Root is null)
         {
+            return;
+        }
+        if (!IsSolutionView)
+        {
+            List<string> served = [];
+            foreach (ProjectModel project in updated)
+            {
+                if (projects.TryGetValue(project.Path, out ProjectModel? before))
+                {
+                    projects[project.Path] = project;
+                    if (before.IsWeb != project.IsWeb)
+                    {
+                        served.Add(project.Folder);
+                    }
+                }
+            }
+            RefreshFolders(served);
             return;
         }
         HashSet<string> changed = new(StringComparer.Ordinal);
@@ -550,7 +581,40 @@ public sealed class ExplorerTree
 
     private ExplorerNode Folder(string path, int depth, bool dimmed, Nesting? nesting = null) =>
         new(NodeKind.Folder, Path.GetFileName(path) is { Length: > 0 } name ? name : path, path, depth, dimmed,
-            node => Contents(path, node.Depth + 1, node.IsDimmed, skip: null, nesting));
+            node => Contents(path, node.Depth + 1, node.IsDimmed, skip: null, nesting)) { SdkFolder = SdkFolderAt(path) };
+
+    /// <summary>What the SDK makes of a folder on disk, as the shown projects whose folder holds it read it; most folders'
+    /// names alone say it is none.</summary>
+    private SdkFolder? SdkFolderAt(string path)
+    {
+        string name = Path.GetFileName(path);
+        if (!string.Equals(name, PropertiesFolder, PathNames.Comparison) && !string.Equals(name, WebRootFolder, PathNames.Comparison))
+        {
+            return null;
+        }
+        string? holder = Path.GetDirectoryName(path);
+        foreach (ProjectModel project in projects.Values)
+        {
+            if (holder is not null && PathNames.Same(project.Folder, holder) && SdkFolderOf(project, name) is { } read)
+            {
+                return read;
+            }
+        }
+        return null;
+    }
+
+    private const string PropertiesFolder = "Properties";
+    private const string WebRootFolder = "wwwroot";
+
+    /// <summary>What the SDK makes of a folder of a project, by where it is in it ('/' between folders): Properties at the
+    /// top of a project (a file-based program has its own launch profiles), the wwwroot at a web project's top.</summary>
+    private static SdkFolder? SdkFolderOf(ProjectModel project, string relative) =>
+        string.Equals(relative, PropertiesFolder, PathNames.Comparison) && !project.IsProgram ? SdkFolder.Properties
+        : string.Equals(relative, WebRootFolder, PathNames.Comparison) && project.IsWeb ? SdkFolder.WebRoot
+        : null;
+
+    /// <summary>Where a row goes among its folder's: the SDK's folders first, in their order, then the rest as they came.</summary>
+    private static int Listed(ExplorerNode node) => node.SdkFolder is { } read ? (int)read : int.MaxValue;
 
     /// <summary>What a project holds at one place in it (its top, or a folder of it), read as it is now: once evaluated,
     /// the files it holds there; until then, or when it could not be, the files on disk there.</summary>
@@ -575,16 +639,20 @@ public sealed class ExplorerTree
     /// <summary>A folder of an evaluated project: what the project holds in it, by where each file shows (a linked file at
     /// its Link), whether or not the folder is on disk; dimmed, with all it holds, where the folder's walks pass over it.</summary>
     private ExplorerNode HeldFolder(ProjectModel given, string path, string relative, int depth, bool dimmed) =>
-        new(NodeKind.Folder, Path.GetFileName(relative), path, depth, dimmed || IgnoredFolders.Is(path), node => HeldIn(given, relative, node.Depth + 1, node.IsDimmed));
+        new(NodeKind.Folder, Path.GetFileName(relative), path, depth, dimmed || IgnoredFolders.Is(path), node => HeldIn(given, relative, node.Depth + 1, node.IsDimmed))
+        {
+            SdkFolder = SdkFolderOf(Current(given), relative),
+        };
 
-    /// <summary>What an evaluated project holds at one place in it: its folders, then its files, each by name, a file's
-    /// dependents nested under it; a folder on disk with nothing in it at all shows too, as one just made does.</summary>
+    /// <summary>What an evaluated project holds at one place in it: its folders (the SDK's first), then its files, each by
+    /// name, a file's dependents nested under it; a folder on disk with nothing in it at all shows too, as one just made does.</summary>
     private List<ExplorerNode> Held(ProjectModel given, ProjectFiles files, string relative, int depth, Nesting nesting, bool dimmed)
     {
         List<ExplorerNode> nodes = [.. files.FoldersIn(relative)
             .Order(StringComparer.OrdinalIgnoreCase)
             .Select(name => relative.Length == 0 ? name : $"{relative}/{name}")
-            .Select(inner => HeldFolder(given, files.PathOf(inner), inner, depth, dimmed))];
+            .Select(inner => HeldFolder(given, files.PathOf(inner), inner, depth, dimmed))
+            .OrderBy(Listed)];
         List<(string Name, string Path)> held = [.. files.FilesIn(relative)
             .Where(f => !FileText.IsSaving(f.Name))
             .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase)];
@@ -604,8 +672,9 @@ public sealed class ExplorerTree
         return nodes;
     }
 
-    /// <summary>A folder's entries, folders first, a save's temporary file left out (nothing reads the folder again once
-    /// the save is done); a project hides its own build output and file, and nests its files under those they belong to.</summary>
+    /// <summary>A folder's entries, folders first (the SDK's first of all), a save's temporary file left out (nothing reads
+    /// the folder again once the save is done); a project hides its own build output and file, and nests its files under
+    /// those they belong to.</summary>
     private List<ExplorerNode> Contents(string folder, int depth, bool dimmed, string? skip, Nesting? nesting, ProjectModel? within = null)
     {
         List<FileSystemInfo> entries;
@@ -648,7 +717,7 @@ public sealed class ExplorerTree
                     });
             }
         }
-        return nodes;
+        return nodes.Any(n => n.SdkFolder is not null) ? [.. nodes.OrderBy(Listed)] : nodes;
     }
 
     /// <summary>The files nested under each of a folder's files, in the folder's order, grouped once for the folder
@@ -718,6 +787,14 @@ public sealed class ExplorerNode : Observable, ITreeRow
     /// <summary>The names of the files nested under a file, which make it another row when they change.</summary>
     internal string? Nested { get; init; }
 
+    /// <summary>What the SDK reads a folder at a project's top as, which lists it first and keeps it where it is; null for
+    /// every other row.</summary>
+    public SdkFolder? SdkFolder { get; init; }
+
+    /// <summary>Why Rename, Delete and Cut leave the row where it is: a folder the SDK reads by its name; null for every
+    /// other row.</summary>
+    public string? Kept => SdkFolder is { } read ? Refusals.ReadBySdk(read, Name) : null;
+
     /// <summary>Cut and waiting to be pasted, which dims it.</summary>
     public bool IsCut
     {
@@ -750,12 +827,15 @@ public sealed class ExplorerNode : Observable, ITreeRow
     /// as the row under it.</summary>
     public bool IsProgram => Kind == NodeKind.Project && Path is { } program && ProgramFiles.IsProgram(program);
 
-    /// <summary>What Rename renames: what is on disk, but a file only the solution lists, and a solution folder.</summary>
-    public bool CanRename => Kind is NodeKind.Folder or NodeKind.SolutionFolder || Kind == NodeKind.Project && !IsProgram || Kind == NodeKind.File && !IsSolutionItem;
+    /// <summary>What Rename renames: what is on disk, but a file only the solution lists and a folder the SDK reads, and a
+    /// solution folder.</summary>
+    public bool CanRename => Kept is null
+        && (Kind is NodeKind.Folder or NodeKind.SolutionFolder || Kind == NodeKind.Project && !IsProgram || Kind == NodeKind.File && !IsSolutionItem);
 
-    /// <summary>What Delete takes away: a file or folder to the Trash, or what is the solution's own out of it.</summary>
-    public bool CanRemove => Kind is NodeKind.File or NodeKind.Folder or NodeKind.SolutionFolder || Kind == NodeKind.Project && !IsProgram
-        || Kind == NodeKind.ProjectReference && Referenced is not null;
+    /// <summary>What Delete takes away: a file or folder to the Trash (but a folder the SDK reads), or what is the solution's
+    /// own out of it.</summary>
+    public bool CanRemove => Kept is null && (Kind is NodeKind.File or NodeKind.Folder or NodeKind.SolutionFolder || Kind == NodeKind.Project && !IsProgram
+        || Kind == NodeKind.ProjectReference && Referenced is not null);
 
     /// <summary>What Delete only takes out of the solution or its project, its files staying on disk: a project, a
     /// solution folder, a file it lists, a project reference.</summary>
@@ -787,8 +867,8 @@ public sealed class ExplorerNode : Observable, ITreeRow
     }
 
     /// <summary>What makes a row the same row when its parent is read again: a package's version is part of it, so one
-    /// updated shows its new version.</summary>
-    private static string Identity(ExplorerNode node) => $"{node.Kind}/{node.Path ?? node.Name}/{node.Nested}/{(node.Path is null ? node.Detail : null)}";
+    /// updated shows its new version, and what the SDK reads a folder as, so a web root found shows as one.</summary>
+    private static string Identity(ExplorerNode node) => $"{node.Kind}/{node.Path ?? node.Name}/{node.Nested}/{(node.Path is null ? node.Detail : null)}/{node.SdkFolder}";
 
     public bool IsExpanded
     {

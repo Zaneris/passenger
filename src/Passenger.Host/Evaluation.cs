@@ -23,6 +23,10 @@ internal static class Evaluation
     private static readonly string[] FileItemTypes =
         ["Compile", "None", "Content", "EmbeddedResource", "AdditionalFiles", "Page", "Resource", "ApplicationDefinition", "Folder"];
 
+    /// <summary>What each web SDK sets true as it is imported.</summary>
+    private static readonly string[] WebSdks =
+        ["UsingMicrosoftNETSdkWeb", "UsingMicrosoftNETSdkRazor", "UsingMicrosoftNETSdkBlazorWebAssembly", "UsingMicrosoftNETSdkStaticWebAssets"];
+
     /// <summary>The most folders stamped for one project, so a wildcard over a folder of thousands is not walked at length.</summary>
     private const int FolderLimit = 20_000;
 
@@ -130,6 +134,7 @@ internal static class Evaluation
             TargetFrameworks = frameworks,
             IsTestProject = each.Any(p => p.GetPropertyValue("IsTestProject").Equals("true", StringComparison.OrdinalIgnoreCase)),
             IsAspireHost = each.Any(p => p.GetPropertyValue("IsAspireHost").Equals("true", StringComparison.OrdinalIgnoreCase)),
+            IsWeb = each.Any(p => WebSdks.Any(sdk => p.GetPropertyValue(sdk).Equals("true", StringComparison.OrdinalIgnoreCase))),
             Dependencies = [.. each.Select((p, i) => Dependencies(p, named[i]))],
             Symbols = [.. each.Select(DefinedSymbols.Of).OfType<FrameworkSymbols>()],
             Items = items,
