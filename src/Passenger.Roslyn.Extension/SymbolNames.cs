@@ -68,7 +68,10 @@ internal static class SymbolNames
                     }
                 }
             }
-            foreach (ISymbol symbol in bracketed ? [] : await SymbolFinder.FindSourceDeclarationsAsync(solution, Bare(last), ignoreCase: false, cancel).ConfigureAwait(false))
+            IEnumerable<ISymbol> declared = bracketed ? [] :
+                [.. await SymbolFinder.FindSourceDeclarationsAsync(solution, Bare(last), ignoreCase: false, cancel).ConfigureAwait(false),
+                .. await RazorDeclarationsAsync(solution, Bare(last), cancel).ConfigureAwait(false)];
+            foreach (ISymbol symbol in declared)
             {
                 if (In(symbol, path) && Takes(symbol, parameters))
                 {
@@ -97,10 +100,12 @@ internal static class SymbolNames
     }
 
     /// <summary>The first of a symbol's declarations in a file of the solution's own, a Razor file's where its generated
-    /// code maps to one; a source generator's own files are none.</summary>
+    /// code maps to one, and a Razor component's own file at its start for what its code maps nowhere (the component's
+    /// class); a source generator's other files are none.</summary>
     private static (string? Path, Place? At) Declared(Solution solution, ISymbol symbol)
     {
-        foreach (Location location in symbol.Locations.Where(l => l.IsInSource && l.SourceTree is not null))
+        IReadOnlyList<Location> sources = [.. symbol.Locations.Where(l => l.IsInSource && l.SourceTree is not null)];
+        foreach (Location location in sources)
         {
             FileLinePositionSpan mapped = location.GetMappedLineSpan();
             if (mapped.HasMappedPath && mapped.Path.Length > 0)
@@ -113,8 +118,53 @@ internal static class SymbolNames
                 return (file, new Place(start.Line, start.Character));
             }
         }
+        foreach (Location location in sources)
+        {
+            if (solution.GetDocument(location.SourceTree!) is SourceGeneratedDocument generated && RazorFileOf(generated) is { } razor)
+            {
+                return (razor, new Place(0, 0));
+            }
+        }
         return (null, null);
     }
+
+    /// <summary>The symbols a name names that Razor files declare, in the C# Razor's generator makes of them, which the
+    /// solution's index of declarations does not read; only a project with Razor files is asked.</summary>
+    private static async Task<IReadOnlyList<ISymbol>> RazorDeclarationsAsync(Solution solution, string name, CancellationToken cancel)
+    {
+        List<ISymbol> found = [];
+        foreach (Project project in solution.Projects.Where(p => p.AdditionalDocuments.Any(d => IsRazor(d.FilePath))))
+        {
+            HashSet<string> generated = [.. (await project.GetSourceGeneratedDocumentsAsync(cancel).ConfigureAwait(false))
+                .Where(d => IsRazorGenerated(d.HintName) && d.FilePath is not null).Select(d => d.FilePath!)];
+            if (generated.Count > 0 && await project.GetCompilationAsync(cancel).ConfigureAwait(false) is { } compilation)
+            {
+                found.AddRange(compilation.GetSymbolsWithName(n => n == name, SymbolFilter.TypeAndMember, cancel)
+                    .Where(s => s.Locations.Any(l => l.SourceTree?.FilePath is { } tree && generated.Contains(tree))));
+            }
+        }
+        return found;
+    }
+
+    /// <summary>The Razor file a file of Razor's generator was made from: the one its hint name is made of (a path's every
+    /// character but a letter or digit an underscore, then ".g.cs"); null for any other generated file.</summary>
+    private static string? RazorFileOf(SourceGeneratedDocument generated)
+    {
+        if (!IsRazorGenerated(generated.HintName) || Path.GetDirectoryName(generated.Project.FilePath) is not { } folder)
+        {
+            return null;
+        }
+        string made = Identifier(generated.HintName[..^".g.cs".Length]);
+        return generated.Project.AdditionalDocuments.FirstOrDefault(d => IsRazor(d.FilePath) && Identifier(Path.GetRelativePath(folder, d.FilePath!)) == made)?.FilePath;
+
+        static string Identifier(string path) => string.Concat(path.Select(c => char.IsLetterOrDigit(c) ? c : '_'));
+    }
+
+    private static bool IsRazor(string? path) =>
+        path is not null && (path.EndsWith(".razor", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".cshtml", StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsRazorGenerated(string hint) =>
+        hint.EndsWith("_razor.g.cs", StringComparison.OrdinalIgnoreCase) || hint.EndsWith("_cshtml.g.cs", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>A name's dotted parts, generic arguments kept inside their part, and its parameters' types when it gives
     /// them (none for <c>()</c>).</summary>

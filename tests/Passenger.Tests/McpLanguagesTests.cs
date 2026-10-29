@@ -486,10 +486,12 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
     }
 
     /// <summary>A Blazor app's C#, as the window's code help reads it: a configuration key's read goes to where appsettings.json
-    /// gives it and its card says the value.</summary>
+    /// gives it and its card says the value, and a Razor component and a member of its <c>@code</c> are named by symbol as a
+    /// C# type and its members are.</summary>
     [Fact]
-    public async Task An_agent_goes_to_a_configuration_keys_value_and_reads_it_as_the_hover_card_says_it()
+    public async Task An_agent_goes_to_a_configuration_keys_value_and_names_a_razor_component_and_its_members_by_symbol()
     {
+        const string Salutation = "<button @onclick=\"Clicked\">Click</button>\n\n@code {\n    private int count;\n\n    private void Clicked() => count++;\n}\n";
         string shop = PathNames.Canonical(TestFolders.Create("mcp-blazor-"));
         DeleteAtEnd(shop);
         await TestFolders.PrepareAsync(async () =>
@@ -499,6 +501,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
             File.WriteAllText(Path.Combine(shop, "Program.cs"), start.Replace("var builder = WebApplication.CreateBuilder(args);",
                 "var builder = WebApplication.CreateBuilder(args);\nstring? greeting = builder.Configuration[\"Greeting:Text\"];", StringComparison.Ordinal));
             File.WriteAllText(Path.Combine(shop, "appsettings.json"), "{\n  \"AllowedHosts\": \"*\",\n  \"Greeting\": {\n    \"Text\": \"hi\"\n  }\n}\n");
+            File.WriteAllText(Path.Combine(shop, "Components", "Salutation.razor"), Salutation);
             await Restore.RunAsync(shop);
         }, shop);
         await using McpClient client = await Start(["--mcp", shop]);
@@ -511,6 +514,16 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         string card = (await Call(client, McpTools.SymbolInfo, key)).GetString()!.ReplaceLineEndings("\n");
         Assert.True(card.Contains("System.String", StringComparison.Ordinal) && card.Contains("Greeting:Text:\nappsettings.json = hi", StringComparison.Ordinal),
             $"symbol_info on a configuration key's read did not say where its value is given, as the hover card does:\n{card}");
+
+        string razor = Path.Combine("Components", "Salutation.razor");
+        JsonElement member = Assert.Single((await Call(client, McpTools.FindSymbol, new() { ["query"] = "Clicked", ["exact"] = true })).EnumerateArray());
+        Assert.Equal((razor, 6, 18, "M:Shop.Components.Salutation.Clicked"),
+            (member.GetProperty("path").GetString(), member.GetProperty("line").GetInt32(), member.GetProperty("column").GetInt32(), member.GetProperty("id").GetString()));
+        JsonElement declared = Assert.Single((await Call(client, McpTools.Definition, new() { ["symbol"] = "Salutation.Clicked" })).EnumerateArray());
+        Assert.Equal((razor, 6), (declared.GetProperty("path").GetString(), declared.GetProperty("line").GetInt32()));
+        Assert.Equal([1, 6], Used(await Call(client, McpTools.Usages, new() { ["symbol"] = "Salutation.Clicked" })).Select(u => u.Line).Order());
+        string component = (await Call(client, McpTools.SymbolInfo, new() { ["symbol"] = "Salutation" })).GetString()!;
+        Assert.StartsWith($"Salutation (class) at {razor}:1:1, T:Shop.Components.Salutation", component, StringComparison.Ordinal);
     }
 
     /// <summary>The test's own restored folder (<see cref="Restored"/>), removed with the test.</summary>
