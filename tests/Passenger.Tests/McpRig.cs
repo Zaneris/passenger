@@ -345,6 +345,18 @@ public abstract class McpRig : IDisposable
     /// <summary>The progress an agent's call was told, as the SDK hands it over, on any thread.</summary>
     protected sealed class Heard : IProgress<ModelContextProtocol.ProgressNotificationValue>
     {
+        /// <summary>Every progress the agent's session is told from here, kept also when its client hands it over after
+        /// the answer to the call it was told of, which a call's own <see cref="Heard"/> no longer hears.</summary>
+        public static IAsyncDisposable All(McpClient client, Heard heard) =>
+            client.RegisterNotificationHandler(NotificationMethods.ProgressNotification, (notification, _) =>
+            {
+                if (notification.Params?.Deserialize<ProgressNotificationParams>(ModelContextProtocol.McpJsonUtilities.DefaultOptions) is { } progress)
+                {
+                    heard.Report(progress.Progress);
+                }
+                return ValueTask.CompletedTask;
+            });
+
         private readonly List<ModelContextProtocol.ProgressNotificationValue> told = [];
 
         public IReadOnlyList<ModelContextProtocol.ProgressNotificationValue> Told

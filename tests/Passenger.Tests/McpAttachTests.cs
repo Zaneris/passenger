@@ -847,8 +847,9 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
     }
 
     /// <summary>A slow agent: the window's word of what a call waits on is still being written to it when the call ends
-    /// at the window's limit. The word goes whole first and the answer after it, on a line of its own, so the agent hears
-    /// both; a word cut short as the call ended would have taken the answer with it, and the call would never come back.</summary>
+    /// at the window's limit. The word goes whole first and the answer after it, on a line of its own, and --mcp-attach
+    /// passes both on in that order, so the agent hears both; a word cut short as the call ended would have taken the
+    /// answer with it, and the call would never come back.</summary>
     [AvaloniaFact]
     public void A_call_that_ends_while_its_word_to_a_slow_agent_is_still_written_comes_back_after_that_word()
     {
@@ -860,6 +861,8 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
         Ui.Settle();
         string where = $"the Passenger window on {window.Folder}";
         McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        Heard told = new();
+        IAsyncDisposable hearing = Heard.All(client, told);
         try
         {
             Heard letIn = new();
@@ -870,13 +873,21 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
             CallToolResult notLetIn = Await(unanswered, "the call nobody let in, ended while its word to the agent was still written");
             Assert.True(notLetIn.IsError == true && Text(notLetIn).Contains($"Nobody at {where} answered within {limit.TotalSeconds:0} s whether Test Agent may work there.", StringComparison.Ordinal),
                 $"The call nobody let in was answered: {Text(notLetIn)}");
-            Assert.True(letIn.Told.Any(t => t.Message?.StartsWith($"Waiting for the person at {where} to let Test Agent in", StringComparison.Ordinal) == true),
-                $"The agent never heard what its call waited on: {letIn}");
+            // The agent's client hands each message over on a thread of its own: the word at times after the answer.
+            Ui.WaitFor(() => told.Told.Any(t => t.Message?.StartsWith($"Waiting for the person at {where} to let Test Agent in", StringComparison.Ordinal) == true),
+                () => $"the agent to hear what its call waited on (it heard {told})");
         }
         finally
         {
-            Gone(client);
-            window.Close();
+            try
+            {
+                Ui.Await(hearing.DisposeAsync().AsTask(), "the agent's session to stop keeping its progress");
+            }
+            finally
+            {
+                Gone(client);
+                window.Close();
+            }
         }
     }
 }

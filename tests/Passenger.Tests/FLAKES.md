@@ -30,6 +30,17 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-10-29
 
+- `McpAttachTimingTests`' `A_call_that_ends_while_its_word_to_a_slow_agent_is_still_written_comes_back_after_that_word`,
+  CI macOS, run 40921064516 (7358d411), report lane: "The agent never heard what its call waited on", only
+  --mcp-attach's own beats heard. The window writes its held word and then its answer back to back, and the SDK hands
+  each message it reads to a handler of its own: in --mcp-attach the answer could end the call first, and the word was
+  dropped, its call's token forgotten or its telling cancelled with the call's beats; in the test's client the call's
+  progress handler goes once the answer is in. **A race in the IDE**: --mcp-attach hears the window's progress as it
+  reads it, in the window's order, and the answer waits for each word heard to be told on; and **the test**, which read
+  what the call was told the moment it was answered, now waits for the word as the client hands it over (in this
+  commit). 12 runs beside 12 CPU burners never failed before it; after it, 20 of 20 beside 16 and another test process,
+  and 18 of 18 on the Linux VM.
+
 - `HotReloadEditsTests`' `Each_edit_to_a_running_program_applies_as_the_runtime_allows` (chain "return types changed with
   their callers and without"), CI macOS, run 40921064516 (7358d411), report lane: "Waited 180 s for the program to print
   'as object' once a return type changed with its callers applied", its output ending at "async 16". The update landed

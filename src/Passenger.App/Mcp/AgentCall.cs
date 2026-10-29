@@ -30,6 +30,10 @@ public sealed class AgentCall : IAsyncDisposable
     private readonly CancellationTokenSource ended = new();
     private readonly SemaphoreSlim telling = new(1, 1);
     private readonly Task beating;
+    private readonly Lock passingOn = new();
+
+    /// <summary>The last of the window's words passed on, each told after the one before it.</summary>
+    private Task passed = Task.CompletedTask;
     private long lastTold;
     private long told;
     private long waitBegan;
@@ -114,7 +118,7 @@ public sealed class AgentCall : IAsyncDisposable
         waitingOn = onWhat;
         Log($"waiting: {onWhat}");
         // Not held, and never on the caller's thread (the window's): it changes nothing drawn, and the agent's pipe may be slow.
-        IdeErrors.Observe(BackgroundWork.Unheld(() => TellAsync()));
+        IdeErrors.Observe(BackgroundWork.Unheld(() => TellAsync(null, ended.Token)));
     }
 
     /// <summary>The wait is over, with what it came to.</summary>
@@ -131,14 +135,25 @@ public sealed class AgentCall : IAsyncDisposable
     public void Logged(string what) => Log($"{what} at {Seconds(Stopwatch.GetElapsedTime(began))}");
 
     /// <summary>Progress the window serving this call told, told on to the agent as this call's own, under this call's
-    /// rising numbers; the beat waits <see cref="Every"/> again from here.</summary>
+    /// rising numbers, in the order heard and before the call's answer; the beat waits <see cref="Every"/> again from
+    /// here.</summary>
     public void Heard(string? message)
     {
         if (message is { Length: > 0 })
         {
             heard = message;
         }
-        IdeErrors.Observe(TellAsync(message));
+        lock (passingOn)
+        {
+            Task before = passed;
+            // Not held, and never on the caller's thread (the window's reader): the agent's pipe may be slow.
+            passed = BackgroundWork.Unheld(async () =>
+            {
+                await before.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                await TellAsync(message, CancellationToken.None);
+            });
+            IdeErrors.Observe(passed);
+        }
     }
 
     /// <summary>How the call ended, logged: answered, an error, given up by the agent, failed.</summary>
@@ -151,15 +166,13 @@ public sealed class AgentCall : IAsyncDisposable
         {
             UiThread.Post(() => work.Changed -= handler);
         }
-        try
+        Task passing;
+        lock (passingOn)
         {
-            // Told before the answer, so no beat comes after it; waited briefly, since the answer waits on it.
-            await beating.WaitAsync(TimeSpan.FromSeconds(2));
+            passing = passed;
         }
-        catch (TimeoutException)
-        {
-            // A write to an agent that reads nothing: the answer goes out behind it, or not at all.
-        }
+        // Beats and words passed on go before the answer: waited briefly, as an agent reading nothing never takes them.
+        await Task.WhenAll(beating, passing).WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
     }
 
     private void Following(ActionWork work, string[] actions)
@@ -201,7 +214,7 @@ public sealed class AgentCall : IAsyncDisposable
                     Interlocked.Exchange(ref lastTold, Stopwatch.GetTimestamp());
                     continue;
                 }
-                await TellAsync();
+                await TellAsync(null, ended.Token);
             }
         }
         catch (OperationCanceledException)
@@ -210,9 +223,9 @@ public sealed class AgentCall : IAsyncDisposable
         }
     }
 
-    /// <summary>Tells the agent what the call does now, its progress one more than last time: one at a time, so the numbers
-    /// reach it rising.</summary>
-    private async Task TellAsync(string? message = null)
+    /// <summary>Tells the agent what the call does now, or <paramref name="message"/>, its progress one more than last
+    /// time: one at a time, so the numbers reach it rising.</summary>
+    private async Task TellAsync(string? message, CancellationToken cancel)
     {
         if (agent is null || Token is not { } token)
         {
@@ -220,7 +233,7 @@ public sealed class AgentCall : IAsyncDisposable
         }
         try
         {
-            await telling.WaitAsync(ended.Token);
+            await telling.WaitAsync(cancel);
         }
         catch (OperationCanceledException)
         {
@@ -230,7 +243,7 @@ public sealed class AgentCall : IAsyncDisposable
         {
             Interlocked.Exchange(ref lastTold, Stopwatch.GetTimestamp());
             string words = message is { Length: > 0 } ? message : $"{Doing} ({Seconds(Stopwatch.GetElapsedTime(began))})";
-            await agent.NotifyProgressAsync(token, new ProgressNotificationValue { Progress = ++told, Message = words }, cancellationToken: ended.Token);
+            await agent.NotifyProgressAsync(token, new ProgressNotificationValue { Progress = ++told, Message = words }, cancellationToken: cancel);
         }
         catch (Exception error) when (error is IOException or ObjectDisposedException or OperationCanceledException or InvalidOperationException or McpException)
         {

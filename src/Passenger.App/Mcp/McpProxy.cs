@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Net.Sockets;
 using System.Reflection;
@@ -6,6 +7,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Threading.Channels;
 using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -615,14 +617,55 @@ public sealed partial class McpProxy
     }
 
     /// <summary>The window's progress on a call the agent asked progress of, passed on to the agent.</summary>
-    private ValueTask Heard(JsonRpcNotification notification, CancellationToken cancel)
+    private void Heard(JsonRpcNotification notification)
     {
         if (notification.Params?.Deserialize<ProgressNotificationParams>(McpJsonUtilities.DefaultOptions) is { } progress
             && told.TryGetValue(progress.ProgressToken, out AgentCall? call))
         {
             call.Heard(progress.Progress.Message);
         }
-        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>The connection to a window, its progress heard as each message is read, in the order the window wrote
+    /// them, so a call's last word reaches the call before the answer written after it.</summary>
+    private sealed class InOrder(IClientTransport inner, Action<JsonRpcNotification> heard) : IClientTransport
+    {
+        public string Name => inner.Name;
+
+        public async Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default) =>
+            new Connected(await inner.ConnectAsync(cancellationToken).ConfigureAwait(false), heard);
+
+        private sealed class Connected(ITransport transport, Action<JsonRpcNotification> heard) : ITransport
+        {
+            public string? SessionId => transport.SessionId;
+
+            public ChannelReader<JsonRpcMessage> MessageReader { get; } = new Reader(transport.MessageReader, heard);
+
+            public Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default) =>
+                transport.SendMessageAsync(message, cancellationToken);
+
+            public ValueTask DisposeAsync() => transport.DisposeAsync();
+        }
+
+        private sealed class Reader(ChannelReader<JsonRpcMessage> messages, Action<JsonRpcNotification> heard) : ChannelReader<JsonRpcMessage>
+        {
+            public override Task Completion => messages.Completion;
+
+            public override bool TryRead([MaybeNullWhen(false)] out JsonRpcMessage item)
+            {
+                if (!messages.TryRead(out item))
+                {
+                    return false;
+                }
+                if (item is JsonRpcNotification { Method: NotificationMethods.ProgressNotification } progress)
+                {
+                    heard(progress);
+                }
+                return true;
+            }
+
+            public override ValueTask<bool> WaitToReadAsync(CancellationToken cancellationToken = default) => messages.WaitToReadAsync(cancellationToken);
+        }
     }
 
     /// <summary>Whether Settings' protocol traces are on in the state this proxy shares with the person's windows, read as
@@ -675,7 +718,7 @@ public sealed partial class McpProxy
             (NetworkStream stream, string socket) = await ConnectAsync(joiningCancel) ?? await StartAsync(call, joiningCancel);
             try
             {
-                joined = await McpClient.CreateAsync(PeerTransport.Of(new StreamClientTransport(stream, stream)), new McpClientOptions
+                joined = await McpClient.CreateAsync(new InOrder(PeerTransport.Of(new StreamClientTransport(stream, stream)), Heard), new McpClientOptions
                 {
                     // The agent's own name, which the window shows the person when it asks.
                     ClientInfo = agent ?? new Implementation { Name = "An agent", Version = "0" },
@@ -683,7 +726,6 @@ public sealed partial class McpProxy
                     // This build's own server always answers the latest version's probe, so it is waited for, never given up on.
                     DiscoverProbeTimeout = Timeout.InfiniteTimeSpan,
                 }, cancellationToken: joiningCancel);
-                joined.RegisterNotificationHandler(NotificationMethods.ProgressNotification, Heard);
                 joinedSocket = stream.Socket;
                 joinedPath = socket;
                 joinedOn = McpHost.WindowFolder(socket);
