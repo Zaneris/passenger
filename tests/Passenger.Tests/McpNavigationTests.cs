@@ -165,7 +165,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
             }
         }
         string edited = Text(await Call(client, McpTools.Edit, new() { ["path"] = "Locked.cs", ["oldText"] = "=> value;", ["newText"] = "=> value + 1;" }));
-        Assert.Contains("not saved: the file is read-only", edited, StringComparison.Ordinal);
+        Assert.Contains("not saved: Locked.cs is read-only", edited, StringComparison.Ordinal);
 
         // The last call's files are let go once calls pause.
         string[] open = [];

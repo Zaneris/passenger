@@ -318,7 +318,7 @@ public sealed partial class EditorArea : UserControl
 
     private bool Close(OpenDocument document, bool forGood)
     {
-        if (document.IsModified && !TrySave(document))
+        if (document.IsModified && TrySave(document) is not null)
         {
             return false;
         }
@@ -593,7 +593,7 @@ public sealed partial class EditorArea : UserControl
         bool all = true;
         foreach (OpenDocument document in documents.Where(d => d.IsModified && waiting?.Contains(d) != true).ToList())
         {
-            all &= TrySave(document, asked: asked);
+            all &= TrySave(document, asked: asked) is null;
         }
         return all;
     }
@@ -674,10 +674,13 @@ public sealed partial class EditorArea : UserControl
     public static string Waiting(IReadOnlyCollection<string> paths) => $"Waiting for {string.Join(", ", paths.Select(Path.GetFileName))} to be saved…";
 
     /// <summary>Writes a file even over a version on disk newer than its own, for Keep Memory Changes.</summary>
-    public bool SaveOver(OpenDocument document) => TrySave(document, overDisk: true);
+    public bool SaveOver(OpenDocument document) => TrySave(document, overDisk: true) is null;
 
     /// <summary>Writes a file, unless something else changed it on disk meanwhile; whether it was written.</summary>
-    public bool Save(OpenDocument document) => TrySave(document);
+    public bool Save(OpenDocument document) => TrySave(document) is null;
+
+    /// <summary>Writes a file as <see cref="Save"/> does: null once it was written, else why not.</summary>
+    public string? SaveSaying(OpenDocument document) => TrySave(document);
 
     /// <summary>Moves a file or folder on disk with its open files, which keep their tabs in every split, their undo
     /// and carets: each is saved first, so what moves is what the editor shows. Null when it moved, else why not, with
@@ -693,7 +696,7 @@ public sealed partial class EditorArea : UserControl
         List<OpenDocument> moving = [.. documents.Where(d => PathNames.Within(d.Path, source))];
         foreach (OpenDocument document in moving)
         {
-            if (document.IsModified && !TrySave(document))
+            if (document.IsModified && TrySave(document) is not null)
             {
                 return $"{document.Name} could not be saved before it moved";
             }
@@ -743,30 +746,31 @@ public sealed partial class EditorArea : UserControl
         }
     }
 
-    /// <summary>Saves text, keeping edits on failure or a disk conflict. Assets need no save and never reach serialization.</summary>
+    /// <summary>Saves text, keeping edits on failure or a disk conflict: null once written, else why not. Assets need no
+    /// save and never reach serialization.</summary>
     /// <param name="asked">The person's own Save, which makes a folder moved or deleted elsewhere again.</param>
-    private bool TrySave(OpenDocument document, bool overDisk = false, bool asked = false)
+    private string? TrySave(OpenDocument document, bool overDisk = false, bool asked = false)
     {
         if (document.Asset is not null)
         {
-            return true;
+            return null;
         }
         if (!overDisk && document.ChangedOnDisk())
         {
             SaveConflicted?.Invoke(this, document);
-            return false;
+            return "it changed on disk since it was last loaded or saved";
         }
         try
         {
             // The carets of the editor showing it, whose lines keep the whitespace a save would trim.
             EditorGroup? showing = activeGroup.Has(document) ? activeGroup : AllGroups.FirstOrDefault(g => g.Has(document));
             document.Save(showing?.SelectionsOf(document), makeFolder: asked, overDisk: overDisk);
-            return true;
+            return null;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             SaveFailed?.Invoke(this, $"{document.Name} could not be saved: {error.Message}");
-            return false;
+            return error.Message;
         }
     }
 

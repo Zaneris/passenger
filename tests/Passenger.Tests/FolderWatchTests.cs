@@ -293,6 +293,34 @@ public sealed class FolderWatchTests : IDisposable
         Assert.False(window.IsVisible, $"The window would not close: {window.Status}");
     }
 
+    /// <summary>An agent's edit of a file whose folder has gone (a volume ejected, a folder trashed elsewhere) keeps the edit
+    /// and answers why it was not saved, in the save's own words.</summary>
+    [AvaloniaFact]
+    public void An_agents_edit_of_a_file_whose_folder_has_gone_says_why_it_was_not_saved()
+    {
+        string old = Path.Combine(folder, "src", "Old");
+        string trash = TestFolders.Create("trash-");
+        Write("src/Old/Two.cs", "class Two { }\n");
+        MainWindow window = Open(languageServer: false);
+        window.OpenFile(Path.Combine(old, "Two.cs"));
+        Ui.Settle();
+        // Typed into, so its tab stays once its folder goes.
+        Type(window, "sealed ");
+        Directory.Move(old, Path.Combine(trash, "Old"));
+
+        Task<string> editing = new Passenger.App.Mcp.PassengerTools(window).Edit("src/Old/Two.cs", "class Two", "class Three");
+        Ui.WaitFor(() => editing.IsCompleted, "the agent's edit");
+        string answered = editing.IsCompletedSuccessfully ? editing.Result : editing.Exception!.InnerException!.Message;
+        Assert.True(answered.Contains("not saved: its folder Old was moved or deleted, and only Save makes it again", StringComparison.Ordinal),
+            $"An agent's edit of a file whose folder has gone answered, rather than why it was not saved: {answered}");
+        OpenDocument two = Assert.Single(window.EditorArea.Documents);
+        Assert.True(two.IsModified && two.Text.Snapshot.ToString() == "sealed class Three { }\n", $"The edit was not kept unsaved: {two.Text.Snapshot}");
+
+        window.Perform(AppActions.Save);
+        Ui.WaitFor(() => !two.IsModified, "the person's Save");
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void Lines_changed_on_disk_leave_breakpoints_bookmarks_and_the_caret_with_their_own_lines()
     {

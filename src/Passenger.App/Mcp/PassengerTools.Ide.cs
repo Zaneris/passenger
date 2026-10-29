@@ -290,7 +290,7 @@ public sealed partial class PassengerTools
         document.Text.BreakUndoGroup();
         document.Text.Edit(edits, document.Selections, TextEditing.MapThrough(document.Selections, edits));
         document.Text.BreakUndoGroup();
-        string saved = Editors.Save(document) ? "saved" : FileText.IsReadOnly(document.Path) ? "not saved: the file is read-only" : "not saved: the system refused";
+        string saved = Editors.SaveSaying(document) is { } refused ? $"not saved: {refused}" : "saved";
         if (saved == "saved" && await Passenger.App.Editors.EditorArea.LandedAsync(null, cancel) is { } unlanded)
         {
             saved = $"not saved: {unlanded}";
