@@ -32,7 +32,8 @@ public partial class MainWindow
     }
 
     /// <summary>The session's packages followed while it is the window's: a change's files taken from disk and the solution
-    /// read again before whoever asked for the change is answered; and the NuGet window, once built, shows them.</summary>
+    /// read again before whoever asked for the change is answered, the nuget.config files the Sources tab wrote taken
+    /// too, wherever they are; and the NuGet window, once built, shows them.</summary>
     private void BindPackages(ProjectSession next)
     {
         next.Packages.Changed += (_, outcome) =>
@@ -42,6 +43,13 @@ public partial class MainWindow
                 // dotnet add package wrote the project, its lock file, and Directory.Packages.props under central management.
                 FollowWritten(outcome.Changed);
                 ReloadSolution();
+            }
+        };
+        next.Packages.ConfigsWritten += (_, configs) =>
+        {
+            if (session == next)
+            {
+                FollowWritten(configs);
             }
         };
         nuget?.Bind(next.Packages);

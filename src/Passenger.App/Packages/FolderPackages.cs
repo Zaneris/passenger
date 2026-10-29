@@ -50,6 +50,10 @@ public sealed class FolderPackages
     /// answered: the window takes them into its editors and reads the solution again.</summary>
     public event EventHandler<PackageOutcome>? Changed;
 
+    /// <summary>Raised as nuget.config files the Sources tab wrote have landed, done or not: the window takes those open
+    /// into its editors.</summary>
+    public event EventHandler<IReadOnlyList<string>>? ConfigsWritten;
+
     /// <summary>Where a package change is recorded as one command of Undo, unless its caller records it; null records none.</summary>
     public CommandHistory? Commands { get; set; }
 
@@ -194,6 +198,10 @@ public sealed class FolderPackages
         ChangeAsync($"Removing {id} from {project.Name}…", $"Remove {id} from {project.Name}", project, within, () => manager.RemoveAsync(project.Path, id));
 
     private static string Moves(IReadOnlyList<(string Id, string Version)> packages) => string.Join(", ", packages.Select(p => $"{p.Id} to {p.Version}"));
+
+    /// <summary>Tells of nuget.config files the Sources tab wrote (<see cref="ConfigsWritten"/>), before their sources are
+    /// read again.</summary>
+    public void Wrote(IReadOnlyList<string> configs) => ConfigsWritten?.Invoke(this, configs);
 
     /// <summary>Ends a package change still under way, as the folder is left.</summary>
     public void Stop() => manager.Stop();

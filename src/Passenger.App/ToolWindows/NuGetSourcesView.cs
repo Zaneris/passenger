@@ -246,7 +246,8 @@ public sealed class NuGetSourcesView : Grid
         TopLevel.GetTopLevel(this) is Window window && await dialog.ShowDialog<bool>(window) ? dialog.Result : null;
 
     /// <summary>Writes the change to <paramref name="paths"/> off the window's thread, then, once they have landed (saying
-    /// meanwhile which another program holds), reads the sources again; a file that will not take it says why under the tab.</summary>
+    /// meanwhile which another program holds), has the window take those open into its editors and reads the sources
+    /// again; a file that will not take it says why under the tab.</summary>
     private async Task WriteAsync(IReadOnlyList<string> paths, Action change)
     {
         problem.IsVisible = false;
@@ -268,6 +269,7 @@ public sealed class NuGetSourcesView : Grid
             problem.Text = $"The change could not be written: {failed.Message}";
             problem.IsVisible = true;
         }
+        owner.Packages.Wrote(paths);
         await owner.ReloadSourcesAsync();
 
         void Waiting(string said)

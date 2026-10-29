@@ -104,6 +104,35 @@ public sealed class PackageSourcesTests : NuGetFeedsFolder
         window.Close();
     }
 
+    /// <summary>A window on the project's folder, its nuget.config the one above it, where the folder's watcher does not reach,
+    /// as it never reaches the person's own NuGet.Config: open in a tab, the file shows a feed the Sources tab adds there as
+    /// the add ends, so what is typed and saved in that tab keeps the feed.</summary>
+    [AvaloniaFact]
+    public void A_feed_added_to_a_nuget_config_open_in_a_tab_outside_the_folder_shows_there()
+    {
+        MainWindow window = Ui.OpenFolder(Path.Combine(folder, "Lib"), languageServer: false);
+        window.Perform(AppActions.ShowNuGet);
+        NuGetView nuget = window.NuGet;
+        Ui.Landed(() => nuget.PackageSources.Feeds.Count > 0, "the package sources read from the nuget.config above the folder");
+        string path = Core.PathNames.Canonical(config);
+        window.OpenFile(path);
+        ShowSources(nuget);
+        nuget.Sources.Choose(path);
+        Ui.Settle();
+
+        Ui.Click(Descendants<Button>(nuget.Sources).Single(b => b.Name == "AddFeed"));
+        FeedDialog dialog = Assert.Single(window.OwnedWindows.OfType<FeedDialog>());
+        dialog.FeedName = "team";
+        dialog.Url = "https://nuget.example.com/v3/index.json";
+        Ui.ClickButton(dialog, "OK");
+        Ui.Landed(() => nuget.FeedChoices.Contains("team"), "the new feed in the chooser");
+        Assert.Contains("<add key=\"team\"", File.ReadAllText(config), StringComparison.Ordinal);
+        string shown = window.EditorArea.Find(path)?.Text.Snapshot.ToString() ?? "(no editor)";
+        Assert.True(shown.Contains("<add key=\"team\"", StringComparison.Ordinal),
+            $"The nuget.config open in a tab still shows the text from before the feed was added, which its next save would write over the feed:\n{shown}");
+        window.Close();
+    }
+
     /// <summary>A feed's answers can send Passenger to any host: a search there that asks for credentials is refused, and
     /// the feed's own credentials never go to it.</summary>
     [AvaloniaFact]
