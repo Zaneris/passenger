@@ -677,6 +677,10 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>The folder's projects as MSBuild evaluates them, in the project host.</summary>
     public ProjectModels Models { get; } = new();
 
+    /// <summary>Why there is no run configuration to run, debug or profile (the <paramref name="verb"/>): no SDK to
+    /// load the projects with, or no executable project (<see cref="Refusals.NothingTo"/>).</summary>
+    public string NothingTo(string verb) => Refusals.NothingTo(verb, Models.MissingSdk, Folder);
+
     /// <summary>The folder's projects as the project host builds them at design time, which the language server loads.</summary>
     public ProjectBuilds DesignTimeBuilds { get; }
 

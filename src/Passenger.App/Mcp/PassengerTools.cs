@@ -2405,7 +2405,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             session.CSharp is not { } csharp ? "none" : csharp.IsReady ? "ready" : csharp.State,
             [.. Editors.Documents.Select(d => Relative(d.Path) + (d.IsModified ? " (unsaved)" : ""))],
             active is null ? null : $"{Relative(active.Path)}:{caret!.Value.Line + 1}:{caret.Value.Column + 1}",
-            Session.Debug.Session?.State.ToString().ToLowerInvariant() ?? "not debugging");
+            Session.Debug.Session?.State.ToString().ToLowerInvariant() ?? "not debugging")
+        {
+            SdkMissing = session.Models.MissingSdk is { } missing ? Refusals.NoSdk(missing, session.Folder) : null,
+        };
     }
 
     /// <summary>A path an agent gave, from the open folder unless rooted, as the IDE names it (in any letter case).</summary>
@@ -2527,6 +2530,9 @@ public sealed record Workspace(
     string Debugger)
 {
     public IReadOnlyList<AspireOwnedAppInfo> AspireApps { get; init; } = [];
+
+    /// <summary>Why the folder has no .NET SDK to load, build and run its projects with, as Run refuses for it; null with one.</summary>
+    public string? SdkMissing { get; init; }
 
     /// <summary>The container run under way, beside the AppHosts, its services as their resources are; null with none.</summary>
     public ContainerRunInfo? ContainerRun { get; init; }

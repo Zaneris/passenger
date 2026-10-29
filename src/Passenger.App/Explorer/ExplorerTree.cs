@@ -459,6 +459,31 @@ public sealed class ExplorerTree
     /// its session keeps.</summary>
     public ISet<string> Unloaded { get; set; } = new HashSet<string>(StringComparer.Ordinal);
 
+    /// <summary>Why the folder has no .NET SDK to evaluate its projects with, which hovering a project's row says; null
+    /// while it has one.</summary>
+    private string? noSdk;
+
+    /// <summary>The folder came to have no .NET SDK (<paramref name="why"/>), or has one again (null): each project's
+    /// row says "(no SDK)" meanwhile, and once it has one, what it said before.</summary>
+    public void ShowSdk(string? why)
+    {
+        if (why == noSdk)
+        {
+            return;
+        }
+        noSdk = why;
+        if (Root is null)
+        {
+            return;
+        }
+        foreach (ExplorerNode node in Loaded(Root, n => n.Kind == NodeKind.Project && n.Path is { } path && !Unloaded.Contains(path)))
+        {
+            ProjectModel project = projects[node.Path!];
+            node.Detail = DetailOf(project);
+            node.Tip = TipOf(project);
+        }
+    }
+
     /// <summary>A level of the solution, whatever order the file declares: its folders, then its projects, then the
     /// files a folder holds, each by name.</summary>
     private List<ExplorerNode> Entries(IEnumerable<SolutionEntry> entries, int depth, string? folder) =>
@@ -515,10 +540,15 @@ public sealed class ExplorerTree
             return children;
         }, DetailOf(Current(given))) { Tip = TipOf(Current(given)) };
 
-    /// <summary>What a project's row says beside its name: its frameworks, and off Windows those that run only on Windows
-    /// (a WPF or Windows Forms app's); or that MSBuild could not evaluate it.</summary>
-    private static string? DetailOf(ProjectModel project)
+    /// <summary>What a project's row says beside its name: its frameworks, and off Windows those that run only on
+    /// Windows (a WPF or Windows Forms app's); or that the folder has no SDK to evaluate it with, or MSBuild could
+    /// not.</summary>
+    private string? DetailOf(ProjectModel project)
     {
+        if (noSdk is not null)
+        {
+            return "(no SDK)";
+        }
         if (project.Problem is not null)
         {
             return "(load failed)";
@@ -535,11 +565,12 @@ public sealed class ExplorerTree
             : $"{frameworks} · {string.Join(", ", windowsOnly.Select(w => w.Framework))} Windows only";
     }
 
-    /// <summary>What hovering a Windows-only project's row says: why, and what Passenger still does with it here.</summary>
-    private static string? TipOf(ProjectModel project) =>
-        project.WindowsOnly is [(string framework, _), ..] && project.RunsOnlyOnWindows(framework) is { } why
+    /// <summary>What hovering a project's row says: why the folder has no SDK; else, for a Windows-only one, why, and
+    /// what Passenger still does with it here.</summary>
+    private string? TipOf(ProjectModel project) =>
+        noSdk ?? (project.WindowsOnly is [(string framework, _), ..] && project.RunsOnlyOnWindows(framework) is { } why
             ? $"{why}: Passenger builds {project.Name} here for its code help (EnableWindowsTargeting), and Run, Debug and Profile need Windows"
-            : null;
+            : null);
 
     /// <summary>A project's dependencies as MSBuild evaluates them: for a project of one framework, it with the
     /// projects and packages it references; for a multi-targeted one, each framework with its own.</summary>

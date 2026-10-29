@@ -16,6 +16,10 @@ public sealed class ProjectHostFailed(string reason, Exception? inner = null, bo
     /// that could never end (<see cref="ProjectHost.End"/>): a host started anew (<see cref="ProjectHosts.ForAsync"/>)
     /// may answer it.</summary>
     public bool HostEnded { get; } = hostEnded;
+
+    /// <summary>Why the host loaded no SDK for the folder (none installed, or not the one its global.json asks for);
+    /// null for a failure of another kind.</summary>
+    public MissingSdk? MissingSdk { get; init; }
 }
 
 /// <summary>One project host (Passenger.Host, carried under <c>host/</c>): MSBuild's evaluation in a process of its
@@ -96,7 +100,7 @@ public sealed class ProjectHost : IAsyncDisposable
         }
         catch (FileNotFoundException missing)
         {
-            throw new ProjectHostFailed(missing.Message, missing);
+            throw new ProjectHostFailed(missing.Message, missing) { MissingSdk = MissingSdk.NoDotnet(missing.Message) };
         }
         // The newest runtime there is, a prerelease too, so the SDK a folder picks can always load in it.
         start.Environment[RuntimeVariables.RollForwardToPrerelease] = "1";
@@ -161,7 +165,7 @@ public sealed class ProjectHost : IAsyncDisposable
     private static HostReady Ready(ReadOnlySpan<byte> first)
     {
         Reply reply = Reply.Read(first);
-        return reply.Error is { } error ? throw new ProjectHostFailed(error)
+        return reply.Error is { } error ? throw new ProjectHostFailed(error) { MissingSdk = MissingSdk.From(error) }
             : reply.Value.IsEmpty || reply.Partial || JsonSerializer.Deserialize<HostReady>(reply.Value, HostJson.Options) is not { } ready
                 ? throw new ProjectHostFailed("the project host did not say which SDK it loaded")
             : ready;

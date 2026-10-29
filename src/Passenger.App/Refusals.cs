@@ -1,5 +1,7 @@
 using System.Globalization;
+using Passenger.Core;
 using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.App;
 
@@ -33,6 +35,22 @@ public static class Refusals
     public static string Untaken(IReadOnlyList<string> files) =>
         $"Without {string.Join(", ", files.Take(3))}{(files.Count > 3 ? $" and {files.Count - 3} more" : string.Empty)}, which the C# language server "
         + $"has not loaded into {(files.Count == 1 ? "its project" : "their projects")} yet";
+
+    /// <summary>The folder's projects have no .NET SDK to load, build and run them with: the one its global.json asks
+    /// for (named from <paramref name="folder"/>) is not installed, none is, or dotnet found none for another reason it
+    /// gives.</summary>
+    public static string NoSdk(MissingSdk missing, string? folder) => missing switch
+    {
+        { Asked: { } asked } => $"The .NET SDK {asked} that {(missing.GlobalJson is { } file ? PathNames.Shown(PathNames.Canonical(file), folder) : "global.json")} "
+            + "asks for is not installed: install it, or have global.json name one that is",
+        { NoneInstalled: true } => "No .NET SDK is installed: install one to load, build and run projects",
+        _ => $"No .NET SDK was found for this folder: {missing.Said.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()}",
+    };
+
+    /// <summary>No run configuration to run, debug or profile (the <paramref name="verb"/>): the folder has no SDK to
+    /// load its projects with (<see cref="NoSdk"/>), or no executable project.</summary>
+    public static string NothingTo(string verb, MissingSdk? missing, string? folder) =>
+        missing is null ? $"Nothing to {verb}: no executable project" : NoSdk(missing, folder);
 
     /// <summary>Go to Declaration found nothing to go to where it was asked.</summary>
     public const string NoDeclaration = "Cannot find a declaration to go to";

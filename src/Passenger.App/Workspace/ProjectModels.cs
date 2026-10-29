@@ -55,6 +55,13 @@ public sealed class ProjectModels
     /// <summary>Why the host could not evaluate the folder's projects, the last time it was asked; null when it could.</summary>
     public string? Problem { get; private set; }
 
+    /// <summary>Why the host loaded no .NET SDK for the folder, the last time it was asked; null while it loads one.</summary>
+    public MissingSdk? MissingSdk { get; private set; }
+
+    /// <summary>The folder came to have no .NET SDK to load, build and run its projects, or has one again
+    /// (<see cref="MissingSdk"/>).</summary>
+    public event EventHandler? SdkChanged;
+
     /// <summary>Whether every project of the workspace last followed has its complete evaluation in.</summary>
     public bool IsComplete { get; private set; }
 
@@ -138,6 +145,7 @@ public sealed class ProjectModels
         known.Clear();
         made.Clear();
         Problem = null;
+        MissingSdk = null;
         IsComplete = false;
         Followed = false;
     }
@@ -188,6 +196,10 @@ public sealed class ProjectModels
         HashSet<string> asked = new(paths, PathNames.Comparer);
         return known.Values.Any(e => e.Inputs.Any(i => asked.Contains(i.Path)));
     }
+
+    /// <summary>Whether, while the folder has no SDK, one of these files is a global.json, which may now ask for one installed.</summary>
+    public bool SdkMayCome(IEnumerable<string> paths) =>
+        MissingSdk is not null && paths.Any(p => Path.GetFileName(p).Equals("global.json", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Checks each project of a workspace against what its evaluation read, off the UI thread, and has those that
     /// changed or were never evaluated evaluated, the one holding <paramref name="active"/> first; the host is asked its SDK
@@ -310,6 +322,7 @@ public sealed class ProjectModels
                 sdk = host.Sdk;
             }
             Problem = null;
+            SdkIs(null);
             if (stale.Count == 0)
             {
                 return;
@@ -354,6 +367,10 @@ public sealed class ProjectModels
             {
                 Problem = error is ProjectHostFailed failed ? failed.Reason : error.Message;
                 IdeErrors.Write($"The project host could not evaluate the projects of {following}: {Problem}");
+                if (error is ProjectHostFailed { MissingSdk: { } missing })
+                {
+                    SdkIs(missing);
+                }
                 Changed?.Invoke(this, []);
             }
         }
@@ -382,6 +399,15 @@ public sealed class ProjectModels
                 UiThread.Post(Land);
             }
         }, cancel);
+    }
+
+    private void SdkIs(MissingSdk? missing)
+    {
+        if (missing != MissingSdk)
+        {
+            MissingSdk = missing;
+            SdkChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     /// <summary>The evaluations landed since the last batch, taken in (those for a folder let go, dropped).</summary>

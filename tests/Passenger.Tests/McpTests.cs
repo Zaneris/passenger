@@ -54,6 +54,25 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(wrong.IsError == true && Text(wrong).Contains("there are passed, failed, skipped and notRun", StringComparison.Ordinal), $"tests_list in no state answered: {Text(wrong)}");
     }
 
+    /// <summary>A project whose global.json asks for a .NET SDK that is not installed: workspace says so, and run
+    /// refuses in the same words rather than finding no executable project.</summary>
+    [Fact]
+    public async Task An_agent_where_global_json_asks_for_an_SDK_not_installed_hears_so_from_workspace_and_run()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-no-sdk-"));
+        DeleteAtEnd(folder);
+        File.WriteAllText(Path.Combine(folder, "global.json"), MissingSdkTests.Pinned);
+        File.WriteAllText(Path.Combine(folder, "App.csproj"), TestProjects.Console());
+        File.WriteAllText(Path.Combine(folder, "Program.cs"), "System.Console.WriteLine(\"App\");\n");
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        const string Missing = "The .NET SDK 1.0.100 that global.json asks for is not installed: install it, or have global.json name one that is";
+        JsonElement workspace = await Call(client, McpTools.Workspace);
+        Assert.True(workspace.TryGetProperty("sdkMissing", out JsonElement missing) && missing.GetString() == Missing,
+            $"workspace, where global.json asks for an SDK not installed, answered: {workspace}");
+        CallToolResult run = await Result(client, McpTools.Run);
+        Assert.True(run.IsError == true && Text(run).Contains(Missing, StringComparison.Ordinal), $"run without the SDK answered: {Text(run)}");
+    }
+
     /// <summary>tests_run answers with the run it made alone: after a run of every test, one failing, a run of the passing
     /// one by its name tells no failure, while tests_list still says the other failed when it last ran.</summary>
     [Fact]

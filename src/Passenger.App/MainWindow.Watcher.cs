@@ -58,9 +58,9 @@ public partial class MainWindow
             // A file come or gone may be one a project's wildcards take in (its folder's stamp says which), or a project's own.
             session.CameOrWent(cameOrWent);
         }
-        else if (changes.Restored.Count > 0 || programsWritten)
+        else if (changes.Restored.Count > 0 || programsWritten || session.Models.SdkMayCome(changes.Paths))
         {
-            // A restore writes the props and targets a project imports beside its assets; a program's directives make its project.
+            // A restore writes what a project imports; a program's directives make its project; a global.json may name an SDK there is.
             session.Evaluate();
         }
         if (changes.LaunchProfiles && !(changes.Projects || changes.Lost))

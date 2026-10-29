@@ -339,6 +339,14 @@ public partial class MainWindow
                 }
             };
         }
+        next.Models.SdkChanged += (_, _) =>
+        {
+            if (session == next)
+            {
+                ShowSdk();
+            }
+        };
+        ShowSdk();
         next.WorkspaceChanged += (_, _) =>
         {
             if (session == next)
@@ -471,7 +479,16 @@ public partial class MainWindow
                 }
                 Say(message, LogPlace);
             };
-            service.Said += (_, said) => status.Say(said.Text, said.Severity, said.Problem is { } problem ? LoadProblemPlace(problem) : null);
+            service.Said += (_, said) =>
+            {
+                // A project the server could not load for want of an SDK: the want is what the person can act on.
+                if (said.Problem is not null && session.Models.MissingSdk is { } missing)
+                {
+                    SaySdk(missing);
+                    return;
+                }
+                status.Say(said.Text, said.Severity, said.Problem is { } problem ? LoadProblemPlace(problem) : null);
+            };
             // A start or load running long is warned of with the log, which says where it is; its late end said plainly.
             service.LoadRanLong += (_, said) => status.Say(said.Text, said.Severity, said.Severity is null ? null : LogPlace);
             WatchProblems(service);
@@ -480,6 +497,34 @@ public partial class MainWindow
         status.ShowLanguage(LanguageLabel());
         ShowSolutionProblems();
         ShowProjectProblems();
+    }
+
+    /// <summary>What the status bar said of the folder's want of a .NET SDK, while it says it.</summary>
+    private string? sdkSaid;
+
+    /// <summary>The folder's want of a .NET SDK, or its end, shown where a person looks: the status bar, a click on it
+    /// downloading the SDK, and each project's row in the Solution view, whose tip has dotnet's words whole.</summary>
+    private void ShowSdk()
+    {
+        if (session.Models.MissingSdk is not { } missing)
+        {
+            Explorer.Tree.ShowSdk(null);
+            if (sdkSaid is not null && status.Text == sdkSaid)
+            {
+                status.Text = null;
+            }
+            sdkSaid = null;
+            return;
+        }
+        Explorer.Tree.ShowSdk($"{Refusals.NoSdk(missing, Folder)}\n\n{missing.Said}");
+        SaySdk(missing);
+    }
+
+    /// <summary>The want of a .NET SDK said in the status bar as an error, a click there opening its download page.</summary>
+    private void SaySdk(MissingSdk missing)
+    {
+        sdkSaid = Refusals.NoSdk(missing, Folder);
+        status.Say(sdkSaid, ProblemSeverity.Error, SdkPlace(missing));
     }
 
     /// <summary>Reads the solution's files again (after a package or project change, here or on disk), keeping the run

@@ -645,14 +645,21 @@ public sealed record ChildResult(int ExitCode, string Output, string Error)
 {
     public bool Succeeded => ExitCode == 0;
 
-    /// <summary>What a failed child said: its errors, else its output (their first six lines, joined), else its exit code.</summary>
+    /// <summary>The most lines of a child's words <see cref="Said"/> joins: a tool's own words whole, with every link
+    /// they give; a log's beginning.</summary>
+    private const int SaidLines = 40;
+
+    /// <summary>What a failed child said: its errors, else its output, their lines joined (the rest counted past
+    /// <see cref="SaidLines"/>), else its exit code.</summary>
     public string Said
     {
         get
         {
             string said = (Error.Trim().Length > 0 ? Error : Output).Trim();
             string[] lines = said.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-            return lines.Length == 0 ? $"it exited with {ExitCode}" : string.Join(' ', lines.Take(6));
+            return lines.Length == 0 ? $"it exited with {ExitCode}"
+                : lines.Length <= SaidLines ? string.Join(' ', lines)
+                : $"{string.Join(' ', lines.Take(SaidLines))} … and {Plural.Of(lines.Length - SaidLines, "more line")}";
         }
     }
 }

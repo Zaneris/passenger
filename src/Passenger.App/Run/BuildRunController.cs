@@ -824,7 +824,7 @@ public sealed partial class BuildRunController
     {
         if (session.Configurations.Chosen is not { } chosen)
         {
-            return Said("Nothing to run: no executable project");
+            return Said(session.NothingTo("run"));
         }
         if (session.Aspire.IsAspire(chosen))
         {
@@ -1367,7 +1367,7 @@ public sealed partial class BuildRunController
         UiThread.Check();
         if (session.Configurations.Chosen is not { } chosen)
         {
-            return Said("Nothing to run: no executable project");
+            return Said(session.NothingTo("run"));
         }
         switch (RestartedInPlace(chosen))
         {
@@ -1468,7 +1468,7 @@ public sealed partial class BuildRunController
     /// in place of its own if given; the Debug window opens on its Console until the program stops somewhere. Null once its
     /// session is open, or what stopped it (a failed build, no configuration, the adapter's refusal).</summary>
     public Task<string?> DebugAsync(string? arguments = null, CancellationToken cancellation = default) =>
-        session.Configurations.Chosen is { } chosen ? DebugAsync(chosen, arguments, cancellation) : Task.FromResult<string?>("Nothing to debug: no executable project");
+        session.Configurations.Chosen is { } chosen ? DebugAsync(chosen, arguments, cancellation) : Task.FromResult<string?>(session.NothingTo("debug"));
 
     /// <summary>Each configuration Debug launched, by its name, and the arguments it was given, which a restart for Hot
     /// Reload launches again.</summary>

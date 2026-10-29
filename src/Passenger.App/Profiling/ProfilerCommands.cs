@@ -79,7 +79,7 @@ public sealed class ProfilerCommands
         parts.Dock.Add(window);
         parts.Actions.Add(new IdeAction(AppActions.Profile, "Profile", "Run", context => IdeErrors.Observe(ProfileReportingAsync()))
         {
-            WhyNot = _ => WhyNotProfile(Session) ?? (Session.Configurations.Chosen is null ? "Nothing to profile: no executable project" : null),
+            WhyNot = _ => WhyNotProfile(Session) ?? (Session.Configurations.Chosen is null ? Session.NothingTo("profile") : null),
             Menus = [new MenuPlace("Run", 0, 2)],
         });
         // Nothing of the folder's running, it offers the programs of the engine's running containers to choose from.
@@ -253,7 +253,7 @@ public sealed class ProfilerCommands
         BuildRunController builds = parts.Builds();
         if ((configuration ?? profiled.Configurations.Chosen) is not { } chosen)
         {
-            return "Nothing to profile: no executable project";
+            return profiled.NothingTo("profile");
         }
         if (chosen.IsContainer)
         {

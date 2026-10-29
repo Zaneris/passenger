@@ -335,7 +335,7 @@ public partial class MainWindow
         string? NoneSelected(ActionContext context) => Unbuildable(context)
             ?? (SelectedProjects().Count == 0 ? "No project is chosen in the Explorer or open in the editor" : null);
 
-        string? Unconfigured(string verb) => Configuration is null ? $"Nothing to {verb}: no executable project" : null;
+        string? Unconfigured(string verb) => Configuration is null ? session.NothingTo(verb) : null;
     }
 
     /// <summary>The unit tests' actions: in context (the Unit Tests window's chosen rows while it has the keys, else the
