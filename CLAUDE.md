@@ -276,11 +276,13 @@ site-shots` retakes its images.
   lowering it, delete `artifacts/bin/*/debug/roslyn*`, or the copy leaves a mixed server that won't start.
 - **Roslyn's server makes a C# file opened before its project loads a Miscellaneous File** and restores a project of its
   own for it, so `CSharpService` opens a loading project's files only once the server says that project loaded, and a
-  file come since only once a load of its project that read it has ended (`CSharpService.Arrivals`); MCP's and the
-  window's C# commands first wait for every such file to be in its project (`UnplacedAsync`). A reload sent while it
-  loads is one more load to wait for (`RoslynSession`): the server's word that a load ended names none. A server that
-  ends during its start is started again within `ServerRestarts`; StreamJsonRpc then drops a faulted answer, which
-  `IdeErrors` passes over (`LanguageServer.IsDroppedAnswer`).
+  file come since only once a load of its project that read it has ended (`CSharpService.Arrivals`); a change waits only
+  for such files in the projects it reaches, and Find Usages answers at once naming any not taken in (`UnplacedAsync`'s
+  filter, `ReachOfAsync`); references come from the session's evaluated projects (`CSharpService.ProjectsNow`), never
+  the service's start-time `workspace`. A reload sent while it loads is one more load to wait for (`RoslynSession`): the
+  server's word that a load ended names none. A server that ends during its start is started again within
+  `ServerRestarts`; StreamJsonRpc then drops a faulted answer, which `IdeErrors` passes over
+  (`LanguageServer.IsDroppedAnswer`).
 - **Roslyn's server takes file watching all or nothing**: offered it, it watches nothing itself; all it registers is
   ours. A file deleted reaches it only once the projects holding it loaded again without it (`ProjectMethods.Deleted`):
   told first, it reads the missing file for its document, a second each, before any answer needing the compilation
